@@ -1,3 +1,4 @@
+import { extourneEntryById } from './journal-generator.service.js';
 /**
  * Service d'amortissement des immobilisations (CGNC Maroc).
  *
@@ -333,8 +334,8 @@ export const fixedAssetRepository = {
         [id]
       );
       for (const e of entries.rows) {
-        // Suppression simple si periode ouverte (les dotations recentes le sont).
-        await client.query(`DELETE FROM journal_entries WHERE id = $1`, [e.journal_entry_id]);
+        // Mig 311 (G-D8-02) : une dotation comptabilisée ne se supprime plus, elle s'extourne.
+        await extourneEntryById(client, e.journal_entry_id);
       }
       await client.query(`DELETE FROM fixed_assets WHERE id = $1`, [id]);
       await client.query('COMMIT');

@@ -1,8 +1,18 @@
 import { useState } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Download, Lock, Percent } from 'lucide-react';
-import { tvaDeclarationApi } from '../../api/ledger.api';
+import { Loader2, Download, Lock, Percent, Hourglass, Ban } from 'lucide-react';
+import { tvaDeclarationApi, purchaseLedgerApi } from '../../api/ledger.api';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import { purchasingReportsApi } from '../../api/purchasing-reports.api';
+import { notify } from '../../components/ui/InlineNotification';
+import { FileSearch } from 'lucide-react';
+
+const REASON_LABEL: Record<string, string> = {
+  cash_over_limit: 'Espèces au-delà du plafond', missing_mentions: 'Mentions légales manquantes',
+  inactive_supplier: 'Fournisseur inactif', no_invoice: 'Sans facture', personal: 'Dépense personnelle',
+  exempt_supplier: 'Fournisseur non assujetti', manual: 'Décision manuelle',
+};
 import { useAuth } from '../../context/AuthContext';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
@@ -40,6 +50,19 @@ export default function TvaTab() {
     queryFn: () => tvaDeclarationApi.declaration(startDate, endDate),
     enabled: isAdmin,
   });
+  // Mig 311 (G-D8-15) : relevé des déductions (droit né au règlement, CGI art. 101).
+  const { data: statement = [] } = useQuery({
+    queryKey: ['ledger-vat-statement', startDate, endDate],
+    queryFn: () => purchaseLedgerApi.vatStatement(startDate, endDate),
+    enabled: isAdmin,
+  });
+  const exportStatement = () => exportCSV(`releve-deductions-${year}-${String(month).padStart(2, '0')}.csv`,
+    ['Facture', 'N° fournisseur', 'Date facture', 'Fournisseur', 'ICE', 'IF', 'HT', 'TVA', 'TTC', 'Droit né le', 'Récupérable', 'Motif', 'Règlements'],
+    statement.map(r => [r.invoice_number, r.supplier_invoice_number ?? '', String(r.invoice_date).slice(0, 10), r.supplier_name,
+      r.supplier_ice ?? '', r.supplier_if ?? '', r.amount_ht, r.amount_tva, r.amount_ttc,
+      r.vat_recoverable_from ? String(r.vat_recoverable_from).slice(0, 10) : '', r.is_vat_recoverable ? 'oui' : 'non',
+      r.vat_non_recoverable_reason ? (REASON_LABEL[r.vat_non_recoverable_reason] ?? r.vat_non_recoverable_reason) : '',
+      (r.payments ?? '').replace(/;/g, ',')]));
 
   if (!isAdmin) {
     return (
@@ -157,8 +180,68 @@ export default function TvaTab() {
           </div>
 
           <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 8, fontStyle: 'italic' }}>
-            Base de la déclaration mensuelle CA20. À transmettre à la DGI. Les montants reflètent les écritures comptabilisées de la période.
+            Base de la déclaration mensuelle CA20. TVA collectée : écritures de la période. TVA déductible : factures fournisseurs
+            dont le règlement complet est intervenu dans la période (le droit à déduction naît au paiement).
           </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+            {data.pending_payment && data.pending_payment.count > 0 && (
+              <StatusBanner tone="info" icon={Hourglass} title={`TVA en attente de règlement : ${n(data.pending_payment.amount)} DH`}>
+                {data.pending_payment.count} facture(s) fournisseur non soldée(s) au {endDate.split('-').reverse().join('/')} : leur TVA sera déductible le mois de leur règlement.
+              </StatusBanner>
+            )}
+            {(() => {
+              // Mig 312 (D9 G-D9-09) : signalements, sans exclusion automatique (décision de l'expert-comptable).
+              const noIce = statement.filter(r => r.flag_no_ice && r.is_vat_recoverable);
+              const internal = statement.filter(r => r.flag_internal_number && r.is_vat_recoverable);
+              if (!noIce.length && !internal.length) return null;
+              return (
+                <StatusBanner tone="warning" icon={FileSearch} title="Déductions à justifier">
+                  {noIce.length > 0 && `${noIce.length} facture(s) d'un fournisseur sans ICE (${n(noIce.reduce((t, r) => t + parseFloat(r.amount_tva), 0))} DH de TVA). `}
+                  {internal.length > 0 && `${internal.length} facture(s) sans numéro du fournisseur (numéro interne). `}
+                  Complétez la fiche fournisseur ou la facture avant de déposer la déclaration.
+                </StatusBanner>
+              );
+            })()}
+            {(data.excluded ?? []).map(x => (
+              <StatusBanner key={x.reason} tone="warning" icon={Ban} title={`TVA non récupérable : ${n(x.amount)} DH`}>
+                {x.count} facture(s) — {REASON_LABEL[x.reason] ?? x.reason}. Cette TVA reste une charge.
+              </StatusBanner>
+            ))}
+          </div>
+
+          <div className="odoo-section" style={{ padding: 0, marginTop: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px' }}>
+              <strong style={{ fontSize: '0.8125rem' }}>Relevé des déductions ({statement.length})</strong>
+              <div style={{ flex: 1 }} />
+              <button className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginRight: 6 }}
+                onClick={() => purchasingReportsApi.exportPurchaseJournal(startDate, endDate).catch(() => notify.error('Export impossible'))}>
+                <Download size={12} /> Journal des achats</button>
+              <button className="odoo-btn-secondary" disabled={statement.length === 0} onClick={exportStatement}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Download size={12} /> Exporter</button>
+            </div>
+            <table className="odoo-table" style={{ margin: 0 }}>
+              <thead><tr><th>Fournisseur</th><th style={{ width: 130 }}>ICE</th><th style={{ width: 120 }}>Facture</th><th style={{ width: 95 }}>Droit né le</th>
+                <th style={{ width: 100, textAlign: 'right' }}>HT</th><th style={{ width: 90, textAlign: 'right' }}>TVA</th><th>Règlements</th></tr></thead>
+              <tbody>
+                {statement.length === 0 ? (
+                  <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>Aucune facture déductible sur la période</td></tr>
+                ) : statement.map(r => (
+                  <tr key={r.invoice_id} style={!r.is_vat_recoverable ? { opacity: 0.6 } : undefined}>
+                    <td>{r.supplier_name}</td>
+                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{r.supplier_ice || <span className="odoo-tag odoo-tag-orange">sans ICE</span>}</td>
+                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{r.supplier_invoice_number || r.invoice_number}</td>
+                    <td style={{ fontSize: '0.75rem' }}>{r.vat_recoverable_from ? String(r.vat_recoverable_from).slice(0, 10).split('-').reverse().join('/') : '—'}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(r.amount_ht)}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
+                      {n(r.amount_tva)} {!r.is_vat_recoverable && <span className="odoo-tag odoo-tag-red" title={REASON_LABEL[r.vat_non_recoverable_reason ?? ''] ?? ''}>exclue</span>}
+                    </td>
+                    <td style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{r.payments || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
     </>

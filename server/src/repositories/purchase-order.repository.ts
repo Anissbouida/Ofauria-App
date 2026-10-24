@@ -1,8 +1,10 @@
 import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
+import { applyContainerRule } from '../services/container-rule.js';
 import { receptionVoucherRepository, createInvoiceFromPo } from './reception-voucher.repository.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
 import type { PoolClient } from 'pg';
+import { closePurchaseRequestsForOrder } from './purchase-request.helper.js';
 
 export const purchaseOrderRepository = {
   async findAll(params: { supplierId?: string; status?: string; dateFrom?: string; dateTo?: string; storeId?: string; createdBy?: string }) {
@@ -45,6 +47,112 @@ export const purchaseOrderRepository = {
     return result.rows;
   },
 
+  /**
+   * Liste de travail par étape du processus (écran BC) : paginée, filtrée côté
+   * serveur. view=open → BC non clôturés ; view=history → clôturés/annulés sur
+   * une période. L'étape est dérivée du statut + présence de facture.
+   */
+  async findBoard(params: {
+    storeId?: string; view: 'open' | 'history'; stage?: string; status?: string; supplierId?: string;
+    search?: string; dateFrom?: string; dateTo?: string; limit: number; offset: number;
+  }) {
+    const values: unknown[] = [];
+    const add = (v: unknown) => { values.push(v); return `$${values.length}`; };
+    const cond: string[] = [params.view === 'history' ? `stage IN ('closed', 'cancelled')` : `stage NOT IN ('closed', 'cancelled')`];
+    if (params.stage) cond.push(`stage = ${add(params.stage)}`);
+    if (params.status) cond.push(`status = ${add(params.status)}`);
+    if (params.supplierId) cond.push(`supplier_id = ${add(params.supplierId)}`);
+    if (params.search) {
+      const p = add(`%${params.search}%`);
+      cond.push(`(order_number ILIKE ${p} OR supplier_name ILIKE ${p})`);
+    }
+    if (params.dateFrom) cond.push(`order_date >= ${add(params.dateFrom)}::date`);
+    if (params.dateTo) cond.push(`order_date <= ${add(params.dateTo)}::date`);
+    const cte = this._stagedCte(params.storeId ? add(params.storeId) : null);
+    const limit = add(params.limit);
+    const offset = add(params.offset);
+    // Ouverts : le plus urgent d'abord (retard, puis date prévue) ; historique : le plus récent.
+    const orderBy = params.view === 'history'
+      ? 'order_date DESC, created_at DESC'
+      : 'is_late DESC, expected_delivery_date ASC NULLS LAST, order_date DESC';
+    const result = await db.query(
+      `${cte}
+       SELECT *, COUNT(*) OVER() AS total_count FROM staged
+       WHERE ${cond.join(' AND ')}
+       ORDER BY ${orderBy}
+       LIMIT ${limit} OFFSET ${offset}`,
+      values
+    );
+    const total = result.rows[0] ? parseInt(result.rows[0].total_count, 10) : 0;
+    return { rows: result.rows.map(({ total_count: _t, ...r }) => r), total };
+  },
+
+  /** Compteurs par étape (pipeline) + BC en retard de livraison. */
+  async pipelineSummary(storeId?: string) {
+    const values: unknown[] = storeId ? [storeId] : [];
+    const cte = this._stagedCte(storeId ? '$1' : null);
+    const [stages, late] = await Promise.all([
+      db.query(
+        `${cte}
+         SELECT stage, COUNT(*)::int AS count, COALESCE(SUM(total_amount), 0) AS amount,
+                COUNT(*) FILTER (WHERE is_late)::int AS late_count
+         FROM staged GROUP BY stage`,
+        values
+      ),
+      db.query(
+        `${cte}
+         SELECT id, order_number, supplier_name, expected_delivery_date, stage,
+                (CURRENT_DATE - expected_delivery_date)::int AS days_late
+         FROM staged WHERE is_late
+         ORDER BY expected_delivery_date ASC LIMIT 5`,
+        values
+      ),
+    ]);
+    return { stages: stages.rows, late: late.rows };
+  },
+
+  /** CTE commune : BC + agrégats de lignes + étape du processus. */
+  _stagedCte(storeParam: string | null) {
+    return `WITH base AS (
+        SELECT po.id, po.order_number, po.order_date, po.expected_delivery_date, po.status,
+               po.supplier_id, po.on_hold, po.frozen, po.locked_at, po.created_at,
+               s.name AS supplier_name,
+               agg.item_count, agg.total_amount, agg.delivered_amount, agg.items_without_price, agg.lines_done,
+               EXISTS (
+                 SELECT 1 FROM invoices inv
+                 LEFT JOIN invoice_purchase_orders ipo ON ipo.invoice_id = inv.id
+                 WHERE inv.status != 'cancelled'
+                   AND (inv.purchase_order_id = po.id OR ipo.purchase_order_id = po.id)
+               ) AS has_invoice
+        FROM purchase_orders po
+        JOIN suppliers s ON s.id = po.supplier_id
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*)::int AS item_count,
+                 COALESCE(SUM(quantity_ordered * COALESCE(unit_price, 0)), 0) AS total_amount,
+                 COALESCE(SUM(quantity_delivered * COALESCE(unit_price, 0)), 0) AS delivered_amount,
+                 COUNT(*) FILTER (WHERE unit_price IS NULL)::int AS items_without_price,
+                 COUNT(*) FILTER (WHERE qty_received_base + qty_cancelled_base >= quantity_ordered)::int AS lines_done
+          FROM purchase_order_items WHERE purchase_order_id = po.id
+        ) agg ON true
+        ${storeParam ? `WHERE po.store_id = ${storeParam}` : ''}
+      ), staged AS (
+        SELECT base.*,
+               CASE
+                 WHEN status = 'en_attente' THEN 'draft'
+                 WHEN status = 'envoye' THEN 'sent'
+                 WHEN status = 'livre_partiel' THEN 'partial'
+                 WHEN status = 'en_attente_facturation' THEN 'invoice'
+                 WHEN status = 'livre_complet' AND NOT has_invoice THEN 'invoice'
+                 WHEN status = 'livre_complet' THEN 'closed'
+                 ELSE 'cancelled'
+               END AS stage,
+               (status IN ('en_attente', 'envoye', 'livre_partiel')
+                 AND expected_delivery_date IS NOT NULL
+                 AND expected_delivery_date < CURRENT_DATE) AS is_late
+        FROM base
+      )`;
+  },
+
   async findEligibleForExpense(storeId?: string) {
     const storeFilter = storeId ? 'AND po.store_id = $1' : '';
     const params = storeId ? [storeId] : [];
@@ -54,7 +162,9 @@ export const purchaseOrderRepository = {
               (SELECT COALESCE(SUM(quantity_delivered * COALESCE(unit_price, 0)), 0) FROM purchase_order_items WHERE purchase_order_id = po.id) as total_amount
        FROM purchase_orders po
        JOIN suppliers s ON s.id = po.supplier_id
-       WHERE po.status IN ('livre_complet', 'livre_partiel', 'envoye', 'en_attente', 'en_attente_facturation')
+       -- Engagements réels seulement (mig 306) : un brouillon n'engage rien, un BC bloqué non plus.
+       WHERE po.status IN ('livre_complet', 'livre_partiel', 'envoye', 'en_attente_facturation')
+         AND NOT po.on_hold
        ${storeFilter}
        ORDER BY po.order_date DESC`,
       params
@@ -65,7 +175,19 @@ export const purchaseOrderRepository = {
   async findById(id: string) {
     const poResult = await db.query(
       `SELECT po.*, s.name as supplier_name, s.phone as supplier_phone, s.contact_name as supplier_contact,
-              u.first_name || ' ' || u.last_name as created_by_name
+              u.first_name || ' ' || u.last_name as created_by_name,
+              -- Factures liées (colonne historique ou fusion, mig 178) : étape « Facture » de la fiche BC.
+              COALESCE((
+                SELECT json_agg(json_build_object(
+                         'id', inv.id, 'invoice_number', inv.invoice_number,
+                         'supplier_invoice_number', inv.supplier_invoice_number, 'invoice_date', inv.invoice_date,
+                         'status', inv.status, 'total_amount', inv.total_amount, 'paid_amount', inv.paid_amount)
+                       ORDER BY inv.invoice_date)
+                  FROM invoices inv
+                 WHERE inv.status != 'cancelled'
+                   AND (inv.purchase_order_id = po.id
+                        OR EXISTS (SELECT 1 FROM invoice_purchase_orders ipo WHERE ipo.invoice_id = inv.id AND ipo.purchase_order_id = po.id))
+              ), '[]'::json) AS invoices
        FROM purchase_orders po
        JOIN suppliers s ON s.id = po.supplier_id
        LEFT JOIN users u ON u.id = po.created_by
@@ -84,10 +206,18 @@ export const purchaseOrderRepository = {
               COALESCE(ing.category_id, pkg.category_id) as item_category_id,
               ing.container_size,
               ctc.label as container_type_label,
+              -- Contenant figé sur la ligne à la commande (mig 307), distinct de la fiche actuelle.
+              lct.label as line_container_label,
+              GREATEST(poi.quantity_ordered - poi.qty_received_base - poi.qty_cancelled_base, 0) as qty_remaining_base,
+              -- Exigences lot fournisseur / DLC de l'article (mig 308), pour la saisie de réception.
+              COALESCE(lr.requires_lot, false) as requires_lot, COALESCE(lr.requires_dlc, false) as requires_dlc,
+              lr.default_shelf_life_days,
               CASE WHEN poi.packaging_id IS NOT NULL THEN 'consumable' ELSE 'ingredient' END as kind
        FROM purchase_order_items poi
        LEFT JOIN ingredients ing ON ing.id = poi.ingredient_id
        LEFT JOIN ref_entries ctc ON ctc.id = ing.container_type_id
+       LEFT JOIN ref_entries lct ON lct.id = poi.container_type_id
+       LEFT JOIN LATERAL fn_lot_requirements(poi.ingredient_id) lr ON poi.ingredient_id IS NOT NULL
        LEFT JOIN packaging_items pkg ON pkg.id = poi.packaging_id
        WHERE poi.purchase_order_id = $1
        ORDER BY COALESCE(ing.name, pkg.name)`,
@@ -129,10 +259,15 @@ export const purchaseOrderRepository = {
       );
 
       for (const item of data.items) {
+        // Regle « contenant entier » : un ingredient defini par contenant se commande
+        // par contenant complet, arrondi au superieur (8 kg en sacs de 2,5 -> 10 kg).
+        const qty = item.ingredientId
+          ? (await applyContainerRule(client, item.ingredientId, item.quantityOrdered)).qty
+          : item.quantityOrdered;
         await client.query(
           `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, quantity_ordered, unit_price)
            VALUES ($1, $2, $3, $4, $5)`,
-          [poResult.rows[0].id, item.ingredientId ?? null, item.packagingId ?? null, item.quantityOrdered, item.unitPrice ?? null]
+          [poResult.rows[0].id, item.ingredientId ?? null, item.packagingId ?? null, qty, item.unitPrice ?? null]
         );
       }
 
@@ -194,7 +329,9 @@ export const purchaseOrderRepository = {
       items: rvItems,
     });
 
-    return { status: result.status, voucherId: result.id, voucherNumber: result.voucher_number };
+    // Alertes lot/DLC et numéros de lot internes attribués (mig 308) remontés à l'écran.
+    return { status: result.status, voucherId: result.id, voucherNumber: result.voucher_number,
+             warnings: result.warnings, lotNumbers: result.lotNumbers };
   },
 
   async updateItemPrices(id: string, items: { itemId: string; unitPrice: number }[]) {
@@ -234,6 +371,7 @@ export const purchaseOrderRepository = {
             await client.query(
               `UPDATE purchase_orders SET status = 'livre_complet', updated_at = NOW() WHERE id = $1`, [id]
             );
+            await closePurchaseRequestsForOrder(client, id, 'livre_complet');
           }
         }
       }
@@ -371,7 +509,9 @@ export const purchaseOrderRepository = {
 
       // 2. UPDATE lignes existantes / INSERT nouvelles
       for (const it of items) {
-        const qord = Number.isFinite(it.quantityOrdered) ? it.quantityOrdered : 0;
+        // Regle « contenant entier » (voir services/container-rule).
+        const qordRaw = Number.isFinite(it.quantityOrdered) ? it.quantityOrdered : 0;
+        const qord = it.ingredientId ? (await applyContainerRule(client, it.ingredientId, qordRaw)).qty : qordRaw;
         const qdelRaw = it.quantityDelivered;
         const price = it.unitPrice != null && Number.isFinite(it.unitPrice) ? it.unitPrice : null;
 
@@ -448,6 +588,10 @@ export const purchaseOrderRepository = {
         `UPDATE purchase_orders SET status = $1, updated_at = NOW() WHERE id = $2`,
         [newStatus, id]
       );
+
+      // Un admin peut completer les quantites livrees sans passer par un bon de
+      // reception : on ferme aussi les demandes d'achat depuis ce chemin.
+      await closePurchaseRequestsForOrder(client, id, newStatus);
 
       await client.query('COMMIT');
       return await this.findById(id);

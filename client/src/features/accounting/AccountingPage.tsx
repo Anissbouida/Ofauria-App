@@ -7,6 +7,7 @@ import { withholdingApi } from '../../api/withholding.api';
 import type { WithholdingType } from '../../api/withholding.api';
 import { employeesApi } from '../../api/employees.api';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
+import { purchasingSettingsApi } from '../../api/purchasing-settings.api';
 import { reportsApi } from '../../api/reports.api';
 import type { FinanceDetailKind, FinanceDetailRow } from '../../api/reports.api';
 import { format, getDaysInMonth } from 'date-fns';
@@ -18,8 +19,11 @@ import {
   Loader2, Coins, Scale, Trash2, Package, FileWarning,
   ArrowUpRight, ArrowDownRight, Upload, Search, ArrowUp, ArrowDown,
   Check, RotateCcw, Calendar, ListTree, Notebook, BookOpen, FileBarChart, Lock, Building2, Landmark,
+  ArrowLeftRight, Ban, Clock, CalendarClock, CheckCircle2, Filter,
+  Target,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import { apiErrorMessage } from '../../api/errors';
 import LossesTab from './LossesTab';
 import CaisseImportModal from './CaisseImportModal';
 import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
@@ -36,9 +40,18 @@ import ClotureTab from './ClotureTab';
 import ImmobilisationsTab from './ImmobilisationsTab';
 import BanqueTab from './BanqueTab';
 import BilanTab from './BilanTab';
+import BudgetTab from './BudgetTab';
 import RetenuesSourceTab from './RetenuesSourceTab';
+import EcheancierView from './EcheancierView';
+import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, paymentModeLabel, PaymentStatusTag, type CashOverride } from '../../components/purchasing/PaymentModeFields';
+import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import {
+  StagePipeline, ViewSwitch, PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel,
+  periodLabel as periodLabelOf, type PeriodKey, type StageDef,
+} from '../../components/purchasing/ProcessBoard';
 
-type AccTab = 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque';
+type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -220,6 +233,7 @@ const TAB_META: { key: AccTab; label: string; icon: typeof Wallet; section: AccS
   { key: 'grand_livre', label: 'Grand livre', icon: BookOpen, section: 'comptabilite' },
   { key: 'balance', label: 'Balance', icon: Scale, section: 'comptabilite' },
   { key: 'cpc', label: 'CPC', icon: FileBarChart, section: 'comptabilite' },
+  { key: 'budget', label: 'Budget', icon: Target, section: 'comptabilite' },
   { key: 'bilan', label: 'Bilan', icon: Scale, section: 'comptabilite' },
   { key: 'tva', label: 'TVA', icon: Receipt, section: 'comptabilite' },
   { key: 'ras', label: 'Retenues source', icon: Scale, section: 'comptabilite' },
@@ -311,6 +325,7 @@ export default function AccountingPage() {
         {tab === 'grand_livre' && <GrandLivreTab />}
         {tab === 'balance' && <BalanceTab />}
         {tab === 'cpc' && <CpcTab />}
+        {tab === 'budget' && <BudgetTab />}
         {tab === 'bilan' && <BilanTab />}
         {tab === 'tva' && <TvaTab />}
         {tab === 'ras' && <RetenuesSourceTab />}
@@ -363,15 +378,39 @@ type DebtInvoice = {
   customer_phone: string | null;
 };
 
+/**
+ * Dette echelonnee sans facture (mig 258) : materiel achete a credit dont la
+ * facture n'est pas dans le systeme. Elle ne figure pas dans `payables` (qui
+ * n'agrege que des factures) mais compte bel et bien dans ce qu'on doit.
+ */
+type StandaloneDebt = {
+  id: string;
+  label: string;
+  supplier_name: string | null;
+  remaining_amount: string;
+  next_due_date: string | null;
+  is_overdue: boolean;
+};
+
 function DettesTab() {
   const queryClient = useQueryClient();
   const { entries: paymentMethods } = useReferentiel('payment_methods');
-  const [side, setSide] = useState<'receivables' | 'payables'>('receivables');
+  // 'schedule' = vue echeancier (calendrier des sorties : credits + charges fixes)
+  const [side, setSide] = useState<'receivables' | 'payables' | 'schedule'>('receivables');
   const [searchTerm, setSearchTerm] = useState('');
-  const [onlyOverdue, setOnlyOverdue] = useState(false);
+  // Situation d'un tiers (clic sur une carte) : échu / échéance ≤ 7 j / à venir.
+  const [situation, setSituation] = useState<'' | 'overdue' | 'soon' | 'later'>('');
+  const onlyOverdue = situation === 'overdue';
+  const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [payingInvoice, setPayingInvoice] = useState<DebtInvoice | null>(null);
+  // Mig 310 : payMethod = mode TYPÉ ; payLegacy = méthode héritée (pilote le bloc chèque/effet).
   const [payMethod, setPayMethod] = useState('cash');
+  const [payDate, setPayDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [payOverride, setPayOverride] = useState<CashOverride>(null);
+  const { byCode: payModeByCode } = usePaymentModes();
+  const payModeDef = payModeByCode(payMethod);
+  const payLegacy = payModeDef?.legacy_method ?? payMethod;
   // Retenue a la source (RAS) — paiements sortants uniquement.
   const [payAmount, setPayAmount] = useState('');
   const [rasTypeId, setRasTypeId] = useState('');
@@ -380,7 +419,9 @@ function DettesTab() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['invoice-debts'],
-    queryFn: () => invoicesApi.debts() as Promise<{ receivables: DebtInvoice[]; payables: DebtInvoice[] }>,
+    queryFn: () => invoicesApi.debts() as Promise<{
+      receivables: DebtInvoice[]; payables: DebtInvoice[]; standaloneDebts?: StandaloneDebt[];
+    }>,
   });
 
   const { data: rasTypes = [] } = useQuery({
@@ -442,28 +483,40 @@ function DettesTab() {
   const tiers = useMemo(() => {
     const map = new Map<string, {
       key: string; name: string; phone: string | null;
-      invoices: DebtInvoice[]; totalDue: number; overdueDue: number; oldestDue: string | null;
+      invoices: DebtInvoice[]; totalDue: number; overdueDue: number; soonDue: number; oldestDue: string | null;
     }>();
+    const in7 = format(new Date(Date.now() + 7 * 86400000), 'yyyy-MM-dd');
     for (const inv of rawInvoices) {
       const remaining = parseFloat(inv.remaining_amount) || 0;
       if (remaining <= 0) continue;
       const key = tierKey(inv);
       if (!map.has(key)) {
-        map.set(key, { key, name: tierName(inv), phone: tierPhone(inv), invoices: [], totalDue: 0, overdueDue: 0, oldestDue: null });
+        map.set(key, { key, name: tierName(inv), phone: tierPhone(inv), invoices: [], totalDue: 0, overdueDue: 0, soonDue: 0, oldestDue: null });
       }
       const t = map.get(key)!;
       t.invoices.push(inv);
       t.totalDue += remaining;
-      if (inv.is_overdue) t.overdueDue += remaining;
       const due = inv.due_date ? inv.due_date.slice(0, 10) : null;
+      if (inv.is_overdue) t.overdueDue += remaining;
+      else if (due && due <= in7) t.soonDue += remaining;
       if (due && (!t.oldestDue || due < t.oldestDue)) t.oldestDue = due;
     }
-    let list = Array.from(map.values());
+    let list = Array.from(map.values()).map(t => ({
+      ...t,
+      situation: (t.overdueDue > 0 ? 'overdue' : t.soonDue > 0 ? 'soon' : 'later') as 'overdue' | 'soon' | 'later',
+    }));
     const q = searchTerm.trim().toLowerCase();
     if (q) list = list.filter(t => t.name.toLowerCase().includes(q) || (t.phone || '').toLowerCase().includes(q));
-    if (onlyOverdue) list = list.filter(t => t.overdueDue > 0);
-    return list.sort((a, b) => b.totalDue - a.totalDue);
-  }, [rawInvoices, searchTerm, onlyOverdue, isReceivable]);
+    return list.sort((a, b) => b.overdueDue - a.overdueDue || b.totalDue - a.totalDue);
+  }, [rawInvoices, searchTerm, isReceivable]);
+  const situationCounts = useMemo(() => {
+    const c = { overdue: { n: 0, amount: 0 }, soon: { n: 0, amount: 0 }, later: { n: 0, amount: 0 } };
+    for (const t of tiers) { c[t.situation].n++; c[t.situation].amount += t.totalDue; }
+    return c;
+  }, [tiers]);
+  const shownTiers = situation ? tiers.filter(t => t.situation === situation) : tiers;
+  useEffect(() => { setPage(1); }, [situation, searchTerm, side]);
+  const pagedTiers = shownTiers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const totals = useMemo(() => {
     let totalDue = 0, overdueDue = 0, invoiceCount = 0;
@@ -472,9 +525,16 @@ function DettesTab() {
   }, [tiers]);
 
   // Totaux globaux par sens (pour les boutons toggle), independants des filtres.
+  // Les dettes a credit sans facture s'ajoutent aux dettes fournisseurs : sans
+  // elles, "Nous leur devons" sous-estimerait ce qu'on doit reellement.
   const sideTotals = useMemo(() => {
     const sum = (rows: DebtInvoice[] = []) => rows.reduce((s, inv) => s + (parseFloat(inv.remaining_amount) || 0), 0);
-    return { receivables: sum(data?.receivables), payables: sum(data?.payables) };
+    const credits = (data?.standaloneDebts || []).reduce((s, d) => s + (parseFloat(d.remaining_amount) || 0), 0);
+    return {
+      receivables: sum(data?.receivables),
+      payables: sum(data?.payables) + credits,
+      credits,
+    };
   }, [data]);
 
   const toggleTier = (key: string) => setExpanded(prev => {
@@ -485,7 +545,9 @@ function DettesTab() {
 
   const openPayment = (inv: DebtInvoice) => {
     setPayingInvoice(inv);
-    setPayMethod(inv.expected_payment_mode || 'cash');
+    setPayMethod(modeFromLegacy(inv.expected_payment_mode || 'cash'));
+    setPayDate(format(new Date(), 'yyyy-MM-dd'));
+    setPayOverride(null);
   };
 
   const handleExport = () => {
@@ -513,53 +575,52 @@ function DettesTab() {
 
   return (
     <>
-      {/* Toggle sens : creances vs dettes */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {([
-          { key: 'receivables' as const, label: 'Ils nous doivent', sub: 'Créances clients', total: sideTotals.receivables, color: '#0e7c3a', Icon: ArrowDownRight },
-          { key: 'payables' as const, label: 'Nous leur devons', sub: 'Dettes fournisseurs', total: sideTotals.payables, color: '#b71c1c', Icon: ArrowUpRight },
-        ]).map(opt => {
-          const active = side === opt.key;
-          return (
-            <button key={opt.key} onClick={() => setSide(opt.key)}
+      {/* Sens : créances / dettes / échéancier */}
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
+        <div className="odoo-view-switcher" role="tablist" aria-label="Sens">
+          {([
+            { key: 'receivables' as const, label: `Ils nous doivent · ${n(sideTotals.receivables)} DH` },
+            { key: 'payables' as const, label: `Nous leur devons · ${n(sideTotals.payables)} DH` },
+            { key: 'schedule' as const, label: 'Échéancier' },
+          ]).map(opt => (
+            <button key={opt.key} type="button" role="tab" aria-selected={side === opt.key}
+              onClick={() => { setSide(opt.key); setSituation(''); }}
               style={{
-                flex: '1 1 240px', textAlign: 'left', cursor: 'pointer',
-                padding: '12px 16px', borderRadius: 6,
-                border: active ? `1.5px solid ${opt.color}` : '1px solid var(--theme-bg-separator)',
-                background: active ? (opt.key === 'receivables' ? '#f0f9f4' : '#fff5f5') : 'var(--theme-bg-card)',
+                padding: '0.3rem 0.75rem', fontSize: '0.8125rem',
+                background: side === opt.key ? 'var(--odoo-purple-light)' : 'transparent',
+                color: side === opt.key ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
+                fontWeight: side === opt.key ? 600 : 400,
               }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', fontWeight: 600, color: active ? opt.color : 'var(--theme-text-muted)' }}>
-                <opt.Icon size={13} /> {opt.label}
-              </div>
-              <div style={{ fontSize: '1.375rem', fontWeight: 700, color: active ? opt.color : 'var(--theme-text)', fontFamily: 'ui-monospace, monospace', marginTop: 4 }}>
-                {n(opt.total)} DH
-              </div>
-              <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{opt.sub}</div>
+              {opt.label}
             </button>
-          );
-        })}
+          ))}
+        </div>
+        {side === 'payables' && sideTotals.credits > 0 && (
+          <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>dont {n(sideTotals.credits)} DH de crédits sans facture (voir Échéancier)</span>
+        )}
       </div>
 
-      {/* Stat tiles du sens actif */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Coins size={11} style={{ display: 'inline', marginRight: 4 }} />Total dû</div>
-          <div className="odoo-stat-card-value" style={{ color: accent }}>{n(totals.totalDue)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
-          <div className="odoo-stat-card-sub">{totals.tierCount} tiers · {totals.invoiceCount} facture{totals.invoiceCount > 1 ? 's' : ''}</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><AlertTriangle size={11} style={{ display: 'inline', marginRight: 4 }} />En retard</div>
-          <div className="odoo-stat-card-value" style={{ color: totals.overdueDue > 0 ? '#dc3545' : 'var(--theme-text-muted)' }}>
-            {n(totals.overdueDue)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
-          </div>
-          <div className="odoo-stat-card-sub">Échéance dépassée</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Scale size={11} style={{ display: 'inline', marginRight: 4 }} />À jour</div>
-          <div className="odoo-stat-card-value">{n(Math.max(0, totals.totalDue - totals.overdueDue))} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
-          <div className="odoo-stat-card-sub">Non encore échu</div>
-        </div>
-      </div>
+      {/* Vue echeancier : calendrier des sorties (mig 258). Les autres vues
+          restent centrees sur les factures ouvertes, agregees par tiers. */}
+      {side === 'schedule' ? <EcheancierView /> : (<>
+
+      {/* Situation des tiers : une carte par situation (clic = filtre) */}
+      <StagePipeline
+        title={isReceivable ? 'Où en sont mes créances' : 'Où en sont mes dettes'}
+        summary={`${totals.tierCount} ${isReceivable ? 'client' : 'fournisseur'}${totals.tierCount > 1 ? 's' : ''} · ${totals.invoiceCount} facture${totals.invoiceCount > 1 ? 's' : ''} · ${n(totals.totalDue)} DH`}
+        stages={[
+          { key: 'overdue', label: 'Échues', hint: 'échéance dépassée', icon: AlertTriangle },
+          { key: 'soon', label: 'Échéance ≤ 7 j', hint: isReceivable ? 'à relancer' : 'à préparer', icon: Clock },
+          { key: 'later', label: 'À venir', hint: 'pas encore échues', icon: Calendar },
+        ]}
+        stats={{
+          overdue: { count: situationCounts.overdue.n, sub: `${n(situationCounts.overdue.amount)} DH`, late: situationCounts.overdue.n, alertLabel: isReceivable ? 'à relancer' : 'à régler' },
+          soon: { count: situationCounts.soon.n, sub: `${n(situationCounts.soon.amount)} DH` },
+          later: { count: situationCounts.later.n, sub: `${n(situationCounts.later.amount)} DH` },
+        }}
+        isActive={k => situation === k}
+        onPick={k => setSituation(situation === k ? '' : (k as 'overdue' | 'soon' | 'later'))}
+      />
 
       {/* Filtres */}
       <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
@@ -575,10 +636,11 @@ function DettesTab() {
             </button>
           )}
         </div>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', cursor: 'pointer', color: 'var(--theme-text-muted)' }}>
-          <input type="checkbox" checked={onlyOverdue} onChange={e => setOnlyOverdue(e.target.checked)} />
-          En retard uniquement
-        </label>
+        {situation && (
+          <button type="button" onClick={() => setSituation('')} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <X size={12} /> Effacer le filtre
+          </button>
+        )}
         <div style={{ flex: 1 }} />
         <button onClick={handleExport} className="odoo-btn-secondary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -592,11 +654,11 @@ function DettesTab() {
           <Loader2 size={20} className="animate-spin" style={{ color: 'var(--theme-text-muted)' }} />
           <span style={{ marginLeft: 8, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement...</span>
         </div>
-      ) : tiers.length === 0 ? (
+      ) : shownTiers.length === 0 ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <Scale size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
           <p style={{ fontSize: '0.8125rem' }}>
-            {onlyOverdue || searchTerm
+            {situation || searchTerm
               ? 'Aucun tiers ne correspond aux filtres'
               : isReceivable ? 'Aucune créance ouverte — tous les clients sont à jour' : 'Aucune dette ouverte — tous les fournisseurs sont réglés'}
           </p>
@@ -612,11 +674,15 @@ function DettesTab() {
                 <th>Plus ancienne échéance</th>
                 <th style={{ textAlign: 'right' }}>En retard</th>
                 <th style={{ textAlign: 'right' }}>Total dû</th>
+                <th style={{ textAlign: 'right' }}>Prochaine action</th>
               </tr>
             </thead>
             <tbody>
-              {tiers.map(t => {
+              {pagedTiers.map(t => {
                 const open = expanded.has(t.key);
+                // Prochaine action : régler la facture la plus urgente (échue d'abord, puis la plus ancienne échéance).
+                const nextInv = [...t.invoices].sort((x, y) =>
+                  Number(!!y.is_overdue) - Number(!!x.is_overdue) || String(x.due_date ?? '9999').localeCompare(String(y.due_date ?? '9999')))[0];
                 return (
                   <Fragment key={t.key}>
                     <tr onClick={() => toggleTier(t.key)} style={{ cursor: 'pointer' }}>
@@ -626,21 +692,34 @@ function DettesTab() {
                       <td>
                         <strong>{t.name}</strong>
                         {t.phone && <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 6 }}>{t.phone}</span>}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>
+                          <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: t.situation === 'overdue' ? '#dc3545' : t.situation === 'soon' ? '#d9822b' : '#28a745' }} />
+                          {t.situation === 'overdue' ? 'Échue' : t.situation === 'soon' ? 'Échéance ≤ 7 j' : 'À venir'}
+                        </div>
                       </td>
                       <td style={{ textAlign: 'center', color: 'var(--theme-text-muted)' }}>{t.invoices.length}</td>
                       <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
                         {t.oldestDue ? fmtPaymentDate(t.oldestDue, 'fr') : '—'}
                       </td>
                       <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
-                        {t.overdueDue > 0 ? <span className="odoo-tag odoo-tag-red">{n(t.overdueDue)}</span> : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                        {t.overdueDue > 0 ? <span style={{ color: '#dc3545', fontWeight: 600 }}>{n(t.overdueDue)}</span> : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                       </td>
                       <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: accent }}>
                         {n(t.totalDue)} DH
                       </td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                        {nextInv && (
+                          <button type="button" onClick={() => openPayment(nextInv)}
+                            className={nextInv.is_overdue ? 'odoo-btn-danger' : 'odoo-btn-primary'}
+                            title={`${isReceivable ? 'Encaisser' : 'Payer'} la facture ${nextInv.invoice_number}${t.invoices.length > 1 ? ' (la plus urgente)' : ''}`}>
+                            {isReceivable ? 'Encaisser' : 'Payer'}{t.invoices.length > 1 ? ` ${nextInv.invoice_number}` : ''}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={6} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '8px 16px' }}>
+                        <td colSpan={7} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '8px 16px' }}>
                           <table className="odoo-table" style={{ margin: 0, background: 'transparent' }}>
                             <thead>
                               <tr>
@@ -666,15 +745,14 @@ function DettesTab() {
                                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{n(parseFloat(inv.paid_amount) || 0)}</td>
                                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: accent }}>{n(parseFloat(inv.remaining_amount) || 0)}</td>
                                   <td style={{ textAlign: 'center' }}>
-                                    <span className={`odoo-tag ${inv.is_overdue ? 'odoo-tag-red' : 'odoo-tag-grey'}`}>
-                                      {inv.is_overdue ? 'En retard' : (INVOICE_STATUS_LABELS[inv.status] || inv.status)}
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.75rem', color: inv.is_overdue ? '#dc3545' : 'var(--odoo-text)', fontWeight: inv.is_overdue ? 600 : 400 }}>
+                                      <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: inv.is_overdue ? '#dc3545' : inv.status === 'partial' ? '#3b82f6' : '#d9822b' }} />
+                                      {inv.is_overdue ? 'Échue' : (INVOICE_STATUS_LABELS[inv.status] || inv.status)}
                                     </span>
                                   </td>
                                   <td style={{ textAlign: 'center' }}>
-                                    <button onClick={() => openPayment(inv)}
-                                      className="odoo-btn-secondary"
-                                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', fontSize: '0.6875rem' }}>
-                                      <Coins size={11} /> {isReceivable ? 'Encaisser' : 'Payer'}
+                                    <button type="button" onClick={() => openPayment(inv)} className="odoo-btn-secondary">
+                                      {isReceivable ? 'Encaisser' : 'Payer'}
                                     </button>
                                   </td>
                                 </tr>
@@ -699,9 +777,12 @@ function DettesTab() {
                 <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: accent, fontFamily: 'ui-monospace, monospace' }}>
                   {n(totals.totalDue)} DH
                 </td>
+                <td></td>
               </tr>
             </tfoot>
           </table>
+          <Pager page={page} total={shownTiers.length} onPage={setPage}
+            note={`${shownTiers.length} ${isReceivable ? 'client' : 'fournisseur'}${shownTiers.length > 1 ? 's' : ''} · cliquez une ligne pour voir ses factures`} />
         </div>
       )}
 
@@ -713,20 +794,16 @@ function DettesTab() {
           : (payingInvoice.supplier_name || 'Fournisseur');
         return (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
-              <div className={`p-5 flex items-center justify-between ${isReceivable ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gradient-to-r from-red-500 to-rose-500'}`}>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                    <Coins size={18} className="text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-white">{isReceivable ? 'Encaisser un règlement' : 'Payer une facture'}</h2>
-                    <p className="text-xs text-white/80">{payingInvoice.invoice_number} · {partyName}</p>
-                  </div>
+            <div className="odoo-scope" role="dialog" style={{ width: '100%', maxWidth: 448, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+              <div className="odoo-control-bar">
+                <div className="odoo-breadcrumb">
+                  <Coins size={14} style={{ color: 'var(--theme-accent)' }} />
+                  <span className="odoo-breadcrumb-current">{isReceivable ? 'Encaisser un règlement' : 'Payer une facture'}</span>
+                <span className="odoo-breadcrumb-separator">/</span>
+                <span>{payingInvoice.invoice_number} · {partyName}</span>
                 </div>
-                <button onClick={() => setPayingInvoice(null)} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
-                  <X size={18} className="text-white" />
-                </button>
+                <div style={{ flex: 1 }} />
+                <button type="button" onClick={() => setPayingInvoice(null)} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
               </div>
               <form onSubmit={e => {
                 e.preventDefault();
@@ -743,8 +820,10 @@ function DettesTab() {
                   invoiceId: payingInvoice.id,
                   type: isReceivable ? 'income' : 'invoice',
                   amount,
-                  paymentMethod: fd.paymentMethod,
+                  paymentMode: payMethod,
+                  paymentMethod: payLegacy,
                   paymentDate: fd.paymentDate,
+                  reference: fd.reference || undefined,
                   description: fd.description || undefined,
                 };
                 if (!isReceivable && payingInvoice.supplier_id) payload.supplierId = payingInvoice.supplier_id;
@@ -752,7 +831,8 @@ function DettesTab() {
                   payload.withholdingTypeId = rasTypeId;
                   payload.withholdingAmount = Math.round(retenue * 100) / 100;
                 }
-                if (fd.paymentMethod === 'check' || fd.paymentMethod === 'traite') {
+                if (!isReceivable && payOverride) payload.cashOverride = payOverride;
+                if (payLegacy === 'check' || payLegacy === 'traite') {
                   payload.checkNumber = fd.checkNumber || undefined;
                   payload.checkDate = fd.checkDate || undefined;
                   if (avoir > 0) payload.avoirAmount = Math.round(avoir * 100) / 100;
@@ -782,17 +862,25 @@ function DettesTab() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
-                    <input name="paymentDate" type="date" defaultValue={format(new Date(), 'yyyy-MM-dd')}
+                    <input name="paymentDate" type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
                       className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" required />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Méthode</label>
-                  <select name="paymentMethod" value={payMethod} onChange={e => setPayMethod(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                    {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
-                  </select>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Mode de règlement</label>
+                  <PaymentModeSelect value={payMethod} onChange={setPayMethod} />
                 </div>
+                {payModeDef?.requires_reference && payLegacy !== 'check' && payLegacy !== 'traite' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Référence du virement *</label>
+                    <input name="reference" required placeholder="N° d'ordre ou référence bancaire"
+                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                  </div>
+                )}
+                {!isReceivable && (
+                  <CashLimitGauge supplierId={payingInvoice.supplier_id} date={payDate} amount={parseFloat(payAmount) || 0}
+                    modeCode={payMethod} override={payOverride} onOverrideChange={setPayOverride} />
+                )}
                 {!isReceivable && (() => {
                   const brut = parseFloat(payAmount) || 0;
                   const retenue = parseFloat(rasAmount) || 0;
@@ -835,15 +923,15 @@ function DettesTab() {
                     </div>
                   );
                 })()}
-                {(payMethod === 'check' || payMethod === 'traite') && (<>
+                {(payLegacy === 'check' || payLegacy === 'traite') && (<>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">N° {payMethod === 'traite' ? 'traite' : 'chèque'}</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">N° {payLegacy === 'traite' ? 'traite' : 'chèque'}</label>
                       <input name="checkNumber" type="text"
                         className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Date {payMethod === 'traite' ? 'traite' : 'chèque'}</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Date {payLegacy === 'traite' ? 'traite' : 'chèque'}</label>
                       <input name="checkDate" type="date"
                         className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
                     </div>
@@ -871,7 +959,7 @@ function DettesTab() {
                         </div>
                         {av > 0 && (
                           <p className="text-xs text-gray-500">
-                            L'avoir de <strong>{n(av)} DH</strong> sera déduit de la dette. {payMethod === 'traite' ? 'La traite' : 'Le chèque'} émis sera de <strong>{n(chk)} DH</strong>.
+                            L'avoir de <strong>{n(av)} DH</strong> sera déduit de la dette. {payLegacy === 'traite' ? 'La traite' : 'Le chèque'} émis sera de <strong>{n(chk)} DH</strong>.
                           </p>
                         )}
                       </div>
@@ -883,16 +971,16 @@ function DettesTab() {
                   <textarea name="description" rows={2}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
                 </div>
-                {(payMethod === 'check' || payMethod === 'traite') && (
+                {(payLegacy === 'check' || payLegacy === 'traite') && (
                   <p className="text-xs text-amber-600">
-                    {payMethod === 'traite' ? 'La traite' : 'Le chèque'} apparaîtra dans l'onglet <strong>Chèques et Traites</strong> en attente d'encaissement. La dette est néanmoins réduite dès maintenant.
+                    {payLegacy === 'traite' ? 'La traite' : 'Le chèque'} apparaîtra dans l'onglet <strong>Chèques et Traites</strong> en attente d'encaissement. La dette est néanmoins réduite dès maintenant.
                   </p>
                 )}
                 <div className="flex gap-3 justify-end pt-2">
                   <button type="button" onClick={() => setPayingInvoice(null)}
-                    className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
+                    className="odoo-btn-secondary">Annuler</button>
                   <button type="submit" disabled={createPayment.isPending}
-                    className={`px-5 py-2.5 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2 ${isReceivable ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gradient-to-r from-red-500 to-rose-500'}`}>
+                    className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     {createPayment.isPending && <Loader2 size={14} className="animate-spin" />}
                     {isReceivable ? 'Encaisser' : 'Payer'}
                   </button>
@@ -902,6 +990,7 @@ function DettesTab() {
           </div>
         );
       })()}
+      </>)}
     </>
   );
 }
@@ -1053,6 +1142,9 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
   }, [allRows, search, filterValue, sortCol, sortDir, cfg]);
 
   const total = rows.reduce((s, r) => s + (r.amount || 0), 0);
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [kind, search, filterValue, sortCol, sortDir]);
+  const pagedRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const hasControls = search !== '' || filterValue !== '' || sortCol != null;
 
   const toggleSort = (i: number) => {
@@ -1061,45 +1153,40 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
   };
 
   return (
-    <div style={{ border: `1px solid ${cfg.accent}33`, borderRadius: 4, overflow: 'hidden' }}>
-      {/* Header */}
-      <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--theme-bg-separator)', background: cfg.bg }}>
-        <div>
-          <div style={{ fontSize: '0.9375rem', fontWeight: 700, color: cfg.accent }}>{cfg.title}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
-            {rows.length} ligne{rows.length > 1 ? 's' : ''}
-            {rows.length !== allRows.length && <> sur {allRows.length}</>}
-            {' '}— total <strong style={{ fontFamily: 'ui-monospace, monospace', color: cfg.accent }}>{n(total)} DH</strong>
-          </div>
+    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflow: 'hidden', background: 'var(--odoo-bg)' }}>
+      {/* En-tête */}
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          <span>Détail</span>
+          <span className="odoo-breadcrumb-separator">/</span>
+          <span className="odoo-breadcrumb-current">{cfg.title}</span>
         </div>
-        <button onClick={onClose} title="Fermer le détail"
-          style={{ padding: 6, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-          <X size={18} style={{ color: 'var(--theme-text-muted)' }} />
-        </button>
+        <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+          {rows.length} ligne{rows.length > 1 ? 's' : ''}{rows.length !== allRows.length && <> sur {allRows.length}</>} · <strong style={{ color: 'var(--odoo-text)' }}>{n(total)} DH</strong>
+        </span>
+        <div style={{ flex: 1 }} />
+        <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer le détail" title="Fermer le détail"><X size={14} /></button>
       </div>
       {/* Barre de recherche / filtre / tri */}
       {!isLoading && allRows.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '8px 16px', borderBottom: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
-          <div style={{ position: 'relative' }}>
-            <Search size={13} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--theme-text-muted)', pointerEvents: 'none' }} />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="odoo-input" style={{ paddingLeft: 26, width: 200 }} />
-          </div>
+        <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0, borderRadius: 0 }}>
+          <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." aria-label="Rechercher dans le détail"
+            className="odoo-search-input" style={{ flex: '1 1 200px', minWidth: 0 }} />
           {cfg.filter && filterOptions.length > 0 && (
-            <select value={filterValue} onChange={e => setFilterValue(e.target.value)} className="odoo-input" style={{ width: 180 }}>
-              <option value="">{cfg.filter.placeholder}</option>
-              {filterOptions.map(v => <option key={v} value={v}>{cfg.filter!.display(v)}</option>)}
-            </select>
+            <SelectFilter label={cfg.filter.placeholder.replace(/^Tou(te)?s (les )?/i, '') || 'Filtre'} icon={Filter} value={filterValue} onChange={setFilterValue}
+              allLabel="Tous" options={filterOptions.map(v => ({ key: v, label: cfg.filter!.display(v) }))} />
           )}
           {hasControls && (
-            <button onClick={() => { setSearch(''); setFilterValue(''); setSortCol(null); setSortDir('asc'); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)', cursor: 'pointer', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-              <RotateCcw size={12} /> Réinitialiser
+            <button type="button" onClick={() => { setSearch(''); setFilterValue(''); setSortCol(null); setSortDir('asc'); }}
+              className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <X size={12} /> Effacer les filtres
             </button>
           )}
         </div>
       )}
       {/* Body */}
-      <div style={{ maxHeight: 420, overflow: 'auto' }}>
+      <div style={{ overflowX: 'auto' }}>
         {isLoading ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
             <Loader2 size={18} className="animate-spin" style={{ display: 'inline-block', marginRight: 8 }} />
@@ -1125,7 +1212,7 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => (
+              {pagedRows.map(r => (
                 <tr key={r.id}>
                   {cfg.columns.map((c, i) => (
                     <td key={i} style={c.align === 'right' ? { textAlign: 'right' } : undefined}>{c.render(r)}</td>
@@ -1136,6 +1223,7 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
           </table>
         )}
       </div>
+      {rows.length > 0 && <Pager page={page} total={rows.length} onPage={setPage} note={cfg.title} />}
     </div>
   );
 }
@@ -1153,29 +1241,25 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
  *
  * Source : reportsApi.financeOverview qui aggrege tout cote backend.
  */
+const PILOT_SECTION_TITLE: React.CSSProperties = {
+  margin: '0 0 8px', fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--odoo-text-muted)',
+};
+
 function PilotageTab() {
   const now = new Date();
-  const [periodMode, setPeriodMode] = useState<'month' | 'custom'>('month');
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
+  // Période commune (mêmes choix que les autres écrans) ; la fin manquante = aujourd'hui.
+  const [period, setPeriod] = useState<PeriodKey>('month');
   const [customFrom, setCustomFrom] = useState(format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd'));
   const [customTo, setCustomTo] = useState(format(now, 'yyyy-MM-dd'));
-
-  // Calcul des dates effectives selon le mode
   const { dateFrom, dateTo, periodLabel } = useMemo(() => {
-    if (periodMode === 'custom') {
-      return {
-        dateFrom: customFrom, dateTo: customTo,
-        periodLabel: `${format(parseLocalDate(customFrom), 'dd MMM', { locale: fr })} → ${format(parseLocalDate(customTo), 'dd MMM yyyy', { locale: fr })}`,
-      };
-    }
-    const lastDay = new Date(year, month, 0).getDate();
+    const r = periodParams(period, customFrom, customTo);
     return {
-      dateFrom: `${year}-${String(month).padStart(2, '0')}-01`,
-      dateTo: `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`,
-      periodLabel: format(new Date(year, month - 1, 1), 'MMMM yyyy', { locale: fr }),
+      dateFrom: r.dateFrom ?? '2000-01-01',
+      dateTo: r.dateTo ?? format(new Date(), 'yyyy-MM-dd'),
+      periodLabel: period === 'month' ? format(new Date(), 'MMMM yyyy', { locale: fr }) : periodLabelOf(period, customFrom, customTo),
     };
-  }, [periodMode, month, year, customFrom, customTo]);
+  }, [period, customFrom, customTo]);
+  const toggleDetail = (k: string) => setDetailKind(d => (d === k ? null : (k as FinanceDetailKind)));
 
   const { data, isLoading } = useQuery({
     queryKey: ['finance-overview', dateFrom, dateTo],
@@ -1213,198 +1297,86 @@ function PilotageTab() {
 
   return (
     <>
-      {/* Selecteur periode */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 4, padding: 2, background: 'var(--theme-bg-page)', borderRadius: 4 }}>
-          {[
-            { key: 'month' as const, label: 'Par mois' },
-            { key: 'custom' as const, label: 'Periode personnalisee' },
-          ].map(opt => (
-            <button key={opt.key} onClick={() => setPeriodMode(opt.key)}
-              style={{
-                padding: '6px 12px', border: 'none', borderRadius: 3,
-                cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 500,
-                background: periodMode === opt.key ? 'var(--theme-bg-card)' : 'transparent',
-                color: periodMode === opt.key ? 'var(--theme-accent)' : 'var(--theme-text-muted)',
-                boxShadow: periodMode === opt.key ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-              }}>
-              {opt.label}
-            </button>
-          ))}
-        </div>
-        {periodMode === 'month' ? (
-          <>
-            <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="odoo-input" style={{ width: 130 }}>
-              {Array.from({ length: 12 }, (_, k) => k + 1).map(m => (
-                <option key={m} value={m}>{format(new Date(2026, m - 1, 1), 'MMMM', { locale: fr })}</option>
-              ))}
-            </select>
-            <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="odoo-input" style={{ width: 90 }}>
-              {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </>
-        ) : (
-          <>
-            <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="odoo-input" style={{ width: 140 }} />
-            <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
-            <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="odoo-input" style={{ width: 140 }} />
-          </>
-        )}
-        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
-          <Calendar size={12} style={{ display: 'inline', marginRight: 4 }} />
-          <strong style={{ textTransform: 'capitalize' }}>{periodLabel}</strong>
+      {/* Période */}
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
+        <PeriodFilter label="Période" title="Période d'analyse des flux"
+          period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
+        <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+          <strong style={{ textTransform: 'capitalize', color: 'var(--odoo-text)' }}>{periodLabel}</strong>
         </span>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Cliquez une carte pour voir le détail</span>
       </div>
 
-      {/* SECTION 1 : KPIs principaux */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-        {/* Engagement */}
-        <div className="kpi-clickable" title="Cliquer pour voir le détail" onClick={() => setDetailKind(k => k === 'engagement' ? null : 'engagement')}
-          style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #c4d8eb', background: '#f0f6ff' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#0d4d8c', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            <ClipboardList size={11} /> Engagement
-          </div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0d4d8c', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(kpis.engagement.total)} DH</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
-            {kpis.engagement.count} facture{kpis.engagement.count > 1 ? 's' : ''} sur la periode
-          </div>
+      {/* 1. Flux de la période : engagé → payé → reste à payer (+ reçu non facturé) */}
+      <StagePipeline
+        title={`Flux de la période · ${periodLabel}`}
+        summary={`${n(kpis.engagement.total)} DH engagés · ${n(kpis.treasury.total)} DH payés`}
+        stages={[
+          { key: 'engagement', label: 'Engagé', hint: 'factures fournisseur reçues', icon: ClipboardList },
+          { key: 'treasury', label: 'Payé', hint: 'cash réellement sorti', icon: ArrowDownRight },
+          { key: 'remainingToPay', label: 'Reste à payer', hint: 'factures de la période', icon: Coins },
+          { key: 'receivedNotInvoiced', label: 'Reçu non facturé', hint: 'BC livrés sans facture', icon: FileWarning },
+        ]}
+        stats={{
+          engagement: { count: kpis.engagement.count, sub: `${n(kpis.engagement.total)} DH` },
+          treasury: { count: kpis.treasury.byMethod.cash.count + kpis.treasury.byMethod.check.count + kpis.treasury.byMethod.transfer.count + kpis.treasury.byMethod.bank.count, sub: `${n(kpis.treasury.total)} DH` },
+          remainingToPay: { count: kpis.remainingToPay.count, sub: `${n(kpis.remainingToPay.total)} DH` },
+          receivedNotInvoiced: { count: kpis.receivedNotInvoiced.count, sub: `${n(kpis.receivedNotInvoiced.total)} DH`, late: kpis.receivedNotInvoiced.count, alertLabel: 'facture à saisir' },
+        }}
+        isActive={k => detailKind === k}
+        onPick={toggleDetail}
+      />
+
+      {/* Équation de trésorerie, en clair */}
+      <StatusBanner tone={kpis.receivedNotInvoiced.total > 0 ? 'warning' : 'info'} icon={Scale}
+        title={`Engagé ${n(kpis.engagement.total)} DH · payé ${n(kpis.treasury.total)} DH · reste à payer ${n(kpis.remainingToPay.total)} DH`}>
+        {deltaToPay < 0
+          ? `Les paiements de la période (${n(kpis.treasury.total)} DH) dépassent ce qui y a été engagé : ils règlent aussi des factures des périodes précédentes.`
+          : kpis.remainingToPay.total > 0
+            ? `${n(kpis.remainingToPay.total)} DH des factures de la période ne sont pas encore payés.`
+            : 'Toutes les factures de la période sont payées.'}
+        {kpis.receivedNotInvoiced.total > 0 && ` Attention : ${n(kpis.receivedNotInvoiced.total)} DH de marchandises reçues n'ont pas encore de facture saisie — l'engagement est sous-estimé.`}
+      </StatusBanner>
+
+      {/* 2. À date : ce qui va peser sur la trésorerie */}
+      <StagePipeline
+        title="À date · ce qui va sortir du compte"
+        summary={`${n(pipeline.unpaidInvoices.total + pipeline.uncashedChecks.total)} DH à décaisser`}
+        stages={[
+          { key: 'unpaidInvoices', label: 'Factures impayées', hint: 'toutes périodes', icon: Receipt },
+          { key: 'uncashedChecks', label: 'Chèques non encaissés', hint: 'émis, pas encore débités', icon: Wallet },
+          { key: 'receivedNotInvoiced', label: 'Reçu sans facture', hint: 'à comptabiliser', icon: FileWarning },
+        ]}
+        stats={{
+          unpaidInvoices: { count: pipeline.unpaidInvoices.count, sub: `${n(pipeline.unpaidInvoices.total)} DH` },
+          uncashedChecks: {
+            count: pipeline.uncashedChecks.count,
+            sub: `${n(pipeline.uncashedChecks.total)} DH${pipeline.uncashedChecks.next7d > 0 ? ` · ${n(pipeline.uncashedChecks.next7d)} sous 7 j` : ''}`,
+            late: pipeline.uncashedChecks.overdue > 0 ? 1 : 0, alertLabel: `échus : ${n(pipeline.uncashedChecks.overdue)} DH`,
+          },
+          receivedNotInvoiced: { count: pipeline.receivedNotInvoiced.count, sub: `${n(pipeline.receivedNotInvoiced.total)} DH` },
+        }}
+        isActive={k => detailKind === k}
+        onPick={toggleDetail}
+      />
+
+      {/* DETAIL drill-down : s'affiche ici quand on clique une carte */}
+      {detailKind && (
+        <div id="pilotage-detail">
+          <FinanceDetailPanel
+            kind={detailKind}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onClose={() => setDetailKind(null)}
+          />
         </div>
-
-        {/* Tresorerie sortie */}
-        <div className="kpi-clickable" title="Cliquer pour voir le détail" onClick={() => setDetailKind(k => k === 'treasury' ? null : 'treasury')}
-          style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #d4edda', background: '#f0f9f4' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#0e7c3a', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            <ArrowDownRight size={11} /> Tresorerie sortie
-          </div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0e7c3a', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(kpis.treasury.total)} DH</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
-            Cash effectivement debourse
-          </div>
-        </div>
-
-        {/* Reste a payer (delta) */}
-        <div className="kpi-clickable" title="Cliquer pour voir le détail" onClick={() => setDetailKind(k => k === 'remainingToPay' ? null : 'remainingToPay')}
-          style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #ffeaa7', background: '#fff9e6' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#856404', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            <Coins size={11} /> Reste a payer
-          </div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#856404', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(kpis.remainingToPay.total)} DH</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
-            {kpis.remainingToPay.count} facture{kpis.remainingToPay.count > 1 ? 's' : ''} de la periode
-          </div>
-        </div>
-
-        {/* Recu non facture */}
-        <div className="kpi-clickable" title="Cliquer pour voir le détail" onClick={() => setDetailKind(k => k === 'receivedNotInvoiced' ? null : 'receivedNotInvoiced')}
-          style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #f5c6cb', background: '#fff5f5' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#b71c1c', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            <FileWarning size={11} /> Recu non facture
-          </div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#b71c1c', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(kpis.receivedNotInvoiced.total)} DH</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
-            {kpis.receivedNotInvoiced.count} BC livre{kpis.receivedNotInvoiced.count > 1 ? 's' : ''}, facture manquante
-          </div>
-        </div>
-      </div>
-
-      {/* Equation explicite : Engagement = Tresorerie + Reste */}
-      <div className="odoo-alert" style={{ fontSize: '0.8125rem', background: 'var(--theme-bg-page)', border: '1px solid var(--theme-bg-separator)' }}>
-        <strong>Equation tresorerie :</strong> sur cette periode, tu as engage{' '}
-        <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(kpis.engagement.total)} DH</strong>{' '}
-        de factures fournisseur. Tu as deja debourse{' '}
-        <strong style={{ fontFamily: 'ui-monospace, monospace', color: '#0e7c3a' }}>{n(kpis.treasury.total)} DH</strong>{' '}
-        en cash. Il reste donc{' '}
-        <strong style={{ fontFamily: 'ui-monospace, monospace', color: deltaToPay > 0 ? '#856404' : '#0e7c3a' }}>{n(Math.max(0, deltaToPay))} DH</strong>{' '}
-        engages mais pas encore sortis du compte.
-        {kpis.receivedNotInvoiced.total > 0 && (
-          <> Attention : <strong style={{ color: '#b71c1c' }}>{n(kpis.receivedNotInvoiced.total)} DH</strong> de marchandises recues n'ont PAS encore de facture saisie — engagement potentiellement sous-estime.</>
-        )}
-      </div>
-
-      {/* SECTION 2 : Pipeline (vue a date) */}
-      <div>
-        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--theme-text)' }}>
-          Pipeline (vue a date — ce qui va impacter la tresorerie)
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-          {/* Factures impayees */}
-          <div className="kpi-clickable" title="Cliquer pour voir le détail" onClick={() => setDetailKind(k => k === 'unpaidInvoices' ? null : 'unpaidInvoices')}
-            style={{ padding: '12px 14px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
-            <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              Factures impayees (total)
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
-              {n(pipeline.unpaidInvoices.total)} DH
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-              {pipeline.unpaidInvoices.count} facture{pipeline.unpaidInvoices.count > 1 ? 's' : ''} en attente
-            </div>
-          </div>
-
-          {/* Cheques non encaisses */}
-          <div className="kpi-clickable" title="Cliquer pour voir le détail" onClick={() => setDetailKind(k => k === 'uncashedChecks' ? null : 'uncashedChecks')}
-            style={{ padding: '12px 14px', borderRadius: 4, border: '1px solid #ffeaa7', background: '#fff9e6' }}>
-            <div style={{ fontSize: '0.6875rem', color: '#856404', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              Cheques non encaisses
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#856404', marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
-              {n(pipeline.uncashedChecks.total)} DH
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-              {pipeline.uncashedChecks.count} cheque{pipeline.uncashedChecks.count > 1 ? 's' : ''} en attente
-            </div>
-            {/* Breakdown par echeance */}
-            {pipeline.uncashedChecks.count > 0 && (
-              <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #f3df9b', fontSize: '0.6875rem', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {pipeline.uncashedChecks.overdue > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#b71c1c' }}>
-                    <span>⚠ En retard</span>
-                    <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(pipeline.uncashedChecks.overdue)}</strong>
-                  </div>
-                )}
-                {pipeline.uncashedChecks.next7d > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>≤ 7 jours</span>
-                    <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(pipeline.uncashedChecks.next7d)}</strong>
-                  </div>
-                )}
-                {pipeline.uncashedChecks.next30d > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>8-30 jours</span>
-                    <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(pipeline.uncashedChecks.next30d)}</strong>
-                  </div>
-                )}
-                {pipeline.uncashedChecks.later > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>plus tard</span>
-                    <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(pipeline.uncashedChecks.later)}</strong>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Receptions sans facture */}
-          <div style={{ padding: '12px 14px', borderRadius: 4, border: pipeline.receivedNotInvoiced.count > 0 ? '1px solid #f5c6cb' : '1px solid var(--theme-bg-separator)', background: pipeline.receivedNotInvoiced.count > 0 ? '#fff5f5' : 'var(--theme-bg-card)' }}>
-            <div style={{ fontSize: '0.6875rem', color: pipeline.receivedNotInvoiced.count > 0 ? '#b71c1c' : 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              Recu sans facture
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: pipeline.receivedNotInvoiced.count > 0 ? '#b71c1c' : 'inherit', marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
-              {n(pipeline.receivedNotInvoiced.total)} DH
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-              {pipeline.receivedNotInvoiced.count} BC livre{pipeline.receivedNotInvoiced.count > 1 ? 's' : ''}, a comptabiliser
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* SECTION 3 : Repartition methodes de paiement */}
       {kpis.treasury.total > 0 && (
         <div>
-          <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--theme-text)' }}>
-            Repartition des paiements effectifs sur la periode
-          </h3>
+          <h3 style={PILOT_SECTION_TITLE}>Répartition des paiements de la période</h3>
           <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
             {/* Barre proportionnelle */}
             <div style={{ display: 'flex', height: 24, borderRadius: 4, overflow: 'hidden', marginBottom: 12, background: 'var(--theme-bg-page)' }}>
@@ -1455,23 +1427,9 @@ function PilotageTab() {
         </div>
       )}
 
-      {/* DETAIL drill-down : s'affiche ici quand on clique une carte */}
-      {detailKind && (
-        <div id="pilotage-detail">
-          <FinanceDetailPanel
-            kind={detailKind}
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            onClose={() => setDetailKind(null)}
-          />
-        </div>
-      )}
-
       {/* SECTION 4 : Top fournisseurs crediteurs */}
       <div>
-        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--theme-text)' }}>
-          Top fournisseurs crediteurs (montants dus a date)
-        </h3>
+        <h3 style={PILOT_SECTION_TITLE}>Fournisseurs à qui l'on doit le plus (à date)</h3>
         {topSuppliers.length === 0 ? (
           <div style={{ padding: 30, textAlign: 'center', color: 'var(--theme-text-muted)', border: '1px dashed var(--theme-bg-separator)', borderRadius: 4, fontSize: '0.875rem' }}>
             Aucun fournisseur avec montant du. Tous les soldes sont a zero.
@@ -1509,8 +1467,8 @@ function PilotageTab() {
                         </>
                       ) : '—'}
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: 'var(--theme-accent)' }}>
-                      {n(s.totalDue)} DH
+                    <td style={{ textAlign: 'right', fontWeight: 700 }}>
+                      {n(s.totalDue)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
                     </td>
                   </tr>
                 ))}
@@ -1523,11 +1481,8 @@ function PilotageTab() {
       {/* Liste detaillee : receptions sans facture (si il y en a) */}
       {pipeline.receivedNotInvoiced.list.length > 0 && (
         <div>
-          <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: '#b71c1c' }}>
-            <FileWarning size={13} style={{ display: 'inline', marginRight: 4 }} />
-            Marchandises recues sans facture (a saisir)
-          </h3>
-          <div style={{ border: '1px solid #f5c6cb', borderRadius: 4, overflow: 'hidden' }}>
+          <h3 style={PILOT_SECTION_TITLE}>Marchandises reçues sans facture (à saisir)</h3>
+          <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflow: 'hidden' }}>
             <table className="odoo-table" style={{ margin: 0 }}>
               <thead>
                 <tr>
@@ -2015,6 +1970,17 @@ function ChargesTab() {
   const [year, setYear] = useState(now.getFullYear());
   const [showForm, setShowForm] = useState(false);
   const [editingPayment, setEditingPayment] = useState<Record<string, any> | null>(null);
+  // Mig 310 (D7) : mode typé, jauge espèces, annulation motivée, mouvement interne.
+  const { modes: payModes, byCode: payModeByCode, treasuryAccounts } = usePaymentModes();
+  const [expMode, setExpMode] = useState('cash');
+  const [expSupplierId, setExpSupplierId] = useState('');
+  const [expAmount, setExpAmount] = useState(0);
+  const [expDate, setExpDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [expOverride, setExpOverride] = useState<CashOverride>(null);
+  const expModeDef = payModeByCode(expMode);
+  const expLegacy = expModeDef?.legacy_method ?? expMode;
+  const [voidTarget, setVoidTarget] = useState<Record<string, any> | null>(null);
+  const [showTransfer, setShowTransfer] = useState(false);
   // Modal de categorisation d'une facture (s'applique a toutes ses lignes)
   const [categorizingInvoice, setCategorizingInvoice] = useState<Record<string, any> | null>(null);
   const [categorizingCategoryId, setCategorizingCategoryId] = useState<string>('');
@@ -2023,9 +1989,10 @@ function ChargesTab() {
   const [filterMethod, setFilterMethod] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   // Selecteur de periode facon Pilotage : "Par mois" ou "Periode personnalisee".
-  const [periodMode, setPeriodMode] = useState<'month' | 'custom'>('month');
+  const [period, setPeriod] = useState<PeriodKey>('month');
   const [customFrom, setCustomFrom] = useState(format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd'));
   const [customTo, setCustomTo] = useState(format(now, 'yyyy-MM-dd'));
+  const [page, setPage] = useState(1);
   const [sortCol, setSortCol] = useState<string>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   useEffect(() => {
@@ -2034,13 +2001,14 @@ function ChargesTab() {
   }, [editingPayment]);
 
   // Periode chargee : mois selectionne, ou plage personnalisee selon le mode.
-  const useCustomRange = periodMode === 'custom';
-  const lastDay = new Date(year, month, 0).getDate();
-  const dateFrom = useCustomRange ? customFrom : `${year}-${String(month).padStart(2, '0')}-01`;
-  const dateTo = useCustomRange ? customTo : `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-  const periodLabel = useCustomRange
-    ? `${format(parseLocalDate(customFrom), 'dd MMM', { locale: fr })} → ${format(parseLocalDate(customTo), 'dd MMM yyyy', { locale: fr })}`
-    : format(new Date(year, month - 1, 1), 'MMMM yyyy', { locale: fr });
+  // Bornes envoyées au serveur : la fin manquante = aujourd'hui (les sorties futures n'existent pas).
+  const range = periodParams(period, customFrom, customTo);
+  const dateFrom = range.dateFrom ?? '2000-01-01';
+  const dateTo = range.dateTo ?? format(now, 'yyyy-MM-dd');
+  const useCustomRange = period !== 'month';
+  const periodLabel = period === 'month'
+    ? format(new Date(year, month - 1, 1), 'MMMM yyyy', { locale: fr })
+    : periodLabelOf(period, customFrom, customTo);
 
   const { data: payments = [], isLoading: isLoadingPayments } = useQuery({
     queryKey: ['payments-charges', dateFrom, dateTo],
@@ -2069,14 +2037,14 @@ function ChargesTab() {
 
   // Check if selected category requires a PO (look up the leaf category)
   const selectedCategory = (categories as Record<string, any>[]).find(c => String(c.id) === formCategoryId);
-  // ─── BC OBLIGATOIRE — DESACTIVE TEMPORAIREMENT ───────────────────
-  // Pour reactiver : passer ENFORCE_PO_REQUIREMENT a true.
-  // L'info `categoryRequiresPO` reste calculee pour afficher une banniere
-  // d'avertissement sur les categories concernees.
-  const ENFORCE_PO_REQUIREMENT = false;
+  // ─── BC REQUIS AVANT DÉPENSE (mig 306) ───────────────────────────
+  // La règle vient du paramètre purchasing.expense_requires_po (table module_parameters),
+  // le serveur l'applique ; l'écran se contente de la refléter.
+  const { data: purchasingSettings } = useQuery({ queryKey: ['purchasing-settings'], queryFn: purchasingSettingsApi.get, staleTime: 60_000 });
+  const poRule = purchasingSettings?.expenseRequiresPo;
   const categoryRequiresPO = selectedCategory ? (selectedCategory.requires_po as boolean) : false;
-  const requiresPO = ENFORCE_PO_REQUIREMENT && categoryRequiresPO;
-  const showPOWaivedBanner = !ENFORCE_PO_REQUIREMENT && categoryRequiresPO;
+  const requiresPO = !!poRule?.enabled && categoryRequiresPO;
+  const showPOWaivedBanner = !poRule?.enabled && categoryRequiresPO;
 
   /**
    * Detection "depense de personnel" : on remonte les parents de la categorie
@@ -2179,13 +2147,28 @@ function ChargesTab() {
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => paymentsApi.remove(id),
+  // Mig 310 (G-D7-08) : un paiement exécuté ne se supprime plus, il s'annule avec un motif.
+  const voidMutation = useMutation({
+    mutationFn: ({ id, reasonCodeId, note }: { id: string; reasonCodeId: string; note?: string }) =>
+      paymentsApi.void(id, { reasonCodeId, note }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
       queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
-      notify.success('Supprimé');
+      notify.success('Dépense annulée — contre-pièce passée');
+      setVoidTarget(null);
     },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Annulation impossible')),
+  });
+  const transferMutation = useMutation({
+    mutationFn: (data: { fromAccountId: string; toAccountId: string; amount: number; paymentDate: string; reference?: string; description?: string }) =>
+      paymentsApi.internalTransfer(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
+      queryClient.invalidateQueries({ queryKey: ['caisse-register'] });
+      notify.success('Mouvement interne enregistré');
+      setShowTransfer(false);
+    },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Mouvement impossible')),
   });
 
   // Categorise UNE seule ligne de charge (les autres lignes de la meme
@@ -2324,6 +2307,14 @@ function ChargesTab() {
   }, [outgoing, filterRoot, filterLeaf, filterMethod, searchTerm, sortCol, sortDir, catMap]);
 
   const displayedTotal = useMemo(() => displayed.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0), [displayed]);
+  // Lignes sans catégorie : à classer pour que le CPC et les analyses soient justes.
+  const uncategorized = useMemo(() => {
+    const rows = statBase.filter(p => !getRootId(p.category_id as string | null));
+    return { count: rows.length, total: rows.reduce((s, p) => s + (parseFloat(p.amount as string) || 0), 0) };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statBase, catMap]);
+  useEffect(() => { setPage(1); }, [filterRoot, filterLeaf, filterMethod, searchTerm, sortCol, sortDir, dateFrom, dateTo]);
+  const pagedDisplayed = displayed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const toggleSort = (col: string) => { if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(col); setSortDir('asc'); } };
   const SortIcon = ({ col }: { col: string }) => sortCol === col ? <span style={{ marginLeft: 3, opacity: 0.7, fontSize: '0.625rem' }}>{sortDir === 'asc' ? '▲' : '▼'}</span> : <span style={{ marginLeft: 3, opacity: 0.2, fontSize: '0.625rem' }}>▼</span>;
@@ -2350,72 +2341,47 @@ function ChargesTab() {
     <>
       {/* Search panel : period (facon Pilotage) + actions */}
       <div className="odoo-search-panel">
-        <div style={{ display: 'flex', gap: 4, padding: 2, background: 'var(--theme-bg-page)', borderRadius: 4 }}>
-          {[
-            { key: 'month' as const, label: 'Par mois' },
-            { key: 'custom' as const, label: 'Période personnalisée' },
-          ].map(opt => (
-            <button key={opt.key} onClick={() => setPeriodMode(opt.key)}
-              style={{
-                padding: '6px 12px', border: 'none', borderRadius: 3,
-                cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 500,
-                background: periodMode === opt.key ? 'var(--theme-bg-card)' : 'transparent',
-                color: periodMode === opt.key ? 'var(--theme-accent)' : 'var(--theme-text-muted)',
-                boxShadow: periodMode === opt.key ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-              }}>
-              {opt.label}
-            </button>
-          ))}
-        </div>
-        {periodMode === 'month' ? (
-          <>
-            <SearchSelect
-              options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
-              value={String(month)}
-              onChange={id => id && setMonth(parseInt(id, 10))}
-              placeholder="Mois"
-              width={150}
-            />
-            <input type="number" value={year} onChange={e => setYear(+e.target.value)}
-              className="odoo-filter-dropdown" style={{ width: 80 }} />
-          </>
-        ) : (
-          <>
-            <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="odoo-filter-dropdown" style={{ width: 150 }} />
-            <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
-            <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="odoo-filter-dropdown" style={{ width: 150 }} />
-          </>
-        )}
-        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem', alignSelf: 'center' }}>
-          <Calendar size={12} style={{ display: 'inline', marginRight: 4 }} />
-          <strong style={{ textTransform: 'capitalize' }}>{periodLabel}</strong>
+        <PeriodFilter label="Période" title="Date de sortie de l'argent (encaissement pour les chèques)"
+          period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
+        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+          <strong style={{ textTransform: 'capitalize', color: 'var(--odoo-text)' }}>{periodLabel}</strong>
         </span>
         <div style={{ flex: 1 }} />
         <button onClick={handleExport} className="odoo-btn-secondary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <Download size={13} /> Exporter
         </button>
-        <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
+        <button onClick={() => setShowTransfer(true)} className="odoo-btn-secondary"
+          title="Versement d'espèces en banque, retrait : ni charge, ni fournisseur"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <ArrowLeftRight size={13} /> Mouvement interne
+        </button>
+        <button onClick={() => {
+          setExpMode('cash'); setExpSupplierId(''); setExpAmount(0); setExpDate(format(new Date(), 'yyyy-MM-dd')); setExpOverride(null);
+          setShowForm(true);
+        }} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <Plus size={14} /> Nouvelle dépense
         </button>
       </div>
 
-      {/* Stat tiles: total + top 3 categories */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><ArrowDownRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total sorties{filterMethod !== 'all' ? ` — ${getPaymentLabel(filterMethod)}` : ''}</div>
-          <div className="odoo-stat-card-value" style={{ color: '#dc3545' }}>{n(grandTotal)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
-          <div className="odoo-stat-card-sub">{statBase.length} opération{statBase.length > 1 ? 's' : ''}</div>
-        </div>
-        {topCats.map(tc => (
-          <div key={tc.id} className="odoo-stat-card">
-            <div className="odoo-stat-card-label">{tc.name}</div>
-            <div className="odoo-stat-card-value">{n(tc.total)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
-            <div className="odoo-stat-card-sub">{grandTotal > 0 ? Math.round(tc.total / grandTotal * 100) : 0}% du total</div>
-          </div>
-        ))}
-      </div>
+      {/* Répartition : une carte par grande catégorie (clic = filtre), plus les lignes à catégoriser */}
+      <StagePipeline
+        title={`Sorties · ${periodLabel}`}
+        summary={`${statBase.length} opération${statBase.length > 1 ? 's' : ''} · ${n(grandTotal)} DH${filterMethod !== 'all' ? ` · ${getPaymentLabel(filterMethod)}` : ''}`}
+        stages={[
+          { key: 'all', label: 'Toutes', hint: 'total des sorties', icon: ArrowDownRight },
+          ...topCats.filter(tc => String(tc.id) !== '__none__').map(tc => ({ key: String(tc.id), label: String(tc.name), hint: `${grandTotal > 0 ? Math.round(tc.total / grandTotal * 100) : 0} % du total`, icon: Wallet })),
+          ...(uncategorized.count > 0 ? [{ key: '__none__', label: 'À catégoriser', hint: 'sans catégorie', icon: FileWarning }] : []),
+        ]}
+        stats={{
+          all: { count: statBase.length, sub: `${n(grandTotal)} DH` },
+          ...Object.fromEntries(topCats.map(tc => [String(tc.id), { count: statBase.filter(p => (getRootId(p.category_id as string | null) ?? '__none__') === String(tc.id)).length, sub: `${n(tc.total)} DH` }])),
+          __none__: { count: uncategorized.count, sub: `${n(uncategorized.total)} DH`, late: uncategorized.count, alertLabel: 'à classer' },
+        }}
+        isActive={k => (k === 'all' ? filterRoot === 'all' : filterRoot === k)}
+        onPick={k => { setFilterRoot(k === 'all' || filterRoot === k ? 'all' : k); setFilterLeaf('all'); }}
+      />
 
       {/* Filter bar : recherche + filtres + reset */}
       <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
@@ -2446,16 +2412,13 @@ function ChargesTab() {
           onChange={id => setFilterLeaf(id || 'all')}
           placeholder="Tous types"
         />
-        <SearchSelect
-          options={paymentMethods.map(m => ({ id: m.code, label: m.label }))}
-          value={filterMethod === 'all' ? '' : filterMethod}
-          onChange={id => setFilterMethod(id || 'all')}
-          placeholder="Toutes méthodes"
-        />
+        <SelectFilter label="Moyen" icon={Coins} value={filterMethod === 'all' ? '' : filterMethod}
+          onChange={v => setFilterMethod(v || 'all')} allLabel="Tous"
+          options={paymentMethods.map(m => ({ key: m.code, label: m.label }))} />
         {(filterRoot !== 'all' || filterLeaf !== 'all' || filterMethod !== 'all' || searchTerm) && (
-          <button onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setSearchTerm(''); }}
-            className="odoo-filter-dropdown" style={{ color: '#dc3545', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={11} /> Réinitialiser
+          <button type="button" onClick={() => { setFilterRoot('all'); setFilterLeaf('all'); setFilterMethod('all'); setSearchTerm(''); }}
+            className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <X size={12} /> Effacer les filtres
           </button>
         )}
         <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--theme-text-muted)', alignSelf: 'center' }}>
@@ -2495,11 +2458,12 @@ function ChargesTab() {
                 <th onClick={() => toggleSort('type')} style={{ cursor: 'pointer', userSelect: 'none' }}>Type<SortIcon col="type" /></th>
                 <th>Méthode</th>
                 <th onClick={() => toggleSort('amount')} style={{ cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>Montant<SortIcon col="amount" /></th>
-                <th style={{ textAlign: 'center', width: 72 }}>Actions</th>
+                <th style={{ textAlign: 'right' }}>Prochaine action</th>
+                <th style={{ textAlign: 'right', width: 72 }}></th>
               </tr>
             </thead>
             <tbody>
-              {displayed.map(p => {
+              {pagedDisplayed.map(p => {
                 const rootId = getRootId(p.category_id as string | null);
                 const rootName = rootId ? catMap[rootId]?.name || '—' : '—';
                 const leafName = p.category_name as string || '—';
@@ -2521,27 +2485,37 @@ function ChargesTab() {
                         <span className="odoo-tag odoo-tag-grey">{leafName}</span>
                       ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                     </td>
-                    <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{getPaymentLabel(p.payment_method as string)}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc3545', whiteSpace: 'nowrap' }}>
+                    <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
+                      {p.payment_mode ? paymentModeLabel(p, payModes) : getPaymentLabel(p.payment_method as string)} <PaymentStatusTag p={p} />
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc3545', whiteSpace: 'nowrap', textDecoration: p.status === 'void' && !p.voids_payment_id ? 'line-through' : undefined }}>
                       {n(parseFloat(p.amount as string))} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
                     </td>
-                    <td style={{ textAlign: 'center' }}>
-                      {p.type === 'invoice' ? (
-                        <button
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {!rootId && p.status !== 'void' && !p.voids_payment_id && (
+                        <button type="button" className="odoo-btn-primary" title="Classer cette sortie dans une catégorie de charge"
                           onClick={() => {
-                            setCategorizingInvoice(p);
-                            setCategorizingCategoryId((p.category_id as string) || '');
-                          }}
-                          style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }}
-                          title="Categoriser cette ligne">
+                            if (p.type === 'invoice') { setCategorizingInvoice(p); setCategorizingCategoryId((p.category_id as string) || ''); }
+                            else setEditingPayment(p);
+                          }}>
+                          Catégoriser
+                        </button>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      {p.type === 'invoice' ? (
+                        <button type="button" className="odoo-pager-btn" aria-label="Catégoriser cette ligne" title="Catégoriser cette ligne"
+                          onClick={() => { setCategorizingInvoice(p); setCategorizingCategoryId((p.category_id as string) || ''); }}>
                           <Pencil size={13} />
                         </button>
+                      ) : p.status === 'void' || p.voids_payment_id ? (
+                        <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }} title={(p.void_note as string) || ''}>annulée</span>
                       ) : p.type !== 'salary' && p.type !== 'advance' ? (
-                        <div style={{ display: 'inline-flex', gap: 4 }}>
-                          <button onClick={() => setEditingPayment(p)} style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }} title="Modifier"><Pencil size={13} /></button>
-                          <button onClick={() => deleteMutation.mutate(p.id as string)} style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#dc3545' }} title="Supprimer"><X size={13} /></button>
+                        <div style={{ display: 'inline-flex', gap: 2 }}>
+                          <button type="button" onClick={() => setEditingPayment(p)} className="odoo-pager-btn" aria-label="Modifier" title="Modifier la catégorie ou la description"><Pencil size={13} /></button>
+                          <button type="button" onClick={() => setVoidTarget(p)} className="odoo-pager-btn" aria-label="Annuler la dépense" title="Annuler (motif obligatoire)" style={{ color: '#dc3545' }}><Ban size={13} /></button>
                         </div>
-                      ) : <span style={{ fontSize: '0.6875rem', color: 'var(--theme-bg-separator)' }} title="Géré depuis RH → Paie / Avances">RH</span>}
+                      ) : <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }} title="Géré depuis RH → Paie / Avances">RH</span>}
                     </td>
                   </tr>
                 );
@@ -2555,28 +2529,27 @@ function ChargesTab() {
                 <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: '#dc3545' }}>
                   {n(displayedTotal)} DH
                 </td>
-                <td></td>
+                <td colSpan={2}></td>
               </tr>
             </tfoot>
           </table>
+          <Pager page={page} total={displayed.length} onPage={setPage}
+            note={`${displayed.length} opération${displayed.length > 1 ? 's' : ''}${displayed.length !== outgoing.length ? ' (filtrées)' : ''} · ${periodLabel}`} />
         </div>
       )}
 
       {/* Add expense modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-red-500 to-rose-500 p-5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                  <Plus size={20} className="text-white" />
+          <div className="odoo-scope" role="dialog" style={{ width: '100%', maxWidth: 512, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+              <div className="odoo-control-bar">
+                <div className="odoo-breadcrumb">
+                  <Plus size={14} style={{ color: 'var(--theme-accent)' }} />
+                  <span className="odoo-breadcrumb-current">Nouvelle dépense</span>
                 </div>
-                <h2 className="text-lg font-bold text-white">Nouvelle dépense</h2>
+                <div style={{ flex: 1 }} />
+                <button type="button" onClick={() => { setShowForm(false); setFormCategoryId(''); setFormPOId(''); }} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
               </div>
-              <button onClick={() => { setShowForm(false); setFormCategoryId(''); setFormPOId(''); }} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
-                <X size={18} className="text-white" />
-              </button>
-            </div>
             <form onSubmit={e => {
               e.preventDefault();
               const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
@@ -2598,7 +2571,12 @@ function ChargesTab() {
               }
               if (!fd.categoryId) { notify.error('Veuillez sélectionner une catégorie'); return; }
               if (isRhManagedCategory) { notify.error('Les salaires et avances se gèrent dans Ressources Humaines (onglets Paie et Avances) — ils apparaîtront ici automatiquement une fois payés'); return; }
-              if (requiresPO && !formPOId) { notify.error('Cette catégorie nécessite un bon de commande'); return; }
+              if (requiresPO && !formPOId && fd.amount >= (poRule?.threshold ?? 0)) {
+                notify.error(`Cette catégorie exige un bon de commande au-delà de ${poRule?.threshold} ${poRule?.currency}`); return;
+              }
+              fd.paymentMode = expMode;
+              fd.paymentMethod = expLegacy;
+              if (expOverride) fd.cashOverride = expOverride;
               createMutation.mutate(fd);
             }} className="p-5 space-y-4">
               <div>
@@ -2619,16 +2597,16 @@ function ChargesTab() {
               )}
               {showPOWaivedBanner && (
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800">
-                  ℹ️ Cette catégorie demande normalement un bon de commande, mais l'obligation est <strong>temporairement désactivée</strong>. Tu peux saisir la dépense directement.
+                  ℹ️ Cette catégorie demande normalement un bon de commande, mais la règle « BC requis avant dépense » est <strong>désactivée</strong> (paramètre des Achats). Tu peux saisir la dépense directement.
                 </div>
               )}
               {requiresPO && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                   <label className="block text-sm font-medium mb-1.5 text-amber-800">
-                    <ClipboardList size={14} className="inline mr-1" /> Bon de commande *
+                    <ClipboardList size={14} className="inline mr-1" /> Bon de commande (obligatoire au-delà de {poRule?.threshold} {poRule?.currency})
                   </label>
                   <select value={formPOId} onChange={e => setFormPOId(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-amber-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white" required>
+                    className="w-full px-3 py-2.5 border border-amber-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white">
                     <option value="">Sélectionner un BC...</option>
                     {(eligiblePOs as Record<string, any>[]).map(po => (
                       <option key={po.id as string} value={po.id as string}>
@@ -2652,22 +2630,20 @@ function ChargesTab() {
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Montant *</label>
                   <input name="amount" type="number" step="0.01" disabled={isRhManagedCategory}
+                    onChange={e => setExpAmount(parseFloat(e.target.value) || 0)}
                     className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" required
                     defaultValue={selectedPO ? parseFloat(selectedPO.total_amount as string) || '' : ''} key={formPOId} /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
                   <input name="paymentDate" type="date" disabled={isRhManagedCategory}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" required defaultValue={format(new Date(), 'yyyy-MM-dd')} /></div>
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" required value={expDate} onChange={e => setExpDate(e.target.value)} /></div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Methode</label>
-                  <select name="paymentMethod" disabled={isRhManagedCategory}
-                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
-                    {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
-                  </select></div>
-                {!requiresPO && !isPersonnelExpense && (
+                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Mode de règlement</label>
+                  <PaymentModeSelect value={expMode} onChange={setExpMode} /></div>
+                {!(requiresPO && formPOId) && !isPersonnelExpense && (
                   <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur</label>
-                    <select name="supplierId" disabled={isRhManagedCategory}
+                    <select name="supplierId" disabled={isRhManagedCategory} onChange={e => setExpSupplierId(e.target.value)}
                       className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
                       <option value="">Aucun</option>
                       {(suppliers as Record<string, any>[]).filter(s => s.is_active).map(s => (
@@ -2677,7 +2653,7 @@ function ChargesTab() {
                 )}
                 {/* Categorie sous "Charges de personnel" : on affiche le selecteur Employe.
                     Le champ est obligatoire (un salaire/prime doit etre rattache a une ressource). */}
-                {!requiresPO && isPersonnelExpense && (
+                {!(requiresPO && formPOId) && isPersonnelExpense && (
                   <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Ressource / Employé *</label>
                     <select name="employeeId" required disabled={isRhManagedCategory}
                       className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
@@ -2699,16 +2675,32 @@ function ChargesTab() {
                 )}
               </div>
 
+              {/* Mig 310 : chèque / effet → N° (suivi dans Chèques et Traites) ; virement → référence obligatoire. */}
+              {(expLegacy === 'check' || expLegacy === 'traite') ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="block text-sm font-medium text-gray-700 mb-1.5">N° {expLegacy === 'traite' ? 'd\'effet' : 'de chèque'} *</label>
+                    <input name="checkNumber" required className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500" /></div>
+                  <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Échéance</label>
+                    <input name="checkDate" type="date" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500" /></div>
+                </div>
+              ) : expModeDef?.requires_reference ? (
+                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Référence du virement *</label>
+                  <input name="reference" required placeholder="N° d'ordre ou référence bancaire"
+                    className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500" /></div>
+              ) : null}
+              <CashLimitGauge supplierId={(requiresPO && formPOId && selectedPO ? selectedPO.supplier_id as string : expSupplierId) || null}
+                date={expDate} amount={expAmount} modeCode={expMode} override={expOverride} onOverrideChange={setExpOverride} />
+
               <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
                 <textarea name="description" rows={2} disabled={isRhManagedCategory}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed" /></div>
 
               <div className="flex gap-3 justify-end pt-2">
                 <button type="button" onClick={() => { setShowForm(false); setFormCategoryId(''); setFormPOId(''); }}
-                  className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
+                  className="odoo-btn-secondary">Annuler</button>
                 <button type="submit" disabled={createMutation.isPending || isRhManagedCategory}
                   title={isRhManagedCategory ? 'Saisie depuis Ressources Humaines → Paie / Avances' : undefined}
-                  className="px-5 py-2.5 bg-gradient-to-r from-red-500 to-rose-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none">
+                  className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {createMutation.isPending && <Loader2 size={14} className="animate-spin" />}
                   Enregistrer
                 </button>
@@ -2721,39 +2713,30 @@ function ChargesTab() {
       {/* Edit expense modal */}
       {editingPayment && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-blue-500 to-indigo-500 p-5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                  <Pencil size={18} className="text-white" />
+          <div className="odoo-scope" role="dialog" style={{ width: '100%', maxWidth: 512, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+              <div className="odoo-control-bar">
+                <div className="odoo-breadcrumb">
+                  <Pencil size={14} style={{ color: 'var(--theme-accent)' }} />
+                  <span className="odoo-breadcrumb-current">Modifier la depense</span>
                 </div>
-                <h2 className="text-lg font-bold text-white">Modifier la depense</h2>
+                <div style={{ flex: 1 }} />
+                <button type="button" onClick={() => setEditingPayment(null)} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
               </div>
-              <button onClick={() => setEditingPayment(null)} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
-                <X size={18} className="text-white" />
-              </button>
-            </div>
             <form onSubmit={e => {
               e.preventDefault();
               const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
-              fd.amount = parseFloat(fd.amount as string);
-              // categoryId est gere par la cascade controllee, pas via FormData
-              fd.categoryId = editCategoryId || null;
-              updateMutation.mutate({ id: editingPayment.id as string, data: fd });
+              // Mig 310 : seuls catégorie et description se modifient ; montant, date et mode
+              // d'un paiement exécuté sont figés (annuler avec motif puis ressaisir).
+              updateMutation.mutate({ id: editingPayment.id as string, data: {
+                categoryId: editCategoryId || null, description: fd.description ?? '',
+              } });
             }} className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Montant *</label>
-                  <input name="amount" type="number" step="0.01" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required
-                    defaultValue={parseFloat(editingPayment.amount as string) || 0} /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Date *</label>
-                  <input name="paymentDate" type="date" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" required
-                    defaultValue={fmtPaymentDate(editingPayment.payment_date)} /></div>
+              <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600 space-y-1">
+                <div className="flex justify-between"><span>Montant</span><strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(parseFloat(editingPayment.amount as string) || 0)} DH</strong></div>
+                <div className="flex justify-between"><span>Date</span><span>{fmtPaymentDate(editingPayment.payment_date, 'fr')}</span></div>
+                <div className="flex justify-between"><span>Mode</span><span>{editingPayment.payment_mode ? paymentModeLabel(editingPayment, payModes) : getPaymentLabel(editingPayment.payment_method as string)}</span></div>
+                <div style={{ color: 'var(--theme-text-muted)' }}>Montant, date et mode ne se modifient plus : annulez la dépense avec un motif puis ressaisissez-la.</div>
               </div>
-
-              <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Methode</label>
-                <select name="paymentMethod" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" defaultValue={editingPayment.payment_method as string || 'cash'}>
-                  {paymentMethods.map(m => <option key={m.code} value={m.code}>{m.label}</option>)}
-                </select></div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Categorie</label>
@@ -2775,9 +2758,9 @@ function ChargesTab() {
 
               <div className="flex gap-3 justify-end pt-2">
                 <button type="button" onClick={() => setEditingPayment(null)}
-                  className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
+                  className="odoo-btn-secondary">Annuler</button>
                 <button type="submit" disabled={updateMutation.isPending}
-                  className="px-5 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
+                  className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {updateMutation.isPending && <Loader2 size={14} className="animate-spin" />}
                   Enregistrer
                 </button>
@@ -2787,26 +2770,32 @@ function ChargesTab() {
         </div>
       )}
 
+      {voidTarget && (
+        <ReasonCodeDialog title={`Annuler la dépense de ${n(parseFloat(voidTarget.amount as string))} DH`} scope="void_payment"
+          description="La dépense reste dans l'historique : une contre-pièce négative la neutralise et son écriture est extournée."
+          confirmLabel="Annuler la dépense" danger pending={voidMutation.isPending}
+          onClose={() => setVoidTarget(null)}
+          onSubmit={(v) => voidMutation.mutate({ id: voidTarget.id as string, reasonCodeId: v.reasonCodeId, note: v.note })} />
+      )}
+      {showTransfer && (
+        <InternalTransferModal accounts={treasuryAccounts} pending={transferMutation.isPending}
+          onClose={() => setShowTransfer(false)} onSubmit={(d) => transferMutation.mutate(d)} />
+      )}
+
       {/* Modal de categorisation d'une ligne de charge (ligne seule) */}
       {categorizingInvoice && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                  <Pencil size={18} className="text-white" />
+          <div className="odoo-scope" role="dialog" style={{ width: '100%', maxWidth: 512, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+              <div className="odoo-control-bar">
+                <div className="odoo-breadcrumb">
+                  <Pencil size={14} style={{ color: 'var(--theme-accent)' }} />
+                  <span className="odoo-breadcrumb-current">Catégoriser la ligne</span>
+                <span className="odoo-breadcrumb-separator">/</span>
+                <span>{(categorizingInvoice.invoice_number as string) || '—'} · {(categorizingInvoice.supplier_name as string) || ''}</span>
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold text-white">Catégoriser la ligne</h2>
-                  <p className="text-xs text-white/80">
-                    {(categorizingInvoice.invoice_number as string) || '—'} · {(categorizingInvoice.supplier_name as string) || ''}
-                  </p>
-                </div>
+                <div style={{ flex: 1 }} />
+                <button type="button" onClick={() => { setCategorizingInvoice(null); setCategorizingCategoryId(''); }} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
               </div>
-              <button onClick={() => { setCategorizingInvoice(null); setCategorizingCategoryId(''); }} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
-                <X size={18} className="text-white" />
-              </button>
-            </div>
             <form onSubmit={e => {
               e.preventDefault();
               if (!categorizingCategoryId) { notify.error('Sélectionnez une catégorie'); return; }
@@ -2834,9 +2823,9 @@ function ChargesTab() {
               </div>
               <div className="flex gap-3 justify-end pt-2">
                 <button type="button" onClick={() => { setCategorizingInvoice(null); setCategorizingCategoryId(''); }}
-                  className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">Annuler</button>
+                  className="odoo-btn-secondary">Annuler</button>
                 <button type="submit" disabled={updateInvoiceCategoryMutation.isPending}
-                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
+                  className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {updateInvoiceCategoryMutation.isPending && <Loader2 size={14} className="animate-spin" />}
                   Enregistrer
                 </button>
@@ -2904,9 +2893,33 @@ type CheckGroup = {
   pendingRows: CheckRow[];
 };
 
+const CHECK_STAGES: StageDef[] = [
+  { key: 'overdue', label: 'Échus', hint: 'échéance dépassée', icon: AlertTriangle },
+  { key: 'next7d', label: '≤ 7 jours', hint: 'à présenter bientôt', icon: Clock },
+  { key: 'next30d', label: '8 – 30 jours', hint: 'ce mois-ci', icon: Calendar },
+  { key: 'later', label: 'Plus tard', hint: 'au-delà de 30 j', icon: CalendarClock },
+  { key: 'cashed', label: 'Encaissés', hint: 'voir l\'historique', icon: CheckCircle2 },
+];
+
+/** Statut d'un chèque : point de couleur + texte (pas de pastille). */
+function CheckStatusDot({ status }: { status: 'pending' | 'overdue' | 'cashed' }) {
+  const meta = status === 'cashed' ? { color: '#28a745', label: 'Encaissé' }
+    : status === 'overdue' ? { color: '#dc3545', label: 'Échu' }
+    : { color: '#d9822b', label: 'À encaisser' };
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', fontWeight: status === 'overdue' ? 600 : 400, color: status === 'overdue' ? '#b71c1c' : 'var(--odoo-text)' }}>
+      <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: meta.color }} />
+      {meta.label}
+    </span>
+  );
+}
+
 function ChequesTab() {
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'cashed' | 'all'>('pending');
+  // Vue : « À encaisser » (en attente / en retard) ou « Encaissés » (historique).
+  const [view, setView] = useState<'open' | 'history'>('open');
+  const statusFilter: 'pending' | 'cashed' = view === 'open' ? 'pending' : 'cashed';
+  const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   const [confirmingGroup, setConfirmingGroup] = useState<CheckGroup | null>(null);
   // Cheques multi-factures depliés (cle de groupe -> visible)
@@ -2915,8 +2928,13 @@ function ChequesTab() {
   // Tous inline dans la meme barre — meme style que ChargesTab.
   const [dueWindow, setDueWindow] = useState<'all' | 'overdue' | 'next7d' | 'next30d' | 'later'>('all');
   const [supplierFilter, setSupplierFilter] = useState<string>('all');
-  const [dueFromDate, setDueFromDate] = useState<string>('');
-  const [dueToDate, setDueToDate] = useState<string>('');
+  // Période : sur l'échéance (à encaisser) ou sur la date d'encaissement (encaissés).
+  const [period, setPeriod] = useState<PeriodKey>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const periodRange = periodParams(period, customFrom, customTo);
+  const dueFromDate = periodRange.dateFrom ?? '';
+  const dueToDate = periodRange.dateTo ?? '';
   const [methodFilter, setMethodFilter] = useState<'all' | 'check' | 'traite'>('all');
   const [sortBy, setSortBy] = useState<'echeance' | 'emission' | 'amount' | 'supplier'>('echeance');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -2963,25 +2981,23 @@ function ChequesTab() {
     onError: () => notify.error('Erreur lors de l\'annulation'),
   });
 
-  // Suppression definitive d'un paiement (cheque inclus). Distinct de unmark :
-  // ici le paiement disparait completement, la facture revient au statut pending
-  // ou partial selon les paiements restants. Sert a corriger une erreur de saisie.
+  // Mig 310 (G-D7-08) : un chèque/effet ne se supprime plus. « Annuler » passe une
+  // contre-pièce motivée (chèque perdu, rejet, erreur) et extourne l'écriture ; il
+  // se ré-émet ensuite depuis les paiements de la facture.
+  const [voidCheck, setVoidCheck] = useState<{ id: string; amount: string; label: string } | null>(null);
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => paymentsApi.remove(id),
+    mutationFn: ({ id, reasonCodeId, note }: { id: string; reasonCodeId: string; note?: string }) =>
+      paymentsApi.void(id, { reasonCodeId, note }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments-checks'] });
       queryClient.invalidateQueries({ queryKey: ['payments-charges'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-line-expenses'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-payment-alerts'] });
-      notify.success('Paiement supprime — facture mise a jour');
+      notify.success('Paiement annulé — facture mise à jour');
+      setVoidCheck(null);
     },
-    onError: (err: unknown) => {
-      const msg = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
-        : null;
-      notify.error(msg || 'Erreur lors de la suppression');
-    },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Annulation impossible')),
   });
 
   // Filtres frontend (statut + recherche, car la query renvoie tout)
@@ -3031,9 +3047,9 @@ function ChequesTab() {
         if (name !== supplierFilter) return false;
       }
 
-      // ─── Periode d'echeance ────────────────────────────────
+      // ─── Periode (echeance, ou encaissement dans l'historique) ─
       if (fromDate || toDate) {
-        const dueStr = c.check_date || c.invoice_due_date;
+        const dueStr = view === 'history' ? c.cashed_at : (c.check_date || c.invoice_due_date);
         if (!dueStr) return false;
         const due = parseLocalDate(dueStr.slice(0, 10));
         if (fromDate && due < fromDate) return false;
@@ -3075,7 +3091,7 @@ function ChequesTab() {
       return cmp * dir;
     });
     return result;
-  }, [data, statusFilter, dueWindow, supplierFilter, dueFromDate, dueToDate,
+  }, [data, statusFilter, view, dueWindow, supplierFilter, dueFromDate, dueToDate,
       methodFilter, searchTerm, sortBy, sortDir]);
 
   // Regroupement par cheque physique : meme methode + meme N° normalise.
@@ -3117,9 +3133,17 @@ function ChequesTab() {
 
   const resetFilters = () => {
     setDueWindow('all'); setSupplierFilter('all');
-    setDueFromDate(''); setDueToDate('');
+    setPeriod(view === 'history' ? '3m' : 'all'); setCustomFrom(''); setCustomTo('');
     setMethodFilter('all');
   };
+  const switchView = (next: 'open' | 'history') => {
+    if (next === view) return;
+    setView(next); setDueWindow('all');
+    setPeriod(next === 'history' ? '3m' : 'all'); setCustomFrom(''); setCustomTo('');
+    setSortBy(next === 'history' ? 'emission' : 'echeance'); setSortDir(next === 'history' ? 'desc' : 'asc');
+  };
+  useEffect(() => { setPage(1); }, [view, dueWindow, supplierFilter, period, customFrom, customTo, methodFilter, searchTerm, sortBy, sortDir]);
+  const pagedGroups = groups.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   // Sous-ensemble pour les KPIs : on applique les filtres "contextuels"
   // (beneficiaire, methode, periode d'echeance, recherche texte) mais PAS
@@ -3212,196 +3236,73 @@ function ChequesTab() {
 
   return (
     <>
-      {/* SECTION 1 : KPIs principaux (4 colonnes, meme grammaire visuelle que Pilotage) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-        {/* En attente d'encaissement */}
-        <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #ffeaa7', background: '#fff9e6' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#856404', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            <Coins size={11} /> En attente d'encaissement
-          </div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#856404', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(counts.totalPending)} DH</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
-            {counts.pending} cheque{counts.pending > 1 ? 's' : ''} a debourser
-          </div>
-        </div>
+      {/* Pipeline d'encaissement : fenêtres d'échéance des chèques émis, puis encaissés (historique) */}
+      <StagePipeline
+        title="Où en sont mes chèques et traites"
+        summary={`${n(counts.totalPending)} DH à encaisser${breakdown.overdue > 0 ? ` · dont ${n(breakdown.overdue)} DH échus` : ''}`}
+        stages={CHECK_STAGES}
+        stats={{
+          overdue: { count: breakdown.overdueCount, sub: `${n(breakdown.overdue)} DH`, late: breakdown.overdueCount, alertLabel: 'présentables à tout moment' },
+          next7d: { count: breakdown.next7dCount, sub: `${n(breakdown.next7d)} DH` },
+          next30d: { count: breakdown.next30dCount, sub: `${n(breakdown.next30d)} DH` },
+          later: { count: breakdown.laterCount, sub: `${n(breakdown.later)} DH` },
+          cashed: { count: counts.cashed, sub: `${n(counts.totalCashed)} DH` },
+        }}
+        isActive={k => (k === 'cashed' ? view === 'history' : view === 'open' && dueWindow === k)}
+        onPick={k => {
+          if (k === 'cashed') { switchView('history'); return; }
+          switchView('open');
+          setDueWindow(dueWindow === k ? 'all' : (k as 'overdue' | 'next7d' | 'next30d' | 'later'));
+        }}
+      />
 
-        {/* Encaisses */}
-        <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #d4edda', background: '#f0f9f4' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#0e7c3a', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            <ArrowDownRight size={11} /> Encaisses
-          </div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0e7c3a', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(counts.totalCashed)} DH</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
-            {counts.cashed} cheque{counts.cashed > 1 ? 's' : ''} sortis du compte
-          </div>
-        </div>
-
-        {/* Total emis */}
-        <div style={{ padding: '14px 16px', borderRadius: 4, border: '1px solid #c4d8eb', background: '#f0f6ff' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: '#0d4d8c', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            <Receipt size={11} /> Total emis
-          </div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#0d4d8c', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(totalEmis)} DH</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
-            {totalEmisCount} cheque{totalEmisCount > 1 ? 's' : ''} au total
-          </div>
-        </div>
-
-        {/* En retard (cheques dont l'echeance est depassee) */}
-        <div style={{ padding: '14px 16px', borderRadius: 4, border: breakdown.overdueCount > 0 ? '1px solid #f5c6cb' : '1px solid var(--theme-bg-separator)', background: breakdown.overdueCount > 0 ? '#fff5f5' : 'var(--theme-bg-card)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.6875rem', color: breakdown.overdueCount > 0 ? '#b71c1c' : 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            <AlertTriangle size={11} /> En retard
-          </div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: breakdown.overdueCount > 0 ? '#b71c1c' : 'inherit', marginTop: 6, fontFamily: 'ui-monospace, monospace' }}>{n(breakdown.overdue)} DH</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
-            {breakdown.overdueCount === 0
-              ? 'Toutes les echeances sont a jour'
-              : `${breakdown.overdueCount} cheque${breakdown.overdueCount > 1 ? 's' : ''} hors delai`}
-          </div>
-        </div>
-      </div>
-
-      {/* Equation explicite — meme pattern que le Pilotage */}
-      {totalEmisCount > 0 && (
-        <div className="odoo-alert" style={{ fontSize: '0.8125rem', background: 'var(--theme-bg-page)', border: '1px solid var(--theme-bg-separator)' }}>
-          <strong>Suivi cheques :</strong> tu as emis{' '}
-          <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(totalEmis)} DH</strong>{' '}
-          de cheques au total. Sur ce montant,{' '}
-          <strong style={{ fontFamily: 'ui-monospace, monospace', color: '#0e7c3a' }}>{n(counts.totalCashed)} DH</strong>{' '}
-          ont deja ete debites du compte et{' '}
-          <strong style={{ fontFamily: 'ui-monospace, monospace', color: '#856404' }}>{n(counts.totalPending)} DH</strong>{' '}
-          sont encore en attente d'encaissement.
-          {breakdown.overdue > 0 && (
-            <> Attention : <strong style={{ color: '#b71c1c' }}>{n(breakdown.overdue)} DH</strong> de cheques ont depasse leur echeance et peuvent etre presentes a tout moment — prevois la tresorerie.</>
-          )}
-        </div>
+      {breakdown.overdueCount > 0 && view === 'open' && dueWindow !== 'overdue' && (
+        <StatusBanner tone="danger" icon={AlertTriangle}
+          title={`${breakdown.overdueCount} chèque${breakdown.overdueCount > 1 ? 's' : ''} échu${breakdown.overdueCount > 1 ? 's' : ''} : ${n(breakdown.overdue)} DH`}
+          actions={<button type="button" className="odoo-btn-secondary" onClick={() => setDueWindow('overdue')}>Les afficher</button>}>
+          Ils peuvent être présentés à la banque à tout moment : prévoyez la trésorerie, et marquez-les encaissés dès qu'ils sont débités.
+        </StatusBanner>
       )}
 
-      {/* SECTION 2 : Pipeline d'encaissement — cartes cliquables qui filtrent la liste */}
-      {counts.pending > 0 && (() => {
-        const buckets = [
-          { key: 'overdue' as const, label: '⚠ En retard', amt: breakdown.overdue, count: breakdown.overdueCount, color: '#b71c1c', bg: '#fff5f5', border: '#f5c6cb' },
-          { key: 'next7d' as const, label: '≤ 7 jours', amt: breakdown.next7d, count: breakdown.next7dCount, color: '#856404', bg: '#fff9e6', border: '#ffeaa7' },
-          { key: 'next30d' as const, label: '8 - 30 jours', amt: breakdown.next30d, count: breakdown.next30dCount, color: 'var(--theme-text)', bg: 'var(--theme-bg-card)', border: 'var(--theme-bg-separator)' },
-          { key: 'later' as const, label: 'Plus tard', amt: breakdown.later, count: breakdown.laterCount, color: 'var(--theme-text)', bg: 'var(--theme-bg-card)', border: 'var(--theme-bg-separator)' },
-        ];
-        return (
-          <div>
-            <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 8, color: 'var(--theme-text)' }}>
-              Pipeline d'encaissement <span style={{ fontWeight: 400, color: 'var(--theme-text-muted)' }}>(clique une carte pour filtrer)</span>
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-              {buckets.map(b => {
-                const active = dueWindow === b.key;
-                const dim = b.count === 0;
-                return (
-                  <button
-                    key={b.key}
-                    type="button"
-                    onClick={() => setDueWindow(active ? 'all' : b.key)}
-                    disabled={dim}
-                    title={active ? `Annuler le filtre ${b.label}` : `Filtrer sur ${b.label}`}
-                    style={{
-                      padding: '12px 14px', borderRadius: 4,
-                      border: active ? `2px solid ${b.color}` : `1px solid ${b.border}`,
-                      background: b.bg, textAlign: 'left',
-                      cursor: dim ? 'default' : 'pointer',
-                      opacity: dim ? 0.55 : 1,
-                      transition: 'box-shadow 0.15s, transform 0.05s',
-                      boxShadow: active ? `0 2px 6px ${b.color}33` : 'none',
-                      transform: active ? 'translateY(-1px)' : 'none',
-                    }}>
-                    <div style={{ fontSize: '0.6875rem', color: b.color, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>
-                      {b.label}{active && ' ✓'}
-                    </div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 700, color: b.color, marginTop: 4, fontFamily: 'ui-monospace, monospace' }}>
-                      {n(b.amt)} DH
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                      {b.count} cheque{b.count > 1 ? 's' : ''}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Filtres : tous inline dans une seule barre — meme style que ChargesTab */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: '1 1 220px', minWidth: 180 }}>
-          <Search size={13} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-          <input type="text"
-            placeholder="Rechercher (beneficiaire, N° cheque, facture, BC, notes...)"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="odoo-search-input"
-            style={{ flex: 1, minWidth: 0 }} />
-          {searchTerm && (
-            <button onClick={() => setSearchTerm('')} title="Effacer la recherche"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--theme-text-muted)', display: 'inline-flex' }}>
-              <X size={12} />
-            </button>
-          )}
-        </div>
-        <SearchSelect
-          options={[
-            { id: 'pending', label: 'En attente', detail: `${counts.pending}` },
-            { id: 'cashed', label: 'Encaisses', detail: `${counts.cashed}` },
-            { id: 'all', label: 'Tous' },
-          ]}
-          value={statusFilter}
-          onChange={id => setStatusFilter((id || 'pending') as 'pending' | 'cashed' | 'all')}
-          placeholder="Statut"
-          width={180}
-        />
+      {/* Vue + filtres */}
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
+        <ViewSwitch view={view} onChange={switchView}
+          openLabel={`À encaisser · ${counts.pending}`} historyLabel={`Encaissés · ${counts.cashed}`} />
+        {view === 'open' && dueWindow !== 'all' && (
+          <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            Échéance : {CHECK_STAGES.find(s => s.key === dueWindow)?.label}
+            <button type="button" onClick={() => setDueWindow('all')} aria-label="Retirer le filtre d'échéance" style={{ display: 'inline-flex' }}><X size={11} /></button>
+          </span>
+        )}
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+          {groups.length} chèque{groups.length > 1 ? 's' : ''} · <strong style={{ color: 'var(--odoo-text)' }}>{n(groups.reduce((s, g) => s + g.totalAmount, 0))} DH</strong>
+        </span>
+      </div>
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+        <input type="text" aria-label="Rechercher un chèque"
+          placeholder="Rechercher (bénéficiaire, N° chèque, facture, BC, notes...)"
+          value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+          className="odoo-search-input" style={{ flex: '1 1 220px', minWidth: 0 }} />
+        <SelectFilter label="Moyen" icon={Receipt} value={methodFilter === 'all' ? '' : methodFilter}
+          onChange={v => setMethodFilter((v || 'all') as 'all' | 'check' | 'traite')}
+          options={[{ key: 'check', label: 'Chèque' }, { key: 'traite', label: 'Traite' }]} />
+        <PeriodFilter label={view === 'history' ? 'Encaissé' : 'Échéance'}
+          title={view === 'history' ? "Filtre sur la date d'encaissement" : "Filtre sur la date d'échéance"}
+          period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
         <SearchSelect
           options={uniqueSuppliers.map(name => ({ id: name, label: name }))}
           value={supplierFilter === 'all' ? '' : supplierFilter}
           onChange={id => setSupplierFilter(id || 'all')}
-          placeholder="Tous beneficiaires"
+          placeholder="Tous bénéficiaires"
         />
-        <SearchSelect
-          options={[
-            { id: 'check', label: 'Cheque' },
-            { id: 'traite', label: 'Traite' },
-          ]}
-          value={methodFilter === 'all' ? '' : methodFilter}
-          onChange={id => setMethodFilter((id || 'all') as 'all' | 'check' | 'traite')}
-          placeholder="Toutes methodes"
-          width={180}
-        />
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-          title="Filtre echeance">
-          <span style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>Du</span>
-          <input type="date" value={dueFromDate}
-            onChange={e => setDueFromDate(e.target.value)}
-            className="odoo-filter-dropdown"
-            style={{ padding: '4px 6px' }} />
-          <span style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>au</span>
-          <input type="date" value={dueToDate}
-            onChange={e => setDueToDate(e.target.value)}
-            className="odoo-filter-dropdown"
-            style={{ padding: '4px 6px' }} />
-        </div>
         {(hasActiveFilters || searchTerm) && (
-          <button onClick={() => { resetFilters(); setSearchTerm(''); }}
-            className="odoo-filter-dropdown" style={{ color: '#dc3545', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={11} /> Reinitialiser
+          <button type="button" onClick={() => { resetFilters(); setSearchTerm(''); }} className="odoo-btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <X size={12} /> Effacer les filtres
           </button>
         )}
-        <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--theme-text-muted)', alignSelf: 'center', display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-          <span>
-            {groups.length !== filtered.length
-              ? `${groups.length} cheques · ${filtered.length} paiements${filtered.length !== data.length ? ` (sur ${data.length})` : ''}`
-              : filtered.length !== data.length ? `${filtered.length} / ${data.length} resultats` : `${filtered.length} resultat${filtered.length > 1 ? 's' : ''}`}
-          </span>
-          <span style={{ fontWeight: 700, color: 'var(--theme-text-primary)', fontFamily: 'ui-monospace, monospace' }}
-            title="Total des montants des cheques affiches">
-            Total : {n(groups.reduce((s, g) => s + g.totalAmount, 0))} DH
-          </span>
-        </span>
       </div>
 
       {/* Tableau */}
@@ -3451,12 +3352,13 @@ function ChequesTab() {
                   onClick={() => { if (sortBy === 'amount') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('amount'); setSortDir('desc'); } }}>
                   Montant {sortBy === 'amount' && (sortDir === 'asc' ? '▲' : '▼')}
                 </th>
-                <th style={{ width: 100 }}>Statut</th>
-                <th style={{ width: 160, textAlign: 'right' }}>Actions</th>
+                <th style={{ width: 110 }}>Statut</th>
+                <th style={{ textAlign: 'right' }}>Prochaine action</th>
+                <th style={{ width: 60 }}></th>
               </tr>
             </thead>
             <tbody>
-              {groups.map(g => {
+              {pagedGroups.map(g => {
                 const c = g.first;
                 const multi = g.rows.length > 1;
                 const isExpanded = multi && expandedKeys.has(g.key);
@@ -3541,23 +3443,18 @@ function ChequesTab() {
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>
                       {n(g.totalAmount)} DH
                     </td>
-                    <td>
-                      {isCashed ? (
-                        <span className="odoo-tag" style={{ background: '#d4edda', color: '#0e7c3a' }}>Encaisse</span>
-                      ) : isOverdue ? (
-                        <span className="odoo-tag" style={{ background: '#f8d7da', color: '#b71c1c' }}>Retard</span>
-                      ) : (
-                        <span className="odoo-tag odoo-tag-orange">En attente</span>
+                    <td><CheckStatusDot status={isCashed ? 'cashed' : isOverdue ? 'overdue' : 'pending'} /></td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                      {!isCashed && (
+                        <button type="button" onClick={() => setConfirmingGroup(g)} className={isOverdue ? 'odoo-btn-danger' : 'odoo-btn-primary'}
+                          title="Le chèque a été débité du compte : enregistrer l'encaissement">
+                          Marquer encaissé
+                        </button>
                       )}
                     </td>
                     <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                      <div style={{ display: 'inline-flex', gap: 4 }}>
-                        {!isCashed ? (
-                          <button onClick={() => setConfirmingGroup(g)}
-                            className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', fontSize: '0.75rem' }}>
-                            <Check size={11} /> Marquer encaisse
-                          </button>
-                        ) : (
+                      <div style={{ display: 'inline-flex', gap: 2 }}>
+                        {isCashed && (
                           <button onClick={() => {
                             const msg = multi
                               ? `Annuler la confirmation d'encaissement ? Les ${g.rows.length} paiements du cheque repasseront en attente et seront retires des charges.`
@@ -3565,31 +3462,20 @@ function ChequesTab() {
                             if (confirm(msg)) unmarkMutation.mutate(g.rows.map(r => r.id));
                           }}
                             disabled={unmarkMutation.isPending}
-                            className="odoo-pager-btn" title="Annuler l'encaissement (cheque revient en attente)">
-                            <RotateCcw size={11} />
+                            className="odoo-pager-btn" title="Annuler l'encaissement (cheque revient en attente)" aria-label="Annuler l'encaissement">
+                            <RotateCcw size={13} />
                           </button>
                         )}
-                        {/* Suppression definitive : uniquement au niveau paiement.
+                        {/* Annulation motivée (mig 310) : uniquement au niveau paiement.
                             Pour un cheque multi-factures, deplier la ligne et supprimer
                             la facture concernee. */}
                         {!multi && (
-                          <button onClick={() => {
-                            const ctx = c.invoice_number ? `facture ${c.invoice_number}` :
-                                        c.purchase_order_number ? `BC ${c.purchase_order_number}` :
-                                        'paiement';
-                            const amount = parseFloat(c.amount).toFixed(2);
-                            const msg = `Supprimer DEFINITIVEMENT ce paiement ?\n\n` +
-                                        `Beneficiaire : ${c.supplier_name || c.employee_name || '—'}\n` +
-                                        `Montant : ${amount} DH\n` +
-                                        `Contexte : ${ctx}\n\n` +
-                                        `Cette action est irreversible. La facture associee sera ` +
-                                        `recalculee (statut + montant restant).`;
-                            if (confirm(msg)) deleteMutation.mutate(c.id);
-                          }}
-                            disabled={deleteMutation.isPending}
-                            className="odoo-pager-btn" title="Supprimer ce paiement (corriger erreur de saisie)"
-                            style={{ color: '#b71c1c' }}>
-                            <Trash2 size={11} />
+                          <button onClick={() => setVoidCheck({ id: c.id, amount: c.amount,
+                            label: c.invoice_number ? `facture ${c.invoice_number}` : c.purchase_order_number ? `BC ${c.purchase_order_number}` : (c.supplier_name || c.employee_name || 'paiement') })}
+                            disabled={deleteMutation.isPending || !!c.cashed_at}
+                            className="odoo-pager-btn" title={c.cashed_at ? 'Encaissé : annulez d\'abord l\'encaissement' : 'Annuler ce paiement (motif obligatoire)'}
+                            style={{ color: '#b71c1c' }} aria-label="Annuler ce paiement">
+                            <Ban size={13} />
                           </button>
                         )}
                       </div>
@@ -3623,29 +3509,14 @@ function ChequesTab() {
                       <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>
                         {n(parseFloat(r.amount))} DH
                       </td>
-                      <td>
-                        {r.status === 'cashed' ? (
-                          <span className="odoo-tag" style={{ background: '#d4edda', color: '#0e7c3a', fontSize: '0.6875rem' }}>Encaisse</span>
-                        ) : r.status === 'overdue' ? (
-                          <span className="odoo-tag" style={{ background: '#f8d7da', color: '#b71c1c', fontSize: '0.6875rem' }}>Retard</span>
-                        ) : (
-                          <span className="odoo-tag odoo-tag-orange" style={{ fontSize: '0.6875rem' }}>En attente</span>
-                        )}
-                      </td>
+                      <td><CheckStatusDot status={r.status === 'cashed' ? 'cashed' : r.status === 'overdue' ? 'overdue' : 'pending'} /></td>
+                      <td />
                       <td style={{ textAlign: 'right' }}>
-                        <button onClick={() => {
-                          const amount = parseFloat(r.amount).toFixed(2);
-                          const msg = `Retirer cette facture du cheque ${c.check_number || ''} ?\n\n` +
-                                      `Facture : ${r.invoice_number || '—'}\n` +
-                                      `Montant : ${amount} DH\n\n` +
-                                      `Le paiement est supprime definitivement ; la facture sera ` +
-                                      `recalculee (statut + montant restant).`;
-                          if (confirm(msg)) deleteMutation.mutate(r.id);
-                        }}
-                          disabled={deleteMutation.isPending}
-                          className="odoo-pager-btn" title="Retirer cette facture du cheque (supprime le paiement)"
+                        <button onClick={() => setVoidCheck({ id: r.id, amount: r.amount, label: `facture ${r.invoice_number || '—'} (chèque ${c.check_number || ''})` })}
+                          disabled={deleteMutation.isPending || !!r.cashed_at}
+                          className="odoo-pager-btn" title="Annuler la part de ce chèque sur cette facture (motif obligatoire)"
                           style={{ color: '#b71c1c' }}>
-                          <Trash2 size={11} />
+                          <Ban size={11} />
                         </button>
                       </td>
                     </tr>
@@ -3655,6 +3526,8 @@ function ChequesTab() {
               })}
             </tbody>
           </table>
+          <Pager page={page} total={groups.length} onPage={setPage}
+            note={view === 'open' ? 'Chèques et traites émis, pas encore débités' : `Encaissés · ${periodLabel(period, customFrom, customTo)}`} />
         </div>
       )}
 
@@ -3673,6 +3546,13 @@ function ChequesTab() {
           })}
           isPending={markMutation.isPending}
         />
+      )}
+      {voidCheck && (
+        <ReasonCodeDialog title={`Annuler le paiement de ${n(parseFloat(voidCheck.amount))} DH`} scope="void_payment"
+          description={`Concerne : ${voidCheck.label}. Le paiement reste dans l'historique, une contre-pièce le neutralise et son écriture est extournée. Il pourra être ré-émis depuis les paiements de la facture.`}
+          confirmLabel="Annuler le paiement" danger pending={deleteMutation.isPending}
+          onClose={() => setVoidCheck(null)}
+          onSubmit={(v) => deleteMutation.mutate({ id: voidCheck.id, reasonCodeId: v.reasonCodeId, note: v.note })} />
       )}
     </>
   );
@@ -3951,3 +3831,74 @@ function ResumeTab() {
 
 /* ============ CASCADE CATEGORY SELECTOR ============ */
 
+
+/**
+ * Mouvement interne (mig 310, G-D7-17) : versement d'espèces en banque, retrait.
+ * Ni charge ni fournisseur : écriture banque D / caisse C (ou l'inverse).
+ */
+function InternalTransferModal({ accounts, pending, onClose, onSubmit }: {
+  accounts: { id: string; label: string; kind: 'cash' | 'bank' }[]; pending?: boolean; onClose: () => void;
+  onSubmit: (d: { fromAccountId: string; toAccountId: string; amount: number; paymentDate: string; reference?: string; description?: string }) => void;
+}) {
+  const cash = accounts.find(a => a.kind === 'cash');
+  const bank = accounts.find(a => a.kind === 'bank');
+  const [fromId, setFromId] = useState(cash?.id ?? '');
+  const [toId, setToId] = useState(bank?.id ?? '');
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [reference, setReference] = useState('');
+  const [description, setDescription] = useState('');
+  const from = accounts.find(a => a.id === fromId);
+  const refRequired = from?.kind === 'bank';
+  const amt = parseFloat(amount) || 0;
+  const valid = !!fromId && !!toId && fromId !== toId && amt > 0 && !!date && (!refRequired || reference.trim().length > 0);
+  const field = 'w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400';
+  const lbl: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 460, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb"><ArrowLeftRight size={14} style={{ color: 'var(--theme-accent)' }} /><span className="odoo-breadcrumb-current">Mouvement interne</span></div>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+        </div>
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          if (!valid) return;
+          onSubmit({ fromAccountId: fromId, toAccountId: toId, amount: Math.round(amt * 100) / 100, paymentDate: date,
+            reference: reference.trim() || undefined, description: description.trim() || undefined });
+        }} style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+            Un versement d'espèces en banque n'est pas une dépense : il ne touche ni les charges ni le plafond espèces des fournisseurs.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label style={lbl}>De *</label>
+              <select value={fromId} onChange={e => setFromId(e.target.value)} className={field}>
+                {accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+              </select></div>
+            <div><label style={lbl}>Vers *</label>
+              <select value={toId} onChange={e => setToId(e.target.value)} className={field}>
+                {accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+              </select></div>
+          </div>
+          {fromId === toId && <p style={{ margin: 0, fontSize: '0.75rem', color: '#b71c1c' }}>Choisissez deux comptes différents.</p>}
+          <div className="grid grid-cols-2 gap-3">
+            <div><label style={lbl}>Montant *</label>
+              <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} className={field} required /></div>
+            <div><label style={lbl}>Date *</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} className={field} required /></div>
+          </div>
+          <div><label style={lbl}>{refRequired ? 'Référence bancaire *' : 'Référence (bordereau de versement)'}</label>
+            <input value={reference} onChange={e => setReference(e.target.value)} className={field} /></div>
+          <div><label style={lbl}>Note</label>
+            <input value={description} onChange={e => setDescription(e.target.value)} className={field} placeholder="Optionnel" /></div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+            <button type="submit" disabled={!valid || pending} className="odoo-btn-primary">Enregistrer</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

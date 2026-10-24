@@ -110,6 +110,54 @@ export const productionContenantRepository = {
     return this.updateContenant(id, { is_active: false });
   },
 
+  /**
+   * Ce qui empeche la suppression definitive d'un contenant. Liste vide =
+   * supprimable.
+   *
+   * Toutes les FK qui pointent production_contenants sont en RESTRICT /
+   * NO ACTION : un DELETE sur un contenant utilise echouerait de toute facon.
+   * Ce controle en amont sert a (a) rendre un message exploitable (« utilise
+   * par 3 format(s) ») au lieu d'une violation de contrainte brute, et (b)
+   * decider du repli sur la desactivation sans avoir a parser une erreur PG.
+   *
+   * Le referentiel a deux chemins vers le contenant (formats de recette d'un
+   * cote, profil produit de l'autre) : les deux sont verifies, plus les plans
+   * de production et le stock semi-fini qui l'historisent.
+   */
+  async findContenantBlockers(id: string): Promise<string[]> {
+    const usage = await db.query(
+      `SELECT
+         (SELECT COUNT(*) FROM recipe_formats            WHERE contenant_id = $1)        AS formats,
+         (SELECT COUNT(*) FROM recipes                   WHERE contenant_id = $1)        AS recettes,
+         (SELECT COUNT(*) FROM produit_profil_production WHERE contenant_id = $1)        AS produits,
+         (SELECT COUNT(*) FROM production_plan_items     WHERE contenant_id = $1)        AS plans,
+         (SELECT COUNT(*) FROM stock_semifini_frigo      WHERE source_contenant_id = $1) AS stock`,
+      [id]
+    );
+    const u = usage.rows[0];
+    const blockers: string[] = [];
+    if (Number(u.formats) > 0) blockers.push(`${u.formats} format(s) de recette`);
+    if (Number(u.recettes) > 0) blockers.push(`${u.recettes} recette(s)`);
+    if (Number(u.produits) > 0) blockers.push(`${u.produits} profil(s) produit`);
+    if (Number(u.plans) > 0) blockers.push(`${u.plans} ligne(s) de plan`);
+    if (Number(u.stock) > 0) blockers.push(`${u.stock} lot(s) de stock semi-fini`);
+    return blockers;
+  },
+
+  /** Suppression definitive. Echoue si le contenant est reference quelque part. */
+  async deleteContenant(id: string) {
+    const contenant = await this.findContenantById(id);
+    if (!contenant) throw new Error('Format introuvable');
+
+    const blockers = await this.findContenantBlockers(id);
+    if (blockers.length > 0) {
+      throw new Error(`Utilise par ${blockers.join(', ')} — desactivez-le plutot`);
+    }
+
+    await db.query(`DELETE FROM production_contenants WHERE id = $1`, [id]);
+    return contenant;
+  },
+
   // ───────── PROFILS PRODUIT ─────────
 
   async findProfileByProductId(productId: string) {
@@ -247,14 +295,4 @@ export const productionContenantRepository = {
 
   // ───────── LABELS ─────────
 
-  getTypeProductionLabel(type: number): string {
-    const labels: Record<number, string> = {
-      1: 'Moule / Decoupe',
-      2: 'Entremets monte',
-      3: 'Pieces individuelles',
-      4: 'Petrissage / Cuisson',
-      5: 'Laminage / Cuisson',
-    };
-    return labels[type] || 'Inconnu';
-  },
 };

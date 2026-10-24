@@ -1,6 +1,7 @@
 import api from './client';
 
 export const productLossesApi = {
+  /** Filtres : month, year, lossType, productId, productionPlanId. */
   list: (params?: Record<string, string>) =>
     api.get('/product-losses', { params }).then(r => r.data.data),
 

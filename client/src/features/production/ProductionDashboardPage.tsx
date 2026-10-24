@@ -1,11 +1,17 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { productionEtapesApi } from '../../api/production-etapes.api';
 import { productionCoutApi } from '../../api/production-cout.api';
+import { productionApi } from '../../api/production.api';
 import { useAuth } from '../../context/AuthContext';
+import { notify } from '../../components/ui/InlineNotification';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { apiErrorMessage } from '../../api/errors';
+import { PRODUCTION_STATUS_LABELS } from '@ofauria/shared';
 import {
   TrendingUp, TrendingDown, DollarSign, Scale, Package, Users, Zap,
-  AlertTriangle, Calendar, BarChart3, PieChart, Loader2
+  AlertTriangle, Calendar, BarChart3, PieChart, Loader2, RotateCcw
 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 
@@ -23,7 +29,7 @@ export default function ProductionDashboardPage() {
     enabled: !!storeId,
   });
 
-  const { data: rendementByProduct = [], isLoading: loadingByProduct } = useQuery({
+  const { data: rendementByProduct = [] } = useQuery({
     queryKey: ['rendement-by-product', storeId, dateFrom, dateTo],
     queryFn: () => productionEtapesApi.rendementByProduct(storeId, dateFrom, dateTo),
     enabled: !!storeId,
@@ -35,10 +41,46 @@ export default function ProductionDashboardPage() {
     enabled: !!storeId,
   });
 
-  const { data: coutByDay = [], isLoading: loadingByDay } = useQuery({
+  const { data: coutByDay = [] } = useQuery({
     queryKey: ['cout-by-day', storeId, dateFrom, dateTo],
     queryFn: () => productionCoutApi.costByDay(storeId, dateFrom, dateTo),
     enabled: !!storeId,
+  });
+
+  // ═══ Plans bloques, relancables ═══
+  // Deux signaux de blocage : des articles annules / en attente, ou des warnings
+  // laisses par une confirmation sur referentiel incomplet (produit sans recette
+  // -> aucun besoin calcule, aucun BSI).
+  const queryClient = useQueryClient();
+  const confirmDialog = useConfirm();
+  const navigate = useNavigate();
+
+  const { data: plansData } = useQuery({
+    queryKey: ['production', 'relaunchable'],
+    queryFn: () => productionApi.list({ limit: '100' }),
+  });
+  const blockedPlans = ((plansData?.data || []) as Record<string, any>[]).filter(
+    (p) => p.status !== 'draft'
+      && (Number(p.relaunchable_count) > 0 || ((p.warnings as string[] | null)?.length ?? 0) > 0)
+  );
+
+  const relaunchMutation = useMutation({
+    mutationFn: (planId: string) => productionApi.relaunch(planId),
+    onSuccess: (result: Record<string, any>) => {
+      queryClient.invalidateQueries({ queryKey: ['production'] });
+      const count = (result?.meta?.relaunchedCount as number) ?? 0;
+      const quoi = [
+        count > 0 ? `${count} article(s) remis en production` : null,
+        result?.meta?.recomputed ? 'besoins et bon de sortie recalcules' : null,
+      ].filter(Boolean).join(', ');
+      notify.success(`Plan relance — ${quoi}`);
+      (result?.warnings as string[] | undefined)?.forEach((w) => notify(w, { icon: '⚠️', duration: 6000 }));
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+        || 'Erreur lors de la relance du plan';
+      notify.error(msg);
+    },
   });
 
   const formatDH = (val: unknown) => {
@@ -96,6 +138,77 @@ export default function ProductionDashboardPage() {
               color={parseFloat(coutStats?.avg_ecart_pct || '0') <= 5 ? 'emerald' : 'red'}
               sub="Prevu vs Reel" />
           </div>
+
+          {/* ═══ Plans a relancer ═══ */}
+          {blockedPlans.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
+                <RotateCcw size={16} className="text-blue-500" />
+                <h2 className="font-semibold text-gray-900 text-sm">Plans a relancer</h2>
+                <span className="text-[11px] text-gray-400">
+                  articles annules / en attente, ou plan confirme sur un referentiel incomplet
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                      <th className="text-left px-5 py-2.5">Plan</th>
+                      <th className="text-left px-3 py-2.5">Date</th>
+                      <th className="text-left px-3 py-2.5">Statut</th>
+                      <th className="text-center px-3 py-2.5">A relancer</th>
+                      <th className="text-right px-5 py-2.5">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {blockedPlans.map((p) => (
+                      <tr key={p.id as string} className="border-b border-gray-50 hover:bg-gray-50/60">
+                        <td className="px-5 py-2.5 font-mono font-semibold text-gray-900 cursor-pointer"
+                          onClick={() => navigate(`/production/${p.id}`)}>
+                          {(p.id as string).slice(0, 8).toUpperCase()}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-600">
+                          {format(new Date(p.plan_date as string), 'dd/MM/yyyy')}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-600">
+                          {PRODUCTION_STATUS_LABELS[p.status as keyof typeof PRODUCTION_STATUS_LABELS] || (p.status as string)}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          {Number(p.relaunchable_count) > 0 ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700">
+                              {p.relaunchable_count as number} article(s)
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700"
+                              title={((p.warnings as string[] | null) || []).join('\n')}>
+                              besoins a recalculer
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-2.5 text-right">
+                          <button
+                            onClick={async () => {
+                              const nb = Number(p.relaunchable_count) || 0;
+                              const detail = nb > 0
+                                ? `${nb} article(s) annule(s) ou en attente repassent en production, et les besoins seront recalcules.`
+                                : 'Les besoins en ingredients et le bon de sortie seront recalcules depuis les recettes actuelles.';
+                              if (await confirmDialog(`${detail}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer ce plan ?', confirmLabel: 'Relancer' })) {
+                                relaunchMutation.mutate(p.id as string);
+                              }
+                            }}
+                            disabled={relaunchMutation.isPending}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                          >
+                            <RotateCcw size={12} /> Relancer
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* ═══ Cost breakdown cards ═══ */}
           {coutStats && (

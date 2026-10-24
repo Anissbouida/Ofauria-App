@@ -5,12 +5,18 @@ import { receptionVoucherRepository } from '../repositories/reception-voucher.re
 import { generatePurchaseOrderPdf } from '../services/purchase-order-pdf.service.js';
 import { db } from '../config/database.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
+import { purchaseOrderActionsRepository } from '../repositories/purchase-order-actions.repository.js';
 import { existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { loadCompanyLegal } from '../utils/company-legal.js';
 import { checkApprovalLimit } from '../services/governance.js';
 import { effectiveScopeFor, scopeStoreFilter } from '../services/access-rights.js';
+
+// Admin global : voit tous les BC, peu importe le store_id. Sinon, restreint au store de l'utilisateur.
+function effectiveStoreFilter(req: AuthRequest): string | undefined {
+  return req.user!.role === 'admin' ? undefined : req.user!.storeId;
+}
 
 /**
  * Portée des données appliquée aux bons de commande (mig 335/336, déclarative) :
@@ -30,6 +36,35 @@ export const purchaseOrderController = {
     const data = await purchaseOrderRepository.findAll({
       supplierId, status, dateFrom, dateTo, storeId, createdBy,
     });
+    res.json({ success: true, data });
+  },
+
+  /** Écran BC : liste paginée par étape (en cours) ou par période (historique). */
+  async board(req: AuthRequest, res: Response) {
+    const q = req.query as Record<string, string>;
+    const view = q.view === 'history' ? 'history' : 'open';
+    const STAGES = ['draft', 'sent', 'partial', 'invoice', 'closed', 'cancelled'];
+    const STATUSES = ['en_attente', 'envoye', 'livre_partiel', 'livre_complet', 'en_attente_facturation', 'non_livre', 'annule'];
+    const isDate = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined);
+    const pageSize = Math.min(Math.max(parseInt(q.pageSize || '25', 10) || 25, 1), 100);
+    const page = Math.max(parseInt(q.page || '1', 10) || 1, 1);
+    const { rows, total } = await purchaseOrderRepository.findBoard({
+      storeId: effectiveStoreFilter(req),
+      view,
+      stage: STAGES.includes(q.stage) ? q.stage : undefined,
+      status: STATUSES.includes(q.status) ? q.status : undefined,
+      supplierId: q.supplierId || undefined,
+      search: q.search?.trim() || undefined,
+      dateFrom: isDate(q.dateFrom),
+      dateTo: isDate(q.dateTo),
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    });
+    res.json({ success: true, data: { rows, total, page, pageSize } });
+  },
+
+  async pipeline(req: AuthRequest, res: Response) {
+    const data = await purchaseOrderRepository.pipelineSummary(effectiveStoreFilter(req));
     res.json({ success: true, data });
   },
 
@@ -68,6 +103,7 @@ export const purchaseOrderController = {
         createdBy: req.user!.userId, storeId: req.user!.storeId,
         items,
       });
+      await purchaseOrderActionsRepository.log(po.id, 'created', req.user!.userId);
       res.status(201).json({ success: true, data: po });
     } catch (err) {
       console.error('[purchaseOrder.create] Error:', err);
@@ -94,7 +130,8 @@ export const purchaseOrderController = {
       });
       return;
     }
-    const updated = await purchaseOrderRepository.updateStatus(req.params.id, 'envoye');
+    // Envoi motive et journalise (mig 306), apres le plafond d'approbation ci-dessus.
+    const updated = await purchaseOrderActionsRepository.send(req.params.id, req.user!.userId, effectiveStoreFilter(req));
     res.json({ success: true, data: updated });
   },
 
@@ -117,6 +154,9 @@ export const purchaseOrderController = {
         req.params.id, items, req.user!.userId, stockStoreId,
         supplierInvoiceNumber, supplierInvoiceDate, forceComplete
       );
+      await purchaseOrderActionsRepository.log(req.params.id, 'received', req.user!.userId, {
+        note: [supplierInvoiceNumber ? `facture fournisseur ${supplierInvoiceNumber}` : null, forceComplete ? 'reliquat clôturé à la réception' : null].filter(Boolean).join(' · ') || null,
+      });
       res.json({ success: true, data: result });
     } catch (err: unknown) {
       console.error('[confirmDelivery] Error:', err);
@@ -126,21 +166,73 @@ export const purchaseOrderController = {
     }
   },
 
+  /** Motif obligatoire (mig 306). Corps validé par reasonCodeSchema. */
   async markNotDelivered(req: AuthRequest, res: Response) {
-    const po = await purchaseOrderRepository.findById(req.params.id);
-    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
-    const updated = await purchaseOrderRepository.updateStatus(req.params.id, 'non_livre');
+    const updated = await purchaseOrderActionsRepository.markNotDelivered(req.params.id, req.body, req.user!.userId, effectiveStoreFilter(req));
     res.json({ success: true, data: updated });
   },
 
+  /** Motif obligatoire (mig 306). Corps validé par reasonCodeSchema. */
   async cancel(req: AuthRequest, res: Response) {
-    const po = await purchaseOrderRepository.findById(req.params.id);
-    if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
-    if (['livre_complet', 'annule'].includes(po.status)) {
-      res.status(409).json({ success: false, error: { message: 'Impossible d\'annuler ce bon de commande' } });
-      return;
-    }
-    const updated = await purchaseOrderRepository.updateStatus(req.params.id, 'annule');
+    const updated = await purchaseOrderActionsRepository.cancel(req.params.id, req.body, req.user!.userId, effectiveStoreFilter(req));
+    res.json({ success: true, data: updated });
+  },
+
+  /** Clôture du reliquat d'une ligne (lineId) ou de tout le BC, motif obligatoire (mig 307). */
+  async closeRemainder(req: AuthRequest, res: Response) {
+    const updated = await purchaseOrderActionsRepository.closeRemainder(
+      req.params.id, req.params.lineId ?? null, req.body, req.user!.userId, effectiveStoreFilter(req));
+    res.json({ success: true, data: updated });
+  },
+
+  async reopenRemainder(req: AuthRequest, res: Response) {
+    const updated = await purchaseOrderActionsRepository.reopenRemainder(
+      req.params.id, req.params.lineId, req.body.note ?? null, req.user!.userId, effectiveStoreFilter(req));
+    res.json({ success: true, data: updated });
+  },
+
+  /** Correction d'une ligne de réception (+/−), motif obligatoire (mig 308). */
+  async correctReceipt(req: AuthRequest, res: Response) {
+    const result = await receptionVoucherRepository.correctReceiptLine(
+      req.params.id, req.params.lineId, req.body.delta,
+      { reasonCodeId: req.body.reasonCodeId, note: req.body.note ?? null },
+      req.user!.userId, req.user!.role === 'admin');
+    await purchaseOrderActionsRepository.log(req.params.id, 'changed', req.user!.userId, {
+      note: `correction de réception ${req.body.delta > 0 ? '+' : ''}${req.body.delta}${req.body.note ? ` · ${req.body.note}` : ''}`,
+      diff: { line_id: req.params.lineId, delta: req.body.delta },
+    });
+    res.json({ success: true, data: result });
+  },
+
+  /** Avenant motivé sur un BC engagé : nouvelle version numérotée (mig 307). */
+  async changeOrder(req: AuthRequest, res: Response) {
+    const updated = await purchaseOrderActionsRepository.changeOrder(req.params.id, req.body, req.user!.userId, effectiveStoreFilter(req));
+    res.json({ success: true, data: updated });
+  },
+
+  async versions(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await purchaseOrderActionsRepository.versions(req.params.id) });
+  },
+
+  /** Blocage : ni réception ni facture tant qu'il n'est pas levé. Motif obligatoire. */
+  async hold(req: AuthRequest, res: Response) {
+    const updated = await purchaseOrderActionsRepository.hold(req.params.id, req.body, req.user!.userId, effectiveStoreFilter(req));
+    res.json({ success: true, data: updated });
+  },
+
+  async release(req: AuthRequest, res: Response) {
+    const updated = await purchaseOrderActionsRepository.release(req.params.id, req.body.note ?? null, req.user!.userId, effectiveStoreFilter(req));
+    res.json({ success: true, data: updated });
+  },
+
+  /** Gel / dégel (admin) : en-tête et lignes figés quel que soit le statut. */
+  async freeze(req: AuthRequest, res: Response) {
+    const updated = await purchaseOrderActionsRepository.setFrozen(req.params.id, true, req.body.note ?? null, req.user!.userId, effectiveStoreFilter(req));
+    res.json({ success: true, data: updated });
+  },
+
+  async unfreeze(req: AuthRequest, res: Response) {
+    const updated = await purchaseOrderActionsRepository.setFrozen(req.params.id, false, req.body.note ?? null, req.user!.userId, effectiveStoreFilter(req));
     res.json({ success: true, data: updated });
   },
 
@@ -151,9 +243,13 @@ export const purchaseOrderController = {
    */
   async cancelReception(req: AuthRequest, res: Response) {
     try {
+      // Extourne par contre-pièce, motif obligatoire (mig 308).
       const result = await receptionVoucherRepository.cancelForPurchaseOrder(
-        req.params.id, req.user!.userId
+        req.params.id, req.user!.userId, { reasonCodeId: req.body.reasonCodeId, note: req.body.note ?? null }
       );
+      await purchaseOrderActionsRepository.log(req.params.id, 'reversed', req.user!.userId, {
+        note: `extourne de la réception (${(result.reversalNumbers as string[]).join(', ')})${req.body.note ? ` · ${req.body.note}` : ''}`,
+      });
       res.json({ success: true, data: result });
     } catch (err) {
       console.error('[cancelReception] Error:', err);
@@ -166,11 +262,14 @@ export const purchaseOrderController = {
   async remove(req: AuthRequest, res: Response) {
     const po = await purchaseOrderRepository.findById(req.params.id);
     if (!po) { res.status(404).json({ success: false, error: { message: 'Bon de commande non trouve' } }); return; }
-    if (!['en_attente', 'annule'].includes(po.status)) {
-      res.status(409).json({ success: false, error: { message: 'Seuls les bons en attente ou annules peuvent etre supprimes' } });
+    // Seul un brouillon jamais engagé se supprime ; un BC engagé s'annule (règle aussi en base, mig 307).
+    if (po.status !== 'en_attente' || po.locked_at) {
+      res.status(409).json({ success: false, error: { message: 'Seul un bon de commande en brouillon peut être supprimé : un BC engagé s\'annule' } });
       return;
     }
     try {
+      // Journal avant suppression : la trace survit au document (document_actions n'a pas de FK).
+      await purchaseOrderActionsRepository.log(req.params.id, 'deleted', req.user!.userId, { note: po.order_number as string });
       await purchaseOrderRepository.delete(req.params.id);
       res.json({ success: true, data: null });
     } catch (err) {
@@ -219,10 +318,14 @@ export const purchaseOrderController = {
         expectedDeliveryDate: body.expectedDeliveryDate as string | null | undefined,
         notes: body.notes as string | null | undefined,
       });
+      await purchaseOrderActionsRepository.log(req.params.id, 'changed', req.user!.userId, {
+        diff: { header: { supplierId: body.supplierId, expectedDeliveryDate: body.expectedDeliveryDate, notes: body.notes } },
+      });
       res.json({ success: true, data: updated });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur lors de la mise a jour';
-      res.status(400).json({ success: false, error: { message: msg } });
+      // BC verrouillé (mig 306) : 409, sinon erreur de saisie.
+      res.status((err as { code?: string })?.code === 'OF409' ? 409 : 400).json({ success: false, error: { message: msg } });
     }
   },
 
@@ -270,10 +373,11 @@ export const purchaseOrderController = {
       const updated = await purchaseOrderRepository.replaceItems(
         req.params.id, items, req.user!.userId, stockStoreId
       );
+      await purchaseOrderActionsRepository.log(req.params.id, 'changed', req.user!.userId, { diff: { lines: items.length } });
       res.json({ success: true, data: updated });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur lors de la mise a jour des lignes';
-      res.status(400).json({ success: false, error: { message: msg } });
+      res.status((err as { code?: string })?.code === 'OF409' ? 409 : 400).json({ success: false, error: { message: msg } });
     }
   },
 
@@ -354,6 +458,13 @@ export const purchaseOrderController = {
         [po.supplier_id]
       );
       const supplier = supplierResult.rows[0] || {};
+      // Identifiants légaux (mig 304) : mentions obligatoires sur notre pièce (CGI art. 145).
+      const supplierIdentifiers = await db.query(
+        `SELECT t.label, i.value, i.qualifier
+           FROM supplier_identifiers i JOIN identifier_types t ON t.code = i.type_code
+          WHERE i.supplier_id = $1 ORDER BY t.display_order`,
+        [po.supplier_id]
+      );
 
       // Get company settings
       const settings = await settingsRepository.get();
@@ -412,6 +523,7 @@ export const purchaseOrderController = {
         supplierPhone: supplier.phone || '',
         supplierEmail: supplier.email || '',
         supplierAddress: supplier.address || '',
+        supplierIdentifiers: supplierIdentifiers.rows,
         items,
         totalHT,
         companyName: legal.name,

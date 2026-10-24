@@ -68,7 +68,10 @@ export const inventoryRepository = {
     const result = await db.query(
       `SELECT inv.*, ing.name as ingredient_name, ing.unit, ing.category
        FROM inventory inv JOIN ingredients ing ON ing.id = inv.ingredient_id
-       WHERE inv.current_quantity <= inv.minimum_threshold${storeFilter}
+       -- Seuil 0 = « pas de seuil » : sans ce garde-fou, tout article à 0 sans seuil
+       -- remontait en stock bas (0 <= 0) avec une quantité à commander nulle.
+       WHERE inv.minimum_threshold > 0
+         AND inv.current_quantity <= inv.minimum_threshold${storeFilter}
        ORDER BY (inv.current_quantity / NULLIF(inv.minimum_threshold, 0))`,
       params
     );
@@ -285,12 +288,20 @@ export const inventoryRepository = {
 
 export const ingredientRepository = {
   async findAll() {
-    const result = await db.query('SELECT * FROM ingredients ORDER BY name');
+    const result = await db.query(
+      `SELECT ing.*, ct.label AS container_type_label
+         FROM ingredients ing
+         LEFT JOIN ref_entries ct ON ct.id = ing.container_type_id
+        ORDER BY ing.name`);
     return result.rows;
   },
 
   async findById(id: string) {
-    const result = await db.query('SELECT * FROM ingredients WHERE id = $1', [id]);
+    const result = await db.query(
+      `SELECT ing.*, ct.label AS container_type_label
+         FROM ingredients ing
+         LEFT JOIN ref_entries ct ON ct.id = ing.container_type_id
+        WHERE ing.id = $1`, [id]);
     return result.rows[0] || null;
   },
 

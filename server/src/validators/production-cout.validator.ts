@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const createEquipementSchema = z.object({
   nom: z.string().min(1).max(200),
-  type: z.enum(['four', 'batteur', 'petrin', 'laminoir', 'surgele', 'frigo', 'autre']),
+  type: z.enum(['four', 'batteur', 'petrin', 'laminoir', 'surgele', 'frigo', 'vitrine', 'autre']),
   cout_horaire: z.number().min(0).default(0),
   puissance_kw: z.number().min(0).optional(),
   cout_kwh: z.number().min(0).default(1.50),

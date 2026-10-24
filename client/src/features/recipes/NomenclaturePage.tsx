@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ChefHat, Layers } from 'lucide-react';
+import { ArrowLeft, ChefHat, Layers, Pencil } from 'lucide-react';
+import RecipeCreateDialog from './RecipeCreateDialog';
 import { recipesApi } from '../../api/recipes.api';
 import NomenclatureEditor, { type FormatKpi } from './NomenclatureEditor';
+import EtapesSection from './EtapesSection';
 
 const dh = (v: number) => `${v.toFixed(2)} DH`;
 
@@ -12,6 +14,7 @@ export default function NomenclaturePage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [kpi, setKpi] = useState<FormatKpi | null>(null);
+  const [editIdentity, setEditIdentity] = useState(false);
 
   const { data: recipe, isLoading } = useQuery({ queryKey: ['recipe', id], queryFn: () => recipesApi.getById(id!), enabled: !!id });
 
@@ -49,7 +52,7 @@ export default function NomenclaturePage() {
           coût de PRODUCTION (matière + MO + énergie + structure), avec le coût
           matière en second plan — auparavant elle montrait la matière seule, ce qui
           rendait la marge inexplicable pour qui refaisait le calcul. */}
-      <div className="odoo-smart-button-row">
+      <div className="odoo-smart-button-row" style={{ position: 'sticky', top: 46, zIndex: 9 }}>
         <div className="odoo-smart-button">
           <div className="odoo-smart-button-value">{kpi ? kpi.rendement : '—'}</div>
           <div className="odoo-smart-button-label"><Layers size={11} /> Rendement {kpi?.contenantNom ? `(${kpi.contenantNom})` : '(pièces/fournée)'}</div>
@@ -76,12 +79,22 @@ export default function NomenclaturePage() {
           <Layers size={20} style={{ color: 'var(--theme-accent)' }} />
           <h1 className="text-xl font-semibold" style={{ color: 'var(--theme-text-strong)' }}>{recipe.name}</h1>
           {recipe.product_name && <span className="text-sm text-gray-500">· {recipe.product_name}</span>}
+          <button type="button" onClick={() => setEditIdentity(true)} className="odoo-pager-btn" title="Modifier le nom ou la catégorie">
+            <Pencil size={13} />
+          </button>
         </div>
+        {editIdentity && (
+          <RecipeCreateDialog recipe={{ id: recipe.id, name: recipe.name, category_id: recipe.category_id ?? null, is_base: false }}
+            onClose={() => setEditIdentity(false)} />
+        )}
         <p className="text-sm text-gray-500 mb-4">
           La composition est définie <strong>par format (contenant)</strong> : chaque contenant a sa propre liste de quantités. Sélectionne ou ajoute un format ci-dessous.
         </p>
 
         <NomenclatureEditor recipeId={recipe.id} onFinance={setKpi} onCancel={() => navigate('/recipes?tab=product')} onSaved={() => qc.invalidateQueries({ queryKey: ['recipe', id] })} />
+
+        {/* Mode opératoire : il n'apparaissait jusqu'ici que sur la fiche PDF. */}
+        <EtapesSection etapes={recipe.etapes || []} recipeId={recipe.id} />
       </div>
     </div>
   );

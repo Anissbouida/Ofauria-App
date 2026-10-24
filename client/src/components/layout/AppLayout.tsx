@@ -119,7 +119,7 @@ export default function AppLayout() {
   }
 
   const homeItem = isNavItemVisible(NAV_HOME, hasModule) ? NAV_HOME : null;
-  const userGroups = visibleNavGroups(hasModule);
+  const userGroups = visibleNavGroups(hasModule, user?.role);
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-100">
@@ -153,8 +153,8 @@ export default function AppLayout() {
         </div>
       )}
 
-      {/* Main content — pas de padding sur les pages Économat (style Odoo full-width) */}
-      <main className={`flex-1 overflow-auto ${(location.pathname.startsWith('/inventory') || location.pathname.startsWith('/recipes') || location.pathname.startsWith('/products') || location.pathname.startsWith('/production') || location.pathname.startsWith('/replenishment') || location.pathname.startsWith('/warehouse') || location.pathname.startsWith('/accounting') || location.pathname.startsWith('/sales') || location.pathname.startsWith('/purchasing') || location.pathname.startsWith('/orders')) ? '' : 'p-6'}`}>
+      {/* Main content — pas de padding sur les pages Stock (style Odoo full-width) */}
+      <main className={`flex-1 overflow-auto ${(location.pathname.startsWith('/stock') || location.pathname.startsWith('/recipes') || location.pathname.startsWith('/products') || location.pathname.startsWith('/production') || location.pathname.startsWith('/replenishment') || location.pathname.startsWith('/accounting') || location.pathname.startsWith('/sales') || location.pathname.startsWith('/purchasing') || location.pathname.startsWith('/orders')) ? '' : 'p-6'}`}>
         <Outlet />
       </main>
 

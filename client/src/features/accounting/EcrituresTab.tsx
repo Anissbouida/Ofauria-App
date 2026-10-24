@@ -1,13 +1,16 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, X, Download, Loader2, Notebook, Lock, FileText, Calendar, ChevronLeft, ChevronRight, ChevronDown, Eye, Wand2,
+  CheckCircle2, AlertTriangle, Filter,
 } from 'lucide-react';
 import { journalEntriesApi, journalsApi, reconciliationApi, ledgerBackfillApi } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import { PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import type { JournalEntryStatus, JournalEntrySummary, JournalEntryDetail } from '@ofauria/shared';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
@@ -55,16 +58,30 @@ const JOURNAL_COLORS: Record<string, { bg: string; color: string }> = {
   OD: { bg: '#F1EFE8', color: '#444441' },
 };
 
-const PAGE_SIZE = 50;
+/** Statut d'une écriture : point de couleur + texte (même convention que les autres listes). */
+const STATUS_DOT: Record<JournalEntryStatus, string> = { draft: '#d9822b', posted: '#28a745', reversed: '#adb5bd' };
+function StatusDot({ status }: { status: JournalEntryStatus }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem' }}>
+      <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: STATUS_DOT[status] }} />
+      {STATUS_LABELS[status]}
+    </span>
+  );
+}
 
 export default function EcrituresTab() {
   const { user } = useAuth();
   const [search, setSearch] = useState('');
   const [journalId, setJournalId] = useState<string>('all');
   const [status, setStatus] = useState<JournalEntryStatus | 'all'>('all');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [page, setPage] = useState(0);
+  const [period, setPeriod] = useState<PeriodKey>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const range = periodParams(period, customFrom, customTo);
+  const startDate = range.dateFrom ?? '';
+  const endDate = range.dateTo ?? '';
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [period, customFrom, customTo]);
   const [viewing, setViewing] = useState<string | null>(null);
   const [showDivergent, setShowDivergent] = useState(false);
 
@@ -91,7 +108,7 @@ export default function EcrituresTab() {
     status: status !== 'all' ? status : undefined,
     search: search.trim() || undefined,
     limit: PAGE_SIZE,
-    offset: page * PAGE_SIZE,
+    offset: (page - 1) * PAGE_SIZE,
   }), [startDate, endDate, journalId, status, search, page]);
 
   const { data, isLoading } = useQuery({
@@ -113,7 +130,6 @@ export default function EcrituresTab() {
 
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const totals = useMemo(() => {
     let d = 0, c = 0;
@@ -156,45 +172,36 @@ export default function EcrituresTab() {
 
   return (
     <>
-      {/* Bandeau de reconciliation legacy <-> ledger */}
+      {/* Réconciliation registre des factures ↔ comptabilité */}
       {reconciliation && (
-        <div style={{
-          padding: '10px 14px',
-          borderRadius: 6,
-          marginBottom: 12,
-          background: reconciliationOk ? '#E1F5EE' : '#FCEBEB',
-          color: reconciliationOk ? '#085041' : '#791F1F',
-          border: `1px solid ${reconciliationOk ? '#5DCAA5' : '#F09595'}`,
-          display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.8125rem',
-        }}>
-          <span style={{ fontSize: '1rem' }}>{reconciliationOk ? '✓' : '⚠'}</span>
-          <strong>Reconciliation legacy ↔ ledger :</strong>
-          <span
-            onClick={() => { if (!reconciliationOk) setShowDivergent(v => !v); }}
-            style={{
-              cursor: reconciliationOk ? 'default' : 'pointer',
-              textDecoration: reconciliationOk ? 'none' : 'underline',
-              textUnderlineOffset: 2,
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-            }}
-            title={reconciliationOk ? undefined : 'Voir le détail des factures concernées'}
-          >
-            {!reconciliationOk && (showDivergent ? <ChevronDown size={13} /> : <ChevronRight size={13} />)}
-            {reconciliation.summary.aligned}/{reconciliation.summary.total_invoices} factures alignees
-            {reconciliation.summary.divergent > 0 && ` · ${reconciliation.summary.divergent} divergentes`}
-            {reconciliation.summary.missing_entries > 0 && ` · ${reconciliation.summary.missing_entries} sans ecriture`}
-          </span>
-          <span style={{ marginLeft: 'auto', fontFamily: 'ui-monospace, monospace' }}>
-            delta total: {reconciliation.summary.total_delta} DH
-          </span>
-          {reconciliation.summary.missing_entries > 0 && (
-            <button onClick={() => { if (window.confirm('Générer les écritures manquantes depuis l\'historique ? Opération idempotente.')) backfill.mutate(); }}
-              disabled={backfill.isPending}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, border: '1px solid #791F1F', background: '#fff', color: '#791F1F', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 500 }}>
-              {backfill.isPending ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />} Générer
-            </button>
+        <StatusBanner
+          tone={reconciliationOk ? 'success' : 'danger'}
+          icon={reconciliationOk ? CheckCircle2 : AlertTriangle}
+          title={`Réconciliation factures ↔ comptabilité : ${reconciliation.summary.aligned}/${reconciliation.summary.total_invoices} factures alignées`}
+          actions={!reconciliationOk ? (
+            <>
+              {reconciliation.divergent.length > 0 && (
+                <button type="button" className="odoo-btn-secondary" onClick={() => setShowDivergent(v => !v)}>
+                  {showDivergent ? 'Masquer le détail' : 'Voir le détail'}
+                </button>
+              )}
+              {reconciliation.summary.missing_entries > 0 && (
+                <button type="button" className="odoo-btn-primary" disabled={backfill.isPending}
+                  onClick={() => { if (window.confirm('Générer les écritures manquantes depuis l\'historique ? Opération idempotente.')) backfill.mutate(); }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  {backfill.isPending ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />} Générer les écritures
+                </button>
+              )}
+            </>
+          ) : undefined}>
+          {reconciliationOk ? 'Chaque facture a son écriture et les restes dus concordent.' : (
+            <>
+              {reconciliation.summary.divergent > 0 && `${reconciliation.summary.divergent} divergente${reconciliation.summary.divergent > 1 ? 's' : ''} · `}
+              {reconciliation.summary.missing_entries > 0 && `${reconciliation.summary.missing_entries} sans écriture · `}
+              écart total {reconciliation.summary.total_delta} DH
+            </>
           )}
-        </div>
+        </StatusBanner>
       )}
 
       {/* Detail des factures divergentes / sans ecriture */}
@@ -240,10 +247,10 @@ export default function EcrituresTab() {
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flex: '1 1 220px', minWidth: 180 }}>
           <Search size={13} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
           <input type="text" placeholder="Rechercher par n ou libelle..."
-            value={search} onChange={e => { setSearch(e.target.value); setPage(0); }}
+            value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
             className="odoo-search-input" style={{ flex: 1, minWidth: 0 }} />
           {search && (
-            <button onClick={() => { setSearch(''); setPage(0); }} title="Effacer"
+            <button onClick={() => { setSearch(''); setPage(1); }} title="Effacer"
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--theme-text-muted)', display: 'inline-flex' }}>
               <X size={12} />
             </button>
@@ -252,29 +259,15 @@ export default function EcrituresTab() {
         <SearchSelect
           options={journals.map(j => ({ id: j.id, label: `${j.code} - ${j.label}` }))}
           value={journalId === 'all' ? '' : journalId}
-          onChange={id => { setJournalId(id || 'all'); setPage(0); }}
+          onChange={id => { setJournalId(id || 'all'); setPage(1); }}
           placeholder="Tous les journaux"
           width={190}
         />
-        <SearchSelect
-          options={[
-            { id: 'draft', label: 'Brouillon' },
-            { id: 'posted', label: 'Comptabilise' },
-            { id: 'reversed', label: 'Extournee' },
-          ]}
-          value={status === 'all' ? '' : status}
-          onChange={id => { setStatus((id || 'all') as JournalEntryStatus | 'all'); setPage(0); }}
-          placeholder="Tous statuts"
-          width={160}
-        />
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Calendar size={12} style={{ color: 'var(--theme-text-muted)' }} />
-          <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(0); }}
-            className="odoo-search-input" style={{ width: 130 }} title="Date debut" />
-          <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
-          <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(0); }}
-            className="odoo-search-input" style={{ width: 130 }} title="Date fin" />
-        </div>
+        <SelectFilter label="Statut" icon={Filter} value={status === 'all' ? '' : status}
+          onChange={v => { setStatus((v || 'all') as JournalEntryStatus | 'all'); setPage(1); }}
+          options={[{ key: 'draft', label: 'Brouillon' }, { key: 'posted', label: 'Comptabilisée' }, { key: 'reversed', label: 'Extournée' }]} />
+        <PeriodFilter label="Date" title="Date de l'écriture"
+          period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
         <div style={{ flex: 1 }} />
         <button onClick={handleExport} className="odoo-btn-secondary" disabled={rows.length === 0}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: rows.length === 0 ? 0.5 : 1 }}>
@@ -341,11 +334,15 @@ export default function EcrituresTab() {
             <tbody>
               {rows.map((e: JournalEntrySummary) => {
                 const jc = JOURNAL_COLORS[e.journal_code] || JOURNAL_COLORS.OD;
-                const sc = STATUS_COLORS[e.status];
                 return (
                   <tr key={e.id}>
                     <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{fmtDate(e.entry_date)}</td>
-                    <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', color: '#185fa5' }}>{e.entry_number}</td>
+                    <td>
+                      <button type="button" onClick={() => setViewing(e.id)} title="Ouvrir l'écriture"
+                        style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', fontWeight: 600, color: 'var(--odoo-purple)', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 3 }}>
+                        {e.entry_number}
+                      </button>
+                    </td>
                     <td>
                       <span style={{
                         fontSize: '0.625rem', padding: '2px 6px',
@@ -360,18 +357,10 @@ export default function EcrituresTab() {
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
                       {n(e.total_credit)}
                     </td>
+                    <td><StatusDot status={e.status} /></td>
                     <td>
-                      <span style={{
-                        fontSize: '0.625rem', padding: '2px 8px',
-                        background: sc.bg, color: sc.color,
-                        borderRadius: 999, fontWeight: 500,
-                      }}>{STATUS_LABELS[e.status]}</span>
-                    </td>
-                    <td>
-                      <button onClick={() => setViewing(e.id)} className="odoo-btn-secondary"
-                        title="Voir l'ecriture"
-                        style={{ padding: '4px 6px', display: 'inline-flex', alignItems: 'center' }}>
-                        <Eye size={12} />
+                      <button type="button" onClick={() => setViewing(e.id)} className="odoo-pager-btn" title="Voir l'écriture" aria-label="Voir l'écriture">
+                        <Eye size={13} />
                       </button>
                     </td>
                   </tr>
@@ -380,30 +369,8 @@ export default function EcrituresTab() {
             </tbody>
           </table>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '10px 14px', borderTop: '1px solid var(--theme-bg-separator)',
-              fontSize: '0.75rem', color: 'var(--theme-text-muted)',
-            }}>
-              <span>
-                Page {page + 1} / {totalPages} ({total.toLocaleString('fr-FR')} ecriture{total > 1 ? 's' : ''})
-              </span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
-                  className="odoo-btn-secondary"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, opacity: page === 0 ? 0.5 : 1 }}>
-                  <ChevronLeft size={12} /> Precedent
-                </button>
-                <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-                  className="odoo-btn-secondary"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, opacity: page >= totalPages - 1 ? 0.5 : 1 }}>
-                  Suivant <ChevronRight size={12} />
-                </button>
-              </div>
-            </div>
-          )}
+          <Pager page={page} total={total} onPage={setPage}
+            note={`${total.toLocaleString('fr-FR')} écriture${total > 1 ? 's' : ''} · ${periodLabel(period, customFrom, customTo)}`} />
         </div>
       )}
 
@@ -429,38 +396,19 @@ function JournalEntryViewer({ id, onClose }: { id: string; onClose: () => void }
   }, [entry]);
 
   return (
-    <ModalBackdrop onClose={onClose}>
-      <div style={{
-        background: 'var(--theme-bg-card)',
-        borderRadius: 8,
-        maxWidth: 800,
-        width: '95vw',
-        maxHeight: '90vh',
-        overflow: 'auto',
-        padding: 0,
-      }}>
-        <div style={{
-          padding: '12px 16px',
-          borderBottom: '1px solid var(--theme-bg-separator)',
-          display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <FileText size={16} />
-          <strong style={{ fontSize: '0.9375rem' }}>
-            {entry ? entry.entry_number : 'Chargement...'}
-          </strong>
-          {entry && (
-            <span style={{
-              fontSize: '0.625rem', padding: '2px 8px',
-              background: STATUS_COLORS[entry.status].bg, color: STATUS_COLORS[entry.status].color,
-              borderRadius: 999, fontWeight: 500,
-            }}>{STATUS_LABELS[entry.status]}</span>
-          )}
-          <button onClick={onClose} style={{
-            marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer',
-            padding: 4, color: 'var(--theme-text-muted)',
-          }}>
-            <X size={16} />
-          </button>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" role="dialog" aria-label="Écriture comptable" onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 800, maxHeight: '90vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <FileText size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Écriture</span>
+            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>{entry ? entry.entry_number : 'Chargement...'}</span>
+          </div>
+          {entry && <StatusDot status={entry.status} />}
+          <div style={{ flex: 1 }} />
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
 
         {isLoading || !entry ? (

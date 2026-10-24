@@ -3,9 +3,13 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { productionApi } from '../../api/production.api';
+import { planStatusTag, PLAN_STATUS_ORDER } from './status';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { apiErrorMessage } from '../../api/errors';
 import { productsApi } from '../../api/products.api';
 import { ordersApi } from '../../api/orders.api';
 import { recipesApi } from '../../api/recipes.api';
+import { forecastApi, type ForecastCell } from '../../api/forecast.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { PRODUCTION_STATUS_LABELS, PRODUCTION_TYPE_LABELS, getRoleCategorySlugs } from '@ofauria/shared';
@@ -14,6 +18,7 @@ import {
   Clock, CheckCircle2, Play, Flag, Eye, AlertCircle,
   FileText, User,
   ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Layers,
+  TrendingUp,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -43,10 +48,6 @@ const statusConfig: Record<string, { color: string; bg: string; icon: typeof Clo
   completed:            { color: 'text-emerald-700', bg: 'bg-emerald-50',  icon: Flag,         gradient: 'from-emerald-500 to-emerald-600' },
 };
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + ' DH';
-}
-
 function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align = 'left' }: {
   label: string; sortKey: string; currentKey: string; currentDir: 'asc' | 'desc';
   onSort: (key: string) => void; align?: 'left' | 'right' | 'center';
@@ -75,6 +76,7 @@ export default function ProductionPage() {
 function ProductionPlansView() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const confirmDialog = useConfirm();
   const { user } = useAuth();
   const [statusFilter, setStatusFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
@@ -115,6 +117,27 @@ function ProductionPlansView() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['production'] }); notify.success('Plan supprimé'); },
   });
 
+  // Relance d'un plan bloqué : les articles annulés / en attente repassent en
+  // production sur le même plan (aucun nouveau plan créé).
+  const relaunchMutation = useMutation({
+    mutationFn: (planId: string) => productionApi.relaunch(planId),
+    onSuccess: (result: Record<string, any>) => {
+      queryClient.invalidateQueries({ queryKey: ['production'] });
+      const count = (result?.meta?.relaunchedCount as number) ?? 0;
+      const quoi = [
+        count > 0 ? `${count} article(s) remis en production` : null,
+        result?.meta?.recomputed ? 'besoins et bon de sortie recalculés' : null,
+      ].filter(Boolean).join(', ');
+      notify.success(`Plan relancé — ${quoi}`);
+      (result?.warnings as string[] | undefined)?.forEach((w) => notify(w, { icon: '⚠️', duration: 6000 }));
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+        || 'Erreur lors de la relance du plan';
+      notify.error(msg);
+    },
+  });
+
   const plans = data?.data || [];
 
   // Search filter
@@ -132,12 +155,11 @@ function ProductionPlansView() {
 
   const sortedPlans = useMemo(() => {
     const arr = [...filteredPlans];
-    const STATUS_ORDER: Record<string, number> = { draft: 0, confirmed: 1, in_progress: 2, completed: 3 };
     arr.sort((a: Record<string, any>, b: Record<string, any>) => {
       let cmp = 0;
       switch (sortKey) {
         case 'plan_date': cmp = new Date(a.plan_date as string).getTime() - new Date(b.plan_date as string).getTime(); break;
-        case 'status': cmp = (STATUS_ORDER[a.status as string] ?? 0) - (STATUS_ORDER[b.status as string] ?? 0); break;
+        case 'status': cmp = (PLAN_STATUS_ORDER[a.status as string] ?? 0) - (PLAN_STATUS_ORDER[b.status as string] ?? 0); break;
         case 'type': cmp = ((a.type as string) || '').localeCompare((b.type as string) || ''); break;
         case 'target_role': cmp = ((a.target_role as string) || '').localeCompare((b.target_role as string) || ''); break;
         case 'item_count': cmp = ((a.item_count as number) || 0) - ((b.item_count as number) || 0); break;
@@ -307,7 +329,6 @@ function ProductionPlansView() {
                 {sortedPlans.map((p: Record<string, any>, idx: number) => {
                   const status = p.status as string;
                   const sCfg = statusConfig[status] || statusConfig.draft;
-                  const rCfg = roleConfig[p.target_role as string] || roleConfig.baker;
                   const StatusIcon = sCfg.icon;
                   const hasOrder = !!p.order_number;
                   const planDate = new Date(p.plan_date as string);
@@ -334,14 +355,7 @@ function ProductionPlansView() {
                         </span>
                       </td>
                       <td>
-                        <span className={`odoo-tag ${
-                          status === 'completed' ? 'odoo-tag-green'
-                          : status === 'in_progress' ? 'odoo-tag-yellow'
-                          : status === 'ready_to_produce' ? 'odoo-tag-blue'
-                          : status === 'awaiting_ingredients' ? 'odoo-tag-orange'
-                          : status === 'confirmed' ? 'odoo-tag-blue'
-                          : 'odoo-tag-grey'
-                        }`}>
+                        <span className={`odoo-tag ${planStatusTag(status).cls}`}>
                           <StatusIcon size={10} />
                           {PRODUCTION_STATUS_LABELS[(status) as keyof typeof PRODUCTION_STATUS_LABELS]}
                         </span>
@@ -394,11 +408,36 @@ function ProductionPlansView() {
                       <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                         <div style={{ display: 'inline-flex', gap: 2 }}>
                           {status === 'draft' && (
-                            <button onClick={() => { if (confirm('Supprimer ce plan ?')) deleteMutation.mutate(p.id as string); }}
+                            <button onClick={async () => { if (await confirmDialog('Ce brouillon sera supprimé définitivement.', { title: 'Supprimer ce plan ?', confirmLabel: 'Supprimer', danger: true })) deleteMutation.mutate(p.id as string); }}
                               className="odoo-pager-btn" title="Supprimer" style={{ color: '#dc3545' }}>
                               <Trash2 size={13} />
                             </button>
                           )}
+                          {/* Relance disponible sur tout plan non brouillon : débloque aussi
+                              un plan confirmé trop tôt (produit sans recette à l'époque) en
+                              recalculant besoins et bon de sortie. */}
+                          {status !== 'draft' && (isChef || isAdmin) && (() => {
+                            const nb = Number(p.relaunchable_count) || 0;
+                            return (
+                              <button
+                                onClick={async () => {
+                                  const detail = nb > 0
+                                    ? `${nb} article(s) annulé(s) ou en attente repassent en production, et les besoins seront recalculés.`
+                                    : 'Les besoins en ingrédients et le bon de sortie seront recalculés depuis les recettes actuelles.';
+                                  if (await confirmDialog(`${detail}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer ce plan ?', confirmLabel: 'Relancer' })) {
+                                    relaunchMutation.mutate(p.id as string);
+                                  }
+                                }}
+                                disabled={relaunchMutation.isPending}
+                                className="odoo-pager-btn"
+                                title={nb > 0
+                                  ? `Relancer : ${nb} article(s) annulé(s) ou en attente`
+                                  : 'Relancer : recalculer besoins et bon de sortie'}
+                                style={{ color: '#1f6391' }}>
+                                <RotateCcw size={13} />
+                              </button>
+                            );
+                          })()}
                           <button className="odoo-pager-btn" title="Voir">
                             <Eye size={13} />
                           </button>
@@ -573,6 +612,19 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
   const orders = (ordersForDate || []) as Record<string, any>[];
   const orderCount = orders.length;
 
+  // Prévision de la demande (mig 314) : suggestion, jamais appliquée sans clic.
+  const { data: forecastDay } = useQuery({
+    queryKey: ['forecast-day', planDate],
+    queryFn: () => forecastApi.day(planDate),
+    enabled: !!planDate,
+    retry: false,
+  });
+  const forecastByProduct = useMemo(() => {
+    const m: Record<string, ForecastCell> = {};
+    (forecastDay?.items || []).forEach(i => { if (i.forecast) m[i.product_id] = i.forecast; });
+    return m;
+  }, [forecastDay]);
+
   const computeOrderQtys = () => {
     const qtys: Record<string, number> = {};
     orders.forEach((order) => {
@@ -668,11 +720,31 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
     setSelected(prev => ({ ...prev, [productId]: total }));
   };
 
+  // Produits des catégories du chef ayant une prévision > 0. Les produits à formats
+  // restent à saisir à la main : la répartition par format n'est pas prévue.
+  const forecastable = products.filter(p => (forecastByProduct[p.id as string]?.qty || 0) > 0);
+  const forecastSimple = forecastable.filter(p => !productFormats[p.id as string]);
+  const forecastWithFormats = forecastable.length - forecastSimple.length;
+  const applyForecast = () => {
+    setSelected(prev => {
+      const next = { ...prev };
+      for (const p of forecastSimple) {
+        const pid = p.id as string;
+        next[pid] = Math.max(forecastByProduct[pid].qty, orderQtys[pid] || 0);
+      }
+      return next;
+    });
+    notify.success(`Prévision appliquée à ${forecastSimple.length} produit(s)`);
+  };
+
   const totalSelected = Object.keys(selected).length;
 
   const createMutation = useMutation({
     mutationFn: productionApi.create,
-    onSuccess: (plan: Record<string, any>) => {
+    onSuccess: (plan: Record<string, any>, vars: Record<string, any>) => {
+      // Instantané de la prévision qui a guidé le plan (mesure de précision) ; sans effet si échec.
+      const used = (vars.items as Array<{ productId: string }>).map(i => i.productId).filter(pid => forecastByProduct[pid]);
+      if (used.length) forecastApi.snapshot({ date: planDate, usedFor: 'plan', productIds: used }).catch(() => {});
       queryClient.invalidateQueries({ queryKey: ['production'] });
       notify.success('Plan de production créé');
       onCreated(plan.id as string);
@@ -773,6 +845,21 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
           <div className="px-5 py-2 bg-gray-50 border-b text-sm text-gray-400 shrink-0">Chargement des commandes...</div>
         )}
 
+        {/* Prévision de la demande */}
+        {forecastable.length > 0 && (
+          <div className="px-5 py-3 bg-violet-50 border-b border-violet-100 shrink-0 flex flex-wrap items-center gap-2">
+            <TrendingUp size={18} className="text-violet-500" />
+            <span className="text-sm font-medium text-violet-800">Prévision disponible pour {forecastable.length} produit(s)</span>
+            <span className="text-xs text-violet-500">
+              — historique de ventes, événements et majoration ; les commandes restent le minimum
+              {forecastWithFormats > 0 && ` · ${forecastWithFormats} produit(s) à formats à saisir à la main`}
+            </span>
+            {forecastSimple.length > 0 && (
+              <button type="button" onClick={applyForecast} className="odoo-btn-primary ml-auto">Pré-remplir avec la prévision</button>
+            )}
+          </div>
+        )}
+
         {/* Category sidebar + Products grid */}
         <div className="flex flex-1 min-h-0">
           {/* Category sidebar */}
@@ -828,6 +915,12 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                         {fromOrders > 0 && (
                           <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-medium">
                             CMD: {fromOrders}
+                          </span>
+                        )}
+                        {(forecastByProduct[pid]?.qty || 0) > 0 && (
+                          <span className="text-xs bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded font-medium"
+                            title={`${forecastByProduct[pid].explanation} (confiance ${forecastByProduct[pid].confidence})`}>
+                            Prévu: {forecastByProduct[pid].qty}
                           </span>
                         )}
                         {hasFormats && (

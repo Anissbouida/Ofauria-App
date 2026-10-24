@@ -3,6 +3,8 @@ import { nextDocumentNumber } from '../utils/document-number.js';
 import { invoiceRepository } from './accounting.repository.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
 import { FLAGS } from '../config/feature-flags.js';
+import { postOrQueue, postGoodsReceiptsForPo } from '../services/ledger-posting.service.js';
+import { closePurchaseRequestsForOrder } from './purchase-request.helper.js';
 import { fromInvoice, persistEntry, reverseEntriesForSource } from '../services/journal-generator.service.js';
 
 // UUIDs racine/parent des categories de depenses (cf. migration 059).
@@ -87,6 +89,10 @@ export async function createInvoiceFromPo(
   );
   if (existingInv.rows.length > 0) return null;
 
+  // GR/IR (mig 311, G-D8-05) : les réceptions non encore comptabilisées passent
+  // en 4417 AVANT la facture, qui solde ce compte d'attente ligne par ligne.
+  await postGoodsReceiptsForPo(client as unknown as import('pg').PoolClient, purchaseOrderId, createdBy);
+
   const poRes = await client.query(
     `SELECT id, order_number, supplier_id FROM purchase_orders WHERE id = $1`,
     [purchaseOrderId]
@@ -101,6 +107,10 @@ export async function createInvoiceFromPo(
     `SELECT poi.id, poi.ingredient_id, poi.packaging_id, poi.quantity_delivered, poi.unit_price AS po_unit_price,
             COALESCE(ing.name, pkg.name) as ingredient_name,
             COALESCE(ing.category_id, pkg.category_id) AS line_category_id,
+            -- TVA attendue (mig 309) : taux saisi sur la ligne de BC, sinon code par défaut de l'article
+            -- ou de sa catégorie à la date du jour. Jamais un 0 implicite : NULL = taux à préciser.
+            COALESCE(ing.default_tax_code, pkg.default_tax_code, cat.default_tax_code) AS tax_code,
+            COALESCE(poi.tva_rate, fn_tax_rate(COALESCE(ing.default_tax_code, pkg.default_tax_code, cat.default_tax_code), CURRENT_DATE)) AS tva_rate,
             COALESCE(
               (SELECT rvi.unit_price FROM reception_voucher_items rvi
                WHERE rvi.purchase_order_item_id = poi.id AND rvi.unit_price IS NOT NULL
@@ -110,14 +120,19 @@ export async function createInvoiceFromPo(
      FROM purchase_order_items poi
      LEFT JOIN ingredients ing ON ing.id = poi.ingredient_id
      LEFT JOIN packaging_items pkg ON pkg.id = poi.packaging_id
-     WHERE poi.purchase_order_id = $1`,
+     LEFT JOIN expense_categories cat ON cat.id = COALESCE(ing.category_id, pkg.category_id)
+     WHERE poi.purchase_order_id = $1 AND poi.quantity_delivered > 0`,
     [purchaseOrderId]
   );
 
   const invoiceItems = poItemDetails.rows.map((it: Record<string, unknown>) => {
     const qty = parseFloat(it.quantity_delivered as string);
     const price = parseFloat((it.effective_unit_price as string) ?? '0') || 0;
+    const tvaRate = it.tva_rate != null ? parseFloat(it.tva_rate as string) : null;
     return {
+      poItemId: it.id as string,
+      taxCode: (it.tax_code as string | null) ?? null,
+      tvaRate,
       ingredientId: (it.ingredient_id as string | null) ?? null,
       packagingId: (it.packaging_id as string | null) ?? null,
       // Categorie figee au moment de l'achat (celle de l'article), pour que
@@ -131,6 +146,8 @@ export async function createInvoiceFromPo(
   });
 
   const amount = invoiceItems.reduce((sum: number, it: { subtotal: number }) => sum + it.subtotal, 0);
+  const taxAmount = invoiceItems.reduce((sum: number, it: { subtotal: number; tvaRate: number | null }) =>
+    sum + (it.tvaRate != null ? Math.round(it.subtotal * it.tvaRate) / 100 : 0), 0);
 
   // N° et date facture : on prefere ceux du fournisseur (saisis lors de la
   // reception). Fallback sur auto-genere si non renseignes.
@@ -165,43 +182,39 @@ export async function createInvoiceFromPo(
 
   const invResult = await client.query(
     `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, purchase_order_id, reception_voucher_id,
-      invoice_date, amount, tax_amount, total_amount, notes, created_by, store_id, category_id)
-     VALUES ($1, 'received', $2, $3, $4, COALESCE($5::date, CURRENT_DATE), $6, 0, $6, $7, $8, $9, $10) RETURNING *`,
+      invoice_date, amount, tax_amount, total_amount, notes, created_by, store_id, category_id,
+      supplier_invoice_number, source, received_on, accounting_date)
+     VALUES ($1, 'received', $2, $3, $4, COALESCE($5::date, CURRENT_DATE), $6::numeric, $11::numeric, $6::numeric + $11::numeric, $7, $8, $9, $10,
+             $12, 'from_receipt', CURRENT_DATE, COALESCE($5::date, CURRENT_DATE)) RETURNING *`,
     [invoiceNumber, po.supplier_id, purchaseOrderId, effectiveRvId,
      lookedUpDate,
-     amount,
+     Math.round(amount * 100) / 100,
      notesLabel,
      createdBy, storeId,
-     derivedCategoryId]
+     derivedCategoryId,
+     Math.round(taxAmount * 100) / 100,
+     lookedUpNumber]
   );
   const invoice = invResult.rows[0];
 
   for (const item of invoiceItems) {
     await client.query(
-      `INSERT INTO invoice_items (invoice_id, ingredient_id, packaging_id, category_id, description, quantity, unit_price, subtotal)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [invoice.id, item.ingredientId, item.packagingId, item.categoryId, item.description, item.quantity, item.unitPrice, item.subtotal]
+      `INSERT INTO invoice_items (invoice_id, ingredient_id, packaging_id, category_id, description, quantity, unit_price, subtotal,
+                                  tva_rate, tva_amount, tax_code, purchase_order_item_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [invoice.id, item.ingredientId, item.packagingId, item.categoryId, item.description, item.quantity, item.unitPrice, item.subtotal,
+       item.tvaRate, item.tvaRate != null ? Math.round(item.subtotal * item.tvaRate) / 100 : null, item.taxCode, item.poItemId]
     );
   }
 
-  // Generation auto de l'ecriture comptable pour les factures crees via BC
-  // (meme logique que invoiceRepository.create, SAVEPOINT pour isoler).
-  if (FLAGS.LEDGER_AUTOGEN) {
-    // client est un vrai PoolClient au runtime (transaction du caller) ; le
-    // type local TxClient est volontairement minimal -> cast pour le generateur.
-    const pgClient = client as unknown as import('pg').PoolClient;
-    await client.query('SAVEPOINT ledger_gen');
-    try {
-      const entry = await fromInvoice(pgClient, invoice as unknown as Parameters<typeof fromInvoice>[1]);
-      if (entry) await persistEntry(pgClient, entry, { userId: createdBy });
-      await client.query('RELEASE SAVEPOINT ledger_gen');
-    } catch (genErr) {
-      await client.query('ROLLBACK TO SAVEPOINT ledger_gen');
-      // eslint-disable-next-line no-console
-      console.error('[ledger] generation echec pour facture BC', invoice.id,
-        genErr instanceof Error ? genErr.message : genErr);
-    }
-  }
+  // Écriture de la facture (mig 311, G-D8-01) : obligatoire ; un échec part en
+  // file d'attente (ledger_outbox) ou annule la pièce en mode strict.
+  // client est un vrai PoolClient au runtime (transaction du caller).
+  const pgClient = client as unknown as import('pg').PoolClient;
+  await postOrQueue(pgClient, { kind: 'invoice', id: invoice.id as string }, async () => {
+    const entry = await fromInvoice(pgClient, invoice as unknown as Parameters<typeof fromInvoice>[1]);
+    if (entry) await persistEntry(pgClient, entry, { userId: createdBy });
+  });
 
   return invoice;
 }
@@ -288,15 +301,26 @@ export const receptionVoucherRepository = {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+      // Contexte « réception » (mig 306) : seule la réception et son extourne peuvent modifier
+      // quantité livrée, prix reçu et lignes d'un BC verrouillé. Portée : cette transaction.
+      await client.query(`SELECT set_config('app.change_origin', 'receipt', true)`);
 
-      // Get PO info
+      // En-tête verrouillé pour toute la réception (mig 307, G-D4-19) : deux réceptions ou une
+      // annulation concurrentes s'attendent au lieu de se croiser. Le statut est revérifié ici,
+      // dans la transaction, et non plus seulement par le contrôleur avant de l'ouvrir.
       const poResult = await client.query(
         `SELECT po.*, s.name as supplier_name FROM purchase_orders po
-         JOIN suppliers s ON s.id = po.supplier_id WHERE po.id = $1`,
+         JOIN suppliers s ON s.id = po.supplier_id WHERE po.id = $1 FOR UPDATE OF po`,
         [data.purchaseOrderId]
       );
       const po = poResult.rows[0];
       if (!po) throw new Error('Bon de commande non trouve');
+      if (!['envoye', 'livre_partiel'].includes(po.status)) {
+        const e: Error & { statusCode?: number } = new Error(
+          `Le BC ${po.order_number} n'attend plus de livraison (statut ${po.status}).`);
+        e.statusCode = 409;
+        throw e;
+      }
 
       const supplierInvoiceNumber = data.supplierInvoiceNumber?.trim() || null;
       const supplierInvoiceDate = data.supplierInvoiceDate || null;
@@ -346,6 +370,9 @@ export const receptionVoucherRepository = {
         consumableStoreId = (s.rows[0]?.id as string | undefined) ?? null;
       }
 
+      const warnings: string[] = [];
+      const lotNumbers: string[] = [];
+
       // Process each item
       for (const item of data.items) {
         if (item.quantityReceived <= 0) continue;
@@ -353,32 +380,30 @@ export const receptionVoucherRepository = {
 
         // Insert reception voucher item (ingredient OU consommable, lot/DLC fields)
         const rviResult = await client.query(
-          `INSERT INTO reception_voucher_items (reception_voucher_id, purchase_order_item_id, ingredient_id, packaging_id, quantity_received, unit_price, notes, supplier_lot_number, expiration_date, manufactured_date)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+          `INSERT INTO reception_voucher_items (reception_voucher_id, purchase_order_item_id, ingredient_id, packaging_id, quantity_received, unit_price, notes, supplier_lot_number, expiration_date, manufactured_date,
+                                               kind, created_by, po_unit_price)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'receive', $11,
+                   (SELECT unit_price FROM purchase_order_items WHERE id = $2)) RETURNING id`,
           [rv.id, item.poItemId, item.ingredientId ?? null, item.packagingId ?? null, item.quantityReceived, item.unitPrice ?? null, item.notes || null,
-           item.supplierLotNumber || null, item.expirationDate || null, item.manufacturedDate || null]
+           item.supplierLotNumber || null, item.expirationDate || null, item.manufacturedDate || null, data.receivedBy]
         );
         const rviId = rviResult.rows[0].id;
 
-        // Lock PO item row before updating delivered quantity
-        await client.query(
-          `SELECT id FROM purchase_order_items WHERE id = $1 FOR UPDATE`,
-          [item.poItemId]
-        );
+        // La quantité livrée de la ligne n'est plus écrite ici : l'insertion de la ligne de
+        // réception poste un événement GR (trigger rvi_post_gr, mig 307) qui met à jour les
+        // compteurs et refuse une sur-livraison au-delà de la tolérance paramétrée.
         const itemResult = await client.query(
-          `UPDATE purchase_order_items SET quantity_delivered = quantity_delivered + $1 WHERE id = $2 RETURNING *`,
-          [item.quantityReceived, item.poItemId]
+          `SELECT * FROM purchase_order_items WHERE id = $1 FOR UPDATE`,
+          [item.poItemId]
         );
         const poItem = itemResult.rows[0];
         const effectiveCost = item.unitPrice ?? (poItem && poItem.unit_price ? parseFloat(poItem.unit_price) : null);
 
-        // Le prix saisi lors de la reception fait foi : il reflete ce que le
-        // fournisseur a effectivement facture. On le repercute sur le BC pour
-        // que total BC et facture restent coherents (sinon le BC affiche
-        // l'ancien prix estime et la facture le vrai prix paye).
+        // Le prix reçu vit sur la ligne de réception. Il ne remplace plus le prix commandé
+        // (mig 307, G-D4-07) : il complète seulement une ligne commandée sans prix.
         if (item.unitPrice != null && item.unitPrice > 0) {
           await client.query(
-            `UPDATE purchase_order_items SET unit_price = $1 WHERE id = $2`,
+            `UPDATE purchase_order_items SET unit_price = $1 WHERE id = $2 AND unit_price IS NULL`,
             [item.unitPrice, item.poItemId]
           );
         }
@@ -440,16 +465,30 @@ export const receptionVoucherRepository = {
           continue;
         }
 
-        // ─── Ingredient : lot ONSSA + inventory + tracabilite ───
-        // Create ingredient lot for ONSSA traceability
-        await client.query(
+        // ─── Ingredient : lot ONSSA + tracabilite ───
+        // Exigences lot fournisseur / DLC (mig 308) : en mode « warn », signalées dans la réponse ;
+        // en mode « block », le trigger de la ligne de réception a déjà refusé.
+        const reqs = (await client.query(`SELECT * FROM fn_lot_requirements($1)`, [item.ingredientId])).rows[0];
+        if (reqs) {
+          const missing: string[] = [];
+          if (reqs.requires_dlc && !item.expirationDate) missing.push('DLC');
+          if (reqs.requires_lot && !item.supplierLotNumber?.trim()) missing.push('lot fournisseur');
+          if (missing.length) {
+            const nm = (await client.query(`SELECT name FROM ingredients WHERE id = $1`, [item.ingredientId])).rows[0]?.name;
+            warnings.push(`${nm} : ${missing.join(' et ')} manquant(s)`);
+          }
+        }
+        // Le lot reçoit son numéro interne LI-AAMMJJ-NNNNN par défaut (mig 308).
+        const lotRes = await client.query(
           `INSERT INTO ingredient_lots (ingredient_id, reception_voucher_item_id, supplier_id, supplier_lot_number,
             quantity_received, quantity_remaining, economat_quantity, pesage_quantity, unit_cost, manufactured_date, expiration_date, received_at, store_id)
-           VALUES ($1, $2, $3, $4, $5, $5, $5, 0, $6, $7, $8, CURRENT_DATE, $9)`,
+           VALUES ($1, $2, $3, $4, $5, $5, $5, 0, $6, $7, $8, CURRENT_DATE, $9) RETURNING id, lot_number`,
           [item.ingredientId, rviId, po.supplier_id, item.supplierLotNumber || null,
            item.quantityReceived, effectiveCost, item.manufacturedDate || null, item.expirationDate || null,
            data.storeId || null]
         );
+        const lotId = lotRes.rows[0].id as string;
+        lotNumbers.push(lotRes.rows[0].lot_number as string);
         if (!poItem) continue;
 
         // ─── CMUP (coût moyen unité pondéré) : verrou + état AVANT l'entrée ───
@@ -473,24 +512,12 @@ export const receptionVoucherRepository = {
         );
         const stockBefore = parseFloat(stockBeforeRes.rows[0]?.qty ?? '0');
 
-        // Lock inventory row then update
-        const storeFilter = data.storeId ? ' AND store_id = $3' : '';
-        const lockFilter = data.storeId ? ' AND store_id = $2' : '';
-        const lockParams: unknown[] = [item.ingredientId];
-        if (data.storeId) lockParams.push(data.storeId);
+        // Stock : le lot créé ci-dessus met à jour inventory par le trigger trg_inventory_sync_lots.
+        // L'ancienne mise à jour manuelle ajoutait la quantité une seconde fois (double comptage,
+        // corrigé en mig 308). Seule la date de dernier réapprovisionnement est posée ici.
         await client.query(
-          `SELECT id FROM inventory WHERE ingredient_id = $1${lockFilter} FOR UPDATE`,
-          lockParams
-        );
-
-        const invParams: unknown[] = [item.quantityReceived, item.ingredientId];
-        if (data.storeId) invParams.push(data.storeId);
-
-        await client.query(
-          `UPDATE inventory SET current_quantity = current_quantity + $1,
-                  last_restocked_at = NOW(), updated_at = NOW()
-           WHERE ingredient_id = $2${storeFilter}`,
-          invParams
+          `UPDATE inventory SET last_restocked_at = NOW() WHERE ingredient_id = $1 AND ($2::uuid IS NULL OR store_id = $2)`,
+          [item.ingredientId, data.storeId || null]
         );
 
         // ─── Coût standard de l'ingrédient : CMUP après entrée ───
@@ -518,11 +545,11 @@ export const receptionVoucherRepository = {
 
         // Insert inventory transaction with traceability
         await client.query(
-          `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, purchase_order_item_id, reception_voucher_id, store_id)
-           VALUES ($1, 'restock', $2, $3, $4, $5, $6, $7)`,
+          `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, purchase_order_item_id, reception_voucher_id, store_id, ingredient_lot_id)
+           VALUES ($1, 'restock', $2, $3, $4, $5, $6, $7, $8)`,
           [item.ingredientId, item.quantityReceived,
            `Reception ${voucherNumber} — BC ${po.order_number} — Fournisseur: ${po.supplier_name}`,
-           data.receivedBy, item.poItemId, rv.id, data.storeId || null]
+           data.receivedBy, item.poItemId, rv.id, data.storeId || null, lotId]
         );
       }
 
@@ -533,55 +560,43 @@ export const receptionVoucherRepository = {
       //     quantity_delivered (le BC ne represente plus que le reel facture).
       // Apres ca, le calcul de statut ci-dessous tombe naturellement sur
       // 'livre_complet' (ou 'en_attente_facturation' si prix manquants).
+      // forceComplete (mig 307, G-D4-10) : le reliquat est CLÔTURÉ, plus rien n'est supprimé
+      // ni réécrit. Chaque ligne garde sa quantité commandée d'origine ; la part non livrée
+      // devient une quantité annulée tracée (événement CANCEL), réversible.
       if (data.forceComplete) {
         await client.query(
-          `DELETE FROM purchase_order_items
-             WHERE purchase_order_id = $1 AND quantity_delivered = 0`,
-          [data.purchaseOrderId]
-        );
-        await client.query(
-          `UPDATE purchase_order_items
-              SET quantity_ordered = quantity_delivered
-            WHERE purchase_order_id = $1 AND quantity_delivered < quantity_ordered`,
-          [data.purchaseOrderId]
+          `INSERT INTO po_line_events (po_line_id, event_type, sign, qty_base, ref_doc_type, ref_doc_id, reason_code_id, posted_by, note)
+           SELECT poi.id, 'CANCEL', 1, poi.quantity_ordered - poi.qty_received_base - poi.qty_cancelled_base,
+                  'close_remainder', gen_random_uuid(),
+                  (SELECT id FROM ref_entries WHERE table_id = 'purchase_reason_codes' AND code = 'partial_delivery_closed'),
+                  $2, $3
+             FROM purchase_order_items poi
+            WHERE poi.purchase_order_id = $1
+              AND poi.quantity_ordered - poi.qty_received_base - poi.qty_cancelled_base > 0.0001`,
+          [data.purchaseOrderId, data.receivedBy, `Reliquat clôturé à la réception ${voucherNumber}`]
         );
       }
 
-      // Determine new PO status
-      const allItems = await client.query(
-        `SELECT quantity_ordered, quantity_delivered, unit_price FROM purchase_order_items WHERE purchase_order_id = $1`,
-        [data.purchaseOrderId]
-      );
-      const allDelivered = allItems.rows.every(
-        (it: Record<string, unknown>) => parseFloat(it.quantity_delivered as string) >= parseFloat(it.quantity_ordered as string)
-      );
-      const someDelivered = allItems.rows.some(
-        (it: Record<string, unknown>) => parseFloat(it.quantity_delivered as string) > 0
-      );
-      const hasMissingPrices = allItems.rows.some(
-        (it: Record<string, unknown>) => it.unit_price == null
-      );
-
-      let newStatus: string;
-      if (allDelivered && hasMissingPrices) {
-        newStatus = 'en_attente_facturation';
-      } else if (allDelivered) {
-        newStatus = 'livre_complet';
-      } else if (someDelivered) {
-        newStatus = 'livre_partiel';
-      } else {
-        newStatus = 'non_livre';
-      }
+      // Statut dérivé des lignes par une seule règle en base (mig 307).
+      const statusRes = await client.query(`SELECT fn_po_delivery_status($1) AS s`, [data.purchaseOrderId]);
+      const newStatus = statusRes.rows[0].s as string;
 
       await client.query(
         `UPDATE purchase_orders SET status = $1, delivery_date = CURRENT_DATE, updated_at = NOW() WHERE id = $2`,
         [newStatus, data.purchaseOrderId]
       );
 
+      // Marchandise arrivee -> on ferme les demandes d'achat rattachees. Sans ca elles
+      // restent a vie en 'assigned' et masquent l'ingredient dans l'onglet Economat
+      // "Ingredients a commander" (flag already_ordered).
+      await closePurchaseRequestsForOrder(client, data.purchaseOrderId, newStatus);
+
       // Auto-create received invoice when PO is fully delivered with prices.
       // Toute la logique de creation (categorisation, N° fournisseur, lignes)
       // vit dans createInvoiceFromPo pour etre reutilisable depuis la generation
       // manuelle (cf. purchaseOrderRepository.generateInvoice).
+      // GR/IR (mig 311) : réception comptabilisée en 4417 au prix BC, même partielle.
+      await postGoodsReceiptsForPo(client as unknown as import('pg').PoolClient, data.purchaseOrderId, data.receivedBy);
       let autoInvoice = null;
       if (newStatus === 'livre_complet') {
         autoInvoice = await createInvoiceFromPo(
@@ -590,7 +605,7 @@ export const receptionVoucherRepository = {
       }
 
       await client.query('COMMIT');
-      return { ...rv, status: newStatus, autoInvoice };
+      return { ...rv, status: newStatus, autoInvoice, warnings, lotNumbers };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -600,43 +615,41 @@ export const receptionVoucherRepository = {
   },
 
   /**
-   * Annule TOUTES les receptions d'un bon de commande (admin uniquement).
+   * Extourne de TOUTES les réceptions d'un BC par contre-pièce (mig 308, G-D5-04).
    *
-   * Operation inverse de `create` : une seule transaction qui extourne tous les
-   * effets de la/les reception(s) puis remet le BC en statut "envoye" (en
-   * attente de livraison), comme s'il n'avait jamais ete receptionne.
+   * Rien n'est supprimé. Pour chaque bon de réception actif : un bon miroir numéroté
+   * (voucher_kind = 'reversal') reprend chaque ligne en sens inverse (kind = 'reverse'),
+   * ce qui poste un GR_REVERSAL sur la ligne de BC ; les lots passent « reversed » à
+   * quantité nulle (le trigger des lots recalcule le stock) ; un mouvement d'ajustement
+   * négatif trace la sortie ; la facture auto est extournée en comptabilité puis annulée.
+   * Le BC revient « envoyé ». Motif obligatoire.
    *
-   * Garde-fous (bloquants, statusCode 409) :
-   *   - Lot ingredient deja entame (quantity_remaining < quantity_received) :
-   *     du stock a ete consomme (production/sortie) -> reverser creerait du
-   *     stock negatif. L'admin doit d'abord defaire ces mouvements.
-   *   - Facture liee avec un paiement enregistre (paid_amount > 0) : on ne
-   *     supprime pas une facture deja (partiellement) payee.
-   *
-   * Effets reverses :
-   *   - Facture(s) auto-creee(s) : extourne comptable (reverseEntriesForSource)
-   *     + suppression physique (invoice_items en CASCADE).
-   *   - Stock ingredients : -qty sur inventory, suppression des ingredient_lots
-   *     et des inventory_transactions de la reception.
-   *   - Stock consommables : adjustStock(-qty) (laisse une ligne d'extourne
-   *     dans packaging_stock_transactions pour la tracabilite).
-   *   - purchase_order_items.quantity_delivered remis a 0.
-   *   - reception_voucher_items + reception_vouchers supprimes.
-   *   - BC repasse en 'envoye', delivery_date = NULL.
-   *
-   * Limite connue : si une reception anterieure a utilise forceComplete, les
-   * lignes du BC livrees a 0 ont ete supprimees et les quantites commandees
-   * alignees sur le livre. Ces donnees d'origine ne sont pas restaurables ici.
+   * Garde-fous (409) : facture déjà payée ; lot déjà entamé (on n'extourne pas ce qui a
+   * été consommé — corriger la ligne à la place).
    */
-  async cancelForPurchaseOrder(purchaseOrderId: string, userId: string) {
+  async cancelForPurchaseOrder(purchaseOrderId: string, userId: string, reason?: { reasonCodeId: string; note?: string | null }) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.change_origin', 'receipt', true)`);
+      await client.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
+
+      if (!reason?.reasonCodeId) {
+        const e: Error & { statusCode?: number } = new Error('Motif d\'extourne requis');
+        e.statusCode = 400; throw e;
+      }
+      const reasonOk = await client.query(
+        `SELECT 1 FROM ref_entries WHERE id = $1 AND table_id = 'purchase_reason_codes' AND is_active AND metadata->'scope' ? 'reverse'`,
+        [reason.reasonCodeId]);
+      if (!reasonOk.rowCount) {
+        const e: Error & { statusCode?: number } = new Error('Motif invalide pour une extourne de réception');
+        e.statusCode = 400; throw e;
+      }
 
       const poRes = await client.query(
         `SELECT po.*, s.name AS supplier_name FROM purchase_orders po
          JOIN suppliers s ON s.id = po.supplier_id
-         WHERE po.id = $1 FOR UPDATE`,
+         WHERE po.id = $1 FOR UPDATE OF po`,
         [purchaseOrderId]
       );
       const po = poRes.rows[0];
@@ -646,57 +659,53 @@ export const receptionVoucherRepository = {
       }
       if (!['livre_complet', 'livre_partiel', 'en_attente_facturation'].includes(po.status as string)) {
         const e: Error & { statusCode?: number } = new Error(
-          'Ce bon de commande n\'est pas en etat receptionne — rien a annuler.');
+          'Ce bon de commande n\'est pas en etat receptionne — rien a extourner.');
         e.statusCode = 409; throw e;
       }
 
       const rvs = await client.query(
-        `SELECT id, voucher_number FROM reception_vouchers
-         WHERE purchase_order_id = $1 FOR UPDATE`,
+        `SELECT id, voucher_number, store_id FROM reception_vouchers
+         WHERE purchase_order_id = $1 AND voucher_kind = 'receipt' AND status = 'posted' FOR UPDATE`,
         [purchaseOrderId]
       );
       if (rvs.rows.length === 0) {
-        const e: Error & { statusCode?: number } = new Error(
-          'Aucune reception a annuler pour ce bon de commande.');
+        const e: Error & { statusCode?: number } = new Error('Aucune reception active a extourner pour ce bon de commande.');
         e.statusCode = 409; throw e;
       }
       const rvIds = rvs.rows.map((r: Record<string, unknown>) => r.id as string);
 
-      // ── Garde-fou 1 : facture deja (partiellement) payee ──
+      // ── Garde-fou 1 : facture déjà (partiellement) payée ──
       const paidInv = await client.query(
         `SELECT invoice_number FROM invoices
-         WHERE purchase_order_id = $1 AND status != 'cancelled' AND COALESCE(paid_amount, 0) > 0
-         LIMIT 1`,
+         WHERE purchase_order_id = $1 AND status != 'cancelled' AND COALESCE(paid_amount, 0) > 0 LIMIT 1`,
         [purchaseOrderId]
       );
       if (paidInv.rows.length > 0) {
         const e: Error & { statusCode?: number } = new Error(
-          `Annulation impossible : la facture ${paidInv.rows[0].invoice_number} a deja un paiement enregistre. ` +
-          `Supprime d'abord le paiement.`);
+          `Extourne impossible : la facture ${paidInv.rows[0].invoice_number} a deja un paiement enregistre.`);
         e.statusCode = 409; throw e;
       }
 
-      // ── Garde-fou 2 : lot ingredient deja entame (stock consomme) ──
+      // ── Garde-fou 2 : lot déjà entamé ──
       const consumed = await client.query(
-        `SELECT COALESCE(ing.name, '?') AS ingredient_name
+        `SELECT COALESCE(ing.name, '?') AS ingredient_name, il.lot_number
          FROM ingredient_lots il
          JOIN reception_voucher_items rvi ON rvi.id = il.reception_voucher_item_id
          LEFT JOIN ingredients ing ON ing.id = il.ingredient_id
          WHERE rvi.reception_voucher_id = ANY($1::uuid[])
-           AND il.quantity_remaining < il.quantity_received
+           AND il.status <> 'reversed'
+           AND il.quantity_remaining < il.quantity_received - 0.0001
          LIMIT 1`,
         [rvIds]
       );
       if (consumed.rows.length > 0) {
         const e: Error & { statusCode?: number } = new Error(
-          `Annulation impossible : le lot de "${consumed.rows[0].ingredient_name}" a deja ete ` +
-          `partiellement consomme (production/sortie). Annule d'abord ces mouvements.`);
+          `Extourne impossible : le lot ${consumed.rows[0].lot_number} de "${consumed.rows[0].ingredient_name}" a deja ete ` +
+          `partiellement consomme. Corrigez la ligne de reception plutot que d'extourner le bon.`);
         e.statusCode = 409; throw e;
       }
 
-      // ── Extourne + suppression de la/les facture(s) auto du BC ──
-      // Pas de paiement (garde-fou 1) -> seul le chemin "facture" du ledger
-      // est a reverser, exactement comme deleteById sans paiements.
+      // ── Facture auto : extourne comptable puis annulation (jamais de suppression) ──
       const invs = await client.query(
         `SELECT id FROM invoices WHERE purchase_order_id = $1 AND status != 'cancelled'`,
         [purchaseOrderId]
@@ -708,99 +717,213 @@ export const receptionVoucherRepository = {
             { sourceId: inv.id as string, sourceKinds: ['invoice', 'backfill'] }
           );
         }
-        await client.query(`DELETE FROM invoices WHERE id = $1`, [inv.id]);
+        await client.query(
+          `UPDATE invoices SET status = 'cancelled', notes = COALESCE(notes || ' | ', '') || $2 WHERE id = $1`,
+          [inv.id, `Annulée : extourne de la réception du BC ${po.order_number}`]);
       }
 
-      // ── Reversal du stock, ligne de reception par ligne ──
-      const rviRes = await client.query(
-        `SELECT rvi.ingredient_id, rvi.packaging_id, rvi.quantity_received,
-                rv.store_id, rv.voucher_number
-         FROM reception_voucher_items rvi
-         JOIN reception_vouchers rv ON rv.id = rvi.reception_voucher_id
-         WHERE rvi.reception_voucher_id = ANY($1::uuid[])`,
-        [rvIds]
-      );
-
-      // Store de fallback pour les consommables sans store (cf. create : le
-      // credit packaging tombe sur le 1er magasin quand la reception n'en porte pas).
       let fallbackStoreId: string | null = null;
-      if (rviRes.rows.some((it: Record<string, unknown>) => it.packaging_id && !it.store_id)) {
-        const s = await client.query(`SELECT id FROM stores ORDER BY created_at LIMIT 1`);
-        fallbackStoreId = (s.rows[0]?.id as string | undefined) ?? null;
-      }
+      const reversalNumbers: string[] = [];
 
-      for (const it of rviRes.rows) {
-        const qty = parseFloat(it.quantity_received as string);
-        if (!(qty > 0)) continue;
+      for (const rv of rvs.rows) {
+        // Bon miroir numéroté.
+        const number = await this.generateVoucherNumber(client);
+        const mirror = await client.query(
+          `INSERT INTO reception_vouchers (voucher_number, purchase_order_id, notes, received_by, store_id, voucher_kind, reverses_voucher_id)
+           VALUES ($1, $2, $3, $4, $5, 'reversal', $6) RETURNING id`,
+          [number, purchaseOrderId, `Extourne de ${rv.voucher_number}`, userId, rv.store_id ?? null, rv.id]
+        );
+        const mirrorId = mirror.rows[0].id as string;
+        reversalNumbers.push(number as string);
 
-        if (it.packaging_id) {
-          const storeId = (it.store_id as string | null) ?? fallbackStoreId;
-          if (!storeId) {
-            const e: Error & { statusCode?: number } = new Error(
-              'Aucun magasin disponible pour reverser le stock consommable.');
-            e.statusCode = 400; throw e;
-          }
-          await packagingItemRepository.adjustStock(client as unknown as import('pg').PoolClient, {
-            packagingId: it.packaging_id as string,
-            storeId,
-            change: -qty,
-            type: 'adjustment',
-            referenceId: purchaseOrderId,
-            referenceType: 'purchase_order',
-            note: `Annulation reception ${it.voucher_number} — BC ${po.order_number}`,
-            performedBy: userId,
-          });
-        } else if (it.ingredient_id) {
-          const storeFilter = it.store_id ? ' AND store_id = $3' : '';
-          const params: unknown[] = it.store_id
-            ? [qty, it.ingredient_id, it.store_id]
-            : [qty, it.ingredient_id];
+        // Lignes encore actives du bon (quantité signée nette > 0 par ligne d'origine).
+        const lines = await client.query(
+          `SELECT o.id, o.purchase_order_item_id, o.ingredient_id, o.packaging_id, o.unit_price,
+                  o.quantity_received + COALESCE((SELECT SUM(c.signed_quantity) FROM reception_voucher_items c WHERE c.parent_item_id = o.id), 0) AS net_qty
+             FROM reception_voucher_items o
+            WHERE o.reception_voucher_id = $1 AND o.kind = 'receive'`,
+          [rv.id]
+        );
+        for (const l of lines.rows) {
+          const qty = parseFloat(l.net_qty as string);
+          if (!(qty > 0.0001)) continue;
           await client.query(
-            `UPDATE inventory SET current_quantity = GREATEST(current_quantity - $1, 0), updated_at = NOW()
-             WHERE ingredient_id = $2${storeFilter}`,
-            params
+            `INSERT INTO reception_voucher_items (reception_voucher_id, purchase_order_item_id, ingredient_id, packaging_id,
+                                                 quantity_received, unit_price, kind, parent_item_id, reason_code_id, created_by, notes)
+             VALUES ($1, $2, $3, $4, $5, $6, 'reverse', $7, $8, $9, $10)`,
+            [mirrorId, l.purchase_order_item_id, l.ingredient_id, l.packaging_id, qty, l.unit_price, l.id,
+             reason.reasonCodeId, userId, reason.note ?? null]
           );
+
+          if (l.packaging_id) {
+            let storeId = (rv.store_id as string | null);
+            if (!storeId) {
+              if (!fallbackStoreId) fallbackStoreId = (await client.query(`SELECT id FROM stores ORDER BY created_at LIMIT 1`)).rows[0]?.id ?? null;
+              storeId = fallbackStoreId;
+            }
+            if (!storeId) {
+              const e: Error & { statusCode?: number } = new Error('Aucun magasin disponible pour extourner le stock consommable.');
+              e.statusCode = 400; throw e;
+            }
+            await packagingItemRepository.adjustStock(client as unknown as import('pg').PoolClient, {
+              packagingId: l.packaging_id as string, storeId, change: -qty, type: 'adjustment',
+              referenceId: purchaseOrderId, referenceType: 'purchase_order',
+              note: `Extourne ${number} de la réception ${rv.voucher_number} — BC ${po.order_number}`,
+              performedBy: userId,
+            });
+          } else if (l.ingredient_id) {
+            // Le lot passe « reversed » à zéro : le trigger des lots recalcule le stock.
+            const lot = await client.query(
+              `UPDATE ingredient_lots
+                  SET economat_quantity = 0, pesage_quantity = 0, status = 'reversed',
+                      status_reason_code_id = $2, status_changed_by = $3, status_changed_at = NOW()
+                WHERE reception_voucher_item_id = $1 AND status <> 'reversed'
+                RETURNING id`,
+              [l.id, reason.reasonCodeId, userId]
+            );
+            await client.query(
+              `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, purchase_order_item_id, reception_voucher_id, store_id, ingredient_lot_id)
+               VALUES ($1, 'adjustment', $2, $3, $4, $5, $6, $7, $8)`,
+              [l.ingredient_id, -qty, `Extourne ${number} de la réception ${rv.voucher_number} — BC ${po.order_number}`,
+               userId, l.purchase_order_item_id, mirrorId, rv.store_id ?? null, lot.rows[0]?.id ?? null]
+            );
+          }
         }
+
+        await client.query(
+          `UPDATE reception_vouchers SET status = 'reversed', reversed_by = $2, reversed_at = NOW(),
+                  reverse_reason_code_id = $3, reverse_note = $4 WHERE id = $1`,
+          [rv.id, userId, reason.reasonCodeId, reason.note ?? null]
+        );
       }
 
-      // ── Suppression des lots + transactions inventaire de la reception ──
+      // Écarts hors réception repris en mig 307 et reliquats clôturés : extournés aussi,
+      // pour que le BC revienne exactement à « rien reçu ».
       await client.query(
-        `DELETE FROM ingredient_lots WHERE reception_voucher_item_id IN (
-           SELECT id FROM reception_voucher_items WHERE reception_voucher_id = ANY($1::uuid[])
-         )`,
-        [rvIds]
+        `INSERT INTO po_line_events (po_line_id, event_type, sign, qty_base, ref_doc_type, ref_doc_id, posted_by, note)
+         SELECT poi.id, 'LEGACY_ADJUST', -1, poi.qty_received_base, 'reception_cancel', gen_random_uuid(), $2,
+                'extourne de la réception : reçu hors bon de réception'
+           FROM purchase_order_items poi
+          WHERE poi.purchase_order_id = $1 AND poi.qty_received_base > 0.0001`,
+        [purchaseOrderId, userId]
       );
       await client.query(
-        `DELETE FROM inventory_transactions WHERE reception_voucher_id = ANY($1::uuid[])`,
-        [rvIds]
-      );
-
-      // ── Remise a zero des quantites livrees + suppression des bons ──
-      await client.query(
-        `UPDATE purchase_order_items SET quantity_delivered = 0 WHERE purchase_order_id = $1`,
-        [purchaseOrderId]
-      );
-      await client.query(
-        `DELETE FROM reception_voucher_items WHERE reception_voucher_id = ANY($1::uuid[])`,
-        [rvIds]
-      );
-      await client.query(
-        `DELETE FROM reception_vouchers WHERE id = ANY($1::uuid[])`,
-        [rvIds]
+        `INSERT INTO po_line_events (po_line_id, event_type, sign, qty_base, ref_doc_type, ref_doc_id, posted_by, note)
+         SELECT poi.id, 'CANCEL_REVERSAL', -1, poi.qty_cancelled_base, 'reception_cancel', gen_random_uuid(), $2,
+                'extourne de la réception : reliquat rouvert'
+           FROM purchase_order_items poi
+          WHERE poi.purchase_order_id = $1 AND poi.qty_cancelled_base > 0.0001`,
+        [purchaseOrderId, userId]
       );
 
-      // ── BC repasse "envoye" (en attente de livraison) ──
       await client.query(
         `UPDATE purchase_orders SET status = 'envoye', delivery_date = NULL, updated_at = NOW() WHERE id = $1`,
         [purchaseOrderId]
       );
+      await closePurchaseRequestsForOrder(client, purchaseOrderId);
+      // GR/IR (mig 311) : les lignes miroir annulent en 4417 les réceptions comptabilisées.
+      await postGoodsReceiptsForPo(client as unknown as import('pg').PoolClient, purchaseOrderId, userId);
 
       await client.query('COMMIT');
-      return {
-        purchaseOrderId,
-        status: 'envoye',
-        cancelledVouchers: rvs.rows.map((r: Record<string, unknown>) => r.voucher_number as string),
-      };
+      return { purchaseOrderId, reversedVouchers: rvs.rows.map((r: Record<string, unknown>) => r.voucher_number), reversalNumbers };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Correction d'une ligne de réception (mig 308) : nouvelle ligne correct_up / correct_down
+   * rattachée à la dernière réception de la ligne de BC. Le lot d'origine est ajusté (une baisse
+   * ne peut pas dépasser ce qui reste à l'économat), un mouvement d'ajustement est tracé, la ligne
+   * de BC reçoit son événement. Refusée si le BC est déjà facturé (correction à faire côté facture).
+   */
+  async correctReceiptLine(purchaseOrderId: string, poLineId: string, delta: number, reason: { reasonCodeId: string; note?: string | null }, userId: string, isAdmin: boolean) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.change_origin', 'receipt', true)`);
+      await client.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
+      const fail = (code: number, msg: string) => { const e: Error & { statusCode?: number } = new Error(msg); e.statusCode = code; return e; };
+
+      if (!(Math.abs(delta) > 0.0001)) throw fail(400, 'Indiquez la quantité à ajouter ou à retirer');
+      const reasonOk = await client.query(
+        `SELECT 1 FROM ref_entries WHERE id = $1 AND table_id = 'purchase_reason_codes' AND is_active AND metadata->'scope' ? 'correct'`,
+        [reason.reasonCodeId]);
+      if (!reasonOk.rowCount) throw fail(400, 'Motif invalide pour une correction de réception');
+
+      const po = (await client.query(`SELECT id, order_number, status FROM purchase_orders WHERE id = $1 FOR UPDATE`, [purchaseOrderId])).rows[0];
+      if (!po) throw fail(404, 'Bon de commande non trouve');
+      const inv = await client.query(`SELECT invoice_number FROM invoices WHERE purchase_order_id = $1 AND status <> 'cancelled' LIMIT 1`, [purchaseOrderId]);
+      if (inv.rowCount) throw fail(409, `Le BC ${po.order_number} est facturé (${inv.rows[0].invoice_number}) : la correction se fait sur la facture`);
+
+      const orig = (await client.query(
+        `SELECT rvi.*, rv.voucher_number, rv.store_id, rv.created_at AS rv_created_at
+           FROM reception_voucher_items rvi JOIN reception_vouchers rv ON rv.id = rvi.reception_voucher_id
+          WHERE rvi.purchase_order_item_id = $1 AND rvi.kind = 'receive' AND rv.status = 'posted' AND rv.purchase_order_id = $2
+          ORDER BY rv.created_at DESC LIMIT 1 FOR UPDATE OF rvi`,
+        [poLineId, purchaseOrderId])).rows[0];
+      if (!orig) throw fail(409, 'Aucune réception active sur cette ligne');
+
+      if (!isAdmin) {
+        const win = (await client.query(`SELECT COALESCE((value->>'hours')::int, 72) AS h FROM module_parameters WHERE key = 'purchasing.receipt_correction_window_hours'`)).rows[0]?.h ?? 72;
+        const ageH = (Date.now() - new Date(orig.rv_created_at).getTime()) / 3_600_000;
+        if (ageH > win) throw fail(409, `Délai de correction dépassé (${win} h) : demandez à un administrateur`);
+      }
+
+      const qty = Math.abs(delta);
+      const kind = delta > 0 ? 'correct_up' : 'correct_down';
+      if (orig.ingredient_id) {
+        const lot = (await client.query(`SELECT id, economat_quantity, lot_number FROM ingredient_lots WHERE reception_voucher_item_id = $1 FOR UPDATE`, [orig.id])).rows[0];
+        if (!lot) throw fail(409, 'Lot de réception introuvable');
+        if (delta < 0 && Number(lot.economat_quantity) < qty - 0.0001) {
+          throw fail(409, `Le lot ${lot.lot_number} n'a plus que ${Number(lot.economat_quantity)} à l'économat : correction maximale −${Number(lot.economat_quantity)}`);
+        }
+        await client.query(
+          `INSERT INTO reception_voucher_items (reception_voucher_id, purchase_order_item_id, ingredient_id, quantity_received, unit_price,
+                                               kind, parent_item_id, reason_code_id, created_by, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [orig.reception_voucher_id, poLineId, orig.ingredient_id, qty, orig.unit_price, kind, orig.id, reason.reasonCodeId, userId, reason.note ?? null]
+        );
+        await client.query(
+          `UPDATE ingredient_lots SET economat_quantity = economat_quantity + $2,
+                  quantity_received = quantity_received + $2 WHERE id = $1`,
+          [lot.id, delta]
+        );
+        await client.query(
+          `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, purchase_order_item_id, reception_voucher_id, store_id, ingredient_lot_id)
+           VALUES ($1, 'adjustment', $2, $3, $4, $5, $6, $7, $8)`,
+          [orig.ingredient_id, delta, `Correction de la réception ${orig.voucher_number} — BC ${po.order_number}`,
+           userId, poLineId, orig.reception_voucher_id, orig.store_id ?? null, lot.id]
+        );
+      } else if (orig.packaging_id) {
+        await client.query(
+          `INSERT INTO reception_voucher_items (reception_voucher_id, purchase_order_item_id, packaging_id, quantity_received, unit_price,
+                                               kind, parent_item_id, reason_code_id, created_by, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [orig.reception_voucher_id, poLineId, orig.packaging_id, qty, orig.unit_price, kind, orig.id, reason.reasonCodeId, userId, reason.note ?? null]
+        );
+        const storeId = orig.store_id ?? (await client.query(`SELECT id FROM stores ORDER BY created_at LIMIT 1`)).rows[0]?.id;
+        await packagingItemRepository.adjustStock(client as unknown as import('pg').PoolClient, {
+          packagingId: orig.packaging_id as string, storeId, change: delta, type: 'adjustment',
+          referenceId: purchaseOrderId, referenceType: 'purchase_order',
+          note: `Correction de la réception ${orig.voucher_number} — BC ${po.order_number}`, performedBy: userId,
+        });
+      }
+
+      // Statut de livraison recalculé par la règle en base (mig 307).
+      const st = (await client.query(`SELECT fn_po_delivery_status($1) AS s`, [purchaseOrderId])).rows[0].s as string;
+      const next = st === 'en_attente' ? po.status : st;
+      await client.query(`UPDATE purchase_orders SET status = $2, updated_at = NOW() WHERE id = $1 AND status IS DISTINCT FROM $2`, [purchaseOrderId, next]);
+      await closePurchaseRequestsForOrder(client, purchaseOrderId);
+      await postGoodsReceiptsForPo(client as unknown as import('pg').PoolClient, purchaseOrderId, userId);
+      let autoInvoice = null;
+      if (next === 'livre_complet') autoInvoice = await createInvoiceFromPo(client, purchaseOrderId, null, userId, null);
+
+      await client.query('COMMIT');
+      return { purchaseOrderId, status: next, kind, quantity: qty, autoInvoice };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

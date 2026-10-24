@@ -1,7 +1,6 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { ingredientLotRepository } from '../repositories/ingredient-lot.repository.js';
-import { db } from '../config/database.js';
 
 export const ingredientLotController = {
   async list(req: AuthRequest, res: Response) {
@@ -55,13 +54,8 @@ export const ingredientLotController = {
   },
 
   async quarantine(req: AuthRequest, res: Response) {
-    const lot = await ingredientLotRepository.quarantine(req.params.id);
-    if (!lot) { res.status(404).json({ success: false, error: { message: 'Lot non trouve' } }); return; }
-    res.json({ success: true, data: lot });
-  },
-
-  async markAsWaste(req: AuthRequest, res: Response) {
-    const lot = await ingredientLotRepository.markAsWaste(req.params.id);
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) || undefined : undefined;
+    const lot = await ingredientLotRepository.quarantine(req.params.id, req.user!.userId, reason);
     if (!lot) { res.status(404).json({ success: false, error: { message: 'Lot non trouve' } }); return; }
     res.json({ success: true, data: lot });
   },
@@ -94,24 +88,57 @@ export const ingredientLotController = {
   },
 
   /** POST /ingredient-lots/:id/open-container — transferre qty Économat → Pesage */
-  async openContainer(req: AuthRequest, res: Response) {
-    const { quantity, note } = req.body;
-    const qty = parseFloat(quantity);
+  /** POST /ingredient-lots/:id/return-to-economat — reliquat du pesage range en reserve. */
+  async returnToEconomat(req: AuthRequest, res: Response) {
+    const qty = parseFloat(req.body?.quantity);
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : undefined;
+    if (!qty || qty <= 0) {
+      res.status(400).json({ success: false, error: { message: 'Quantite a retourner requise et > 0' } });
+      return;
+    }
+    try {
+      const data = await ingredientLotRepository.returnToEconomat(req.params.id, qty, req.user!.userId, reason);
+      res.json({ success: true, data });
+    } catch (err: unknown) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
+
+  /** POST /ingredient-lots/:id/open-to-pesage — ouverture a l'avance (hors bon), economat -> pesage. */
+  async openToPesage(req: AuthRequest, res: Response) {
+    const qty = parseFloat(req.body?.quantity);
+    const containerCount = Number.isFinite(Number(req.body?.containerCount)) && Number(req.body?.containerCount) > 0 ? Math.floor(Number(req.body.containerCount)) : null;
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : undefined;
     if (!qty || qty <= 0) {
       res.status(400).json({ success: false, error: { message: 'Quantite a ouvrir requise et > 0' } });
       return;
     }
-    const client = await db.getClient();
     try {
-      await client.query('BEGIN');
-      const opened = await ingredientLotRepository.openContainer(client, req.params.id, qty, req.user!.userId, note);
-      await client.query('COMMIT');
-      res.json({ success: true, data: { lot_id: req.params.id, quantity_opened: opened } });
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
+      const data = await ingredientLotRepository.openToPesage(req.params.id, qty, req.user!.userId, { containerCount, reason });
+      res.json({ success: true, data });
+    } catch (err: unknown) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
+
+  /** POST /ingredient-lots/:id/pesage-waste — perte / casse en zone pesage (motif obligatoire). */
+  async wasteFromPesage(req: AuthRequest, res: Response) {
+    const qty = parseFloat(req.body?.quantity);
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : '';
+    if (!qty || qty <= 0) {
+      res.status(400).json({ success: false, error: { message: 'Quantite perdue requise et > 0' } });
+      return;
+    }
+    if (!reason) {
+      res.status(400).json({ success: false, error: { message: 'Motif obligatoire' } });
+      return;
+    }
+    try {
+      const reasonCode = typeof req.body?.reasonCode === 'string' && /^[a-z0-9_]{1,40}$/.test(req.body.reasonCode) ? req.body.reasonCode : undefined;
+      const data = await ingredientLotRepository.wasteFromPesage(req.params.id, qty, req.user!.userId, reason, reasonCode);
+      res.json({ success: true, data });
+    } catch (err: unknown) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
     }
   },
 
@@ -139,46 +166,63 @@ export const ingredientLotController = {
     }
   },
 
-  /** POST /ingredient-lots/:id/mark-depleted — finir un fond de sac (perte minime) */
-  async markDepleted(req: AuthRequest, res: Response) {
-    const { note } = req.body;
-    const client = await db.getClient();
+  /**
+   * POST /ingredient-lots/:id/movement — point d'entree UNIQUE des mouvements de lot
+   * (module Stock, lot 3). Remplace open-container / open-to-pesage / return-to-economat /
+   * pesage-waste / send-to-losses / waste, qui restent montes en facade.
+   *   open     : scelle -> entame (quantity, containerCount?, reason?)
+   *   return   : entame -> scelle (quantity, reason?)
+   *   waste    : perte partielle en zone entamee (quantity, reason obligatoire)
+   *   losses   : lot entier aux pertes, deux zones (reason code, note?)
+   *   quarantine : blocage du lot (admin/gerant)
+   */
+  async movement(req: AuthRequest, res: Response) {
+    const type = String(req.body?.type || '');
+    const qty = parseFloat(req.body?.quantity);
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : '';
+    const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : undefined;
+    const reasonCode = typeof req.body?.reasonCode === 'string' && /^[a-z0-9_]{1,40}$/.test(req.body.reasonCode) ? req.body.reasonCode : undefined;
+    const containerCount = Number.isFinite(Number(req.body?.containerCount)) && Number(req.body?.containerCount) > 0
+      ? Math.floor(Number(req.body.containerCount)) : null;
+    const userId = req.user!.userId;
+    const lotId = req.params.id;
+    const needQty = type === 'open' || type === 'return' || type === 'waste';
+    if (needQty && (!qty || qty <= 0)) {
+      res.status(400).json({ success: false, error: { message: 'Quantite requise et > 0' } });
+      return;
+    }
     try {
-      await client.query('BEGIN');
-      const lotResult = await client.query(
-        `SELECT pesage_quantity, economat_quantity, ingredient_id, store_id FROM ingredient_lots WHERE id = $1 FOR UPDATE`,
-        [req.params.id]
-      );
-      if (lotResult.rowCount === 0) {
-        await client.query('ROLLBACK');
-        res.status(404).json({ success: false, error: { message: 'Lot non trouve' } });
-        return;
+      let data: unknown;
+      switch (type) {
+        case 'open':
+          data = await ingredientLotRepository.openToPesage(lotId, qty, userId, { containerCount, reason: reason || undefined });
+          break;
+        case 'return':
+          data = await ingredientLotRepository.returnToEconomat(lotId, qty, userId, reason || undefined);
+          break;
+        case 'waste':
+          if (!reason) { res.status(400).json({ success: false, error: { message: 'Motif obligatoire' } }); return; }
+          data = await ingredientLotRepository.wasteFromPesage(lotId, qty, userId, reason, reasonCode);
+          break;
+        case 'losses':
+          if (!reason) { res.status(400).json({ success: false, error: { message: 'Motif requis' } }); return; }
+          data = await ingredientLotRepository.sendToLosses(lotId, reason, userId, note);
+          break;
+        case 'quarantine':
+          if (!['admin', 'manager'].includes(req.user!.role)) {
+            res.status(403).json({ success: false, error: { message: 'Quarantaine reservee admin/gerant' } });
+            return;
+          }
+          data = await ingredientLotRepository.quarantine(lotId, userId, note || undefined);
+          if (!data) { res.status(404).json({ success: false, error: { message: 'Lot non trouve' } }); return; }
+          break;
+        default:
+          res.status(400).json({ success: false, error: { message: `Type de mouvement inconnu : ${type}` } });
+          return;
       }
-      const lot = lotResult.rows[0];
-      const wastedQty = parseFloat(lot.pesage_quantity);
-      if (wastedQty > 0) {
-        await client.query(
-          `INSERT INTO inventory_transactions (ingredient_id, type, quantity_change, note, performed_by, store_id, ingredient_lot_id)
-           VALUES ($1, 'waste', $2, $3, $4, $5, $6)`,
-          [lot.ingredient_id, -wastedQty, note || `Fond de sac : ${wastedQty.toFixed(3)}`,
-           req.user!.userId, lot.store_id, req.params.id]
-        );
-      }
-      // Met le pesage a 0 + recalcule status
-      await client.query(
-        `UPDATE ingredient_lots
-            SET pesage_quantity = 0,
-                status = CASE WHEN economat_quantity = 0 THEN 'depleted' ELSE status END
-          WHERE id = $1`,
-        [req.params.id]
-      );
-      await client.query('COMMIT');
-      res.json({ success: true, data: { lot_id: req.params.id, wasted_quantity: wastedQty } });
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
+      res.json({ success: true, data });
+    } catch (err: unknown) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
     }
   },
 };

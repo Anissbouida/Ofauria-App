@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { forecastRepository } from './forecast.repository.js';
 
 /**
  * Module Rapprochement journalier (ISOLE, TEMPORAIRE).
@@ -650,8 +651,10 @@ export const reconciliationRepository = {
   // ─── Rapport de periode ────────────────────────────────────────────────
 
   /**
-   * Suggestion fiche de besoin : catalogue complet + vendu du meme jour de semaine
-   * J-7 (fallback J-14). Permet de pre-remplir l'appro du jour.
+   * Suggestion fiche de besoin : catalogue complet + demande prévue (mig 314) pour
+   * les articles reliés au catalogue, sinon vendu du même jour de semaine J-7
+   * (fallback J-14). La prévision est BRUTE (sans majoration de production) :
+   * la fiche applique son propre % d'ajustement par catégorie.
    */
   async suggest({ date, storeId }: { date: string; storeId: string | null }) {
     const { rows: refRows } = await db.query(`
@@ -690,7 +693,32 @@ export const reconciliationRepository = {
       ORDER BY p.category NULLS LAST, p.product_name
     `, [refDayId]);
 
-    return { referenceDate, products: rows };
+    // Prévision : jamais bloquante, la fiche retombe sur J-7 si elle échoue.
+    let forecastCount = 0;
+    try {
+      const store = await forecastRepository.resolveStore(storeId ?? undefined);
+      if (store) {
+        const links = await forecastRepository.linkMap();
+        const grid = await forecastRepository.compute(store, date, date, { withMarkup: false });
+        const byProduct = new Map(grid.rows.map(r => [r.product_id, r.days[date]]));
+        for (const row of rows) {
+          const pid = links.get(row.product_key);
+          const f = pid ? byProduct.get(pid) : undefined;
+          if (f && f.method !== 'insuffisant') {
+            row.suggested_qty = f.qty;
+            row.method = 'prevision';
+            row.explanation = f.explanation;
+            forecastCount++;
+          } else {
+            row.method = 'j7';
+          }
+        }
+      }
+    } catch {
+      // Prévision indisponible (ex. migration 314 absente) : suggestion J-7 telle quelle.
+    }
+
+    return { referenceDate, forecastCount, products: rows };
   },
 
   // ─── Fiche de besoin partagée ──────────────────────────────────────────

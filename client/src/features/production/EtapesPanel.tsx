@@ -57,8 +57,6 @@ const statusColors = {
   skipped: { bg: 'bg-amber-100', text: 'text-amber-600', dot: 'bg-amber-400' },
 };
 
-const statusLabels = { pending: 'A faire', in_progress: 'En cours', completed: 'Termine', skipped: 'Passe' };
-
 export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit }: EtapesPanelProps) {
   const queryClient = useQueryClient();
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
@@ -132,31 +130,13 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
     return map;
   }, [etapes]);
 
-  // Identifie l'etape "courante" pour la reprise. Priorites :
-  // 1. Etape memorisee lors du "Enregistrer & quitter" (localStorage par planId)
-  //    → repositionnement exact, meme avec plusieurs produits.
-  // 2. Sinon, 1ere etape in_progress (dans n'importe quel groupe).
-  // 3. Sinon, dans le groupe contenant la derniere etape completee (le produit sur lequel
+  // Identifie l'etape "courante" pour la reprise, depuis l'etat serveur :
+  // 1. 1ere etape in_progress (dans n'importe quel groupe).
+  // 2. Sinon, dans le groupe contenant la derniere etape completee (le produit sur lequel
   //    le chef travaillait), 1ere etape pending.
-  // 4. Sinon, 1ere etape pending globale.
-  const lastResumeKey = `ofauria_resume_etape_${planId}`;
+  // 3. Sinon, 1ere etape pending globale.
   const currentEtape = useMemo<{ etape: Etape; itemId: string } | null>(() => {
-    // 1. Etape memorisee
-    try {
-      const memorized = localStorage.getItem(lastResumeKey);
-      if (memorized) {
-        for (const [itemId, group] of grouped.entries()) {
-          const found = group.etapes.find(e => e.id === memorized && (e.status === 'pending' || e.status === 'in_progress'));
-          if (found) return { etape: found, itemId };
-        }
-        // Memo obsolete (etape terminee/sautee) : on la nettoie pour passer aux heuristiques.
-        localStorage.removeItem(lastResumeKey);
-      }
-    } catch {
-      // localStorage indispo (mode prive) — on continue avec les heuristiques.
-    }
-
-    // 2. Premiere etape in_progress
+    // 1. Premiere etape in_progress
     for (const [itemId, group] of grouped.entries()) {
       const inProgress = group.etapes.find(e => e.status === 'in_progress');
       if (inProgress) return { etape: inProgress, itemId };
@@ -179,13 +159,13 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
       if (pending) return { etape: pending, itemId: mostRecentGroup.itemId };
     }
 
-    // 4. Premiere etape pending globale
+    // 3. Premiere etape pending globale
     for (const [itemId, group] of grouped.entries()) {
       const pending = group.etapes.find(e => e.status === 'pending');
       if (pending) return { etape: pending, itemId };
     }
     return null;
-  }, [grouped, lastResumeKey]);
+  }, [grouped]);
 
   // Auto-deplie le groupe contenant l'etape courante a la 1ere arrivee sur le plan.
   useEffect(() => {
@@ -226,8 +206,8 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
 
   if (etapes.length === 0 && !isLoading) return null;
   if (isLoading) return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex items-center justify-center gap-2 text-gray-400">
-      <Loader2 size={16} className="animate-spin" /> Chargement des etapes...
+    <div className="odoo-section" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+      <Loader2 size={16} className="animate-spin" /> Chargement des étapes…
     </div>
   );
 
@@ -249,11 +229,11 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-3">
-        <ListChecks size={16} className="text-violet-600" />
-        <h3 className="font-semibold text-gray-900 text-sm">Etapes de production</h3>
-        <span className="text-xs text-gray-400">
+    <div className="odoo-section">
+      <div className="odoo-section-header">
+        <ListChecks size={12} />
+        <span>Étapes de production</span>
+        <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
           {etapes.filter(e => e.status === 'completed').length}/{etapes.length} terminees
         </span>
         <div className="ml-auto flex items-center gap-3">
@@ -268,7 +248,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
           {isChef && planStatus === 'in_progress' && onSaveAndExit && (
             <button
               onClick={onSaveAndExit}
-              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition-colors"
+              className="odoo-btn-secondary" style={{ textTransform: 'none', letterSpacing: 0 }}
               title="Vos actions sont deja enregistrees. Vous reviendrez sur l'etape en cours."
             >
               <Save size={12} /> Enregistrer & quitter

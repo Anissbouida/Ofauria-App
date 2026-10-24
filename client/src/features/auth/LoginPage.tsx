@@ -75,8 +75,17 @@ export default function LoginPage() {
     try {
       await login({ email, password });
       // login success — no notification needed
-    } catch {
-      notify.error('Email ou mot de passe incorrect');
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { status?: number; data?: { error?: { message?: string } } }; code?: string; message?: string };
+      const status = axiosErr?.response?.status;
+      const serverMsg = axiosErr?.response?.data?.error?.message;
+      if (!axiosErr?.response) {
+        notify.error('Serveur injoignable — vérifie que le backend tourne (port 3001)');
+      } else if (status === 401 || status === 400) {
+        notify.error(serverMsg || 'Email ou mot de passe incorrect');
+      } else {
+        notify.error(serverMsg || `Erreur serveur (${status})`);
+      }
     } finally {
       setLoading(false);
     }

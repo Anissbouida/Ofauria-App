@@ -498,7 +498,8 @@ export const replenishmentRepository = {
             );
             for (const step of plan) {
               await productLotRepository.transferBackroomToVitrine(
-                client, step.lotId, step.qty, displayHours ? parseInt(displayHours) : null
+                client, step.lotId, step.qty, displayHours ? parseInt(displayHours) : null,
+                { type: 'replenishment_request', id: requestId }
               );
             }
           }

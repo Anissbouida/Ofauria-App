@@ -16,6 +16,11 @@ const etapeSchema = z.object({
   est_repetable: z.boolean().default(false),
   nb_repetitions: z.number().int().min(1).default(1),
   responsable_role: z.string().nullable().optional(),
+  // Version arabe (darija) du libelle et des points de controle. zod DEPOUILLE
+  // les cles inconnues : sans ces deux champs, toute sauvegarde depuis l'UI
+  // effacerait silencieusement la colonne arabe des fiches bilingues.
+  nom_ar: z.string().max(300).nullable().optional(),
+  checklist_items_ar: z.array(z.string()).default([]),
 });
 
 export const createContenantSchema = z.object({
@@ -38,6 +43,13 @@ export const createContenantSchema = z.object({
 });
 
 export const updateContenantSchema = createContenantSchema.partial();
+
+/** Actions en masse depuis la liste des formats (selection multiple). */
+export const bulkIdsSchema = z.object({
+  ids: z.array(z.string().uuid('ID format invalide'))
+    .min(1, 'Aucun format selectionne')
+    .max(200, 'Trop de formats selectionnes'),
+});
 
 export const upsertProfileSchema = z.object({
   contenant_id: z.string().uuid('ID contenant invalide'),

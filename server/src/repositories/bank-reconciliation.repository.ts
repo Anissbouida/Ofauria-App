@@ -102,7 +102,7 @@ export const bankReconciliationRepository = {
        JOIN journal_entries je ON je.id = jel.journal_entry_id
        JOIN journals j ON j.id = je.journal_id
        WHERE jel.account_id = $1
-         AND je.status = 'posted'
+         AND je.status = 'posted' AND je.source_kind <> 'reversal'
          AND je.entry_date >= ($2::date - INTERVAL '1 month')
          AND je.entry_date <= ($2::date + INTERVAL '1 month')
          AND NOT EXISTS (
@@ -157,7 +157,7 @@ export const bankReconciliationRepository = {
            FROM journal_entry_lines jel
            JOIN journal_entries je ON je.id = jel.journal_entry_id
            WHERE jel.account_id = $1
-             AND je.status = 'posted'
+             AND je.status = 'posted' AND je.source_kind <> 'reversal'
              AND jel.${col} = $2
              AND je.entry_date BETWEEN ($3::date - INTERVAL '7 days') AND ($3::date + INTERVAL '7 days')
              AND NOT EXISTS (SELECT 1 FROM bank_statement_lines b WHERE b.matched_entry_line_id = jel.id)

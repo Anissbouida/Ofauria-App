@@ -12,6 +12,7 @@
  */
 
 import { db } from '../config/database.js';
+import { postGoodsReceiptsForPo } from './ledger-posting.service.js';
 import {
   fromInvoice, fromSale, fromPaymentEmission, fromPaymentCashing, fromManualShiftEntry, persistEntry,
   regenerateInvoiceEntry, reverseEntriesForSource,
@@ -61,6 +62,14 @@ export async function runFullBackfill(userId: string): Promise<BackfillSummary> 
   };
 
   // ─── Factures ───
+  // Mig 311 : une pièce déjà comptabilisée (écriture active) n'est pas régénérée :
+  // on ne recalcule même pas son écriture (un paramétrage devenu strict ne doit
+  // pas faire échouer le rattrapage sur l'historique déjà posé).
+  const active = new Set((await db.query(
+    `SELECT DISTINCT source_id::text || '|' || COALESCE(source_detail, '') AS k FROM journal_entries
+      WHERE status = 'posted' AND source_kind <> 'reversal' AND source_id IS NOT NULL`)).rows.map((r: { k: string }) => r.k));
+  const isPosted = (id: string, detail = '') => active.has(`${id}|${detail}`);
+
   const invoices = (await db.query(
     `SELECT id, invoice_number, invoice_type, supplier_id, customer_id, category_id,
             invoice_date::TEXT AS invoice_date, amount, tax_amount, total_amount, store_id, status
@@ -68,6 +77,7 @@ export async function runFullBackfill(userId: string): Promise<BackfillSummary> 
      ORDER BY invoice_date, created_at`
   )).rows as unknown as InvoiceRow[];
   for (const inv of invoices) {
+    if (isPosted(inv.id)) { summary.skipped++; continue; }
     try {
       const entry = await fromInvoice(db, inv);
       if (entry) { summary.invoices++; await persistOne(entry, `invoice ${inv.invoice_number}`); }
@@ -81,14 +91,20 @@ export async function runFullBackfill(userId: string): Promise<BackfillSummary> 
   const payments = (await db.query(
     `SELECT id, reference, type, category_id, invoice_id, supplier_id, employee_id,
             amount, payment_method, payment_date::TEXT AS payment_date,
-            cashed_at::TEXT AS cashed_at, description, store_id
-     FROM payments ORDER BY payment_date, created_at`
+            cashed_at::TEXT AS cashed_at, description, store_id,
+            withholding_type_id, withholding_amount, payment_mode, treasury_account_id, to_treasury_account_id
+     FROM payments
+     -- Mig 310/311 : un paiement annulé (et sa contre-pièce) n'est jamais recomptabilisé.
+     WHERE status <> 'void' AND voids_payment_id IS NULL
+     ORDER BY payment_date, created_at`
   )).rows as unknown as PaymentRow[];
   for (const p of payments) {
     try {
-      const emission = await fromPaymentEmission(db, p);
-      if (emission) { summary.payments++; await persistOne(emission, `payment ${p.reference || p.id}`); }
-      const cashing = fromPaymentCashing(p);
+      if (!isPosted(p.id)) {
+        const emission = await fromPaymentEmission(db, p);
+        if (emission) { summary.payments++; await persistOne(emission, `payment ${p.reference || p.id}`); }
+      }
+      const cashing = isPosted(p.id, 'cashing') ? null : fromPaymentCashing(p);
       if (cashing) { summary.cashings++; await persistOne(cashing, `cashing ${p.reference || p.id}`); }
     } catch (err) {
       summary.errors++;
@@ -145,6 +161,53 @@ export async function runFullBackfill(userId: string): Promise<BackfillSummary> 
   }
 
   // ─── Ventes saisies manuellement par shift (matin/soir) ───
+  // Mig 311 (G-D8-03) : retenues d'avances sur salaire (6171 D / 3431 C), jamais
+  // comptabilisées tant que la CHECK source_kind les refusait.
+  const repayments = (await db.query(
+    `SELECT sr.id, sr.amount, sr.repayment_date::TEXT AS repayment_date,
+            TRIM(COALESCE(e.first_name, '') || ' ' || COALESCE(e.last_name, '')) AS label
+       FROM salary_advance_repayments sr
+       JOIN salary_advances a ON a.id = sr.advance_id
+       JOIN employees e ON e.id = a.employee_id
+      ORDER BY sr.repayment_date`
+  )).rows as { id: string; amount: string; repayment_date: string; label: string }[];
+  for (const r of repayments) {
+    const take = Math.round(parseFloat(r.amount) * 100) / 100;
+    if (!(take > 0)) continue;
+    await persistOne({
+      journal_code: 'OD', entry_date: r.repayment_date,
+      description: `Retenue avance sur salaire - ${r.label}`,
+      source_kind: 'advance_repayment', source_id: r.id, store_id: null,
+      lines: [
+        { account_code: '6171', debit: take, credit: 0, label: `Salaire (part retenue avance) - ${r.label}` },
+        { account_code: '3431', debit: 0, credit: take, label: `Remboursement avance - ${r.label}` },
+      ],
+    }, `retenue ${r.id}`);
+  }
+
+  // Mig 311 (G-D8-05) : réceptions des BC non encore facturés → GR/IR (4417).
+  const uninvoicedPos = (await db.query(
+    `SELECT DISTINCT rv.purchase_order_id AS id FROM reception_vouchers rv
+      WHERE NOT EXISTS (SELECT 1 FROM invoices i WHERE i.status <> 'cancelled'
+                          AND (i.purchase_order_id = rv.purchase_order_id
+                               OR EXISTS (SELECT 1 FROM invoice_purchase_orders ipo WHERE ipo.invoice_id = i.id AND ipo.purchase_order_id = rv.purchase_order_id)))`
+  )).rows as { id: string }[];
+  for (const po of uninvoicedPos) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const n = await postGoodsReceiptsForPo(client, po.id, userId);
+      await client.query('COMMIT');
+      summary.created += n;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      summary.errors++;
+      if (summary.errorSamples.length < 10) summary.errorSamples.push(`réception BC ${po.id}: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      client.release();
+    }
+  }
+
   const shifts = (await db.query(
     `SELECT id, entry_date::TEXT AS entry_date, store_id,
             matin_cash_reel, matin_carte_reel, soir_cash_reel, soir_carte_reel

@@ -12,7 +12,19 @@ export const productionEtapesRepository = {
               r.etapes AS recipe_etapes,
               ppp.etapes_surcharges
        FROM production_plan_items ppi
-       LEFT JOIN recipes r ON r.id = ppi.base_recipe_id
+       -- Recette de l'article : celle du semi-fini (base_recipe_id) ou celle du
+       -- PRODUIT (lien direct ou par format). Avant, seule la 1re branche existait :
+       -- les etapes de la fiche d'un produit fini n'etaient jamais initialisees.
+       LEFT JOIN LATERAL (
+         SELECT r0.etapes
+           FROM recipes r0
+          WHERE r0.id = ppi.base_recipe_id
+             OR (ppi.base_recipe_id IS NULL AND ppi.product_id IS NOT NULL
+                 AND (r0.product_id = ppi.product_id
+                      OR r0.id IN (SELECT rf.recipe_id FROM recipe_formats rf WHERE rf.product_id = ppi.product_id AND rf.is_active)))
+          ORDER BY (r0.id = ppi.base_recipe_id) DESC NULLS LAST, (r0.product_id = ppi.product_id) DESC NULLS LAST
+          LIMIT 1
+       ) r ON true
        LEFT JOIN produit_profil_production ppp ON ppp.produit_id = ppi.product_id
        WHERE ppi.id = $1`,
       [planItemId]
@@ -210,20 +222,4 @@ export const productionEtapesRepository = {
     return result.rows[0];
   },
 
-  // ─── Get pending timers (for node-cron polling) ───
-  async getPendingTimers() {
-    const result = await db.query(
-      `SELECT pie.*, ppi.plan_id,
-              COALESCE(p.name, r.name) as product_name
-       FROM production_item_etapes pie
-       JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
-       LEFT JOIN products p ON p.id = ppi.product_id
-       LEFT JOIN recipes r ON r.id = ppi.base_recipe_id
-       WHERE pie.timer_fire_at IS NOT NULL
-         AND pie.timer_fire_at <= NOW()
-         AND pie.status = 'in_progress'
-       ORDER BY pie.timer_fire_at ASC`
-    );
-    return result.rows;
-  },
 };

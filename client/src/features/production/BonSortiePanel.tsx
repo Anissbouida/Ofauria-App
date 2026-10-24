@@ -1,24 +1,114 @@
-import { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { bonSortieApi } from '../../api/bon-sortie.api';
-import { useAuth } from '../../context/AuthContext';
+import { bonSortieApi, type WeighingPayload } from '../../api/bon-sortie.api';
+import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import {
   Loader2, CheckCircle, AlertTriangle, Package, PackageOpen, Check, XCircle,
-  RefreshCw, ChevronDown, ChevronUp, Edit3, Truck, ShoppingCart, ArrowRightCircle,
+  RefreshCw, ChevronDown, ChevronUp, Scale, Truck, ShoppingCart, Clock, Layers,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { apiErrorMessage } from '../../api/errors';
 import { smartFormatQuantity } from '../../utils/units';
 
 /**
- * Panneau reutilisable de gestion du bon de sortie.
- * Utilise :
- *   - comme page autonome via BonSortiePrelevementPage (route /production/:id/bon-sortie)
- *   - inline dans PlanDetailPage (onglet Preparation > sous-onglet "Bon de sortie")
+ * Panneau du bon de sortie (demande d'ingredients d'un plan de production).
  *
- * variant='inline' : pas de bouton valider fixe en bas de page, layout plus compact.
+ * Un seul ecran pour le magasinier : chaque ligne porte son etat et son action.
+ *   - A peser     : le stock est au pesage -> saisir le poids.
+ *   - A ouvrir    : le stock est en economat -> saisir le poids, le serveur ouvre le
+ *                   contenant (transfert economat -> pesage) dans la meme action.
+ *                   Plus de detour par le module Economat.
+ *   - Manquant    : rien en stock -> « Commander » (demande d'achat) ; le bon peut
+ *                   quand meme etre remis au chef en signalant les manquants.
+ *   - Lot perime  : choisir un autre lot avant de peser.
+ *   - Pese        : termine (ecart affiche, motif si hors tolerance).
+ * « Autre lot » sur chaque ligne : le lot reellement attrape (substitution tracee).
+ *
+ * Utilise :
+ *   - dans l'espace de traitement du Pesage (magasinier, isChef=false)
+ *   - inline dans PlanDetailPage (chef : lecture, les actions de reception sont
+ *     dans le bandeau en haut de la page du plan)
+ *   - en page autonome depuis l'historique du Pesage (variant='page')
  */
+
+type Line = Record<string, any>;
+type LineKind = 'pese' | 'a_peser' | 'a_ouvrir' | 'manquant' | 'stock_revenu' | 'lot_perime' | 'attente';
+
+const DONE_STATUSES = ['preleve', 'substitue', 'ecart'];
+
+function lineKind(l: Line): LineKind {
+  const status = l.status as string;
+  if (DONE_STATUSES.includes(status)) return 'pese';
+  const needed = parseFloat(l.needed_quantity as string || '0');
+  if (status === 'rupture' && !l.ingredient_lot_id) {
+    const stock = parseFloat(l.current_stock_total as string || '0');
+    return stock >= needed && needed > 0 ? 'stock_revenu' : 'manquant';
+  }
+  if (status === 'en_attente' && l.source_location === 'ECONOMAT_REQUIRES_TRANSFER') {
+    // Contenant deja ouvert a l'avance (stock libre au pesage) : rien a ouvrir, on pese.
+    const target = parseFloat(l.transfer_required_qty as string || l.needed_quantity as string || '0');
+    const staged = parseFloat(l.current_pesage_total as string || '0');
+    return staged + 1e-9 >= target && target > 0 ? 'a_peser' : 'a_ouvrir';
+  }
+  if (status === 'en_attente') return l.lot_expired ? 'lot_perime' : 'a_peser';
+  return 'attente';
+}
+
+/** Cible de la pesee : allocation, ou besoin pour une ligne a ouvrir / manquante. */
+function lineTarget(l: Line, kind: LineKind): number {
+  // Une ligne « a ouvrir » (meme deja mise au pesage a l'avance, donc affichee « a
+  // peser ») n'a pas d'allocation tant qu'elle n'est pas pesee : la cible est la
+  // quantite a sortir de l'economat.
+  if (kind === 'a_ouvrir' || (l.source_location === 'ECONOMAT_REQUIRES_TRANSFER' && l.status === 'en_attente')) {
+    return parseFloat(l.transfer_required_qty as string || l.needed_quantity as string || '0');
+  }
+  if (kind === 'manquant' || kind === 'stock_revenu') return parseFloat(l.needed_quantity as string || '0');
+  return parseFloat(l.allocated_quantity as string || '0');
+}
+
+const KIND_TAG: Record<LineKind, { label: string; cls: string; Icon: typeof CheckCircle; title: string }> = {
+  pese:         { label: 'Pesé',          cls: 'odoo-tag-green',  Icon: CheckCircle,  title: 'Ingrédient pesé et prêt' },
+  a_peser:      { label: 'À peser',       cls: 'odoo-tag-grey',   Icon: Scale,        title: 'Le stock est au pesage : saisissez le poids' },
+  a_ouvrir:     { label: 'À ouvrir',      cls: 'odoo-tag-blue',   Icon: PackageOpen,  title: 'Le stock est en économat : pesez, le contenant est ouvert automatiquement' },
+  manquant:     { label: 'Manquant',      cls: 'odoo-tag-red',    Icon: AlertTriangle, title: 'Rien en stock (pesage ni économat) : commandez, ou remettez le bon en signalant le manquant' },
+  stock_revenu: { label: 'Stock revenu',  cls: 'odoo-tag-yellow', Icon: RefreshCw,    title: 'Du stock est arrivé depuis : actualisez le stock ou choisissez un lot' },
+  lot_perime:   { label: 'Lot périmé',    cls: 'odoo-tag-red',    Icon: XCircle,      title: 'Le lot alloué a dépassé sa DLC : choisissez un autre lot' },
+  attente:      { label: 'En attente',    cls: 'odoo-tag-grey',   Icon: Clock,        title: '' },
+};
+
+/** Lot reellement pris, a choisir parmi les lots utilisables (pesage puis economat, FEFO). */
+function LotSelect({ ligneId, value, onChange, unit }: { ligneId: string; value: string; onChange: (lotId: string, lot: Line | null) => void; unit: string }) {
+  const { data: lots = [], isLoading } = useQuery<Line[]>({
+    queryKey: ['bsi-ligne-lots', ligneId],
+    queryFn: () => bonSortieApi.lotsForLigne(ligneId),
+    staleTime: 10000,
+  });
+  const fmt = (q: unknown) => {
+    const f = smartFormatQuantity(parseFloat(q as string || '0'), unit);
+    return `${f.value.toFixed(f.unit === 'g' || f.unit === 'ml' ? 0 : 2)} ${f.unit}`;
+  };
+  if (isLoading) return <Loader2 size={13} className="animate-spin" />;
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value, lots.find(l => l.id === e.target.value) || null)} className="bsi-lot-select" title="Lot réellement utilisé">
+      <option value="">— lot proposé (FEFO) —</option>
+      {lots.map((lot) => {
+        const pesage = parseFloat(lot.pesage_free as string || '0');
+        const eco = parseFloat(lot.economat_quantity as string || '0');
+        const dlc = lot.expiration_date ? format(new Date(lot.expiration_date as string), 'dd/MM/yy') : 'sans DLC';
+        const where = pesage > 0 ? `pesage ${fmt(pesage)}` : `économat ${fmt(eco)}`;
+        return (
+          <option key={lot.id as string} value={lot.id as string} disabled={!!lot.is_expired}>
+            {((lot.supplier_lot_number || lot.lot_number) as string | null) || 'lot sans n°'} · DLC {dlc} · {where}{lot.is_expired ? ' · PÉRIMÉ' : ''}
+          </option>
+        );
+      })}
+    </select>
+  );
+}
+
 export function BonSortiePanel({
   planId,
   isChef,
@@ -27,272 +117,231 @@ export function BonSortiePanel({
 }: {
   planId: string;
   isChef: boolean;
-  /** L'utilisateur courant a le role magasinier (peut prendre en charge et marquer pret). */
+  /** L'utilisateur courant prepare les bons (magasinier, admin, manager). */
   isMagasinier?: boolean;
   variant?: 'inline' | 'page';
 }) {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  // L'interface User de @ofauria/shared expose la propriete `id` (UUID), pas `userId`.
-  const currentUserId = user?.id as string | undefined;
+  const confirm = useConfirm();
 
-  // Editing state: which line is being manually edited
-  const [editingLine, setEditingLine] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
+  // Saisie locale par ligne : poids reel + motif + lot choisi + contenants ouverts.
+  // Jamais pre-remplie avec la cible : c'est la mesure qui entre dans le systeme.
+  type Entry = { value: string; reason: string; lotId: string; containers: string; pickLot: boolean; openQty: string; lotEco: number | null; lotPesage: number | null };
+  const EMPTY: Entry = { value: '', reason: '', lotId: '', containers: '', pickLot: false, openQty: '', lotEco: null, lotPesage: null };
+  const [entries, setEntries] = useState<Record<string, Entry>>({});
+  const entryOf = (id: string): Entry => entries[id] ?? EMPTY;
+  const setEntry = (id: string, patch: Partial<Entry>) =>
+    setEntries(prev => ({ ...prev, [id]: { ...(prev[id] ?? EMPTY), ...patch } }));
+  const clearEntry = (id: string) => setEntries(prev => { const n = { ...prev }; delete n[id]; return n; });
   const [showDetails, setShowDetails] = useState(false);
-  // Modale de refus chef (saisie du motif)
-  const [rejectingOpen, setRejectingOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
 
   const { data: bons = [], isLoading } = useQuery({
     queryKey: ['bons-sortie', planId],
     queryFn: () => bonSortieApi.getByPlan(planId),
     enabled: !!planId,
-  });
-
-  const bon = (bons as Record<string, any>[]).find((b: Record<string, any>) => b.status !== 'annule') as Record<string, any> | undefined;
-  const lines = (bon?.lines || []) as Record<string, any>[];
-
-  // Auto-start prelevement ; ref anti-double-appel (StrictMode dev).
-  const autoStartedForBonId = useRef<string | null>(null);
-
-  const startMutation = useMutation({
-    mutationFn: () => bonSortieApi.startPrelevement(bon!.id as string),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] }); },
-    onError: (e: any) => {
-      const msg: string = e?.response?.data?.error || e?.message || '';
-      if (msg.includes('statut invalide') || msg.includes('introuvable')) {
-        queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-        return;
-      }
-      notify.error(msg || 'Erreur');
+    refetchInterval: (q) => {
+      const active = ((q.state.data || []) as Line[]).find(b => b.status !== 'annule');
+      return active && !['cloture', 'annule'].includes(active.status as string) ? 15000 : false;
     },
   });
 
-  // Pas d'auto-transition : le BSI reste en 'genere' jusqu'a ce que le magasinier
-  // prenne explicitement en charge via le bouton "Prendre en charge". Cela garantit
-  // que le workflow passe TOUJOURS par le magasinier, meme quand le chef ouvre le plan
-  // en premier. Le chef (non-magasinier) voit "En attente de prise en charge".
-  // autoStartedForBonId garde une reference pour un usage futur eventuel mais n'est plus
-  // declenche automatiquement.
-  void autoStartedForBonId;
+  const bon = (bons as Line[]).find((b) => b.status !== 'annule') as Line | undefined;
+  const allLines = (bon?.lines || []) as Line[];
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
+    queryClient.invalidateQueries({ queryKey: ['warehouse-queue'] });
+    queryClient.invalidateQueries({ queryKey: ['warehouse-pesage-stock'] });
+    queryClient.invalidateQueries({ queryKey: ['warehouse-transfer-requests'] });
+    queryClient.invalidateQueries({ queryKey: ['warehouse-rupture-requests'] });
+  };
+  const onError = (e: unknown) => notify.error(apiErrorMessage(e, 'Erreur'));
 
-  // ─── Mutations workflow magasinier/chef ───
+  // ─── Mutations ───
   const markPreparationMutation = useMutation({
     mutationFn: () => bonSortieApi.markPreparation(bon!.id as string),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-      notify.success('Preparation demarree — le chef a ete notifie');
-    },
-    onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
+    onSuccess: () => { invalidate(); notify.success('Préparation démarrée — le chef a été notifié'); },
+    onError,
   });
-
   const markReadyMutation = useMutation({
-    mutationFn: () => bonSortieApi.markReady(bon!.id as string),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-      notify.success('Pret a remettre — le chef a ete notifie');
+    mutationFn: (withMissing: boolean) => bonSortieApi.markReady(bon!.id as string, { withMissing }),
+    onSuccess: (_d, withMissing) => {
+      invalidate();
+      notify.success(withMissing ? 'Bon remis au chef avec les manquants signalés' : 'Bon remis au chef — il a été notifié');
     },
-    onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
+    onError,
   });
-
-  const chefRejectMutation = useMutation({
-    mutationFn: (reason: string) => bonSortieApi.chefReject(bon!.id as string, reason),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-      notify.success('Reception refusee — le magasinier a ete notifie du motif');
-      setRejectingOpen(false);
-      setRejectReason('');
+  const completePendingMutation = useMutation({
+    mutationFn: () => bonSortieApi.completePending(bon!.id as string),
+    onSuccess: (data: Line) => {
+      invalidate();
+      const resolved = data?.resolved || 0;
+      const left = data?.remainingPendingLines ?? 0;
+      notify.success(left === 0 ? `Stock actualisé : ${resolved} ligne(s) ré-allouée(s)` : `${resolved} ligne(s) ré-allouée(s), ${left} toujours manquante(s)`);
     },
-    onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
+    onError,
   });
-
-  const ligneMutation = useMutation({
-    mutationFn: ({ ligneId, actualQuantity }: { ligneId: string; actualQuantity: number }) =>
-      bonSortieApi.updateLigne(ligneId, { actualQuantity }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-      setEditingLine(null);
-    },
-    onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
-  });
-
-  const closeMutation = useMutation({
-    mutationFn: () => bonSortieApi.close(bon!.id as string),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-      notify.success('Bon cloture — ingredients livres');
-    },
-    onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
-  });
-
-  // Regeneration, avec ou sans derogation DLC (mig 339). Le motif est obligatoire
-  // cote serveur : il est trace sur l'en-tete du bon (qui, quand, pourquoi).
+  // Régénération, avec ou sans dérogation DLC (mig 339) : le motif est obligatoire
+  // côté serveur et tracé sur l'en-tête du bon (qui, quand, pourquoi).
   const [derogMotif, setDerogMotif] = useState('');
   const [showDerog, setShowDerog] = useState(false);
   const regenerateMutation = useMutation({
     mutationFn: (derogationMotif?: string) =>
       bonSortieApi.regenerate(planId, undefined, derogationMotif ? { motif: derogationMotif } : undefined),
     onSuccess: (_data, derogationMotif) => {
-      queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-      notify.success(derogationMotif ? 'Bon regenere avec derogation DLC (tracee)' : 'Bon regenere');
+      invalidate();
+      notify.success(derogationMotif ? 'Bon régénéré avec dérogation DLC (tracée)' : 'Bon régénéré');
       setShowDerog(false);
       setDerogMotif('');
     },
-    onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
+    onError,
   });
-
-  // Note : la commande fournisseur sur une ligne en rupture totale s'effectue
-  // desormais depuis le module Economat (onglet "Ingredients a commander"),
-  // pas depuis ce panneau. Le bandeau ruptures plus bas redirige le magasinier.
-
-  // BSI partiel : valider ce qui est prelevé, garder le reste en attente
-  const commitPartialMutation = useMutation({
-    mutationFn: () => bonSortieApi.commitPartial(bon!.id as string),
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-      notify.success(`Prélèvement partiel validé (${data?.done_count || 0} prêt(s), ${data?.pending_count || 0} en attente)`);
+  const ligneMutation = useMutation({
+    mutationFn: ({ ligneId, payload }: { ligneId: string; payload: WeighingPayload }) => bonSortieApi.updateLigne(ligneId, payload),
+    onSuccess: (data: Line, vars) => {
+      invalidate();
+      clearEntry(vars.ligneId);
+      const opened = parseFloat(data?.opened_qty || '0');
+      if (opened > 0) notify.success(`Pesée enregistrée — contenant ouvert (${opened.toFixed(2)} ${data?.unit || ''} transférés au pesage)`);
     },
-    onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
+    onError,
   });
-
-  // Après réapprovisionnement : refait le FEFO sur les lignes en attente
-  const completePendingMutation = useMutation({
-    mutationFn: () => bonSortieApi.completePending(bon!.id as string),
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-      if (data?.remainingPendingLines === 0) {
-        notify.success(`Toutes les lignes ont été allouées (${data?.resolved} résolue(s))`);
-      } else {
-        notify.success(`${data?.resolved || 0} ligne(s) résolue(s), ${data?.remainingPendingLines || 0} encore en attente`);
-      }
+  const weighAllMutation = useMutation({
+    mutationFn: (lines: Array<WeighingPayload & { ligneId: string }>) => bonSortieApi.weighLignes(bon!.id as string, lines),
+    onSuccess: (data: Line) => {
+      invalidate();
+      setEntries({});
+      const hors = data?.outOfTolerance || 0;
+      notify.success(`${data?.weighed || 0} pesée(s) enregistrée(s)` + (hors > 0 ? ` — dont ${hors} hors tolérance` : ''));
     },
-    onError: (e: any) => notify.error(e?.response?.data?.error || 'Erreur'),
+    onError,
+  });
+  const [orderedIds, setOrderedIds] = useState<Set<string>>(new Set());
+  const orderMutation = useMutation({
+    mutationFn: (line: Line) => purchaseRequestsApi.create({
+      ingredientId: line.ingredient_id as string,
+      quantity: Math.max(0.001, parseFloat(line.needed_quantity as string || '0') - parseFloat(line.allocated_quantity as string || '0')),
+      unit: (line.unit || line.ingredient_unit || 'kg') as string,
+      reason: 'production',
+      note: `Bon ${bon?.numero || ''} — manquant au pesage`,
+      supplierId: null,
+    }),
+    onSuccess: (_d, line) => {
+      setOrderedIds(prev => new Set(prev).add(line.id as string));
+      queryClient.invalidateQueries({ queryKey: ['purchase-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-requests-grouped'] });
+      invalidate();
+      notify.success(`${line.ingredient_name} : demande d'achat créée (Stock › À commander)`);
+    },
+    onError,
   });
 
-  // Stats — la progression compte les lignes effectivement prelevees,
-  // pas le complement de "en_attente" (sinon les lignes 'rupture' sont
-  // comptees comme prelevees a tort, affichant 100% des le debut).
-  // Les lignes annulees (status='annule') ne participent plus au BSI : exclues du total.
-  const activeLines = lines.filter((l) => l.status !== 'annule');
-  const totalLines = activeLines.length;
-  const prelevees = activeLines.filter((l) => ['preleve', 'substitue'].includes(l.status as string)).length;
-  const enAttente = activeLines.filter((l) => ['en_attente', 'rupture'].includes(l.status as string)).length;
-  // Lignes prelevables en "tout conforme" : exclut les transferts requis (allocated=0
-  // tant que le magasinier n'a pas transfere depuis l'economat).
-  const nonBloquees = lines.filter((l) =>
-    l.status === 'en_attente'
-    && !l.lot_expired
-    && l.lot_status !== 'expired'
-    && l.source_location !== 'ECONOMAT_REQUIRES_TRANSFER'
-  );
-  const allDone = totalLines > 0 && enAttente === 0;
-  const progressPct = totalLines > 0 ? Math.round((prelevees / totalLines) * 100) : 0;
+  // ─── Lignes : ingredients (pesees) et emballages (informatifs) ───
+  const activeLines = allLines.filter((l) => l.status !== 'annule');
+  const ingredientLines = activeLines.filter((l) => !l.is_packaging);
+  const packagingLines = activeLines.filter((l) => !!l.is_packaging);
+  const kinds = new Map<string, LineKind>(ingredientLines.map((l) => [l.id as string, lineKind(l)]));
+  const count = (k: LineKind) => ingredientLines.filter((l) => kinds.get(l.id as string) === k).length;
+  const totalLines = ingredientLines.length;
+  const pesees = count('pese');
+  const aPeser = count('a_peser');
+  const aOuvrir = count('a_ouvrir');
+  const lotsPerimes = count('lot_perime');
+  const stockRevenu = count('stock_revenu');
+  const manquantLines = ingredientLines.filter((l) => kinds.get(l.id as string) === 'manquant');
+  const manquants = manquantLines.length;
+  const restant = aPeser + aOuvrir + lotsPerimes + stockRevenu;
+  const progressPct = totalLines > 0 ? Math.round((pesees / totalLines) * 100) : 0;
+  const allDone = totalLines > 0 && pesees === totalLines;
+  // Lignes manquantes au moment de la remise / livraison : visibles par le chef.
+  const missingAtDelivery = ingredientLines.filter((l) => l.status === 'rupture');
 
-  // Phase BSI partiel — vraies ruptures uniquement (allocated < needed OU pas de lot attache).
-  // Les lignes 'rupture' avec allocated >= needed ET un lot attache sont en realite
-  // "a ouvrir depuis l'economat" (stock dispo dans le contenant, juste pas encore en pesage)
-  // → c'est une etape normale du workflow, pas une rupture.
-  // Les lignes ECONOMAT_REQUIRES_TRANSFER sont affichees dans la section "transferts requis"
-  // (stock dispo en economat, juste a transferer) — elles ne sont pas en rupture.
-  // Les lignes annulees (status='annule') sont exclues : elles ne participent plus au BSI.
-  // current_stock_total est fourni par le backend : somme (pesage + economat) des lots
-  // actifs pour cet ingredient sur ce store. On separe deux cas :
-  //  - ruptureLines : vraie rupture (stock insuffisant maintenant -> il faut commander)
-  //  - recoverableRuptureLines : status BSI='rupture' MAIS stock revenu depuis
-  //    (reappro/transfert) -> juste un "Re-verifier dispo" suffit a re-allouer.
-  const allRuptureCandidates = lines.filter((l) => {
-    if (l.status === 'annule') return false;
-    if (l.source_location === 'ECONOMAT_REQUIRES_TRANSFER') return false;
-    const need = parseFloat(l.needed_quantity as string || '0');
-    const allocated = parseFloat(l.allocated_quantity as string || '0');
-    return allocated < need || (l.status === 'rupture' && !l.ingredient_lot_id);
-  });
-  const recoverableRuptureLines = allRuptureCandidates.filter((l) => {
-    const need = parseFloat(l.needed_quantity as string || '0');
-    const currentStock = parseFloat(l.current_stock_total as string || 'NaN');
-    return Number.isFinite(currentStock) && currentStock >= need;
-  });
-  const ruptureLines = allRuptureCandidates.filter(l => !recoverableRuptureLines.includes(l));
-  // Option B : lignes en attente de transfert Economat → Pesage.
-  // Le transfert se fait DEPUIS le module Economat (onglet "Transferts demandes" de InventoryPage),
-  // pas depuis ce panneau. Ici on affiche uniquement un bandeau informatif.
-  const allTransferRequiredLines = lines.filter((l) => l.source_location === 'ECONOMAT_REQUIRES_TRANSFER');
-  // Sous-ensemble : lignes ECONOMAT_REQUIRES_TRANSFER dont le pesage est deja suffisant
-  // (le magasinier a deja transfere via le module Economat, mais le BSI ne le sait pas).
-  // Un "Re-verifier dispo" suffit alors a basculer ces lignes en PESAGE.
-  const recoverableTransferLines = allTransferRequiredLines.filter((l) => {
-    const need = parseFloat(l.needed_quantity as string || '0');
-    const pesage = parseFloat(l.current_pesage_total as string || 'NaN');
-    return Number.isFinite(pesage) && pesage >= need;
-  });
-  // Bandeau "transfert encore requis" : transferts qui n'ont pas (encore) de pesage suffisant.
-  const transferRequiredLines = allTransferRequiredLines.filter(
-    l => !recoverableTransferLines.includes(l),
-  );
-  // Unifie les deux types de lignes recuperables (rupture + transfert pesage-pret) pour le bandeau.
-  const allRecoverableLines = [...recoverableRuptureLines, ...recoverableTransferLines];
-  const hasRupture = ruptureLines.length > 0;
-  const isPartial = bon?.status === 'preparation_partielle';
-  // Permet le commit partiel si :
-  //  - vraies ruptures (stock manquant) avec au moins une ligne prelevee, OU
-  //  - transferts economat encore non effectues avec au moins une ligne prelevee.
-  // Cas 2 : le magasinier valide ce qui est deja transfere/pese et garde les autres
-  // en attente. Il fera le transfert depuis le module Economat puis "Re-verifier dispo".
-  const canCommitPartial = bon?.status === 'preparation'
-    && (hasRupture || transferRequiredLines.length > 0)
-    && prelevees > 0;
-
-  const confirmLine = (line: Record<string, any>) => {
-    const allocated = parseFloat(line.allocated_quantity as string || '0');
-    ligneMutation.mutate({ ligneId: line.id as string, actualQuantity: allocated });
+  // ─── Evaluation d'une saisie contre la bande de tolerance ───
+  type WeighEval = {
+    raw: string; qty: number | null; target: number; tolerance: number; ecart: number; outOfBand: boolean;
+    reason: string; ready: boolean; blockedReason: string | null;
+    inputUnit: string; inputFactor: number; inputDigits: number; targetInInput: number; minInput: number; maxInput: number;
+    lotId: string; containers: number | null; opensContainers: number | null;
+    openQty: number | null; openQtyOk: boolean; openDefault: number | null;
   };
-
-  const [confirmingAll, setConfirmingAll] = useState(false);
-  const confirmAllLines = async () => {
-    setConfirmingAll(true);
-    try {
-      for (const line of nonBloquees) {
-        const allocated = parseFloat(line.allocated_quantity as string || '0');
-        await bonSortieApi.updateLigne(line.id as string, { actualQuantity: allocated });
-      }
-      await queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-      notify.success(`${nonBloquees.length} ligne(s) confirmee(s)`);
-    } catch (e: any) {
-      notify.error(e?.response?.data?.error || 'Erreur');
-    } finally {
-      setConfirmingAll(false);
-    }
+  const evalWeighing = (line: Line, kind: LineKind): WeighEval => {
+    const entry = entryOf(line.id as string);
+    const target = lineTarget(line, kind);
+    const tolerance = parseFloat(line.tolerance_qty as string || '0');
+    const baseUnit = (line.ingredient_unit as string) || (line.unit as string) || 'kg';
+    // Unite de SAISIE : celle dans laquelle la cible s'affiche (125 g se pese en
+    // grammes, pas en 0,125 kg). La conversion vers l'unite de base reste interne.
+    const inputUnit = smartFormatQuantity(target, baseUnit).unit || baseUnit;
+    const inputFactor = inputUnit === baseUnit ? 1 : 1000;
+    const inputDigits = inputUnit === 'g' || inputUnit === 'ml' ? 0 : 3;
+    const raw = entry.value.replace(',', '.').trim();
+    const parsed = raw === '' ? null : parseFloat(raw);
+    const qty = parsed !== null && Number.isFinite(parsed) && parsed >= 0 ? parsed / inputFactor : null;
+    const ecart = qty === null ? 0 : qty - target;
+    const outOfBand = qty !== null && Math.abs(ecart) > tolerance + 1e-9;
+    const reason = entry.reason.trim();
+    const needsLot = (kind === 'lot_perime' || kind === 'stock_revenu') && !entry.lotId;
+    const blockedReason = needsLot ? 'Choisissez le lot utilisé' : null;
+    // Regle « contenant entier » : contenant defini = type + taille sur la fiche.
+    const containerSize = line.container_size != null && line.container_type_id ? parseFloat(line.container_size as string) : 0;
+    const containers = entry.containers.trim() !== '' && Number.isFinite(Number(entry.containers)) && Number(entry.containers) > 0
+      ? Math.floor(Number(entry.containers)) : null;
+    // Ouverture prevue (ligne a ouvrir) : contenants entiers si l'ingredient en a,
+    // sinon exactement la quantite pesee. Le magasinier peut saisir ce qu'il a
+    // reellement sorti de l'economat (ex. le sac entier) ou prendre « Tout le lot ».
+    const isOpeningKind = kind === 'a_ouvrir' || ((kind === 'lot_perime' || kind === 'stock_revenu') && entry.lotEco !== null && (entry.lotPesage ?? 0) + 1e-9 < (qty ?? 0));
+    const opensContainers = isOpeningKind && containerSize > 0 && qty !== null
+      ? (containers ?? Math.max(1, Math.ceil(qty / containerSize - 1e-9)))
+      : null;
+    const openDefault = !isOpeningKind || qty === null ? null
+      : opensContainers !== null ? opensContainers * containerSize : qty;
+    const openRaw = entry.openQty.replace(',', '.').trim();
+    const openQty = openRaw === '' ? null : parseFloat(openRaw) / inputFactor;
+    const lotEco = entry.lotEco ?? (line.suggested_lot_economat_qty != null ? parseFloat(line.suggested_lot_economat_qty as string) : null);
+    const openQtyOk = openQty === null
+      || (Number.isFinite(openQty) && openQty > 0 && (qty === null || openQty + 1e-9 >= qty) && (lotEco === null || openQty <= lotEco + 1e-9));
+    return {
+      raw: entry.value, qty, target, tolerance, ecart, outOfBand, reason,
+      ready: qty !== null && !needsLot && openQtyOk && (!outOfBand || reason.length >= 3),
+      blockedReason, inputUnit, inputFactor, inputDigits,
+      targetInInput: target * inputFactor,
+      minInput: Math.max(0, (target - tolerance) * inputFactor),
+      maxInput: (target + tolerance) * inputFactor,
+      lotId: entry.lotId, containers, opensContainers,
+      openQty, openQtyOk, openDefault,
+    };
   };
+  const payloadOf = (line: Line, ev: WeighEval): WeighingPayload => ({
+    actualQuantity: ev.qty as number,
+    reason: ev.outOfBand ? ev.reason : undefined,
+    source: 'manual',
+    lotId: ev.lotId || undefined,
+    containerCount: ev.openQty === null ? (ev.containers ?? undefined) : undefined,
+    transferQty: ev.openQty ?? undefined,
+  });
 
-  const [validating, setValidating] = useState(false);
-  const validateBon = async () => {
-    setValidating(true);
-    try {
-      // Chaine complete des transitions terminales : pret -> prelevement -> verifie -> cloture
-      // (le bouton "Valider" peut etre clique depuis n'importe lequel de ces statuts).
-      if (bon!.status === 'pret') {
-        await bonSortieApi.startPrelevement(bon!.id as string);
-      }
-      // Apres startPrelevement on est en 'prelevement' → verify peut etre appele.
-      // verify est idempotent (ne fait rien si deja verifie/cloture).
-      if (['prelevement', 'pret'].includes(bon!.status as string)) {
-        await bonSortieApi.verify(bon!.id as string);
-      }
-      await bonSortieApi.close(bon!.id as string);
-      await queryClient.invalidateQueries({ queryKey: ['bons-sortie', planId] });
-      await queryClient.invalidateQueries({ queryKey: ['production', planId] });
-      notify.success('Bon valide et cloture — ingredients livres');
-    } catch (e: any) {
-      notify.error(e?.response?.data?.error?.message || e?.response?.data?.error || e?.message || 'Erreur de validation');
-    } finally {
-      setValidating(false);
-    }
+  const WEIGHABLE: LineKind[] = ['a_peser', 'a_ouvrir', 'lot_perime', 'stock_revenu'];
+  const bonStatus = bon?.status as string | undefined;
+  const canPrepare = isMagasinier && !!bonStatus && ['preparation', 'preparation_partielle'].includes(bonStatus);
+  const weighableLines = ingredientLines.filter((l) => WEIGHABLE.includes(kinds.get(l.id as string) as LineKind));
+  const pendingWeighings = weighableLines
+    .map((line) => ({ line, ev: evalWeighing(line, kinds.get(line.id as string) as LineKind) }))
+    .filter(({ ev }) => ev.qty !== null);
+  const readyWeighings = pendingWeighings.filter(({ ev }) => ev.ready);
+  const blockedWeighings = pendingWeighings.filter(({ ev }) => !ev.ready);
+
+  const remettre = async () => {
+    if (manquants === 0) { markReadyMutation.mutate(false); return; }
+    const names = manquantLines.map((l) => l.ingredient_name as string).join(', ');
+    const ok = await confirm(
+      `${manquants} ingrédient${manquants > 1 ? 's' : ''} manquant${manquants > 1 ? 's' : ''} : ${names}.\n\nRemettre le bon au chef en signalant ${manquants > 1 ? 'ces manquants' : 'ce manquant'} ? Il décidera de produire sans, ou de refuser la réception.`,
+      { title: 'Remettre avec des manquants', confirmLabel: 'Remettre au chef' },
+    );
+    if (ok) markReadyMutation.mutate(true);
   };
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-40">
-      <Loader2 size={28} className="animate-spin text-emerald-500" />
+      <Loader2 size={28} className="animate-spin" style={{ color: 'var(--theme-accent)' }} />
     </div>
   );
 
@@ -304,751 +353,453 @@ export function BonSortiePanel({
   );
 
   const isClosed = bon.status === 'cloture';
-  const isVerified = bon.status === 'verifie';
+  const isDelivered = ['prelevement', 'verifie', 'cloture'].includes(bon.status as string);
+  const inPreparation = ['preparation', 'preparation_partielle'].includes(bon.status as string);
+  const containerClass = variant === 'inline' ? 'space-y-3' : 'space-y-4 max-w-5xl mx-auto';
+  const fmtQty = (q: number, unit: string) => {
+    const f = smartFormatQuantity(q, unit);
+    const d = f.unit === 'g' || f.unit === 'ml' ? 0 : 3;
+    return { v: f.value.toFixed(d), u: f.unit };
+  };
 
-  const containerClass = variant === 'inline'
-    ? 'space-y-3'
-    : 'space-y-4 max-w-2xl mx-auto pb-32';
+  const missingList = missingAtDelivery.length > 0 && (
+    <ul className="status-banner-list">
+      {missingAtDelivery.map((l) => {
+        const unit = (l.ingredient_unit || l.unit || 'kg') as string;
+        const miss = fmtQty(parseFloat(l.needed_quantity as string || '0') - parseFloat(l.allocated_quantity as string || '0'), unit);
+        return <li key={l.id as string}><strong>{l.ingredient_name as string}</strong> : manque {miss.v} {miss.u}</li>;
+      })}
+    </ul>
+  );
 
   return (
     <div className={containerClass}>
-      {/* En-tete compact (la banniere globale est rendue dans PlanDetailPage) */}
       {variant === 'inline' && (
         <div className="odoo-section-header" style={{ borderRadius: 4, border: '1px solid var(--theme-bg-separator)' }}>
           <Truck size={12} /> Bon de sortie
           <span style={{ marginLeft: 4, fontFamily: 'monospace', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{bon.numero as string}</span>
           {isClosed && (
             <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 'auto' }}>
-              <CheckCircle size={10} /> Clôturé
+              <CheckCircle size={10} /> Livré
             </span>
           )}
         </div>
       )}
 
-      {/* ─── Workflow Magasinier : bannieres par statut ─── */}
+      {/* ─── Bandeau d'etape ─── */}
+      {bon.status === 'genere' && (isMagasinier ? (
+        <StatusBanner tone="info" icon={Truck} title="Nouvelle demande à préparer"
+          actions={
+            <button onClick={() => markPreparationMutation.mutate()} disabled={markPreparationMutation.isPending} className="odoo-btn-primary">
+              {markPreparationMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Truck size={13} />}
+              Prendre en charge
+            </button>
+          }>
+          Le chef attend que vous prépariez les ingrédients.
+        </StatusBanner>
+      ) : (
+        <StatusBanner tone="neutral" icon={Truck} title="En attente de prise en charge">
+          Le magasinier a été notifié pour préparer les ingrédients.
+        </StatusBanner>
+      ))}
 
-      {/* Statut 'genere' vu par le magasinier : bouton "Prendre en charge" */}
-      {bon.status === 'genere' && isMagasinier && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
-          <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-            <Truck size={18} className="text-blue-600" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-blue-900">Nouvelle demande a preparer</p>
-            <p className="text-xs text-blue-700 mt-0.5">Le chef attend que vous prepariez les ingredients.</p>
-          </div>
-          <button
-            onClick={() => markPreparationMutation.mutate()}
-            disabled={markPreparationMutation.isPending}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60 flex items-center gap-1.5 shrink-0">
-            {markPreparationMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
-            Prendre en charge
-          </button>
-        </div>
-      )}
-
-      {/* Statut 'genere' vu par le chef : en attente d'un magasinier */}
-      {bon.status === 'genere' && isChef && !isMagasinier && (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-start gap-3">
-          <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-            <Truck size={18} className="text-gray-500" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-gray-800">En attente de prise en charge</p>
-            <p className="text-xs text-gray-500 mt-0.5">Le magasinier sera notifie pour preparer les ingredients.</p>
-          </div>
-        </div>
-      )}
-
-      {/* Statut 'preparation' : magasinier prepare + bouton "Pret a remettre" */}
-      {bon.status === 'preparation' && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-          <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-            <Loader2 size={18} className="text-amber-600 animate-spin" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-amber-900">Preparation en cours</p>
-            <p className="text-xs text-amber-700 mt-0.5">
-              {isMagasinier
-                ? 'Quand tous les ingredients sont prepares, marquez le bon comme pret.'
-                : 'Le magasinier prepare les ingredients. Vous serez notifie une fois pret.'}
-            </p>
-            {bon.chef_reject_reason && (
-              <p className="text-xs text-red-700 mt-1.5 bg-red-50 border border-red-200 rounded px-2 py-1">
-                <strong>Refus precedent :</strong> {bon.chef_reject_reason as string}
-              </p>
-            )}
-          </div>
-          {isMagasinier && (
-            <div className="flex flex-col gap-2 shrink-0">
-              <button
-                onClick={() => markReadyMutation.mutate()}
-                disabled={markReadyMutation.isPending || hasRupture || enAttente > 0 || transferRequiredLines.length > 0}
-                title={
-                  transferRequiredLines.length > 0 ? `${transferRequiredLines.length} transfert(s) economat en attente — effectuez-les depuis le module Economat ou utilisez "Valider partiel"` :
-                  hasRupture ? 'Ingredients en rupture — utilisez "Valider partiel"' :
-                  enAttente > 0 ? `${enAttente} ingredient(s) non encore preleve(s)` : ''
-                }
-                className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5">
-                {markReadyMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-                Pret a remettre
-              </button>
-              {canCommitPartial && (
-                <button
-                  onClick={() => commitPartialMutation.mutate()}
-                  disabled={commitPartialMutation.isPending}
-                  className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 transition-colors disabled:opacity-60 flex items-center gap-1.5">
-                  {commitPartialMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Package size={14} />}
-                  Valider partiel
+      {inPreparation && (
+        <StatusBanner tone="warning" icon={Scale} title="Préparation en cours"
+          actions={isMagasinier ? (
+            <>
+              {(manquants > 0 || stockRevenu > 0) && (
+                <button onClick={() => completePendingMutation.mutate()} disabled={completePendingMutation.isPending}
+                  className="odoo-btn-secondary" title="Refait l'allocation (FEFO) des lignes manquantes après un réapprovisionnement">
+                  {completePendingMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                  Actualiser le stock
                 </button>
               )}
-            </div>
+              <button onClick={remettre}
+                disabled={markReadyMutation.isPending || restant > 0 || totalLines === 0}
+                title={restant > 0 ? `${restant} ingrédient${restant > 1 ? 's' : ''} encore à peser` : manquants > 0 ? 'Remettre en signalant les manquants' : 'Remettre les ingrédients au chef'}
+                className="odoo-btn-primary">
+                {markReadyMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
+                {manquants > 0 ? `Remettre avec ${manquants} manquant${manquants > 1 ? 's' : ''}` : 'Remettre au chef'}
+              </button>
+            </>
+          ) : undefined}>
+          {isMagasinier ? (
+            restant > 0
+              ? <>Reste <strong>{restant}</strong> ingrédient{restant > 1 ? 's' : ''} à peser
+                  {aOuvrir > 0 && <> (dont {aOuvrir} à ouvrir depuis l'économat)</>}
+                  {manquants > 0 && <>, <strong>{manquants}</strong> manquant{manquants > 1 ? 's' : ''}</>}.</>
+              : manquants > 0
+                ? <>Tout ce qui est en stock est pesé. <strong>{manquants}</strong> ingrédient{manquants > 1 ? 's' : ''} manquant{manquants > 1 ? 's' : ''} : commandez-{manquants > 1 ? 'les' : 'le'} ou remettez le bon en le signalant au chef.</>
+                : <>Tous les ingrédients sont pesés : remettez le bon au chef.</>
+          ) : 'Le magasinier prépare les ingrédients. Vous serez notifié dès qu\'ils sont prêts.'}
+          {bon.chef_reject_reason && (
+            <div className="status-banner-note danger"><strong>Refus précédent :</strong> {bon.chef_reject_reason as string}</div>
           )}
-        </div>
+        </StatusBanner>
       )}
 
-      {/* Statut 'pret' : seul le chef qui a demande le BSI peut valider ou refuser.
-          Les autres utilisateurs (y compris le magasinier qui vient de preparer, ou un autre chef
-          du meme store) n'ont pas le droit de valider la reception pour eux. */}
-      {bon.status === 'pret' && (() => {
-        const requesterId = bon.generated_by as string | undefined;
-        const isRequester = !!currentUserId && !!requesterId && currentUserId === requesterId;
-        // canValidate : peuvent accepter la reception
-        //  - le chef qui a genere le BSI (isRequester)
-        //  - admin/manager en secours
-        //  - tout chef de production (le BSI generator peut etre l'admin via "Restaurer",
-        //    mais c'est l'equipe production cible qui recoit physiquement)
-        // canValidate : peuvent accepter / refuser la reception. Action strictement
-        // chef (workflow Option B). Le standalone page (variant='page') est la vue
-        // magasinier — meme un admin/manager ne doit pas voir les boutons quand il
-        // arrive depuis WarehousePage (sinon il accepte sa propre preparation).
-        const canValidate = variant !== 'page' && isChef && (isRequester || ['admin', 'manager'].includes(user?.role || '') || ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || ''));
-        const requesterName = (bon.generated_by_name as string) || 'le chef demandeur';
-        return (
-        <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-4">
-          <div className="flex items-start gap-3 mb-3">
-            <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
-              <CheckCircle size={18} className="text-emerald-600" />
+      {bon.status === 'pret' && (
+        <StatusBanner tone="success" icon={CheckCircle} title={missingAtDelivery.length > 0 ? `Ingrédients prêts — ${missingAtDelivery.length} manquant${missingAtDelivery.length > 1 ? 's' : ''} signalé${missingAtDelivery.length > 1 ? 's' : ''}` : 'Ingrédients prêts à récupérer'}>
+          {isChef && variant === 'inline'
+            ? 'Vérifiez les quantités, puis confirmez ou refusez la réception depuis le bandeau en haut de la page.'
+            : `En attente de la réception par ${(bon.generated_by_name as string) || 'le chef'}.`}
+          {missingList}
+        </StatusBanner>
+      )}
+
+      {isClosed && (
+        <StatusBanner tone="success" icon={CheckCircle} title="Ingrédients livrés">
+          {missingAtDelivery.length > 0
+            ? <>Livré avec {missingAtDelivery.length} ingrédient{missingAtDelivery.length > 1 ? 's' : ''} manquant{missingAtDelivery.length > 1 ? 's' : ''}.</>
+            : 'La production peut démarrer.'}
+          {missingList}
+        </StatusBanner>
+      )}
+
+      {/* ─── Tableau des lignes ─── */}
+      <div className="odoo-section bsi-lines" style={{ margin: 0 }}>
+        {!isDelivered && isMagasinier && (
+          <div className="bsi-lines-toolbar">
+            <div className="bsi-lines-progress">
+              <span className="bsi-lines-progress-label">
+                <strong>{pesees}</strong> / {totalLines} ingrédient{totalLines > 1 ? 's' : ''} pesé{pesees > 1 ? 's' : ''}
+                {manquants > 0 && <> · <span style={{ color: '#a94442' }}>{manquants} manquant{manquants > 1 ? 's' : ''}</span></>}
+              </span>
+              <div className="bsi-lines-progress-track">
+                <div className={`bsi-lines-progress-bar ${allDone ? 'is-done' : ''}`} style={{ width: `${progressPct}%` }} />
+              </div>
+              <span className={`bsi-lines-progress-pct ${allDone ? 'is-done' : ''}`}>{progressPct}%</span>
             </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-emerald-900">Ingredients prets a recuperer</p>
-              <p className="text-xs text-emerald-700 mt-0.5">
-                {canValidate
-                  ? 'Verifiez les quantites et la conformite, puis acceptez ou refusez la reception.'
-                  : `En attente de la validation de ${requesterName}.`}
-              </p>
-            </div>
-          </div>
-          {canValidate && !rejectingOpen && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => validateBon()}
-                disabled={validating || startMutation.isPending}
-                className="flex-1 px-4 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
-                {(validating || startMutation.isPending) ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-                Accepter et valider la reception
-              </button>
-              <button
-                onClick={() => setRejectingOpen(true)}
-                className="px-4 py-2.5 bg-white border border-red-300 text-red-700 rounded-lg text-sm font-semibold hover:bg-red-50 transition-colors flex items-center gap-1.5">
-                <XCircle size={14} />
-                Refuser
-              </button>
-            </div>
-          )}
-          {canValidate && rejectingOpen && (
-            <div className="space-y-2 bg-white border border-red-200 rounded-lg p-3">
-              <label className="text-xs font-semibold text-red-800">Motif du refus (obligatoire)</label>
-              <textarea
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                autoFocus
-                rows={2}
-                placeholder="Ex: Quantite insuffisante sur la farine, lot mal identifie..."
-                className="w-full text-sm border border-red-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-red-400 outline-none resize-none"
-              />
-              <div className="flex gap-2">
+            {canPrepare && weighableLines.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                {blockedWeighings.length > 0 && (
+                  <span className="odoo-tag odoo-tag-orange">
+                    <AlertTriangle size={10} /> {blockedWeighings.length} à compléter (motif ou lot)
+                  </span>
+                )}
                 <button
-                  onClick={() => chefRejectMutation.mutate(rejectReason.trim())}
-                  disabled={chefRejectMutation.isPending || !rejectReason.trim()}
-                  className="flex-1 px-3 py-2 bg-red-600 text-white rounded-lg text-xs font-semibold hover:bg-red-700 transition-colors disabled:opacity-50">
-                  {chefRejectMutation.isPending ? 'Envoi...' : 'Confirmer le refus'}
-                </button>
-                <button
-                  onClick={() => { setRejectingOpen(false); setRejectReason(''); }}
-                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-semibold hover:bg-gray-200 transition-colors">
-                  Annuler
+                  onClick={() => weighAllMutation.mutate(readyWeighings.map(({ line, ev }) => ({ ligneId: line.id as string, ...payloadOf(line, ev) })))}
+                  disabled={weighAllMutation.isPending || readyWeighings.length === 0}
+                  className="odoo-btn-primary"
+                  title="Enregistre en une fois toutes les pesées saisies">
+                  {weighAllMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Scale size={13} />}
+                  {readyWeighings.length === 0
+                    ? `Enregistrer les pesées (${weighableLines.length} à peser)`
+                    : `Enregistrer ${readyWeighings.length} pesée${readyWeighings.length > 1 ? 's' : ''}`}
                 </button>
               </div>
-            </div>
-          )}
-        </div>
-        );
-      })()}
-
-      {/* Bandeau informatif : transferts Economat -> Pesage en attente.
-          Le transfert ne se fait PLUS depuis ce panneau : le magasinier doit aller dans
-          le module Economat (onglet "Transferts demandes") pour selectionner le lot et
-          realiser le transfert, ou commander l'ingredient en rupture. */}
-      {!isClosed && transferRequiredLines.length > 0 && isMagasinier && (
-        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3.5">
-          <div className="flex items-start gap-3 mb-2">
-            <div className="w-9 h-9 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-              <ArrowRightCircle size={18} className="text-amber-700" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-amber-900">
-                {transferRequiredLines.length} ingredient{transferRequiredLines.length > 1 ? 's' : ''} disponible{transferRequiredLines.length > 1 ? 's' : ''} en economat
-              </p>
-              <p className="text-xs text-amber-800 mt-0.5">
-                Le stock existe en economat mais n'a pas encore ete transfere au pesage.
-                Effectue le transfert depuis le module Economat (selection du lot FEFO), puis reviens ici pour finaliser le prelevement.
-              </p>
-            </div>
-            <Link
-              to="/inventory?tab=transfers"
-              className="px-3.5 py-2 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
-            >
-              <ArrowRightCircle size={13} />
-              Voir dans Economat
-            </Link>
+            )}
           </div>
-          <ul className="text-xs text-amber-900 ml-12 space-y-0.5 mt-2">
-            {transferRequiredLines.slice(0, 5).map((l, i) => {
-              const qty = parseFloat(l.transfer_required_qty as string || l.needed_quantity as string || '0');
-              return (
-                <li key={i}>
-                  <strong>{l.ingredient_name as string}</strong> :
-                  <span className="font-mono"> {qty.toFixed(2)} {l.unit as string}</span>
-                  {l.lot_number ? <span className="text-amber-700"> (lot {l.lot_number as string})</span> : null}
-                </li>
-              );
-            })}
-            {transferRequiredLines.length > 5 && <li className="italic">+ {transferRequiredLines.length - 5} autres...</li>}
-          </ul>
-        </div>
-      )}
+        )}
 
-      {/* Bandeau alerte ruptures (vraies ruptures uniquement). Visible uniquement par
-          le magasinier. La commande fournisseur ne se fait PLUS depuis ce panneau :
-          le magasinier va dans le module Economat (onglet "Ingredients a commander")
-          pour declencher la commande de maniere centralisee.
-          Ici on garde le bouton "Re-verifier dispo" pour re-allouer apres reappro/transfert. */}
-      {!isClosed && hasRupture && isMagasinier && (
-        <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4">
-          <div className="flex items-start gap-3 mb-2">
-            <div className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center shrink-0">
-              <AlertTriangle size={18} className="text-orange-600" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-orange-900">
-                {ruptureLines.length} ingredient{ruptureLines.length > 1 ? 's' : ''} en rupture / partiel
-              </p>
-              <p className="text-xs text-orange-700 mt-0.5">
-                Le stock est insuffisant pour ces ingredients. Declenche la commande fournisseur depuis le module Economat, puis "Re-verifier dispo" ici. Tu peux aussi prelever ce qui est dispo et valider en partiel.
-              </p>
-            </div>
-            <div className="flex flex-col gap-1.5 shrink-0">
-              <Link
-                to="/inventory?tab=ruptures"
-                className="px-3.5 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm"
-              >
-                <ShoppingCart size={13} />
-                Voir dans Economat
-              </Link>
-              {/* Re-verifie la dispo apres reappro/transfert : re-run FEFO sur les ruptures.
-                  Utile quand le magasinier a transfere depuis l'economat ou ajoute du stock
-                  APRES la generation du BSI. */}
-              <button
-                onClick={() => completePendingMutation.mutate()}
-                disabled={completePendingMutation.isPending}
-                className="px-3.5 py-2 bg-orange-600 text-white rounded-lg text-xs font-semibold hover:bg-orange-700 disabled:opacity-60 transition-colors flex items-center gap-1.5 shadow-sm"
-                title="Re-verifie la dispo et re-alloue les lignes en rupture (apres transfert ou reappro)"
-              >
-                {completePendingMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-                {completePendingMutation.isPending ? 'Verification...' : 'Re-verifier dispo'}
-              </button>
-            </div>
-          </div>
-          <ul className="text-xs text-orange-800 ml-12 space-y-1.5 mt-2">
-            {ruptureLines.slice(0, 5).map((l) => {
-              const need = parseFloat(l.needed_quantity as string || '0');
-              const avail = parseFloat(l.allocated_quantity as string || '0');
-              const missing = need - avail;
-              return (
-                <li key={l.id as string}>
-                  <strong>{l.ingredient_name as string}</strong> :
-                  dispo <span className="font-mono">{avail.toFixed(2)} {l.unit as string}</span> /
-                  besoin <span className="font-mono">{need.toFixed(2)} {l.unit as string}</span> →
-                  <span className="text-red-700 font-semibold"> manque {missing.toFixed(2)}</span>
-                </li>
-              );
-            })}
-            {ruptureLines.length > 5 && <li className="italic">+ {ruptureLines.length - 5} autres ingredients...</li>}
-          </ul>
-        </div>
-      )}
-
-      {/* Bandeau "recuperable" : lignes marquees rupture/transfert mais dont le stock
-          pesage est revenu (reappro ou transfert via le module Economat). Un simple
-          "Re-verifier dispo" re-alloue ces lignes et les passe en preleve. */}
-      {!isClosed && allRecoverableLines.length > 0 && isMagasinier && (
-        <div className="bg-emerald-50 border-2 border-emerald-300 rounded-xl p-4">
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
-              <RefreshCw size={18} className="text-emerald-600" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-emerald-900">
-                {allRecoverableLines.length} ingredient{allRecoverableLines.length > 1 ? 's' : ''} pret{allRecoverableLines.length > 1 ? 's' : ''} a re-allouer
-              </p>
-              <p className="text-xs text-emerald-700 mt-0.5">
-                Le pesage a ete reapprovisionne (transfert ou reappro). Clique "Re-verifier dispo" pour re-allouer ces lignes en pesage automatiquement (FEFO).
-              </p>
-              <ul className="text-xs text-emerald-800 mt-2 space-y-0.5">
-                {allRecoverableLines.slice(0, 5).map((l) => {
-                  const need = parseFloat(l.needed_quantity as string || '0');
-                  // Lignes ECONOMAT_REQUIRES_TRANSFER : afficher le pesage dispo (current_pesage_total),
-                  // pas le stock total (qui inclut l'economat non encore transfere).
-                  const isTransfer = l.source_location === 'ECONOMAT_REQUIRES_TRANSFER';
-                  const stock = isTransfer
-                    ? parseFloat(l.current_pesage_total as string || '0')
-                    : parseFloat(l.current_stock_total as string || '0');
-                  return (
-                    <li key={l.id as string}>
-                      <strong>{l.ingredient_name as string}</strong> :
-                      besoin <span className="font-mono">{need.toFixed(2)} {l.unit as string}</span> · {isTransfer ? 'pesage dispo' : 'stock dispo'} <span className="font-mono text-emerald-700 font-semibold">{stock.toFixed(2)} {l.unit as string}</span>
-                    </li>
-                  );
-                })}
-                {allRecoverableLines.length > 5 && <li className="italic">+ {allRecoverableLines.length - 5} autres...</li>}
-              </ul>
-            </div>
-            <button
-              onClick={() => completePendingMutation.mutate()}
-              disabled={completePendingMutation.isPending}
-              className="px-3.5 py-2 bg-emerald-600 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 disabled:opacity-60 transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
-            >
-              {completePendingMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-              {completePendingMutation.isPending ? 'Re-allocation...' : 'Re-verifier dispo'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Phase BSI partiel : bandeau "preparation partielle" pour reprendre apres reappro
-          Visible uniquement par le magasinier — c'est lui qui gere la reprise post-reappro. */}
-      {isPartial && isMagasinier && (
-        <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4">
-          <div className="flex items-start gap-3 mb-3">
-            <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-              <Package size={18} className="text-blue-600" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-blue-900">BSI en preparation partielle</p>
-              <p className="text-xs text-blue-700 mt-0.5">
-                Une partie a ete prelevee. Reste {ruptureLines.length} ingredient{ruptureLines.length > 1 ? 's' : ''} en attente d'approvisionnement.
-              </p>
-            </div>
-          </div>
-          {isMagasinier && (
-            <button
-              onClick={() => completePendingMutation.mutate()}
-              disabled={completePendingMutation.isPending}
-              className="w-full px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
-              {completePendingMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-              Reprendre la preparation (re-allouer apres reappro)
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Progress bar */}
-      {!isClosed && (
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-medium text-gray-700">
-              {prelevees} / {totalLines} ingredients preleves
-            </span>
-            <span className={`text-sm font-bold ${allDone ? 'text-emerald-600' : 'text-amber-600'}`}>
-              {progressPct}%
-            </span>
-          </div>
-          <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-500 ${allDone ? 'bg-emerald-500' : 'bg-gradient-to-r from-amber-400 to-amber-500'}`}
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Quick action: Tout conforme.
-          Visible uniquement si :
-          - magasinier (les chefs ne pesent pas)
-          - BSI en preparation OU preparation_partielle (a pris en charge)
-          - aucune ligne en attente de transfert Economat → Pesage
-          Bloque le clic avant que le magasinier ait reellement transfere les ingredients
-          (sinon il valide des lignes qu'il n'a pas encore physiquement pesees). */}
-      {!isClosed && !isVerified && nonBloquees.length > 0 && isMagasinier
-        && ['preparation', 'preparation_partielle'].includes(bon.status as string)
-        && transferRequiredLines.length === 0 && (
-        <button
-          onClick={confirmAllLines}
-          disabled={confirmingAll}
-          className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 text-sm active:scale-[0.98]"
-        >
-          {confirmingAll ? (
-            <Loader2 size={18} className="animate-spin" />
-          ) : (
-            <CheckCircle size={18} />
-          )}
-          Tout conforme ({nonBloquees.length} ligne{nonBloquees.length > 1 ? 's' : ''})
-        </button>
-      )}
-
-      {/* Lines list — table-like layout (header strip + rows) */}
-      <div className="odoo-section">
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: isMagasinier ? '24px 1fr auto auto auto' : '24px 1fr auto auto',
-          gap: '0.625rem',
-          padding: '0.5rem 0.75rem',
-          backgroundColor: 'var(--theme-bg-page)',
-          borderBottom: '1px solid var(--theme-bg-separator)',
-          fontSize: '0.6875rem',
-          fontWeight: 600,
-          color: 'var(--theme-text-muted)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.03em',
-        }}>
-          <span />
-          <span>Ingrédient</span>
-          <span style={{ textAlign: 'right' }}>Quantité</span>
-          {isMagasinier && <span style={{ textAlign: 'right' }}>Source</span>}
-          <span style={{ textAlign: 'right' }}>Statut</span>
-        </div>
-        {(() => {
-          // Pour le chef : on agrege par ingredient (un sac de farine peut etre
-          // pris sur plusieurs lots → le chef veut juste voir le total commande).
-          // Le magasinier garde le detail par lot pour faire le prelevement.
-          if (isMagasinier) return lines;
-          const byIngredient = new Map<string, Record<string, any>>();
-          for (const l of lines) {
-            if (l.status === 'annule') continue;
-            const key = l.ingredient_id as string;
-            const existing = byIngredient.get(key);
-            const needed = parseFloat(l.needed_quantity as string || '0');
-            const allocated = parseFloat(l.allocated_quantity as string || '0');
-            const isRupture = (l.status === 'rupture' && !l.ingredient_lot_id)
-              || allocated < needed
-              || l.source_location === 'RUPTURE';
-            if (!existing) {
-              byIngredient.set(key, {
-                ...l,
-                needed_quantity: needed,
-                allocated_quantity: allocated,
-                actual_quantity: null,
-                lot_number: null,
-                ingredient_lot_id: null,
-                source_location: isRupture ? 'RUPTURE' : null,
-                status: isRupture ? 'rupture' : 'en_attente',
-                _isRupture: isRupture,
-              });
-            } else {
-              existing.needed_quantity = parseFloat(existing.needed_quantity) + needed;
-              existing.allocated_quantity = parseFloat(existing.allocated_quantity) + allocated;
-              if (isRupture) {
-                existing._isRupture = true;
-                existing.status = 'rupture';
-                existing.source_location = 'RUPTURE';
-              }
-            }
-          }
-          return Array.from(byIngredient.values());
-        })().map((line) => {
-          const lineStatus = line.status as string;
-          const allocated = parseFloat(line.allocated_quantity as string || '0');
+        <div style={{ overflowX: 'auto' }}>
+        <table className="odoo-table bsi-lines-table">
+          <thead>
+            <tr>
+              <th style={{ width: 28 }}></th>
+              <th>Ingrédient</th>
+              <th>État</th>
+              <th style={{ textAlign: 'right' }}>Demandé</th>
+              {isMagasinier && <th style={{ textAlign: 'right' }}>Plage tolérée</th>}
+              <th style={{ textAlign: 'right', width: isMagasinier ? 170 : undefined }}>{isMagasinier ? 'Poids pesé' : 'Reçu'}</th>
+              {isMagasinier && <th style={{ textAlign: 'right' }}>Écart</th>}
+              {isMagasinier && <th style={{ width: 44 }}></th>}
+            </tr>
+          </thead>
+          <tbody>
+        {(isMagasinier ? ingredientLines : aggregateForChef(ingredientLines, kinds)).map((line) => {
+          const kind = (line._kind as LineKind | undefined) ?? (kinds.get(line.id as string) as LineKind);
+          const unit = (line.ingredient_unit || line.unit || 'kg') as string;
+          const target = lineTarget(line, kind);
           const needed = parseFloat(line.needed_quantity as string || '0');
           const actual = line.actual_quantity != null ? parseFloat(line.actual_quantity as string) : null;
-          const unit = line.ingredient_unit as string || line.unit as string || 'kg';
-          const lotExpired = line.lot_expired || line.lot_status === 'expired';
-          const isDone = ['preleve', 'substitue'].includes(lineStatus);
-          const isEditing = editingLine === (line.id as string);
-          const hasEcart = lineStatus === 'ecart';
-          // Option B : pour le chef, on affiche le BESOIN reel (somme des needed agreges).
-          // L'ancienne logique affichait `allocated` quand >0, ce qui masquait les ruptures
-          // partielles : ex. besoin 1.10 kg, alloue 1.00 kg, rupture 100 g → affichait
-          // "1.00 kg En commande" au lieu de "1.10 kg" → le chef pensait que tout etait commande.
-          // Pour le magasinier sur une ligne ECONOMAT_REQUIRES_TRANSFER, on affiche la qty
-          // a transferer (transfer_required_qty) plutot que allocated=0.
-          // Sur une ligne en rupture totale (status='rupture' + lot=NULL + allocated=0),
-          // on affiche le besoin (needed_quantity) plutot que "0.00 kg" qui est trompeur.
-          const transferRequiredQty = parseFloat(line.transfer_required_qty as string || '0');
-          const isTransferRequired = line.source_location === 'ECONOMAT_REQUIRES_TRANSFER';
-          const isFullRupture = lineStatus === 'rupture' && !line.ingredient_lot_id && allocated < 0.001;
-          const displayedQty = isMagasinier
-            ? (isTransferRequired ? transferRequiredQty : isFullRupture ? needed : allocated)
-            : needed;
+          const allocated = parseFloat(line.allocated_quantity as string || '0');
+          const isDone = kind === 'pese';
+          const hasEcart = line.status === 'ecart';
+          const canWeigh = canPrepare && WEIGHABLE.includes(kind);
+          const ev = canWeigh ? evalWeighing(line, kind) : null;
+          const entry = entryOf(line.id as string);
+          const tag = hasEcart ? { label: 'Pesé — écart', cls: 'odoo-tag-orange', Icon: AlertTriangle, title: 'Hors tolérance, motif enregistré' } : KIND_TAG[kind];
+          const rowDot = hasEcart ? 'warning' : isDone ? 'ok' : (kind === 'manquant' || kind === 'lot_perime') ? 'danger' : 'neutral';
+          const shown = fmtQty(isMagasinier ? target : needed, unit);
+          const weighedEcart = actual === null ? 0 : actual - allocated;
+          const recordedEcart = fmtQty(Math.abs(weighedEcart), unit);
+          const containerSize = line.container_size != null && line.container_type_id ? parseFloat(line.container_size as string) : 0;
+          const alreadyOrdered = !!line.already_ordered || orderedIds.has(line.id as string);
+          const saveLine = () => ev && ev.ready && ligneMutation.mutate({ ligneId: line.id as string, payload: payloadOf(line, ev) });
+          const lotLabel = (line.supplier_lot_number || line.lot_number) as string | null;
+          const suggestedLabel = (line.suggested_lot_number as string | null) || (line.suggested_economat_lot_id ? 'sans n°' : null);
 
-          // Source du stock : badge visuel pour aider le magasinier a savoir ou recuperer l'ingredient.
-          //  - PESAGE : sac deja ouvert dans la zone pesage (rien a faire de special)
-          //  - ECONOMAT_REQUIRES_TRANSFER : besoin de transferer un contenant scelle de l'economat vers le pesage
-          //  - rupture avec lot attache : contenant economat dispo mais a ouvrir
-          //  - RUPTURE : aucun stock
-          const sourceLocation = line.source_location as string | undefined;
-          const isToOpenFromEconomat = lineStatus === 'rupture' && !!line.ingredient_lot_id && allocated >= needed && allocated > 0;
-          const sourceBadge = isTransferRequired
-            ? { label: 'Économat — à transférer', cls: 'bg-amber-50 text-amber-800 border-amber-200', Icon: PackageOpen }
-            : isToOpenFromEconomat
-            ? { label: 'Économat — à ouvrir', cls: 'bg-blue-50 text-blue-800 border-blue-200', Icon: PackageOpen }
-            : sourceLocation === 'PESAGE'
-            ? { label: 'Pesage', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200', Icon: Package }
-            : sourceLocation === 'RUPTURE' || lineStatus === 'rupture'
-            ? { label: 'Rupture', cls: 'bg-red-50 text-red-700 border-red-200', Icon: AlertTriangle }
-            : null;
-
-          const rowDot = isDone ? 'ok'
-            : hasEcart ? 'warning'
-            : lotExpired ? 'danger'
-            : 'neutral';
-
-          // Delta v1 point 5 : indicateur visuel par ligne, terminologie spec :
-          //   Pret       — ingredient pese et prepare (preleve / substitue / ecart)
-          //   En transfert — absent du pesage, present en economat (transfert pas fait)
-          //   En commande  — absent du pesage ET de l'economat (rupture, achat necessaire)
-          //   En attente   — pesage dispo mais pas encore confirme par le magasinier
-          const lineSpecStatus: { label: string; cls: string; Icon: typeof CheckCircle } | null = isDone
-            ? { label: 'Pret', cls: 'odoo-tag-green', Icon: CheckCircle }
-            : isTransferRequired
-            ? { label: 'En transfert', cls: 'odoo-tag-orange', Icon: ArrowRightCircle }
-            : (lineStatus === 'rupture' && !line.ingredient_lot_id)
-            ? { label: 'En commande', cls: 'odoo-tag-red', Icon: AlertTriangle }
-            : null;
           return (
-            <div
-              key={line.id as string}
-              style={{
-                padding: '0.5rem 0.75rem',
-                borderBottom: '1px solid var(--theme-bg-separator)',
-                backgroundColor: 'var(--theme-bg-card)',
-                fontSize: '0.8125rem',
-                opacity: lotExpired ? 0.6 : 1,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                <span className={`odoo-status-dot ${rowDot}`} />
-
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '0.8125rem', fontWeight: 400, color: 'var(--theme-text-strong)' }}>
-                      {line.ingredient_name as string}
-                    </span>
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
-                      {(() => {
-                        const f = smartFormatQuantity(displayedQty, unit);
-                        const d = f.unit === 'g' || f.unit === 'ml' ? 0 : 2;
-                        return <>
-                          <strong style={{ color: 'var(--theme-text-strong)', fontWeight: 600 }}>{f.value.toFixed(d)}</strong>
-                          <span style={{ fontSize: '0.6875rem', marginLeft: 2 }}>{f.unit}</span>
-                        </>;
-                      })()}
-                      {isMagasinier && actual !== null && actual !== allocated && (() => {
-                        const af = smartFormatQuantity(actual, unit);
-                        const d = af.unit === 'g' || af.unit === 'ml' ? 0 : 2;
-                        return <span style={{ color: '#b85d1a', fontWeight: 600, marginLeft: 4 }}>&rarr; {af.value.toFixed(d)} {af.unit}</span>;
-                      })()}
-                    </span>
-                    {isMagasinier && lotExpired && <span className="odoo-tag odoo-tag-red">Lot expiré</span>}
-                    {sourceBadge && !isDone && isMagasinier && (
-                      <span className={`odoo-tag ${
-                        isTransferRequired ? 'odoo-tag-yellow'
-                        : isToOpenFromEconomat ? 'odoo-tag-blue'
-                        : sourceLocation === 'PESAGE' ? 'odoo-tag-green'
-                        : 'odoo-tag-red'
-                      }`}>
-                        <sourceBadge.Icon size={10} />
-                        {sourceBadge.label}
-                        {isToOpenFromEconomat && line.lot_number && (
-                          <span style={{ fontFamily: 'monospace', opacity: 0.7 }}>· {line.lot_number as string}</span>
+            <Fragment key={line.id as string}>
+            <tr className={`${kind === 'lot_perime' ? 'bsi-row-muted' : ''} ${isDone ? 'bsi-row-done' : ''}`}>
+              <td><span className={`odoo-status-dot ${rowDot}`} /></td>
+              <td>
+                <div style={{ fontWeight: 600, color: 'var(--theme-text-strong)' }}>{line.ingredient_name as string}</div>
+                {isMagasinier && (
+                  <div className="bsi-sub">
+                    {kind === 'a_ouvrir' && suggestedLabel && <>Ouvrir le lot <span style={{ fontFamily: 'ui-monospace, monospace' }}>{suggestedLabel}</span>{containerSize > 0 && <> · {line.container_type_label ? `${line.container_type_label} de ` : 'contenant de '}{fmtQty(containerSize, unit).v} {fmtQty(containerSize, unit).u}</>}</>}
+                    {kind !== 'a_ouvrir' && lotLabel && <>Lot <span style={{ fontFamily: 'ui-monospace, monospace' }}>{lotLabel}</span></>}
+                    {kind === 'a_ouvrir' && !suggestedLabel && <>Lot choisi automatiquement (FEFO)</>}
+                  </div>
+                )}
+                {isMagasinier && line.ecart_reason && <div className="bsi-sub" style={{ fontStyle: 'italic' }}>« {line.ecart_reason as string} »</div>}
+                {canWeigh && ev && (
+                  <div className="bsi-lot-row">
+                    {entry.pickLot || entry.lotId ? (
+                      <LotSelect ligneId={line.id as string} value={entry.lotId} unit={unit}
+                        onChange={(lotId, lot) => setEntry(line.id as string, {
+                          lotId, pickLot: true, openQty: '',
+                          lotEco: lot ? parseFloat(lot.economat_quantity as string || '0') : null,
+                          lotPesage: lot ? parseFloat(lot.pesage_free as string || '0') : null,
+                        })} />
+                    ) : (
+                      <button type="button" className="bsi-link-btn" onClick={() => setEntry(line.id as string, { pickLot: true })}>
+                        <Layers size={11} /> {kind === 'lot_perime' || kind === 'stock_revenu' ? 'Choisir le lot' : 'Autre lot'}
+                      </button>
+                    )}
+                    {ev.openDefault !== null && (
+                      <span className="bsi-open-row" title="Quantité réellement sortie de l'économat (le reste du contenant ouvert reste au pesage)">
+                        <PackageOpen size={11} /> Sorti de l'économat :
+                        {containerSize > 0 && (
+                          <label className="bsi-containers">
+                            <input type="text" inputMode="numeric"
+                              value={entry.containers || (ev.opensContainers != null ? String(ev.opensContainers) : '1')}
+                              onChange={(e) => setEntry(line.id as string, { containers: e.target.value.replace(/[^0-9]/g, ''), openQty: '' })}
+                              className="bsi-weigh-input bsi-containers-input" title="Nombre de contenants ouverts" />
+                            <span className="bsi-unit">× {(line.container_type_label as string) || 'contenant'} de {fmtQty(containerSize, unit).v} {fmtQty(containerSize, unit).u}</span>
+                          </label>
                         )}
+                        {containerSize > 0 ? (
+                          <span className="bsi-unit">= <strong>{fmtQty((ev.containers ?? ev.opensContainers ?? 1) * containerSize, unit).v} {fmtQty((ev.containers ?? ev.opensContainers ?? 1) * containerSize, unit).u}</strong> (contenant entier)</span>
+                        ) : (
+                          <>
+                            <input type="text" inputMode="decimal"
+                              value={entry.openQty}
+                              placeholder={(ev.openDefault * ev.inputFactor).toFixed(ev.inputDigits)}
+                              onChange={(e) => setEntry(line.id as string, { openQty: e.target.value.replace(/[^0-9.,]/g, ''), containers: '' })}
+                              className={`bsi-weigh-input bsi-open-input ${entry.openQty && !ev.openQtyOk ? 'is-out' : ''}`}
+                              title="Quantité sortie de l'économat" />
+                            <span className="bsi-unit">{ev.inputUnit}</span>
+                          </>
+                        )}
+                        {(entry.lotEco ?? (line.suggested_lot_economat_qty != null ? parseFloat(line.suggested_lot_economat_qty as string) : null)) !== null && (() => {
+                          const eco = entry.lotEco ?? parseFloat(line.suggested_lot_economat_qty as string);
+                          const allContainers = containerSize > 0 ? Math.max(1, Math.ceil(eco / containerSize - 1e-9)) : 0;
+                          return (
+                            <button type="button" className="bsi-link-btn" title="Tout ce que le lot a en économat passe au pesage"
+                              onClick={() => containerSize > 0
+                                ? setEntry(line.id as string, { containers: String(allContainers), openQty: '' })
+                                : setEntry(line.id as string, { openQty: (eco * ev.inputFactor).toFixed(ev.inputDigits), containers: '' })}>
+                              Tout le lot ({containerSize > 0 ? `${allContainers} × ${fmtQty(containerSize, unit).v} ${fmtQty(containerSize, unit).u}` : `${fmtQty(eco, unit).v} ${fmtQty(eco, unit).u}`})
+                            </button>
+                          );
+                        })()}
                       </span>
                     )}
                   </div>
-                </div>
-
-                {/* Boutons "Modifier qty" / "Confirmer" : magasinier seul, et uniquement
-                    quand le BSI est pris en charge (preparation/preparation_partielle).
-                    Caches aussi sur les lignes en attente de transfert (allocated=0 → confirmer
-                    n'a pas de sens tant que le magasinier n'a pas transfere). */}
-                {!isClosed && !isVerified && lineStatus === 'en_attente' && !lotExpired && !isEditing && !isTransferRequired
-                  && isMagasinier
-                  && ['preparation', 'preparation_partielle'].includes(bon.status as string) && (
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={() => { setEditingLine(line.id as string); setEditValue(allocated.toFixed(2)); }}
-                      className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                      title="Modifier la quantite"
-                    >
-                      <Edit3 size={16} />
-                    </button>
-                    <button
-                      onClick={() => confirmLine(line)}
-                      disabled={ligneMutation.isPending}
-                      className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors active:scale-95"
-                      title="Confirmer"
-                    >
-                      <Check size={16} />
-                    </button>
-                  </div>
                 )}
-
-                {/* Delta v1 point 5 : indicateur visuel par ligne (3 etats spec). */}
-                {lineSpecStatus && (
-                  <span
-                    className={`odoo-tag ${lineSpecStatus.cls} shrink-0`}
-                    title={
-                      lineSpecStatus.label === 'En transfert'
-                        ? 'Effectue le transfert depuis le module Economat (onglet Transferts demandes)'
-                        : lineSpecStatus.label === 'En commande'
-                        ? 'Ingredient absent du pesage ET de l\'economat — commande fournisseur necessaire'
-                        : 'Ingredient pese et pret'
-                    }
-                  >
-                    <lineSpecStatus.Icon size={12} />
-                    {lineSpecStatus.label}
-                  </span>
+              </td>
+              <td>
+                <span className={`odoo-tag ${tag.cls}`} title={tag.title}><tag.Icon size={10} /> {tag.label}</span>
+                {isMagasinier && kind === 'manquant' && !isDelivered && (
+                  alreadyOrdered
+                    ? <div style={{ marginTop: 4 }}><span className="odoo-tag odoo-tag-green"><ShoppingCart size={10} /> Commandé</span></div>
+                    : <div style={{ marginTop: 4 }}>
+                        <button type="button" className="bsi-link-btn" disabled={orderMutation.isPending}
+                          onClick={() => orderMutation.mutate(line)} title="Demander l'achat du manquant (Stock › À commander)">
+                          <ShoppingCart size={11} /> Commander
+                        </button>
+                      </div>
                 )}
-              </div>
-
-              {isEditing && (
-                <div className="mt-2.5 flex items-center gap-2 pl-11">
-                  <input
-                    type="number" step="0.01" min="0"
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    autoFocus
-                    className="w-28 text-sm border border-amber-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-amber-400 outline-none text-right"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const val = parseFloat(editValue);
-                        if (!isNaN(val)) ligneMutation.mutate({ ligneId: line.id as string, actualQuantity: val });
-                      }
-                      if (e.key === 'Escape') setEditingLine(null);
-                    }}
-                  />
-                  <span className="text-xs text-gray-400">{unit}</span>
-                  <button
-                    onClick={() => {
-                      const val = parseFloat(editValue);
-                      if (!isNaN(val)) ligneMutation.mutate({ ligneId: line.id as string, actualQuantity: val });
-                    }}
-                    className="px-3 py-2 bg-amber-500 text-white rounded-lg text-xs font-medium hover:bg-amber-600 transition-colors"
-                  >
-                    OK
-                  </button>
-                  <button
-                    onClick={() => setEditingLine(null)}
-                    className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors"
-                  >
-                    Annuler
-                  </button>
-                </div>
+              </td>
+              <td className="bsi-num"><strong>{shown.v}</strong> <span className="bsi-unit">{shown.u}</span></td>
+              {isMagasinier && (
+                <td className="bsi-num bsi-muted">
+                  {ev ? <>{ev.minInput.toFixed(ev.inputDigits)} – {ev.maxInput.toFixed(ev.inputDigits)} <span className="bsi-unit">{ev.inputUnit}</span></> : <span className="bsi-empty">—</span>}
+                </td>
               )}
-            </div>
+              <td className="bsi-num">
+                {ev ? (
+                  <div className="bsi-weigh">
+                    <input
+                      type="text" inputMode="decimal"
+                      value={ev.raw}
+                      onChange={(e) => setEntry(line.id as string, { value: e.target.value.replace(/[^0-9.,]/g, '') })}
+                      onKeyDown={(e) => { if (e.key === 'Enter') saveLine(); }}
+                      placeholder={ev.targetInInput.toFixed(ev.inputDigits)}
+                      className={`bsi-weigh-input ${ev.qty === null ? '' : ev.outOfBand ? 'is-out' : 'is-ok'}`}
+                      title={ev.blockedReason || 'Poids lu sur la balance'}
+                    />
+                    <span className="bsi-unit">{ev.inputUnit}</span>
+                  </div>
+                ) : actual !== null && (isMagasinier || isDelivered) ? (
+                  <>
+                    <strong>{fmtQty(actual, unit).v}</strong> <span className="bsi-unit">{fmtQty(actual, unit).u}</span>
+                    {line.weighing_source === 'auto' && isMagasinier && (
+                      <div><span className="odoo-tag odoo-tag-grey" title="Ligne complétée par le système, sans pesée réelle">non pesé</span></div>
+                    )}
+                  </>
+                ) : <span className="bsi-empty">—</span>}
+              </td>
+              {isMagasinier && (
+                <td className="bsi-num">
+                  {ev && ev.qty !== null ? (
+                    <span className={`odoo-tag ${ev.outOfBand ? 'odoo-tag-orange' : 'odoo-tag-green'}`}>
+                      {ev.outOfBand ? <AlertTriangle size={10} /> : <Check size={10} />}
+                      {Number(fmtQty(Math.abs(ev.ecart), unit).v) === 0 ? 'pile' : `${ev.ecart > 0 ? '+' : '−'}${fmtQty(Math.abs(ev.ecart), unit).v} ${fmtQty(Math.abs(ev.ecart), unit).u}`}
+                    </span>
+                  ) : !ev && actual !== null ? (
+                    <span className={`odoo-tag ${line.ecart_reason ? 'odoo-tag-orange' : Number(recordedEcart.v) === 0 ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>
+                      {Number(recordedEcart.v) === 0 ? 'pile' : `${weighedEcart > 0 ? '+' : '−'}${recordedEcart.v} ${recordedEcart.u}`}
+                    </span>
+                  ) : <span className="bsi-empty">—</span>}
+                </td>
+              )}
+              {isMagasinier && (
+                <td style={{ textAlign: 'right' }}>
+                  {ev?.ready && (
+                    <button onClick={saveLine} disabled={ligneMutation.isPending} className="bsi-save-btn" title="Enregistrer cette pesée">
+                      {ligneMutation.isPending && ligneMutation.variables?.ligneId === line.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                    </button>
+                  )}
+                </td>
+              )}
+            </tr>
+            {ev?.outOfBand && (
+              <tr className="bsi-reason-row">
+                <td></td>
+                <td colSpan={7}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <AlertTriangle size={13} style={{ color: '#b85d1a', flexShrink: 0 }} />
+                    <input type="text" value={entry.reason}
+                      onChange={(e) => setEntry(line.id as string, { reason: e.target.value })}
+                      onKeyDown={(e) => { if (e.key === 'Enter') saveLine(); }}
+                      placeholder="Hors tolérance — motif obligatoire (ex : sac entamé, reste de lot, perte au transvasement)"
+                      className="bsi-reason-input" />
+                  </div>
+                </td>
+              </tr>
+            )}
+            </Fragment>
           );
         })}
+          </tbody>
+        </table>
+        </div>
+
+        {/* Emballages : informatifs, consommes a la remise du bon (pas de pesee). */}
+        {packagingLines.length > 0 && (
+          <div className="bsi-packaging">
+            <div className="odoo-section-header" style={{ border: 'none' }}>
+              <Package size={12} /> Emballages
+              <span style={{ marginLeft: 6, fontWeight: 400, color: 'var(--theme-text-muted)' }}>— consommés automatiquement à la remise, rien à peser</span>
+            </div>
+            <table className="odoo-table bsi-lines-table">
+              <tbody>
+                {packagingLines.map((p) => {
+                  const need = parseFloat(p.needed_quantity as string || '0');
+                  const alloc = parseFloat(p.allocated_quantity as string || '0');
+                  const short = alloc + 1e-9 < need;
+                  return (
+                    <tr key={p.id as string}>
+                      <td style={{ width: 28 }}><span className={`odoo-status-dot ${short ? 'warning' : 'ok'}`} /></td>
+                      <td><strong>{p.ingredient_name as string}</strong>{p.packaging_format ? <span className="bsi-sub"> {p.packaging_format as string}</span> : null}</td>
+                      <td className="bsi-num">{need.toFixed(need % 1 === 0 ? 0 : 2)} <span className="bsi-unit">{(p.unit || '') as string}</span></td>
+                      <td>{short ? <span className="odoo-tag odoo-tag-orange"><AlertTriangle size={10} /> stock insuffisant ({alloc.toFixed(0)} dispo)</span> : <span className="odoo-tag odoo-tag-green"><Check size={10} /> en stock</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* Bouton "Valider le bon de sortie" : visible UNIQUEMENT une fois que le chef
-          a accepte la reception (statut 'prelevement' ou 'verifie'). Avant cette etape,
-          le chef doit passer par le bouton "Accepter la reception" du bloc 'pret' ci-dessus,
-          qui bascule le BSI en 'prelevement'. Sinon close() echoue avec "statut invalide". */}
-      {!isClosed && isChef && (bon.status === 'prelevement' || bon.status === 'verifie') && (allDone || !isMagasinier) && (
-        <button
-          onClick={isVerified ? () => closeMutation.mutate() : validateBon}
-          disabled={validating || closeMutation.isPending}
-          className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 text-sm active:scale-[0.98]"
-        >
-          {(validating || closeMutation.isPending) ? (
-            <Loader2 size={18} className="animate-spin" />
-          ) : (
-            <CheckCircle size={18} />
-          )}
-          Valider le bon de sortie
+      {/* Historique du bon (repliable) */}
+      <div className="odoo-section" style={{ margin: 0 }}>
+        <button onClick={() => setShowDetails(!showDetails)} className="odoo-section-header"
+          style={{ width: '100%', borderBottom: showDetails ? undefined : 'none', cursor: 'pointer' }}>
+          {showDetails ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          Historique du bon
         </button>
-      )}
-
-      {/* Closed confirmation */}
-      {isClosed && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
-          <CheckCircle size={28} className="text-emerald-500 mx-auto mb-1.5" />
-          <p className="text-emerald-800 font-semibold text-sm">Ingredients livres</p>
-          <p className="text-xs text-emerald-600 mt-0.5">La production peut demarrer</p>
-        </div>
-      )}
-
-      {/* Details toggle */}
-      <button
-        onClick={() => setShowDetails(!showDetails)}
-        className="w-full flex items-center justify-center gap-1.5 py-2 text-xs text-gray-400 hover:text-gray-600 transition-colors"
-      >
-        {showDetails ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        {showDetails ? 'Masquer les details' : 'Voir les details'}
-      </button>
-
-      {showDetails && (
-        <div className="bg-gray-50 rounded-xl border border-gray-100 p-4 space-y-3">
-          <div className="space-y-1 text-xs text-gray-500">
-            {bon.generated_at && <p>Genere le {format(new Date(bon.generated_at as string), 'dd/MM/yyyy a HH:mm')}{bon.generated_by_name ? ` par ${bon.generated_by_name as string}` : ''}</p>}
-            {bon.prelevement_at && <p>Prelevement le {format(new Date(bon.prelevement_at as string), 'dd/MM/yyyy a HH:mm')}{bon.prelevement_by_name ? ` par ${bon.prelevement_by_name as string}` : ''}</p>}
-            {bon.verified_at && <p>Verifie le {format(new Date(bon.verified_at as string), 'dd/MM/yyyy a HH:mm')}{bon.verified_by_name ? ` par ${bon.verified_by_name as string}` : ''}</p>}
-            {bon.closed_at && <p>Cloture le {format(new Date(bon.closed_at as string), 'dd/MM/yyyy a HH:mm')}{bon.closed_by_name ? ` par ${bon.closed_by_name as string}` : ''}</p>}
+        {showDetails && (
+          <div style={{ padding: '0.75rem 1rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {bon.generated_at && <p>Demandé le {format(new Date(bon.generated_at as string), 'dd/MM/yyyy à HH:mm')}{bon.generated_by_name ? ` par ${bon.generated_by_name as string}` : ''}</p>}
+            {bon.preparation_at && <p>Pris en charge le {format(new Date(bon.preparation_at as string), 'dd/MM/yyyy à HH:mm')}{bon.preparation_by_name ? ` par ${bon.preparation_by_name as string}` : ''}</p>}
+            {bon.ready_at && <p>Remis au chef le {format(new Date(bon.ready_at as string), 'dd/MM/yyyy à HH:mm')}{bon.ready_by_name ? ` par ${bon.ready_by_name as string}` : ''}</p>}
+            {bon.prelevement_at && <p>Réception acceptée le {format(new Date(bon.prelevement_at as string), 'dd/MM/yyyy à HH:mm')}{bon.prelevement_by_name ? ` par ${bon.prelevement_by_name as string}` : ''}</p>}
+            {bon.closed_at && <p>Livré le {format(new Date(bon.closed_at as string), 'dd/MM/yyyy à HH:mm')}</p>}
             {bon.derogation_dlc_motif && (
-              <p className="text-amber-700 font-medium">
-                ⚠ Derogation DLC{bon.derogation_dlc_at ? ` le ${format(new Date(bon.derogation_dlc_at as string), 'dd/MM/yyyy a HH:mm')}` : ''} : {bon.derogation_dlc_motif as string}
+              <p style={{ color: '#b45309', fontWeight: 600 }}>
+                ⚠ Dérogation DLC{bon.derogation_dlc_at ? ` le ${format(new Date(bon.derogation_dlc_at as string), 'dd/MM/yyyy à HH:mm')}` : ''} : {bon.derogation_dlc_motif as string}
               </p>
             )}
-          </div>
-          {['genere', 'prelevement'].includes(bon.status as string) && isChef && (
-            <div className="space-y-2">
-              <div className="flex flex-wrap gap-2">
-                <button onClick={() => regenerateMutation.mutate(undefined)} disabled={regenerateMutation.isPending}
-                  className="px-4 py-2 bg-white border border-gray-200 text-gray-500 rounded-lg text-xs font-medium hover:bg-gray-50 transition flex items-center gap-1.5">
-                  <RefreshCw size={13} /> Regenerer le bon
-                </button>
-                {!showDerog && (
-                  <button onClick={() => setShowDerog(true)} disabled={regenerateMutation.isPending}
-                    className="px-4 py-2 bg-white border border-amber-200 text-amber-700 rounded-lg text-xs font-medium hover:bg-amber-50 transition flex items-center gap-1.5">
-                    ⚠ Regenerer avec derogation DLC
+            {bon.status === 'genere' && isChef && (
+              <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <button onClick={() => regenerateMutation.mutate(undefined)} disabled={regenerateMutation.isPending} className="odoo-btn-secondary">
+                    <RefreshCw size={13} /> Régénérer le bon
                   </button>
+                  {!showDerog && (
+                    <button onClick={() => setShowDerog(true)} disabled={regenerateMutation.isPending} className="odoo-btn-secondary" style={{ color: '#b45309', borderColor: '#fcd34d' }}>
+                      ⚠ Régénérer avec dérogation DLC
+                    </button>
+                  )}
+                </div>
+                {showDerog && (
+                  <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6, padding: '0.5rem 0.75rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ color: '#92400e' }}>Les lots à DLC dépassée seront alloués. Cette décision est tracée (auteur, date, motif) sur le bon.</span>
+                    <textarea value={derogMotif} onChange={(e) => setDerogMotif(e.target.value)} rows={2}
+                      placeholder="Motif de la dérogation (obligatoire, 5 caractères min.) — ex. : contrôle organoleptique OK, DLC à J+1, utilisation en cuisson"
+                      style={{ width: '100%', fontSize: '0.75rem', border: '1px solid #fcd34d', borderRadius: 6, padding: '4px 8px', background: '#fff' }} />
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => regenerateMutation.mutate(derogMotif.trim())} disabled={regenerateMutation.isPending || derogMotif.trim().length < 5} className="odoo-btn-primary">
+                        Confirmer la dérogation
+                      </button>
+                      <button onClick={() => { setShowDerog(false); setDerogMotif(''); }} className="odoo-btn-secondary">Annuler</button>
+                    </div>
+                  </div>
                 )}
               </div>
-              {showDerog && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
-                  <p className="text-xs text-amber-800">
-                    Les lots a DLC depassee seront alloues. Cette decision est tracee (auteur, date, motif) sur le bon.
-                  </p>
-                  <textarea value={derogMotif} onChange={(e) => setDerogMotif(e.target.value)} rows={2}
-                    placeholder="Motif de la derogation (obligatoire, 5 caracteres min.) — ex. : controle organoleptique OK, DLC a J+1, utilisation en cuisson"
-                    className="w-full text-xs border border-amber-200 rounded-lg px-2 py-1.5 bg-white" />
-                  <div className="flex gap-2">
-                    <button onClick={() => regenerateMutation.mutate(derogMotif.trim())}
-                      disabled={regenerateMutation.isPending || derogMotif.trim().length < 5}
-                      className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700 disabled:opacity-50 transition">
-                      Confirmer la derogation
-                    </button>
-                    <button onClick={() => { setShowDerog(false); setDerogMotif(''); }}
-                      className="px-3 py-1.5 bg-white border border-gray-200 text-gray-500 rounded-lg text-xs hover:bg-gray-50 transition">
-                      Annuler
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
+}
+
+/** Vue chef : une ligne par ingredient (un besoin pris sur plusieurs lots reste un
+ *  seul ingredient pour lui), avec l'etat reel : pese, manquant, ou en preparation. */
+function aggregateForChef(lines: Line[], kinds: Map<string, LineKind>): Line[] {
+  const byIngredient = new Map<string, Line>();
+  for (const l of lines) {
+    const key = l.ingredient_id as string;
+    const kind = kinds.get(l.id as string) as LineKind;
+    const needed = parseFloat(l.needed_quantity as string || '0');
+    const allocated = parseFloat(l.allocated_quantity as string || '0');
+    const actual = l.actual_quantity != null ? parseFloat(l.actual_quantity as string) : null;
+    const existing = byIngredient.get(key);
+    if (!existing) {
+      byIngredient.set(key, {
+        ...l, needed_quantity: needed, allocated_quantity: allocated, actual_quantity: actual,
+        _kinds: [kind], _kind: kind,
+      });
+    } else {
+      existing.needed_quantity = parseFloat(existing.needed_quantity) + needed;
+      existing.allocated_quantity = parseFloat(existing.allocated_quantity) + allocated;
+      if (actual !== null) existing.actual_quantity = (existing.actual_quantity ?? 0) + actual;
+      (existing._kinds as LineKind[]).push(kind);
+      if (existing.status !== 'ecart' && l.status === 'ecart') existing.status = 'ecart';
+    }
+  }
+  for (const agg of byIngredient.values()) {
+    const ks = agg._kinds as LineKind[];
+    agg._kind = ks.includes('manquant') ? 'manquant'
+      : ks.every((k) => k === 'pese') ? 'pese'
+      : 'attente';
+    if (agg._kind !== 'pese' && agg.status === 'ecart') agg.status = 'en_attente';
+  }
+  return Array.from(byIngredient.values());
 }

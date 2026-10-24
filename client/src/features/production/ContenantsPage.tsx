@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { contenantsApi } from '../../api/contenants.api';
+import { contenantsApi, type BulkResult } from '../../api/contenants.api';
 import { recipesApi } from '../../api/recipes.api';
 import { notify } from '../../components/ui/InlineNotification';
 import {
   Plus, Pencil, Trash2, Search, X, Check, ChevronDown, ChevronUp,
-  Layers, Package, Weight,
+  Layers, Package, Weight, Ban,
   ArrowUp, ArrowDown, ArrowUpDown, ChefHat, ListChecks,
 } from 'lucide-react';
 import {
@@ -105,6 +105,7 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<string>('nom');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const toggleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -176,6 +177,84 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
     },
     onError: (err: Error) => notify.error(err.message || 'Impossible de desactiver (produits lies)'),
   });
+
+  // ─── Sélection multiple ───
+  // Les ids sélectionnés survivent aux changements de filtre : on ne coche que
+  // ce qui est visible, mais on ne décoche pas ce qui sort du filtre. La barre
+  // d'action affiche donc toujours le vrai total sur lequel on va agir.
+  const visibleIds = sortedFiltered.map(c => c.id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
+  const toggleSelectAll = () => {
+    setSelectedIds(prev => {
+      if (allVisibleSelected) {
+        const next = new Set(prev);
+        visibleIds.forEach(id => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...visibleIds]);
+    });
+  };
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  /**
+   * Rendu commun aux deux actions en masse. Le compte-rendu détaille les trois
+   * issues possibles : supprimé, désactivé d'office (format encore référencé),
+   * et échec réel — pour que « 0 supprimé » ne se lise pas comme « rien fait ».
+   */
+  const bulkFeedback = (verbe: string, result: BulkResult) => {
+    queryClient.invalidateQueries({ queryKey: ['contenants'] });
+    setSelectedIds(new Set());
+    const parts: string[] = [];
+    if (result.done > 0) parts.push(`${result.done} ${verbe}${result.done > 1 ? 's' : ''}`);
+    if (result.deactivated) {
+      const p = result.deactivated > 1 ? 's' : '';
+      parts.push(`${result.deactivated} désactivé${p} (encore utilisé${p})`);
+    }
+    const resume = parts.join(', ') || 'aucun format traité';
+    if (result.failed.length === 0) {
+      notify.success(resume.charAt(0).toUpperCase() + resume.slice(1));
+    } else {
+      notify.error(`${resume}, ${result.failed.length} échec${result.failed.length > 1 ? 's' : ''} — ${result.failed[0].reason}`);
+    }
+  };
+  const bulkError = (err: unknown, fallback: string) => {
+    const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+    notify.error(msg || fallback);
+  };
+
+  const bulkDeactivateMutation = useMutation({
+    mutationFn: contenantsApi.bulkDeactivate,
+    onSuccess: (result) => bulkFeedback('désactivé', result),
+    onError: (err) => bulkError(err, 'Erreur lors de la désactivation en masse'),
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: contenantsApi.bulkDelete,
+    onSuccess: (result) => bulkFeedback('supprimé', result),
+    onError: (err) => bulkError(err, 'Erreur lors de la suppression en masse'),
+  });
+
+  const handleBulkDeactivate = () => {
+    const n = selectedIds.size;
+    if (n === 0) return;
+    if (!confirm(`Désactiver ${n} format${n > 1 ? 's' : ''} ?\n\nIls disparaissent des listes mais restent en base : les recettes et plans qui les référencent ne sont pas touchés.`)) return;
+    bulkDeactivateMutation.mutate([...selectedIds]);
+  };
+
+  const handleBulkDelete = () => {
+    const n = selectedIds.size;
+    if (n === 0) return;
+    if (!confirm(`Supprimer ${n} format${n > 1 ? 's' : ''} ?\n\nCeux que rien n'utilise sont supprimés définitivement (irréversible).\nCeux encore référencés par une recette, un plan ou un profil produit sont désactivés à la place : ils sortent des listes, leur historique reste intact.`)) return;
+    bulkDeleteMutation.mutate([...selectedIds]);
+  };
+
+  const bulkPending = bulkDeactivateMutation.isPending || bulkDeleteMutation.isPending;
 
   const activeCount = contenants.filter(c => c.is_active).length;
 
@@ -250,6 +329,30 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
         />
       )}
 
+      {/* ══════ BARRE D'ACTIONS SUR SÉLECTION ══════ */}
+      {/* « Désactiver » ne fait jamais que désactiver. « Supprimer » supprime ce que
+          rien ne référence et DÉSACTIVE le reste : les FK vers production_contenants
+          sont en RESTRICT, un format déjà utilisé ne peut pas partir sans casser
+          l'historique. Le repli évite un échec sur lequel on ne peut rien faire. */}
+      {selectedIds.size > 0 && (
+        <div className="odoo-control-bar" style={{ borderTop: '1px solid var(--theme-bg-separator)' }}>
+          <span className="odoo-pager">
+            <strong>{selectedIds.size}</strong> format{selectedIds.size > 1 ? 's' : ''} sélectionné{selectedIds.size > 1 ? 's' : ''}
+          </span>
+          <button onClick={handleBulkDeactivate} className="odoo-btn-secondary" disabled={bulkPending}>
+            <Ban size={14} /> {bulkDeactivateMutation.isPending ? 'Désactivation...' : 'Désactiver'}
+          </button>
+          <button onClick={handleBulkDelete} className="odoo-btn-danger" disabled={bulkPending}
+            title="Supprime les formats que rien n'utilise ; désactive automatiquement les autres">
+            <Trash2 size={14} /> {bulkDeleteMutation.isPending ? 'Suppression...' : 'Supprimer'}
+          </button>
+          <button onClick={() => setSelectedIds(new Set())} className="odoo-btn-secondary"
+            disabled={bulkPending} title="Annuler la sélection">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* ══════ TABLE ══════ */}
       {isLoading ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '5rem' }}>
@@ -283,6 +386,10 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
           <table className="odoo-table">
             <thead>
               <tr>
+                <th style={{ width: 28, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAll}
+                    title="Tout sélectionner" style={{ cursor: 'pointer', accentColor: 'var(--theme-accent)' }} />
+                </th>
                 <th style={{ width: 24 }}></th>
                 <SortHeader label="Format" sortKey="nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 <SortHeader label="Type" sortKey="type_production" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
@@ -302,6 +409,8 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
                 <ContenantRow key={c.id} contenant={c}
                   linkedRecipes={recipesByContenant[c.id] || []}
                   expanded={expandedId === c.id}
+                  selected={selectedIds.has(c.id)}
+                  onSelect={() => toggleSelect(c.id)}
                   onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
                   onEdit={() => { setEditing(c); setCreating(false); }}
                   onDeactivate={() => {
@@ -319,10 +428,12 @@ export default function ContenantsPage({ creating: creatingProp, onCreatingChang
 
 // ─── Row Component ───
 
-function ContenantRow({ contenant: c, linkedRecipes, expanded, onToggle, onEdit, onDeactivate }: {
+function ContenantRow({ contenant: c, linkedRecipes, expanded, selected, onSelect, onToggle, onEdit, onDeactivate }: {
   contenant: Contenant;
   linkedRecipes: LinkedRecipe[];
   expanded: boolean;
+  selected: boolean;
+  onSelect: () => void;
   onToggle: () => void;
   onEdit: () => void;
   onDeactivate: () => void;
@@ -339,6 +450,11 @@ function ContenantRow({ contenant: c, linkedRecipes, expanded, onToggle, onEdit,
   return (
     <>
       <tr onClick={onToggle} style={!c.is_active ? { opacity: 0.55 } : undefined}>
+        <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+          <input type="checkbox" checked={selected} onChange={onSelect}
+            aria-label={`Sélectionner ${c.nom}`}
+            style={{ cursor: 'pointer', accentColor: 'var(--theme-accent)' }} />
+        </td>
         {/* Pastille = santé de la donnée, comme dans la liste des fiches (elle ne
             redouble pas la colonne Statut) : un format actif que personne n'utilise
             est un format à raccrocher ou à désactiver. */}
@@ -400,7 +516,7 @@ function ContenantRow({ contenant: c, linkedRecipes, expanded, onToggle, onEdit,
       {/* Expanded detail */}
       {expanded && (
         <tr style={{ cursor: 'default' }}>
-          <td colSpan={12} style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--theme-bg-page)' }}>
+          <td colSpan={13} style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--theme-bg-page)' }}>
             <div className="grid grid-cols-2 gap-6">
               {/* Linked recipes */}
               <div>

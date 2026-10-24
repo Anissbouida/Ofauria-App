@@ -1,6 +1,7 @@
+import { ROLES } from '@ofauria/shared';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
-import { caisseRepository, supplierRepository, expenseCategoryRepository, revenueCategoryRepository, invoiceRepository, paymentRepository } from '../repositories/accounting.repository.js';
+import { caisseRepository, expenseCategoryRepository, revenueCategoryRepository, invoiceRepository, paymentRepository } from '../repositories/accounting.repository.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 import { saleRepository } from '../repositories/sale.repository.js';
 import { orderRepository } from '../repositories/order.repository.js';
@@ -8,6 +9,8 @@ import { generateInvoicePdf } from '../services/invoice-pdf.service.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { db } from '../config/database.js';
 import { refEntryRepository } from '../repositories/referentiel.repository.js';
+import { paymentScheduleRepository } from '../repositories/payment-schedule.repository.js';
+import { getParameter, type ExpenseRequiresPo } from '../services/module-parameters.service.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
 
 // Valide un code de mode de reglement contre le referentiel payment_methods
@@ -52,29 +55,7 @@ export const caisseController = {
   },
 };
 
-export const supplierController = {
-  async list(_req: AuthRequest, res: Response) {
-    const suppliers = await supplierRepository.findAll();
-    res.json({ success: true, data: suppliers });
-  },
-  async getById(req: AuthRequest, res: Response) {
-    const supplier = await supplierRepository.findById(req.params.id);
-    if (!supplier) { res.status(404).json({ success: false, error: { message: 'Fournisseur non trouve' } }); return; }
-    res.json({ success: true, data: supplier });
-  },
-  async create(req: AuthRequest, res: Response) {
-    const supplier = await supplierRepository.create(req.body);
-    res.status(201).json({ success: true, data: supplier });
-  },
-  async update(req: AuthRequest, res: Response) {
-    const supplier = await supplierRepository.update(req.params.id, req.body);
-    res.json({ success: true, data: supplier });
-  },
-  async remove(req: AuthRequest, res: Response) {
-    await supplierRepository.delete(req.params.id);
-    res.json({ success: true, data: null });
-  },
-};
+// supplierController : déplacé dans supplier.controller.ts (refonte Achats D1).
 
 export const expenseCategoryController = {
   async list(req: AuthRequest, res: Response) {
@@ -144,6 +125,35 @@ export const invoiceController = {
     });
     res.json({ success: true, data: invoices });
   },
+  /** Écran Factures reçues : liste paginée par étape (à traiter) ou par période (historique). */
+  async receivedBoard(req: AuthRequest, res: Response) {
+    const q = req.query as Record<string, string>;
+    const STAGES = ['draft', 'blocked', 'to_pay', 'partial', 'paid', 'cancelled'];
+    const STATUSES = ['pending', 'partial', 'overdue', 'disputed', 'paid', 'cancelled', 'late', 'blocked', 'to_check'];
+    const isDate = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined);
+    const pageSize = Math.min(Math.max(parseInt(q.pageSize || '25', 10) || 25, 1), 100);
+    const page = Math.max(parseInt(q.page || '1', 10) || 1, 1);
+    const data = await invoiceRepository.findReceivedBoard({
+      storeId: req.user!.storeId,
+      view: q.view === 'history' ? 'history' : 'open',
+      stage: STAGES.includes(q.stage) ? q.stage : undefined,
+      status: STATUSES.includes(q.status) ? q.status : undefined,
+      supplierId: q.supplierId || undefined,
+      categoryId: q.categoryId || undefined,
+      search: q.search?.trim() || undefined,
+      dateFrom: isDate(q.dateFrom),
+      dateTo: isDate(q.dateTo),
+      sort: q.sort || 'invoice_date',
+      dir: q.dir === 'asc' ? 'asc' : 'desc',
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    });
+    res.json({ success: true, data: { ...data, page, pageSize } });
+  },
+  async receivedPipeline(req: AuthRequest, res: Response) {
+    const data = await invoiceRepository.receivedPipeline(req.user!.storeId);
+    res.json({ success: true, data });
+  },
   async lineExpenses(req: AuthRequest, res: Response) {
     const { supplierId, dateFrom, dateTo } = req.query as Record<string, string>;
     const rows = await invoiceRepository.findLineExpenses({
@@ -168,7 +178,7 @@ export const invoiceController = {
     const { id } = req.params;
     const { categoryId, source } = req.body as { categoryId?: string | null; source?: string };
     const target = source === 'reception_item' ? 'reception_item' : 'invoice_item';
-    const updated = await invoiceRepository.updateLineCategory(id, target, categoryId ?? null);
+    const updated = await invoiceRepository.updateLineCategory(id, target, categoryId ?? null, req.user!.userId);
     if (!updated) { res.status(404).json({ success: false, error: { message: 'Ligne non trouvee' } }); return; }
     res.json({ success: true, data: updated });
   },
@@ -221,9 +231,41 @@ export const invoiceController = {
       res.status(409).json({ success: false, error: { message: msg } });
     }
   },
+  /** Annulation motivée (mig 309) pour une facture reçue ; inchangé pour une facture émise. */
   async cancel(req: AuthRequest, res: Response) {
+    const current = await invoiceRepository.findById(req.params.id);
+    if (!current) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    if (current.invoice_type === 'received') {
+      const { reasonCodeId, note } = (req.body ?? {}) as { reasonCodeId?: string; note?: string };
+      if (!reasonCodeId) { res.status(400).json({ success: false, error: { message: 'Motif d\'annulation requis' } }); return; }
+      const invoice = await invoiceRepository.cancelReceived(req.params.id, req.user!.userId, reasonCodeId, note?.trim() || null);
+      res.json({ success: true, data: invoice });
+      return;
+    }
     const invoice = await invoiceRepository.updateStatus(req.params.id, 'cancelled');
     res.json({ success: true, data: invoice });
+  },
+
+  /** GET /invoices/:id/control — blocages, mentions légales, rapprochement par ligne (mig 309). */
+  async control(req: AuthRequest, res: Response) {
+    const data = await invoiceRepository.control(req.params.id, req.query.revalidate === 'true');
+    if (!data) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    res.json({ success: true, data });
+  },
+
+  async releaseHold(req: AuthRequest, res: Response) {
+    const { reasonCodeId, note } = req.body as { reasonCodeId: string; note?: string | null };
+    const r = await invoiceRepository.releaseHold(req.params.holdId, req.user!.userId, reasonCodeId, note ?? null);
+    res.json({ success: true, data: r });
+  },
+
+  async addHold(req: AuthRequest, res: Response) {
+    const r = await invoiceRepository.addManualHold(req.params.id, req.user!.userId, String(req.body.note ?? '').trim());
+    res.status(201).json({ success: true, data: r });
+  },
+
+  async taxCodes(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await invoiceRepository.taxCodes(typeof req.query.at === 'string' ? req.query.at : undefined) });
   },
   /**
    * PUT /invoices/:id — Modification complete (admin + gerant).
@@ -273,7 +315,8 @@ export const invoiceController = {
       res.json({ success: true, data: updated });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur lors de la mise a jour';
-      res.status(400).json({ success: false, error: { message: msg } });
+      const e = err as { statusCode?: number; code?: string };
+      res.status(e?.statusCode ?? (e?.code === 'OF409' || e?.code === '23505' ? 409 : 400)).json({ success: false, error: { message: msg } });
     }
   },
   /**
@@ -296,7 +339,7 @@ export const invoiceController = {
       res.json({ success: true, data: result });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur lors de la suppression';
-      res.status(400).json({ success: false, error: { message: msg } });
+      res.status((err as { code?: string })?.code === 'OF409' ? 409 : 400).json({ success: false, error: { message: msg } });
     }
   },
   async paymentAlerts(req: AuthRequest, res: Response) {
@@ -306,14 +349,21 @@ export const invoiceController = {
   },
   /**
    * GET /invoices/debts — Dettes & creances ouvertes, separees par sens.
-   *   - receivables : factures emises non soldees (clients qui nous doivent)
-   *   - payables    : factures recues non soldees (ce qu'on doit aux fournisseurs)
+   *   - receivables    : factures emises non soldees (clients qui nous doivent)
+   *   - payables       : factures recues non soldees (ce qu'on doit aux fournisseurs)
+   *   - standaloneDebts: dettes echelonnees SANS facture (mig 258) — materiel a
+   *     credit saisi directement. Renvoyees a part pour ne pas etre confondues
+   *     avec des factures, mais a additionner au total "nous leur devons" :
+   *     sans elles le total sous-estime ce qu'on doit reellement.
    */
   async debts(req: AuthRequest, res: Response) {
-    const rows = await invoiceRepository.findOpenDebts({ storeId: req.user!.storeId });
+    const [rows, standaloneDebts] = await Promise.all([
+      invoiceRepository.findOpenDebts({ storeId: req.user!.storeId }),
+      paymentScheduleRepository.findDebts({ storeId: req.user!.storeId }),
+    ]);
     const receivables = rows.filter((r: Record<string, unknown>) => r.invoice_type === 'emitted');
     const payables = rows.filter((r: Record<string, unknown>) => r.invoice_type === 'received');
-    res.json({ success: true, data: { receivables, payables } });
+    res.json({ success: true, data: { receivables, payables, standaloneDebts } });
   },
   /**
    * PUT /invoices/:id/items — Remplace les lignes d'une facture (admin/gerant).
@@ -355,7 +405,8 @@ export const invoiceController = {
       res.json({ success: true, data: updated });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur lors de la mise a jour des lignes';
-      res.status(400).json({ success: false, error: { message: msg } });
+      const e = err as { statusCode?: number; code?: string };
+      res.status(e?.statusCode ?? (e?.code === 'OF409' ? 409 : 400)).json({ success: false, error: { message: msg } });
     }
   },
   async updatePaymentTerms(req: AuthRequest, res: Response) {
@@ -381,6 +432,22 @@ export const invoiceController = {
       res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
     }
     const { status } = req.body as { status?: string };
+    // Mig 309 (G-D6-08) : « payée / partiellement payée / à payer » découlent des paiements et ne se
+    // posent plus à la main ; l'annulation passe par /cancel avec un motif. Reste manuel : le litige.
+    if (invoice.invoice_type === 'received') {
+      if (status === 'disputed') {
+        res.json({ success: true, data: await invoiceRepository.updateStatus(req.params.id, 'disputed') });
+        return;
+      }
+      if (status === 'pending' || status === 'partial' || status === 'paid') {
+        // Lever un litige : le statut redevient celui que dictent les paiements.
+        if (invoice.status === 'disputed') await invoiceRepository.updateStatus(req.params.id, 'pending');
+        res.json({ success: true, data: await invoiceRepository.updatePaidAmount(req.params.id) });
+        return;
+      }
+      res.status(400).json({ success: false, error: { message: 'Statut non modifiable à la main : le règlement découle des paiements, l\'annulation exige un motif.' } });
+      return;
+    }
     const allowed = ['pending', 'partial', 'paid', 'overdue', 'cancelled', 'disputed'];
     if (!status || !allowed.includes(status)) {
       res.status(400).json({ success: false, error: { message: 'Statut invalide' } });
@@ -631,6 +698,17 @@ export const paymentController = {
   async create(req: AuthRequest, res: Response) {
     const data = { ...req.body, createdBy: req.user!.userId, storeId: req.user!.storeId };
 
+    // Dérogation au plafond espèces (mig 310, G-D7-04) : administrateur uniquement.
+    if (data.cashOverride && req.user!.role !== ROLES.ADMIN) {
+      res.status(403).json({ success: false, error: { message: 'Seul un administrateur peut déroger au plafond espèces.' } });
+      return;
+    }
+    // Un mouvement entre nos comptes passe par POST /payments/internal-transfer.
+    if (data.type === 'internal_transfer') {
+      res.status(400).json({ success: false, error: { message: 'Utilisez « Mouvement interne » pour un virement entre caisse et banque.' } });
+      return;
+    }
+
     // Section 4.3 — Paid-out : si un paiement cash est cree pendant qu'une
     // session de caisse est ouverte pour l'utilisateur courant, on l'y
     // rattache pour que cash-register.close() le deduise du montant attendu
@@ -645,17 +723,51 @@ export const paymentController = {
       }
     }
 
-    // ─── BC OBLIGATOIRE — DESACTIVE TEMPORAIREMENT ───────────────────
-    // Pour reactiver : passer ENFORCE_PO_REQUIREMENT a true.
-    // Doit etre coherent avec le flag client (AccountingPage.tsx).
-    const ENFORCE_PO_REQUIREMENT = false;
-    if (ENFORCE_PO_REQUIREMENT && data.type === 'expense' && data.categoryId) {
-      const category = await expenseCategoryRepository.findById(data.categoryId);
-      if (category && category.requires_po && !data.purchaseOrderId) {
-        res.status(400).json({
-          success: false,
-          error: { message: `La categorie "${category.name}" necessite un bon de commande. Veuillez selectionner un BC.` }
-        });
+    // Reglement d'une echeance (mig 258) : on herite categorie / fournisseur de
+    // l'echeance quand ils ne sont pas fournis, pour que la depense se classe
+    // toute seule dans Charges (et passe la garde "categorie obligatoire").
+    if (data.scheduledPaymentId && (!data.categoryId || !data.supplierId)) {
+      const sched = await paymentScheduleRepository.findById(String(data.scheduledPaymentId));
+      if (sched) {
+        if (!data.categoryId) data.categoryId = sched.category_id || undefined;
+        if (!data.supplierId) data.supplierId = sched.supplier_id || sched.invoice_supplier_id || undefined;
+      }
+    }
+
+    // ─── BC OBLIGATOIRE AVANT DÉPENSE (mig 306, G-D3-02) ─────────────
+    // Règle portée par le paramètre purchasing.expense_requires_po (table module_parameters),
+    // et non plus par une constante de code. Désactivée par défaut : décision du gérant.
+    if (data.type === 'expense' && data.categoryId) {
+      const rule = await getParameter<ExpenseRequiresPo>('purchasing.expense_requires_po');
+      const amount = Number(data.amount) || 0;
+      if (rule?.enabled && amount >= (rule.threshold ?? 0)) {
+        const category = await expenseCategoryRepository.findById(data.categoryId);
+        if (category && category.requires_po) {
+          if (!data.purchaseOrderId) {
+            res.status(400).json({
+              success: false,
+              error: { message: `La catégorie « ${category.name} » exige un bon de commande engagé au-delà de ${rule.threshold} ${rule.currency}. Sélectionnez un BC.` },
+            });
+            return;
+          }
+          const po = await db.query(`SELECT status, on_hold FROM purchase_orders WHERE id = $1`, [data.purchaseOrderId]);
+          const st = po.rows[0]?.status as string | undefined;
+          if (!st || !['envoye', 'livre_partiel', 'livre_complet', 'en_attente_facturation'].includes(st) || po.rows[0].on_hold) {
+            res.status(400).json({ success: false, error: { message: 'Le bon de commande doit être engagé (envoyé ou livré) et non bloqué.' } });
+            return;
+          }
+        }
+      }
+    }
+    // Mig 311 (G-D8-09) : une catégorie financière (virement caisse → banque…) n'est pas une charge.
+    if (data.type === 'expense' && data.categoryId) {
+      const blocked = await db.query(
+        `WITH RECURSIVE chain AS (
+           SELECT id, parent_id, name, posting_block_reason FROM expense_categories WHERE id = $1
+           UNION ALL SELECT c.id, c.parent_id, c.name, c.posting_block_reason FROM expense_categories c JOIN chain ch ON ch.parent_id = c.id)
+         SELECT name, posting_block_reason FROM chain WHERE posting_block_reason IS NOT NULL LIMIT 1`, [data.categoryId]);
+      if (blocked.rows[0]) {
+        res.status(400).json({ success: false, error: { message: `« ${blocked.rows[0].name} » : ${blocked.rows[0].posting_block_reason}` } });
         return;
       }
     }
@@ -713,12 +825,43 @@ export const paymentController = {
     res.status(201).json({ success: true, data: payment });
   },
   async update(req: AuthRequest, res: Response) {
-    const payment = await paymentRepository.update(req.params.id, req.body);
+    const payment = await paymentRepository.update(req.params.id, req.body, req.user!.userId);
     res.json({ success: true, data: payment });
   },
   async remove(req: AuthRequest, res: Response) {
     await paymentRepository.delete(req.params.id);
     res.json({ success: true, data: null });
+  },
+  /** POST /payments/:id/void — annulation motivée par contre-pièce (mig 310, G-D7-08). */
+  async voidPayment(req: AuthRequest, res: Response) {
+    const { reasonCodeId, note } = req.body as { reasonCodeId: string; note: string | null };
+    const payment = await paymentRepository.voidPayment(req.params.id, { reasonCodeId, note, userId: req.user!.userId });
+    res.json({ success: true, data: payment });
+  },
+  /** POST /payments/:id/reissue — nouveau règlement lié à un paiement annulé. */
+  async reissue(req: AuthRequest, res: Response) {
+    if (req.body.cashOverride && req.user!.role !== ROLES.ADMIN) {
+      res.status(403).json({ success: false, error: { message: 'Seul un administrateur peut déroger au plafond espèces.' } });
+      return;
+    }
+    const payment = await paymentRepository.reissue(req.params.id, { ...req.body, userId: req.user!.userId, storeId: req.user!.storeId });
+    res.status(201).json({ success: true, data: payment });
+  },
+  async modes(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await paymentRepository.listModes() });
+  },
+  /** GET /payments/cash-cumul?supplierId=&date=&amount= — jauge du plafond espèces. */
+  async cashCumul(req: AuthRequest, res: Response) {
+    const { supplierId, date, amount } = req.query as Record<string, string>;
+    res.json({ success: true, data: await paymentRepository.cashCumul(supplierId, date, amount ? parseFloat(amount) || 0 : 0) });
+  },
+  async cashLimitBreaches(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await paymentRepository.cashLimitBreaches() });
+  },
+  /** POST /payments/internal-transfer — versement en banque, retrait (G-D7-17). */
+  async internalTransfer(req: AuthRequest, res: Response) {
+    const payment = await paymentRepository.createInternalTransfer({ ...req.body, userId: req.user!.userId, storeId: req.user!.storeId });
+    res.status(201).json({ success: true, data: payment });
   },
   async summary(req: AuthRequest, res: Response) {
     const { dateFrom, dateTo } = req.query as Record<string, string>;

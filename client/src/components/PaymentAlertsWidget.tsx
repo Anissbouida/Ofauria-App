@@ -16,6 +16,9 @@ const STATUS_LABELS: Record<string, string> = {
   check_pending: 'À encaisser',
 };
 
+/** Libelle affiche pour une echeance de l'echeancier (mig 258). */
+const SCHEDULE_HINT = 'Échéancier';
+
 /**
  * Widget recapitulatif des echeances fournisseurs a <= 7j :
  *   - factures recues non finalisees (pending/partial/overdue/disputed)
@@ -108,7 +111,8 @@ export default function PaymentAlertsWidget({
   }
 
   const count = alerts.length;
-  const invoiceCount = alerts.filter(a => a.kind !== 'check').length;
+  const invoiceCount = alerts.filter(a => a.kind === 'invoice').length;
+  const scheduleCount = alerts.filter(a => a.kind === 'schedule').length;
   // Compte les cheques DISTINCTS (un cheque multi-factures = 1 cheque a encaisser).
   const checkCount = items.filter(it => it.type === 'group' || (it.type === 'leaf' && it.alert.kind === 'check')).length;
   const overdueCount = alerts.filter(a => a.is_overdue).length;
@@ -146,7 +150,9 @@ export default function PaymentAlertsWidget({
             </p>
             <p className="text-[11px] text-red-600">
               {invoiceCount > 0 && `${invoiceCount} facture${invoiceCount > 1 ? 's' : ''} à honorer`}
-              {invoiceCount > 0 && checkCount > 0 && ' · '}
+              {invoiceCount > 0 && scheduleCount > 0 && ' · '}
+              {scheduleCount > 0 && `${scheduleCount} échéance${scheduleCount > 1 ? 's' : ''} (crédits/charges fixes)`}
+              {(invoiceCount > 0 || scheduleCount > 0) && checkCount > 0 && ' · '}
               {checkCount > 0 && `${checkCount} chèque${checkCount > 1 ? 's' : ''}/traite${checkCount > 1 ? 's' : ''} à encaisser`}
               {overdueCount > 0 && ` · ${overdueCount} en retard`}
               {' · À décaisser : '}{totalDue.toFixed(2)} DH
@@ -217,13 +223,18 @@ export default function PaymentAlertsWidget({
           const days = parseInt(String(a.days_until_due ?? 0));
           const isOverdue = !!a.is_overdue;
           const isCheck = a.kind === 'check';
+          // Echeance de l'echeancier (credit materiel, loyer, electricite) :
+          // elle porte un libelle propre et se gere depuis la compta.
+          const isSchedule = a.kind === 'schedule';
           const remaining = parseFloat((a.remaining_amount as string) || '0');
           const title = isCheck
             ? `${PAYMENT_MODE_LABELS[a.expected_payment_mode as string] || 'Chèque'} n°${(a.check_number as string) || '?'}`
-            : (a.invoice_number as string);
+            : isSchedule
+              ? (a.label as string)
+              : (a.invoice_number as string);
           return (
             <div key={`${a.kind as string}-${a.id as string}`}
-              onClick={() => navigate(isCheck ? '/accounting' : '/purchasing')}
+              onClick={() => navigate(isCheck || isSchedule ? '/accounting' : '/purchasing')}
               className="px-4 py-2.5 flex items-center gap-3 hover:bg-gray-50 cursor-pointer">
               {isCheck
                 ? <FileText size={14} className={isOverdue ? 'text-red-600' : 'text-amber-500'} />
@@ -232,8 +243,9 @@ export default function PaymentAlertsWidget({
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-mono font-semibold text-gray-800">{title}</span>
                   <span className="text-xs text-gray-500 truncate">
-                    — {(a.supplier_name as string) || 'Fournisseur ?'}
+                    — {(a.supplier_name as string) || (isSchedule ? SCHEDULE_HINT : 'Fournisseur ?')}
                     {isCheck && a.invoice_number ? ` (fact. ${a.invoice_number as string})` : ''}
+                    {isSchedule && a.invoice_number ? ` (fact. ${a.invoice_number as string})` : ''}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">

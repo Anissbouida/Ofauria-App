@@ -33,6 +33,8 @@ export const createProductLossSchema = z.object({
   reason: z.enum(LOSS_REASONS),
   reasonNote: z.string().trim().max(1000).optional(),
   productionPlanId: uuid.optional(),
+  /** Article du plan concerne (perte de production) : plafond et lot produit (mig 301). */
+  planItemId: uuid.optional(),
   photoUrl: z.string().trim().max(500).optional(),
 });
 

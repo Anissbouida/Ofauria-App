@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maquette — Préparations de base</title>
+<style>
+:root{
+  --blue:#2563eb; --blue-dark:#1d4ed8; --blue-50:#eff6ff; --blue-100:#dbeafe;
+  --ink:#1f2937; --strong:#111827; --muted:#6b7280; --faint:#9ca3af;
+  --line:#e5e7eb; --line-soft:#f1f3f5; --page:#f3f4f6; --white:#fff;
+  --green:#15803d; --green-bg:#dcfce7; --amber:#b45309; --amber-bg:#fef3c7;
+  --purple:#6d28d9; --purple-bg:#ede9fe; --red:#b91c1c; --red-bg:#fee2e2;
+  --new:#0d9488; --new-bg:#ccfbf1;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:1280px;margin:0 auto;padding:28px 20px 80px}
+h1{font-size:24px;margin:0 0 6px;letter-spacing:-.02em;color:var(--strong)}
+.lede{color:var(--muted);margin:0 0 8px;max-width:75ch}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+  margin:44px 0 6px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.h2sub{color:var(--muted);font-size:13px;margin:0 0 16px;max-width:80ch}
+code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:.86em;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* ── chrome de l'app ── */
+.app{background:var(--white);border:1px solid var(--line);border-radius:10px;overflow:hidden;
+  box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.topbar{background:var(--blue);color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px;font-size:13px}
+.topbar .brand{font-weight:700;letter-spacing:.02em}
+.topbar .sep{opacity:.55}
+.topbar .right{margin-left:auto;display:flex;align-items:center;gap:8px;opacity:.95}
+.avatar{width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.25);
+  display:grid;place-items:center;font-size:10px;font-weight:700}
+.ctrlbar{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line)}
+.btn{border:1px solid var(--line);background:#fff;border-radius:6px;padding:5px 11px;font-size:13px;
+  color:var(--ink);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.pager{margin-left:auto;color:var(--muted);font-size:13px}
+.pager b{color:var(--strong)}
+.tabs{display:flex;gap:2px;padding:0 14px;border-bottom:1px solid var(--line)}
+.tab{padding:9px 12px;font-size:13px;color:var(--muted);border-bottom:2px solid transparent;
+  display:inline-flex;align-items:center;gap:6px}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+.tab .count{background:var(--blue-50);color:var(--blue);border-radius:10px;padding:0 6px;font-size:11px;font-weight:600}
+.searchbar{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#fafbfc;border-bottom:1px solid var(--line);
+  color:var(--faint);font-size:13px}
+.searchbar .grow{flex:1}
+.select{border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 10px;font-size:12.5px;color:var(--faint)}
+
+/* ── tableau ── */
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+  font-weight:600;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 10px;border-bottom:1px solid var(--line-soft);font-size:13px;vertical-align:middle}
+tr:last-child td{border-bottom:0}
+.num{text-align:right;white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.dot.ok{background:#22c55e}.dot.warn{background:#f59e0b}.dot.neutral{background:#cbd5e1}
+.tag{display:inline-block;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:600;white-space:nowrap}
+.tag.blue{background:var(--blue-100);color:var(--blue-dark)}
+.tag.green{background:var(--green-bg);color:var(--green)}
+.tag.purple{background:var(--purple-bg);color:var(--purple)}
+.tag.amber{background:var(--amber-bg);color:var(--amber)}
+.tag.grey{background:#f1f3f5;color:var(--muted)}
+.unit{color:var(--muted);font-size:10.5px;margin-left:2px}
+.acts{color:var(--faint);font-size:12px;letter-spacing:3px;text-align:right;white-space:nowrap}
+
+/* ── bandeau KPI ── */
+.kpirow{display:flex;border-bottom:1px solid var(--line)}
+.kpi{flex:1;padding:11px 16px;border-right:1px solid var(--line)}
+.kpi:last-child{border-right:0}
+.kpi .v{font-size:19px;font-weight:700;color:var(--blue);letter-spacing:-.02em}
+.kpi .v.green{color:var(--green)}
+.kpi .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-top:2px}
+.kpi .l .dim{text-transform:none;letter-spacing:0;opacity:.75}
+
+/* ── page fiche ── */
+.body{padding:16px}
+.crumbs{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);margin-bottom:12px}
+.crumbs .cur{color:var(--strong);font-weight:500}
+.title{display:flex;align-items:center;gap:9px;margin-bottom:3px}
+.title h3{margin:0;font-size:18px;font-weight:600;color:var(--strong)}
+.section{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:14px}
+.section-h{background:#fafbfc;border-bottom:1px solid var(--line);padding:8px 12px;
+  font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.chiprow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:11px 12px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:6px;padding:5px 11px;font-size:13px;
+  display:inline-flex;align-items:center;gap:6px;color:var(--ink)}
+.chip.on{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.chip .x{opacity:.6;font-size:11px}
+.chip.dashed{border-style:dashed;color:var(--muted)}
+.chip.right{margin-left:auto}
+.grid2{display:grid;grid-template-columns:230px 1fr;gap:14px;padding:12px}
+@media(max-width:860px){.grid2{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);border-radius:8px;padding:12px;background:#fafbfc}
+.card h4{margin:0 0 9px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.kv{display:flex;justify-content:space-between;align-items:baseline;padding:5px 0;
+  border-bottom:1px solid var(--line-soft);font-size:13px}
+.kv:last-child{border-bottom:0}
+.kv .k{color:var(--muted)}
+.kv .v{font-weight:600;color:var(--strong)}
+.input{border:1px solid var(--line);background:#fff;border-radius:5px;padding:3px 8px;
+  font-size:13px;min-width:64px;display:inline-block;text-align:right;font-weight:600;color:var(--strong)}
+
+/* ── annotations ── */
+.note{display:flex;gap:10px;align-items:flex-start;margin-top:12px;padding:11px 13px;
+  background:var(--new-bg);border:1px solid #99f6e4;border-left:4px solid var(--new);border-radius:7px;
+  font-size:13px;color:#134e4a}
+.note b{color:#0f766e}
+.badge-new{background:var(--new);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;
+  font-weight:700;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;flex-shrink:0;margin-top:1px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 0;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+.del{text-decoration:line-through;opacity:.45}
+.foot{margin-top:52px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Préparations de base — interface cible</h1>
+<p class="lede">Deux écrans, dans l'état où ils seraient après alignement sur les recettes produits finis. Les chiffres sont ceux de ta base : Biscuit Joconde, 1 300 g brut, 15 % de perte, 44,76 DH la fournée.</p>
+<div class="legend">
+  <span><i class="sw" style="background:var(--new)"></i> ce qui change</span>
+  <span><i class="sw" style="background:#e5e7eb"></i> inchangé</span>
+</div>
+
+<h2>Écran 1 · La liste</h2>
+<p class="h2sub">Le tableau à 9 colonnes est aujourd'hui partagé avec l'onglet Produits finis. Ici il s'adapte : les deux colonnes vides disparaissent, le coût porte son unité, et deux colonnes propres aux bases apparaissent.</p>
+
+<div class="app">
+  <div class="topbar">
+    <span class="brand">ÔFAURIA</span><span class="sep">/</span><span>Fiches techniques</span>
+    <span class="right"><span class="avatar">IT</span> Ibrahim</span>
+  </div>
+  <div class="ctrlbar">
+    <button class="btn primary">+ Nouveau</button>
+    <button class="btn">⬆ Importer</button>
+    <button class="btn">⬇ Exporter</button>
+    <span class="pager"><b>96</b> / 96</span>
+  </div>
+  <div class="tabs">
+    <span class="tab">🍰 Recettes produits finis <span class="count">54</span></span>
+    <span class="tab active">📚 Préparations de base <span class="count">96</span></span>
+    <span class="tab">📦 Formats de production <span class="count">89</span></span>
+  </div>
+  <div class="searchbar">
+    <span>🔍</span><span class="grow">Rechercher une préparation de base…</span>
+    <span class="select">Toutes catégories</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:22px"></th>
+        <th>Recette</th>
+        <th>Format</th>
+        <th class="num">Rendement brut</th>
+        <th class="num">Perte</th>
+        <th class="num">Rendement net</th>
+        <th class="num">Coût fournée</th>
+        <th class="num">Coût / unité</th>
+        <th class="num">Utilisée par</th>
+        <th style="text-align:right">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><i class="dot ok"></i></td>
+        <td><b>Biscuit Joconde</b></td>
+        <td><span class="tag purple">Plaque à rebord 60x40</span></td>
+        <td class="num">1 300<span class="unit">g</span></td>
+        <td class="num" style="color:var(--amber)">15,0<span class="unit">%</span></td>
+        <td class="num" style="color:var(--green)">1 105<span class="unit">g</span></td>
+        <td class="num">44,76<span class="unit">DH</span></td>
+        <td class="num"><b>40,50</b><span class="unit">DH/kg net</span></td>
+        <td class="num"><span class="tag blue">2</span></td>
+        <td class="acts">👁 ✎ 🖨 🗑</td>
+      </tr>
+      <tr>
+        <td><i class="dot ok"></i></td>
+        <td><b>Crème au beurre café</b></td>
+        <td><span class="tag grey">—</span></td>
+        <td class="num">970<span class="unit">g</span></td>
+        <td class="num" style="color:var(--amber)">1,0<span class="unit">%</span></td>
+        <td class="num" style="color:var(--green)">960<span class="unit">g</span></td>
+        <td class="num">39,38<span class="unit">DH</span></td>
+        <td class="num"><b>41,00</b><span class="unit">DH/kg net</span></td>
+        <td class="num"><span class="tag blue">1</span></td>
+        <td class="acts">👁 ✎ 🖨 🗑</td>
+      </tr>
+      <tr>
+        <td><i class="dot ok"></i></td>
+        <td><b>Assemblage</b></td>
+        <td><span class="tag grey">—</span></td>
+        <td class="num">3,34<span class="unit">kg</span></td>
+        <td class="num" style="color:var(--faint)">—</td>
+        <td class="num" style="color:var(--green)">3,34<span class="unit">kg</span></td>
+        <td class="num">57,61<span class="unit">DH</span></td>
+        <td class="num"><b>17,25</b><span class="unit">DH/kg net</span></td>
+        <td class="num"><span class="tag blue">4</span></td>
+        <td class="acts">👁 ✎ 🖨 🗑</td>
+      </tr>
+      <tr>
+        <td><i class="dot warn"></i></td>
+        <td><b>Amandes caramélisées</b></td>
+        <td><span class="tag grey">—</span></td>
+        <td class="num">340<span class="unit">g</span></td>
+        <td class="num" style="color:var(--faint)">—</td>
+        <td class="num" style="color:var(--green)">340<span class="unit">g</span></td>
+        <td class="num">20,47<span class="unit">DH</span></td>
+        <td class="num"><b>60,21</b><span class="unit">DH/kg net</span></td>
+        <td class="num" style="color:var(--faint)">—</td>
+        <td class="acts">👁 ✎ 🖨 🗑</td>
+      </tr>
+      <tr>
+        <td><i class="dot warn"></i></td>
+        <td><b>Base spéculoos</b></td>
+        <td><span class="tag grey">—</span></td>
+        <td class="num">250<span class="unit">g</span></td>
+        <td class="num" style="color:var(--faint)">—</td>
+        <td class="num" style="color:var(--green)">250<span class="unit">g</span></td>
+        <td class="num" style="color:var(--red)">0,00<span class="unit">DH</span></td>
+        <td class="num" style="color:var(--red)"><b>0,00</b><span class="unit">DH/kg net</span></td>
+        <td class="num" style="color:var(--faint)">—</td>
+        <td class="acts">👁 ✎ 🖨 🗑</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="note"><span class="badge-new">change</span><div>
+<b>« Coût / unité » devient « Coût / kg net ».</b> Aujourd'hui la colonne divise par le rendement tel quel : une base en grammes sort en DH/g (0,03), sa voisine en kilos en DH/kg (160,66). Deux lignes côte à côte à un facteur 1000. On normalise sur le kilo NET — après perte de transformation — pour que la colonne soit enfin comparable d'une ligne à l'autre. Biscuit Joconde : 44,76 DH ÷ 1,105 kg = <b>40,50 DH/kg</b>.
+</div></div>
+
+<div class="note"><span class="badge-new">change</span><div>
+<b>Colonnes « Perte » et « Rendement net » ajoutées.</b> C'est l'information qui manque le plus : une fiche à 15 % de perte cuisson et une à 0 % n'ont pas le même coût réel, et rien ne le montrait dans la liste. Elles remplacent <span class="del">Type</span> (redondant avec l'onglet) et <span class="del">Marge mat.</span> (vide sur les 96 bases : une base ne se vend pas).
+</div></div>
+
+<div class="note"><span class="badge-new">change</span><div>
+<b>« Utilisée par » remplace la colonne Format vide.</b> Le chiffre compte les recettes qui consomment cette base. Une base à « — » n'est utilisée nulle part : c'est soit une fiche morte à archiver, soit un oubli de rattachement. La pastille ambre le signale déjà en tête de ligne.
+</div></div>
+
+<h2>Écran 2 · La fiche d'une base</h2>
+<p class="h2sub">Aujourd'hui une base s'ouvre dans une modale : liste d'ingrédients à plat, pas de rendement lisible, pas de coût rapporté au kilo. Ici elle prend la même page que les produits finis — même bandeau KPI, même barre de formats, même éditeur — avec un contenu adapté à ce qu'est une base : une fournée, pas une pièce vendue.</p>
+
+<div class="app">
+  <div class="topbar">
+    <span class="brand">ÔFAURIA</span><span class="sep">/</span><span>Fiches techniques</span>
+    <span class="right"><span class="avatar">IT</span> Ibrahim</span>
+  </div>
+  <div class="ctrlbar">
+    <button class="btn">← Retour aux préparations</button>
+    <span class="crumbs" style="margin:0 0 0 6px">Fiches techniques <span>›</span> <span class="cur">Biscuit Joconde</span></span>
+  </div>
+
+  <div class="kpirow">
+    <div class="kpi">
+      <div class="v">1 105 g</div>
+      <div class="l">Rendement net <span class="dim">· 1 300 g brut − 15 %</span></div>
+    </div>
+    <div class="kpi">
+      <div class="v">44,76 DH</div>
+      <div class="l">Coût fournée <span class="dim">· matière seule</span></div>
+    </div>
+    <div class="kpi">
+      <div class="v green">40,50 DH</div>
+      <div class="l">Coût / kg net</div>
+    </div>
+    <div class="kpi">
+      <div class="v">2</div>
+      <div class="l">Recettes qui l'utilisent</div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="title"><span>📚</span><h3>Biscuit Joconde</h3><span class="tag blue">Préparation de base</span></div>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 4px">
+      Une préparation se lance <b>par fournée</b>. Le format dit dans quoi elle est cuite ou coulée — il fixe le rendement et la perte.
+    </p>
+
+    <div class="section">
+      <div class="section-h">📦 Format de production</div>
+      <div class="chiprow">
+        <span class="chip on">📦 Plaque à rebord 60x40 cm <span class="x">×1</span> <span class="x">(défaut)</span></span>
+        <span class="chip">📦 Tapis silicone à rebord 60x40 cm <span class="x">×1</span></span>
+        <span class="chip dashed">+ Ajouter un format</span>
+        <span class="chip right">🖨 Imprimer la fiche</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-h">🧾 Composition de la fournée</div>
+      <div class="grid2">
+        <div>
+          <div class="card">
+            <h4>Plaque à rebord 60x40 cm</h4>
+            <div class="kv"><span class="k">Poids brut</span><span class="v"><span class="input">1 300</span> g</span></div>
+            <div class="kv"><span class="k">Perte cuisson</span><span class="v"><span class="input">15</span> %</span></div>
+            <div class="kv"><span class="k">Poids net</span><span class="v" style="color:var(--green)">1 105 g</span></div>
+            <div class="kv"><span class="k">Coût / kg net</span><span class="v">40,50 DH</span></div>
+          </div>
+          <div class="card" style="margin-top:12px">
+            <h4>Utilisée par</h4>
+            <div class="kv"><span class="k">Opéra classique</span><span class="v">1 200 g</span></div>
+            <div class="kv"><span class="k">Opéra noisette</span><span class="v">2 110 g</span></div>
+          </div>
+        </div>
+        <div>
+          <table>
+            <thead>
+              <tr><th>Ingrédient</th><th class="num">Quantité</th><th>Unité</th><th class="num">Coût</th><th class="num">% du coût</th><th style="width:24px"></th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Amande poudre</td><td class="num">250</td><td>g</td><td class="num">24,88 DH</td><td class="num"><span class="tag amber">56 %</span></td><td class="acts">🗑</td></tr>
+              <tr><td>Sucre glace</td><td class="num">250</td><td>g</td><td class="num">1,99 DH</td><td class="num"><span class="tag grey">4 %</span></td><td class="acts">🗑</td></tr>
+              <tr><td>Farine Fleur</td><td class="num">75</td><td>g</td><td class="num">0,31 DH</td><td class="num"><span class="tag grey">1 %</span></td><td class="acts">🗑</td></tr>
+              <tr><td>Oeufs entiers liquides</td><td class="num">350</td><td>g</td><td class="num">10,50 DH</td><td class="num"><span class="tag grey">23 %</span></td><td class="acts">🗑</td></tr>
+              <tr><td>Blancs d'œufs pasteurisés</td><td class="num">230</td><td>g</td><td class="num">2,94 DH</td><td class="num"><span class="tag grey">7 %</span></td><td class="acts">🗑</td></tr>
+              <tr><td>Sucre semoule</td><td class="num">80</td><td>g</td><td class="num">0,44 DH</td><td class="num"><span class="tag grey">1 %</span></td><td class="acts">🗑</td></tr>
+              <tr><td>Beurre</td><td class="num">65</td><td>g</td><td class="num">3,71 DH</td><td class="num"><span class="tag grey">8 %</span></td><td class="acts">🗑</td></tr>
+              <tr style="background:#fafbfc">
+                <td><b>Total</b></td><td class="num"><b>1 300</b></td><td><b>g</b></td>
+                <td class="num"><b>44,76 DH</b></td><td class="num"><b>100 %</b></td><td></td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="padding:10px 0 0"><span class="btn">+ Ajouter un ingrédient</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-h">🔥 Étapes de production</div>
+      <table>
+        <tbody>
+          <tr><td style="width:30px;color:var(--faint)">1</td><td>Monter œufs, poudre d'amande et sucre glace</td><td class="num" style="color:var(--muted)">—</td><td class="acts">✎ 🗑</td></tr>
+          <tr><td style="color:var(--faint)">2</td><td>Monter les blancs avec le sucre semoule</td><td class="num" style="color:var(--muted)">—</td><td class="acts">✎ 🗑</td></tr>
+          <tr><td style="color:var(--faint)">3</td><td>Incorporer les blancs, puis la farine tamisée</td><td class="num" style="color:var(--muted)">—</td><td class="acts">✎ 🗑</td></tr>
+          <tr><td style="color:var(--faint)">4</td><td>Étaler et cuire à 180 °C <span class="tag green">contrôle qualité</span></td><td class="num" style="color:var(--muted)">8 min</td><td class="acts">✎ 🗑</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="note"><span class="badge-new">change</span><div>
+<b>Le format devient le porteur du rendement.</b> C'est le vrai alignement sur les produits finis : « 1 300 g de Joconde » n'est pas une propriété de la recette, c'est ce que rend UNE plaque 60x40. Une fiche pourra donc décliner sa fournée par contenant, exactement comme un opéra décline sa nomenclature par cadre. Les bases sans contenant propre gardent un format unique implicite — rien ne les force à choisir.
+</div></div>
+
+<div class="note"><span class="badge-new">change</span><div>
+<b>Le bloc « Utilisée par » ferme la boucle.</b> Aujourd'hui, modifier une Joconde change le coût de l'Opéra classique et de l'Opéra noisette sans que rien ne le dise sur l'écran où on la modifie. Afficher les consommateurs, avec leur quantité, rend l'impact visible avant de sauvegarder.
+</div></div>
+
+<div class="note"><span class="badge-new">change</span><div>
+<b>La modale devient une page.</b> Consultation et édition fusionnent, comme pour les produits finis. La colonne « % du coût » est reprise de l'éditeur de nomenclature : sur la Joconde, l'amande pèse 56 % du coût — c'est là qu'on négocie, pas sur la farine à 1 %.
+</div></div>
+
+<h2>Ce que ça suppose côté données</h2>
+<p class="h2sub">L'écran 1 ne demande aucune migration : tout se calcule à partir de l'existant. L'écran 2 en demande une.</p>
+
+<div class="app"><table>
+  <thead><tr><th>Élément</th><th>Source aujourd'hui</th><th>Travail</th></tr></thead>
+  <tbody>
+    <tr><td>Coût / kg net</td><td><code>v_recipe_total_cost</code> ÷ rendement, converti en kg</td><td><span class="tag green">Calcul client</span></td></tr>
+    <tr><td>Perte, rendement net</td><td><code>recipes.perte_standard_pct</code> — colonne déjà là</td><td><span class="tag green">Affichage seul</span></td></tr>
+    <tr><td>Utilisée par</td><td><code>recipe_format_components</code> + <code>recipe_sub_recipes</code></td><td><span class="tag amber">Requête à ajouter</span></td></tr>
+    <tr><td>Format sur une base</td><td>néant — <b>0 base sur 96</b> a un <code>recipe_formats</code></td><td><span class="tag purple">Migration + éditeur</span></td></tr>
+    <tr><td>% du coût par ingrédient</td><td>déjà calculé dans l'éditeur de nomenclature</td><td><span class="tag green">Réutilisation</span></td></tr>
+  </tbody>
+</table></div>
+
+<div class="foot">
+  Maquette statique — aucune donnée n'est modifiée. Chiffres relevés sur <code>ofauria_db</code> le 19/08/2026 :
+  Biscuit Joconde (1 300 g, 15 %, 44,76 DH), Crème au beurre café, Assemblage, Amandes caramélisées, Base spéculoos.
+</div>
+
+</div>
+</body>
+</html>

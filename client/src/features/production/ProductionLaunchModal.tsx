@@ -1,4 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { productsApi } from '../../api/products.api';
+import { apiErrorMessage } from '../../api/errors';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { productionApi } from '../../api/production.api';
 import { productLossesApi } from '../../api/product-losses.api';
@@ -74,6 +77,17 @@ function detectShift(dateStr: string): string {
 // Component
 // ---------------------------------------------------------------------------
 
+/** Ligne de coupe saisie par le chef (mig 302). */
+interface CutLine {
+  key: string;
+  /** true = la piece de l'article (equivalence 1, non supprimable). */
+  base: boolean;
+  productId: string;
+  label: string;
+  equiv: string;
+  qty: string;
+}
+
 export default function ProductionLaunchModal({
   planId,
   plan,
@@ -126,6 +140,29 @@ export default function ProductionLaunchModal({
   const [declareLosses, setDeclareLosses] = useState(false);
   const [lossReasons, setLossReasons] = useState<Record<string, string>>({});
   const [lossNotes, setLossNotes] = useState<Record<string, string>>({});
+  // Coupe (mig 302) : par article, mode mixte actif + lignes de sortie saisies par
+  // le chef. La 1ere ligne est la piece de l'article ; les autres sont des produits
+  // du catalogue avec leur equivalence en pieces (un entremets = 8 tranches).
+  // Deroule des etapes de la fiche : points coches (controle qualite) et langue d'affichage.
+  const [qcChecked, setQcChecked] = useState<Record<string, boolean>>({});
+  const [stepLang, setStepLang] = useState<'fr' | 'ar'>('fr');
+  // Chrono d'une etape bloquante declare « deja fait » par le chef (il a attendu
+  // sans lancer le chrono dans l'application). Sans cette sortie, il devait
+  // attendre une seconde fois la duree complete.
+  const [timerSkipped, setTimerSkipped] = useState<Record<string, boolean>>({});
+  const confirmDialog = useConfirm();
+  const [cutMode, setCutMode] = useState<Record<string, boolean>>({});
+  const [cutLines, setCutLines] = useState<Record<string, CutLine[]>>({});
+  // Catalogue pour choisir le produit d'une sortie de coupe (charge seulement si besoin).
+  const { data: cutProductsData } = useQuery({
+    queryKey: ['products', 'cut-outputs'],
+    queryFn: () => productsApi.list({ limit: '500' }),
+    enabled: Object.values(cutMode).some(Boolean),
+    staleTime: 3e5,
+  });
+  const cutProducts = ((cutProductsData as { data?: Record<string, any>[] } | undefined)?.data || [])
+    .map((p) => ({ id: p.id as string, name: p.name as string }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const [observations, setObservations] = useState('');
 
   // Step 4 state
@@ -141,6 +178,9 @@ export default function ProductionLaunchModal({
     return null;
   });
   const [recipeFullscreen, setRecipeFullscreen] = useState(false);
+  // Etapes structurees : les instructions texte sont repliees par defaut (les
+  // etapes SONT le procede), les ingredients restent toujours visibles.
+  const [showStepInstructions, setShowStepInstructions] = useState(false);
 
   // For base recipes (no product_id), resolve base_recipe_id directly
   const singleItemBaseRecipeId = targetItemId
@@ -257,10 +297,22 @@ export default function ProductionLaunchModal({
     try {
       // 1. Produce items
       const itemsToSubmit = [...selectedItems]
-        .map((itemId) => ({
-          planItemId: itemId,
-          actualQuantity: actuals[itemId] || 0,
-        }))
+        .map((itemId) => {
+          const outputs = cutMode[itemId]
+            ? (cutLines[itemId] || [])
+                .map((l) => ({
+                  productId: l.base ? null : l.productId,
+                  equivPieces: l.base ? undefined : (parseFloat(l.equiv.replace(',', '.')) || 0),
+                  quantity: parseFloat(l.qty.replace(',', '.')) || 0,
+                }))
+                .filter((o) => o.quantity > 0 && (o.productId === null || (o.productId && (o.equivPieces || 0) > 0)))
+            : [];
+          return {
+            planItemId: itemId,
+            actualQuantity: actuals[itemId] || 0,
+            ...(outputs.length > 0 ? { outputs } : {}),
+          };
+        })
         .filter((i) => i.actualQuantity > 0);
 
       await productionApi.produceItems(planId, itemsToSubmit, producedAt);
@@ -305,7 +357,7 @@ export default function ProductionLaunchModal({
       onCompleted();
       onClose();
     } catch (err) {
-      notify.error(err instanceof Error ? err.message : 'Erreur lors de la production');
+      notify.error(apiErrorMessage(err, 'Erreur lors de la production'));
     } finally {
       setSubmitting(false);
     }
@@ -1175,6 +1227,166 @@ export default function ProductionLaunchModal({
     );
   };
 
+
+  // Recette visible sur CHAQUE etape structuree : le patissier doit avoir les
+  // pesees sous les yeux pendant qu'il execute l'etape, sans quitter l'assistant.
+  //
+  // Une etape peut porter `ingredient_refs` (mig 297) : "<ingredient_id>" ou
+  // "<ingredient_id>#n" (n-ieme occurrence du meme ingredient, ordre de saisie).
+  //   - cle absente  → etape non affectee : toute la recette
+  //   - cle presente → seulement ces lignes ("Aucune pesee" si vide), le reste
+  //     de la recette reste accessible repliee.
+  // Les quantites sont mises a l'echelle du lot (planifie / rendement recette).
+  const renderRecipeSummary = (step: Record<string, any> | null, item: Record<string, any>) => {
+    if (loadingRecipe) {
+      return (
+        <div className="border border-gray-200 rounded-xl p-4 flex items-center justify-center gap-2 text-sm text-gray-500">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" /> Chargement de la recette…
+        </div>
+      );
+    }
+    if (!recipeData) {
+      return (
+        <div className="border border-gray-200 rounded-xl p-4 text-center text-sm text-gray-500">
+          <BookOpen className="mx-auto mb-1 text-gray-300" size={22} /> Aucune recette enregistrée.
+        </div>
+      );
+    }
+    const rawIngredients = (recipeData.ingredients || []) as Record<string, any>[];
+    const subRecipesData = (recipeData.sub_recipes || []) as Record<string, any>[];
+    const instructions = (recipeData.instructions as string) || '';
+
+    // Occurrence de chaque ingredient dans l'ordre de saisie → ref "id" / "id#n".
+    const seen = new Map<string, number>();
+    const ingredients = [...rawIngredients]
+      .sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))
+      .map((ing) => {
+        const ingId = ing.ingredient_id as string;
+        const n = (seen.get(ingId) || 0) + 1;
+        seen.set(ingId, n);
+        return { ...ing, _occ: n };
+      });
+    const dupIds = new Set([...seen.entries()].filter(([, n]) => n > 1).map(([id]) => id));
+    const refOf = (ing: Record<string, any>) =>
+      dupIds.has(ing.ingredient_id as string) ? `${ing.ingredient_id}#${ing._occ}` : (ing.ingredient_id as string);
+    const matches = (ing: Record<string, any>, refs: string[]) =>
+      refs.includes(refOf(ing)) || refs.includes(ing.ingredient_id as string);
+
+    const refs = step && Array.isArray(step.ingredient_refs) ? (step.ingredient_refs as string[]) : null;
+    const stepIngredients = refs ? ingredients.filter((ing) => matches(ing, refs)) : null;
+
+    // Mise a l'echelle : planifie / rendement. Produits a la piece dont la recette
+    // est en poids : on passe par le poids piece.
+    const yieldQty = parseFloat(recipeData.yield_quantity as string || '0');
+    const yieldUnit = ((recipeData.yield_unit as string) || '').toLowerCase();
+    const pieceKg = parseFloat(recipeData.piece_weight_kg as string || '0');
+    const plannedQty = Number(item.quantite_brute_totale || item.planned_quantity || 0);
+    const yieldIsWeight = ['kg', 'g', 'l', 'ml'].includes(yieldUnit);
+    const yieldInKg = yieldUnit === 'g' || yieldUnit === 'ml' ? yieldQty / 1000 : yieldQty;
+    let factor = 1;
+    if (yieldQty > 0 && plannedQty > 0) {
+      factor = (yieldIsWeight && pieceKg > 0 && !item.base_recipe_id)
+        ? (plannedQty * pieceKg) / yieldInKg
+        : plannedQty / yieldQty;
+    }
+    const scaled = Number.isFinite(factor) && factor > 0 && Math.abs(factor - 1) > 1e-6;
+    const fmtQty = (ing: Record<string, any>) => {
+      const q = parseFloat(ing.quantity as string || '0') * (scaled ? factor : 1);
+      const u = (ing.unit as string) || '';
+      const digits = u === 'g' || u === 'ml' ? 0 : 2;
+      return `${q.toFixed(digits)} ${u}`;
+    };
+
+    const Row = ({ ing, muted }: { ing: Record<string, any>; muted?: boolean }) => (
+      <tr className={muted ? 'text-gray-500' : ''}>
+        <td className="px-3 py-2 font-medium">
+          {ing.ingredient_name as string}
+          {dupIds.has(ing.ingredient_id as string) && <span className="ml-1 text-xs text-gray-400">({ing._occ})</span>}
+        </td>
+        <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
+          <span className={muted ? '' : 'text-base font-semibold text-gray-900'}>{fmtQty(ing)}</span>
+          {scaled && <span className="ml-2 text-xs text-gray-400">({parseFloat(ing.quantity as string).toFixed(0)} {ing.unit as string})</span>}
+        </td>
+      </tr>
+    );
+
+    return (
+      <div className="border border-gray-200 rounded-xl overflow-hidden">
+        <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center gap-2 flex-wrap">
+          <Scale size={14} className="text-gray-500" />
+          <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
+            {stepIngredients ? 'À peser pour cette étape' : `Recette · ${ingredients.length} ingrédient${ingredients.length > 1 ? 's' : ''}`}
+          </span>
+          {scaled && (
+            <span className="text-xs text-gray-500">
+              — lot ×{factor.toFixed(2)} ({plannedQty} {item.base_recipe_id ? yieldUnit : 'pièces'} pour {yieldQty} {yieldUnit || 'u.'} de recette)
+            </span>
+          )}
+          <button type="button" onClick={() => setRecipeFullscreen(true)}
+            className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800" title="Plein écran">
+            <Eye size={13} /> Plein écran
+          </button>
+        </div>
+
+        {stepIngredients ? (
+          stepIngredients.length > 0 ? (
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-gray-100">
+                {stepIngredients.map((ing) => <Row key={refOf(ing)} ing={ing} />)}
+              </tbody>
+            </table>
+          ) : (
+            <div className="px-3 py-3 text-sm text-gray-500 italic">Aucune pesée à cette étape.</div>
+          )
+        ) : ingredients.length > 0 && (
+          <table className="w-full text-sm">
+            <tbody className="divide-y divide-gray-100">
+              {ingredients.map((ing) => <Row key={refOf(ing)} ing={ing} />)}
+            </tbody>
+          </table>
+        )}
+
+        {/* Reste de la recette (replie) quand l'etape est affectee */}
+        {stepIngredients && (ingredients.length > stepIngredients.length || subRecipesData.length > 0) && (
+          <details className="border-t border-gray-200 group">
+            <summary className="px-3 py-2 flex items-center gap-2 text-xs font-semibold text-gray-600 cursor-pointer hover:bg-gray-50 list-none">
+              <Layers size={13} className="text-gray-500" /> Toute la recette ({ingredients.length} ingrédient{ingredients.length > 1 ? 's' : ''}{subRecipesData.length > 0 ? `, ${subRecipesData.length} sous-recette${subRecipesData.length > 1 ? 's' : ''}` : ''})
+              <span className="ml-auto text-gray-400 group-open:hidden">afficher</span>
+              <span className="ml-auto text-gray-400 hidden group-open:inline">masquer</span>
+            </summary>
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-gray-100">
+                {ingredients.map((ing) => <Row key={refOf(ing)} ing={ing} muted={!matches(ing, refs!)} />)}
+                {subRecipesData.map((sr, idx) => (
+                  <tr key={`sr-${idx}`} className="bg-indigo-50/40">
+                    <td className="px-3 py-2 font-medium text-indigo-900"><Layers size={12} className="inline mr-1 text-indigo-500" />{sr.sub_recipe_name as string}</td>
+                    <td className="px-3 py-2 text-right font-mono text-indigo-800 whitespace-nowrap">
+                      {(parseFloat(sr.quantity as string) * (scaled ? factor : 1)).toFixed(2)} {(sr as Record<string, any>).sub_yield_unit as string || ''}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+        )}
+
+        {instructions && (
+          <div className="border-t border-gray-200">
+            <button type="button" onClick={() => setShowStepInstructions(v => !v)}
+              className="w-full px-3 py-2 flex items-center gap-2 text-xs font-semibold text-gray-600 hover:bg-gray-50">
+              <ClipboardList size={13} className="text-gray-500" />
+              Instructions complètes
+              <span className="ml-auto text-gray-400">{showStepInstructions ? 'masquer' : 'afficher'}</span>
+            </button>
+            {showStepInstructions && (
+              <div className="px-3 pb-3 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{instructions}</div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // -----------------------------------------------------------------------
   // Single-item stepped production view
   // -----------------------------------------------------------------------
@@ -1228,7 +1440,7 @@ export default function ProductionLaunchModal({
       await productionApi.startItems(planId, [item.id as string], producedAt);
       await queryClient.invalidateQueries({ queryKey: ['production'] });
     } catch (err: unknown) {
-      notify.error(err instanceof Error ? err.message : 'Erreur lors du lancement');
+      notify.error(apiErrorMessage(err, 'Erreur lors du lancement'));
     } finally {
       setStarting(false);
     }
@@ -1278,6 +1490,176 @@ export default function ProductionLaunchModal({
     }
   }, [initialStepName, SINGLE_STEPS]);
 
+  // ─── Coupe : repartition des sorties d'un cadre (tranches / entremets) ───
+  // Decision du chef, prise ici, dans le plan : aucun parametrage dans la fiche
+  // technique. « Pieces uniquement » = comportement habituel. « Coupe mixte » =
+  // il ajoute les produits qu'il a preleves (un entremets) et dit combien de
+  // pieces chacun prend dans le cadre ; la quantite produite devient la somme
+  // en pieces equivalentes. Les sorties deja utilisees pour ce produit sont
+  // proposees d'un clic.
+  const renderCutSection = (item: Record<string, any>) => {
+    if (!item.product_id) return null;
+    const id = item.id as string;
+    const planned = (item.planned_quantity as number) || 0;
+    const active = !!cutMode[id];
+    const presets = (Array.isArray(item.cut_presets) ? item.cut_presets : []) as Record<string, any>[];
+    const num = (v: string) => parseFloat(String(v ?? '').replace(',', '.')) || 0;
+    const lines: CutLine[] = cutLines[id] || [];
+    const totalOf = (ls: CutLine[]) => ls.reduce((sum, l) => sum + num(l.qty) * (l.base ? 1 : num(l.equiv)), 0);
+    const total = totalOf(lines);
+    const apply = (next: CutLine[]) => {
+      setCutLines((prev) => ({ ...prev, [id]: next }));
+      setActuals((prev) => ({ ...prev, [id]: Math.round(totalOf(next)) }));
+    };
+    const edit = (key: string, patch: Partial<CutLine>) => apply(lines.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+    const toggle = (on: boolean) => {
+      setCutMode((prev) => ({ ...prev, [id]: on }));
+      if (on) {
+        if (lines.length === 0) {
+          // Point de depart : tout en pieces ; le chef ajoute ce qu'il a preleve.
+          apply([{ key: 'base', base: true, productId: item.product_id as string, label: (item.product_name as string) || 'Pièce', equiv: '1', qty: String(actuals[id] ?? planned) }]);
+        }
+      } else {
+        setActuals((prev) => ({ ...prev, [id]: planned }));
+      }
+    };
+    const addLine = (preset?: Record<string, any>) => {
+      const key = `l${Date.now()}${Math.round(Math.random() * 1000)}`;
+      apply([...lines, {
+        key, base: false,
+        productId: (preset?.product_id as string) || '',
+        label: (preset?.label as string) || '',
+        equiv: preset ? String(parseFloat(String(preset.equiv_pieces))) : '',
+        qty: '',
+      }]);
+    };
+    const diff = Math.round((total - planned) * 100) / 100;
+    const usedIds = new Set(lines.map((l) => l.productId));
+    const incomplete = lines.some((l) => !l.base && num(l.qty) > 0 && (!l.productId || !(num(l.equiv) > 0)));
+
+    return (
+      <div className="border border-indigo-200 rounded-xl overflow-hidden">
+        <div className="px-3 py-2 bg-indigo-50 border-b border-indigo-200 flex items-center gap-2 flex-wrap">
+          <Layers size={14} className="text-indigo-600" />
+          <span className="text-sm font-semibold text-indigo-900">Coupe</span>
+          <span className="text-xs text-indigo-700">
+            {item.cut_contenant_nom ? `${item.cut_contenant_nom} · ` : ''}prévu {planned} pièces
+          </span>
+          <div className="ml-auto inline-flex rounded-lg border border-indigo-200 overflow-hidden text-xs font-medium">
+            <button type="button" onClick={() => toggle(false)}
+              className={`px-3 py-1.5 ${!active ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-700 hover:bg-indigo-50'}`}>
+              Pièces uniquement
+            </button>
+            <button type="button" onClick={() => toggle(true)}
+              className={`px-3 py-1.5 border-l border-indigo-200 ${active ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-700 hover:bg-indigo-50'}`}>
+              Coupe mixte
+            </button>
+          </div>
+        </div>
+        {active ? (
+          <div className="p-3 space-y-2">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-[11px] text-gray-500">
+                  <th className="text-left font-medium pb-1">Sortie</th>
+                  <th className="text-right font-medium pb-1 w-24">Quantité</th>
+                  <th className="text-right font-medium pb-1 w-28">Vaut (pièces)</th>
+                  <th className="text-right font-medium pb-1 w-20">= pièces</th>
+                  <th className="w-7" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {lines.map((l) => (
+                  <tr key={l.key}>
+                    <td className="py-1.5 pr-2">
+                      {l.base ? (
+                        <span className="font-medium text-gray-800">{l.label}</span>
+                      ) : (
+                        <select value={l.productId}
+                          onChange={(e) => {
+                            const p = cutProducts.find((x) => x.id === e.target.value);
+                            edit(l.key, { productId: e.target.value, label: p?.name || '' });
+                          }}
+                          className={`w-full h-9 px-2 bg-white border rounded-lg text-sm ${!l.productId ? 'border-amber-300' : 'border-gray-300'}`}>
+                          <option value="">— choisir le produit sorti —</option>
+                          {cutProducts
+                            .filter((p) => p.id !== item.product_id && (p.id === l.productId || !usedIds.has(p.id)))
+                            .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      )}
+                    </td>
+                    <td className="py-1.5 text-right">
+                      <input type="number" min={0} step={1} inputMode="numeric"
+                        value={l.qty} placeholder="0"
+                        onChange={(e) => edit(l.key, { qty: e.target.value })}
+                        className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-right font-semibold tabular-nums focus:ring-2 focus:ring-indigo-400" />
+                    </td>
+                    <td className="py-1.5 text-right">
+                      {l.base ? (
+                        <span className="text-gray-500 tabular-nums">× 1</span>
+                      ) : (
+                        <input type="number" min={0} step={0.5} inputMode="decimal"
+                          value={l.equiv} placeholder="8"
+                          title="Combien de pièces cette sortie prend dans le cadre"
+                          onChange={(e) => edit(l.key, { equiv: e.target.value })}
+                          className={`w-20 border rounded-lg px-2 py-1.5 text-right tabular-nums focus:ring-2 focus:ring-indigo-400 ${num(l.qty) > 0 && !(num(l.equiv) > 0) ? 'border-amber-400' : 'border-gray-300'}`} />
+                      )}
+                    </td>
+                    <td className="py-1.5 text-right font-semibold tabular-nums">
+                      {(() => { const v = num(l.qty) * (l.base ? 1 : num(l.equiv)); return v.toFixed(v % 1 === 0 ? 0 : 1); })()}
+                    </td>
+                    <td className="py-1.5 text-right">
+                      {!l.base && (
+                        <button type="button" onClick={() => apply(lines.filter((x) => x.key !== l.key))}
+                          className="p-1 text-gray-400 hover:text-red-600" title="Retirer cette sortie">
+                          <X size={14} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button type="button" onClick={() => addLine()}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-indigo-200 text-indigo-700 bg-white hover:bg-indigo-50">
+                + Ajouter une sortie (entremets…)
+              </button>
+              {presets.filter((p) => !usedIds.has(p.product_id as string)).map((p) => (
+                <button key={p.product_id as string} type="button" onClick={() => addLine(p)}
+                  title="Sortie déjà utilisée pour ce produit"
+                  className="px-2.5 py-1.5 rounded-lg text-xs border border-gray-200 text-gray-600 bg-white hover:bg-gray-50">
+                  {p.label as string} <span className="text-gray-400">= {parseFloat(String(p.equiv_pieces))} pièces</span>
+                </button>
+              ))}
+            </div>
+
+            <div className={`flex items-center justify-between gap-2 flex-wrap rounded-lg px-3 py-2 text-sm ${
+              Math.abs(diff) < 0.01 ? 'bg-emerald-50 text-emerald-800'
+              : diff > 0 ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-800'}`}>
+              <span>
+                Total : <strong>{total.toFixed(total % 1 === 0 ? 0 : 1)}</strong> pièces équivalentes sur {planned} prévues
+              </span>
+              <span className="font-semibold">
+                {Math.abs(diff) < 0.01 ? 'coupe complète'
+                  : diff > 0 ? `+${diff} : plus que le cadre ne peut donner`
+                  : `${diff} : chutes ou perte à justifier`}
+              </span>
+            </div>
+            {incomplete && (
+              <p className="text-xs text-amber-700">Chaque sortie ajoutée a besoin d'un produit et du nombre de pièces qu'elle prend dans le cadre.</p>
+            )}
+          </div>
+        ) : (
+          <p className="px-3 py-2 text-xs text-gray-500">
+            Tout sort en « {item.product_name as string} ». Passe en coupe mixte si tu as aussi prélevé un entremets ou un autre format dans ce cadre.
+          </p>
+        )}
+      </div>
+    );
+  };
+
   const renderSingleItemView = () => {
     const item = items[0];
     if (!item) return null;
@@ -1313,8 +1695,24 @@ export default function ProductionLaunchModal({
     const stepTimerRunning = stepHasTimer && !!stepTimer && stepTimerRemaining > 0;
     // Le blocage de Suivant ne s'applique QU'AUX etapes bloquantes : pour les non-bloquantes,
     // le chef peut avancer librement meme sans avoir lance/termine le chrono.
-    const blockedByTimer = stepIsBlocking && (stepTimerNotStarted || stepTimerRunning);
-    const canAdvance = !blockedByTimer;
+    const stepTimerSkipped = !!timerSkipped[`${id}:${singleStep}`];
+    const blockedByTimer = stepIsBlocking && !stepTimerSkipped && (stepTimerNotStarted || stepTimerRunning);
+    // Controle qualite : comme l'annonce la fiche, l'etape ne se quitte qu'une fois
+    // tous ses points coches.
+    const qcItems = currentProfileStep?.controle_qualite
+      ? ((currentProfileStep.checklist_items as string[]) || [])
+      : [];
+    const qcDone = qcItems.filter((_, i) => qcChecked[`${id}:${singleStep}:${i}`]).length;
+    const blockedByQc = qcItems.length > 0 && qcDone < qcItems.length;
+    const canAdvance = !blockedByTimer && !blockedByQc;
+    // Ce qui empeche de passer a la suite, dit en clair a cote du bouton (avant :
+    // bouton grise sans explication, sauf en survolant).
+    const blockReasons: string[] = [];
+    if (blockedByTimer && stepTimerNotStarted) blockReasons.push('le chrono n\'a pas été démarré');
+    if (blockedByTimer && stepTimerRunning) {
+      blockReasons.push(`le chrono tourne encore (${Math.floor(stepTimerRemaining / 60)} min ${String(stepTimerRemaining % 60).padStart(2, '0')} s)`);
+    }
+    if (blockedByQc) blockReasons.push(`${qcItems.length - qcDone} point(s) de contrôle à cocher sur ${qcItems.length}`);
 
     return (
       <div className="fixed inset-0 z-50 bg-white overflow-auto flex flex-col">
@@ -1386,7 +1784,7 @@ export default function ProductionLaunchModal({
                           {!!currentProfileStep.est_bloquante && (
                             <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded">BLOQUANT</span>
                           )}
-                          {currentProfileStep.timer_auto && currentProfileStep.duree_estimee_min && (() => {
+                          {currentProfileStep.duree_estimee_min && (() => {
                             const runningTimer = activeTimers.find(t => t.planItemId === id && t.stepName === (currentProfileStep.nom as string));
                             return runningTimer ? (
                               <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded flex items-center gap-0.5 animate-pulse">
@@ -1471,12 +1869,34 @@ export default function ProductionLaunchModal({
 
                     {/* Timer display for steps with timer_auto */}
                     {currentProfileStep.timer_auto && currentProfileStep.duree_estimee_min && (() => {
-                      const timerKey = `${id}_step${singleStep}`;
                       const existingTimer = activeTimers.find(t => t.planItemId === id && t.stepName === (currentProfileStep.nom as string));
                       const remaining = existingTimer ? getTimerRemaining(existingTimer.id) : 0;
                       const isRunning = !!existingTimer && remaining > 0;
                       const mins = Math.floor(remaining / 60);
                       const secs = remaining % 60;
+                      const fired = hasTimerFired(id, currentProfileStep.nom as string);
+                      const skipKey = `${id}:${singleStep}`;
+                      const skipped = !!timerSkipped[skipKey];
+
+                      // Chrono termine (ou declare fait) : on le dit, au lieu de reproposer
+                      // « Demarrer le chrono » comme si rien n'avait ete fait.
+                      if (!isRunning && (fired || skipped)) {
+                        return (
+                          <div className="border border-emerald-200 bg-emerald-50 rounded-2xl p-4 flex items-center gap-3">
+                            <CheckCircle size={22} className="text-emerald-600 shrink-0" />
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-emerald-900">
+                                {fired ? 'Chrono terminé' : 'Durée déclarée respectée'} — {currentProfileStep.duree_estimee_min as number} min
+                              </p>
+                              {skipped && !fired && <p className="text-xs text-emerald-700">Temps d'attente fait sans le chrono de l'application.</p>}
+                            </div>
+                            {skipped && !fired && (
+                              <button type="button" onClick={() => setTimerSkipped((prev) => ({ ...prev, [skipKey]: false }))}
+                                className="text-xs text-emerald-700 hover:underline">Annuler</button>
+                            )}
+                          </div>
+                        );
+                      }
 
                       return (
                         <div className={`border rounded-2xl p-5 text-center transition-all ${
@@ -1519,41 +1939,101 @@ export default function ProductionLaunchModal({
                               </button>
                             )}
                           </div>
+                          {!!currentProfileStep.est_bloquante && (
+                            <button type="button"
+                              onClick={async () => {
+                                const ok = await confirmDialog(
+                                  `Le temps de cette étape (${currentProfileStep.duree_estimee_min as number} min) est déjà écoulé ?\n\nÀ utiliser seulement si l'attente a été faite sans lancer le chrono.`,
+                                  { title: 'Passer le chrono', confirmLabel: 'Oui, le temps est écoulé' });
+                                if (!ok) return;
+                                if (existingTimer) stopTimer(existingTimer.id);
+                                setTimerSkipped((prev) => ({ ...prev, [skipKey]: true }));
+                              }}
+                              className="mt-3 block mx-auto text-xs text-gray-500 hover:text-gray-800 underline">
+                              Le temps est déjà écoulé ? Passer le chrono
+                            </button>
+                          )}
                         </div>
                       );
                     })()}
 
-                    {/* QC checklist */}
-                    {currentProfileStep.controle_qualite && (
-                      <div className="border border-green-200 rounded-2xl p-4 bg-green-50/50">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Check size={16} className="text-green-600" />
-                          <span className="text-sm font-semibold text-green-800">Controle qualite</span>
-                        </div>
-                        <p className="text-xs text-green-700">Verifiez la qualite avant de passer a l'etape suivante.</p>
-                        {currentProfileStep.checklist_items && (currentProfileStep.checklist_items as string[]).length > 0 && (
-                          <ul className="mt-2 space-y-1">
-                            {(currentProfileStep.checklist_items as string[]).map((ci, i) => (
-                              <li key={i} className="flex items-center gap-2 text-sm text-green-700">
-                                <input type="checkbox" className="rounded border-green-300 text-green-600" />
-                                <span>{ci}</span>
-                              </li>
-                            ))}
+                    {/* Deroule de l'etape : les lignes de la fiche technique. Toujours
+                        affichees (avant : seulement sur les etapes sous controle qualite,
+                        une etape « Decor » ne montrait que son titre). Sous controle
+                        qualite, chaque point se coche et l'ensemble conditionne « Suivant ». */}
+                    {(() => {
+                      const linesFr = (currentProfileStep.checklist_items as string[]) || [];
+                      const linesAr = (currentProfileStep.checklist_items_ar as string[]) || [];
+                      const hasAr = linesAr.length > 0 || !!currentProfileStep.nom_ar;
+                      const ar = stepLang === 'ar' && hasAr;
+                      const isQc = !!currentProfileStep.controle_qualite;
+                      if (linesFr.length === 0 && !isQc) return null;
+                      return (
+                        <div className={`border rounded-2xl p-4 ${isQc ? 'border-green-200 bg-green-50/50' : 'border-gray-200 bg-white'}`}>
+                          <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            {isQc ? <Check size={16} className="text-green-600" /> : <ClipboardList size={16} className="text-gray-500" />}
+                            <span className={`text-sm font-semibold ${isQc ? 'text-green-800' : 'text-gray-800'}`}>
+                              {isQc ? 'Déroulé et contrôle qualité' : 'Déroulé de l\'étape'}
+                            </span>
+                            {isQc && linesFr.length > 0 && (
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${blockedByQc ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}`}>
+                                {qcDone} / {linesFr.length} points validés
+                              </span>
+                            )}
+                            {hasAr && (
+                              <div className="ml-auto inline-flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+                                <button type="button" onClick={() => setStepLang('fr')}
+                                  className={`px-2.5 py-1 ${!ar ? 'bg-gray-800 text-white' : 'bg-white text-gray-600'}`}>FR</button>
+                                <button type="button" onClick={() => setStepLang('ar')}
+                                  className={`px-2.5 py-1 border-l border-gray-200 ${ar ? 'bg-gray-800 text-white' : 'bg-white text-gray-600'}`}>عربي</button>
+                              </div>
+                            )}
+                          </div>
+                          {ar && currentProfileStep.nom_ar && (
+                            <p dir="rtl" className="text-base font-semibold text-gray-900 mb-2">{currentProfileStep.nom_ar as string}</p>
+                          )}
+                          {isQc && linesFr.length === 0 && (
+                            <p className="text-xs text-green-700">Vérifiez la qualité avant de passer à l'étape suivante.</p>
+                          )}
+                          <ul className="space-y-1.5" dir={ar ? 'rtl' : 'ltr'}>
+                            {linesFr.map((ci, i) => {
+                              const key = `${id}:${singleStep}:${i}`;
+                              // La version arabe peut ne pas avoir le meme nombre de lignes : repli sur le francais.
+                              const text = ar ? (linesAr[i] || ci) : ci;
+                              return isQc ? (
+                                <li key={i}>
+                                  <label className="flex items-start gap-2.5 text-sm text-gray-800 cursor-pointer">
+                                    <input type="checkbox" checked={!!qcChecked[key]}
+                                      onChange={(e) => setQcChecked((prev) => ({ ...prev, [key]: e.target.checked }))}
+                                      className="mt-0.5 w-4 h-4 rounded border-green-400 text-green-600 shrink-0" />
+                                    <span className={qcChecked[key] ? 'text-gray-500' : ''}>{text}</span>
+                                  </label>
+                                </li>
+                              ) : (
+                                <li key={i} className="flex items-start gap-2.5 text-sm text-gray-800">
+                                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-gray-400 shrink-0" />
+                                  <span>{text}</span>
+                                </li>
+                              );
+                            })}
                           </ul>
-                        )}
-                      </div>
-                    )}
+                          {isQc && linesFr.length > 1 && blockedByQc && (
+                            <button type="button"
+                              onClick={() => setQcChecked((prev) => {
+                                const next = { ...prev };
+                                linesFr.forEach((_, i) => { next[`${id}:${singleStep}:${i}`] = true; });
+                                return next;
+                              })}
+                              className="mt-3 text-xs font-medium text-green-700 hover:underline">
+                              Tout valider
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
 
-                    {/* Recipe access — always available */}
-                    <div className="border border-gray-200 rounded-xl p-3">
-                      <button
-                        type="button"
-                        onClick={() => setRecipeFullscreen(true)}
-                        className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
-                      >
-                        <BookOpen size={16} /> Voir la recette
-                      </button>
-                    </div>
+                    {/* Recette : ingredients de l'etape toujours visibles */}
+                    {renderRecipeSummary(currentProfileStep, item)}
                   </div>
                 );
               })()}
@@ -1579,9 +2059,13 @@ export default function ProductionLaunchModal({
                         <label className="block text-xs font-medium text-gray-500 mb-1">Quantite produite</label>
                         <input type="number" min={0}
                           className="w-full border border-emerald-300 rounded-xl px-3 py-2 text-sm text-center font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-emerald-50"
-                          value={actual} onChange={(e) => setActuals((prev) => ({ ...prev, [id]: Number(e.target.value) }))} />
+                          value={actual} disabled={!!cutMode[id]} title={cutMode[id] ? 'Calculée depuis la coupe' : undefined}
+                          onChange={(e) => setActuals((prev) => ({ ...prev, [id]: Number(e.target.value) }))} />
                       </div>
                     </div>
+
+                    {renderCutSection(item)}
+
 
                     {hasLoss && (
                       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
@@ -1699,9 +2183,13 @@ export default function ProductionLaunchModal({
                         <label className="block text-xs font-medium text-gray-500 mb-1">Quantite produite</label>
                         <input type="number" min={0}
                           className="w-full border border-emerald-300 rounded-xl px-3 py-2 text-sm text-center font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-emerald-50"
-                          value={actual} onChange={(e) => setActuals((prev) => ({ ...prev, [id]: Number(e.target.value) }))} />
+                          value={actual} disabled={!!cutMode[id]} title={cutMode[id] ? 'Calculée depuis la coupe' : undefined}
+                          onChange={(e) => setActuals((prev) => ({ ...prev, [id]: Number(e.target.value) }))} />
                       </div>
                     </div>
+
+                    {renderCutSection(item)}
+
 
                     {hasLoss && (
                       <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
@@ -1749,6 +2237,11 @@ export default function ProductionLaunchModal({
               )}
             </div>
             <div className="flex items-center gap-2">
+              {!isLastStep && blockReasons.length > 0 && (
+                <span className="hidden sm:block max-w-[260px] text-xs text-amber-700 text-right leading-tight">
+                  Pour continuer : {blockReasons.join(' ; ')}.
+                </span>
+              )}
               <button onClick={handleSaveAndQuit} disabled={starting}
                 className="flex items-center gap-1 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-4 py-2.5 rounded-xl transition-colors disabled:opacity-50">
                 Sauvegarder et quitter
@@ -1764,6 +2257,7 @@ export default function ProductionLaunchModal({
                   title={
                     stepTimerNotStarted ? 'Demarre le chronometre de cette etape avant de passer a la suivante'
                     : stepTimerRunning ? 'Attends la fin du chronometre pour passer a l\'etape suivante'
+                    : blockedByQc ? `Valide les ${qcItems.length - qcDone} point(s) de controle restants pour passer a la suite`
                     : ''
                   }
                   className="flex items-center gap-1 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed">

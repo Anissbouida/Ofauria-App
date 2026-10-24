@@ -9,10 +9,11 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   Plus, X, Search, Loader2, AlertTriangle, Flame, Package, Clock,
-  Trash2, TrendingDown, Factory, ShoppingBag, Recycle, BarChart3, Download, Camera,
+  Trash2, TrendingDown, Factory, ShoppingBag, Recycle, BarChart3, Download, Camera, CalendarRange,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { StagePipeline, Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -27,15 +28,13 @@ const LOSS_TYPE_STYLE: Record<string, { color: string; bg: string; gradient: str
 };
 const DEFAULT_LOSS_STYLE = { color: 'text-gray-700', bg: 'bg-gray-100', gradient: 'from-gray-500 to-gray-400', icon: Package };
 
-export default function LossesTab() {
-  const queryClient = useQueryClient();
-  const now = new Date();
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [showForm, setShowForm] = useState(false);
-  const [viewPhoto, setViewPhoto] = useState<{ url: string; productName: string; date: string } | null>(null);
+// Couleur du point de type (même palette que les anciennes pastilles).
+const TYPE_DOT: Record<string, string> = {
+  'odoo-tag-red': '#dc3545', 'odoo-tag-orange': '#d9822b', 'odoo-tag-yellow': '#c99a06', 'odoo-tag-blue': '#3b82f6', 'odoo-tag-grey': '#adb5bd',
+};
 
+/** Référentiels des pertes (types, motifs) : partagés par l'onglet Pertes et le module Contrôle. */
+export function useLossReferentials() {
   // Dynamic referentiel data
   const { entries: lossTypeEntries, getLabel: getLossTypeLabel } = useReferentiel('loss_types');
   const { entries: lossReasonEntries, getLabel: getLossReasonLabel } = useReferentiel('loss_reasons');
@@ -60,6 +59,22 @@ export default function LossesTab() {
     ])
   );
 
+  return { LOSS_TYPE_CONFIG, REASON_LABELS, REASONS_BY_TYPE, getLossTypeLabel, getLossReasonLabel, getProdLossReasonLabel };
+}
+
+export default function LossesTab() {
+  const queryClient = useQueryClient();
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [showForm, setShowForm] = useState(false);
+  const [viewPhoto, setViewPhoto] = useState<{ url: string; productName: string; date: string } | null>(null);
+
+  const { LOSS_TYPE_CONFIG, REASON_LABELS, REASONS_BY_TYPE } = useLossReferentials();
+
   const { data: losses = [], isLoading } = useQuery({
     queryKey: ['product-losses', month, year, typeFilter],
     queryFn: () => {
@@ -83,7 +98,14 @@ export default function LossesTab() {
     },
   });
 
-  const lossList = losses as Record<string, any>[];
+  const allLosses = losses as Record<string, any>[];
+  const lossList = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? allLosses.filter(l => [l.product_name, l.reason_note, l.declared_by_first_name, l.declared_by_last_name]
+      .some(v => String(v ?? '').toLowerCase().includes(q))) : allLosses;
+  }, [allLosses, search]);
+  useEffect(() => { setPage(1); }, [month, year, typeFilter, search]);
+  const pagedLosses = lossList.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   // Totals from stats
   const totalsByType = useMemo(() => {
@@ -133,15 +155,17 @@ export default function LossesTab() {
     <>
       {/* Search panel : period + actions */}
       <div className="odoo-search-panel">
-        <SearchSelect
-          options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
-          value={String(month)}
-          onChange={id => id && setMonth(parseInt(id, 10))}
-          placeholder="Mois"
-          width={150}
-        />
-        <input type="number" value={year} onChange={e => setYear(+e.target.value)}
-          className="odoo-filter-dropdown" style={{ width: 80 }} />
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+          <CalendarRange size={13} /> Mois
+          <select value={month} onChange={e => setMonth(parseInt(e.target.value, 10))} className="odoo-filter-dropdown">
+            {MONTH_NAMES.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+          </select>
+          <input type="number" value={year} onChange={e => setYear(+e.target.value)} aria-label="Année"
+            className="odoo-filter-dropdown" style={{ width: 80 }} />
+        </label>
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0, marginLeft: 8 }} />
+        <input type="text" value={search} onChange={e => setSearch(e.target.value)} aria-label="Rechercher une perte"
+          placeholder="Rechercher un produit, une note, un déclarant..." className="odoo-search-input" style={{ flex: '1 1 200px', minWidth: 0 }} />
         <div style={{ flex: 1 }} />
         <button onClick={handleExport} className="odoo-btn-secondary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -153,48 +177,21 @@ export default function LossesTab() {
         </button>
       </div>
 
-      {/* KPI tiles */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><TrendingDown size={11} style={{ display: 'inline', marginRight: 4 }} />Total pertes</div>
-          <div className="odoo-stat-card-value" style={{ color: '#dc3545' }}>{n(totalsByType.totalCost)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
-          <div className="odoo-stat-card-sub">{totalsByType.totalCount} déclaration{totalsByType.totalCount > 1 ? 's' : ''}</div>
-        </div>
-        {Object.keys(LOSS_TYPE_CONFIG).map(type => {
-          const config = LOSS_TYPE_CONFIG[type];
-          const data = totalsByType.map[type] || { count: 0, quantity: 0, cost: 0 };
-          const Icon = config.icon;
-          return (
-            <div key={type} className="odoo-stat-card">
-              <div className="odoo-stat-card-label"><Icon size={11} style={{ display: 'inline', marginRight: 4 }} />{config.label}</div>
-              <div className="odoo-stat-card-value">{n(data.cost)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
-              <div className="odoo-stat-card-sub">{data.count} perte{data.count > 1 ? 's' : ''} · {data.quantity} unités</div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Filter chips */}
-      <div className="odoo-search-panel">
-        {[
-          { key: 'all', label: 'Tout', count: totalsByType.totalCount },
-          ...Object.entries(LOSS_TYPE_CONFIG).map(([key, cfg]) => ({
-            key, label: cfg.label, count: totalsByType.map[key]?.count || 0,
-          })),
-        ].map(f => (
-          <button key={f.key} onClick={() => setTypeFilter(f.key)}
-            className="odoo-filter-dropdown"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              backgroundColor: typeFilter === f.key ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
-              color: typeFilter === f.key ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
-              fontWeight: typeFilter === f.key ? 600 : 400,
-            }}>
-            {f.label}
-            {f.count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{f.count}</span>}
-          </button>
-        ))}
-      </div>
+      {/* Répartition par type : une carte par type (clic = filtre) */}
+      <StagePipeline
+        title={`Pertes · ${MONTH_NAMES[month - 1]} ${year}`}
+        summary={`${totalsByType.totalCount} déclaration${totalsByType.totalCount > 1 ? 's' : ''} · ${n(totalsByType.totalCost)} DH`}
+        stages={[
+          { key: 'all', label: 'Toutes', hint: 'total du mois', icon: TrendingDown },
+          ...Object.entries(LOSS_TYPE_CONFIG).map(([key, cfg]) => ({ key, label: cfg.label, hint: `${totalsByType.map[key]?.quantity ?? 0} unités`, icon: cfg.icon })),
+        ]}
+        stats={{
+          all: { count: totalsByType.totalCount, sub: `${n(totalsByType.totalCost)} DH` },
+          ...Object.fromEntries(Object.keys(LOSS_TYPE_CONFIG).map(key => [key, { count: totalsByType.map[key]?.count ?? 0, sub: `${n(totalsByType.map[key]?.cost ?? 0)} DH` }])),
+        }}
+        isActive={k => typeFilter === k}
+        onPick={k => setTypeFilter(k === typeFilter && k !== 'all' ? 'all' : k)}
+      />
 
       {/* Losses table */}
       {isLoading ? (
@@ -205,7 +202,7 @@ export default function LossesTab() {
       ) : lossList.length === 0 ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <TrendingDown size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem' }}>Aucune perte déclarée pour cette période</p>
+          <p style={{ fontSize: '0.8125rem' }}>{search || typeFilter !== 'all' ? 'Aucune perte pour ces filtres' : 'Aucune perte déclarée pour cette période'}</p>
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
@@ -219,11 +216,11 @@ export default function LossesTab() {
                 <th style={{ textAlign: 'right' }}>Qté</th>
                 <th style={{ textAlign: 'right' }}>Coût</th>
                 <th>Déclaré par</th>
-                <th style={{ textAlign: 'center', width: 80 }}>Actions</th>
+                <th style={{ textAlign: 'right', width: 80 }}></th>
               </tr>
             </thead>
             <tbody>
-              {lossList.map(l => {
+              {pagedLosses.map(l => {
                 const lossType = l.loss_type as string;
                 const tagClass = lossType === 'casse' ? 'odoo-tag-red'
                   : lossType === 'perimee' ? 'odoo-tag-orange'
@@ -237,7 +234,12 @@ export default function LossesTab() {
                       {format(new Date(l.created_at as string), 'dd/MM/yyyy HH:mm')}
                     </td>
                     <td style={{ fontWeight: 500 }}>{l.product_name as string}</td>
-                    <td><span className={`odoo-tag ${tagClass}`}>{cfg.label}</span></td>
+                    <td>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem' }}>
+                        <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: TYPE_DOT[tagClass] ?? '#adb5bd' }} />
+                        {cfg.label}
+                      </span>
+                    </td>
                     <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
                       {REASON_LABELS[l.reason as string] || String(l.reason)}
                       {l.reason_note ? <span style={{ marginLeft: 4, color: 'var(--theme-bg-separator)' }}>— {String(l.reason_note)}</span> : null}
@@ -249,22 +251,20 @@ export default function LossesTab() {
                     <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
                       {l.declared_by_first_name ? `${l.declared_by_first_name} ${l.declared_by_last_name}` : '—'}
                     </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <div style={{ display: 'inline-flex', gap: 4 }}>
+                    <td style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', gap: 2 }}>
                         {l.photo_url && (
                           <button onClick={() => setViewPhoto({
                             url: serverUrl(l.photo_url as string),
                             productName: l.product_name as string,
                             date: format(new Date(l.created_at as string), 'dd/MM/yyyy HH:mm'),
                           })}
-                            style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--theme-text-muted)' }}
-                            title="Voir la photo">
+                            className="odoo-pager-btn" title="Voir la photo" aria-label="Voir la photo">
                             <Camera size={13} />
                           </button>
                         )}
-                        <button onClick={() => deleteMutation.mutate(l.id as string)}
-                          style={{ padding: 4, border: 'none', background: 'transparent', cursor: 'pointer', color: '#dc3545' }}
-                          title="Supprimer">
+                        <button type="button" onClick={() => { if (confirm(`Supprimer la perte « ${l.product_name} » (${n(parseFloat(l.total_cost as string) || 0)} DH) ?`)) deleteMutation.mutate(l.id as string); }}
+                          className="odoo-pager-btn" style={{ color: '#dc3545' }} title="Supprimer" aria-label="Supprimer la perte">
                           <Trash2 size={13} />
                         </button>
                       </div>
@@ -290,6 +290,8 @@ export default function LossesTab() {
               </tfoot>
             )}
           </table>
+          <Pager page={page} total={lossList.length} onPage={setPage}
+            note={`${lossList.length} perte${lossList.length > 1 ? 's' : ''} · ${MONTH_NAMES[month - 1]} ${year}`} />
         </div>
       )}
 
@@ -402,21 +404,17 @@ function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, re
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-red-500 to-rose-500 p-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-              <TrendingDown size={20} className="text-white" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-white">Declarer une perte</h2>
-              <p className="text-sm text-white/70">Production, casse ou perime</p>
-            </div>
+      <div className="odoo-scope" role="dialog" aria-label="Déclarer une perte"
+        style={{ width: '100%', maxWidth: 512, maxHeight: '92vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <TrendingDown size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span className="odoo-breadcrumb-current">Déclarer une perte</span>
+            <span className="odoo-breadcrumb-separator">/</span>
+            <span>production, casse ou périmé</span>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-xl transition-colors">
-            <X size={18} className="text-white" />
-          </button>
+          <div style={{ flex: 1 }} />
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
@@ -428,14 +426,16 @@ function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, re
                 const Icon = cfg.icon;
                 const isSelected = lossType === key;
                 return (
-                  <button type="button" key={key} onClick={() => { setLossType(key); setReason(''); }}
-                    className={`flex items-center gap-2.5 p-3 rounded-xl border-2 transition-all text-left ${
-                      isSelected
-                        ? `border-transparent bg-gradient-to-r ${cfg.gradient} text-white shadow-md`
-                        : 'border-gray-200 hover:border-gray-300 bg-white'
-                    }`}>
-                    <Icon size={18} className={isSelected ? 'text-white' : 'text-gray-400'} />
-                    <span className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-gray-700'}`}>{cfg.label}</span>
+                  <button type="button" key={key} onClick={() => { setLossType(key); setReason(''); }} aria-pressed={isSelected}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', textAlign: 'left', borderRadius: 4,
+                      border: isSelected ? '1px solid var(--odoo-purple)' : '1px solid var(--odoo-border)',
+                      background: isSelected ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)',
+                      boxShadow: isSelected ? 'inset 0 -2px 0 var(--odoo-purple)' : 'none',
+                      color: isSelected ? 'var(--odoo-purple)' : 'var(--odoo-text)', fontWeight: isSelected ? 600 : 500, fontSize: '0.8125rem',
+                    }}>
+                    <Icon size={16} />
+                    {cfg.label}
                   </button>
                 );
               })}
@@ -534,11 +534,11 @@ function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, re
           {/* Actions */}
           <div className="flex gap-3 justify-end pt-2">
             <button type="button" onClick={onClose}
-              className="px-5 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-all text-sm">
+              className="odoo-btn-secondary">
               Annuler
             </button>
             <button type="submit" disabled={createMutation.isPending}
-              className="px-5 py-2.5 bg-gradient-to-r from-red-500 to-rose-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-sm flex items-center gap-2">
+              className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {createMutation.isPending && <Loader2 size={14} className="animate-spin" />}
               Declarer la perte
             </button>
@@ -546,5 +546,14 @@ function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, re
         </form>
       </div>
     </div>
+  );
+}
+
+/** Déclaration d'une perte de produit fini, utilisable hors de l'onglet Pertes (module Contrôle). */
+export function ProductLossDeclareModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const { LOSS_TYPE_CONFIG, REASON_LABELS, REASONS_BY_TYPE } = useLossReferentials();
+  return (
+    <AddLossModal lossTypeConfig={LOSS_TYPE_CONFIG} reasonLabels={REASON_LABELS} reasonsByType={REASONS_BY_TYPE}
+      onClose={onClose} onSuccess={onSuccess} />
   );
 }

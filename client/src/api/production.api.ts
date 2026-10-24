@@ -1,21 +1,23 @@
 import api from './client';
+import type { ProductionPlanEvent } from '@ofauria/shared';
 
 export const productionApi = {
   list: (params?: Record<string, string>) => api.get('/production', { params }).then(r => r.data),
   getById: (id: string) => api.get(`/production/${id}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/production', data).then(r => r.data.data),
-  updateItems: (id: string, items: Record<string, any>[]) => api.put(`/production/${id}/items`, { items }).then(r => r.data.data),
   confirm: (id: string) => api.post(`/production/${id}/confirm`).then(r => r.data),
   /** Repasse un plan confirme -> draft pour permettre des modifications.
    *  Refuse si un item a deja demarre ou si le BSI a ete preleve. */
   revertToDraft: (id: string) => api.post(`/production/${id}/revert-to-draft`).then(r => r.data.data),
+  /** Relance un plan bloque : reactive les articles annules / en attente, re-verifie
+   *  la dispo ingredient et repositionne le plan. itemIds omis = tous les relancables. */
+  relaunch: (id: string, itemIds?: string[]) =>
+    api.post(`/production/${id}/relaunch`, itemIds ? { itemIds } : {}).then(r => r.data),
   start: (id: string) => api.post(`/production/${id}/start`).then(r => r.data.data),
   startItems: (id: string, itemIds: string[], startedAt?: string) =>
     api.post(`/production/${id}/start-items`, { itemIds, startedAt }).then(r => r.data),
-  produceItems: (id: string, items: { planItemId: string; actualQuantity: number }[], producedAt?: string) =>
+  produceItems: (id: string, items: { planItemId: string; actualQuantity: number; outputs?: { productId?: string | null; equivPieces?: number; quantity: number }[] }[], producedAt?: string) =>
     api.post(`/production/${id}/produce-items`, { items, producedAt }).then(r => r.data),
-  transferItems: (id: string, itemIds: string[]) =>
-    api.post(`/production/${id}/transfer-items`, { itemIds }).then(r => r.data),
   pendingTransfers: () => api.get('/production/transfers/pending').then(r => r.data.data),
   confirmTransferReception: (transferId: string, items: { itemId: string; qtyReceived: number; notes?: string }[]) =>
     api.post(`/production/transfers/${transferId}/receive`, { items }).then(r => r.data),
@@ -29,8 +31,11 @@ export const productionApi = {
     api.post(`/production/${id}/complete`, { items, completionType }).then(r => r.data),
   analyzeSubRecipes: (id: string) => api.get(`/production/${id}/sub-recipe-analysis`).then(r => r.data.data),
   detectSemiFinished: (id: string) => api.post(`/production/${id}/detect-semi-finished`).then(r => r.data),
-  getDependencies: (id: string) => api.get(`/production/${id}/dependencies`).then(r => r.data.data),
   remove: (id: string) => api.delete(`/production/${id}`),
+  // Journal des transitions plan + bons (mig 299)
+  getEvents: (id: string): Promise<ProductionPlanEvent[]> =>
+    api.get(`/production/${id}/events`).then(r => r.data.data),
+
   getActivities: (id: string) => api.get(`/production/${id}/activities`).then(r => r.data.data),
   addActivity: (id: string, message: string) => api.post(`/production/${id}/activities`, { message }).then(r => r.data.data),
 };

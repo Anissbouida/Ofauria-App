@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Save, Layers, Search, AlertTriangle, ChevronDown, ChevronRight, CornerDownRight, Camera, SlidersHorizontal, Box, GripVertical, HelpCircle, Copy, X } from 'lucide-react';
+import { Plus, Trash2, Save, Layers, Search, AlertTriangle, ChevronDown, ChevronRight, CornerDownRight, Camera, SlidersHorizontal, Box, GripVertical, HelpCircle, Copy, X, Printer } from 'lucide-react';
 import { recipesApi } from '../../api/recipes.api';
 import { contenantsApi } from '../../api/contenants.api';
 import { productsApi } from '../../api/products.api';
@@ -13,7 +13,7 @@ interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient'; s
 interface Contenant { id: string; nom: string; quantite_theorique?: string | number | null; }
 
 const UNITES = ['g', 'kg', 'ml', 'l', 'cl', 'unit'];
-const COLS = '44px 150px minmax(0,1fr) 110px 64px 96px 32px';
+const COLS = '44px 150px minmax(0,1fr) 110px 64px 96px 96px 32px';
 const ROLE_BAR: Record<string, string> = {
   fond: '#BA7517', biscuit: '#BA7517', croustillant: '#D85A30', garniture: '#7F77DD',
   insert: '#D4537E', fruits: '#639922', nappage: '#1D9E75', glacage: '#378ADD',
@@ -136,7 +136,7 @@ function ChildRow({ child, depth }: { child: RecipeChild; depth: number }) {
           </span>
         )}
         <span className="text-gray-400 shrink-0">{parseFloat(child.quantite)} {child.unite}</span>
-        <span className="w-20 text-right tabular-nums shrink-0">{dh(cost)}</span>
+        <span className="w-24 text-right tabular-nums whitespace-nowrap shrink-0" style={{ marginRight: 52 }}>{dh(cost)}</span>
       </div>
       {open && child.expandable && child.source_id && <SubTree recipeId={child.source_id} depth={depth + 1} />}
     </>
@@ -424,6 +424,27 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   }, [data?.format, rendementNum, fin.matierePiece, fin.coutProd, fin.prix, fin.margePct]);
   useEffect(() => () => onFinanceRef.current?.(null), []);
 
+  /**
+   * Fiche technique du cadre SÉLECTIONNÉ : le chef imprime la fiche du format
+   * qu'il va lancer, pas les trois. On ouvre le PDF dans un onglet — la
+   * visionneuse du navigateur enchaîne sur Ctrl+P. Compatible Capacitor.
+   */
+  const [printing, setPrinting] = useState(false);
+  const printFormat = async () => {
+    if (!formatId) return;
+    setPrinting(true);
+    try {
+      const response = await recipesApi.fichePdf(recipeId, formatId);
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      notify.error('Erreur lors de la génération de la fiche technique');
+    } finally {
+      setPrinting(false);
+    }
+  };
+
   // Copie la composition d'un AUTRE format dans le format courant (non sauvegardé :
   // l'utilisateur ajuste puis Enregistre). Réutilise l'endpoint de lecture par format.
   const copyFromFormat = async () => {
@@ -530,6 +551,12 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     const cost = lineCost(r);
     const share = coutMatiere > 0 && cost != null ? (cost / coutMatiere) * 100 : null;
     const barColor = ROLE_BAR[r.role] || '#888780';
+    // L'équivalent n'est affiché que s'il apporte une info (1050 g → 1.05 kg) :
+    // « ≈ 80 g » sous une saisie de 80 g n'était que du bruit.
+    const eqBig = !!eq && eq.val >= 1000;
+    const eqUnit = eq ? (eqBig ? (eq.unit === 'g' ? 'kg' : 'l') : eq.unit) : '';
+    const eqLabel = eq && eqUnit !== r.unite.toLowerCase()
+      ? `${eqBig ? (eq.val / 1000).toFixed(2) : Math.round(eq.val)} ${eqUnit}` : null;
     return (
       <div key={r.key} className={`border-t border-gray-100 first:border-t-0 ${dragKey === r.key ? 'opacity-40' : ''}`}
         onDragOver={(e) => e.preventDefault()} onDrop={() => onDropRow(r.key)}>
@@ -554,18 +581,6 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           <div className="min-w-0">
             <SourcePicker options={sourceOpts} value={src ?? null}
               onPick={(o) => setRow(r.key, { type: o.type, sourceId: o.id, unite: o.unit === 'unit' ? r.unite : o.unit })} />
-            {src && (
-              <div className="mt-1">
-                {share != null && (
-                  <div className="h-1 rounded-full bg-gray-100 overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${Math.max(2, Math.min(100, share))}%`, background: barColor, opacity: 0.7 }} />
-                  </div>
-                )}
-                <div className="text-[11px] text-gray-400 mt-0.5 pl-0.5">
-                  {src.type === 'recipe' ? 'recette de base' : 'matière 1ère'}{share != null ? ` · ${Math.round(share)}% du coût` : ''}
-                </div>
-              </div>
-            )}
           </div>
           <div>
             <input type="number" step="any" min="0"
@@ -576,16 +591,24 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 {pp >= 1 && <AlertTriangle size={9} className="inline mr-0.5 -mt-0.5" />}
                 {pp >= 1 ? `${pp.toFixed(pp >= 10 ? 0 : 1)} fournée/pièce` : `≈ ${Math.round(pp * 100)}% fournée/pièce`}
               </div>
-            ) : eq ? (
-              <div className="text-[10px] mt-0.5 text-right text-gray-400">
-                ≈ {eq.val >= 1000 ? `${(eq.val / 1000).toFixed(2)} ${eq.unit === 'g' ? 'kg' : 'l'}` : `${Math.round(eq.val)} ${eq.unit}`}
-              </div>
+            ) : eqLabel ? (
+              <div className="text-[10px] mt-0.5 text-right text-gray-400">≈ {eqLabel}</div>
             ) : null}
           </div>
           <select className="h-8 px-1.5 bg-white border border-gray-200 rounded-md text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
             value={r.unite} onChange={(e) => setRow(r.key, { unite: e.target.value })}>
             {UNITES.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
+          <div className="pt-1.5" title={src ? (src.type === 'recipe' ? 'Recette de base' : 'Matière première') : undefined}>
+            {share != null && (
+              <div className="flex items-center gap-1.5">
+                <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${Math.max(2, Math.min(100, share))}%`, background: barColor, opacity: 0.7 }} />
+                </div>
+                <span className="w-8 text-right text-xs tabular-nums text-gray-500">{Math.round(share)}%</span>
+              </div>
+            )}
+          </div>
           <div className="text-right text-sm tabular-nums font-medium pt-1.5 inline-flex items-center justify-end gap-1">
             {badConv && (
               <AlertTriangle size={12} className="text-amber-500 shrink-0"
@@ -612,7 +635,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   const availContenants = contenants.filter((c) => !usedContenantIds.has(c.id));
 
   return (
-    <div className="odoo-section">
+    <div className="odoo-section" style={{ overflow: 'clip' }}>
       <div className="odoo-section-header flex items-center gap-2"><Layers size={13} /> Composition de la recette</div>
 
       {/* Onglets de format */}
@@ -658,72 +681,76 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
       ) : isLoading || !f ? (
         <div className="text-sm text-gray-400 py-4 px-3">Chargement…</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-4 p-3">
-          {/* Colonne gauche : photo + rendement/parts/poids */}
-          <div className="flex flex-col gap-3">
-            <div className="aspect-square rounded-lg border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center">
-              {f.product_image ? (
-                <img src={f.product_image} alt={f.recipe_name} className="w-full h-full object-cover" />
-              ) : (
-                <div className="flex flex-col items-center gap-1 text-gray-400 text-center px-2">
-                  <Camera size={26} />
-                  <span className="text-[11px]">Photo via la fiche produit</span>
-                </div>
-              )}
-            </div>
-            <div className="px-3 py-3 rounded-lg bg-gray-50 border border-gray-200">
-              <div className="text-[11px] font-medium uppercase tracking-wide text-gray-400 truncate pb-2 mb-1 border-b border-gray-200">{f.contenant_nom || 'Format'}</div>
-              {(() => {
-                const [bv, bu] = splitW(poidsBrutG);
-                const [cv, cu] = splitW(poidsCuitG);
-                const cell = 'h-7 w-full px-2 bg-white border border-gray-200 rounded-md text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400';
-                const rowCls = 'grid grid-cols-[1fr_52px_26px] items-center gap-1.5 py-1';
-                const lbl = 'text-sm text-gray-600 whitespace-nowrap';
-                const unit = 'text-xs text-gray-400 whitespace-nowrap';
-                return (
-                  <div className="flex flex-col">
-                    <div className={rowCls}>
-                      <span className={lbl}>Rendement</span>
-                      <input type="number" min="1" className={cell} value={rendement} onChange={(e) => setRendement(e.target.value)} placeholder="50" />
-                      <span className={unit}>p.</span>
-                    </div>
-                    {(partsNum > 1 || showParts) ? (
-                      <div className={rowCls}>
-                        <span className={lbl}>Parts</span>
-                        <input type="number" min="1" className={cell} value={parts} onChange={(e) => setParts(e.target.value)} placeholder="1" />
-                        <span className={unit}>/pc</span>
-                      </div>
-                    ) : (
-                      <div className="py-1">
-                        <button type="button" onClick={() => setShowParts(true)}
-                          className="text-xs text-primary-700 hover:text-primary-800" title="Pour un produit coupé en portions (entremets, tarte…)">
-                          + Vendu à la part
-                        </button>
-                      </div>
-                    )}
-                    <div className="border-t border-gray-200 my-1" />
-                    <div className={rowCls}>
-                      <span className={lbl}>Poids brut</span>
-                      <span className="text-sm font-medium tabular-nums text-right">{bv}</span>
-                      <span className={unit}>{bu}</span>
-                    </div>
-                    <div className={rowCls}>
-                      <span className={lbl}>Poids cuit</span>
-                      <span className="text-sm font-medium tabular-nums text-right">{cv}</span>
-                      <span className={unit}>{cu}</span>
-                    </div>
-                    <div className={rowCls}>
-                      <span className={lbl}>Perte</span>
-                      <input type="number" min="0" max="99" step="any" className={`${cell} text-amber-700`} value={perte} onChange={(e) => setPerte(e.target.value)} placeholder="0" />
-                      <span className={unit}>%</span>
-                    </div>
+        <>
+        <div className="p-3">
+            {/* Bandeau du format : vignette + rendement/poids sur une ligne, pour
+                laisser toute la largeur au tableau de composition. */}
+            {(() => {
+              const [bv, bu] = splitW(poidsBrutG);
+              const [cv, cu] = splitW(poidsCuitG);
+              const cell = 'h-7 w-16 px-2 bg-white border border-gray-200 rounded-md text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400';
+              const fld = 'inline-flex items-center gap-1.5';
+              const lbl = 'text-xs text-gray-500 whitespace-nowrap';
+              const unit = 'text-xs text-gray-400 whitespace-nowrap';
+              return (
+                <div className="flex items-center gap-x-5 gap-y-2 flex-wrap mb-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200">
+                  <div className="w-12 h-12 shrink-0 rounded-md border border-gray-200 bg-white overflow-hidden flex items-center justify-center"
+                    title={f.product_image ? f.recipe_name : 'Photo via la fiche produit'}>
+                    {f.product_image
+                      ? <img src={f.product_image} alt={f.recipe_name} className="w-full h-full object-cover" />
+                      : <Camera size={18} className="text-gray-400" />}
                   </div>
-                );
-              })()}
-            </div>
-          </div>
+                  <label className={fld}>
+                    <span className={lbl}>Rendement</span>
+                    <input type="number" min="1" className={cell} value={rendement} onChange={(e) => setRendement(e.target.value)} placeholder="50" />
+                    <span className={unit}>p.</span>
+                  </label>
+                  {(partsNum > 1 || showParts) ? (
+                    <label className={fld}>
+                      <span className={lbl}>Parts</span>
+                      <input type="number" min="1" className={cell} value={parts} onChange={(e) => setParts(e.target.value)} placeholder="1" />
+                      <span className={unit}>/pc</span>
+                    </label>
+                  ) : (
+                    <button type="button" onClick={() => setShowParts(true)}
+                      className="text-xs text-primary-700 hover:text-primary-800" title="Pour un produit coupé en portions (entremets, tarte…)">
+                      + Vendu à la part
+                    </button>
+                  )}
+                  <span className={fld}>
+                    <span className={lbl}>Poids brut</span>
+                    <span className="text-sm font-medium tabular-nums">{bv}</span><span className={unit}>{bu}</span>
+                  </span>
+                  <label className={fld}>
+                    <span className={lbl}>Perte</span>
+                    <input type="number" min="0" max="99" step="any" className={`${cell} text-amber-700`} value={perte} onChange={(e) => setPerte(e.target.value)} placeholder="0" />
+                    <span className={unit}>%</span>
+                  </label>
+                  <span className={fld}>
+                    <span className={lbl}>Poids cuit</span>
+                    <span className="text-sm font-medium tabular-nums">{cv}</span><span className={unit}>{cu}</span>
+                  </span>
+                  <span className="ml-auto inline-flex items-center gap-2">
+                    <span className="text-xs text-gray-500 inline-flex items-center gap-1">
+                      Quantités saisies
+                      <span className="inline-flex cursor-help"
+                        title={'Par fournée : quantités pour tout le lot (cadre/plaque découpé) → coût/pièce = total ÷ rendement.\nPar pièce : quantités pour une seule unité (entremets individuel…) → coût/pièce = la somme.'}>
+                        <HelpCircle size={13} className="text-gray-400" />
+                      </span>
+                    </span>
+                    <span className="inline-flex rounded-md border border-gray-200 overflow-hidden text-xs">
+                      <button type="button" onClick={() => setCompoParPiece(false)}
+                        title="Quantités pour toute la fournée (cadre/plaque découpé)"
+                        className={`px-3 py-1.5 ${!compoParPiece ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Par fournée (lot)</button>
+                      <button type="button" onClick={() => setCompoParPiece(true)}
+                        title="Quantités pour une seule pièce (entremets individuel, monoportion…)"
+                        className={`px-3 py-1.5 border-l border-gray-200 ${compoParPiece ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Par pièce (unité)</button>
+                    </span>
+                  </span>
+                </div>
+              );
+            })()}
 
-          {/* Colonne droite : composition + finance */}
           <div>
             {aberrantCount > 0 && (
               <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-red-50 border border-red-200 text-[13px] text-red-700">
@@ -742,39 +769,28 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2 mb-1">
-              <span className="text-xs text-gray-500 inline-flex items-center gap-1">
-                Quantités saisies
-                <span className="inline-flex cursor-help"
-                  title={'Par fournée : quantités pour tout le lot (cadre/plaque découpé) → coût/pièce = total ÷ rendement.\nPar pièce : quantités pour une seule unité (entremets individuel…) → coût/pièce = la somme.'}>
-                  <HelpCircle size={13} className="text-gray-400" />
-                </span>
-              </span>
-              <div className="inline-flex rounded-md border border-gray-200 overflow-hidden text-xs">
-                <button type="button" onClick={() => setCompoParPiece(false)}
-                  title="Quantités pour toute la fournée (cadre/plaque découpé)"
-                  className={`px-3 py-1.5 ${!compoParPiece ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Par fournée (lot)</button>
-                <button type="button" onClick={() => setCompoParPiece(true)}
-                  title="Quantités pour une seule pièce (entremets individuel, monoportion…)"
-                  className={`px-3 py-1.5 border-l border-gray-200 ${compoParPiece ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Par pièce (unité)</button>
-              </div>
-            </div>
-            <div className="text-[11px] text-gray-400 text-right mb-2">
-              {compoParPiece
-                ? 'Tu saisis les quantités pour 1 pièce — le coût/pièce = la somme.'
-                : `Tu saisis les quantités pour toute la fournée — le coût/pièce = total ÷ ${rendementNum} pièces.`}
-            </div>
-
             <div className="rounded-lg border border-gray-200 overflow-hidden">
               <div className="grid items-center gap-2 px-3 py-2 bg-gray-50 text-[11px] font-medium uppercase tracking-wide text-gray-500" style={{ gridTemplateColumns: COLS }}>
                 <span /><span>Rôle</span><span>Composant</span>
                 <span className="text-right">{compoParPiece ? 'Qté / pièce' : 'Qté / fournée'}</span><span>Unité</span>
-                <span className="text-right">Coût</span><span />
+                <span>% coût</span><span className="text-right">Coût</span><span />
               </div>
               {rows.map(renderRow)}
               {rows.length === 0 && (
                 <div className="px-3 py-8 text-center text-sm text-gray-400 border-t border-gray-100">Aucun composant pour ce format.</div>
               )}
+              {rows.length > 0 && (() => {
+                const [tv, tu] = splitW(poidsBrutG);
+                return (
+                  <div className="grid items-center gap-2 px-3 py-2 border-t border-gray-200 bg-gray-50 text-sm font-semibold tabular-nums" style={{ gridTemplateColumns: COLS }}>
+                    <span /><span />
+                    <span className="text-gray-600">Total {compoParPiece ? 'pièce' : 'fournée'}</span>
+                    <span className="text-right">{tv}</span><span className="text-xs font-normal text-gray-400">{tu}</span>
+                    <span />
+                    <span className="text-right">{dh(coutMatiere)}</span><span />
+                  </div>
+                );
+              })()}
               <div className="px-3 py-2 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between gap-2 flex-wrap">
                 <button type="button" onClick={() => addRow('')} className="text-sm font-medium text-primary-700 hover:text-primary-800 inline-flex items-center gap-1">
                   <Plus size={15} /> Ajouter un composant
@@ -819,27 +835,27 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                   </label>
                 ))}
               </div>
+              {/* Décomposition du prix sur une ligne, lue de gauche à droite :
+                  les composantes du coût, leur somme, le multiplicateur, le prix.
+                  Les chiffres de décision sont déjà dans le bandeau KPI du haut. */}
+              <div className="flex items-center gap-x-2 gap-y-1 flex-wrap px-3 py-2 border-t border-gray-200 bg-gray-50 text-[13px] tabular-nums text-gray-600">
+                <span className="text-[11px] uppercase tracking-wide text-gray-400">Par pièce</span>
+                <span>Matière <strong>{dh(fin.matierePiece)}</strong></span>
+                <span className="text-gray-400">+</span>
+                <span>MO + énergie <strong>{dh(fin.moPiece + fin.energiePiece)}</strong></span>
+                <span className="text-gray-400">+</span>
+                <span>Structure <strong>{dh(fin.structP)}</strong></span>
+                <span className="text-gray-400">=</span>
+                <span>Coût production <strong className="text-gray-900">{dh(fin.coutProd)}</strong></span>
+                <span className="text-gray-400">× {np(mult) ?? 3}</span>
+                <span className="text-gray-400">=</span>
+                <span>Prix vente HT <strong className="text-primary-700">{dh(fin.prix)}</strong></span>
+                <span className={`ml-auto px-2 py-0.5 rounded-md border font-medium ${margeTileStyle.c} ${margeTileStyle.vt}`}>
+                  Marge {dh(fin.marge)} ({Math.round(fin.margePct)}%)
+                </span>
+              </div>
             </div>
 
-            {/* Panneau financier — lecture de gauche à droite : les 3 composantes du
-                coût, puis leur somme, puis le prix qui en découle, puis la marge.
-                Les 3 premières tuiles restent neutres pour que l'œil aille aux
-                trois dernières, qui sont les chiffres de décision. */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 mt-4">
-              {[
-                { l: 'Matière / pièce', v: dh(fin.matierePiece), c: 'border-gray-200 bg-gray-50', t: 'text-gray-500', vt: 'text-gray-800' },
-                { l: 'MO + énergie', v: dh(fin.moPiece + fin.energiePiece), c: 'border-gray-200 bg-gray-50', t: 'text-gray-500', vt: 'text-gray-800' },
-                { l: 'Structure', v: dh(fin.structP), c: 'border-gray-200 bg-gray-50', t: 'text-gray-500', vt: 'text-gray-800' },
-                { l: 'Coût production', v: dh(fin.coutProd), c: 'border-gray-300 bg-white', t: 'text-gray-600', vt: 'text-gray-900', strong: true },
-                { l: 'Prix vente HT', v: dh(fin.prix), c: 'border-primary-300 bg-primary-50', t: 'text-primary-700', vt: 'text-primary-800', strong: true },
-                { l: 'Marge brute', v: `${dh(fin.marge)} (${Math.round(fin.margePct)}%)`, ...margeTileStyle, strong: true },
-              ].map((k) => (
-                <div key={k.l} className={`rounded-lg border px-3 py-2.5 ${k.c}`}>
-                  <div className={`text-[11px] ${k.t}`}>{k.l}</div>
-                  <div className={`tabular-nums mt-0.5 ${k.strong ? 'text-base font-semibold' : 'text-base font-medium'} ${k.vt}`}>{k.v}</div>
-                </div>
-              ))}
-            </div>
 
             {partsNum > 1 && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
@@ -860,33 +876,42 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 format={data.format} priceCalc={fin.prix} />
             )}
 
-            <div className="flex items-center justify-between gap-3 mt-4 flex-wrap">
-              <p className="text-xs text-gray-400">
-                Format <strong>{f.contenant_nom}</strong> · saisie <strong>{compoParPiece ? 'par pièce' : 'par fournée'}</strong>
-                {!compoParPiece && <> (coût/pièce = total ÷ {rendementNum})</>}.
-                Coût/fournée : <strong>{dh(coutFournee)}</strong>.
-              </p>
-              <div className="inline-flex items-center gap-2">
-                {isDirty && (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700"
-                    title="Les chiffres ci-dessus sont recalculés en direct, mais rien n'est encore enregistré.">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                    Modifications non enregistrées
-                  </span>
-                )}
-                <button type="button" onClick={handleCancel} disabled={saveMut.isPending}
-                  className="odoo-btn-secondary inline-flex items-center gap-1" title="Annuler les modifications et quitter">
-                  <X size={15} /> Annuler
-                </button>
-                <button type="button" onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !isDirty}
-                  className="odoo-btn-primary inline-flex items-center gap-1"
-                  title={isDirty ? 'Enregistrer la composition et les paramètres financiers' : 'Aucune modification à enregistrer'}>
-                  <Save size={15} /> {saveMut.isPending ? 'Enregistrement…' : 'Enregistrer'}
-                </button>
-              </div>
-            </div>
+
           </div>
         </div>
+          {/* Barre d'actions collante : Enregistrer reste à portée quel que soit le
+              défilement (la page est longue : composition, finance, étapes). */}
+          <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 flex-wrap px-3 py-2 bg-white border-t border-gray-200"
+            style={{ boxShadow: '0 -2px 6px rgba(0,0,0,0.05)' }}>
+            <p className="text-xs text-gray-400">
+              Format <strong>{f.contenant_nom}</strong> · saisie <strong>{compoParPiece ? 'par pièce' : 'par fournée'}</strong>
+              {!compoParPiece && <> (coût/pièce = total ÷ {rendementNum})</>}.
+              Coût/fournée : <strong>{dh(coutFournee)}</strong>.
+            </p>
+            <div className="inline-flex items-center gap-2">
+              {isDirty && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700"
+                  title="Les chiffres ci-dessus sont recalculés en direct, mais rien n'est encore enregistré.">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  Modifications non enregistrées
+                </span>
+              )}
+              <button type="button" onClick={printFormat} disabled={printing}
+                className="odoo-btn-secondary inline-flex items-center gap-1" title="Imprimer la fiche technique de ce format">
+                <Printer size={15} /> {printing ? 'Génération…' : 'Imprimer la fiche'}
+              </button>
+              <button type="button" onClick={handleCancel} disabled={saveMut.isPending}
+                className="odoo-btn-secondary inline-flex items-center gap-1" title="Annuler les modifications et quitter">
+                <X size={15} /> Annuler
+              </button>
+              <button type="button" onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !isDirty}
+                className="odoo-btn-primary inline-flex items-center gap-1"
+                title={isDirty ? 'Enregistrer la composition et les paramètres financiers' : 'Aucune modification à enregistrer'}>
+                <Save size={15} /> {saveMut.isPending ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

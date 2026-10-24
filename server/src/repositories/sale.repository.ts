@@ -251,7 +251,7 @@ export const saleRepository = {
             client, item.productId, data.storeId, item.quantity
           );
           for (const step of fefoPlan) {
-            await productLotRepository.consumeVitrineSold(client, step.lotId, step.qty);
+            await productLotRepository.consumeVitrineSold(client, step.lotId, step.qty, { type: 'sale', id: saleResult.rows[0].id });
             // Chaîne de rappel (mig 337) : on persiste QUEL lot produit a servi
             // cette ligne de vente, pour la traçabilité descendante lot→client.
             await client.query(

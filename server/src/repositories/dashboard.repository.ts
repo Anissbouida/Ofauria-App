@@ -77,22 +77,14 @@ export const dashboardRepository = {
     // C'est de l'engagement non-comptabilise : tu as recu la marchandise
     // mais la facture fournisseur n'est pas encore saisie. Souvent un
     // angle mort qui sous-estime les charges reelles du mois.
+    // Mig 312 (D9 G-D9-03) : mesure PAR LIGNE de BC (reçu − facturé, au prix du BC),
+    // solde ouvert à la fin de la période — même chiffre que Achats → Pilotage.
     const receivedNotInvoicedRes = await db.query(
-      `SELECT COUNT(*)::text AS count,
-              COALESCE(SUM(
-                (SELECT COALESCE(SUM(quantity_delivered * COALESCE(unit_price, 0)), 0)
-                 FROM purchase_order_items WHERE purchase_order_id = po.id)
-              ), 0)::text AS total
-       FROM purchase_orders po
-       WHERE po.status IN ('livre_complet', 'livre_partiel')
-         AND po.delivery_date BETWEEN $1 AND $2
-         AND NOT EXISTS (
-           SELECT 1 FROM invoices i
-           LEFT JOIN invoice_purchase_orders ipo ON ipo.invoice_id = i.id
-           WHERE (i.purchase_order_id = po.id OR ipo.purchase_order_id = po.id)
-             AND i.invoice_type = 'received'
-             AND i.status != 'cancelled'
-         )
+      `SELECT COUNT(DISTINCT k.po_id)::text AS count,
+              COALESCE(SUM(k.amount_at_po_price), 0)::text AS total
+       FROM kpi_received_not_invoiced k
+       JOIN purchase_orders po ON po.id = k.po_id
+       WHERE $1::date IS NOT NULL AND k.last_received_at <= $2::date
          ${storeFilterPo}`,
       baseParams
     );
@@ -169,24 +161,16 @@ export const dashboardRepository = {
     );
 
     // 8. RECEPTIONS LIVREES SANS FACTURE — liste detaillee (top 10)
+    // Mig 312 (D9) : par ligne de BC, agrégé par BC (reçu − facturé au prix du BC).
     const receivedNotInvoicedListRes = await db.query(
-      `SELECT po.id, po.order_number,
-              s.name AS supplier_name,
-              po.delivery_date::text,
-              (SELECT COALESCE(SUM(quantity_delivered * COALESCE(unit_price, 0)), 0)
-               FROM purchase_order_items WHERE purchase_order_id = po.id)::text AS total
-       FROM purchase_orders po
-       JOIN suppliers s ON s.id = po.supplier_id
-       WHERE po.status IN ('livre_complet', 'livre_partiel')
-         AND NOT EXISTS (
-           SELECT 1 FROM invoices i
-           LEFT JOIN invoice_purchase_orders ipo ON ipo.invoice_id = i.id
-           WHERE (i.purchase_order_id = po.id OR ipo.purchase_order_id = po.id)
-             AND i.invoice_type = 'received'
-             AND i.status != 'cancelled'
-         )
-         ${storeFilterPoNow}
-       ORDER BY po.delivery_date DESC NULLS LAST
+      `SELECT po.id, po.order_number, k.supplier_name,
+              MAX(k.last_received_at)::text AS delivery_date,
+              SUM(k.amount_at_po_price)::text AS total
+       FROM kpi_received_not_invoiced k
+       JOIN purchase_orders po ON po.id = k.po_id
+       WHERE true ${storeFilterPoNow}
+       GROUP BY po.id, po.order_number, k.supplier_name
+       ORDER BY MAX(k.last_received_at) DESC NULLS LAST
        LIMIT 10`,
       nowParams
     );
@@ -385,24 +369,17 @@ export const dashboardRepository = {
 
       // ── RECU NON FACTURE (periode) : BC livres sans facture ─────────
       case 'receivedNotInvoiced': {
+        // Mig 312 (D9) : solde ouvert par ligne de BC à la fin de la période.
         const res = await db.query(
-          `SELECT po.id, po.order_number, s.name AS supplier_name,
-                  po.delivery_date::text,
-                  (SELECT COALESCE(SUM(quantity_delivered * COALESCE(unit_price, 0)), 0)
-                   FROM purchase_order_items WHERE purchase_order_id = po.id)::text AS total
-           FROM purchase_orders po
-           JOIN suppliers s ON s.id = po.supplier_id
-           WHERE po.status IN ('livre_complet', 'livre_partiel')
-             AND po.delivery_date BETWEEN $1 AND $2
-             AND NOT EXISTS (
-               SELECT 1 FROM invoices i
-               LEFT JOIN invoice_purchase_orders ipo ON ipo.invoice_id = i.id
-               WHERE (i.purchase_order_id = po.id OR ipo.purchase_order_id = po.id)
-                 AND i.invoice_type = 'received'
-                 AND i.status != 'cancelled'
-             )
+          `SELECT po.id, po.order_number, k.supplier_name,
+                  MAX(k.last_received_at)::text AS delivery_date,
+                  SUM(k.amount_at_po_price)::text AS total
+           FROM kpi_received_not_invoiced k
+           JOIN purchase_orders po ON po.id = k.po_id
+           WHERE $1::date IS NOT NULL AND k.last_received_at <= $2::date
              ${periodFilter('po')}
-           ORDER BY po.delivery_date DESC NULLS LAST`,
+           GROUP BY po.id, po.order_number, k.supplier_name
+           ORDER BY MAX(k.last_received_at) DESC NULLS LAST`,
           periodParams
         );
         return res.rows.map(r => ({

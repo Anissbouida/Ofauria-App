@@ -8,18 +8,24 @@ import { bonSortieApi } from '../../api/bon-sortie.api';
 import { BonSortiePanel } from './BonSortiePanel';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
-import { PRODUCTION_STATUS_LABELS, getRoleCategorySlugs } from '@ofauria/shared';
+import { PRODUCTION_STATUS_LABELS, getRoleCategorySlugs, type ProductionPlanEvent } from '@ofauria/shared';
 import { usePermissions } from '../../context/PermissionsContext';
 import {
-  ArrowLeft, CheckCircle, CheckCircle2, Play, AlertTriangle, Factory, Printer, Filter, Package,
-  User, Phone, Calendar, Banknote, Box, Clock, RotateCcw, XCircle, ChefHat,
-  ClipboardList, Hash, FileText, Loader2, PackageOpen, Layers, Beaker, TrendingUp, Flame,
-  ShoppingCart, Truck, Eye, Lock, RefreshCw, AlertCircle, BookOpen, Scale,
+  ArrowLeft, CheckCircle, CheckCircle2, Play, AlertTriangle, Factory, Printer, Package,
+  User, Calendar, Box, Clock, RotateCcw, XCircle, ChefHat,
+  Hash, FileText, Loader2, PackageOpen, Layers, Beaker, TrendingUp, Flame,
+  Truck, Eye, Lock, RefreshCw, AlertCircle, BookOpen, Scale,
   MessageSquare, Send, Info, Trash2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import { planStatusTag, bonStatusTag } from './status';
+import { buildTicketHtml, buildBsiHtml, buildFicheHtml } from './plan-print';
+import { PlanJournal, PlanLotTraceability, PlanLinkedOrder } from './plan-sections';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { apiErrorMessage } from '../../api/errors';
 import { smartFormatQuantity, formatQty } from '../../utils/units';
 import ProductionLaunchModal from './ProductionLaunchModal';
 import LossDeclarationModal from '../pos/LossDeclarationModal';
@@ -30,20 +36,18 @@ import EtapesPanel from './EtapesPanel';
 import RendementPanel from './RendementPanel';
 import CoutReelPanel from './CoutReelPanel';
 
-const statusConfig: Record<string, { bg: string; text: string; dot: string; gradient: string; label: string; icon: React.ReactNode }> = {
-  draft: { bg: 'bg-gray-100', text: 'text-gray-700', dot: 'bg-gray-400', gradient: 'from-gray-500 to-gray-600', label: 'Brouillon', icon: <FileText size={14} /> },
-  confirmed: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500', gradient: 'from-blue-500 to-blue-600', label: 'Confirme', icon: <CheckCircle size={14} /> },
-  awaiting_ingredients: { bg: 'bg-orange-100', text: 'text-orange-700', dot: 'bg-orange-500', gradient: 'from-orange-500 to-orange-600', label: 'En attente ingredients', icon: <Clock size={14} /> },
-  ready_to_produce: { bg: 'bg-indigo-100', text: 'text-indigo-700', dot: 'bg-indigo-500', gradient: 'from-indigo-500 to-indigo-600', label: 'Pret a produire', icon: <AlertCircle size={14} /> },
-  in_progress: { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500', gradient: 'from-amber-500 to-orange-600', label: 'En cours', icon: <Play size={14} /> },
-  completed: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500', gradient: 'from-emerald-500 to-emerald-600', label: 'Termine', icon: <CheckCircle size={14} /> },
+// Icone du statut du plan (le libelle vient de PRODUCTION_STATUS_LABELS, la couleur de statusTagClass).
+const statusIcon: Record<string, React.ReactNode> = {
+  draft: <FileText size={14} />,
+  confirmed: <CheckCircle size={14} />,
+  awaiting_ingredients: <Clock size={14} />,
+  ready_to_produce: <AlertCircle size={14} />,
+  in_progress: <Play size={14} />,
+  completed: <CheckCircle size={14} />,
 };
 
-const roleConfig: Record<string, { label: string; bg: string; text: string; avatar: string }> = {
-  baker: { label: 'Boulanger', bg: 'bg-amber-100', text: 'text-amber-800', avatar: 'bg-amber-500' },
-  pastry_chef: { label: 'Patissier', bg: 'bg-pink-100', text: 'text-pink-800', avatar: 'bg-pink-500' },
-  viennoiserie: { label: 'Viennoiserie', bg: 'bg-orange-100', text: 'text-orange-800', avatar: 'bg-orange-500' },
-  beldi_sale: { label: 'Beldi & Sale', bg: 'bg-green-100', text: 'text-green-800', avatar: 'bg-green-500' },
+const roleLabel: Record<string, string> = {
+  baker: 'Boulanger', pastry_chef: 'Pâtissier', viennoiserie: 'Viennoiserie', beldi_sale: 'Beldi & Salé',
 };
 
 export default function PlanDetailPage() {
@@ -56,6 +60,7 @@ export default function PlanDetailPage() {
   const [launchTargetItemId, setLaunchTargetItemId] = useState<string | null>(null);
   const [timerStepName, setTimerStepName] = useState<string | null>(null);
   const [printHtml, setPrintHtml] = useState<string | null>(null);
+  const confirmDialog = useConfirm();
   const [printChoiceItem, setPrintChoiceItem] = useState<Record<string, any> | null>(null);
   const { settings } = useSettings();
   const isChef = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
@@ -120,6 +125,12 @@ export default function PlanDetailPage() {
     queryKey: ['bons-sortie', id],
     queryFn: () => bonSortieApi.getByPlan(id!),
     enabled: !!id && !!plan,
+    // Le chef attend le magasinier : on rafraichit tant que le bon n'est pas termine
+    // (avant, aucun polling : il ne voyait pas « pret » sans recharger).
+    refetchInterval: (q) => {
+      const active = ((q.state.data || []) as Record<string, any>[]).find(b => b.status !== 'annule');
+      return active && !['cloture', 'annule'].includes(active.status as string) ? 15000 : false;
+    },
   });
   const activeBon = (bonsSortie as Record<string, any>[]).find((b: Record<string, any>) => b.status !== 'annule') as Record<string, any> | undefined;
 
@@ -144,20 +155,36 @@ export default function PlanDetailPage() {
   //   - 'needs'  : Besoins en ingredients (en haut) + Apercu FEFO (en bas) — info read-only
   //   - 'bsi'    : Gestion inline du bon de sortie (prelevement/validation)
   const [prepSubTab, setPrepSubTab] = useState<'needs' | 'bsi'>('needs');
-  // Auto-bascule sur 'production' quand le plan est deja demarre/termine a l'ouverture
+  // Fin de l'etape Preparation : UNIQUEMENT quand le bon de sortie est cloture
+  // (ingredients transferes et reception confirmee), ou si la production est deja
+  // demarree / terminee. Un plan sans besoin calcule (produit sans recette) n'est
+  // PAS considere comme prepare : il faut corriger la recette et relancer le plan.
+  // Tant que ce n'est pas le cas, l'onglet Production n'est pas affiche du tout.
+  const noIngredientNeeds = !!plan && plan.status !== 'draft'
+    && ((plan.ingredient_needs || []) as unknown[]).length === 0;
+  const bsiCloture = activeBon?.status === 'cloture';
+  const preparationDone = !!plan && (
+    plan.status === 'in_progress' || plan.status === 'completed' || bsiCloture
+  );
+  // Auto-bascule sur 'production' des que la preparation est terminee (ouverture d'un plan
+  // deja demarre, cloture du BSI par le magasinier, plan sans ingredient a prelever).
   useEffect(() => {
-    if (plan && (plan.status === 'in_progress' || plan.status === 'completed')) {
+    if (plan && plan.status !== 'draft' && preparationDone) {
       setActivePlanTab('production');
     }
-  }, [plan?.status]);
+  }, [plan?.status, preparationDone]);
   // Auto-bascule sur le sous-onglet "Bon de sortie" quand un BSI est genere
   // (l'operateur vient de cliquer "Preparer le bon de sortie", on l'emmene directement
   // sur l'interface de prelevement sans changer de page).
+  // Une seule fois par bon (a son apparition) : avant, chaque changement de statut
+  // remonte par le polling ramenait l'utilisateur sur ce sous-onglet pendant qu'il
+  // lisait les besoins.
   useEffect(() => {
     if (activeBon && activeBon.status !== 'cloture' && activeBon.status !== 'annule') {
       setPrepSubTab('bsi');
     }
-  }, [activeBon?.id, activeBon?.status]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBon?.id]);
 
   const prepareBonMutation = useMutation({
     mutationFn: () => bonSortieApi.generate(id!, plan!.store_id as string),
@@ -191,25 +218,30 @@ export default function PlanDetailPage() {
   // Les actions sont les memes que celles du BonSortiePanel mais accessibles globalement.
   const [bannerRejecting, setBannerRejecting] = useState(false);
   const [bannerRejectReason, setBannerRejectReason] = useState('');
+  // Journal des transitions (plan + bons) — mig 299.
+  const { data: planEvents = [] } = useQuery<ProductionPlanEvent[]>({
+    queryKey: ['production-events', id],
+    queryFn: () => productionApi.getEvents(id!),
+    enabled: !!id,
+  });
+
   const acceptReceptionMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async ({ andStart }: { andStart: boolean }) => {
       const bonId = activeBon?.id as string;
       if (!bonId) throw new Error('Aucun bon de sortie actif');
-      // Chaine pret -> prelevement -> verifie -> cloture (verify est idempotent).
-      if (activeBon!.status === 'pret') {
-        await bonSortieApi.startPrelevement(bonId);
-      }
-      if (['pret', 'prelevement'].includes(activeBon!.status as string)) {
-        await bonSortieApi.verify(bonId);
-      }
-      await bonSortieApi.close(bonId);
+      // Un seul appel : le serveur enchaine prelevement -> verifie -> cloture dans
+      // une transaction (plus de bon laisse a mi-chemin avec le stock consomme).
+      await bonSortieApi.acceptReception(bonId);
+      // « Reception et demarrage » : le geste courant du chef, en un clic.
+      if (andStart) await productionApi.start(id!);
+      return andStart;
     },
-    onSuccess: () => {
+    onSuccess: (andStart) => {
       queryClient.invalidateQueries({ queryKey: ['bons-sortie', id] });
       queryClient.invalidateQueries({ queryKey: ['production', id] });
-      notify.success('Reception acceptee — ingredients livres, vous pouvez demarrer la production');
+      notify.success(andStart ? 'Réception acceptée — production démarrée' : 'Réception acceptée — ingrédients livrés, vous pouvez démarrer la production');
     },
-    onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+    onError: (e: any) => notify.error(apiErrorMessage(e, 'Erreur')),
   });
   const rejectReceptionMutation = useMutation({
     mutationFn: (reason: string) => bonSortieApi.chefReject(activeBon!.id as string, reason),
@@ -220,7 +252,7 @@ export default function PlanDetailPage() {
       setBannerRejectReason('');
       notify.success('Reception refusee — le magasinier a ete notifie');
     },
-    onError: (e: any) => notify.error(e?.response?.data?.error?.message || e?.message || 'Erreur'),
+    onError: (e: any) => notify.error(apiErrorMessage(e, 'Erreur')),
   });
 
   const revertMutation = useMutation({
@@ -233,6 +265,33 @@ export default function PlanDetailPage() {
       const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
         || (err as Error)?.message
         || 'Erreur lors de la repasse en brouillon';
+      notify.error(msg);
+    },
+  });
+
+  // Relance d'un plan bloque : remet en production les articles annules ou en
+  // liste d'attente, sans creer de nouveau plan.
+  const relaunchMutation = useMutation({
+    mutationFn: () => productionApi.relaunch(id!),
+    onSuccess: (result: Record<string, any>) => {
+      queryClient.invalidateQueries({ queryKey: ['production', id] });
+      queryClient.invalidateQueries({ queryKey: ['bons-sortie', id] });
+      queryClient.invalidateQueries({ queryKey: ['production-activities', id] });
+      const count = (result?.meta?.relaunchedCount as number) ?? 0;
+      const recomputed = !!result?.meta?.recomputed;
+      const quoi = [
+        count > 0 ? `${count} article(s) remis en production` : null,
+        recomputed ? 'besoins et bon de sortie recalcules' : null,
+      ].filter(Boolean).join(', ');
+      notify.success(`Plan relance — ${quoi}`);
+      (result?.warnings as string[] | undefined)?.forEach((w) =>
+        notify(w, { icon: '⚠️', duration: 6000 })
+      );
+    },
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+        || (err as Error)?.message
+        || 'Erreur lors de la relance du plan';
       notify.error(msg);
     },
   });
@@ -309,451 +368,21 @@ export default function PlanDetailPage() {
     };
   };
 
+  // Impressions : gabarits dans plan-print.ts, la page ne fait que les afficher.
   const printProductionTicket = (item: Record<string, any>) => {
-    if (!plan) return;
-    const prodTs = item.production_timestamp || item.produced_at;
-    const prodDate = prodTs ? new Date(prodTs as string) : new Date(plan.plan_date);
-    const sld = item.shelf_life_days as number;
-    const dlcDate = item.expires_at ? new Date(item.expires_at as string) : sld ? new Date(prodDate.getTime() + sld * 86400000) : null;
-    const prodBy = item.produced_by_first_name ? `${item.produced_by_first_name} ${item.produced_by_last_name}` : '—';
-    const planDate = new Date(plan.plan_date as string);
-    const lotNumber = (item.lot_number as string) || `LOT-${format(planDate, 'yyMMdd')}-${String(1).padStart(3, '0')}`;
-    // Audit P1.6 : libelle derive de sale_type (voir buildPrintPayload).
-    const saleType = (item.sale_type as string) || 'jour';
-    const cycleVie =
-      saleType === 'dlv' ? (sld ? `DLC ${sld}j` : 'Multi-jours')
-      : saleType === 'commande' ? 'Sur commande'
-      : 'Vente du jour';
-    const now = format(new Date(), 'dd/MM/yyyy HH:mm');
-
-    setPrintHtml(`<!DOCTYPE html><html><head><title>Ticket - ${item.product_name}</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: Arial, sans-serif; padding: 15px; color: #333; font-size: 12px; }
-  .ticket { border: 2px solid #333; padding: 12px; border-radius: 6px; max-width: 80mm; margin: 0 auto; }
-  .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 10px; }
-  .header h1 { font-size: 14px; margin-bottom: 2px; }
-  .header h2 { font-size: 11px; font-weight: normal; color: #666; }
-  .header .lot { font-size: 13px; font-weight: bold; margin-top: 6px; letter-spacing: 0.5px; background: #f5f5f5; padding: 4px 8px; border-radius: 4px; }
-  .product-name { text-align: center; font-size: 16px; font-weight: bold; padding: 10px 0; border-bottom: 1px dashed #ccc; margin-bottom: 8px; text-transform: uppercase; }
-  .row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dotted #eee; }
-  .row .label { font-size: 11px; color: #666; text-transform: uppercase; }
-  .row .value { font-weight: bold; font-size: 12px; }
-  .cycle { text-align: center; margin-top: 10px; padding: 6px; border: 1px solid #333; border-radius: 4px; font-weight: bold; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .cycle.dlv { background: #f0fdf4; color: #15803d; border-color: #15803d; }
-  .cycle.recyclable { background: #ecfeff; color: #0e7490; border-color: #0e7490; }
-  .cycle.vdj { background: #fff7ed; color: #c2410c; border-color: #c2410c; }
-  .barcode { text-align: center; margin-top: 10px; font-family: 'Courier New', monospace; font-size: 14px; letter-spacing: 2px; font-weight: bold; }
-  .footer { text-align: center; margin-top: 10px; font-size: 9px; color: #999; border-top: 1px solid #eee; padding-top: 6px; }
-</style></head><body>
-<div class="ticket">
-  <div class="header">
-    <h1>${settings.companyName}</h1>
-    <h2>${settings.subtitle || ''}</h2>
-    <div class="lot">${lotNumber}</div>
-  </div>
-
-  <div class="product-name">${item.product_name}</div>
-
-  <div class="row">
-    <span class="label">Quantite produite</span>
-    <span class="value">${item.actual_quantity ?? item.planned_quantity}</span>
-  </div>
-  <div class="row">
-    <span class="label">Date de production</span>
-    <span class="value">${format(prodDate, 'dd/MM/yyyy HH:mm')}</span>
-  </div>
-  <div class="row">
-    <span class="label">Produit par</span>
-    <span class="value">${prodBy}</span>
-  </div>
-  <div class="row">
-    <span class="label">Date d'expiration</span>
-    <span class="value">${dlcDate ? format(dlcDate, 'dd/MM/yyyy') : 'Vente du jour'}</span>
-  </div>
-  <div class="row">
-    <span class="label">N° Plan</span>
-    <span class="value">${plan.is_semi_finished_plan && (plan.dependency_of as Record<string, any>[])?.length > 0
-      ? ((plan.dependency_of as Record<string, any>[])[0].parent_short_id as string || '').toUpperCase()
-      : (plan.id as string).slice(0, 8).toUpperCase()}</span>
-  </div>
-  <div class="row">
-    <span class="label">Role</span>
-    <span class="value">${plan.target_role === 'baker' ? 'Boulanger' : plan.target_role === 'pastry_chef' ? 'Patissier' : plan.target_role === 'viennoiserie' ? 'Viennoiserie' : plan.target_role === 'beldi_sale' ? 'Beldi & Sale' : '—'}</span>
-  </div>
-
-  <div class="cycle ${saleType === 'dlv' ? 'dlv' : saleType === 'commande' ? 'recyclable' : 'vdj'}">
-    ${cycleVie}
-  </div>
-
-  <div class="barcode">${lotNumber}</div>
-
-  <div class="footer">
-    Imprime le ${now}<br/>
-    Conservez ce ticket pour la tracabilite
-  </div>
-</div>
-</body></html>`);
+    if (plan) setPrintHtml(buildTicketHtml(plan, item, settings));
   };
-
-
   const printBonSortieIngredients = () => {
-    if (!plan) return;
-    const dateStr = format(new Date(plan.plan_date as string), 'dd/MM/yyyy');
-    const now = format(new Date(), 'dd/MM/yyyy HH:mm');
-    const planDate = new Date(plan.plan_date as string);
-    const bsiDateStr = `${String(planDate.getFullYear() % 100).padStart(2, '0')}${String(planDate.getMonth() + 1).padStart(2, '0')}${String(planDate.getDate()).padStart(2, '0')}`;
-    const hour = new Date().getHours();
-    const shift = hour < 14 ? 'Matin' : 'Apres-midi';
-
-    // Build ingredient rows — l'allocation par lot (FEFO) est maintenant geree
-    // dans le BSI / module Warehouse. Ici on imprime juste la liste des besoins
-    // bruts du plan, sans info de lot.
-    const needsForPrint = needs;
-
-    type BsiRow = {
-      ingredientName: string;
-      neededQty: number;
-      unit: string;
-      lotNumber: string;
-      expirationDate: string;
-      daysUntilExpiry: number | null;
-      urgency: 'urgent' | 'priority' | 'normal';
-    };
-
-    const rows: BsiRow[] = [];
-
-    for (const need of needsForPrint) {
-      const ingredientName = need.ingredient_name as string;
-      const neededQty = parseFloat(need.needed_quantity as string);
-      const unit = (need.unit as string) || '';
-      {
-        rows.push({
-          ingredientName,
-          neededQty,
-          unit,
-          lotNumber: '—',
-          expirationDate: '—',
-          daysUntilExpiry: null,
-          urgency: 'normal',
-        });
-      }
-    }
-
-    // Generate BSI number
-    const bsiNumber = `BSI-${bsiDateStr}-${String(1).padStart(3, '0')}`;
-
-    const roleLabel = plan.target_role === 'baker' ? 'Boulanger' : plan.target_role === 'pastry_chef' ? 'Patissier' : plan.target_role === 'viennoiserie' ? 'Viennoiserie' : plan.target_role === 'beldi_sale' ? 'Beldi & Sale' : (plan.created_by_name || '—');
-
-    setPrintHtml(`<!DOCTYPE html><html><head><title>BSI - ${dateStr}</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: Arial, sans-serif; padding: 25px; color: #333; font-size: 12px; }
-  .header { text-align: center; border-bottom: 3px double #333; padding-bottom: 15px; margin-bottom: 20px; }
-  .header h1 { font-size: 20px; margin-bottom: 3px; }
-  .header h2 { font-size: 14px; font-weight: normal; color: #666; }
-  .header .doc-title { font-size: 16px; font-weight: bold; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; color: #1a1a1a; }
-  .header .doc-number { font-size: 13px; font-weight: bold; margin-top: 4px; font-family: 'Courier New', monospace; color: #444; }
-  .meta { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 11px; border: 1px solid #ddd; border-radius: 6px; padding: 12px 16px; background: #fafafa; }
-  .meta div { line-height: 1.8; }
-  .meta strong { color: #333; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; table-layout: fixed; }
-  thead th { background: #2d2d2d; color: white; text-align: left; padding: 8px 10px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
-  thead th:first-child { border-radius: 4px 0 0 0; }
-  thead th:last-child { border-radius: 0 4px 0 0; }
-  tbody td { padding: 7px 10px; border-bottom: 1px solid #e5e5e5; font-size: 11px; }
-  tbody tr:nth-child(even) { background: #f9f9f9; }
-  .text-right { text-align: right; }
-  .text-center { text-align: center; }
-  .bold { font-weight: bold; }
-  .row-urgent { background: #fff5f5 !important; }
-  .row-urgent td { color: #c53030; font-weight: 600; }
-  .row-priority { background: #fffaf0 !important; }
-  .row-priority td { color: #c05621; }
-  .urgency-tag { font-size: 9px; font-weight: bold; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; display: inline-block; margin-left: 6px; }
-  .urgency-tag.urgent { background: #fed7d7; color: #c53030; }
-  .urgency-tag.priority { background: #feebc8; color: #c05621; }
-  .checkbox { width: 16px; height: 16px; border: 2px solid #666; display: inline-block; border-radius: 2px; }
-  .lot-badge { font-family: 'Courier New', monospace; font-size: 10px; background: #edf2f7; padding: 2px 6px; border-radius: 3px; color: #2d3748; }
-  .signatures { display: flex; justify-content: space-between; margin-top: 30px; padding-top: 15px; }
-  .sig-block { text-align: center; width: 220px; }
-  .sig-block .title { font-size: 11px; font-weight: bold; color: #333; margin-bottom: 5px; text-transform: uppercase; }
-  .sig-block .line { border-bottom: 1px solid #333; height: 45px; margin-bottom: 5px; }
-  .sig-block .sub { font-size: 10px; color: #666; }
-  .observations { margin-top: 20px; border: 1px solid #ddd; border-radius: 6px; padding: 12px; }
-  .observations .title { font-size: 11px; font-weight: bold; text-transform: uppercase; color: #666; margin-bottom: 8px; }
-  .observations .lines { min-height: 60px; border-top: 1px dotted #ccc; padding-top: 8px; }
-  .observations .line-row { border-bottom: 1px dotted #ddd; height: 22px; }
-  .footer { text-align: center; margin-top: 25px; font-size: 9px; color: #999; border-top: 1px dashed #ccc; padding-top: 8px; }
-  .print-btn { position: fixed; top: 10px; right: 10px; background: #2d8a4e; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; z-index: 10; }
-  .print-btn:hover { background: #276e3e; }
-  .back-btn { position: fixed; top: 10px; left: 10px; background: #6b7280; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; z-index: 10; }
-  @media print { .print-btn, .back-btn { display: none; } body { padding: 15px; } }
-</style></head><body>
-
-<div class="header">
-  <h1>${settings.companyName}</h1>
-  <h2>${settings.subtitle || ''}</h2>
-  <div class="doc-title">Bon de Sortie Ingredients</div>
-  <div class="doc-number">${bsiNumber}</div>
-</div>
-
-<div class="meta">
-  <div>
-    <strong>Date de production :</strong> ${dateStr}<br/>
-    <strong>Shift :</strong> ${shift}<br/>
-    <strong>N\u00b0 Plan :</strong> ${getPlanLotPrefix()}
-  </div>
-  <div style="text-align:right">
-    <strong>Chef de production :</strong> ${roleLabel}<br/>
-    <strong>Magasinier :</strong> ___________________<br/>
-    <strong>Emis le :</strong> ${now}
-  </div>
-</div>
-
-<table>
-  <thead>
-    <tr>
-      <th style="width:28px">#</th>
-      <th style="width:200px">Ingredient</th>
-      <th class="text-right" style="width:75px">Qte requise</th>
-      <th class="text-center" style="width:50px">Unite</th>
-      <th style="width:140px">Lot a utiliser</th>
-      <th class="text-center" style="width:95px">Date d'exp.</th>
-      <th class="text-center" style="width:45px">Servi</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${rows.map((row, idx) => {
-      const rowClass = row.urgency === 'urgent' ? 'row-urgent' : row.urgency === 'priority' ? 'row-priority' : '';
-      const urgencyTag = row.urgency === 'urgent'
-        ? '<span class="urgency-tag urgent">URGENT — utiliser en priorite</span>'
-        : row.urgency === 'priority'
-          ? '<span class="urgency-tag priority">Prioritaire</span>'
-          : '';
-      return `
-      <tr class="${rowClass}">
-        <td class="text-center bold">${idx + 1}</td>
-        <td>${row.ingredientName}${urgencyTag}</td>
-        <td class="text-right bold">${row.neededQty.toFixed(2)}</td>
-        <td class="text-center">${row.unit}</td>
-        <td><span class="lot-badge">${row.lotNumber}</span></td>
-        <td class="text-center">${row.expirationDate}${row.daysUntilExpiry !== null && row.daysUntilExpiry <= 7 ? ' <small>(' + row.daysUntilExpiry + 'j)</small>' : ''}</td>
-        <td class="text-center"><span class="checkbox"></span></td>
-      </tr>`;
-    }).join('')}
-  </tbody>
-</table>
-
-<div class="observations">
-  <div class="title">Observations / Ecarts / Substitutions</div>
-  <div class="lines">
-    <div class="line-row"></div>
-    <div class="line-row"></div>
-    <div class="line-row"></div>
-  </div>
-</div>
-
-<div class="signatures">
-  <div class="sig-block">
-    <div class="title">Chef de production</div>
-    <div class="line"></div>
-    <div class="sub">Nom : ${roleLabel}<br/>Signature</div>
-  </div>
-  <div class="sig-block">
-    <div class="title">Magasinier</div>
-    <div class="line"></div>
-    <div class="sub">Nom : ___________________<br/>Signature & date de remise</div>
-  </div>
-</div>
-
-<div class="footer">
-  ${settings.companyName} — Bon de Sortie Ingredients — ${bsiNumber} — Imprime le ${now}
-</div>
-
-</body></html>`);
+    if (plan) setPrintHtml(buildBsiHtml(plan, needs, settings, getPlanLotPrefix()));
   };
-
   const printFicheProduction = (planData?: Record<string, any>) => {
     const p = planData || plan;
     if (!p) return;
-    const allPlanNeeds = (p.ingredient_needs || []) as Record<string, any>[];
-    const filteredPrintNeeds = allowedSlugs
-      ? allPlanNeeds.filter((n) => allowedSlugs.includes(n.category_slug as string))
-      : allPlanNeeds;
-    const printNeedsMap = new Map<string, Record<string, any>>();
-    for (const n of filteredPrintNeeds) {
-      const ingId = n.ingredient_id as string;
-      const existing = printNeedsMap.get(ingId);
-      if (existing) {
-        existing.needed_quantity = (parseFloat(existing.needed_quantity as string) + parseFloat(n.needed_quantity as string)).toString();
-      } else {
-        printNeedsMap.set(ingId, { ...n });
-      }
-    }
-    const ingredientNeeds = [...printNeedsMap.values()];
     const allPrintItems = (p.items || []) as Record<string, any>[];
     const planItems = allowedSlugs
       ? allPrintItems.filter((it) => allowedSlugs.includes(it.category_slug as string))
       : allPrintItems;
-    const dateStr = format(new Date(p.plan_date as string), 'dd/MM/yyyy');
-    const now = format(new Date(), 'dd/MM/yyyy HH:mm');
-
-    let totalPlanned = 0, totalProduced = 0;
-    planItems.forEach((it) => {
-      totalPlanned += (it.planned_quantity as number) || 0;
-      totalProduced += (it.actual_quantity as number) || 0;
-    });
-    const globalRate = totalPlanned > 0 ? Math.round((totalProduced / totalPlanned) * 100) : 0;
-
-    setPrintHtml(`<!DOCTYPE html><html><head><title>Fiche de production - ${dateStr}</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: Arial, sans-serif; padding: 20px; color: #333; font-size: 13px; }
-  .header { text-align: center; border-bottom: 3px double #333; padding-bottom: 15px; margin-bottom: 20px; }
-  .header h1 { font-size: 22px; margin-bottom: 4px; }
-  .header h2 { font-size: 16px; font-weight: normal; color: #666; }
-  .header .subtitle { font-size: 11px; color: #999; margin-top: 4px; }
-  .info { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 12px; }
-  .info div { line-height: 1.8; }
-  .section { margin-bottom: 20px; }
-  .section h3 { font-size: 14px; background: #f5f5f5; padding: 6px 10px; margin-bottom: 8px; border-left: 4px solid #2f855a; }
-  table { width: 100%; border-collapse: collapse; }
-  th { background: #f5f5f5; text-align: left; padding: 6px 10px; font-size: 11px; text-transform: uppercase; color: #666; border-bottom: 2px solid #ddd; }
-  td { padding: 6px 10px; border-bottom: 1px solid #eee; }
-  .text-right { text-align: right; }
-  .text-center { text-align: center; }
-  .bold { font-weight: bold; }
-  .ok { color: #2f855a; font-weight: bold; }
-  .warning { color: #c53030; font-weight: bold; }
-  .over { color: #2b6cb0; font-weight: bold; }
-  .summary-box { display: flex; gap: 20px; margin-bottom: 20px; }
-  .summary-card { flex: 1; border: 1px solid #ddd; border-radius: 8px; padding: 12px; text-align: center; }
-  .summary-card .value { font-size: 24px; font-weight: bold; margin: 4px 0; }
-  .summary-card .label { font-size: 11px; color: #666; text-transform: uppercase; }
-  .summary-card.green { border-color: #c6f6d5; background: #f0fff4; }
-  .summary-card.green .value { color: #2f855a; }
-  .summary-card.amber { border-color: #fefcbf; background: #fffff0; }
-  .summary-card.amber .value { color: #b7791f; }
-  .signatures { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 15px; border-top: 1px solid #ddd; }
-  .sig-block { text-align: center; width: 200px; }
-  .sig-block .line { border-bottom: 1px solid #333; height: 50px; margin-bottom: 5px; }
-  .sig-block p { font-size: 11px; color: #666; }
-  .footer { text-align: center; margin-top: 30px; font-size: 10px; color: #999; border-top: 1px dashed #ccc; padding-top: 10px; }
-  .rate-bar { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-top: 4px; }
-  .rate-bar .fill { height: 100%; border-radius: 4px; }
-  @media print { body { padding: 10px; } .print-btn, .back-btn { display: none; } }
-  .print-btn { position: fixed; top: 10px; right: 10px; background: #2f855a; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; }
-  .back-btn { position: fixed; top: 10px; left: 10px; background: #6b7280; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; }
-</style></head><body>
-
-<div class="header">
-  <h1>${settings.companyName}</h1>
-  <h2>${settings.subtitle}</h2>
-  <div class="subtitle">Fiche de production</div>
-</div>
-
-<div class="info">
-  <div>
-    <strong>N\u00b0 Lot :</strong> ${getPlanLotPrefix(p)}<br/>
-    <strong>Date de production :</strong> ${dateStr}<br/>
-    <strong>Type :</strong> ${p.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
-  </div>
-  <div style="text-align:right">
-    <strong>Chef de production :</strong> ${p.created_by_name || '-'}<br/>
-    <strong>Date d'impression :</strong> ${now}<br/>
-    <strong>Statut :</strong> Terminee
-  </div>
-</div>
-
-<div class="summary-box">
-  <div class="summary-card">
-    <div class="label">Produits planifies</div>
-    <div class="value">${totalPlanned}</div>
-  </div>
-  <div class="summary-card green">
-    <div class="label">Produits realises</div>
-    <div class="value">${totalProduced}</div>
-  </div>
-  <div class="summary-card ${globalRate >= 100 ? 'green' : 'amber'}">
-    <div class="label">Taux de realisation</div>
-    <div class="value">${globalRate}%</div>
-  </div>
-</div>
-
-<div class="section">
-  <h3>Detail de la production — Tracabilite</h3>
-  <table>
-    <thead><tr>
-      <th>Produit</th>
-      <th class="text-right">Planifie</th>
-      <th class="text-right">Produit</th>
-      <th class="text-right">Ecart</th>
-      <th class="text-center">Produit par</th>
-      <th class="text-center">Date production</th>
-      <th class="text-center">Date expiration</th>
-      <th class="text-center">Statut</th>
-    </tr></thead>
-    <tbody>
-      ${planItems.map((it: Record<string, any>) => {
-        const planned = (it.planned_quantity as number) || 0;
-        const actual = (it.actual_quantity as number) || 0;
-        const diff = actual - planned;
-        const statusClass = actual >= planned ? 'ok' : 'warning';
-        const statusLabel = actual >= planned ? 'Complet' : actual > 0 ? 'Partiel' : 'Non produit';
-        const prodTs = it.production_timestamp || it.produced_at;
-        const prodDateStr = prodTs ? format(new Date(prodTs as string), 'dd/MM/yyyy HH:mm', { locale: fr }) : '-';
-        const producedByStr = it.produced_by_first_name ? `${it.produced_by_first_name} ${it.produced_by_last_name}` : '-';
-        const slDays = it.shelf_life_days as number;
-        const prodD = prodTs ? new Date(prodTs as string) : new Date(p.plan_date);
-        const dlcD = it.expires_at ? new Date(it.expires_at as string) : slDays ? new Date(prodD.getTime() + slDays * 86400000) : null;
-        const dlcStr = dlcD ? format(dlcD, 'dd/MM/yyyy', { locale: fr }) : '-';
-        return `
-        <tr>
-          <td class="bold">${it.product_name}${(it.is_reexposable as boolean) === false ? ' <span style="color:#c05621;font-size:10px">(Non reexp.)</span>' : ''}</td>
-          <td class="text-right">${planned}</td>
-          <td class="text-right bold">${actual}</td>
-          <td class="text-right ${diff > 0 ? 'over' : diff < 0 ? 'warning' : ''}">${diff > 0 ? '+' : ''}${diff}</td>
-          <td class="text-center" style="font-size:11px">${producedByStr}</td>
-          <td class="text-center" style="font-size:11px">${prodDateStr}</td>
-          <td class="text-center" style="font-size:11px">${dlcStr}</td>
-          <td class="text-center"><span class="${statusClass}">${statusLabel}</span></td>
-        </tr>`;
-      }).join('')}
-      <tr style="border-top:2px solid #333; font-weight:bold; background:#f7fafc">
-        <td>TOTAL</td>
-        <td class="text-right">${totalPlanned}</td>
-        <td class="text-right">${totalProduced}</td>
-        <td class="text-right ${totalProduced - totalPlanned >= 0 ? 'ok' : 'warning'}">${totalProduced - totalPlanned > 0 ? '+' : ''}${totalProduced - totalPlanned}</td>
-        <td colspan="3" class="text-center">Taux: ${globalRate}%</td>
-        <td></td>
-      </tr>
-    </tbody>
-  </table>
-</div>
-
-${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10px">${p.notes}</p></div>` : ''}
-
-<div class="signatures">
-  <div class="sig-block">
-    <div class="line"></div>
-    <p><strong>Chef de production</strong><br/>Signature</p>
-  </div>
-  <div class="sig-block">
-    <div class="line"></div>
-    <p><strong>Responsable qualite</strong><br/>Signature</p>
-  </div>
-  <div class="sig-block">
-    <div class="line"></div>
-    <p><strong>Direction</strong><br/>Visa</p>
-  </div>
-</div>
-
-<div class="footer">
-  ${settings.companyName} - Fiche de production - Imprime le ${now}
-</div>
-
-</body></html>`);
+    setPrintHtml(buildFicheHtml(p, planItems, settings, getPlanLotPrefix(p)));
   };
 
   const startMutation = useMutation({
@@ -790,7 +419,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       }
     },
     onError: (error: any) => {
-      notify.error(error?.response?.data?.error?.message || 'Erreur lors de la restauration');
+      notify.error(apiErrorMessage(error, 'Erreur lors de la restauration'));
     },
   });
 
@@ -801,7 +430,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       notify.success('Article(s) annule(s)');
     },
     onError: (error: any) => {
-      notify.error(error?.response?.data?.error?.message || 'Erreur lors de l\'annulation');
+      notify.error(apiErrorMessage(error, 'Erreur lors de l\'annulation'));
     },
   });
 
@@ -818,22 +447,12 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       setRestockNeed(null);
     },
     onError: (error: any) => {
-      notify.error(error?.response?.data?.error?.message || 'Erreur lors de la demande');
+      notify.error(apiErrorMessage(error, 'Erreur lors de la demande'));
     },
   });
 
   // ═══ Bon de sortie mutations ═══
   // Start item: pending → in_progress
-  const handleStartItem = async (itemId: string) => {
-    try {
-      await productionApi.startItems(id!, [itemId]);
-      await queryClient.invalidateQueries({ queryKey: ['production', id] });
-      notify.success('Production lancee');
-    } catch (error: any) {
-      notify.error(error?.response?.data?.error?.message || 'Erreur lors du lancement');
-    }
-  };
-
   const { getModuleConfig } = usePermissions();
   const prodConfig = getModuleConfig('production');
   const userRole = user?.role || '';
@@ -909,33 +528,34 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
   const needs = [...needsMap.values()];
   const insufficientNeeds = needs.filter((n) => parseFloat(n.available_quantity as string) < parseFloat(n.needed_quantity as string));
 
-  const sc = statusConfig[plan.status] || statusConfig.draft;
-  const rc = roleConfig[plan.target_role as string];
+  const planIcon = statusIcon[plan.status] || statusIcon.draft;
+  const rc = roleLabel[plan.target_role as string] ? { label: roleLabel[plan.target_role as string] } : null;
 
   // Progress stats
   const producedCount = items.filter((it: Record<string, any>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received').length;
-  const inProgressCount = items.filter((it: Record<string, any>) => it.status === 'in_progress').length;
   const cancelledCount = items.filter((it: Record<string, any>) => it.status === 'cancelled').length;
   const waitingCount = items.filter((it: Record<string, any>) => it.waiting_status === 'waiting').length;
-  const pendingCount = items.filter((it: Record<string, any>) => it.status === 'pending' && it.waiting_status !== 'waiting').length;
   const totalActive = items.length - cancelledCount;
   const progressPct = totalActive > 0 ? Math.round((producedCount / totalActive) * 100) : 0;
-
-  // Calcul inverse / frigo stats
-  const frigoItems = items.filter((it: Record<string, any>) => it.nb_contenants);
-  const totalFrigoIn = frigoItems.reduce((s: number, it: Record<string, any>) => s + ((it.qty_from_frigo as number) || 0), 0);
-  const totalSurplus = frigoItems.reduce((s: number, it: Record<string, any>) => s + ((it.surplus_frigo as number) || 0), 0);
-  const totalContenants = frigoItems.reduce((s: number, it: Record<string, any>) => s + ((it.nb_contenants as number) || 0), 0);
 
   // Gating des onglets :
   //   - Plan semi-fini : tout est affiche (UI dediee, pas de tabs)
   //   - Plan en 'draft' : tout est affiche (pas encore de workflow BSI/production)
   //   - Sinon : sections filtrees par activePlanTab
-  const showPrep = isSemiFini || plan.status === 'draft' || activePlanTab === 'preparation';
-  const showProd = isSemiFini || plan.status === 'draft' || activePlanTab === 'production';
+  //   - L'onglet Production n'existe que si preparationDone : on force l'onglet actif a
+  //     'preparation' tant que ce n'est pas le cas (securite si l'etat change, ex. relance).
+  const hasTabs = !isSemiFini && plan.status !== 'draft';
+  const productionTabVisible = hasTabs && preparationDone;
+  const effectiveTab: 'preparation' | 'production' = productionTabVisible ? activePlanTab : 'preparation';
+  const showPrep = !hasTabs || effectiveTab === 'preparation';
+  const showProd = !hasTabs || effectiveTab === 'production';
   // Sous-gating onglet Preparation :
-  const showPrepNeeds = showPrep && (isSemiFini || plan.status === 'draft' || prepSubTab === 'needs');
-  const showPrepBsi = showPrep && (isSemiFini || plan.status === 'draft' || prepSubTab === 'bsi');
+  const showPrepNeeds = showPrep && (!hasTabs || prepSubTab === 'needs');
+  const showPrepBsi = showPrep && (!hasTabs || prepSubTab === 'bsi');
+  // Aucun BSI generable : aucun besoin ingredient (produits sans recette) ou generate()
+  // a repondu "rien a prelever". Ne debloque PAS la production : la preparation reste
+  // bloquee tant que les besoins ne sont pas recalcules (recette + relance du plan).
+  const bonNotNeeded = !isSemiFini && plan.status !== 'draft' && !activeBon && (noIngredientNeeds || !!bonNotNeededReason);
 
   // Bloc Besoins en ingredients extrait en JSX pour pouvoir le placer au-dessus de
   // l'apercu FEFO (demande UX : besoins en haut, FEFO en bas dans le sous-onglet "Besoins").
@@ -1068,106 +688,335 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
     const fulfilledCount = deps.filter((d) => d.status === 'fulfilled').length;
     const totalDeps = deps.length;
     const allFulfilled = fulfilledCount === totalDeps;
-    const progressPct = totalDeps > 0 ? Math.round((fulfilledCount / totalDeps) * 100) : 0;
     return (
-      <div className={`bg-white rounded-xl border ${allFulfilled ? 'border-green-200' : 'border-amber-200'} p-4`}>
-        <div className="flex items-center gap-2 mb-3">
-          <Beaker size={18} className={allFulfilled ? 'text-green-600' : 'text-amber-600'} />
-          <h3 className="font-bold text-gray-800 text-sm">Semi-finis requis</h3>
-          <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
-            allFulfilled ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-          }`}>
-            {fulfilledCount}/{totalDeps}
+      <div className="odoo-section">
+        <div className="odoo-section-header">
+          <Beaker size={12} /> Semi-finis requis
+          <span className={`odoo-tag ${allFulfilled ? 'odoo-tag-green' : 'odoo-tag-yellow'}`} style={{ marginLeft: 4 }}>
+            {fulfilledCount} / {totalDeps}
           </span>
           {!allFulfilled && (
-            <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ml-auto">
-              <Lock size={10} /> BLOQUE
+            <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 'auto' }}>
+              <Lock size={10} /> Production bloquée
             </span>
           )}
         </div>
-        <div className="w-full h-2 bg-gray-100 rounded-full mb-3 overflow-hidden">
-          <div className={`h-full rounded-full transition-all duration-500 ${allFulfilled ? 'bg-green-500' : 'bg-amber-500'}`}
-            style={{ width: `${progressPct}%` }} />
-        </div>
-        <div className="space-y-2">
-          {deps.map((dep: Record<string, any>) => {
-            const status = dep.status as string;
-            const isFulfilled = status === 'fulfilled';
-            const depPlanId = dep.dependency_plan_id as string | null;
-            const depPlanStatus = dep.dep_plan_status as string | null;
-            const needed = parseFloat(dep.quantity_needed as string);
-            const fromStock = parseFloat(dep.quantity_from_stock as string);
-            const toProduce = parseFloat(dep.quantity_to_produce as string);
-            const itemPct = needed > 0 ? Math.round(((isFulfilled ? needed : fromStock) / needed) * 100) : 0;
-            return (
-              <div key={dep.id as string}
-                className={`px-4 py-3 rounded-lg border ${
-                  isFulfilled ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
-                }`}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-2">
-                    {isFulfilled
-                      ? <CheckCircle size={16} className="text-green-500" />
-                      : <Clock size={16} className="text-amber-500 animate-pulse" />}
-                    <span className="font-semibold text-gray-800 text-sm">{dep.sub_recipe_name as string}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {!isFulfilled && depPlanStatus && (
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                        depPlanStatus === 'in_progress' ? 'bg-blue-100 text-blue-700' :
-                        depPlanStatus === 'confirmed' ? 'bg-indigo-100 text-indigo-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {depPlanStatus === 'in_progress' ? 'En production' : depPlanStatus === 'confirmed' ? 'Confirme' : depPlanStatus}
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead>
+              <tr>
+                <th style={{ width: 24 }}></th>
+                <th>Semi-fini</th>
+                <th style={{ textAlign: 'right' }}>Besoin</th>
+                <th style={{ textAlign: 'right' }}>En stock</th>
+                <th style={{ textAlign: 'right' }}>À produire</th>
+                <th>Avancement</th>
+                <th>Plan de production</th>
+                <th>Statut</th>
+                <th style={{ width: 80 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {deps.map((dep: Record<string, any>) => {
+                const status = dep.status as string;
+                const isFulfilled = status === 'fulfilled';
+                const depPlanId = dep.dependency_plan_id as string | null;
+                const depPlanStatus = dep.dep_plan_status as string | null;
+                const needed = parseFloat(dep.quantity_needed as string);
+                const fromStock = parseFloat(dep.quantity_from_stock as string);
+                const toProduce = parseFloat(dep.quantity_to_produce as string);
+                const itemPct = needed > 0 ? Math.round(((isFulfilled ? needed : fromStock) / needed) * 100) : 0;
+                const depPlanTag = depPlanStatus ? planStatusTag(depPlanStatus) : null;
+                return (
+                  <tr key={dep.id as string} style={{ cursor: 'default' }}>
+                    <td><span className={`odoo-status-dot ${isFulfilled ? 'ok' : 'warning'}`} /></td>
+                    <td style={{ fontWeight: 600 }}>{dep.sub_recipe_name as string}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{needed.toFixed(1)}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: fromStock > 0 ? '#155724' : 'var(--theme-text-muted)' }}>
+                      {fromStock > 0 ? fromStock.toFixed(1) : '—'}
+                    </td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: toProduce > 0 ? '#b85d1a' : 'var(--theme-text-muted)' }}>
+                      {toProduce > 0 ? toProduce.toFixed(1) : '—'}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ width: 80, height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${itemPct}%`, backgroundColor: isFulfilled ? '#155724' : 'var(--theme-accent)' }} />
+                        </div>
+                        <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{itemPct}%</span>
+                      </div>
+                    </td>
+                    <td>{depPlanTag ? <span className={`odoo-tag ${depPlanTag.cls}`}>{depPlanTag.label}</span> : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
+                    <td>
+                      <span className={`odoo-tag ${isFulfilled ? 'odoo-tag-green' : 'odoo-tag-yellow'}`}>
+                        {isFulfilled ? <CheckCircle size={10} /> : <Clock size={10} />}
+                        {isFulfilled ? 'Disponible' : 'En attente'}
                       </span>
-                    )}
-                    <span className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                      isFulfilled ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
-                    }`}>
-                      {isFulfilled ? 'Disponible' : 'En attente'}
-                    </span>
-                    {depPlanId && (
-                      <button onClick={() => navigate(`/production/${depPlanId}`)}
-                        className="text-xs text-blue-600 hover:text-blue-800 underline font-medium">
-                        Voir
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="w-full h-1.5 bg-gray-100 rounded-full mb-1 overflow-hidden">
-                  <div className={`h-full rounded-full transition-all ${isFulfilled ? 'bg-green-400' : 'bg-amber-400'}`}
-                    style={{ width: `${itemPct}%` }} />
-                </div>
-                <div className="text-xs text-gray-500 flex gap-3">
-                  <span>Besoin: <strong>{needed.toFixed(1)}</strong></span>
-                  {fromStock > 0 && <span className="text-green-600">{fromStock.toFixed(1)} en stock</span>}
-                  {toProduce > 0 && <span className="text-amber-600">{toProduce.toFixed(1)} a produire</span>}
-                </div>
-              </div>
-            );
-          })}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      {depPlanId && (
+                        <button type="button" onClick={() => navigate(`/production/${depPlanId}`)} className="odoo-btn-secondary"
+                          style={{ padding: '2px 8px', fontSize: '0.6875rem' }}>
+                          <Eye size={11} /> Voir
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
         {!allFulfilled && (
-          <div className="mt-3 flex items-center gap-2 text-xs text-red-700 bg-red-50 rounded-lg px-3 py-2 border border-red-200">
-            <AlertTriangle size={14} />
-            <span>La production ne peut pas demarrer tant que les semi-finis sont en attente.</span>
+          <div className="odoo-alert danger" style={{ borderBottom: 'none', borderTop: '1px solid #f5c6cb' }}>
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+            <span>La production ne peut pas démarrer tant que les semi-finis sont en attente.</span>
           </div>
         )}
       </div>
     );
   })() : null;
 
+  // Tableau des articles du plan — partage entre le cas "plan de reassort" et le cas
+  // simple. Une ligne par article : quantites, lot, dates, cycle de vie, statut, action.
+  const itemsTable = items.length > 0 ? (
+    <div className="odoo-section">
+      <div className="odoo-section-header">
+        <Layers size={12} /> Articles du plan
+        <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>{items.length} article(s)</span>
+        {plan.status === 'in_progress' && totalActive > 0 && (
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8, textTransform: 'none', letterSpacing: 0 }}>
+            <div style={{ width: 100, height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${progressPct}%`, backgroundColor: progressPct >= 100 ? '#155724' : 'var(--theme-accent)', transition: 'width 0.3s' }} />
+            </div>
+            <span>{producedCount} / {totalActive}</span>
+          </span>
+        )}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="odoo-table">
+          <thead>
+            <tr>
+              <th style={{ width: 24 }}></th>
+              <th>Produit</th>
+              <th style={{ textAlign: 'right' }}>Qté</th>
+              <th style={{ textAlign: 'right' }}>Fait</th>
+              <th>N° lot</th>
+              <th>Date de production</th>
+              <th>Produit par</th>
+              <th>DLC</th>
+              <th>Cycle de vie</th>
+              <th>Statut</th>
+              <th style={{ width: 110 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item: Record<string, any>, idx: number) => {
+              const itemStatus = (item.status as string) || 'pending';
+              const isInProgress = itemStatus === 'in_progress';
+              const isWaiting = item.waiting_status === 'waiting';
+              const isCancelled = itemStatus === 'cancelled';
+              const isProduced = itemStatus === 'produced' || itemStatus === 'transferred' || itemStatus === 'received';
+              const prodTimestamp = item.production_timestamp || item.produced_at;
+              const startTs = item.started_at as string | null;
+              const prodDate = prodTimestamp ? new Date(prodTimestamp as string) : new Date(plan.plan_date);
+              const sldays = item.shelf_life_days as number;
+              const dlcDate = item.expires_at ? new Date(item.expires_at as string) : sldays ? new Date(prodDate.getTime() + sldays * 86400000) : null;
+              const now = new Date();
+              const producedBy = item.produced_by_first_name ? `${item.produced_by_first_name} ${item.produced_by_last_name}` : null;
+              const startedBy = item.started_by_first_name ? `${item.started_by_first_name} ${item.started_by_last_name}` : null;
+              const lotNumber = (item.lot_number as string) || `LOT-${format(new Date(plan.plan_date as string), 'yyMMdd')}-${String(idx + 1).padStart(3, '0')}`;
+              const planned = item.planned_quantity as number;
+              const actual = item.actual_quantity as number | null;
+              const saleType = (item.sale_type as string) || 'jour';
+
+              const statusTag = itemStatus === 'produced' ? { cls: 'odoo-tag-green', label: 'Produit', Icon: CheckCircle }
+                : itemStatus === 'transferred' ? { cls: 'odoo-tag-purple', label: 'Transféré', Icon: TrendingUp }
+                : itemStatus === 'received' ? { cls: 'odoo-tag-blue', label: 'Reçu', Icon: Package }
+                : isInProgress ? { cls: 'odoo-tag-yellow', label: 'En cours', Icon: Play }
+                : isCancelled ? { cls: 'odoo-tag-red', label: 'Annulé', Icon: XCircle }
+                : isWaiting ? { cls: 'odoo-tag-orange', label: 'En attente', Icon: Clock }
+                : { cls: 'odoo-tag-grey', label: 'À faire', Icon: Clock };
+              const dot = isProduced ? 'ok' : isInProgress ? 'warning' : isCancelled ? 'danger' : 'neutral';
+              const empty = <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>;
+
+              return (
+                <tr key={item.id as string} className={isInProgress ? 'row-warning' : ''} style={{ cursor: 'default', opacity: isCancelled ? 0.5 : 1 }}>
+                  <td><span className={`odoo-status-dot ${dot}`} /></td>
+                  <td>
+                    <span style={{ fontWeight: 600, textDecoration: isCancelled ? 'line-through' : undefined }}>{item.product_name as string}</span>
+                    {Array.isArray(item.outputs) && item.outputs.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
+                        {(item.outputs as Record<string, any>[]).map((o, oi) => (
+                          <span key={oi} className="odoo-tag odoo-tag-purple" title={o.lot_number ? `Lot ${o.lot_number}` : undefined}>
+                            {parseFloat(String(o.quantity))} × {o.label as string}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {item.nb_contenants && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
+                        <span className="odoo-tag odoo-tag-grey"><Layers size={9} /> {item.nb_contenants as number}× {item.contenant_nom as string || 'format'}</span>
+                        {(item.qty_from_frigo as number) > 0 && (
+                          <span className="odoo-tag odoo-tag-blue"><Flame size={9} /> Frigo −{item.qty_from_frigo as number}</span>
+                        )}
+                        {(item.surplus_frigo as number) > 0 && (
+                          <span className="odoo-tag odoo-tag-orange"><Package size={9} /> Surplus +{item.surplus_frigo as number}</span>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    <strong>{planned}</strong>
+                    {item.quantite_brute_totale && (item.quantite_brute_totale as number) !== planned && (
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }} title="Quantité brute totale (formats)">brut {item.quantite_brute_totale as number}</div>
+                    )}
+                  </td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    {actual != null ? <strong style={{ color: actual >= planned ? '#155724' : '#b85d1a' }}>{actual}</strong> : empty}
+                  </td>
+                  <td style={{ fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap' }}>{(isProduced || isInProgress) ? lotNumber : empty}</td>
+                  <td style={{ whiteSpace: 'nowrap', color: 'var(--theme-text-muted)' }}>
+                    {isProduced && prodTimestamp ? format(prodDate, 'dd/MM/yy HH:mm') : isInProgress && startTs ? format(new Date(startTs), 'dd/MM/yy HH:mm') : empty}
+                  </td>
+                  <td style={{ color: 'var(--theme-text-muted)' }}>{isProduced && producedBy ? producedBy : isInProgress && startedBy ? startedBy : empty}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {isProduced && dlcDate
+                      ? (dlcDate <= now ? <span className="odoo-tag odoo-tag-red">Expiré</span> : <span style={{ color: 'var(--theme-text-muted)' }}>{format(dlcDate, 'dd/MM/yyyy')}</span>)
+                      : empty}
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {isProduced ? (
+                      saleType === 'dlv' ? <span className="odoo-tag odoo-tag-green">Multi-jours (DLC)</span>
+                      : saleType === 'commande' ? <span className="odoo-tag odoo-tag-blue">Sur commande</span>
+                      : <span className="odoo-tag odoo-tag-orange">Vente du jour</span>
+                    ) : empty}
+                  </td>
+                  <td><span className={`odoo-tag ${statusTag.cls}`}><statusTag.Icon size={10} /> {statusTag.label}</span></td>
+                  <td style={{ textAlign: 'right' }}>
+                    {plan.status === 'in_progress' && isChef && itemStatus === 'pending' && !isWaiting ? (
+                      <button type="button" onClick={() => { setLaunchTargetItemId(item.id as string); setShowProductionLaunch(true); }} className="odoo-btn-primary">
+                        <Play size={12} /> Lancer
+                      </button>
+                    ) : plan.status === 'in_progress' && isChef && isInProgress ? (
+                      <button type="button" onClick={() => { setLaunchTargetItemId(item.id as string); setShowProductionLaunch(true); }} className="odoo-btn-primary">
+                        <Play size={12} /> Continuer
+                      </button>
+                    ) : isProduced ? (
+                      <button type="button" onClick={() => setPrintChoiceItem(item)} className="odoo-btn-secondary" title="Imprimer le ticket">
+                        <Printer size={12} /> Ticket
+                      </button>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  ) : null;
+
+  // Actions de cycle de vie du plan, rendues dans l'en-tete (independantes de l'onglet) :
+  //   confirmer (brouillon) / repasser en brouillon / relancer. Chef uniquement.
+  const planActions = isChef ? (
+    <>
+      {plan.status === 'draft' && isChef && (
+        <button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}
+          className="odoo-btn-primary">
+          {confirmMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
+          {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer le plan'}
+        </button>
+      )}
+      {/* Repasse en brouillon : visible quand confirme/awaiting/ready ET avant tout demarrage.
+          Le backend verifie aussi qu'aucun item n'a commence ni le BSI preleve. */}
+      {['confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(plan.status) && isChef && (() => {
+        const items = (plan.items || []) as Record<string, any>[];
+        const anyStarted = items.some((it) => it.status === 'in_progress' || it.status === 'produced');
+        const bsiActive = activeBon && ['prelevement', 'verifie', 'cloture'].includes(activeBon.status as string);
+        const blocked = anyStarted || bsiActive;
+        const tooltip = anyStarted
+          ? 'Au moins un produit a deja demarre — annulez d\'abord les items en cours'
+          : bsiActive
+            ? 'Le bon de sortie a deja ete preleve — annulez d\'abord le BSI'
+            : 'Repasser en brouillon pour modifier le plan';
+        return (
+          <button
+            type="button"
+            onClick={async () => {
+              if (await confirmDialog('Le bon de sortie sera annulé et les besoins en ingrédients recalculés à la prochaine confirmation.', { title: 'Repasser le plan en brouillon ?', confirmLabel: 'Repasser en brouillon' })) {
+                revertMutation.mutate();
+              }
+            }}
+            disabled={revertMutation.isPending || blocked}
+            title={tooltip}
+            className="odoo-btn-secondary"
+          >
+            {revertMutation.isPending
+              ? <Loader2 size={13} className="animate-spin" />
+              : <ArrowLeft size={13} />}
+            {revertMutation.isPending ? 'Repasse...' : 'Modifier (revenir en brouillon)'}
+          </button>
+        );
+      })()}
+      {/* Relancer le plan : disponible sur TOUT plan non brouillon. Ne cree pas de
+          nouveau plan — deux blocages traites :
+            - articles annules / en attente -> ils repassent en 'pending'
+            - plan confirme sur un referentiel incomplet (produit sans recette a
+              l'epoque) -> besoins et BSI recalcules depuis les recettes actuelles
+          Le recalcul n'est possible que tant que la preparation n'est pas engagee
+          (rien de demarre, BSI non preleve) : sinon on retoucherait un prelevement
+          deja fait, et le bouton n'a plus rien a faire s'il n'y a aucun article a
+          reactiver. */}
+      {plan.status !== 'draft' && isChef && (() => {
+        const total = cancelledCount + waitingCount;
+        const anyStarted = items.some((it: Record<string, any>) =>
+          ['in_progress', 'produced', 'transferred', 'received'].includes(it.status as string));
+        const bsiEngaged = !!activeBon && ['prelevement', 'verifie', 'cloture'].includes(activeBon.status as string);
+        const canRecompute = !anyStarted && !bsiEngaged;
+        const nothingToDo = total === 0 && !canRecompute;
+
+        const detail = [
+          cancelledCount > 0 ? `${cancelledCount} annule(s)` : null,
+          waitingCount > 0 ? `${waitingCount} en attente` : null,
+        ].filter(Boolean).join(' + ');
+        const lignes = [
+          total > 0 ? `• ${total} article(s) (${detail}) repassent en production` : null,
+          canRecompute ? '• besoins en ingredients et bon de sortie recalcules depuis les recettes actuelles' : null,
+        ].filter(Boolean).join('\n');
+
+        return (
+          <button
+            type="button"
+            onClick={async () => {
+              if (await confirmDialog(`${lignes}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer le plan ?', confirmLabel: 'Relancer' })) {
+                relaunchMutation.mutate();
+              }
+            }}
+            disabled={relaunchMutation.isPending || nothingToDo}
+            title={nothingToDo
+              ? 'Rien a relancer : aucun article annule ou en attente, et la preparation est deja engagee'
+              : 'Debloquer ce plan : reactiver les articles annules et recalculer besoins + bon de sortie'}
+            className="odoo-btn-secondary"
+          >
+            {relaunchMutation.isPending
+              ? <Loader2 size={13} className="animate-spin" />
+              : <RotateCcw size={13} />}
+            {relaunchMutation.isPending
+              ? 'Relance...'
+              : total > 0 ? `Relancer le plan (${total})` : 'Relancer le plan'}
+          </button>
+        );
+      })()}
+    </>
+  ) : null;
+
   const planStatusBadge = plan.status === 'completed' && plan.completion_type === 'partial'
-    ? 'Termine partiel'
+    ? 'Terminé (partiel)'
     : plan.status === 'completed' && plan.completion_type === 'complete'
-    ? 'Termine complet'
+    ? 'Terminé (complet)'
     : PRODUCTION_STATUS_LABELS[plan.status as keyof typeof PRODUCTION_STATUS_LABELS];
-  const statusTagClass = plan.status === 'completed' ? 'odoo-tag-green'
-    : plan.status === 'in_progress' ? 'odoo-tag-yellow'
-    : plan.status === 'ready_to_produce' ? 'odoo-tag-blue'
-    : plan.status === 'awaiting_ingredients' ? 'odoo-tag-orange'
-    : plan.status === 'confirmed' ? 'odoo-tag-blue'
-    : 'odoo-tag-grey';
+  const statusTagClass = planStatusTag(plan.status).cls;
 
   return (
     <div className="odoo-scope">
@@ -1183,141 +1032,105 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           <span className="odoo-breadcrumb-current">
             Plan du {format(new Date(plan.plan_date), 'dd MMM yyyy', { locale: fr })}
           </span>
-          {/* Nom du(des) produit(s) en cours de production : 1 article -> nom complet,
-              2+ articles -> premier + compteur des autres. Cache pour les plans
-              semi-finis car le nom de la recette est deja affiche dans la zone dediee. */}
-          {!isSemiFini && items.length > 0 && (
-            <>
-              <span className="odoo-breadcrumb-separator">›</span>
-              <span className="odoo-breadcrumb-current" style={{ color: 'var(--theme-accent)' }}>
-                {items.length === 1
-                  ? (items[0].product_name as string)
-                  : `${items[0].product_name as string} +${items.length - 1} autre${items.length > 2 ? 's' : ''}`}
-              </span>
-            </>
-          )}
         </div>
-        <span className={`odoo-tag ${statusTagClass}`}>{sc.icon}{planStatusBadge}</span>
+        <span className={`odoo-tag ${statusTagClass}`}>{planIcon}{planStatusBadge}</span>
       </div>
 
-      {/* ══════════════ DELTA v1 POINT 2 — BANDEAU PERSISTANT CHEF ══════════════
-          Affiche un bandeau d'action global tant que le plan est en 'ready_to_produce'
-          ET que le BSI lie est en 'pret' (le magasinier a fini la preparation).
-          Reste visible sur tous les onglets et ne disparait qu'apres action du chef
-          (acceptation ou refus). */}
-      {plan.status === 'ready_to_produce' && activeBon?.status === 'pret' && isChef && (
-        <div style={{
-          margin: '0.75rem 0',
-          padding: '1rem 1.25rem',
-          background: 'linear-gradient(90deg, #ecfdf5 0%, #d1fae5 100%)',
-          border: '2px solid #10b981',
-          borderRadius: '0.75rem',
-          boxShadow: '0 2px 8px rgba(16,185,129,0.15)',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
-            <div style={{
-              width: 44, height: 44, borderRadius: '0.625rem',
-              background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-            }}>
-              <CheckCircle size={24} style={{ color: '#059669' }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#064e3b', margin: 0 }}>
-                Ingredients prets — Confirmer ou refuser la reception
-              </p>
-              <p style={{ fontSize: '0.8125rem', color: '#065f46', marginTop: '0.125rem', margin: '0.125rem 0 0 0' }}>
-                Le magasinier a termine la preparation du BSI {activeBon.numero as string}. Verifiez les quantites et la conformite avant de demarrer la production.
-              </p>
-            </div>
-            {!bannerRejecting && (
-              <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-                <button
-                  onClick={() => acceptReceptionMutation.mutate()}
-                  disabled={acceptReceptionMutation.isPending}
-                  style={{
-                    padding: '0.625rem 1rem',
-                    background: '#059669', color: 'white', border: 'none',
-                    borderRadius: '0.5rem', fontSize: '0.875rem', fontWeight: 600,
-                    cursor: acceptReceptionMutation.isPending ? 'not-allowed' : 'pointer',
-                    opacity: acceptReceptionMutation.isPending ? 0.6 : 1,
-                    display: 'flex', alignItems: 'center', gap: '0.375rem',
-                  }}>
-                  {acceptReceptionMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-                  Confirmer la reception
-                </button>
-                <button
-                  onClick={() => setBannerRejecting(true)}
-                  style={{
-                    padding: '0.625rem 1rem',
-                    background: 'white', color: '#b91c1c',
-                    border: '1px solid #fca5a5', borderRadius: '0.5rem',
-                    fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: '0.375rem',
-                  }}>
-                  <XCircle size={14} />
-                  Refuser
-                </button>
-              </div>
-            )}
-          </div>
-          {bannerRejecting && (
-            <div style={{
-              marginTop: '0.75rem', padding: '0.75rem',
-              background: 'white', border: '1px solid #fca5a5', borderRadius: '0.5rem',
-            }}>
-              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#991b1b', display: 'block', marginBottom: '0.375rem' }}>
-                Motif du refus (obligatoire)
-              </label>
-              <textarea
-                value={bannerRejectReason}
-                onChange={(e) => setBannerRejectReason(e.target.value)}
-                autoFocus
-                rows={2}
-                placeholder="Ex: Quantite insuffisante sur la farine, lot mal identifie..."
-                style={{
-                  width: '100%', fontSize: '0.875rem',
-                  border: '1px solid #fca5a5', borderRadius: '0.375rem',
-                  padding: '0.5rem 0.625rem', resize: 'none', outline: 'none',
-                }}
-              />
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                <button
-                  onClick={() => rejectReceptionMutation.mutate(bannerRejectReason.trim())}
-                  disabled={rejectReceptionMutation.isPending || !bannerRejectReason.trim()}
-                  style={{
-                    flex: 1, padding: '0.5rem 0.75rem',
-                    background: '#dc2626', color: 'white', border: 'none',
-                    borderRadius: '0.375rem', fontSize: '0.8125rem', fontWeight: 600,
-                    cursor: rejectReceptionMutation.isPending || !bannerRejectReason.trim() ? 'not-allowed' : 'pointer',
-                    opacity: rejectReceptionMutation.isPending || !bannerRejectReason.trim() ? 0.5 : 1,
-                  }}>
-                  {rejectReceptionMutation.isPending ? 'Envoi...' : 'Confirmer le refus'}
-                </button>
-                <button
-                  onClick={() => { setBannerRejecting(false); setBannerRejectReason(''); }}
-                  style={{
-                    padding: '0.5rem 0.75rem',
-                    background: '#f3f4f6', color: '#374151', border: 'none',
-                    borderRadius: '0.375rem', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer',
-                  }}>
-                  Annuler
-                </button>
-              </div>
-            </div>
+      {/* ══════════════ EN-TETE FICHE : titre, meta, processus ══════════════ */}
+      <div className="odoo-form-header plan-header" style={{ padding: '0.875rem 1rem' }}>
+        <div className="plan-header-main">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
+          <h1 className="odoo-form-title" style={{ fontSize: '1.25rem' }}>
+            Plan du {format(new Date(plan.plan_date), 'EEEE dd MMMM yyyy', { locale: fr })}
+          </h1>
+          {isSemiFini && <span className="odoo-tag odoo-tag-purple"><Beaker size={10} /> Semi-fini</span>}
+          {!isSemiFini && items.length > 0 && (
+            <span style={{ fontSize: '0.875rem', color: 'var(--theme-text-muted)' }}>
+              · {items.length === 1
+                ? (items[0].product_name as string)
+                : `${items[0].product_name as string} +${items.length - 1} autre${items.length > 2 ? 's' : ''}`}
+            </span>
           )}
         </div>
-      )}
+        <div className="odoo-form-subtitle" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <User size={11} /> {isSemiFini
+              ? (plan.dependency_of as Record<string, any>[])[0]?.parent_created_by_name as string || plan.created_by_name
+              : plan.created_by_name}
+          </span>
+          {rc && <span className="odoo-tag odoo-tag-purple"><ChefHat size={9} /> {rc.label}</span>}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Hash size={11} /> <span style={{ fontFamily: 'ui-monospace, monospace' }}>
+              {isSemiFini
+                ? ((plan.dependency_of as Record<string, any>[])[0]?.parent_short_id as string || '').toUpperCase()
+                : (plan.id as string).slice(0, 8).toUpperCase()}
+            </span>
+          </span>
+          {plan.type && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Calendar size={11} /> {plan.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
+            </span>
+          )}
+          {plan.notes ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <FileText size={11} /> {plan.notes}
+            </span>
+          ) : null}
+        </div>
+        </div>
+        {/* Actions sur le plan (cycle de vie) : confirmer / repasser en brouillon / relancer.
+            Elles ne dependent pas de l'onglet, donc elles vivent dans l'en-tete ;
+            les actions d'etape (BSI, demarrage, cloture) restent sous les onglets. */}
+        {planActions && <div className="plan-header-actions">{planActions}</div>}
+      </div>
 
-      {/* ══════════════ STAT TILES (sober, comme la liste) ══════════════ */}
+      {/* Processus du plan : une etape par statut, la courante en surbrillance.
+          Un plan semi-fini n'a pas de bon de sortie propre (c'est celui du parent). */}
+      {(() => {
+        const bsiLabel = activeBon
+          ? bonStatusTag(activeBon.status as string).label
+          : bonNotNeeded ? 'Aucun besoin' : null;
+        const steps: { label: string; detail: string | null }[] = [
+          { label: planStatusTag('draft').label, detail: plan.created_by_name ? (plan.created_by_name as string) : null },
+          { label: planStatusTag('confirmed').label, detail: null },
+          ...(isSemiFini ? [] : [{ label: 'Ingrédients', detail: bsiLabel }]),
+          { label: planStatusTag('ready_to_produce').label, detail: null },
+          { label: planStatusTag('in_progress').label, detail: totalActive > 0 ? `${producedCount} / ${totalActive} produit${totalActive > 1 ? 's' : ''}` : null },
+          { label: planStatusTag('completed').label, detail: plan.status === 'completed' ? (plan.completion_type === 'partial' ? 'Clôture partielle' : 'Clôture complète') : null },
+        ];
+        const offset = isSemiFini ? -1 : 0;
+        const cur = plan.status === 'draft' ? 0
+          : plan.status === 'confirmed' || plan.status === 'awaiting_ingredients' ? 2 + offset
+          : plan.status === 'ready_to_produce' ? 3 + offset
+          : plan.status === 'in_progress' ? 4 + offset
+          : 5 + offset;
+        const finished = plan.status === 'completed';
+        return (
+          <ol className="ui-timeline">
+            {steps.map((s, i) => {
+              const done = finished || i < cur;
+              const current = !finished && i === cur;
+              return (
+                <li key={s.label} className={`ui-timeline-step ${done ? 'is-done' : ''} ${current ? 'is-current' : ''}`}>
+                  <span className="ui-timeline-dot">{done ? <CheckCircle2 size={12} /> : i + 1}</span>
+                  <span className="ui-timeline-label">{s.label}</span>
+                  {s.detail && <span className="ui-timeline-detail">{s.detail}</span>}
+                </li>
+              );
+            })}
+          </ol>
+        );
+      })()}
+
+      {/* ══════════════ INDICATEURS ══════════════ */}
       <div className="odoo-stat-grid">
         <div className="odoo-stat-card" style={{ cursor: 'default' }}>
           <div className="odoo-stat-card-label"><Package size={11} style={{ display: 'inline', marginRight: 4 }} />Articles</div>
           <div className="odoo-stat-card-value">{items.length}</div>
         </div>
         <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-          <div className="odoo-stat-card-label"><CheckCircle2 size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Produits</div>
-          <div className="odoo-stat-card-value" style={{ color: producedCount > 0 ? '#28a745' : undefined }}>{producedCount}</div>
+          <div className="odoo-stat-card-label"><CheckCircle2 size={11} style={{ display: 'inline', marginRight: 4 }} />Produits</div>
+          <div className="odoo-stat-card-value" style={{ color: producedCount > 0 ? '#155724' : undefined }}>{producedCount}</div>
         </div>
         <div className="odoo-stat-card" style={{ cursor: 'default' }}>
           <div className="odoo-stat-card-label"><Layers size={11} style={{ display: 'inline', marginRight: 4 }} />Ingrédients</div>
@@ -1325,57 +1138,88 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
         <div className="odoo-stat-card" style={{ cursor: 'default' }}>
           <div className="odoo-stat-card-label">Progression</div>
-          <div className="odoo-stat-card-value" style={{ color: progressPct >= 100 ? '#28a745' : progressPct >= 50 ? '#b85d1a' : undefined }}>
+          <div className="odoo-stat-card-value" style={{ color: progressPct >= 100 ? '#155724' : undefined }}>
             {progressPct}%
           </div>
-        </div>
-      </div>
-
-      {/* ══════════════ METADATA STRIP (compact, sans h1) ══════════════ */}
-      <div style={{
-        padding: '0.5rem 1rem',
-        borderBottom: '1px solid var(--theme-bg-separator)',
-        backgroundColor: 'var(--theme-bg-card)',
-        display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap',
-        fontSize: '0.75rem', color: 'var(--theme-text-muted)',
-      }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <User size={11} /> {isSemiFini
-            ? (plan.dependency_of as Record<string, any>[])[0]?.parent_created_by_name as string || plan.created_by_name
-            : plan.created_by_name}
-        </span>
-        {rc && <span className="odoo-tag odoo-tag-purple"><ChefHat size={9} /> {rc.label}</span>}
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Hash size={11} /> <span style={{ fontFamily: 'monospace' }}>
-            {isSemiFini
-              ? ((plan.dependency_of as Record<string, any>[])[0]?.parent_short_id as string || '').toUpperCase()
-              : (plan.id as string).slice(0, 8).toUpperCase()}
-          </span>
-        </span>
-        {plan.type && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Calendar size={11} /> {plan.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
-          </span>
-        )}
-        {plan.notes ? (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <FileText size={11} /> {plan.notes}
-          </span>
-        ) : null}
-
-        {/* Progress bar inline */}
-        {(plan.status === 'in_progress' || plan.status === 'completed') && totalActive > 0 && (
-          <div style={{ flex: 1, minWidth: 200, marginLeft: 'auto' }}>
-            <div style={{ height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
+          {(plan.status === 'in_progress' || plan.status === 'completed') && totalActive > 0 && (
+            <div style={{ height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden', marginTop: 6 }}>
               <div style={{
                 height: '100%', width: `${progressPct}%`,
-                backgroundColor: progressPct >= 100 ? '#28a745' : 'var(--theme-accent)',
+                backgroundColor: progressPct >= 100 ? '#155724' : 'var(--theme-accent)',
                 transition: 'width 0.3s',
               }} />
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
+
+      {/* ══════════════ RECEPTION DES INGREDIENTS (chef) ══════════════
+          Bandeau d'action tant que le plan est 'ready_to_produce' et le BSI 'pret' :
+          visible sur tous les onglets, disparait apres acceptation ou refus du chef. */}
+      {activeBon?.status === 'pret' && isChef && (() => {
+        const missing = ((activeBon.lines || []) as Record<string, any>[]).filter(l => l.status === 'rupture' && !l.is_packaging);
+        const deps = (plan.dependencies || []) as Record<string, any>[];
+        const canStartAfter = !deps.some(d => d.status !== 'fulfilled' && d.status !== 'cancelled');
+        return (
+        <div style={{ margin: '1rem 1rem 0' }}>
+          <StatusBanner tone={missing.length > 0 ? 'warning' : 'success'} icon={CheckCircle}
+            title={missing.length > 0
+              ? `Ingrédients prêts — ${missing.length} manquant${missing.length > 1 ? 's' : ''} signalé${missing.length > 1 ? 's' : ''} par le magasinier`
+              : 'Ingrédients prêts — confirmer ou refuser la réception'}
+            actions={!bannerRejecting ? (
+              <>
+                <button onClick={() => setBannerRejecting(true)} className="odoo-btn-danger">
+                  <XCircle size={13} /> Refuser
+                </button>
+                <button onClick={() => acceptReceptionMutation.mutate({ andStart: false })} disabled={acceptReceptionMutation.isPending}
+                  className="odoo-btn-secondary">
+                  {acceptReceptionMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
+                  Réceptionner
+                </button>
+                {canStartAfter && (
+                  <button onClick={() => acceptReceptionMutation.mutate({ andStart: true })} disabled={acceptReceptionMutation.isPending}
+                    className="odoo-btn-primary" title="Accepte la réception puis démarre la production">
+                    {acceptReceptionMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+                    Réceptionner et démarrer
+                  </button>
+                )}
+              </>
+            ) : undefined}>
+            Le magasinier a terminé la préparation du bon {activeBon.numero as string}. Vérifiez les quantités
+            et la conformité avant de démarrer la production.
+            {missing.length > 0 && (
+              <ul className="status-banner-list">
+                {missing.map(l => (
+                  <li key={l.id as string}><strong>{l.ingredient_name as string}</strong> : manque {(parseFloat(l.needed_quantity as string || '0') - parseFloat(l.allocated_quantity as string || '0')).toFixed(2)} {(l.unit || 'kg') as string} — produire sans, ou refuser la réception.</li>
+                ))}
+              </ul>
+            )}
+            {bannerRejecting && (
+              <div className="status-banner-form">
+                <label>Motif du refus (obligatoire)</label>
+                <textarea
+                  value={bannerRejectReason}
+                  onChange={(e) => setBannerRejectReason(e.target.value)}
+                  autoFocus
+                  rows={2}
+                  placeholder="Ex : quantité insuffisante sur la farine, lot mal identifié..."
+                />
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                  <button onClick={() => { setBannerRejecting(false); setBannerRejectReason(''); }} className="odoo-btn-secondary">
+                    Annuler
+                  </button>
+                  <button onClick={() => rejectReceptionMutation.mutate(bannerRejectReason.trim())}
+                    disabled={rejectReceptionMutation.isPending || !bannerRejectReason.trim()}
+                    className="odoo-btn-danger">
+                    {rejectReceptionMutation.isPending ? 'Envoi...' : 'Confirmer le refus'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </StatusBanner>
+        </div>
+        );
+      })()}
 
       {/* Bloc "Semi-finis requis" retire de cet emplacement — desormais rendu dans la zone Production
           via la variable semiFinishedDepsBlock pour qu'il apparaisse sous les onglets. */}
@@ -1415,13 +1259,10 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                 </button>
               </div>
               <div style={{ padding: '0.625rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', backgroundColor: 'var(--theme-bg-card)', fontSize: '0.75rem' }}>
-                <span className={`odoo-tag ${
-                  dep.parent_status === 'confirmed' ? 'odoo-tag-blue' :
-                  dep.parent_status === 'in_progress' ? 'odoo-tag-yellow' :
-                  dep.parent_status === 'completed' ? 'odoo-tag-green' : 'odoo-tag-grey'
-                }`}>
-                  {dep.parent_status === 'confirmed' ? 'Confirmé' : dep.parent_status === 'in_progress' ? 'En cours' : dep.parent_status === 'completed' ? 'Terminé' : dep.parent_status as string}
-                </span>
+                {(() => {
+                  const t = planStatusTag(dep.parent_status as string);
+                  return <span className={`odoo-tag ${t.cls}`}>{t.label}</span>;
+                })()}
                 {parentNotes && <span style={{ color: 'var(--theme-text-muted)' }}>{parentNotes}</span>}
               </div>
             </div>
@@ -1462,28 +1303,38 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
 
               {/* Recipe ingredients */}
               {recipeIngredients.length > 0 && (
-                <div style={{ padding: '0.75rem 1rem', backgroundColor: 'var(--theme-bg-card)' }}>
-                  <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: 'var(--theme-accent)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <Scale size={11} /> Ingrédients (×{multiplier.toFixed(1)} pour {qtyNeeded.toFixed(2)} {yieldUnit})
+                <>
+                  <div className="odoo-section-header" style={{ borderTop: '1px solid var(--theme-bg-separator)' }}>
+                    <Scale size={12} /> Ingrédients
+                    <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+                      ×{multiplier.toFixed(1)} pour {qtyNeeded.toFixed(2)} {yieldUnit}
+                    </span>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {recipeIngredients.map((ri, idx) => {
-                      const baseQty = parseFloat(ri.quantity as string || '0');
-                      const scaledQty = baseQty * multiplier;
-                      const unit = ri.unit as string || ri.base_unit as string || '';
-                      return (
-                        <div key={idx} style={{
-                          display: 'flex', justifyContent: 'space-between',
-                          padding: '0.25rem 0.5rem', borderRadius: 3,
-                          backgroundColor: 'var(--theme-bg-secondary)', fontSize: '0.8125rem',
-                        }}>
-                          <span style={{ fontWeight: 500 }}>{ri.ingredient_name as string}</span>
-                          <span style={{ fontWeight: 600, color: 'var(--theme-accent)' }}>{scaledQty.toFixed(3)} {unit}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                  <table className="odoo-table">
+                    <thead>
+                      <tr>
+                        <th>Ingrédient</th>
+                        <th style={{ textAlign: 'right' }}>Quantité</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recipeIngredients.map((ri, idx) => {
+                        const baseQty = parseFloat(ri.quantity as string || '0');
+                        const scaledQty = baseQty * multiplier;
+                        const unit = ri.unit as string || ri.base_unit as string || '';
+                        return (
+                          <tr key={idx} style={{ cursor: 'default' }}>
+                            <td style={{ fontWeight: 500 }}>{ri.ingredient_name as string}</td>
+                            <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                              <strong>{scaledQty.toFixed(3)}</strong>
+                              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{unit}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </>
               )}
             </div>
           </>
@@ -1494,39 +1345,51 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
       {/* Les onglets ne s'affichent pas :
             - en 'draft' (rien a montrer encore)
             - pour un plan semi-fini (UI dediee au-dessus)
-          L'onglet Production n'est cliquable qu'une fois le BSI pret (cloture),
-          inutile (pas de recette), ou si la production est deja demarree/terminee. */}
-      {!isSemiFini && plan.status !== 'draft' && (() => {
-        const productionReady =
-          plan.status === 'in_progress' ||
-          plan.status === 'completed' ||
-          !!bonNotNeededReason ||
-          (activeBon?.status === 'cloture');
-        const prepBadgeTag = productionReady ? 'odoo-tag-green' : 'odoo-tag-yellow';
-        const prepBadgeLabel = productionReady ? '\u2713 Pret' : 'En cours';
+          L'onglet Production n'apparait qu'une fois la preparation terminee (BSI cloture,
+          aucun ingredient a prelever, ou production deja demarree/terminee). Avant cela,
+          seul "1. Preparation" existe, avec un rappel de l'etape suivante a droite. */}
+      {hasTabs && (() => {
+        const prepBadgeTag = preparationDone ? 'odoo-tag-green' : 'odoo-tag-yellow';
+        const prepBadgeLabel = preparationDone ? '✓ Terminée' : 'En cours';
+        const nextStepHint = bonNotNeeded
+          ? 'Production bloquée : aucun besoin en ingrédients calculé (recette manquante)'
+          : !activeBon
+          ? 'Étape suivante : Production — après la génération et la clôture du bon de sortie'
+          : activeBon.status === 'pret'
+            ? 'Étape suivante : Production — après confirmation de la réception des ingrédients'
+            : 'Étape suivante : Production — après la clôture du bon de sortie par le magasinier';
         return (
-          <div className="odoo-tabs">
+          <div className="odoo-tabs plan-tabs">
             <button type="button" onClick={() => setActivePlanTab('preparation')}
-              className={`odoo-tab ${activePlanTab === 'preparation' ? 'active' : ''}`}>
+              className={`odoo-tab ${effectiveTab === 'preparation' ? 'active' : ''}`}>
               <Truck size={13} />
-              <span>1. Preparation</span>
+              <span>1. Préparation</span>
               <span className={`odoo-tag ${prepBadgeTag}`} style={{ marginLeft: 4 }}>{prepBadgeLabel}</span>
             </button>
-            <button type="button" onClick={() => productionReady && setActivePlanTab('production')}
-              disabled={!productionReady}
-              title={productionReady ? undefined : 'Disponible apres la cloture du bon de sortie'}
-              className={`odoo-tab ${activePlanTab === 'production' ? 'active' : ''}`}
-              style={{ opacity: productionReady ? 1 : 0.5, cursor: productionReady ? 'pointer' : 'not-allowed' }}>
-              {productionReady ? <Factory size={13} /> : <Lock size={13} />}
-              <span>2. Production</span>
-            </button>
+            {productionTabVisible ? (
+              <button type="button" onClick={() => setActivePlanTab('production')}
+                className={`odoo-tab ${effectiveTab === 'production' ? 'active' : ''}`}>
+                <Factory size={13} />
+                <span>2. Production</span>
+                {plan.status === 'in_progress' && (
+                  <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 4 }}>{producedCount} / {totalActive}</span>
+                )}
+                {plan.status === 'completed' && (
+                  <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>&#10003;</span>
+                )}
+              </button>
+            ) : (
+              <span className="plan-tabs-hint" title={nextStepHint}>
+                <Lock size={12} /> {nextStepHint}
+              </span>
+            )}
           </div>
         );
       })()}
 
       {/* ══════════════ SOUS-ONGLETS de l'onglet Preparation ══════════════ */}
-      {!isSemiFini && plan.status !== 'draft' && activePlanTab === 'preparation' && (
-        <div className="odoo-tabs" style={{ paddingLeft: '2.5rem' }}>
+      {hasTabs && effectiveTab === 'preparation' && (
+        <div className="odoo-tabs plan-subtabs">
           <button type="button" onClick={() => setPrepSubTab('needs')}
             className={`odoo-tab ${prepSubTab === 'needs' ? 'active' : ''}`}>
             <Beaker size={13} />
@@ -1546,49 +1409,14 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       )}
 
-      {/* ══════════════ ACTION BUTTONS ══════════════ */}
-      <div className="flex flex-wrap gap-3">
-        {plan.status === 'draft' && isChef && (
-          <button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}
-            className="odoo-btn-primary">
-            {confirmMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />}
-            {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer le plan'}
-          </button>
-        )}
-        {/* Repasse en brouillon : visible quand confirme/awaiting/ready ET avant tout demarrage.
-            Le backend verifie aussi qu'aucun item n'a commence ni le BSI preleve. */}
-        {['confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(plan.status) && isChef && (() => {
-          const items = (plan.items || []) as Record<string, any>[];
-          const anyStarted = items.some((it) => it.status === 'in_progress' || it.status === 'produced');
-          const bsiActive = activeBon && ['preleve', 'verifie', 'cloture'].includes(activeBon.status as string);
-          const blocked = anyStarted || bsiActive;
-          const tooltip = anyStarted
-            ? 'Au moins un produit a deja demarre — annulez d\'abord les items en cours'
-            : bsiActive
-              ? 'Le bon de sortie a deja ete preleve — annulez d\'abord le BSI'
-              : 'Repasser en brouillon pour modifier le plan';
-          return (
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm('Repasser le plan en brouillon ?\n\nLe bon de sortie (BSI) sera supprime et les besoins en ingredients recalcules au prochain confirm.')) {
-                  revertMutation.mutate();
-                }
-              }}
-              disabled={revertMutation.isPending || blocked}
-              title={tooltip}
-              className="px-5 py-2.5 bg-white border border-amber-200 text-amber-700 rounded-xl font-medium hover:bg-amber-50 transition-all flex items-center gap-2 text-sm shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {revertMutation.isPending
-                ? <Loader2 size={16} className="animate-spin" />
-                : <ArrowLeft size={16} />}
-              {revertMutation.isPending ? 'Repasse...' : 'Modifier (revenir en brouillon)'}
-            </button>
-          );
-        })()}
+      {/* ══════════════ BARRE D'ACTIONS DE L'ETAPE ══════════════
+          Actions propres a l'onglet actif : primaire = action principale de l'etape,
+          secondaire = impression, danger = perte. Les actions de cycle de vie du plan
+          (confirmer / brouillon / relancer) sont dans l'en-tete (planActions). */}
+      <div className="plan-toolbar">
         {showPrepBsi && ['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && !isSemiFini && (
-          <button onClick={() => printBonSortieIngredients()} className="px-5 py-2.5 bg-white border border-emerald-200 text-emerald-700 rounded-xl font-medium hover:bg-emerald-50 transition-all flex items-center gap-2 text-sm shadow-sm">
-            <Printer size={16} className="text-emerald-600" /> Bon de sortie ingredients
+          <button onClick={() => printBonSortieIngredients()} className="odoo-btn-secondary">
+            <Printer size={13} /> Bon de sortie ingredients
           </button>
         )}
         {showProd && ['confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(plan.status) && (() => {
@@ -1596,8 +1424,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           const hasPendingDeps = deps.some(d => d.status !== 'fulfilled' && d.status !== 'cancelled');
           // Wizard etape 3 : production bloquee tant que le BSI n'est pas cloture.
           // Les plans semi-finis sont exemptes (leur BSI est celui du plan parent).
-          // Cas "plan sans recette" (bonNotNeededReason) : aucun BSI necessaire, on debloque.
-          const bsiBlocked = !isSemiFini && !bonNotNeededReason && (!activeBon || activeBon.status !== 'cloture');
+          // Pas de raccourci "plan sans besoin" : la production exige un BSI cloture.
+          const bsiBlocked = !isSemiFini && (!activeBon || activeBon.status !== 'cloture');
           const bsiBlockReason = !activeBon
             ? 'Preparez d\'abord le bon de sortie'
             : activeBon.status !== 'cloture'
@@ -1618,12 +1446,8 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                 <button onClick={() => startMutation.mutate()}
                   disabled={disabled}
                   title={tooltip}
-                  className={`px-5 py-2.5 text-white rounded-xl font-medium shadow-md transition-all flex items-center gap-2 text-sm ${
-                    hasPendingDeps || bsiBlocked
-                      ? 'bg-gray-300 cursor-not-allowed'
-                      : 'bg-amber-600 hover:bg-amber-700'
-                  }`}>
-                  {(hasPendingDeps || bsiBlocked) ? <Lock size={16} /> : startMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                  className="odoo-btn-primary">
+                  {(hasPendingDeps || bsiBlocked) ? <Lock size={13} /> : startMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
                   {blockLabel}
                 </button>
               )}
@@ -1643,31 +1467,31 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
                     await productionApi.startItems(id!, ids);
                     await queryClient.invalidateQueries({ queryKey: ['production', id] });
                     notify.success(`${ids.length} production(s) lancee(s)`);
-                  } catch (e: any) { notify.error(e?.response?.data?.error?.message || 'Erreur'); }
-                }} className="odoo-btn-primary" style={{ backgroundColor: "#1f6391", borderColor: "#1f6391" }}>
-                  <Play size={16} /> Lancer tout ({pendingItems.length})
+                  } catch (e: any) { notify.error(apiErrorMessage(e, 'Erreur')); }
+                }} className="odoo-btn-primary">
+                  <Play size={13} /> Lancer tout ({pendingItems.length})
                 </button>
               )}
               {inProgressItems.length > 0 && (
-                <button onClick={() => { setLaunchTargetItemId(null); setShowProductionLaunch(true); }} className="odoo-btn-primary" style={{ backgroundColor: "#28a745", borderColor: "#28a745" }}>
-                  <Factory size={16} /> Enregistrer tout ({inProgressItems.length})
+                <button onClick={() => { setLaunchTargetItemId(null); setShowProductionLaunch(true); }} className="odoo-btn-primary">
+                  <Factory size={13} /> Enregistrer tout ({inProgressItems.length})
                 </button>
               )}
               {waitingCount > 0 && allProduced && (
                 <button
-                  onClick={() => {
-                    if (confirm(`Cloture partielle : ${waitingCount} article(s) en attente seront annules. Continuer ?`)) {
+                  onClick={async () => {
+                    if (await confirmDialog(`${waitingCount} article(s) en attente seront annulés.`, { title: 'Clôture partielle', confirmLabel: 'Clôturer', danger: true })) {
                       productionApi.complete(id!, [], 'partial').then(() => {
                         queryClient.invalidateQueries({ queryKey: ['production', id] });
                         notify.success('Plan cloture partiellement');
                       }).catch((err: any) => {
-                        notify.error(err?.response?.data?.error?.message || 'Erreur');
+                        notify.error(apiErrorMessage(err, 'Erreur'));
                       });
                     }
                   }}
-                  className="odoo-btn-primary" style={{ backgroundColor: "#b85d1a", borderColor: "#b85d1a" }}
+                  className="odoo-btn-secondary"
                 >
-                  <CheckCircle size={16} /> Cloture partielle
+                  <CheckCircle size={13} /> Cloture partielle
                 </button>
               )}
             </>
@@ -1687,193 +1511,58 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         )}
       </div>
 
-      {/* ══════════════ WIZARD ETAPE 2 : BON DE SORTIE (sous-onglet Gestion BSI) ══════════════ */}
-      {showPrepBsi && !isSemiFini && !activeBon && bonNotNeededReason && ['confirmed', 'in_progress'].includes(plan.status) && (
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-start gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
-            <Info size={18} className="text-gray-500" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-gray-800 text-sm">Pas de bon de sortie a preparer</h3>
-            <p className="text-xs text-gray-600 mt-0.5">{bonNotNeededReason}</p>
-            <p className="text-[11px] text-gray-400 mt-1">
-              Ajoutez des recettes aux produits de ce plan pour activer le prelevement d'ingredients.
-            </p>
-          </div>
+      {/* ══════════════ ETAPE 2 : BON DE SORTIE (sous-onglet Gestion BSI) ══════════════ */}
+      {showPrepBsi && bonNotNeeded && ['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && (
+        <div style={{ margin: '1rem' }}>
+          <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun bon de sortie à préparer — préparation bloquée">
+            {bonNotNeededReason || 'Aucun ingrédient à prélever pour ce plan (produits sans recette ou sans composition).'}
+            <div style={{ marginTop: 4 }}>
+              La production ne peut pas démarrer sans transfert d'ingrédients. Ajoutez une recette aux produits
+              de ce plan, puis utilisez « Relancer le plan » pour recalculer les besoins et générer le bon de sortie.
+            </div>
+          </StatusBanner>
         </div>
       )}
 
-      {/* Cas normal : BSI pas encore visible cote UI (vient juste d'etre auto-genere, ou echec silencieux).
-          Le BSI est desormais genere AUTOMATIQUEMENT a la confirmation du plan par le backend, qui envoie
-          une notification au magasinier. Cette banniere sert de filet de securite si l'auto-gen a echoue
-          ou si la query n'a pas encore ramene le BSI (courte fenetre de rafraichissement). */}
-      {showPrepBsi && !isSemiFini && !activeBon && !bonNotNeededReason && ['confirmed', 'in_progress'].includes(plan.status) && (
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
-            <Loader2 size={18} className="text-gray-500 animate-spin" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-800">Bon de sortie en cours de generation...</p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Le magasinier sera notifie automatiquement des qu'il est pret a etre prepare.
-              Si rien ne s'affiche apres quelques secondes, utilisez le bouton ci-dessous.
-            </p>
-            {isChef && (
-              <button
-                onClick={() => prepareBonMutation.mutate()}
-                disabled={prepareBonMutation.isPending}
-                className="mt-2 px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-all flex items-center gap-1.5 text-xs disabled:opacity-60">
+      {/* Le BSI est genere automatiquement a la confirmation du plan (notification au
+          magasinier). Ce bandeau sert de filet de securite si l'auto-generation a echoue
+          ou si la query n'a pas encore ramene le BSI. */}
+      {showPrepBsi && !isSemiFini && !activeBon && !bonNotNeeded && ['confirmed', 'in_progress'].includes(plan.status) && (
+        <div style={{ margin: '1rem' }}>
+          <StatusBanner tone="info" icon={RefreshCw} title="Bon de sortie en cours de génération…"
+            actions={isChef ? (
+              <button onClick={() => prepareBonMutation.mutate()} disabled={prepareBonMutation.isPending}
+                className="odoo-btn-secondary">
                 {prepareBonMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-                {prepareBonMutation.isPending ? 'Generation...' : 'Relancer la generation'}
+                {prepareBonMutation.isPending ? 'Génération…' : 'Relancer la génération'}
               </button>
-            )}
-          </div>
-        </div>
-      )}
-      {showPrepBsi && !isSemiFini && activeBon && (() => {
-        const bon = activeBon;
-        const bonStatusConfig: Record<string, { label: string; bg: string; text: string; icon: React.ReactNode }> = {
-          genere: { label: 'Genere', bg: 'bg-blue-100', text: 'text-blue-700', icon: <ClipboardList size={14} /> },
-          prelevement: { label: 'En prelevement', bg: 'bg-amber-100', text: 'text-amber-700', icon: <ShoppingCart size={14} /> },
-          prelevement_partielle: { label: 'Prelevement partiel', bg: 'bg-orange-100', text: 'text-orange-700', icon: <AlertTriangle size={14} /> },
-          preparation: { label: 'En preparation', bg: 'bg-amber-100', text: 'text-amber-700', icon: <Package size={14} /> },
-          preparation_partielle: { label: 'Preparation partielle', bg: 'bg-orange-100', text: 'text-orange-700', icon: <AlertTriangle size={14} /> },
-          pret: { label: 'Pret a remettre', bg: 'bg-emerald-100', text: 'text-emerald-700', icon: <CheckCircle size={14} /> },
-          verifie: { label: 'Verifie', bg: 'bg-emerald-100', text: 'text-emerald-700', icon: <Eye size={14} /> },
-          cloture: { label: 'Livre', bg: 'bg-emerald-100', text: 'text-emerald-700', icon: <CheckCircle size={14} /> },
-          annule: { label: 'Annule', bg: 'bg-red-100', text: 'text-red-700', icon: <XCircle size={14} /> },
-        };
-        const bsc = bonStatusConfig[bon.status as string] || bonStatusConfig.genere;
-        const isCloture = bon.status === 'cloture';
-        return (
-          <>
-            {/* En-tete BSI compact (banniere Odoo style) */}
-            <div className={`odoo-alert ${isCloture ? 'warning' : 'warning'}`}
-              style={isCloture
-                ? { backgroundColor: '#e8f5e9', color: '#155724', borderBottomColor: '#c5e1a5' }
-                : undefined}>
-              <Truck size={14} style={{ color: isCloture ? '#28a745' : '#856404', marginTop: 2, flexShrink: 0 }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <span className="odoo-alert-title">Bon de sortie</span>
-                  <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', opacity: 0.85 }}>{bon.numero as string}</span>
-                  <span className={`odoo-tag ${isCloture ? 'odoo-tag-green' : 'odoo-tag-yellow'}`}>
-                    {bsc.icon} {bsc.label}
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.75rem', marginTop: 2, opacity: 0.9 }}>
-                  {isCloture
-                    ? 'Ingrédients livrés — vous pouvez passer à l\'onglet Production'
-                    : 'Prélèvement des ingrédients — gérez les lignes ci-dessous'}
-                </div>
-              </div>
-            </div>
-
-            {/* Panneau de prelevement inline */}
-            <BonSortiePanel planId={id!} isChef={isChef} isMagasinier={isMagasinier} variant="inline" />
-          </>
-        );
-      })()}
-
-      {/* ══════════════ LINKED ORDER CARD ══════════════ */}
-      {plan.order_number && (
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center gap-2.5 mb-4">
-            <div className="w-9 h-9 rounded-xl bg-blue-500 flex items-center justify-center">
-              <Package size={18} className="text-white" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-blue-900">Commande liee</h3>
-              <span className="text-xs text-blue-600">{plan.order_number}</span>
-            </div>
-            <span className={`ml-auto px-3 py-1 rounded-full text-xs font-medium ${
-              plan.order_status === 'in_production' ? 'bg-amber-100 text-amber-700' :
-              plan.order_status === 'ready' ? 'bg-emerald-100 text-emerald-700' :
-              plan.order_status === 'completed' ? 'bg-gray-100 text-gray-700' :
-              'bg-blue-100 text-blue-700'
-            }`}>
-              {plan.order_status === 'pending' ? 'En attente' :
-               plan.order_status === 'confirmed' ? 'Confirmee' :
-               plan.order_status === 'in_production' ? 'En production' :
-               plan.order_status === 'ready' ? 'Prete' :
-               plan.order_status === 'completed' ? 'Livree' :
-               plan.order_status === 'cancelled' ? 'Annulee' : plan.order_status}
-            </span>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {plan.order_customer_first_name && (
-              <div className="bg-white/70 rounded-xl p-3 flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                  <User size={14} className="text-blue-600" />
-                </div>
-                <div>
-                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">Client</div>
-                  <div className="text-sm font-medium text-gray-800">{plan.order_customer_first_name} {plan.order_customer_last_name || ''}</div>
-                </div>
-              </div>
-            )}
-            {plan.order_customer_phone && (
-              <div className="bg-white/70 rounded-xl p-3 flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                  <Phone size={14} className="text-blue-600" />
-                </div>
-                <div>
-                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">Telephone</div>
-                  <div className="text-sm font-medium text-gray-800">{plan.order_customer_phone}</div>
-                </div>
-              </div>
-            )}
-            {plan.order_pickup_date && (
-              <div className="bg-white/70 rounded-xl p-3 flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                  <Calendar size={14} className="text-blue-600" />
-                </div>
-                <div>
-                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">Retrait</div>
-                  <div className="text-sm font-medium text-gray-800">{format(new Date(plan.order_pickup_date), 'dd/MM/yyyy', { locale: fr })}</div>
-                </div>
-              </div>
-            )}
-            {plan.order_total && (
-              <div className="bg-white/70 rounded-xl p-3 flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                  <Banknote size={14} className="text-blue-600" />
-                </div>
-                <div>
-                  <div className="text-[10px] text-gray-400 uppercase tracking-wide">Total</div>
-                  <div className="text-sm font-medium text-gray-800">
-                    {parseFloat(plan.order_total).toFixed(2)} DH
-                    {parseFloat(plan.order_advance_amount) > 0 && (
-                      <span className="text-blue-500 text-xs ml-1">(Av. {parseFloat(plan.order_advance_amount).toFixed(2)})</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+            ) : undefined}>
+            Le magasinier sera notifié automatiquement dès qu'il est prêt à être préparé.
+            Si rien ne s'affiche après quelques secondes, relancez la génération.
+          </StatusBanner>
         </div>
       )}
 
-      {/* ══════════════ WARNINGS BANNER (onglet Preparation) ══════════════
-          Option B : visible uniquement par le magasinier — les warnings concernent
-          principalement la dispo des ingredients (mise en liste d'attente faute de
-          stock), info hors champ du chef. */}
+      {/* Panneau de prelevement inline : il porte lui-meme son en-tete (numero) et
+          ses bandeaux de statut. */}
+      {showPrepBsi && !isSemiFini && activeBon && (
+        <div style={{ margin: '1rem' }}>
+          <BonSortiePanel planId={id!} isChef={isChef} isMagasinier={isMagasinier} variant="inline" />
+        </div>
+      )}
+
+      {plan.order_number && <PlanLinkedOrder plan={plan} />}
+
+      {/* ══════════════ ALERTES (onglet Preparation) ══════════════
+          Visibles uniquement par le magasinier : elles concernent la dispo des
+          ingredients (mise en liste d'attente faute de stock), hors champ du chef. */}
       {showPrep && isMagasinier && plan.warnings && (plan.warnings as string[]).length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle size={16} className="text-amber-600 flex-shrink-0" />
-            <span className="text-sm font-semibold text-amber-800">
-              Alertes ({(plan.warnings as string[]).length})
-            </span>
-          </div>
-          <ul className="space-y-1.5">
-            {[...new Set(plan.warnings as string[])].map((w: string, i: number) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-amber-700">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 flex-shrink-0" />
-                {w}
-              </li>
-            ))}
-          </ul>
+        <div style={{ margin: '1rem' }}>
+          <StatusBanner tone="warning" icon={AlertTriangle} title={`Alertes (${(plan.warnings as string[]).length})`}>
+            <ul className="status-banner-list">
+              {[...new Set(plan.warnings as string[])].map((w: string, i: number) => <li key={i}>{w}</li>)}
+            </ul>
+          </StatusBanner>
         </div>
       )}
 
@@ -1881,8 +1570,163 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           la selection des lots est maintenant geree dans le workflow de
           transfert Economat -> Pesage (cf module Warehouse / BSI), pas ici. */}
       {ingredientNeedsBlock}
+      {showPrepNeeds && hasTabs && needs.length === 0 && (
+        <div style={{ margin: '1rem' }}>
+          <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun besoin en ingrédients calculé — préparation bloquée">
+            Les produits de ce plan n'ont pas de recette (ou leur composition est vide) : aucun bon de sortie
+            ne peut être généré et l'étape Production reste fermée.
+            {isChef && ' Ajoutez une recette aux produits concernés, puis utilisez « Relancer le plan » pour recalculer les besoins (ou revenez en brouillon pour retirer le produit).'}
+          </StatusBanner>
+        </div>
+      )}
 
-      {/* ══════════════ ACTIVITY FEED ══════════════ */}
+
+      {/* Semi-finis requis — rendu en tete de l'onglet Production (etape pre-production) */}
+      {semiFinishedDepsBlock}
+
+      {/* ══════════════ ARTICLES (onglet Production) ══════════════ */}
+      {showProd && linkedReplenishment && (() => {
+        const repItems = (linkedReplenishment.items || []) as Record<string, any>[];
+        const planRoleSlugs = plan?.target_role ? getRoleCategorySlugs(plan.target_role as string) : null;
+        const effectiveSlugs = allowedSlugs || planRoleSlugs;
+        const filteredRepItems = effectiveSlugs
+          ? repItems.filter((ri) => effectiveSlugs.includes(ri.category_slug as string))
+          : repItems;
+        const stockItems = filteredRepItems.filter((ri) => {
+          const fromStock = (ri.fulfilled_from_stock as number) || 0;
+          const status = ri.status as string;
+          return fromStock > 0 || status === 'fulfilled' || status === 'from_stock';
+        });
+        if (stockItems.length === 0) return null;
+        return (
+          <div className="odoo-section">
+            <div className="odoo-section-header">
+              <Box size={12} /> Prélevés du stock
+              <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>{stockItems.length} article(s)</span>
+              <span style={{ marginLeft: 'auto', color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <TrendingUp size={11} /> Transfert auto — demande {linkedReplenishment.request_number as string}
+              </span>
+            </div>
+            <table className="odoo-table">
+              <thead>
+                <tr>
+                  <th>Produit</th>
+                  <th>Catégorie</th>
+                  <th style={{ textAlign: 'right' }}>Du stock / demandé</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stockItems.map((ri) => (
+                  <tr key={ri.id as string} style={{ cursor: 'default' }}>
+                    <td style={{ fontWeight: 500 }}>{ri.product_name as string}</td>
+                    <td style={{ color: 'var(--theme-text-muted)' }}>{ri.category_name as string}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      <strong style={{ color: '#155724' }}>{(ri.fulfilled_from_stock as number) || 0}</strong>
+                      <span style={{ color: 'var(--theme-text-muted)' }}> / {(ri.requested_quantity as number) || 0}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+      {showProd && itemsTable}
+
+      {/* ══════════════ LISTE D'ATTENTE (onglet Production) ══════════════ */}
+      {showProd && plan.status !== 'draft' && (() => {
+        const waitingItems = items.filter((it: Record<string, any>) => it.waiting_status === 'waiting');
+        const restoredItems = items.filter((it: Record<string, any>) => it.waiting_status === 'restored');
+        if (waitingItems.length === 0 && restoredItems.length === 0) return null;
+        return (
+          <div className="odoo-section">
+            <div className="odoo-section-header">
+              <Clock size={12} /> Liste d'attente
+              {waitingItems.length > 0 && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 4 }}>{waitingItems.length} en attente</span>}
+              {waitingItems.length > 1 && isChef && (
+                <button type="button"
+                  onClick={() => restoreMutation.mutate(waitingItems.map((it: Record<string, any>) => it.id as string))}
+                  disabled={restoreMutation.isPending}
+                  className="odoo-btn-primary" style={{ marginLeft: 'auto', padding: '2px 8px', fontSize: '0.6875rem', textTransform: 'none', letterSpacing: 0 }}>
+                  <RotateCcw size={11} /> Restaurer tous ({waitingItems.length})
+                </button>
+              )}
+            </div>
+            {waitingItems.length > 0 && (
+              <div className="odoo-alert warning">
+                <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  Ces articles ne peuvent pas être produits : ingrédients insuffisants.
+                  {plan.status === 'in_progress' && ' La production ne peut pas être terminée tant que des articles sont en attente.'}
+                </span>
+              </div>
+            )}
+            <table className="odoo-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 24 }}></th>
+                  <th>Produit</th>
+                  <th style={{ textAlign: 'right' }}>Qté planifiée</th>
+                  <th>Statut</th>
+                  <th style={{ width: 190 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {waitingItems.map((item: Record<string, any>) => (
+                  <tr key={item.id as string} style={{ cursor: 'default' }}>
+                    <td><span className="odoo-status-dot warning" /></td>
+                    <td style={{ fontWeight: 500 }}>{item.product_name as string}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{item.planned_quantity as number}</td>
+                    <td><span className="odoo-tag odoo-tag-orange"><Clock size={10} /> En attente</span></td>
+                    <td style={{ textAlign: 'right' }}>
+                      {isChef && (
+                        <span style={{ display: 'inline-flex', gap: 6 }}>
+                          <button type="button" onClick={() => restoreMutation.mutate([item.id as string])} disabled={restoreMutation.isPending}
+                            className="odoo-btn-secondary" style={{ padding: '2px 8px', fontSize: '0.6875rem' }}>
+                            <RotateCcw size={11} /> Restaurer
+                          </button>
+                          <button type="button"
+                            onClick={() => cancelItemsMutation.mutate({ itemIds: [item.id as string], reason: 'Annule depuis la liste d\'attente' })}
+                            disabled={cancelItemsMutation.isPending}
+                            className="odoo-btn-danger" style={{ padding: '2px 8px', fontSize: '0.6875rem' }}>
+                            <XCircle size={11} /> Annuler
+                          </button>
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {restoredItems.map((item: Record<string, any>) => (
+                  <tr key={item.id as string} style={{ cursor: 'default' }}>
+                    <td><span className="odoo-status-dot ok" /></td>
+                    <td style={{ fontWeight: 500 }}>{item.product_name as string}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{item.planned_quantity as number}</td>
+                    <td><span className="odoo-tag odoo-tag-green"><CheckCircle size={10} /> Restauré</span></td>
+                    <td></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
+      {showPrep && (plan.status === 'completed' || plan.status === 'in_progress') && (
+        <PlanLotTraceability usage={productionLotUsage as Record<string, any>[]} />
+      )}
+
+      {/* ══════════════ ÉTAPES + RENDEMENT + COUT REEL ══════════════ */}
+      {showProd && plan && ['in_progress', 'completed'].includes(plan.status) && (
+        <>
+          <EtapesPanel planId={id!} planStatus={plan.status} isChef={isChef} />
+          <RendementPanel planId={id!} planStatus={plan.status} items={items} isChef={isChef} />
+          <CoutReelPanel planId={id!} planStatus={plan.status} isChef={isChef}
+            totalQuantity={items.reduce((s: number, it: any) => s + ((it.actual_quantity as number) || (it.planned_quantity as number) || 0), 0)} />
+        </>
+      )}
+
+      {/* ══════════════ NOTES + JOURNAL (chatter, commun aux deux onglets) ══════════════
+          Toujours en pied de fiche, apres le contenu de l'onglet actif. */}
       <div className="odoo-section">
         <div className="odoo-section-header">
           <MessageSquare size={12} /> Notes de production
@@ -1937,608 +1781,7 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
         </div>
       </div>
 
-      {/* Semi-finis requis — rendu en tete de l'onglet Production (etape pre-production) */}
-      {semiFinishedDepsBlock}
-
-      {/* ══════════════ ITEMS SECTION (onglet Production) ══════════════ */}
-      {showProd && <>{linkedReplenishment ? (() => {
-        const repItems = (linkedReplenishment.items || []) as Record<string, any>[];
-        const planRoleSlugs = plan?.target_role ? getRoleCategorySlugs(plan.target_role as string) : null;
-        const effectiveSlugs = allowedSlugs || planRoleSlugs;
-        const filteredRepItems = effectiveSlugs
-          ? repItems.filter((ri) => effectiveSlugs.includes(ri.category_slug as string))
-          : repItems;
-        const stockItems = filteredRepItems.filter((ri) => {
-          const fromStock = (ri.fulfilled_from_stock as number) || 0;
-          const status = ri.status as string;
-          return fromStock > 0 || status === 'fulfilled' || status === 'from_stock';
-        });
-        const hasStock = stockItems.length > 0;
-        const hasProduction = items.length > 0;
-
-        return (
-          <div className={`grid gap-5 ${hasStock && hasProduction ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'}`}>
-            {/* Stock items */}
-            {hasStock && (
-              <div className="bg-white rounded-2xl shadow-sm border border-emerald-200 overflow-hidden self-start">
-                <div className="bg-emerald-50 px-5 py-4 border-b border-emerald-200 flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center">
-                    <Box size={18} className="text-white" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-emerald-800">Preleves du stock</h3>
-                    <span className="text-xs text-emerald-600">{stockItems.length} article(s)</span>
-                  </div>
-                </div>
-                <div className="divide-y divide-emerald-50">
-                  {stockItems.map((ri) => (
-                    <div key={ri.id as string} className="px-5 py-3.5 flex items-center gap-3 hover:bg-emerald-50/30 transition-colors">
-                      {ri.product_image ? (
-                        <img src={ri.product_image as string} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                          <Package size={16} className="text-emerald-600" />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">{ri.product_name as string}</div>
-                        <div className="text-xs text-gray-400">{ri.category_name as string}</div>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <span className="font-bold text-emerald-700">{(ri.fulfilled_from_stock as number) || 0}</span>
-                        <span className="text-xs text-gray-400 ml-0.5">/ {(ri.requested_quantity as number) || 0}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="bg-emerald-50 px-5 py-2.5 border-t border-emerald-200">
-                  <span className="text-xs text-emerald-600 flex items-center gap-1.5">
-                    <TrendingUp size={12} /> Transfert auto — Demande {linkedReplenishment.request_number as string}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Production items — simple table */}
-            {hasProduction && (
-              <div className="odoo-section">
-                <div className="odoo-section-header">
-                  <Factory size={12} /> À produire
-                  <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400 }}>{items.length} article(s)</span>
-                </div>
-                <div style={{ overflowX: 'auto' }}>
-                <table className="odoo-table">
-                  <thead>
-                    <tr>
-                      <th>Produit</th>
-                      <th style={{ textAlign: 'right' }}>Qté</th>
-                      <th style={{ textAlign: 'right' }}>Fait</th>
-                      <th>N° Lot</th>
-                      <th>Date de production</th>
-                      <th>Produit par</th>
-                      <th>Date d'expiration</th>
-                      <th>Cycle de vie</th>
-                      <th>Statut</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item: Record<string, any>, idx: number) => {
-                      const itemStatus = (item.status as string) || 'pending';
-                      const isPending = itemStatus === 'pending';
-                      const isInProgress = itemStatus === 'in_progress';
-                      const isItemWaiting = item.waiting_status === 'waiting';
-                      const isProduced = itemStatus === 'produced' || itemStatus === 'transferred' || itemStatus === 'received';
-                      const isCancelled = itemStatus === 'cancelled';
-                      const prodTs = item.production_timestamp || item.produced_at;
-                      const startTs = item.started_at as string | null;
-                      const prodDate = prodTs ? new Date(prodTs as string) : new Date(plan.plan_date);
-                      const sld = item.shelf_life_days as number;
-                      const dlcD = item.expires_at ? new Date(item.expires_at as string) : sld ? new Date(prodDate.getTime() + sld * 86400000) : null;
-                      const nowD = new Date();
-                      const prodBy = item.produced_by_first_name ? `${item.produced_by_first_name} ${item.produced_by_last_name}` : null;
-                      const startedBy = item.started_by_first_name ? `${item.started_by_first_name} ${item.started_by_last_name}` : null;
-                      const planDateObj = new Date(plan.plan_date as string);
-                      const lotNumber = (item.lot_number as string) || `LOT-${format(planDateObj, 'yyMMdd')}-${String(idx + 1).padStart(3, '0')}`;
-
-                      return (
-                        <tr key={item.id as string} className={`border-b border-gray-50 transition-colors hover:bg-gray-50/60 ${isCancelled ? 'opacity-40' : ''} ${isInProgress ? 'bg-blue-50/40' : idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
-                          <td className="px-5 py-3">
-                            <span className={`font-medium ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>{item.product_name as string}</span>
-                            {item.nb_contenants && (
-                              <div className="flex flex-wrap gap-1.5 mt-1">
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700">
-                                  <Layers size={10} /> {item.nb_contenants as number}x {item.contenant_nom as string || 'format'}
-                                </span>
-                                {(item.qty_from_frigo as number) > 0 && (
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-50 text-cyan-700">
-                                    <Flame size={10} /> Frigo: -{item.qty_from_frigo as number}
-                                  </span>
-                                )}
-                                {(item.surplus_frigo as number) > 0 && (
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700">
-                                    <Package size={10} /> Surplus: +{item.surplus_frigo as number}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-3 text-center">
-                            <div className="font-bold text-gray-600">{item.planned_quantity as number}</div>
-                            {item.quantite_brute_totale && (item.quantite_brute_totale as number) !== (item.planned_quantity as number) && (
-                              <div className="text-[10px] text-indigo-500" title="Quantite brute totale (formats)">
-                                brut: {item.quantite_brute_totale as number}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-3 text-center">
-                            {item.actual_quantity != null ? (
-                              <span className={`font-bold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                {item.actual_quantity as number}
-                              </span>
-                            ) : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className="px-3 py-3 text-gray-600 font-mono whitespace-nowrap">
-                            {(isProduced || isInProgress) ? lotNumber : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className="px-3 py-3 text-center text-gray-600 whitespace-nowrap">
-                            {isProduced && prodTs ? format(prodDate, 'dd/MM/yy HH:mm') : isInProgress && startTs ? format(new Date(startTs), 'dd/MM/yy HH:mm') : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className="px-3 py-3 text-gray-600">
-                            {isProduced && prodBy ? prodBy : isInProgress && startedBy ? startedBy : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className="px-3 py-3 text-center whitespace-nowrap">
-                            {isProduced && dlcD ? (
-                              <span className={dlcD <= nowD ? 'text-red-600 font-semibold' : 'text-gray-600'}>
-                                {dlcD <= nowD ? 'Expire' : format(dlcD, 'dd/MM/yyyy')}
-                              </span>
-                            ) : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className="px-3 py-3 text-center whitespace-nowrap">
-                            {isProduced ? (
-                              ((item.sale_type as string) || 'jour') === 'dlv' ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700">Multi-jours (DLC)</span>
-                              ) : (item.sale_type as string) === 'commande' ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">Sur commande</span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-50 text-orange-700">Vente du jour</span>
-                              )
-                            ) : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className="px-3 py-3 text-center">
-                            {isProduced ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700"><CheckCircle size={11} /> Produit</span>
-                            ) : isInProgress ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 animate-pulse"><Play size={11} /> En cours</span>
-                            ) : isCancelled ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-600"><XCircle size={11} /> Annule</span>
-                            ) : isItemWaiting ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-600"><Clock size={11} /> Attente</span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">A faire</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-3 text-center">
-                            {plan.status === 'in_progress' && isChef && isPending && !isItemWaiting ? (
-                              <button onClick={() => { setLaunchTargetItemId(item.id as string); setShowProductionLaunch(true); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors inline-flex items-center gap-1">
-                                <Play size={12} /> Lancer
-                              </button>
-                            ) : plan.status === 'in_progress' && isChef && isInProgress ? (
-                              <button onClick={() => { setLaunchTargetItemId(item.id as string); setShowProductionLaunch(true); }} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors inline-flex items-center gap-1">
-                                <Play size={12} /> Continuer
-                              </button>
-                            ) : isProduced ? (
-                              <button onClick={() => setPrintChoiceItem(item)} className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1" title="Imprimer ticket">
-                                <Printer size={13} /> Ticket
-                              </button>
-                            ) : null}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })() : (
-        /* Non-replenishment plan: simple table */
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Layers size={16} className="text-amber-600" />
-              <h2 className="font-semibold text-gray-900 text-sm">Articles du plan</h2>
-              <span className="text-xs text-gray-400">{items.length} article(s)</span>
-            </div>
-            {plan.status === 'in_progress' && totalActive > 0 && (
-              <div className="flex items-center gap-3">
-                <div className="w-28 h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${progressPct}%` }} />
-                </div>
-                <span className="text-xs font-medium text-gray-500">{producedCount}/{totalActive}</span>
-              </div>
-            )}
-          </div>
-          <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                <th className="text-left px-5 py-2.5">Produit</th>
-                <th className="text-center px-3 py-2.5 w-14">Qte</th>
-                <th className="text-center px-3 py-2.5 w-14">Fait</th>
-                <th className="text-left px-3 py-2.5">N° Lot</th>
-                <th className="text-center px-3 py-2.5">Date de production</th>
-                <th className="text-left px-3 py-2.5">Produit par</th>
-                <th className="text-center px-3 py-2.5">Date d'expiration</th>
-                <th className="text-center px-3 py-2.5">Cycle de vie</th>
-                <th className="text-center px-3 py-2.5 w-24">Statut</th>
-                <th className="text-center px-3 py-2.5 w-24"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item: Record<string, any>, idx: number) => {
-                const itemStatus = (item.status as string) || 'pending';
-                const isInProgress = itemStatus === 'in_progress';
-                const isWaiting = item.waiting_status === 'waiting';
-                const isCancelled = itemStatus === 'cancelled';
-                const isProduced = itemStatus === 'produced' || itemStatus === 'transferred' || itemStatus === 'received';
-                const prodTimestamp = item.production_timestamp || item.produced_at;
-                const startTs = item.started_at as string | null;
-                const prodDate = prodTimestamp ? new Date(prodTimestamp as string) : new Date(plan.plan_date);
-                const sldays = item.shelf_life_days as number;
-                const dlcDate = item.expires_at ? new Date(item.expires_at as string) : sldays ? new Date(prodDate.getTime() + sldays * 86400000) : null;
-                const now = new Date();
-                const producedBy = item.produced_by_first_name ? `${item.produced_by_first_name} ${item.produced_by_last_name}` : null;
-                const startedBy = item.started_by_first_name ? `${item.started_by_first_name} ${item.started_by_last_name}` : null;
-                const planDateObj2 = new Date(plan.plan_date as string);
-                const lotNumber = (item.lot_number as string) || `LOT-${format(planDateObj2, 'yyMMdd')}-${String(idx + 1).padStart(3, '0')}`;
-
-                return (
-                  <tr key={item.id as string} className={`border-b border-gray-50 transition-colors hover:bg-gray-50/60 ${isCancelled ? 'opacity-40' : ''} ${isInProgress ? 'bg-blue-50/40' : idx % 2 === 1 ? 'bg-gray-50/30' : ''}`}>
-                    <td className="px-5 py-3">
-                      <span className={`font-medium ${isCancelled ? 'line-through text-gray-400' : 'text-gray-900'}`}>{item.product_name as string}</span>
-                      {item.nb_contenants && (
-                        <div className="flex flex-wrap gap-1.5 mt-1">
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700">
-                            <Layers size={10} /> {item.nb_contenants as number}x {item.contenant_nom as string || 'format'}
-                          </span>
-                          {(item.qty_from_frigo as number) > 0 && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-cyan-50 text-cyan-700">
-                              <Flame size={10} /> Frigo: -{item.qty_from_frigo as number}
-                            </span>
-                          )}
-                          {(item.surplus_frigo as number) > 0 && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700">
-                              <Package size={10} /> Surplus: +{item.surplus_frigo as number}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-center">
-                      <div className="font-bold text-gray-600">{item.planned_quantity as number}</div>
-                      {item.quantite_brute_totale && (item.quantite_brute_totale as number) !== (item.planned_quantity as number) && (
-                        <div className="text-[10px] text-indigo-500" title="Quantite brute totale (formats)">
-                          brut: {item.quantite_brute_totale as number}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-center">
-                      {item.actual_quantity != null ? (
-                        <span className={`font-bold ${(item.actual_quantity as number) >= (item.planned_quantity as number) ? 'text-emerald-600' : 'text-amber-600'}`}>
-                          {item.actual_quantity as number}
-                        </span>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-3 py-3 text-gray-600 font-mono whitespace-nowrap">
-                      {(isProduced || isInProgress) ? lotNumber : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-3 py-3 text-center text-gray-600 whitespace-nowrap">
-                      {isProduced && prodTimestamp ? format(prodDate, 'dd/MM/yy HH:mm') : isInProgress && startTs ? format(new Date(startTs), 'dd/MM/yy HH:mm') : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-3 py-3 text-gray-600">
-                      {isProduced && producedBy ? producedBy : isInProgress && startedBy ? startedBy : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-3 py-3 text-center whitespace-nowrap">
-                      {isProduced && dlcDate ? (
-                        <span className={dlcDate <= now ? 'text-red-600 font-semibold' : 'text-gray-600'}>
-                          {dlcDate <= now ? 'Expire' : format(dlcDate, 'dd/MM/yyyy')}
-                        </span>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-3 py-3 text-center whitespace-nowrap">
-                      {isProduced ? (
-                        ((item.sale_type as string) || 'jour') === 'dlv' ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-50 text-green-700">Multi-jours (DLC)</span>
-                        ) : (item.sale_type as string) === 'commande' ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">Sur commande</span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-50 text-orange-700">Vente du jour</span>
-                        )
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-3 py-3 text-center">
-                      {itemStatus === 'produced' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700"><CheckCircle size={11} /> Produit</span>
-                      ) : itemStatus === 'transferred' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700"><TrendingUp size={11} /> Transfere</span>
-                      ) : itemStatus === 'received' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700"><Package size={11} /> Recu</span>
-                      ) : isInProgress ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 animate-pulse"><Play size={11} /> En cours</span>
-                      ) : isCancelled ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-600"><XCircle size={11} /> Annule</span>
-                      ) : isWaiting ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-600"><Clock size={11} /> Attente</span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">A faire</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-center">
-                      {plan.status === 'in_progress' && isChef && itemStatus === 'pending' && !isWaiting ? (
-                        <button onClick={() => { setLaunchTargetItemId(item.id as string); setShowProductionLaunch(true); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors inline-flex items-center gap-1">
-                          <Play size={12} /> Lancer
-                        </button>
-                      ) : plan.status === 'in_progress' && isChef && isInProgress ? (
-                        <button onClick={() => { setLaunchTargetItemId(item.id as string); setShowProductionLaunch(true); }} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors inline-flex items-center gap-1">
-                          <Play size={12} /> Continuer
-                        </button>
-                      ) : isProduced ? (
-                        <button onClick={() => setPrintChoiceItem(item)} className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1" title="Imprimer ticket">
-                          <Printer size={13} /> Ticket
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          </div>
-        </div>
-      )}</>}
-
-      {/* ══════════════ WAITING LIST (onglet Production) ══════════════ */}
-      {showProd && plan.status !== 'draft' && (() => {
-        const waitingItems = items.filter((it: Record<string, any>) => it.waiting_status === 'waiting');
-        const restoredItems = items.filter((it: Record<string, any>) => it.waiting_status === 'restored');
-        if (waitingItems.length === 0 && restoredItems.length === 0) return null;
-        return (
-          <div className="bg-white rounded-2xl shadow-sm border border-amber-200 overflow-hidden">
-            <div className="bg-amber-50 px-5 py-4 border-b border-amber-200 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center">
-                <Clock size={18} className="text-white" />
-              </div>
-              <div>
-                <h2 className="font-semibold text-amber-900">Liste d'attente</h2>
-                {waitingItems.length > 0 && <span className="text-xs text-amber-600">{waitingItems.length} en attente</span>}
-              </div>
-            </div>
-
-            {waitingItems.length > 0 && (
-              <div className="mx-5 mt-4 bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-center gap-3">
-                <AlertTriangle size={18} className="text-amber-500 flex-shrink-0" />
-                <span className="text-sm text-amber-800">
-                  Ces articles ne peuvent pas etre produits — ingredients insuffisants.
-                  {plan.status === 'in_progress' && ' La production ne peut pas etre terminee tant que des articles sont en attente.'}
-                </span>
-              </div>
-            )}
-
-            <div className="p-5 space-y-2">
-              {waitingItems.map((item: Record<string, any>) => (
-                <div key={item.id as string} className="flex items-center gap-3 p-3.5 bg-amber-50/50 rounded-xl border border-amber-100 hover:bg-amber-50 transition-colors">
-                  {item.product_image ? (
-                    <img src={item.product_image as string} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-                      <Clock size={16} className="text-amber-600" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm">{item.product_name as string}</div>
-                    <div className="text-xs text-amber-600">Qte planifiee: {item.planned_quantity as number}</div>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700 flex items-center gap-1">
-                    <Clock size={10} /> En attente
-                  </span>
-                  {isChef && (
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => restoreMutation.mutate([item.id as string])}
-                        disabled={restoreMutation.isPending}
-                        className="px-3 py-1.5 text-xs font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-lg flex items-center gap-1 transition-colors"
-                      >
-                        <RotateCcw size={12} /> Restaurer
-                      </button>
-                      <button
-                        onClick={() => cancelItemsMutation.mutate({ itemIds: [item.id as string], reason: 'Annule depuis la liste d\'attente' })}
-                        disabled={cancelItemsMutation.isPending}
-                        className="px-3 py-1.5 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 rounded-lg flex items-center gap-1 transition-colors"
-                      >
-                        <XCircle size={12} /> Annuler
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-              {restoredItems.map((item: Record<string, any>) => (
-                <div key={item.id as string} className="flex items-center gap-3 p-3.5 bg-emerald-50/50 rounded-xl border border-emerald-100">
-                  {item.product_image ? (
-                    <img src={item.product_image as string} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                      <CheckCircle size={16} className="text-emerald-600" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm">{item.product_name as string}</div>
-                    <div className="text-xs text-emerald-600">Qte planifiee: {item.planned_quantity as number}</div>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 flex items-center gap-1">
-                    <CheckCircle size={10} /> Restaure
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {waitingItems.length > 1 && isChef && (
-              <div className="px-5 pb-4 flex justify-end">
-                <button
-                  onClick={() => restoreMutation.mutate(waitingItems.map((it: Record<string, any>) => it.id as string))}
-                  disabled={restoreMutation.isPending}
-                  className="px-5 py-2.5 text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl flex items-center gap-2 transition-all shadow-md"
-                >
-                  <RotateCcw size={14} /> Restaurer tous ({waitingItems.length})
-                </button>
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* ══════════════ INGREDIENT NEEDS : DESACTIVE ici, rendu en haut via ingredientNeedsBlock ══════════════ */}
-      {false && showPrep && plan.status !== 'draft' && needs.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-purple-500 flex items-center justify-center">
-                <Beaker size={18} className="text-white" />
-              </div>
-              <div>
-                <h2 className="font-semibold text-gray-900">Besoins en ingredients</h2>
-                <span className="text-xs text-gray-500">{needs.length} ingredient(s)</span>
-              </div>
-            </div>
-            {insufficientNeeds.length > 0 && (
-              <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1.5">
-                <AlertTriangle size={12} /> {insufficientNeeds.length} insuffisant(s)
-              </span>
-            )}
-          </div>
-
-          <div className="divide-y divide-gray-50">
-            {needs.map((need: Record<string, any>) => {
-              const needed = parseFloat(need.needed_quantity as string);
-              const available = parseFloat(need.available_quantity as string);
-              const sufficient = need.is_sufficient as boolean;
-              const pct = needed > 0 ? Math.min(Math.round((available / needed) * 100), 100) : 100;
-
-              return (
-                <div key={need.id as string} className={`px-5 py-3.5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors ${!sufficient ? 'bg-red-50/30' : ''}`}>
-                  {/* Left color bar */}
-                  <div className={`w-1 h-10 rounded-full flex-shrink-0 ${sufficient ? 'bg-emerald-500' : 'bg-red-400'}`} />
-                  {/* Name + unit (smart : affiche l'unité réelle d'affichage, g ou kg) */}
-                  {(() => {
-                    const fNeed = smartFormatQuantity(needed, need.unit as string);
-                    const fDispo = smartFormatQuantity(available, need.unit as string);
-                    const digits = fNeed.unit === 'g' || fNeed.unit === 'ml' ? 0 : 2;
-                    return <>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm text-gray-900">{need.ingredient_name as string}</div>
-                        <div className="text-xs text-gray-400">{fNeed.unit}</div>
-                      </div>
-                      <div className="w-24 flex-shrink-0">
-                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full transition-all ${sufficient ? 'bg-emerald-500' : 'bg-red-400'}`} style={{ width: `${pct}%` }} />
-                        </div>
-                        <div className="text-[10px] text-gray-400 mt-0.5 text-center">{pct}%</div>
-                      </div>
-                      <div className="flex items-center gap-4 flex-shrink-0">
-                        <div className="text-center">
-                          <div className="text-[10px] text-gray-400 uppercase tracking-wide">Besoin</div>
-                          <div className="text-sm font-bold text-gray-700">{fNeed.value.toFixed(digits)}</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-[10px] text-gray-400 uppercase tracking-wide">Dispo</div>
-                          <div className="text-sm font-bold text-gray-700">{fDispo.value.toFixed(digits)}</div>
-                        </div>
-                      </div>
-                    </>;
-                  })()}
-                  {/* Status */}
-                  {sufficient ? (
-                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 flex items-center gap-1 flex-shrink-0">
-                      <CheckCircle size={10} /> OK
-                    </span>
-                  ) : (() => {
-                    const f = smartFormatQuantity(needed - available, need.unit as string);
-                    const d = f.unit === 'g' || f.unit === 'ml' ? 0 : 2;
-                    return (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700 flex items-center gap-1 flex-shrink-0">
-                        <AlertTriangle size={10} /> -{f.value.toFixed(d)} {f.unit}
-                      </span>
-                    );
-                  })()}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════ LOT TRACEABILITY ══════════════ */}
-      {showPrep && (plan.status === 'completed' || plan.status === 'in_progress') && (productionLotUsage as Record<string, any>[]).length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-500 flex items-center justify-center">
-              <Layers size={18} className="text-white" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-gray-900">Tracabilite des lots</h2>
-              <span className="text-xs text-gray-500">{(productionLotUsage as Record<string, any>[]).length} lot(s) d'ingredients utilise(s)</span>
-            </div>
-          </div>
-
-          <div className="divide-y divide-gray-50">
-            {(productionLotUsage as Record<string, any>[]).map((usage, idx) => {
-              const expDate = usage.expiration_date ? new Date(usage.expiration_date as string) : null;
-              const isExpired = expDate && expDate < new Date();
-
-              return (
-                <div key={idx} className="px-5 py-3.5 flex items-center gap-4 hover:bg-gray-50/50 transition-colors">
-                  <div className={`w-1 h-10 rounded-full flex-shrink-0 ${isExpired ? 'bg-red-400' : 'bg-amber-400'}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm text-gray-900">{usage.ingredient_name as string}</div>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
-                        {(usage.supplier_lot_number as string) || 'Sans ref.'}
-                      </span>
-                      {expDate && (
-                        <span className={`text-[10px] ${isExpired ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
-                          DLC: {format(expDate, 'dd/MM/yyyy')}
-                        </span>
-                      )}
-                      {usage.received_at && (
-                        <span className="text-[10px] text-gray-400">
-                          Recu: {format(new Date(usage.received_at as string), 'dd/MM/yyyy')}
-                        </span>
-                      )}
-                      {usage.supplier_name ? <span className="text-[10px] text-gray-400">— {String(usage.supplier_name)}</span> : null}
-                    </div>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <div className="text-sm font-bold text-gray-700">{parseFloat(usage.quantity_used as string).toFixed(2)}</div>
-                    <div className="text-[10px] text-gray-400">{(usage.ingredient_unit as string) || ''} utilise(s)</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ══════════════ ÉTAPES + RENDEMENT + COUT REEL ══════════════ */}
-      {showProd && plan && ['in_progress', 'completed'].includes(plan.status) && (
-        <>
-          <EtapesPanel planId={id!} planStatus={plan.status} isChef={isChef} />
-          <RendementPanel planId={id!} planStatus={plan.status} items={items} isChef={isChef} />
-          <CoutReelPanel planId={id!} planStatus={plan.status} isChef={isChef}
-            totalQuantity={items.reduce((s: number, it: any) => s + ((it.actual_quantity as number) || (it.planned_quantity as number) || 0), 0)} />
-        </>
-      )}
+      <PlanJournal events={planEvents} />
 
       {/* ══════════════ PRODUCTION LAUNCH MODAL (4-step) ══════════════ */}
       {showProductionLaunch && (
@@ -2560,7 +1803,25 @@ ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10p
           context="production"
           productionPlanId={id!}
           productIdFilter={items.map((it: Record<string, any>) => it.product_id as string)}
-          onClose={() => { setShowLossModal(false); queryClient.invalidateQueries({ queryKey: ['production', id] }); }}
+          planItems={items
+            .filter((it: Record<string, any>) => it.status !== 'cancelled')
+            .map((it: Record<string, any>) => ({
+              id: it.id as string,
+              productId: (it.product_id as string) || null,
+              productName: (it.product_name as string) || '',
+              lotNumber: (it.lot_number as string) || null,
+              status: (it.status as string) || 'pending',
+              plannedQty: Number(it.planned_quantity) || 0,
+              producedQty: Number(it.actual_quantity) || 0,
+              saleUnit: (it.sale_unit as 'unit' | 'weight' | null) ?? null,
+              costPrice: it.cost_price != null ? Number(it.cost_price) : null,
+              imageUrl: (it.product_image as string) || null,
+            }))}
+          onClose={() => {
+            setShowLossModal(false);
+            queryClient.invalidateQueries({ queryKey: ['production', id] });
+            queryClient.invalidateQueries({ queryKey: ['product-losses'] });
+          }}
         />
       )}
 

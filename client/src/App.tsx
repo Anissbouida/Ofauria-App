@@ -14,11 +14,13 @@ import ProductsPage from './features/products/ProductsPage';
 import OrdersPage from './features/orders/OrdersPage';
 import POSPage from './features/pos/POSPage';
 import CustomersPage from './features/customers/CustomersPage';
-import InventoryPage from './features/inventory/InventoryPage';
-import IngredientDetailPage from './features/inventory/IngredientDetailPage';
+import StockPage from './features/stock/StockPage';
+import IngredientDetailPage from './features/stock/IngredientDetailPage';
 import RecipesPage from './features/recipes/RecipesPage';
 import NomenclaturePage from './features/recipes/NomenclaturePage';
+import PreparationPage from './features/recipes/PreparationPage';
 import EmployeesPage from './features/employees/EmployeesPage';
+import EmployeeDetailPage from './features/employees/EmployeeDetailPage';
 import ReportsPage from './features/reports/ReportsPage';
 import SalesPage from './features/sales/SalesPage';
 import ProductionPage from './features/production/ProductionPage';
@@ -31,11 +33,12 @@ import AccountingPage from './features/accounting/AccountingPage';
 import PurchasingPage from './features/purchasing/PurchasingPage';
 import ReplenishmentPage from './features/replenishment/ReplenishmentPage';
 import RequestDetailPage from './features/replenishment/RequestDetailPage';
-import ReconciliationPage from './features/reconciliation/ReconciliationPage';
-import UnsoldDecisionsPage from './features/unsold/UnsoldDecisionsPage';
+import JourneeBoutiquePage from './features/boutique/JourneeBoutiquePage';
+import ControlePage from './features/controle/ControlePage';
+import ForecastPage from './features/forecast/ForecastPage';
+import HaccpPage from './features/haccp/HaccpPage';
 import OpeningInventoryCheckPage from './features/inventory-check/OpeningInventoryCheckPage';
-import InventoryCheckValidationPage from './features/inventory-check/InventoryCheckValidationPage';
-import WarehousePage from './features/warehouse/WarehousePage';
+import LegacyRedirect from './components/LegacyRedirect';
 import RecallPage from './features/traceability/RecallPage';
 
 export const queryClient = new QueryClient({
@@ -62,29 +65,38 @@ export default function App() {
               <Route path="/pos" element={<POSPage />} />
               <Route path="/sales" element={<SalesPage />} />
               <Route path="/customers" element={<CustomersPage />} />
-              <Route path="/inventory" element={<InventoryPage />} />
-              <Route path="/inventory/:id" element={<IngredientDetailPage />} />
-              {/* Emballages repliés dans l'Économat (onglet Consommables). Route
-                  conservée pour compat bookmarks → redirige. */}
-              <Route path="/packaging" element={<Navigate to="/inventory?tab=consumables" replace />} />
+              {/* Module Stock = ex-Économat (/inventory) + ex-Pesage (/warehouse), fusion du
+                  2026-10-11. Les anciennes URL redirigent (bookmarks, notifications deja emises). */}
+              <Route path="/stock" element={<StockPage />} />
+              <Route path="/stock/:id" element={<IngredientDetailPage />} />
+              <Route path="/stock/bsi/:id" element={<BonSortiePrelevementPage />} />
+              <Route path="/inventory" element={<LegacyRedirect from="inventory" to="/stock" />} />
+              <Route path="/inventory/:id" element={<LegacyRedirect from="inventory" to="/stock/:id" />} />
+              <Route path="/warehouse" element={<LegacyRedirect from="warehouse" to="/stock" />} />
+              <Route path="/warehouse/bsi/:id" element={<LegacyRedirect from="warehouse" to="/stock/bsi/:id" />} />
+              {/* Emballages repliés dans le Stock (onglet Consommables). */}
+              <Route path="/packaging" element={<Navigate to="/stock?tab=consumables" replace />} />
               <Route path="/recipes" element={<RecipesPage />} />
               <Route path="/recipes/:id/nomenclature" element={<NomenclaturePage />} />
+              {/* Préparations de base : même ossature, contenu adapté à une fournée. */}
+              <Route path="/recipes/:id/preparation" element={<PreparationPage />} />
               <Route path="/production" element={<ProductionPage />} />
               <Route path="/production/dashboard" element={<ProductionDashboardPage />} />
+              <Route path="/forecast" element={<ForecastPage />} />
+              <Route path="/haccp" element={<HaccpPage />} />
               <Route path="/production/:id" element={<PlanDetailPage />} />
-              {/* Route legacy conservee pour compat notifications/bookmarks. La page se redirige
-                  vers /warehouse/bsi/:planId en interne pour eviter le breadcrumb "Production". */}
-              <Route path="/production/:id/bon-sortie" element={<BonSortiePrelevementPage />} />
-              <Route path="/warehouse" element={<WarehousePage />} />
-              <Route path="/warehouse/bsi/:id" element={<BonSortiePrelevementPage />} />
               <Route path="/replenishment" element={<ReplenishmentPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />
-              <Route path="/reconciliation" element={<ReconciliationPage />} />
+              <Route path="/boutique" element={<JourneeBoutiquePage />} />
+              {/* Anciens écrans regroupés dans la Journée boutique : liens et favoris conservés. */}
+              <Route path="/reconciliation" element={<Navigate to="/boutique?tab=ventes" replace />} />
+              <Route path="/controle" element={<ControlePage />} />
               <Route path="/traceability/recall" element={<RecallPage />} />
-              <Route path="/unsold" element={<UnsoldDecisionsPage />} />
+              <Route path="/unsold" element={<Navigate to="/boutique?tab=invendus" replace />} />
               <Route path="/inventory-check/opening" element={<OpeningInventoryCheckPage />} />
-              <Route path="/inventory-check/validation" element={<InventoryCheckValidationPage />} />
+              <Route path="/inventory-check/validation" element={<Navigate to="/boutique?tab=ouverture" replace />} />
               <Route path="/employees" element={<EmployeesPage />} />
+              <Route path="/employees/:id" element={<EmployeeDetailPage />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/accounting" element={<AccountingPage />} />
               <Route path="/purchasing" element={<PurchasingPage />} />

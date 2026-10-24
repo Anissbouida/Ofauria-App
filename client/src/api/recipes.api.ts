@@ -178,9 +178,9 @@ export interface RecipeChild {
 }
 
 export const recipesApi = {
-  /** archived=true (strict) -> uniquement les fiches archivees (vue « Archivees ») ; sinon les actives.
-   *  Type `unknown` + test strict : la fonction est aussi passee telle quelle en queryFn
-   *  (ContenantsPage, ProductionPage...) et recoit alors le contexte React Query. */
+  /** archived=true (strict) → uniquement les fiches archivées. Le test === true
+      protège les `queryFn: recipesApi.list` : react-query passe un objet contexte
+      en premier argument, qui ne doit pas activer le filtre. */
   list: (archived?: unknown) => api.get('/recipes', { params: archived === true ? { archived: 1 } : {} }).then(r => r.data.data),
   listBase: () => api.get('/recipes/base').then(r => r.data.data),
   listCategories: () => api.get('/recipes/categories').then(r => r.data.data as RecipeCategory[]),
@@ -190,15 +190,34 @@ export const recipesApi = {
   update: (id: string, data: Record<string, any>) => api.put(`/recipes/${id}`, data).then(r => r.data.data),
   /** DELETE archive la fiche (mig 346) : plus de suppression physique. */
   remove: (id: string) => api.delete(`/recipes/${id}`),
+  /** Suppression en masse. Renvoie { deletedCount, blocked: [{id, name}] } —
+      les fiches référencées ailleurs (FK RESTRICT) sont conservées. */
+  bulkRemove: (ids: string[]) =>
+    api.post('/recipes/bulk-delete', { ids })
+      .then(r => r.data.data as { deletedCount: number; blocked: { id: string; name: string }[] }),
+  /** Archive : retire des listes et sélecteurs sans supprimer (restaurable). */
+  bulkArchive: (ids: string[]) =>
+    api.post('/recipes/bulk-archive', { ids }).then(r => r.data.data as { archivedCount: number }),
+  bulkRestore: (ids: string[]) =>
+    api.post('/recipes/bulk-restore', { ids }).then(r => r.data.data as { restoredCount: number }),
+  /** Restauration unitaire d'une fiche archivee (mig 346). */
   restore: (id: string) => api.post(`/recipes/${id}/restore`).then(r => r.data.data as { restoredCount: number }),
-  bulkArchive: (ids: string[]) => api.post('/recipes/bulk-archive', { ids }).then(r => r.data.data as { archivedCount: number }),
-  bulkRestore: (ids: string[]) => api.post('/recipes/bulk-restore', { ids }).then(r => r.data.data as { restoredCount: number }),
   versions: (id: string) => api.get(`/recipes/${id}/versions`).then(r => r.data.data),
   /** Restaure une version (mig 346) : l'etat courant est d'abord verse en nouvelle version. */
   restoreVersion: (id: string, versionNumber: number) =>
     api.post(`/recipes/${id}/versions/${versionNumber}/restore`).then(r => r.data as {
       data: Record<string, unknown>; restore: { restoredFrom: number; newVersion: number | null; warnings: string[] };
     }),
+  /**
+   * Fiche technique imprimable (PDF A4). Réponse binaire : blob, pas JSON.
+   * `formatId` restreint la fiche au cadre sélectionné ; sans lui, tous les
+   * formats actifs sont imprimés.
+   */
+  fichePdf: (id: string, formatId?: string | null) =>
+    api.get(`/recipes/${id}/fiche-technique`, {
+      responseType: 'blob',
+      params: formatId ? { format: formatId } : undefined,
+    }).then(r => r),
 
   // --- Nomenclature par format (composition d'un produit composé) ---
   componentRoles: () => api.get('/recipes/component-roles').then(r => r.data.data as ComponentRole[]),
@@ -211,6 +230,10 @@ export const recipesApi = {
   // Leviers financiers (frais indirects + multiplicateur) au niveau recette.
   saveFinance: (recipeId: string, payload: Record<string, any>) =>
     api.patch(`/recipes/${recipeId}/finance`, payload).then(r => r.data.data as CompositionData),
+  updateIdentity: (recipeId: string, payload: { name: string; categoryId: string | null }) =>
+    api.patch(`/recipes/${recipeId}/identity`, payload).then(r => r.data.data),
+  saveEtapes: (recipeId: string, etapes: Record<string, any>[]) =>
+    api.put(`/recipes/${recipeId}/etapes`, { etapes }).then(r => r.data.data),
   recipeChildren: (recipeId: string) =>
     api.get(`/recipes/${recipeId}/children`).then(r => r.data.data as RecipeChild[]),
 

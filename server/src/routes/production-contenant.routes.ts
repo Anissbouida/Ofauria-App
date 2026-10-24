@@ -13,6 +13,10 @@ router.post('/', authenticate, authorize('admin', 'manager'), asyncHandler(produ
 router.put('/:id', authenticate, authorize('admin', 'manager'), asyncHandler(productionContenantController.updateContenant));
 router.delete('/:id', authenticate, authorize('admin', 'manager'), asyncHandler(productionContenantController.deactivateContenant));
 
+// Actions en masse sur une selection (admin/manager)
+router.post('/bulk-deactivate', authenticate, authorize('admin', 'manager'), asyncHandler(productionContenantController.bulkDeactivate));
+router.post('/bulk-delete', authenticate, authorize('admin', 'manager'), asyncHandler(productionContenantController.bulkDelete));
+
 // Profils produit
 router.get('/products/:productId', authenticate, asyncHandler(productionContenantController.getProfile));
 router.put('/products/:productId', authenticate, authorize('admin', 'manager'), asyncHandler(productionContenantController.upsertProfile));

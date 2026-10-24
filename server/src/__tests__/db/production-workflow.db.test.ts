@@ -84,10 +84,18 @@ describe.skipIf(!hasTestDb)('Production — BSI -> produceItems -> lot produit f
     expect(plan.rows[0].status).toBe('awaiting_ingredients');
   });
 
-  it('prelevement -> verifie -> cloture : la matiere sort UNE fois, du bon lot', async () => {
-    await repos.bonSortieRepository.startPrelevement(bonId, fx.userId);
-    await repos.bonSortieRepository.verify(bonId, fx.userId);
-    const closed = await repos.bonSortieRepository.close(bonId, fx.userId);
+  it('prise en charge -> pesee -> remise -> acceptation chef : la matiere sort UNE fois, du bon lot', async () => {
+    // Workflow magasinier (refonte BSI/pesage) : le magasinier prend en charge, pese
+    // chaque ligne, remet au chef ; le chef accepte la reception (prelevement ->
+    // verifie -> cloture en une transaction, c'est la que les lots sortent).
+    await repos.bonSortieRepository.markAsPreparation(bonId, fx.userId);
+    const bon = (await repos.bonSortieRepository.findByPlan(planId))[0];
+    const farineLine = bon.lines.find((l: Record<string, unknown>) => l.ingredient_id === farineId);
+    await repos.bonSortieRepository.weighLignes(bonId, fx.userId, [
+      { ligneId: farineLine.id as string, actualQuantity: num(farineLine.allocated_quantity), source: 'manual' },
+    ]);
+    await repos.bonSortieRepository.markAsReady(bonId, fx.userId);
+    const closed = await repos.bonSortieRepository.acceptReception(bonId, fx.userId);
     expect(closed.status).toBe('cloture');
     const lot = await testPool().query(`SELECT pesage_quantity FROM ingredient_lots WHERE id = $1`, [lotOkId]);
     expect(num(lot.rows[0].pesage_quantity)).toBeCloseTo(45, 3);
@@ -96,8 +104,9 @@ describe.skipIf(!hasTestDb)('Production — BSI -> produceItems -> lot produit f
   });
 
   it('start refuse un double demarrage (verrou mig 338) puis produceItems cree stock + lot et auto-complete', async () => {
-    await repos.productionRepository.start(planId);
-    await expect(repos.productionRepository.start(planId)).rejects.toThrow(/in_progress/);
+    await repos.productionRepository.start(planId, fx.userId);
+    // Second demarrage refuse par la machine a etats (transitionPlan, mig 299).
+    await expect(repos.productionRepository.start(planId, fx.userId)).rejects.toThrow();
 
     const res = await repos.productionRepository.produceItems(planId, [{ planItemId, actualQuantity: 10 }], fx.userId, fx.storeId);
     expect(res.autoCompleted).toBe(true);

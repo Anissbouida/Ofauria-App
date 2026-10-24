@@ -1,24 +1,46 @@
 import { useState, useMemo, useEffect, Fragment, type CSSProperties } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { purchaseOrdersApi } from '../../api/purchase-orders.api';
+import { purchaseOrdersApi, newIdempotencyKey } from '../../api/purchase-orders.api';
 import { suppliersApi, invoicesApi } from '../../api/accounting.api';
 import { ingredientsApi } from '../../api/inventory.api';
+import { containerOf, roundUpToContainer, containerLabel, type ContainerDef } from '../../utils/container';
 import { packagingApi } from '../../api/packaging.api';
-import { useStockCategories } from '../inventory/useStockCategories';
+import { useStockCategories } from '../stock/useStockCategories';
 import {
   Plus, Send, PackageCheck, X, Trash2, AlertTriangle, Eye, Ban, PackageX,
   Truck, Search, ChevronDown, ChevronUp, ShoppingBag, Clock, CheckCircle2,
   Package, ArrowRight, FileText, Filter, Loader2, Download, Pencil, Receipt,
   Combine,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, differenceInCalendarDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { useAuth } from '../../context/AuthContext';
 import CategoryCascadeSelector, { STOCKABLE_ROOT_IDS, CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
+import ReasonCodeDialog, { type ReasonScope } from '../../components/purchasing/ReasonCodeDialog';
+import DocumentActionsTimeline from '../../components/purchasing/DocumentActionsTimeline';
+import ChangeOrderModal from '../../components/purchasing/ChangeOrderModal';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import {
+  StagePipeline, StageProgress, ViewSwitch, PeriodFilter, SelectFilter, Pager,
+  PAGE_SIZE, periodParams, periodLabel, type PeriodKey,
+} from '../../components/purchasing/ProcessBoard';
+import { apiErrorMessage } from '../../api/errors';
+import { Lock, PauseCircle, PlayCircle, Snowflake, FilePenLine, Scissors, Undo2 } from 'lucide-react';
+
+/** Actions motivées sur un BC (mig 306) : un code motif du référentiel est obligatoire. */
+type PoReasonAction = { kind: 'cancel' | 'not_delivered' | 'hold'; poId: string; orderNumber: string };
+const PO_REASON_UI: Record<PoReasonAction['kind'], { scope: ReasonScope; title: string; confirm: string; danger: boolean; description: string }> = {
+  cancel: { scope: 'cancel', title: 'Annuler le bon de commande', confirm: 'Annuler le BC', danger: true,
+    description: 'Le BC ne sera plus attendu. Les demandes d\'achat qu\'il couvrait redeviennent à commander.' },
+  not_delivered: { scope: 'not_delivered', title: 'Déclarer non livré', confirm: 'Déclarer non livré', danger: true,
+    description: 'Le fournisseur n\'a pas livré. Les demandes d\'achat couvertes redeviennent à commander.' },
+  hold: { scope: 'hold', title: 'Bloquer le bon de commande', confirm: 'Bloquer', danger: false,
+    description: 'Tant que le blocage n\'est pas levé, aucune réception ni facture ne peut être enregistrée sur ce BC.' },
+};
 
 // Racines proposees a la creation d'un article de BC : matieres premieres
 // (ingredients) ET consommables (emballages/entretien/equipements). Le routage
@@ -61,6 +83,36 @@ const STATUS_ICONS: Record<string, typeof Clock> = {
   en_attente_facturation: FileText,
 };
 
+/**
+ * Étapes du processus d'un BC (dérivées côté serveur, cf. purchaseOrderRepository._stagedCte).
+ * « Annulé / non livré » sort du processus : visible seulement dans l'Historique.
+ */
+const PO_STAGES: Array<{ key: string; label: string; hint: string; icon: typeof Clock }> = [
+  { key: 'draft', label: 'Brouillon', hint: 'à envoyer', icon: FilePenLine },
+  { key: 'sent', label: 'Envoyé', hint: 'attente livraison', icon: Send },
+  { key: 'partial', label: 'Réception partielle', hint: 'reliquat attendu', icon: Package },
+  { key: 'invoice', label: 'À facturer', hint: 'facture à établir', icon: Receipt },
+  { key: 'closed', label: 'Clôturé', hint: 'voir l\'historique', icon: CheckCircle2 },
+];
+const OPEN_STAGES = ['draft', 'sent', 'partial', 'invoice'];
+
+// Filtre par statut : les choix dépendent de la vue (un BC annulé n'est jamais « en cours »).
+const VIEW_STATUSES: Record<'open' | 'history', Array<{ key: string; label: string }>> = {
+  open: [
+    { key: 'en_attente', label: 'En attente (brouillon)' },
+    { key: 'envoye', label: 'Envoyé' },
+    { key: 'livre_partiel', label: 'Livré partiellement' },
+    { key: 'en_attente_facturation', label: 'Attente facturation (prix manquants)' },
+    { key: 'livre_complet', label: 'Livré, non facturé' },
+  ],
+  history: [
+    { key: 'livre_complet', label: 'Livré' },
+    { key: 'annule', label: 'Annulé' },
+    { key: 'non_livre', label: 'Non livré' },
+  ],
+};
+
+
 // Styles partagés pour les formulaires en style Odoo (cf. .odoo-scope dans index.css)
 const odooLabelStyle: CSSProperties = {
   display: 'block', fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase',
@@ -95,16 +147,42 @@ type POItem = {
   // (ex : 3 seaux de 5 kg = 15 kg).
   container_size?: string | null;
   container_type_label?: string | null;
+  // Double unité figée sur la ligne et compteurs dérivés du journal de ligne (mig 307).
+  qty_container?: string | null;
+  qty_per_container?: string;
+  line_container_label?: string | null;
+  base_unit?: string | null;
+  qty_received_base?: string;
+  qty_cancelled_base?: string;
+  qty_remaining_base?: string;
+  requires_lot?: boolean;
+  requires_dlc?: boolean;
+  default_shelf_life_days?: number | null;
+  discount_pct?: string;
+  tva_rate?: string | null;
 };
 
-export default function PurchaseOrdersTab() {
+export default function PurchaseOrdersTab({ initialSupplierId = '' }: {
+  /** Pré-filtre fournisseur (ouverture depuis l'onglet Fournisseurs). */
+  initialSupplierId?: string;
+} = {}) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   // Annulation de reception reservee a l'admin (reverse stock + facture + compta).
   const isAdmin = user?.role === 'admin';
+  // Vue processus : « En cours » (non clôturés, filtrables par étape) ou « Historique »
+  // (clôturés/annulés, par période). Tout est filtré et paginé côté serveur.
+  const [view, setView] = useState<'open' | 'history'>('open');
+  const [stage, setStage] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  // Période sur la date de commande : « Toutes » par défaut en cours, 3 mois en historique.
+  const [period, setPeriod] = useState<PeriodKey>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [supplierFilter, setSupplierFilter] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState(initialSupplierId);
   const [showCreate, setShowCreate] = useState(false);
   const [showDetail, setShowDetail] = useState<string | null>(null);
   const [showDelivery, setShowDelivery] = useState<string | null>(null);
@@ -112,17 +190,48 @@ export default function PurchaseOrdersTab() {
   const [editPoId, setEditPoId] = useState<string | null>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   // Selection multi-BC pour fusionner leurs factures fournisseurs en une seule.
-  const [selectedPoIds, setSelectedPoIds] = useState<Set<string>>(new Set());
+  // Les lignes sélectionnées sont gardées (pas seulement leurs ids) : la sélection survit au changement de page.
+  const [selectedRows, setSelectedRows] = useState<Map<string, Record<string, any>>>(new Map());
+  const selectedPoIds = useMemo(() => new Set(selectedRows.keys()), [selectedRows]);
   const [showMergeModal, setShowMergeModal] = useState(false);
 
-  const { data: orders = [], isLoading } = useQuery({
-    queryKey: ['purchase-orders', statusFilter],
-    queryFn: () => purchaseOrdersApi.list(statusFilter ? { status: statusFilter } : undefined),
-  });
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTerm(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+  useEffect(() => { setPage(1); }, [view, stage, statusFilter, period, customFrom, customTo, searchTerm, supplierFilter]);
 
-  const { data: overdue = [] } = useQuery({
-    queryKey: ['purchase-orders-overdue'],
-    queryFn: () => purchaseOrdersApi.overdue(),
+  const switchView = (next: 'open' | 'history') => {
+    if (next === view) return;
+    setView(next);
+    setStage('');
+    setStatusFilter('');
+    if (period !== 'custom') setPeriod(next === 'history' ? '3m' : 'all');
+  };
+
+  const boardParams = useMemo(() => {
+    const p: Record<string, string> = { view, page: String(page), pageSize: String(PAGE_SIZE) };
+    if (view === 'open' && stage) p.stage = stage;
+    if (statusFilter) p.status = statusFilter;
+    if (searchTerm) p.search = searchTerm;
+    if (supplierFilter) p.supplierId = supplierFilter;
+    return { ...p, ...periodParams(period, customFrom, customTo) };
+  }, [view, stage, statusFilter, period, customFrom, customTo, page, searchTerm, supplierFilter]);
+  const hasFilters = !!(statusFilter || searchTerm || supplierFilter || period !== (view === 'history' ? '3m' : 'all'));
+  const periodText = periodLabel(period, customFrom, customTo);
+  const resetFilters = () => {
+    setStatusFilter(''); setSearchInput(''); setSearchTerm(''); setSupplierFilter('');
+    setPeriod(view === 'history' ? '3m' : 'all'); setCustomFrom(''); setCustomTo('');
+  };
+
+  const { data: board, isLoading, isFetching } = useQuery({
+    queryKey: ['purchase-orders', 'board', boardParams],
+    queryFn: () => purchaseOrdersApi.board(boardParams),
+    placeholderData: (prev) => prev,
+  });
+  const { data: pipeline } = useQuery({
+    queryKey: ['purchase-orders', 'pipeline'],
+    queryFn: purchaseOrdersApi.pipeline,
   });
 
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
@@ -131,32 +240,53 @@ export default function PurchaseOrdersTab() {
   const sendMutation = useMutation({
     mutationFn: purchaseOrdersApi.send,
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); notify.success('BC envoyé au fournisseur'); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Envoi impossible')),
   });
-  const cancelMutation = useMutation({
-    mutationFn: purchaseOrdersApi.cancel,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); notify.success('BC annulé'); },
+  // Annuler / non livré / bloquer : motif codé obligatoire, action journalisée (mig 306).
+  const [poReason, setPoReason] = useState<PoReasonAction | null>(null);
+  const poReasonMutation = useMutation({
+    mutationFn: ({ kind, poId, reason }: { kind: PoReasonAction['kind']; poId: string; reason: { reasonCodeId: string; note?: string } }) =>
+      kind === 'cancel' ? purchaseOrdersApi.cancel(poId, reason)
+        : kind === 'not_delivered' ? purchaseOrdersApi.markNotDelivered(poId, reason)
+        : purchaseOrdersApi.hold(poId, reason),
+    onSuccess: (_d, v) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['po-actions', v.poId] });
+      notify.success(v.kind === 'cancel' ? 'BC annulé' : v.kind === 'not_delivered' ? 'Marqué non livré' : 'BC bloqué');
+      setPoReason(null);
+    },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Action impossible')),
+  });
+  const poStateMutation = useMutation({
+    mutationFn: ({ kind, poId }: { kind: 'release' | 'freeze' | 'unfreeze'; poId: string }) =>
+      kind === 'release' ? purchaseOrdersApi.release(poId) : kind === 'freeze' ? purchaseOrdersApi.freeze(poId) : purchaseOrdersApi.unfreeze(poId),
+    onSuccess: (_d, v) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['po-actions', v.poId] });
+      notify.success(v.kind === 'release' ? 'Blocage levé' : v.kind === 'freeze' ? 'BC gelé' : 'BC dégelé');
+    },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Action impossible')),
   });
   const deleteMutation = useMutation({
     mutationFn: purchaseOrdersApi.remove,
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); notify.success('BC supprimé'); },
   });
-  // Annulation de reception (admin) : reverse stock, lots, facture et ecriture comptable.
+  // Extourne de réception (admin) par contre-pièce, motif obligatoire (mig 308).
+  const [reverseFor, setReverseFor] = useState<{ id: string; orderNumber: string } | null>(null);
   const cancelReceptionMutation = useMutation({
-    mutationFn: purchaseOrdersApi.cancelReception,
+    mutationFn: ({ id, reason }: { id: string; reason: { reasonCodeId: string; note?: string } }) => purchaseOrdersApi.cancelReception(id, reason),
     onSuccess: () => {
+      setReverseFor(null);
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['eligible-pos'] });
-      notify.success('Réception annulée — stock et facture extournés');
+      notify.success('Réception extournée : bon miroir créé, lots et facture annulés (rien n\'est supprimé)');
     },
     onError: (err: { response?: { data?: { error?: { message?: string } } } }) => {
       notify.error(err?.response?.data?.error?.message ?? 'Erreur lors de l\'annulation de la réception');
     },
-  });
-  const notDeliveredMutation = useMutation({
-    mutationFn: purchaseOrdersApi.markNotDelivered,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); notify.success('Marqué non livré'); },
   });
   // Generation manuelle de facture : rattrapage quand l'auto-creation au
   // moment de la reception n'a pas eu lieu (typiquement prix saisis a posteriori).
@@ -179,7 +309,7 @@ export default function PurchaseOrdersTab() {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['debts'] });
       notify.success(`Factures fusionnees en ${inv?.invoice_number ?? ''}`);
-      setSelectedPoIds(new Set());
+      setSelectedRows(new Map());
       setShowMergeModal(false);
     },
     onError: (err: { response?: { data?: { error?: { message?: string } } } }) => {
@@ -201,50 +331,33 @@ export default function PurchaseOrdersTab() {
     }
   };
 
-  const allOrders = orders as Record<string, any>[];
-  const stats = useMemo(() => {
-    const byStatus: Record<string, { count: number; total: number }> = {};
-    for (const po of allOrders) {
-      const s = po.status as string;
-      if (!byStatus[s]) byStatus[s] = { count: 0, total: 0 };
-      byStatus[s].count++;
-      byStatus[s].total += parseFloat(po.total_amount as string) || 0;
-    }
-    const totalAmount = allOrders.reduce((s, po) => s + (parseFloat(po.total_amount as string) || 0), 0);
-    return { byStatus, totalAmount, totalCount: allOrders.length };
-  }, [allOrders]);
+  const rows = board?.rows ?? [];
+  const total = board?.total ?? 0;
 
-  // Filter
-  const displayed = useMemo(() => {
-    let list = allOrders;
-    if (searchTerm) {
-      const q = searchTerm.toLowerCase();
-      list = list.filter(po =>
-        (po.order_number as string).toLowerCase().includes(q) ||
-        (po.supplier_name as string).toLowerCase().includes(q)
-      );
+  const stageStats = useMemo(() => {
+    const m: Record<string, { count: number; amount: number; late: number }> = {};
+    for (const s of pipeline?.stages ?? []) {
+      m[s.stage] = { count: s.count, amount: parseFloat(s.amount) || 0, late: s.late_count };
     }
-    if (supplierFilter) {
-      list = list.filter(po => po.supplier_id === supplierFilter);
-    }
-    return list;
-  }, [allOrders, searchTerm, supplierFilter]);
-
-  // Unique suppliers from orders
-  const orderSuppliers = useMemo(() => {
-    const map = new Map<string, string>();
-    allOrders.forEach(po => map.set(po.supplier_id as string, po.supplier_name as string));
-    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-  }, [allOrders]);
-
-  // Etat selection : eligibilite et validite pour fusion.
-  // Un BC est eligible s'il a une facture liee OU des articles deja livres
-  // (le backend creera une facture a la volee sur le perimetre livre).
-  // Tous les selectionnes doivent etre du meme fournisseur.
-  const selectedPOs = useMemo(
-    () => allOrders.filter(po => selectedPoIds.has(po.id as string)),
-    [allOrders, selectedPoIds]
+    return m;
+  }, [pipeline]);
+  const openStats = OPEN_STAGES.reduce(
+    (acc, k) => ({ count: acc.count + (stageStats[k]?.count ?? 0), amount: acc.amount + (stageStats[k]?.amount ?? 0) }),
+    { count: 0, amount: 0 },
   );
+  const historyCount = (stageStats.closed?.count ?? 0) + (stageStats.cancelled?.count ?? 0);
+  const lateList = pipeline?.late ?? [];
+
+  const supplierOptions = useMemo(
+    () => (suppliers as Record<string, any>[])
+      .map(s => ({ id: s.id as string, label: s.name as string }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [suppliers],
+  );
+
+  // Fusion de factures : un BC est éligible s'il a une facture liée OU des articles
+  // déjà livrés (le backend crée la facture à la volée). Même fournisseur obligatoire.
+  const selectedPOs = useMemo(() => Array.from(selectedRows.values()), [selectedRows]);
   const poIsEligible = (po: Record<string, any>) =>
     po.has_invoice || parseFloat((po.delivered_amount as string) || '0') > 0;
   const mergeSupplierIds = new Set(selectedPOs.map(po => po.supplier_id as string));
@@ -258,82 +371,117 @@ export default function PurchaseOrdersTab() {
     : '';
 
   const togglePoSelection = (po: Record<string, any>) => {
+    const next = new Map(selectedRows);
     const id = po.id as string;
-    const next = new Set(selectedPoIds);
     if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelectedPoIds(next);
+    else next.set(id, po);
+    setSelectedRows(next);
   };
 
-  const statusTabs = [
-    { key: '', label: 'Tous', icon: ShoppingBag, color: 'text-gray-600' },
-    { key: 'en_attente', label: 'En attente', icon: Clock, color: 'text-amber-600' },
-    { key: 'envoye', label: 'Envoyés', icon: Send, color: 'text-blue-600' },
-    { key: 'livre_partiel', label: 'Partiels', icon: Package, color: 'text-orange-600' },
-    { key: 'livre_complet', label: 'Livrés', icon: CheckCircle2, color: 'text-emerald-600' },
-    { key: 'non_livre', label: 'Non livrés', icon: PackageX, color: 'text-red-600' },
-    { key: 'en_attente_facturation', label: 'Att. facture', icon: FileText, color: 'text-purple-600' },
-    { key: 'annule', label: 'Annulés', icon: Ban, color: 'text-gray-400' },
-  ];
+  const pickStage = (key: string) => {
+    if (key === 'closed') { switchView('history'); return; }
+    switchView('open');
+    setStage(stage === key ? '' : key);
+  };
 
-  const overdueList = overdue as Record<string, any>[];
+  /** Prochaine action du processus pour un BC en cours (bouton principal de la ligne). */
+  const nextAction = (po: Record<string, any>): { label: string; run: () => void; primary: boolean; danger?: boolean } | null => {
+    if (po.on_hold) return null;
+    const id = po.id as string;
+    switch (po.stage as string) {
+      case 'draft':
+        return { label: 'Envoyer', run: () => sendMutation.mutate(id), primary: true };
+      case 'sent':
+        return { label: 'Réceptionner', run: () => setShowDelivery(id), primary: true, danger: !!po.is_late };
+      case 'partial':
+        return { label: 'Réceptionner le reliquat', run: () => setShowDelivery(id), primary: true, danger: !!po.is_late };
+      case 'invoice':
+        if (po.status === 'en_attente_facturation') {
+          return po.frozen ? null : { label: 'Compléter les prix', run: () => setEditPoId(id), primary: false };
+        }
+        return {
+          label: 'Générer la facture', primary: false,
+          run: () => { if (confirm(`Générer la facture pour le BC ${po.order_number} ?`)) generateInvoiceMutation.mutate(id); },
+        };
+      default:
+        return null;
+    }
+  };
+
+  const fmtDate = (d: string | null | undefined) => (d ? format(new Date(d), 'dd MMM yyyy', { locale: fr }) : null);
+
+  /** Sous-titre d'étape d'une ligne (ce qui s'est passé / ce qui manque). */
+  const stageDetail = (po: Record<string, any>): string => {
+    const items = Number(po.item_count) || 0;
+    switch (po.stage as string) {
+      case 'draft': return 'non envoyé au fournisseur';
+      case 'sent': return 'en attente de livraison';
+      case 'partial': return `${po.lines_done ?? 0}/${items} ligne${items > 1 ? 's' : ''} soldée${items > 1 ? 's' : ''}`;
+      case 'invoice': return po.status === 'en_attente_facturation'
+        ? `${po.items_without_price ?? 0} prix manquant${Number(po.items_without_price) > 1 ? 's' : ''}`
+        : 'reçu, facture à générer';
+      case 'closed': return 'reçu et facturé';
+      default: return po.status === 'non_livre' ? 'non livré' : 'annulé';
+    }
+  };
+
+  const colCount = 8;
 
   return (
     <>
-      {/* Overdue alert */}
-      {overdueList.length > 0 && (
-        <div className="odoo-alert danger">
-          <AlertTriangle size={13} style={{ display: 'inline', marginRight: 6 }} />
-          <strong>{overdueList.length} bon{overdueList.length > 1 ? 's' : ''} en retard de livraison.</strong>
-          <span style={{ marginLeft: 6, color: 'var(--theme-text-muted)' }}>Consulte la liste ci-dessous pour confirmer la réception.</span>
-        </div>
+      {/* Retards de livraison : seule alerte de l'écran, avec accès direct à la réception */}
+      {lateList.length > 0 && (
+        <StatusBanner
+          tone="danger"
+          icon={AlertTriangle}
+          title={`${lateList.length >= 5 ? '5+' : lateList.length} livraison${lateList.length > 1 ? 's' : ''} en retard`}
+        >
+          {lateList.slice(0, 3).map((l, i) => (
+            <span key={l.id}>
+              {i > 0 && ' · '}
+              <button type="button" onClick={() => setShowDelivery(l.id)}
+                style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, textDecoration: 'underline', color: 'inherit' }}>
+                {l.order_number}
+              </button>
+              {' '}{l.supplier_name} — prévue le {fmtDate(l.expected_delivery_date)} ({l.days_late} j)
+            </span>
+          ))}
+          {lateList.length > 3 && <span> · et d'autres en tête de liste</span>}
+        </StatusBanner>
       )}
 
-      {/* Stat tiles */}
-      <div className="odoo-stat-grid">
-        <button onClick={() => setStatusFilter('')} className={`odoo-stat-card ${statusFilter === '' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label"><ShoppingBag size={11} style={{ display: 'inline', marginRight: 4 }} />Total BC</div>
-          <div className="odoo-stat-card-value">{stats.totalCount}</div>
-          <div className="odoo-stat-card-sub">{n(stats.totalAmount)} DH</div>
-        </button>
-        {(['en_attente', 'envoye', 'livre_complet'] as const).map((s) => {
-          const Icon = STATUS_ICONS[s] || Clock;
-          const data = stats.byStatus[s] || { count: 0, total: 0 };
-          return (
-            <button key={s} onClick={() => setStatusFilter(statusFilter === s ? '' : s)} className={`odoo-stat-card ${statusFilter === s ? 'active' : ''}`}>
-              <div className="odoo-stat-card-label"><Icon size={11} style={{ display: 'inline', marginRight: 4 }} />{STATUS_LABELS[s]}</div>
-              <div className="odoo-stat-card-value">{data.count}</div>
-              <div className="odoo-stat-card-sub">{n(data.total)} DH</div>
-            </button>
-          );
-        })}
-      </div>
+      {/* Pipeline du processus : une carte par étape, clic = filtre */}
+      <StagePipeline
+        title="Où en sont mes commandes"
+        summary={`${openStats.count} BC en cours · ${n(openStats.amount)} DH engagés`}
+        stages={PO_STAGES}
+        stats={Object.fromEntries(PO_STAGES.map(s => {
+          const st = stageStats[s.key];
+          return [s.key, st ? { count: st.count, sub: `${n(st.amount)} DH`, late: st.late } : undefined];
+        }))}
+        isActive={k => (k === 'closed' ? view === 'history' : view === 'open' && stage === k)}
+        onPick={pickStage}
+      />
 
-      {/* Search panel: status chips + filters + action */}
-      <div className="odoo-search-panel">
-        {statusTabs.map((tab) => {
-          const Icon = tab.icon;
-          const count = tab.key === '' ? stats.totalCount : (stats.byStatus[tab.key]?.count || 0);
-          return (
-            <button key={tab.key} onClick={() => setStatusFilter(tab.key)} className="odoo-filter-dropdown"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                backgroundColor: statusFilter === tab.key ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
-                color: statusFilter === tab.key ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
-                fontWeight: statusFilter === tab.key ? 600 : 400,
-              }}>
-              <Icon size={11} /> {tab.label}
-              {count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{count}</span>}
+      {/* Barre de vue + filtres */}
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
+        <ViewSwitch view={view} onChange={switchView}
+          openLabel={`En cours · ${openStats.count}`} historyLabel={`Historique · ${historyCount}`} />
+        {view === 'open' && stage && (
+          <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            Étape : {PO_STAGES.find(s => s.key === stage)?.label}
+            <button type="button" onClick={() => setStage('')} aria-label="Retirer le filtre d'étape" style={{ display: 'inline-flex' }}>
+              <X size={11} />
             </button>
-          );
-        })}
+          </span>
+        )}
         <div style={{ flex: 1 }} />
         {selectedPoIds.size > 0 && (
           <>
             <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
               {selectedPoIds.size} BC selectionne{selectedPoIds.size > 1 ? 's' : ''}
             </span>
-            <button onClick={() => setSelectedPoIds(new Set())} className="odoo-btn-secondary"
+            <button onClick={() => setSelectedRows(new Map())} className="odoo-btn-secondary"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
               title="Tout deselectionner">
               <X size={13} />
@@ -358,37 +506,49 @@ export default function PurchaseOrdersTab() {
         </div>
       )}
 
-      <div className="odoo-search-panel">
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
         <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" placeholder="Rechercher par N° ou fournisseur..."
-          value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="odoo-search-input" />
-        {orderSuppliers.length > 1 && (
-          <>
-            <Filter size={13} style={{ color: 'var(--theme-text-muted)' }} />
-            <SearchSelect
-              options={orderSuppliers.map(([id, name]) => ({ id, label: name }))}
-              value={supplierFilter}
-              onChange={setSupplierFilter}
-              placeholder="Tous les fournisseurs"
-            />
-          </>
+        <input type="text" placeholder="Rechercher par N° ou fournisseur..." aria-label="Rechercher un bon de commande"
+          value={searchInput} onChange={e => setSearchInput(e.target.value)} className="odoo-search-input"
+          style={{ flex: '1 1 220px', minWidth: 0 }} />
+        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+        <SelectFilter label="Statut" icon={Filter} value={statusFilter} onChange={setStatusFilter} options={VIEW_STATUSES[view]} />
+        <PeriodFilter label="Commandé" title="Filtre sur la date de commande"
+          period={period} onPeriod={setPeriod}
+          from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
+        <SearchSelect
+          options={supplierOptions}
+          value={supplierFilter}
+          onChange={setSupplierFilter}
+          placeholder="Tous les fournisseurs"
+        />
+        {hasFilters && (
+          <button type="button" onClick={resetFilters} className="odoo-btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <X size={12} /> Effacer les filtres
+          </button>
         )}
       </div>
 
-      {/* Orders table */}
+      {/* Liste */}
       {isLoading ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
           <p style={{ fontSize: '0.8125rem' }}>Chargement des bons de commande...</p>
         </div>
-      ) : displayed.length === 0 ? (
+      ) : rows.length === 0 ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
           <Truck size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Aucun bon de commande</p>
-          <p style={{ fontSize: '0.6875rem', marginTop: 2 }}>
-            {statusFilter || searchTerm || supplierFilter ? 'Aucun résultat pour ces filtres' : 'Créez votre premier bon de commande'}
+          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
+            {view === 'open' ? (stage ? 'Aucun bon de commande à cette étape' : 'Aucun bon de commande en cours') : 'Aucun bon de commande sur cette période'}
           </p>
-          {!statusFilter && !searchTerm && (
+          {hasFilters && (
+            <p style={{ fontSize: '0.6875rem', marginTop: 2 }}>
+              Aucun résultat pour ces filtres —{' '}
+              <button type="button" onClick={resetFilters} style={{ textDecoration: 'underline', color: 'inherit' }}>les effacer</button>
+            </p>
+          )}
+          {view === 'open' && !stage && !hasFilters && (
             <button onClick={() => setShowCreate(true)} className="odoo-btn-primary"
               style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <Plus size={13} /> Créer un BC
@@ -396,50 +556,54 @@ export default function PurchaseOrdersTab() {
           )}
         </div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
           <table className="odoo-table">
             <thead>
               <tr>
                 <th style={{ width: 28 }} title="Cocher pour fusionner les factures liees"></th>
-                <th style={{ width: 24 }}></th>
                 <th>N° BC</th>
                 <th>Fournisseur</th>
-                <th>Statut</th>
-                <th>Commande</th>
-                <th>Livraison prévue</th>
-                <th style={{ textAlign: 'right' }}>Articles</th>
+                <th style={{ minWidth: 200 }}>Étape</th>
+                <th>{view === 'open' ? 'Livraison' : 'Commande'}</th>
                 <th style={{ textAlign: 'right' }}>Montant</th>
-                <th style={{ textAlign: 'right', width: 130 }}>Actions</th>
+                <th style={{ textAlign: 'right' }}>{view === 'open' ? 'Prochaine action' : ''}</th>
+                <th style={{ textAlign: 'right', width: 110 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {displayed.map((po) => {
-                const isExpanded = expandedRow === (po.id as string);
+              {rows.map((po, i) => {
+                const id = po.id as string;
+                const isExpanded = expandedRow === id;
+                const status = po.status as string;
+                const poStage = po.stage as string;
                 const totalAmount = parseFloat(po.total_amount as string) || 0;
                 const deliveredAmount = parseFloat(po.delivered_amount as string) || 0;
                 const deliveryPct = totalAmount > 0 ? Math.min(100, (deliveredAmount / totalAmount) * 100) : 0;
-                const status = po.status as string;
-                const statusTag = status === 'livre_complet' ? 'odoo-tag-green'
-                  : status === 'livre_partiel' ? 'odoo-tag-orange'
-                  : status === 'envoye' ? 'odoo-tag-blue'
-                  : status === 'en_attente' ? 'odoo-tag-yellow'
-                  : status === 'non_livre' ? 'odoo-tag-red'
-                  : 'odoo-tag-grey';
-                const dotClass = status === 'livre_complet' ? 'ok'
-                  : status === 'non_livre' ? 'danger'
-                  : status === 'annule' ? 'neutral'
-                  : 'warning';
+                const stageIdx = PO_STAGES.findIndex(s => s.key === poStage);
+                const action = view === 'open' ? nextAction(po) : null;
+                // Historique : un intertitre par mois (les lignes arrivent triées par date décroissante).
+                const month = format(new Date(po.order_date as string), 'MMMM yyyy', { locale: fr });
+                const prevMonth = i > 0 ? format(new Date(rows[i - 1].order_date as string), 'MMMM yyyy', { locale: fr }) : null;
+                const due = po.expected_delivery_date as string | null;
                 return (
-                  <Fragment key={po.id as string}>
-                    <tr onClick={() => setExpandedRow(isExpanded ? null : po.id as string)} style={{ cursor: 'pointer' }}>
+                  <Fragment key={id}>
+                    {view === 'history' && month !== prevMonth && (
+                      <tr>
+                        <td colSpan={colCount} style={{ background: 'var(--odoo-bg-hover)', fontWeight: 600, fontSize: '0.75rem', textTransform: 'capitalize', color: 'var(--odoo-text)' }}>
+                          {month}
+                        </td>
+                      </tr>
+                    )}
+                    <tr onClick={() => setExpandedRow(isExpanded ? null : id)} style={{ cursor: 'pointer' }}>
                       <td onClick={e => e.stopPropagation()}>
                         {(() => {
                           const eligible = poIsEligible(po);
                           return (
                             <input type="checkbox"
-                              checked={selectedPoIds.has(po.id as string)}
+                              checked={selectedPoIds.has(id)}
                               onChange={() => togglePoSelection(po)}
                               disabled={!eligible}
+                              aria-label={`Sélectionner ${po.order_number}`}
                               title={eligible
                                 ? (po.has_invoice ? 'Selectionner pour fusion' : 'Selectionner — la facture sera generee a la fusion')
                                 : 'Aucun article livre — fusion impossible'}
@@ -447,89 +611,95 @@ export default function PurchaseOrdersTab() {
                           );
                         })()}
                       </td>
-                      <td><span className={`odoo-status-dot ${dotClass}`} /></td>
                       <td>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           {isExpanded ? <ChevronUp size={13} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronDown size={13} style={{ color: 'var(--theme-text-muted)' }} />}
                           <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{po.order_number as string}</span>
                         </span>
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginLeft: 17 }}>
+                          créé le {fmtDate(po.order_date as string)}
+                        </div>
                       </td>
                       <td>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           <Truck size={11} style={{ color: 'var(--theme-accent)' }} />
                           {po.supplier_name as string}
                         </span>
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginLeft: 15 }}>
+                          {po.item_count as number} article{Number(po.item_count) > 1 ? 's' : ''}
+                        </div>
                       </td>
-                      <td><span className={`odoo-tag ${statusTag}`}>{STATUS_LABELS[status]}</span></td>
-                      <td style={{ color: 'var(--theme-text-muted)' }}>
-                        {format(new Date(po.order_date as string), 'dd MMM yyyy', { locale: fr })}
+                      <td>
+                        {stageIdx >= 0 && poStage !== 'cancelled' ? (
+                          <StageProgress count={PO_STAGES.length} current={stageIdx} done={poStage === 'closed'} late={!!po.is_late} />
+                        ) : null}
+                        <span style={{ fontSize: '0.75rem' }}>
+                          {poStage === 'cancelled'
+                            ? <span className="odoo-tag odoo-tag-grey">{STATUS_LABELS[status] ?? status}</span>
+                            : <strong style={{ fontWeight: 600 }}>{PO_STAGES[stageIdx]?.label}</strong>}
+                          <span style={{ color: 'var(--odoo-text-muted)' }}> · {stageDetail(po)}</span>
+                        </span>
+                        {po.on_hold && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }} title="Bloqué : ni réception ni facture">bloqué</span>}
                       </td>
-                      <td style={{ color: 'var(--theme-text-muted)' }}>
-                        {po.expected_delivery_date
-                          ? format(new Date(po.expected_delivery_date as string), 'dd MMM yyyy', { locale: fr })
-                          : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+                      <td>
+                        {view === 'open' ? (
+                          due ? (
+                            <>
+                              <div style={{
+                                fontSize: '0.8125rem',
+                                color: po.is_late ? '#dc3545' : 'var(--odoo-text)',
+                                fontWeight: po.is_late ? 600 : 400,
+                              }}>
+                                Prévue le {fmtDate(due)}
+                              </div>
+                              {po.is_late && (
+                                <div style={{ fontSize: '0.6875rem', color: '#dc3545' }}>
+                                  {differenceInCalendarDays(new Date(), new Date(due))} j de retard
+                                </div>
+                              )}
+                            </>
+                          ) : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>
+                        ) : (
+                          <span style={{ color: 'var(--odoo-text-muted)' }}>{fmtDate(po.order_date as string)}</span>
+                        )}
                       </td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{po.item_count as number}</td>
                       <td style={{ textAlign: 'right' }}>
                         <span style={{ fontWeight: 700 }}>{n(totalAmount)}</span>
                         <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
-                        {(status === 'livre_partiel' || status === 'livre_complet') && (
+                        {poStage === 'partial' && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', marginTop: 2 }}>
                             <span style={{ width: 50, height: 3, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
-                              <span style={{ display: 'block', height: '100%', background: deliveryPct >= 100 ? '#28a745' : '#b85d1a', width: `${deliveryPct}%` }} />
+                              <span style={{ display: 'block', height: '100%', background: '#b85d1a', width: `${deliveryPct}%` }} />
                             </span>
-                            <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{deliveryPct.toFixed(0)}%</span>
+                            <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{deliveryPct.toFixed(0)}% reçu</span>
                           </div>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                        {action && (
+                          <button type="button" onClick={action.run}
+                            className={action.primary ? (action.danger ? 'odoo-btn-danger' : 'odoo-btn-primary') : 'odoo-btn-secondary'}
+                            disabled={sendMutation.isPending || generateInvoiceMutation.isPending}>
+                            {action.label}
+                          </button>
                         )}
                       </td>
                       <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                         <div style={{ display: 'inline-flex', gap: 2 }}>
-                          {status === 'en_attente' && (
-                            <button onClick={() => sendMutation.mutate(po.id as string)} title="Envoyer" className="odoo-pager-btn">
-                              <Send size={13} />
-                            </button>
-                          )}
-                          {(status === 'envoye' || status === 'livre_partiel') && (
-                            <button onClick={() => setShowDelivery(po.id as string)} title="Confirmer réception" className="odoo-pager-btn" style={{ color: '#28a745' }}>
-                              <PackageCheck size={13} />
-                            </button>
-                          )}
                           {status !== 'en_attente' && (
-                            <button onClick={() => handleDownloadPoPdf(po)} title="Télécharger PDF" className="odoo-pager-btn">
+                            <button onClick={() => handleDownloadPoPdf(po)} title="Télécharger PDF" aria-label="Télécharger PDF" className="odoo-pager-btn">
                               <Download size={13} />
                             </button>
                           )}
-                          <button onClick={() => setShowDetail(po.id as string)} title="Voir détails" className="odoo-pager-btn">
+                          <button onClick={() => setShowDetail(id)} title="Voir détails" aria-label="Voir détails" className="odoo-pager-btn">
                             <Eye size={13} />
                           </button>
-                          {/* Generer la facture : seulement si BC livre_complet sans facture liee.
-                              Rattrapage des cas ou la facture auto n'a pas ete creee
-                              (typiquement prix saisis apres la reception). */}
-                          {status === 'livre_complet' && !po.has_invoice && (
-                            <button
-                              onClick={() => {
-                                if (confirm(`Générer la facture pour le BC ${po.order_number} ?`)) {
-                                  generateInvoiceMutation.mutate(po.id as string);
-                                }
-                              }}
-                              title="Générer la facture"
-                              className="odoo-pager-btn"
-                              disabled={generateInvoiceMutation.isPending}
-                              style={{ color: '#7c3aed' }}
-                            >
-                              <Receipt size={13} />
-                            </button>
-                          )}
-                          {/* Annuler la reception (ADMIN) : reverse stock + facture + compta,
-                              repasse le BC en "envoye". Visible seulement sur BC receptionnes. */}
+                          {/* Extourne de réception (ADMIN) : reverse stock + facture + compta. */}
                           {isAdmin && ['livre_complet', 'livre_partiel', 'en_attente_facturation'].includes(status) && (
                             <button
-                              onClick={() => {
-                                if (confirm(`Annuler la réception du BC ${po.order_number} ?\n\nLe stock reçu, la facture et l'écriture comptable seront extournés, et le BC repassera en "Envoyé".`)) {
-                                  cancelReceptionMutation.mutate(po.id as string);
-                                }
-                              }}
-                              title="Annuler la réception (admin)"
+                              onClick={() => setReverseFor({ id, orderNumber: po.order_number as string })}
+                              title="Extourner la réception (admin)"
+                              aria-label="Extourner la réception"
                               className="odoo-pager-btn"
                               disabled={cancelReceptionMutation.isPending}
                               style={{ color: '#b85d1a' }}
@@ -537,15 +707,23 @@ export default function PurchaseOrdersTab() {
                               <PackageX size={13} />
                             </button>
                           )}
-                          {/* Edition complete (admin/gerant) : qty/prix/lignes. Dispo sur tous statuts. */}
-                          <button onClick={() => setEditPoId(po.id as string)} title="Modifier le BC (qty, prix, lignes)" className="odoo-pager-btn">
-                            <Pencil size={13} />
-                          </button>
-                          {/* Suppression definitive : seulement en_attente ou annule. */}
-                          {(status === 'en_attente' || status === 'annule') && (
+                          {/* Édition complète tant que le BC est en brouillon et non gelé (mig 306). */}
+                          {status === 'en_attente' && !po.frozen && (
+                            <button onClick={() => setEditPoId(id)} title="Modifier le BC (qté, prix, lignes)" aria-label="Modifier le BC" className="odoo-pager-btn">
+                              <Pencil size={13} />
+                            </button>
+                          )}
+                          {po.frozen && (
+                            <span className="odoo-pager-btn" title="BC gelé" style={{ opacity: 0.45, cursor: 'default' }}>
+                              <Lock size={13} />
+                            </span>
+                          )}
+                          {/* Suppression : brouillon jamais engagé seulement ; un BC engagé s'annule (mig 307). */}
+                          {status === 'en_attente' && !po.locked_at && (
                             <button
-                              onClick={() => { if (confirm(`Supprimer definitivement le BC ${po.order_number} ?`)) deleteMutation.mutate(po.id as string); }}
+                              onClick={() => { if (confirm(`Supprimer definitivement le BC ${po.order_number} ?`)) deleteMutation.mutate(id); }}
                               title="Supprimer le BC"
+                              aria-label="Supprimer le BC"
                               className="odoo-pager-btn"
                               style={{ color: '#dc3545' }}
                             >
@@ -557,13 +735,15 @@ export default function PurchaseOrdersTab() {
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td colSpan={10} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
-                          <ExpandedPORow poId={po.id as string} status={status}
-                            onSend={() => sendMutation.mutate(po.id as string)}
-                            onDelivery={() => setShowDelivery(po.id as string)}
-                            onNotDelivered={() => notDeliveredMutation.mutate(po.id as string)}
-                            onCancel={() => cancelMutation.mutate(po.id as string)}
-                            onDelete={() => { if (confirm('Supprimer ce bon de commande ?')) deleteMutation.mutate(po.id as string); }}
+                        <td colSpan={colCount} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
+                          <ExpandedPORow poId={id} status={status} isAdmin={isAdmin}
+                            onSend={() => sendMutation.mutate(id)}
+                            onDelivery={() => setShowDelivery(id)}
+                            onNotDelivered={() => setPoReason({ kind: 'not_delivered', poId: id, orderNumber: po.order_number as string })}
+                            onCancel={() => setPoReason({ kind: 'cancel', poId: id, orderNumber: po.order_number as string })}
+                            onHold={() => setPoReason({ kind: 'hold', poId: id, orderNumber: po.order_number as string })}
+                            onStateAction={(kind) => poStateMutation.mutate({ kind, poId: id })}
+                            onDelete={() => { if (confirm('Supprimer ce bon de commande ?')) deleteMutation.mutate(id); }}
                           />
                         </td>
                       </tr>
@@ -573,13 +753,48 @@ export default function PurchaseOrdersTab() {
               })}
             </tbody>
           </table>
+          <Pager page={page} total={total} onPage={setPage}
+            note={view === 'open'
+              ? 'Seuls les BC non clôturés sont chargés ici — les autres sont dans l\'Historique.'
+              : `Clôturés et annulés · ${periodText}`} />
         </div>
       )}
 
       {showCreate && <CreatePOModal onClose={() => setShowCreate(false)} />}
-      {showDetail && <PODetailModal poId={showDetail} onClose={() => setShowDetail(null)} />}
+      {showDetail && (
+        <PODetailModal poId={showDetail} onClose={() => setShowDetail(null)}
+          onSend={() => sendMutation.mutate(showDetail)}
+          onDelivery={() => setShowDelivery(showDetail)}
+          onCompletePrices={() => setEditPoId(showDetail)}
+          onGenerateInvoice={() => { if (confirm('Générer la facture de ce BC ?')) generateInvoiceMutation.mutate(showDetail); }}
+        />
+      )}
       {showDelivery && <DeliveryModal poId={showDelivery} onClose={() => setShowDelivery(null)} />}
       {editPoId && <EditPOModal poId={editPoId} onClose={() => setEditPoId(null)} />}
+      {reverseFor && (
+        <ReasonCodeDialog
+          title={`Extourner la réception · ${reverseFor.orderNumber}`}
+          scope="reverse"
+          description="Un bon de réception miroir reprend chaque ligne en sens inverse : les lots passent « extournés », le stock est retiré, la facture automatique est annulée et son écriture contre-passée. Rien n'est supprimé. Impossible si un lot a déjà été consommé : corrigez alors la ligne."
+          confirmLabel="Extourner"
+          danger
+          pending={cancelReceptionMutation.isPending}
+          onClose={() => setReverseFor(null)}
+          onSubmit={(reason) => cancelReceptionMutation.mutate({ id: reverseFor.id, reason })}
+        />
+      )}
+      {poReason && (
+        <ReasonCodeDialog
+          title={`${PO_REASON_UI[poReason.kind].title} · ${poReason.orderNumber}`}
+          scope={PO_REASON_UI[poReason.kind].scope}
+          description={PO_REASON_UI[poReason.kind].description}
+          confirmLabel={PO_REASON_UI[poReason.kind].confirm}
+          danger={PO_REASON_UI[poReason.kind].danger}
+          pending={poReasonMutation.isPending}
+          onClose={() => setPoReason(null)}
+          onSubmit={(reason) => poReasonMutation.mutate({ kind: poReason.kind, poId: poReason.poId, reason })}
+        />
+      )}
       {showMergeModal && (
         <MergeInvoicesModal
           selectedPOs={selectedPOs}
@@ -597,23 +812,71 @@ export default function PurchaseOrdersTab() {
 }
 
 /* ═══ Expanded Row — shows items inline ═══ */
-function ExpandedPORow({ poId, status, onSend, onDelivery, onNotDelivered, onCancel, onDelete }: {
-  poId: string; status: string;
+function ExpandedPORow({ poId, status, isAdmin, onSend, onDelivery, onNotDelivered, onCancel, onHold, onStateAction, onDelete }: {
+  poId: string; status: string; isAdmin: boolean;
   onSend: () => void; onDelivery: () => void; onNotDelivered: () => void;
-  onCancel: () => void; onDelete: () => void;
+  onCancel: () => void; onHold: () => void; onStateAction: (kind: 'release' | 'freeze' | 'unfreeze') => void;
+  onDelete: () => void;
 }) {
   const { data: po, isLoading } = useQuery({
     queryKey: ['purchase-orders', poId],
     queryFn: () => purchaseOrdersApi.getById(poId),
   });
 
+  const queryClient = useQueryClient();
+  const [lineReason, setLineReason] = useState<{ lineId: string | null; label: string } | null>(null);
+  const [correctFor, setCorrectFor] = useState<{ lineId: string; label: string; unit: string } | null>(null);
+  const correctMutation = useMutation({
+    mutationFn: ({ lineId, data }: { lineId: string; data: { delta: number; reasonCodeId: string; note?: string } }) =>
+      purchaseOrdersApi.correctReceipt(poId, lineId, data),
+    onSuccess: () => { refresh(); queryClient.invalidateQueries({ queryKey: ['inventory'] }); notify.success('Réception corrigée'); setCorrectFor(null); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Correction impossible')),
+  });
+  const [showChange, setShowChange] = useState(false);
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    queryClient.invalidateQueries({ queryKey: ['po-actions', poId] });
+    queryClient.invalidateQueries({ queryKey: ['purchase-requests'] });
+  };
+  const closeRemainderMutation = useMutation({
+    mutationFn: ({ lineId, reason }: { lineId: string | null; reason: { reasonCodeId: string; note?: string } }) =>
+      purchaseOrdersApi.closeRemainder(poId, reason, lineId ?? undefined),
+    onSuccess: () => { refresh(); notify.success('Reliquat clôturé'); setLineReason(null); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Clôture impossible')),
+  });
+  const reopenMutation = useMutation({
+    mutationFn: (lineId: string) => purchaseOrdersApi.reopenRemainder(poId, lineId),
+    onSuccess: () => { refresh(); notify.success('Reliquat rouvert'); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Réouverture impossible')),
+  });
+
   if (isLoading) return <div className="py-4 text-center text-gray-400 text-sm">Chargement des articles...</div>;
   if (!po) return null;
 
   const items = (po.items || []) as POItem[];
+  const canCloseRemainder = ['envoye', 'livre_partiel'].includes(status);
+  const canChange = ['envoye', 'livre_partiel', 'livre_complet', 'en_attente_facturation'].includes(status) && !po.frozen;
+  const qtyLabel = (base: number, item: POItem) => {
+    const per = Number(item.qty_per_container ?? 1);
+    const unit = item.base_unit || item.ingredient_unit;
+    if (per === 1) return `${Number(base.toFixed(3))} ${unit}`;
+    return `${Number((base / per).toFixed(3))} ${item.line_container_label ?? 'cont.'} (${Number(base.toFixed(3))} ${unit})`;
+  };
 
   return (
     <div className="space-y-3">
+      {po.on_hold && (
+        <StatusBanner tone="danger" icon={PauseCircle} title="BC bloqué : réception et facturation suspendues"
+          actions={<button className="odoo-btn-secondary" onClick={() => onStateAction('release')}>Lever le blocage</button>}>
+          {po.hold_note ? `Précision : ${po.hold_note}` : 'Le motif figure dans l\'historique ci-dessous.'}
+        </StatusBanner>
+      )}
+      {po.frozen && (
+        <StatusBanner tone="info" icon={Snowflake} title="BC gelé : en-tête et lignes figés"
+          actions={isAdmin ? <button className="odoo-btn-secondary" onClick={() => onStateAction('unfreeze')}>Dégeler</button> : undefined}>
+          La réception et la facturation restent possibles.
+        </StatusBanner>
+      )}
       {/* Items table */}
       <div className="bg-white rounded-lg border overflow-hidden">
         <table className="w-full text-sm">
@@ -621,8 +884,10 @@ function ExpandedPORow({ poId, status, onSend, onDelivery, onNotDelivered, onCan
             <tr>
               <th className="text-left px-3 py-2">Ingrédient</th>
               <th className="text-left px-3 py-2">Catégorie</th>
-              <th className="text-right px-3 py-2">Qté commandée</th>
-              <th className="text-right px-3 py-2">Qté livrée</th>
+              <th className="text-right px-3 py-2">Commandé</th>
+              <th className="text-right px-3 py-2">Reçu</th>
+              <th className="text-right px-3 py-2" title="Reliquat clôturé : quantité qui ne sera plus livrée">Clôturé</th>
+              <th className="text-right px-3 py-2">Reste</th>
               <th className="text-right px-3 py-2">Prix unit.</th>
               <th className="text-right px-3 py-2">Total</th>
               <th className="text-right px-3 py-2 w-24">Progression</th>
@@ -631,8 +896,10 @@ function ExpandedPORow({ poId, status, onSend, onDelivery, onNotDelivered, onCan
           <tbody className="divide-y">
             {items.map(item => {
               const ordered = parseFloat(item.quantity_ordered);
-              const delivered = parseFloat(item.quantity_delivered);
-              const pct = ordered > 0 ? Math.min(100, (delivered / ordered) * 100) : 0;
+              const delivered = parseFloat(item.qty_received_base ?? item.quantity_delivered);
+              const cancelled = parseFloat(item.qty_cancelled_base ?? '0');
+              const remaining = parseFloat(item.qty_remaining_base ?? String(Math.max(ordered - delivered - cancelled, 0)));
+              const pct = ordered > 0 ? Math.min(100, ((delivered + cancelled) / ordered) * 100) : 0;
               const price = item.unit_price != null ? parseFloat(item.unit_price) : null;
               return (
                 <tr key={item.id} className="hover:bg-gray-50/50">
@@ -647,9 +914,35 @@ function ExpandedPORow({ poId, status, onSend, onDelivery, onNotDelivered, onCan
                       itemName={item.ingredient_name}
                     />
                   </td>
-                  <td className="px-3 py-2 text-right text-gray-600">{ordered}</td>
-                  <td className="px-3 py-2 text-right">
-                    <span className={delivered > 0 ? 'text-green-600 font-medium' : 'text-gray-400'}>{delivered}</span>
+                  <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap">{qtyLabel(ordered, item)}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    <span className={delivered > 0 ? 'text-green-600 font-medium' : 'text-gray-400'}>{qtyLabel(delivered, item)}</span>
+                    {delivered > 0 && ['livre_partiel', 'livre_complet', 'en_attente_facturation'].includes(status) && !po.has_invoice && (
+                      <button className="odoo-pager-btn" title="Corriger la quantité reçue"
+                        onClick={() => setCorrectFor({ lineId: item.id, label: item.ingredient_name, unit: item.base_unit || item.ingredient_unit })}><Pencil size={11} /></button>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap text-gray-500">
+                    {cancelled > 0 ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        {qtyLabel(cancelled, item)}
+                        {!['annule', 'non_livre'].includes(status) && (
+                          <button className="odoo-pager-btn" title="Rouvrir le reliquat" disabled={reopenMutation.isPending}
+                            onClick={() => reopenMutation.mutate(item.id)}><Undo2 size={12} /></button>
+                        )}
+                      </span>
+                    ) : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    {remaining > 0.0001 ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <span className="text-amber-600">{qtyLabel(remaining, item)}</span>
+                        {canCloseRemainder && (
+                          <button className="odoo-pager-btn" title="Clôturer le reliquat de cette ligne"
+                            onClick={() => setLineReason({ lineId: item.id, label: item.ingredient_name })}><Scissors size={12} /></button>
+                        )}
+                      </span>
+                    ) : <span className="text-gray-400">—</span>}
                   </td>
                   <td className="px-3 py-2 text-right text-gray-600">{price != null ? `${n(price)} DH` : <span className="text-amber-500 text-xs">À définir</span>}</td>
                   <td className="px-3 py-2 text-right font-medium">{price != null ? `${n(ordered * price)} DH` : <span className="text-gray-400">—</span>}</td>
@@ -696,20 +989,65 @@ function ExpandedPORow({ poId, status, onSend, onDelivery, onNotDelivered, onCan
             </button>
           </>
         )}
-        {!['livre_complet', 'annule'].includes(status) && (
+        {canChange && (
+          <button onClick={() => setShowChange(true)} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <FilePenLine size={14} /> Demande de changement
+          </button>
+        )}
+        {canCloseRemainder && items.some(i => parseFloat(i.qty_remaining_base ?? '0') > 0.0001) && (
+          <button onClick={() => setLineReason({ lineId: null, label: 'toutes les lignes' })} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Scissors size={14} /> Clôturer le reliquat
+          </button>
+        )}
+        {['en_attente', 'envoye'].includes(status) && (
           <button onClick={onCancel}
             className="px-3 py-1.5 bg-gray-50 text-gray-500 rounded-lg text-sm font-medium hover:bg-gray-100 flex items-center gap-1.5 transition-colors">
             <Ban size={14} /> Annuler le BC
           </button>
         )}
-        {/* Suppression definitive : autorise sur en_attente ou annule (BC abandonne). */}
-        {(status === 'en_attente' || status === 'annule') && (
+        {!po.on_hold && !['annule', 'non_livre'].includes(status) && (
+          <button onClick={onHold} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <PauseCircle size={14} /> Bloquer
+          </button>
+        )}
+        {po.on_hold && (
+          <button onClick={() => onStateAction('release')} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <PlayCircle size={14} /> Lever le blocage
+          </button>
+        )}
+        {isAdmin && !po.frozen && !['annule', 'non_livre'].includes(status) && (
+          <button onClick={() => onStateAction('freeze')} className="odoo-btn-secondary" title="Figer en-tête et lignes (admin)" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Snowflake size={14} /> Geler
+          </button>
+        )}
+        {/* Suppression : brouillon jamais engagé seulement (mig 307). */}
+        {status === 'en_attente' && !po.locked_at && (
           <button onClick={onDelete}
             className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100 flex items-center gap-1.5 transition-colors">
             <Trash2 size={14} /> Supprimer
           </button>
         )}
       </div>
+
+      <DocumentActionsTimeline queryKey={['po-actions', poId]} fetcher={() => purchaseOrdersApi.actions(poId)} />
+
+      {lineReason && (
+        <ReasonCodeDialog
+          title={`Clôturer le reliquat · ${lineReason.label}`}
+          scope="force_close"
+          description="La part non reçue ne sera plus attendue. La quantité commandée d'origine est conservée ; le reliquat clôturé reste visible et peut être rouvert tant que le BC n'est pas facturé."
+          confirmLabel="Clôturer le reliquat"
+          pending={closeRemainderMutation.isPending}
+          onClose={() => setLineReason(null)}
+          onSubmit={(reason) => closeRemainderMutation.mutate({ lineId: lineReason.lineId, reason })}
+        />
+      )}
+      {showChange && <ChangeOrderModal po={po} onClose={() => setShowChange(false)} />}
+      {correctFor && (
+        <CorrectReceiptDialog target={correctFor} pending={correctMutation.isPending}
+          onClose={() => setCorrectFor(null)}
+          onSubmit={(data) => correctMutation.mutate({ lineId: correctFor.lineId, data })} />
+      )}
     </div>
   );
 }
@@ -858,6 +1196,7 @@ function CategoryQuickEdit({ kind, refId, categoryId, itemName, allowConvert, on
 
 /* ═══ Create PO Modal ═══ */
 function CreatePOModal({ onClose }: { onClose: () => void }) {
+  const [createIdemKey] = useState(newIdempotencyKey);
   const queryClient = useQueryClient();
   const [supplierId, setSupplierId] = useState('');
   const [expectedDate, setExpectedDate] = useState('');
@@ -867,7 +1206,9 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   // (packaging_items). kind decide la table cible cote serveur. categoryId =
   // categorie de l'article, affichee pour reperer les erreurs de classement
   // AVANT l'achat (elle sera figee sur la ligne de facture cote serveur).
-  const [items, setItems] = useState<{ kind: 'ingredient' | 'consumable'; refId: string; name: string; unit: string; categoryId: string | null; quantityOrdered: number; unitPrice: number | null }[]>([]);
+  // container : regle « contenant entier » — la quantite se saisit en nombre de
+  // contenants (minimum 1), quantityOrdered = nb x taille.
+  const [items, setItems] = useState<{ kind: 'ingredient' | 'consumable'; refId: string; name: string; unit: string; categoryId: string | null; quantityOrdered: number; unitPrice: number | null; container: ContainerDef | null; containerCount: number }[]>([]);
   const [showNewIngredient, setShowNewIngredient] = useState(false);
   const [newIng, setNewIng] = useState({ name: '', unit: 'kg', categoryId: '', unitCost: '' });
 
@@ -881,7 +1222,8 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   const newKind = kindOf(newIng.categoryId);
 
   const createMutation = useMutation({
-    mutationFn: purchaseOrdersApi.create,
+    // Une clé par formulaire ouvert : un double clic ne crée pas deux BC (mig 307).
+    mutationFn: (data: Record<string, any>) => purchaseOrdersApi.create(data, createIdemKey),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       notify.success('Bon de commande créé');
@@ -894,14 +1236,16 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
     queryClient.invalidateQueries({ queryKey: [kind === 'consumable' ? 'packaging-items' : 'ingredients'] });
     queryClient.invalidateQueries({ queryKey: ['inventory'] });
     const cost = parseFloat(created.unit_cost as string) || 0;
+    const container = kind === 'ingredient' ? containerOf(created) : null;
     setItems(prev => [...prev, {
       kind,
       refId: created.id as string,
       name: created.name as string,
       unit: created.unit as string,
       categoryId: (created.category_id as string) || null,
-      quantityOrdered: 1,
+      quantityOrdered: container ? container.size : 1,
       unitPrice: cost > 0 ? cost : null,
+      container, containerCount: 1,
     }]);
     setShowNewIngredient(false);
     setNewIng({ name: '', unit: 'kg', categoryId: '', unitCost: '' });
@@ -957,14 +1301,16 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
 
   const addProduct = (p: Record<string, any>) => {
     const cost = parseFloat(p.unit_cost as string) || 0;
+    const container = p._kind === 'ingredient' ? containerOf(p) : null;
     setItems([...items, {
       kind: p._kind as 'ingredient' | 'consumable',
       refId: p.id as string,
       name: p.name as string,
       unit: p.unit as string,
       categoryId: (p.category_id as string) || null,
-      quantityOrdered: 1,
+      quantityOrdered: container ? container.size : 1,
       unitPrice: cost > 0 ? cost : null,
+      container, containerCount: 1,
     }]);
     setSearchIngredient('');
   };
@@ -1166,9 +1512,23 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                         />
                       </td>
                       <td>
-                        <input type="number" min={0.01} step="0.01" value={item.quantityOrdered || ''}
-                          onChange={(e) => updateItem(idx, 'quantityOrdered', parseFloat(e.target.value) || 0)}
-                          style={odooNumFieldStyle} />
+                        {item.container ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                            <input type="number" min={1} step="1" value={item.containerCount || ''}
+                              onChange={(e) => {
+                                const count = Math.max(1, Math.floor(parseFloat(e.target.value) || 1));
+                                setItems(prev => prev.map((it, i) => i === idx ? { ...it, containerCount: count, quantityOrdered: count * (it.container as ContainerDef).size } : it));
+                              }}
+                              style={{ ...odooNumFieldStyle, width: 64 }} title={`${containerLabel(item.container, item.unit)} — commande par contenant entier`} />
+                            <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', whiteSpace: 'nowrap' }}>
+                              × {containerLabel(item.container, item.unit)} = <strong>{n(item.quantityOrdered)} {item.unit}</strong>
+                            </span>
+                          </div>
+                        ) : (
+                          <input type="number" min={0.01} step="0.01" value={item.quantityOrdered || ''}
+                            onChange={(e) => updateItem(idx, 'quantityOrdered', parseFloat(e.target.value) || 0)}
+                            style={odooNumFieldStyle} />
+                        )}
                       </td>
                       <td>
                         <input type="number" min={0} step="0.01" value={item.unitPrice ?? ''}
@@ -1231,136 +1591,271 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
 }
 
 /* ═══ PO Detail Modal ═══ */
-function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void }) {
+/**
+ * Fiche d'un BC, présentée comme un processus : frise des étapes (brouillon → envoyé →
+ * réception → facture → clôturé), prochaine étape avec son action, lignes commandé /
+ * reçu / reste, montants, factures liées et historique.
+ * Les actions sont optionnelles : sans elles (ex. depuis le Pilotage) la fiche est en lecture.
+ */
+export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePrices, onGenerateInvoice }: {
+  poId: string;
+  onClose: () => void;
+  onSend?: () => void;
+  onDelivery?: () => void;
+  onCompletePrices?: () => void;
+  onGenerateInvoice?: () => void;
+}) {
   const { data: po, isLoading } = useQuery({
     queryKey: ['purchase-orders', poId],
     queryFn: () => purchaseOrdersApi.getById(poId),
   });
+  const [downloading, setDownloading] = useState(false);
 
-  if (isLoading) return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="odoo-scope text-center" style={{ ...odooModalPanelStyle, padding: '2rem' }} onClick={(e) => e.stopPropagation()}>
-        <Loader2 className="animate-spin mx-auto mb-3" size={28} style={{ color: 'var(--odoo-text-muted)' }} />
-        <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Chargement...</p>
-      </div>
-    </ModalBackdrop>
-  );
-  if (!po) return null;
+  const panel: CSSProperties = { width: '100%', maxWidth: 980, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' };
+
+  if (isLoading || !po) {
+    return (
+      <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="odoo-scope" style={{ ...panel, maxWidth: 360, padding: '2rem', alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+          {isLoading ? <Loader2 className="animate-spin" size={24} style={{ color: 'var(--odoo-text-muted)' }} /> : <p style={{ fontSize: '0.8125rem' }}>Bon de commande introuvable.</p>}
+        </div>
+      </ModalBackdrop>
+    );
+  }
 
   const items = (po.items || []) as POItem[];
-  const totalOrdered = items.reduce((s, it) => s + parseFloat(it.quantity_ordered) * (it.unit_price != null ? parseFloat(it.unit_price) : 0), 0);
-  const totalDelivered = items.reduce((s, it) => s + parseFloat(it.quantity_delivered) * (it.unit_price != null ? parseFloat(it.unit_price) : 0), 0);
-  const globalPct = totalOrdered > 0 ? (totalDelivered / totalOrdered) * 100 : 0;
-  const StatusIcon = STATUS_ICONS[po.status] || Clock;
+  const invoices = (po.invoices || []) as Array<{ id: string; invoice_number: string; supplier_invoice_number: string | null; invoice_date: string; status: string; total_amount: string; paid_amount: string }>;
+  const num = (v: unknown) => parseFloat(String(v ?? '0')) || 0;
+  const price = (it: POItem) => (it.unit_price != null ? num(it.unit_price) : 0);
+  const totalOrdered = items.reduce((s, it) => s + num(it.quantity_ordered) * price(it), 0);
+  const totalReceived = items.reduce((s, it) => s + num(it.quantity_delivered) * price(it), 0);
+  const totalInvoiced = invoices.reduce((s, i) => s + num(i.total_amount), 0);
+  const linesDone = items.filter(it => num(it.qty_remaining_base ?? Math.max(0, num(it.quantity_ordered) - num(it.quantity_delivered))) <= 0).length;
+  const missingPrices = items.filter(it => it.unit_price == null).length;
+  const remainingLines = items.filter(it => num(it.qty_remaining_base) > 0);
+
+  const status = po.status as string;
+  const cancelled = status === 'annule' || status === 'non_livre';
+  // Même dérivation que le serveur (purchaseOrderRepository._stagedCte).
+  const stage = status === 'en_attente' ? 0
+    : status === 'envoye' ? 1
+    : status === 'livre_partiel' ? 2
+    : status === 'en_attente_facturation' || (status === 'livre_complet' && invoices.length === 0) ? 3
+    : status === 'livre_complet' ? 5 : -1;
+  const d = (v?: string | null) => (v ? format(new Date(v), 'dd MMM yyyy', { locale: fr }) : null);
+  const isLate = [0, 1, 2].includes(stage) && po.expected_delivery_date && new Date(po.expected_delivery_date) < new Date(new Date().toDateString());
+
+  const steps = [
+    { label: 'Brouillon', detail: `créé le ${d(po.order_date)}` },
+    { label: 'Envoyé', detail: stage >= 1 ? (d(po.locked_at) ? `le ${d(po.locked_at)}` : 'au fournisseur') : 'à envoyer' },
+    { label: 'Réception', detail: stage >= 2 ? `${linesDone}/${items.length} ligne${items.length > 1 ? 's' : ''}` : po.expected_delivery_date ? `prévue le ${d(po.expected_delivery_date)}` : 'à venir' },
+    { label: 'Facture', detail: invoices.length ? invoices.map(i => i.supplier_invoice_number || i.invoice_number).join(', ') : stage >= 3 ? 'en attente' : '—' },
+    { label: 'Clôturé', detail: stage === 5 ? 'reçu et facturé' : '—' },
+  ];
+
+  // Prochaine étape : ce qu'il reste à faire, et le bouton qui le fait.
+  const next: { tone: 'info' | 'warning' | 'danger' | 'success' | 'neutral'; title: string; text: string; action?: { label: string; run: () => void } } =
+    cancelled ? { tone: 'neutral', title: status === 'annule' ? 'Bon de commande annulé' : 'Déclaré non livré', text: [po.cancel_note, d(po.cancelled_at) && `le ${d(po.cancelled_at)}`].filter(Boolean).join(' · ') || 'Ce BC ne sera plus livré.' }
+    : po.on_hold ? { tone: 'danger', title: 'BC bloqué', text: po.hold_note || 'Ni réception ni facture tant que le blocage n\'est pas levé.' }
+    : stage === 0 ? { tone: 'info', title: 'Prochaine étape : envoyer au fournisseur', text: missingPrices ? `${missingPrices} article${missingPrices > 1 ? 's' : ''} sans prix : vérifiez avant l'envoi.` : 'Le BC est prêt : il sera verrouillé une fois envoyé.', action: onSend && { label: 'Envoyer', run: onSend } }
+    : stage === 1 ? { tone: isLate ? 'danger' : 'info', title: isLate ? 'Livraison en retard' : 'Prochaine étape : réceptionner', text: po.expected_delivery_date ? `Livraison prévue le ${d(po.expected_delivery_date)}.` : 'Aucune date de livraison prévue.', action: onDelivery && { label: 'Réceptionner', run: onDelivery } }
+    : stage === 2 ? { tone: 'warning', title: 'Prochaine étape : réceptionner le reliquat', text: `${remainingLines.length} article${remainingLines.length > 1 ? 's' : ''} restent attendus (${remainingLines.slice(0, 3).map(it => it.ingredient_name).join(', ')}${remainingLines.length > 3 ? '…' : ''}). Si le fournisseur ne livrera pas, soldez le reste depuis la ligne du BC.`, action: onDelivery && { label: 'Réceptionner le reliquat', run: onDelivery } }
+    : stage === 3 ? (status === 'en_attente_facturation'
+        ? { tone: 'warning', title: 'Prochaine étape : compléter les prix', text: `${missingPrices} article${missingPrices > 1 ? 's' : ''} reçu${missingPrices > 1 ? 's' : ''} sans prix : la facture ne peut pas être établie.`, action: onCompletePrices && { label: 'Compléter les prix', run: onCompletePrices } }
+        : { tone: 'warning', title: 'Prochaine étape : facturer', text: 'Tout est reçu mais aucune facture n\'est rattachée.', action: onGenerateInvoice && { label: 'Générer la facture', run: onGenerateInvoice } })
+    : { tone: 'success', title: 'Bon de commande clôturé', text: 'Reçu et facturé.' };
+
+  const downloadPdf = async () => {
+    setDownloading(true);
+    try {
+      const response = await purchaseOrdersApi.downloadPdf(poId);
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      notify.error('Erreur lors du téléchargement du PDF');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const bar = (value: number, max: number) => (
+    <span style={{ display: 'block', height: 6, borderRadius: 3, background: 'var(--odoo-border)', overflow: 'hidden' }}>
+      <span style={{ display: 'block', height: '100%', width: `${max > 0 ? Math.min(100, (value / max) * 100) : 0}%`, background: 'var(--odoo-purple)' }} />
+    </span>
+  );
+  const sectionTitle: CSSProperties = { margin: 0, fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--odoo-text-muted)' };
+  const card: CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 12, display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--odoo-bg)' };
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope w-full max-w-2xl max-h-[90vh] overflow-y-auto" style={odooModalPanelStyle} onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
-        <div style={odooModalHeaderStyle}>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-3">
-                <h2 style={{ color: '#fff', fontWeight: 600, fontSize: '1.05rem', margin: 0 }}>{po.order_number}</h2>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold ${STATUS_COLORS[po.status] || ''}`}>
-                  <StatusIcon size={12} />
-                  {STATUS_LABELS[po.status] || po.status}
-                </span>
-              </div>
-              <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', marginTop: 2 }}>
-                {po.supplier_name} — Créé par {po.created_by_name}
-              </p>
-            </div>
-            <button onClick={onClose} className="hover:bg-white/20" style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" role="dialog" aria-label={`Bon de commande ${po.order_number}`} style={panel} onClick={(e) => e.stopPropagation()}>
+        {/* En-tête */}
+        <div className="odoo-control-bar" style={{ flexWrap: 'wrap', rowGap: 6 }}>
+          <div className="odoo-breadcrumb">
+            <FileText size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Bon de commande</span>
+            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>{po.order_number}</span>
           </div>
+          {po.frozen && <span className="odoo-tag odoo-tag-grey" title="En-tête et lignes figés"><Lock size={10} /> gelé</span>}
+          <div style={{ flex: 1 }} />
+          <button type="button" onClick={downloadPdf} disabled={downloading || stage === 0} className="odoo-btn-secondary"
+            title={stage === 0 ? 'PDF disponible une fois le BC envoyé' : 'Ouvrir le PDF'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {downloading ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} PDF
+          </button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
 
-        <div style={{ padding: '1.25rem' }} className="space-y-4">
-          {/* Info cards */}
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: 'Commande', value: format(new Date(po.order_date), 'dd MMM yyyy', { locale: fr }) },
-              { label: 'Livraison prévue', value: po.expected_delivery_date ? format(new Date(po.expected_delivery_date), 'dd MMM yyyy', { locale: fr }) : '—' },
-              { label: 'Date livraison', value: po.delivery_date ? format(new Date(po.delivery_date), 'dd MMM yyyy', { locale: fr }) : '—' },
-            ].map(card => (
-              <div key={card.label} style={{ backgroundColor: 'var(--odoo-bg-alt)', borderRadius: 4, padding: '0.625rem 0.75rem', border: '1px solid var(--odoo-border)' }}>
-                <p style={{ ...odooLabelStyle, marginBottom: 2 }}>{card.label}</p>
-                <p style={{ fontWeight: 500, fontSize: '0.8125rem' }}>{card.value}</p>
-              </div>
-            ))}
+        <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
+          {/* Identité */}
+          <div style={{ padding: '12px 16px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 12px', fontSize: '0.8125rem' }}>
+            <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--odoo-text)' }}>{po.supplier_name}</span>
+            <span style={{ color: 'var(--odoo-text-muted)' }}>
+              {items.length} article{items.length > 1 ? 's' : ''} · <strong style={{ color: 'var(--odoo-text)' }}>{n(totalOrdered)} DH</strong>
+              {po.created_by_name && <> · créé par {po.created_by_name}</>}
+            </span>
           </div>
 
-          {/* Global progress */}
-          {(po.status === 'livre_partiel' || po.status === 'livre_complet') && (
-            <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '0.875rem' }}>
-              <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
-                <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--odoo-text-muted)' }}>Progression globale</span>
-                <span style={{ fontSize: '0.8125rem', fontWeight: 700 }}>{globalPct.toFixed(0)}%</span>
-              </div>
-              <div style={{ width: '100%', height: 8, backgroundColor: 'var(--odoo-bg-alt)', borderRadius: 999, overflow: 'hidden' }}>
-                <div style={{ height: '100%', borderRadius: 999, width: `${Math.min(100, globalPct)}%`, backgroundColor: globalPct >= 100 ? '#28a745' : '#e6892b' }} />
-              </div>
-              <div className="flex justify-between" style={{ marginTop: 8, fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
-                <span>Commande: {n(totalOrdered)} DH</span>
-                <span>Livré: {n(totalDelivered)} DH</span>
-              </div>
-            </div>
-          )}
+          {/* Frise du processus */}
+          {!cancelled ? (
+            <ol className="ui-timeline" aria-label="Avancement du bon de commande" style={{ marginTop: 12 }}>
+              {steps.map((s, i) => {
+                const done = i < stage || stage === 5;
+                const current = i === stage;
+                return (
+                  <li key={s.label} className={`ui-timeline-step ${done ? 'is-done' : current ? 'is-current' : ''}`} aria-current={current ? 'step' : undefined}>
+                    <span className="ui-timeline-dot">{done ? <CheckCircle2 size={14} /> : i + 1}</span>
+                    <span className="ui-timeline-label">{s.label}</span>
+                    <span className="ui-timeline-detail" style={current && isLate ? { color: '#dc3545', fontWeight: 600 } : undefined}>{s.detail}</span>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : <div style={{ height: 12 }} />}
 
-          {po.notes && (
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '0.5rem 0.75rem', borderRadius: 4, fontSize: '0.8125rem', backgroundColor: '#fff8e8', color: '#856404', border: '1px solid #ffeeba' }}>
-              <FileText size={14} style={{ flexShrink: 0, marginTop: 2 }} /> {po.notes}
-            </div>
-          )}
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <StatusBanner tone={next.tone} icon={next.tone === 'success' ? CheckCircle2 : next.tone === 'neutral' ? Ban : next.tone === 'danger' ? AlertTriangle : Clock}
+              title={next.title}
+              actions={next.action ? (
+                <button type="button" className="odoo-btn-primary" onClick={() => { next.action!.run(); onClose(); }}>{next.action.label}</button>
+              ) : undefined}>
+              {next.text}
+            </StatusBanner>
 
-          {/* Items table */}
-          <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflow: 'hidden' }}>
-            <table className="odoo-table">
-              <thead>
-                <tr>
-                  <th>Ingrédient</th>
-                  <th style={{ textAlign: 'right' }}>Commandé</th>
-                  <th style={{ textAlign: 'right' }}>Livré</th>
-                  <th style={{ textAlign: 'right' }}>Prix unit.</th>
-                  <th style={{ textAlign: 'right' }}>Total</th>
-                  <th style={{ textAlign: 'right', width: 112 }}>État</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => {
-                  const ordered = parseFloat(item.quantity_ordered);
-                  const delivered = parseFloat(item.quantity_delivered);
-                  const pct = ordered > 0 ? Math.min(100, (delivered / ordered) * 100) : 0;
-                  return (
-                    <tr key={item.id}>
-                      <td className="font-medium">{item.ingredient_name}
-                        <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({item.ingredient_unit})</span>
-                      </td>
-                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{ordered}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        <span style={{ color: delivered > 0 ? '#28a745' : 'var(--odoo-text-muted)', fontWeight: delivered > 0 ? 500 : 400 }}>{delivered}</span>
-                      </td>
-                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{item.unit_price != null ? `${n(parseFloat(item.unit_price))} DH` : <span style={{ color: '#e6892b', fontSize: '0.6875rem' }}>À définir</span>}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 500 }}>{item.unit_price != null ? `${n(ordered * parseFloat(item.unit_price))} DH` : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>}</td>
-                      <td>
-                        <div className="flex items-center gap-2 justify-end">
-                          <div style={{ width: 56, height: 8, backgroundColor: 'var(--odoo-bg-alt)', borderRadius: 999, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', borderRadius: 999, width: `${pct}%`, backgroundColor: pct >= 100 ? '#28a745' : pct > 0 ? '#e6892b' : 'var(--odoo-border)' }} />
-                          </div>
-                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', width: 32, textAlign: 'right' }}>{pct.toFixed(0)}%</span>
-                        </div>
-                      </td>
+            {po.notes && (
+              <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', display: 'flex', gap: 6 }}>
+                <FileText size={14} style={{ flexShrink: 0, marginTop: 2 }} /> {po.notes}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-start' }}>
+              {/* Articles */}
+              <div style={{ flex: '999 1 520px', minWidth: 0, border: '1px solid var(--odoo-border)', borderRadius: 4, overflowX: 'auto' }}>
+                <table className="odoo-table" style={{ margin: 0 }}>
+                  <thead>
+                    <tr>
+                      <th>Article</th>
+                      <th style={{ textAlign: 'right' }}>Commandé</th>
+                      <th style={{ textAlign: 'right' }}>Reçu</th>
+                      <th style={{ textAlign: 'right' }}>Reste</th>
+                      <th style={{ textAlign: 'right' }}>Prix unit.</th>
+                      <th style={{ textAlign: 'right' }}>Montant</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody>
+                    {items.map(it => {
+                      const ordered = num(it.quantity_ordered);
+                      const received = num(it.quantity_delivered);
+                      const remaining = it.qty_remaining_base != null ? num(it.qty_remaining_base) : Math.max(0, ordered - received);
+                      const cancelledQty = num(it.qty_cancelled_base);
+                      const unit = it.base_unit || it.ingredient_unit;
+                      const dot = remaining <= 0 ? '#28a745' : received > 0 ? '#e6892b' : 'var(--odoo-border-strong, #adb5bd)';
+                      return (
+                        <tr key={it.id}>
+                          <td>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                              <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: dot, flexShrink: 0 }} />
+                              <span style={{ fontWeight: 500 }}>{it.ingredient_name}</span>
+                            </span>
+                            {cancelledQty > 0 && <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginLeft: 16 }}>{trimQty(cancelledQty)} {unit} soldé{cancelledQty > 1 ? 's' : ''} sans livraison</div>}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>{trimQty(ordered)} <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>{unit}</span></td>
+                          <td style={{ textAlign: 'right', color: received > 0 ? 'var(--odoo-text)' : 'var(--odoo-text-muted)' }}>{trimQty(received)}</td>
+                          <td style={{ textAlign: 'right', color: remaining > 0 ? '#b85d1a' : 'var(--odoo-text-muted)', fontWeight: remaining > 0 ? 600 : 400 }}>{remaining > 0 ? trimQty(remaining) : '—'}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
+                            {it.unit_price != null ? n(num(it.unit_price)) : <span style={{ color: '#b85d1a', fontWeight: 600, fontSize: '0.75rem' }}>à définir</span>}
+                          </td>
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{it.unit_price != null ? n(ordered * num(it.unit_price)) : '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ fontWeight: 700, borderTop: '2px solid var(--odoo-border)' }}>
+                      <td colSpan={5}>Total</td>
+                      <td style={{ textAlign: 'right' }}>{n(totalOrdered)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
 
-          {/* Totals */}
-          <div className="flex justify-between" style={{ paddingTop: 8, borderTop: '1px solid var(--odoo-border)', fontSize: '0.8125rem' }}>
-            <span style={{ fontWeight: 600 }}>Total commande: <span style={{ fontSize: '1.05rem' }}>{n(totalOrdered)} DH</span></span>
-            <span style={{ fontWeight: 600, color: '#28a745' }}>Total livré: <span style={{ fontSize: '1.05rem' }}>{n(totalDelivered)} DH</span></span>
+              {/* Colonne de droite */}
+              <aside style={{ flex: '1 1 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <section style={card} aria-label="Montants">
+                  <h3 style={sectionTitle}>Montants</h3>
+                  {[
+                    { label: 'Commandé', value: totalOrdered },
+                    { label: 'Reçu', value: totalReceived },
+                    { label: 'Facturé', value: totalInvoiced },
+                  ].map(m => (
+                    <div key={m.label} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                        <span style={{ color: 'var(--odoo-text-muted)' }}>{m.label}</span>
+                        <strong>{n(m.value)} DH</strong>
+                      </span>
+                      {bar(m.value, totalOrdered)}
+                    </div>
+                  ))}
+                </section>
+
+                <section style={card} aria-label="Dates">
+                  <h3 style={sectionTitle}>Dates</h3>
+                  {[
+                    { label: 'Commandé le', value: d(po.order_date) },
+                    { label: 'Livraison prévue', value: d(po.expected_delivery_date), late: isLate },
+                    { label: 'Livré le', value: d(po.delivery_date) },
+                  ].map(x => (
+                    <span key={x.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                      <span style={{ color: 'var(--odoo-text-muted)' }}>{x.label}</span>
+                      <span style={{ color: x.late ? '#dc3545' : 'var(--odoo-text)', fontWeight: x.late ? 600 : 400 }}>{x.value ?? '—'}</span>
+                    </span>
+                  ))}
+                </section>
+
+                <section style={card} aria-label="Factures liées">
+                  <h3 style={sectionTitle}>Factures</h3>
+                  {invoices.length === 0 ? (
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Aucune facture rattachée.</span>
+                  ) : invoices.map(inv => (
+                    <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.8125rem' }}>
+                      <span>
+                        <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{inv.supplier_invoice_number || inv.invoice_number}</span>
+                        <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}> · {d(inv.invoice_date)}</span>
+                      </span>
+                      <span style={{ color: num(inv.paid_amount) >= num(inv.total_amount) - 0.005 ? '#28a745' : '#b85d1a', fontSize: '0.75rem', fontWeight: 600 }}>
+                        {num(inv.paid_amount) >= num(inv.total_amount) - 0.005 ? 'réglée' : `reste ${n(num(inv.total_amount) - num(inv.paid_amount))}`}
+                      </span>
+                    </div>
+                  ))}
+                </section>
+              </aside>
+            </div>
+
+            <section aria-label="Historique">
+              <h3 style={{ ...sectionTitle, marginBottom: 8 }}>Historique</h3>
+              <DocumentActionsTimeline queryKey={['po-actions', poId]} fetcher={() => purchaseOrdersApi.actions(poId)} />
+            </section>
           </div>
         </div>
       </div>
@@ -1368,8 +1863,14 @@ function PODetailModal({ poId, onClose }: { poId: string; onClose: () => void })
   );
 }
 
+function trimQty(v: number) {
+  return v.toLocaleString('fr-FR', { maximumFractionDigits: 3 });
+}
+
 /* ═══ Delivery Confirmation Modal ═══ */
 function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void }) {
+  // Une clé par réception ouverte : une validation rejouée ne réceptionne pas deux fois (mig 307).
+  const [deliveryIdemKey] = useState(newIdempotencyKey);
   const queryClient = useQueryClient();
   const { data: po, isLoading } = useQuery({
     queryKey: ['purchase-orders', poId],
@@ -1391,13 +1892,15 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
 
   const confirmMutation = useMutation({
     mutationFn: (data: { items: { itemId: string; quantityDelivered: number; unitPrice?: number; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[]; supplierInvoiceNumber?: string; supplierInvoiceDate?: string; forceComplete?: boolean }) =>
-      purchaseOrdersApi.confirmDelivery(poId, data),
-    onSuccess: () => {
+      purchaseOrdersApi.confirmDelivery(poId, data, deliveryIdemKey),
+    onSuccess: (r: { warnings?: string[]; lotNumbers?: string[] }) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['eligible-pos'] });
-      notify.success('Réception confirmée — stock et facture mis à jour');
+      notify.success(`Réception confirmée${r?.lotNumbers?.length ? ` — lots ${r.lotNumbers.join(', ')}` : ''}`);
+      // Exigences lot / DLC non satisfaites (mode « warn », mig 308) : signalées sans bloquer.
+      if (r?.warnings?.length) notify.warning(`Traçabilité incomplète : ${r.warnings.join(' ; ')}`, { duration: 12000 });
       onClose();
     },
     onError: (err: unknown) => {
@@ -1675,7 +2178,8 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
                           <input type="text"
                             value={lotInfo[item.id]?.supplierLotNumber ?? ''}
                             onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], supplierLotNumber: e.target.value } })}
-                            style={{ ...odooFieldStyle, fontSize: '0.75rem' }} placeholder="Lot" />
+                            style={{ ...odooFieldStyle, fontSize: '0.75rem', ...(item.requires_lot && !lotInfo[item.id]?.supplierLotNumber ? { borderColor: '#d97706' } : {}) }}
+                            placeholder={item.requires_lot ? 'Lot *' : 'Lot'} title={item.requires_lot ? 'Lot fournisseur exigé pour cet article' : undefined} />
                         ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'center' }}>—</span>}
                       </td>
                       <td>
@@ -1683,7 +2187,9 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
                           <input type="date"
                             value={lotInfo[item.id]?.expirationDate ?? ''}
                             onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], expirationDate: e.target.value } })}
-                            style={{ ...odooFieldStyle, fontSize: '0.75rem' }} />
+                            min={new Date().toISOString().slice(0, 10)}
+                            title={item.requires_dlc ? 'DLC exigée pour cet article' : undefined}
+                            style={{ ...odooFieldStyle, fontSize: '0.75rem', ...(item.requires_dlc && !lotInfo[item.id]?.expirationDate ? { borderColor: '#d97706' } : {}) }} />
                         ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'center' }}>—</span>}
                       </td>
                       <td>
@@ -1751,6 +2257,7 @@ type POLine = {
   quantityOrdered: string;
   quantityDelivered: string;
   unitPrice: string;
+  container: ContainerDef | null;
 };
 
 function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
@@ -1784,6 +2291,7 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
       quantityOrdered: trimNum(it.quantity_ordered),
       quantityDelivered: trimNum(it.quantity_delivered),
       unitPrice: it.unit_price != null ? trimNum(it.unit_price) : '',
+      container: it.packaging_id ? null : containerOf(it),
     })));
     setInitialized(true);
   }, [po, initialized]);
@@ -1812,7 +2320,7 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
   const addLine = () => {
     setLines(prev => [...prev, {
       kind: 'ingredient', ingredientId: '', packagingId: '', ingredientName: '', ingredientUnit: '',
-      quantityOrdered: '1', quantityDelivered: '0', unitPrice: '',
+      quantityOrdered: '1', quantityDelivered: '0', unitPrice: '', container: null,
     }]);
   };
 
@@ -1956,10 +2464,13 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                               <select value={line.ingredientId}
                                 onChange={e => {
                                   const ing = (ingredients as Record<string, any>[]).find(i => i.id === e.target.value);
+                                  const container = containerOf(ing);
                                   updateLine(idx, {
                                     ingredientId: e.target.value,
                                     ingredientName: ing ? (ing.name as string) : '',
                                     ingredientUnit: ing ? (ing.unit as string) : '',
+                                    container,
+                                    quantityOrdered: container ? String(container.size) : line.quantityOrdered,
                                   });
                                 }}
                                 style={odooFieldStyle}>
@@ -1971,9 +2482,26 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                             )}
                           </td>
                           <td>
-                            <input type="number" step="0.01" min={0} value={line.quantityOrdered}
-                              onChange={e => updateLine(idx, { quantityOrdered: e.target.value })}
-                              style={odooNumFieldStyle} />
+                            {line.container ? (() => {
+                              const count = roundUpToContainer(parseFloat(line.quantityOrdered) || 0, line.container.size).count;
+                              return (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                                  <input type="number" step="1" min={1} value={count || ''}
+                                    onChange={e => {
+                                      const c = Math.max(1, Math.floor(parseFloat(e.target.value) || 1));
+                                      updateLine(idx, { quantityOrdered: String(c * (line.container as ContainerDef).size) });
+                                    }}
+                                    style={{ ...odooNumFieldStyle, width: 64 }} title={`${containerLabel(line.container, line.ingredientUnit)} — commande par contenant entier`} />
+                                  <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', whiteSpace: 'nowrap' }}>
+                                    × {containerLabel(line.container, line.ingredientUnit)} = <strong>{q} {line.ingredientUnit}</strong>
+                                  </span>
+                                </div>
+                              );
+                            })() : (
+                              <input type="number" step="0.01" min={0} value={line.quantityOrdered}
+                                onChange={e => updateLine(idx, { quantityOrdered: e.target.value })}
+                                style={odooNumFieldStyle} />
+                            )}
                           </td>
                           <td>
                             <input type="number" step="0.01" min={0} value={line.quantityDelivered}
@@ -2115,6 +2643,57 @@ function MergeInvoicesModal({
             <Combine size={14} /> Confirmer la fusion
           </button>
         </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+/** Correction d'une ligne de réception (mig 308) : quantité à ajouter ou retirer, motif codé. */
+function CorrectReceiptDialog({ target, pending, onClose, onSubmit }: {
+  target: { lineId: string; label: string; unit: string }; pending: boolean;
+  onClose: () => void; onSubmit: (d: { delta: number; reasonCodeId: string; note?: string }) => void;
+}) {
+  const { entries } = useReferentiel('purchase_reason_codes');
+  const reasons = entries.filter(e => Array.isArray(e.metadata?.scope) && (e.metadata!.scope as string[]).includes('correct'));
+  const [sign, setSign] = useState<1 | -1>(-1);
+  const [qty, setQty] = useState('');
+  const [reasonCodeId, setReasonCodeId] = useState('');
+  const [note, setNote] = useState('');
+  const requiresNote = !!reasons.find(r => r.id === reasonCodeId)?.metadata?.requires_note;
+  const q = Number(qty);
+  const valid = q > 0 && !!reasonCodeId && (!requiresNote || note.trim().length >= 3);
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">Corriger la réception · {target.label}</span></div>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); if (valid) onSubmit({ delta: sign * q, reasonCodeId, note: note.trim() || undefined }); }}
+          style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+            La correction s'ajoute au bon de réception (la ligne d'origine reste visible) et ajuste le lot. Une baisse ne peut pas dépasser ce qui reste à l'économat.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <select id="cr-sign" value={sign} onChange={e => setSign(Number(e.target.value) as 1 | -1)} className="px-3 py-2 border border-gray-200 rounded-md text-sm">
+              <option value={-1}>Retirer</option>
+              <option value={1}>Ajouter</option>
+            </select>
+            <input id="cr-qty" type="number" step="any" min="0" value={qty} onChange={e => setQty(e.target.value)} autoFocus
+              className="flex-1 px-3 py-2 border border-gray-200 rounded-md text-sm" placeholder={`Quantité en ${target.unit}`} />
+          </div>
+          <select id="cr-reason" value={reasonCodeId} onChange={e => setReasonCodeId(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm">
+            <option value="">— Motif * —</option>
+            {reasons.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+          </select>
+          <textarea id="cr-note" rows={2} value={note} onChange={e => setNote(e.target.value)} maxLength={1000}
+            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm" placeholder={requiresNote ? 'Précision (obligatoire)' : 'Précision (facultatif)'} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary">Retour</button>
+            <button type="submit" disabled={!valid || pending} className="odoo-btn-primary">Corriger {q > 0 ? `${sign > 0 ? '+' : '−'}${q} ${target.unit}` : ''}</button>
+          </div>
+        </form>
       </div>
     </ModalBackdrop>
   );

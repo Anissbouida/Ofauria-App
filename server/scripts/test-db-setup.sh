@@ -73,7 +73,7 @@ for i in $(seq 1 80); do
     continue
   fi
   # Migration de donnees (seed / fiche / recette / backfill / reprise) : on la marque executee.
-  if echo "$FAILED" | grep -qiE "seed|fiche|recette|recipes_|opera|masterclass|backfill|reprise|restamp|convert_|densites_liquides|dedup"; then
+  if echo "$FAILED" | grep -qiE "seed|fiche|recette|recipes_|opera|masterclass|torsade|foret_noire|darija|bases_transversales|backfill|reprise|restamp|convert_|densites_liquides|dedup"; then
     SUM=$(shasum -a 256 "$HERE/migrations/$FAILED" | cut -d' ' -f1)
     psql -h "$HOST" -p "$PORT" -d "$DB" -q -c "INSERT INTO _migrations (name, checksum) VALUES ('$FAILED', '$SUM') ON CONFLICT (name) DO NOTHING;"
     SKIPPED+=("$FAILED")

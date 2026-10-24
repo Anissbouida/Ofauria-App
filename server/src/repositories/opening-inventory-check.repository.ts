@@ -212,7 +212,7 @@ export const openingInventoryCheckRepository = {
               client, item.product_id, check.store_id, missing, { includeExpired: true }
             );
             for (const step of fefo) {
-              await productLotRepository.consumeVitrineWaste(client, step.lotId, step.qty);
+              await productLotRepository.consumeVitrineWaste(client, step.lotId, step.qty, { type: 'opening_check' });
             }
             await client.query(
               `UPDATE product_store_stock

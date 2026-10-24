@@ -7,7 +7,7 @@ import { recipeComponentController } from '../controllers/recipe-component.contr
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { createRecipeSchema, updateRecipeSchema, bulkRecipeIdsSchema } from '../validators/recipe.validator.js';
+import { createRecipeSchema, updateRecipeSchema, bulkDeleteRecipesSchema, saveEtapesSchema, identitySchema } from '../validators/recipe.validator.js';
 import { replaceComponentsSchema, financeSchema, createFormatSchema, duplicateFormatSchema, updateFormatSchema } from '../validators/recipe-component.validator.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 
@@ -49,6 +49,8 @@ router.get('/categories', authenticate, recipeController.listCategories);
 router.get('/component-roles', authenticate, recipeComponentController.listRoles);
 router.get('/component-sources', authenticate, recipeComponentController.listSources);
 router.patch('/:recipeId/finance', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(financeSchema), recipeComponentController.saveFinance);
+router.patch('/:recipeId/identity', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(identitySchema), recipeComponentController.saveIdentity);
+router.put('/:recipeId/etapes', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(saveEtapesSchema), recipeComponentController.saveEtapes);
 router.get('/:recipeId/children', authenticate, recipeComponentController.children);
 router.get('/:recipeId/formats', authenticate, recipeComponentController.listFormats);
 router.post('/:recipeId/formats', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(createFormatSchema), recipeComponentController.createFormat);
@@ -67,12 +69,20 @@ router.get('/by-product/:productId', authenticate, recipeController.getByProduct
 router.get('/:id', authenticate, recipeController.getById);
 router.get('/:id/versions', authenticate, recipeController.versions);
 router.post('/:id/versions/:versionNumber/restore', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), recipeController.restoreVersion);
+// Fiche technique imprimable (PDF) — lecture seule, ouverte a tout utilisateur
+// authentifie : c'est le document que le labo pose sur le plan de travail.
+router.get('/:id/fiche-technique', authenticate, recipeController.downloadFiche);
 router.post('/', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(createRecipeSchema), recipeController.create);
 router.put('/:id', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(updateRecipeSchema), recipeController.update);
-// Archivage (mig 346) : DELETE archive, plus de suppression physique.
-router.post('/bulk-archive', authenticate, authorize(ROLES.ADMIN), validate(bulkRecipeIdsSchema), recipeController.bulkArchive);
-router.post('/bulk-restore', authenticate, authorize(ROLES.ADMIN), validate(bulkRecipeIdsSchema), recipeController.bulkRestore);
+// Archivage (mig 275 wip + 346) : DELETE archive, plus de suppression physique ;
+// bulk-archive / bulk-restore plus bas, restauration unitaire ici.
 router.post('/:id/restore', authenticate, authorize(ROLES.ADMIN), recipeController.restore);
 router.delete('/:id', authenticate, authorize(ROLES.ADMIN), recipeController.remove);
+// Suppression en masse — même autorisation que la suppression unitaire (admin).
+router.post('/bulk-delete', authenticate, authorize(ROLES.ADMIN), validate(bulkDeleteRecipesSchema), recipeController.bulkRemove);
+// Archivage/restauration en masse : alternative à la suppression pour les fiches
+// retenues par l'historique de production (FK RESTRICT).
+router.post('/bulk-archive', authenticate, authorize(ROLES.ADMIN), validate(bulkDeleteRecipesSchema), recipeController.bulkArchive);
+router.post('/bulk-restore', authenticate, authorize(ROLES.ADMIN), validate(bulkDeleteRecipesSchema), recipeController.bulkRestore);
 
 export default router;

@@ -46,13 +46,18 @@ export interface GeneratedLine {
   // Cle logique partagee entre N lignes qui doivent recevoir le meme lettrage_id
   // au moment de la persistance (ex: ligne facture 4411 + ligne paiement 4411).
   lettrage_key?: string;
+  // Mig 311 (G-D8-05) : axes de lettrage GR/IR (compte 4417) par ligne de BC.
+  po_line_id?: string | null;
+  receipt_item_id?: string | null;
+  supplier_id?: string | null;
 }
 
 export interface GeneratedEntry {
   journal_code: 'AC' | 'VE' | 'BQ' | 'CA' | 'OD';
   entry_date: string;
   description: string;
-  source_kind: 'invoice' | 'payment' | 'sale' | 'backfill' | 'manual' | 'shift_entry' | 'advance_repayment' | 'product_loss' | 'closure_diff';
+  source_kind: 'invoice' | 'payment' | 'sale' | 'backfill' | 'manual' | 'shift_entry' | 'advance_repayment' | 'product_loss' | 'closure_diff'
+    | 'goods_receipt' | 'goods_receipt_return';
   source_id: string;
   // Discriminant pour les sources a ecritures multiples (cheque : emission/cashing).
   source_detail?: string | null;
@@ -129,13 +134,19 @@ async function tvaGroupsForInvoice(
  * n'est trouve, renvoie le code de fallback 6181 (charges diverses) ou
  * 7585 (autres produits).
  */
-async function resolveCategoryAccountCode(
+export async function resolveCategoryAccountCode(
   client: PoolClient | typeof db,
   categoryId: string | null,
   kind: 'expense' | 'revenue'
 ): Promise<string> {
-  const fallback = kind === 'expense' ? '6181' : '7585';
-  if (!categoryId) return fallback;
+  // Mig 311 (G-D8-09) : plus de repli silencieux en 6181 pour une charge. Une
+  // catégorie sans compte (ni chez ses parents) est une erreur de paramétrage :
+  // la pièce part en file d'attente (mode outbox) ou est refusée (mode strict).
+  const fallback = kind === 'expense' ? null : '7585';
+  if (!categoryId) {
+    if (fallback) return fallback;
+    throw new Error('Charge sans catégorie : compte comptable indéterminable');
+  }
 
   const table = kind === 'expense' ? 'expense_categories' : 'revenue_categories';
   const result = await client.query(
@@ -155,7 +166,32 @@ async function resolveCategoryAccountCode(
      LIMIT 1`,
     [categoryId]
   );
-  return result.rows[0]?.code || fallback;
+  if (result.rows[0]?.code) return result.rows[0].code;
+  if (fallback) return fallback;
+  const name = await client.query(`SELECT name FROM expense_categories WHERE id = $1`, [categoryId]);
+  throw new Error(`Catégorie « ${name.rows[0]?.name ?? categoryId} » sans compte comptable (ni chez ses parents) : renseignez-le dans le référentiel`);
+}
+
+/** Compte paramétré pour un événement (table posting_profiles, mig 311). */
+export async function postingAccount(client: PoolClient | typeof db, event: string): Promise<string> {
+  const r = await client.query(
+    `SELECT account_code FROM posting_profiles WHERE event_type = $1 AND category_id IS NULL AND is_active LIMIT 1`, [event]);
+  if (!r.rows[0]) throw new Error(`Paramétrage comptable manquant pour l'événement « ${event} »`);
+  return r.rows[0].account_code;
+}
+
+/**
+ * Solde ouvert du compte d'attente GR/IR (4417) sur une ligne de BC :
+ * > 0 = reçu non facturé. Les écritures extournées comptent avec leur extourne.
+ */
+async function grirOpenAmount(client: PoolClient | typeof db, poLineId: string, grirCode: string): Promise<number> {
+  const r = await client.query(
+    `SELECT COALESCE(SUM(l.credit) - SUM(l.debit), 0) AS open
+       FROM journal_entry_lines l
+       JOIN accounts a ON a.id = l.account_id AND a.code = $2
+       JOIN journal_entries je ON je.id = l.journal_entry_id AND je.status IN ('posted','reversed')
+      WHERE l.po_line_id = $1`, [poLineId, grirCode]);
+  return round2(parseFloat(r.rows[0].open) || 0);
 }
 
 /* ═══ Generateur — pattern A : facture fournisseur ═══ */
@@ -191,11 +227,49 @@ export async function fromInvoice(
     // Pattern A : Facture fournisseur
     if (!inv.supplier_id) return null;
 
-    const chargeCode = await resolveCategoryAccountCode(client, inv.category_id, 'expense');
-
-    const lines: GeneratedLine[] = [
-      { account_code: chargeCode, debit: round2(amount), credit: 0, label: `Achat ${inv.invoice_number}` },
-    ];
+    // Mig 311 (G-D8-08) : imputation PAR LIGNE de facture (catégorie de la ligne,
+    // sinon celle de l'en-tête) ; (G-D8-05) une ligne rattachée à une ligne de BC
+    // solde d'abord le compte d'attente GR/IR de cette ligne (reçu non facturé),
+    // le reste (écart de prix, quantité non réceptionnée) va en charge.
+    const lines: GeneratedLine[] = [];
+    const items = await client.query(
+      `SELECT category_id, purchase_order_item_id, COALESCE(subtotal, 0) AS subtotal
+         FROM invoice_items WHERE invoice_id = $1 ORDER BY id`, [inv.id]);
+    const itemsTotal = round2(items.rows.reduce((t: number, r: { subtotal: string }) => t + (parseFloat(r.subtotal) || 0), 0));
+    if (items.rows.length > 0 && Math.abs(itemsTotal - amount) <= 0.05) {
+      const grirCode = await postingAccount(client, 'grir');
+      const byAccount = new Map<string, number>();
+      for (const it of items.rows as { category_id: string | null; purchase_order_item_id: string | null; subtotal: string }[]) {
+        let rest = round2(parseFloat(it.subtotal) || 0);
+        if (it.purchase_order_item_id && rest > 0) {
+          const open = await grirOpenAmount(client, it.purchase_order_item_id, grirCode);
+          const take = round2(Math.min(open, rest));
+          if (take > 0) {
+            lines.push({ account_code: grirCode, debit: take, credit: 0, label: `Réception facturée ${inv.invoice_number}`,
+              po_line_id: it.purchase_order_item_id, supplier_id: inv.supplier_id });
+            rest = round2(rest - take);
+          }
+        }
+        if (rest !== 0) {
+          const code = await resolveCategoryAccountCode(client, it.category_id ?? inv.category_id, 'expense');
+          byAccount.set(code, round2((byAccount.get(code) ?? 0) + rest));
+        }
+      }
+      for (const [code, value] of byAccount) {
+        if (value > 0) lines.push({ account_code: code, debit: value, credit: 0, label: `Achat ${inv.invoice_number}` });
+        else if (value < 0) lines.push({ account_code: code, debit: 0, credit: -value, label: `Achat ${inv.invoice_number}` });
+      }
+      // Arrondi entre lignes et en-tête : sur la première ligne de charge.
+      const diff = round2(amount - itemsTotal);
+      if (diff !== 0) {
+        const code = await resolveCategoryAccountCode(client, inv.category_id ?? items.rows[0].category_id, 'expense');
+        lines.push({ account_code: code, debit: diff > 0 ? diff : 0, credit: diff < 0 ? -diff : 0, label: 'Ajustement arrondi' });
+      }
+    } else {
+      // Facture sans lignes (ou lignes incohérentes avec l'en-tête) : imputation d'en-tête.
+      const chargeCode = await resolveCategoryAccountCode(client, inv.category_id, 'expense');
+      lines.push({ account_code: chargeCode, debit: round2(amount), credit: 0, label: `Achat ${inv.invoice_number}` });
+    }
     // TVA deductible : une ligne par taux si la facture a un detail par ligne,
     // sinon une seule ligne sur le taux global deduit du HT/TVA.
     const tvaGroups = await tvaGroupsForInvoice(client, inv.id, 'deductible');
@@ -267,6 +341,56 @@ export async function fromInvoice(
   }
 
   return null;
+}
+
+/* ═══ Generateur — réception (GR/IR, mig 311, G-D8-05) ═══ */
+/**
+ * Réception d'une ligne de BC : charge (ou stock) au débit, compte d'attente
+ * « factures non parvenues » 4417 au crédit, au PRIX DU BC, lettré par ligne
+ * de BC. Une ligne négative (extourne, correction à la baisse) produit
+ * l'écriture inverse. Une écriture par ligne de réception (idempotence).
+ */
+export async function fromGoodsReceipt(
+  client: PoolClient | typeof db,
+  rviId: string
+): Promise<GeneratedEntry | null> {
+  const r = await client.query(
+    `SELECT rvi.id, rvi.purchase_order_item_id, rvi.kind, rvi.signed_quantity, rvi.quantity_received,
+            COALESCE(rvi.po_unit_price, poi.unit_price, rvi.unit_price) AS price,
+            COALESCE(rvi.category_id, poi.category_id, ing.category_id, pkg.category_id) AS category_id,
+            rv.voucher_number, rv.store_id, rv.created_at, po.supplier_id, po.order_number,
+            COALESCE(ing.name, pkg.name) AS item_name
+       FROM reception_voucher_items rvi
+       JOIN reception_vouchers rv ON rv.id = rvi.reception_voucher_id
+       JOIN purchase_order_items poi ON poi.id = rvi.purchase_order_item_id
+       JOIN purchase_orders po ON po.id = poi.purchase_order_id
+       LEFT JOIN ingredients ing ON ing.id = COALESCE(rvi.ingredient_id, poi.ingredient_id)
+       LEFT JOIN packaging_items pkg ON pkg.id = COALESCE(rvi.packaging_id, poi.packaging_id)
+      WHERE rvi.id = $1`, [rviId]);
+  const it = r.rows[0];
+  if (!it) return null;
+  const qty = parseFloat(it.signed_quantity ?? it.quantity_received) || 0;
+  if (it.price == null) throw new Error(`Réception ${it.voucher_number} : prix BC non renseigné pour « ${it.item_name} »`);
+  const value = round2(qty * parseFloat(it.price));
+  if (value === 0) return null;
+  const chargeCode = await resolveCategoryAccountCode(client, it.category_id, 'expense');
+  const grirCode = await postingAccount(client, 'grir');
+  const abs = Math.abs(value);
+  const label = `${it.order_number} · ${it.item_name ?? ''}`.trim();
+  const axis = { po_line_id: it.purchase_order_item_id as string, receipt_item_id: it.id as string, supplier_id: it.supplier_id as string };
+  return {
+    journal_code: 'AC',
+    entry_date: toIsoDate(it.created_at),
+    description: `${value > 0 ? 'Réception' : 'Retour / correction'} ${it.voucher_number} — ${label}`,
+    source_kind: value > 0 ? 'goods_receipt' : 'goods_receipt_return',
+    source_id: it.id,
+    store_id: it.store_id,
+    lines: value > 0
+      ? [{ account_code: chargeCode, debit: abs, credit: 0, label, ...axis },
+         { account_code: grirCode, debit: 0, credit: abs, label: 'Réception à facturer', ...axis }]
+      : [{ account_code: grirCode, debit: abs, credit: 0, label: 'Réception à facturer (retour)', ...axis },
+         { account_code: chargeCode, debit: 0, credit: abs, label, ...axis }],
+  };
 }
 
 /* ═══ Generateur — pattern C : vente POS ═══ */
@@ -417,7 +541,7 @@ export async function fromManualShiftEntry(
 export interface PaymentRow {
   id: string;
   reference: string | null;
-  type: 'invoice' | 'salary' | 'expense' | 'income' | 'advance';
+  type: 'invoice' | 'salary' | 'expense' | 'income' | 'advance' | 'internal_transfer';
   category_id: string | null;
   invoice_id: string | null;
   supplier_id: string | null;
@@ -430,6 +554,19 @@ export interface PaymentRow {
   store_id: string | null;
   withholding_type_id?: string | null;
   withholding_amount?: string | number | null;
+  // Mig 310 (G-D7-03/17) : mode typé et comptes de trésorerie.
+  payment_mode?: string | null;
+  treasury_account_id?: string | null;
+  to_treasury_account_id?: string | null;
+}
+
+/** Compte général et nature (caisse/banque) d'un compte de trésorerie (mig 310). */
+async function treasuryAccount(
+  client: PoolClient | typeof db, id: string | null | undefined
+): Promise<{ account_code: string; kind: 'cash' | 'bank' } | null> {
+  if (!id) return null;
+  const r = await client.query(`SELECT account_code, kind FROM treasury_accounts WHERE id = $1`, [id]);
+  return r.rows[0] ?? null;
 }
 
 /**
@@ -444,6 +581,26 @@ export async function fromPaymentEmission(
 ): Promise<GeneratedEntry | null> {
   const amount = parseFloat(String(p.amount)) || 0;
   if (amount <= 0) return null;
+
+  // Virement interne (mig 310, G-D7-17) : mouvement entre nos comptes, ni charge
+  // ni tiers. Destination au debit, source au credit (ex. versement : 5141 D / 5161 C).
+  if (p.type === 'internal_transfer') {
+    const from = await treasuryAccount(client, p.treasury_account_id);
+    const to = await treasuryAccount(client, p.to_treasury_account_id);
+    if (!from || !to) throw new Error(`Virement interne ${p.id} : compte de tresorerie introuvable`);
+    return {
+      journal_code: from.kind === 'cash' ? 'CA' : 'BQ',
+      entry_date: toIsoDate(p.payment_date),
+      description: p.description || `Virement interne ${p.reference || ''}`.trim(),
+      source_kind: 'payment',
+      source_id: p.id,
+      store_id: p.store_id,
+      lines: [
+        { account_code: to.account_code, debit: round2(amount), credit: 0, label: 'Virement interne (entree)' },
+        { account_code: from.account_code, debit: 0, credit: round2(amount), label: 'Virement interne (sortie)' },
+      ],
+    };
+  }
 
   // Cote DEBIT : determine selon le type de paiement
   let debitLine: GeneratedLine;
@@ -500,6 +657,9 @@ export async function fromPaymentEmission(
       creditCode = '5161'; journal = 'CA'; break;
     case 'transfer':
     case 'bank':
+    case 'card':
+    case 'mobile':
+      // Carte et paiement mobile sortent de la banque, pas de la caisse (mig 310).
       creditCode = '5141'; journal = 'BQ'; break;
     case 'check':
       creditCode = '5111'; journal = 'OD'; break;
@@ -507,6 +667,12 @@ export async function fromPaymentEmission(
       creditCode = '4415'; journal = 'OD'; break;
     default:
       creditCode = '5161'; journal = 'CA';
+  }
+  // Compte de tresorerie explicite (mig 310) : pour les sorties immediates
+  // (especes, virement, carte), le compte general vient du compte choisi.
+  if (['cash', 'transfer', 'bank', 'card', 'mobile'].includes(p.payment_method) && p.treasury_account_id) {
+    const ta = await treasuryAccount(client, p.treasury_account_id);
+    if (ta) { creditCode = ta.account_code; journal = ta.kind === 'cash' ? 'CA' : 'BQ'; }
   }
 
   const creditLabel = p.payment_method === 'check'
@@ -615,15 +781,16 @@ export async function persistEntry(
   if (!jrn.rows[0]) throw new Error(`Journal ${entry.journal_code} introuvable`);
   const journalId = jrn.rows[0].id;
 
-  // Resolution de la periode fiscale
+  // Mig 311 (G-D8-16) : date comptable = date de la pièce si sa période est
+  // ouverte, sinon premier jour de la période ouverte suivante ; les périodes
+  // manquantes sont créées à la demande (plus de blocage au 1er janvier).
+  const accDate = await client.query(`SELECT fn_accounting_date($1::date)::text AS d`, [entry.entry_date]);
+  entry = { ...entry, entry_date: accDate.rows[0].d };
   const fp = await client.query(
     `SELECT id, status FROM fiscal_periods WHERE $1::DATE BETWEEN start_date AND end_date LIMIT 1`,
     [entry.entry_date]
   );
   if (!fp.rows[0]) throw new Error(`Aucune periode fiscale pour ${entry.entry_date}`);
-  if (fp.rows[0].status === 'locked') {
-    throw new Error(`Periode verrouillee pour ${entry.entry_date}`);
-  }
   const fiscalPeriodId = fp.rows[0].id;
 
   // Allocation du numero
@@ -716,9 +883,11 @@ export async function persistEntry(
     }
     await client.query(
       `INSERT INTO journal_entry_lines (
-         journal_entry_id, line_order, account_id, auxiliary_id, debit, credit, label
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [entryId, i + 1, acc.id, auxId, l.debit, l.credit, l.label || null]
+         journal_entry_id, line_order, account_id, auxiliary_id, debit, credit, label,
+         po_line_id, receipt_item_id, supplier_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [entryId, i + 1, acc.id, auxId, l.debit, l.credit, l.label || null,
+       l.po_line_id ?? null, l.receipt_item_id ?? null, l.supplier_id ?? null]
     );
   }
 
@@ -755,6 +924,7 @@ export async function autoLettrer(
      WHERE a.code IN ('4411', '3421')
        AND jel.lettrage_id IS NULL
        AND je.status = 'posted'
+       AND je.source_kind <> 'reversal'
        AND (
          je.source_id = $1
          OR je.source_id IN (SELECT id::text::uuid FROM payments WHERE invoice_id = $1)
@@ -781,44 +951,42 @@ export async function autoLettrer(
   return { lettered: true, lettrageId, lineCount: linesRes.rows.length };
 }
 
-/* ═══ Reversion d'ecritures lors de la suppression d'une source ═══ */
+/* ═══ Extourne des écritures d'une source (mig 311, G-D8-02) ═══ */
 /**
- * Quand une source (paiement, facture, vente) est supprimee, ses ecritures
- * comptables doivent disparaitre du grand livre, ET le lettrage qu'elles
- * portaient doit etre defait (sinon la facture associee reste marquee payee).
+ * Annule comptablement les écritures actives d'une source (facture, paiement,
+ * vente…) : jamais de suppression. Chaque écriture reçoit une extourne
+ * (débit ↔ crédit), datée comme l'original si sa période est ouverte, sinon au
+ * premier jour ouvert ; l'original passe 'reversed' et les deux sont liés
+ * (reversed_by_entry_id / reversal_of_entry_id). Le lettrage qu'elles portaient
+ * est défait, puis l'original et son extourne sont lettrés ensemble sur les
+ * comptes de tiers (ils se soldent mutuellement).
  *
- * Comportement selon la periode fiscale :
- *   - periode OUVERTE  : suppression dure de l'ecriture (lignes en cascade).
- *   - periode CLOSE/LOCKED : interdit — on leve une erreur. La suppression de
- *     la source doit alors etre bloquee (une periode close est intouchable ;
- *     il faudrait passer par une extourne manuelle, hors scope auto).
- *
- * Avant de supprimer, on collecte les lettrage_id des lignes concernees pour
- * delettrer les lignes restantes (typiquement la ligne 4411/3421 de la facture).
- *
- * Idempotent : si aucune ecriture n'existe pour la source, ne fait rien.
+ * Période 'locked' : refus (aucune correction possible).
+ * Idempotent : sans écriture active, ne fait rien.
  */
 export async function reverseEntriesForSource(
   client: PoolClient,
-  opts: { sourceId: string; sourceKinds?: string[] }
+  opts: {
+    sourceId: string; sourceKinds?: string[];
+    /** Conservé pour compatibilité : l'extourne est désormais systématique. */
+    forceExtourne?: boolean;
+    /** Date souhaitée de l'extourne (sinon : date de l'original, ou premier jour ouvert). */
+    extourneDate?: string;
+  }
 ): Promise<{ removed: number; reversed: number; unlettered: number }> {
   const kinds = opts.sourceKinds ?? ['payment', 'invoice', 'sale', 'backfill'];
-
-  // 1. Recuperer les ecritures de cette source + statut de leur periode.
   const entriesRes = await client.query(
-    `SELECT je.id, je.entry_number, je.entry_date, je.store_id, je.description,
+    `SELECT je.id, je.entry_number, je.entry_date, je.store_id, je.description, je.journal_id,
             je.source_id, je.source_detail, fp.status AS period_status
      FROM journal_entries je
      JOIN fiscal_periods fp ON fp.id = je.fiscal_period_id
      WHERE je.source_id = $1
        AND je.source_kind = ANY($2::text[])
-       AND je.status != 'reversed'`,
+       AND je.status = 'posted'`,
     [opts.sourceId, kinds]
   );
-
   if (entriesRes.rows.length === 0) return { removed: 0, reversed: 0, unlettered: 0 };
 
-  // 2. Periode 'locked' : verrou dur, aucune correction possible meme par extourne.
   const locked = entriesRes.rows.find((r: { period_status: string }) => r.period_status === 'locked');
   if (locked) {
     throw new Error(
@@ -827,38 +995,13 @@ export async function reverseEntriesForSource(
     );
   }
 
-  // 3. Separer les ecritures a SUPPRIMER (periode ouverte) de celles a EXTOURNER
-  //    (periode close : immuable, on passe une ecriture inverse en periode ouverte).
-  const toDelete = entriesRes.rows.filter((r: { period_status: string }) => r.period_status === 'open');
-  const toReverse = entriesRes.rows.filter((r: { period_status: string }) => r.period_status === 'closed');
-
   const allEntryIds = entriesRes.rows.map((r: { id: string }) => r.id);
-
-  // 4. Collecter les lettrage_id (avant toute modification) pour delettrer.
   const lettrageRes = await client.query(
     `SELECT DISTINCT lettrage_id FROM journal_entry_lines
      WHERE journal_entry_id = ANY($1::uuid[]) AND lettrage_id IS NOT NULL`,
     [allEntryIds]
   );
   const lettrageIds = lettrageRes.rows.map((r: { lettrage_id: string }) => r.lettrage_id);
-
-  // 5a. Periode ouverte : suppression dure (lignes en cascade).
-  let removed = 0;
-  if (toDelete.length > 0) {
-    const ids = toDelete.map((r: { id: string }) => r.id);
-    await client.query(`DELETE FROM journal_entries WHERE id = ANY($1::uuid[])`, [ids]);
-    removed = ids.length;
-  }
-
-  // 5b. Periode close : extourne. On passe une ecriture inverse datee dans la
-  //     periode ouverte courante, et on marque l'originale 'reversed'.
-  let reversed = 0;
-  for (const orig of toReverse) {
-    await extourneEntry(client, orig);
-    reversed++;
-  }
-
-  // 6. Delettrer les lignes restantes (la facture redevient ouverte).
   let unlettered = 0;
   if (lettrageIds.length > 0) {
     const upd = await client.query(
@@ -868,76 +1011,81 @@ export async function reverseEntriesForSource(
     unlettered = upd.rowCount ?? 0;
   }
 
-  return { removed, reversed, unlettered };
+  let reversed = 0;
+  for (const orig of entriesRes.rows) {
+    await extourneEntry(client, orig, opts.extourneDate);
+    reversed++;
+  }
+  return { removed: 0, reversed, unlettered };
 }
 
-/**
- * Extourne une ecriture d'une periode close : cree une ecriture inverse
- * (debit<->credit) datee dans la periode ouverte la plus recente, marque
- * l'originale 'reversed' et les relie (reversed_by_entry_id). Conserve la
- * tracabilite DGI sans trou de numerotation (l'originale reste, l'inverse
- * s'ajoute).
- */
+/** Extourne une écriture précise (ex. dotation d'une immobilisation supprimée). */
+export async function extourneEntryById(client: PoolClient, entryId: string, preferredDate?: string): Promise<boolean> {
+  const r = await client.query(
+    `SELECT je.id, je.entry_number, je.entry_date, je.store_id, je.description, je.journal_id,
+            je.source_id, je.source_detail, fp.status AS period_status
+       FROM journal_entries je JOIN fiscal_periods fp ON fp.id = je.fiscal_period_id
+      WHERE je.id = $1 AND je.status = 'posted'`, [entryId]);
+  if (!r.rows[0]) return false;
+  if (r.rows[0].period_status === 'locked') throw new Error(`Ecriture ${r.rows[0].entry_number} en periode verrouillee`);
+  await extourneEntry(client, r.rows[0], preferredDate);
+  return true;
+}
+
 async function extourneEntry(
   client: PoolClient,
-  orig: { id: string; entry_number: string; store_id: string | null; description: string | null; source_id: string | null; source_detail: string | null }
+  orig: { id: string; entry_number: string; entry_date: unknown; journal_id: string; store_id: string | null;
+          description: string | null; source_id: string | null; source_detail: string | null },
+  preferredDate?: string
 ): Promise<void> {
-  // Periode ouverte cible : la plus recente.
-  const openPeriod = await client.query(
-    `SELECT id, year FROM fiscal_periods WHERE status = 'open' ORDER BY year DESC, month DESC LIMIT 1`
-  );
-  if (!openPeriod.rows[0]) {
-    throw new Error('Aucune periode ouverte pour passer l\'extourne. Reouvrez une periode.');
-  }
-  const periodId = openPeriod.rows[0].id;
-  const periodInfo = await client.query(
-    `SELECT start_date FROM fiscal_periods WHERE id = $1`, [periodId]
-  );
-  const extDate = toIsoDate(periodInfo.rows[0].start_date);
-
-  // Journal OD (operations diverses) pour les extournes.
-  const odJournal = await client.query(`SELECT id FROM journals WHERE code = 'OD'`);
-  const journalId = odJournal.rows[0].id;
+  const target = preferredDate || toIsoDate(orig.entry_date);
+  const d = await client.query(`SELECT fn_accounting_date($1::date)::text AS d`, [target]);
+  const extDate: string = d.rows[0].d;
+  const fp = await client.query(`SELECT fn_ensure_fiscal_period($1::date) AS id`, [extDate]);
+  const periodId = fp.rows[0].id;
 
   const year = parseInt(extDate.slice(0, 4), 10);
-  const numRes = await client.query('SELECT next_entry_number($1, $2) AS num', [journalId, year]);
+  const numRes = await client.query('SELECT next_entry_number($1, $2::smallint) AS num', [orig.journal_id, year]);
   const entryNumber = numRes.rows[0].num;
-
   const sysUser = await resolveUserId(client, null);
 
-  // Cree l'ecriture d'extourne (en draft puis posted).
-  // source_id = celui de l'originale (traçabilite metier), source_detail = 'reversal'
-  // pour ne pas entrer en conflit avec l'index d'unicite de la source d'origine.
+  // source_detail = 'rev:<id original>' : unique par original, plusieurs
+  // régénérations successives d'une même pièce ne se télescopent pas.
   const insRes = await client.query(
     `INSERT INTO journal_entries (
        entry_number, journal_id, entry_date, fiscal_period_id, description,
-       source_kind, source_id, source_detail, status, store_id, created_by, reversed_by_entry_id
-     ) VALUES ($1,$2,$3,$4,$5,'reversal',$6,$7,'draft',$8,$9,NULL)
+       source_kind, source_id, source_detail, status, store_id, created_by, reversal_of_entry_id
+     ) VALUES ($1,$2,$3,$4,$5,'reversal',$6,$7,'draft',$8,$9,$10)
      RETURNING id`,
-    [entryNumber, journalId, extDate, periodId,
+    [entryNumber, orig.journal_id, extDate, periodId,
      `Extourne de ${orig.entry_number}${orig.description ? ' — ' + orig.description : ''}`,
-     orig.source_id, `rev:${orig.source_detail || 'main'}`, orig.store_id, sysUser]
+     orig.source_id, `rev:${orig.id}`, orig.store_id, sysUser, orig.id]
   );
   const extId = insRes.rows[0].id;
 
-  // Copie les lignes de l'originale avec debit/credit INVERSES.
   await client.query(
-    `INSERT INTO journal_entry_lines (journal_entry_id, line_order, account_id, auxiliary_id, debit, credit, label)
-     SELECT $1, line_order, account_id, auxiliary_id, credit, debit, 'Extourne: ' || COALESCE(label, '')
+    `INSERT INTO journal_entry_lines (journal_entry_id, line_order, account_id, auxiliary_id, debit, credit, label,
+                                      po_line_id, receipt_item_id, supplier_id)
+     SELECT $1, line_order, account_id, auxiliary_id, credit, debit, 'Extourne: ' || COALESCE(label, ''),
+            po_line_id, receipt_item_id, supplier_id
      FROM journal_entry_lines WHERE journal_entry_id = $2`,
     [extId, orig.id]
   );
-
-  // Poste l'extourne (declenche le trigger d'equilibre).
   await client.query(
     `UPDATE journal_entries SET status = 'posted', posted_at = NOW(), posted_by = $2 WHERE id = $1`,
     [extId, sysUser]
   );
-
-  // Marque l'originale 'reversed' et relie a l'extourne.
   await client.query(
     `UPDATE journal_entries SET status = 'reversed', reversed_by_entry_id = $2 WHERE id = $1`,
     [orig.id, extId]
+  );
+  // Original et extourne se soldent : lettrage commun sur les comptes de tiers.
+  await client.query(
+    `UPDATE journal_entry_lines jel SET lettrage_id = $3
+       FROM accounts a
+      WHERE a.id = jel.account_id AND a.is_collective
+        AND jel.journal_entry_id IN ($1, $2) AND jel.lettrage_id IS NULL`,
+    [orig.id, extId, crypto.randomUUID()]
   );
 }
 
@@ -962,7 +1110,7 @@ const INVOICE_SELECT = `SELECT id, invoice_number, invoice_type, supplier_id, cu
 
 const PAYMENT_SELECT = `SELECT id, reference, type, category_id, invoice_id, supplier_id,
   employee_id, amount, payment_method, payment_date, cashed_at, description, store_id,
-  withholding_type_id, withholding_amount
+  withholding_type_id, withholding_amount, payment_mode, treasury_account_id, to_treasury_account_id
   FROM payments WHERE id = $1`;
 
 const SALE_SELECT = `SELECT id, sale_number, customer_id, subtotal, tax_amount, discount_amount,

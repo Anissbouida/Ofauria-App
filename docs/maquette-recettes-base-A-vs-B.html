@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A vs B — Préparations de base</title>
+<style>
+:root{
+  --blue:#2563eb; --blue-dark:#1d4ed8; --blue-50:#eff6ff; --blue-100:#dbeafe;
+  --ink:#1f2937; --strong:#111827; --muted:#6b7280; --faint:#9ca3af;
+  --line:#e5e7eb; --line-soft:#f1f3f5; --page:#f3f4f6; --white:#fff;
+  --green:#15803d; --green-bg:#dcfce7; --amber:#b45309; --amber-bg:#fef3c7;
+  --purple:#6d28d9; --purple-bg:#ede9fe; --red:#b91c1c; --red-bg:#fee2e2;
+  --a:#0d9488; --a-bg:#f0fdfa; --a-line:#5eead4;
+  --b:#7c3aed; --b-bg:#faf5ff; --b-line:#d8b4fe;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:1320px;margin:0 auto;padding:28px 20px 80px}
+h1{font-size:24px;margin:0 0 6px;letter-spacing:-.02em;color:var(--strong)}
+.lede{color:var(--muted);margin:0 0 24px;max-width:78ch}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+  margin:46px 0 6px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.h2sub{color:var(--muted);font-size:13px;margin:0 0 16px;max-width:82ch}
+code{background:#eef1f5;padding:1px 5px;border-radius:4px;font-size:.86em;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+/* ── tableau de decision ── */
+.decide{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.decide th,.decide td{padding:10px 14px;border-bottom:1px solid var(--line-soft);font-size:13px;text-align:left;vertical-align:top}
+.decide thead th{background:#fafbfc;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--line)}
+.decide thead th.ca{color:var(--a);background:var(--a-bg)}
+.decide thead th.cb{color:var(--b);background:var(--b-bg)}
+.decide td.ca{background:var(--a-bg)}
+.decide td.cb{background:var(--b-bg)}
+.decide tr:last-child td{border-bottom:0}
+.decide .crit{width:30%;color:var(--muted)}
+.yes{color:var(--green);font-weight:700}
+.no{color:var(--faint);font-weight:700}
+.warn{color:var(--amber);font-weight:700}
+
+/* ── colonnes A / B ── */
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+@media(max-width:980px){.duo{grid-template-columns:1fr}}
+.pane{border-radius:10px;overflow:hidden;border:2px solid var(--line);background:#fff}
+.pane.a{border-color:var(--a-line)}
+.pane.b{border-color:var(--b-line)}
+.pane-h{padding:9px 14px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  display:flex;align-items:center;gap:8px}
+.pane.a .pane-h{background:var(--a-bg);color:var(--a);border-bottom:1px solid var(--a-line)}
+.pane.b .pane-h{background:var(--b-bg);color:var(--b);border-bottom:1px solid var(--b-line)}
+.pane-h .tagline{margin-left:auto;font-weight:500;text-transform:none;letter-spacing:0;font-size:11.5px;opacity:.85}
+.pane-body{padding:0;overflow-x:auto}
+.pane-note{padding:10px 14px;font-size:12.5px;color:var(--muted);border-top:1px solid var(--line-soft);background:#fcfcfd}
+.pane-note b{color:var(--strong)}
+
+/* ── mini-app ── */
+table.app-t{width:100%;border-collapse:collapse}
+.app-t th{text-align:left;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+  font-weight:600;padding:7px 6px;border-bottom:1px solid var(--line);white-space:nowrap;background:#fafbfc}
+.app-t td{padding:7px 6px;border-bottom:1px solid var(--line-soft);font-size:12px;white-space:nowrap}
+.app-t tr:last-child td{border-bottom:0}
+.num{text-align:right;white-space:nowrap}
+.unit{color:var(--muted);font-size:10px;margin-left:2px}
+.tag{display:inline-block;border-radius:4px;padding:1px 7px;font-size:10.5px;font-weight:600;white-space:nowrap}
+.tag.blue{background:var(--blue-100);color:var(--blue-dark)}
+.tag.purple{background:var(--purple-bg);color:var(--purple)}
+.tag.grey{background:#f1f3f5;color:var(--muted)}
+.tag.green{background:var(--green-bg);color:var(--green)}
+.tag.amber{background:var(--amber-bg);color:var(--amber)}
+.hl{background:#fff7d6;box-shadow:inset 3px 0 0 #f59e0b}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.dot.ok{background:#22c55e}.dot.warn{background:#f59e0b}
+
+/* ── fiche ── */
+.kpirow{display:flex;border-bottom:1px solid var(--line)}
+.kpi{flex:1;padding:9px 12px;border-right:1px solid var(--line)}
+.kpi:last-child{border-right:0}
+.kpi .v{font-size:16px;font-weight:700;color:var(--blue);letter-spacing:-.02em}
+.kpi .v.green{color:var(--green)}
+.kpi .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-top:2px}
+.chiprow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:10px 12px;border-bottom:1px solid var(--line-soft)}
+.chip{border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 9px;font-size:12px;
+  display:inline-flex;align-items:center;gap:5px;color:var(--ink)}
+.chip.on{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+.chip.dashed{border-style:dashed;color:var(--muted)}
+.chip .x{opacity:.6;font-size:10.5px}
+.card{border:1px solid var(--line);border-radius:7px;padding:10px;background:#fafbfc;margin:12px}
+.card h4{margin:0 0 7px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.kv{display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;
+  border-bottom:1px solid var(--line-soft);font-size:12.5px}
+.kv:last-child{border-bottom:0}
+.kv .k{color:var(--muted)}
+.kv .v{font-weight:600;color:var(--strong)}
+.absent{padding:14px 12px;font-size:12.5px;color:var(--faint);font-style:italic;text-align:center;
+  border:1px dashed var(--line);border-radius:7px;margin:12px}
+
+/* ── encadres ── */
+.note{margin-top:14px;padding:12px 14px;border-radius:8px;font-size:13px;border:1px solid var(--line);background:#fff}
+.note.gain{background:var(--b-bg);border-color:var(--b-line);color:#4c1d95}
+.note.gain b{color:var(--b)}
+.note.warnbox{background:var(--amber-bg);border-color:#fcd34d;color:#78350f}
+.note.warnbox b{color:#92400e}
+.steps{margin:10px 0 0;padding-left:20px;font-size:13px;color:var(--muted)}
+.steps li{margin-bottom:5px}
+.steps b{color:var(--strong)}
+.foot{margin-top:52px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.hyp{font-size:11px;color:var(--amber);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Option A ou option B — la même page, côte à côte</h1>
+<p class="lede">Les deux options corrigent le défaut de lecture du coût. Elles ne se distinguent que sur un point : <b>est-ce qu'une préparation de base reçoit un format de production ?</b> Tout le reste — page au lieu de modale, colonnes perte / rendement net, bloc « utilisée par », % du coût — est commun aux deux et ne demande aucune migration.</p>
+
+<h2>La décision en un tableau</h2>
+<table class="decide">
+  <thead>
+    <tr>
+      <th class="crit">Critère</th>
+      <th class="ca">A — Nettoyage</th>
+      <th class="cb">B — Formats sur les bases</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="crit">Corrige le coût DH/g vs DH/kg</td>
+      <td class="ca"><span class="yes">oui</span></td>
+      <td class="cb"><span class="yes">oui</span></td>
+    </tr>
+    <tr>
+      <td class="crit">Migration de données</td>
+      <td class="ca"><span class="yes">aucune</span></td>
+      <td class="cb"><span class="warn">96 fiches</span> — un <code>recipe_formats</code> à créer par base, avec son contenant</td>
+    </tr>
+    <tr>
+      <td class="crit">Code à écrire</td>
+      <td class="ca">colonnes de la liste, une requête « utilisée par », la page qui remplace la modale</td>
+      <td class="cb">tout A, <b>plus</b> l'éditeur de nomenclature ouvert aux bases et les vues de coût à vérifier sur ce nouveau cas</td>
+    </tr>
+    <tr>
+      <td class="crit">Réversible</td>
+      <td class="ca"><span class="yes">oui</span> — rien en base ne bouge</td>
+      <td class="cb"><span class="warn">difficilement</span> — une fois les formats créés et utilisés, on ne revient pas en arrière sans perte</td>
+    </tr>
+    <tr>
+      <td class="crit">Risque sur les coûts existants</td>
+      <td class="ca"><span class="yes">nul</span> — affichage seul</td>
+      <td class="cb"><span class="warn">à surveiller</span> — le rendement passe de la recette au format ; toute recette qui consomme une base est concernée</td>
+    </tr>
+    <tr>
+      <td class="crit">Ce que ça débloque en plus</td>
+      <td class="ca">rien — c'est un correctif de lecture</td>
+      <td class="cb">rendement par contenant, plan de production en plaques, coût réel d'une plaque, déclinaison d'une base sur plusieurs moules</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Différence 1 · La liste</h2>
+<p class="h2sub">Une seule colonne change. Le reste du tableau est identique dans les deux options.</p>
+
+<div class="duo">
+  <div class="pane a">
+    <div class="pane-h">Option A <span class="tagline">la colonne Format disparaît</span></div>
+    <div class="pane-body">
+      <table class="app-t">
+        <thead><tr>
+          <th style="width:18px"></th><th>Recette</th>
+          <th class="num">Brut</th><th class="num">Perte</th><th class="num">Net</th>
+          <th class="num">Coût fournée</th><th class="num">Coût / kg net</th><th class="num">Utilisée par</th>
+        </tr></thead>
+        <tbody>
+          <tr><td><i class="dot ok"></i></td><td><b>Biscuit Joconde</b></td>
+            <td class="num">1 300<span class="unit">g</span></td><td class="num" style="color:var(--amber)">15,0<span class="unit">%</span></td>
+            <td class="num" style="color:var(--green)">1 105<span class="unit">g</span></td>
+            <td class="num">44,76<span class="unit">DH</span></td><td class="num"><b>40,50</b></td><td class="num"><span class="tag blue">2</span></td></tr>
+          <tr><td><i class="dot ok"></i></td><td><b>Crème au beurre café</b></td>
+            <td class="num">970<span class="unit">g</span></td><td class="num" style="color:var(--amber)">1,0<span class="unit">%</span></td>
+            <td class="num" style="color:var(--green)">960<span class="unit">g</span></td>
+            <td class="num">39,38<span class="unit">DH</span></td><td class="num"><b>41,00</b></td><td class="num"><span class="tag blue">1</span></td></tr>
+          <tr><td><i class="dot warn"></i></td><td><b>Amandes caramélisées</b></td>
+            <td class="num">340<span class="unit">g</span></td><td class="num" style="color:var(--faint)">—</td>
+            <td class="num" style="color:var(--green)">340<span class="unit">g</span></td>
+            <td class="num">20,47<span class="unit">DH</span></td><td class="num"><b>60,21</b></td><td class="num" style="color:var(--faint)">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pane-note">Une base n'a pas de contenant, donc pas de colonne. <b>7 colonnes</b> au lieu de 9, toutes remplies.</div>
+  </div>
+
+  <div class="pane b">
+    <div class="pane-h">Option B <span class="tagline">la colonne Format se remplit</span></div>
+    <div class="pane-body">
+      <table class="app-t">
+        <thead><tr>
+          <th style="width:18px"></th><th>Recette</th>
+          <th class="hl">Format</th>
+          <th class="num">Brut</th><th class="num">Perte</th><th class="num">Net</th>
+          <th class="num">Coût fournée</th><th class="num">Coût / kg net</th>
+        </tr></thead>
+        <tbody>
+          <tr><td><i class="dot ok"></i></td><td><b>Biscuit Joconde</b></td>
+            <td class="hl"><span class="tag purple">Plaque 60x40</span></td>
+            <td class="num">1 300<span class="unit">g</span></td><td class="num" style="color:var(--amber)">15,0<span class="unit">%</span></td>
+            <td class="num" style="color:var(--green)">1 105<span class="unit">g</span></td>
+            <td class="num">44,76<span class="unit">DH</span></td><td class="num"><b>40,50</b></td></tr>
+          <tr><td><i class="dot ok"></i></td><td><b>Crème au beurre café</b></td>
+            <td class="hl"><span class="tag grey">—</span></td>
+            <td class="num">970<span class="unit">g</span></td><td class="num" style="color:var(--amber)">1,0<span class="unit">%</span></td>
+            <td class="num" style="color:var(--green)">960<span class="unit">g</span></td>
+            <td class="num">39,38<span class="unit">DH</span></td><td class="num"><b>41,00</b></td></tr>
+          <tr><td><i class="dot warn"></i></td><td><b>Amandes caramélisées</b></td>
+            <td class="hl"><span class="tag grey">—</span></td>
+            <td class="num">340<span class="unit">g</span></td><td class="num" style="color:var(--faint)">—</td>
+            <td class="num" style="color:var(--green)">340<span class="unit">g</span></td>
+            <td class="num">20,47<span class="unit">DH</span></td><td class="num"><b>60,21</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pane-note">La colonne existe et se remplit là où le labo a un vrai contenant. Les bases qui n'en ont pas (crèmes, sirops) affichent « sans contenant » — <b>elles ne sont pas forcées d'en choisir un</b>.</div>
+  </div>
+</div>
+
+<h2>Différence 2 · La fiche</h2>
+<p class="h2sub">Le bandeau KPI, la composition, les étapes et le bloc « utilisée par » sont identiques. Seule la zone entre les deux change.</p>
+
+<div class="duo">
+  <div class="pane a">
+    <div class="pane-h">Option A <span class="tagline">le rendement appartient à la recette</span></div>
+    <div class="kpirow">
+      <div class="kpi"><div class="v">1 105 g</div><div class="l">Rendement net</div></div>
+      <div class="kpi"><div class="v">44,76 DH</div><div class="l">Coût fournée</div></div>
+      <div class="kpi"><div class="v green">40,50 DH</div><div class="l">Coût / kg net</div></div>
+    </div>
+    <div class="absent">Pas de barre de formats</div>
+    <div class="card">
+      <h4>Rendement de la recette</h4>
+      <div class="kv"><span class="k">Poids brut</span><span class="v">1 300 g</span></div>
+      <div class="kv"><span class="k">Perte cuisson</span><span class="v">15 %</span></div>
+      <div class="kv"><span class="k">Poids net</span><span class="v" style="color:var(--green)">1 105 g</span></div>
+      <div class="kv"><span class="k">Coût / kg net</span><span class="v">40,50 DH</span></div>
+    </div>
+    <div class="pane-note">Une fournée de Joconde = <b>un seul chiffre</b>, 1 300 g. Si le labo en cuit trois plaques, c'est au chef de multiplier de tête. Le plan de production ne sait pas compter en plaques.</div>
+  </div>
+
+  <div class="pane b">
+    <div class="pane-h">Option B <span class="tagline">le rendement appartient au format</span></div>
+    <div class="kpirow">
+      <div class="kpi"><div class="v">1 105 g</div><div class="l">Rendement net</div></div>
+      <div class="kpi"><div class="v">44,76 DH</div><div class="l">Coût plaque</div></div>
+      <div class="kpi"><div class="v green">40,50 DH</div><div class="l">Coût / kg net</div></div>
+    </div>
+    <div class="chiprow">
+      <span class="chip on">📦 Plaque à rebord 60x40 <span class="x">(défaut)</span></span>
+      <span class="chip">📦 Tapis silicone 60x40</span>
+      <span class="chip dashed">+ Ajouter</span>
+    </div>
+    <div class="card">
+      <h4>Plaque à rebord 60x40 cm</h4>
+      <div class="kv"><span class="k">Poids brut</span><span class="v">1 300 g</span></div>
+      <div class="kv"><span class="k">Perte cuisson</span><span class="v">15 %</span></div>
+      <div class="kv"><span class="k">Poids net</span><span class="v" style="color:var(--green)">1 105 g</span></div>
+      <div class="kv"><span class="k">Coût / kg net</span><span class="v">40,50 DH</span></div>
+    </div>
+    <div class="pane-note">Chaque contenant a son rendement et sa perte. Une Joconde plus fine sur tapis silicone se déclare comme un second format, avec ses propres chiffres — <b>sans dupliquer la recette</b>.</div>
+  </div>
+</div>
+
+<div class="note gain">
+  <b>Ce que B achète, démontré sur une recette qui l'a déjà.</b>
+  CAKE NATURE est un produit fini avec deux formats : Moule 300 (3 × 300 g = 900 g) et Moule 600 (3 × 600 g = 1 800 g). Une seule fournée de 2 700 g, répartie 33 % / 67 %, donne <b>6,52 DH</b> l'unité d'un côté et <b>12,70 DH</b> de l'autre. C'est exactement ce mécanisme que B apporterait aux 96 préparations de base — aujourd'hui aucune ne peut se décliner ainsi.
+</div>
+
+<div class="note warnbox">
+  <b>Le point de vigilance de B.</b> Faire porter le rendement par le format déplace le dénominateur des coûts. Toute recette qui consomme une base voit son coût recalculé — c'est exactement ce qui s'est produit en écrasant Biscuit Joconde et Ganache chocolat noir : Opéra noisette <b>+7,2 %</b>, Tarte chocolat <b>+13,5 %</b>. Sur 96 fiches, la migration doit être jouée avec un avant/après chiffré, pas à l'aveugle.
+</div>
+
+<h2>Si tu prends A maintenant, B reste ouvert</h2>
+<p class="h2sub">Les deux options ne s'excluent pas dans le temps : A ne crée aucune donnée que B devrait défaire.</p>
+<ol class="steps">
+  <li><b>A</b> — colonnes corrigées, coût en DH/kg net, page au lieu de modale, bloc « utilisée par ». Rien en base ne change, l'écran devient lisible.</li>
+  <li><b>Observation</b> — la colonne « utilisée par » révèle les bases mortes, la colonne perte révèle les fiches à 0 % qui devraient en avoir une. Ce nettoyage-là se fait à l'usage, pas par migration.</li>
+  <li><b>B</b> — quand le référentiel est propre, on rattache les bases qui ont un vrai contenant. Beaucoup n'en auront jamais besoin (crèmes, sirops, inserts) : la migration ne portera pas sur 96 fiches, mais sur celles qui se cuisent.</li>
+</ol>
+
+<div class="foot">
+  Maquette statique — aucune donnée n'est modifiée. Chiffres relevés sur <code>ofauria_db</code> le 19/08/2026.
+  Les noms de contenants proviennent du référentiel chargé par la migration 272.
+  <span class="hyp">Le second format « Tapis silicone » de la Joconde est une illustration du mécanisme, pas une donnée existante.</span>
+</div>
+
+</div>
+</body>
+</html>
