@@ -1,731 +1,736 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ordersApi } from '../../api/orders.api';
 import { ORDER_STATUS_LABELS } from '@ofauria/shared';
-import { format } from 'date-fns';
+import { format, startOfDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
+import { getApiErrorMessage } from '../../utils/api-error';
+import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StagePipeline, StageProgress, SelectFilter, type StageDef, type StageStat } from '../../components/purchasing/ProcessBoard';
 import {
   ClipboardList, Plus, Phone, Pencil, Search, Eye, X,
   Clock, CheckCircle2, Factory, Truck, Ban, CalendarDays,
-  Banknote, CreditCard, ChevronRight, User, Package, FileText,
-  AlertCircle, Trash2,
+  Banknote, CreditCard, Package, PackageCheck, FileText,
+  AlertTriangle, Trash2, Loader2, Tag, User,
 } from 'lucide-react';
 import OrderFormModal from '../../components/orders/OrderFormModal';
 
-const statusConfig: Record<string, { color: string; bg: string; icon: typeof Clock; gradient: string }> = {
-  pending:       { color: 'text-gray-600',   bg: 'bg-gray-100',   icon: Clock,         gradient: 'from-gray-400 to-gray-500' },
-  confirmed:     { color: 'text-blue-700',   bg: 'bg-blue-50',    icon: CheckCircle2,  gradient: 'from-blue-500 to-blue-600' },
-  in_production: { color: 'text-amber-700',  bg: 'bg-amber-50',   icon: Factory,       gradient: 'from-amber-500 to-amber-600' },
-  ready:         { color: 'text-emerald-700', bg: 'bg-emerald-50', icon: Package,       gradient: 'from-emerald-500 to-emerald-600' },
-  completed:     { color: 'text-gray-500',   bg: 'bg-gray-50',    icon: Truck,         gradient: 'from-gray-400 to-gray-500' },
-  cancelled:     { color: 'text-red-600',    bg: 'bg-red-50',     icon: Ban,           gradient: 'from-red-400 to-red-500' },
+/* ═══════════════════════ Référentiel d'affichage ═══════════════════════ */
+
+type OrderRow = Record<string, any>;
+
+/** Étapes du cycle de vie d'une commande client (même grammaire que les BC / factures). */
+const STAGES: StageDef[] = [
+  { key: 'pending',       label: 'Brouillon',     hint: 'à confirmer',        icon: Clock },
+  { key: 'confirmed',     label: 'Confirmées',    hint: 'à lancer',           icon: CheckCircle2 },
+  { key: 'in_production', label: 'En production', hint: 'en atelier',         icon: Factory },
+  { key: 'ready',         label: 'Prêtes',        hint: 'à livrer',           icon: Package },
+  { key: 'completed',     label: 'Terminées',     hint: 'livrées',            icon: Truck },
+];
+const STAGE_KEYS = STAGES.map(s => s.key);
+
+const STATUS_TAG: Record<string, string> = {
+  pending: 'odoo-tag-grey',
+  confirmed: 'odoo-tag-blue',
+  in_production: 'odoo-tag-yellow',
+  ready: 'odoo-tag-green',
+  completed: 'odoo-tag-purple',
+  cancelled: 'odoo-tag-red',
+};
+const STATUS_DOT: Record<string, string> = {
+  pending: 'neutral', confirmed: 'warning', in_production: 'warning',
+  ready: 'ok', completed: 'ok', cancelled: 'danger',
 };
 
-const typeConfig: Record<string, { label: string; color: string }> = {
-  custom: { label: 'Sur mesure', color: 'bg-violet-100 text-violet-700' },
-  online: { label: 'En ligne',  color: 'bg-sky-100 text-sky-700' },
-  event:  { label: 'Événement', color: 'bg-rose-100 text-rose-700' },
+const TYPE_LABELS: Record<string, string> = { custom: 'Sur mesure', online: 'En ligne', event: 'Événement', staff: 'Personnel' };
+const TYPE_TAG: Record<string, string> = { custom: 'odoo-tag-purple', online: 'odoo-tag-blue', event: 'odoo-tag-orange', staff: 'odoo-tag-grey' };
+
+const FILTER_CHIPS: Array<{ key: string; label: string; icon: typeof Clock }> = [
+  { key: '', label: 'Toutes', icon: ClipboardList },
+  { key: 'pending', label: 'Brouillon', icon: Clock },
+  { key: 'confirmed', label: 'Confirmées', icon: CheckCircle2 },
+  { key: 'in_production', label: 'En production', icon: Factory },
+  { key: 'ready', label: 'Prêtes', icon: Package },
+  { key: 'completed', label: 'Terminées', icon: Truck },
+  { key: 'cancelled', label: 'Annulées', icon: Ban },
+];
+
+const OPEN_STATUSES = new Set(['pending', 'confirmed', 'in_production', 'ready']);
+
+function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function num(v: unknown) { const x = parseFloat(String(v ?? '0')); return Number.isFinite(x) ? x : 0; }
+function customerName(o: OrderRow) {
+  return o.customer_first_name ? `${o.customer_first_name} ${o.customer_last_name || ''}`.trim() : '—';
+}
+function fmtDate(d: unknown, pattern = 'dd MMM yyyy') {
+  return d ? format(new Date(String(d)), pattern, { locale: fr }) : '—';
+}
+/** Commande en cours dont la date de retrait est dépassée. */
+function isLate(o: OrderRow, today: Date) {
+  if (!OPEN_STATUSES.has(o.status as string) || !o.pickup_date) return false;
+  return startOfDay(new Date(o.pickup_date as string)) < today;
+}
+
+/* Styles partagés des fenêtres (mêmes valeurs que les modales Achats). */
+const modalPanelStyle: CSSProperties = {
+  backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)',
+  borderRadius: 6, overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
 };
+const modalHeaderStyle: CSSProperties = { backgroundColor: 'var(--theme-accent)', padding: '0.875rem 1.25rem', color: '#fff' };
+const labelStyle: CSSProperties = {
+  display: 'block', fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase',
+  letterSpacing: '0.03em', color: 'var(--odoo-text-muted)', marginBottom: 4,
+};
+const fieldStyle: CSSProperties = {
+  width: '100%', padding: '0.375rem 0.5rem', border: '1px solid var(--odoo-border)',
+  borderRadius: 4, fontSize: '0.8125rem', backgroundColor: 'var(--odoo-bg)', color: 'var(--odoo-text)',
+};
+const sectionStyle: CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 4, overflow: 'hidden' };
 
-const statusSteps = ['pending', 'confirmed', 'in_production', 'ready', 'completed'];
-
-function StatusProgress({ status }: { status: string }) {
-  if (status === 'cancelled') {
-    return (
-      <div className="flex items-center gap-1.5">
-        <Ban size={14} className="text-red-400" />
-        <span className="text-xs font-medium text-red-500">Annulée</span>
-      </div>
-    );
-  }
-  const currentIdx = statusSteps.indexOf(status);
-  return (
-    <div className="flex items-center gap-1">
-      {statusSteps.map((s, i) => {
-        const done = i <= currentIdx;
-        const cfg = statusConfig[s];
-        return (
-          <div key={s} className="flex items-center gap-1">
-            <div className={`w-2 h-2 rounded-full transition-all ${done ? `bg-gradient-to-br ${cfg.gradient}` : 'bg-gray-200'}`} />
-            {i < statusSteps.length - 1 && (
-              <div className={`w-4 h-0.5 ${i < currentIdx ? 'bg-gray-300' : 'bg-gray-100'}`} />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + ' DH';
-}
+/* ═══════════════════════ Page ═══════════════════════ */
 
 export default function OrdersPage() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [lateOnly, setLateOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [editingOrder, setEditingOrder] = useState<Record<string, any> | null>(null);
-  const [viewingOrder, setViewingOrder] = useState<Record<string, any> | null>(null);
-  const [deliverOrder, setDeliverOrder] = useState<Record<string, any> | null>(null);
-  const [deliverAmount, setDeliverAmount] = useState('');
-  const [deliverPayment, setDeliverPayment] = useState<'cash' | 'card'>('cash');
+  const [editingOrder, setEditingOrder] = useState<OrderRow | null>(null);
+  const [viewingOrder, setViewingOrder] = useState<OrderRow | null>(null);
+  const [deliverOrder, setDeliverOrder] = useState<OrderRow | null>(null);
 
+  // Une seule lecture : les compteurs du pipeline et la liste partagent la même source,
+  // le filtrage par statut se fait côté client (le serveur pagine à 20 par défaut).
   const { data, isLoading } = useQuery({
-    queryKey: ['orders', { status: statusFilter }],
-    queryFn: () => ordersApi.list({ status: statusFilter }),
+    queryKey: ['orders', { all: true }],
+    queryFn: () => ordersApi.list({ limit: '500' }),
   });
+  const orders: OrderRow[] = data?.data || [];
 
-  // Fetch detail when viewing
-  const { data: orderDetail } = useQuery({
-    queryKey: ['order-detail', viewingOrder?.id],
-    queryFn: () => ordersApi.getById(viewingOrder!.id as string),
-    enabled: !!viewingOrder,
-  });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['orders'] });
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => ordersApi.updateStatus(id, status),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['orders'] }); notify.success('Statut mis à jour'); },
-    onError: () => notify.error('Erreur lors de la mise à jour'),
+    onSuccess: () => { invalidate(); notify.success('Statut mis à jour'); },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la mise à jour')),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => ordersApi.remove(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      notify.success('Commande supprimee');
-    },
-    onError: (err: any) => {
-      const msg = err?.response?.data?.error?.message || 'Impossible de supprimer la commande';
-      notify.error(msg);
-    },
+    onSuccess: () => { invalidate(); notify.success('Commande supprimée'); },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Impossible de supprimer la commande')),
   });
 
-  const deliverMutation = useMutation({
-    mutationFn: ({ id, amountPaid, paymentMethod }: { id: string; amountPaid: number; paymentMethod: string }) =>
-      ordersApi.deliver(id, { amountPaid, paymentMethod }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['sales'] });
-      setDeliverOrder(null);
-      setDeliverAmount('');
-      setDeliverPayment('cash');
-      notify.success('Commande livrée avec succès !');
-    },
-    onError: () => notify.error('Erreur lors de la livraison'),
-  });
+  const today = startOfDay(new Date());
 
-  const orders = data?.data || [];
+  /* ── Compteurs du pipeline ── */
+  const stageStats = useMemo(() => {
+    const stats: Record<string, StageStat> = {};
+    for (const key of STAGE_KEYS) stats[key] = { count: 0, sub: '', late: 0 };
+    const totals: Record<string, number> = {};
+    for (const o of orders) {
+      const s = o.status as string;
+      if (!stats[s]) continue;
+      stats[s].count += 1;
+      totals[s] = (totals[s] || 0) + num(o.total);
+      if (isLate(o, today)) stats[s].late = (stats[s].late || 0) + 1;
+    }
+    for (const key of STAGE_KEYS) stats[key].sub = `${n(totals[key] || 0)} DH`;
+    return stats;
+  }, [orders, today]);
 
-  // Search filter
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { '': orders.length };
+    for (const o of orders) c[o.status as string] = (c[o.status as string] || 0) + 1;
+    return c;
+  }, [orders]);
+  const openCount = orders.filter(o => OPEN_STATUSES.has(o.status as string)).length;
+  const lateOrders = useMemo(() => orders.filter(o => isLate(o, today)), [orders, today]);
+
+  const typeOptions = useMemo(() => {
+    const seen = new Set(orders.map(o => o.type as string).filter(Boolean));
+    return Array.from(seen).map(k => ({ key: k, label: TYPE_LABELS[k] || k }));
+  }, [orders]);
+
+  /* ── Liste filtrée ── */
   const filteredOrders = useMemo(() => {
-    if (!searchQuery.trim()) return orders;
-    const q = searchQuery.toLowerCase();
-    return orders.filter((o: Record<string, any>) =>
-      (o.order_number as string)?.toLowerCase().includes(q) ||
-      `${o.customer_first_name || ''} ${o.customer_last_name || ''}`.toLowerCase().includes(q) ||
-      (o.customer_phone as string)?.toLowerCase().includes(q)
-    );
-  }, [orders, searchQuery]);
+    const q = searchQuery.trim().toLowerCase();
+    return orders.filter(o => {
+      if (statusFilter && o.status !== statusFilter) return false;
+      if (typeFilter && o.type !== typeFilter) return false;
+      if (lateOnly && !isLate(o, today)) return false;
+      if (!q) return true;
+      return (
+        String(o.order_number || '').toLowerCase().includes(q) ||
+        customerName(o).toLowerCase().includes(q) ||
+        String(o.customer_phone || '').toLowerCase().includes(q)
+      );
+    });
+  }, [orders, statusFilter, typeFilter, lateOnly, searchQuery, today]);
 
-  // Stats counts
-  const allOrders = data?.data || [];
-  const stats = useMemo(() => ({
-    total: allOrders.length,
-    pending: allOrders.filter((o: Record<string, any>) => o.status === 'pending').length,
-    confirmed: allOrders.filter((o: Record<string, any>) => o.status === 'confirmed').length,
-    in_production: allOrders.filter((o: Record<string, any>) => o.status === 'in_production').length,
-    ready: allOrders.filter((o: Record<string, any>) => o.status === 'ready').length,
-    completed: allOrders.filter((o: Record<string, any>) => o.status === 'completed').length,
-  }), [allOrders]);
+  const filteredTotal = filteredOrders.reduce((s, o) => s + num(o.total), 0);
+  const hasFilters = !!(statusFilter || typeFilter || lateOnly || searchQuery);
 
-  const tabs = [
-    { key: '', label: 'Toutes', count: stats.total, icon: ClipboardList, color: 'blue' },
-    { key: 'pending', label: 'Brouillon', count: stats.pending, icon: Clock, color: 'gray' },
-    { key: 'confirmed', label: 'Confirmées', count: stats.confirmed, icon: CheckCircle2, color: 'blue' },
-    { key: 'in_production', label: 'En production', count: stats.in_production, icon: Factory, color: 'amber' },
-    { key: 'ready', label: 'Prêtes', count: stats.ready, icon: Package, color: 'emerald' },
-  ];
+  const cancelOrder = async (o: OrderRow) => {
+    if (await confirm(`Annuler la commande ${o.order_number} ?`, { title: 'Annuler la commande', confirmLabel: 'Annuler la commande', cancelLabel: 'Retour', danger: true })) {
+      updateStatusMutation.mutate({ id: o.id as string, status: 'cancelled' });
+    }
+  };
+  const removeOrder = async (o: OrderRow) => {
+    if (await confirm(`Supprimer définitivement la commande annulée ${o.order_number} ?`, { title: 'Supprimer la commande', confirmLabel: 'Supprimer', danger: true })) {
+      deleteMutation.mutate(o.id as string);
+    }
+  };
+
+  const chipStyle = (active: boolean): CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', gap: 4,
+    backgroundColor: active ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
+    color: active ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
+    fontWeight: active ? 600 : 400,
+  });
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Commandes</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Gestion des commandes clients pour la production</p>
+    <div className="odoo-scope" style={{ minHeight: '100%' }}>
+      {/* Control bar */}
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          <ClipboardList size={14} style={{ color: 'var(--theme-accent)' }} />
+          <span>Commandes</span>
+          <span className="odoo-breadcrumb-separator">/</span>
+          <span className="odoo-breadcrumb-current">Commandes clients</span>
         </div>
-        <button onClick={() => setShowForm(true)}
-          className="btn-primary flex items-center gap-2 px-5 py-2.5 shadow-sm">
-          <Plus size={18} /> Nouvelle commande
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowForm(true)} className="odoo-btn-primary">
+          <Plus size={13} /> Nouvelle commande
         </button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {[
-          { label: 'En attente', value: stats.pending, icon: Clock, gradient: 'from-gray-400 to-gray-500', bg: 'bg-gray-50' },
-          { label: 'Confirmées', value: stats.confirmed, icon: CheckCircle2, gradient: 'from-blue-500 to-blue-600', bg: 'bg-blue-50' },
-          { label: 'En production', value: stats.in_production, icon: Factory, gradient: 'from-amber-500 to-amber-600', bg: 'bg-amber-50' },
-          { label: 'Prêtes', value: stats.ready, icon: Package, gradient: 'from-emerald-500 to-emerald-600', bg: 'bg-emerald-50' },
-          { label: 'Terminées', value: stats.completed, icon: Truck, gradient: 'from-violet-500 to-violet-600', bg: 'bg-violet-50' },
-        ].map((stat) => (
-          <div key={stat.label} className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-sm transition-shadow">
-            <div className="flex items-center justify-between mb-2">
-              <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${stat.gradient} flex items-center justify-center`}>
-                <stat.icon size={18} className="text-white" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-gray-800">{stat.value}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{stat.label}</p>
+      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Alerte retards */}
+        {lateOrders.length > 0 && (
+          <StatusBanner tone="danger" icon={AlertTriangle}
+            title={`${lateOrders.length} commande${lateOrders.length > 1 ? 's' : ''} en retard de retrait`}
+            actions={
+              <button type="button" className={lateOnly ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
+                onClick={() => { setLateOnly(v => !v); setStatusFilter(''); }}>
+                {lateOnly ? 'Voir toutes les commandes' : 'Voir les retards'}
+              </button>
+            }>
+            Date de retrait dépassée sans livraison : à livrer, replanifier ou annuler.
+          </StatusBanner>
+        )}
+
+        {/* Pipeline */}
+        <StagePipeline
+          title="Suivi des commandes"
+          summary={`${openCount} en cours · ${counts.completed || 0} terminée${(counts.completed || 0) > 1 ? 's' : ''} · ${counts.cancelled || 0} annulée${(counts.cancelled || 0) > 1 ? 's' : ''}`}
+          stages={STAGES}
+          stats={stageStats}
+          isActive={(k) => statusFilter === k && !lateOnly}
+          onPick={(k) => { setLateOnly(false); setStatusFilter(statusFilter === k ? '' : k); }}
+        />
+
+        {/* Liste */}
+        <div style={sectionStyle}>
+          <div className="odoo-search-panel" style={{ flexWrap: 'wrap' }}>
+            {FILTER_CHIPS.map((chip) => {
+              const Icon = chip.icon;
+              const active = statusFilter === chip.key && !lateOnly;
+              const count = counts[chip.key] || 0;
+              return (
+                <button key={chip.key} onClick={() => { setLateOnly(false); setStatusFilter(chip.key); }}
+                  className="odoo-filter-dropdown" style={chipStyle(active)}>
+                  <Icon size={11} /> {chip.label}
+                  {count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{count}</span>}
+                </button>
+              );
+            })}
+            {lateOnly && (
+              <span className="odoo-filter-chip">
+                En retard
+                <span className="odoo-filter-chip-remove" onClick={() => setLateOnly(false)} role="button" aria-label="Retirer le filtre">×</span>
+              </span>
+            )}
           </div>
-        ))}
-      </div>
 
-      {/* Filter bar */}
-      <div className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex flex-wrap items-center gap-3">
-        {/* Status tabs */}
-        <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-0.5 overflow-x-auto">
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setStatusFilter(tab.key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all ${
-                statusFilter === tab.key
-                  ? 'bg-white text-orange-600 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <tab.icon size={14} />
-              {tab.label}
-              {tab.count > 0 && (
-                <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                  statusFilter === tab.key ? 'bg-orange-100 text-orange-700' : 'bg-gray-200 text-gray-500'
-                }`}>
-                  {tab.count}
-                </span>
+          <div className="odoo-search-panel">
+            <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+            <input type="text" placeholder="Rechercher par n°, client ou téléphone..."
+              value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="odoo-search-input" />
+            {typeOptions.length > 1 && (
+              <SelectFilter label="Type" icon={Tag} value={typeFilter} onChange={setTypeFilter} options={typeOptions} allLabel="Tous les types" />
+            )}
+          </div>
+
+          {isLoading ? (
+            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+              <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
+              <p style={{ fontSize: '0.8125rem' }}>Chargement des commandes...</p>
+            </div>
+          ) : filteredOrders.length === 0 ? (
+            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+              <ClipboardList size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+              <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Aucune commande</p>
+              <p style={{ fontSize: '0.6875rem', marginTop: 2 }}>
+                {hasFilters ? 'Aucun résultat pour ces filtres' : 'Créez votre première commande'}
+              </p>
+              {!hasFilters && (
+                <button onClick={() => setShowForm(true)} className="odoo-btn-primary" style={{ marginTop: 12 }}>
+                  <Plus size={13} /> Créer une commande
+                </button>
               )}
-            </button>
-          ))}
-        </div>
-
-        {/* Search */}
-        <div className="relative flex-1 min-w-[200px] ml-auto">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher par n°, client ou téléphone..."
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400"
-          />
-        </div>
-      </div>
-
-      {/* Orders list */}
-      {isLoading ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
-          <div className="w-8 h-8 border-4 border-orange-200 border-t-orange-500 rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-gray-400">Chargement des commandes...</p>
-        </div>
-      ) : filteredOrders.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
-          <ClipboardList size={40} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 font-medium">Aucune commande trouvée</p>
-          <p className="text-xs text-gray-300 mt-1">
-            {searchQuery ? 'Essayez une autre recherche' : 'Créez votre première commande'}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filteredOrders.map((o: Record<string, any>) => {
-            const advanceAmt = parseFloat((o.advance_amount as string) || '0');
-            const totalAmt = parseFloat(o.total as string);
-            const remaining = totalAmt - advanceAmt;
-            const status = o.status as string;
-            const cfg = statusConfig[status] || statusConfig.pending;
-            const typeCfg = typeConfig[o.type as string] || typeConfig.custom;
-            const StatusIcon = cfg.icon;
-
-            return (
-              <div key={o.id as string}
-                className="bg-white rounded-xl border border-gray-100 hover:shadow-md hover:border-gray-200 transition-all group">
-                <div className="flex items-stretch">
-                  {/* Left color bar */}
-                  <div className={`w-1 rounded-l-xl bg-gradient-to-b ${cfg.gradient} flex-shrink-0`} />
-
-                  {/* Main content */}
-                  <div className="flex-1 p-4 min-w-0">
-                    <div className="flex items-start justify-between gap-4">
-                      {/* Left info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="font-mono text-sm font-bold text-gray-800">{o.order_number as string}</span>
-                          <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${cfg.bg} ${cfg.color}`}>
-                            <StatusIcon size={12} className="inline -mt-0.5 mr-0.5" />
-                            {ORDER_STATUS_LABELS[status as keyof typeof ORDER_STATUS_LABELS]}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${typeCfg.color}`}>
-                            {typeCfg.label}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-4 text-sm">
-                          {/* Customer */}
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-                              <User size={14} className="text-gray-400" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-medium text-gray-700 truncate">
-                                {o.customer_first_name ? `${o.customer_first_name} ${o.customer_last_name}` : '—'}
-                              </p>
+            </div>
+          ) : (
+            <>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="odoo-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 24 }}></th>
+                      <th>N° commande</th>
+                      <th>Client</th>
+                      <th>Type</th>
+                      <th>Statut</th>
+                      <th>Retrait</th>
+                      <th>Avancement</th>
+                      <th style={{ textAlign: 'right' }}>Total</th>
+                      <th style={{ textAlign: 'right' }}>Avance / Reste</th>
+                      <th style={{ textAlign: 'right', width: 150 }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredOrders.map((o) => {
+                      const status = o.status as string;
+                      const totalAmt = num(o.total);
+                      const advanceAmt = num(o.advance_amount);
+                      const remaining = Math.max(0, totalAmt - advanceAmt);
+                      const stageIdx = STAGE_KEYS.indexOf(status);
+                      const late = isLate(o, today);
+                      const busy = updateStatusMutation.isPending || deleteMutation.isPending;
+                      return (
+                        <tr key={o.id as string} onClick={() => setViewingOrder(o)} className={late ? 'row-danger' : undefined}>
+                          <td><span className={`odoo-status-dot ${STATUS_DOT[status] || 'neutral'}`} /></td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{o.order_number as string}</span>
+                          </td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ fontWeight: 500 }}>{customerName(o)}</span>
                               {o.customer_phone && (
-                                <p className="text-xs text-gray-400 flex items-center gap-1">
-                                  <Phone size={10} /> {o.customer_phone as string}
-                                </p>
+                                <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                                  <Phone size={9} /> {o.customer_phone as string}
+                                </span>
                               )}
                             </div>
-                          </div>
-
-                          {/* Pickup date */}
-                          <div className="flex items-center gap-1.5 text-gray-500 flex-shrink-0">
-                            <CalendarDays size={14} className="text-gray-400" />
-                            <span className="text-xs">
-                              {o.pickup_date ? format(new Date(o.pickup_date as string), 'dd MMM yyyy', { locale: fr }) : '—'}
+                          </td>
+                          <td><span className={`odoo-tag ${TYPE_TAG[o.type as string] || 'odoo-tag-grey'}`}>{TYPE_LABELS[o.type as string] || (o.type as string) || '—'}</span></td>
+                          <td><span className={`odoo-tag ${STATUS_TAG[status] || 'odoo-tag-grey'}`}>{ORDER_STATUS_LABELS[status as keyof typeof ORDER_STATUS_LABELS] || status}</span></td>
+                          <td style={{ color: late ? '#721c24' : 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <CalendarDays size={11} /> {fmtDate(o.pickup_date)}
+                              {late && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 4 }}>En retard</span>}
                             </span>
-                          </div>
-
-                          {/* Progress */}
-                          <div className="hidden md:block">
-                            <StatusProgress status={status} />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right: amounts + actions */}
-                      <div className="flex items-center gap-4 flex-shrink-0">
-                        {/* Amounts */}
-                        <div className="text-right">
-                          <p className="text-lg font-bold text-gray-800">{formatCurrency(totalAmt)}</p>
-                          {advanceAmt > 0 ? (
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-xs font-medium text-emerald-600">Avance {formatCurrency(advanceAmt)}</span>
-                              <span className="text-xs text-gray-400">Reste {formatCurrency(remaining)}</span>
+                          </td>
+                          <td style={{ minWidth: 120 }}>
+                            {status === 'cancelled' ? (
+                              <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <Ban size={11} /> Annulée
+                              </span>
+                            ) : (
+                              <StageProgress count={STAGES.length - 1} current={stageIdx} done={status === 'completed'} late={late} />
+                            )}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <span style={{ fontWeight: 700 }}>{n(totalAmt)}</span>
+                            <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+                          </td>
+                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            {advanceAmt > 0 ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                                <span style={{ color: '#155724', fontWeight: 600 }}>{n(advanceAmt)} DH</span>
+                                <span style={{ fontSize: '0.6875rem', color: remaining > 0 && status !== 'completed' ? '#b85d1a' : 'var(--theme-text-muted)' }}>
+                                  {status === 'completed' ? 'soldée' : `reste ${n(remaining)} DH`}
+                                </span>
+                              </div>
+                            ) : (
+                              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>
+                                {status === 'completed' ? 'soldée' : 'aucune avance'}
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                            <div style={{ display: 'inline-flex', gap: 2 }}>
+                              {status === 'pending' && (
+                                <button onClick={() => updateStatusMutation.mutate({ id: o.id as string, status: 'confirmed' })} disabled={busy}
+                                  title="Confirmer la commande" className="odoo-pager-btn" style={{ color: '#1f6391' }}>
+                                  <CheckCircle2 size={13} />
+                                </button>
+                              )}
+                              {status === 'confirmed' && (
+                                <button onClick={() => updateStatusMutation.mutate({ id: o.id as string, status: 'in_production' })} disabled={busy}
+                                  title="Envoyer en production" className="odoo-pager-btn" style={{ color: '#b85d1a' }}>
+                                  <Factory size={13} />
+                                </button>
+                              )}
+                              {status === 'in_production' && (
+                                <button onClick={() => updateStatusMutation.mutate({ id: o.id as string, status: 'ready' })} disabled={busy}
+                                  title="Marquer prête pour le retrait" className="odoo-pager-btn" style={{ color: '#28a745' }}>
+                                  <PackageCheck size={13} />
+                                </button>
+                              )}
+                              {status === 'ready' && (
+                                <button onClick={() => setDeliverOrder(o)} title="Livrer et encaisser" className="odoo-pager-btn" style={{ color: '#28a745' }}>
+                                  <Truck size={13} />
+                                </button>
+                              )}
+                              <button onClick={() => setViewingOrder(o)} title="Voir le détail" className="odoo-pager-btn">
+                                <Eye size={13} />
+                              </button>
+                              {status !== 'completed' && status !== 'cancelled' && (
+                                <button onClick={() => setEditingOrder(o)} title="Modifier" className="odoo-pager-btn">
+                                  <Pencil size={13} />
+                                </button>
+                              )}
+                              {(status === 'pending' || status === 'confirmed' || status === 'in_production') && (
+                                <button onClick={() => cancelOrder(o)} disabled={busy} title="Annuler la commande" className="odoo-pager-btn" style={{ color: '#dc3545' }}>
+                                  <Ban size={13} />
+                                </button>
+                              )}
+                              {status === 'cancelled' && (
+                                <button onClick={() => removeOrder(o)} disabled={busy} title="Supprimer définitivement" className="odoo-pager-btn" style={{ color: '#dc3545' }}>
+                                  <Trash2 size={13} />
+                                </button>
+                              )}
                             </div>
-                          ) : (
-                            <span className="text-xs text-gray-400">Aucune avance</span>
-                          )}
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-1.5">
-                          <button onClick={() => setViewingOrder(o)}
-                            className="w-8 h-8 rounded-lg bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
-                            title="Voir le détail">
-                            <Eye size={16} />
-                          </button>
-
-                          {status !== 'completed' && status !== 'cancelled' && (
-                            <button onClick={() => setEditingOrder(o)}
-                              className="w-8 h-8 rounded-lg bg-gray-50 hover:bg-blue-50 flex items-center justify-center text-gray-400 hover:text-blue-600 transition-colors"
-                              title="Modifier">
-                              <Pencil size={14} />
-                            </button>
-                          )}
-
-                          {status === 'pending' && (
-                            <button onClick={() => updateStatusMutation.mutate({ id: o.id as string, status: 'confirmed' })}
-                              className="h-8 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors flex items-center gap-1">
-                              <CheckCircle2 size={13} /> Confirmer
-                            </button>
-                          )}
-
-                          {status === 'confirmed' && (
-                            <button onClick={() => updateStatusMutation.mutate({ id: o.id as string, status: 'in_production' })}
-                              className="h-8 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-medium transition-colors flex items-center gap-1">
-                              <Factory size={13} /> Production
-                            </button>
-                          )}
-
-                          {status === 'ready' && (
-                            <button onClick={() => {
-                              setDeliverOrder(o);
-                              setDeliverAmount(String(remaining.toFixed(2)));
-                            }}
-                              className="h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium transition-colors flex items-center gap-1">
-                              <Truck size={13} /> Livrer
-                            </button>
-                          )}
-
-                          {(status === 'pending' || status === 'confirmed' || status === 'in_production') && (
-                            <button onClick={() => {
-                              if (confirm('Voulez-vous vraiment annuler cette commande ?'))
-                                updateStatusMutation.mutate({ id: o.id as string, status: 'cancelled' });
-                            }}
-                              className="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors"
-                              title="Annuler">
-                              <Ban size={14} />
-                            </button>
-                          )}
-
-                          {status === 'cancelled' && (
-                            <button onClick={() => {
-                              if (confirm('Supprimer definitivement cette commande annulee ?'))
-                                deleteMutation.mutate(o.id as string);
-                            }}
-                              className="w-8 h-8 rounded-lg hover:bg-red-50 flex items-center justify-center text-gray-400 hover:text-red-600 transition-colors"
-                              title="Supprimer">
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            );
-          })}
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', fontSize: '0.75rem', color: 'var(--theme-text-muted)', borderTop: '1px solid var(--odoo-border)' }}>
+                <span>{filteredOrders.length} commande{filteredOrders.length > 1 ? 's' : ''}{hasFilters ? ' (filtrées)' : ''}</span>
+                <span>Total <strong style={{ color: 'var(--theme-text-strong)' }}>{n(filteredTotal)} DH</strong></span>
+              </div>
+            </>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* Order Form Modal */}
+      {/* Formulaire création / édition */}
       {showForm && (
         <OrderFormModal
           onClose={() => setShowForm(false)}
-          onSaved={() => { setShowForm(false); queryClient.invalidateQueries({ queryKey: ['orders'] }); }}
+          onSaved={() => { setShowForm(false); invalidate(); }}
         />
       )}
-
       {editingOrder && (
         <OrderFormModal
           order={editingOrder}
           onClose={() => setEditingOrder(null)}
-          onSaved={() => { setEditingOrder(null); queryClient.invalidateQueries({ queryKey: ['orders'] }); }}
+          onSaved={() => { setEditingOrder(null); invalidate(); }}
         />
       )}
 
-      {/* Order Detail Modal */}
-      {viewingOrder && (() => {
-        const o = viewingOrder;
-        const status = o.status as string;
-        const cfg = statusConfig[status] || statusConfig.pending;
-        const typeCfg = typeConfig[o.type as string] || typeConfig.custom;
-        const totalAmt = parseFloat(o.total as string);
-        const advanceAmt = parseFloat((o.advance_amount as string) || '0');
-        const discountAmt = parseFloat((o.discount_amount as string) || '0');
-        const remaining = totalAmt - advanceAmt;
-        const StatusIcon = cfg.icon;
+      {viewingOrder && (
+        <OrderDetailModal
+          order={viewingOrder}
+          late={isLate(viewingOrder, today)}
+          onClose={() => setViewingOrder(null)}
+          onEdit={(o) => { setViewingOrder(null); setEditingOrder(o); }}
+          onStatus={(o, status) => { setViewingOrder(null); updateStatusMutation.mutate({ id: o.id as string, status }); }}
+          onDeliver={(o) => { setViewingOrder(null); setDeliverOrder(o); }}
+          onCancel={(o) => { setViewingOrder(null); cancelOrder(o); }}
+        />
+      )}
 
-        return (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
-              {/* Header with gradient */}
-              <div className={`bg-gradient-to-r ${cfg.gradient} rounded-t-2xl px-6 py-5 text-white relative`}>
-                <button onClick={() => setViewingOrder(null)}
-                  className="absolute top-4 right-4 w-8 h-8 rounded-lg bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors">
-                  <X size={16} />
-                </button>
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                    <StatusIcon size={22} />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold">{o.order_number as string}</h2>
-                    <p className="text-sm text-white/80">
-                      {ORDER_STATUS_LABELS[status as keyof typeof ORDER_STATUS_LABELS]}
-                    </p>
-                  </div>
-                </div>
-                <StatusProgress status={status} />
-              </div>
-
-              {/* Body */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                {/* Client + Meta */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Client</p>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-bold text-sm">
-                        {((o.customer_first_name as string) || '?')[0]}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-gray-800">
-                          {o.customer_first_name ? `${o.customer_first_name} ${o.customer_last_name}` : '—'}
-                        </p>
-                        {o.customer_phone && (
-                          <p className="text-xs text-gray-400 flex items-center gap-1">
-                            <Phone size={10} /> {o.customer_phone as string}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Détails</p>
-                    <div className="space-y-1.5 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Type</span>
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${typeCfg.color}`}>{typeCfg.label}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Retrait</span>
-                        <span className="font-medium text-gray-700">
-                          {o.pickup_date ? format(new Date(o.pickup_date as string), 'dd MMM yyyy', { locale: fr }) : '—'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Créée le</span>
-                        <span className="text-gray-600 text-xs">
-                          {o.created_at ? format(new Date(o.created_at as string), 'dd/MM/yyyy HH:mm', { locale: fr }) : '—'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Items */}
-                <div>
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Articles commandés</p>
-                  {orderDetail?.items && orderDetail.items.length > 0 ? (
-                    <div className="border border-gray-100 rounded-xl overflow-hidden">
-                      {orderDetail.items.map((item: Record<string, any>, idx: number) => (
-                        <div key={idx} className={`flex items-center justify-between px-4 py-3 ${idx > 0 ? 'border-t border-gray-50' : ''}`}>
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center text-orange-500">
-                              <Package size={14} />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-gray-800">{item.product_name as string || item.product_id as string}</p>
-                              {item.notes && <p className="text-xs text-gray-400">{item.notes as string}</p>}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-semibold text-gray-700">
-                              {formatCurrency(parseFloat(item.unit_price as string) * (item.quantity as number))}
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              {item.quantity as number} x {formatCurrency(parseFloat(item.unit_price as string))}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-6 text-gray-300 text-sm">Chargement des articles...</div>
-                  )}
-                </div>
-
-                {/* Payment summary */}
-                <div className="bg-orange-50 rounded-xl p-4 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Sous-total</span>
-                    <span className="font-medium">{formatCurrency(totalAmt + discountAmt)}</span>
-                  </div>
-                  {discountAmt > 0 && (
-                    <div className="flex justify-between text-sm text-red-600">
-                      <span>Remise</span>
-                      <span>-{formatCurrency(discountAmt)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-base font-bold border-t border-orange-200 pt-2">
-                    <span>Total</span>
-                    <span>{formatCurrency(totalAmt)}</span>
-                  </div>
-                  {advanceAmt > 0 && (
-                    <>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-emerald-600 font-medium">Avance versée</span>
-                        <span className="text-emerald-600 font-medium">{formatCurrency(advanceAmt)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm font-bold">
-                        <span>Reste à payer</span>
-                        <span className="text-orange-600">{formatCurrency(remaining)}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Notes */}
-                {o.notes && (
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <FileText size={14} className="text-gray-400" />
-                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Notes</p>
-                    </div>
-                    <p className="text-sm text-gray-600">{o.notes as string}</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Footer actions */}
-              <div className="border-t px-6 py-4 flex items-center gap-3">
-                <button onClick={() => setViewingOrder(null)}
-                  className="btn-secondary flex-1">
-                  Fermer
-                </button>
-                {(status === 'pending' || status === 'confirmed') && (
-                  <button onClick={() => { setViewingOrder(null); setEditingOrder(o); }}
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
-                    <Pencil size={14} /> Modifier
-                  </button>
-                )}
-                {status === 'pending' && (
-                  <button onClick={() => { setViewingOrder(null); updateStatusMutation.mutate({ id: o.id as string, status: 'confirmed' }); }}
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors">
-                    <CheckCircle2 size={14} /> Confirmer
-                  </button>
-                )}
-                {status === 'confirmed' && (
-                  <button onClick={() => { setViewingOrder(null); updateStatusMutation.mutate({ id: o.id as string, status: 'in_production' }); }}
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors">
-                    <Factory size={14} /> Envoyer en production
-                  </button>
-                )}
-                {status === 'ready' && (
-                  <button onClick={() => {
-                    setViewingOrder(null);
-                    setDeliverOrder(o);
-                    setDeliverAmount(String(remaining.toFixed(2)));
-                  }}
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors">
-                    <Truck size={14} /> Livrer
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Delivery Modal */}
-      {deliverOrder && (() => {
-        const totalAmt = parseFloat(deliverOrder.total as string);
-        const advanceAmt = parseFloat(deliverOrder.advance_amount as string || '0');
-        const remaining = totalAmt - advanceAmt;
-        return (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
-              {/* Header */}
-              <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-t-2xl px-6 py-5 text-white">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                    <Truck size={22} />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold">Livraison</h2>
-                    <p className="text-sm text-white/80">{deliverOrder.order_number as string}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6 space-y-5">
-                {/* Customer */}
-                {deliverOrder.customer_first_name && (
-                  <div className="flex items-center gap-3 bg-gray-50 rounded-xl p-3">
-                    <div className="w-9 h-9 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-bold text-sm">
-                      {((deliverOrder.customer_first_name as string) || '?')[0]}
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-700 text-sm">{deliverOrder.customer_first_name as string} {deliverOrder.customer_last_name as string}</p>
-                      {deliverOrder.customer_phone && (
-                        <p className="text-xs text-gray-400">{deliverOrder.customer_phone as string}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Amount breakdown */}
-                <div className="bg-emerald-50 rounded-xl p-4 space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Total commande</span>
-                    <span className="font-semibold">{formatCurrency(totalAmt)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Avance versée</span>
-                    <span className="font-semibold text-emerald-600">{formatCurrency(advanceAmt)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold border-t border-emerald-200 pt-2 text-base">
-                    <span>Reste à payer</span>
-                    <span className="text-emerald-700">{formatCurrency(remaining)}</span>
-                  </div>
-                </div>
-
-                {/* Amount input */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Montant encaissé</label>
-                  <div className="relative">
-                    <Banknote size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input type="number" value={deliverAmount} onChange={(e) => setDeliverAmount(e.target.value)}
-                      className="w-full pl-10 pr-14 py-3 text-xl font-bold border border-gray-200 rounded-xl text-center focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400"
-                      min="0" step="0.01" autoFocus />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium">DH</span>
-                  </div>
-                </div>
-
-                {/* Payment method */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => setDeliverPayment('cash')}
-                      className={`flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium border-2 transition-all ${
-                        deliverPayment === 'cash'
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                      }`}>
-                      <Banknote size={18} /> Espèces
-                    </button>
-                    <button onClick={() => setDeliverPayment('card')}
-                      className={`flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium border-2 transition-all ${
-                        deliverPayment === 'card'
-                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                      }`}>
-                      <CreditCard size={18} /> Carte bancaire
-                    </button>
-                  </div>
-                </div>
-
-                {/* Remaining after payment */}
-                {parseFloat(deliverAmount || '0') < remaining && parseFloat(deliverAmount || '0') > 0 && (
-                  <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
-                    <AlertCircle size={16} className="text-amber-500 flex-shrink-0" />
-                    <p className="text-xs text-amber-700">
-                      Le client doit encore <strong>{formatCurrency(remaining - parseFloat(deliverAmount || '0'))}</strong> après cet encaissement
-                    </p>
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="flex gap-3 pt-1">
-                  <button onClick={() => { setDeliverOrder(null); setDeliverAmount(''); }}
-                    className="flex-1 py-3 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
-                    Annuler
-                  </button>
-                  <button onClick={() => deliverMutation.mutate({
-                    id: deliverOrder.id as string,
-                    amountPaid: parseFloat(deliverAmount) || 0,
-                    paymentMethod: deliverPayment,
-                  })}
-                    disabled={deliverMutation.isPending}
-                    className="flex-1 py-3 rounded-xl text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                    {deliverMutation.isPending ? (
-                      <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> En cours...</>
-                    ) : (
-                      <><CheckCircle2 size={16} /> Confirmer la livraison</>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {deliverOrder && (
+        <DeliverModal
+          order={deliverOrder}
+          onClose={() => setDeliverOrder(null)}
+          onDelivered={() => { setDeliverOrder(null); invalidate(); queryClient.invalidateQueries({ queryKey: ['sales'] }); }}
+        />
+      )}
     </div>
+  );
+}
+
+/* ═══════════════════════ Fiche commande ═══════════════════════ */
+
+function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver, onCancel }: {
+  order: OrderRow; late: boolean;
+  onClose: () => void;
+  onEdit: (o: OrderRow) => void;
+  onStatus: (o: OrderRow, status: string) => void;
+  onDeliver: (o: OrderRow) => void;
+  onCancel: (o: OrderRow) => void;
+}) {
+  const { data: detail } = useQuery({
+    queryKey: ['order-detail', o.id],
+    queryFn: () => ordersApi.getById(o.id as string),
+  });
+  const status = o.status as string;
+  const totalAmt = num(o.total);
+  const advanceAmt = num(o.advance_amount);
+  const discountAmt = num(o.discount_amount);
+  const remaining = Math.max(0, totalAmt - advanceAmt);
+  const stageIdx = STAGE_KEYS.indexOf(status);
+  const items: OrderRow[] = detail?.items || [];
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
+      <div className="odoo-scope w-full flex flex-col" style={{ ...modalPanelStyle, maxWidth: 720 }} onClick={(e) => e.stopPropagation()}>
+        {/* En-tête */}
+        <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: '1rem' }}>{o.order_number as string}</span>
+              <span className={`odoo-tag ${STATUS_TAG[status] || 'odoo-tag-grey'}`}>{ORDER_STATUS_LABELS[status as keyof typeof ORDER_STATUS_LABELS] || status}</span>
+              <span className={`odoo-tag ${TYPE_TAG[o.type as string] || 'odoo-tag-grey'}`}>{TYPE_LABELS[o.type as string] || (o.type as string)}</span>
+              {late && <span className="odoo-tag odoo-tag-red">En retard</span>}
+            </div>
+            <div style={{ fontSize: '0.75rem', opacity: 0.85, marginTop: 2 }}>
+              Créée le {fmtDate(o.created_at, 'dd/MM/yyyy HH:mm')} · Retrait le {fmtDate(o.pickup_date)}
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
+        </div>
+
+        {/* Frise d'avancement */}
+        <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
+          {status === 'cancelled' ? (
+            <span style={{ fontSize: '0.75rem', color: '#721c24', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Ban size={12} /> Commande annulée</span>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STAGES.length}, 1fr)`, gap: 6 }}>
+              {STAGES.map((s, i) => {
+                const reached = i <= stageIdx;
+                const current = i === stageIdx;
+                const Icon = s.icon;
+                return (
+                  <div key={s.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ height: 5, borderRadius: 3, background: reached ? (current && late ? '#dc3545' : 'var(--odoo-purple)') : 'var(--odoo-border)', opacity: current && !late ? 0.6 : 1 }} />
+                    <span style={{ fontSize: '0.6875rem', fontWeight: current ? 700 : 500, color: reached ? 'var(--odoo-text)' : 'var(--odoo-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                      <Icon size={10} /> {s.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Corps */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={sectionStyle}>
+              <div className="odoo-section-header"><User size={11} /> Client</div>
+              <div style={{ padding: '10px 12px', fontSize: '0.8125rem' }}>
+                <div style={{ fontWeight: 600 }}>{customerName(o)}</div>
+                {o.customer_phone && (
+                  <div style={{ color: 'var(--odoo-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                    <Phone size={10} /> {o.customer_phone as string}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div style={sectionStyle}>
+              <div className="odoo-section-header"><CalendarDays size={11} /> Retrait</div>
+              <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--odoo-text-muted)' }}>Date</span>
+                  <span style={{ fontWeight: 600, color: late ? '#721c24' : undefined }}>{fmtDate(o.pickup_date)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--odoo-text-muted)' }}>Créée le</span>
+                  <span>{fmtDate(o.created_at, 'dd/MM/yyyy HH:mm')}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={sectionStyle}>
+            <div className="odoo-section-header"><Package size={11} /> Articles commandés</div>
+            {!detail ? (
+              <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>
+                <Loader2 className="animate-spin" size={16} style={{ margin: '0 auto 6px' }} /> Chargement des articles...
+              </div>
+            ) : items.length === 0 ? (
+              <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Aucun article</div>
+            ) : (
+              <table className="odoo-table" style={{ margin: 0 }}>
+                <thead>
+                  <tr>
+                    <th>Produit</th>
+                    <th style={{ textAlign: 'right' }}>Qté</th>
+                    <th style={{ textAlign: 'right' }}>P.U.</th>
+                    <th style={{ textAlign: 'right' }}>Montant</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item, idx) => {
+                    const qty = num(item.quantity);
+                    const pu = num(item.unit_price);
+                    return (
+                      <tr key={idx} style={{ cursor: 'default' }}>
+                        <td>
+                          <div style={{ fontWeight: 500 }}>{(item.product_name as string) || (item.product_id as string)}</div>
+                          {item.notes && <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{item.notes as string}</div>}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>{qty}</td>
+                        <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{n(pu)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(qty * pu)} DH</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: o.notes ? '1fr 1fr' : '1fr', gap: 12 }}>
+            <div style={sectionStyle}>
+              <div className="odoo-section-header"><Banknote size={11} /> Règlement</div>
+              <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--odoo-text-muted)' }}>Sous-total</span><span>{n(totalAmt + discountAmt)} DH</span>
+                </div>
+                {discountAmt > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#721c24' }}>
+                    <span>Remise</span><span>-{n(discountAmt)} DH</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4, marginTop: 2 }}>
+                  <span>Total</span><span>{n(totalAmt)} DH</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}>
+                  <span>Avance versée</span><span style={{ fontWeight: 600 }}>{n(advanceAmt)} DH</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                  <span>Reste à payer</span>
+                  <span style={{ color: remaining > 0 && status !== 'completed' ? '#b85d1a' : undefined }}>
+                    {status === 'completed' ? 'Soldée' : `${n(remaining)} DH`}
+                  </span>
+                </div>
+              </div>
+            </div>
+            {o.notes && (
+              <div style={sectionStyle}>
+                <div className="odoo-section-header"><FileText size={11} /> Notes</div>
+                <div style={{ padding: '10px 12px', fontSize: '0.8125rem', whiteSpace: 'pre-line' }}>{o.notes as string}</div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Pied */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)', flexWrap: 'wrap' }}>
+          {(status === 'pending' || status === 'confirmed' || status === 'in_production') && (
+            <button onClick={() => onCancel(o)} className="odoo-btn-danger" style={{ marginRight: 'auto' }}><Ban size={13} /> Annuler la commande</button>
+          )}
+          <button onClick={onClose} className="odoo-btn-secondary">Fermer</button>
+          {status !== 'completed' && status !== 'cancelled' && (
+            <button onClick={() => onEdit(o)} className="odoo-btn-secondary"><Pencil size={13} /> Modifier</button>
+          )}
+          {status === 'pending' && (
+            <button onClick={() => onStatus(o, 'confirmed')} className="odoo-btn-primary"><CheckCircle2 size={13} /> Confirmer</button>
+          )}
+          {status === 'confirmed' && (
+            <button onClick={() => onStatus(o, 'in_production')} className="odoo-btn-primary"><Factory size={13} /> Envoyer en production</button>
+          )}
+          {status === 'in_production' && (
+            <button onClick={() => onStatus(o, 'ready')} className="odoo-btn-primary"><PackageCheck size={13} /> Marquer prête</button>
+          )}
+          {status === 'ready' && (
+            <button onClick={() => onDeliver(o)} className="odoo-btn-primary"><Truck size={13} /> Livrer</button>
+          )}
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+/* ═══════════════════════ Livraison / encaissement ═══════════════════════ */
+
+function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onClose: () => void; onDelivered: () => void }) {
+  const totalAmt = num(order.total);
+  const advanceAmt = num(order.advance_amount);
+  const remaining = Math.max(0, totalAmt - advanceAmt);
+  const [amount, setAmount] = useState(remaining.toFixed(2));
+  const [payment, setPayment] = useState<'cash' | 'card'>('cash');
+
+  const deliverMutation = useMutation({
+    mutationFn: () => ordersApi.deliver(order.id as string, { amountPaid: parseFloat(amount) || 0, paymentMethod: payment }),
+    onSuccess: () => { notify.success('Commande livrée'); onDelivered(); },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la livraison')),
+  });
+
+  const paid = parseFloat(amount) || 0;
+  const stillDue = remaining - paid;
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
+      <div className="odoo-scope w-full" style={{ ...modalPanelStyle, maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Truck size={18} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Livraison et encaissement</div>
+            <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · {customerName(order)}</div>
+          </div>
+          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
+        </div>
+
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={sectionStyle}>
+            <div className="odoo-section-header"><Banknote size={11} /> Solde de la commande</div>
+            <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total commande</span><span style={{ fontWeight: 600 }}>{n(totalAmt)} DH</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}><span>Avance versée</span><span style={{ fontWeight: 600 }}>{n(advanceAmt)} DH</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4, marginTop: 2 }}>
+                <span>Reste à payer</span><span style={{ color: '#b85d1a' }}>{n(remaining)} DH</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Montant encaissé (DH)</label>
+              <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} min="0" step="0.01" autoFocus
+                style={{ ...fieldStyle, textAlign: 'right', fontWeight: 700, fontSize: '1rem' }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Mode de paiement</label>
+              <div className="odoo-view-switcher" role="radiogroup" style={{ width: '100%' }}>
+                {([['cash', 'Espèces', Banknote], ['card', 'Carte', CreditCard]] as const).map(([key, label, Icon]) => (
+                  <button key={key} type="button" role="radio" aria-checked={payment === key} onClick={() => setPayment(key)}
+                    className={payment === key ? 'active' : ''} style={{ flex: 1, padding: '0.45rem 0.5rem', fontSize: '0.8125rem', gap: 4, fontWeight: payment === key ? 600 : 400 }}>
+                    <Icon size={13} /> {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {paid > 0 && stillDue > 0.004 && (
+            <StatusBanner tone="warning" icon={AlertTriangle} title={`Le client devra encore ${n(stillDue)} DH`}>
+              L'encaissement est partiel : la commande sera livrée avec un reliquat.
+            </StatusBanner>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
+          <button onClick={onClose} className="odoo-btn-secondary" disabled={deliverMutation.isPending}>Annuler</button>
+          <button onClick={() => deliverMutation.mutate()} disabled={deliverMutation.isPending} className="odoo-btn-primary">
+            {deliverMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+            Confirmer la livraison
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
   );
 }
