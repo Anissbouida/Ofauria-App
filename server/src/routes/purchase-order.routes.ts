@@ -17,10 +17,13 @@ router.get('/eligible', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), p
 router.get('/overdue', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.overdue);
 router.get('/board', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseOrderController.board));
 router.get('/pipeline', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseOrderController.pipeline));
-router.get('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), purchaseOrderController.getById);
+// F-006 : le magasinier (WAREHOUSE) consulte un BC et confirme sa reception —
+// c'est lui qui recoit physiquement la livraison. La creation/validation/
+// annulation des BC reste au gerant (ADMIN_MANAGER).
+router.get('/:id', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), purchaseOrderController.getById);
 router.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(createPurchaseOrderSchema), idempotent(), purchaseOrderController.create);
 router.post('/:id/send', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), requireVerb('purchasing', 'approve'), validateUuidParams('id'), asyncHandler(purchaseOrderController.send));
-router.post('/:id/confirm-delivery', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), idempotent(), purchaseOrderController.confirmDelivery);
+router.post('/:id/confirm-delivery', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), idempotent(), purchaseOrderController.confirmDelivery);
 // Actions motivées (mig 306) : code motif obligatoire, journalisées dans document_actions.
 router.post('/:id/not-delivered', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), validate(reasonCodeSchema), asyncHandler(purchaseOrderController.markNotDelivered));
 router.post('/:id/cancel', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), validate(reasonCodeSchema), asyncHandler(purchaseOrderController.cancel));
