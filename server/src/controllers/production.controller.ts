@@ -6,6 +6,8 @@ import { bonSortieRepository } from '../repositories/bon-sortie.repository.js';
 import { createNotification } from '../utils/notify.js';
 import { productionCoutRepository } from '../repositories/production-cout.repository.js';
 import { isTransitionError, listPlanEvents } from '../services/production-state.js';
+import { db } from '../config/database.js';
+import { getCategoryRole, ASSIGNED_ROLE_LABELS } from '@ofauria/shared';
 
 /** Charge le plan et vérifie qu'il appartient au magasin de l'utilisateur
  *  (admin sans magasin = accès global). Répond 404 / 403 et renvoie null sinon. */
@@ -63,6 +65,38 @@ export const productionController = {
       return;
     }
     const userRole = req.user!.role;
+
+    // F-015 — Garde role <-> categorie : un chef ne peut pas creer un plan pour
+    // un produit relevant d'un AUTRE atelier (ex. le patissier pour une baguette).
+    // On rejette seulement si la categorie du produit est rattachee a un role
+    // chef different ; les produits sans categorie / 'general' restent permis.
+    if (CHEF_ROLES.includes(userRole)) {
+      const ids = [...new Set((items as { productId?: string }[]).map((i) => i.productId).filter(Boolean))] as string[];
+      if (ids.length > 0) {
+        const cats = await db.query(
+          `SELECT p.id, p.name, c.slug
+             FROM products p LEFT JOIN categories c ON c.id = p.category_id
+            WHERE p.id = ANY($1::uuid[])`,
+          [ids]
+        );
+        const foreign = cats.rows.find((r) => {
+          const catRole = getCategoryRole(r.slug || '');
+          return CHEF_ROLES.includes(catRole) && catRole !== userRole;
+        });
+        if (foreign) {
+          const catRole = getCategoryRole(foreign.slug || '');
+          res.status(403).json({
+            success: false,
+            error: {
+              code: 'ROLE_CATEGORY_MISMATCH',
+              message: `« ${foreign.name} » releve de l'atelier ${ASSIGNED_ROLE_LABELS[catRole] || catRole} : vous ne pouvez pas creer de plan pour ce produit.`,
+            },
+          });
+          return;
+        }
+      }
+    }
+
     // If chef creates plan, auto-assign their role; otherwise use provided targetRole
     const effectiveTargetRole = CHEF_ROLES.includes(userRole) ? userRole : (targetRole || null);
 
