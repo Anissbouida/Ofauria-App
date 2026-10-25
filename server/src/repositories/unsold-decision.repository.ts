@@ -152,15 +152,22 @@ export const unsoldDecisionRepository = {
       `SELECT
          (SELECT closed_at FROM cash_register_sessions
            WHERE store_id = $1 AND status = 'closed' AND closed_at IS NOT NULL
+             AND closed_at <= NOW()
            ORDER BY closed_at DESC LIMIT 1) as last_closed_at,
          (SELECT opened_at FROM cash_register_sessions
-           WHERE store_id = $1 AND status = 'open'
+           WHERE store_id = $1 AND status = 'open' AND opened_at <= NOW()
            ORDER BY opened_at DESC LIMIT 1) as current_open_at`,
       [storeId]
     );
     const lastClosedAt: Date | null = windowResult.rows[0]?.last_closed_at ?? null;
     const currentOpenAt: Date | null = windowResult.rows[0]?.current_open_at ?? null;
     let windowStart: Date | null = lastClosedAt ?? currentOpenAt ?? null;
+    // F-030 — Une session fermee/ouverte datee dans le FUTUR (horloge de poste
+    // decalee, session oubliee) ne doit pas servir de debut de fenetre : elle
+    // masquerait toutes les ventes du jour (sold_qty = 0). On ignore ces
+    // sessions a la source (closed_at/opened_at <= NOW()) et on plafonne ici par
+    // securite : jamais de debut de fenetre dans le futur.
+    if (windowStart && windowStart.getTime() > Date.now()) windowStart = null;
     // Garde-fou : si la session est restee ouverte depuis plus de 24h (oubli de fermeture),
     // on ne cumule pas tout l'historique. On limite a 24h glissantes pour eviter des comptes
     // d'approvisionnement aberrants (ex : 5 jours de stock cumule).
