@@ -166,21 +166,19 @@ export const productController = {
   async create(req: AuthRequest, res: Response) {
     const { recipeId, ...body } = req.body;
 
-    // Recipe is mandatory for new products
-    if (!recipeId) {
-      res.status(400).json({ success: false, error: { message: 'Une recette est obligatoire pour creer un produit. Veuillez d\'abord creer la recette dans le module Recettes.' } });
-      return;
-    }
-
-    // Verify recipe exists and is not already linked to another product
-    const recipeCheck = await db.query('SELECT id, product_id, name FROM recipes WHERE id = $1', [recipeId]);
-    if (recipeCheck.rows.length === 0) {
-      res.status(400).json({ success: false, error: { message: 'La recette selectionnee n\'existe pas.' } });
-      return;
-    }
-    if (recipeCheck.rows[0].product_id) {
-      res.status(400).json({ success: false, error: { message: `Cette recette est deja liee a un autre produit.` } });
-      return;
+    // F-051 — La recette n'est PLUS obligatoire : on autorise les produits de
+    // revente / negoce (boissons, articles sans fabrication) et les produits
+    // « a fiche ulterieure ». Si un recipeId est fourni, on le valide et on le lie.
+    if (recipeId) {
+      const recipeCheck = await db.query('SELECT id, product_id, name FROM recipes WHERE id = $1', [recipeId]);
+      if (recipeCheck.rows.length === 0) {
+        res.status(400).json({ success: false, error: { message: 'La recette selectionnee n\'existe pas.' } });
+        return;
+      }
+      if (recipeCheck.rows[0].product_id) {
+        res.status(400).json({ success: false, error: { message: `Cette recette est deja liee a un autre produit.` } });
+        return;
+      }
     }
 
     // Cycle de vie (audit P1.1/P1.2) : le validator a coerce les types.
@@ -226,8 +224,11 @@ export const productController = {
       );
       const product = productResult.rows[0];
 
-      // Link the recipe to the newly created product
-      await client.query('UPDATE recipes SET product_id = $1 WHERE id = $2', [product.id, recipeId]);
+      // Lien recette -> produit, seulement si une recette a ete fournie (F-051 :
+      // un produit de revente n'en a pas).
+      if (recipeId) {
+        await client.query('UPDATE recipes SET product_id = $1 WHERE id = $2', [product.id, recipeId]);
+      }
 
       await client.query('COMMIT');
       res.status(201).json({ success: true, data: product });
