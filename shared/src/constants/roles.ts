@@ -58,7 +58,10 @@ export const ROLE_LABELS: Record<Role, string> = {
 export const ROLE_CATEGORY_SLUGS: Partial<Record<Role, string[]>> = {
   baker: ['baguette', 'baguette-tradition', 'pain-rond', 'pain-sandwich'],
   viennoiserie: ['viennoiseries'],
-  pastry_chef: ['patisserie-classique', 'patisserie-premium', 'gateaux-cookies', 'les-boites', 'macaron', 'pieces-portions', 'plateau-sale-sucre', 'sachet-mini'],
+  // F-023 : 'entremets' et 'cake-et-muffins' sont de la patisserie ; sans eux, la
+  // demande d'approvisionnement / production de ces produits partait en 'general'
+  // (traitee par le gerant) au lieu du chef patissier qui les fabrique.
+  pastry_chef: ['patisserie-classique', 'patisserie-premium', 'entremets', 'gateaux-cookies', 'cake-et-muffins', 'les-boites', 'macaron', 'pieces-portions', 'plateau-sale-sucre', 'sachet-mini'],
   beldi_sale: ['beldi', 'sale', 'sale-soiree'],
 };
 

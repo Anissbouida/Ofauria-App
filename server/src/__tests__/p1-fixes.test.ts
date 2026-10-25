@@ -102,3 +102,23 @@ describe('F-057 — RIB : controle de cle (mod 97) a la saisie', () => {
     expect(createEmployeeSchema.safeParse({ ...base, rib: '' }).success).toBe(true);
   });
 });
+
+import { getCategoryRole, getRoleCategorySlugs } from '@ofauria/shared';
+
+describe('F-023 — categories patisserie rattachees au chef patissier', () => {
+  it('entremets et cake-et-muffins sont routes vers pastry_chef (plus general)', () => {
+    expect(getCategoryRole('entremets')).toBe('pastry_chef');
+    expect(getCategoryRole('cake-et-muffins')).toBe('pastry_chef');
+  });
+
+  it('les slugs du chef patissier incluent ces categories', () => {
+    const slugs = getRoleCategorySlugs('pastry_chef') ?? [];
+    expect(slugs).toContain('entremets');
+    expect(slugs).toContain('cake-et-muffins');
+  });
+
+  it('une categorie boulangerie reste au boulanger (non regressif)', () => {
+    expect(getCategoryRole('baguette')).toBe('baker');
+    expect(getCategoryRole('viennoiseries')).toBe('viennoiserie');
+  });
+});
