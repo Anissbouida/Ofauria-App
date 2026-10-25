@@ -56,4 +56,12 @@ export const productLotController = {
       res.status(400).json({ success: false, error: { message: msg } });
     }
   },
+
+  // F-045 — Reconciliation vitrine <-> lots. GET = rapport (dry-run), POST = applique.
+  async reconcileVitrine(req: AuthRequest, res: Response) {
+    const apply = req.method === 'POST';
+    const storeId = req.user!.storeId ?? null;
+    const result = await productLotRepository.reconcileVitrineToLots(storeId, apply);
+    res.json({ success: true, data: result });
+  },
 };

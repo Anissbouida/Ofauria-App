@@ -724,6 +724,75 @@ export const productLotRepository = {
    *  Idempotent : ne touche QUE les lots 'active'.
    *  Appele en lazy trigger : a chaque login user / load POS / load fermeture caisse.
    */
+  /**
+   * F-045 — Reconciliation vitrine. product_store_stock.vitrine_quantity doit
+   * refleter la somme des product_lots.vitrine_qty : les lots font foi pour la
+   * vente (le POS exige un lot actif). Les retours recreditaient
+   * product_store_stock sans recrediter de lot, les echanges le decrementaient
+   * sans decrementer de lot -> derive (vitrine affichee > lots = stock
+   * invendable affiche, vente refusee faute de lot). On aligne la vitrine sur
+   * les lots.
+   *
+   * DRY-RUN par defaut (apply=false) : on RAPPORTE les ecarts sans rien muter.
+   * apply=true applique l'alignement et journalise chaque ajustement. Jamais
+   * declenche automatiquement : c'est un outil gerant/admin.
+   */
+  async reconcileVitrineToLots(storeId: string | null, apply: boolean): Promise<{
+    applied: boolean;
+    drifts: Array<{ productId: string; storeId: string; displayQty: number; lotQty: number; delta: number }>;
+  }> {
+    const lotSum = `COALESCE((SELECT SUM(pl.vitrine_qty) FROM product_lots pl
+                     WHERE pl.product_id = pss.product_id AND pl.store_id = pss.store_id), 0)`;
+    const params: unknown[] = [];
+    let where = '';
+    if (storeId) { params.push(storeId); where = `AND pss.store_id = $1`; }
+    const driftRes = await db.query(
+      `SELECT pss.product_id, pss.store_id,
+              pss.vitrine_quantity::numeric AS display_qty,
+              ${lotSum}::numeric AS lot_qty
+         FROM product_store_stock pss
+        WHERE pss.vitrine_quantity IS DISTINCT FROM ${lotSum}
+          ${where}`,
+      params
+    );
+    const drifts = driftRes.rows.map((r) => ({
+      productId: r.product_id as string,
+      storeId: r.store_id as string,
+      displayQty: parseFloat(r.display_qty),
+      lotQty: parseFloat(r.lot_qty),
+      delta: parseFloat(r.lot_qty) - parseFloat(r.display_qty),
+    }));
+
+    if (apply && drifts.length > 0) {
+      const client = await db.getClient();
+      try {
+        await client.query('BEGIN');
+        for (const d of drifts) {
+          await client.query(
+            `UPDATE product_store_stock SET vitrine_quantity = $1, updated_at = NOW()
+              WHERE product_id = $2 AND store_id = $3`,
+            [d.lotQty, d.productId, d.storeId]
+          );
+          await client.query(
+            `INSERT INTO product_stock_transactions
+               (product_id, type, quantity_change, stock_after, note, store_id)
+             VALUES ($1, 'adjustment', $2, $3, $4, $5)`,
+            [d.productId, d.delta, d.lotQty,
+             `Reconciliation vitrine (F-045) : affichage ${d.displayQty} -> lots ${d.lotQty}`,
+             d.storeId]
+          );
+        }
+        await client.query('COMMIT');
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
+    }
+    return { applied: apply && drifts.length > 0, drifts };
+  },
+
   async autoExpireDueLots(): Promise<{ count: number; productIds: string[] }> {
     const client = await db.getClient();
     try {
