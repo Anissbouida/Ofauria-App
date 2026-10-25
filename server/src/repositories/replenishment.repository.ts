@@ -4,6 +4,7 @@ import { getUserTimezone } from '../utils/timezone.js';
 import { transferBackroomToVitrine } from './product-stock.helper.js';
 import { productLotRepository } from './product-lot.repository.js';
 import { productMaterialsUnitCost } from './product-cost.helper.js';
+import { createNotification } from '../utils/notify.js';
 import { computeSourcingAndCreatePlan } from './sourcing.helper.js';
 import { productionMarkupRepository } from './production-markup.repository.js';
 
@@ -455,6 +456,9 @@ export const replenishmentRepository = {
       );
       const requestStoreId: string | null = requestInfo.rows[0]?.store_id ?? null;
 
+      // F-024 — sous-receptions a tracer (recu < demande) pour notifier le gerant.
+      const shortfalls: Array<{ productId: string; expected: number; received: number }> = [];
+
       for (const item of items) {
         const itemResult = await client.query(
           `SELECT product_id, qty_to_store FROM replenishment_request_items WHERE id = $1 AND request_id = $2`,
@@ -467,6 +471,27 @@ export const replenishmentRepository = {
         const received = item.qtyReceived;
         const itemHasDiscrepancy = received !== expected;
         if (itemHasDiscrepancy) hasDiscrepancy = true;
+
+        // F-024 — Sous-reception (recu < demande) : la/les piece(s) non reçue(s)
+        // en vitrine restent en reserve. Avant, aucune trace : l'ecart
+        // « disparaissait » dans l'arriere-boutique. On journalise une anomalie
+        // (quantity_change 0, stock inchange : la piece est toujours la, on ne
+        // detruit rien a l'aveugle) et on notifiera le gerant pour qu'il verifie
+        // et declare une perte si la piece est reellement perdue.
+        if (requestStoreId && expected - received > 1e-9) {
+          const shortfall = expected - received;
+          await client.query(
+            `INSERT INTO product_stock_transactions
+               (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
+             VALUES ($1, 'adjustment', 0,
+                     (SELECT COALESCE(stock_quantity, 0) FROM product_store_stock WHERE product_id = $1 AND store_id = $2),
+                     $3, $4, $5, $2)`,
+            [productId, requestStoreId,
+             `Ecart reception appro : ${expected} demande(s), ${received} recu(s) en vitrine ; ${shortfall} piece(s) restee(s) en reserve, a verifier (perte eventuelle a declarer).`,
+             requestId, closedBy]
+          );
+          shortfalls.push({ productId, expected, received });
+        }
 
         await client.query(
           `UPDATE replenishment_request_items
@@ -538,6 +563,23 @@ export const replenishmentRepository = {
       }
 
       await client.query('COMMIT');
+
+      // F-024 — Notifie le gerant des sous-receptions (hors transaction,
+      // best-effort) pour qu'il verifie la reserve et declare une perte au besoin.
+      if (shortfalls.length > 0 && requestStoreId) {
+        const total = shortfalls.reduce((s, x) => s + (x.expected - x.received), 0);
+        await createNotification({
+          targetRole: 'manager',
+          storeId: requestStoreId,
+          type: 'replenishment_discrepancy',
+          title: 'Ecart de reception approvisionnement',
+          message: `${shortfalls.length} produit(s) recu(s) en moins qu'attendu en vitrine (${total} piece(s) restee(s) en reserve) : a verifier, perte eventuelle a declarer.`,
+          referenceType: 'replenishment_request',
+          referenceId: requestId,
+          createdBy: closedBy,
+        });
+      }
+
       return this.findById(requestId);
     } catch (err) {
       await client.query('ROLLBACK');
