@@ -152,7 +152,15 @@ export const purchaseOrderController = {
 
     // Plafond d'approbation (mig 336) : dormant tant qu'aucun plafond BC n'est
     // defini ; l'administrateur approuve sans limite.
-    const amount = Number(po.total_amount ?? 0);
+    // F-083 — Le montant doit etre calcule depuis les lignes : findById n'expose
+    // PAS total_amount (purchase_orders n'a pas la colonne), donc lire
+    // po.total_amount valait toujours 0 et contournait le plafond (garde morte).
+    const amountRes = await db.query(
+      `SELECT COALESCE(SUM(quantity_ordered * COALESCE(unit_price, 0)), 0)::numeric AS amount
+         FROM purchase_order_items WHERE purchase_order_id = $1`,
+      [req.params.id]
+    );
+    const amount = Number(amountRes.rows[0]?.amount ?? 0);
     const { allowed, limit } = await checkApprovalLimit(req.user!.userId, 'purchase_order', amount);
     if (!allowed) {
       res.status(403).json({
