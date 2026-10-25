@@ -7,7 +7,7 @@ export const customerRepository = {
     let i = 1;
 
     if (params.search) {
-      conditions.push(`(c.first_name ILIKE $${i} OR c.last_name ILIKE $${i} OR c.email ILIKE $${i} OR c.phone ILIKE $${i} OR c.company_name ILIKE $${i})`);
+      conditions.push(`(c.first_name ILIKE $${i} OR c.last_name ILIKE $${i} OR c.email ILIKE $${i} OR c.phone ILIKE $${i} OR c.company_name ILIKE $${i} OR c.ice ILIKE $${i} OR c.city ILIKE $${i})`);
       values.push(`%${params.search}%`);
       i++;
     }
