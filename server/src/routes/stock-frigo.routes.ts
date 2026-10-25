@@ -19,6 +19,11 @@ router.post('/consume', authenticate, authorize('admin', 'manager'), asyncHandle
 router.put('/:id/loss', authenticate, authorize('admin', 'manager'), asyncHandler(stockFrigoController.recordLoss));
 router.put('/:id/adjust', authenticate, authorize('admin', 'manager'), asyncHandler(stockFrigoController.adjust));
 
+// F-044 — Reconciliation semi-finis <-> lots : rapport (dry-run) pour le gerant,
+// application reservee a l'admin (mutation du stock agrege, tracee).
+router.get('/reconciliation', authenticate, authorize('admin', 'manager'), asyncHandler(stockFrigoController.reconcile));
+router.post('/reconciliation/apply', authenticate, authorize('admin'), asyncHandler(stockFrigoController.reconcile));
+
 // Transactions history
 router.get('/:id/transactions', authenticate, asyncHandler(stockFrigoController.transactions));
 

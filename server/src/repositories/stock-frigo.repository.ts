@@ -188,6 +188,72 @@ export const stockFrigoRepository = {
   },
 
   // ─── Get transaction history for a stock entry ───
+  /**
+   * F-044 — Reconciliation des semi-finis : semi_finished_stock.quantity_available
+   * doit refleter la somme des semi_finished_lots.quantity_remaining actifs (les
+   * lots font foi, la consommation FEFO passe par eux). Des deltas se sont
+   * accumules (ex. « Pate d'amande 28 kg disponibles sans aucun lot ») : on aligne
+   * le stock agrege sur les lots.
+   *
+   * DRY-RUN par defaut (apply=false) : RAPPORTE sans rien muter. apply=true aligne
+   * et trace chaque ajustement (semi_finished_transactions 'adjustment'). Jamais
+   * declenche automatiquement, et ne touche PAS a la logique de production (le
+   * double comptage parent/enfant de F-044 releve d'un choix de modele).
+   */
+  async reconcileSemiFinishedToLots(storeId: string | null, apply: boolean): Promise<{
+    applied: boolean;
+    drifts: Array<{ recipeId: string; storeId: string; stockQty: number; lotQty: number; delta: number }>;
+  }> {
+    const lotSum = `COALESCE((SELECT SUM(sl.quantity_remaining) FROM semi_finished_lots sl
+                     WHERE sl.recipe_id = sfs.recipe_id AND sl.store_id = sfs.store_id AND sl.status = 'active'), 0)`;
+    const params: unknown[] = [];
+    let where = '';
+    if (storeId) { params.push(storeId); where = `AND sfs.store_id = $1`; }
+    const driftRes = await db.query(
+      `SELECT sfs.recipe_id, sfs.store_id,
+              sfs.quantity_available::numeric AS stock_qty,
+              ${lotSum}::numeric AS lot_qty
+         FROM semi_finished_stock sfs
+        WHERE sfs.quantity_available IS DISTINCT FROM ${lotSum}
+          ${where}`,
+      params
+    );
+    const drifts = driftRes.rows.map((r) => ({
+      recipeId: r.recipe_id as string,
+      storeId: r.store_id as string,
+      stockQty: parseFloat(r.stock_qty),
+      lotQty: parseFloat(r.lot_qty),
+      delta: parseFloat(r.lot_qty) - parseFloat(r.stock_qty),
+    }));
+
+    if (apply && drifts.length > 0) {
+      const client = await db.getClient();
+      try {
+        await client.query('BEGIN');
+        for (const d of drifts) {
+          await client.query(
+            `UPDATE semi_finished_stock SET quantity_available = $1, updated_at = NOW()
+              WHERE recipe_id = $2 AND store_id = $3`,
+            [d.lotQty, d.recipeId, d.storeId]
+          );
+          await client.query(
+            `INSERT INTO semi_finished_transactions (recipe_id, store_id, type, quantity_change, notes)
+             VALUES ($1, $2, 'adjustment', $3, $4)`,
+            [d.recipeId, d.storeId, d.delta,
+             `Reconciliation semi-finis (F-044) : stock ${d.stockQty} -> lots ${d.lotQty}`]
+          );
+        }
+        await client.query('COMMIT');
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
+    }
+    return { applied: apply && drifts.length > 0, drifts };
+  },
+
   async getTransactions(stockFrigoId: string) {
     const result = await db.query(
       `SELECT sft.*, u.first_name as performed_by_name

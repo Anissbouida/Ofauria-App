@@ -26,6 +26,14 @@ export const stockFrigoController = {
     res.json({ data });
   },
 
+  // F-044 — Reconciliation semi-finis <-> lots. GET = rapport (dry-run), POST = applique.
+  async reconcile(req: Request, res: Response) {
+    const apply = req.method === 'POST';
+    const storeId = (req.query.storeId as string) || (req as any).user?.storeId || null;
+    const data = await stockFrigoRepository.reconcileSemiFinishedToLots(storeId, apply);
+    res.json({ data });
+  },
+
   async recipeLineage(req: Request, res: Response) {
     const recipeId = req.params.recipeId as string;
     const storeId = (req.query.storeId as string) || (req as any).user?.storeId;
