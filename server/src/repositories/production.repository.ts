@@ -364,6 +364,23 @@ export const productionRepository = {
   },
 
   async confirm(planId: string, userId?: string) {
+    // F-044 (modele B) — On detecte les semi-finis AVANT de calculer les besoins,
+    // pour que le BSI du parent n'aplatisse PAS en matieres les bases qui sont
+    // produites separement (plan fils) ou servies depuis le stock semi-fini.
+    // Idempotente (guard sur dependances existantes) et best-effort : si elle
+    // echoue ou ne cree aucune dependance, aucune base n'est "sautee" et le parent
+    // consomme les matieres comme avant — donc jamais de sous-consommation.
+    if (userId) {
+      try {
+        const semi = await db.query(`SELECT COALESCE(is_semi_finished_plan, false) AS s FROM production_plans WHERE id = $1`, [planId]);
+        if (semi.rows[0] && semi.rows[0].s !== true) {
+          await productionRepository.detectAndCreateSemiFinishedPlans(planId, userId);
+        }
+      } catch (detErr) {
+        console.error('[production.confirm] detection semi-finis (modele B) echouee:', detErr);
+      }
+    }
+
     const client = await db.getClient();
     const warnings: string[] = [];
     try {
@@ -443,6 +460,17 @@ export const productionRepository = {
         return semiFlag;
       };
 
+      // F-044 (modele B) — Bases produites separement : la detection a cree une
+      // dependance (reservation stock + eventuel plan fils) pour chacune. On ne
+      // developpe donc PAS ces bases en matieres dans le BSI du parent (sinon
+      // double comptage). Une base sans dependance (detection non lancee / plan
+      // manuel non detecte) reste developpee : le parent consomme ses matieres.
+      const depRes = await client.query(
+        `SELECT sub_recipe_id FROM production_plan_dependencies WHERE parent_plan_id = $1`,
+        [planId]
+      );
+      const baseDepSet = new Set<string>(depRes.rows.map((r) => r.sub_recipe_id as string));
+
       for (const item of itemsResult.rows) {
         const recipeResult = await client.query(
           RECIPE_FOR_PRODUCT_SQL,
@@ -463,7 +491,11 @@ export const productionRepository = {
             if (existing) existing.quantity += qty;
             else needsMap.set(key, { ingredientId, productId, quantity: qty });
           },
-          { formatId: item.format_id ?? recipeResult.rows[0].linked_format_id ?? null, warnings }
+          {
+            formatId: item.format_id ?? recipeResult.rows[0].linked_format_id ?? null,
+            skipSubRecipe: (subRecipeId) => baseDepSet.has(subRecipeId),
+            warnings,
+          }
         );
       }
 
@@ -1410,11 +1442,15 @@ export const productionRepository = {
       );
       const isSemiFinishedPlan = planInfo.rows[0]?.is_semi_finished_plan === true;
 
-      // Get sub-recipe IDs fulfilled from stock for this plan (to skip during ingredient deduction)
+      // F-044 (modele B) — Bases servies par le semi-fini (reservation stock +/ou
+      // plan fils) : a la deduction d'ingredients de CE plan, on saute toutes les
+      // bases ayant une dependance, pas seulement celles couvertes depuis le stock.
+      // Elles sont payees ailleurs (reservation a la detection + production du
+      // plan fils), jamais en matieres ici.
       const fulfilledSubRecipes = new Set<string>();
       const depsResult = await client.query(
         `SELECT sub_recipe_id FROM production_plan_dependencies
-         WHERE parent_plan_id = $1 AND status = 'fulfilled' AND quantity_from_stock > 0`,
+         WHERE parent_plan_id = $1`,
         [planId]
       );
       for (const dep of depsResult.rows) {
@@ -1439,19 +1475,13 @@ export const productionRepository = {
           LIMIT 1`,
         [planId]
       );
-      let bsiAlreadyDeducted2 = !isSemiFinishedPlan && bsiDeductedResult2.rows.length > 0;
-      if (isSemiFinishedPlan) {
-        // Les ingredients d'un semi-fini sont dans le bon de sortie du plan PARENT
-        // (nomenclature resolue a sa confirmation) : ils sont consommes au
-        // prelevement de ce bon. Les deduire ici une seconde fois faussait le stock.
-        const parentBsi = await client.query(
-          `SELECT 1 FROM production_plan_dependencies d
-             JOIN production_bons_sortie b ON b.plan_id = d.parent_plan_id AND b.status <> 'annule'
-            WHERE d.dependency_plan_id = $1 LIMIT 1`,
-          [planId]
-        );
-        if (parentBsi.rows.length > 0) bsiAlreadyDeducted2 = true;
-      }
+      // F-044 (modele B) — Un plan semi-fini consomme desormais SES PROPRES
+      // matieres a la production. Avant, on les sautait au motif que le BSI du
+      // parent les portait (base aplatie) ; en modele B le BSI du parent n'aplatit
+      // plus les bases produites separement, donc le fils doit payer ses matieres.
+      // Le bsiAlreadyDeducted2 ne vaut que pour le BSI PROPRE d'un plan (rare pour
+      // un semi-fini, qui n'en a pas), jamais via le parent.
+      const bsiAlreadyDeducted2 = !isSemiFinishedPlan && bsiDeductedResult2.rows.length > 0;
 
       // Deduct ingredients for produced items
       for (const item of producedItems.rows) {
@@ -1648,6 +1678,58 @@ export const productionRepository = {
                AND status = 'pending'`,
             [planId]
           );
+
+          // F-044 (modele B) — Le fils a ete cree POUR un plan parent : on impute
+          // la part `toProduce` de ce semi-fini au parent (consommation reelle),
+          // sinon la pate produite resterait en stock disponible alors que le
+          // parent ne consomme plus les matieres de la base (BSI sans la base).
+          // Le surplus d'arrondi (produit - toProduce) reste disponible.
+          const parentDep = await client.query(
+            `SELECT parent_plan_id, quantity_to_produce FROM production_plan_dependencies
+              WHERE dependency_plan_id = $1 AND sub_recipe_id = $2 LIMIT 1`,
+            [planId, item.base_recipe_id]
+          );
+          const pdep = parentDep.rows[0];
+          if (pdep && pdep.parent_plan_id) {
+            const consumeForParent = Math.min(parseFloat(item.actual_quantity), parseFloat(pdep.quantity_to_produce) || 0);
+            if (consumeForParent > 1e-9) {
+              await client.query(
+                `UPDATE semi_finished_stock SET quantity_available = GREATEST(0, quantity_available - $1), updated_at = NOW()
+                  WHERE recipe_id = $2 AND store_id = $3`,
+                [consumeForParent, item.base_recipe_id, effectiveStoreId]
+              );
+              let remainingForParent = consumeForParent;
+              const sfLots = await client.query(
+                `SELECT id, quantity_remaining FROM semi_finished_lots
+                  WHERE recipe_id = $1 AND store_id = $2 AND status = 'active' AND quantity_remaining > 0
+                  ORDER BY expires_at ASC NULLS LAST, produced_at ASC
+                  FOR UPDATE`,
+                [item.base_recipe_id, effectiveStoreId]
+              );
+              for (const lot of sfLots.rows) {
+                if (remainingForParent <= 1e-9) break;
+                const take = Math.min(remainingForParent, parseFloat(lot.quantity_remaining));
+                await client.query(
+                  `UPDATE semi_finished_lots
+                      SET quantity_remaining = quantity_remaining - $1,
+                          status = CASE WHEN quantity_remaining - $1 <= 0.0005 THEN 'depleted' ELSE status END
+                    WHERE id = $2`,
+                  [take, lot.id]
+                );
+                await client.query(
+                  `INSERT INTO semi_finished_lot_usage (semi_finished_lot_id, parent_plan_id, quantity) VALUES ($1, $2, $3)`,
+                  [lot.id, pdep.parent_plan_id, take]
+                );
+                remainingForParent -= take;
+              }
+              await client.query(
+                `INSERT INTO semi_finished_transactions (recipe_id, store_id, type, quantity_change, production_plan_id, performed_by, notes)
+                 VALUES ($1, $2, 'consumption', $3, $4, $5, $6)`,
+                [item.base_recipe_id, effectiveStoreId, -consumeForParent, planId, userId,
+                 `Consommation par le plan parent (modele B, F-044)`]
+              );
+            }
+          }
         } else if (item.product_id) {
           // Sorties de l'article : par defaut son produit ; avec une coupe declaree,
           // une ligne par sortie (entremets, tranches...), chacune avec son stock,
