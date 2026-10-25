@@ -117,6 +117,27 @@ export const cashRegisterController = {
         });
         return;
       }
+
+      // F-032 — On rejette aussi la cloture quand il reste du stock vitrine et
+      // qu'AUCUNE decision d'invendus (garder, recycler, don, perte) n'a ete
+      // enregistree pour cette session. Sinon la journee se cloture sans
+      // traitement et le stock bascule en perte automatique le lendemain, sans
+      // rattrapage possible (POST /unsold-decisions exige une session ouverte).
+      // Le client doit POST /unsold-decisions (closeType fin_journee) AVANT de
+      // cloturer. Une vitrine vide (tout vendu) ne bloque pas.
+      const { vitrineRemaining, decisionsCount } =
+        await unsoldDecisionRepository.vitrineRemainingAndDecisions(session.id, storeId);
+      if (vitrineRemaining > 0 && decisionsCount === 0) {
+        res.status(409).json({
+          success: false,
+          error: {
+            code: 'UNSOLD_DECISIONS_PENDING',
+            message: `Stock vitrine non traite : enregistrez les decisions d'invendus (garder, recycler, don, perte) avant de fermer la journee.`,
+            details: { vitrineRemaining },
+          },
+        });
+        return;
+      }
     }
 
     // Calculate totals but don't close yet - wait for actual amount

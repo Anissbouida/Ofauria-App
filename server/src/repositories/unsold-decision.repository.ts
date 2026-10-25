@@ -1004,6 +1004,28 @@ export const unsoldDecisionRepository = {
    * reexposition. On detecte donc l'expiration des lors qu'AU MOINS UNE ligne active
    * indique DLC ou DLV depassee. La pire (la plus ancienne) est remontee pour affichage.
    */
+  /**
+   * F-032 — Etat des invendus au moment de cloturer la journee : stock vitrine
+   * encore present dans le magasin et nombre de decisions d'invendus deja
+   * enregistrees pour cette session. Sert au garde-fou de cloture : fermer une
+   * fin de journee avec du stock vitrine et AUCUNE decision laisse le stock
+   * basculer en perte automatique le lendemain, sans rattrapage possible (la
+   * saisie des decisions exige une session ouverte).
+   */
+  async vitrineRemainingAndDecisions(sessionId: string, storeId: string): Promise<{ vitrineRemaining: number; decisionsCount: number }> {
+    const r = await db.query(
+      `SELECT
+         COALESCE((SELECT SUM(pss.vitrine_quantity) FROM product_store_stock pss
+                    WHERE pss.store_id = $2), 0)::numeric AS vitrine_remaining,
+         (SELECT COUNT(*)::int FROM unsold_decisions WHERE session_id = $1) AS decisions_count`,
+      [sessionId, storeId]
+    );
+    return {
+      vitrineRemaining: parseFloat(r.rows[0]?.vitrine_remaining) || 0,
+      decisionsCount: parseInt(r.rows[0]?.decisions_count, 10) || 0,
+    };
+  },
+
   async getExpiredItems(storeId: string) {
     // F2 — Somme SEULEMENT les vitrine_qty des lots effectivement expires.
     // Avant : on remontait pss.vitrine_quantity (total du produit) + le pire
