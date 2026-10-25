@@ -15,9 +15,28 @@ import { loadCompanyLegal } from '../utils/company-legal.js';
 
 // Valide un code de mode de reglement contre le referentiel payment_methods
 // (table de reference) plutot que contre une liste figee en dur.
+// F-013 — Deux vocabulaires de modes de reglement coexistent : payment_modes
+// (paiements : virement|cheque|effet…) et payment_methods (factures :
+// transfer|check|traite…). Saisir « virement » sur une facture levait « Mode de
+// reglement invalide ». On normalise le vocabulaire paiement vers celui des
+// factures, et on l'accepte a la saisie comme au stockage.
+const PAYMENT_MODE_TO_METHOD: Record<string, string> = {
+  virement: 'transfer',
+  cheque: 'check',
+  cheque_barre: 'check',
+  effet: 'traite',
+  carte: 'card',
+  cash: 'cash',
+  mobile: 'mobile',
+};
+export function normalizePaymentMethod(code: string | null | undefined): string | null | undefined {
+  if (code === null || code === undefined || code === '') return code;
+  return PAYMENT_MODE_TO_METHOD[code] ?? code;
+}
 async function isValidPaymentMode(code: string): Promise<boolean> {
+  const norm = normalizePaymentMethod(code);
   const entries = await refEntryRepository.findAll('payment_methods');
-  return entries.some((e: { code: string }) => e.code === code);
+  return entries.some((e: { code: string }) => e.code === norm);
 }
 
 export const caisseController = {
@@ -308,7 +327,7 @@ export const invoiceController = {
         taxAmount: num(body.taxAmount),
         totalAmount: num(body.totalAmount),
         notes: body.notes as string | null | undefined,
-        expectedPaymentMode: body.expectedPaymentMode as string | null | undefined,
+        expectedPaymentMode: normalizePaymentMethod(body.expectedPaymentMode as string | null | undefined),
         receptionDate: body.receptionDate as string | null | undefined,
         checkNumber: body.checkNumber as string | null | undefined,
       });
@@ -421,7 +440,7 @@ export const invoiceController = {
       return;
     }
     const updated = await invoiceRepository.updatePaymentTerms(req.params.id, {
-      dueDate, expectedPaymentMode, receptionDate,
+      dueDate, expectedPaymentMode: normalizePaymentMethod(expectedPaymentMode), receptionDate,
     });
     res.json({ success: true, data: updated });
   },
