@@ -130,6 +130,26 @@ export const purchaseOrderController = {
       res.status(409).json({ success: false, error: { message: 'Le bon doit etre en attente pour etre envoye' } });
       return;
     }
+    // F-003 — Un BC sans prix contournait le plafond d'approbation : total_amount
+    // est calcule sur COALESCE(prix, 0), donc un BC non chiffre valait 0 et
+    // passait sous tout plafond. On refuse l'envoi tant qu'une ligne n'a pas de
+    // prix unitaire (le fournisseur ne recevrait de toute facon pas un BC chiffre).
+    const unpriced = await db.query(
+      `SELECT COUNT(*)::int AS n FROM purchase_order_items
+        WHERE purchase_order_id = $1 AND (unit_price IS NULL OR unit_price <= 0)`,
+      [req.params.id]
+    );
+    if (unpriced.rows[0].n > 0) {
+      res.status(409).json({
+        success: false,
+        error: {
+          code: 'PO_UNPRICED',
+          message: `Bon de commande non chiffré : ${unpriced.rows[0].n} ligne(s) sans prix unitaire. Renseignez tous les prix avant l'envoi.`,
+        },
+      });
+      return;
+    }
+
     // Plafond d'approbation (mig 336) : dormant tant qu'aucun plafond BC n'est
     // defini ; l'administrateur approuve sans limite.
     const amount = Number(po.total_amount ?? 0);
