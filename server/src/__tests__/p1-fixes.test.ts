@@ -11,6 +11,8 @@ import { describe, it, expect, vi } from 'vitest';
 import type { Request, Response, NextFunction } from 'express';
 import { validateUuidParams } from '../middleware/validate.middleware.js';
 import { createPurchaseOrderSchema } from '../validators/purchase-order-action.validator.js';
+import { createEmployeeSchema } from '../validators/employees.validator.js';
+import { ribKey } from '../services/salary-transfer.js';
 
 const ING = '11111111-1111-4111-8111-111111111111';
 const PKG = '22222222-2222-4222-8222-222222222222';
@@ -72,5 +74,31 @@ describe('F-008 — validateUuidParams', () => {
     const { res, next } = run(SUP);
     expect(res.status).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('F-057 — RIB : controle de cle (mod 97) a la saisie', () => {
+  const base = { firstName: 'A', lastName: 'B', role: 'cashier', hireDate: '2026-01-01' };
+  const first22 = '2307800012345678901234';
+  const validRib = first22 + ribKey(first22);       // cle correcte
+  const badRib = first22 + (ribKey(first22) === '00' ? '01' : '00'); // cle fausse
+
+  it('accepte un RIB a cle valide (espaces toleres)', () => {
+    expect(createEmployeeSchema.safeParse({ ...base, rib: validRib }).success).toBe(true);
+    const spaced = validRib.replace(/(.{4})/g, '$1 ').trim();
+    expect(createEmployeeSchema.safeParse({ ...base, rib: spaced }).success).toBe(true);
+  });
+
+  it('refuse un RIB a cle invalide', () => {
+    expect(createEmployeeSchema.safeParse({ ...base, rib: badRib }).success).toBe(false);
+  });
+
+  it('refuse un RIB qui n a pas 24 chiffres', () => {
+    expect(createEmployeeSchema.safeParse({ ...base, rib: '123' }).success).toBe(false);
+  });
+
+  it('accepte l absence de RIB (optionnel)', () => {
+    expect(createEmployeeSchema.safeParse({ ...base }).success).toBe(true);
+    expect(createEmployeeSchema.safeParse({ ...base, rib: '' }).success).toBe(true);
   });
 });

@@ -131,14 +131,12 @@ export const orderRepository = {
         }
       }
 
-      // Update customer total spent and loyalty points
-      if (data.customerId) {
-        const loyaltyPoints = Math.floor(data.total);
-        await client.query(
-          `UPDATE customers SET total_spent = total_spent + $1, loyalty_points = loyalty_points + $2 WHERE id = $3`,
-          [data.total, loyaltyPoints, data.customerId]
-        );
-      }
+      // F-028 : la fidelite (total_spent, loyalty_points) n'est PLUS creditee a la
+      // creation de la commande. Elle l'etait sur le total complet, alors que la
+      // vente d'avance puis la vente de livraison (sale.repository.create, ventes
+      // payees) creditent deja le montant reellement encaisse : la commande etait
+      // donc comptee deux a trois fois. On ne credite desormais qu'a l'encaissement
+      // reel (avance + livraison = total, une seule fois).
 
       await client.query('COMMIT');
       return { ...orderResult.rows[0], _productionPlanId: productionPlanId, _semiFinishedInfo: semiFinishedInfo };

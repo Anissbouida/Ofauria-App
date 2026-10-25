@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ribKeyValid } from '../services/salary-transfer.js';
 
 // ─── Employees ────────────────────────────────────────────────────────────
 // Salaires >= 0, dates optionnelles nullable, roles bornes.
@@ -33,11 +34,17 @@ function nullableNumber(check: (n: z.ZodNumber) => z.ZodNumber = (n) => n) {
   }, check(z.number()).nullable().optional());
 }
 
-/** RIB marocain : 24 chiffres (espaces toleres a la saisie) ; '' -> null. */
+/** RIB marocain : 24 chiffres (espaces toleres a la saisie) ; '' -> null.
+ *  F-057 : on verifie aussi la cle de controle (mod 97) des la saisie, au lieu de
+ *  ne la signaler qu'a la generation de l'ordre de virement. Un RIB a cle fausse
+ *  est refuse a la creation / mise a jour (salarie comme RIB employeur). */
 const ribField = z.preprocess((v) => {
   if (v === '' || v === null || v === undefined) return v === undefined ? undefined : null;
   return typeof v === 'string' ? v.replace(/[\s-]/g, '') : v;
-}, z.string().regex(/^\d{24}$/, 'RIB : 24 chiffres').nullable().optional());
+}, z.string()
+    .regex(/^\d{24}$/, 'RIB : 24 chiffres')
+    .refine((r) => ribKeyValid(r), 'RIB : clé de contrôle invalide (les 24 chiffres doivent être divisibles par 97)')
+    .nullable().optional());
 
 export const createEmployeeSchema = z.object({
   userId: z.string().uuid().nullable().optional(),
