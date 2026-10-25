@@ -486,6 +486,11 @@ export const scheduleRepository = {
         [employeeIds, minDate, maxDate]
       );
 
+      // F-054 — On ne rejette PLUS tout le planning pour un seul chevauchement :
+      // on pre-exclut les jours en conge approuve (on ne les assigne pas) et on
+      // applique le reste. Les jours ignores sont renvoyes (conflicts) pour que
+      // le gerant sache ce qui n'a pas ete planifie, au lieu de retirer a la main
+      // les conges de 23 salaries x 7 jours.
       const conflicts: string[] = [];
       for (const a of assignments) {
         if (!a.shiftCode) continue;
@@ -496,13 +501,7 @@ export const scheduleRepository = {
           }
         }
       }
-      if (conflicts.length > 0) {
-        await client.query('ROLLBACK');
-        const err = new Error(`Conflit: ${conflicts.length} assignation(s) chevauchent un conge approuve`) as Error & { code?: string; conflicts?: string[] };
-        err.code = 'LEAVE_CONFLICT';
-        err.conflicts = conflicts;
-        throw err;
-      }
+      const conflictKeys = new Set(conflicts);
 
       // 3. Apply assignments
       let updated = 0;
@@ -523,6 +522,8 @@ export const scheduleRepository = {
           );
           continue;
         }
+        // F-054 — jour en conge approuve : on n'assigne pas (pre-exclusion).
+        if (conflictKeys.has(`${a.employeeId}@${a.date}`)) continue;
         const shift = shiftMap.get(a.shiftCode);
         if (!shift) {
           throw new Error(`Shift inconnu: ${a.shiftCode}`);
@@ -550,7 +551,7 @@ export const scheduleRepository = {
       }
 
       await client.query('COMMIT');
-      return { updated, deleted, conflicts: [] };
+      return { updated, deleted, conflicts };  // F-054 : jours en conge ignores (planifies non)
     } catch (err) {
       try { await client.query('ROLLBACK'); } catch { /* ignore */ }
       throw err;
