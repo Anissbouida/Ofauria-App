@@ -489,45 +489,39 @@ export const bonSortieRepository = {
           remaining -= take;
         }
 
-        // Étape 2 : Pesage insuffisant → ligne "transfert requis" avec lot Economat suggere.
-        // Une seule ligne par ingredient, meme si plusieurs lots Economat necessaires :
-        // le magasinier transferera depuis le lot suggere et pourra ouvrir un autre lot
-        // si besoin (geste manuel). On suggere le meilleur lot FEFO actif.
+        // Étape 2 : Pesage insuffisant → lignes "transfert requis", UNE PAR LOT
+        // Economat (FEFO sur DLC), chacune couverte par SON lot.
+        // F-069 / F-073 : auparavant une seule ligne lumpait tout le besoin economat
+        // sur un unique lot suggere. Quand le stock etait eclate en plusieurs fonds
+        // de sac (aucun lot ne couvrant a lui seul le besoin), la pesee de cette
+        // ligne echouait (« le lot ne couvre pas la pesee ») et bloquait toute la
+        // production. On eclate desormais comme les lignes PESAGE : chaque ligne
+        // porte la part d'UN lot et s'ouvre sur ce lot. La regle du contenant entier
+        // reste appliquee a l'ouverture (moveEconomatToPesage).
         if (remaining > 0) {
-          const suggestedLotResult = await client.query(
+          const economatLotsResult = await client.query(
             `SELECT il.id, il.lot_number, il.supplier_lot_number, il.economat_quantity, il.expiration_date,
                     il.received_at, il.status
              FROM ingredient_lots il
              WHERE il.ingredient_id = $1 AND il.store_id = $2
                AND ${usableSql} AND il.economat_quantity > 0
-             ORDER BY il.expiration_date ASC NULLS LAST, il.received_at ASC
-             LIMIT 1`,
+             ORDER BY il.expiration_date ASC NULLS LAST, il.received_at ASC`,
             [need.ingredient_id, storeId]
           );
-
-          // Total Economat dispo (tous lots actifs non perimes, sauf derogation) : sert
-          // a savoir si le besoin est couvrable par transfert ou s'il y a une rupture.
-          const totalEconomatResult = await client.query(
-            `SELECT COALESCE(SUM(il.economat_quantity), 0)::numeric AS total
-             FROM ingredient_lots il
-             WHERE il.ingredient_id = $1 AND il.store_id = $2
-               AND ${usableSql} AND il.economat_quantity > 0`,
-            [need.ingredient_id, storeId]
-          );
-          const totalEconomat = parseFloat(totalEconomatResult.rows[0]?.total || '0');
-          const transferable = Math.min(totalEconomat, remaining);
-
-          if (transferable > 0 && suggestedLotResult.rows.length > 0) {
-            const lot = suggestedLotResult.rows[0];
+          for (const lot of economatLotsResult.rows) {
+            if (remaining <= 1e-9) break;
+            const lotEconomat = parseFloat(lot.economat_quantity);
+            const take = Math.min(lotEconomat, remaining);
+            if (take <= 1e-9) continue;
             const lineResult = await client.query(
               `INSERT INTO production_bons_sortie_lignes
                  (bon_id, ingredient_id, ingredient_lot_id, needed_quantity, allocated_quantity,
                   unit, status, source_location, suggested_economat_lot_id, transfer_required_qty, notes)
                VALUES ($1, $2, NULL, $3, 0, $4, 'en_attente', 'ECONOMAT_REQUIRES_TRANSFER', $5, $6, $7)
                RETURNING *`,
-              [bon.id, need.ingredient_id, transferable, need.ingredient_unit || 'kg',
-               lot.id, transferable,
-               `Transfert requis : ${transferable.toFixed(2)} ${need.ingredient_unit || 'kg'} depuis Economat (lot ${lot.lot_number})`]
+              [bon.id, need.ingredient_id, take, need.ingredient_unit || 'kg',
+               lot.id, take,
+               `Transfert requis : ${take.toFixed(2)} ${need.ingredient_unit || 'kg'} depuis Economat (lot ${lot.lot_number})`]
             );
 
             lines.push({
@@ -540,7 +534,7 @@ export const bonSortieRepository = {
               stock_source: 'economat_transfer_required',
             });
 
-            remaining -= transferable;
+            remaining -= take;
           }
         }
 
