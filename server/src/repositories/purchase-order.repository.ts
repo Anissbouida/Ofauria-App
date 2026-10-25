@@ -258,12 +258,28 @@ export const purchaseOrderRepository = {
          data.notes || null, data.createdBy, data.storeId || null]
       );
 
+      // F-012 — L'arrondi au contenant (210 kg -> 225 = 9 sacs) etait silencieux :
+      // la reception de 210 laissait ensuite un reliquat « fantome » de 15 kg. On
+      // collecte desormais les arrondis pour que l'appelant puisse les signaler a
+      // la creation (la regle contenant reste appliquee).
+      const roundings: Array<{ ingredientId: string; requested: number; ordered: number; containers: number | null; containerLabel: string | null }> = [];
       for (const item of data.items) {
         // Regle « contenant entier » : un ingredient defini par contenant se commande
         // par contenant complet, arrondi au superieur (8 kg en sacs de 2,5 -> 10 kg).
-        const qty = item.ingredientId
-          ? (await applyContainerRule(client, item.ingredientId, item.quantityOrdered)).qty
-          : item.quantityOrdered;
+        let qty = item.quantityOrdered;
+        if (item.ingredientId) {
+          const rule = await applyContainerRule(client, item.ingredientId, item.quantityOrdered);
+          qty = rule.qty;
+          if (rule.def && qty > item.quantityOrdered + 1e-9) {
+            roundings.push({
+              ingredientId: item.ingredientId,
+              requested: item.quantityOrdered,
+              ordered: qty,
+              containers: rule.count,
+              containerLabel: rule.def.label,
+            });
+          }
+        }
         await client.query(
           `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, quantity_ordered, unit_price)
            VALUES ($1, $2, $3, $4, $5)`,
@@ -272,7 +288,7 @@ export const purchaseOrderRepository = {
       }
 
       await client.query('COMMIT');
-      return poResult.rows[0];
+      return { ...poResult.rows[0], _roundings: roundings };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
