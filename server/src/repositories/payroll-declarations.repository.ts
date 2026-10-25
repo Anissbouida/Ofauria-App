@@ -155,6 +155,21 @@ export const payrollDeclarationRepository = {
     if (period.rows[0]?.status !== 'closed') throw new Error('Clôturez d\'abord la paie du mois : la déclaration fige les montants.');
     const existing = await db.query(`SELECT status FROM payroll_declarations WHERE kind = $1 AND year = $2 AND month = $3`, [kind, year, month]);
     if (existing.rows[0]?.status === 'paid') throw new Error('Déclaration déjà réglée.');
+
+    // F-059 — La CNSS (e-BDS) est rejetee par Damancom si un salarie n'a pas de
+    // numero CNSS. On refuse la declaration tant que des numeros manquent, en
+    // nommant les salaries concernes, plutot que de deposer un fichier invalide.
+    if (kind === 'cnss') {
+      const statement = await this.cnssStatement(month, year);
+      if (statement.missingCnssNumber.length > 0) {
+        const names = statement.missingCnssNumber;
+        const shown = names.slice(0, 5).join(', ');
+        throw new Error(
+          `Déclaration CNSS impossible : ${names.length} salarié(s) sans numéro CNSS (${shown}${names.length > 5 ? '…' : ''}). Le fichier e-BDS serait rejeté par Damancom — renseignez les numéros CNSS avant de déclarer.`
+        );
+      }
+    }
+
     const amount = await this.amountDue(kind, month, year);
     const r = await db.query(
       `INSERT INTO payroll_declarations (kind, year, month, amount, reference, declared_by)
