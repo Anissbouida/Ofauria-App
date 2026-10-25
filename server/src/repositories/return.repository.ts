@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { adjustVitrineStock } from './product-stock.helper.js';
+import { productLotRepository } from './product-lot.repository.js';
 import { generateSaleNumber } from './sale.repository.js';
 
 export const returnRepository = {
@@ -213,12 +214,51 @@ export const returnRepository = {
         if (!data.storeId) {
           throw new Error('storeId requis pour un retour (vitrine strictement par magasin)');
         }
-        const stockAfter = await adjustVitrineStock(client, item.productId, data.storeId, item.quantity);
+        // F-045/F-036 — On recredite le(s) lot(s) d'ou l'article a ete vendu
+        // (sale_item_lots), pour garder product_lots en phase avec
+        // product_store_stock. Avant, le retour ne touchait que
+        // product_store_stock -> derive vitrine > lots. On ne remet en rayon que
+        // ce qui retrouve un lot ACTIF : un article dont le lot d'origine est
+        // perime/epuise n'est pas reexpose (il serait invendable, cf. F-037).
+        const soldLots = await client.query(
+          `SELECT sil.product_lot_id, sil.quantity, pl.status
+             FROM sale_item_lots sil
+             JOIN product_lots pl ON pl.id = sil.product_lot_id
+            WHERE sil.sale_item_id = $1
+            ORDER BY pl.produced_at DESC
+            FOR UPDATE OF pl`,
+          [item.saleItemId]
+        );
+        let restored = 0;
+        let remaining = item.quantity;
+        for (const s of soldLots.rows) {
+          if (remaining <= 0) break;
+          if (s.status !== 'active') continue;
+          const give = Math.min(remaining, parseFloat(s.quantity));
+          if (give <= 0) continue;
+          await client.query(
+            `UPDATE product_lots
+                SET vitrine_qty = vitrine_qty + $2,
+                    sold_qty    = GREATEST(0, sold_qty - $2),
+                    updated_at  = NOW()
+              WHERE id = $1`,
+            [s.product_lot_id, give]
+          );
+          restored += give;
+          remaining -= give;
+        }
+        // Repli : vente orpheline sans sale_item_lots (anterieure au suivi par
+        // lot) -> on remet la quantite complete comme avant, il n'y a pas de lot
+        // a synchroniser pour cette vente.
+        const toShelve = soldLots.rows.length === 0 ? item.quantity : restored;
+        const stockAfter = await adjustVitrineStock(client, item.productId, data.storeId, toShelve);
+        const note = toShelve < item.quantity
+          ? `Retour ${returnNumber} — ${toShelve}/${item.quantity} remis en rayon (lot(s) d'origine perime(s)/epuise(s))`
+          : `Retour ${returnNumber}`;
         await client.query(
           `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
            VALUES ($1, 'return', $2, $3, $4, $5, $6, $7)`,
-          [item.productId, item.quantity, stockAfter,
-           `Retour ${returnNumber}`, returnResult.rows[0].id, data.userId, data.storeId]
+          [item.productId, toShelve, stockAfter, note, returnResult.rows[0].id, data.userId, data.storeId]
         );
       }
 
@@ -233,6 +273,16 @@ export const returnRepository = {
             [ep.newProductId, -ep.quantity, stockAfter,
              `Echange ${returnNumber}`, returnResult.rows[0].id, data.userId, data.storeId]
           );
+          // F-045/F-036 — comme une vente, on decremente aussi un/des lot(s) FEFO
+          // du nouveau produit donne au client, pour garder product_lots en phase.
+          const fefo = await productLotRepository.planFefoVitrineConsumption(
+            client, ep.newProductId, data.storeId!, ep.quantity
+          );
+          for (const step of fefo) {
+            await productLotRepository.consumeVitrineSold(
+              client, step.lotId, step.qty, { type: 'exchange', id: returnResult.rows[0].id }
+            );
+          }
         }
       }
 
