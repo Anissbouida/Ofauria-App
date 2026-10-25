@@ -3,6 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productLossRepository } from '../repositories/product-loss.repository.js';
 import { productRepository } from '../repositories/product.repository.js';
 import { db } from '../config/database.js';
+import { productMaterialsUnitCost } from '../repositories/product-cost.helper.js';
 import { adjustProductStock, adjustVitrineStock } from '../repositories/product-stock.helper.js';
 import { fromProductLoss, persistEntry, reverseEntriesForSource } from '../services/journal-generator.service.js';
 import { FLAGS } from '../config/feature-flags.js';
@@ -54,10 +55,11 @@ export const productLossController = {
       return;
     }
 
-    // Calculate cost: use cost_price if available, otherwise use selling price
-    const costPrice = product.cost_price ? parseFloat(product.cost_price) : 0;
-    const sellingPrice = product.price ? parseFloat(product.price) : 0;
-    const unitCost = (costPrice > 0) ? costPrice : sellingPrice;
+    // F-020 — Valorisation au cout MATIERES reel (recette/plan), et non 0 :
+    // products.cost_price = 0 sur tout le catalogue, et valoriser au prix de
+    // vente surevaluerait la perte de la marge. On prend le cout matieres via
+    // v_product_unit_cost (helper), avec cost_price en dernier filet.
+    const unitCost = await productMaterialsUnitCost(db, productId);
     const totalCost = unitCost * quantity;
 
     // For production losses, ingredients were consumed but product failed

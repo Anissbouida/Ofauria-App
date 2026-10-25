@@ -3,6 +3,7 @@ import { getCategoryRole } from '@ofauria/shared';
 import { getUserTimezone } from '../utils/timezone.js';
 import { transferBackroomToVitrine } from './product-stock.helper.js';
 import { productLotRepository } from './product-lot.repository.js';
+import { productMaterialsUnitCost } from './product-cost.helper.js';
 import { computeSourcingAndCreatePlan } from './sourcing.helper.js';
 import { productionMarkupRepository } from './production-markup.repository.js';
 
@@ -839,8 +840,8 @@ export const replenishmentRepository = {
             // Record in product_losses for loss history
             const lossReason = it.lossReason || 'invendu_fin_journee';
             const lossType = lossReason === 'perime' ? 'perime' : 'vitrine';
-            const costResult = await client.query(`SELECT cost_price FROM products WHERE id = $1`, [it.productId]);
-            const unitCost = parseFloat(costResult.rows[0]?.cost_price) || 0;
+            // F-062 — cout matieres reel (recette/plan) au lieu de cost_price = 0.
+            const unitCost = await productMaterialsUnitCost(client, it.productId);
             await client.query(
               `INSERT INTO product_losses (product_id, quantity, loss_type, reason, reason_note, unit_cost, total_cost, ingredients_consumed, declared_by, store_id)
                VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9)`,

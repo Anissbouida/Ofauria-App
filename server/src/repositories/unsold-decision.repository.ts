@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { getUserTimezone, getLocalNow } from '../utils/timezone.js';
 import { productLotRepository } from './product-lot.repository.js';
+import { productMaterialsUnitCost } from './product-cost.helper.js';
 
 /**
  * Moteur de suggestion intelligent pour le devenir des invendus.
@@ -365,8 +366,10 @@ export const unsoldDecisionRepository = {
     // On skip en passation : les destinations y sont neutralisees a 'reexpose'
     // par le controller et aucun effet stock n'est applique.
     // Bonus 3.3 — On profite du chargement pour re-resoudre le unit_cost cote
-    // serveur (products.cost_price). Avant, unit_cost etait fourni par le
-    // client, laissant la porte ouverte a une valorisation truquee des pertes.
+    // serveur. Avant, unit_cost etait fourni par le client, laissant la porte
+    // ouverte a une valorisation truquee des pertes.
+    // F-062 — cout matieres reel (v_product_unit_cost : recette/plan), pas
+    // cost_price = 0 ; cost_price reste le dernier filet.
     const productIds = Array.from(new Set(data.decisions.map((d) => d.productId)));
     const serverUnitCost = new Map<string, number>();
     const productMeta = new Map<string, {
@@ -381,8 +384,11 @@ export const unsoldDecisionRepository = {
     }>();
     if (productIds.length > 0) {
       const costRes = await db.query(
-        `SELECT id, COALESCE(cost_price, 0)::float AS cost_price
-           FROM products WHERE id = ANY($1::uuid[])`,
+        `SELECT p.id,
+                COALESCE(vpuc.unit_cost, p.cost_price, 0)::float AS cost_price
+           FROM products p
+           LEFT JOIN v_product_unit_cost vpuc ON vpuc.product_id = p.id
+          WHERE p.id = ANY($1::uuid[])`,
         [productIds]
       );
       for (const r of costRes.rows) serverUnitCost.set(r.id, r.cost_price);
@@ -1069,7 +1075,9 @@ export const unsoldDecisionRepository = {
       const destroyed: { productId: string; quantity: number; reason: string }[] = [];
       for (const item of data.items) {
         if (item.quantity <= 0) continue;
-        const unitCost = item.unitCost ?? 0;
+        // F-062 — cout matieres reel cote serveur (recette/plan), pas la valeur
+        // client ni cost_price = 0.
+        const unitCost = await productMaterialsUnitCost(client, item.productId);
         const productName = item.productName ?? 'Produit';
 
         // N4/F2 — FEFO strict sur les lots expires uniquement (aucun lot frais

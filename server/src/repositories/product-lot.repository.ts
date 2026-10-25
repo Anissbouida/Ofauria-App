@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { getUserTimezone } from '../utils/timezone.js';
+import { productMaterialsUnitCost } from './product-cost.helper.js';
 
 /**
  * Date civile (YYYY-MM-DD) d'un instant, dans le fuseau du magasin.
@@ -515,7 +516,8 @@ export const productLotRepository = {
         throw new Error(`Ce produit a encore des lots actifs — utilisez l'envoi par lot`);
       }
 
-      const unitCost = parseFloat(row.cost_price) || 0;
+      // F-062 — cout matieres reel (recette/plan) au lieu de cost_price = 0.
+      const unitCost = await productMaterialsUnitCost(client, productId);
       const lostValue = total * unitCost;
 
       const reasonLabels: Record<string, string> = {
@@ -606,7 +608,8 @@ export const productLotRepository = {
       const vitrineQty = parseFloat(lot.vitrine_qty) || 0;
       const backroomQty = parseFloat(lot.backroom_qty) || 0;
       const totalLost = vitrineQty + backroomQty;
-      const unitCost = parseFloat(lot.cost_price) || 0;
+      // F-062 — cout matieres reel (recette/plan) au lieu de cost_price = 0.
+      const unitCost = await productMaterialsUnitCost(client, lot.product_id as string);
       const lostValue = totalLost * unitCost;
 
       const reasonLabels: Record<string, string> = {
@@ -730,9 +733,12 @@ export const productLotRepository = {
       const dueLotsResult = await client.query(
         `SELECT pl.id, pl.product_id, pl.store_id, pl.lot_number, pl.produced_at,
                 pl.vitrine_qty, pl.backroom_qty, pl.expires_at, pl.display_expires_at,
-                p.name as product_name, p.cost_price
+                p.name as product_name,
+                -- F-062 : cout matieres reel (v_product_unit_cost), cost_price en filet
+                COALESCE(vpuc.unit_cost, p.cost_price, 0) AS mat_unit_cost
          FROM product_lots pl
          JOIN products p ON p.id = pl.product_id
+         LEFT JOIN v_product_unit_cost vpuc ON vpuc.product_id = pl.product_id
          WHERE pl.status = 'active'
            AND (
              (pl.expires_at IS NOT NULL AND pl.expires_at <= CURRENT_DATE)
@@ -747,7 +753,7 @@ export const productLotRepository = {
         const vitrineQty = parseFloat(lot.vitrine_qty);
         const backroomQty = parseFloat(lot.backroom_qty);
         if (vitrineQty + backroomQty <= 0) continue;
-        const unitCost = parseFloat(lot.cost_price) || 0;
+        const unitCost = parseFloat(lot.mat_unit_cost) || 0;
 
         const dlcExpired = lot.expires_at && new Date(lot.expires_at) < new Date(new Date().toISOString().slice(0, 10));
         const dlvExpired = lot.display_expires_at && new Date(lot.display_expires_at) < new Date();

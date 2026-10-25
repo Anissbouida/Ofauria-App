@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { format } from 'date-fns';
 import { adjustProductStock } from './product-stock.helper.js';
+import { productMaterialsUnitCost } from './product-cost.helper.js';
 import { ingredientLotRepository } from './ingredient-lot.repository.js';
 import { bonSortieRepository } from './bon-sortie.repository.js';
 import { notificationRepository } from './notification.repository.js';
@@ -1910,8 +1911,9 @@ export const productionRepository = {
 
           // Perte valorisee au cout de revient, visible dans le module Controle.
           if (delta < 0) {
-            const costResult = await client.query(`SELECT cost_price FROM products WHERE id = $1`, [productId]);
-            const unitCost = parseFloat(costResult.rows[0]?.cost_price) || 0;
+            // F-020 — perte valorisee au cout matieres reel (recette/plan), pas
+            // cost_price = 0. Voir product-cost.helper.
+            const unitCost = await productMaterialsUnitCost(client, productId);
             await client.query(
               `INSERT INTO product_losses
                  (product_id, quantity, loss_type, reason, reason_note, unit_cost, total_cost,
