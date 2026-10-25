@@ -272,6 +272,10 @@ export default function CustomersPage() {
           <span className="odoo-breadcrumb-separator">/</span>
           <span className="odoo-breadcrumb-current">Fichier clients</span>
         </div>
+        <div style={{ flex: 1 }} />
+        <button onClick={openNew} className="odoo-btn-primary">
+          <Plus size={13} /> Nouveau client
+        </button>
       </div>
 
       <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -321,10 +325,6 @@ export default function CustomersPage() {
               <X size={12} /> Effacer les filtres
             </button>
           )}
-          <div style={{ flex: 1 }} />
-          <button onClick={openNew} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Plus size={13} /> Nouveau client
-          </button>
         </div>
 
         {isLoading ? (
