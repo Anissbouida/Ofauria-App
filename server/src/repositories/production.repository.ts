@@ -479,6 +479,20 @@ export const productionRepository = {
       // Insert ingredient needs with availability snapshot (per product)
       // First, get availability for all ingredients
       const ingredientIds = [...new Set([...needsMap.values()].map(n => n.ingredientId))];
+
+      // F-016 — Les ingredients non stockes (eau au robinet…) sont exclus des
+      // besoins : sinon chaque plan genere une ligne BSI en RUPTURE et « A
+      // commander » propose d'en acheter. Leur cout matieres reste porte par les
+      // vues de cout (recipe_ingredients), seul le flux stock/achat les ignore.
+      const nonStockeIds = new Set<string>();
+      if (ingredientIds.length > 0) {
+        const ns = await client.query(
+          `SELECT id FROM ingredients WHERE id = ANY($1::uuid[]) AND non_stocke = true`,
+          [ingredientIds]
+        );
+        for (const r of ns.rows) nonStockeIds.add(r.id as string);
+      }
+
       const availabilityMap = new Map<string, number>();
       for (const ingId of ingredientIds) {
         const invResult = await client.query(
@@ -489,6 +503,7 @@ export const productionRepository = {
       }
 
       for (const entry of needsMap.values()) {
+        if (nonStockeIds.has(entry.ingredientId)) continue;   // F-016 : eau & co. non stockes
         const available = availabilityMap.get(entry.ingredientId) || 0;
         await client.query(
           `INSERT INTO production_ingredient_needs (plan_id, ingredient_id, needed_quantity, available_quantity, product_id)
