@@ -196,6 +196,13 @@ try {
   const salesAfter = Number((await q(`SELECT count(*) AS n FROM sales`))[0].n);
   ok(pay.status === 201 && paidInv.status === 'paid', 'facture réglée par la direction', pay.json?.error?.message ?? paidInv.status);
   ok(salesAfter === salesBefore, 'le règlement ne crée aucun ticket de vente (pas de double CA)', { salesBefore, salesAfter });
+  const payLines = await q(`SELECT a.code, l.debit, l.credit, l.lettrage_id IS NOT NULL AS lettre
+                              FROM payments p JOIN journal_entries j ON j.source_id = p.id AND j.status = 'posted'
+                              JOIN journal_entry_lines l ON l.journal_entry_id = j.id JOIN accounts a ON a.id = l.account_id
+                             WHERE p.invoice_id = $1`, [bl.json.data.invoice.id]);
+  ok(payLines.some(l => l.code === '5141' && Number(l.debit) > 0) && payLines.some(l => l.code === '3421' && Number(l.credit) > 0 && l.lettre)
+     && !payLines.some(l => l.code.startsWith('7')),
+    'écriture du règlement : banque D / client 3421 C lettré, aucun produit', payLines.map(l => `${l.code} ${l.debit}/${l.credit}`));
   const cashierPay = await caisseA('POST', '/payments', { invoiceId: bl.json.data.invoice.id, type: 'income', amount: 1, paymentMethod: 'cash', paymentDate: new Date().toISOString().slice(0, 10) });
   ok(cashierPay.status === 403, 'la caisse ne peut pas encaisser une facture', cashierPay.status);
   const retired = await direction('POST', `/invoices/from-order/${pm.json.data.id}`);

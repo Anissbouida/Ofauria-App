@@ -628,20 +628,37 @@ export async function fromPaymentEmission(
     const code = await resolveCategoryAccountCode(client, p.category_id, 'expense');
     debitLine = { account_code: code, debit: round2(amount), credit: 0, label: p.description || 'Depense' };
   } else if (p.type === 'income') {
-    // C'est un encaissement direct sans facture : la TVA n'est pas isolee ici.
-    debitLine = { account_code: '5161', debit: round2(amount), credit: 0, label: p.description || 'Revenu' };
-    // Cas particulier inverse -> on construit specifiquement
-    const revCode = await resolveCategoryAccountCode(client, p.category_id, 'revenue');
+    // Encaissement : tresorerie au debit. Cheque / traite recus attendent leur
+    // remise en banque (5111 / 5113, soldes par l'ecriture d'encaissement).
+    const method = p.payment_method;
+    let treasuryCode = method === 'cash' ? '5161' : method === 'check' ? '5111' : method === 'traite' ? '5113' : '5141';
+    let journal: GeneratedEntry['journal_code'] = method === 'cash' ? 'CA' : method === 'check' || method === 'traite' ? 'OD' : 'BQ';
+    if (['cash', 'transfer', 'bank', 'card', 'mobile'].includes(method) && p.treasury_account_id) {
+      const ta = await treasuryAccount(client, p.treasury_account_id);
+      if (ta) { treasuryCode = ta.account_code; journal = ta.kind === 'cash' ? 'CA' : 'BQ'; }
+    }
+    // Reglement d'une facture client (correctif 2026-10-26) : il solde la creance 3421 du
+    // client, lettree avec la facture. Le chiffre d'affaires est deja porte par
+    // la facture (7111) : le recrediter en produit le comptait deux fois.
+    const inv = p.invoice_id
+      ? (await client.query(`SELECT invoice_type, customer_id, invoice_number FROM invoices WHERE id = $1`, [p.invoice_id])).rows[0]
+      : null;
+    const creditLine: GeneratedLine = inv?.invoice_type === 'emitted' && inv.customer_id
+      ? {
+          account_code: '3421', auxiliary_customer_id: inv.customer_id, debit: 0, credit: round2(amount),
+          label: `Reglement ${inv.invoice_number}`, lettrage_key: `inv-${p.invoice_id}`,
+        }
+      : { account_code: await resolveCategoryAccountCode(client, p.category_id, 'revenue'), debit: 0, credit: round2(amount), label: p.description || 'Revenu' };
     return {
-      journal_code: p.payment_method === 'cash' ? 'CA' : 'BQ',
+      journal_code: journal,
       entry_date: toIsoDate(p.payment_date),
       description: p.description || `Revenu ${p.reference || ''}`,
       source_kind: 'payment',
       source_id: p.id,
       store_id: p.store_id,
       lines: [
-        { account_code: p.payment_method === 'cash' ? '5161' : '5141', debit: round2(amount), credit: 0, label: 'Encaissement' },
-        { account_code: revCode, debit: 0, credit: round2(amount), label: p.description || 'Revenu' },
+        { account_code: treasuryCode, debit: round2(amount), credit: 0, label: 'Encaissement' },
+        creditLine,
       ],
     };
   } else {
@@ -725,6 +742,24 @@ export function fromPaymentCashing(p: PaymentRow): GeneratedEntry | null {
   if (amount <= 0) return null;
 
   const fromCode = p.payment_method === 'check' ? '5111' : '4415';
+
+  // Cheque / traite RECU d'un client : la remise en banque debite la banque et
+  // solde 5111 / 5113 (sens inverse d'un effet emis).
+  if (p.type === 'income') {
+    return {
+      journal_code: 'BQ',
+      entry_date: toIsoDate(p.cashed_at),
+      description: `Remise en banque ${p.payment_method === 'check' ? 'cheque' : 'traite'} ${p.reference || ''}`.trim(),
+      source_kind: 'payment',
+      source_id: p.id,
+      source_detail: 'cashing',
+      store_id: p.store_id,
+      lines: [
+        { account_code: '5141', debit: round2(amount), credit: 0, label: 'Credit bancaire' },
+        { account_code: p.payment_method === 'check' ? '5111' : '5113', debit: 0, credit: round2(amount), label: 'Effet remis a l\'encaissement' },
+      ],
+    };
+  }
 
   return {
     journal_code: 'BQ',
