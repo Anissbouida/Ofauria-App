@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ClipboardCheck, CheckCircle2, XCircle, Clock, Inbox, Send, History, UserCheck, Trash2, Loader2 } from 'lucide-react';
+import { ClipboardCheck, CheckCircle2, XCircle, Clock, Inbox, Send, History, UserCheck, Trash2, Loader2, ChevronDown, ChevronRight, FileDown, Truck } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ROLE_LABELS, APPROVAL_DOC_TYPES, APPROVAL_REQUEST_STATUS_LABELS, type ApprovalDocTypeDef } from '@ofauria/shared';
@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 
 /**
  * Boîte « À approuver » (lot 8). Les demandes que je peux trancher, celles
@@ -16,7 +17,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
  */
 
 const DOC_TYPES = APPROVAL_DOC_TYPES as Record<string, ApprovalDocTypeDef>;
-const money = (v: string | number | null | undefined) => v === null || v === undefined ? '' : `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH`;
+const money = (v: string | number | null | undefined) => v === null || v === undefined ? '' : `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 const when = (d: string) => format(new Date(d), 'dd MMM yyyy à HH:mm', { locale: fr });
 const statusTag: Record<string, string> = { pending: 'odoo-tag-orange', approved: 'odoo-tag-green', rejected: 'odoo-tag-red', cancelled: 'odoo-tag-grey' };
 const roleLabel = (c: string | null) => (c ? (ROLE_LABELS as Record<string, string>)[c] ?? c : '');
@@ -48,12 +49,117 @@ function Steps({ r }: { r: ApprovalRequest }) {
   );
 }
 
+const KIND_TAG: Record<string, { label: string; cls: string }> = {
+  consumable: { label: 'Consommable', cls: 'odoo-tag-purple' },
+  service: { label: 'Service', cls: 'odoo-tag-blue' },
+  asset: { label: 'Immobilisation', cls: 'odoo-tag-orange' },
+};
+const qty = (v: unknown) => Number(v ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 3 });
+const dateOnly = (d: unknown) => (d ? format(new Date(String(d)), 'dd MMM yyyy', { locale: fr }) : '—');
+
+/**
+ * Contenu du bon de commande soumis : l'approbateur décide sur pièce (fournisseur,
+ * lignes, prix, total), sans quitter la boîte d'approbation.
+ */
+function PurchaseOrderDetails({ poId }: { poId: string }) {
+  const { data: po, isLoading, isError } = useQuery({
+    queryKey: ['purchase-orders', poId],
+    queryFn: () => purchaseOrdersApi.getById(poId),
+    retry: false,
+  });
+  if (isLoading) return <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}><Loader2 size={12} className="animate-spin" style={{ verticalAlign: -2 }} /> Chargement du bon…</div>;
+  if (isError || !po) return <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Détails du bon non accessibles avec votre profil.</div>;
+
+  const items = (po.items ?? []) as Record<string, any>[];
+  const total = items.reduce((t, it) => t + Number(it.quantity_ordered ?? 0) * Number(it.unit_price ?? 0), 0);
+  const downloadPdf = async () => {
+    try {
+      const response = await purchaseOrdersApi.downloadPdf(poId);
+      const url = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch { notify.error('PDF indisponible'); }
+  };
+  const cell: React.CSSProperties = { padding: '6px 8px', borderBottom: '1px solid var(--odoo-border)', fontSize: '0.8125rem' };
+  const num: React.CSSProperties = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
+
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, fontSize: '0.8125rem' }}>
+        <div>
+          <div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 4 }}><Truck size={11} /> Fournisseur</div>
+          <div style={{ fontWeight: 600 }}>{po.supplier_name}</div>
+          {(po.supplier_contact || po.supplier_phone) && (
+            <div style={{ color: 'var(--odoo-text-muted)' }}>{[po.supplier_contact, po.supplier_phone].filter(Boolean).join(' · ')}</div>
+          )}
+        </div>
+        <div>
+          <div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Commandé le</div>
+          <div>{dateOnly(po.order_date)}{po.created_by_name ? ` par ${po.created_by_name}` : ''}</div>
+        </div>
+        <div>
+          <div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Livraison prévue</div>
+          <div>{dateOnly(po.expected_delivery_date)}</div>
+        </div>
+      </div>
+      {po.notes && <div style={{ fontSize: '0.8125rem' }}><b>Notes :</b> {po.notes}</div>}
+      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: 'var(--odoo-bg-alt, #f8f9fa)', textAlign: 'left' }}>
+              <th style={{ ...cell, fontWeight: 600 }}>Article</th>
+              <th style={{ ...num, fontWeight: 600 }}>Quantité</th>
+              <th style={{ ...num, fontWeight: 600 }}>Prix unit. HT</th>
+              <th style={{ ...num, fontWeight: 600 }}>Total HT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(it => {
+              const tag = KIND_TAG[it.kind as string];
+              const lineTotal = Number(it.quantity_ordered ?? 0) * Number(it.unit_price ?? 0);
+              return (
+                <tr key={it.id as string}>
+                  <td style={cell}>
+                    {it.ingredient_name as string}
+                    {tag && <span className={`odoo-tag ${tag.cls}`} style={{ marginLeft: 6, fontSize: '0.625rem' }}>{tag.label}</span>}
+                  </td>
+                  <td style={num}>
+                    {qty(it.quantity_ordered)} {it.ingredient_unit === 'unit' ? 'u' : it.ingredient_unit}
+                    {it.line_container_label && Number(it.qty_container) > 0 && (
+                      <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{qty(it.qty_container)} × {String(it.line_container_label).toLowerCase()}</div>
+                    )}
+                  </td>
+                  <td style={num}>{it.unit_price != null ? money(it.unit_price) : <span style={{ color: '#b45309' }}>à définir</span>}</td>
+                  <td style={{ ...num, fontWeight: 600 }}>{money(lineTotal)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={3} style={{ ...cell, borderBottom: 'none', textAlign: 'right', fontWeight: 600 }}>{items.length} ligne{items.length > 1 ? 's' : ''} · Total HT</td>
+              <td style={{ ...num, borderBottom: 'none', fontWeight: 700 }}>{money(total)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div>
+        <button type="button" className="odoo-btn-secondary" onClick={downloadPdf} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <FileDown size={13} /> Voir le PDF du bon
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RequestCard({ r, decide, cancel }: {
   r: ApprovalRequest;
   decide?: (id: string, action: 'approve' | 'reject', reason: string) => void;
   cancel?: (id: string) => void;
 }) {
   const [reason, setReason] = useState('');
+  // Ouvert d'office quand il faut décider : on approuve sur pièce.
+  const [showDetails, setShowDetails] = useState(!!decide && r.status === 'pending');
   const values = r.summary?.values ?? {};
   const def = DOC_TYPES[r.doc_type];
   return (
@@ -74,9 +180,18 @@ function RequestCard({ r, decide, cancel }: {
       <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
         Demandé par <b style={{ color: 'var(--odoo-text)' }}>{r.requested_by_name}</b> le {when(r.requested_at)}
         {Object.keys(values).length > 0 && (
-          <> · {Object.entries(values).map(([k, v]) => `${def?.fields[k]?.label ?? k} : ${typeof v === 'number' ? v.toLocaleString('fr-FR') : String(v)}${def?.fields[k]?.unit ? ` ${def.fields[k].unit}` : ''}`).join(' · ')}</>
+          <> · {Object.entries(values).map(([k, v]) => `${def?.fields[k]?.label ?? k} : ${typeof v === 'number' ? v.toLocaleString('fr-FR', { maximumFractionDigits: 2 }) : String(v)}${def?.fields[k]?.unit ? ` ${def.fields[k].unit}` : ''}`).join(' · ')}</>
         )}
       </div>
+      {r.doc_type === 'purchase_order' && (
+        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '8px 10px' }}>
+          <button type="button" onClick={() => setShowDetails(v => !v)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: '0.8125rem', width: '100%', textAlign: 'left' }}>
+            {showDetails ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Détails du bon de commande
+          </button>
+          {showDetails && <div style={{ marginTop: 10 }}><PurchaseOrderDetails poId={r.doc_id} /></div>}
+        </div>
+      )}
       <Steps r={r} />
       {r.status !== 'pending' && r.decision_reason && <div style={{ fontSize: '0.8125rem' }}><b>Motif :</b> {r.decision_reason}</div>}
       {r.status === 'approved' && r.apply_error && (
