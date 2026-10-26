@@ -98,11 +98,25 @@ function parseLocalDate(s: string) {
   return new Date(y, m - 1, d);
 }
 
+/** Encaissement d'une facture client (et non une recette de caisse ni un revenu divers). */
+const isClientReceipt = (p: Record<string, any>) => p.type === 'income' && p.invoice_type === 'emitted';
+const CAISSE_PAY_LABELS: Record<string, string> = {
+  cash: 'Espèces', bank: 'Virement', transfer: 'Virement', check: 'Chèque', traite: 'Traite', card: 'Carte', mobile: 'Mobile',
+};
+const caissePayLabel = (m: unknown) => CAISSE_PAY_LABELS[String(m)] ?? String(m ?? '');
+/** Libellé d'une sortie : fournisseur, salarié, catégorie ou description. */
+const exitLabel = (p: Record<string, any>) =>
+  (p.supplier_name as string)
+  || (p.employee_first_name ? `${p.employee_first_name} ${p.employee_last_name || ''}`.trim() : '')
+  || (p.description as string) || (p.category_name as string) || 'Paiement';
+
 interface DayData {
   date: string;
   dayNum: number;
   payments: Record<string, any>[];
   entries: number;
+  /** Part des entrées venant du règlement de factures clients. */
+  clientReceipts: number;
   exits: number;
   cashCaissiere: number;
   cashSysteme: number;
@@ -114,6 +128,33 @@ interface DayData {
   cashNetCumul: number;
   cardCumul: number;
   solde: number;
+}
+
+/** Détail des mouvements d'un jour : règlements clients, autres entrées, sorties. */
+function DayMovements({ payments }: { payments: Record<string, any>[] }) {
+  const groups: Array<{ title: string; rows: Record<string, any>[]; sign: 1 | -1; label: (p: Record<string, any>) => string }> = [
+    { title: 'Règlements clients', rows: payments.filter(isClientReceipt), sign: 1,
+      label: p => `${p.invoice_number} · ${p.customer_name || 'Client'} · ${caissePayLabel(p.payment_method)}${p.reference ? ` · ${p.reference}` : ''}` },
+    { title: 'Autres entrées', rows: payments.filter(p => p.type === 'income' && !isClientReceipt(p)), sign: 1,
+      label: p => `${(p.description as string) || (p.category_name as string) || 'Revenu'} · ${caissePayLabel(p.payment_method)}` },
+    { title: 'Sorties', rows: payments.filter(p => p.type !== 'income'), sign: -1,
+      label: p => `${exitLabel(p)} · ${caissePayLabel(p.payment_method)}` },
+  ];
+  return (
+    <>
+      {groups.filter(g => g.rows.length > 0).map(g => (
+        <div key={g.title} style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--theme-bg-separator)' }}>
+          <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em', marginBottom: 4 }}>{g.title}</div>
+          {g.rows.map((p, idx) => (
+            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', padding: '2px 0' }}>
+              <span style={{ color: 'var(--theme-text-muted)' }}>{g.label(p)}</span>
+              <span style={{ fontWeight: 600, color: g.sign > 0 ? '#28a745' : '#b02a37' }}>{g.sign > 0 ? '+' : '−'}{n(parseFloat(p.amount as string) || 0)} DH</span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </>
+  );
 }
 
 function buildDailyData(
@@ -175,13 +216,14 @@ function buildDailyData(
     // Cash réel entrant dans le tiroir (HORS carte, qui part en banque) → alimente le solde cash.
     const cashIn = hasSession ? session.cashCaissiere : cashSysteme;
 
-    let entries = 0, exits = 0;
+    let entries = 0, exits = 0, clientReceipts = 0;
     let cashEntries = 0, bankEntries = 0, cashExits = 0, bankExits = 0;
     for (const p of dayPayments) {
       const amount = parseFloat(p.amount as string) || 0;
       const isCash = (p.payment_method as string) === 'cash';
       if (p.type === 'income') {
         entries += amount;
+        if (isClientReceipt(p)) clientReceipts += amount;
         if (isCash) cashEntries += amount; else bankEntries += amount;
       } else {
         exits += amount;
@@ -198,6 +240,7 @@ function buildDailyData(
         dayNum: day,
         payments: dayPayments,
         entries,
+        clientReceipts,
         exits,
         cashCaissiere,
         cashSysteme,
@@ -1534,9 +1577,10 @@ function CaisseTab() {
   }, [data, year, month]);
 
   const monthTotals = useMemo(() => {
-    let entries = 0, exits = 0, cashCaissiere = 0, cashSysteme = 0, cardReceipts = 0, totalSales = 0, saleCount = 0;
+    let entries = 0, clientReceipts = 0, exits = 0, cashCaissiere = 0, cashSysteme = 0, cardReceipts = 0, totalSales = 0, saleCount = 0;
     for (const d of days) {
       entries += d.entries;
+      clientReceipts += d.clientReceipts;
       exits += d.exits;
       cashCaissiere += d.cashCaissiere;
       cashSysteme += d.cashSysteme;
@@ -1546,7 +1590,7 @@ function CaisseTab() {
     }
     const lastDay = days[days.length - 1];
     return {
-      entries, exits, cashCaissiere, cashSysteme, cardReceipts, totalSales, saleCount,
+      entries, clientReceipts, otherEntries: entries - clientReceipts, exits, cashCaissiere, cashSysteme, cardReceipts, totalSales, saleCount,
       ecart: cashCaissiere - (cashSysteme + cardReceipts),
       totalRecettes: cashCaissiere + cardReceipts + entries,
       cashNet: lastDay?.cashNetCumul || data?.previousBalance?.cashNet || 0,
@@ -1572,7 +1616,9 @@ function CaisseTab() {
       rows.push(['', 'TOTAL ENCAISSE', '', n(d.cashCaissiere)]);
       rows.push(['', 'CASH REEL', '', n(d.cashSysteme)]);
       rows.push(['', 'CARTE', '', n(d.cardReceipt)]);
-      if (d.entries > 0) rows.push(['', 'AUTRES ENTREES', '', n(d.entries)]);
+      if (d.clientReceipts > 0) rows.push(['', 'REGLEMENTS CLIENTS (FACTURES)', '', n(d.clientReceipts)]);
+      if (d.entries - d.clientReceipts > 0) rows.push(['', 'AUTRES ENTREES', '', n(d.entries - d.clientReceipts)]);
+      if (d.exits > 0) rows.push(['', 'SORTIES (PAIEMENTS)', '', n(-d.exits)]);
       rows.push(['', 'ECART CAISSE', '', n(d.ecart)]);
       rows.push(['', 'SOLDE CUMULE', '', n(d.solde)]);
       rows.push(['', '', '', '']);
@@ -1654,8 +1700,9 @@ function CaisseTab() {
           <div className="odoo-stat-card-label"><Coins size={11} style={{ display: 'inline', marginRight: 4 }} />Recettes</div>
           <div className="odoo-stat-card-value">{n(monthTotals.totalRecettes)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
           <div className="odoo-stat-card-sub">
-            Cash {n(monthTotals.cashCaissiere)} · Carte {n(monthTotals.cardReceipts)}
-            {monthTotals.entries > 0 && ` · Autres ${n(monthTotals.entries)}`}
+            Caisse {n(monthTotals.cashCaissiere)} · Carte {n(monthTotals.cardReceipts)}
+            {monthTotals.clientReceipts > 0 && ` · Règlements clients ${n(monthTotals.clientReceipts)}`}
+            {monthTotals.otherEntries > 0 && ` · Autres ${n(monthTotals.otherEntries)}`}
           </div>
         </div>
         <div className="odoo-stat-card">
@@ -1717,6 +1764,39 @@ function CaisseTab() {
           <p style={{ fontSize: '0.8125rem' }}>Aucune activité pour ce mois</p>
         </div>
       ) : (
+        <>
+        {monthTotals.clientReceipts > 0 && (
+          <div className="odoo-section">
+            <div className="odoo-section-header" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Receipt size={13} /> Règlements clients du mois
+              <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--theme-text-muted)' }}>
+                · factures encaissées par la direction, hors ventes de caisse
+              </span>
+              <span style={{ marginLeft: 'auto', color: '#1e7e4f' }}>+{n(monthTotals.clientReceipts)} DH</span>
+            </div>
+            <table className="odoo-table" style={{ margin: 0 }}>
+              <thead>
+                <tr>
+                  <th>Date</th><th>Facture</th><th>Client</th><th>Mode</th><th>Référence</th>
+                  <th style={{ textAlign: 'right' }}>Montant</th>
+                </tr>
+              </thead>
+              <tbody>
+                {days.flatMap(d => d.payments.filter(isClientReceipt)).map(p => (
+                  <tr key={p.id as string} style={{ cursor: 'default' }}>
+                    <td style={{ whiteSpace: 'nowrap' }}>{format(parseLocalDate(String(p.payment_date).slice(0, 10)), 'dd/MM/yyyy')}</td>
+                    <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{p.invoice_number as string}</td>
+                    <td>{(p.customer_name as string) || '—'}</td>
+                    <td><span className={`odoo-tag ${p.payment_method === 'cash' ? 'odoo-tag-green' : 'odoo-tag-blue'}`}>{caissePayLabel(p.payment_method)}</span>
+                      <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginLeft: 6 }}>{p.payment_method === 'cash' ? 'solde cash' : 'solde banque'}</span></td>
+                    <td style={{ color: 'var(--theme-text-muted)' }}>{(p.reference as string) || '—'}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#1e7e4f' }}>+{n(parseFloat(p.amount as string) || 0)} DH</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <div className="odoo-section">
           <div className="odoo-section-header">Journal quotidien</div>
           <table className="odoo-table" style={{ margin: 0 }}>
@@ -1727,6 +1807,9 @@ function CaisseTab() {
                 <th style={{ textAlign: 'right' }}>Ventes</th>
                 <th style={{ textAlign: 'right' }}>Total encaissé</th>
                 <th style={{ textAlign: 'right' }}>Carte</th>
+                <th style={{ textAlign: 'right' }} title="Encaissements de factures clients (professionnels)">Règlements clients</th>
+                <th style={{ textAlign: 'right' }}>Autres entrées</th>
+                <th style={{ textAlign: 'right' }} title="Fournisseurs, salaires, dépenses">Sorties</th>
                 <th style={{ textAlign: 'right' }}>Écart</th>
                 <th style={{ textAlign: 'right' }}>Solde cumulé</th>
               </tr>
@@ -1747,6 +1830,9 @@ function CaisseTab() {
                       <td style={{ textAlign: 'right' }}>{day.totalSales > 0 ? n(day.totalSales) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
                       <td style={{ textAlign: 'right' }}>{day.cashCaissiere > 0 ? n(day.cashCaissiere) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
                       <td style={{ textAlign: 'right' }}>{day.cardReceipt > 0 ? n(day.cardReceipt) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
+                      <td style={{ textAlign: 'right', color: '#1e7e4f', fontWeight: day.clientReceipts > 0 ? 600 : undefined }}>{day.clientReceipts > 0 ? `+${n(day.clientReceipts)}` : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
+                      <td style={{ textAlign: 'right', color: '#1e7e4f' }}>{day.entries - day.clientReceipts > 0 ? `+${n(day.entries - day.clientReceipts)}` : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
+                      <td style={{ textAlign: 'right', color: '#b02a37' }}>{day.exits > 0 ? `−${n(day.exits)}` : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
                       <td style={{ textAlign: 'right' }}>
                         {day.ecart !== 0 ? <span className={`odoo-tag ${ecartTagClass}`}>{day.ecart > 0 ? '+' : ''}{n(day.ecart)}</span> : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                       </td>
@@ -1754,7 +1840,7 @@ function CaisseTab() {
                     </tr>
                     {expanded && (
                       <tr>
-                        <td colSpan={7} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
+                        <td colSpan={10} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
                             <div>
                               <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Cash réel</div>
@@ -1777,20 +1863,7 @@ function CaisseTab() {
                               <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cardCumul)} DH</div>
                             </div>
                           </div>
-                          {day.entries > 0 && day.payments.filter(p => p.type === 'income').length > 0 && (
-                            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--theme-bg-separator)' }}>
-                              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em', marginBottom: 4 }}>Autres entrées</div>
-                              {day.payments.filter(p => p.type === 'income').map((p, idx) => {
-                                const amount = parseFloat(p.amount as string) || 0;
-                                return (
-                                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', padding: '2px 0' }}>
-                                    <span style={{ color: 'var(--theme-text-muted)' }}>{(p.description as string) || (p.category_name as string) || 'Revenu'}</span>
-                                    <span style={{ fontWeight: 600, color: '#28a745' }}>+{n(amount)} DH</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
+                          <DayMovements payments={day.payments} />
                         </td>
                       </tr>
                     )}
@@ -1800,6 +1873,7 @@ function CaisseTab() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {/* Monthly recap */}
@@ -1823,16 +1897,28 @@ function CaisseTab() {
                 <td style={{ color: 'var(--theme-text-muted)' }}>Carte Encaissée</td>
                 <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(monthTotals.cardReceipts)} DH</td>
               </tr>
-              {monthTotals.entries > 0 && (
+              {monthTotals.clientReceipts > 0 && (
                 <tr>
-                  <td style={{ color: 'var(--theme-text-muted)' }}>Autres Entrées</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(monthTotals.entries)} DH</td>
+                  <td style={{ color: 'var(--theme-text-muted)' }}>Règlements clients (factures)</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600, color: '#1e7e4f' }}>{n(monthTotals.clientReceipts)} DH</td>
+                </tr>
+              )}
+              {monthTotals.otherEntries > 0 && (
+                <tr>
+                  <td style={{ color: 'var(--theme-text-muted)' }}>Autres entrées</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(monthTotals.otherEntries)} DH</td>
                 </tr>
               )}
               <tr>
                 <td style={{ fontWeight: 600 }}>Total Recettes</td>
                 <td style={{ textAlign: 'right', fontWeight: 700, color: '#28a745' }}>{n(monthTotals.totalRecettes)} DH</td>
               </tr>
+              {monthTotals.exits > 0 && (
+                <tr>
+                  <td style={{ color: 'var(--theme-text-muted)' }}>Sorties (fournisseurs, salaires, dépenses)</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600, color: '#b02a37' }}>−{n(monthTotals.exits)} DH</td>
+                </tr>
+              )}
               {monthTotals.ecart !== 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Écart Caisse</td>
@@ -3685,7 +3771,7 @@ function ResumeTab() {
           date: `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
           dayNum: d,
           payments: [],
-          entries: 0, exits: 0,
+          entries: 0, clientReceipts: 0, exits: 0,
           cashCaissiere: 0, cashSysteme: 0, cardReceipt: 0, ecart: 0, totalRecettes: 0,
           totalSales: 0, saleCount: 0,
           cashNetCumul: lastCashNet, cardCumul: lastCardCumul, solde: lastSolde,
@@ -3696,16 +3782,16 @@ function ResumeTab() {
   }, [days, data, year, month]);
 
   const totals = useMemo(() => {
-    let entries = 0, exits = 0, cashR = 0, cardR = 0, sales = 0, salesCount = 0;
+    let entries = 0, clientReceipts = 0, exits = 0, cashR = 0, cardR = 0, sales = 0, salesCount = 0;
     for (const d of days) {
-      entries += d.entries; exits += d.exits;
+      entries += d.entries; clientReceipts += d.clientReceipts; exits += d.exits;
       cashR += d.cashCaissiere; cardR += d.cardReceipt;
       sales += d.totalSales; salesCount += d.saleCount;
     }
     const last = allDays[allDays.length - 1];
     const totalEntrees = cashR + cardR + entries;
     const resultat = totalEntrees - exits;
-    return { entries, exits, cashR, cardR, sales, salesCount, recettes: cashR + cardR, totalEntrees, resultat, cashNet: last?.cashNetCumul || 0, cardCumul: last?.cardCumul || 0, solde: last?.solde || 0 };
+    return { entries, clientReceipts, exits, cashR, cardR, sales, salesCount, recettes: cashR + cardR, totalEntrees, resultat, cashNet: last?.cashNetCumul || 0, cardCumul: last?.cardCumul || 0, solde: last?.solde || 0 };
   }, [days, allDays]);
 
   const handleExport = () => {
@@ -3745,7 +3831,9 @@ function ResumeTab() {
           <div className="odoo-stat-card-label"><ArrowUpRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total entrées</div>
           <div className="odoo-stat-card-value" style={{ color: '#28a745' }}>{n(totals.totalEntrees)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
           <div className="odoo-stat-card-sub">
-            Cash {n(totals.cashR)} · Carte {n(totals.cardR)}{totals.entries > 0 && ` · Autres ${n(totals.entries)}`}
+            Caisse {n(totals.cashR)} · Carte {n(totals.cardR)}
+            {totals.clientReceipts > 0 && ` · Règlements clients ${n(totals.clientReceipts)}`}
+            {totals.entries - totals.clientReceipts > 0 && ` · Autres ${n(totals.entries - totals.clientReceipts)}`}
           </div>
         </div>
         <div className="odoo-stat-card">

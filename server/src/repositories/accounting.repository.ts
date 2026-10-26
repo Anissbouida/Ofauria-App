@@ -49,11 +49,16 @@ export const caisseRepository = {
               (CASE WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at ELSE p.payment_date END) AS payment_date,
               p.type, p.amount, p.payment_method, p.description, p.reference,
               s.name as supplier_name, ec.name as category_name, ec.type as category_type,
-              e.first_name as employee_first_name, e.last_name as employee_last_name
+              e.first_name as employee_first_name, e.last_name as employee_last_name,
+              -- Règlement d'une facture client : affiché à part dans la Caisse.
+              p.invoice_id, inv.invoice_number, inv.invoice_type,
+              COALESCE(NULLIF(c.company_name, ''), concat_ws(' ', c.first_name, c.last_name)) AS customer_name
        FROM payments p
        LEFT JOIN suppliers s ON s.id = p.supplier_id
        LEFT JOIN expense_categories ec ON ec.id = p.category_id
        LEFT JOIN employees e ON e.id = p.employee_id
+       LEFT JOIN invoices inv ON inv.id = p.invoice_id
+       LEFT JOIN customers c ON c.id = inv.customer_id
        WHERE (p.payment_method NOT IN ('check', 'traite') OR p.cashed_at IS NOT NULL)
          AND (CASE WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at ELSE p.payment_date END) BETWEEN $1 AND $2
          ${storeFilterP}
