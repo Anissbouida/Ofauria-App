@@ -4,7 +4,7 @@ import { nextDocumentNumber } from '../utils/document-number.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { postOrQueue, postGoodsReceiptsForPo } from '../services/ledger-posting.service.js';
-import { fromInvoice, fromPaymentEmission, fromSale, persistEntry, autoLettrer, reverseEntriesForSource, regenerateInvoiceEntry, regeneratePaymentEntries, fromGoodsReceipt } from '../services/journal-generator.service.js';
+import { fromInvoice, fromPaymentEmission, fromSale, persistEntry, autoLettrer, reverseEntriesForSource, regenerateInvoiceEntry, regeneratePaymentEntries, fromGoodsReceipt, cardCommissionPct as readCardCommissionPct } from '../services/journal-generator.service.js';
 import { round2, lineTvaAmount, headerTotalsFromLines } from '../utils/tva.js';
 import { attachDeliveryNoteToOrderInvoice } from '../services/order-delivery-note.js';
 import { withActor, assertReasonCode, recordAction } from '../services/document-actions.service.js';
@@ -256,7 +256,9 @@ export const caisseRepository = {
     const bankExits = parseFloat(prevPayments.rows[0].bank_exits);
     const prevSessionCash = parseFloat(prevSessions.rows[0].cash_total);
     const prevSalesCash = parseFloat(prevSales.rows[0].cash_total);
-    const prevCardSales = parseFloat(prevSales.rows[0].card_total);
+    // Mig 356 : la banque ne reçoit que le net des ventes carte (commission du prestataire).
+    const cardCommissionPct = await readCardCommissionPct(db);
+    const prevCardSales = parseFloat(prevSales.rows[0].card_total) * (1 - cardCommissionPct / 100);
 
     // C3 — Somme des 3 sources complementaires (garanties disjointes par les
     // NOT EXISTS de prevSales : sessions | manual | POS-sans-l'un-ni-l'autre).
@@ -287,6 +289,7 @@ export const caisseRepository = {
       sessions: sessions.rows,
       sales: sales.rows,
       reconciliationAlerts,
+      cardCommissionPct,
       previousBalance: {
         cashNet: anchorCash + cashEntries + prevCash - cashExits,
         cardCumul: anchorCard + prevCardSales + bankEntries - bankExits,

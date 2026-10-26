@@ -68,6 +68,24 @@ export interface GeneratedEntry {
 /* ═══ Helpers ═══ */
 function round2(n: number): number { return Math.round(n * 100) / 100; }
 
+/** Commission du prestataire carte (mig 356, paramètre accounting.card_commission), en %. */
+export async function cardCommissionPct(client: PoolClient | typeof db): Promise<number> {
+  const r = await client.query(`SELECT value->>'pct' AS pct FROM module_parameters WHERE key = 'accounting.card_commission'`);
+  const pct = parseFloat(r.rows[0]?.pct ?? '0');
+  return Number.isFinite(pct) && pct > 0 ? pct : 0;
+}
+
+/**
+ * Encaissement carte : la banque ne reçoit que le net, la commission retenue par
+ * le prestataire est une charge (6147 Services bancaires).
+ */
+function cardLines(amount: number, pct: number, label: string): GeneratedLine[] {
+  const commission = round2(amount * pct / 100);
+  const lines: GeneratedLine[] = [{ account_code: '5141', debit: round2(amount - commission), credit: 0, label }];
+  if (commission > 0) lines.push({ account_code: '6147', debit: commission, credit: 0, label: `Commission carte ${pct} %` });
+  return lines;
+}
+
 /** Format ISO yyyy-MM-dd quel que soit le type renvoye par pg (Date ou string). */
 function toIsoDate(raw: unknown): string {
   if (!raw) return '';
@@ -459,7 +477,9 @@ export async function fromSale(
     const cashPart = parseFloat(String(s.cash_amount ?? 0)) || 0;
     const cardPart = parseFloat(String(s.card_amount ?? 0)) || 0;
     if (cashPart > 0) lines.push({ account_code: '5161', debit: round2(cashPart), credit: 0, label: `Vente ${s.sale_number} (especes)` });
-    if (cardPart > 0) lines.push({ account_code: '5141', debit: round2(cardPart), credit: 0, label: `Vente ${s.sale_number} (carte)` });
+    if (cardPart > 0) lines.push(...cardLines(cardPart, await cardCommissionPct(client), `Vente ${s.sale_number} (carte)`));
+  } else if (s.payment_method === 'card') {
+    lines.push(...cardLines(total, await cardCommissionPct(client), `Vente ${s.sale_number}`));
   } else {
     lines.push({ account_code: treasuryCode, debit: round2(total), credit: 0, label: `Vente ${s.sale_number}` });
   }
@@ -504,14 +524,14 @@ export interface ShiftEntryRow {
  * La saisie manuelle est AUTORITAIRE : c'est le montant physiquement compte
  * (montant "reel"), qui prime sur le POS. On comptabilise les montants reels :
  *   especes (matin+soir) -> 5161 Caisse D
- *   carte   (matin+soir) -> 5141 Banque D
+ *   carte   (matin+soir) -> 5141 Banque D (net) + 6147 commission D (mig 356)
  *   total                -> 7111 Ventes C
  *
  * L'anti-double-comptage est gere cote POS (fromSale ignore les jours ayant une
  * saisie manuelle), donc ici on genere toujours des qu'il y a un montant.
  */
 export async function fromManualShiftEntry(
-  _client: PoolClient | typeof db,
+  client: PoolClient | typeof db,
   e: ShiftEntryRow
 ): Promise<GeneratedEntry | null> {
   const cash = (parseFloat(String(e.matin_cash_reel ?? 0)) || 0) + (parseFloat(String(e.soir_cash_reel ?? 0)) || 0);
@@ -523,7 +543,7 @@ export async function fromManualShiftEntry(
 
   const lines: GeneratedLine[] = [];
   if (cash > 0)  lines.push({ account_code: '5161', debit: round2(cash),  credit: 0, label: 'Especes (matin+soir)' });
-  if (carte > 0) lines.push({ account_code: '5141', debit: round2(carte), credit: 0, label: 'Carte (matin+soir)' });
+  if (carte > 0) lines.push(...cardLines(carte, await cardCommissionPct(client), 'Carte (matin+soir)'));
   lines.push({ account_code: '7111', debit: 0, credit: total, label: `Ventes du jour ${date}` });
 
   return {

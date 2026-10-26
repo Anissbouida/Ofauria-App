@@ -27,7 +27,8 @@
     "backfill:cmup": "tsx scripts/backfill-unit-cost-cmup.ts",
     "e2e:creances": "tsx scripts/e2e-creances.ts",
     "e2e:ventes-pros": "tsx scripts/e2e-ventes-pros.ts",
-    "e2e:commandes": "tsx scripts/e2e-commandes.ts"
+    "e2e:commandes": "tsx scripts/e2e-commandes.ts",
+    "e2e:commission-carte": "tsx scripts/e2e-commission-carte.ts"
   },
   "dependencies": {
     "@ofauria/shared": "*",

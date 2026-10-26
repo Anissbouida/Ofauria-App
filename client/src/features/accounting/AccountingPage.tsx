@@ -121,6 +121,8 @@ interface DayData {
   cashCaissiere: number;
   cashSysteme: number;
   cardReceipt: number;
+  /** Commission du prestataire carte retenue sur cardReceipt (mig 356). */
+  cardCommission: number;
   ecart: number;
   totalRecettes: number;
   totalSales: number;
@@ -164,6 +166,7 @@ function buildDailyData(
   previousBalance: { cashNet: number; cardCumul: number },
   year: number,
   month: number,
+  cardCommissionPct = 0,
 ): DayData[] {
   const daysInMonth = getDaysInMonth(new Date(year, month - 1));
   const sessionMap = new Map<string, { cashCaissiere: number; cashSysteme: number; card: number }>();
@@ -213,6 +216,8 @@ function buildDailyData(
     const cashCaissiere = hasSession
       ? (session.cashCaissiere) // actual_amount saisi par la caissiere
       : (cashSysteme + cardReceipt); // fallback: total ventes
+    // La banque ne reçoit que le net : le prestataire retient sa commission sur chaque transaction.
+    const cardCommission = Math.round(cardReceipt * cardCommissionPct) / 100;
     // Cash réel entrant dans le tiroir (HORS carte, qui part en banque) → alimente le solde cash.
     const cashIn = hasSession ? session.cashCaissiere : cashSysteme;
 
@@ -232,7 +237,7 @@ function buildDailyData(
     }
 
     cashNet = cashNet + cashEntries + cashIn - cashExits;
-    cardCumul = cardCumul + cardReceipt + bankEntries - bankExits;
+    cardCumul = cardCumul + cardReceipt - cardCommission + bankEntries - bankExits;
 
     if (dayPayments.length > 0 || cashCaissiere > 0 || cardReceipt > 0 || daySales.count > 0) {
       days.push({
@@ -245,6 +250,7 @@ function buildDailyData(
         cashCaissiere,
         cashSysteme,
         cardReceipt,
+        cardCommission,
         ecart: cashCaissiere - (cashSysteme + cardReceipt),
         totalRecettes: cashCaissiere + cardReceipt,
         totalSales: daySales.total,
@@ -1573,12 +1579,14 @@ function CaisseTab() {
 
   const days = useMemo(() => {
     if (!data) return [];
-    return buildDailyData(data.payments, data.sessions, data.sales || [], data.previousBalance, year, month);
+    return buildDailyData(data.payments, data.sessions, data.sales || [], data.previousBalance, year, month, data.cardCommissionPct || 0);
   }, [data, year, month]);
 
+  const cardPct: number = data?.cardCommissionPct || 0;
   const monthTotals = useMemo(() => {
-    let entries = 0, clientReceipts = 0, exits = 0, cashCaissiere = 0, cashSysteme = 0, cardReceipts = 0, totalSales = 0, saleCount = 0;
+    let entries = 0, clientReceipts = 0, exits = 0, cashCaissiere = 0, cashSysteme = 0, cardReceipts = 0, cardCommission = 0, totalSales = 0, saleCount = 0;
     for (const d of days) {
+      cardCommission += d.cardCommission;
       entries += d.entries;
       clientReceipts += d.clientReceipts;
       exits += d.exits;
@@ -1590,7 +1598,7 @@ function CaisseTab() {
     }
     const lastDay = days[days.length - 1];
     return {
-      entries, clientReceipts, otherEntries: entries - clientReceipts, exits, cashCaissiere, cashSysteme, cardReceipts, totalSales, saleCount,
+      entries, clientReceipts, otherEntries: entries - clientReceipts, exits, cashCaissiere, cashSysteme, cardReceipts, cardCommission, totalSales, saleCount,
       ecart: cashCaissiere - (cashSysteme + cardReceipts),
       totalRecettes: cashCaissiere + cardReceipts + entries,
       cashNet: lastDay?.cashNetCumul || data?.previousBalance?.cashNet || 0,
@@ -1616,6 +1624,7 @@ function CaisseTab() {
       rows.push(['', 'TOTAL ENCAISSE', '', n(d.cashCaissiere)]);
       rows.push(['', 'CASH REEL', '', n(d.cashSysteme)]);
       rows.push(['', 'CARTE', '', n(d.cardReceipt)]);
+      if (d.cardCommission > 0) rows.push(['', 'COMMISSION CARTE', '', n(-d.cardCommission)]);
       if (d.clientReceipts > 0) rows.push(['', 'REGLEMENTS CLIENTS (FACTURES)', '', n(d.clientReceipts)]);
       if (d.entries - d.clientReceipts > 0) rows.push(['', 'AUTRES ENTREES', '', n(d.entries - d.clientReceipts)]);
       if (d.exits > 0) rows.push(['', 'SORTIES (PAIEMENTS)', '', n(-d.exits)]);
@@ -1701,6 +1710,7 @@ function CaisseTab() {
           <div className="odoo-stat-card-value">{n(monthTotals.totalRecettes)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
           <div className="odoo-stat-card-sub">
             Caisse {n(monthTotals.cashCaissiere)} · Carte {n(monthTotals.cardReceipts)}
+            {monthTotals.cardCommission > 0 && ` (commission −${n(monthTotals.cardCommission)})`}
             {monthTotals.clientReceipts > 0 && ` · Règlements clients ${n(monthTotals.clientReceipts)}`}
             {monthTotals.otherEntries > 0 && ` · Autres ${n(monthTotals.otherEntries)}`}
           </div>
@@ -1807,6 +1817,7 @@ function CaisseTab() {
                 <th style={{ textAlign: 'right' }}>Ventes</th>
                 <th style={{ textAlign: 'right' }}>Total encaissé</th>
                 <th style={{ textAlign: 'right' }}>Carte</th>
+                {cardPct > 0 && <th style={{ textAlign: 'right' }} title={`Retenue du prestataire carte (${cardPct} %)`}>Commission</th>}
                 <th style={{ textAlign: 'right' }} title="Encaissements de factures clients (professionnels)">Règlements clients</th>
                 <th style={{ textAlign: 'right' }}>Autres entrées</th>
                 <th style={{ textAlign: 'right' }} title="Fournisseurs, salaires, dépenses">Sorties</th>
@@ -1830,6 +1841,7 @@ function CaisseTab() {
                       <td style={{ textAlign: 'right' }}>{day.totalSales > 0 ? n(day.totalSales) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
                       <td style={{ textAlign: 'right' }}>{day.cashCaissiere > 0 ? n(day.cashCaissiere) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
                       <td style={{ textAlign: 'right' }}>{day.cardReceipt > 0 ? n(day.cardReceipt) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
+                      {cardPct > 0 && <td style={{ textAlign: 'right', color: '#b02a37' }}>{day.cardCommission > 0 ? `−${n(day.cardCommission)}` : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>}
                       <td style={{ textAlign: 'right', color: '#1e7e4f', fontWeight: day.clientReceipts > 0 ? 600 : undefined }}>{day.clientReceipts > 0 ? `+${n(day.clientReceipts)}` : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
                       <td style={{ textAlign: 'right', color: '#1e7e4f' }}>{day.entries - day.clientReceipts > 0 ? `+${n(day.entries - day.clientReceipts)}` : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
                       <td style={{ textAlign: 'right', color: '#b02a37' }}>{day.exits > 0 ? `−${n(day.exits)}` : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
@@ -1840,7 +1852,7 @@ function CaisseTab() {
                     </tr>
                     {expanded && (
                       <tr>
-                        <td colSpan={10} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
+                        <td colSpan={cardPct > 0 ? 11 : 10} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '12px 16px' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
                             <div>
                               <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Cash réel</div>
@@ -1854,6 +1866,12 @@ function CaisseTab() {
                               <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Carte</div>
                               <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cardReceipt)} DH</div>
                             </div>
+                            {day.cardCommission > 0 && (
+                              <div>
+                                <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Carte nette en banque</div>
+                                <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cardReceipt - day.cardCommission)} DH <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#b02a37' }}>(−{n(day.cardCommission)} commission {cardPct} %)</span></div>
+                              </div>
+                            )}
                             <div>
                               <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Solde cash</div>
                               <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cashNetCumul)} DH</div>
@@ -1897,6 +1915,12 @@ function CaisseTab() {
                 <td style={{ color: 'var(--theme-text-muted)' }}>Carte Encaissée</td>
                 <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(monthTotals.cardReceipts)} DH</td>
               </tr>
+              {monthTotals.cardCommission > 0 && (
+                <tr>
+                  <td style={{ color: 'var(--theme-text-muted)' }}>Commission carte ({cardPct} %) — non versée en banque</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600, color: '#b02a37' }}>−{n(monthTotals.cardCommission)} DH</td>
+                </tr>
+              )}
               {monthTotals.clientReceipts > 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Règlements clients (factures)</td>
@@ -3747,7 +3771,7 @@ function ResumeTab() {
 
   const days = useMemo(() => {
     if (!data) return [];
-    return buildDailyData(data.payments, data.sessions, data.sales || [], data.previousBalance, year, month);
+    return buildDailyData(data.payments, data.sessions, data.sales || [], data.previousBalance, year, month, data.cardCommissionPct || 0);
   }, [data, year, month]);
 
   // Build full month grid (all days, even empty ones)
@@ -3772,7 +3796,7 @@ function ResumeTab() {
           dayNum: d,
           payments: [],
           entries: 0, clientReceipts: 0, exits: 0,
-          cashCaissiere: 0, cashSysteme: 0, cardReceipt: 0, ecart: 0, totalRecettes: 0,
+          cashCaissiere: 0, cashSysteme: 0, cardReceipt: 0, cardCommission: 0, ecart: 0, totalRecettes: 0,
           totalSales: 0, saleCount: 0,
           cashNetCumul: lastCashNet, cardCumul: lastCardCumul, solde: lastSolde,
         });

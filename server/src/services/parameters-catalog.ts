@@ -153,6 +153,14 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'accounting.card_commission', domain: 'accounting', section: 'business',
+    label: 'Commission sur paiement par carte',
+    help: 'Retenue par le prestataire du terminal sur chaque transaction : à 2 %, une vente carte de 100 DH crédite 98 DH en banque. Appliquée au solde carte de la Caisse et aux écritures de vente (6147 Services bancaires).',
+    fields: [{ name: 'pct', label: 'Taux', type: 'percent', min: 0, max: 20 }],
+    defaults: { pct: 0 },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'ledger.posting_mode', domain: 'accounting', section: 'business',
     label: 'Comptabilisation automatique',
     help: 'Que faire si l\'écriture comptable d\'une pièce échoue.',
