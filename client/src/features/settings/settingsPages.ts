@@ -85,7 +85,7 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
   { key: 'documents', group: 'Comptabilité', section: 'documents', label: 'Documents', icon: FileText,
     description: 'Mentions des factures et bons de commande', keywords: 'modele facture pdf conditions paiement penalites pied de page' },
   { key: 'ledger', group: 'Comptabilité', section: 'business', label: 'Règles comptables', icon: BookOpen,
-    description: 'Mode de passation des écritures', keywords: 'ecriture comptabilisation journal grand livre' },
+    description: 'Passation des écritures, commission carte', keywords: 'ecriture comptabilisation journal grand livre commission carte tpe banque' },
 
   { key: 'referentiel', group: 'Données de base', section: 'referentiel', label: 'Référentiel', icon: Database,
     description: 'Tables de paramétrage', keywords: 'table categorie unite motif' },
@@ -103,7 +103,7 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
 /** Page d'un paramètre métier du catalogue serveur (services/parameters-catalog.ts). */
 export function pageOfParameter(key: string): SettingsPageKey {
   if (key.startsWith('purchasing.')) return 'purchasing';
-  if (key.startsWith('ledger.')) return 'ledger';
+  if (key.startsWith('ledger.') || key.startsWith('accounting.')) return 'ledger';
   if (key.startsWith('sales.') || key.startsWith('company.')) return 'company';
   return 'production';
 }

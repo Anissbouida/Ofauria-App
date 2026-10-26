@@ -151,7 +151,7 @@ function SettingsShell() {
     tax: <TaxCodesTab />,
     numbering: <NumberingTab />,
     documents: <DocumentsTab />,
-    ledger: <ParametersPanel keys={['ledger.posting_mode']} />,
+    ledger: <ParametersPanel keys={['ledger.posting_mode', 'accounting.card_commission']} />,
     referentiel: <ReferentielTab />,
     data: <DataTab />,
     notifications: <NotificationsTab />,
