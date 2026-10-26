@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, Fragment, type CSSProperties } from 'react';
+import { useState, useMemo, useEffect, useRef, Fragment, type CSSProperties } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseOrdersApi, newIdempotencyKey } from '../../api/purchase-orders.api';
@@ -13,10 +13,11 @@ import {
   Package, ArrowRight, FileText, Filter, Loader2, Download, Pencil, Receipt,
   Combine,
 } from 'lucide-react';
-import { format, differenceInCalendarDays } from 'date-fns';
+import { format, differenceInCalendarDays, addDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import IngredientFormModal from '../stock/IngredientFormModal';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { useAuth } from '../../context/AuthContext';
 import CategoryCascadeSelector, { STOCKABLE_ROOT_IDS, CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
@@ -1210,16 +1211,25 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   // contenants (minimum 1), quantityOrdered = nb x taille.
   const [items, setItems] = useState<{ kind: 'ingredient' | 'consumable'; refId: string; name: string; unit: string; categoryId: string | null; quantityOrdered: number; unitPrice: number | null; container: ContainerDef | null; containerCount: number }[]>([]);
   const [showNewIngredient, setShowNewIngredient] = useState(false);
-  const [newIng, setNewIng] = useState({ name: '', unit: 'kg', categoryId: '', unitCost: '' });
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [highlighted, setHighlighted] = useState(0);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
   const { data: ingredients = [] } = useQuery({ queryKey: ['ingredients'], queryFn: ingredientsApi.list });
   const { data: consumables = [] } = useQuery({ queryKey: ['packaging-items'], queryFn: () => packagingApi.list({ activeOnly: true }) });
-  const { entries: unitEntries } = useReferentiel('units');
   const { kindOf, resolve } = useStockCategories();
 
-  // Type d'article cree a la volee, deduit de la categorie choisie.
-  const newKind = kindOf(newIng.categoryId);
+  const supplierOptions = useMemo(() => (suppliers as Record<string, any>[])
+    .filter(s => s.is_active !== false)
+    .map(s => ({ id: String(s.id), label: String(s.name), sublabel: (s.city as string) || undefined })), [suppliers]);
+  const supplierName = supplierOptions.find(o => o.id === supplierId)?.label || '';
+
+  // Fermer un BC en cours de saisie fait perdre les lignes : on demande confirmation.
+  const requestClose = () => {
+    if (items.length > 0 && !window.confirm('Abandonner ce bon de commande ? Les articles saisis seront perdus.')) return;
+    onClose();
+  };
 
   const createMutation = useMutation({
     // Une clé par formulaire ouvert : un double clic ne crée pas deux BC (mig 307).
@@ -1248,7 +1258,6 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
       container, containerCount: 1,
     }]);
     setShowNewIngredient(false);
-    setNewIng({ name: '', unit: 'kg', categoryId: '', unitCost: '' });
     setSearchIngredient('');
     notify.success(`${kind === 'consumable' ? 'Consommable' : 'Ingrédient'} "${created.name}" créé et ajouté`);
   };
@@ -1265,39 +1274,42 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   });
   const isCreatingProduct = createIngredientMutation.isPending || createConsumableMutation.isPending;
 
-  const handleCreateIngredient = () => {
-    if (!newIng.name.trim()) { notify.error('Saisissez le nom de l\'article'); return; }
-    const name = newIng.name.trim();
-    const cost = newIng.unitCost ? parseFloat(newIng.unitCost) : 0;
+  const handleCreateProduct = (data: Record<string, any>) => {
     // Routage par categorie : consommable -> packaging_items, sinon ingredients.
     // ATTENTION aux conventions de payload : l'API packaging attend du
     // snake_case (category_id/unit_cost), l'API ingredients du camelCase.
-    if (newKind === 'consumable') {
+    if (kindOf(data.categoryId) === 'consumable') {
       createConsumableMutation.mutate({
-        name, unit: newIng.unit,
-        category_id: newIng.categoryId || null,
-        unit_cost: cost,
+        name: data.name, unit: data.unit,
+        category_id: data.categoryId || null,
+        unit_cost: data.unitCost,
       });
     } else {
-      createIngredientMutation.mutate({
-        name, unit: newIng.unit,
-        categoryId: newIng.categoryId || null,
-        unitCost: cost,
-      });
+      createIngredientMutation.mutate(data);
     }
   };
 
   // Articles deja ajoutes (cle composite kind:id pour ne pas confondre les tables).
   const addedKeys = new Set(items.map(it => `${it.kind}:${it.refId}`));
-  const search = searchIngredient.toLowerCase();
-  const matchesSearch = (name: string) => !search || name.toLowerCase().includes(search);
-  const filteredIngredients = (ingredients as Record<string, any>[])
-    .filter(ing => !addedKeys.has(`ingredient:${ing.id}`) && matchesSearch(ing.name as string))
-    .map(ing => ({ ...ing, _kind: 'ingredient' }) as Record<string, any>);
-  const filteredConsumables = (consumables as Record<string, any>[])
-    .filter(c => !addedKeys.has(`consumable:${c.id}`) && matchesSearch(c.name as string))
-    .map(c => ({ ...c, _kind: 'consumable' }) as Record<string, any>);
-  const filteredProducts: Record<string, any>[] = [...filteredIngredients, ...filteredConsumables];
+  const norm = (v: unknown) => String(v ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const search = norm(searchIngredient);
+  const isUsual = (p: Record<string, any>) => !!supplierName && norm(p.supplier) === norm(supplierName);
+  const available: Record<string, any>[] = [
+    ...(ingredients as Record<string, any>[])
+      .filter(ing => !addedKeys.has(`ingredient:${ing.id}`))
+      .map(ing => ({ ...ing, _kind: 'ingredient' }) as Record<string, any>),
+    ...(consumables as Record<string, any>[])
+      .filter(c => !addedKeys.has(`consumable:${c.id}`))
+      .map(c => ({ ...c, _kind: 'consumable' }) as Record<string, any>),
+  ];
+  // Recherche insensible aux accents ; les articles habituels du fournisseur remontent en tete.
+  const filteredProducts = available
+    .filter(p => search && norm(p.name).includes(search))
+    .sort((a, b) => Number(isUsual(b)) - Number(isUsual(a)))
+    .slice(0, 12);
+  // Raccourcis : articles dont la fiche indique ce fournisseur, ajoutables en un clic.
+  const usualProducts = available.filter(isUsual).slice(0, 16);
+  useEffect(() => { setHighlighted(0); }, [searchIngredient]);
 
   const addProduct = (p: Record<string, any>) => {
     const cost = parseFloat(p.unit_cost as string) || 0;
@@ -1313,7 +1325,21 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
       container, containerCount: 1,
     }]);
     setSearchIngredient('');
+    searchRef.current?.focus();
   };
+
+  const onSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setSearchOpen(true); setHighlighted(h => Math.min(h + 1, filteredProducts.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlighted(h => Math.max(h - 1, 0)); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (filteredProducts[highlighted]) addProduct(filteredProducts[highlighted]);
+      else if (searchIngredient.trim()) setShowNewIngredient(true);
+    } else if (e.key === 'Escape') { e.stopPropagation(); setSearchIngredient(''); setSearchOpen(false); }
+  };
+
+  const setDeliveryIn = (days: number) => setExpectedDate(format(addDays(new Date(), days), 'yyyy-MM-dd'));
+  const deliveryQuick = [{ label: 'Demain', days: 1 }, { label: 'Dans 2 j', days: 2 }, { label: 'Dans 1 sem.', days: 7 }];
 
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
   const updateItem = (idx: number, field: string, value: number) => {
@@ -1342,7 +1368,8 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+    <>
+    <ModalBackdrop onClose={requestClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       {/* Quasi plein ecran : le BC est le flux de saisie principal, on lui donne
           toute la place (tableau articles + recherche). Corps scrollable entre
           en-tete et pied fixes. */}
@@ -1354,127 +1381,112 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             <ShoppingBag size={16} style={{ color: '#fff' }} />
             <div>
               <h2 style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', margin: 0 }}>Nouveau bon de commande</h2>
-              <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', margin: 0 }}>Commande fournisseur avec les articles souhaités</p>
+              <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', margin: 0 }}>
+                {supplierName ? `Commande chez ${supplierName}` : '1. Choisissez le fournisseur · 2. Ajoutez les articles · 3. Créez le BC'}
+              </p>
             </div>
           </div>
-          <button onClick={onClose} className="hover:bg-white/20" style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
+          <button type="button" onClick={requestClose} className="hover:bg-white/20" style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
         </div>
 
         <div style={{ padding: '1.25rem' }} className="space-y-5 flex-1 overflow-y-auto min-h-0">
-          {/* Supplier + Date */}
+          {/* Fournisseur + livraison + notes */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="md:col-span-1">
+            <div>
               <label style={odooLabelStyle}>Fournisseur *</label>
-              <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} style={odooFieldStyle}>
-                <option value="">Choisir un fournisseur</option>
-                {(suppliers as Record<string, any>[]).filter((s) => s.is_active !== false).map((s) => (
-                  <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
-                ))}
-              </select>
+              <SearchSelect options={supplierOptions} value={supplierId} width="100%"
+                onChange={id => { setSupplierId(id); if (id) setTimeout(() => searchRef.current?.focus(), 0); }}
+                placeholder="Rechercher un fournisseur…" />
             </div>
             <div>
               <label style={odooLabelStyle}>Livraison prévue</label>
-              <input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} style={odooFieldStyle} />
+              <div className="flex items-center gap-2">
+                <input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} style={{ ...odooFieldStyle, flex: 1, minWidth: 0 }} />
+                {deliveryQuick.map(q => {
+                  const active = expectedDate === format(addDays(new Date(), q.days), 'yyyy-MM-dd');
+                  return (
+                    <button key={q.days} type="button" onClick={() => setDeliveryIn(q.days)}
+                      className={active ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
+                      style={{ whiteSpace: 'nowrap', padding: '0.3rem 0.55rem', fontSize: '0.75rem' }}>
+                      {q.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div>
               <label style={odooLabelStyle}>Notes</label>
-              <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} style={odooFieldStyle} placeholder="Optionnel..." />
+              <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} style={odooFieldStyle} placeholder="Optionnel…" />
             </div>
           </div>
 
-          {/* Add product search (ingredients + consommables) */}
+          {/* Recherche d'articles (ingredients + consommables) */}
           <div>
             <label style={odooLabelStyle}>Ajouter des articles</label>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--odoo-text-muted)' }} />
-                <input type="text" placeholder="Chercher un ingrédient ou consommable..."
-                  value={searchIngredient} onChange={e => setSearchIngredient(e.target.value)}
+                <input ref={searchRef} type="text" placeholder="Tapez le nom d'un article puis Entrée (↑ ↓ pour choisir)…"
+                  value={searchIngredient}
+                  onChange={e => { setSearchIngredient(e.target.value); setSearchOpen(true); }}
+                  onFocus={() => setSearchOpen(true)}
+                  onBlur={() => setTimeout(() => setSearchOpen(false), 150)}
+                  onKeyDown={onSearchKeyDown}
                   style={{ ...odooFieldStyle, paddingLeft: 30 }} />
+                {searchOpen && search && (
+                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 30, backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)', borderRadius: 4, maxHeight: 320, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}>
+                    {filteredProducts.map((p, i) => {
+                      const catPath = resolve(p.category_id as string | null)?.path;
+                      const cont = p._kind === 'ingredient' ? containerOf(p) : null;
+                      return (
+                        <button type="button" key={`${p._kind}:${p.id as string}`}
+                          onMouseDown={e => { e.preventDefault(); addProduct(p); }}
+                          onMouseEnter={() => setHighlighted(i)}
+                          className="w-full text-left text-sm flex items-center justify-between gap-3"
+                          style={{ padding: '0.5rem 0.75rem', backgroundColor: i === highlighted ? 'var(--odoo-bg-hover, #f3f4f6)' : 'transparent' }}>
+                          <span style={{ minWidth: 0 }}>
+                            <span className="font-medium">
+                              {p.name as string} <span style={{ color: 'var(--odoo-text-muted)' }}>({p.unit as string})</span>
+                              {p._kind === 'consumable' && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>}
+                              {isUsual(p) && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Habituel</span>}
+                            </span>
+                            {/* Chemin de categorie : repere une erreur de classement avant l'achat */}
+                            <span style={{ display: 'block', fontSize: '0.6875rem', color: catPath ? 'var(--odoo-text-muted)' : '#b85d1a' }}>
+                              {catPath || 'Sans catégorie'}{cont ? ` · ${containerLabel(cont, p.unit as string)}` : ''}
+                            </span>
+                          </span>
+                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', whiteSpace: 'nowrap' }}>{n(parseFloat(p.unit_cost as string) || 0)} DH/{p.unit as string}</span>
+                        </button>
+                      );
+                    })}
+                    <button type="button" onMouseDown={e => { e.preventDefault(); setShowNewIngredient(true); }}
+                      className="w-full text-left text-sm flex items-center gap-2"
+                      style={{ padding: '0.5rem 0.75rem', borderTop: filteredProducts.length ? '1px solid var(--odoo-border)' : 'none', color: 'var(--theme-accent)', fontWeight: 600,
+                        backgroundColor: filteredProducts.length === 0 ? 'var(--odoo-bg-hover, #f3f4f6)' : 'transparent' }}>
+                      <Plus size={14} /> Créer « {searchIngredient.trim()} »
+                      {filteredProducts.length === 0 && <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>— aucun article trouvé (Entrée)</span>}
+                    </button>
+                  </div>
+                )}
               </div>
-              <button onClick={() => { setShowNewIngredient(true); setNewIng({ name: searchIngredient || '', unit: 'kg', categoryId: '', unitCost: '' }); }}
+              <button type="button" onClick={() => setShowNewIngredient(true)}
                 className="odoo-btn-secondary whitespace-nowrap shrink-0" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <Plus size={14} /> Nouvel article
               </button>
             </div>
-            {searchIngredient && filteredProducts.length > 0 && (
-              <div style={{ marginTop: 4, backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)', borderRadius: 4, maxHeight: 192, overflowY: 'auto' }}>
-                {filteredProducts.slice(0, 10).map(p => {
-                  const catPath = resolve(p.category_id as string | null)?.path;
-                  return (
-                    <button key={`${p._kind}:${p.id as string}`} onClick={() => addProduct(p)}
-                      className="w-full text-left text-sm flex items-center justify-between hover:bg-gray-50"
-                      style={{ padding: '0.5rem 0.75rem' }}>
-                      <span>
-                        <span className="font-medium">
-                          {p.name as string} <span style={{ color: 'var(--odoo-text-muted)' }}>({p.unit as string})</span>
-                          {p._kind === 'consumable' && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>}
-                        </span>
-                        {/* Chemin de categorie : repere une erreur de classement avant l'achat */}
-                        <span style={{ display: 'block', fontSize: '0.6875rem', color: catPath ? 'var(--odoo-text-muted)' : '#b85d1a' }}>
-                          {catPath || 'Sans catégorie'}
-                        </span>
-                      </span>
-                      <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{n(parseFloat(p.unit_cost as string) || 0)} DH/{p.unit as string}</span>
+            {usualProducts.length > 0 && (
+              <div style={{ marginTop: 10 }}>
+                <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginBottom: 6 }}>
+                  Articles habituels chez <strong>{supplierName}</strong> — un clic pour ajouter
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {usualProducts.map(p => (
+                    <button type="button" key={`${p._kind}:${p.id as string}`} onClick={() => addProduct(p)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.25rem 0.65rem', borderRadius: 999, fontSize: '0.75rem',
+                        border: '1px solid var(--odoo-border)', backgroundColor: 'var(--odoo-bg)', color: 'var(--odoo-text)', cursor: 'pointer' }}>
+                      <Plus size={11} style={{ color: 'var(--theme-accent)' }} /> {p.name as string}
                     </button>
-                  );
-                })}
-              </div>
-            )}
-            {searchIngredient && filteredProducts.length === 0 && !showNewIngredient && (
-              <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', marginTop: 8 }}>Aucun article trouvé</p>
-            )}
-            {showNewIngredient && (
-              <div style={{ marginTop: 12, backgroundColor: 'var(--odoo-bg-alt)', border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '1rem' }} className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-bold flex items-center gap-1.5" style={{ color: 'var(--odoo-text)' }}>
-                    <Plus size={14} /> Nouvel article
-                    <span className={`odoo-tag ${newKind === 'consumable' ? 'odoo-tag-purple' : 'odoo-tag-green'}`} style={{ fontSize: '0.625rem' }}>
-                      {newKind === 'consumable' ? 'Consommable' : 'Ingrédient'}
-                    </span>
-                  </h4>
-                  <button onClick={() => setShowNewIngredient(false)} className="hover:bg-gray-100" style={{ padding: 4, borderRadius: 4, color: 'var(--odoo-text-muted)' }}>
-                    <X size={14} />
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <div>
-                    <label style={odooLabelStyle}>Nom *</label>
-                    <input type="text" value={newIng.name} onChange={e => setNewIng({ ...newIng, name: e.target.value })}
-                      style={odooFieldStyle} placeholder="Ex: Farine T55" />
-                  </div>
-                  <div>
-                    <label style={odooLabelStyle}>Unité *</label>
-                    <select value={newIng.unit} onChange={e => setNewIng({ ...newIng, unit: e.target.value })} style={odooFieldStyle}>
-                      {unitEntries.map(u => (
-                        <option key={u.code} value={u.code}>{u.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={odooLabelStyle}>Coût unitaire (DH)</label>
-                    <input type="number" step="0.01" min="0" value={newIng.unitCost} onChange={e => setNewIng({ ...newIng, unitCost: e.target.value })}
-                      style={odooFieldStyle} placeholder="Optionnel" />
-                  </div>
-                </div>
-                <div>
-                  <label style={odooLabelStyle}>Catégorie</label>
-                  <CategoryCascadeSelector
-                    value={newIng.categoryId}
-                    onChange={id => setNewIng({ ...newIng, categoryId: id })}
-                    rootIds={PURCHASABLE_ROOT_IDS}
-                  />
-                  <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 4 }}>
-                    La catégorie détermine si l'article est rangé en <strong>ingrédients</strong> ou en <strong>consommables</strong>.
-                  </p>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button onClick={() => setShowNewIngredient(false)} className="odoo-btn-secondary">Annuler</button>
-                  <button onClick={handleCreateIngredient} disabled={isCreatingProduct}
-                    className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    {isCreatingProduct ? <Loader2 size={12} className="animate-spin" /> : <Plus size={14} />}
-                    {isCreatingProduct ? 'Création...' : 'Créer et ajouter'}
-                  </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -1486,7 +1498,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
               <table className="odoo-table">
                 <thead>
                   <tr>
-                    <th>Ingrédient</th>
+                    <th>Article</th>
                     <th>Catégorie</th>
                     <th style={{ textAlign: 'right', width: 128 }}>Quantité</th>
                     <th style={{ textAlign: 'right', width: 128 }}>Prix unit. (DH)</th>
@@ -1563,7 +1575,9 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             <div className="flex flex-col items-center justify-center"
               style={{ padding: '2.5rem 0', backgroundColor: 'var(--odoo-bg-alt)', borderRadius: 4, border: '1px dashed var(--odoo-border)' }}>
               <ShoppingBag size={24} style={{ color: 'var(--odoo-text-light)', marginBottom: 8 }} />
-              <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Recherchez et ajoutez des ingrédients ci-dessus</p>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+                {supplierId ? 'Aucun article pour l\'instant — recherchez-les ci-dessus ou cliquez un article habituel.' : 'Commencez par choisir le fournisseur.'}
+              </p>
             </div>
           )}
         </div>
@@ -1577,8 +1591,9 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             )}
           </div>
           <div className="flex gap-2">
-            <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-            <button onClick={handleSubmit} disabled={createMutation.isPending || items.length === 0}
+            <button type="button" onClick={requestClose} className="odoo-btn-secondary">Annuler</button>
+            <button type="button" onClick={handleSubmit} disabled={createMutation.isPending || items.length === 0 || !supplierId}
+              title={!supplierId ? 'Choisissez un fournisseur' : items.length === 0 ? 'Ajoutez au moins un article' : undefined}
               className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {createMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={16} />}
               {createMutation.isPending ? 'Création...' : 'Créer le bon de commande'}
@@ -1587,6 +1602,12 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </ModalBackdrop>
+    {showNewIngredient && (
+      <IngredientFormModal mode="create" title="Nouvel article" initialName={searchIngredient.trim()} initialSupplier={supplierName}
+        rootIds={PURCHASABLE_ROOT_IDS} isConsumable={id => kindOf(id) === 'consumable'}
+        onClose={() => setShowNewIngredient(false)} onSave={handleCreateProduct} isLoading={isCreatingProduct} />
+    )}
+    </>
   );
 }
 

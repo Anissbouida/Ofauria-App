@@ -5,7 +5,7 @@ import { suppliersApi } from '../../api/accounting.api';
 import { referentielApi } from '../../api/referentiel.api';
 import { AllergenSelector } from '../../components/ui/AllergenSelector';
 import SearchSelect, { type SearchSelectOption } from '../../components/ui/SearchSelect';
-import { useStockCategories } from './useStockCategories';
+import { useStockCategories, STOCKABLE_ROOT_IDS } from './useStockCategories';
 
 /*
  * Formulaire unique de creation / modification d'un ingredient.
@@ -40,15 +40,23 @@ interface Props {
   onClose: () => void;
   onSave: (data: Record<string, any>) => void;
   isLoading: boolean;
+  /** Creation depuis un BC : titre « Nouvel article », nom pre-rempli par la recherche. */
+  title?: string;
+  initialName?: string;
+  initialSupplier?: string;
+  /** Branches de categories proposees (defaut : branches stockables). */
+  rootIds?: string[];
+  /** Vrai si la categorie range l'article en consommable : contenant et allergenes masques. */
+  isConsumable?: (categoryId: string) => boolean;
 }
 
-export default function IngredientFormModal({ mode, ingredient, threshold, onClose, onSave, isLoading }: Props) {
+export default function IngredientFormModal({ mode, ingredient, threshold, onClose, onSave, isLoading, title, initialName, initialSupplier, rootIds = STOCKABLE_ROOT_IDS, isConsumable }: Props) {
   const ing = ingredient || {};
   const [form, setForm] = useState({
-    name: (ing.name as string) || '',
+    name: (ing.name as string) || initialName || '',
     unit: (ing.unit as string) || 'kg',
     unitCost: ing.unit_cost != null ? String(ing.unit_cost) : '',
-    supplier: (ing.supplier as string) || '',
+    supplier: (ing.supplier as string) || initialSupplier || '',
     categoryId: ing.category_id ? String(ing.category_id) : '',
     threshold: threshold != null ? String(threshold) : '',
     containerTypeId: (ing.container_type_id as string) || '',
@@ -73,17 +81,26 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
   const { data: suppliers = [] } = useQuery<Record<string, any>[]>({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
 
   // Categorie : une seule recherche sur les feuilles stockables, avec le chemin en sous-titre.
-  const { groups, byId, resolve } = useStockCategories();
-  const categoryOptions: SearchSelectOption[] = useMemo(() => groups.flatMap(g => g.leaves.map(leaf => {
-    const path = resolve(leaf.id)?.path.split(' / ') || [];
-    return {
-      id: String(leaf.id),
-      label: leaf.name,
-      sublabel: path.slice(0, -1).join(' › '),
-      detail: (byId.get(String(leaf.id)) as any)?.requires_po ? 'BC requis' : undefined,
-    };
+  const { byId, resolve, leavesUnder } = useStockCategories();
+  const categoryOptions: SearchSelectOption[] = useMemo(() => {
+    const seen = new Set<string>();
+    return rootIds.filter(r => byId.has(r)).flatMap(r => leavesUnder(r)).filter(leaf => {
+      const id = String(leaf.id);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    }).map(leaf => {
+      const path = resolve(leaf.id)?.path.split(' / ') || [];
+      return {
+        id: String(leaf.id),
+        label: leaf.name,
+        sublabel: path.slice(0, -1).join(' › '),
+        detail: (byId.get(String(leaf.id)) as any)?.requires_po ? 'BC requis' : undefined,
+      };
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  })), [groups, byId]);
+  }, [byId, rootIds]);
+  const consumable = !!form.categoryId && !!isConsumable?.(form.categoryId);
 
   const activeContainerTypes = containerTypes.filter(ct => ct.is_active !== false);
   const containerType = activeContainerTypes.find(ct => String(ct.id) === form.containerTypeId);
@@ -94,7 +111,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
     name: !form.name.trim() ? 'Le nom est obligatoire.' : '',
     // Obligatoire a la creation (routage achat) ; en edition on n'interdit pas de corriger une fiche legacy non classee.
     categoryId: mode === 'create' && !form.categoryId ? 'Choisissez une catégorie.' : '',
-    containerSize: form.containerTypeId && !(size > 0) ? 'Indiquez la quantité contenue dans un contenant.' : '',
+    containerSize: !consumable && form.containerTypeId && !(size > 0) ? 'Indiquez la quantité contenue dans un contenant.' : '',
   };
   const hasErrors = Object.values(errors).some(Boolean);
   const err = (k: keyof typeof errors) => (submitted ? errors[k] : '');
@@ -106,8 +123,8 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
     const payload: Record<string, any> = {
       name: form.name.trim(), unit: form.unit, unitCost: parseFloat(form.unitCost) || 0,
       supplier: form.supplier.trim() || undefined, categoryId: form.categoryId || null,
-      containerTypeId: form.containerTypeId || null,
-      containerSize: form.containerTypeId && size > 0 ? size : null,
+      containerTypeId: !consumable && form.containerTypeId ? form.containerTypeId : null,
+      containerSize: !consumable && form.containerTypeId && size > 0 ? size : null,
       densiteKgL: form.densiteKgL !== '' ? (parseFloat(form.densiteKgL) || null) : null,
       allergens: form.allergens,
     };
@@ -128,7 +145,12 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
             {mode === 'create' ? <Package size={16} style={{ color: 'var(--theme-accent)' }} /> : <Edit3 size={16} style={{ color: 'var(--theme-accent)' }} />}
             <div>
               <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>
-                {mode === 'create' ? 'Nouvel ingrédient' : "Modifier l'ingrédient"}
+                {title || (mode === 'create' ? 'Nouvel ingrédient' : "Modifier l'ingrédient")}
+                {isConsumable && form.categoryId && (
+                  <span className={`odoo-tag ${consumable ? 'odoo-tag-purple' : 'odoo-tag-green'}`} style={{ marginLeft: 8, fontSize: '0.625rem', verticalAlign: 'middle' }}>
+                    {consumable ? 'Consommable' : 'Ingrédient'}
+                  </span>
+                )}
               </h2>
               {mode === 'edit' && <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>{ing.name as string}</p>}
             </div>
@@ -141,7 +163,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
 
             {/* ── Identification ── */}
             <Section icon={<Package size={13} />} title="Identification">
-              <Field label="Nom de l'ingrédient" required error={err('name')}>
+              <Field label={title ? "Nom de l'article" : "Nom de l'ingrédient"} required error={err('name')}>
                 <input className="input" value={form.name} onChange={e => set('name', e.target.value)} placeholder="Ex : Farine T55" autoFocus />
               </Field>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr)', gap: '0.75rem' }}>
@@ -206,7 +228,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
             </Section>
 
             {/* ── Conditionnement ── */}
-            <Section icon={<Boxes size={13} />} title="Conditionnement"
+            {!consumable && <Section icon={<Boxes size={13} />} title="Conditionnement"
               aside="Comment l'ingrédient arrive du fournisseur">
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 <Chip active={!form.containerTypeId} onClick={() => setForm(f => ({ ...f, containerTypeId: '', containerSize: '' }))}>
@@ -253,13 +275,13 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                   Aucun type de contenant défini — ajoutez-en dans Paramètres › Référentiel › Types de contenant.
                 </p>
               )}
-            </Section>
+            </Section>}
 
             {/* ── Allergenes ── */}
-            <Section icon={<ShieldAlert size={13} />} title="Allergènes"
+            {!consumable && <Section icon={<ShieldAlert size={13} />} title="Allergènes"
               aside={form.allergens.length ? `${form.allergens.length} sélectionné${form.allergens.length > 1 ? 's' : ''}` : 'Aucun'}>
               <AllergenSelector value={form.allergens} onChange={allergens => set('allergens', allergens)} />
-            </Section>
+            </Section>}
           </div>
 
           {/* Pied fixe : toujours visible, meme si le contenu defile */}
@@ -269,7 +291,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
             )}
             <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
             <button type="submit" disabled={isLoading} className="odoo-btn-primary">
-              <Save size={13} /> {isLoading ? 'Enregistrement…' : mode === 'create' ? "Créer l'ingrédient" : 'Sauvegarder'}
+              <Save size={13} /> {isLoading ? 'Enregistrement…' : mode === 'create' ? (title ? 'Créer et ajouter' : "Créer l'ingrédient") : 'Sauvegarder'}
             </button>
           </div>
         </form>
