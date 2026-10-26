@@ -27,6 +27,7 @@
     "test:e2e-societe": "npm run e2e:societe --workspace=server --",
     "test:e2e-documents": "npm run e2e:documents --workspace=server --",
     "test:e2e-donnees": "npm run e2e:donnees --workspace=server --",
+    "test:e2e-approbations": "npm run e2e:approbations --workspace=server --",
     "test:e2e-accueil-config": "npm run e2e:accueil-config --workspace=server --"
   },
   "devDependencies": {

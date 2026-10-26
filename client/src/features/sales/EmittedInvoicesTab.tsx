@@ -145,7 +145,15 @@ export default function EmittedInvoicesTab() {
 
   const cancelMutation = useMutation({
     mutationFn: (id: string) => invoicesApi.cancel(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); notify.success('Facture annulée'); },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      if (res?.approval) notify.warning(`Annulation soumise à approbation (${res.approval.rule_label}).`);
+      else notify.success('Facture annulée');
+    },
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { error?: { message?: string } } } };
+      notify.error(e?.response?.data?.error?.message ?? 'Annulation refusée');
+    },
   });
 
   const payMutation = useMutation({

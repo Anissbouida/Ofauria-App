@@ -56,7 +56,13 @@ export const purchaseOrderRepository = {
                 LEFT JOIN invoice_purchase_orders ipo ON ipo.invoice_id = inv.id
                 WHERE inv.status != 'cancelled'
                   AND (inv.purchase_order_id = po.id OR ipo.purchase_order_id = po.id)
-              ) as has_invoice
+              ) as has_invoice,
+              -- Demande d'approbation en attente (lot 8, mig 350) : la table
+              -- peut manquer sur une base non migrée, d'où le to_regclass.
+              CASE WHEN to_regclass('public.approval_requests') IS NOT NULL THEN EXISTS (
+                SELECT 1 FROM approval_requests ar
+                WHERE ar.doc_type = 'purchase_order' AND ar.doc_id = po.id::text AND ar.status = 'pending'
+              ) ELSE false END as approval_pending
        FROM purchase_orders po
        JOIN suppliers s ON s.id = po.supplier_id
        LEFT JOIN users u ON u.id = po.created_by
@@ -143,7 +149,12 @@ export const purchaseOrderRepository = {
                  LEFT JOIN invoice_purchase_orders ipo ON ipo.invoice_id = inv.id
                  WHERE inv.status != 'cancelled'
                    AND (inv.purchase_order_id = po.id OR ipo.purchase_order_id = po.id)
-               ) AS has_invoice
+               ) AS has_invoice,
+               -- Demande d'approbation en attente (lot 8, mig 350).
+               EXISTS (
+                 SELECT 1 FROM approval_requests ar
+                 WHERE ar.doc_type = 'purchase_order' AND ar.doc_id = po.id::text AND ar.status = 'pending'
+               ) AS approval_pending
         FROM purchase_orders po
         JOIN suppliers s ON s.id = po.supplier_id
         LEFT JOIN LATERAL (
@@ -320,6 +331,13 @@ export const purchaseOrderRepository = {
     } finally {
       client.release();
     }
+  },
+
+  /** Montant HT du bon (lignes sans prix comptées à 0), pour les seuils d'approbation. */
+  async totalAmount(id: string): Promise<number> {
+    const r = await db.query(
+      `SELECT COALESCE(SUM(quantity_ordered * COALESCE(unit_price, 0)), 0) AS total FROM purchase_order_items WHERE purchase_order_id = $1`, [id]);
+    return Number(r.rows[0]?.total ?? 0);
   },
 
   async updateStatus(id: string, status: string) {

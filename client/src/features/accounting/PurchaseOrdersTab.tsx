@@ -267,7 +267,16 @@ export default function PurchaseOrdersTab({ initialSupplierId = '' }: {
 
   const sendMutation = useMutation({
     mutationFn: purchaseOrdersApi.send,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); notify.success('BC envoyé au fournisseur'); },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+      // 202 : le BC dépasse un seuil (Paramètres › Approbations) et attend l'approbateur.
+      if (res.approval) {
+        const who = res.approval.steps?.[0]?.approver_name ?? res.approval.steps?.[0]?.approver_role ?? 'un approbateur';
+        notify.warning(`BC soumis à approbation (${res.approval.rule_label}) : en attente de ${who}. Il partira au fournisseur dès son accord.`);
+      } else {
+        notify.success('BC envoyé au fournisseur');
+      }
+    },
     onError: (e) => notify.error(apiErrorMessage(e, 'Envoi impossible')),
   });
   // Annuler / non livré / bloquer : motif codé obligatoire, action journalisée (mig 306).
@@ -418,6 +427,8 @@ export default function PurchaseOrdersTab({ initialSupplierId = '' }: {
     const id = po.id as string;
     switch (po.stage as string) {
       case 'draft':
+        // Soumis à approbation : rien à faire ici, l'approbateur décide depuis « À approuver ».
+        if (po.approval_pending === true) return null;
         return { label: 'Envoyer', run: () => sendMutation.mutate(id), primary: true };
       case 'sent':
         return { label: 'Réceptionner', run: () => setShowDelivery(id), primary: true, danger: !!po.is_late };
@@ -668,6 +679,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '' }: {
                           <span style={{ color: 'var(--odoo-text-muted)' }}> · {stageDetail(po)}</span>
                         </span>
                         {po.on_hold && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }} title="Bloqué : ni réception ni facture">bloqué</span>}
+                        {po.approval_pending === true && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 6 }} title="En attente d'approbation : partira au fournisseur dès l'accord">à approuver</span>}
                       </td>
                       <td>
                         {view === 'open' ? (

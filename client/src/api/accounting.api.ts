@@ -84,8 +84,10 @@ export const invoicesApi = {
   /** Fusionne les factures fournisseurs des BCs en une seule. */
   merge: (data: { purchaseOrderIds: string[]; supplierInvoiceNumber?: string; invoiceDate?: string }) =>
     api.post('/invoices/merge', data).then(r => r.data.data),
-  /** Facture reçue : motif obligatoire (référentiel purchase_reason_codes, mig 309). */
-  cancel: (id: string, reason?: { reasonCodeId: string; note?: string }) => api.post(`/invoices/${id}/cancel`, reason ?? {}).then(r => r.data.data),
+  /** Facture reçue : motif obligatoire (référentiel purchase_reason_codes, mig 309).
+   *  Facture émise : 200 = annulée ; 202 = annulation soumise à approbation (r.approval, lot 8). */
+  cancel: (id: string, reason?: { reasonCodeId: string; note?: string }) => api.post(`/invoices/${id}/cancel`, reason ?? {})
+    .then(r => r.data as { success: boolean; data: Record<string, unknown>; approval?: { rule_label: string } }),
   /** Contrôle : blocages, mentions légales, rapprochement par ligne (mig 309). */
   control: (id: string, revalidate = false) => api.get(`/invoices/${id}/control`, { params: revalidate ? { revalidate: 'true' } : {} }).then(r => r.data.data),
   releaseHold: (holdId: string, reason: { reasonCodeId: string; note?: string }) => api.post(`/invoices/holds/${holdId}/release`, reason).then(r => r.data.data),

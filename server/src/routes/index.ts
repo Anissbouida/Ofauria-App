@@ -54,6 +54,9 @@ import fixedAssetRoutes from './fixed-asset.routes.js';
 import bankReconciliationRoutes from './bank-reconciliation.routes.js';
 import withholdingRoutes from './withholding.routes.js';
 import { paymentSchedulesRouter, debtsRouter, recurringChargesRouter } from './payment-schedule.routes.js';
+import approvalRoutes from './approval.routes.js';
+// Effets des approbations par type de pièce (lot 8) : enregistrés au chargement.
+import '../services/approval-handlers.js';
 import recallRoutes from './recall.routes.js';
 
 const router = Router();
@@ -136,6 +139,7 @@ router.use('/withholding', withholdingRoutes);
 router.use('/payment-schedules', paymentSchedulesRouter);
 router.use('/debts', debtsRouter);
 router.use('/recurring-charges', recurringChargesRouter);
+router.use('/approvals', approvalRoutes);
 router.use('/traceability', recallRoutes);
 
 export default router;

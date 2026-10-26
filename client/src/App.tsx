@@ -39,6 +39,7 @@ import ForecastPage from './features/forecast/ForecastPage';
 import HaccpPage from './features/haccp/HaccpPage';
 import OpeningInventoryCheckPage from './features/inventory-check/OpeningInventoryCheckPage';
 import LegacyRedirect from './components/LegacyRedirect';
+import ApprovalsPage from './features/approvals/ApprovalsPage';
 import RecallPage from './features/traceability/RecallPage';
 
 export const queryClient = new QueryClient({
@@ -102,6 +103,7 @@ export default function App() {
               <Route path="/purchasing" element={<PurchasingPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/approvals" element={<ApprovalsPage />} />
             </Route>
           </Routes>
         </BrowserRouter>

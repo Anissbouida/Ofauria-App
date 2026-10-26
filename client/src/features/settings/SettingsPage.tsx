@@ -21,6 +21,7 @@ import TaxCodesTab from './TaxCodesTab';
 import DocumentsTab from './DocumentsTab';
 import NotificationsTab from './NotificationsTab';
 import DataTab from './DataTab';
+import ApprovalsTab from './ApprovalsTab';
 import ReferentielTab from './ReferentielTab';
 import SettingsSearch from './SettingsSearch';
 import SetupHome from './SetupHome';
@@ -154,6 +155,7 @@ function SettingsShell() {
     referentiel: <ReferentielTab />,
     data: <DataTab />,
     notifications: <NotificationsTab />,
+    approvals: <ApprovalsTab />,
     audit: <AuditLogTab />,
   };
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);

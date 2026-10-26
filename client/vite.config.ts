@@ -11,9 +11,11 @@ export default defineConfig({
   },
   server: {
     port: 4173,
+    // VITE_API_PROXY : viser un serveur local sur un autre port (verification
+    // d'une branche pendant que le serveur principal tourne sur 3001).
     proxy: {
-      '/api': 'http://localhost:3001',
-      '/uploads': 'http://localhost:3001',
+      '/api': process.env.VITE_API_PROXY ?? 'http://localhost:3001',
+      '/uploads': process.env.VITE_API_PROXY ?? 'http://localhost:3001',
     },
   },
 });
