@@ -3,8 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Pencil, Truck, X, Loader2, Search, CheckCircle2, RotateCcw, Trash2,
   AlertTriangle, History, Building2, FileBadge2, Phone, ClipboardList, Banknote, Archive,
-  Filter, MapPin, ArrowUpDown, ArrowUp, ArrowDown,
+  Filter, MapPin, ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronRight,
 } from 'lucide-react';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { suppliersApi, type SupplierIdentifierInput, type IdentifierType } from '../../api/accounting.api';
@@ -558,20 +559,66 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
       return { ...f, identifiers: { ...f.identifiers, [code]: { ...current, ...patch } } };
     });
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const isGroupBrand = !!form.parentSupplierId;
+  const [brandMode, setBrandMode] = useState(isGroupBrand);
+  const needsFiscalIds = form.vatRegime !== 'non_assujetti' && !brandMode;
+  // Identifiants exigés pour déduire la TVA (ICE, IF) en tête ; les autres repliés.
+  const mainIdTypes = identifierTypes.filter(t => t.required_for_vat_deduction);
+  const otherIdTypes = identifierTypes.filter(t => !t.required_for_vat_deduction);
+  const hasOtherIds = otherIdTypes.some(t => form.identifiers[t.code]?.value?.trim());
   const requiredType = identifierTypes.find(t => t.required_for_vat_deduction);
   const missingIce = form.vatRegime === 'assujetti' && !!requiredType && !form.identifiers[requiredType.code]?.value?.trim() && !form.parentSupplierId;
-  const parentCandidates = suppliers.filter(s => s.id !== supplier?.id && !s.parent_supplier_id && s.is_active);
+  const parentOptions = useMemo(() => suppliers
+    .filter(s => s.id !== supplier?.id && !s.parent_supplier_id && s.is_active)
+    .map(s => ({ id: s.id, label: s.name, sublabel: s.legal_name ?? undefined })), [suppliers, supplier?.id]);
+
+  // Contrôle de format à la frappe (motif du pack pays) : guide sans bloquer, le serveur tranche.
+  const idStatus = (t: IdentifierType): { ok: boolean; msg: string } | null => {
+    const v = form.identifiers[t.code]?.value?.trim();
+    if (!v || !t.pattern) return null;
+    const ok = new RegExp(t.pattern).test(v);
+    if (ok) return { ok, msg: 'Format valide' };
+    const digits = /^\^\[0-9\]\{(\d+)\}\$$/.exec(t.pattern);
+    return { ok, msg: digits ? `${v.replace(/\D/g, '').length}/${digits[1]} chiffres` : 'Format inattendu' };
+  };
+
+  const errorText = (k: string) => fieldErrors[k] ? <div style={{ color: '#dc3545', fontSize: '0.75rem', marginTop: 2 }}>{fieldErrors[k]}</div> : null;
+
+  const renderIdentifier = (t: IdentifierType, required: boolean) => {
+    const st = idStatus(t);
+    return (
+      <div key={t.code}>
+        <label style={fieldLabel}>{t.label}{required ? ' *' : ''}</label>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input value={form.identifiers[t.code]?.value ?? ''} onChange={e => setIdent(t.code, { value: e.target.value })}
+            className={inputCls} inputMode={t.pattern?.startsWith('^[0-9]') ? 'numeric' : undefined}
+            style={{ fontFamily: 'ui-monospace, monospace', ...(st ? { borderColor: st.ok ? '#28a745' : '#d97706' } : {}) }} />
+          {t.code.endsWith('_RC') && (
+            <input value={form.identifiers[t.code]?.qualifier ?? ''} onChange={e => setIdent(t.code, { qualifier: e.target.value })}
+              className={inputCls} placeholder="Ville du tribunal" style={{ maxWidth: 150 }} />
+          )}
+        </div>
+        <div style={{ fontSize: '0.6875rem', marginTop: 3, color: st ? (st.ok ? '#28a745' : '#b45309') : 'var(--theme-text-muted)' }}>
+          {st ? (st.ok ? '✓ ' : '') + st.msg : t.description}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 680, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+        style={{ width: '100%', maxWidth: 720, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
             <Truck size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Fournisseur</span>
-            <span className="odoo-breadcrumb-separator">/</span>
-            <span className="odoo-breadcrumb-current">{supplier ? supplier.name : 'Nouveau'}</span>
+            <span className="odoo-breadcrumb-current">{supplier ? supplier.name : 'Nouveau fournisseur'}</span>
           </div>
           <div style={{ flex: 1 }} />
           {supplier && (
@@ -580,85 +627,128 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
               <button type="button" onClick={() => setTab('historique')} className={tab === 'historique' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '3px 10px', display: 'inline-flex', gap: 4, alignItems: 'center' }}><History size={12} /> Historique</button>
             </div>
           )}
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer (Échap)"><X size={14} /></button>
         </div>
 
         {tab === 'historique' && supplier ? (
           <SupplierHistory rows={history as HistoryRow[]} loading={historyLoading} />
         ) : (
-          <form onSubmit={e => { e.preventDefault(); setFieldErrors({}); saveMutation.mutate(); }} className="flex-1 overflow-y-auto">
-            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {missingIce && (
-                <StatusBanner tone="warning" icon={AlertTriangle} title="ICE manquant : facture non déductible">
-                  Un fournisseur assujetti doit porter son ICE pour que ses factures soient probantes. Si c'est une enseigne, rattachez-la à son entité juridique.
-                </StatusBanner>
-              )}
+          <form onSubmit={e => { e.preventDefault(); setFieldErrors({}); saveMutation.mutate(); }} className="flex-1 overflow-y-auto" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
               {duplicates.length > 0 && (
                 <StatusBanner tone="danger" icon={AlertTriangle} title="Doublon probable">
                   {duplicates.map(d => <div key={d.id + d.reason}>« {d.name} » porte déjà {d.reason === 'name' ? 'ce nom' : `cet identifiant ${d.reason}`}.</div>)}
                 </StatusBanner>
               )}
 
-              <div style={sectionTitle}><Building2 size={12} /> Identité</div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label style={fieldLabel}>Nom d'usage *</label>
-                  <input value={form.name} onChange={e => set('name', e.target.value)} className={inputCls} required minLength={2} maxLength={200} autoFocus />
-                  {fieldErrors.name && <div style={{ color: '#dc3545', fontSize: '0.75rem', marginTop: 2 }}>{fieldErrors.name}</div>}
-                </div>
-                <div><label style={fieldLabel}>Raison sociale</label>
-                  <input value={form.legalName} onChange={e => set('legalName', e.target.value)} className={inputCls} maxLength={200} placeholder="Si différente du nom d'usage" /></div>
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div><label style={fieldLabel}>Forme juridique</label>
-                  <select value={form.legalForm} onChange={e => set('legalForm', e.target.value)} className={inputCls}>
-                    <option value="">—</option>
-                    {LEGAL_FORMS.map(f => <option key={f} value={f}>{LEGAL_FORM_LABELS[f] ?? f}</option>)}
-                  </select></div>
-                <div><label style={fieldLabel}>Régime TVA</label>
-                  <select value={form.vatRegime} onChange={e => set('vatRegime', e.target.value as Supplier['vat_regime'])} className={inputCls}>
-                    {(Object.keys(VAT_REGIME_LABELS) as Supplier['vat_regime'][]).map(k => <option key={k} value={k}>{VAT_REGIME_LABELS[k]}</option>)}
-                  </select></div>
-                <div><label style={fieldLabel}>Enseigne de</label>
-                  <select value={form.parentSupplierId} onChange={e => set('parentSupplierId', e.target.value)} className={inputCls} title="Entité juridique qui porte les identifiants (ex. Supeco → Carrefour / Label'Vie)">
-                    <option value="">— entité indépendante —</option>
-                    {parentCandidates.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                  {fieldErrors.parentSupplierId && <div style={{ color: '#dc3545', fontSize: '0.75rem', marginTop: 2 }}>{fieldErrors.parentSupplierId}</div>}
+              {/* 1. Type : pilote les identifiants exigés (remplace le « Régime TVA »). */}
+              <div>
+                <div style={sectionTitle}><Building2 size={12} /> Type de fournisseur</div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2" style={{ marginTop: 6 }}>
+                  {SUPPLIER_KINDS.map(k => {
+                    const active = form.vatRegime === k.regime;
+                    return (
+                      <button key={k.regime} type="button" onClick={() => set('vatRegime', k.regime)} aria-pressed={active}
+                        style={{ textAlign: 'left', padding: '0.6rem 0.75rem', borderRadius: 6, cursor: 'pointer',
+                          border: `1px solid ${active ? 'var(--theme-accent)' : 'var(--theme-bg-separator)'}`,
+                          backgroundColor: active ? 'var(--theme-accent-light, #eef4ff)' : '#fff' }}>
+                        <span style={{ display: 'block', fontWeight: 600, fontSize: '0.8125rem', color: active ? 'var(--theme-accent)' : 'var(--theme-text-strong)' }}>{k.label}</span>
+                        <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>{k.hint}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              <div style={sectionTitle}><FileBadge2 size={12} /> Identifiants fiscaux</div>
-              {identifierTypes.length === 0 ? (
-                <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucun type d'identifiant configuré pour ce pays.</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {identifierTypes.map(t => (
-                    <div key={t.code}>
-                      <label style={fieldLabel}>{t.label}{t.required_for_vat_deduction && form.vatRegime === 'assujetti' && !form.parentSupplierId ? ' *' : ''}</label>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <input value={form.identifiers[t.code]?.value ?? ''} onChange={e => setIdent(t.code, { value: e.target.value })}
-                          className={inputCls} placeholder={t.description ?? ''} title={t.description ?? ''} style={{ fontFamily: 'ui-monospace, monospace' }} />
-                        {t.code.endsWith('_RC') && (
-                          <input value={form.identifiers[t.code]?.qualifier ?? ''} onChange={e => setIdent(t.code, { qualifier: e.target.value })}
-                            className={inputCls} placeholder="Ville" style={{ maxWidth: 140 }} />
-                        )}
+              {/* 2. L'essentiel : ce qu'on saisit au quotidien. */}
+              <div>
+                <div style={sectionTitle}><Phone size={12} /> L'essentiel</div>
+                <div className="grid grid-cols-2 gap-3" style={{ marginTop: 6 }}>
+                  <div className="col-span-2"><label style={fieldLabel}>Nom du fournisseur *</label>
+                    <input value={form.name} onChange={e => set('name', e.target.value)} className={inputCls} required minLength={2} maxLength={200} autoFocus
+                      placeholder="Tel qu'on l'appelle au quotidien, ex : Ovotec, Marjane, Souk Ahmed" />
+                    {errorText('name')}
+                  </div>
+                  <div><label style={fieldLabel}>Téléphone</label>
+                    <input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} className={inputCls} maxLength={20} placeholder="06 12 34 56 78" /></div>
+                  <div><label style={fieldLabel}>Personne à contacter</label>
+                    <input value={form.contactName} onChange={e => set('contactName', e.target.value)} className={inputCls} maxLength={100} placeholder="Commercial, livreur…" /></div>
+                  <div><label style={fieldLabel}>Ville</label>
+                    <input value={form.city} onChange={e => set('city', e.target.value)} className={inputCls} maxLength={100} /></div>
+                  <div><label style={fieldLabel}>Email</label>
+                    <input type="email" value={form.email} onChange={e => set('email', e.target.value)} className={inputCls} maxLength={255} placeholder="Pour l'envoi des BC" />
+                    {errorText('email')}</div>
+                </div>
+              </div>
+
+              {/* 3. Identifiants fiscaux : ICE / IF en tête, contrôlés à la frappe. */}
+              {identifierTypes.length > 0 && (
+                <div>
+                  <div style={sectionTitle}><FileBadge2 size={12} /> Identifiants fiscaux
+                    {!needsFiscalIds && <span style={{ textTransform: 'none', fontWeight: 400, letterSpacing: 0 }}>— facultatifs</span>}
+                  </div>
+                  {brandMode ? (
+                    <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 6 }}>
+                      Enseigne d'un groupe : l'ICE et l'IF sont ceux de l'entité juridique choisie plus bas.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-3" style={{ marginTop: 6 }}>
+                        {mainIdTypes.map(t => renderIdentifier(t, needsFiscalIds && form.vatRegime === 'assujetti'))}
                       </div>
-                    </div>
-                  ))}
+                      {missingIce && form.name.trim().length >= 2 && (
+                        <p style={{ fontSize: '0.75rem', color: '#b45309', marginTop: 6, display: 'flex', gap: 4, alignItems: 'flex-start' }}>
+                          <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                          Sans ICE, les factures de ce fournisseur ne permettent pas de déduire la TVA. Vous pouvez enregistrer et compléter plus tard.
+                        </p>
+                      )}
+                      {otherIdTypes.length > 0 && (
+                        <Disclosure label={`Autres identifiants (${otherIdTypes.map(t => t.label).join(', ')})`} defaultOpen={hasOtherIds}>
+                          <div className="grid grid-cols-2 gap-3">{otherIdTypes.map(t => renderIdentifier(t, false))}</div>
+                        </Disclosure>
+                      )}
+                    </>
+                  )}
+                  {errorText('identifiers')}
                 </div>
               )}
-              {fieldErrors.identifiers && <div style={{ color: '#dc3545', fontSize: '0.75rem' }}>{fieldErrors.identifiers}</div>}
 
-              <div style={sectionTitle}><Phone size={12} /> Contact</div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label style={fieldLabel}>Contact</label><input value={form.contactName} onChange={e => set('contactName', e.target.value)} className={inputCls} maxLength={100} /></div>
-                <div><label style={fieldLabel}>Téléphone</label><input value={form.phone} onChange={e => set('phone', e.target.value)} className={inputCls} maxLength={20} /></div>
-                <div><label style={fieldLabel}>Email</label><input type="email" value={form.email} onChange={e => set('email', e.target.value)} className={inputCls} maxLength={255} />
-                  {fieldErrors.email && <div style={{ color: '#dc3545', fontSize: '0.75rem', marginTop: 2 }}>{fieldErrors.email}</div>}</div>
-                <div><label style={fieldLabel}>Ville</label><input value={form.city} onChange={e => set('city', e.target.value)} className={inputCls} maxLength={100} /></div>
-              </div>
-              <div><label style={fieldLabel}>Adresse</label><input value={form.address} onChange={e => set('address', e.target.value)} className={inputCls} /></div>
-              <div><label style={fieldLabel}>Notes</label><textarea rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} className={inputCls} /></div>
+              {/* 4. Identité légale et groupe : rarement utile, replié. */}
+              <Disclosure label="Identité légale et groupe" hint="raison sociale, forme juridique, enseigne d'un groupe"
+                defaultOpen={!!(form.legalName || form.legalForm || isGroupBrand)}>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label style={fieldLabel}>Raison sociale</label>
+                    <input value={form.legalName} onChange={e => set('legalName', e.target.value)} className={inputCls} maxLength={200} placeholder="Si différente du nom" /></div>
+                  <div><label style={fieldLabel}>Forme juridique</label>
+                    <select value={form.legalForm} onChange={e => set('legalForm', e.target.value)} className={inputCls}>
+                      <option value="">—</option>
+                      {LEGAL_FORMS.map(f => <option key={f} value={f}>{LEGAL_FORM_LABELS[f] ?? f}</option>)}
+                    </select></div>
+                  <label className="col-span-2" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.8125rem', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={brandMode} style={{ marginTop: 3 }}
+                      onChange={e => { setBrandMode(e.target.checked); if (!e.target.checked) set('parentSupplierId', ''); }} />
+                    <span>C'est une enseigne d'un groupe
+                      <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>Ex : Supeco appartient à Label'Vie — les identifiants fiscaux sont ceux du groupe.</span>
+                    </span>
+                  </label>
+                  {brandMode && (
+                    <div className="col-span-2"><label style={fieldLabel}>Groupe (entité juridique) *</label>
+                      <SearchSelect options={parentOptions} value={form.parentSupplierId} onChange={id => set('parentSupplierId', id)}
+                        placeholder="Rechercher le groupe…" width="100%" />
+                      {errorText('parentSupplierId')}
+                    </div>
+                  )}
+                </div>
+              </Disclosure>
+
+              {/* 5. Adresse et notes : replié. */}
+              <Disclosure label="Adresse et notes" defaultOpen={!!(form.address || form.notes)}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div><label style={fieldLabel}>Adresse</label><input value={form.address} onChange={e => set('address', e.target.value)} className={inputCls} /></div>
+                  <div><label style={fieldLabel}>Notes</label><textarea rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} className={inputCls}
+                    placeholder="Jours de livraison, conditions, minimum de commande…" /></div>
+                </div>
+              </Disclosure>
 
               {supplier?.auxiliary_code && (
                 <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', margin: 0 }}>
@@ -667,17 +757,43 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
                 </p>
               )}
             </div>
-            <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ marginRight: 'auto', fontSize: '0.75rem', color: missingIce ? '#b45309' : 'var(--theme-text-muted)' }}>
+                {missingIce ? 'ICE à compléter' : brandMode && !form.parentSupplierId ? 'Choisissez le groupe' : ''}
+              </span>
               <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-              <button type="submit" disabled={saveMutation.isPending} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <button type="submit" disabled={saveMutation.isPending || (brandMode && !form.parentSupplierId)} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 {saveMutation.isPending && <Loader2 size={12} className="animate-spin" />}
-                Enregistrer
+                {supplier ? 'Enregistrer' : 'Créer le fournisseur'}
               </button>
             </div>
           </form>
         )}
       </div>
     </ModalBackdrop>
+  );
+}
+
+/* Type de fournisseur = régime TVA, formulé en langage métier. */
+const SUPPLIER_KINDS: Array<{ regime: Supplier['vat_regime']; label: string; hint: string }> = [
+  { regime: 'assujetti', label: 'Entreprise', hint: 'Facture avec TVA — ICE et IF demandés' },
+  { regime: 'non_assujetti', label: 'Commerçant / marché', hint: 'Souk, particulier, sans facture TVA' },
+  { regime: 'exonere', label: 'Exonéré', hint: 'Produits vendus sans TVA (ex. farine, lait)' },
+];
+
+/** Section repliable : garde l'écran court, s'ouvre seule si elle contient déjà des valeurs. */
+function Disclosure({ label, hint, defaultOpen, children }: { label: string; hint?: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  return (
+    <div style={{ borderTop: '1px solid var(--theme-bg-separator)', paddingTop: 8, marginTop: 4 }}>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', fontWeight: 600, color: 'var(--theme-text-strong)', width: '100%', textAlign: 'left' }}>
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        {label}
+        {hint && !open && <span style={{ fontWeight: 400, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>— {hint}</span>}
+      </button>
+      {open && <div style={{ marginTop: 10 }}>{children}</div>}
+    </div>
   );
 }
 
