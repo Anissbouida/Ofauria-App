@@ -17,6 +17,7 @@ import employeesRoutes, { schedulesRouter, attendanceRouter, leavesRouter, payro
 import reportsRoutes from './reports.routes.js';
 import productionRoutes from './production.routes.js';
 import salesRoutes from './sales.routes.js';
+import deliveryNoteRoutes from './delivery-note.routes.js';
 import usersRoutes from './users.routes.js';
 import settingsRoutes from './settings.routes.js';
 import cashRegisterRoutes from './cash-register.routes.js';
@@ -84,6 +85,7 @@ router.use('/salary-advances', salaryAdvancesRouter);
 router.use('/reports', reportsRoutes);
 router.use('/production', productionRoutes);
 router.use('/sales', salesRoutes);
+router.use('/delivery-notes', deliveryNoteRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/cash-register', cashRegisterRoutes);
 router.use('/caisse', caisseRouter);

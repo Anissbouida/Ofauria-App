@@ -693,10 +693,12 @@ export const invoiceRepository = {
     expectedPaymentMode?: string; receptionDate?: string;
     checkNumber?: string;
     items?: { productId?: string; ingredientId?: string; description?: string; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null }[];
-  }) {
-    const client = await db.getClient();
+  }, outer?: PoolClient) {
+    // `outer` : transaction de l'appelant (facturation de bons de livraison, mig 352) —
+    // la facture et la mise à jour des pièces sources réussissent ou échouent ensemble.
+    const client = outer ?? await db.getClient();
     try {
-      await client.query('BEGIN');
+      if (!outer) await client.query('BEGIN');
 
       const invoiceType = data.invoiceType || 'received';
       const invoiceNumber = data.invoiceNumber || await this.generateInvoiceNumber(invoiceType as 'received' | 'emitted', client);
@@ -756,13 +758,13 @@ export const invoiceRepository = {
         }
       });
 
-      await client.query('COMMIT');
+      if (!outer) await client.query('COMMIT');
       return invResult.rows[0];
     } catch (err) {
-      await client.query('ROLLBACK');
+      if (!outer) await client.query('ROLLBACK');
       throw err;
     } finally {
-      client.release();
+      if (!outer) client.release();
     }
   },
 

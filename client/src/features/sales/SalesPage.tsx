@@ -19,7 +19,7 @@ import DateRangePicker from '../../components/DateRangePicker';
 import ReceiptModal from '../pos/ReceiptModal';
 import EmittedInvoicesTab from './EmittedInvoicesTab';
 import ManualShiftEntries from './ManualShiftEntries';
-import SpecialSalesTab from './SpecialSalesTab';
+import ProSalesTab from './ProSalesTab';
 import ReceivablesTab from './ReceivablesTab';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -430,7 +430,7 @@ export default function SalesPage() {
 
   const mainTabs = [
     { key: 'sales' as const, label: 'Ventes', icon: Receipt },
-    { key: 'special' as const, label: 'Ventes spéciales', icon: Briefcase },
+    { key: 'special' as const, label: 'Ventes aux professionnels', icon: Briefcase },
     // Créances clients : balance âgée (tickets sur compte client + factures ouvertes).
     { key: 'unpaid' as const, label: 'Créances clients', icon: Clock },
     { key: 'returns' as const, label: 'Retours & Échanges', icon: RotateCcw },
@@ -1102,7 +1102,8 @@ export default function SalesPage() {
       )}
 
       {/* ═══════════ SPECIAL SALES TAB ═══════════ */}
-      {mainTab === 'special' && <SpecialSalesTab dateFrom={dateFrom} dateTo={dateTo} />}
+      {/* Ventes aux professionnels (mig 352) : BL → facture, remplace « Ventes spéciales ». */}
+      {mainTab === 'special' && <ProSalesTab />}
 
       {/* ═══════════ INVOICES TAB ═══════════ */}
       {mainTab === 'invoices' && <EmittedInvoicesTab />}

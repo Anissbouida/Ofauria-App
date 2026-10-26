@@ -39,6 +39,7 @@ const RULES: Rule[] = [
   { prefix: '/customers', modules: ['customers', 'pos', 'orders'] },
   { prefix: '/orders', modules: ['orders', 'pos'], alsoRead: ['production'] },
   { prefix: '/sales', modules: ['sales', 'pos', 'reports', 'reconciliation', 'dashboard'] },
+  { prefix: '/delivery-notes', modules: ['sales'] },
   { prefix: '/returns', modules: ['pos', 'sales'] },
   { prefix: '/cash-register', modules: ['pos', 'sales', 'accounting'] },
   { prefix: '/caisse-import', modules: ['accounting', 'pos'] },
