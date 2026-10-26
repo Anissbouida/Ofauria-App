@@ -23,7 +23,8 @@ export interface DeliveryLineInput {
 
 const NOTE_SELECT = `
   SELECT dn.*, COALESCE(NULLIF(c.company_name, ''), concat_ws(' ', c.first_name, c.last_name)) AS customer_name,
-         c.customer_type, c.delai_paiement_jours,
+         c.customer_type, c.delai_paiement_jours, c.address AS customer_address, c.city AS customer_city,
+         c.phone AS customer_phone, c.ice AS customer_ice, c.if_fiscal AS customer_if, c.billing_frequency,
          o.order_number, inv.invoice_number, inv.status AS invoice_status,
          concat_ws(' ', u.first_name, u.last_name) AS created_by_name,
          COALESCE(t.ht, 0) AS total_ht, COALESCE(t.tva, 0) AS total_tva, COALESCE(t.ht, 0) + COALESCE(t.tva, 0) AS total_ttc,
@@ -97,7 +98,9 @@ export const deliveryNoteRepository = {
     const r = await db.query(
       `SELECT o.id, o.order_number, o.pickup_date, o.total, o.status
          FROM orders o
+         JOIN customers c ON c.id = o.customer_id
         WHERE o.customer_id = $1 AND o.status IN ('ready', 'completed')
+          AND COALESCE(c.customer_type, 'particulier') <> 'particulier'
           AND COALESCE(o.advance_amount, 0) = 0
           AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.order_id = o.id)
           AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.order_id = o.id AND i.status <> 'cancelled')
@@ -108,35 +111,39 @@ export const deliveryNoteRepository = {
 
   async orderLines(orderId: string) {
     const r = await db.query(
-      `SELECT oi.product_id, p.name AS description, oi.quantity, oi.unit_price
-         FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.order_id = $1`, [orderId]);
+      `SELECT oi.id, oi.product_id, p.name AS description, oi.quantity, oi.unit_price, oi.tva_rate
+         FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.order_id = $1 ORDER BY p.name`, [orderId]);
     return r.rows;
   },
 
   async create(data: {
     customerId: string; deliveryDate?: string | null; orderId?: string | null; notes?: string | null;
     items: DeliveryLineInput[]; createdBy: string; storeId?: string | null;
-  }) {
+    receivedByName?: string | null;
+  }, outer?: PoolClient) {
     if (!data.items.length) throw fail(400, 'Ajoutez au moins une ligne');
-    const client = await db.getClient();
+    const client = outer ?? await db.getClient();
     try {
-      await client.query('BEGIN');
+      if (!outer) await client.query('BEGIN');
       const cust = (await client.query(`SELECT id FROM customers WHERE id = $1`, [data.customerId])).rows[0];
       if (!cust) throw fail(400, 'Client introuvable');
       if (data.orderId) {
         const ok = (await client.query(
-          `SELECT 1 FROM orders o WHERE o.id = $1 AND o.customer_id = $2 AND o.status IN ('ready', 'completed')
+          `SELECT 1 FROM orders o JOIN customers c ON c.id = o.customer_id
+            WHERE o.id = $1 AND o.customer_id = $2 AND o.status IN ('ready', 'completed')
+              AND COALESCE(c.customer_type, 'particulier') <> 'particulier'
               AND NOT EXISTS (SELECT 1 FROM delivery_notes d WHERE d.order_id = o.id AND d.status <> 'cancelled')
               AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.order_id = o.id AND i.status <> 'cancelled')
               AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.order_id = o.id)`, [data.orderId, data.customerId])).rows[0];
-        if (!ok) throw fail(409, 'Cette commande est déjà livrée, réglée ou facturée');
+        if (!ok) throw fail(409, 'Cette commande n\'est pas une commande de professionnel à livrer, ou elle est déjà livrée, réglée ou facturée');
       }
       const date = data.deliveryDate || undefined;
       const number = await nextDocumentNumber(client, 'delivery_note', date);
       const head = (await client.query(
-        `INSERT INTO delivery_notes (number, customer_id, store_id, order_id, delivery_date, notes, created_by)
-         VALUES ($1, $2, $3, $4, COALESCE($5::date, CURRENT_DATE), $6, $7) RETURNING *`,
-        [number, data.customerId, data.storeId ?? null, data.orderId ?? null, date ?? null, data.notes ?? null, data.createdBy])).rows[0];
+        `INSERT INTO delivery_notes (number, customer_id, store_id, order_id, delivery_date, notes, created_by, received_by_name, received_at)
+         VALUES ($1, $2, $3, $4, COALESCE($5::date, CURRENT_DATE), $6, $7, $8::varchar, CASE WHEN $8::varchar IS NULL THEN NULL ELSE now() END) RETURNING *`,
+        [number, data.customerId, data.storeId ?? null, data.orderId ?? null, date ?? null, data.notes ?? null, data.createdBy,
+         data.receivedByName?.trim() || null])).rows[0];
       for (const it of data.items) {
         let description = it.description?.trim() || null;
         if (!description && it.productId) {
@@ -153,35 +160,69 @@ export const deliveryNoteRepository = {
       if (data.orderId) {
         await client.query(`UPDATE orders SET status = 'completed', completed_at = COALESCE(completed_at, now()) WHERE id = $1 AND status = 'ready'`, [data.orderId]);
       }
-      await client.query('COMMIT');
+      if (!outer) await client.query('COMMIT');
       return head;
+    } catch (err) {
+      if (!outer) await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      if (!outer) client.release();
+    }
+  },
+
+  /**
+   * Livrer une commande de professionnel sur bon de livraison (module Commandes,
+   * direction) : lignes de la commande (prix HT et TVA de la commande, sinon
+   * dernier taux utilisé), quantités livrées éventuellement corrigées, nom du
+   * réceptionnaire. Client facturé « à chaque livraison » : la facture suit le BL
+   * dans la même transaction.
+   */
+  async createFromOrder(orderId: string, createdBy: string, storeId?: string | null, opts: {
+    quantities?: Record<string, number>; receivedByName?: string | null; deliveryDate?: string | null; notes?: string | null;
+  } = {}) {
+    const order = (await db.query(
+      `SELECT o.id, o.customer_id, o.store_id, o.status, c.customer_type, c.billing_frequency
+         FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`, [orderId])).rows[0];
+    if (!order) throw fail(404, 'Commande introuvable');
+    if (!order.customer_id) throw fail(400, 'La commande n\'a pas de fiche client : elle se remet en caisse');
+    if ((order.customer_type ?? 'particulier') === 'particulier') {
+      throw fail(400, 'Commande de particulier : elle se remet en caisse contre le solde, sans bon de livraison');
+    }
+    if (order.status !== 'ready') throw fail(409, 'La commande doit être prête pour être livrée');
+    const lines = await this.orderLines(orderId);
+    if (!lines.length) throw fail(400, 'La commande n\'a aucune ligne');
+    const defaults = await this.lineDefaults(order.customer_id, lines.map((l: Record<string, unknown>) => l.product_id as string));
+    const items = lines.map((l: Record<string, unknown>) => {
+      const id = l.id as string;
+      const qty = opts.quantities && opts.quantities[id] !== undefined ? Number(opts.quantities[id]) : Number(l.quantity);
+      return {
+        productId: l.product_id as string, description: l.description as string,
+        quantity: qty, unitPrice: Number(l.unit_price),
+        tvaRate: l.tva_rate != null ? Number(l.tva_rate) : defaults[l.product_id as string]?.tvaRate ?? null,
+      };
+    }).filter(i => i.quantity > 0);
+    if (!items.length) throw fail(400, 'Aucune quantité livrée');
+    if (items.some(i => !Number.isFinite(i.quantity) || i.quantity < 0)) throw fail(400, 'Quantité livrée invalide');
+
+    const client: PoolClient = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const note = await this.create({
+        customerId: order.customer_id, orderId, createdBy, storeId: order.store_id ?? storeId ?? null,
+        deliveryDate: opts.deliveryDate ?? null, notes: opts.notes ?? null, receivedByName: opts.receivedByName ?? null, items,
+      }, client);
+      let invoice: Record<string, unknown> | null = null;
+      if (order.billing_frequency === 'per_delivery') {
+        invoice = await this.invoice({ deliveryNoteIds: [note.id], invoiceDate: opts.deliveryDate ?? null, createdBy, storeId }, client);
+      }
+      await client.query('COMMIT');
+      return { ...note, invoice };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
     } finally {
       client.release();
     }
-  },
-
-  /**
-   * Livrer une commande prête sur bon de livraison (depuis le module Commandes) :
-   * lignes reprises de la commande, TVA = dernier taux utilisé pour le produit.
-   */
-  async createFromOrder(orderId: string, createdBy: string, storeId?: string | null) {
-    const order = (await db.query(`SELECT id, customer_id, store_id FROM orders WHERE id = $1`, [orderId])).rows[0];
-    if (!order) throw fail(404, 'Commande introuvable');
-    if (!order.customer_id) throw fail(400, 'La commande n\'a pas de fiche client : livrez-la avec encaissement');
-    const lines = await this.orderLines(orderId);
-    if (!lines.length) throw fail(400, 'La commande n\'a aucune ligne');
-    const defaults = await this.lineDefaults(order.customer_id, lines.map((l: Record<string, unknown>) => l.product_id as string));
-    return this.create({
-      customerId: order.customer_id, orderId, createdBy, storeId: order.store_id ?? storeId ?? null,
-      items: lines.map((l: Record<string, unknown>) => ({
-        productId: l.product_id as string, description: l.description as string,
-        quantity: Number(l.quantity), unitPrice: Number(l.unit_price),
-        tvaRate: defaults[l.product_id as string]?.tvaRate ?? null,
-      })),
-    });
   },
 
   async cancel(id: string, userId: string) {
@@ -221,11 +262,11 @@ export const deliveryNoteRepository = {
    * transaction : facture FE (numérotation continue, écriture comptable) + BL
    * passés « facturés ». Échéance = date de facture + délai de paiement du client.
    */
-  async invoice(data: { deliveryNoteIds: string[]; invoiceDate?: string | null; createdBy: string; storeId?: string | null }) {
+  async invoice(data: { deliveryNoteIds: string[]; invoiceDate?: string | null; createdBy: string; storeId?: string | null }, outer?: PoolClient) {
     if (!data.deliveryNoteIds.length) throw fail(400, 'Choisissez au moins un bon de livraison');
-    const client: PoolClient = await db.getClient();
+    const client: PoolClient = outer ?? await db.getClient();
     try {
-      await client.query('BEGIN');
+      if (!outer) await client.query('BEGIN');
       await releaseCancelledInvoices(client);
       const notes = (await client.query(
         `SELECT dn.*, c.delai_paiement_jours FROM delivery_notes dn JOIN customers c ON c.id = dn.customer_id
@@ -261,13 +302,13 @@ export const deliveryNoteRepository = {
       await client.query(
         `UPDATE delivery_notes SET status = 'invoiced', invoice_id = $2 WHERE id = ANY($1::uuid[])`,
         [data.deliveryNoteIds, invoice.id]);
-      await client.query('COMMIT');
+      if (!outer) await client.query('COMMIT');
       return invoice;
     } catch (err) {
-      await client.query('ROLLBACK');
+      if (!outer) await client.query('ROLLBACK');
       throw err;
     } finally {
-      client.release();
+      if (!outer) client.release();
     }
   },
 };

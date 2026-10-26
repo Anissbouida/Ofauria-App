@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Truck, FileText, Plus, X, Trash2, Loader2, Ban, Eye, CheckSquare, Square, ClipboardList } from 'lucide-react';
+import { Truck, FileText, Plus, X, Trash2, Loader2, Ban, Eye, CheckSquare, Square, ClipboardList, Printer } from 'lucide-react';
 import { deliveryNotesApi, type DeliveryNote, type ToInvoiceGroup } from '../../api/delivery-notes.api';
 import { customersApi } from '../../api/customers.api';
 import { productsApi } from '../../api/products.api';
@@ -10,6 +10,15 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
+
+/** BL imprimable (mig 354) : remis avec la marchandise, signé par le client. */
+async function printNote(id: string) {
+  try {
+    window.open(URL.createObjectURL(await deliveryNotesApi.pdf(id)), '_blank');
+  } catch (e) {
+    notify.error(apiErrorMessage(e, 'Impression du bon de livraison impossible'));
+  }
+}
 
 /**
  * Ventes aux professionnels (mig 352) — remplace « Ventes spéciales ».
@@ -100,6 +109,7 @@ function NotesList({ onOpen }: { onOpen: (id: string) => void }) {
                 </td>
                 <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
                   <button type="button" className="odoo-pager-btn" title="Voir" onClick={() => onOpen(n.id)}><Eye size={13} /></button>
+                  <button type="button" className="odoo-pager-btn" title="Imprimer le BL à faire signer" onClick={() => printNote(n.id)}><Printer size={13} /></button>
                   {n.status === 'delivered' && (
                     <button type="button" className="odoo-pager-btn" title="Annuler le BL"
                       onClick={() => { if (window.confirm(`Annuler le bon ${n.number} ?`)) cancel.mutate(n.id); }}><Ban size={13} /></button>
@@ -325,6 +335,7 @@ function NoteDetail({ id, onClose }: { id: string; onClose: () => void }) {
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb"><Truck size={14} style={{ color: 'var(--theme-accent)' }} /><span className="odoo-breadcrumb-current">{n ? `Bon de livraison ${n.number}` : 'Bon de livraison'}</span></div>
           <div style={{ flex: 1 }} />
+          <button type="button" onClick={() => printNote(id)} className="odoo-btn-secondary"><Printer size={13} /> Imprimer</button>
           <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
         </div>
         {!n ? <div style={{ padding: 24, textAlign: 'center' }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></div> : (

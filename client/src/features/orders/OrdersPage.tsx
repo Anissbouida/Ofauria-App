@@ -14,8 +14,9 @@ import {
   ClipboardList, Plus, Phone, Pencil, Search, Eye, X,
   Clock, CheckCircle2, Factory, Truck, Ban, CalendarDays,
   Banknote, CreditCard, Package, PackageCheck, FileText,
-  AlertTriangle, Trash2, Loader2, Tag, User,
+  AlertTriangle, Trash2, Loader2, Tag, User, Building2, CalendarClock, Printer,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import OrderFormModal from '../../components/orders/OrderFormModal';
 import ProSalesTab from '../sales/ProSalesTab';
 import { deliveryNotesApi } from '../../api/delivery-notes.api';
@@ -64,9 +65,20 @@ const OPEN_STATUSES = new Set(['pending', 'confirmed', 'in_production', 'ready']
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function num(v: unknown) { const x = parseFloat(String(v ?? '0')); return Number.isFinite(x) ? x : 0; }
+/** Client professionnel (fiche non « particulier ») : processus direction, BL et facture (mig 354). */
+function isPro(o: OrderRow) { return !!o.customer_type && o.customer_type !== 'particulier'; }
 function customerName(o: OrderRow) {
+  if (isPro(o) && o.company_name) return o.company_name as string;
   return o.customer_first_name ? `${o.customer_first_name} ${o.customer_last_name || ''}`.trim() : '—';
 }
+/** Suivi Livrée → Facturée → Payée d'une commande de professionnel. */
+function proBilling(o: OrderRow): { label: string; tag: string; doc?: string } {
+  if (o.invoice_status === 'paid') return { label: 'Payée', tag: 'odoo-tag-green', doc: o.invoice_number as string };
+  if (o.invoice_number) return { label: 'Facturée', tag: 'odoo-tag-blue', doc: o.invoice_number as string };
+  if (o.delivery_note_number) return { label: 'Livrée · à facturer', tag: 'odoo-tag-orange', doc: o.delivery_note_number as string };
+  return { label: 'Sur facture', tag: 'odoo-tag-grey' };
+}
+const CAN_RESCHEDULE = new Set(['pending', 'confirmed', 'in_production', 'ready']);
 function fmtDate(d: unknown, pattern = 'dd MMM yyyy') {
   return d ? format(new Date(String(d)), pattern, { locale: fr }) : '—';
 }
@@ -97,6 +109,9 @@ const sectionStyle: CSSProperties = { border: '1px solid var(--odoo-border)', bo
 export default function OrdersPage() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const { user } = useAuth();
+  const isDirection = user?.role === 'admin' || user?.role === 'manager';
+  const [rescheduleOrder, setRescheduleOrder] = useState<OrderRow | null>(null);
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [lateOnly, setLateOnly] = useState(false);
@@ -107,7 +122,7 @@ export default function OrdersPage() {
   const [deliverOrder, setDeliverOrder] = useState<OrderRow | null>(null);
   // Livraisons aux professionnels (mig 352) : BL et facturation groupée, à côté des commandes.
   const [tab, setTab] = useState<'orders' | 'pro'>('orders');
-  const { data: toInvoice = [] } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice() });
+  const { data: toInvoice = [] } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice(), enabled: isDirection });
   const pendingNotes = toInvoice.reduce((c, g) => c + g.notes.length, 0);
 
   // Une seule lecture : les compteurs du pipeline et la liste partagent la même source,
@@ -183,7 +198,11 @@ export default function OrdersPage() {
   const hasFilters = !!(statusFilter || typeFilter || lateOnly || searchQuery);
 
   const cancelOrder = async (o: OrderRow) => {
-    if (await confirm(`Annuler la commande ${o.order_number} ?`, { title: 'Annuler la commande', confirmLabel: 'Annuler la commande', cancelLabel: 'Retour', danger: true })) {
+    const adv = num(o.advance_amount);
+    const msg = adv > 0
+      ? `Annuler la commande ${o.order_number} ? L'avance de ${n(adv)} DH reste acquise : elle n'est pas remboursée.`
+      : `Annuler la commande ${o.order_number} ?`;
+    if (await confirm(msg, { title: 'Annuler la commande', confirmLabel: 'Annuler la commande', cancelLabel: 'Retour', danger: true })) {
       updateStatusMutation.mutate({ id: o.id as string, status: 'cancelled' });
     }
   };
@@ -222,11 +241,13 @@ export default function OrdersPage() {
         <button type="button" onClick={() => setTab('orders')} className={`odoo-tab ${tab === 'orders' ? 'active' : ''}`}>
           <ClipboardList size={13} style={{ marginRight: 4 }} /> Commandes clients
         </button>
-        <button type="button" onClick={() => setTab('pro')} className={`odoo-tab ${tab === 'pro' ? 'active' : ''}`}
-          title="Bons de livraison des clients professionnels et facturation groupée">
-          <Truck size={13} style={{ marginRight: 4 }} /> Livraisons pros
-          {pendingNotes > 0 && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 6 }}>{pendingNotes} à facturer</span>}
-        </button>
+        {isDirection && (
+          <button type="button" onClick={() => setTab('pro')} className={`odoo-tab ${tab === 'pro' ? 'active' : ''}`}
+            title="Bons de livraison des clients professionnels et facturation groupée">
+            <Truck size={13} style={{ marginRight: 4 }} /> Livraisons pros
+            {pendingNotes > 0 && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 6 }}>{pendingNotes} à facturer</span>}
+          </button>
+        )}
       </div>
 
       {tab === 'pro' && <div style={{ padding: '16px 20px' }}><ProSalesTab /></div>}
@@ -321,7 +342,7 @@ export default function OrdersPage() {
                       <th>Retrait</th>
                       <th>Avancement</th>
                       <th style={{ textAlign: 'right' }}>Total</th>
-                      <th style={{ textAlign: 'right' }}>Avance / Reste</th>
+                      <th style={{ textAlign: 'right' }}>Règlement</th>
                       <th style={{ textAlign: 'right', width: 150 }}>Actions</th>
                     </tr>
                   </thead>
@@ -342,7 +363,10 @@ export default function OrdersPage() {
                           </td>
                           <td style={{ whiteSpace: 'nowrap' }}>
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <span style={{ fontWeight: 500 }}>{customerName(o)}</span>
+                              <span style={{ fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                {isPro(o) && <Building2 size={11} style={{ color: '#1e7e4f' }} aria-label="Professionnel" />}
+                                {customerName(o)}
+                              </span>
                               {o.customer_phone && (
                                 <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                                   <Phone size={9} /> {o.customer_phone as string}
@@ -361,7 +385,7 @@ export default function OrdersPage() {
                           <td style={{ minWidth: 120 }}>
                             {status === 'cancelled' ? (
                               <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                <Ban size={11} /> Annulée
+                                <Ban size={11} /> {advanceAmt > 0 ? 'Annulée — avance conservée' : 'Annulée'}
                               </span>
                             ) : (
                               <StageProgress count={STAGES.length - 1} current={stageIdx} done={status === 'completed'} late={late} />
@@ -372,7 +396,15 @@ export default function OrdersPage() {
                             <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
                           </td>
                           <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            {advanceAmt > 0 ? (
+                            {isPro(o) ? (() => {
+                              const b = proBilling(o);
+                              return (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                                  <span className={`odoo-tag ${b.tag}`}>{b.label}</span>
+                                  {b.doc && <span style={{ fontSize: '0.6875rem', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{b.doc}</span>}
+                                </div>
+                              );
+                            })() : advanceAmt > 0 ? (
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                                 <span style={{ color: '#155724', fontWeight: 600 }}>{n(advanceAmt)} DH</span>
                                 <span style={{ fontSize: '0.6875rem', color: remaining > 0 && status !== 'completed' ? '#b85d1a' : 'var(--theme-text-muted)' }}>
@@ -406,8 +438,13 @@ export default function OrdersPage() {
                                 </button>
                               )}
                               {status === 'ready' && (
-                                <button onClick={() => setDeliverOrder(o)} title="Livrer et encaisser" className="odoo-pager-btn" style={{ color: '#28a745' }}>
+                                <button onClick={() => setDeliverOrder(o)} title={isPro(o) ? 'Livrer sur bon de livraison' : 'Remettre contre le solde'} className="odoo-pager-btn" style={{ color: '#28a745' }}>
                                   <Truck size={13} />
+                                </button>
+                              )}
+                              {CAN_RESCHEDULE.has(status) && (
+                                <button onClick={() => setRescheduleOrder(o)} title="Reporter la date de retrait" className="odoo-pager-btn">
+                                  <CalendarClock size={13} />
                                 </button>
                               )}
                               <button onClick={() => setViewingOrder(o)} title="Voir le détail" className="odoo-pager-btn">
@@ -470,14 +507,30 @@ export default function OrdersPage() {
           onStatus={(o, status) => { setViewingOrder(null); updateStatusMutation.mutate({ id: o.id as string, status }); }}
           onDeliver={(o) => { setViewingOrder(null); setDeliverOrder(o); }}
           onCancel={(o) => { setViewingOrder(null); cancelOrder(o); }}
+          onReschedule={(o) => { setViewingOrder(null); setRescheduleOrder(o); }}
         />
       )}
 
-      {deliverOrder && (
+      {deliverOrder && (isPro(deliverOrder) ? (
+        <ProDeliverModal
+          order={deliverOrder}
+          onClose={() => setDeliverOrder(null)}
+          onDelivered={() => { setDeliverOrder(null); invalidate(); queryClient.invalidateQueries({ queryKey: ['delivery-notes'] }); queryClient.invalidateQueries({ queryKey: ['invoices'] }); }}
+        />
+      ) : (
         <DeliverModal
           order={deliverOrder}
           onClose={() => setDeliverOrder(null)}
-          onDelivered={() => { setDeliverOrder(null); invalidate(); queryClient.invalidateQueries({ queryKey: ['sales'] }); queryClient.invalidateQueries({ queryKey: ['delivery-notes'] }); }}
+          onDelivered={() => { setDeliverOrder(null); invalidate(); queryClient.invalidateQueries({ queryKey: ['sales'] }); }}
+        />
+      ))}
+
+      {rescheduleOrder && (
+        <RescheduleModal
+          order={rescheduleOrder}
+          isDirection={isDirection}
+          onClose={() => setRescheduleOrder(null)}
+          onDone={() => { setRescheduleOrder(null); invalidate(); }}
         />
       )}
     </div>
@@ -486,13 +539,14 @@ export default function OrdersPage() {
 
 /* ═══════════════════════ Fiche commande ═══════════════════════ */
 
-function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver, onCancel }: {
+function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver, onCancel, onReschedule }: {
   order: OrderRow; late: boolean;
   onClose: () => void;
   onEdit: (o: OrderRow) => void;
   onStatus: (o: OrderRow, status: string) => void;
   onDeliver: (o: OrderRow) => void;
   onCancel: (o: OrderRow) => void;
+  onReschedule: (o: OrderRow) => void;
 }) {
   const { data: detail } = useQuery({
     queryKey: ['order-detail', o.id],
@@ -502,9 +556,13 @@ function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver
   const totalAmt = num(o.total);
   const advanceAmt = num(o.advance_amount);
   const discountAmt = num(o.discount_amount);
+  const taxAmt = num(o.tax_amount);
   const remaining = Math.max(0, totalAmt - advanceAmt);
   const stageIdx = STAGE_KEYS.indexOf(status);
   const items: OrderRow[] = detail?.items || [];
+  const reschedules: OrderRow[] = detail?.reschedules || [];
+  const pro = isPro(o);
+  const billing = pro ? proBilling(o) : null;
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
@@ -554,7 +612,10 @@ function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver
             <div style={sectionStyle}>
               <div className="odoo-section-header"><User size={11} /> Client</div>
               <div style={{ padding: '10px 12px', fontSize: '0.8125rem' }}>
-                <div style={{ fontWeight: 600 }}>{customerName(o)}</div>
+                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {customerName(o)}
+                  <span className={`odoo-tag ${pro ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{pro ? 'Professionnel' : o.customer_id ? 'Particulier' : 'Passager'}</span>
+                </div>
                 {o.customer_phone && (
                   <div style={{ color: 'var(--odoo-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
                     <Phone size={10} /> {o.customer_phone as string}
@@ -573,6 +634,12 @@ function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver
                   <span style={{ color: 'var(--odoo-text-muted)' }}>Créée le</span>
                   <span>{fmtDate(o.created_at, 'dd/MM/yyyy HH:mm')}</span>
                 </div>
+                {reschedules.map((r) => (
+                  <div key={r.id as string} style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
+                    Reportée du {fmtDate(r.old_pickup_date, 'dd/MM')} au {fmtDate(r.new_pickup_date, 'dd/MM')} par {(r.created_by_name as string) || '—'}
+                    {r.forced ? ' (forcé, moins de 24 h)' : ''}{r.reason ? ` — ${r.reason as string}` : ''}
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -591,8 +658,9 @@ function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver
                   <tr>
                     <th>Produit</th>
                     <th style={{ textAlign: 'right' }}>Qté</th>
-                    <th style={{ textAlign: 'right' }}>P.U.</th>
-                    <th style={{ textAlign: 'right' }}>Montant</th>
+                    <th style={{ textAlign: 'right' }}>P.U.{pro ? ' HT' : ''}</th>
+                    {pro && <th style={{ textAlign: 'right' }}>TVA</th>}
+                    <th style={{ textAlign: 'right' }}>Montant{pro ? ' HT' : ''}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -607,6 +675,7 @@ function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver
                         </td>
                         <td style={{ textAlign: 'right' }}>{qty}</td>
                         <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{n(pu)}</td>
+                        {pro && <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{item.tva_rate != null ? `${num(item.tva_rate)} %` : '—'}</td>}
                         <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(qty * pu)} DH</td>
                       </tr>
                     );
@@ -621,25 +690,56 @@ function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver
               <div className="odoo-section-header"><Banknote size={11} /> Règlement</div>
               <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--odoo-text-muted)' }}>Sous-total</span><span>{n(totalAmt + discountAmt)} DH</span>
+                  <span style={{ color: 'var(--odoo-text-muted)' }}>Sous-total{pro ? ' HT' : ''}</span><span>{n(totalAmt + discountAmt - taxAmt)} DH</span>
                 </div>
                 {discountAmt > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#721c24' }}>
                     <span>Remise</span><span>-{n(discountAmt)} DH</span>
                   </div>
                 )}
+                {pro && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--odoo-text-muted)' }}>TVA</span><span>{n(taxAmt)} DH</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4, marginTop: 2 }}>
-                  <span>Total</span><span>{n(totalAmt)} DH</span>
+                  <span>Total{pro ? ' TTC' : ''}</span><span>{n(totalAmt)} DH</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}>
-                  <span>Avance versée</span><span style={{ fontWeight: 600 }}>{n(advanceAmt)} DH</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-                  <span>Reste à payer</span>
-                  <span style={{ color: remaining > 0 && status !== 'completed' ? '#b85d1a' : undefined }}>
-                    {status === 'completed' ? 'Soldée' : `${n(remaining)} DH`}
-                  </span>
-                </div>
+                {pro && billing ? (<>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--odoo-text-muted)' }}>Suivi</span><span className={`odoo-tag ${billing.tag}`}>{billing.label}</span>
+                  </div>
+                  {o.delivery_note_number && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--odoo-text-muted)' }}>Bon de livraison</span>
+                      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                        <span style={{ fontFamily: 'ui-monospace, monospace' }}>{o.delivery_note_number as string}</span>
+                        {o.delivery_note_id && (
+                          <button type="button" onClick={() => openDeliveryNotePdf(o.delivery_note_id as string)} title="Imprimer le BL" className="odoo-pager-btn"><Printer size={12} /></button>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {o.invoice_number && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--odoo-text-muted)' }}>Facture</span>
+                      <span style={{ fontFamily: 'ui-monospace, monospace' }}>{o.invoice_number as string}{o.invoice_due_date ? ` · échéance ${fmtDate(o.invoice_due_date, 'dd/MM/yyyy')}` : ''}</span>
+                    </div>
+                  )}
+                  <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
+                    Facturation {o.billing_frequency === 'per_delivery' ? 'à chaque livraison' : 'mensuelle'} · règlement saisi par la direction.
+                  </div>
+                </>) : (<>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}>
+                    <span>Avance versée (non remboursable)</span><span style={{ fontWeight: 600 }}>{n(advanceAmt)} DH</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                    <span>Reste à payer au retrait</span>
+                    <span style={{ color: remaining > 0 && status !== 'completed' ? '#b85d1a' : undefined }}>
+                      {status === 'completed' ? 'Soldée' : status === 'cancelled' ? (advanceAmt > 0 ? 'Annulée — avance conservée' : 'Annulée') : `${n(remaining)} DH`}
+                    </span>
+                  </div>
+                </>)}
               </div>
             </div>
             {o.notes && (
@@ -657,6 +757,9 @@ function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver
             <button onClick={() => onCancel(o)} className="odoo-btn-danger" style={{ marginRight: 'auto' }}><Ban size={13} /> Annuler la commande</button>
           )}
           <button onClick={onClose} className="odoo-btn-secondary">Fermer</button>
+          {CAN_RESCHEDULE.has(status) && (
+            <button onClick={() => onReschedule(o)} className="odoo-btn-secondary"><CalendarClock size={13} /> Reporter</button>
+          )}
           {status !== 'completed' && status !== 'cancelled' && (
             <button onClick={() => onEdit(o)} className="odoo-btn-secondary"><Pencil size={13} /> Modifier</button>
           )}
@@ -670,7 +773,7 @@ function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver
             <button onClick={() => onStatus(o, 'ready')} className="odoo-btn-primary"><PackageCheck size={13} /> Marquer prête</button>
           )}
           {status === 'ready' && (
-            <button onClick={() => onDeliver(o)} className="odoo-btn-primary"><Truck size={13} /> Livrer</button>
+            <button onClick={() => onDeliver(o)} className="odoo-btn-primary"><Truck size={13} /> {pro ? 'Livrer sur BL' : 'Remettre au client'}</button>
           )}
         </div>
       </div>
@@ -678,32 +781,29 @@ function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver
   );
 }
 
-/* ═══════════════════════ Livraison / encaissement ═══════════════════════ */
+/* ═══════════════════════ Remise d'une commande de particulier ═══════════════════════ */
 
+/**
+ * Particulier ou passager : la commande se remet en caisse contre le reste
+ * (total − avance), réglé en totalité — pas de reliquat. Le montant est compté
+ * dans la session de la caissière qui remet la commande.
+ */
 function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onClose: () => void; onDelivered: () => void }) {
   const totalAmt = num(order.total);
   const advanceAmt = num(order.advance_amount);
-  const remaining = Math.max(0, totalAmt - advanceAmt);
+  const remaining = Math.max(0, Math.round((totalAmt - advanceAmt) * 100) / 100);
   const [amount, setAmount] = useState(remaining.toFixed(2));
   const [payment, setPayment] = useState<'cash' | 'card'>('cash');
-  // Client professionnel : livraison sur bon de livraison, facturée avec les autres
-  // livraisons du mois (mig 352). Exclu si une avance a déjà été encaissée en caisse.
-  const canNote = !!order.customer_id && advanceAmt <= 0;
-  const [mode, setMode] = useState<'pay' | 'note'>(canNote && order.customer_type === 'professionnel' ? 'note' : 'pay');
-  const noteMutation = useMutation({
-    mutationFn: () => deliveryNotesApi.createFromOrder(order.id as string),
-    onSuccess: (n) => { notify.success(`Bon de livraison ${n.number} créé : la commande est livrée, à facturer dans « Livraisons pros »`); onDelivered(); },
-    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Création du bon de livraison impossible')),
-  });
 
   const deliverMutation = useMutation({
     mutationFn: () => ordersApi.deliver(order.id as string, { amountPaid: parseFloat(amount) || 0, paymentMethod: payment }),
-    onSuccess: () => { notify.success('Commande livrée'); onDelivered(); },
-    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la livraison')),
+    onSuccess: () => { notify.success('Commande remise au client, solde encaissé'); onDelivered(); },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la remise')),
   });
 
   const paid = parseFloat(amount) || 0;
-  const stillDue = remaining - paid;
+  const short = remaining - paid > 0.004;
+  const change = payment === 'cash' ? Math.max(0, paid - remaining) : 0;
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
@@ -711,53 +811,35 @@ function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onClos
         <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
           <Truck size={18} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Livraison et encaissement</div>
+            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Remise au client</div>
             <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · {customerName(order)}</div>
           </div>
           <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
         </div>
 
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {order.customer_id && (
-            <div className="odoo-view-switcher" role="radiogroup" style={{ width: '100%' }}>
-              {([['pay', 'Encaisser maintenant', Banknote], ['note', 'Bon de livraison', FileText]] as const).map(([key, label, Icon]) => (
-                <button key={key} type="button" role="radio" aria-checked={mode === key} disabled={key === 'note' && !canNote}
-                  onClick={() => setMode(key)} className={mode === key ? 'active' : ''}
-                  title={key === 'note' && !canNote ? 'Une avance a déjà été encaissée : livrez avec encaissement' : undefined}
-                  style={{ flex: 1, padding: '0.45rem 0.5rem', fontSize: '0.8125rem', gap: 4, fontWeight: mode === key ? 600 : 400 }}>
-                  <Icon size={13} /> {label}
-                </button>
-              ))}
-            </div>
-          )}
-          {mode === 'note' ? (
-            <StatusBanner tone="info" icon={FileText} title={`Livraison sur bon de livraison · ${n(totalAmt)} DH`}>
-              Le client ne paie pas maintenant : un bon de livraison est créé avec les lignes de la commande, puis facturé
-              avec ses autres livraisons depuis « Livraisons pros › À facturer ». La commande passe « terminée ».
-            </StatusBanner>
-          ) : (<>
           <div style={sectionStyle}>
             <div className="odoo-section-header"><Banknote size={11} /> Solde de la commande</div>
             <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total commande</span><span style={{ fontWeight: 600 }}>{n(totalAmt)} DH</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}><span>Avance versée</span><span style={{ fontWeight: 600 }}>{n(advanceAmt)} DH</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}><span>Avance déjà versée</span><span style={{ fontWeight: 600 }}>{n(advanceAmt)} DH</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4, marginTop: 2 }}>
-                <span>Reste à payer</span><span style={{ color: '#b85d1a' }}>{n(remaining)} DH</span>
+                <span>Reste à encaisser</span><span style={{ color: '#b85d1a' }}>{n(remaining)} DH</span>
               </div>
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
-              <label style={labelStyle}>Montant encaissé (DH)</label>
-              <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} min="0" step="0.01" autoFocus
+              <label style={labelStyle}>Montant reçu (DH)</label>
+              <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} min={remaining} step="0.01" autoFocus
                 style={{ ...fieldStyle, textAlign: 'right', fontWeight: 700, fontSize: '1rem' }} />
             </div>
             <div>
               <label style={labelStyle}>Mode de paiement</label>
               <div className="odoo-view-switcher" role="radiogroup" style={{ width: '100%' }}>
                 {([['cash', 'Espèces', Banknote], ['card', 'Carte', CreditCard]] as const).map(([key, label, Icon]) => (
-                  <button key={key} type="button" role="radio" aria-checked={payment === key} onClick={() => setPayment(key)}
+                  <button key={key} type="button" role="radio" aria-checked={payment === key} onClick={() => { setPayment(key); if (key === 'card') setAmount(remaining.toFixed(2)); }}
                     className={payment === key ? 'active' : ''} style={{ flex: 1, padding: '0.45rem 0.5rem', fontSize: '0.8125rem', gap: 4, fontWeight: payment === key ? 600 : 400 }}>
                     <Icon size={13} /> {label}
                   </button>
@@ -766,20 +848,219 @@ function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onClos
             </div>
           </div>
 
-          {paid > 0 && stillDue > 0.004 && (
-            <StatusBanner tone="warning" icon={AlertTriangle} title={`Le client devra encore ${n(stillDue)} DH`}>
-              L'encaissement est partiel : la commande sera livrée avec un reliquat.
+          {short ? (
+            <StatusBanner tone="danger" icon={AlertTriangle} title={`Il manque ${n(remaining - paid)} DH`}>
+              Le reste doit être réglé en totalité pour remettre la commande.
             </StatusBanner>
-          )}
-          </>)}
+          ) : change > 0.004 ? (
+            <StatusBanner tone="info" icon={Banknote} title={`Monnaie à rendre : ${n(change)} DH`} />
+          ) : null}
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
-          <button onClick={onClose} className="odoo-btn-secondary" disabled={deliverMutation.isPending || noteMutation.isPending}>Annuler</button>
-          <button onClick={() => (mode === 'note' ? noteMutation.mutate() : deliverMutation.mutate())}
-            disabled={deliverMutation.isPending || noteMutation.isPending} className="odoo-btn-primary">
-            {deliverMutation.isPending || noteMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
-            {mode === 'note' ? 'Livrer sur bon de livraison' : 'Confirmer la livraison'}
+          <button onClick={onClose} className="odoo-btn-secondary" disabled={deliverMutation.isPending}>Annuler</button>
+          <button onClick={() => deliverMutation.mutate()} disabled={deliverMutation.isPending || short} className="odoo-btn-primary">
+            {deliverMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+            Encaisser {n(remaining)} DH et remettre
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+/* ═══════════════════════ Livraison d'une commande de professionnel ═══════════════════════ */
+
+/** Ouvre le PDF d'un bon de livraison (route authentifiée → blob). */
+async function openDeliveryNotePdf(id: string) {
+  try {
+    const blob = await deliveryNotesApi.pdf(id);
+    window.open(URL.createObjectURL(blob), '_blank');
+  } catch (e) {
+    notify.error(getApiErrorMessage(e, 'Impression du bon de livraison impossible'));
+  }
+}
+
+/**
+ * Professionnel (direction) : pas d'encaissement. Un bon de livraison est créé
+ * avec les quantités réellement livrées et le nom du réceptionnaire, à imprimer
+ * et faire signer. Client facturé à chaque livraison → la facture suit aussitôt.
+ */
+function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onClose: () => void; onDelivered: () => void }) {
+  const { data: lines = [], isLoading } = useQuery({
+    queryKey: ['delivery-notes', 'order-lines', order.id],
+    queryFn: () => deliveryNotesApi.orderLines(order.id as string),
+  });
+  const [qty, setQty] = useState<Record<string, string>>({});
+  const [receivedBy, setReceivedBy] = useState('');
+  const [deliveryDate, setDeliveryDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const perDelivery = order.billing_frequency === 'per_delivery';
+
+  const qtyOf = (l: { id: string; quantity: string }) => (qty[l.id] !== undefined ? parseFloat(qty[l.id]) || 0 : num(l.quantity));
+  const totals = lines.reduce((acc, l) => {
+    const ht = qtyOf(l) * num(l.unit_price);
+    return { ht: acc.ht + ht, tva: acc.tva + Math.round(ht * num(l.tva_rate)) / 100 };
+  }, { ht: 0, tva: 0 });
+  const changed = lines.some(l => Math.abs(qtyOf(l) - num(l.quantity)) > 0.0001);
+
+  const mutation = useMutation({
+    mutationFn: () => deliveryNotesApi.createFromOrder(order.id as string, {
+      quantities: Object.fromEntries(lines.map(l => [l.id, qtyOf(l)])),
+      receivedByName: receivedBy.trim() || undefined,
+      deliveryDate,
+    }),
+    onSuccess: (note) => {
+      notify.success(note.invoice
+        ? `Bon de livraison ${note.number} et facture ${note.invoice.invoice_number} créés`
+        : `Bon de livraison ${note.number} créé : à facturer en fin de mois`);
+      openDeliveryNotePdf(note.id);
+      onDelivered();
+    },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Création du bon de livraison impossible')),
+  });
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
+      <div className="odoo-scope w-full flex flex-col" style={{ ...modalPanelStyle, maxWidth: 640, maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Truck size={18} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Livraison sur bon de livraison</div>
+            <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · {customerName(order)}</div>
+          </div>
+          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
+        </div>
+
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
+          <StatusBanner tone="info" icon={FileText}
+            title={perDelivery ? 'Facturé à chaque livraison : la facture est créée avec le BL' : 'Facturation mensuelle : le BL rejoint « À facturer »'}>
+            Aucun encaissement : le règlement de la facture est saisi par la direction. Imprimez le BL et faites-le signer à la livraison.
+          </StatusBanner>
+
+          <div style={sectionStyle}>
+            <div className="odoo-section-header"><Package size={11} /> Quantités livrées</div>
+            {isLoading ? (
+              <div style={{ padding: '1rem', textAlign: 'center' }}><Loader2 size={16} className="animate-spin" /></div>
+            ) : (
+              <table className="odoo-table" style={{ margin: 0 }}>
+                <thead>
+                  <tr>
+                    <th>Produit</th>
+                    <th style={{ textAlign: 'right' }}>Commandé</th>
+                    <th style={{ textAlign: 'right', width: 110 }}>Livré</th>
+                    <th style={{ textAlign: 'right' }}>P.U. HT</th>
+                    <th style={{ textAlign: 'right' }}>TVA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map(l => (
+                    <tr key={l.id} style={{ cursor: 'default' }}>
+                      <td style={{ fontWeight: 500 }}>{l.description}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{num(l.quantity)}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <input type="number" min="0" step="0.01" value={qty[l.id] ?? String(num(l.quantity))}
+                          onChange={e => setQty({ ...qty, [l.id]: e.target.value })}
+                          style={{ ...fieldStyle, width: 90, textAlign: 'right', fontWeight: 600 }} />
+                      </td>
+                      <td style={{ textAlign: 'right' }}>{n(num(l.unit_price))}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{l.tva_rate != null ? `${num(l.tva_rate)} %` : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          {changed && (
+            <StatusBanner tone="warning" icon={AlertTriangle} title="Quantités différentes de la commande">
+              La facture portera les quantités livrées.
+            </StatusBanner>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Date de livraison</label>
+              <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} style={fieldStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Reçu par (nom du réceptionnaire)</label>
+              <input type="text" value={receivedBy} onChange={e => setReceivedBy(e.target.value)} placeholder="Facultatif, sinon à remplir sur le BL" style={fieldStyle} />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16, fontSize: '0.8125rem' }}>
+            <span>HT <strong>{n(totals.ht)} DH</strong></span>
+            <span>TVA <strong>{n(totals.tva)} DH</strong></span>
+            <span>TTC <strong>{n(totals.ht + totals.tva)} DH</strong></span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
+          <button onClick={onClose} className="odoo-btn-secondary" disabled={mutation.isPending}>Annuler</button>
+          <button onClick={() => mutation.mutate()} disabled={mutation.isPending || isLoading || totals.ht <= 0} className="odoo-btn-primary">
+            {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
+            {perDelivery ? 'Livrer, facturer et imprimer le BL' : 'Livrer et imprimer le BL'}
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+/* ═══════════════════════ Report de la date de retrait ═══════════════════════ */
+
+/**
+ * Le client prévient au moins 24 h avant le retrait : report libre. À moins de
+ * 24 h, seule la direction peut forcer le report, avec un motif.
+ */
+function RescheduleModal({ order, isDirection, onClose, onDone }: { order: OrderRow; isDirection: boolean; onClose: () => void; onDone: () => void }) {
+  const current = order.pickup_date ? new Date(order.pickup_date as string) : null;
+  const hoursLeft = current ? (current.getTime() - Date.now()) / 3_600_000 : Infinity;
+  const late = hoursLeft < 24;
+  const [date, setDate] = useState(format(new Date(Date.now() + 2 * 86_400_000), 'yyyy-MM-dd'));
+  const [reason, setReason] = useState('');
+  const blocked = late && !isDirection;
+
+  const mutation = useMutation({
+    mutationFn: () => ordersApi.reschedule(order.id as string, { newPickupDate: `${date}T12:00:00`, reason: reason.trim() || undefined }),
+    onSuccess: () => { notify.success(`Retrait reporté au ${format(new Date(`${date}T12:00:00`), 'dd MMM yyyy', { locale: fr })}`); onDone(); },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Report impossible')),
+  });
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
+      <div className="odoo-scope w-full" style={{ ...modalPanelStyle, maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <CalendarClock size={18} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Reporter le retrait</div>
+            <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · prévu le {fmtDate(order.pickup_date)}</div>
+          </div>
+          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
+        </div>
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {late ? (
+            <StatusBanner tone={blocked ? 'danger' : 'warning'} icon={AlertTriangle} title="Moins de 24 h avant le retrait">
+              {blocked ? 'Seule la direction peut encore reporter cette commande.' : 'Report forcé par la direction : le motif est obligatoire.'}
+            </StatusBanner>
+          ) : (
+            <StatusBanner tone="info" icon={CalendarDays} title="Report possible">
+              Le client prévient au moins 24 h avant le retrait. La production liée est décalée d'autant.
+            </StatusBanner>
+          )}
+          <div>
+            <label style={labelStyle}>Nouvelle date de retrait</label>
+            <input type="date" value={date} min={format(new Date(), 'yyyy-MM-dd')} onChange={e => setDate(e.target.value)} style={fieldStyle} disabled={blocked} />
+          </div>
+          <div>
+            <label style={labelStyle}>Motif{late ? ' (obligatoire)' : ''}</label>
+            <input type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder="Appel du client, imprévu…" style={fieldStyle} disabled={blocked} />
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
+          <button onClick={onClose} className="odoo-btn-secondary">Fermer</button>
+          <button onClick={() => mutation.mutate()} className="odoo-btn-primary"
+            disabled={blocked || mutation.isPending || !date || (late && !reason.trim())}>
+            {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CalendarClock size={13} />} Reporter
           </button>
         </div>
       </div>

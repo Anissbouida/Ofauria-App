@@ -6,6 +6,7 @@ export interface DeliveryNote {
   order_id: string | null; order_number: string | null; delivery_date: string;
   status: 'delivered' | 'invoiced' | 'cancelled'; invoice_id: string | null; invoice_number: string | null;
   notes: string | null; created_by_name: string | null; created_at: string;
+  received_by_name?: string | null; received_at?: string | null; billing_frequency?: string;
   total_ht: string; total_tva: string; total_ttc: string; line_count: string;
   items?: Array<{ id: string; product_id: string | null; product_name: string | null; description: string; quantity: string; unit_price: string; tva_rate: string | null; subtotal: string }>;
 }
@@ -21,11 +22,16 @@ export const deliveryNotesApi = {
     api.get('/delivery-notes/line-defaults', { params: { customerId, productIds: productIds.join(',') } })
       .then(r => r.data.data as Record<string, { unitPrice: number; tvaRate: number | null }>),
   eligibleOrders: (customerId: string) => api.get(`/delivery-notes/orders/${customerId}`).then(r => r.data.data as Array<{ id: string; order_number: string; pickup_date: string | null; total: string; status: string }>),
-  orderLines: (orderId: string) => api.get(`/delivery-notes/order-lines/${orderId}`).then(r => r.data.data as Array<{ product_id: string; description: string; quantity: string; unit_price: string }>),
+  orderLines: (orderId: string) => api.get(`/delivery-notes/order-lines/${orderId}`)
+    .then(r => r.data.data as Array<{ id: string; product_id: string; description: string; quantity: string; unit_price: string; tva_rate: string | null }>),
+  /** BL imprimable à faire signer (mig 354). */
+  pdf: (id: string) => api.get(`/delivery-notes/${id}/pdf`, { responseType: 'blob' }).then(r => r.data as Blob),
   create: (data: { customerId: string; deliveryDate?: string; orderId?: string | null; notes?: string; items: DeliveryLinePayload[] }) =>
     api.post('/delivery-notes', data).then(r => r.data.data as DeliveryNote),
   /** Livrer une commande prête sur BL (module Commandes). */
-  createFromOrder: (orderId: string) => api.post(`/delivery-notes/from-order/${orderId}`).then(r => r.data.data as DeliveryNote),
+  createFromOrder: (orderId: string, data?: { quantities?: Record<string, number>; receivedByName?: string; deliveryDate?: string }) =>
+    api.post(`/delivery-notes/from-order/${orderId}`, data ?? {})
+      .then(r => r.data.data as DeliveryNote & { invoice: { id: string; invoice_number: string } | null }),
   cancel: (id: string) => api.post(`/delivery-notes/${id}/cancel`).then(r => r.data.data),
   toInvoice: (until?: string) => api.get('/delivery-notes/to-invoice', { params: until ? { until } : {} }).then(r => r.data.data as ToInvoiceGroup[]),
   invoice: (deliveryNoteIds: string[], invoiceDate?: string) =>

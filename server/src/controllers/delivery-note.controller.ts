@@ -1,6 +1,7 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { deliveryNoteRepository } from '../repositories/delivery-note.repository.js';
+import { generateDeliveryNotePdf } from '../services/delivery-note-pdf.service.js';
 
 /** Ventes aux professionnels (mig 352) : bons de livraison clients et facturation groupée. */
 export const deliveryNoteController = {
@@ -14,6 +15,16 @@ export const deliveryNoteController = {
     const note = await deliveryNoteRepository.findById(req.params.id);
     if (!note) { res.status(404).json({ success: false, error: { message: 'Bon de livraison introuvable' } }); return; }
     res.json({ success: true, data: note });
+  },
+  /** Bon de livraison imprimable (mig 354) : remis avec la marchandise, signé par le client. */
+  async pdf(req: AuthRequest, res: Response) {
+    const note = await deliveryNoteRepository.findById(req.params.id);
+    if (!note) { res.status(404).json({ success: false, error: { message: 'Bon de livraison introuvable' } }); return; }
+    const buffer = await generateDeliveryNotePdf(note);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${String(note.number).replace(/[/\\"]/g, '-')}.pdf"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
   },
   async lineDefaults(req: AuthRequest, res: Response) {
     const q = req.query as Record<string, string | undefined>;
@@ -35,12 +46,16 @@ export const deliveryNoteController = {
         quantity: Number(i.quantity), unitPrice: Number(i.unitPrice),
         tvaRate: i.tvaRate === null || i.tvaRate === undefined || i.tvaRate === '' ? null : Number(i.tvaRate),
       })) : [],
-      createdBy: req.user!.userId, storeId: req.user!.storeId ?? null,
+      createdBy: req.user!.userId, storeId: req.user!.storeId ?? null, receivedByName: b.receivedByName ?? null,
     });
     res.status(201).json({ success: true, data: note });
   },
   async createFromOrder(req: AuthRequest, res: Response) {
-    const note = await deliveryNoteRepository.createFromOrder(req.params.orderId, req.user!.userId, req.user!.storeId ?? null);
+    const b = (req.body ?? {}) as { quantities?: Record<string, number>; receivedByName?: string; deliveryDate?: string; notes?: string };
+    const note = await deliveryNoteRepository.createFromOrder(req.params.orderId, req.user!.userId, req.user!.storeId ?? null, {
+      quantities: b.quantities && typeof b.quantities === 'object' ? b.quantities : undefined,
+      receivedByName: b.receivedByName ?? null, deliveryDate: b.deliveryDate ?? null, notes: b.notes ?? null,
+    });
     res.status(201).json({ success: true, data: note });
   },
   async cancel(req: AuthRequest, res: Response) {

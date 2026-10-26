@@ -63,14 +63,14 @@ export const customerRepository = {
         preferred_contact, allergies,
         ice, if_fiscal, rc, rc_ville, tp, cnss, forme_juridique,
         association_recepisse, president, contact_role,
-        credit_limit, remise_pct, delai_paiement_jours, tva_exonere
+        credit_limit, remise_pct, delai_paiement_jours, tva_exonere, billing_frequency
       ) VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8, $9, $10,
         $11, $12,
         $13, $14, $15, $16, $17, $18, $19,
         $20, $21, $22,
-        $23, $24, $25, $26
+        $23, $24, $25, $26, $27
       ) RETURNING *`,
       [
         data.firstName || null, data.lastName || null, data.email || null, data.phone || null, data.notes || null,
@@ -80,6 +80,7 @@ export const customerRepository = {
         data.tp || null, data.cnss || null, data.formeJuridique || null,
         data.associationRecepisse || null, data.president || null, data.contactRole || null,
         num(data.creditLimit), num(data.remisePct), num(data.delaiPaiementJours), bool(data.tvaExonere),
+        data.billingFrequency === 'per_delivery' ? 'per_delivery' : 'monthly',
       ]
     );
     return result.rows[0];
@@ -94,7 +95,7 @@ export const customerRepository = {
       tp: 'tp', cnss: 'cnss', formeJuridique: 'forme_juridique',
       associationRecepisse: 'association_recepisse', president: 'president', contactRole: 'contact_role',
       creditLimit: 'credit_limit', remisePct: 'remise_pct', delaiPaiementJours: 'delai_paiement_jours',
-      tvaExonere: 'tva_exonere',
+      tvaExonere: 'tva_exonere', billingFrequency: 'billing_frequency',
     };
     const nullable = new Set([
       'firstName', 'lastName',
@@ -111,7 +112,8 @@ export const customerRepository = {
     for (const [key, col] of Object.entries(mapping)) {
       if (data[key] !== undefined) {
         let v: unknown = data[key];
-        if (boolKeys.has(key)) v = v === true || v === 'true' || v === 'on' || v === '1';
+        if (key === 'billingFrequency') v = v === 'per_delivery' ? 'per_delivery' : 'monthly';
+        else if (boolKeys.has(key)) v = v === true || v === 'true' || v === 'on' || v === '1';
         else if (nullable.has(key) && v === '') v = null;
         fields.push(`${col} = $${i++}`); values.push(v);
       }

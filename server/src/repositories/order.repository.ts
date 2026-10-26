@@ -3,7 +3,7 @@ import { nextDocumentNumber } from '../utils/document-number.js';
 import { computeSourcingAndCreatePlan } from './sourcing.helper.js';
 
 export const orderRepository = {
-  async findAll(params: { status?: string; type?: string; customerId?: string; storeId?: string; limit: number; offset: number }) {
+  async findAll(params: { status?: string; type?: string; customerId?: string; storeId?: string; hidePro?: boolean; limit: number; offset: number }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
@@ -12,19 +12,27 @@ export const orderRepository = {
     if (params.status) { conditions.push(`o.status = $${i++}`); values.push(params.status); }
     if (params.type) { conditions.push(`o.type = $${i++}`); values.push(params.type); }
     if (params.customerId) { conditions.push(`o.customer_id = $${i++}`); values.push(params.customerId); }
+    if (params.hidePro) conditions.push(`COALESCE(c.customer_type, 'particulier') = 'particulier'`);
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
-    const countResult = await db.query(`SELECT COUNT(*) FROM orders o ${where}`, values);
+    const countResult = await db.query(`SELECT COUNT(*) FROM orders o LEFT JOIN customers c ON c.id = o.customer_id ${where}`, values);
     const total = parseInt(countResult.rows[0].count, 10);
 
     values.push(params.limit, params.offset);
     const result = await db.query(
       `SELECT o.*, COALESCE(c.first_name, o.customer_name) as customer_first_name, c.last_name as customer_last_name, COALESCE(c.phone, o.customer_phone) as customer_phone,
-              c.customer_type, c.company_name,
-              -- Bon de livraison client actif (mig 352) : commande livrée sur BL, à facturer.
-              (SELECT d.number FROM delivery_notes d WHERE d.order_id = o.id AND d.status <> 'cancelled' LIMIT 1) AS delivery_note_number
+              c.customer_type, c.company_name, c.billing_frequency,
+              -- Bon de livraison client actif (mig 352) et facture qui le règle (mig 354) :
+              -- suivi Livrée → Facturée → Payée des commandes de professionnels.
+              bl.id AS delivery_note_id, bl.number AS delivery_note_number, bl.status AS delivery_note_status,
+              inv.id AS invoice_id, inv.invoice_number, inv.status AS invoice_status, inv.due_date AS invoice_due_date
        FROM orders o LEFT JOIN customers c ON c.id = o.customer_id
+       LEFT JOIN LATERAL (SELECT d.id, d.number, d.status, d.invoice_id FROM delivery_notes d
+                           WHERE d.order_id = o.id AND d.status <> 'cancelled' ORDER BY d.created_at DESC LIMIT 1) bl ON true
+       LEFT JOIN LATERAL (SELECT i.id, i.invoice_number, i.status, i.due_date FROM invoices i
+                           WHERE i.status <> 'cancelled' AND (i.id = bl.invoice_id OR i.order_id = o.id)
+                           ORDER BY i.created_at DESC LIMIT 1) inv ON true
        ${where} ORDER BY o.created_at DESC LIMIT $${i++} OFFSET $${i}`,
       values
     );
@@ -35,10 +43,17 @@ export const orderRepository = {
   async findById(id: string) {
     const orderResult = await db.query(
       `SELECT o.*, COALESCE(c.first_name, o.customer_name) as customer_first_name, c.last_name as customer_last_name, COALESCE(c.phone, o.customer_phone) as customer_phone,
-              c.customer_type, c.company_name,
-              -- Bon de livraison client actif (mig 352) : commande livrée sur BL, à facturer.
-              (SELECT d.number FROM delivery_notes d WHERE d.order_id = o.id AND d.status <> 'cancelled' LIMIT 1) AS delivery_note_number
-       FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`,
+              c.customer_type, c.company_name, c.billing_frequency,
+              -- Bon de livraison client actif (mig 352) et facture qui le règle (mig 354) :
+              -- suivi Livrée → Facturée → Payée des commandes de professionnels.
+              bl.id AS delivery_note_id, bl.number AS delivery_note_number, bl.status AS delivery_note_status,
+              inv.id AS invoice_id, inv.invoice_number, inv.status AS invoice_status, inv.due_date AS invoice_due_date
+       FROM orders o LEFT JOIN customers c ON c.id = o.customer_id
+       LEFT JOIN LATERAL (SELECT d.id, d.number, d.status, d.invoice_id FROM delivery_notes d
+                           WHERE d.order_id = o.id AND d.status <> 'cancelled' ORDER BY d.created_at DESC LIMIT 1) bl ON true
+       LEFT JOIN LATERAL (SELECT i.id, i.invoice_number, i.status, i.due_date FROM invoices i
+                           WHERE i.status <> 'cancelled' AND (i.id = bl.invoice_id OR i.order_id = o.id)
+                           ORDER BY i.created_at DESC LIMIT 1) inv ON true WHERE o.id = $1`,
       [id]
     );
     if (!orderResult.rows[0]) return null;
@@ -58,7 +73,7 @@ export const orderRepository = {
     subtotal: number; taxAmount: number; discountAmount: number; total: number;
     advanceAmount?: number; paymentMethod: string; notes?: string; pickupDate?: string;
     sessionId?: string; storeId?: string; orderDate?: string;
-    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; notes?: string }[];
+    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null; notes?: string }[];
   }) {
     const client = await db.getClient();
     try {
@@ -82,9 +97,9 @@ export const orderRepository = {
 
       for (const item of data.items) {
         const itemRes = await client.query(
-          `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal, notes, status)
-           VALUES ($1, $2, $3, $4, $5, $6, 'pending') RETURNING id`,
-          [orderId, item.productId, item.quantity, item.unitPrice, item.subtotal, item.notes || null]
+          `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal, notes, status, tva_rate)
+           VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7) RETURNING id`,
+          [orderId, item.productId, item.quantity, item.unitPrice, item.subtotal, item.notes || null, item.tvaRate ?? null]
         );
         insertedItems.push({
           itemId: itemRes.rows[0].id,
@@ -159,7 +174,7 @@ export const orderRepository = {
     type?: string; subtotal: number; taxAmount: number;
     discountAmount: number; total: number; advanceAmount?: number;
     paymentMethod?: string; notes?: string; pickupDate?: string;
-    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; notes?: string }[];
+    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null; notes?: string }[];
   }) {
     const client = await db.getClient();
     try {
@@ -190,9 +205,9 @@ export const orderRepository = {
       await client.query('DELETE FROM order_items WHERE order_id = $1', [id]);
       for (const item of data.items) {
         await client.query(
-          `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal, notes)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.notes || null]
+          `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal, notes, tva_rate)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.notes || null, item.tvaRate ?? null]
         );
       }
 
@@ -206,13 +221,51 @@ export const orderRepository = {
     }
   },
 
-  async updateStatus(id: string, status: string) {
+  async updateStatus(id: string, status: string, cancel?: { userId: string; reason?: string | null }) {
     const completedAt = status === 'completed' ? 'NOW()' : 'NULL';
     const result = await db.query(
-      `UPDATE orders SET status = $1, completed_at = ${completedAt} WHERE id = $2 RETURNING *`,
-      [status, id]
+      `UPDATE orders SET status = $1::varchar, completed_at = ${completedAt},
+              cancelled_at = CASE WHEN $1::varchar = 'cancelled' THEN NOW() ELSE NULL END,
+              cancelled_by = CASE WHEN $1::varchar = 'cancelled' THEN $3::uuid ELSE NULL END,
+              cancel_reason = CASE WHEN $1::varchar = 'cancelled' THEN $4::text ELSE NULL END
+        WHERE id = $2 RETURNING *`,
+      [status, id, cancel?.userId ?? null, cancel?.reason ?? null]
     );
     return result.rows[0];
+  },
+
+  /**
+   * Report de la date de retrait (mig 354) : journalisé, et les plans de
+   * production liés pas encore lancés glissent du même nombre de jours.
+   */
+  async reschedule(id: string, data: { newPickupDate: string; reason?: string | null; forced: boolean; userId: string }) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const cur = (await client.query(`SELECT pickup_date FROM orders WHERE id = $1 FOR UPDATE`, [id])).rows[0];
+      const upd = (await client.query(
+        `UPDATE orders SET pickup_date = $2::timestamptz WHERE id = $1 RETURNING *`, [id, data.newPickupDate])).rows[0];
+      await client.query(
+        `INSERT INTO order_reschedules (order_id, old_pickup_date, new_pickup_date, reason, forced, created_by)
+         VALUES ($1, $2, $3::timestamptz, $4, $5, $6)`,
+        [id, cur?.pickup_date ?? null, data.newPickupDate, data.reason ?? null, data.forced, data.userId]);
+      if (cur?.pickup_date) {
+        await client.query(
+          `UPDATE production_plans
+              SET plan_date = GREATEST(CURRENT_DATE, plan_date + (($2::timestamptz AT TIME ZONE 'Africa/Casablanca')::date
+                                                  - ($3::timestamptz AT TIME ZONE 'Africa/Casablanca')::date)),
+                  updated_at = NOW()
+            WHERE order_id = $1 AND status IN ('draft', 'confirmed', 'awaiting_ingredients', 'ready_to_produce')`,
+          [id, data.newPickupDate, cur.pickup_date]);
+      }
+      await client.query('COMMIT');
+      return upd;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   async generateOrderNumber(client?: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }) {

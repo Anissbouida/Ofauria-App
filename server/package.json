@@ -26,7 +26,8 @@
     "seed:test-accounts": "tsx scripts/seed-test-accounts.ts",
     "backfill:cmup": "tsx scripts/backfill-unit-cost-cmup.ts",
     "e2e:creances": "tsx scripts/e2e-creances.ts",
-    "e2e:ventes-pros": "tsx scripts/e2e-ventes-pros.ts"
+    "e2e:ventes-pros": "tsx scripts/e2e-ventes-pros.ts",
+    "e2e:commandes": "tsx scripts/e2e-commandes.ts"
   },
   "dependencies": {
     "@ofauria/shared": "*",

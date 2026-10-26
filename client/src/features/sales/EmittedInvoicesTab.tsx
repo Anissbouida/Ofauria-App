@@ -2,7 +2,6 @@ import { useState, useMemo, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoicesApi, paymentsApi } from '../../api/accounting.api';
 import { customersApi } from '../../api/customers.api';
-import { ordersApi } from '../../api/orders.api';
 import { productsApi } from '../../api/products.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -91,8 +90,6 @@ export default function EmittedInvoicesTab() {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createMode, setCreateMode] = useState<'order' | 'manual'>('order');
-  const [selectedOrderId, setSelectedOrderId] = useState('');
   const [showPayModal, setShowPayModal] = useState<Record<string, any> | null>(null);
   const [payMethod, setPayMethod] = useState('cash');
   const [manualCustomerId, setManualCustomerId] = useState('');
@@ -113,24 +110,6 @@ export default function EmittedInvoicesTab() {
 
   const { data: customersData } = useQuery({ queryKey: ['customers'], queryFn: () => customersApi.list() });
   const customers = ((customersData as Record<string, any>)?.data || customersData || []) as Record<string, any>[];
-
-  const { data: ordersData } = useQuery({
-    queryKey: ['orders-for-invoice'],
-    queryFn: () => ordersApi.list(),
-    enabled: showCreateModal,
-  });
-  const orders = ((ordersData as Record<string, any>)?.data || ordersData || []) as Record<string, any>[];
-
-  const createFromOrderMutation = useMutation({
-    mutationFn: (orderId: string) => invoicesApi.createFromOrder(orderId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      notify.success('Facture émise créée');
-      setShowCreateModal(false);
-      setSelectedOrderId('');
-    },
-    onError: () => notify.error('Erreur lors de la création'),
-  });
 
   const createManualMutation = useMutation({
     mutationFn: (data: Record<string, any>) => invoicesApi.create(data),
@@ -170,7 +149,7 @@ export default function EmittedInvoicesTab() {
   const { data: productsData } = useQuery({
     queryKey: ['products-for-invoice'],
     queryFn: () => productsApi.list({ limit: '500' }),
-    enabled: showCreateModal && createMode === 'manual',
+    enabled: showCreateModal,
   });
   const products = ((productsData as Record<string, any>)?.data || productsData || []) as Record<string, any>[];
 
@@ -252,7 +231,6 @@ export default function EmittedInvoicesTab() {
 
   const openEdit = async (inv: Record<string, any>) => {
     setEditingInvoiceId(inv.id as string);
-    setCreateMode('manual');
     setShowCreateModal(true);
     setEditLoading(true);
     try {
@@ -401,7 +379,7 @@ export default function EmittedInvoicesTab() {
             Encaissée <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>{countByStatus.paid}</span>
           </button>
         </div>
-        <button onClick={() => { resetManualForm(); setShowCreateModal(true); setCreateMode('order'); }}
+        <button onClick={() => { resetManualForm(); setShowCreateModal(true); }}
           className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
           <Plus size={13} /> Nouvelle facture
         </button>
@@ -418,7 +396,7 @@ export default function EmittedInvoicesTab() {
           <Receipt size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
           <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{searchQuery ? 'Aucun résultat' : 'Aucune facture émise'}</p>
           {!searchQuery && (
-            <button onClick={() => { resetManualForm(); setShowCreateModal(true); setCreateMode('order'); }}
+            <button onClick={() => { resetManualForm(); setShowCreateModal(true); }}
               className="odoo-btn-primary" style={{ marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <Plus size={13} /> Créer une facture
             </button>
@@ -535,7 +513,7 @@ export default function EmittedInvoicesTab() {
       {/* Create Invoice Modal */}
       {showCreateModal && (
         <ModalBackdrop onClose={() => { setShowCreateModal(false); resetManualForm(); }} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className={`bg-white rounded-2xl shadow-2xl w-full ${createMode === 'manual' || editingInvoiceId ? 'max-w-3xl' : 'max-w-lg'} max-h-[90vh] overflow-y-auto`} onClick={e => e.stopPropagation()}>
+          <div className={`bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto`} onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-100">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -547,53 +525,15 @@ export default function EmittedInvoicesTab() {
                 </div>
                 <button onClick={() => { setShowCreateModal(false); resetManualForm(); }} className="p-2 hover:bg-gray-100 rounded-xl transition-colors"><X size={18} className="text-gray-400" /></button>
               </div>
-              {!editingInvoiceId && (
-                <div className="flex gap-1 mt-4 bg-gray-100 rounded-xl p-1">
-                  <button onClick={() => setCreateMode('order')} className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${createMode === 'order' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                    <ShoppingCart size={14} className="inline mr-1.5" />Depuis commande
-                  </button>
-                  <button onClick={() => setCreateMode('manual')} className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${createMode === 'manual' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                    <Pencil size={14} className="inline mr-1.5" />Saisie manuelle
-                  </button>
-                </div>
-              )}
             </div>
             <div className="p-5 space-y-4">
-              {createMode === 'order' ? (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Sélectionner une commande</label>
-                    <select value={selectedOrderId} onChange={e => setSelectedOrderId(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400">
-                      <option value="">-- Choisir une commande --</option>
-                      {(orders as Record<string, any>[]).filter(o => o.status === 'completed' || o.status === 'delivered' || o.status === 'confirmed' || o.status === 'ready').map(o => (
-                        <option key={o.id as string} value={o.id as string}>
-                          {o.order_number as string} — {o.customer_first_name ? `${o.customer_first_name} ${o.customer_last_name || ''}` : 'Client direct'} — {n(parseFloat(o.total as string))} DH
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {selectedOrderId && (() => {
-                    const sel = (orders as Record<string, any>[]).find(o => o.id === selectedOrderId);
-                    return sel ? (
-                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/50 rounded-xl p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="text-sm font-semibold text-blue-800">Commande {sel.order_number as string}</p>
-                            <p className="text-xs text-blue-600 mt-0.5">{sel.customer_first_name ? `${sel.customer_first_name} ${sel.customer_last_name || ''}` : 'Client direct'}</p>
-                          </div>
-                          <p className="text-xl font-bold text-blue-800">{n(parseFloat(sel.total as string))} <span className="text-xs font-normal">DH</span></p>
-                        </div>
-                      </div>
-                    ) : null;
-                  })()}
-                  <button onClick={() => { if (selectedOrderId) createFromOrderMutation.mutate(selectedOrderId); }}
-                    disabled={!selectedOrderId || createFromOrderMutation.isPending}
-                    className="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-                    {createFromOrderMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <Receipt size={16} />} Générer la facture
-                  </button>
-                </>
-              ) : editLoading ? (
+              {!editingInvoiceId && (
+                <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                  Une commande de professionnel se facture depuis son bon de livraison (Commandes › Livrer sur BL, ou Livraisons pros › À facturer).
+                  Une commande de particulier se règle en caisse.
+                </p>
+              )}
+              {editLoading ? (
                 <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
                   <Loader2 className="animate-spin" size={22} style={{ margin: '0 auto 8px' }} />
                   <p className="text-sm">Chargement de la facture...</p>

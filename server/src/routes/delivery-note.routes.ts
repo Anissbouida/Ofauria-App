@@ -15,6 +15,7 @@ router.get('/orders/:customerId', ...staff, asyncHandler(c.eligibleOrders));
 router.get('/order-lines/:orderId', ...staff, asyncHandler(c.orderLines));
 router.post('/invoice', ...staff, asyncHandler(c.invoice));
 router.post('/from-order/:orderId', ...staff, asyncHandler(c.createFromOrder));
+router.get('/:id/pdf', ...staff, asyncHandler(c.pdf));
 router.get('/:id', ...staff, asyncHandler(c.getById));
 router.post('/', ...staff, asyncHandler(c.create));
 router.post('/:id/cancel', ...staff, asyncHandler(c.cancel));

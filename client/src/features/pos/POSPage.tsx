@@ -909,7 +909,9 @@ export default function POSPage() {
   const mixedCard = Math.round((parseFloat(mixedCardInput.replace(',', '.')) || 0) * 100) / 100;
   const mixedOk = total > 0 && Math.abs(mixedCash + mixedCard - total) < 0.01;
 
+  // La caisse ne remet que les commandes de particuliers : un professionnel est livré sur BL par la direction.
   const orders = (ordersData?.data || []).filter((o: Record<string, any>) => {
+    if (o.customer_type && o.customer_type !== 'particulier') return false;
     if (!orderSearch) return o.status !== 'completed' && o.status !== 'cancelled';
     const q = orderSearch.toLowerCase();
     const name = `${o.customer_first_name || ''} ${o.customer_last_name || ''}`.toLowerCase();
@@ -2522,8 +2524,9 @@ export default function POSPage() {
       {deliverOrder && (() => {
         const totalAmt = parseFloat(deliverOrder.total as string);
         const advanceAmt = parseFloat(deliverOrder.advance_amount as string || '0');
-        const remaining = totalAmt - advanceAmt;
-        const isDeferred = deliverOrder.payment_method === 'deferred';
+        const remaining = Math.max(0, Math.round((totalAmt - advanceAmt) * 100) / 100);
+        // Solde intégral au retrait : pas de reliquat ni de paiement reporté (mig 354).
+        const deliverShort = remaining - (parseFloat(deliverAmount) || 0) > 0.004;
         return (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
@@ -2537,51 +2540,41 @@ export default function POSPage() {
                   <span className="text-gray-500">Total commande</span>
                   <span className="font-semibold">{totalAmt.toFixed(2)} DH</span>
                 </div>
-                {isDeferred ? (
-                  <div className="flex justify-between items-center font-bold border-t pt-2 text-base">
-                    <span>Paiement</span>
-                    <span className="text-blue-600 text-sm px-3 py-1 bg-blue-50 rounded-full">Reporte — Facture emise</span>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Avance versee</span>
-                      <span className="font-semibold text-green-600">{advanceAmt.toFixed(2)} DH</span>
-                    </div>
-                    <div className="flex justify-between font-bold border-t pt-2 text-base">
-                      <span>Reste a payer</span>
-                      <span className="text-primary-600">{remaining.toFixed(2)} DH</span>
-                    </div>
-                  </>
-                )}
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Avance versee</span>
+                  <span className="font-semibold text-green-600">{advanceAmt.toFixed(2)} DH</span>
+                </div>
+                <div className="flex justify-between font-bold border-t pt-2 text-base">
+                  <span>Reste a payer</span>
+                  <span className="text-primary-600">{remaining.toFixed(2)} DH</span>
+                </div>
               </div>
-              {!isDeferred && (
-                <>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Montant encaisse (DH)</label>
-                  <input type="number" value={deliverAmount} onChange={(e) => setDeliverAmount(e.target.value)}
-                    className="input text-center text-xl font-bold mb-4" min="0" step="0.01" autoFocus />
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement</label>
-                  <div className="flex items-center bg-gray-100 rounded-lg p-0.5 mb-6">
-                    <button onClick={() => setDeliverPayment('cash')}
-                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-semibold transition-all ${
-                        deliverPayment === 'cash' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500'
-                      }`}>
-                      <Banknote size={16} /> Espèces
-                    </button>
-                    <button onClick={() => setDeliverPayment('card')}
-                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-semibold transition-all ${
-                        deliverPayment === 'card' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'
-                      }`}>
-                      <CreditCard size={16} /> Carte
-                    </button>
-                  </div>
-                </>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Montant encaisse (DH)</label>
+              <input type="number" value={deliverAmount} onChange={(e) => setDeliverAmount(e.target.value)}
+                className="input text-center text-xl font-bold mb-2" min={remaining} step="0.01" autoFocus />
+              {deliverShort && (
+                <p className="text-xs text-red-600 mb-2">Le reste doit etre regle en totalite pour remettre la commande.</p>
               )}
+              <label className="block text-sm font-medium text-gray-700 mb-2 mt-2">Mode de paiement</label>
+              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 mb-6">
+                <button onClick={() => setDeliverPayment('cash')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-semibold transition-all ${
+                    deliverPayment === 'cash' ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500'
+                  }`}>
+                  <Banknote size={16} /> Espèces
+                </button>
+                <button onClick={() => setDeliverPayment('card')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-semibold transition-all ${
+                    deliverPayment === 'card' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'
+                  }`}>
+                  <CreditCard size={16} /> Carte
+                </button>
+              </div>
               <div className="flex gap-3">
                 <button onClick={() => { setDeliverOrder(null); setDeliverAmount(''); }} className="btn-secondary flex-1">Annuler</button>
-                <button onClick={() => deliverMutation.mutate({ id: deliverOrder.id as string, amountPaid: isDeferred ? 0 : (parseFloat(deliverAmount) || 0), paymentMethod: isDeferred ? 'deferred' : deliverPayment })}
-                  disabled={deliverMutation.isPending} className="btn-primary flex-1">
-                  {deliverMutation.isPending ? 'En cours...' : isDeferred ? 'Confirmer la livraison' : 'Confirmer'}
+                <button onClick={() => deliverMutation.mutate({ id: deliverOrder.id as string, amountPaid: parseFloat(deliverAmount) || 0, paymentMethod: deliverPayment })}
+                  disabled={deliverMutation.isPending || deliverShort} className="btn-primary flex-1">
+                  {deliverMutation.isPending ? 'En cours...' : 'Encaisser et remettre'}
                 </button>
               </div>
             </div>

@@ -15,6 +15,7 @@ router.get('/:id', authenticate, asyncHandler(orderController.getById));
 router.post('/', authenticate, authorize(...ORDER_ROLES), asyncHandler(orderController.create));
 router.put('/:id', authenticate, authorize(...ORDER_ROLES), asyncHandler(orderController.update));
 router.put('/:id/status', authenticate, authorize(...ORDER_ROLES), asyncHandler(orderController.updateStatus));
+router.post('/:id/reschedule', authenticate, authorize(...ORDER_ROLES), asyncHandler(orderController.reschedule));
 router.post('/:id/deliver', authenticate, authorize(...ORDER_ROLES), asyncHandler(orderController.deliver));
 router.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(orderController.remove));
 

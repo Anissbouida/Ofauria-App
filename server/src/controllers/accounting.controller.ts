@@ -4,8 +4,6 @@ import { approvalService } from '../services/approval.service.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { caisseRepository, expenseCategoryRepository, revenueCategoryRepository, invoiceRepository, paymentRepository } from '../repositories/accounting.repository.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
-import { saleRepository } from '../repositories/sale.repository.js';
-import { orderRepository } from '../repositories/order.repository.js';
 import { generateInvoicePdf } from '../services/invoice-pdf.service.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { db } from '../config/database.js';
@@ -216,11 +214,14 @@ export const invoiceController = {
     const invoice = await invoiceRepository.create(data);
     res.status(201).json({ success: true, data: invoice });
   },
-  async createFromOrder(req: AuthRequest, res: Response) {
-    const invoice = await invoiceRepository.createFromOrder(
-      req.params.orderId, req.user!.userId, req.user!.storeId
-    );
-    res.status(201).json({ success: true, data: invoice });
+  /**
+   * Retiré (mig 354) : une commande de professionnel se facture à partir de son
+   * bon de livraison (quantités réellement livrées), une commande de
+   * particulier se règle en caisse et ne donne pas de facture de vente.
+   */
+  async createFromOrder(_req: AuthRequest, res: Response) {
+    res.status(410).json({ success: false, error: { message:
+      'La facture ne se fait plus depuis la commande : livrez la commande sur bon de livraison (Commandes), la facture suit le BL.' } });
   },
   /**
    * POST /invoices/merge — fusionne les factures fournisseurs liees aux BCs
@@ -820,45 +821,9 @@ export const paymentController = {
 
     const payment = await paymentRepository.create(data);
 
-    // When an emitted invoice linked to a deferred order is fully paid, create the sale
-    if (data.invoiceId) {
-      try {
-        const invoice = await invoiceRepository.findById(data.invoiceId);
-        if (invoice && invoice.invoice_type === 'emitted' && invoice.status === 'paid' && invoice.order_id) {
-          const order = await orderRepository.findById(invoice.order_id);
-          if (order && order.payment_method === 'deferred') {
-            // Check if a sale was already created for this order
-            const { db: database } = await import('../config/database.js');
-            const existingSale = await database.query(
-              `SELECT id FROM sales WHERE notes LIKE $1 LIMIT 1`,
-              [`%Livraison commande ${order.order_number}%`]
-            );
-            if (existingSale.rows.length === 0) {
-              const saleItems = order.items.map((item: Record<string, unknown>) => ({
-                productId: item.product_id as string,
-                quantity: item.quantity as number,
-                unitPrice: parseFloat(item.unit_price as string),
-                subtotal: parseFloat(item.subtotal as string),
-              }));
-              await saleRepository.create({
-                customerId: order.customer_id,
-                userId: req.user!.userId,
-                subtotal: parseFloat(order.subtotal),
-                taxAmount: parseFloat(order.tax_amount),
-                discountAmount: parseFloat(order.discount_amount),
-                total: parseFloat(order.total),
-                paymentMethod: data.paymentMethod || 'cash',
-                notes: `Livraison commande ${order.order_number} — Paiement facture ${invoice.invoice_number}`,
-                storeId: req.user!.storeId,
-                items: saleItems,
-              });
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Failed to create sale from paid invoice:', err);
-      }
-    }
+    // Une facture client réglée ne crée plus de ticket de vente (mig 354) : le
+    // chiffre d'affaires d'un professionnel naît à la facture, l'encaissement
+    // solde la créance. L'ancien ticket « Paiement facture » le comptait deux fois.
 
     res.status(201).json({ success: true, data: payment });
   },

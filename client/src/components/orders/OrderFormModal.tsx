@@ -4,6 +4,7 @@ import { ordersApi } from '../../api/orders.api';
 import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
 import { customersApi } from '../../api/customers.api';
+import { deliveryNotesApi } from '../../api/delivery-notes.api';
 import { employeesApi } from '../../api/employees.api';
 import { settingsApi } from '../../api/settings.api';
 import { useReferentiel } from '../../hooks/useReferentiel';
@@ -11,7 +12,7 @@ import { useAuth } from '../../context/AuthContext';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../ui/InlineNotification';
-import { Plus, Trash2, Search, Phone, User, Users, Check, UserCircle, ClipboardList, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Search, Phone, User, Users, Check, UserCircle, ClipboardList, X, ChevronLeft, ChevronRight, Building2, AlertTriangle } from 'lucide-react';
 
 /* ─── Step indicators ─── */
 const STEPS = [
@@ -49,7 +50,10 @@ function StepIndicator({ current }: { current: number }) {
   );
 }
 
-type ClientMode = 'known' | 'walkin' | null;
+type ClientMode = 'known' | 'walkin' | 'pro' | null;
+
+const TVA_RATES = [0, 7, 10, 14, 20];
+const isProType = (t: unknown) => !!t && t !== 'particulier';
 
 /* ─── Order form modal (multi-step) ─── */
 export default function OrderFormModal({ order, onClose, onSaved }: {
@@ -58,6 +62,8 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   onSaved: (createdOrder?: Record<string, any>) => void;
 }) {
   const { user } = useAuth();
+  // Commandes de professionnels : prises et gérées par la direction uniquement (mig 354).
+  const isDirection = user?.role === 'admin' || user?.role === 'manager';
   const { entries: paymentMethods } = useReferentiel('payment_methods');
   const isEdit = !!order;
   const [step, setStep] = useState(1);
@@ -72,7 +78,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
 
   // Step 1: Client mode
   const [clientMode, setClientMode] = useState<ClientMode>(
-    isEdit ? (order.customer_id ? 'known' : (order.type === 'staff' ? null : 'walkin')) : null
+    isEdit ? (order.customer_id ? (isProType(order.customer_type) ? 'pro' : 'known') : (order.type === 'staff' ? null : 'walkin')) : null
   );
 
   // Known client
@@ -101,13 +107,13 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   const [type, setType] = useState(isEdit ? (order.type as string || 'custom') : 'custom');
 
   // Step 2: Products (unitPrice is editable per-order — defaults to product.price)
-  const [items, setItems] = useState<{ productId: string; quantity: number; unitPrice: number; notes: string }[]>([
+  // Professionnel : prix HT remisé et TVA par ligne (tvaRate) ; particulier : prix TTC caisse.
+  const [items, setItems] = useState<{ productId: string; quantity: number; unitPrice: number; tvaRate?: number | null; notes: string }[]>([
     { productId: '', quantity: 1, unitPrice: 0, notes: '' },
   ]);
 
-  // Step 3: Payment
-  const [deferPayment, setDeferPayment] = useState(isEdit ? (order.payment_method === 'deferred') : false);
-  const [paymentMethod, setPaymentMethod] = useState(isEdit ? (order.payment_method as string || 'cash') : 'cash');
+  // Step 3: Payment — un particulier ne règle jamais plus tard (avance facultative, solde au retrait)
+  const [paymentMethod, setPaymentMethod] = useState(isEdit && order.payment_method !== 'deferred' ? (order.payment_method as string || 'cash') : 'cash');
   const [discountAmount, setDiscountAmount] = useState(isEdit ? (parseFloat(order.discount_amount as string) || 0) : 0);
   const [advanceAmount, setAdvanceAmount] = useState(isEdit ? (parseFloat(order.advance_amount as string) || 0) : 0);
   const [notes, setNotes] = useState(isEdit ? (order.notes as string || '') : '');
@@ -130,6 +136,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
         productId: it.product_id as string,
         quantity: it.quantity as number,
         unitPrice: parseFloat(it.unit_price as string) || 0,
+        tvaRate: it.tva_rate != null ? Number(it.tva_rate) : null,
         notes: (it.notes as string) || '',
       })));
     }
@@ -140,19 +147,32 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   const { data: customersData } = useQuery({
     queryKey: ['customers-list'],
     queryFn: () => customersApi.list({ limit: '500' }),
-    enabled: clientMode === 'known',
+    enabled: clientMode === 'known' || clientMode === 'pro',
   });
   const customers = (customersData?.data || []) as Record<string, any>[];
+  const isPro = clientMode === 'pro';
+  const customerLabel = (c: Record<string, any>) =>
+    (isProType(c.customer_type) && c.company_name ? c.company_name as string : `${c.first_name || ''} ${c.last_name || ''}`.trim());
 
   const filteredCustomers = customers.filter(c => {
+    if (isProType(c.customer_type) !== isPro) return false;
     if (!customerSearch) return true;
     const q = customerSearch.toLowerCase();
-    const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase();
+    const name = `${customerLabel(c)} ${c.first_name || ''} ${c.last_name || ''}`.toLowerCase();
     const phone = (c.phone as string || '').toLowerCase();
     return name.includes(q) || phone.includes(q);
   });
 
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
+  const remisePct = isPro ? Number(selectedCustomer?.remise_pct ?? 0) : 0;
+  const tvaExonere = isPro && !!selectedCustomer?.tva_exonere;
+
+  // Professionnel : encours et plafond de crédit (alerte, non bloquante).
+  const { data: situation } = useQuery({
+    queryKey: ['customer-situation', selectedCustomerId],
+    queryFn: () => customersApi.situation(selectedCustomerId!),
+    enabled: isPro && !!selectedCustomerId && step === 3,
+  });
 
   // Employees query (for staff orders)
   const { data: employeesData } = useQuery({
@@ -202,6 +222,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   });
 
   const [productSearch, setProductSearch] = useState('');
+  const catalogPrice = (p: Record<string, any>) => Math.round(parseFloat(p.price as string) * (1 - remisePct / 100) * 100) / 100;
   const [productCatFilter, setProductCatFilter] = useState('');
 
   const setItemQty = (productId: string, qty: number) => {
@@ -212,13 +233,17 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
       if (existing) {
         setItems(items.map(it => it.productId === productId ? { ...it, quantity: qty } : it));
       } else {
-        // New line: initialize unitPrice with the product's current default
+        // New line: initialize unitPrice with the product's current default (remisé pour un professionnel)
         const prod = products.find(p => p.id === productId);
-        const defaultPrice = prod ? parseFloat(prod.price as string) : 0;
+        const defaultPrice = prod ? catalogPrice(prod) : 0;
         const cleanItems = items.filter(it => it.productId);
         setItems([...cleanItems, { productId, quantity: qty, unitPrice: defaultPrice, notes: '' }]);
       }
     }
+  };
+
+  const setItemTva = (productId: string, rate: number) => {
+    setItems(items.map(it => it.productId === productId ? { ...it, tvaRate: rate } : it));
   };
 
   const setItemPrice = (productId: string, price: number) => {
@@ -235,7 +260,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
     const item = items.find(it => it.productId === productId);
     if (item) return item.unitPrice;
     const prod = products.find(p => p.id === productId);
-    return prod ? parseFloat(prod.price as string) : 0;
+    return prod ? catalogPrice(prod) : 0;
   };
 
   const filteredOrderProducts = products.filter(p => {
@@ -250,21 +275,35 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   }, 0);
   // Auto-calculate staff discount
   const effectiveDiscount = type === 'staff' ? Math.round(subtotal * staffDiscountPercent) / 100 : discountAmount;
-  const total = Math.max(0, subtotal - effectiveDiscount);
-
   const validItems = items.filter((it) => it.productId && it.quantity > 0);
 
+  // Professionnel : TVA par ligne, taux par défaut = dernier taux utilisé pour ce client/produit.
+  const proProductIds = isPro ? validItems.map(it => it.productId).sort().join(',') : '';
+  const { data: lineDefaults } = useQuery({
+    queryKey: ['order-line-defaults', selectedCustomerId, proProductIds],
+    queryFn: () => deliveryNotesApi.lineDefaults(selectedCustomerId!, proProductIds.split(',')),
+    enabled: isPro && !!selectedCustomerId && step === 3 && !!proProductIds,
+  });
+  const lineTva = (it: { productId: string; tvaRate?: number | null }) =>
+    tvaExonere ? 0 : (it.tvaRate ?? lineDefaults?.[it.productId]?.tvaRate ?? 0);
+  const taxAmount = isPro
+    ? Math.round(validItems.reduce((s, it) => s + Math.round(it.unitPrice * it.quantity * lineTva(it)) / 100, 0) * 100) / 100
+    : 0;
+  const total = Math.max(0, subtotal - effectiveDiscount + taxAmount);
+  const exposure = situation?.creditLimit != null ? situation.total + total : null;
+  const overLimit = exposure != null && situation?.creditLimit != null && exposure > situation.creditLimit + 0.005;
+
   // Derive display name for recap
-  const displayName = clientMode === 'known' && selectedCustomer
-    ? `${selectedCustomer.first_name || ''} ${selectedCustomer.last_name || ''}`.trim()
+  const displayName = (clientMode === 'known' || isPro) && selectedCustomer
+    ? customerLabel(selectedCustomer)
     : customerName.trim();
-  const displayPhone = clientMode === 'known' && selectedCustomer
+  const displayPhone = (clientMode === 'known' || isPro) && selectedCustomer
     ? (selectedCustomer.phone as string || '')
     : customerPhone;
 
   const canNextStep1 = type === 'staff'
     ? !!selectedEmployeeId && !!pickupDate
-    : clientMode === 'known'
+    : clientMode === 'known' || isPro
       ? !!selectedCustomerId && !!pickupDate
       : clientMode === 'walkin'
         ? !!customerName.trim() && !!pickupDate
@@ -288,18 +327,20 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
       // orderDate envoye uniquement a la creation pour eviter de reecrire
       // l'historique d'une commande deja saisie.
       ...(isEdit ? {} : { orderDate }),
-      paymentMethod: deferPayment ? 'deferred' : paymentMethod,
+      paymentMethod: isPro ? 'deferred' : paymentMethod,
       notes: notes || undefined,
       discountAmount: effectiveDiscount,
-      advanceAmount: deferPayment ? 0 : advanceAmount,
-      deferPayment,
-      items: validItems.map((it) => ({ productId: it.productId, quantity: it.quantity, unitPrice: it.unitPrice, notes: it.notes || undefined })),
+      advanceAmount: isPro ? 0 : advanceAmount,
+      items: validItems.map((it) => ({
+        productId: it.productId, quantity: it.quantity, unitPrice: it.unitPrice, notes: it.notes || undefined,
+        ...(isPro ? { tvaRate: lineTva(it) } : {}),
+      })),
     };
     if (type === 'staff' && selectedEmployee) {
       payload.customerName = `${selectedEmployee.first_name || ''} ${selectedEmployee.last_name || ''}`.trim();
       payload.customerPhone = (selectedEmployee.phone as string) || undefined;
       payload.notes = `Commande personnel — Remise ${staffDiscountPercent}%${notes ? ` | ${notes}` : ''}`;
-    } else if (clientMode === 'known' && selectedCustomerId) {
+    } else if ((clientMode === 'known' || isPro) && selectedCustomerId) {
       payload.customerId = selectedCustomerId;
       payload.customerName = displayName;
       payload.customerPhone = displayPhone || undefined;
@@ -355,7 +396,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
               {!clientMode && type !== 'staff' && (
                 <div className="space-y-4">
                   <h3 className="text-center text-lg font-semibold text-gray-700">Type de commande</h3>
-                  <div className="grid grid-cols-3 gap-4 max-w-2xl mx-auto">
+                  <div className={`grid ${isDirection ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'} gap-4 max-w-3xl mx-auto`}>
                     {/* Known client card */}
                     <button type="button" onClick={() => { setClientMode('known'); setType('custom'); }}
                       className="group relative flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 bg-white hover:border-blue-500 hover:bg-blue-50 transition-all">
@@ -364,7 +405,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                       </div>
                       <div className="text-center">
                         <p className="font-bold text-gray-800 text-base">Client</p>
-                        <p className="text-xs text-gray-400 mt-1">Client enregistre dans la base</p>
+                        <p className="text-xs text-gray-400 mt-1">Particulier enregistre</p>
                       </div>
                     </button>
 
@@ -379,6 +420,20 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                         <p className="text-xs text-gray-400 mt-1">Client de passage</p>
                       </div>
                     </button>
+
+                    {/* Professional card — direction only */}
+                    {isDirection && (
+                      <button type="button" onClick={() => { setClientMode('pro'); setType('custom'); setSelectedCustomerId(null); setItems([]); }}
+                        className="group relative flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 bg-white hover:border-emerald-500 hover:bg-emerald-50 transition-all">
+                        <div className="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
+                          <Building2 size={28} className="text-emerald-600" />
+                        </div>
+                        <div className="text-center">
+                          <p className="font-bold text-gray-800 text-base">Professionnel</p>
+                          <p className="text-xs text-gray-400 mt-1">Livré sur BL, facturé</p>
+                        </div>
+                      </button>
+                    )}
 
                     {/* Staff card */}
                     <button type="button" onClick={() => { setType('staff'); setClientMode(null); setSelectedCustomerId(null); }}
@@ -396,16 +451,18 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
               )}
 
               {/* Known client: search & select */}
-              {clientMode === 'known' && type !== 'staff' && (
+              {(clientMode === 'known' || isPro) && type !== 'staff' && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => { setClientMode(null); setSelectedCustomerId(null); setCustomerSearch(''); setType('custom'); }}
-                      className="text-sm text-gray-400 hover:text-gray-600 transition-colors">&larr; Changer</button>
+                    {!isEdit && (
+                      <button type="button" onClick={() => { setClientMode(null); setSelectedCustomerId(null); setCustomerSearch(''); setType('custom'); }}
+                        className="text-sm text-gray-400 hover:text-gray-600 transition-colors">&larr; Changer</button>
+                    )}
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                        <Users size={16} className="text-blue-600" />
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isPro ? 'bg-emerald-100' : 'bg-blue-100'}`}>
+                        {isPro ? <Building2 size={16} className="text-emerald-600" /> : <Users size={16} className="text-blue-600" />}
                       </div>
-                      <h3 className="text-sm font-semibold text-gray-700">Client connu</h3>
+                      <h3 className="text-sm font-semibold text-gray-700">{isPro ? 'Client professionnel' : 'Client connu'}</h3>
                     </div>
                   </div>
 
@@ -420,14 +477,17 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                   {/* Customer list */}
                   <div className="space-y-1.5 max-h-60 overflow-y-auto">
                     {filteredCustomers.length === 0 ? (
-                      <p className="text-center py-6 text-gray-400 text-sm">Aucun client trouve</p>
+                      <p className="text-center py-6 text-gray-400 text-sm">
+                        {isPro ? 'Aucun client professionnel trouve — créez sa fiche (type professionnel) dans Clients' : 'Aucun client trouve'}
+                      </p>
                     ) : filteredCustomers.map(c => {
                       const cId = c.id as string;
                       const isSelected = cId === selectedCustomerId;
-                      const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim();
+                      const fullName = customerLabel(c);
                       return (
                         <button key={cId} type="button"
                           onClick={() => {
+                            if (isPro && cId !== selectedCustomerId) setItems([]);
                             setSelectedCustomerId(cId);
                             setCustomerName(fullName);
                             setCustomerPhone(c.phone as string || '');
@@ -469,7 +529,8 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
                       <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
-                        className="input text-base py-3" required />
+                        disabled={isEdit} title={isEdit ? 'Pour changer la date, utilisez « Reporter » sur la commande' : undefined}
+                        className="input text-base py-3 disabled:bg-gray-50 disabled:text-gray-400" required />
                     </div>
                   </div>
                 </div>
@@ -514,7 +575,8 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
                       <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
-                        className="input text-base py-3" required />
+                        disabled={isEdit} title={isEdit ? 'Pour changer la date, utilisez « Reporter » sur la commande' : undefined}
+                        className="input text-base py-3 disabled:bg-gray-50 disabled:text-gray-400" required />
                     </div>
                   </div>
                 </div>
@@ -548,7 +610,8 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Date de retrait *</label>
                       <input type="date" value={pickupDate} onChange={(e) => setPickupDate(e.target.value)}
-                        className="input text-base py-3" required />
+                        disabled={isEdit} title={isEdit ? 'Pour changer la date, utilisez « Reporter » sur la commande' : undefined}
+                        className="input text-base py-3 disabled:bg-gray-50 disabled:text-gray-400" required />
                     </div>
                   </div>
 
@@ -640,7 +703,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                     {filteredOrderProducts.map(p => {
                     const pid = p.id as string;
                     const qty = getItemQty(pid);
-                    const defaultPrice = parseFloat(p.price as string);
+                    const defaultPrice = catalogPrice(p);
                     const isSelected = qty > 0;
                     const linePrice = isSelected ? getItemPrice(pid) : defaultPrice;
                     const priceChanged = isSelected && Math.abs(linePrice - defaultPrice) > 0.001;
@@ -762,7 +825,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                       <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                         clientMode === 'known' ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600'
                       }`}>
-                        {clientMode === 'known' ? 'Client connu' : 'Passager'}
+                        {isPro ? 'Professionnel' : clientMode === 'known' ? 'Client connu' : 'Passager'}
                       </span>
                     </div>
                     {displayPhone && (
@@ -778,7 +841,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                 <div className="space-y-1.5">
                   {validItems.map((item, idx) => {
                     const prod = products.find((p) => p.id === item.productId);
-                    const defaultPrice = prod ? parseFloat(prod.price as string) : 0;
+                    const defaultPrice = prod ? catalogPrice(prod) : 0;
                     const lineTotal = item.unitPrice * item.quantity;
                     const priceChanged = prod && Math.abs(item.unitPrice - defaultPrice) > 0.001;
                     return (
@@ -791,59 +854,54 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                             </span>
                           )}
                         </span>
-                        <span className="font-medium">{lineTotal.toFixed(2)} DH</span>
+                        <span className="flex items-center gap-2">
+                          {isPro && (
+                            <select value={lineTva(item)} disabled={tvaExonere} onChange={e => setItemTva(item.productId, Number(e.target.value))}
+                              className="text-xs border rounded px-1 py-0.5 bg-white" title="Taux de TVA de la ligne">
+                              {TVA_RATES.map(r => <option key={r} value={r}>TVA {r} %</option>)}
+                            </select>
+                          )}
+                          <span className="font-medium">{lineTotal.toFixed(2)} DH{isPro ? ' HT' : ''}</span>
+                        </span>
                       </div>
                     );
                   })}
                 </div>
                 <div className="flex items-center justify-between mt-3 pt-3 border-t font-semibold">
-                  <span>Sous-total</span>
+                  <span>Sous-total{isPro ? ' HT' : ''}</span>
                   <span>{subtotal.toFixed(2)} DH</span>
                 </div>
               </div>
 
-              {/* Deferred payment option for known clients */}
-              {clientMode === 'known' && (
-                <div>
-                  <button type="button" onClick={() => setDeferPayment(!deferPayment)}
-                    className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 transition-all ${
-                      deferPayment
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 bg-white hover:border-gray-300'
-                    }`}>
-                    <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
-                      deferPayment ? 'border-blue-500 bg-blue-500' : 'border-gray-300'
-                    }`}>
-                      {deferPayment && <Check size={14} className="text-white" />}
-                    </div>
-                    <div className="text-left flex-1">
-                      <p className={`text-sm font-medium ${deferPayment ? 'text-blue-700' : 'text-gray-700'}`}>Reporter le paiement</p>
-                      <p className="text-xs text-gray-400">Une facture sera generee automatiquement pour le suivi</p>
-                    </div>
-                  </button>
-                </div>
-              )}
-
-              {/* Payment method (hidden when deferred) */}
-              {!deferPayment && (
+              {isPro ? (
                 <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {paymentMethods.filter(pm => pm.code !== 'deferred').map((pm) => (
-                        <button key={pm.code} type="button" onClick={() => setPaymentMethod(pm.code)}
-                          className={`py-3 rounded-xl text-sm font-medium border-2 transition-all ${
-                            paymentMethod === pm.code
-                              ? 'border-primary-500 bg-primary-50 text-primary-700'
-                              : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                          }`}>
-                          {pm.label}
-                        </button>
-                      ))}
-                    </div>
+                  {/* Professionnel : ni avance ni caisse — BL, facture, règlement par la direction */}
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 space-y-1">
+                    <p className="font-semibold">Commande professionnelle — sans encaissement</p>
+                    <p>Livrée sur bon de livraison signé, puis facturée {selectedCustomer?.billing_frequency === 'per_delivery'
+                      ? 'à chaque livraison' : 'en fin de mois (BL regroupés)'}
+                      {Number(selectedCustomer?.delai_paiement_jours ?? 0) > 0 ? `, payable à ${selectedCustomer?.delai_paiement_jours} jours` : ''}.
+                      Le règlement est saisi par la direction.</p>
+                    {remisePct > 0 && <p>Remise client de {remisePct} % appliquée aux prix catalogue.</p>}
+                    {tvaExonere && <p>Client exonéré de TVA.</p>}
                   </div>
-
-                  {/* Discount + Advance */}
+                  {overLimit && situation && (
+                    <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex gap-2">
+                      <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                      <span>Plafond de crédit dépassé : encours {situation.total.toFixed(2)} DH + cette commande {total.toFixed(2)} DH
+                        pour un plafond de {situation.creditLimit!.toFixed(2)} DH{situation.overdue > 0 ? ` (dont ${situation.overdue.toFixed(2)} DH en retard)` : ''}.</span>
+                    </div>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Remise globale HT (DH)</label>
+                    <input type="number" min="0" step="0.01" value={discountAmount}
+                      onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                      className="input py-3 w-full text-base" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Particulier : avance facultative, non remboursable, solde intégral au retrait */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Remise (DH)</label>
@@ -859,12 +917,35 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                       )}
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Avance (DH)</label>
-                      <input type="number" min="0" step="0.01" value={advanceAmount}
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Avance (DH) — facultative</label>
+                      <input type="number" min="0" step="0.01" value={advanceAmount} disabled={isEdit}
+                        title={isEdit ? 'L\'avance a été encaissée à la prise de commande' : undefined}
                         onChange={(e) => setAdvanceAmount(parseFloat(e.target.value) || 0)}
-                        className="input py-3 w-full text-base" />
+                        className="input py-3 w-full text-base disabled:bg-gray-50 disabled:text-gray-400" />
                     </div>
                   </div>
+
+                  {advanceAmount > 0 && !isEdit && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Mode de paiement de l'avance</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {paymentMethods.filter(pm => pm.code !== 'deferred').map((pm) => (
+                          <button key={pm.code} type="button" onClick={() => setPaymentMethod(pm.code)}
+                            className={`py-3 rounded-xl text-sm font-medium border-2 transition-all ${
+                              paymentMethod === pm.code
+                                ? 'border-primary-500 bg-primary-50 text-primary-700'
+                                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                            }`}>
+                            {pm.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500">
+                    L'avance est encaissée maintenant et n'est pas remboursable. Le reste se règle en totalité au retrait ;
+                    un report est possible si le client prévient au moins 24 h avant.
+                  </p>
                 </>
               )}
 
@@ -878,7 +959,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
               {/* Total summary */}
               <div className="bg-primary-50 rounded-xl p-4 space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>Sous-total</span>
+                  <span>Sous-total{isPro ? ' HT' : ''}</span>
                   <span className="font-medium">{subtotal.toFixed(2)} DH</span>
                 </div>
                 {effectiveDiscount > 0 && (
@@ -887,29 +968,33 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                     <span>-{effectiveDiscount.toFixed(2)} DH</span>
                   </div>
                 )}
+                {isPro && (
+                  <div className="flex justify-between text-sm">
+                    <span>TVA</span>
+                    <span className="font-medium">{taxAmount.toFixed(2)} DH</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-lg font-bold border-t border-primary-200 pt-2">
-                  <span>Total</span>
+                  <span>Total{isPro ? ' TTC' : ''}</span>
                   <span>{total.toFixed(2)} DH</span>
                 </div>
-                {deferPayment ? (
-                  <div className="flex justify-between text-sm pt-1">
-                    <span className="text-blue-600 font-medium">Paiement reporte</span>
-                    <span className="text-blue-600 font-medium">Facture a emettre</span>
+                {isPro ? (
+                  <div className="flex justify-between text-sm pt-1 text-emerald-700 font-medium">
+                    <span>Règlement</span>
+                    <span>sur facture, par la direction</span>
                   </div>
                 ) : (
                   <>
                     {advanceAmount > 0 && (
                       <div className="flex justify-between text-sm pt-1">
-                        <span className="text-green-600 font-medium">Avance versee</span>
+                        <span className="text-green-600 font-medium">Avance {isEdit ? 'versée' : 'à encaisser'} (non remboursable)</span>
                         <span className="text-green-600 font-medium">{advanceAmount.toFixed(2)} DH</span>
                       </div>
                     )}
-                    {advanceAmount > 0 && (
-                      <div className="flex justify-between text-sm font-semibold">
-                        <span>Reste a payer</span>
-                        <span>{Math.max(0, total - advanceAmount).toFixed(2)} DH</span>
-                      </div>
-                    )}
+                    <div className="flex justify-between text-sm font-semibold">
+                      <span>Reste à payer au retrait</span>
+                      <span>{Math.max(0, total - advanceAmount).toFixed(2)} DH</span>
+                    </div>
                   </>
                 )}
               </div>

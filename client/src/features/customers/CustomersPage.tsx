@@ -594,10 +594,11 @@ function CustomerDetailPanel({ customerId, onClose, onEdit }: {
                   </>
                 )}
 
-                {type === 'revendeur' && (
+                {type !== 'particulier' && (
                   <>
                     <div style={sectionTitle}><CreditCard size={12} /> Conditions commerciales</div>
                     <KvTable rows={[
+                      ['Facturation', customer.billing_frequency === 'per_delivery' ? 'À chaque livraison' : 'Mensuelle (BL regroupés)'],
                       ['Plafond de crédit', customer.credit_limit ? `${n(parseFloat(customer.credit_limit))} DH` : null],
                       ['Remise', customer.remise_pct ? `${customer.remise_pct} %` : null],
                       ['Délai de paiement', customer.delai_paiement_jours ? `${customer.delai_paiement_jours} jours` : null],
@@ -860,16 +861,22 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
                 <input name="city" defaultValue={editing?.city} className={inputCls} placeholder="Casablanca" /></div>
             </div>
 
-            {customerType === 'revendeur' && (
+            {customerType !== 'particulier' && (
               <>
                 <div style={sectionTitle}><CreditCard size={12} /> Conditions commerciales</div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div><label style={fieldLabel}>Plafond de crédit (DH)</label>
                     <input name="creditLimit" type="number" step="0.01" min="0" defaultValue={editing?.credit_limit} className={inputCls} placeholder="10000" /></div>
                   <div><label style={fieldLabel}>Remise (%)</label>
                     <input name="remisePct" type="number" step="0.01" min="0" max="100" defaultValue={editing?.remise_pct} className={inputCls} placeholder="5" /></div>
                   <div><label style={fieldLabel}>Délai de paiement (jours)</label>
                     <input name="delaiPaiementJours" type="number" step="1" min="0" defaultValue={editing?.delai_paiement_jours} className={inputCls} placeholder="30" /></div>
+                  <div><label style={fieldLabel}>Facturation</label>
+                    <select name="billingFrequency" defaultValue={editing?.billing_frequency || 'monthly'} className={inputCls}
+                      title="À chaque livraison : la facture suit le bon de livraison. Mensuelle : les BL sont regroupés sur une facture.">
+                      <option value="monthly">Mensuelle (BL regroupés)</option>
+                      <option value="per_delivery">À chaque livraison</option>
+                    </select></div>
                 </div>
               </>
             )}
