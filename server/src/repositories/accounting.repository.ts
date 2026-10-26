@@ -494,10 +494,13 @@ export const invoiceRepository = {
       `SELECT inv.*,
               s.name as supplier_name,
               c.first_name as customer_first_name, c.last_name as customer_last_name, c.phone as customer_phone,
+              c.company_name as customer_company_name, c.customer_type as customer_type,
               ec.name as category_name,
               po.order_number as purchase_order_number,
               rv.voucher_number as reception_voucher_number,
               o.order_number as order_number_ref,
+              -- Bons de livraison facturés par cette facture (mig 352).
+              (SELECT string_agg(d.number, ', ' ORDER BY d.number) FROM delivery_notes d WHERE d.invoice_id = inv.id) AS delivery_note_numbers,
               -- Contrôle (mig 309) : blocages ouverts, dont bloquants pour le paiement.
               (SELECT count(*) FROM invoice_holds h WHERE h.invoice_id = inv.id AND h.released_at IS NULL)::int AS open_holds,
               (SELECT count(*) FROM invoice_holds h WHERE h.invoice_id = inv.id AND h.released_at IS NULL AND h.blocks_payment)::int AS blocking_holds
