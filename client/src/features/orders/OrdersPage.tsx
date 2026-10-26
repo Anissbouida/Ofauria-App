@@ -17,6 +17,8 @@ import {
   AlertTriangle, Trash2, Loader2, Tag, User,
 } from 'lucide-react';
 import OrderFormModal from '../../components/orders/OrderFormModal';
+import ProSalesTab from '../sales/ProSalesTab';
+import { deliveryNotesApi } from '../../api/delivery-notes.api';
 
 /* ═══════════════════════ Référentiel d'affichage ═══════════════════════ */
 
@@ -103,6 +105,10 @@ export default function OrdersPage() {
   const [editingOrder, setEditingOrder] = useState<OrderRow | null>(null);
   const [viewingOrder, setViewingOrder] = useState<OrderRow | null>(null);
   const [deliverOrder, setDeliverOrder] = useState<OrderRow | null>(null);
+  // Livraisons aux professionnels (mig 352) : BL et facturation groupée, à côté des commandes.
+  const [tab, setTab] = useState<'orders' | 'pro'>('orders');
+  const { data: toInvoice = [] } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice() });
+  const pendingNotes = toInvoice.reduce((c, g) => c + g.notes.length, 0);
 
   // Une seule lecture : les compteurs du pipeline et la liste partagent la même source,
   // le filtrage par statut se fait côté client (le serveur pagine à 20 par défaut).
@@ -202,14 +208,30 @@ export default function OrdersPage() {
           <ClipboardList size={14} style={{ color: 'var(--theme-accent)' }} />
           <span>Commandes</span>
           <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">Commandes clients</span>
+          <span className="odoo-breadcrumb-current">{tab === 'orders' ? 'Commandes clients' : 'Livraisons pros'}</span>
         </div>
         <div style={{ flex: 1 }} />
-        <button onClick={() => setShowForm(true)} className="odoo-btn-primary">
-          <Plus size={13} /> Nouvelle commande
+        {tab === 'orders' && (
+          <button onClick={() => setShowForm(true)} className="odoo-btn-primary">
+            <Plus size={13} /> Nouvelle commande
+          </button>
+        )}
+      </div>
+
+      <div className="odoo-tabs">
+        <button type="button" onClick={() => setTab('orders')} className={`odoo-tab ${tab === 'orders' ? 'active' : ''}`}>
+          <ClipboardList size={13} style={{ marginRight: 4 }} /> Commandes clients
+        </button>
+        <button type="button" onClick={() => setTab('pro')} className={`odoo-tab ${tab === 'pro' ? 'active' : ''}`}
+          title="Bons de livraison des clients professionnels et facturation groupée">
+          <Truck size={13} style={{ marginRight: 4 }} /> Livraisons pros
+          {pendingNotes > 0 && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 6 }}>{pendingNotes} à facturer</span>}
         </button>
       </div>
 
+      {tab === 'pro' && <div style={{ padding: '16px 20px' }}><ProSalesTab /></div>}
+
+      {tab === 'orders' && (
       <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* Alerte retards */}
         {lateOrders.length > 0 && (
@@ -422,6 +444,7 @@ export default function OrdersPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* Formulaire création / édition */}
       {showForm && (
@@ -454,7 +477,7 @@ export default function OrdersPage() {
         <DeliverModal
           order={deliverOrder}
           onClose={() => setDeliverOrder(null)}
-          onDelivered={() => { setDeliverOrder(null); invalidate(); queryClient.invalidateQueries({ queryKey: ['sales'] }); }}
+          onDelivered={() => { setDeliverOrder(null); invalidate(); queryClient.invalidateQueries({ queryKey: ['sales'] }); queryClient.invalidateQueries({ queryKey: ['delivery-notes'] }); }}
         />
       )}
     </div>
@@ -663,6 +686,15 @@ function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onClos
   const remaining = Math.max(0, totalAmt - advanceAmt);
   const [amount, setAmount] = useState(remaining.toFixed(2));
   const [payment, setPayment] = useState<'cash' | 'card'>('cash');
+  // Client professionnel : livraison sur bon de livraison, facturée avec les autres
+  // livraisons du mois (mig 352). Exclu si une avance a déjà été encaissée en caisse.
+  const canNote = !!order.customer_id && advanceAmt <= 0;
+  const [mode, setMode] = useState<'pay' | 'note'>(canNote && order.customer_type === 'professionnel' ? 'note' : 'pay');
+  const noteMutation = useMutation({
+    mutationFn: () => deliveryNotesApi.createFromOrder(order.id as string),
+    onSuccess: (n) => { notify.success(`Bon de livraison ${n.number} créé : la commande est livrée, à facturer dans « Livraisons pros »`); onDelivered(); },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Création du bon de livraison impossible')),
+  });
 
   const deliverMutation = useMutation({
     mutationFn: () => ordersApi.deliver(order.id as string, { amountPaid: parseFloat(amount) || 0, paymentMethod: payment }),
@@ -686,6 +718,24 @@ function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onClos
         </div>
 
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {order.customer_id && (
+            <div className="odoo-view-switcher" role="radiogroup" style={{ width: '100%' }}>
+              {([['pay', 'Encaisser maintenant', Banknote], ['note', 'Bon de livraison', FileText]] as const).map(([key, label, Icon]) => (
+                <button key={key} type="button" role="radio" aria-checked={mode === key} disabled={key === 'note' && !canNote}
+                  onClick={() => setMode(key)} className={mode === key ? 'active' : ''}
+                  title={key === 'note' && !canNote ? 'Une avance a déjà été encaissée : livrez avec encaissement' : undefined}
+                  style={{ flex: 1, padding: '0.45rem 0.5rem', fontSize: '0.8125rem', gap: 4, fontWeight: mode === key ? 600 : 400 }}>
+                  <Icon size={13} /> {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {mode === 'note' ? (
+            <StatusBanner tone="info" icon={FileText} title={`Livraison sur bon de livraison · ${n(totalAmt)} DH`}>
+              Le client ne paie pas maintenant : un bon de livraison est créé avec les lignes de la commande, puis facturé
+              avec ses autres livraisons depuis « Livraisons pros › À facturer ». La commande passe « terminée ».
+            </StatusBanner>
+          ) : (<>
           <div style={sectionStyle}>
             <div className="odoo-section-header"><Banknote size={11} /> Solde de la commande</div>
             <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -721,13 +771,15 @@ function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onClos
               L'encaissement est partiel : la commande sera livrée avec un reliquat.
             </StatusBanner>
           )}
+          </>)}
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
-          <button onClick={onClose} className="odoo-btn-secondary" disabled={deliverMutation.isPending}>Annuler</button>
-          <button onClick={() => deliverMutation.mutate()} disabled={deliverMutation.isPending} className="odoo-btn-primary">
-            {deliverMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
-            Confirmer la livraison
+          <button onClick={onClose} className="odoo-btn-secondary" disabled={deliverMutation.isPending || noteMutation.isPending}>Annuler</button>
+          <button onClick={() => (mode === 'note' ? noteMutation.mutate() : deliverMutation.mutate())}
+            disabled={deliverMutation.isPending || noteMutation.isPending} className="odoo-btn-primary">
+            {deliverMutation.isPending || noteMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+            {mode === 'note' ? 'Livrer sur bon de livraison' : 'Confirmer la livraison'}
           </button>
         </div>
       </div>

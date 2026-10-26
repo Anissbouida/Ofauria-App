@@ -39,6 +39,10 @@ export const deliveryNoteController = {
     });
     res.status(201).json({ success: true, data: note });
   },
+  async createFromOrder(req: AuthRequest, res: Response) {
+    const note = await deliveryNoteRepository.createFromOrder(req.params.orderId, req.user!.userId, req.user!.storeId ?? null);
+    res.status(201).json({ success: true, data: note });
+  },
   async cancel(req: AuthRequest, res: Response) {
     res.json({ success: true, data: await deliveryNoteRepository.cancel(req.params.id, req.user!.userId) });
   },

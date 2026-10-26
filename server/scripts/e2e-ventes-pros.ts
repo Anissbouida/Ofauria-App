@@ -126,6 +126,21 @@ try {
   ok((await q(`SELECT status FROM orders WHERE id = $1`, [order.id]))[0].status === 'completed', 'la commande passe « terminee »');
   const dup = await call('POST', '/delivery-notes', { customerId: cust.id, orderId: order.id, items: [{ productId: p1.id, quantity: 5, unitPrice: 10 }] });
   ok(dup.status === 409, 'une commande ne donne qu\'un seul BL', dup.json?.error?.message);
+
+  console.log('5. Livrer depuis le module Commandes');
+  const order2 = (await q(`INSERT INTO orders (order_number, customer_id, user_id, type, status, subtotal, total, store_id)
+                           VALUES ('CMD-E2E-PRO2', $1, $2, 'custom', 'ready', 30, 30, (SELECT store_id FROM users WHERE id = $2)) RETURNING id`, [cust.id, admin.id]))[0];
+  await conn.query(`INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal) VALUES ($1, $2, 3, 10, 30)`, [order2.id, p1.id]);
+  const fromOrder = await call('POST', `/delivery-notes/from-order/${order2.id}`);
+  ok(fromOrder.status === 201 && fromOrder.json.data.order_id === order2.id, 'BL cree en un clic depuis la commande', fromOrder.json?.error?.message ?? fromOrder.status);
+  const fromOrderDetail = await call('GET', `/delivery-notes/${fromOrder.json.data.id}`);
+  ok(fromOrderDetail.json.data.items.length === 1 && Number(fromOrderDetail.json.data.items[0].tva_rate) === 20, 'lignes de la commande, TVA = dernier taux du produit (20 %)', fromOrderDetail.json?.data?.items?.[0]?.tva_rate);
+  const ordersList = await call('GET', `/orders?limit=500&customerId=${cust.id}`);
+  const listed = (ordersList.json.data ?? []).find((o: any) => o.id === order2.id);
+  ok(listed?.status === 'completed' && listed?.customer_type === 'professionnel' && /^BL-/.test(listed?.delivery_note_number ?? ''), 'liste des commandes : terminee, client pro, n° de BL', listed && { s: listed.status, t: listed.customer_type, bl: listed.delivery_note_number });
+  const noCustomer = (await q(`INSERT INTO orders (order_number, user_id, type, status, subtotal, total) VALUES ('CMD-E2E-NOC', $1, 'custom', 'ready', 10, 10) RETURNING id`, [admin.id]))[0];
+  const refused = await call('POST', `/delivery-notes/from-order/${noCustomer.id}`);
+  ok(refused.status === 400, 'commande sans fiche client : livraison avec encaissement uniquement', refused.json?.error?.message);
 } catch (err) {
   failures++;
   console.error('ERREUR', err);

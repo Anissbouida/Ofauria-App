@@ -163,6 +163,27 @@ export const deliveryNoteRepository = {
     }
   },
 
+  /**
+   * Livrer une commande prête sur bon de livraison (depuis le module Commandes) :
+   * lignes reprises de la commande, TVA = dernier taux utilisé pour le produit.
+   */
+  async createFromOrder(orderId: string, createdBy: string, storeId?: string | null) {
+    const order = (await db.query(`SELECT id, customer_id, store_id FROM orders WHERE id = $1`, [orderId])).rows[0];
+    if (!order) throw fail(404, 'Commande introuvable');
+    if (!order.customer_id) throw fail(400, 'La commande n\'a pas de fiche client : livrez-la avec encaissement');
+    const lines = await this.orderLines(orderId);
+    if (!lines.length) throw fail(400, 'La commande n\'a aucune ligne');
+    const defaults = await this.lineDefaults(order.customer_id, lines.map((l: Record<string, unknown>) => l.product_id as string));
+    return this.create({
+      customerId: order.customer_id, orderId, createdBy, storeId: order.store_id ?? storeId ?? null,
+      items: lines.map((l: Record<string, unknown>) => ({
+        productId: l.product_id as string, description: l.description as string,
+        quantity: Number(l.quantity), unitPrice: Number(l.unit_price),
+        tvaRate: defaults[l.product_id as string]?.tvaRate ?? null,
+      })),
+    });
+  },
+
   async cancel(id: string, userId: string) {
     const r = await db.query(
       `UPDATE delivery_notes SET status = 'cancelled', cancelled_at = now(), cancelled_by = $2

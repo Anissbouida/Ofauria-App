@@ -24,6 +24,8 @@ export const deliveryNotesApi = {
   orderLines: (orderId: string) => api.get(`/delivery-notes/order-lines/${orderId}`).then(r => r.data.data as Array<{ product_id: string; description: string; quantity: string; unit_price: string }>),
   create: (data: { customerId: string; deliveryDate?: string; orderId?: string | null; notes?: string; items: DeliveryLinePayload[] }) =>
     api.post('/delivery-notes', data).then(r => r.data.data as DeliveryNote),
+  /** Livrer une commande prête sur BL (module Commandes). */
+  createFromOrder: (orderId: string) => api.post(`/delivery-notes/from-order/${orderId}`).then(r => r.data.data as DeliveryNote),
   cancel: (id: string) => api.post(`/delivery-notes/${id}/cancel`).then(r => r.data.data),
   toInvoice: (until?: string) => api.get('/delivery-notes/to-invoice', { params: until ? { until } : {} }).then(r => r.data.data as ToInvoiceGroup[]),
   invoice: (deliveryNoteIds: string[], invoiceDate?: string) =>

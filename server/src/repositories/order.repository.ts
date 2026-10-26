@@ -20,7 +20,10 @@ export const orderRepository = {
 
     values.push(params.limit, params.offset);
     const result = await db.query(
-      `SELECT o.*, COALESCE(c.first_name, o.customer_name) as customer_first_name, c.last_name as customer_last_name, COALESCE(c.phone, o.customer_phone) as customer_phone
+      `SELECT o.*, COALESCE(c.first_name, o.customer_name) as customer_first_name, c.last_name as customer_last_name, COALESCE(c.phone, o.customer_phone) as customer_phone,
+              c.customer_type, c.company_name,
+              -- Bon de livraison client actif (mig 352) : commande livrée sur BL, à facturer.
+              (SELECT d.number FROM delivery_notes d WHERE d.order_id = o.id AND d.status <> 'cancelled' LIMIT 1) AS delivery_note_number
        FROM orders o LEFT JOIN customers c ON c.id = o.customer_id
        ${where} ORDER BY o.created_at DESC LIMIT $${i++} OFFSET $${i}`,
       values
@@ -31,7 +34,10 @@ export const orderRepository = {
 
   async findById(id: string) {
     const orderResult = await db.query(
-      `SELECT o.*, COALESCE(c.first_name, o.customer_name) as customer_first_name, c.last_name as customer_last_name, COALESCE(c.phone, o.customer_phone) as customer_phone
+      `SELECT o.*, COALESCE(c.first_name, o.customer_name) as customer_first_name, c.last_name as customer_last_name, COALESCE(c.phone, o.customer_phone) as customer_phone,
+              c.customer_type, c.company_name,
+              -- Bon de livraison client actif (mig 352) : commande livrée sur BL, à facturer.
+              (SELECT d.number FROM delivery_notes d WHERE d.order_id = o.id AND d.status <> 'cancelled' LIMIT 1) AS delivery_note_number
        FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`,
       [id]
     );
