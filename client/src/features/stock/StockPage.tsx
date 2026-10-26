@@ -12,14 +12,14 @@ import { WarehouseQueueList, WarehouseBonWorkspace, BonsPipeline, type ProcessSt
 import { PesageStockList } from './PesageStockList';
 import { HistoryList } from './HistoryList';
 import { LotMovementModal } from './LotMovementModal';
+import IngredientFormModal from './IngredientFormModal';
 import {
   AlertTriangle, Package, Search, TrendingUp, TrendingDown,
   Clock, X, Boxes, CalendarClock, ChevronRight, ChevronDown, ChevronLeft,
   ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen, Warehouse,
-  Plus, List, LayoutGrid, Save, ShoppingCart, Upload, Download, BarChart3,
+  Plus, List, LayoutGrid, ShoppingCart, Upload, Download, BarChart3,
   ClipboardList, Archive, Beaker, Loader2,
 } from 'lucide-react';
-import { AllergenSelector } from '../../components/ui/AllergenSelector';
 import IngredientImportModal from './IngredientImportModal';
 import ConsommationTab from './ConsommationTab';
 import GoodsEntryRegisterTab from './GoodsEntryRegisterTab';
@@ -27,9 +27,8 @@ import PackagingPage from '../packaging/PackagingPage';
 import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
-import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import SearchSelect from '../../components/ui/SearchSelect';
-import { useStockCategories, STOCKABLE_ROOT_IDS } from './useStockCategories';
+import { useStockCategories } from './useStockCategories';
 import { format } from 'date-fns';
 import { fmtQty, type InventoryItem } from './types';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -876,7 +875,8 @@ export default function StockPage() {
       )}
 
       {/* Add Ingredient Modal */}
-      {showAddIngredient && <AddIngredientModal
+      {showAddIngredient && <IngredientFormModal
+        mode="create"
         onClose={() => setShowAddIngredient(false)}
         onSave={(data) => addIngredientMutation.mutate(data)}
         isLoading={addIngredientMutation.isPending} />}
@@ -885,63 +885,6 @@ export default function StockPage() {
       {showImport && <IngredientImportModal onClose={() => setShowImport(false)} />}
       </>
       )}
-    </div>
-  );
-}
-
-/* ─── Add Ingredient Modal (Odoo style) ─── */
-function AddIngredientModal({ onClose, onSave, isLoading }: {
-  onClose: () => void; onSave: (data: Record<string, any>) => void; isLoading: boolean;
-}) {
-  const [form, setForm] = useState({ name: '', unit: 'kg', unitCost: '', supplier: '', categoryId: '', allergens: [] as string[] });
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f9fafb' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Package size={16} style={{ color: 'var(--theme-accent)' }} />
-            <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>Nouvel ingrédient</h2>
-          </div>
-          <button onClick={onClose} style={{ padding: 4, color: 'var(--theme-text-muted)' }}><X size={16} /></button>
-        </div>
-        <form onSubmit={(e) => { e.preventDefault(); onSave({ name: form.name, unit: form.unit, unitCost: parseFloat(form.unitCost) || 0, supplier: form.supplier || undefined, categoryId: form.categoryId || null, allergens: form.allergens }); }}
-          style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Nom de l'ingrédient *</label>
-            <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required placeholder="Ex: Farine T55" autoFocus />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Unité</label>
-              <select className="input" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })}>
-                <option value="kg">Kilogramme (kg)</option><option value="g">Gramme (g)</option><option value="l">Litre (l)</option><option value="ml">Millilitre (ml)</option><option value="unit">Unité</option>
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Coût unitaire (DH)</label>
-              <input type="number" step="0.01" className="input" value={form.unitCost} onChange={e => setForm({ ...form, unitCost: e.target.value })} placeholder="0.00" required />
-            </div>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Catégorie</label>
-            <CategoryCascadeSelector value={form.categoryId} onChange={id => setForm({ ...form, categoryId: id })} rootIds={STOCKABLE_ROOT_IDS} />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Fournisseur</label>
-            <input className="input" value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} placeholder="Nom du fournisseur" />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Allergènes</label>
-            <AllergenSelector value={form.allergens} onChange={allergens => setForm({ ...form, allergens })} />
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)', marginTop: '0.25rem' }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-            <button type="submit" disabled={isLoading} className="odoo-btn-primary">
-              <Save size={13} /> {isLoading ? 'Sauvegarde...' : 'Sauvegarder'}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }

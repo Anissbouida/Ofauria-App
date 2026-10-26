@@ -105,6 +105,7 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
       />
       {selected && !open && (
         <button
+          type="button"
           onClick={() => { onChange(''); setQuery(''); }}
           title="Effacer"
           style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', display: 'flex', color: 'var(--odoo-text-muted)', cursor: 'pointer', background: 'none', border: 'none', padding: 2 }}>
@@ -124,6 +125,7 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
           )}
           {filtered.map((o, i) => (
             <button
+              type="button"
               key={o.id}
               onMouseDown={e => { e.preventDefault(); pick(o.id); }}
               onMouseEnter={() => setHighlighted(i)}

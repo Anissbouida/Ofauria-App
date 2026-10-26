@@ -5,9 +5,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { inventoryApi, ingredientsApi, ingredientLotsApi } from '../../api/inventory.api';
 import { fmtQty, type InventoryItem } from './types';
 import { LotMovementModal } from './LotMovementModal';
+import IngredientFormModal from './IngredientFormModal';
 import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import { suppliersApi } from '../../api/accounting.api';
-import { referentielApi } from '../../api/referentiel.api';
 import { useAuth } from '../../context/AuthContext';
 import {
   ArrowLeft, Package, AlertTriangle, Boxes, ShieldCheck, CalendarClock,
@@ -15,11 +15,10 @@ import {
   X, Save, Truck, FileText, Clock, Beaker, Ban, Shield, Hash, ShoppingCart,
   Warehouse, PackageOpen,
 } from 'lucide-react';
-import { AllergenSelector } from '../../components/ui/AllergenSelector';
 import { format } from 'date-fns';
 import { notify } from '../../components/ui/InlineNotification';
 import CategoryCascadeSelector, { CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
-import { useStockCategories, STOCKABLE_ROOT_IDS } from './useStockCategories';
+import { useStockCategories } from './useStockCategories';
 import { containerOf, containerLabel, type ContainerDef } from '../../utils/container';
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -558,7 +557,8 @@ export default function IngredientDetailPage() {
 
       {/* ══════ MODALS ══════ */}
       {showEdit && ingredient && (
-        <EditIngredientModal
+        <IngredientFormModal
+          mode="edit"
           ingredient={ingredient}
           threshold={threshold}
           onClose={() => setShowEdit(false)}
@@ -1035,138 +1035,6 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-/* ─── Edit Ingredient Modal ─── */
-function EditIngredientModal({ ingredient, threshold, onClose, onSave, isLoading }: {
-  ingredient: Record<string, any>;
-  threshold: number;
-  onClose: () => void;
-  onSave: (data: Record<string, any>) => void;
-  isLoading: boolean;
-}) {
-  const [form, setForm] = useState({
-    name: (ingredient.name as string) || '',
-    unit: (ingredient.unit as string) || 'kg',
-    unitCost: String(ingredient.unit_cost || ''),
-    supplier: (ingredient.supplier as string) || '',
-    categoryId: (ingredient.category_id as string) || '',
-    threshold: String(threshold),
-    containerTypeId: (ingredient.container_type_id as string) || '',
-    containerSize: ingredient.container_size != null ? String(ingredient.container_size) : '',
-    densiteKgL: ingredient.densite_kg_l != null ? String(ingredient.densite_kg_l) : '',
-    allergens: (Array.isArray(ingredient.allergens) ? ingredient.allergens : []) as string[],
-  });
-
-  // Referentiel editable des types de contenant (Parametres -> Referentiel).
-  const { data: containerTypes = [] } = useQuery<Record<string, any>[]>({
-    queryKey: ['ref-entries', 'container_types'],
-    // entries() renvoie { table, entries } — on extrait le tableau des entrees.
-    queryFn: () => referentielApi.entries('container_types').then((r: any) => (r?.entries ?? []) as Record<string, any>[]),
-    staleTime: 5 * 60 * 1000,
-  });
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
-      <div className="odoo-scope" style={{ margin: 0, minHeight: 0, width: '100%', maxWidth: 480, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding: '0.875rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)', backgroundColor: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Edit3 size={16} style={{ color: 'var(--theme-accent)' }} />
-            <div>
-              <h2 style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>Modifier l'ingrédient</h2>
-              <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 1 }}>{ingredient.name as string}</p>
-            </div>
-          </div>
-          <button onClick={onClose} style={{ padding: 4, color: 'var(--theme-text-muted)' }}><X size={16} /></button>
-        </div>
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          onSave({
-            name: form.name, unit: form.unit, unitCost: parseFloat(form.unitCost) || 0,
-            supplier: form.supplier || undefined, categoryId: form.categoryId || null,
-            threshold: parseFloat(form.threshold) || 0,
-            containerTypeId: form.containerTypeId || null,
-            containerSize: form.containerSize !== '' ? (parseFloat(form.containerSize) || null) : null,
-            densiteKgL: form.densiteKgL !== '' ? (parseFloat(form.densiteKgL) || null) : null,
-            allergens: form.allergens,
-          });
-        }} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.875rem', backgroundColor: '#fff' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Nom</label>
-            <input className="input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Unité</label>
-              <select className="input" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })}>
-                <option value="kg">kg</option><option value="g">g</option><option value="l">l</option><option value="ml">ml</option><option value="unit">Unité</option>
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Coût unitaire (DH)</label>
-              <input type="number" step="0.01" className="input" value={form.unitCost} onChange={e => setForm({ ...form, unitCost: e.target.value })} />
-            </div>
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Catégorie</label>
-            <CategoryCascadeSelector value={form.categoryId} onChange={id => setForm({ ...form, categoryId: id })} rootIds={STOCKABLE_ROOT_IDS} />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Fournisseur</label>
-            <input className="input" value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} />
-          </div>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Seuil minimum d'alerte ({form.unit})</label>
-            <input type="number" step="0.1" className="input" value={form.threshold} onChange={e => setForm({ ...form, threshold: e.target.value })} />
-          </div>
-          {/* Contenant par defaut : sert a raisonner par contenant a l'achat et au transfert
-              vers le pesage (ex : Seau de 5 kg -> 3 seaux = 15 kg). */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Type de contenant</label>
-              <select className="input" value={form.containerTypeId} onChange={e => setForm({ ...form, containerTypeId: e.target.value })}>
-                <option value="">— Aucun —</option>
-                {containerTypes.map(ct => (
-                  <option key={ct.id as string} value={ct.id as string}>{ct.label as string}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Quantité par contenant ({form.unit})</label>
-              <input type="number" step="0.001" min="0" className="input" placeholder="ex 5"
-                value={form.containerSize} onChange={e => setForm({ ...form, containerSize: e.target.value })} />
-            </div>
-          </div>
-          {/* Masse volumique : les chefs pesent les liquides (1.2 kg de lait) alors
-              que le stock est en litres. La densite (kg/L) permet de convertir la
-              saisie poids vers l'unite de stock (besoins, bon de sortie, couts). */}
-          {(form.unit === 'l' || form.unit === 'ml') && (
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
-                Masse volumique (kg/L)
-              </label>
-              <input type="number" step="0.001" min="0" className="input" placeholder="ex 1.03 (lait), 0.92 (huile), 1 (eau)"
-                value={form.densiteKgL} onChange={e => setForm({ ...form, densiteKgL: e.target.value })} />
-              <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 3 }}>
-                Permet les recettes saisies au poids (g/kg) pour un ingrédient stocké en volume. Vide = conversion impossible (alerte au plan de production).
-              </p>
-            </div>
-          )}
-          {/* Allergenes : referentiel ferme des 14 (mig 344), agreges jusqu'a la fiche produit (mig 343). */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Allergènes</label>
-            <AllergenSelector value={form.allergens} onChange={allergens => setForm({ ...form, allergens })} />
-          </div>
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem', borderTop: '1px solid var(--theme-bg-separator)' }}>
-            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-            <button type="submit" disabled={isLoading} className="odoo-btn-primary">
-              <Save size={13} /> {isLoading ? 'Enregistrement...' : 'Sauvegarder'}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }
