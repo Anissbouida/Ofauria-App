@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { receivablesRepository } from '../repositories/receivables.repository.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { saleRepository } from '../repositories/sale.repository.js';
 import { productRepository } from '../repositories/product.repository.js';
@@ -57,6 +58,13 @@ export const saleController = {
       channelId: explicitChannelId,
       cashAmount, cardAmount,
     } = req.body;
+
+    // Paiement reporte = creance d'un client identifie (mig 351, « Compte client ») :
+    // une fiche client est obligatoire, un nom libre ne permet ni suivi ni relance.
+    if (paymentStatus === 'unpaid' && !customerId) {
+      res.status(400).json({ success: false, error: { message: 'Choisissez ou créez la fiche du client : une vente à plus tard est portée sur son compte' } });
+      return;
+    }
 
     // Resolution du canal de vente : si non fourni, on prend le canal par defaut.
     let channelId: string | null = explicitChannelId || null;
@@ -179,13 +187,6 @@ export const saleController = {
         });
         return;
       }
-    }
-
-    // Paiement reporte : on exige un beneficiaire identifiable (client formel OU nom libre).
-    // Sans ca, on ne saurait pas a qui reclamer plus tard.
-    if (paymentStatus === 'unpaid' && !customerId && !(unpaidCustomerName && unpaidCustomerName.trim())) {
-      res.status(400).json({ success: false, error: { message: 'Un client ou un nom de beneficiaire est requis pour un paiement reporte' } });
-      return;
     }
 
     // Require an open cash register session
@@ -473,6 +474,15 @@ export const saleController = {
   async todayStats(req: AuthRequest, res: Response) {
     const stats = await saleRepository.todayStats(req.user!.storeId);
     res.json({ success: true, data: stats });
+  },
+
+  /** Créances clients (mig 351) : balance âgée, tickets impayés + factures clients ouvertes. */
+  async receivables(req: AuthRequest, res: Response) {
+    if (!req.user!.storeId && req.user!.role !== 'admin') {
+      res.status(403).json({ success: false, error: { message: 'Utilisateur non rattache a un magasin' } });
+      return;
+    }
+    res.json({ success: true, data: await receivablesRepository.agedBalance(req.user!.storeId) });
   },
 
   // Ventes a plus tard (impayees + reglees) pour l'onglet Impayes.

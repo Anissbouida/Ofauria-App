@@ -6,6 +6,7 @@ import { categoriesApi } from '../../api/categories.api';
 import { salesApi } from '../../api/sales.api';
 import { sachetConfigApi } from '../../api/sachet-config.api';
 import { customersApi } from '../../api/customers.api';
+import UnpaidCustomerPicker from './UnpaidCustomerPicker';
 import { salesChannelsApi } from '../../api/sales-channels.api';
 import { ordersApi } from '../../api/orders.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
@@ -157,7 +158,6 @@ export default function POSPage() {
   // Modal tunnel paiement (Encaisser) : mode + billet donne + rendu monnaie.
   // Deplace hors du panneau panier pour un UX aligne aux POS classiques.
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [unpaidCustomerName, setUnpaidCustomerName] = useState('');
   // Sachets : la suggestion est recalculee a chaque changement de panier.
   // sachetsGiven garde la valeur saisie par la vendeuse (override possible).
   // userOverrode bascule a true des qu'elle modifie manuellement, pour ne plus
@@ -1098,10 +1098,9 @@ export default function POSPage() {
   };
 
   const handleSaveUnpaid = () => {
-    // Beneficiaire : fiche client OU nom libre.
-    const hasBeneficiary = !!customerId || unpaidCustomerName.trim().length > 0;
-    if (!hasBeneficiary) {
-      notify.error('Indiquez un client ou un nom de bénéficiaire');
+    // Compte client (mig 351) : la vente à plus tard est portée sur une fiche client.
+    if (!customerId) {
+      notify.error('Choisissez ou créez la fiche du client');
       return;
     }
     if (!sachetReasonOK) {
@@ -1114,14 +1113,12 @@ export default function POSPage() {
       paymentMethod: 'credit',
       paymentStatus: 'unpaid',
       discountAmount,
-      unpaidCustomerName: !customerId && unpaidCustomerName.trim() ? unpaidCustomerName.trim() : undefined,
       sachetsGiven,
       sachetsSuggested: suggestedSachets,
       sachetReason: sachetReason.trim() || undefined,
       channelId: channelId || undefined,
     });
     setShowUnpaidModal(false);
-    setUnpaidCustomerName('');
   };
 
 
@@ -1830,7 +1827,7 @@ export default function POSPage() {
                       <Trash2 size={18} />
                       <span className="text-[10px] font-semibold">Vider</span>
                     </button>
-                    <button onClick={() => { setUnpaidCustomerName(''); setShowUnpaidModal(true); }}
+                    <button onClick={() => setShowUnpaidModal(true)}
                       disabled={checkoutMutation.isPending}
                       title="Sauvegarder sans encaissement (client paiera plus tard)"
                       className="flex flex-col items-center justify-center gap-1 px-3 py-3 bg-amber-50 text-amber-700 rounded-xl font-bold hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm active:scale-[0.98]">
@@ -4132,25 +4129,15 @@ export default function POSPage() {
               <span className="text-xl font-bold text-primary-700">{total.toFixed(2)} DH</span>
             </div>
 
-            {customerId ? (
-              <div className="mb-4 bg-primary-50 ring-1 ring-primary-200 rounded-lg p-3 flex items-center gap-2">
-                <User size={16} className="text-primary-600" />
-                <span className="text-sm font-semibold text-primary-700 truncate">{customerSearch}</span>
-              </div>
-            ) : (
-              <>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Bénéficiaire</label>
-                <input type="text" placeholder="Ex: Joseph - personnel" value={unpaidCustomerName}
-                  onChange={(e) => setUnpaidCustomerName(e.target.value)} maxLength={120}
-                  className="input mb-2" autoFocus />
-                <p className="text-[11px] text-gray-400 mb-4">Aucune fiche client liée — saisissez un nom libre pour retrouver la vente.</p>
-              </>
-            )}
+            <UnpaidCustomerPicker
+              customerId={customerId} customerLabel={customerSearch} saleTotal={total}
+              onPick={(id, label) => { setCustomerId(id); setCustomerSearch(label); }}
+              onClear={() => { setCustomerId(''); setCustomerSearch(''); }} />
 
             <div className="flex gap-3">
               <button onClick={() => setShowUnpaidModal(false)} className="btn-secondary flex-1">Annuler</button>
               <button onClick={handleSaveUnpaid}
-                disabled={checkoutMutation.isPending || (!customerId && unpaidCustomerName.trim().length === 0)}
+                disabled={checkoutMutation.isPending || !customerId}
                 className="btn-primary flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed">
                 {checkoutMutation.isPending ? 'En cours...' : 'Sauvegarder'}
               </button>

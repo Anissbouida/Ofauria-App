@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { receivablesRepository } from '../repositories/receivables.repository.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { customerRepository } from '../repositories/customer.repository.js';
 
@@ -32,6 +33,10 @@ export const customerController = {
   async update(req: AuthRequest, res: Response) {
     const customer = await customerRepository.update(req.params.id, req.body);
     res.json({ success: true, data: customer });
+  },
+  /** Situation du client : dû, échu, plafond de crédit, disponible (mig 351). */
+  async situation(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await receivablesRepository.customerSituation(req.params.id) });
   },
   async remove(req: AuthRequest, res: Response) {
     await customerRepository.delete(req.params.id);

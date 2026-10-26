@@ -469,6 +469,11 @@ function CustomerDetailPanel({ customerId, onClose, onEdit }: {
     queryFn: () => customersApi.stats(customerId),
   });
   const [tab, setTab] = useState<'fiche' | 'sales' | 'orders'>('fiche');
+  // Situation de compte (mig 351) : ce que le client doit, en retard, plafond restant.
+  const { data: situation } = useQuery({
+    queryKey: ['customer-situation', customerId],
+    queryFn: () => customersApi.situation(customerId),
+  });
 
   const customer = data?.customer as Customer | undefined;
   const orders = data?.orders;
@@ -528,6 +533,17 @@ function CustomerDetailPanel({ customerId, onClose, onEdit }: {
                 <div className="odoo-stat-card-value">{orders?.count || 0}</div>
                 <div className="odoo-stat-card-sub">{n(parseFloat(orders?.total_amount) || 0)} DH</div>
               </div>
+              {situation && (
+                <div className="odoo-stat-card" style={{ cursor: 'default' }}
+                  title="Tickets portés sur son compte et factures non réglées (Ventes › Créances clients)">
+                  <div className="odoo-stat-card-label">Doit</div>
+                  <div className="odoo-stat-card-value" style={{ color: situation.overdue > 0 ? '#dc2626' : undefined }}>{n(situation.total)}</div>
+                  <div className="odoo-stat-card-sub">
+                    {situation.overdue > 0 ? <span style={{ color: '#dc2626' }}>dont {n(situation.overdue)} DH en retard</span> : 'DH · à jour'}
+                    {situation.creditLimit != null && <> · disponible {n(Math.max(situation.available ?? 0, 0))} / {n(situation.creditLimit)}</>}
+                  </div>
+                </div>
+              )}
             </div>
 
             {tab === 'fiche' && (

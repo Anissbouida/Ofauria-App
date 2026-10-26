@@ -20,6 +20,7 @@ import ReceiptModal from '../pos/ReceiptModal';
 import EmittedInvoicesTab from './EmittedInvoicesTab';
 import ManualShiftEntries from './ManualShiftEntries';
 import SpecialSalesTab from './SpecialSalesTab';
+import ReceivablesTab from './ReceivablesTab';
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrateur', manager: 'Gérant', cashier: 'Caissier', baker: 'Boulanger',
@@ -120,7 +121,6 @@ export default function SalesPage() {
   // Date d'encaissement choisie dans le modal de reglement (onglet Impayes).
   const [payDate, setPayDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   // Filtre de statut de l'onglet Impayes.
-  const [unpaidStatusFilter, setUnpaidStatusFilter] = useState<'all' | 'unpaid' | 'paid'>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [receiptData, setReceiptData] = useState<{
     saleNumber: string; date: string; cashierName: string; customerName?: string;
@@ -169,13 +169,6 @@ export default function SalesPage() {
     enabled: mainTab === 'sales' && view === 'receipt',
   });
 
-  // Ventes a plus tard (impayees + reglees) pour l'onglet Impayes.
-  const { data: deferredData, isLoading: deferredLoading } = useQuery({
-    queryKey: ['sales-deferred'],
-    queryFn: () => salesApi.deferred(),
-    enabled: mainTab === 'unpaid',
-  });
-  const deferred: Record<string, any>[] = deferredData || [];
 
   const paySaleMutation = useMutation({
     mutationFn: ({ id, paymentMethod, paidAt }: { id: string; paymentMethod: string; paidAt?: string }) =>
@@ -183,6 +176,7 @@ export default function SalesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       queryClient.invalidateQueries({ queryKey: ['sales-deferred'] });
+      queryClient.invalidateQueries({ queryKey: ['receivables'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       notify.success('Encaissement enregistré');
       setPaySaleTarget(null);
@@ -437,7 +431,8 @@ export default function SalesPage() {
   const mainTabs = [
     { key: 'sales' as const, label: 'Ventes', icon: Receipt },
     { key: 'special' as const, label: 'Ventes spéciales', icon: Briefcase },
-    { key: 'unpaid' as const, label: 'Impayés', icon: Clock },
+    // Créances clients : balance âgée (tickets sur compte client + factures ouvertes).
+    { key: 'unpaid' as const, label: 'Créances clients', icon: Clock },
     { key: 'returns' as const, label: 'Retours & Échanges', icon: RotateCcw },
     { key: 'sessions' as const, label: 'Périodes de travail', icon: Lock },
     { key: 'invoices' as const, label: 'Factures émises', icon: FileText },
@@ -909,116 +904,8 @@ export default function SalesPage() {
         </>
       )}
 
-      {/* ═══════════ IMPAYÉS TAB ═══════════ */}
-      {mainTab === 'unpaid' && (
-        deferredLoading ? <LoadingState /> : (() => {
-          const now = new Date();
-          const rows: Record<string, any>[] = deferred.map((s: Record<string, any>) => {
-            const status: 'unpaid' | 'paid' = s.payment_status === 'unpaid' ? 'unpaid' : 'paid';
-            const created = new Date(s.created_at as string);
-            const ref = status === 'paid' && s.paid_at ? new Date(s.paid_at as string) : now;
-            return { ...s, _status: status, _ageDays: Math.max(0, differenceInDays(ref, created)) };
-          });
-          const filtered = rows.filter(r => unpaidStatusFilter === 'all' || r._status === unpaidStatusFilter);
-          const unpaidRows = rows.filter(r => r._status === 'unpaid');
-          const outstanding = unpaidRows.reduce((sum, r) => sum + parseFloat(r.total as string), 0);
-          return (
-            <>
-              {/* Total des impayés en cours */}
-              <div className="odoo-stat-grid">
-                <div className="odoo-stat-card">
-                  <div className="odoo-stat-card-label"><Clock size={11} style={{ display: 'inline', marginRight: 4 }} />Impayés en cours</div>
-                  <div className="odoo-stat-card-value" style={{ color: outstanding > 0 ? '#dc3545' : undefined }}>{formatCurrency(outstanding)}</div>
-                  <div className="odoo-stat-card-sub">{unpaidRows.length} vente{unpaidRows.length > 1 ? 's' : ''} à encaisser</div>
-                </div>
-              </div>
-
-              {/* Filtre par statut */}
-              <div style={{ display: 'inline-flex', gap: 4 }}>
-                {([['all', 'Toutes'], ['unpaid', 'Impayées'], ['paid', 'Réglées']] as const).map(([k, label]) => (
-                  <button key={k} onClick={() => setUnpaidStatusFilter(k)}
-                    className="odoo-filter-dropdown"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                      backgroundColor: unpaidStatusFilter === k ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
-                      color: unpaidStatusFilter === k ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
-                      fontWeight: unpaidStatusFilter === k ? 600 : 400,
-                    }}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              <div style={{ overflowX: 'auto' }}>
-                <table className="odoo-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: 24 }}></th>
-                      <th>N° Vente</th>
-                      <th>Client</th>
-                      <th>Date de vente</th>
-                      <th style={{ textAlign: 'right' }}>Ancienneté</th>
-                      <th style={{ textAlign: 'right' }}>Montant</th>
-                      <th>Statut</th>
-                      <th style={{ textAlign: 'right', width: 140 }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.length === 0 ? (
-                      <tr><td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-                        Aucune vente à plus tard
-                      </td></tr>
-                    ) : filtered.map((s: Record<string, any>) => {
-                      const isUnpaid = s._status === 'unpaid';
-                      const beneficiary = s.customer_first_name
-                        ? `${s.customer_first_name} ${s.customer_last_name}`
-                        : (s.unpaid_customer_name as string) || 'Client de passage';
-                      return (
-                        <tr key={s.id as string} className={isUnpaid ? 'row-warning' : ''}>
-                          <td><span className={`odoo-status-dot ${isUnpaid ? 'warning' : 'ok'}`} /></td>
-                          <td><span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{s.sale_number as string}</span></td>
-                          <td>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--theme-text-muted)' }}>
-                              <User size={11} /> {beneficiary}
-                            </span>
-                          </td>
-                          <td style={{ color: 'var(--theme-text-muted)' }}>
-                            {format(new Date(s.created_at as string), 'dd MMM yyyy', { locale: fr })}
-                          </td>
-                          <td style={{ textAlign: 'right', color: isUnpaid && s._ageDays > 7 ? '#dc3545' : 'var(--theme-text-muted)' }}>
-                            {s._ageDays} j
-                          </td>
-                          <td style={{ textAlign: 'right', fontWeight: 700 }}>{formatCurrency(parseFloat(s.total as string))}</td>
-                          <td>
-                            {isUnpaid
-                              ? <span className="odoo-tag odoo-tag-yellow"><Clock size={9} style={{ display: 'inline', marginRight: 2 }} /> Impayée</span>
-                              : <span className="odoo-tag odoo-tag-green"><CheckCircle size={9} style={{ display: 'inline', marginRight: 2 }} /> Réglée</span>}
-                          </td>
-                          <td style={{ textAlign: 'right' }}>
-                            <div style={{ display: 'inline-flex', gap: 4 }}>
-                              {isUnpaid && (
-                                <button onClick={() => { setPayPaymentMethod('cash'); setPayDate(format(new Date(), 'yyyy-MM-dd')); setPaySaleTarget(s); }}
-                                  title="Marquer comme réglée"
-                                  className="odoo-btn-primary"
-                                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: '0.6875rem' }}>
-                                  <Banknote size={11} /> Encaisser
-                                </button>
-                              )}
-                              <button onClick={() => openReceipt(s.id as string)} className="odoo-pager-btn" title="Voir le reçu">
-                                <Eye size={13} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          );
-        })()
-      )}
+      {/* ═══════════ CRÉANCES CLIENTS (ex-Impayés, mig 351) ═══════════ */}
+      {mainTab === 'unpaid' && <ReceivablesTab />}
 
       {/* ═══════════ RETURNS TAB ═══════════ */}
       {mainTab === 'returns' && (

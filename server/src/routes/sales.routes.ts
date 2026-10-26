@@ -20,6 +20,7 @@ router.get('/summary', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), as
 // Avant /:id pour que "deferred" ne soit pas capture comme un id de vente.
 // Ouvert a SALES : la caissiere consulte et encaisse les impayes depuis le POS.
 router.get('/deferred', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(saleController.deferred));
+router.get('/receivables', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(saleController.receivables));
 router.get('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(saleController.getById));
 router.post(
   '/checkout',
