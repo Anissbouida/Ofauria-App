@@ -49,6 +49,13 @@ const LEGAL_FORM_LABELS: Record<string, string> = {
   personne_physique: 'Personne physique', auto_entrepreneur: 'Auto-entrepreneur',
   cooperative: 'Coopérative', association: 'Association', autre: 'Autre',
 };
+// Intitulé complet, cherchable (« responsabilité » trouve SARL).
+const LEGAL_FORM_FULL: Record<string, string> = {
+  SARL: 'Société à responsabilité limitée', 'SARL AU': 'SARL à associé unique', SA: 'Société anonyme',
+  SAS: 'Société par actions simplifiée', SNC: 'Société en nom collectif',
+  personne_physique: 'Commerçant en nom propre', auto_entrepreneur: 'Statut auto-entrepreneur',
+};
+const LEGAL_FORM_OPTIONS = LEGAL_FORMS.map(f => ({ id: f, label: LEGAL_FORM_LABELS[f] ?? f, sublabel: LEGAL_FORM_FULL[f] }));
 
 type FormState = {
   name: string; legalName: string; legalForm: string; vatRegime: Supplier['vat_regime'];
@@ -720,10 +727,8 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
                   <div><label style={fieldLabel}>Raison sociale</label>
                     <input value={form.legalName} onChange={e => set('legalName', e.target.value)} className={inputCls} maxLength={200} placeholder="Si différente du nom" /></div>
                   <div><label style={fieldLabel}>Forme juridique</label>
-                    <select value={form.legalForm} onChange={e => set('legalForm', e.target.value)} className={inputCls}>
-                      <option value="">—</option>
-                      {LEGAL_FORMS.map(f => <option key={f} value={f}>{LEGAL_FORM_LABELS[f] ?? f}</option>)}
-                    </select></div>
+                    <SearchSelect options={LEGAL_FORM_OPTIONS} value={form.legalForm} onChange={id => set('legalForm', id)}
+                      placeholder="Rechercher : SARL, SA, coopérative…" width="100%" size="md" /></div>
                   <label className="col-span-2" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: '0.8125rem', cursor: 'pointer' }}>
                     <input type="checkbox" checked={brandMode} style={{ marginTop: 3 }}
                       onChange={e => { setBrandMode(e.target.checked); if (!e.target.checked) set('parentSupplierId', ''); }} />
@@ -734,7 +739,7 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
                   {brandMode && (
                     <div className="col-span-2"><label style={fieldLabel}>Groupe (entité juridique) *</label>
                       <SearchSelect options={parentOptions} value={form.parentSupplierId} onChange={id => set('parentSupplierId', id)}
-                        placeholder="Rechercher le groupe…" width="100%" />
+                        placeholder="Rechercher le groupe…" width="100%" size="md" />
                       {errorText('parentSupplierId')}
                     </div>
                   )}

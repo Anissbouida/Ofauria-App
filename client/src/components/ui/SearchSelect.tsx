@@ -21,11 +21,13 @@ interface SearchSelectProps {
   onChange: (id: string) => void;
   placeholder: string;            // ex. « Tous les fournisseurs »
   width?: number | string;
+  /** 'md' : même hauteur que les champs de formulaire (filtres compacts par défaut). */
+  size?: 'sm' | 'md';
 }
 
 const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-export default function SearchSelect({ options, value, onChange, placeholder, width = 220 }: SearchSelectProps) {
+export default function SearchSelect({ options, value, onChange, placeholder, width = 220, size = 'sm' }: SearchSelectProps) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
@@ -93,12 +95,12 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
         onKeyDown={handleKeyDown}
         style={{
           width: '100%',
-          padding: '0.25rem 1.625rem 0.25rem 1.625rem',
-          borderRadius: 3,
+          padding: size === 'md' ? '0.5rem 1.75rem 0.5rem 1.75rem' : '0.25rem 1.625rem 0.25rem 1.625rem',
+          borderRadius: size === 'md' ? 6 : 3,
           border: '1px solid var(--odoo-border)',
           backgroundColor: 'var(--odoo-bg)',
-          fontSize: '0.8125rem',
-          fontWeight: 500,
+          fontSize: size === 'md' ? '0.875rem' : '0.8125rem',
+          fontWeight: size === 'md' ? 400 : 500,
           color: selected && !open ? 'var(--odoo-text)' : 'var(--odoo-text-muted)',
           outline: 'none',
         }}
