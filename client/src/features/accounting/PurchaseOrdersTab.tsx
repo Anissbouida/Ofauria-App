@@ -11,7 +11,7 @@ import {
   Plus, Send, PackageCheck, X, Trash2, AlertTriangle, Eye, Ban, PackageX,
   Truck, Search, ChevronDown, ChevronUp, ShoppingBag, Clock, CheckCircle2,
   Package, ArrowRight, FileText, Filter, Loader2, Download, Pencil, Receipt,
-  Combine,
+  Combine, Boxes, Wrench, Landmark,
 } from 'lucide-react';
 import { format, differenceInCalendarDays, addDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -51,6 +51,19 @@ const PURCHASABLE_ROOT_IDS = Array.from(new Set([...STOCKABLE_ROOT_IDS, ...CONSU
 /* Type de ligne de BC (mig 349) : les lignes service / immobilisation n'ont pas d'article. */
 type PoLineKind = 'ingredient' | 'consumable' | 'service' | 'asset';
 const isFreeLine = (k: unknown) => k === 'service' || k === 'asset';
+/* Nature d'un nouveau BC, choisie avant la saisie des lignes. */
+const ORDER_TYPES = [
+  { key: 'stock' as const, label: 'Articles stockés', icon: Boxes, color: '#2f6f3e', tint: '#e8f5ec',
+    examples: 'Matières premières, emballages, consommables d\'entretien',
+    effect: 'Entrée en stock (lots, DLC), coût moyen mis à jour' },
+  { key: 'service' as const, label: 'Service / frais', icon: Wrench, color: '#1d4f91', tint: '#e7f0fb',
+    examples: 'Réparation, maintenance, transport, énergie, loyer, prestations',
+    effect: 'Pas de stock : réception = service rendu, charge (classe 6)' },
+  { key: 'asset' as const, label: 'Immobilisation', icon: Landmark, color: '#9a5b13', tint: '#fdf1e2',
+    examples: 'Four, pétrin, chambre froide, vitrine, caisse, véhicule',
+    effect: 'Pas de stock : mise en service, actif (classe 2) et fiche d\'amortissement' },
+];
+
 function LineKindTag({ kind }: { kind: unknown }) {
   if (kind === 'consumable') return <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>;
   if (kind === 'service') return <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Service</span>;
@@ -1228,6 +1241,20 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   // Ligne service / immobilisation : refId = cle locale, name = designation libre.
   const [items, setItems] = useState<{ kind: PoLineKind; refId: string; name: string; unit: string; categoryId: string | null; quantityOrdered: number; unitPrice: number | null; container: ContainerDef | null; containerCount: number }[]>([]);
   const [freeLine, setFreeLine] = useState<{ kind: 'service' | 'asset'; description: string; categoryId: string; quantity: string; unitPrice: string } | null>(null);
+  // Nature de l'achat, choisie avant toute saisie : elle decide de la facon d'ajouter
+  // les lignes (recherche d'articles stockes, ou saisie libre service / immobilisation).
+  const [orderType, setOrderType] = useState<'stock' | 'service' | 'asset' | null>(null);
+  const emptyFreeLine = (kind: 'service' | 'asset') => ({ kind, description: '', categoryId: '', quantity: '1', unitPrice: '' });
+  const chooseOrderType = (t: 'stock' | 'service' | 'asset') => {
+    setOrderType(t);
+    setFreeLine(t === 'stock' ? null : emptyFreeLine(t));
+  };
+  const changeOrderType = () => {
+    if (items.length > 0 && !window.confirm('Changer de type d\'achat retire les lignes déjà saisies. Continuer ?')) return;
+    setItems([]);
+    setOrderType(null);
+    setFreeLine(null);
+  };
   const [showNewIngredient, setShowNewIngredient] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
@@ -1382,7 +1409,8 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
       categoryId: freeLine.categoryId, quantityOrdered: qty, unitPrice: price > 0 ? price : null,
       container: null, containerCount: 1,
     }]);
-    setFreeLine(null);
+    // Le formulaire reste ouvert, vide, pour la ligne suivante.
+    setFreeLine(emptyFreeLine(freeLine.kind));
   };
 
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
@@ -1427,20 +1455,52 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             <div>
               <h2 style={{ color: '#fff', fontWeight: 600, fontSize: '1rem', margin: 0 }}>Nouveau bon de commande</h2>
               <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.75rem', margin: 0 }}>
-                {supplierName ? `Commande chez ${supplierName}` : '1. Choisissez le fournisseur · 2. Ajoutez les articles · 3. Créez le BC'}
+                {!orderType ? 'Quel type d\'achat ?'
+                  : `${ORDER_TYPES.find(t => t.key === orderType)!.label}${supplierName ? ` · chez ${supplierName}` : ''}`}
               </p>
             </div>
+            {orderType && (
+              <button type="button" onClick={changeOrderType}
+                style={{ marginLeft: 8, fontSize: '0.6875rem', color: '#fff', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 999, padding: '0.1rem 0.6rem' }}>
+                Changer de type
+              </button>
+            )}
           </div>
           <button type="button" onClick={requestClose} className="hover:bg-white/20" style={{ color: '#fff', padding: 6, borderRadius: 4 }}><X size={16} /></button>
         </div>
 
         <div style={{ padding: '1.25rem' }} className="space-y-5 flex-1 overflow-y-auto min-h-0">
+          {/* Étape 0 : nature de l'achat (comme le « type de commande » des ERP). */}
+          {!orderType && (
+            <div style={{ maxWidth: 920, margin: '2rem auto 0' }}>
+              <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--odoo-text)', marginBottom: 4 }}>Que voulez-vous commander ?</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', marginBottom: 16 }}>
+                Le type décide de la réception et de la comptabilisation. Il ne change plus une fois des lignes saisies.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {ORDER_TYPES.map(t => (
+                  <button key={t.key} type="button" onClick={() => chooseOrderType(t.key)}
+                    className="text-left hover:shadow-md transition-shadow"
+                    style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, padding: '1rem', backgroundColor: 'var(--odoo-bg)', cursor: 'pointer' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 8, backgroundColor: t.tint, color: t.color, marginBottom: 10 }}>
+                      <t.icon size={18} />
+                    </span>
+                    <span style={{ display: 'block', fontWeight: 600, fontSize: '0.875rem', color: 'var(--odoo-text)' }}>{t.label}</span>
+                    <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--odoo-text-muted)', marginTop: 4 }}>{t.examples}</span>
+                    <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--odoo-border)' }}>{t.effect}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {orderType && (<>
           {/* Fournisseur + livraison + notes */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label style={odooLabelStyle}>Fournisseur *</label>
               <SearchSelect options={supplierOptions} value={supplierId} width="100%"
-                onChange={id => { setSupplierId(id); if (id) setTimeout(() => searchRef.current?.focus(), 0); }}
+                onChange={id => { setSupplierId(id); if (id && orderType === 'stock') setTimeout(() => searchRef.current?.focus(), 0); }}
                 placeholder="Rechercher un fournisseur…" />
             </div>
             <div>
@@ -1467,6 +1527,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
 
           {/* Recherche d'articles (ingredients + consommables) */}
           <div>
+            {orderType === 'stock' && (<>
             <label style={odooLabelStyle}>Ajouter des articles</label>
             <div className="flex gap-2">
               <div className="relative flex-1">
@@ -1519,35 +1580,18 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                 <Plus size={14} /> Nouvel article
               </button>
             </div>
-            {/* Achats hors stock (mig 349) : prestation ou bien durable, sans fiche article. */}
-            <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 8 }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Hors stock :</span>
-              <button type="button" className={freeLine?.kind === 'service' ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
-                onClick={() => setFreeLine({ kind: 'service', description: searchIngredient.trim(), categoryId: '', quantity: '1', unitPrice: '' })}>
-                <Plus size={12} /> Service / frais
-              </button>
-              <button type="button" className={freeLine?.kind === 'asset' ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
-                onClick={() => setFreeLine({ kind: 'asset', description: searchIngredient.trim(), categoryId: '', quantity: '1', unitPrice: '' })}>
-                <Plus size={12} /> Immobilisation
-              </button>
-              <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
-                réparation, entretien, transport, loyer… ou four, pétrin, mobilier, caisse
-              </span>
-            </div>
+            </>)}
             {freeLine && (
               <div style={{ marginTop: 10, border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.75rem', backgroundColor: 'var(--odoo-bg-alt)' }}>
-                <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
+                <div style={{ marginBottom: 8 }}>
                   <strong style={{ fontSize: '0.8125rem' }}>
-                    {freeLine.kind === 'asset' ? 'Nouvelle immobilisation' : 'Nouveau service / frais'}
+                    {freeLine.kind === 'asset' ? 'Ajouter une immobilisation' : 'Ajouter un service / des frais'}
                   </strong>
-                  <button type="button" onClick={() => setFreeLine(null)} style={{ color: 'var(--odoo-text-muted)', padding: 2 }}><X size={14} /></button>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                   <div className="md:col-span-4">
                     <label style={odooLabelStyle}>Désignation *</label>
-                    <input type="text" autoFocus value={freeLine.description} style={odooFieldStyle}
+                    <input type="text" autoFocus key={`desc-${items.length}`} value={freeLine.description} style={odooFieldStyle}
                       placeholder={freeLine.kind === 'asset' ? 'Ex : Pétrin spirale 60 L' : 'Ex : Réparation four à sole'}
                       onChange={e => setFreeLine({ ...freeLine, description: e.target.value })}
                       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addFreeLine(); } }} />
@@ -1580,7 +1624,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                 </p>
               </div>
             )}
-            {usualProducts.length > 0 && (
+            {orderType === 'stock' && usualProducts.length > 0 && (
               <div style={{ marginTop: 10 }}>
                 <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginBottom: 6 }}>
                   Articles habituels chez <strong>{supplierName}</strong> — un clic pour ajouter
@@ -1686,10 +1730,13 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
               style={{ padding: '2.5rem 0', backgroundColor: 'var(--odoo-bg-alt)', borderRadius: 4, border: '1px dashed var(--odoo-border)' }}>
               <ShoppingBag size={24} style={{ color: 'var(--odoo-text-light)', marginBottom: 8 }} />
               <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
-                {supplierId ? 'Aucune ligne pour l\'instant — recherchez un article, cliquez un article habituel, ou ajoutez un service / une immobilisation.' : 'Commencez par choisir le fournisseur.'}
+                {!supplierId ? 'Commencez par choisir le fournisseur.'
+                  : orderType === 'stock' ? 'Aucune ligne pour l\'instant — recherchez un article ou cliquez un article habituel.'
+                  : 'Aucune ligne pour l\'instant — remplissez le formulaire ci-dessus puis « Ajouter ».'}
               </p>
             </div>
           )}
+          </>)}
         </div>
 
         {/* Footer */}
