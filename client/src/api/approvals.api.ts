@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import api from './client';
 import type { ApprovalDocType, ApprovalCondition, ApprovalRequestStatus, ApprovalStepStatus } from '@ofauria/shared';
 
@@ -77,4 +78,10 @@ export function apiErrorMessage(err: unknown, fallback: string) {
   const e = err as { response?: { data?: { error?: { message?: string } | string } } };
   const er = e?.response?.data?.error;
   return typeof er === 'string' ? er : er?.message || fallback;
+}
+
+/** Pièces qui attendent ma décision ; même clé de cache que la cloche (un seul appel). */
+export function useApprovalsCount(enabled = true): number {
+  const { data = 0 } = useQuery({ queryKey: ['approvals', 'count'], queryFn: approvalsApi.count, refetchInterval: 60_000, enabled });
+  return data;
 }

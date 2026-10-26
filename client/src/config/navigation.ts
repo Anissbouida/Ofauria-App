@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
   Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
-  Package, Box, Store, ShieldCheck, TrendingUp, Thermometer, ShieldAlert,
+  Package, Box, Store, ShieldCheck, TrendingUp, Thermometer, ShieldAlert, ClipboardCheck,
 } from 'lucide-react';
 import { MODULE_LABELS, MODULE_ALIASES, ROLE_GROUPS } from '@ofauria/shared';
 import type { AppModule } from '@ofauria/shared';
@@ -44,6 +44,8 @@ export interface NavItem {
    * Relevés HACCP ne concernent que les chefs et le gérant.
    */
   roles?: string[];
+  /** Compteur affiché en pastille sur la tuile (ex. pièces à approuver). */
+  counter?: 'approvals';
 }
 
 /** Chefs + gérant + admin : mêmes rôles que les routes serveur concernées. */
@@ -110,6 +112,10 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'Contrôle',
     items: [
+      // Circuits d'approbation (lot 8) : la boîte « À approuver » sans passer par la cloche.
+      { module: 'purchasing', href: '/approvals', icon: ClipboardCheck, color: 'bg-amber-500',
+        label: 'Approbations', description: 'Bons de commande, avoirs et écarts qui attendent une décision',
+        counter: 'approvals' },
       { module: 'controle', href: '/controle', icon: ShieldCheck, color: 'bg-emerald-600',
         description: 'Anomalies, contrôles et registre des pertes' },
       { module: 'unsold', aliases: ['reconciliation'], href: '/boutique', icon: Store, color: 'bg-orange-600',

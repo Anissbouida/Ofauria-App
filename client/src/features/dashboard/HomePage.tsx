@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { MODULE_LABELS, type AppModule } from '@ofauria/shared';
 import { navLabel, visibleNavGroups } from '../../config/navigation';
+import { useApprovalsCount } from '../../api/approvals.api';
+import { CountBadge } from '../../components/layout/AppLayout';
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -48,6 +50,7 @@ export default function HomePage() {
   const canSeePaymentAlerts = hasModule('purchasing') || hasModule('accounting');
 
   const userGroups = visibleNavGroups(hasModule, user?.role);
+  const approvalsCount = useApprovalsCount(!!user);
 
   // Production stats
   const plans = (productionPlans?.data || []) as { status: string; items?: { status: string }[] }[];
@@ -190,11 +193,16 @@ export default function HomePage() {
               <button key={mod.href}
                 onClick={() => navigate(mod.href)}
                 className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-lg hover:border-gray-300 transition-all group text-left">
-                <div className={`w-12 h-12 ${mod.color} rounded-xl flex items-center justify-center text-white shadow-sm mb-4 group-hover:scale-110 transition-transform`}>
+                <div className={`relative w-12 h-12 ${mod.color} rounded-xl flex items-center justify-center text-white shadow-sm mb-4 group-hover:scale-110 transition-transform`}>
                   <mod.icon size={24} />
+                  {mod.counter === 'approvals' && approvalsCount > 0 && <CountBadge count={approvalsCount} />}
                 </div>
                 <h3 className="font-semibold text-gray-800 text-sm">{navLabel(mod)}</h3>
-                <p className="text-xs text-gray-400 mt-1 leading-relaxed">{mod.description}</p>
+                <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                  {mod.counter === 'approvals' && approvalsCount > 0
+                    ? <span className="text-red-600 font-medium">{approvalsCount} pièce{approvalsCount > 1 ? 's' : ''} attend{approvalsCount > 1 ? 'ent' : ''} votre décision</span>
+                    : mod.description}
+                </p>
               </button>
             ))}
           </div>

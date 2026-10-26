@@ -6,18 +6,29 @@ import Header from './Header';
 import { AlertTriangle } from 'lucide-react';
 import { NAV_HOME, navLabel, isNavItemVisible, visibleNavGroups } from '../../config/navigation';
 import type { NavItem } from '../../config/navigation';
+import { useApprovalsCount } from '../../api/approvals.api';
 
 const CASHIER_ROLES = ['cashier', 'saleswoman'];
 
-function ModuleTile({ item, onSelect }: { item: NavItem; onSelect: () => void }) {
+function ModuleTile({ item, onSelect, count = 0 }: { item: NavItem; onSelect: () => void; count?: number }) {
   return (
     <button onClick={onSelect}
       className="flex flex-col items-center gap-2 p-4 rounded-xl hover:bg-gray-50 transition-colors group">
-      <div className={`w-12 h-12 ${item.color} rounded-xl flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform`}>
+      <div className={`relative w-12 h-12 ${item.color} rounded-xl flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform`}>
         <item.icon size={24} />
+        {count > 0 && <CountBadge count={count} />}
       </div>
       <span className="text-xs font-medium text-gray-700 text-center leading-tight">{navLabel(item)}</span>
     </button>
+  );
+}
+
+/** Pastille rouge en coin de tuile (pièces à approuver…). */
+export function CountBadge({ count }: { count: number }) {
+  return (
+    <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center ring-2 ring-white">
+      {count > 99 ? '99+' : count}
+    </span>
   );
 }
 
@@ -79,6 +90,7 @@ export default function AppLayout() {
   const appsRef = useRef<HTMLDivElement>(null);
 
   const isCashierRole = user && CASHIER_ROLES.includes(user.role);
+  const approvalsCount = useApprovalsCount(!!user && !isCashierRole);
 
   // Redirect cashier/saleswoman to /pos if they land on dashboard
   useEffect(() => {
@@ -143,7 +155,7 @@ export default function AppLayout() {
                 </p>
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
                   {group.items.map((item) => (
-                    <ModuleTile key={item.href} item={item}
+                    <ModuleTile key={item.href} item={item} count={item.counter === 'approvals' ? approvalsCount : 0}
                       onSelect={() => { navigate(item.href); setShowApps(false); }} />
                   ))}
                 </div>

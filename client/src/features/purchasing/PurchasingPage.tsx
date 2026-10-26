@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useApprovalsCount } from '../../api/approvals.api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { suppliersApi, invoicesApi, paymentsApi } from '../../api/accounting.api';
 import { ingredientsApi } from '../../api/inventory.api';
@@ -24,7 +25,7 @@ import InvoiceControlModal from '../../components/purchasing/InvoiceControlModal
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
 import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, paymentModeLabel, PaymentStatusTag, ReissuePaymentDialog, type CashOverride } from '../../components/purchasing/PaymentModeFields';
 import { apiErrorMessage } from '../../api/errors';
-import { ShieldAlert, ShieldCheck } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, ClipboardCheck } from 'lucide-react';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { RotateCcw, FilePenLine } from 'lucide-react';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -87,6 +88,8 @@ export default function PurchasingPage() {
   ];
 
   const currentTab = allTabs.find(t => t.key === tab);
+  const navigate = useNavigate();
+  const approvalsCount = useApprovalsCount();
 
   return (
     <div className="odoo-scope" style={{ minHeight: '100%' }}>
@@ -111,6 +114,17 @@ export default function PurchasingPage() {
             </button>
           );
         })}
+        {/* Raccourci vers la boîte d'approbation (lot 8), sans passer par la cloche. */}
+        <button onClick={() => navigate('/approvals')} className="odoo-tab"
+          style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          title="Bons de commande et autres pièces qui attendent une décision">
+          <ClipboardCheck size={13} /> À approuver
+          {approvalsCount > 0 && (
+            <span style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: '#dc3545', color: '#fff', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+              {approvalsCount}
+            </span>
+          )}
+        </button>
       </div>
 
       <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
