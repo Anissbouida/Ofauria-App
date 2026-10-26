@@ -6,6 +6,26 @@ import { packagingItemRepository } from './packaging-item.repository.js';
 import type { PoolClient } from 'pg';
 import { closePurchaseRequestsForOrder } from './purchase-request.helper.js';
 
+/** Ligne de BC en entrée : article (ingrédient / consommable) ou ligne libre (service / immobilisation). */
+export type PoLineType = 'ingredient' | 'consumable' | 'service' | 'asset';
+export interface PoLineInput {
+  ingredientId?: string | null; packagingId?: string | null;
+  lineType?: PoLineType | null; description?: string | null; categoryId?: string | null; unit?: string | null;
+  quantityOrdered: number; unitPrice?: number | null;
+}
+
+export function lineTypeOf(it: PoLineInput): PoLineType {
+  if (it.ingredientId) return 'ingredient';
+  if (it.packagingId) return 'consumable';
+  return it.lineType === 'asset' ? 'asset' : 'service';
+}
+
+/** Champs propres a une ligne sans article ; null pour un ingredient/consommable (le trigger copie la fiche). */
+function freeLineFields(it: PoLineInput): { description: string | null; categoryId: string | null; unit: string | null } {
+  if (it.ingredientId || it.packagingId) return { description: null, categoryId: null, unit: null };
+  return { description: it.description?.trim() || null, categoryId: it.categoryId || null, unit: it.unit?.trim() || 'unit' };
+}
+
 export const purchaseOrderRepository = {
   async findAll(params: { supplierId?: string; status?: string; dateFrom?: string; dateTo?: string; storeId?: string; createdBy?: string }) {
     const conditions: string[] = [];
@@ -196,14 +216,15 @@ export const purchaseOrderRepository = {
     );
     if (!poResult.rows[0]) return null;
 
-    // Une ligne porte un ingredient OU un consommable (packaging_items). LEFT JOIN
-    // sur les deux + COALESCE pour exposer un nom/unite uniformes (les anciens
-    // alias ingredient_name/ingredient_unit sont conserves pour le client).
+    // Une ligne porte un ingredient, un consommable (packaging_items) ou, sans
+    // article, un service / une immobilisation (désignation libre, mig 349).
+    // COALESCE pour exposer un nom/unite uniformes (les anciens alias
+    // ingredient_name/ingredient_unit sont conserves pour le client).
     const itemsResult = await db.query(
       `SELECT poi.*,
-              COALESCE(ing.name, pkg.name) as ingredient_name,
-              COALESCE(ing.unit, pkg.unit) as ingredient_unit,
-              COALESCE(ing.category_id, pkg.category_id) as item_category_id,
+              COALESCE(ing.name, pkg.name, poi.description) as ingredient_name,
+              COALESCE(ing.unit, pkg.unit, poi.base_unit, 'unit') as ingredient_unit,
+              COALESCE(ing.category_id, pkg.category_id, poi.category_id) as item_category_id,
               ing.container_size,
               ctc.label as container_type_label,
               -- Contenant figé sur la ligne à la commande (mig 307), distinct de la fiche actuelle.
@@ -212,7 +233,7 @@ export const purchaseOrderRepository = {
               -- Exigences lot fournisseur / DLC de l'article (mig 308), pour la saisie de réception.
               COALESCE(lr.requires_lot, false) as requires_lot, COALESCE(lr.requires_dlc, false) as requires_dlc,
               lr.default_shelf_life_days,
-              CASE WHEN poi.packaging_id IS NOT NULL THEN 'consumable' ELSE 'ingredient' END as kind
+              poi.line_type as kind
        FROM purchase_order_items poi
        LEFT JOIN ingredients ing ON ing.id = poi.ingredient_id
        LEFT JOIN ref_entries ctc ON ctc.id = ing.container_type_id
@@ -220,7 +241,7 @@ export const purchaseOrderRepository = {
        LEFT JOIN LATERAL fn_lot_requirements(poi.ingredient_id) lr ON poi.ingredient_id IS NOT NULL
        LEFT JOIN packaging_items pkg ON pkg.id = poi.packaging_id
        WHERE poi.purchase_order_id = $1
-       ORDER BY COALESCE(ing.name, pkg.name)`,
+       ORDER BY COALESCE(ing.name, pkg.name, poi.description)`,
       [id]
     );
 
@@ -238,9 +259,10 @@ export const purchaseOrderRepository = {
     supplierId: string; expectedDeliveryDate?: string; notes?: string;
     createdBy: string; storeId?: string;
     // Une ligne porte SOIT un ingredient (matiere premiere) SOIT un consommable
-    // (packaging_items). Le routage est decide en amont par la categorie choisie
-    // a la creation a la volee (cf. fn_purchasable_kind / CONSUMABLE_ROOT_IDS).
-    items: { ingredientId?: string | null; packagingId?: string | null; quantityOrdered: number; unitPrice?: number | null }[];
+    // (packaging_items) — routage decide par la categorie (fn_purchasable_kind) —
+    // SOIT, sans article, un service ou une immobilisation : designation libre +
+    // categorie de depense (qui donne le compte comptable), mig 349.
+    items: PoLineInput[];
   }) {
     const client = await db.getClient();
     try {
@@ -280,10 +302,13 @@ export const purchaseOrderRepository = {
             });
           }
         }
+        const free = freeLineFields(item);
         await client.query(
-          `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, quantity_ordered, unit_price)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [poResult.rows[0].id, item.ingredientId ?? null, item.packagingId ?? null, qty, item.unitPrice ?? null]
+          `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, quantity_ordered, unit_price,
+                                             line_type, description, category_id, base_unit)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [poResult.rows[0].id, item.ingredientId ?? null, item.packagingId ?? null, qty, item.unitPrice ?? null,
+           lineTypeOf(item), free.description, free.categoryId, free.unit]
         );
       }
 
@@ -449,7 +474,7 @@ export const purchaseOrderRepository = {
    */
   async replaceItems(
     id: string,
-    items: { id?: string; ingredientId?: string | null; packagingId?: string | null; quantityOrdered: number; quantityDelivered?: number; unitPrice?: number | null }[],
+    items: (PoLineInput & { id?: string; quantityDelivered?: number })[],
     performedBy: string,
     storeId?: string,
   ) {
@@ -551,10 +576,13 @@ export const purchaseOrderRepository = {
         } else {
           // Nouvelle ligne — qty_delivered = 0 par defaut (admin ne touche pas le stock via add).
           const newDel = qdelRaw ?? 0;
+          const free = freeLineFields(it);
           const inserted = await client.query<{ id: string }>(
-            `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, quantity_ordered, quantity_delivered, unit_price)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-            [id, it.ingredientId ?? null, it.packagingId ?? null, qord, newDel, price]
+            `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, quantity_ordered, quantity_delivered, unit_price,
+                                               line_type, description, category_id, base_unit)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+            [id, it.ingredientId ?? null, it.packagingId ?? null, qord, newDel, price,
+             lineTypeOf(it), free.description, free.categoryId, free.unit]
           );
           if (newDel > 0.0001) {
             // Cas atypique : admin ajoute une ligne avec qty deja livree

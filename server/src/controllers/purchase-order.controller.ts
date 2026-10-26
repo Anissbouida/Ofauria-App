@@ -1,6 +1,6 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
-import { purchaseOrderRepository } from '../repositories/purchase-order.repository.js';
+import { purchaseOrderRepository, type PoLineType } from '../repositories/purchase-order.repository.js';
 import { receptionVoucherRepository } from '../repositories/reception-voucher.repository.js';
 import { generatePurchaseOrderPdf } from '../services/purchase-order-pdf.service.js';
 import { db } from '../config/database.js';
@@ -396,14 +396,21 @@ export const purchaseOrderController = {
       id: raw.id as string | undefined,
       ingredientId: (raw.ingredientId as string | null) ?? null,
       packagingId: (raw.packagingId as string | null) ?? null,
+      lineType: (raw.lineType as PoLineType | null) ?? null,
+      description: (raw.description as string | null) ?? null,
+      categoryId: (raw.categoryId as string | null) ?? null,
+      unit: (raw.unit as string | null) ?? null,
       quantityOrdered: num(raw.quantityOrdered),
       quantityDelivered: raw.quantityDelivered !== undefined ? num(raw.quantityDelivered) : undefined,
       unitPrice: raw.unitPrice === null || raw.unitPrice === '' || raw.unitPrice === undefined
         ? null
         : num(raw.unitPrice),
     }));
-    if (items.some(it => !(it.ingredientId || it.packagingId) || it.quantityOrdered <= 0)) {
-      res.status(400).json({ success: false, error: { message: 'Chaque ligne doit avoir un article et une quantite > 0' } });
+    // Une ligne existante (id) garde son article ; une nouvelle ligne sans article
+    // (service / immobilisation) exige designation + categorie (mig 349).
+    if (items.some(it => it.quantityOrdered <= 0
+        || (!it.id && !(it.ingredientId || it.packagingId) && !(it.description?.trim() && it.categoryId)))) {
+      res.status(400).json({ success: false, error: { message: 'Chaque ligne doit avoir un article (ou une désignation et une catégorie) et une quantité > 0' } });
       return;
     }
     try {
@@ -481,13 +488,13 @@ export const purchaseOrderController = {
       // Get items
       const itemsResult = await db.query(
         `SELECT poi.*,
-                COALESCE(ing.name, pkg.name) as ingredient_name,
-                COALESCE(ing.unit, pkg.unit) as ingredient_unit
+                COALESCE(ing.name, pkg.name, poi.description) as ingredient_name,
+                COALESCE(ing.unit, pkg.unit, poi.base_unit, 'unit') as ingredient_unit
          FROM purchase_order_items poi
          LEFT JOIN ingredients ing ON ing.id = poi.ingredient_id
          LEFT JOIN packaging_items pkg ON pkg.id = poi.packaging_id
          WHERE poi.purchase_order_id = $1
-         ORDER BY COALESCE(ing.name, pkg.name)`,
+         ORDER BY COALESCE(ing.name, pkg.name, poi.description)`,
         [req.params.id]
       );
 

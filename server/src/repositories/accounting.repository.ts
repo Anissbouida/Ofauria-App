@@ -659,7 +659,7 @@ export const invoiceRepository = {
 
     // Get invoice items
     const itemsResult = await db.query(
-      `SELECT ii.*, p.name as product_name, COALESCE(ing.name, pkg.name) as ingredient_name
+      `SELECT ii.*, p.name as product_name, COALESCE(ing.name, pkg.name, ii.description) as ingredient_name
        FROM invoice_items ii
        LEFT JOIN products p ON p.id = ii.product_id
        LEFT JOIN ingredients ing ON ing.id = ii.ingredient_id

@@ -23,6 +23,23 @@ export const CONSUMABLE_ROOT_IDS = [
   '10000000-0000-0000-0000-000000000008', // Equipements & Materiel
 ];
 
+/**
+ * Lignes de BC sans article (mig 349). SERVICE : prestations et frais
+ * (Energie, Frais administratifs, Entretien & Maintenance, Loyer, Transport,
+ * Equipements & Materiel non stocke, Divers) -> charge 6xxx. ASSET : branche
+ * Immobilisations -> compte 23xx + fiche d'amortissement creee a la reception.
+ */
+export const SERVICE_ROOT_IDS = [
+  '10000000-0000-0000-0000-000000000005', // Entretien & Maintenance
+  '10000000-0000-0000-0000-000000000007', // Transport
+  '10000000-0000-0000-0000-000000000001', // Energie
+  '10000000-0000-0000-0000-000000000006', // Loyer & Charges
+  '10000000-0000-0000-0000-000000000002', // Frais administratifs
+  '10000000-0000-0000-0000-000000000008', // Equipements & Materiel
+  '10000000-0000-0000-0000-000000000009', // Divers
+];
+export const ASSET_ROOT_IDS = ['10000000-0000-0000-0000-000000000010']; // Immobilisations
+
 interface CascadeSelectorProps {
   /** Currently selected category ID (leaf-level) */
   value: string;

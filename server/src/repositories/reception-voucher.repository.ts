@@ -45,6 +45,12 @@ async function resolveInvoiceCategoryFromPo(
          JOIN packaging_items pkg ON pkg.id = poi.packaging_id
          JOIN expense_categories ec ON ec.id = pkg.category_id
         WHERE poi.purchase_order_id = $1
+       UNION
+       -- Lignes service / immobilisation (mig 349) : leur categorie de depense.
+       SELECT DISTINCT ec.id::text AS id, ec.parent_id::text AS parent_id
+         FROM purchase_order_items poi
+         JOIN expense_categories ec ON ec.id = poi.category_id
+        WHERE poi.purchase_order_id = $1 AND poi.line_type IN ('service', 'asset')
      )
      SELECT
        CASE
@@ -92,6 +98,8 @@ export async function createInvoiceFromPo(
   // GR/IR (mig 311, G-D8-05) : les réceptions non encore comptabilisées passent
   // en 4417 AVANT la facture, qui solde ce compte d'attente ligne par ligne.
   await postGoodsReceiptsForPo(client as unknown as import('pg').PoolClient, purchaseOrderId, createdBy);
+  // Immobilisations reçues sans prix au moment de la réception : la fiche naît ici.
+  await ensureFixedAssetsForPo(client, purchaseOrderId, createdBy);
 
   const poRes = await client.query(
     `SELECT id, order_number, supplier_id FROM purchase_orders WHERE id = $1`,
@@ -105,8 +113,8 @@ export async function createInvoiceFromPo(
   // avait un prix 0/NULL au depart.
   const poItemDetails = await client.query(
     `SELECT poi.id, poi.ingredient_id, poi.packaging_id, poi.quantity_delivered, poi.unit_price AS po_unit_price,
-            COALESCE(ing.name, pkg.name) as ingredient_name,
-            COALESCE(ing.category_id, pkg.category_id) AS line_category_id,
+            COALESCE(ing.name, pkg.name, poi.description) as ingredient_name,
+            COALESCE(ing.category_id, pkg.category_id, poi.category_id) AS line_category_id,
             -- TVA attendue (mig 309) : taux saisi sur la ligne de BC, sinon code par défaut de l'article
             -- ou de sa catégorie à la date du jour. Jamais un 0 implicite : NULL = taux à préciser.
             COALESCE(ing.default_tax_code, pkg.default_tax_code, cat.default_tax_code) AS tax_code,
@@ -120,7 +128,7 @@ export async function createInvoiceFromPo(
      FROM purchase_order_items poi
      LEFT JOIN ingredients ing ON ing.id = poi.ingredient_id
      LEFT JOIN packaging_items pkg ON pkg.id = poi.packaging_id
-     LEFT JOIN expense_categories cat ON cat.id = COALESCE(ing.category_id, pkg.category_id)
+     LEFT JOIN expense_categories cat ON cat.id = COALESCE(ing.category_id, pkg.category_id, poi.category_id)
      WHERE poi.purchase_order_id = $1 AND poi.quantity_delivered > 0`,
     [purchaseOrderId]
   );
@@ -219,6 +227,77 @@ export async function createInvoiceFromPo(
   return invoice;
 }
 
+/**
+ * Fiches d'immobilisation des lignes « asset » réceptionnées (mig 349).
+ *
+ * Une fiche par ligne de réception, idempotent (index unique sur
+ * reception_voucher_item_id). Coût = quantité × prix du BC, le même montant que
+ * l'écriture GR/IR a porté au débit du compte 23xx — la fiche et la comptabilité
+ * ne divergent pas. Comptes et durée viennent de la catégorie (ou de ses parents) :
+ * account_id = 23xx, asset_depreciation_account_id = 28xx, dotation en 6191.
+ * Une ligne encore sans prix est signalée et reprise à la facturation.
+ */
+export async function ensureFixedAssetsForPo(
+  client: TxClient, purchaseOrderId: string, userId: string,
+): Promise<{ created: number; missingPrice: string[] }> {
+  const rows = await client.query(
+    `WITH RECURSIVE chain AS (
+       SELECT poi.id AS poi_id, ec.id, ec.parent_id, ec.account_id, ec.asset_depreciation_account_id, ec.asset_duration_years, 0 AS depth
+         FROM purchase_order_items poi JOIN expense_categories ec ON ec.id = poi.category_id
+        WHERE poi.purchase_order_id = $1 AND poi.line_type = 'asset'
+       UNION ALL
+       SELECT c.poi_id, p.id, p.parent_id, p.account_id, p.asset_depreciation_account_id, p.asset_duration_years, c.depth + 1
+         FROM expense_categories p JOIN chain c ON c.parent_id = p.id
+     ), params AS (
+       SELECT DISTINCT ON (poi_id) poi_id,
+              (SELECT account_id FROM chain c2 WHERE c2.poi_id = c.poi_id AND account_id IS NOT NULL ORDER BY depth LIMIT 1) AS asset_account_id,
+              (SELECT asset_depreciation_account_id FROM chain c2 WHERE c2.poi_id = c.poi_id AND asset_depreciation_account_id IS NOT NULL ORDER BY depth LIMIT 1) AS dep_account_id,
+              (SELECT asset_duration_years FROM chain c2 WHERE c2.poi_id = c.poi_id AND asset_duration_years IS NOT NULL ORDER BY depth LIMIT 1) AS duration
+         FROM chain c
+     )
+     SELECT rvi.id AS rvi_id, poi.id AS poi_id, poi.description, rvi.quantity_received,
+            COALESCE(rvi.po_unit_price, poi.unit_price, rvi.unit_price) AS price,
+            rv.reception_date, rv.store_id, po.supplier_id, po.order_number,
+            pr.asset_account_id, pr.dep_account_id, pr.duration
+       FROM reception_voucher_items rvi
+       JOIN reception_vouchers rv ON rv.id = rvi.reception_voucher_id
+       JOIN purchase_order_items poi ON poi.id = rvi.purchase_order_item_id
+       JOIN purchase_orders po ON po.id = poi.purchase_order_id
+       LEFT JOIN params pr ON pr.poi_id = poi.id
+      WHERE po.id = $1 AND poi.line_type = 'asset' AND rvi.kind = 'receive'
+        AND rv.status = 'posted' AND rv.voucher_kind = 'receipt'
+        AND NOT EXISTS (SELECT 1 FROM fixed_assets fa WHERE fa.reception_voucher_item_id = rvi.id)`,
+    [purchaseOrderId]);
+  if (rows.rows.length === 0) return { created: 0, missingPrice: [] };
+
+  const expense = await client.query(`SELECT id FROM accounts WHERE code = '6191'`);
+  const expenseAccountId = expense.rows[0]?.id as string | undefined;
+  let created = 0;
+  const missingPrice: string[] = [];
+  for (const r of rows.rows) {
+    const qty = parseFloat(r.quantity_received as string) || 0;
+    const price = r.price != null ? parseFloat(r.price as string) : 0;
+    const cost = Math.round(qty * price * 100) / 100;
+    if (!(cost > 0)) { missingPrice.push(r.description as string); continue; }
+    if (!r.asset_account_id || !r.dep_account_id || !expenseAccountId) {
+      throw Object.assign(new Error(
+        `Immobilisation « ${r.description} » : la catégorie n'a pas de compte d'actif (23xx) ou d'amortissement (28xx) — complétez-la dans le référentiel`),
+        { statusCode: 409 });
+    }
+    await client.query(
+      `INSERT INTO fixed_assets (label, asset_account_id, depreciation_account_id, expense_account_id,
+         acquisition_date, acquisition_cost, duration_years, method, supplier_id, store_id, notes, created_by,
+         purchase_order_item_id, reception_voucher_item_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'linear', $8, $9, $10, $11, $12, $13)`,
+      [qty > 1 ? `${r.description} ×${qty}` : r.description,
+       r.asset_account_id, r.dep_account_id, expenseAccountId,
+       r.reception_date, cost, r.duration ?? 5, r.supplier_id, r.store_id ?? null,
+       `Créée à la réception — BC ${r.order_number}`, userId, r.poi_id, r.rvi_id]);
+    created++;
+  }
+  return { created, missingPrice };
+}
+
 export const receptionVoucherRepository = {
   async findAll(params: { purchaseOrderId?: string; storeId?: string }) {
     const conditions: string[] = [];
@@ -260,16 +339,16 @@ export const receptionVoucherRepository = {
 
     const itemsResult = await db.query(
       `SELECT rvi.*,
-              COALESCE(ing.name, pkg.name) as ingredient_name,
-              COALESCE(ing.unit, pkg.unit) as ingredient_unit,
-              CASE WHEN rvi.packaging_id IS NOT NULL THEN 'consumable' ELSE 'ingredient' END as kind,
+              COALESCE(ing.name, pkg.name, poi.description) as ingredient_name,
+              COALESCE(ing.unit, pkg.unit, poi.base_unit, 'unit') as ingredient_unit,
+              poi.line_type as kind,
               poi.quantity_ordered, poi.quantity_delivered as total_delivered
        FROM reception_voucher_items rvi
        LEFT JOIN ingredients ing ON ing.id = rvi.ingredient_id
        LEFT JOIN packaging_items pkg ON pkg.id = rvi.packaging_id
        JOIN purchase_order_items poi ON poi.id = rvi.purchase_order_item_id
        WHERE rvi.reception_voucher_id = $1
-       ORDER BY COALESCE(ing.name, pkg.name)`,
+       ORDER BY COALESCE(ing.name, pkg.name, poi.description)`,
       [id]
     );
 
@@ -407,6 +486,12 @@ export const receptionVoucherRepository = {
             [item.unitPrice, item.poItemId]
           );
         }
+
+        // ─── Service / immobilisation (mig 349) : aucune entrée en stock. La ligne de
+        //     réception vaut « service rendu » ou mise en service ; l'écriture GR/IR
+        //     impute la charge (6xxx) ou l'actif (23xx) par la catégorie, et la fiche
+        //     d'immobilisation est créée après la boucle (ensureFixedAssetsForPo). ───
+        if (!item.ingredientId && !item.packagingId) continue;
 
         if (isConsumable) {
           // ─── Consommable : credite packaging_store_stock (stock simple, pas
@@ -604,6 +689,8 @@ export const receptionVoucherRepository = {
       // manuelle (cf. purchaseOrderRepository.generateInvoice).
       // GR/IR (mig 311) : réception comptabilisée en 4417 au prix BC, même partielle.
       await postGoodsReceiptsForPo(client as unknown as import('pg').PoolClient, data.purchaseOrderId, data.receivedBy);
+      const assets = await ensureFixedAssetsForPo(client, data.purchaseOrderId, data.receivedBy);
+      for (const a of assets.missingPrice) warnings.push(`${a} : immobilisation sans prix, la fiche sera créée à la facturation`);
       let autoInvoice = null;
       if (newStatus === 'livre_complet') {
         autoInvoice = await createInvoiceFromPo(
@@ -711,6 +798,27 @@ export const receptionVoucherRepository = {
           `partiellement consomme. Corrigez la ligne de reception plutot que d'extourner le bon.`);
         e.statusCode = 409; throw e;
       }
+
+      // ── Garde-fou 3 : immobilisation déjà amortie ; sinon sa fiche est retirée ──
+      const amortized = await client.query(
+        `SELECT fa.label FROM fixed_assets fa
+           JOIN reception_voucher_items rvi ON rvi.id = fa.reception_voucher_item_id
+          WHERE rvi.reception_voucher_id = ANY($1::uuid[])
+            AND EXISTS (SELECT 1 FROM depreciation_entries de WHERE de.fixed_asset_id = fa.id)
+          LIMIT 1`,
+        [rvIds]
+      );
+      if (amortized.rows.length > 0) {
+        const e: Error & { statusCode?: number } = new Error(
+          `Extourne impossible : l'immobilisation « ${amortized.rows[0].label} » a déjà des dotations d'amortissement. ` +
+          `Sortez-la du registre (cession / mise au rebut) plutôt que d'extourner la réception.`);
+        e.statusCode = 409; throw e;
+      }
+      await client.query(
+        `DELETE FROM fixed_assets
+          WHERE reception_voucher_item_id IN (SELECT id FROM reception_voucher_items WHERE reception_voucher_id = ANY($1::uuid[]))`,
+        [rvIds]
+      );
 
       // ── Facture auto : extourne comptable puis annulation (jamais de suppression) ──
       const invs = await client.query(
@@ -904,6 +1012,17 @@ export const receptionVoucherRepository = {
            VALUES ($1, 'adjustment', $2, $3, $4, $5, $6, $7, $8)`,
           [orig.ingredient_id, delta, `Correction de la réception ${orig.voucher_number} — BC ${po.order_number}`,
            userId, poLineId, orig.reception_voucher_id, orig.store_id ?? null, lot.id]
+        );
+      } else if (!orig.packaging_id) {
+        // Ligne sans article (mig 349). Un service se corrige (quantité rendue) ; une
+        // immobilisation a une fiche d'amortissement : on extourne la réception à la place.
+        const lt = (await client.query(`SELECT line_type FROM purchase_order_items WHERE id = $1`, [poLineId])).rows[0]?.line_type;
+        if (lt === 'asset') throw fail(409, 'Immobilisation : extournez la réception puis réceptionnez à nouveau');
+        await client.query(
+          `INSERT INTO reception_voucher_items (reception_voucher_id, purchase_order_item_id, quantity_received, unit_price,
+                                               kind, parent_item_id, reason_code_id, created_by, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [orig.reception_voucher_id, poLineId, qty, orig.unit_price, kind, orig.id, reason.reasonCodeId, userId, reason.note ?? null]
         );
       } else if (orig.packaging_id) {
         await client.query(

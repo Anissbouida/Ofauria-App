@@ -20,7 +20,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import IngredientFormModal from '../stock/IngredientFormModal';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { useAuth } from '../../context/AuthContext';
-import CategoryCascadeSelector, { STOCKABLE_ROOT_IDS, CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
+import CategoryCascadeSelector, { STOCKABLE_ROOT_IDS, CONSUMABLE_ROOT_IDS, SERVICE_ROOT_IDS, ASSET_ROOT_IDS } from '../../components/CategoryCascadeSelector';
 import ReasonCodeDialog, { type ReasonScope } from '../../components/purchasing/ReasonCodeDialog';
 import DocumentActionsTimeline from '../../components/purchasing/DocumentActionsTimeline';
 import ChangeOrderModal from '../../components/purchasing/ChangeOrderModal';
@@ -47,6 +47,16 @@ const PO_REASON_UI: Record<PoReasonAction['kind'], { scope: ReasonScope; title: 
 // (ingredients) ET consommables (emballages/entretien/equipements). Le routage
 // vers la bonne table est decide par la categorie choisie (kindOf).
 const PURCHASABLE_ROOT_IDS = Array.from(new Set([...STOCKABLE_ROOT_IDS, ...CONSUMABLE_ROOT_IDS]));
+
+/* Type de ligne de BC (mig 349) : les lignes service / immobilisation n'ont pas d'article. */
+type PoLineKind = 'ingredient' | 'consumable' | 'service' | 'asset';
+const isFreeLine = (k: unknown) => k === 'service' || k === 'asset';
+function LineKindTag({ kind }: { kind: unknown }) {
+  if (kind === 'consumable') return <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>;
+  if (kind === 'service') return <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Service</span>;
+  if (kind === 'asset') return <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Immobilisation</span>;
+  return null;
+}
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 // Normalise les valeurs du backend a 2 decimales (ex: "48.0000" -> "48.00", "25.8300" -> "25.83")
@@ -136,7 +146,7 @@ type POItem = {
   id: string;
   ingredient_id: string;
   packaging_id?: string | null;
-  kind?: 'ingredient' | 'consumable';
+  kind?: 'ingredient' | 'consumable' | 'service' | 'asset';
   ingredient_name: string;
   ingredient_unit: string;
   quantity_ordered: string;
@@ -826,6 +836,7 @@ function ExpandedPORow({ poId, status, isAdmin, onSend, onDelivery, onNotDeliver
 
   const queryClient = useQueryClient();
   const [lineReason, setLineReason] = useState<{ lineId: string | null; label: string } | null>(null);
+  const { resolve: resolveCat } = useStockCategories();
   const [correctFor, setCorrectFor] = useState<{ lineId: string; label: string; unit: string } | null>(null);
   const correctMutation = useMutation({
     mutationFn: ({ lineId, data }: { lineId: string; data: { delta: number; reasonCodeId: string; note?: string } }) =>
@@ -883,7 +894,7 @@ function ExpandedPORow({ poId, status, isAdmin, onSend, onDelivery, onNotDeliver
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
             <tr>
-              <th className="text-left px-3 py-2">Ingrédient</th>
+              <th className="text-left px-3 py-2">Article</th>
               <th className="text-left px-3 py-2">Catégorie</th>
               <th className="text-right px-3 py-2">Commandé</th>
               <th className="text-right px-3 py-2">Reçu</th>
@@ -906,14 +917,19 @@ function ExpandedPORow({ poId, status, isAdmin, onSend, onDelivery, onNotDeliver
                 <tr key={item.id} className="hover:bg-gray-50/50">
                   <td className="px-3 py-2 font-medium text-gray-700">
                     {item.ingredient_name} <span className="text-gray-400 text-xs">({item.ingredient_unit})</span>
+                    <LineKindTag kind={item.kind} />
                   </td>
                   <td className="px-3 py-2 text-xs">
+                    {isFreeLine(item.kind) ? (
+                      <span style={{ color: 'var(--odoo-text-muted)' }}>{resolveCat(item.item_category_id)?.path || '—'}</span>
+                    ) : (
                     <CategoryQuickEdit
                       kind={(item.kind as 'ingredient' | 'consumable') || (item.packaging_id ? 'consumable' : 'ingredient')}
                       refId={item.packaging_id || item.ingredient_id}
                       categoryId={item.item_category_id ?? null}
                       itemName={item.ingredient_name}
                     />
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right text-gray-600 whitespace-nowrap">{qtyLabel(ordered, item)}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
@@ -1209,7 +1225,9 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   // AVANT l'achat (elle sera figee sur la ligne de facture cote serveur).
   // container : regle « contenant entier » — la quantite se saisit en nombre de
   // contenants (minimum 1), quantityOrdered = nb x taille.
-  const [items, setItems] = useState<{ kind: 'ingredient' | 'consumable'; refId: string; name: string; unit: string; categoryId: string | null; quantityOrdered: number; unitPrice: number | null; container: ContainerDef | null; containerCount: number }[]>([]);
+  // Ligne service / immobilisation : refId = cle locale, name = designation libre.
+  const [items, setItems] = useState<{ kind: PoLineKind; refId: string; name: string; unit: string; categoryId: string | null; quantityOrdered: number; unitPrice: number | null; container: ContainerDef | null; containerCount: number }[]>([]);
+  const [freeLine, setFreeLine] = useState<{ kind: 'service' | 'asset'; description: string; categoryId: string; quantity: string; unitPrice: string } | null>(null);
   const [showNewIngredient, setShowNewIngredient] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
@@ -1218,7 +1236,18 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
   const { data: ingredients = [] } = useQuery({ queryKey: ['ingredients'], queryFn: ingredientsApi.list });
   const { data: consumables = [] } = useQuery({ queryKey: ['packaging-items'], queryFn: () => packagingApi.list({ activeOnly: true }) });
-  const { kindOf, resolve } = useStockCategories();
+  const { kindOf, resolve, byId, leavesUnder } = useStockCategories();
+  // Categories proposees pour une ligne sans article, selon son type.
+  const freeCategoryOptions = useMemo(() => {
+    if (!freeLine) return [];
+    const roots = freeLine.kind === 'asset' ? ASSET_ROOT_IDS : SERVICE_ROOT_IDS;
+    return roots.filter(r => byId.has(r)).flatMap(r => leavesUnder(r)).map(leaf => {
+      const path = resolve(leaf.id)?.path.split(' / ') || [];
+      const years = (byId.get(String(leaf.id)) as any)?.asset_duration_years;
+      return { id: String(leaf.id), label: leaf.name, sublabel: path.slice(0, -1).join(' › '), detail: years ? `${years} ans` : undefined };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [freeLine?.kind, byId]);
 
   const supplierOptions = useMemo(() => (suppliers as Record<string, any>[])
     .filter(s => s.is_active !== false)
@@ -1341,6 +1370,21 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   const setDeliveryIn = (days: number) => setExpectedDate(format(addDays(new Date(), days), 'yyyy-MM-dd'));
   const deliveryQuick = [{ label: 'Demain', days: 1 }, { label: 'Dans 2 j', days: 2 }, { label: 'Dans 1 sem.', days: 7 }];
 
+  const addFreeLine = () => {
+    if (!freeLine) return;
+    const qty = parseFloat(freeLine.quantity) || 0;
+    if (!freeLine.description.trim()) { notify.error('Saisissez la désignation'); return; }
+    if (!freeLine.categoryId) { notify.error('Choisissez la catégorie de dépense'); return; }
+    if (!(qty > 0)) { notify.error('La quantité doit être supérieure à 0'); return; }
+    const price = parseFloat(freeLine.unitPrice);
+    setItems(prev => [...prev, {
+      kind: freeLine.kind, refId: `free-${Date.now()}`, name: freeLine.description.trim(), unit: 'unit',
+      categoryId: freeLine.categoryId, quantityOrdered: qty, unitPrice: price > 0 ? price : null,
+      container: null, containerCount: 1,
+    }]);
+    setFreeLine(null);
+  };
+
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
   const updateItem = (idx: number, field: string, value: number) => {
     setItems(items.map((item, i) => i === idx ? { ...item, [field]: value } : item));
@@ -1358,9 +1402,10 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
       supplierId,
       expectedDeliveryDate: expectedDate || undefined,
       notes: notes || undefined,
-      items: items.map(({ kind, refId, quantityOrdered, unitPrice }) => ({
+      items: items.map(({ kind, refId, name, categoryId, quantityOrdered, unitPrice }) => ({
         ingredientId: kind === 'ingredient' ? refId : null,
         packagingId: kind === 'consumable' ? refId : null,
+        ...(isFreeLine(kind) ? { lineType: kind, description: name, categoryId, unit: 'unit' } : {}),
         quantityOrdered,
         unitPrice: unitPrice != null && unitPrice > 0 ? unitPrice : null,
       })),
@@ -1474,6 +1519,67 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                 <Plus size={14} /> Nouvel article
               </button>
             </div>
+            {/* Achats hors stock (mig 349) : prestation ou bien durable, sans fiche article. */}
+            <div className="flex flex-wrap items-center gap-2" style={{ marginTop: 8 }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Hors stock :</span>
+              <button type="button" className={freeLine?.kind === 'service' ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
+                onClick={() => setFreeLine({ kind: 'service', description: searchIngredient.trim(), categoryId: '', quantity: '1', unitPrice: '' })}>
+                <Plus size={12} /> Service / frais
+              </button>
+              <button type="button" className={freeLine?.kind === 'asset' ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
+                onClick={() => setFreeLine({ kind: 'asset', description: searchIngredient.trim(), categoryId: '', quantity: '1', unitPrice: '' })}>
+                <Plus size={12} /> Immobilisation
+              </button>
+              <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
+                réparation, entretien, transport, loyer… ou four, pétrin, mobilier, caisse
+              </span>
+            </div>
+            {freeLine && (
+              <div style={{ marginTop: 10, border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.75rem', backgroundColor: 'var(--odoo-bg-alt)' }}>
+                <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
+                  <strong style={{ fontSize: '0.8125rem' }}>
+                    {freeLine.kind === 'asset' ? 'Nouvelle immobilisation' : 'Nouveau service / frais'}
+                  </strong>
+                  <button type="button" onClick={() => setFreeLine(null)} style={{ color: 'var(--odoo-text-muted)', padding: 2 }}><X size={14} /></button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                  <div className="md:col-span-4">
+                    <label style={odooLabelStyle}>Désignation *</label>
+                    <input type="text" autoFocus value={freeLine.description} style={odooFieldStyle}
+                      placeholder={freeLine.kind === 'asset' ? 'Ex : Pétrin spirale 60 L' : 'Ex : Réparation four à sole'}
+                      onChange={e => setFreeLine({ ...freeLine, description: e.target.value })}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addFreeLine(); } }} />
+                  </div>
+                  <div className="md:col-span-4">
+                    <label style={odooLabelStyle}>Catégorie *</label>
+                    <SearchSelect options={freeCategoryOptions} value={freeLine.categoryId} width="100%"
+                      onChange={id => setFreeLine({ ...freeLine, categoryId: id })}
+                      placeholder={freeLine.kind === 'asset' ? 'Matériel, mobilier, informatique…' : 'Réparations, transport, énergie…'} />
+                  </div>
+                  <div className="md:col-span-1">
+                    <label style={odooLabelStyle}>Qté</label>
+                    <input type="number" min={0} step="1" value={freeLine.quantity} style={odooNumFieldStyle}
+                      onChange={e => setFreeLine({ ...freeLine, quantity: e.target.value })} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label style={odooLabelStyle}>Prix unit. HT (DH)</label>
+                    <input type="number" min={0} step="0.01" value={freeLine.unitPrice} style={odooNumFieldStyle}
+                      onChange={e => setFreeLine({ ...freeLine, unitPrice: e.target.value })}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addFreeLine(); } }} />
+                  </div>
+                  <div className="md:col-span-1">
+                    <button type="button" onClick={addFreeLine} className="odoo-btn-primary w-full" style={{ justifyContent: 'center' }}>Ajouter</button>
+                  </div>
+                </div>
+                <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 8 }}>
+                  {freeLine.kind === 'asset'
+                    ? <>Pas de stock : à la réception (mise en service), le bien est porté en immobilisation (compte 23xx) et sa fiche d'amortissement est créée automatiquement{(() => { const y = (byId.get(freeLine.categoryId) as any)?.asset_duration_years; return y ? `, amortie sur ${y} ans` : ''; })()}.</>
+                    : <>Pas de stock : la réception vaut « service rendu », la dépense est imputée en charge selon la catégorie.</>}
+                </p>
+              </div>
+            )}
             {usualProducts.length > 0 && (
               <div style={{ marginTop: 10 }}>
                 <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginBottom: 6 }}>
@@ -1511,10 +1617,13 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                     <tr key={`${item.kind}:${item.refId}`}>
                       <td>
                         <span className="font-medium">{item.name}</span>
-                        <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({item.unit})</span>
-                        {item.kind === 'consumable' && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>}
+                        {!isFreeLine(item.kind) && <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({item.unit})</span>}
+                        <LineKindTag kind={item.kind} />
                       </td>
                       <td>
+                        {item.kind === 'service' || item.kind === 'asset' ? (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{resolve(item.categoryId)?.path || '—'}</span>
+                        ) : (
                         <CategoryQuickEdit
                           kind={item.kind} refId={item.refId} categoryId={item.categoryId}
                           itemName={item.name} allowConvert
@@ -1522,6 +1631,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                             i === idx ? { ...it, categoryId: catId, ...(changed ? { kind: changed.kind, refId: changed.refId } : {}) } : it
                           ))}
                         />
+                        )}
                       </td>
                       <td>
                         {item.container ? (
@@ -1576,7 +1686,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
               style={{ padding: '2.5rem 0', backgroundColor: 'var(--odoo-bg-alt)', borderRadius: 4, border: '1px dashed var(--odoo-border)' }}>
               <ShoppingBag size={24} style={{ color: 'var(--odoo-text-light)', marginBottom: 8 }} />
               <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
-                {supplierId ? 'Aucun article pour l\'instant — recherchez-les ci-dessus ou cliquez un article habituel.' : 'Commencez par choisir le fournisseur.'}
+                {supplierId ? 'Aucune ligne pour l\'instant — recherchez un article, cliquez un article habituel, ou ajoutez un service / une immobilisation.' : 'Commencez par choisir le fournisseur.'}
               </p>
             </div>
           )}
@@ -2087,7 +2197,7 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
             <table className="odoo-table" style={{ minWidth: 1180 }}>
               <thead>
                 <tr>
-                  <th>Ingrédient</th>
+                  <th>Article</th>
                   <th style={{ textAlign: 'right' }}>Commandé</th>
                   <th style={{ textAlign: 'right' }}>Déjà reçu</th>
                   <th style={{ textAlign: 'right' }}>Restant</th>
@@ -2112,7 +2222,13 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
                         <span style={{ fontWeight: 500, color: isComplete ? '#28a745' : 'var(--odoo-text)' }}>
                           {item.ingredient_name}
                         </span>
-                        <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({item.ingredient_unit})</span>
+                        {!isFreeLine(item.kind) && <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({item.ingredient_unit})</span>}
+                        <LineKindTag kind={item.kind} />
+                        {isFreeLine(item.kind) && (
+                          <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
+                            {item.kind === 'asset' ? 'Réception = mise en service · fiche d\'immobilisation créée' : 'Réception = service rendu · pas de stock'}
+                          </span>
+                        )}
                       </td>
                       <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{ordered}</td>
                       <td style={{ textAlign: 'right' }}>
@@ -2195,7 +2311,7 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
                         })()}
                       </td>
                       <td>
-                        {!isComplete ? (
+                        {!isComplete && !isFreeLine(item.kind) ? (
                           <input type="text"
                             value={lotInfo[item.id]?.supplierLotNumber ?? ''}
                             onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], supplierLotNumber: e.target.value } })}
@@ -2204,7 +2320,7 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
                         ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'center' }}>—</span>}
                       </td>
                       <td>
-                        {!isComplete ? (
+                        {!isComplete && !isFreeLine(item.kind) ? (
                           <input type="date"
                             value={lotInfo[item.id]?.expirationDate ?? ''}
                             onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], expirationDate: e.target.value } })}
@@ -2214,7 +2330,7 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
                         ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'center' }}>—</span>}
                       </td>
                       <td>
-                        {!isComplete ? (
+                        {!isComplete && !isFreeLine(item.kind) ? (
                           <input type="date"
                             value={lotInfo[item.id]?.manufacturedDate ?? ''}
                             onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], manufacturedDate: e.target.value } })}
@@ -2270,7 +2386,7 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
  */
 type POLine = {
   id?: string;
-  kind: 'ingredient' | 'consumable';
+  kind: PoLineKind;       // service / asset : ligne existante sans article (mig 349)
   ingredientId: string;   // rempli si kind === 'ingredient'
   packagingId: string;    // rempli si kind === 'consumable'
   ingredientName: string;
@@ -2304,7 +2420,7 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
     const items = (po.items as Record<string, any>[]) || [];
     setLines(items.map(it => ({
       id: it.id as string,
-      kind: (it.packaging_id ? 'consumable' : 'ingredient') as 'ingredient' | 'consumable',
+      kind: ((it.kind as PoLineKind) || (it.packaging_id ? 'consumable' : 'ingredient')),
       ingredientId: (it.ingredient_id as string) || '',
       packagingId: (it.packaging_id as string) || '',
       ingredientName: (it.ingredient_name as string) || '',
@@ -2346,8 +2462,9 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
   };
 
   const handleSave = async () => {
-    // Validation : chaque ligne doit cibler un article (ingredient OU consommable) et qty > 0
-    if (lines.some(l => !(l.ingredientId || l.packagingId) || (parseFloat(l.quantityOrdered) || 0) <= 0)) {
+    // Validation : chaque nouvelle ligne cible un article (ingredient OU consommable) ;
+    // une ligne existante service / immobilisation garde sa designation. qty > 0.
+    if (lines.some(l => (!(l.ingredientId || l.packagingId) && !(l.id && isFreeLine(l.kind))) || (parseFloat(l.quantityOrdered) || 0) <= 0)) {
       notify.error('Chaque ligne doit avoir un article et une quantité commandée > 0');
       return;
     }
@@ -2460,7 +2577,7 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                 <table className="odoo-table" style={{ minWidth: 900 }}>
                   <thead>
                     <tr>
-                      <th style={{ width: '28%' }}>Ingrédient</th>
+                      <th style={{ width: '28%' }}>Article</th>
                       <th style={{ textAlign: 'right' }}>Qté commandée</th>
                       <th style={{ textAlign: 'right' }}>Qté livrée</th>
                       <th style={{ textAlign: 'right' }}>Prix U.</th>
@@ -2479,7 +2596,7 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                             {isExisting ? (
                               <span style={{ fontWeight: 500 }}>
                                 {line.ingredientName} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>({line.ingredientUnit})</span>
-                                {line.kind === 'consumable' && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6, fontSize: '0.625rem' }}>Consommable</span>}
+                                <LineKindTag kind={line.kind} />
                               </span>
                             ) : (
                               <select value={line.ingredientId}

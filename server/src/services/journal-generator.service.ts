@@ -359,7 +359,7 @@ export async function fromGoodsReceipt(
             COALESCE(rvi.po_unit_price, poi.unit_price, rvi.unit_price) AS price,
             COALESCE(rvi.category_id, poi.category_id, ing.category_id, pkg.category_id) AS category_id,
             rv.voucher_number, rv.store_id, rv.created_at, po.supplier_id, po.order_number,
-            COALESCE(ing.name, pkg.name) AS item_name
+            COALESCE(ing.name, pkg.name, poi.description) AS item_name
        FROM reception_voucher_items rvi
        JOIN reception_vouchers rv ON rv.id = rvi.reception_voucher_id
        JOIN purchase_order_items poi ON poi.id = rvi.purchase_order_item_id
