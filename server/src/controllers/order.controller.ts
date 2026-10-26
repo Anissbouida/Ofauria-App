@@ -55,6 +55,30 @@ const isProCustomer = (c: { customer_type?: string | null } | null) => !!c && (c
 type InItem = { productId: string; quantity: number; unitPrice?: number | string | null; tvaRate?: number | string | null; notes?: string };
 type OrderLine = { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate: number | null; notes?: string };
 
+/**
+ * Remise de commande en % (mig 355) : discountPct prioritaire, sinon ancien
+ * montant discountAmount converti. Renvoie le taux et le montant arrondi.
+ */
+function orderDiscount(body: Record<string, unknown>, subtotal: number): { pct: number; amount: number } | { error: string } {
+  const raw = body.discountPct;
+  let pct: number;
+  if (raw !== undefined && raw !== null && raw !== '') {
+    pct = Number(raw);
+  } else {
+    const amount = parseFloat(String(body.discountAmount ?? 0)) || 0;
+    pct = subtotal > 0 ? (amount / subtotal) * 100 : 0;
+  }
+  if (!Number.isFinite(pct) || pct < 0 || pct > 100) return { error: 'Remise invalide : entre 0 et 100 %' };
+  pct = round2(pct);
+  return { pct, amount: round2(subtotal * pct / 100) };
+}
+
+/** TVA d'un professionnel calculée sur le HT après remise de commande. */
+function taxAfterDiscount(lines: OrderLine[], subtotal: number, discountAmount: number) {
+  const ratio = subtotal > 0 ? 1 - discountAmount / subtotal : 1;
+  return round2(lines.reduce((s, l) => s + (l.tvaRate ? Math.round(l.subtotal * ratio * l.tvaRate) / 100 : 0), 0));
+}
+
 /** Lignes chiffrées : prix saisi, sinon catalogue (particulier) ou catalogue remisé + dernière TVA (professionnel). */
 async function priceLines(items: InItem[], pro: Record<string, unknown> | null) {
   const defaults = pro ? await deliveryNoteRepository.lineDefaults(pro.id as string, items.map(i => i.productId)) : {};
@@ -77,8 +101,7 @@ async function priceLines(items: InItem[], pro: Record<string, unknown> | null) 
     products.push(product);
   }
   const subtotal = round2(lines.reduce((s, l) => s + l.subtotal, 0));
-  const taxAmount = round2(lines.reduce((s, l) => s + (l.tvaRate ? Math.round(l.subtotal * l.tvaRate) / 100 : 0), 0));
-  return { lines, products, subtotal, taxAmount };
+  return { lines, products, subtotal };
 }
 
 /** Alerte plafond (non bloquante) : créances ouvertes + BL non facturés + cette commande. */
@@ -127,7 +150,6 @@ export const orderController = {
   async create(req: AuthRequest, res: Response) {
     const { customerId, customerName, customerPhone, type, items, notes, pickupDate, orderDate } = req.body;
     let { paymentMethod } = req.body;
-    const discountAmount = round2(parseFloat(String(req.body.discountAmount ?? 0)) || 0);
 
     // Walk-in clients: store name/phone on order directly, no customer record
     // Known clients: customerId is provided by the frontend
@@ -142,7 +164,11 @@ export const orderController = {
 
     const priced = await priceLines(items, pro);
     if ('error' in priced) { fail(res, 400, priced.error as string); return; }
-    const { lines: orderItems, products, subtotal, taxAmount } = priced;
+    const { lines: orderItems, products, subtotal } = priced;
+    const disc = orderDiscount(req.body, subtotal);
+    if ('error' in disc) { fail(res, 400, disc.error); return; }
+    const discountAmount = disc.amount, discountPct = disc.pct;
+    const taxAmount = taxAfterDiscount(orderItems, subtotal, discountAmount);
     const total = round2(subtotal - discountAmount + taxAmount);
     if (total < 0) { fail(res, 400, 'Remise supérieure au montant de la commande'); return; }
 
@@ -171,7 +197,7 @@ export const orderController = {
     const order = await orderRepository.create({
       orderNumber, customerId, customerName, customerPhone,
       userId: req.user!.userId, type: type || 'custom',
-      subtotal, taxAmount, discountAmount, total, advanceAmount: advance, paymentMethod, notes, pickupDate, orderDate, items: orderItems,
+      subtotal, taxAmount, discountAmount, discountPct, total, advanceAmount: advance, paymentMethod, notes, pickupDate, orderDate, items: orderItems,
       sessionId: activeSession?.id, storeId: req.user!.storeId,
     });
 
@@ -245,7 +271,6 @@ export const orderController = {
 
   async update(req: AuthRequest, res: Response) {
     const { customerId, customerName, customerPhone, type, items, notes, pickupDate } = req.body;
-    const discountAmount = round2(parseFloat(String(req.body.discountAmount ?? 0)) || 0);
     const existing = await orderRepository.findById(req.params.id);
     if (!existing) { fail(res, 404, 'Commande non trouvee'); return; }
     if (!Array.isArray(items) || items.length === 0) { fail(res, 400, 'Ajoutez au moins un produit'); return; }
@@ -265,13 +290,17 @@ export const orderController = {
 
     const priced = await priceLines(items, pro);
     if ('error' in priced) { fail(res, 400, priced.error as string); return; }
-    const { lines: orderItems, subtotal, taxAmount } = priced;
+    const { lines: orderItems, subtotal } = priced;
+    const disc = orderDiscount(req.body, subtotal);
+    if ('error' in disc) { fail(res, 400, disc.error); return; }
+    const discountAmount = disc.amount, discountPct = disc.pct;
+    const taxAmount = taxAfterDiscount(orderItems, subtotal, discountAmount);
     const total = round2(subtotal - discountAmount + taxAmount);
     if (total + 0.005 < advance) { fail(res, 400, `Le total (${total.toFixed(2)} DH) ne peut pas descendre sous l'avance encaissée (${advance.toFixed(2)} DH)`); return; }
     const paymentMethod = pro ? 'deferred' : (existing.payment_method === 'deferred' ? 'cash' : existing.payment_method);
 
     const order = await orderRepository.update(req.params.id, {
-      customerId, customerName, customerPhone, type, subtotal, taxAmount, discountAmount, total, advanceAmount: advance,
+      customerId, customerName, customerPhone, type, subtotal, taxAmount, discountAmount, discountPct, total, advanceAmount: advance,
       paymentMethod, notes, items: orderItems,
     });
 

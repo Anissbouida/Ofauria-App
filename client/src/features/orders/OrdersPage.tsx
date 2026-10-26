@@ -694,7 +694,7 @@ function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver
                 </div>
                 {discountAmt > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#721c24' }}>
-                    <span>Remise</span><span>-{n(discountAmt)} DH</span>
+                    <span>Remise{o.discount_pct != null ? ` (${num(o.discount_pct)} %)` : ''}</span><span>-{n(discountAmt)} DH</span>
                   </div>
                 )}
                 {pro && (

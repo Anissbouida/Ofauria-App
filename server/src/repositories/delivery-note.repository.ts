@@ -111,8 +111,11 @@ export const deliveryNoteRepository = {
 
   async orderLines(orderId: string) {
     const r = await db.query(
-      `SELECT oi.id, oi.product_id, p.name AS description, oi.quantity, oi.unit_price, oi.tva_rate
-         FROM order_items oi JOIN products p ON p.id = oi.product_id WHERE oi.order_id = $1 ORDER BY p.name`, [orderId]);
+      // Prix remisés de la remise de commande (mig 355) : le BL et la facture la portent.
+      `SELECT oi.id, oi.product_id, p.name AS description, oi.quantity, oi.tva_rate,
+              ROUND(oi.unit_price * (1 - COALESCE(o.discount_amount, 0) / NULLIF(o.subtotal, 0)), 2) AS unit_price
+         FROM order_items oi JOIN orders o ON o.id = oi.order_id JOIN products p ON p.id = oi.product_id
+        WHERE oi.order_id = $1 ORDER BY p.name`, [orderId]);
     return r.rows;
   },
 

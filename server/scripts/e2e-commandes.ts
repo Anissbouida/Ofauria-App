@@ -142,6 +142,22 @@ try {
   const lines = await q(`SELECT tva_rate FROM order_items WHERE order_id = $1 ORDER BY tva_rate`, [d.id]);
   ok(lines.map(l => Number(l.tva_rate)).join(',') === '0,20', 'TVA enregistrée sur les lignes');
 
+  console.log('3b. Remise de commande en %, TVA après remise, BL remisé');
+  const pr = await direction('POST', '/orders', { customerId: pro.id, pickupDate: inDays(2), discountPct: 10, items: [{ productId: p1.id, quantity: 4, tvaRate: 20 }] });
+  const lineHt = r2(ht1 * 4), discAmt = r2(lineHt * 0.1), taxAfter = r2(Math.round(lineHt * 0.9 * 20) / 100);
+  ok(pr.status === 201 && Number(pr.json.data.discount_pct) === 10 && Number(pr.json.data.discount_amount) === discAmt,
+    'remise 10 % enregistrée en taux et en montant', pr.json?.error?.message ?? { pct: pr.json.data.discount_pct, amt: pr.json.data.discount_amount });
+  ok(Number(pr.json.data.tax_amount) === taxAfter && Number(pr.json.data.total) === r2(lineHt - discAmt + taxAfter),
+    'TVA calculée sur le HT remisé', { tva: pr.json?.data?.tax_amount, exp: taxAfter });
+  const badPct = await direction('POST', '/orders', { customerId: pro.id, pickupDate: inDays(2), discountPct: 120, items: [{ productId: p1.id, quantity: 1 }] });
+  ok(badPct.status === 400, 'remise > 100 % refusée', badPct.json?.error?.message);
+  await direction('PUT', `/orders/${pr.json.data.id}/status`, { status: 'ready' });
+  await conn.query(`UPDATE customers SET billing_frequency = 'monthly' WHERE id = $1`, [pro.id]);
+  const blr = await direction('POST', `/delivery-notes/from-order/${pr.json.data.id}`, {});
+  const blrDetail = await direction('GET', `/delivery-notes/${blr.json?.data?.id}`);
+  ok(Math.abs(Number(blrDetail.json?.data?.total_ht) - r2(lineHt - discAmt)) < 0.05, 'le BL porte les prix remisés (remise conservée jusqu\'à la facture)', { ht: blrDetail.json?.data?.total_ht, exp: r2(lineHt - discAmt) });
+  await conn.query(`UPDATE customers SET billing_frequency = 'per_delivery' WHERE id = $1`, [pro.id]);
+
   console.log('4. Professionnel : invisible pour la caisse, livré sur BL');
   const list = await caisseA('GET', '/orders?limit=500');
   ok(!(list.json.data ?? []).some((o: any) => o.id === d.id), 'liste caisse sans commande de professionnel');

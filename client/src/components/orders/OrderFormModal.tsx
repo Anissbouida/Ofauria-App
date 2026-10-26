@@ -114,7 +114,13 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
 
   // Step 3: Payment — un particulier ne règle jamais plus tard (avance facultative, solde au retrait)
   const [paymentMethod, setPaymentMethod] = useState(isEdit && order.payment_method !== 'deferred' ? (order.payment_method as string || 'cash') : 'cash');
-  const [discountAmount, setDiscountAmount] = useState(isEdit ? (parseFloat(order.discount_amount as string) || 0) : 0);
+  // Remise de commande en % (mig 355) ; anciennes commandes : taux déduit du montant.
+  const [discountPct, setDiscountPct] = useState(() => {
+    if (!isEdit) return 0;
+    if (order.discount_pct != null) return parseFloat(order.discount_pct as string) || 0;
+    const sub = parseFloat(order.subtotal as string) || 0, amt = parseFloat(order.discount_amount as string) || 0;
+    return sub > 0 ? Math.round(amt / sub * 10000) / 100 : 0;
+  });
   const [advanceAmount, setAdvanceAmount] = useState(isEdit ? (parseFloat(order.advance_amount as string) || 0) : 0);
   const [notes, setNotes] = useState(isEdit ? (order.notes as string || '') : '');
 
@@ -274,7 +280,8 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
     return sum + (item.unitPrice || 0) * item.quantity;
   }, 0);
   // Auto-calculate staff discount
-  const effectiveDiscount = type === 'staff' ? Math.round(subtotal * staffDiscountPercent) / 100 : discountAmount;
+  const appliedPct = type === 'staff' ? staffDiscountPercent : discountPct;
+  const effectiveDiscount = Math.round(subtotal * appliedPct) / 100;
   const validItems = items.filter((it) => it.productId && it.quantity > 0);
 
   // Professionnel : TVA par ligne, taux par défaut = dernier taux utilisé pour ce client/produit.
@@ -286,8 +293,10 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   });
   const lineTva = (it: { productId: string; tvaRate?: number | null }) =>
     tvaExonere ? 0 : (it.tvaRate ?? lineDefaults?.[it.productId]?.tvaRate ?? 0);
+  // TVA sur le HT après remise de commande.
+  const netRatio = subtotal > 0 ? 1 - effectiveDiscount / subtotal : 1;
   const taxAmount = isPro
-    ? Math.round(validItems.reduce((s, it) => s + Math.round(it.unitPrice * it.quantity * lineTva(it)) / 100, 0) * 100) / 100
+    ? Math.round(validItems.reduce((s, it) => s + Math.round(it.unitPrice * it.quantity * netRatio * lineTva(it)) / 100, 0) * 100) / 100
     : 0;
   const total = Math.max(0, subtotal - effectiveDiscount + taxAmount);
   const exposure = situation?.creditLimit != null ? situation.total + total : null;
@@ -329,7 +338,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
       ...(isEdit ? {} : { orderDate }),
       paymentMethod: isPro ? 'deferred' : paymentMethod,
       notes: notes || undefined,
-      discountAmount: effectiveDiscount,
+      discountPct: appliedPct,
       advanceAmount: isPro ? 0 : advanceAmount,
       items: validItems.map((it) => ({
         productId: it.productId, quantity: it.quantity, unitPrice: it.unitPrice, notes: it.notes || undefined,
@@ -893,10 +902,14 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                     </div>
                   )}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Remise globale HT (DH)</label>
-                    <input type="number" min="0" step="0.01" value={discountAmount}
-                      onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                      className="input py-3 w-full text-base" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Remise sur la commande (%)</label>
+                    <div className="relative">
+                      <input type="number" min="0" max="100" step="0.5" value={discountPct}
+                        onChange={(e) => setDiscountPct(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                        className="input py-3 w-full text-base pr-10" />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+                    </div>
+                    {effectiveDiscount > 0 && <p className="text-xs text-gray-500 mt-1">Soit {effectiveDiscount.toFixed(2)} DH HT, en plus de la remise client déjà dans les prix.</p>}
                   </div>
                 </>
               ) : (
@@ -904,16 +917,19 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                   {/* Particulier : avance facultative, non remboursable, solde intégral au retrait */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Remise (DH)</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Remise (%)</label>
                       {type === 'staff' ? (
                         <div className="input py-3 w-full text-base bg-purple-50 border-purple-200 text-purple-700 font-semibold flex items-center justify-between">
                           <span>{effectiveDiscount.toFixed(2)}</span>
                           <span className="text-xs font-medium bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">{staffDiscountPercent}%</span>
                         </div>
                       ) : (
-                        <input type="number" min="0" step="0.01" value={discountAmount}
-                          onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
-                          className="input py-3 w-full text-base" />
+<div className="relative">
+                          <input type="number" min="0" max="100" step="0.5" value={discountPct}
+                            onChange={(e) => setDiscountPct(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                            className="input py-3 w-full text-base pr-10" />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+                        </div>
                       )}
                     </div>
                     <div>
@@ -964,7 +980,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                 </div>
                 {effectiveDiscount > 0 && (
                   <div className="flex justify-between text-sm text-red-600">
-                    <span>Remise{type === 'staff' ? ` personnel (${staffDiscountPercent}%)` : ''}</span>
+                    <span>Remise{type === 'staff' ? ' personnel' : ''} ({appliedPct} %)</span>
                     <span>-{effectiveDiscount.toFixed(2)} DH</span>
                   </div>
                 )}

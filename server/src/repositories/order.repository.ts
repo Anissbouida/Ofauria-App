@@ -70,7 +70,7 @@ export const orderRepository = {
   async create(data: {
     orderNumber: string; customerId?: string; customerName?: string; customerPhone?: string;
     userId: string; type: string;
-    subtotal: number; taxAmount: number; discountAmount: number; total: number;
+    subtotal: number; taxAmount: number; discountAmount: number; discountPct?: number; total: number;
     advanceAmount?: number; paymentMethod: string; notes?: string; pickupDate?: string;
     sessionId?: string; storeId?: string; orderDate?: string;
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null; notes?: string }[];
@@ -83,13 +83,13 @@ export const orderRepository = {
       // lieu de NOW()). Conserve l'heure exacte de saisie pour l'audit en
       // ajoutant le time courant a la date fournie.
       const orderResult = await client.query(
-        `INSERT INTO orders (order_number, customer_id, customer_name, customer_phone, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date, session_id, store_id, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::timestamp, NOW())) RETURNING *`,
+        `INSERT INTO orders (order_number, customer_id, customer_name, customer_phone, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date, session_id, store_id, created_at, discount_pct)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::timestamp, NOW()), $18) RETURNING *`,
         [data.orderNumber, data.customerId || null, data.customerName || null, data.customerPhone || null,
          data.userId, data.type,
          data.subtotal, data.taxAmount, data.discountAmount, data.total,
          data.advanceAmount || 0, data.paymentMethod, data.notes || null, data.pickupDate || null, data.sessionId || null, data.storeId || null,
-         data.orderDate || null]
+         data.orderDate || null, data.discountPct ?? null]
       );
 
       const orderId = orderResult.rows[0].id;
@@ -172,7 +172,7 @@ export const orderRepository = {
   async update(id: string, data: {
     customerId?: string; customerName?: string; customerPhone?: string;
     type?: string; subtotal: number; taxAmount: number;
-    discountAmount: number; total: number; advanceAmount?: number;
+    discountAmount: number; discountPct?: number; total: number; advanceAmount?: number;
     paymentMethod?: string; notes?: string; pickupDate?: string;
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null; notes?: string }[];
   }) {
@@ -188,12 +188,13 @@ export const orderRepository = {
         `UPDATE orders SET customer_id = $1, customer_name = $2, customer_phone = $3,
          type = COALESCE($4, type),
          subtotal = $5, tax_amount = $6, discount_amount = $7, total = $8, advance_amount = $9,
-         payment_method = COALESCE($10, payment_method), notes = $11, pickup_date = COALESCE($12, pickup_date)
+         payment_method = COALESCE($10, payment_method), notes = $11, pickup_date = COALESCE($12, pickup_date),
+         discount_pct = $14
          WHERE id = $13 AND status NOT IN ('completed', 'cancelled') RETURNING *`,
         [data.customerId || null, data.customerName || null, data.customerPhone || null,
          data.type || null, data.subtotal, data.taxAmount,
          data.discountAmount, data.total, data.advanceAmount || 0,
-         data.paymentMethod || null, data.notes || null, data.pickupDate || null, id]
+         data.paymentMethod || null, data.notes || null, data.pickupDate || null, id, data.discountPct ?? null]
       );
 
       if (!orderResult.rows[0]) {
