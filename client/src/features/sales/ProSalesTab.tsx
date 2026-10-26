@@ -38,38 +38,46 @@ const STATUS: Record<DeliveryNote['status'], { label: string; cls: string }> = {
 };
 
 export default function ProSalesTab() {
-  const [view, setView] = useState<'notes' | 'invoice'>('notes');
+  // Une seule rangée de filtres : « À facturer » = BL livrés regroupés par client
+  // avec l'action de facturation ; les autres filtrent la liste des BL.
+  const [view, setView] = useState<'' | 'delivered' | 'invoiced' | 'cancelled' | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
-  const { data: toInvoice = [] } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice() });
+  const { data: toInvoice = [], isSuccess } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice() });
   const pending = toInvoice.reduce((n, g) => n + g.notes.length, 0);
+  const current = view ?? (isSuccess && pending > 0 ? 'delivered' : '');
+  const filters = [
+    ['delivered', 'À facturer', FileText],
+    ['invoiced', 'Facturés', CheckSquare],
+    ['cancelled', 'Annulés', Ban],
+    ['', 'Tous', Truck],
+  ] as const;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div className="flex items-center gap-2">
-        <button type="button" onClick={() => setView('notes')} className={view === 'notes' ? 'odoo-btn-primary' : 'odoo-btn-secondary'}>
-          <Truck size={13} /> Bons de livraison
-        </button>
-        <button type="button" onClick={() => setView('invoice')} className={view === 'invoice' ? 'odoo-btn-primary' : 'odoo-btn-secondary'}>
-          <FileText size={13} /> À facturer {pending > 0 && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 4 }}>{pending}</span>}
-        </button>
+        {filters.map(([k, label, Icon]) => (
+          <button key={k} type="button" onClick={() => setView(k)} className={current === k ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ whiteSpace: 'nowrap' }}>
+            <Icon size={13} /> {label}
+            {k === 'delivered' && pending > 0 && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 4 }}>{pending}</span>}
+          </button>
+        ))}
         <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', marginLeft: 8 }}>
           Commande → bon de livraison → facture : le chiffre d'affaires et la créance naissent à la facture.
         </span>
-        <button type="button" onClick={() => setShowNew(true)} className="odoo-btn-primary" style={{ marginLeft: 'auto' }}>
+        <button type="button" onClick={() => setShowNew(true)} className="odoo-btn-primary" style={{ marginLeft: 'auto', whiteSpace: 'nowrap' }}>
           <Plus size={13} /> Nouveau bon de livraison
         </button>
       </div>
-      {view === 'notes' ? <NotesList onOpen={setDetailId} /> : <ToInvoice groups={toInvoice} onOpen={setDetailId} />}
+      {current === 'delivered' ? <ToInvoice groups={toInvoice} onOpen={setDetailId} /> : <NotesList status={current} onOpen={setDetailId} />}
       {showNew && <NewNoteModal onClose={() => setShowNew(false)} />}
       {detailId && <NoteDetail id={detailId} onClose={() => setDetailId(null)} />}
     </div>
   );
 }
 
-function NotesList({ onOpen }: { onOpen: (id: string) => void }) {
+function NotesList({ status, onOpen }: { status: string; onOpen: (id: string) => void }) {
   const queryClient = useQueryClient();
-  const [status, setStatus] = useState<string>('');
   const { data: notes = [], isLoading } = useQuery({
     queryKey: ['delivery-notes', 'list', status],
     queryFn: () => deliveryNotesApi.list(status ? { status } : undefined),
@@ -81,12 +89,6 @@ function NotesList({ onOpen }: { onOpen: (id: string) => void }) {
   });
   return (
     <>
-      <div className="flex gap-2">
-        {([['', 'Tous'], ['delivered', 'À facturer'], ['invoiced', 'Facturés'], ['cancelled', 'Annulés']] as const).map(([k, l]) => (
-          <button key={k} type="button" onClick={() => setStatus(k)} className={status === k ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
-            style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem' }}>{l}</button>
-        ))}
-      </div>
       <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflowX: 'auto' }}>
         <table className="odoo-table">
           <thead><tr><th>N° BL</th><th>Date</th><th>Client</th><th>Commande</th><th style={{ textAlign: 'right' }}>HT</th><th style={{ textAlign: 'right' }}>TTC</th><th>Statut</th><th /></tr></thead>
