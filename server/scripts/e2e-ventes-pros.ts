@@ -141,6 +141,28 @@ try {
   const noCustomer = (await q(`INSERT INTO orders (order_number, user_id, type, status, subtotal, total) VALUES ('CMD-E2E-NOC', $1, 'custom', 'ready', 10, 10) RETURNING id`, [admin.id]))[0];
   const refused = await call('POST', `/delivery-notes/from-order/${noCustomer.id}`);
   ok(refused.status === 400, 'commande sans fiche client : livraison avec encaissement uniquement', refused.json?.error?.message);
+
+  console.log('6. Facture faite directement depuis une commande (mig 353)');
+  const mkOrder = async (num: string) => {
+    const o = (await q(`INSERT INTO orders (order_number, customer_id, user_id, type, status, subtotal, total, completed_at)
+                        VALUES ($1, $2, $3, 'custom', 'completed', 40, 40, now()) RETURNING id`, [num, cust.id, admin.id]))[0];
+    await conn.query(`INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal) VALUES ($1, $2, 4, 10, 40)`, [o.id, p1.id]);
+    return o;
+  };
+  const o3 = await mkOrder('CMD-E2E-FAC1');
+  const fac = await call('POST', `/invoices/from-order/${o3.id}`);
+  ok(fac.status === 201 || fac.status === 200, 'facture generee depuis la commande', fac.json?.error?.message ?? fac.status);
+  const bl3 = (await q(`SELECT status, invoice_id, (SELECT count(*) FROM delivery_note_items i WHERE i.delivery_note_id = d.id) AS n
+                          FROM delivery_notes d WHERE order_id = $1`, [o3.id]))[0];
+  ok(bl3?.status === 'invoiced' && bl3.invoice_id === fac.json?.data?.id && Number(bl3.n) === 1, 'son bon de livraison est cree, facture et rattache', bl3);
+  const o4 = await mkOrder('CMD-E2E-FAC2');
+  await conn.query(`UPDATE orders SET status = 'ready' WHERE id = $1`, [o4.id]);
+  const bl4 = await call('POST', `/delivery-notes/from-order/${o4.id}`);
+  const fac4 = await call('POST', `/invoices/from-order/${o4.id}`);
+  const bl4row = (await q(`SELECT count(*) AS n, max(status) AS s, max(invoice_id::text) AS inv FROM delivery_notes WHERE order_id = $1 AND status <> 'cancelled'`, [o4.id]))[0];
+  ok(bl4.status === 201 && Number(bl4row.n) === 1 && bl4row.s === 'invoiced' && bl4row.inv === fac4.json?.data?.id, 'BL deja livre : rattache a la facture, pas de doublon', bl4row);
+  const fac4bis = await call('POST', `/invoices/from-order/${o4.id}`);
+  ok(fac4bis.status === 409, 'seconde facture de la meme commande refusee', fac4bis.json?.error?.message ?? fac4bis.status);
 } catch (err) {
   failures++;
   console.error('ERREUR', err);

@@ -6,6 +6,7 @@ import { FLAGS } from '../config/feature-flags.js';
 import { postOrQueue, postGoodsReceiptsForPo } from '../services/ledger-posting.service.js';
 import { fromInvoice, fromPaymentEmission, fromSale, persistEntry, autoLettrer, reverseEntriesForSource, regenerateInvoiceEntry, regeneratePaymentEntries, fromGoodsReceipt } from '../services/journal-generator.service.js';
 import { round2, lineTvaAmount, headerTotalsFromLines } from '../utils/tva.js';
+import { attachDeliveryNoteToOrderInvoice } from '../services/order-delivery-note.js';
 import { withActor, assertReasonCode, recordAction } from '../services/document-actions.service.js';
 
 /**
@@ -815,6 +816,10 @@ export const invoiceRepository = {
         const entry = await fromInvoice(client, invResult.rows[0]);
         if (entry) await persistEntry(client, entry, { userId: createdBy });
       });
+
+      // Mig 353 : la commande facturée a été livrée — son bon de livraison client
+      // est créé (ou un BL « livré » existant est rattaché) dans la même transaction.
+      await attachDeliveryNoteToOrderInvoice(client, { invoiceId: invResult.rows[0].id, orderId, createdBy });
 
       await client.query('COMMIT');
       return invResult.rows[0];
