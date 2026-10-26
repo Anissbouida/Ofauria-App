@@ -47,6 +47,10 @@ const PO_REASON_UI: Record<PoReasonAction['kind'], { scope: ReasonScope; title: 
 // (ingredients) ET consommables (emballages/entretien/equipements). Le routage
 // vers la bonne table est decide par la categorie choisie (kindOf).
 const PURCHASABLE_ROOT_IDS = Array.from(new Set([...STOCKABLE_ROOT_IDS, ...CONSUMABLE_ROOT_IDS]));
+// Frais annexes d'un BC de stock (transport, livraison, divers) : ligne service imputee
+// en charge. Categorie proposee par defaut : Transport > Livraison > Livraison fournisseurs.
+const FEE_ROOT_IDS = ['10000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000009'];
+const DEFAULT_FEE_CATEGORY_ID = '30000000-0000-0000-0000-000000000064';
 
 /* Type de ligne de BC (mig 349) : les lignes service / immobilisation n'ont pas d'article. */
 type PoLineKind = 'ingredient' | 'consumable' | 'service' | 'asset';
@@ -1240,7 +1244,8 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   // contenants (minimum 1), quantityOrdered = nb x taille.
   // Ligne service / immobilisation : refId = cle locale, name = designation libre.
   const [items, setItems] = useState<{ kind: PoLineKind; refId: string; name: string; unit: string; categoryId: string | null; quantityOrdered: number; unitPrice: number | null; container: ContainerDef | null; containerCount: number }[]>([]);
-  const [freeLine, setFreeLine] = useState<{ kind: 'service' | 'asset'; description: string; categoryId: string; quantity: string; unitPrice: string } | null>(null);
+  // fee : frais annexes ajoutes a un BC d'articles stockes (formulaire ponctuel, refermable).
+  const [freeLine, setFreeLine] = useState<{ kind: 'service' | 'asset'; fee?: boolean; description: string; categoryId: string; quantity: string; unitPrice: string } | null>(null);
   // Nature de l'achat, choisie avant toute saisie : elle decide de la facon d'ajouter
   // les lignes (recherche d'articles stockes, ou saisie libre service / immobilisation).
   const [orderType, setOrderType] = useState<'stock' | 'service' | 'asset' | null>(null);
@@ -1267,14 +1272,14 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   // Categories proposees pour une ligne sans article, selon son type.
   const freeCategoryOptions = useMemo(() => {
     if (!freeLine) return [];
-    const roots = freeLine.kind === 'asset' ? ASSET_ROOT_IDS : SERVICE_ROOT_IDS;
+    const roots = freeLine.kind === 'asset' ? ASSET_ROOT_IDS : freeLine.fee ? FEE_ROOT_IDS : SERVICE_ROOT_IDS;
     return roots.filter(r => byId.has(r)).flatMap(r => leavesUnder(r)).map(leaf => {
       const path = resolve(leaf.id)?.path.split(' / ') || [];
       const years = (byId.get(String(leaf.id)) as any)?.asset_duration_years;
       return { id: String(leaf.id), label: leaf.name, sublabel: path.slice(0, -1).join(' › '), detail: years ? `${years} ans` : undefined };
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [freeLine?.kind, byId]);
+  }, [freeLine?.kind, freeLine?.fee, byId]);
 
   const supplierOptions = useMemo(() => (suppliers as Record<string, any>[])
     .filter(s => s.is_active !== false)
@@ -1410,7 +1415,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
       container: null, containerCount: 1,
     }]);
     // Le formulaire reste ouvert, vide, pour la ligne suivante.
-    setFreeLine(emptyFreeLine(freeLine.kind));
+    setFreeLine(freeLine.fee ? null : emptyFreeLine(freeLine.kind));
   };
 
   const removeItem = (idx: number) => setItems(items.filter((_, i) => i !== idx));
@@ -1580,19 +1585,30 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                 <Plus size={14} /> Nouvel article
               </button>
             </div>
+            {/* Frais annexes facturés avec la marchandise : ligne de charge, sans stock. */}
+            {!freeLine && (
+              <button type="button"
+                onClick={() => setFreeLine({ kind: 'service', fee: true, description: 'Transport', categoryId: byId.has(DEFAULT_FEE_CATEGORY_ID) ? DEFAULT_FEE_CATEGORY_ID : '', quantity: '1', unitPrice: '' })}
+                style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', color: 'var(--theme-accent)', fontWeight: 600 }}>
+                <Plus size={12} /> Frais annexes <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)' }}>(transport, livraison… facturés avec la marchandise)</span>
+              </button>
+            )}
             </>)}
             {freeLine && (
               <div style={{ marginTop: 10, border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.75rem', backgroundColor: 'var(--odoo-bg-alt)' }}>
-                <div style={{ marginBottom: 8 }}>
+                <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
                   <strong style={{ fontSize: '0.8125rem' }}>
-                    {freeLine.kind === 'asset' ? 'Ajouter une immobilisation' : 'Ajouter un service / des frais'}
+                    {freeLine.fee ? 'Ajouter des frais annexes' : freeLine.kind === 'asset' ? 'Ajouter une immobilisation' : 'Ajouter un service / des frais'}
                   </strong>
+                  {freeLine.fee && (
+                    <button type="button" onClick={() => setFreeLine(null)} title="Fermer" style={{ color: 'var(--odoo-text-muted)', padding: 2 }}><X size={14} /></button>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                   <div className="md:col-span-4">
                     <label style={odooLabelStyle}>Désignation *</label>
                     <input type="text" autoFocus key={`desc-${items.length}`} value={freeLine.description} style={odooFieldStyle}
-                      placeholder={freeLine.kind === 'asset' ? 'Ex : Pétrin spirale 60 L' : 'Ex : Réparation four à sole'}
+                      placeholder={freeLine.fee ? 'Ex : Transport, frais de livraison' : freeLine.kind === 'asset' ? 'Ex : Pétrin spirale 60 L' : 'Ex : Réparation four à sole'}
                       onChange={e => setFreeLine({ ...freeLine, description: e.target.value })}
                       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addFreeLine(); } }} />
                   </div>
@@ -1620,7 +1636,9 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                 <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 8 }}>
                   {freeLine.kind === 'asset'
                     ? <>Pas de stock : à la réception (mise en service), le bien est porté en immobilisation (compte 23xx) et sa fiche d'amortissement est créée automatiquement{(() => { const y = (byId.get(freeLine.categoryId) as any)?.asset_duration_years; return y ? `, amortie sur ${y} ans` : ''; })()}.</>
-                    : <>Pas de stock : la réception vaut « service rendu », la dépense est imputée en charge selon la catégorie.</>}
+                    : freeLine.fee
+                      ? <>Imputés en charge selon la catégorie (ex. 6142 transport), sans entrer dans le coût des articles. Ils se réceptionnent avec la marchandise et figurent sur la même facture.</>
+                      : <>Pas de stock : la réception vaut « service rendu », la dépense est imputée en charge selon la catégorie.</>}
                 </p>
               </div>
             )}
