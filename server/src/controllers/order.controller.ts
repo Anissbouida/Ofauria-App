@@ -10,6 +10,7 @@ import { getLocalNow } from '../utils/timezone.js';
 import { deliveryNoteRepository } from '../repositories/delivery-note.repository.js';
 import { receivablesRepository } from '../repositories/receivables.repository.js';
 import { db } from '../config/database.js';
+import { dunningRepository, dunningSettings } from '../repositories/dunning.repository.js';
 
 /** Category slug → chef role mapping */
 const CATEGORY_ROLE_MAP: Record<string, string> = {
@@ -144,6 +145,19 @@ export async function notifyProductionChefs(p: {
   }
 }
 
+/**
+ * Contrôle de crédit bloquant (mig 366) : client bloqué par une relance ou par la
+ * direction → refus ; plafond dépassé → refus si le contrôle est « bloquant ».
+ * Renvoie le motif du refus, ou null.
+ */
+export async function creditGate(customer: Record<string, unknown>, orderTotal: number, excludeOrderId?: string): Promise<string | null> {
+  const hold = await dunningRepository.creditCheck(customer.id as string, 0);
+  if (hold.blocked) return hold.blocked;
+  const warning = await creditWarning(customer, orderTotal, excludeOrderId);
+  if (warning && (await dunningSettings()).credit_control === 'block') return `${warning.message} Commande refusée (contrôle du plafond bloquant).`;
+  return null;
+}
+
 export const orderController = {
   async list(req: AuthRequest, res: Response) {
     const { status, type, customerId, page = '1', limit = '20' } = req.query as Record<string, string>;
@@ -193,6 +207,10 @@ export const orderController = {
     const taxAmount = taxAfterDiscount(orderItems, subtotal, discountAmount);
     const total = round2(subtotal - discountAmount + taxAmount);
     if (total < 0) { fail(res, 400, 'Remise supérieure au montant de la commande'); return; }
+    if (pro) {
+      const refused = await creditGate(pro, total);
+      if (refused) { fail(res, 409, refused); return; }
+    }
 
     // Professionnel : ni avance ni caisse, réglé sur facture par la direction.
     // Particulier : jamais de paiement reporté, l'avance (facultative) est encaissée maintenant.

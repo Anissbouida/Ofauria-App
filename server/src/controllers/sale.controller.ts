@@ -9,6 +9,7 @@ import { salesChannelRepository } from '../repositories/sales-channel.repository
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 import { getVitrineStock } from '../repositories/product-stock.helper.js';
 import { attendanceRepository } from '../repositories/employee.repository.js';
+import { dunningRepository } from '../repositories/dunning.repository.js';
 
 export const saleController = {
   async list(req: AuthRequest, res: Response) {
@@ -171,6 +172,12 @@ export const saleController = {
     }
 
     const total = subtotal - discountAmount + taxAmount;
+
+    // Vente à crédit (mig 366) : refusée pour un client bloqué, ou au-delà du plafond si le contrôle est bloquant.
+    if (paymentStatus === 'unpaid' && customerId) {
+      const credit = await dunningRepository.creditCheck(customerId, Math.round(total * 100) / 100);
+      if (credit.blocked) { res.status(409).json({ success: false, error: { message: credit.blocked } }); return; }
+    }
 
     // Paiement mixte (mig 250) : la ventilation especes/carte doit couvrir
     // exactement le total calcule cote serveur (tolerance centime d'arrondi).

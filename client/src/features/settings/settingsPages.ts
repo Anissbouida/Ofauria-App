@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Store, Paintbrush, Printer, Radio, ShoppingBag, Factory, Truck, Percent, Hash, FileText,
-  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer,
+  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing,
 } from 'lucide-react';
 import type { SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingAnchor } from './SettingsPrimitives';
@@ -15,7 +15,7 @@ import { settingAnchor } from './SettingsPrimitives';
 export type SettingsPageKey =
   | 'home'
   | 'company' | 'stores' | 'appearance'
-  | 'print' | 'channels' | 'sachets'
+  | 'print' | 'channels' | 'sachets' | 'salesRules'
   | 'production' | 'purchasing'
   | 'tax' | 'currencies' | 'numbering' | 'documents' | 'ledger'
   | 'referentiel' | 'data'
@@ -71,6 +71,9 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
   { key: 'sachets', group: 'Ventes et caisse', section: 'sachets', label: 'Sachets', icon: ShoppingBag,
     description: 'Contrôle des sachets de caisse', keywords: 'sachet emballage ratio vendeuse',
     fields: ['Réglage global', 'Ratio par catégorie'] },
+  { key: 'salesRules', group: 'Ventes et caisse', section: 'business', label: 'Devis et crédit clients', icon: BellRing,
+    description: 'Validité des devis, relances et plafond de crédit', keywords: 'devis proforma validite relance recouvrement impaye plafond credit blocage',
+    fields: ['Devis clients', 'Relances clients et contrôle du crédit'] },
 
   { key: 'production', group: 'Achats et production', section: 'production', label: 'Production', icon: Factory,
     description: 'Charges fixes, étapes, arrondi des prix et majoration', keywords: 'cout charges loyer energie arrondi prix majoration approvisionnement',

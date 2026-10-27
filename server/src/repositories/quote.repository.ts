@@ -1,7 +1,7 @@
 import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { orderRepository } from './order.repository.js';
-import { loadCustomer, isProCustomer, priceLines, taxAfterDiscount, creditWarning, notifyProductionChefs } from '../controllers/order.controller.js';
+import { loadCustomer, isProCustomer, priceLines, taxAfterDiscount, creditWarning, creditGate, notifyProductionChefs } from '../controllers/order.controller.js';
 
 /**
  * Devis clients (mig 365).
@@ -322,6 +322,10 @@ export const quoteRepository = {
     const discount = round2(subtotal * pct / 100);
     const tax = pro ? taxAfterDiscount(priced.lines, subtotal, discount) : 0;
     const total = round2(subtotal - discount + tax);
+    if (pro) {
+      const refused = await creditGate(pro, total);
+      if (refused) return { error: refused };
+    }
 
     const orderNumber = await orderRepository.generateOrderNumber();
     const order = await orderRepository.create({

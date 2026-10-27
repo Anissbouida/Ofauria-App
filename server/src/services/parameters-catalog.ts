@@ -106,6 +106,20 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'sales.dunning', domain: 'sales', section: 'business',
+    label: 'Relances clients et contrôle du crédit',
+    help: 'Chaque jour, les clients en retard reçoivent une proposition de relance au niveau atteint (niveaux dans Ventes › Relances). Envoi automatique : les niveaux « par e-mail » partent sans validation. Plafond bloquant : une vente à crédit au-delà du plafond est refusée au lieu d\'une simple alerte (mig 366).',
+    fields: [
+      { name: 'enabled', label: 'Relances actives', type: 'boolean' },
+      { name: 'auto_send', label: 'Envoyer les e-mails sans validation', type: 'boolean' },
+      { name: 'min_amount', label: 'Montant échu minimal', type: 'number', unit: 'DH', min: 0, max: 1_000_000 },
+      { name: 'credit_control', label: 'Plafond de crédit', type: 'enum', options: [{ value: 'warn', label: 'Alerte seulement' }, { value: 'block', label: 'Bloquant' }] },
+      { name: 'auto_release', label: 'Débloquer un client dès qu\'il est à jour', type: 'boolean' },
+    ],
+    defaults: { enabled: true, auto_send: false, min_amount: 50, credit_control: 'warn', auto_release: true },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'purchasing.expense_requires_po', domain: 'purchasing', section: 'business',
     label: 'Bon de commande obligatoire pour les dépenses',
     help: 'Une dépense d\'une catégorie « BC requis » à partir du seuil doit être rattachée à un bon de commande engagé.',

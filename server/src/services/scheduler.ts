@@ -2,6 +2,7 @@ import { db } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import { processOutbox } from './mailer.js';
 import { maintenanceRepository } from '../repositories/maintenance.repository.js';
+import { dunningRepository } from '../repositories/dunning.repository.js';
 
 /**
  * Tâches planifiées (mig 364).
@@ -148,6 +149,7 @@ export const JOBS: Record<string, Handler> = {
   maintenance_due: maintenanceDue,
   rfq_deadline: rfqDeadline,
   quotes_expire: quotesExpire,
+  dunning_run: () => dunningRepository.run(),
   housekeeping,
 };
 

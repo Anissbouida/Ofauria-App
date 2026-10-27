@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
-import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent, FileSignature } from 'lucide-react';
+import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent, FileSignature, BellRing } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
@@ -35,6 +35,7 @@ export default function SalesLayout() {
     salesView('sessions', Lock),
     salesView('invoices', FileText),
     salesView('unpaid', Clock),
+    { key: 'dunning', label: 'Relances', icon: BellRing, section: 'operations', href: '/dunning', hidden: !hasModule('sales') || !isDirection },
     { key: 'reports:menu', label: 'Menu Engineering', icon: Sparkles, section: 'reports', href: '/reports?tab=menu', hidden: !hasModule('reports') },
     { key: 'reports:margins', label: 'Marges', icon: Percent, section: 'reports', href: '/reports?tab=margins', hidden: !hasModule('reports') },
     { key: 'customers', label: 'Clients', icon: Users, section: 'setup', href: '/customers', hidden: !hasModule('customers') },

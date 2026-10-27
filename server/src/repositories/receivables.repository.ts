@@ -52,7 +52,7 @@ function bucketOf(daysLate: number): AgingBucket {
   return 'over90';
 }
 
-async function openDocuments(params: { storeId?: string; customerId?: string }): Promise<ReceivableDoc[]> {
+export async function openDocuments(params: { storeId?: string; customerId?: string }): Promise<ReceivableDoc[]> {
   const values: unknown[] = [];
   const add = (v: unknown) => { values.push(v); return `$${values.length}`; };
   // Pièce sans magasin (facture « société », import) : visible de tous les magasins.

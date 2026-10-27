@@ -151,6 +151,7 @@ function SettingsShell() {
       </>
     ),
     purchasing: <ParametersPanel domains={['purchasing']} />,
+    salesRules: <ParametersPanel keys={['sales.quotes', 'sales.dunning']} />,
     tax: <TaxCodesTab />,
     currencies: <CurrenciesTab />,
     numbering: <NumberingTab />,
