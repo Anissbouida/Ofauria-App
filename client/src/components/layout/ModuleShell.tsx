@@ -32,10 +32,12 @@ export interface ModuleView<K extends string = string> {
   /** Masque l'ecran (droits, role) : il disparait du menu et son URL retombe sur le premier ecran. */
   hidden?: boolean;
   /**
-   * Ecran tenu par un autre module (ex. boite d'approbation, reglages dans Parametres) :
-   * l'entree y renvoie au lieu d'etre un ecran du module.
+   * Ecran porte par sa propre route : l'entree y navigue au lieu de changer ?tab=.
+   * Sert aux modules faits de plusieurs pages (Production) et aux renvois vers un autre module.
    */
   href?: string;
+  /** Renvoi vers un autre module (boite d'approbation, Parametres…) : signale par une fleche. */
+  external?: boolean;
   /** Pastille de compteur (pieces a traiter). */
   badge?: number;
 }
@@ -59,7 +61,7 @@ export function useModuleView<K extends string>(views: ModuleView<K>[]) {
   return { current, select, visible };
 }
 
-export function ModuleShell<K extends string>({ title, views, current, onSelect, actions, flush, children }: {
+export function ModuleShell<K extends string>({ title, views, current, onSelect, actions, flush, bar = true, children }: {
   title: string;
   views: ModuleView<K>[];
   current: ModuleView<K> | undefined;
@@ -68,6 +70,8 @@ export function ModuleShell<K extends string>({ title, views, current, onSelect,
   actions?: ReactNode;
   /** Contenu sans marge : pour les ecrans qui gerent eux-memes leurs bandeaux pleine largeur. */
   flush?: boolean;
+  /** false : pas de barre de fil d'Ariane, les pages du module affichent la leur. */
+  bar?: boolean;
   children: ReactNode;
 }) {
   const navigate = useNavigate();
@@ -75,8 +79,8 @@ export function ModuleShell<K extends string>({ title, views, current, onSelect,
   const sectionLabel = MODULE_SECTIONS.find(s => s.key === current?.section)?.label;
 
   return (
-    <div className="odoo-scope module-shell">
-      <div className="odoo-control-bar">
+    <div className={`odoo-scope module-shell${bar ? '' : ' no-bar'}`}>
+      {bar && <div className="odoo-control-bar">
         <div className="odoo-breadcrumb" aria-label="Fil d'Ariane">
           <span>{title}</span>
           {current && current.section !== 'dashboard' && (
@@ -86,7 +90,7 @@ export function ModuleShell<K extends string>({ title, views, current, onSelect,
           <span className="odoo-breadcrumb-current">{current?.label}</span>
         </div>
         {actions}
-      </div>
+      </div>}
 
       <div className="module-shell-body">
         <aside className="module-shell-nav" aria-label={`Écrans du module ${title}`}>
@@ -105,7 +109,7 @@ export function ModuleShell<K extends string>({ title, views, current, onSelect,
                       aria-current={active ? 'page' : undefined}>
                       <Icon size={15} /> {v.label}
                       {!!v.badge && <span className="module-shell-badge">{v.badge > 99 ? '99+' : v.badge}</span>}
-                      {v.href && <ExternalLink size={12} className="module-shell-external" />}
+                      {v.external && <ExternalLink size={12} className="module-shell-external" />}
                     </button>
                   );
                 })}

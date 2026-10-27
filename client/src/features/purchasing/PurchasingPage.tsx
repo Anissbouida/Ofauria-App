@@ -80,9 +80,9 @@ export default function PurchasingPage() {
     { key: 'purchase_orders', label: 'Bons de commande', icon: ClipboardList, section: 'operations' },
     { key: 'invoices', label: 'Factures reçues', icon: FileText, section: 'operations' },
     // Boîte d'approbation (lot 8), sans passer par la cloche.
-    { key: 'approvals', label: 'À approuver', icon: ClipboardCheck, section: 'operations', href: '/approvals', badge: approvalsCount },
+    { key: 'approvals', label: 'À approuver', icon: ClipboardCheck, section: 'operations', href: '/approvals', external: true, badge: approvalsCount },
     { key: 'suppliers', label: 'Fournisseurs', icon: Truck, section: 'setup' },
-    { key: 'settings', label: 'Réglages des achats', icon: Settings, section: 'setup', href: '/settings?page=purchasing' },
+    { key: 'settings', label: 'Réglages des achats', icon: Settings, section: 'setup', href: '/settings?page=purchasing', external: true },
   ];
   // Onglet ouvrable par lien (?tab=purchase_orders), ex. depuis Stock › À commander après création des BC.
   const { current, select } = useModuleView(views);

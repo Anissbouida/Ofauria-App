@@ -27,6 +27,8 @@ import ProductionPage from './features/production/ProductionPage';
 import PlanDetailPage from './features/production/PlanDetailPage';
 import BonSortiePrelevementPage from './features/production/BonSortiePrelevementPage';
 import ProductionDashboardPage from './features/production/ProductionDashboardPage';
+import ProductionLayout from './features/production/ProductionLayout';
+import SalesLayout from './features/sales/SalesLayout';
 import UsersPage from './features/users/UsersPage';
 import SettingsPage from './features/settings/SettingsPage';
 import AccountingPage from './features/accounting/AccountingPage';
@@ -61,11 +63,14 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route element={<AppLayout />}>
               <Route path="/" element={<HomePage />} />
-              <Route path="/products" element={<ProductsPage />} />
-              <Route path="/orders" element={<OrdersPage />} />
               <Route path="/pos" element={<POSPage />} />
-              <Route path="/sales" element={<SalesPage />} />
-              <Route path="/customers" element={<CustomersPage />} />
+              {/* Module Ventes : commandes, ventes, clients et produits sous une même barre latérale. */}
+              <Route element={<SalesLayout />}>
+                <Route path="/orders" element={<OrdersPage />} />
+                <Route path="/sales" element={<SalesPage />} />
+                <Route path="/customers" element={<CustomersPage />} />
+                <Route path="/products" element={<ProductsPage />} />
+              </Route>
               {/* Module Stock = ex-Économat (/inventory) + ex-Pesage (/warehouse), fusion du
                   2026-10-11. Les anciennes URL redirigent (bookmarks, notifications deja emises). */}
               <Route path="/stock" element={<StockPage />} />
@@ -81,10 +86,13 @@ export default function App() {
               <Route path="/recipes/:id/nomenclature" element={<NomenclaturePage />} />
               {/* Préparations de base : même ossature, contenu adapté à une fournée. */}
               <Route path="/recipes/:id/preparation" element={<PreparationPage />} />
-              <Route path="/production" element={<ProductionPage />} />
-              <Route path="/production/dashboard" element={<ProductionDashboardPage />} />
-              <Route path="/forecast" element={<ForecastPage />} />
-              <Route path="/haccp" element={<HaccpPage />} />
+              {/* Module Production : plusieurs pages sous une même barre latérale. */}
+              <Route element={<ProductionLayout />}>
+                <Route path="/production" element={<ProductionPage />} />
+                <Route path="/production/dashboard" element={<ProductionDashboardPage />} />
+                <Route path="/forecast" element={<ForecastPage />} />
+                <Route path="/haccp" element={<HaccpPage />} />
+              </Route>
               <Route path="/production/:id" element={<PlanDetailPage />} />
               <Route path="/replenishment" element={<ReplenishmentPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />

@@ -348,7 +348,7 @@ export default function StockPage() {
     // Analyse : les endpoints consommation/achats sont reserves admin/gerant cote serveur.
     { key: 'analyse', label: 'Analyse', icon: BarChart3, section: 'reports', hidden: !canManageIngredients },
     // Types de contenant, catégories : tenus dans Paramètres › Référentiel.
-    { key: 'referentiel', label: 'Référentiels', icon: ListTree, section: 'setup', hidden: !hasModule('settings'), href: '/settings?page=referentiel' },
+    { key: 'referentiel', label: 'Référentiels', icon: ListTree, section: 'setup', hidden: !hasModule('settings'), href: '/settings?page=referentiel', external: true },
   ];
   const currentKey: StockView = econoTab === 'stock' ? (zone === 'entame' ? 'pesee' : 'reserve') : econoTab;
   const selectView = (key: StockView) => {

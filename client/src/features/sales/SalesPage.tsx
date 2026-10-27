@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { salesApi } from '../../api/sales.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
@@ -104,9 +105,23 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
   );
 }
 
+/** Écrans de la page Ventes, repris par la barre latérale du module (SalesLayout). */
+const MAIN_TAB_KEYS = ['sales', 'unpaid', 'returns', 'sessions', 'invoices'] as const;
+export const SALES_MAIN_TABS: { key: typeof MAIN_TAB_KEYS[number]; label: string }[] = [
+  { key: 'sales', label: 'Ventes' },
+  // Créances clients : balance âgée (tickets sur compte client + factures ouvertes).
+  { key: 'unpaid', label: 'Créances clients' },
+  { key: 'returns', label: 'Retours & Échanges' },
+  { key: 'sessions', label: 'Périodes de travail' },
+  { key: 'invoices', label: 'Factures émises' },
+];
+
 export default function SalesPage() {
   const queryClient = useQueryClient();
-  const [mainTab, setMainTab] = useState<'sales' | 'special' | 'unpaid' | 'sessions' | 'returns' | 'invoices'>('sales');
+  // Écran porté par l'URL (?tab=) et choisi dans la barre latérale du module Ventes (SalesLayout).
+  const [params] = useSearchParams();
+  const mainTab = (MAIN_TAB_KEYS as readonly string[]).includes(params.get('tab') ?? '')
+    ? params.get('tab') as typeof MAIN_TAB_KEYS[number] : 'sales';
   const [view, setView] = useState<SalesView>('receipt');
   const [dateFrom, setDateFrom] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -427,16 +442,7 @@ export default function SalesPage() {
     : summary.reduce((sum: number, s: Record<string, any>) => sum + parseInt(s.sale_count as string || '0'), 0);
   const returnsCount = salesReturns.filter((r: Record<string, any>) => r.type === 'return').length;
 
-  const mainTabs = [
-    { key: 'sales' as const, label: 'Ventes', icon: Receipt },
-    // Créances clients : balance âgée (tickets sur compte client + factures ouvertes).
-    { key: 'unpaid' as const, label: 'Créances clients', icon: Clock },
-    { key: 'returns' as const, label: 'Retours & Échanges', icon: RotateCcw },
-    { key: 'sessions' as const, label: 'Périodes de travail', icon: Lock },
-    { key: 'invoices' as const, label: 'Factures émises', icon: FileText },
-  ];
-
-  const currentMainTab = mainTabs.find(t => t.key === mainTab);
+  const currentMainTab = SALES_MAIN_TABS.find(t => t.key === mainTab);
 
   return (
     <div className="odoo-scope" style={{ minHeight: '100%' }}>
@@ -529,20 +535,6 @@ export default function SalesPage() {
           </div>
         </ModalBackdrop>
       )}
-
-      {/* Main tabs */}
-      <div className="odoo-tabs">
-        {mainTabs.map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button key={tab.key} onClick={() => setMainTab(tab.key)}
-              className={`odoo-tab ${mainTab === tab.key ? 'active' : ''}`}>
-              <Icon size={13} style={{ marginRight: 4 }} />
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
 
       <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
