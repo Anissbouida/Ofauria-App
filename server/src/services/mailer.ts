@@ -104,6 +104,11 @@ export async function processOutbox(limit = 50): Promise<{ sent: number; failed:
     const w = await db.query(`SELECT COUNT(*)::int AS n FROM email_outbox WHERE status = 'queued'`);
     return { sent: 0, failed: 0, waiting: w.rows[0].n, message: mode() === 'off' ? 'Serveur d\'envoi non configuré' : 'Envoi coupé dans les paramètres' };
   }
+  // Un message resté en file plus de 72 h (serveur d'envoi pas encore configuré, envoi coupé)
+  // n'est plus d'actualité : annulé plutôt qu'envoyé en retard avec tout l'arriéré.
+  await db.query(
+    `UPDATE email_outbox SET status = 'cancelled', last_error = 'Trop ancien : non envoyé (plus de 72 h en attente)'
+      WHERE status = 'queued' AND created_at < now() - interval '72 hours'`);
   let sent = 0; let failed = 0;
   for (let i = 0; i < limit; i++) {
     const client = await db.getClient();

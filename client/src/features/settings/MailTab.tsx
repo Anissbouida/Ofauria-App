@@ -60,7 +60,7 @@ export default function MailTab() {
         <StatusBanner tone="warning" icon={Mail} title="Aucun serveur d'envoi configuré">
           Les e-mails sont mis en file mais ne partent pas. L'hébergeur doit renseigner les variables du serveur d'envoi
           (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM) ; ce sont des secrets, ils ne se saisissent pas ici.
-          Les messages en attente partiront dès que l'envoi sera configuré.
+          Les messages en attente partiront dès que l'envoi sera configuré ; ceux de plus de 72 h sont abandonnés (alertes périmées).
         </StatusBanner>
       ) : st.mode === 'log' ? (
         <StatusBanner tone="info" icon={Mail} title="Mode journal (développement)">
