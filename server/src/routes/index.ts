@@ -69,6 +69,7 @@ import { currenciesRouter } from './currencies.routes.js';
 import { automationRouter } from './automation.routes.js';
 import { quotesRouter } from './quotes.routes.js';
 import { dunningRouter } from './dunning.routes.js';
+import { stockCountsRouter } from './stock-counts.routes.js';
 
 const router = Router();
 
@@ -163,5 +164,6 @@ router.use('/currencies', currenciesRouter);
 router.use('/automation', automationRouter);
 router.use('/quotes', quotesRouter);
 router.use('/dunning', dunningRouter);
+router.use('/stock-counts', stockCountsRouter);
 
 export default router;

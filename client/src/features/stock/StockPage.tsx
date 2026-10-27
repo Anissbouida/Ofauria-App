@@ -18,10 +18,11 @@ import {
   Clock, X, Boxes, CalendarClock, ChevronRight, ChevronDown, ChevronLeft,
   ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen,
   Plus, List, LayoutGrid, ShoppingCart, Upload, Download, BarChart3,
-  ClipboardList, Archive, Beaker, Loader2, ListTree,
+  ClipboardList, ClipboardCheck, Archive, Beaker, Loader2, ListTree,
 } from 'lucide-react';
 import IngredientImportModal from './IngredientImportModal';
 import ConsommationTab from './ConsommationTab';
+import StockCountsTab from './StockCountsTab';
 import GoodsEntryRegisterTab from './GoodsEntryRegisterTab';
 import PackagingPage from '../packaging/PackagingPage';
 import { notify } from '../../components/ui/InlineNotification';
@@ -78,7 +79,7 @@ function situationOf(i: InventoryItem): Situation {
 }
 
 /** Onglets du module Stock (fusion Économat + Pesage, 2026-10-11). */
-type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'analyse' | 'registre';
+type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'registre';
 /** Sous-vues de l'onglet Bons de sortie (?view=). */
 type BonsView = 'queue' | 'transfers' | 'history';
 /** Zone affichee dans l'onglet Stock (?zone=) : scelle (ex-Économat) ou entame (ex-Pesage). */
@@ -101,7 +102,7 @@ export default function StockPage() {
   //   -> A commander (ruptures BSI) -> Consommables -> Analyse (admin/gerant).
   // Tout est persiste en URL (?tab=&view=&zone=&bon=) pour les deep-links
   // (notifications, liens « Ouvrir au pesage », rafraichissement).
-  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'analyse', 'registre'];
+  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'registre'];
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') as StockTab | null;
   const [econoTab, setEconoTab] = useState<StockTab>(
@@ -343,6 +344,8 @@ export default function StockPage() {
     { key: 'bons', label: 'Bons de sortie', icon: ClipboardList, section: 'operations', hidden: !isWarehouseUser, badge: bons.length },
     { key: 'commander', label: 'À commander', icon: ShoppingCart, section: 'operations', hidden: !isWarehouseUser, badge: toOrderCount },
     { key: 'consumables', label: 'Consommables', icon: Boxes, section: 'operations', hidden: !isWarehouseUser },
+    // Mig 367 : inventaire physique (le magasin compte, la direction valide).
+    { key: 'inventaires', label: 'Inventaires', icon: ClipboardCheck, section: 'operations', hidden: !isWarehouseUser },
     // Mig 312 (D9) : registre des entrées (traçabilité ONSSA), magasinier compris.
     { key: 'registre', label: 'Registre des entrées', icon: Archive, section: 'reports', hidden: !isWarehouseUser },
     // Analyse : les endpoints consommation/achats sont reserves admin/gerant cote serveur.
@@ -476,6 +479,8 @@ export default function StockPage() {
               crée directement les BC, le magasinier y fait ses demandes. Remplace la Liste d'attente. */}
           <ToOrderBoard />
         </div>
+      ) : econoTab === 'inventaires' ? (
+        <StockCountsTab />
       ) : econoTab === 'registre' ? (
         <GoodsEntryRegisterTab />
       ) : econoTab === 'analyse' ? (
