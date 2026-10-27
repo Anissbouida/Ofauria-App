@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ShieldCheck, ShoppingCart, Truck, Factory, Trash2, AlertTriangle, CheckCircle2, Loader2, Search, X, Filter,
+  ShoppingCart, Truck, Factory, Trash2, AlertTriangle, CheckCircle2, Loader2, Search, X, Filter,
   Camera, Package, Recycle, Clock, Store, Boxes, Plus, ArrowRight, LayoutDashboard, Thermometer, Siren,
+  ClipboardCheck, Settings,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { controleApi, type ControlIndicator, type LossFamily } from '../../api/controle.api';
 import { serverUrl } from '../../api/client';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
+import { usePermissions } from '../../context/PermissionsContext';
+import { useApprovalsCount } from '../../api/approvals.api';
 import {
   StagePipeline, PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel,
   type PeriodKey, type StageDef,
@@ -33,14 +37,6 @@ import TraceabilityTab from '../traceability/TraceabilityTab';
  */
 
 type Tab = 'overview' | 'achats' | 'production' | 'pertes' | 'haccp' | 'tracabilite';
-const TABS: Array<{ key: Tab; label: string; icon: typeof ShieldCheck }> = [
-  { key: 'overview', label: 'Vue d\'ensemble', icon: LayoutDashboard },
-  { key: 'achats', label: 'Achats & réception', icon: Truck },
-  { key: 'production', label: 'Production', icon: Factory },
-  { key: 'pertes', label: 'Pertes', icon: Trash2 },
-  { key: 'haccp', label: 'HACCP', icon: Thermometer },
-  { key: 'tracabilite', label: 'Traçabilité & rappels', icon: Siren },
-];
 
 const n = (v: number) => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const DOT = { danger: '#dc3545', warning: '#d9822b', ok: '#28a745', unknown: '#adb5bd' } as const;
@@ -50,58 +46,46 @@ function Dot({ color }: { color: string }) {
 }
 
 export default function ControlePage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const tab = (TABS.some(t => t.key === searchParams.get('tab')) ? searchParams.get('tab') : 'overview') as Tab;
-  const setTab = (t: Tab) => {
-    if (t === 'overview') searchParams.delete('tab'); else searchParams.set('tab', t);
-    setSearchParams(searchParams, { replace: true });
-  };
+  const { hasModule } = usePermissions();
+  const approvalsCount = useApprovalsCount();
+  // Rubriques standard (ModuleShell) : chaque domaine contrôlé est un écran de travail ;
+  // la boîte d'approbation et ses circuits vivent ailleurs (renvois).
+  const views: ModuleView<Tab | 'approvals' | 'approval_rules'>[] = [
+    { key: 'overview', label: 'Vue d\'ensemble', icon: LayoutDashboard, section: 'dashboard' },
+    { key: 'achats', label: 'Achats & réception', icon: Truck, section: 'operations' },
+    { key: 'production', label: 'Production', icon: Factory, section: 'operations' },
+    { key: 'pertes', label: 'Pertes', icon: Trash2, section: 'operations' },
+    { key: 'haccp', label: 'HACCP', icon: Thermometer, section: 'operations' },
+    { key: 'tracabilite', label: 'Traçabilité & rappels', icon: Siren, section: 'operations' },
+    { key: 'approvals', label: 'À approuver', icon: ClipboardCheck, section: 'operations', href: '/approvals', external: true, badge: approvalsCount, hidden: !hasModule('purchasing') },
+    { key: 'approval_rules', label: 'Circuits d\'approbation', icon: Settings, section: 'setup', href: '/settings?page=approvals', external: true, hidden: !hasModule('settings') },
+  ];
+  const { current, select } = useModuleView(views);
+  const tab = current?.key as Tab;
   // Période commune à la vue d'ensemble et aux pertes.
   const [period, setPeriod] = useState<PeriodKey>('month');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const range = useMemo(() => periodParams(period, customFrom, customTo), [period, customFrom, customTo]);
-  const current = TABS.find(t => t.key === tab)!;
 
   return (
-    <div className="odoo-scope" style={{ minHeight: '100%' }}>
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <ShieldCheck size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Contrôle & Qualité</span>
-          <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">{current.label}</span>
+    <ModuleShell title="Contrôle & Qualité" views={views} current={current} onSelect={select}>
+      {(tab === 'overview' || tab === 'production' || tab === 'pertes') && (
+        <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0 }}>
+          <PeriodFilter label="Période" title="Période analysée"
+            period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
+          <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+            <strong style={{ color: 'var(--odoo-text)' }}>{periodLabel(period, customFrom, customTo)}</strong>
+          </span>
         </div>
-      </div>
-      <div className="odoo-tabs">
-        {TABS.map(t => {
-          const Icon = t.icon;
-          return (
-            <button key={t.key} type="button" onClick={() => setTab(t.key)} className={`odoo-tab ${tab === t.key ? 'active' : ''}`}>
-              <Icon size={13} style={{ marginRight: 4 }} /> {t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {(tab === 'overview' || tab === 'production' || tab === 'pertes') && (
-          <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0 }}>
-            <PeriodFilter label="Période" title="Période analysée"
-              period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
-            <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
-              <strong style={{ color: 'var(--odoo-text)' }}>{periodLabel(period, customFrom, customTo)}</strong>
-            </span>
-          </div>
-        )}
-        {tab === 'overview' && <Overview range={range} onTab={setTab} />}
-        {tab === 'achats' && <AchatsTab />}
-        {tab === 'production' && <ProductionTab range={range} periodText={periodLabel(period, customFrom, customTo)} />}
-        {tab === 'pertes' && <LossRegister range={range} periodText={periodLabel(period, customFrom, customTo)} />}
-        {tab === 'haccp' && <><DomainIndicators range={range} domain="haccp" /><HaccpManagerTab /></>}
-        {tab === 'tracabilite' && <TraceabilityTab />}
-      </div>
-    </div>
+      )}
+      {tab === 'overview' && <Overview range={range} onTab={select} />}
+      {tab === 'achats' && <AchatsTab />}
+      {tab === 'production' && <ProductionTab range={range} periodText={periodLabel(period, customFrom, customTo)} />}
+      {tab === 'pertes' && <LossRegister range={range} periodText={periodLabel(period, customFrom, customTo)} />}
+      {tab === 'haccp' && <><DomainIndicators range={range} domain="haccp" /><HaccpManagerTab /></>}
+      {tab === 'tracabilite' && <TraceabilityTab />}
+    </ModuleShell>
   );
 }
 

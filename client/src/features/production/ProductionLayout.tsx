@@ -9,9 +9,10 @@ type ProductionView = 'dashboard' | 'plans' | 'forecast' | 'haccp' | 'replenishm
 
 /**
  * Module Production : ses écrans sont des pages distinctes (plans, tableau de bord,
- * prévisions, relevés HACCP), regroupées ici sous les rubriques standard. Chaque page
- * garde son propre fil d'Ariane et ses boutons ; l'entrée active suit l'URL.
- * Le détail d'un plan (/production/:id) reste une page pleine largeur, hors coquille.
+ * prévisions, relevés HACCP, besoins, fiches techniques), regroupées ici sous les
+ * rubriques standard. Chaque page garde son propre fil d'Ariane et ses boutons ;
+ * l'entrée active suit l'URL. Les pages de détail (plan, nomenclature, demande)
+ * restent pleine largeur, hors coquille. Chaque entrée suit son propre droit.
  */
 export default function ProductionLayout() {
   const { user } = useAuth();
@@ -22,12 +23,13 @@ export default function ProductionLayout() {
   const isProductionRole = hasModule('production') && !!user && ROLE_GROUPS.PRODUCTION.includes(user.role);
 
   const views: ModuleView<ProductionView>[] = [
-    { key: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard, section: 'dashboard', href: '/production/dashboard' },
-    { key: 'plans', label: 'Plans de production', icon: Factory, section: 'operations', href: '/production' },
+    { key: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard, section: 'dashboard', href: '/production/dashboard', hidden: !hasModule('production') },
+    { key: 'plans', label: 'Plans de production', icon: Factory, section: 'operations', href: '/production', hidden: !hasModule('production') },
     { key: 'forecast', label: 'Prévisions', icon: TrendingUp, section: 'operations', href: '/forecast', hidden: !isProductionRole },
     { key: 'haccp', label: 'Relevés HACCP', icon: Thermometer, section: 'operations', href: '/haccp', hidden: !isProductionRole },
-    { key: 'replenishment', label: 'Réapprovisionnement', icon: Package, section: 'operations', href: '/replenishment', external: true, hidden: !hasModule('replenishment') },
-    { key: 'recipes', label: 'Recettes', icon: ChefHat, section: 'setup', href: '/recipes', external: true, hidden: !hasModule('recipes') },
+    // Libellés du menu principal (MODULE_LABELS) : Besoins, Fiches techniques.
+    { key: 'replenishment', label: 'Besoins', icon: Package, section: 'operations', href: '/replenishment', hidden: !hasModule('replenishment') },
+    { key: 'recipes', label: 'Fiches techniques', icon: ChefHat, section: 'setup', href: '/recipes', hidden: !hasModule('recipes') },
   ];
   const current = views.find(v => !v.external && v.href === pathname);
 

@@ -82,19 +82,20 @@ export default function App() {
               <Route path="/warehouse/bsi/:id" element={<LegacyRedirect from="warehouse" to="/stock/bsi/:id" />} />
               {/* Emballages repliés dans le Stock (onglet Consommables). */}
               <Route path="/packaging" element={<Navigate to="/stock?tab=consumables" replace />} />
-              <Route path="/recipes" element={<RecipesPage />} />
               <Route path="/recipes/:id/nomenclature" element={<NomenclaturePage />} />
               {/* Préparations de base : même ossature, contenu adapté à une fournée. */}
               <Route path="/recipes/:id/preparation" element={<PreparationPage />} />
-              {/* Module Production : plusieurs pages sous une même barre latérale. */}
+              {/* Module Production : plusieurs pages sous une même barre latérale. Les pages de
+                  détail (plan, nomenclature, préparation, demande) restent en pleine page. */}
               <Route element={<ProductionLayout />}>
                 <Route path="/production" element={<ProductionPage />} />
                 <Route path="/production/dashboard" element={<ProductionDashboardPage />} />
                 <Route path="/forecast" element={<ForecastPage />} />
                 <Route path="/haccp" element={<HaccpPage />} />
+                <Route path="/replenishment" element={<ReplenishmentPage />} />
+                <Route path="/recipes" element={<RecipesPage />} />
               </Route>
               <Route path="/production/:id" element={<PlanDetailPage />} />
-              <Route path="/replenishment" element={<ReplenishmentPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />
               <Route path="/boutique" element={<JourneeBoutiquePage />} />
               {/* Anciens écrans regroupés dans la Journée boutique : liens et favoris conservés. */}
