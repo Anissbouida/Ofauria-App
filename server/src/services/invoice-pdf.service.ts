@@ -76,7 +76,21 @@ interface InvoiceData {
   companyBankName?: string;
   amountInWords?: string;
   logoPath?: string;
+  /** Devis et proforma (mig 365) : même mise en page, titres et mentions adaptés. Défaut : facture. */
+  kind?: 'invoice' | 'quote' | 'proforma';
+  /** Libellé de la ligne « Remise » (ex. « 5 % (−12,00 DH) ») ; défaut « 0 % ». */
+  discountLabel?: string;
+  /** Texte libre ajouté aux conditions (délai de livraison, notes du devis). */
+  extraNotes?: string;
+  /** Prix TTC (particulier, sans TVA détaillée) : sous-total TTC et « TVA incluse ». */
+  pricesInclTax?: boolean;
 }
+
+const KIND_TEXT = {
+  invoice:  { title: 'FACTURE',          number: 'N\u00B0 FACTURE',  due: 'DATE D\u2019\u00C9CH\u00C9ANCE', to: 'FACTURER \u00C0', words: 'ARRETE LA PRESENTE FACTURE A LA SOMME DE :', meta: 'Facture' },
+  quote:    { title: 'DEVIS',            number: 'N\u00B0 DEVIS',    due: 'VALABLE JUSQU\u2019AU',            to: 'CLIENT',          words: 'ARRETE LE PRESENT DEVIS A LA SOMME DE :',     meta: 'Devis' },
+  proforma: { title: 'FACTURE PROFORMA', number: 'N\u00B0 PROFORMA', due: 'VALABLE JUSQU\u2019AU',            to: 'CLIENT',          words: 'ARRETE LA PRESENTE PROFORMA A LA SOMME DE :', meta: 'Proforma' },
+} as const;
 
 // ── Couleurs de la charte ──
 const BROWN = '#8E4A1F';
@@ -160,7 +174,8 @@ function txt(doc: PDFKit.PDFDocument, text: string, x: number, y: number, opts: 
 
 export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   // Mentions communes reglees dans Parametres > Documents (mig 332) et fiche societe.
-  const tpl = await loadDocumentTemplate('invoice');
+  const K = KIND_TEXT[data.kind ?? 'invoice'];
+  const tpl = await loadDocumentTemplate(data.kind && data.kind !== 'invoice' ? 'quote' : 'invoice');
   if (!tpl.showBank) {
     data = { ...data, companyBankName: undefined, companyBankAccount: undefined };
   } else if (!data.companyBankAccount && tpl.bank) {
@@ -178,7 +193,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     margins: { top: M, bottom: 0, left: M, right: M },
     autoFirstPage: true,
     info: {
-      Title: `Facture ${data.invoiceNumber}`,
+      Title: `${K.meta} ${data.invoiceNumber}`,
       Author: data.companyName,
     },
   });
@@ -218,8 +233,8 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   // TITLE — "FACTURE" right-aligned
   // ════════════════════════════════════════════════════════════
   doc.font('Helvetica-BoldOblique').fontSize(28).fillColor(BROWN);
-  txt(doc, 'FACTURE', M, y, { align: 'right', width: CW });
-  const titleWidth = doc.widthOfString('FACTURE');
+  txt(doc, K.title, M, y, { align: 'right', width: CW });
+  const titleWidth = doc.widthOfString(K.title);
   doc.moveTo(PW - M - titleWidth, y + 30).lineTo(PW - M, y + 30).lineWidth(1.5).stroke(BROWN);
   y += 42;
 
@@ -242,7 +257,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     doc.rect(x, yy, w, infoH).lineWidth(0.5).stroke(BORDER);
   }
 
-  drawInfoCell(M, y, infoColW, 'N\u00B0 FACTURE', '', true);
+  drawInfoCell(M, y, infoColW, K.number, '', true);
   drawInfoCell(M + infoColW, y, infoColW, '', data.invoiceNumber, false);
   drawInfoCell(M + infoColW * 2, y, infoColW, 'DATE D\u2019\u00C9MISSION', '', true);
   drawInfoCell(M + infoColW * 3, y, infoColW, '', data.invoiceDate, false);
@@ -250,7 +265,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
   drawInfoCell(M, y, infoColW, 'MODE PAIEMENT', '', true);
   drawInfoCell(M + infoColW, y, infoColW, '', data.paymentMethod || '', false);
-  drawInfoCell(M + infoColW * 2, y, infoColW, 'DATE D\u2019\u00C9CH\u00C9ANCE', '', true);
+  drawInfoCell(M + infoColW * 2, y, infoColW, K.due, '', true);
   drawInfoCell(M + infoColW * 3, y, infoColW, '', data.dueDate || '', false);
   y += infoH + 10;
 
@@ -270,7 +285,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
   drawRect(doc, clientBoxX, y, clientBoxW, clientHeaderH, BROWN);
   doc.font('Helvetica-Bold').fontSize(7.5).fillColor(WHITE);
-  txt(doc, 'FACTURER \u00C0', clientBoxX + 8, y + 6, { width: clientBoxW - 16 });
+  txt(doc, K.to, clientBoxX + 8, y + 6, { width: clientBoxW - 16 });
   y += clientHeaderH;
 
   drawRect(doc, clientBoxX, y, clientBoxW, clientContentH, BROWN);
@@ -378,7 +393,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
   let ny = notesContentY + 6;
   doc.font('Helvetica-Bold').fontSize(7).fillColor(TEXT_DARK);
-  txt(doc, 'ARRETE LA PRESENTE FACTURE A LA SOMME DE :', M + 6, ny, { width: notesW - 12 });
+  txt(doc, K.words, M + 6, ny, { width: notesW - 12 });
   ny += 12;
   doc.font('Helvetica-Oblique').fontSize(7.5).fillColor(GOLD);
   txt(doc, amountWords, M + 6, ny, { width: notesW - 12 });
@@ -419,8 +434,11 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     ty += h;
   }
 
-  drawTotalRow('SOUS-TOTAL HT', `${n(data.totalHT)} DH`, { bold: true });
-  drawTotalRow('REMISE', '0 %');
+  drawTotalRow(data.pricesInclTax ? 'SOUS-TOTAL TTC' : 'SOUS-TOTAL HT', `${n(data.totalHT)} DH`, { bold: true });
+  drawTotalRow('REMISE', data.discountLabel ?? '0 %');
+  if (data.pricesInclTax) {
+    drawTotalRow('TVA', 'incluse');
+  } else {
   // TVA : une ligne par taux si la facture est multi-taux, sinon ligne unique.
   const breakdown = (data.tvaBreakdown || []).filter(b => b.amount !== 0);
   if (breakdown.length > 1) {
@@ -430,12 +448,18 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   } else {
     drawTotalRow(`TVA (${data.tvaRate} %)`, `${n(data.totalTVA)} DH`);
   }
+  }
   drawTotalRow('TOTAL TTC', `${n(data.totalTTC)} DH`, { bg: BROWN, textColor: WHITE, bold: true, height: 28 });
 
   y = Math.max(y + notesContentH + 18, ty + 8);
 
   // ── Conditions de paiement et penalites de retard (loi 69-21) ──
-  const terms = [tpl.paymentTerms && `Conditions de paiement : ${tpl.paymentTerms}`, tpl.latePenalty].filter((x): x is string => !!x);
+  const terms = [
+    data.kind === 'proforma' && 'Document sans valeur comptable : ne vaut pas facture. La facture définitive sera émise à la livraison.',
+    tpl.paymentTerms && (data.kind && data.kind !== 'invoice' ? tpl.paymentTerms : `Conditions de paiement : ${tpl.paymentTerms}`),
+    data.extraNotes,
+    data.kind && data.kind !== 'invoice' ? null : tpl.latePenalty,
+  ].filter((x): x is string => !!x);
   if (terms.length) {
     doc.font('Helvetica').fontSize(6.5).fillColor(TEXT_MUTED);
     for (const t of terms) {
@@ -454,7 +478,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     txt(doc, '_________________________', M, y, { align: 'right', width: CW });
     y += 12;
     doc.font('Helvetica-Oblique').fontSize(7.5).fillColor(TEXT_MUTED);
-    txt(doc, 'Signature & Cachet', M, y, { align: 'right', width: CW });
+    txt(doc, data.kind === 'quote' ? 'Bon pour accord : date, signature et cachet du client' : 'Signature & Cachet', M, y, { align: 'right', width: CW });
   }
 
   // ════════════════════════════════════════════════════════════

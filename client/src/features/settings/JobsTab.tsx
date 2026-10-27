@@ -14,7 +14,7 @@ import { apiErrorMessage } from '../../api/errors';
  */
 const FREQS: [number, string][] = [[1, 'Chaque minute'], [5, 'Toutes les 5 min'], [15, 'Toutes les 15 min'], [30, 'Toutes les 30 min'],
   [60, 'Toutes les heures'], [180, 'Toutes les 3 h'], [360, 'Toutes les 6 h'], [720, 'Toutes les 12 h'], [1440, 'Une fois par jour'], [10080, 'Une fois par semaine']];
-const DOMAINS: Record<string, string> = { system: 'Système', sav: 'SAV', projects: 'Projets', maintenance: 'Maintenance', purchasing: 'Achats' };
+const DOMAINS: Record<string, string> = { system: 'Système', sav: 'SAV', projects: 'Projets', maintenance: 'Maintenance', purchasing: 'Achats', sales: 'Ventes' };
 const TRIGGERS: Record<string, string> = { auto: 'automatique', manual: 'à la main', external: 'déclencheur externe' };
 const dt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const freqLabel = (m: number) => FREQS.find(f => f[0] === m)?.[1] ?? `Toutes les ${m} min`;

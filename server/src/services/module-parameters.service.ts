@@ -10,6 +10,7 @@ export type ExpenseRequiresPo = { enabled: boolean; threshold: number; currency:
 
 const DEFAULTS: Record<string, unknown> = {
   'purchasing.expense_requires_po': { enabled: false, threshold: 2000, currency: 'MAD' } satisfies ExpenseRequiresPo,
+  'sales.quotes': { validity_days: 30 },
 };
 
 export async function getParameter<T>(key: string): Promise<T> {

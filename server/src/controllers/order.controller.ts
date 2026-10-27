@@ -44,13 +44,13 @@ const fail = (res: Response, code: number, message: string) => { res.status(code
  *     prix catalogue moins la remise, TVA par ligne, ni avance ni caisse,
  *     livraison sur BL, facture selon le rythme du client.
  */
-async function loadCustomer(customerId?: string | null) {
+export async function loadCustomer(customerId?: string | null) {
   if (!customerId) return null;
   const r = await db.query(
     `SELECT id, customer_type, remise_pct, tva_exonere, credit_limit, billing_frequency FROM customers WHERE id = $1`, [customerId]);
   return r.rows[0] ?? null;
 }
-const isProCustomer = (c: { customer_type?: string | null } | null) => !!c && (c.customer_type ?? 'particulier') !== 'particulier';
+export const isProCustomer = (c: { customer_type?: string | null } | null) => !!c && (c.customer_type ?? 'particulier') !== 'particulier';
 
 type InItem = { productId: string; quantity: number; unitPrice?: number | string | null; tvaRate?: number | string | null; notes?: string };
 type OrderLine = { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate: number | null; notes?: string };
@@ -74,13 +74,13 @@ function orderDiscount(body: Record<string, unknown>, subtotal: number): { pct: 
 }
 
 /** TVA d'un professionnel calculée sur le HT après remise de commande. */
-function taxAfterDiscount(lines: OrderLine[], subtotal: number, discountAmount: number) {
+export function taxAfterDiscount(lines: OrderLine[], subtotal: number, discountAmount: number) {
   const ratio = subtotal > 0 ? 1 - discountAmount / subtotal : 1;
   return round2(lines.reduce((s, l) => s + (l.tvaRate ? Math.round(l.subtotal * ratio * l.tvaRate) / 100 : 0), 0));
 }
 
 /** Lignes chiffrées : prix saisi, sinon catalogue (particulier) ou catalogue remisé + dernière TVA (professionnel). */
-async function priceLines(items: InItem[], pro: Record<string, unknown> | null) {
+export async function priceLines(items: InItem[], pro: Record<string, unknown> | null) {
   const defaults = pro ? await deliveryNoteRepository.lineDefaults(pro.id as string, items.map(i => i.productId)) : {};
   const lines: OrderLine[] = [];
   const products: Record<string, unknown>[] = [];
@@ -105,7 +105,7 @@ async function priceLines(items: InItem[], pro: Record<string, unknown> | null) 
 }
 
 /** Alerte plafond (non bloquante) : créances ouvertes + BL non facturés + cette commande. */
-async function creditWarning(customer: Record<string, unknown>, orderTotal: number, excludeOrderId?: string) {
+export async function creditWarning(customer: Record<string, unknown>, orderTotal: number, excludeOrderId?: string) {
   const limit = customer.credit_limit != null ? Number(customer.credit_limit) : 0;
   if (!(limit > 0)) return null;
   const situation = await receivablesRepository.customerSituation(customer.id as string);
@@ -120,6 +120,28 @@ async function creditWarning(customer: Record<string, unknown>, orderTotal: numb
   if (exposure <= limit + 0.005) return null;
   return { creditLimit: limit, outstanding: situation.total, pendingOrders: Number(pending), exposure,
     message: `Plafond de crédit dépassé : ${exposure.toFixed(2)} DH engagés pour un plafond de ${limit.toFixed(2)} DH.` };
+}
+
+/** Prévient les chefs concernés quand une commande a déclenché un plan de production. */
+export async function notifyProductionChefs(p: {
+  productionPlanId: string; products: Record<string, unknown>[]; storeId?: string | null; orderNumber: string; pickupDate: string; userId: string;
+}) {
+  const rolesToNotify = new Set<string>();
+  for (const product of p.products) {
+    rolesToNotify.add((product.responsible_role as string) || getRoleForCategorySlug(product.category_slug as string | null));
+  }
+  for (const role of rolesToNotify) {
+    await createNotification({
+      targetRole: role,
+      storeId: p.storeId ?? undefined,
+      type: 'production_plan_created',
+      title: 'Nouvelle demande de production',
+      message: `Commande ${p.orderNumber} pour le ${p.pickupDate} — produits a produire`,
+      referenceType: 'production_plan',
+      referenceId: p.productionPlanId,
+      createdBy: p.userId,
+    });
+  }
 }
 
 export const orderController = {
@@ -245,25 +267,7 @@ export const orderController = {
     const productionPlanId = (order as Record<string, unknown>)._productionPlanId as string | null;
 
     if (productionPlanId) {
-      // Recuperer les roles chefs concernes par les lignes a produire
-      const rolesToNotify = new Set<string>();
-      for (const product of products) {
-        const role = (product.responsible_role as string) || getRoleForCategorySlug(product.category_slug as string | null);
-        rolesToNotify.add(role);
-      }
-
-      for (const role of rolesToNotify) {
-        await createNotification({
-          targetRole: role,
-          storeId: req.user!.storeId,
-          type: 'production_plan_created',
-          title: 'Nouvelle demande de production',
-          message: `Commande ${orderNumber} pour le ${pickupDate} — produits a produire`,
-          referenceType: 'production_plan',
-          referenceId: productionPlanId,
-          createdBy: req.user!.userId,
-        });
-      }
+      await notifyProductionChefs({ productionPlanId, products, storeId: req.user!.storeId, orderNumber, pickupDate, userId: req.user!.userId });
     }
 
     res.status(201).json({ success: true, data: { ...order, advanceReceipt, creditWarning: warning, items: orderItems } });

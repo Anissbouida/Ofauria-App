@@ -29,6 +29,7 @@ import BonSortiePrelevementPage from './features/production/BonSortiePrelevement
 import ProductionDashboardPage from './features/production/ProductionDashboardPage';
 import ProductionLayout from './features/production/ProductionLayout';
 import SalesLayout from './features/sales/SalesLayout';
+import QuotesPage from './features/quotes/QuotesPage';
 import ProjectsPage from './features/projects/ProjectsPage';
 import ProjectDetailPage from './features/projects/ProjectDetailPage';
 import MaintenancePage from './features/maintenance/MaintenancePage';
@@ -69,6 +70,7 @@ export default function App() {
               <Route path="/pos" element={<POSPage />} />
               {/* Module Ventes : commandes, ventes, clients et produits sous une même barre latérale. */}
               <Route element={<SalesLayout />}>
+                <Route path="/quotes" element={<QuotesPage />} />
                 <Route path="/orders" element={<OrdersPage />} />
                 <Route path="/sales" element={<SalesPage />} />
                 <Route path="/customers" element={<CustomersPage />} />

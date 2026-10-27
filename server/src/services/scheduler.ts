@@ -109,6 +109,26 @@ async function rfqDeadline(): Promise<JobResult> {
   return { items: r.rowCount ?? 0, message: r.rowCount ? `${r.rowCount} appel(s) d'offres signalé(s)` : 'Aucune échéance' };
 }
 
+/** Devis envoyés dont la validité est dépassée : « expiré » (motif « sans réponse ») et auteur prévenu. */
+async function quotesExpire(): Promise<JobResult> {
+  const r = await db.query(
+    `UPDATE quotes SET status = 'expired', lost_reason_code = COALESCE(lost_reason_code, 'no_answer'), expiry_notified_at = now()
+      WHERE status = 'sent' AND valid_until < CURRENT_DATE
+      RETURNING id, number, store_id, created_by, total,
+                (SELECT COALESCE(NULLIF(c.company_name, ''), NULLIF(concat_ws(' ', c.first_name, c.last_name), ''))
+                   FROM customers c WHERE c.id = quotes.customer_id) AS customer_label,
+                COALESCE(prospect_company, prospect_name) AS prospect_label`);
+  for (const q of r.rows) {
+    await db.query(`INSERT INTO quote_events (quote_id, event_type, from_value, to_value, note) VALUES ($1, 'status', 'sent', 'expired', 'Validité dépassée')`, [q.id]);
+    await db.query(
+      `INSERT INTO notifications (target_role, target_user_id, store_id, type, title, message, reference_type, reference_id)
+       VALUES ($1, $2, $3, 'quote_expired', $4, $5, 'quote', $6)`,
+      [q.created_by ? 'all' : 'manager', q.created_by, q.store_id, `Devis expiré · ${q.number}`,
+       `${q.customer_label ?? q.prospect_label ?? ''} — ${Number(q.total).toFixed(2)} DH : relancer le client ou classer le devis`, q.id]);
+  }
+  return { items: r.rowCount ?? 0, message: r.rowCount ? `${r.rowCount} devis expiré(s)` : 'Aucun devis expiré' };
+}
+
 async function housekeeping(): Promise<JobResult> {
   const a = await db.query(`DELETE FROM scheduled_job_runs WHERE started_at < now() - interval '30 days'`);
   const b = await db.query(`DELETE FROM email_outbox WHERE status = 'sent' AND sent_at < now() - interval '90 days'`);
@@ -127,6 +147,7 @@ export const JOBS: Record<string, Handler> = {
   project_tasks_overdue: projectTasksOverdue,
   maintenance_due: maintenanceDue,
   rfq_deadline: rfqDeadline,
+  quotes_expire: quotesExpire,
   housekeeping,
 };
 

@@ -8,7 +8,7 @@ import { loadCompanyLegal, type CompanyLegal } from './company-legal.js';
  * pied de page, réglables dans Paramètres › Documents.
  */
 
-export type DocumentType = 'invoice' | 'purchase_order';
+export type DocumentType = 'invoice' | 'purchase_order' | 'quote';
 
 export interface DocumentTemplate {
   legal: CompanyLegal;

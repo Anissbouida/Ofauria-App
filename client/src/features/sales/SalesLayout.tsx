@@ -1,6 +1,7 @@
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
-import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent } from 'lucide-react';
+import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent, FileSignature } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
+import { useAuth } from '../../context/AuthContext';
 import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
 import { SALES_MAIN_TABS } from './SalesPage';
 
@@ -11,6 +12,9 @@ import { SALES_MAIN_TABS } from './SalesPage';
  */
 export default function SalesLayout() {
   const { hasModule } = usePermissions();
+  const { user } = useAuth();
+  // Devis : réservés à la direction, comme les commandes de professionnels (mig 354/365).
+  const isDirection = user?.role === 'admin' || user?.role === 'manager';
   const { pathname } = useLocation();
   const [params] = useSearchParams();
 
@@ -24,6 +28,7 @@ export default function SalesLayout() {
   const views: ModuleView[] = [
     { key: 'reports:overview', label: "Vue d'ensemble", icon: LayoutDashboard, section: 'dashboard', href: '/reports', hidden: !hasModule('reports') },
     { key: 'pos', label: 'Point de vente', icon: Monitor, section: 'operations', href: '/pos', external: true, hidden: !hasModule('pos') },
+    { key: 'quotes', label: 'Devis', icon: FileSignature, section: 'operations', href: '/quotes', hidden: !hasModule('orders') || !isDirection },
     { key: 'orders', label: 'Commandes', icon: ClipboardList, section: 'operations', href: '/orders', hidden: !hasModule('orders') },
     salesView('sales', Receipt),
     salesView('returns', RotateCcw),

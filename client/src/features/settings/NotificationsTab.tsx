@@ -17,7 +17,7 @@ import { notify } from '../../components/ui/InlineNotification';
 const DOMAINS: Record<string, string> = {
   production: 'Production', stock: 'Stock et bons de sortie', replenishment: 'Réapprovisionnement',
   sales: 'Ventes', products: 'Nouveaux produits', quality: 'Qualité', approvals: 'Approbations',
-  sav: 'SAV / réclamations', projects: 'Projets', maintenance: 'Maintenance', purchasing: 'Achats',
+  sav: 'SAV / réclamations', projects: 'Projets', maintenance: 'Maintenance', purchasing: 'Achats', quotes: 'Devis clients',
 };
 
 function errorMessage(err: unknown, fallback: string) {

@@ -98,6 +98,14 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'company_settings', columns: { percent: 'staff_discount_percent' } },
   },
   {
+    key: 'sales.quotes', domain: 'sales', section: 'business',
+    label: 'Devis clients',
+    help: 'Durée de validité proposée sur un nouveau devis (modifiable devis par devis). Passé ce délai, un devis envoyé passe en « expiré » et son auteur est prévenu (mig 365).',
+    fields: [{ name: 'validity_days', label: 'Validité', type: 'integer', unit: 'jours', min: 1, max: 365 }],
+    defaults: { validity_days: 30 },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'purchasing.expense_requires_po', domain: 'purchasing', section: 'business',
     label: 'Bon de commande obligatoire pour les dépenses',
     help: 'Une dépense d\'une catégorie « BC requis » à partir du seuil doit être rattachée à un bon de commande engagé.',
