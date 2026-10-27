@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customersApi } from '../../api/customers.api';
+import { loyaltyApi, tierOf, type LoyaltyTier } from '../../api/promotions.api';
+import CustomerLoyalty from '../promotions/CustomerLoyalty';
 import {
   Plus, Search, Pencil, Star, Trash2, Users, ShoppingCart, Receipt, X, Loader2, Phone, Mail,
   ArrowUpDown, ArrowUp, ArrowDown, Building2, MapPin, HeartHandshake, FileText, CreditCard, User,
@@ -38,18 +40,20 @@ const TYPE_META: Record<CustomerType, { label: string; icon: typeof User }> = {
 };
 const TYPE_OPTIONS = (Object.keys(TYPE_META) as CustomerType[]).map(k => ({ key: k, label: TYPE_META[k].label }));
 
-function loyaltyTier(points: number): { key: string; label: string; tag: string } | null {
-  if (points >= 5000) return { key: 'or', label: 'Or', tag: 'odoo-tag-yellow' };
-  if (points >= 2000) return { key: 'argent', label: 'Argent', tag: 'odoo-tag-grey' };
-  if (points >= 500) return { key: 'bronze', label: 'Bronze', tag: 'odoo-tag-orange' };
-  return null;
+/** Niveau de fidélité (mig 372) : points gagnés sur 12 mois, niveaux paramétrés. */
+function loyaltyTier(points12m: number, tiers: LoyaltyTier[]): { key: string; label: string; tag: string } | null {
+  const t = tierOf(points12m, tiers);
+  return t ? { key: t.code, label: t.label, tag: `odoo-tag-${t.color || 'blue'}` } : null;
 }
-const TIER_OPTIONS = [
-  { key: 'or', label: 'Or (≥ 5 000 pts)' },
-  { key: 'argent', label: 'Argent (≥ 2 000 pts)' },
-  { key: 'bronze', label: 'Bronze (≥ 500 pts)' },
-  { key: 'none', label: 'Sans niveau' },
-];
+function tierOptions(tiers: LoyaltyTier[]) {
+  return [
+    ...[...tiers].sort((a, b) => b.min_points - a.min_points).map(t => ({ key: t.code, label: `${t.label} (≥ ${t.min_points.toLocaleString('fr-FR')} pts / 12 mois)` })),
+    { key: 'none', label: 'Sans niveau' },
+  ];
+}
+function useLoyaltyTiers() {
+  return useQuery({ queryKey: ['loyalty-tiers'], queryFn: loyaltyApi.tiers, staleTime: 300_000 }).data ?? [];
+}
 
 function isMoral(t: string | undefined): boolean {
   return t === 'professionnel' || t === 'association' || t === 'revendeur';
@@ -173,6 +177,7 @@ export default function CustomersPage() {
   });
 
   const today = useMemo(() => new Date(), []);
+  const tiers = useLoyaltyTiers();
   const customers = useMemo(
     () => ((data?.data || []) as Customer[]).map((c): Customer => ({ ...c, _stage: stageOf(c, today) })),
     [data, today],
@@ -183,11 +188,11 @@ export default function CustomersPage() {
     if (typeFilter && (c.customer_type || 'particulier') !== typeFilter) return false;
     if (cityFilter && (c.city || '').trim() !== cityFilter) return false;
     if (tierFilter) {
-      const t = loyaltyTier(Number(c.loyalty_points) || 0);
+      const t = loyaltyTier(Number(c.points_12m) || 0, tiers);
       if (tierFilter === 'none' ? t !== null : t?.key !== tierFilter) return false;
     }
     return true;
-  }), [customers, typeFilter, cityFilter, tierFilter]);
+  }), [customers, typeFilter, cityFilter, tierFilter, tiers]);
 
   const stageStats = useMemo(() => {
     const m: Record<string, { count: number; ca: number; noIce: number }> = {};
@@ -318,7 +323,7 @@ export default function CustomersPage() {
             style={{ flex: '1 1 220px', minWidth: 0 }} />
           {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={muted} />}
           <SelectFilter label="Type" icon={Filter} value={typeFilter} onChange={setTypeFilter} options={TYPE_OPTIONS} />
-          <SelectFilter label="Fidélité" icon={Award} value={tierFilter} onChange={setTierFilter} options={TIER_OPTIONS} />
+          <SelectFilter label="Fidélité" icon={Award} value={tierFilter} onChange={setTierFilter} options={tierOptions(tiers)} />
           <SelectFilter label="Ville" icon={MapPin} value={cityFilter} onChange={setCityFilter} options={cityOptions} allLabel="Toutes" />
           {stage && (
             <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -380,7 +385,7 @@ export default function CustomersPage() {
                   const TypeIcon = meta.icon;
                   const { primary, secondary } = displayName(c);
                   const points = Number(c.loyalty_points) || 0;
-                  const tier = loyaltyTier(points);
+                  const tier = loyaltyTier(Number(c.points_12m) || 0, tiers);
                   const spent = parseFloat(c.total_spent) || 0;
                   const action = nextAction(c);
                   const detail = stageDetail(c);
@@ -478,7 +483,7 @@ function CustomerDetailPanel({ customerId, onClose, onEdit }: {
     queryKey: ['customer-stats', customerId],
     queryFn: () => customersApi.stats(customerId),
   });
-  const [tab, setTab] = useState<'fiche' | 'sales' | 'orders'>('fiche');
+  const [tab, setTab] = useState<'fiche' | 'sales' | 'orders' | 'loyalty'>('fiche');
   // Situation de compte (mig 351) : ce que le client doit, en retard, plafond restant.
   const { data: situation } = useQuery({
     queryKey: ['customer-situation', customerId],
@@ -493,7 +498,8 @@ function CustomerDetailPanel({ customerId, onClose, onEdit }: {
   const TypeIcon = meta.icon;
   const { primary, secondary } = customer ? displayName(customer) : { primary: '', secondary: null };
   const points = Number(customer?.loyalty_points) || 0;
-  const tier = loyaltyTier(points);
+  const { data: loyalty } = useQuery({ queryKey: ['loyalty', 'customer', customerId], queryFn: () => loyaltyApi.customer(customerId) });
+  const tier = loyalty?.tier ?? null;
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -511,6 +517,7 @@ function CustomerDetailPanel({ customerId, onClose, onEdit }: {
               <button type="button" onClick={() => setTab('fiche')} className={tab === 'fiche' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '3px 10px' }}>Fiche</button>
               <button type="button" onClick={() => setTab('sales')} className={tab === 'sales' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '3px 10px', display: 'inline-flex', gap: 4, alignItems: 'center' }}><Receipt size={12} /> Ventes · {sales?.count || 0}</button>
               <button type="button" onClick={() => setTab('orders')} className={tab === 'orders' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '3px 10px', display: 'inline-flex', gap: 4, alignItems: 'center' }}><ShoppingCart size={12} /> Commandes · {orders?.count || 0}</button>
+              <button type="button" onClick={() => setTab('loyalty')} className={tab === 'loyalty' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '3px 10px', display: 'inline-flex', gap: 4, alignItems: 'center' }}><Star size={12} /> Fidélité</button>
               <button type="button" onClick={() => onEdit(customer)} className="odoo-btn-secondary" style={{ padding: '3px 10px', display: 'inline-flex', gap: 4, alignItems: 'center', marginLeft: 6 }}><Pencil size={12} /> Modifier</button>
             </div>
           )}
@@ -639,6 +646,7 @@ function CustomerDetailPanel({ customerId, onClose, onEdit }: {
                 }} />
             )}
 
+            {tab === 'loyalty' && <CustomerLoyalty customerId={customerId} />}
             {tab === 'orders' && (
               <HistoryTable empty="Aucune commande"
                 rows={(orders?.history || []) as Customer[]}

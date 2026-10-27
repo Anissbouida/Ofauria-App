@@ -3,6 +3,7 @@ import { logger } from '../utils/logger.js';
 import { processOutbox } from './mailer.js';
 import { maintenanceRepository } from '../repositories/maintenance.repository.js';
 import { dunningRepository } from '../repositories/dunning.repository.js';
+import { expireDue as loyaltyExpireDue } from './loyalty.js';
 
 /**
  * Tâches planifiées (mig 364).
@@ -170,6 +171,7 @@ export const JOBS: Record<string, Handler> = {
   quotes_expire: quotesExpire,
   dunning_run: () => dunningRepository.run(),
   crm_activities_due: crmActivitiesDue,
+  loyalty_expire: loyaltyExpireDue,
   housekeeping,
 };
 

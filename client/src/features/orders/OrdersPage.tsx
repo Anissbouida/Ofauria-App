@@ -692,9 +692,14 @@ function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--odoo-text-muted)' }}>Sous-total{pro ? ' HT' : ''}</span><span>{n(totalAmt + discountAmt - taxAmt)} DH</span>
                 </div>
-                {discountAmt > 0 && (
+                {num(o.promotion_amount) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f5132' }}>
+                    <span>Promotions</span><span>-{n(num(o.promotion_amount))} DH</span>
+                  </div>
+                )}
+                {discountAmt - num(o.promotion_amount) > 0.004 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#721c24' }}>
-                    <span>Remise{o.discount_pct != null ? ` (${num(o.discount_pct)} %)` : ''}</span><span>-{n(discountAmt)} DH</span>
+                    <span>Remise{o.discount_pct != null ? ` (${num(o.discount_pct)} %)` : ''}</span><span>-{n(discountAmt - num(o.promotion_amount))} DH</span>
                   </div>
                 )}
                 {pro && (

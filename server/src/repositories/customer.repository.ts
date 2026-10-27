@@ -25,8 +25,16 @@ export const customerRepository = {
       `SELECT c.*,
         COALESCE(os.orders_count, 0)::int AS orders_count,
         COALESCE(ss.sales_count, 0)::int AS sales_count,
-        GREATEST(os.last_order, ss.last_sale) AS last_purchase_at
+        GREATEST(os.last_order, ss.last_sale) AS last_purchase_at,
+        COALESCE(lp.points_12m, 0)::int AS points_12m
       FROM customers c
+      -- Points gagnés sur 12 mois (mig 372) : base du niveau de fidélité.
+      LEFT JOIN (
+        SELECT customer_id, SUM(points)::int AS points_12m FROM loyalty_transactions
+         WHERE created_at > now() - interval '12 months'
+           AND (kind IN ('earn', 'adjust') AND points > 0 OR kind = 'reverse' AND sale_id IS NOT NULL AND points < 0)
+         GROUP BY customer_id
+      ) lp ON lp.customer_id = c.id
       LEFT JOIN (
         SELECT customer_id, COUNT(*)::int AS orders_count, MAX(created_at) AS last_order
         FROM orders GROUP BY customer_id

@@ -49,6 +49,9 @@ export const checkoutSchema = z.object({
   ]).optional(),
   // Canal de vente (mig 172). Si absent, le controller resout le canal par defaut.
   channelId: uuid.optional().nullable(),
+  // Promotions et fidélité (mig 372).
+  couponCode: z.string().trim().max(40).optional().nullable(),
+  loyaltyPoints: z.coerce.number().int().min(0).max(100_000_000).optional().default(0),
   // Ventilation d'un paiement mixte (mig 250). Obligatoires quand
   // paymentMethod='mixed' ; la coherence cashAmount+cardAmount=total est
   // verifiee dans le controller (le total est calcule cote serveur).

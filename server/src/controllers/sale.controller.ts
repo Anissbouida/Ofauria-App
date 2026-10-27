@@ -1,10 +1,12 @@
 import type { Response } from 'express';
 import { receivablesRepository } from '../repositories/receivables.repository.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
+import { db } from '../config/database.js';
 import { saleRepository } from '../repositories/sale.repository.js';
 import { productRepository } from '../repositories/product.repository.js';
-import { pricingTierRepository } from '../repositories/product-pricing-tier.repository.js';
-import { channelPricingRepository } from '../repositories/product-channel-pricing.repository.js';
+import { posLinePrice } from '../services/pos-pricing.js';
+import { evaluate as evaluatePromotions, type PromoLine } from '../services/promotions.js';
+import { checkRedeem } from '../services/loyalty.js';
 import { salesChannelRepository } from '../repositories/sales-channel.repository.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 import { getVitrineStock } from '../repositories/product-stock.helper.js';
@@ -58,6 +60,7 @@ export const saleController = {
       sachetsGiven, sachetsSuggested, sachetReason,
       channelId: explicitChannelId,
       cashAmount, cardAmount,
+      couponCode, loyaltyPoints = 0,
     } = req.body;
 
     // Paiement reporte = creance d'un client identifie (mig 351, « Compte client ») :
@@ -82,7 +85,8 @@ export const saleController = {
       return;
     }
 
-    const saleItems = [];
+    const saleItems: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit: 'unit' | 'g'; displayUnit: 'g' | 'kg' | null; promoDiscount: number }[] = [];
+    const promoLines: PromoLine[] = [];
     let subtotal = 0;
     for (const item of items) {
       const product = await productRepository.findById(item.productId);
@@ -118,60 +122,51 @@ export const saleController = {
         return;
       }
 
-      // Subtotal :
-      //   - unitaire : prix × quantité
-      //   - au poids : (poids_g / 1000) × prix_par_kg
-      let itemSubtotal: number;
-      let unitPrice: number;
-      let lineUnit: 'unit' | 'g' = 'unit';
+      // Prix du canal, palier au poids ou prix catalogue (services/pos-pricing.ts).
+      const priced = await posLinePrice(product, item.quantity, channelId);
+      const unitPrice = priced.unitPrice;
+      const itemSubtotal = priced.subtotal;
+      const lineUnit = priced.unit;
       // Unité d'affichage du recu : memorise le toggle g/kg du caissier pour
       // les ventes au poids. NULL pour les produits unitaires.
-      let lineDisplayUnit: 'g' | 'kg' | null = null;
-      // Resolution prix selon le canal (mig 173) :
-      //   1) product_channel_pricing si un override existe pour (product, channel)
-      //   2) palier tarifaire (sale_unit=weight)
-      //   3) products.price / price_per_kg
-      const channelOverride = await channelPricingRepository.findOverride(item.productId, channelId);
-
-      if (product.sale_unit === 'weight') {
-        let pricePerKg: number;
-        if (channelOverride?.price_per_kg_override) {
-          pricePerKg = parseFloat(channelOverride.price_per_kg_override);
-        } else {
-          const tier = await pricingTierRepository.findMatchingTier(item.productId, item.quantity);
-          pricePerKg = tier
-            ? parseFloat(tier.prix_per_kg)
-            : parseFloat(product.price_per_kg ?? product.price);
-        }
-        unitPrice = pricePerKg;
-        itemSubtotal = (item.quantity / 1000) * pricePerKg;
-        lineUnit = 'g';
-        lineDisplayUnit = item.displayUnit === 'kg' ? 'kg' : 'g';
-      } else {
-        unitPrice = channelOverride?.price_override
-          ? parseFloat(channelOverride.price_override)
-          : parseFloat(product.price);
-        itemSubtotal = unitPrice * item.quantity;
-      }
-      // Arrondi à 2 décimales (centimes) pour éviter les écarts d'arrondi
-      itemSubtotal = Math.round(itemSubtotal * 100) / 100;
+      const lineDisplayUnit: 'g' | 'kg' | null = lineUnit === 'g' ? (item.displayUnit === 'kg' ? 'kg' : 'g') : null;
       subtotal += itemSubtotal;
-      saleItems.push({ productId: item.productId, quantity: item.quantity, unitPrice, subtotal: itemSubtotal, unit: lineUnit, displayUnit: lineDisplayUnit });
+      saleItems.push({ productId: item.productId, quantity: item.quantity, unitPrice, subtotal: itemSubtotal, unit: lineUnit, displayUnit: lineDisplayUnit, promoDiscount: 0 });
+      promoLines.push({ productId: item.productId, categoryId: product.category_id ?? null, quantity: item.quantity, unit: lineUnit, unitPrice, subtotal: itemSubtotal });
     }
 
     const taxAmount = 0;
 
+    // Promotions (mig 372) : recalculées ici, l'aperçu de la caisse n'est qu'indicatif.
+    const promo = await evaluatePromotions(promoLines, { channel: 'pos', storeId: req.user!.storeId, customerId: customerId || null, couponCode: couponCode || null });
+    if (promo.coupon && (promo.coupon.status === 'invalid' || promo.coupon.status === 'not_applicable')) {
+      res.status(400).json({ success: false, error: { message: `${promo.coupon.message} (${promo.coupon.code})` } });
+      return;
+    }
+    promo.lines.forEach((l, i) => { saleItems[i].promoDiscount = l.discount; });
+    const promotionAmount = promo.total;
+
     // Defense metier : la remise ne doit jamais depasser le sous-total (OWASP A04-4).
     // Le schema Zod borne deja discountAmount a [0, 999999.99] et coerce le type.
-    if (discountAmount > subtotal) {
+    // discountAmount = remise manuelle du caissier, en plus des promotions.
+    if (discountAmount > Math.round((subtotal - promotionAmount) * 100) / 100 + 0.001) {
       res.status(400).json({
         success: false,
-        error: { message: `Remise (${discountAmount}) superieure au sous-total (${subtotal})` },
+        error: { message: `Remise (${discountAmount}) superieure au montant apres promotions (${(subtotal - promotionAmount).toFixed(2)})` },
       });
       return;
     }
 
-    const total = subtotal - discountAmount + taxAmount;
+    // Points de fidélité utilisés : une remise payée par la dette de fidélité.
+    let loyaltyAmount = 0;
+    if (loyaltyPoints > 0) {
+      if (!customerId) { res.status(400).json({ success: false, error: { message: 'Choisissez le client pour utiliser ses points' } }); return; }
+      const r = await checkRedeem(db, customerId, loyaltyPoints, Math.round((subtotal - promotionAmount - discountAmount) * 100) / 100);
+      if ('error' in r) { res.status(400).json({ success: false, error: { message: r.error } }); return; }
+      loyaltyAmount = r.amount;
+    }
+
+    const total = Math.round((subtotal - promotionAmount - discountAmount - loyaltyAmount + taxAmount) * 100) / 100;
 
     // Vente à crédit (mig 366) : refusée pour un client bloqué, ou au-delà du plafond si le contrôle est bloquant.
     if (paymentStatus === 'unpaid' && customerId) {
@@ -245,7 +240,10 @@ export const saleController = {
 
     const sale = await saleRepository.create({
       customerId, userId: req.user!.userId,
-      subtotal, taxAmount, discountAmount, total, paymentMethod: effectivePaymentMethod, notes, items: saleItems,
+      subtotal, taxAmount, discountAmount: Math.round((discountAmount + promotionAmount + loyaltyAmount) * 100) / 100, total,
+      paymentMethod: effectivePaymentMethod, notes, items: saleItems,
+      promotionAmount, appliedPromotions: promo.applied, couponCode: promo.coupon?.status === 'applied' ? promo.coupon.code.toUpperCase() : null,
+      loyaltyPointsUsed: loyaltyAmount > 0 ? loyaltyPoints : 0, loyaltyAmount,
       sessionId: activeSession.id, storeId: req.user!.storeId,
       paymentStatus, unpaidCustomerName: unpaidCustomerName?.trim() || undefined,
       employeeId: employeeId || undefined,

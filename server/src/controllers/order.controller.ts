@@ -11,6 +11,7 @@ import { deliveryNoteRepository } from '../repositories/delivery-note.repository
 import { receivablesRepository } from '../repositories/receivables.repository.js';
 import { db } from '../config/database.js';
 import { dunningRepository, dunningSettings } from '../repositories/dunning.repository.js';
+import { evaluate as evaluatePromotions, recordApplied } from '../services/promotions.js';
 
 /** Category slug → chef role mapping */
 const CATEGORY_ROLE_MAP: Record<string, string> = {
@@ -72,6 +73,21 @@ function orderDiscount(body: Record<string, unknown>, subtotal: number): { pct: 
   if (!Number.isFinite(pct) || pct < 0 || pct > 100) return { error: 'Remise invalide : entre 0 et 100 %' };
   pct = round2(pct);
   return { pct, amount: round2(subtotal * pct / 100) };
+}
+
+/**
+ * Remise d'une commande ou d'un devis (mig 372) : promotions en vigueur d'abord, puis la
+ * remise manuelle en % sur le reste. discount = promotions + remise manuelle.
+ */
+export async function documentDiscount(
+  lines: OrderLine[], products: Record<string, any>[], subtotal: number, pct: number,
+  ctx: { channel: 'orders' | 'quotes'; storeId?: string | null; customerId?: string | null },
+) {
+  const promo = await evaluatePromotions(lines.map((l, i) => ({
+    productId: l.productId, categoryId: products[i]?.category_id ?? null, quantity: l.quantity, unit: 'unit' as const, unitPrice: l.unitPrice, subtotal: l.subtotal,
+  })), ctx);
+  const manual = round2((subtotal - promo.total) * pct / 100);
+  return { promotionAmount: promo.total, applied: promo.applied, discount: round2(promo.total + manual) };
 }
 
 /** TVA d'un professionnel calculée sur le HT après remise de commande. */
@@ -203,7 +219,8 @@ export const orderController = {
     const { lines: orderItems, products, subtotal } = priced;
     const disc = orderDiscount(req.body, subtotal);
     if ('error' in disc) { fail(res, 400, disc.error); return; }
-    const discountAmount = disc.amount, discountPct = disc.pct;
+    const promo = await documentDiscount(orderItems, products as Record<string, any>[], subtotal, disc.pct, { channel: 'orders', storeId: req.user!.storeId, customerId: customerId || null });
+    const discountAmount = promo.discount, discountPct = disc.pct;
     const taxAmount = taxAfterDiscount(orderItems, subtotal, discountAmount);
     const total = round2(subtotal - discountAmount + taxAmount);
     if (total < 0) { fail(res, 400, 'Remise supérieure au montant de la commande'); return; }
@@ -240,6 +257,10 @@ export const orderController = {
       subtotal, taxAmount, discountAmount, discountPct, total, advanceAmount: advance, paymentMethod, notes, pickupDate, orderDate, items: orderItems,
       sessionId: activeSession?.id, storeId: req.user!.storeId,
     });
+    if (promo.applied.length) {
+      await db.query(`UPDATE orders SET promotion_amount = $2 WHERE id = $1`, [order.id, promo.promotionAmount]);
+      await recordApplied(db, { orderId: order.id }, promo.applied);
+    }
 
     // Create a sale record for the advance so it appears in cash register & sales reports
     let advanceReceipt = null;
@@ -312,10 +333,11 @@ export const orderController = {
 
     const priced = await priceLines(items, pro);
     if ('error' in priced) { fail(res, 400, priced.error as string); return; }
-    const { lines: orderItems, subtotal } = priced;
+    const { lines: orderItems, products: updProducts, subtotal } = priced;
     const disc = orderDiscount(req.body, subtotal);
     if ('error' in disc) { fail(res, 400, disc.error); return; }
-    const discountAmount = disc.amount, discountPct = disc.pct;
+    const promo = await documentDiscount(orderItems, updProducts as Record<string, any>[], subtotal, disc.pct, { channel: 'orders', storeId: existing.store_id ?? req.user!.storeId, customerId: customerId || null });
+    const discountAmount = promo.discount, discountPct = disc.pct;
     const taxAmount = taxAfterDiscount(orderItems, subtotal, discountAmount);
     const total = round2(subtotal - discountAmount + taxAmount);
     if (total + 0.005 < advance) { fail(res, 400, `Le total (${total.toFixed(2)} DH) ne peut pas descendre sous l'avance encaissée (${advance.toFixed(2)} DH)`); return; }
@@ -327,6 +349,8 @@ export const orderController = {
     });
 
     if (!order) { fail(res, 400, 'Commande non modifiable (livree ou annulee)'); return; }
+    await db.query(`UPDATE orders SET promotion_amount = $2 WHERE id = $1`, [req.params.id, promo.promotionAmount]);
+    await recordApplied(db, { orderId: req.params.id }, promo.applied, false);
 
     // Resynchroniser une ancienne facture emise liee a la commande (avant les BL).
     // replaceItems refuse si le nouveau total devient inferieur au paid_amount.

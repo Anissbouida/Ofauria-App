@@ -57,7 +57,7 @@ export interface GeneratedEntry {
   entry_date: string;
   description: string;
   source_kind: 'invoice' | 'payment' | 'sale' | 'backfill' | 'manual' | 'shift_entry' | 'advance_repayment' | 'product_loss' | 'closure_diff'
-    | 'goods_receipt' | 'goods_receipt_return';
+    | 'goods_receipt' | 'goods_receipt_return' | 'loyalty';
   source_id: string;
   // Discriminant pour les sources a ecritures multiples (cheque : emission/cashing).
   source_detail?: string | null;
@@ -819,7 +819,7 @@ export function fromPaymentCashing(p: PaymentRow): GeneratedEntry | null {
 export async function persistEntry(
   client: PoolClient,
   entry: GeneratedEntry,
-  opts: { markAsBackfill?: boolean; userId: string }
+  opts: { markAsBackfill?: boolean; userId: string | null }
 ): Promise<{ id: string; entry_number: string; created: boolean }> {
   // Idempotence : verifie si une ecriture existe deja pour cette source.
   // IMPORTANT : on ne filtre PAS sur source_kind. Un meme evenement economique

@@ -2,7 +2,8 @@ import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { orderRepository } from './order.repository.js';
 import { crmRepository } from './crm.repository.js';
-import { loadCustomer, isProCustomer, priceLines, taxAfterDiscount, creditWarning, creditGate, notifyProductionChefs } from '../controllers/order.controller.js';
+import { loadCustomer, isProCustomer, priceLines, taxAfterDiscount, creditWarning, creditGate, notifyProductionChefs, documentDiscount } from '../controllers/order.controller.js';
+import { recordApplied } from '../services/promotions.js';
 
 /**
  * Devis clients (mig 365).
@@ -54,7 +55,7 @@ async function addEvent(runner: Runner, quoteId: string, p: { type: string; from
 }
 
 /** Lignes chiffrées et totaux, selon le client (professionnel = HT + TVA). */
-async function compute(input: QuoteInput) {
+async function compute(input: QuoteInput, storeId: string | null = null) {
   const customer = await loadCustomer(input.customerId ?? null);
   if (input.customerId && !customer) return { error: 'Client introuvable' } as const;
   const pro = isProCustomer(customer) ? customer : null;
@@ -73,9 +74,11 @@ async function compute(input: QuoteInput) {
   }));
   const subtotal = priced.subtotal;
   const pct = round2(Math.min(100, Math.max(0, Number(input.discountPct ?? 0) || 0)));
-  const discount = round2(subtotal * pct / 100);
+  // Promotions en vigueur (mig 372), puis la remise manuelle sur le reste.
+  const promo = await documentDiscount(lines, priced.products as Record<string, any>[], subtotal, pct, { channel: 'quotes', storeId, customerId: input.customerId ?? null });
+  const discount = promo.discount;
   const tax = withTax ? taxAfterDiscount(lines, subtotal, discount) : 0;
-  return { customer, pro, withTax, lines, products: priced.products, subtotal, pct, discount, tax, total: round2(subtotal - discount + tax) };
+  return { customer, pro, withTax, lines, products: priced.products, subtotal, pct, discount, promotionAmount: promo.promotionAmount, applied: promo.applied, tax, total: round2(subtotal - discount + tax) };
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -147,7 +150,7 @@ export const quoteRepository = {
   },
 
   async create(input: QuoteInput, ctx: { userId: string; storeId: string | null; validityDays: number }) {
-    const c = await compute(input);
+    const c = await compute(input, ctx.storeId);
     if ('error' in c) return { error: c.error };
     const quoteDate = input.quoteDate ?? today();
     const validUntil = input.validUntil ?? plusDays(quoteDate, ctx.validityDays);
@@ -168,6 +171,8 @@ export const quoteRepository = {
          input.deliveryTerms?.trim() || null, input.notes?.trim() || null, input.internalNotes?.trim() || null, ctx.userId, input.opportunityId ?? null]);
       const id = r.rows[0].id as string;
       await this._writeLines(client, id, c.lines);
+      await client.query(`UPDATE quotes SET promotion_amount = $2 WHERE id = $1`, [id, c.promotionAmount]);
+      await recordApplied(client, { quoteId: id }, c.applied);
       await addEvent(client, id, { type: 'created', to: 'draft', userId: ctx.userId });
       await client.query('COMMIT');
       return { data: await this.findById(id) };
@@ -193,7 +198,7 @@ export const quoteRepository = {
     const cur = await this.findById(id);
     if (!cur) return { error: 'not_found' as const };
     if (!EDITABLE.includes(cur.status)) return { error: `Un devis ${cur.status === 'converted' ? 'converti' : 'clos'} ne se modifie plus : dupliquez-le` };
-    const c = await compute(input);
+    const c = await compute(input, cur.store_id ?? null);
     if ('error' in c) return { error: c.error };
     const quoteDate = input.quoteDate ?? String(cur.quote_date instanceof Date ? cur.quote_date.toISOString().slice(0, 10) : cur.quote_date).slice(0, 10);
     const validUntil = input.validUntil ?? String(cur.valid_until instanceof Date ? cur.valid_until.toISOString().slice(0, 10) : cur.valid_until).slice(0, 10);
@@ -211,6 +216,8 @@ export const quoteRepository = {
          input.title?.trim() || null, quoteDate, validUntil, c.withTax, c.pct, c.subtotal, c.discount, c.tax, c.total,
          input.deliveryTerms?.trim() || null, input.notes?.trim() || null, input.internalNotes?.trim() || null]);
       await this._writeLines(client, id, c.lines);
+      await client.query(`UPDATE quotes SET promotion_amount = $2 WHERE id = $1`, [id, c.promotionAmount]);
+      await recordApplied(client, { quoteId: id }, c.applied);
       await addEvent(client, id, { type: 'edited', note: cur.status === 'sent' ? 'Modifié après envoi' : null, userId });
       await client.query('COMMIT');
       return { data: await this.findById(id) };
@@ -323,7 +330,9 @@ export const quoteRepository = {
     if ('error' in priced) return { error: priced.error as string };
     const subtotal = priced.subtotal;
     const pct = Number(q.discount_pct) || 0;
-    const discount = round2(subtotal * pct / 100);
+    // Les promotions accordées au devis restent acquises, même expirées depuis (mig 372).
+    const promotionAmount = Math.min(subtotal, Number(q.promotion_amount) || 0);
+    const discount = round2(promotionAmount + (subtotal - promotionAmount) * pct / 100);
     const tax = pro ? taxAfterDiscount(priced.lines, subtotal, discount) : 0;
     const total = round2(subtotal - discount + tax);
     if (pro) {
@@ -341,6 +350,11 @@ export const quoteRepository = {
       notes: [`Devis ${q.number}`, q.title, q.delivery_terms].filter(Boolean).join(' · '),
       pickupDate: p.pickupDate, storeId: p.storeId ?? q.store_id ?? undefined, items: priced.lines,
     });
+    if (promotionAmount > 0) {
+      const applied = (await db.query(`SELECT promotion_id, label, amount FROM document_promotions WHERE quote_id = $1`, [id])).rows;
+      await db.query(`UPDATE orders SET promotion_amount = $2 WHERE id = $1`, [order.id, promotionAmount]);
+      await recordApplied(db, { orderId: order.id }, applied.map(a => ({ promotionId: a.promotion_id, label: a.label, amount: Number(a.amount) })));
+    }
     await db.query(`UPDATE quotes SET status = 'converted', order_id = $2, converted_at = now(),
                            customer_id = COALESCE(customer_id, $3), decided_at = COALESCE(decided_at, now()) WHERE id = $1`,
       [id, order.id, customerId]);

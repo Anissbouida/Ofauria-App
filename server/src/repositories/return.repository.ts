@@ -3,6 +3,7 @@ import { nextDocumentNumber } from '../utils/document-number.js';
 import { adjustVitrineStock } from './product-stock.helper.js';
 import { productLotRepository } from './product-lot.repository.js';
 import { generateSaleNumber } from './sale.repository.js';
+import { reverseForSale } from '../services/loyalty.js';
 
 export const returnRepository = {
   async findAll(params: { dateFrom?: string; dateTo?: string; storeId?: string; limit?: number; offset?: number }) {
@@ -202,6 +203,13 @@ export const returnRepository = {
         [returnNumber, data.originalSaleId, data.userId, data.sessionId || null,
          data.type, data.reason || null, data.refundAmount, exchangeSaleId, data.storeId || null]
       );
+
+      // Fidélité (mig 372) : un remboursement retire la part correspondante des points gagnés.
+      if (data.type === 'return' && data.refundAmount > 0) {
+        const orig = await client.query(`SELECT total FROM sales WHERE id = $1`, [data.originalSaleId]);
+        const origTotal = parseFloat(orig.rows[0]?.total ?? '0') || 0;
+        if (origTotal > 0) await reverseForSale(client, data.originalSaleId, data.refundAmount / origTotal, data.userId, `Retour ${returnNumber}`);
+      }
 
       for (const item of data.items) {
         await client.query(

@@ -15,11 +15,12 @@ import { replenishmentApi } from '../../api/replenishment.api';
 import { unsoldDecisionApi } from '../../api/unsold-decision.api';
 import { productionApi } from '../../api/production.api';
 import { returnsApi } from '../../api/returns.api';
+import { promotionsApi } from '../../api/promotions.api';
 import api, { serverUrl } from '../../api/client';
 import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, Check, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock, Settings, ScanLine, ChevronRight, MessageSquareWarning } from 'lucide-react';
+import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, Check, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock, Settings, ScanLine, ChevronRight, MessageSquareWarning, BadgePercent, Star } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ReceiptModal from './ReceiptModal';
 import POSSettingsModal from './POSSettingsModal';
@@ -79,6 +80,9 @@ interface ReceiptData {
   items: { name: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g'; displayUnit?: 'g' | 'kg' }[];
   subtotal: number;
   discountAmount: number;
+  promotions?: { label: string; amount: number }[];
+  loyaltyPoints?: number;
+  loyaltyAmount?: number;
   total: number;
   paymentMethod: string;
   cashGiven?: number;
@@ -146,6 +150,10 @@ export default function POSPage() {
   // Remise ticket : montant en DH ou pourcentage du sous-total.
   const [discountInput, setDiscountInput] = useState('');
   const [discountType, setDiscountType] = useState<'amount' | 'percent'>('amount');
+  // Promotions et fidélité (mig 372) : code promo saisi/validé et points à utiliser.
+  const [couponInput, setCouponInput] = useState('');
+  const [couponCode, setCouponCode] = useState('');
+  const [loyaltyPointsInput, setLoyaltyPointsInput] = useState('');
   // Canal de vente (mig 172) — par defaut le canal "boutique" du serveur
   const [channelId, setChannelId] = useState<string>('');
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
@@ -700,6 +708,9 @@ export default function POSPage() {
         })),
         subtotal,
         discountAmount,
+        promotions: promoEval?.promotion.applied.map(a => ({ label: a.label, amount: a.amount })),
+        loyaltyPoints: loyaltyAmount > 0 ? loyaltyPoints : undefined,
+        loyaltyAmount: loyaltyAmount > 0 ? loyaltyAmount : undefined,
         total,
         paymentMethod: effectivePaymentMethod,
         cashGiven: !isUnpaid && paymentMethod === 'cash' && cashGiven !== null ? cashGiven : undefined,
@@ -718,6 +729,7 @@ export default function POSPage() {
       setCart([]); setCustomerId(''); setCustomerSearch(''); setCashGiven(null);
       setSachetsGiven(0); setSachetReason(''); setUserOverrode(false);
       setDiscountInput(''); setMixedCashInput(''); setMixedCardInput('');
+      setCouponInput(''); setCouponCode(''); setLoyaltyPointsInput('');
       if (paymentMethod === 'mixed') setPaymentMethod('cash');
       playPosSound('success');
       notify.success(isUnpaid ? 'Vente sauvegardée — paiement reporté' : 'Vente enregistree !');
@@ -899,13 +911,38 @@ export default function POSPage() {
     if (item.unit === 'g') return sum + (item.quantity / 1000) * item.price;
     return sum + item.price * item.quantity;
   }, 0);
-  // Remise ticket : bornee a [0, sous-total]. Le serveur refait le meme
-  // controle (remise > sous-total rejetee).
+  // Promotions (mig 372) : aperçu calculé par le serveur, qui refait le calcul à l'encaissement.
+  const promoItems = useMemo(() => cart.map(i => ({ productId: i.productId, quantity: i.quantity })), [cart]);
+  const [manualForEval, setManualForEval] = useState(0);
+  const promoQuery = useQuery({
+    queryKey: ['pos-promotions', promoItems, customerId, channelId, couponCode, manualForEval],
+    queryFn: () => promotionsApi.evaluate({ items: promoItems, customerId: customerId || null, channelId: channelId || null, couponCode: couponCode || null, manualDiscount: manualForEval }),
+    enabled: cart.length > 0,
+    placeholderData: prev => prev,
+    staleTime: 30_000,
+  });
+  const promoEval = cart.length > 0 ? promoQuery.data : undefined;
+  const promotionAmount = promoEval?.promotion.total ?? 0;
+  const afterPromo = Math.max(0, Math.round((subtotal - promotionAmount) * 100) / 100);
+  // Remise ticket du caissier : bornee a [0, montant apres promotions]. Le serveur refait
+  // le meme controle.
   const discountRaw = parseFloat(discountInput.replace(',', '.')) || 0;
   const discountAmount = Math.round(
-    Math.min(subtotal, Math.max(0, discountType === 'percent' ? (subtotal * discountRaw) / 100 : discountRaw)) * 100
+    Math.min(afterPromo, Math.max(0, discountType === 'percent' ? (afterPromo * discountRaw) / 100 : discountRaw)) * 100
   ) / 100;
-  const total = Math.round((subtotal - discountAmount) * 100) / 100;
+  useEffect(() => { setManualForEval(discountAmount); }, [discountAmount]);
+  // Points de fidélité : le maximum dépend du ticket (part maximum payable en points).
+  const loyaltyInfo = customerId ? promoEval?.loyalty ?? null : null;
+  const loyaltyPoints = Math.max(0, parseInt(loyaltyPointsInput, 10) || 0);
+  const loyaltyPointsError = loyaltyPoints > 0 && loyaltyInfo
+    ? (loyaltyPoints < loyaltyInfo.minRedeemPoints ? `Minimum ${loyaltyInfo.minRedeemPoints} points`
+      : loyaltyPoints > loyaltyInfo.maxPoints ? `Maximum ${loyaltyInfo.maxPoints} points sur ce ticket` : null)
+    : null;
+  const loyaltyAmount = loyaltyInfo && loyaltyPoints > 0 && !loyaltyPointsError ? Math.round(loyaltyPoints * loyaltyInfo.pointValue * 100) / 100 : 0;
+  const promoPending = cart.length > 0 && (promoQuery.isFetching || !promoQuery.data);
+  const total = Math.max(0, Math.round((subtotal - promotionAmount - discountAmount - loyaltyAmount) * 100) / 100);
+  // Points gagnés sur le montant payé (même calcul que le serveur à l'encaissement).
+  const willEarn = loyaltyInfo?.enabled ? Math.floor(Math.floor(total / loyaltyInfo.earn.perAmount) * loyaltyInfo.earn.points * loyaltyInfo.earn.multiplier) : 0;
   // Paiement mixte : la somme des deux parts doit couvrir exactement le total.
   const mixedCash = Math.round((parseFloat(mixedCashInput.replace(',', '.')) || 0) * 100) / 100;
   const mixedCard = Math.round((parseFloat(mixedCardInput.replace(',', '.')) || 0) * 100) / 100;
@@ -1081,6 +1118,8 @@ export default function POSPage() {
       notify.error('Espèces + carte doivent égaler le total');
       return;
     }
+    if (promoPending) { notify.error('Calcul des promotions en cours, réessayez'); return; }
+    if (loyaltyPointsError) { notify.error(loyaltyPointsError); return; }
     // Memorise le dernier mode utilise pour pre-selectionner au prochain
     // checkout ('mixed' exclu : sa ventilation n'est pas transposable).
     if (paymentMethod !== 'mixed') {
@@ -1091,6 +1130,8 @@ export default function POSPage() {
       items: cart.map(i => ({ productId: i.productId, quantity: i.quantity, displayUnit: i.displayUnit })),
       paymentMethod,
       discountAmount,
+      couponCode: couponCode || undefined,
+      loyaltyPoints: loyaltyAmount > 0 ? loyaltyPoints : 0,
       cashAmount: paymentMethod === 'mixed' ? mixedCash : undefined,
       cardAmount: paymentMethod === 'mixed' ? mixedCard : undefined,
       sachetsGiven,
@@ -1117,6 +1158,8 @@ export default function POSPage() {
       paymentMethod: 'credit',
       paymentStatus: 'unpaid',
       discountAmount,
+      couponCode: couponCode || undefined,
+      loyaltyPoints: loyaltyAmount > 0 ? loyaltyPoints : 0,
       sachetsGiven,
       sachetsSuggested: suggestedSachets,
       sachetReason: sachetReason.trim() || undefined,
@@ -1825,6 +1868,12 @@ export default function POSPage() {
                       <span>Articles</span>
                       <span>{cart.reduce((s, i) => s + (i.unit === 'g' ? 1 : i.quantity), 0)}</span>
                     </div>
+                    {(promoEval?.promotion.applied ?? []).map(a => (
+                      <div key={a.promotionId} className="flex justify-between text-xs text-emerald-700">
+                        <span className="flex items-center gap-1 truncate"><BadgePercent size={12} /> {a.label}</span>
+                        <span className="whitespace-nowrap">−{a.amount.toFixed(2)} DH</span>
+                      </div>
+                    ))}
                     <div className="flex justify-between text-xl font-bold text-gray-800 pt-1">
                       <span>Total</span>
                       <span className="text-primary-600">{total.toFixed(2)} DH</span>
@@ -4170,12 +4219,59 @@ export default function POSPage() {
             <div className="px-6 pt-6 pb-4 border-b border-gray-100">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Total à encaisser</p>
               <p className="text-4xl font-bold text-primary-600">{total.toFixed(2)} <span className="text-2xl">DH</span></p>
-              {discountAmount > 0 && (
+              {(discountAmount > 0 || promotionAmount > 0 || loyaltyAmount > 0) && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Sous-total {subtotal.toFixed(2)} DH — remise <span className="font-semibold text-amber-600">−{discountAmount.toFixed(2)} DH</span>
+                  Sous-total {subtotal.toFixed(2)} DH
+                  {promotionAmount > 0 && <> — promotions <span className="font-semibold text-emerald-700">−{promotionAmount.toFixed(2)} DH</span></>}
+                  {discountAmount > 0 && <> — remise <span className="font-semibold text-amber-600">−{discountAmount.toFixed(2)} DH</span></>}
+                  {loyaltyAmount > 0 && <> — points <span className="font-semibold text-violet-700">−{loyaltyAmount.toFixed(2)} DH</span></>}
                 </p>
               )}
             </div>
+
+            {/* Code promo (mig 372) : n'agit qu'une fois validé ; le serveur le revérifie. */}
+            <div className="px-6 pt-4">
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Code promo</p>
+              <div className="flex items-center gap-2">
+                <input type="text" value={couponInput} placeholder="Facultatif"
+                  onChange={(e) => setCouponInput(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 40))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); setCouponCode(couponInput); } }}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400" />
+                {couponCode ? (
+                  <button type="button" onClick={() => { setCouponCode(''); setCouponInput(''); }} className="px-3 py-2 text-xs font-semibold rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200">Retirer</button>
+                ) : (
+                  <button type="button" disabled={!couponInput} onClick={() => setCouponCode(couponInput)} className="px-3 py-2 text-xs font-semibold rounded-lg bg-primary-50 text-primary-700 hover:bg-primary-100 disabled:opacity-40">Appliquer</button>
+                )}
+              </div>
+              {couponCode && promoEval?.promotion.coupon && (
+                <p className={`text-xs mt-1 ${promoEval.promotion.coupon.status === 'applied' ? 'text-emerald-700' : promoEval.promotion.coupon.status === 'superseded' ? 'text-amber-600' : 'text-red-600'}`}>{promoEval.promotion.coupon.message}</p>
+              )}
+            </div>
+
+            {/* Fidélité : points du client choisi, utilisables en remise sur ce ticket. */}
+            {loyaltyInfo?.enabled && (
+              <div className="px-6 pt-4">
+                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1">
+                  <Star size={11} /> Fidélité · {loyaltyInfo.balance.toLocaleString('fr-FR')} pts ({loyaltyInfo.value.toFixed(2)} DH){loyaltyInfo.tier ? ` · ${loyaltyInfo.tier.label}` : ''}
+                </p>
+                {loyaltyInfo.maxPoints > 0 ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <input type="text" inputMode="numeric" value={loyaltyPointsInput} placeholder="Points à utiliser"
+                        onChange={(e) => setLoyaltyPointsInput(e.target.value.replace(/\D/g, '').slice(0, 9))}
+                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400" />
+                      <button type="button" onClick={() => setLoyaltyPointsInput(String(loyaltyInfo.maxPoints))} className="px-3 py-2 text-xs font-semibold rounded-lg bg-violet-50 text-violet-700 hover:bg-violet-100">Max {loyaltyInfo.maxPoints.toLocaleString('fr-FR')}</button>
+                    </div>
+                    {loyaltyPointsError
+                      ? <p className="text-xs mt-1 text-red-600">{loyaltyPointsError}</p>
+                      : loyaltyAmount > 0 && <p className="text-xs mt-1 text-violet-700">−{loyaltyAmount.toFixed(2)} DH payés en points</p>}
+                  </>
+                ) : (
+                  <p className="text-xs text-gray-500">Utilisable dès {loyaltyInfo.minRedeemPoints.toLocaleString('fr-FR')} points, jusqu'à {loyaltyInfo.maxRedeemPct} % du ticket.</p>
+                )}
+                {willEarn > 0 && <p className="text-xs mt-1 text-gray-500">Cette vente rapporte {willEarn.toLocaleString('fr-FR')} points.</p>}
+              </div>
+            )}
 
             {/* Remise ticket : montant DH ou % du sous-total */}
             <div className="px-6 pt-4">

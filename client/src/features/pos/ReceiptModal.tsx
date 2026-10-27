@@ -29,6 +29,10 @@ interface ReceiptData {
   items: ReceiptItem[];
   subtotal: number;
   discountAmount: number;
+  // Promotions appliquées et points utilisés (mig 372), en plus de la remise manuelle.
+  promotions?: { label: string; amount: number }[];
+  loyaltyPoints?: number;
+  loyaltyAmount?: number;
   total: number;
   paymentMethod: string;
   cashGiven?: number;
@@ -334,10 +338,22 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
                         <td style={{ fontSize: `${fs}px`, padding: '2px 0' }}>Sous-total</td>
                         <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>{receipt.subtotal.toFixed(2)} DH</td>
                       </tr>
+                      {(receipt.promotions ?? []).map((p, i) => (
+                        <tr key={`promo-${i}`}>
+                          <td style={{ fontSize: `${fs}px`, padding: '2px 0' }}>{p.label}</td>
+                          <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>-{p.amount.toFixed(2)} DH</td>
+                        </tr>
+                      ))}
                       {receipt.discountAmount > 0 && (
                         <tr>
                           <td style={{ fontSize: `${fs}px`, padding: '2px 0' }}>Remise</td>
                           <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>-{receipt.discountAmount.toFixed(2)} DH</td>
+                        </tr>
+                      )}
+                      {receipt.loyaltyAmount != null && receipt.loyaltyAmount > 0 && (
+                        <tr>
+                          <td style={{ fontSize: `${fs}px`, padding: '2px 0' }}>Points fidélité ({receipt.loyaltyPoints})</td>
+                          <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>-{receipt.loyaltyAmount.toFixed(2)} DH</td>
                         </tr>
                       )}
                       <tr>

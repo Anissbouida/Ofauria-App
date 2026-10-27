@@ -11,7 +11,7 @@ export type Quote = {
   id: string; number: string; status: QuoteStatus; title: string | null; client_label: string | null;
   customer_id: string | null; customer_type: string | null; prospect_name: string | null; prospect_company: string | null; prospect_phone: string | null; prospect_email: string | null;
   customer_email: string | null; customer_phone: string | null;
-  quote_date: string; valid_until: string; with_tax: boolean; discount_pct: string; subtotal: string; discount_amount: string; tax_amount: string; total: string;
+  quote_date: string; valid_until: string; with_tax: boolean; discount_pct: string; subtotal: string; discount_amount: string; promotion_amount?: string; tax_amount: string; total: string;
   delivery_terms: string | null; notes: string | null; internal_notes: string | null;
   sent_at: string | null; decided_at: string | null; lost_reason_code: string | null; lost_reason_label: string | null; lost_note: string | null;
   order_id: string | null; order_number: string | null; proforma_number: string | null; revision_of: string | null;

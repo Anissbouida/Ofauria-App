@@ -5,6 +5,8 @@ import { productLotRepository } from './product-lot.repository.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { fromSale, persistEntry, reverseEntriesForSource, regenerateSaleEntry } from '../services/journal-generator.service.js';
+import { earnForSale, redeemForSale, reverseForSale } from '../services/loyalty.js';
+import { recordApplied, type AppliedPromo } from '../services/promotions.js';
 
 export const saleRepository = {
   async findAll(params: {
@@ -164,7 +166,13 @@ export const saleRepository = {
     channelId?: string | null; // mig 172
     cashAmount?: number; // mig 250 — ventilation paiement mixte
     cardAmount?: number;
-    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g'; displayUnit?: 'g' | 'kg' | null }[];
+    // Promotions et fidélité (mig 372) : parts de discountAmount.
+    promotionAmount?: number;
+    appliedPromotions?: AppliedPromo[];
+    couponCode?: string | null;
+    loyaltyPointsUsed?: number;
+    loyaltyAmount?: number;
+    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g'; displayUnit?: 'g' | 'kg' | null; promoDiscount?: number }[];
   }) {
     const client = await db.getClient();
     try {
@@ -175,9 +183,10 @@ export const saleRepository = {
       const paymentStatus = data.paymentStatus || 'paid';
       // paid_at est NULL pour une vente impayee : sera renseigne lors de l'encaissement differe.
       // Pour une vente saisie a posteriori (special B2B), on prend la date fournie.
-      // cash/card_amount (mig 250) en $23/$24 ; createdAt eventuel passe en $25.
-      const createdAtExpr = data.createdAt ? `$25` : 'NOW()';
-      const paidAtExpr = paymentStatus === 'paid' ? (data.createdAt ? '$25' : 'NOW()') : 'NULL';
+      // cash/card_amount (mig 250) en $23/$24 ; promotions/fidélité (mig 372) en $25-$28 ;
+      // createdAt eventuel passe en $29.
+      const createdAtExpr = data.createdAt ? `$29` : 'NOW()';
+      const paidAtExpr = paymentStatus === 'paid' ? (data.createdAt ? '$29' : 'NOW()') : 'NULL';
       const insertValues: unknown[] = [
         saleNumber, data.customerId || null, data.userId, data.subtotal,
         data.taxAmount, data.discountAmount, data.total, data.paymentMethod, data.notes || null, data.sessionId || null, data.storeId || null,
@@ -186,20 +195,21 @@ export const saleRepository = {
         data.sachetsGiven ?? null, data.sachetsSuggested ?? null, data.sachetReason || null,
         data.channelId || null,
         data.cashAmount ?? null, data.cardAmount ?? null,
+        data.promotionAmount ?? 0, data.loyaltyPointsUsed ?? 0, data.loyaltyAmount ?? 0, data.couponCode || null,
       ];
       if (data.createdAt) insertValues.push(data.createdAt);
 
       const saleResult = await client.query(
-        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type, payment_status, paid_at, unpaid_customer_name, employee_id, sachets_given, sachets_suggested, sachet_reason, channel_id, cash_amount, card_amount, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ${paidAtExpr}, $17, $18, $19, $20, $21, $22, $23, $24, ${createdAtExpr}) RETURNING *`,
+        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type, payment_status, paid_at, unpaid_customer_name, employee_id, sachets_given, sachets_suggested, sachet_reason, channel_id, cash_amount, card_amount, promotion_amount, loyalty_points_used, loyalty_amount, coupon_code, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ${paidAtExpr}, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, ${createdAtExpr}) RETURNING *`,
         insertValues
       );
 
       for (const item of data.items) {
         const saleItemResult = await client.query(
-          `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal, unit, display_unit)
-           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-          [saleResult.rows[0].id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.unit || 'unit', item.displayUnit || null]
+          `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal, unit, display_unit, promo_discount)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+          [saleResult.rows[0].id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.unit || 'unit', item.displayUnit || null, item.promoDiscount ?? 0]
         );
         const saleItemId = saleItemResult.rows[0].id as string;
 
@@ -270,14 +280,20 @@ export const saleRepository = {
         }
       }
 
-      // Update customer loyalty — seulement pour les ventes effectivement payees.
+      // Promotions appliquées et points utilisés (mig 372).
+      if (data.appliedPromotions?.length) await recordApplied(client, { saleId: saleResult.rows[0].id }, data.appliedPromotions);
+      if (data.customerId && data.loyaltyPointsUsed && data.loyaltyPointsUsed > 0) {
+        await redeemForSale(client, {
+          customerId: data.customerId, points: data.loyaltyPointsUsed, amount: data.loyaltyAmount ?? 0,
+          saleId: saleResult.rows[0].id, saleNumber, storeId: data.storeId ?? null, userId: data.userId,
+        });
+      }
+
+      // Cumul client et points gagnés — seulement pour les ventes effectivement payees.
       // Les ventes impayees attribuent les points lors de l'encaissement differe.
       if (data.customerId && paymentStatus === 'paid') {
-        const loyaltyPoints = Math.floor(data.total);
-        await client.query(
-          `UPDATE customers SET total_spent = total_spent + $1, loyalty_points = loyalty_points + $2 WHERE id = $3`,
-          [data.total, loyaltyPoints, data.customerId]
-        );
+        await client.query(`UPDATE customers SET total_spent = total_spent + $1 WHERE id = $2`, [data.total, data.customerId]);
+        await earnForSale(client, saleResult.rows[0], data.userId);
       }
 
       // Generation auto de l'ecriture comptable (LEDGER_AUTOGEN)
@@ -339,13 +355,10 @@ export const saleRepository = {
       }
 
       const prev = existing.rows[0];
-      // Rollback loyalty effet de la vente precedente (si elle etait payee).
+      // Rollback cumul et points de la vente precedente (si elle etait payee).
       if (prev.customer_id && prev.payment_status === 'paid') {
-        const prevPoints = Math.floor(parseFloat(prev.total as string) || 0);
-        await client.query(
-          `UPDATE customers SET total_spent = GREATEST(0, total_spent - $1), loyalty_points = GREATEST(0, loyalty_points - $2) WHERE id = $3`,
-          [parseFloat(prev.total as string) || 0, prevPoints, prev.customer_id]
-        );
+        await client.query(`UPDATE customers SET total_spent = GREATEST(0, total_spent - $1) WHERE id = $2`, [parseFloat(prev.total as string) || 0, prev.customer_id]);
+        await reverseForSale(client, saleId, 1, null, 'Vente modifiée');
       }
 
       const paidAtExpr = data.paymentStatus === 'paid'
@@ -391,13 +404,10 @@ export const saleRepository = {
         );
       }
 
-      // Reapplique loyalty avec le nouveau montant (si paye).
+      // Reapplique cumul et points avec le nouveau montant (si paye).
       if (data.paymentStatus === 'paid') {
-        const newPoints = Math.floor(data.total);
-        await client.query(
-          `UPDATE customers SET total_spent = total_spent + $1, loyalty_points = loyalty_points + $2 WHERE id = $3`,
-          [data.total, newPoints, data.customerId]
-        );
+        await client.query(`UPDATE customers SET total_spent = total_spent + $1 WHERE id = $2`, [data.total, data.customerId]);
+        await earnForSale(client, updateResult.rows[0], updateResult.rows[0].user_id);
       }
 
       // Montant / statut de paiement ont pu changer -> reverser + regenerer
@@ -439,13 +449,10 @@ export const saleRepository = {
       }
 
       const prev = existing.rows[0];
-      // Rollback loyalty si la vente etait payee.
+      // Rollback cumul et points si la vente etait payee.
       if (prev.customer_id && prev.payment_status === 'paid') {
-        const prevPoints = Math.floor(parseFloat(prev.total as string) || 0);
-        await client.query(
-          `UPDATE customers SET total_spent = GREATEST(0, total_spent - $1), loyalty_points = GREATEST(0, loyalty_points - $2) WHERE id = $3`,
-          [parseFloat(prev.total as string) || 0, prevPoints, prev.customer_id]
-        );
+        await client.query(`UPDATE customers SET total_spent = GREATEST(0, total_spent - $1) WHERE id = $2`, [parseFloat(prev.total as string) || 0, prev.customer_id]);
+        await reverseForSale(client, saleId, 1, null, 'Vente supprimée');
       }
 
       // Reverser l'ecriture comptable de la vente avant suppression.
@@ -499,14 +506,10 @@ export const saleRepository = {
         [saleId, params.paymentMethod, params.sessionId, params.paidAt || null]
       );
 
-      // Attribution des points de fidelite au moment de l'encaissement effectif.
+      // Cumul client et points de fidelite au moment de l'encaissement effectif.
       if (existing.customer_id) {
-        const total = parseFloat(existing.total);
-        const loyaltyPoints = Math.floor(total);
-        await dbClient.query(
-          `UPDATE customers SET total_spent = total_spent + $1, loyalty_points = loyalty_points + $2 WHERE id = $3`,
-          [total, loyaltyPoints, existing.customer_id]
-        );
+        await dbClient.query(`UPDATE customers SET total_spent = total_spent + $1 WHERE id = $2`, [parseFloat(existing.total), existing.customer_id]);
+        await earnForSale(dbClient, result.rows[0], null);
       }
 
       await dbClient.query('COMMIT');

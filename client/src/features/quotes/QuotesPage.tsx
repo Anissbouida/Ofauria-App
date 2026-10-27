@@ -441,7 +441,8 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
               ))}</tbody>
               <tfoot>
                 <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Sous-total {q.with_tax ? 'HT' : 'TTC'}</td><td style={{ textAlign: 'right' }}>{n2(q.subtotal)}</td></tr>
-                {Number(q.discount_pct) > 0 && <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Remise {Number(q.discount_pct)} %</td><td style={{ textAlign: 'right' }}>−{n2(q.discount_amount)}</td></tr>}
+                {Number(q.promotion_amount) > 0 && <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Promotions</td><td style={{ textAlign: 'right' }}>−{n2(q.promotion_amount)}</td></tr>}
+                {Number(q.discount_pct) > 0 && <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Remise {Number(q.discount_pct)} %</td><td style={{ textAlign: 'right' }}>−{n2(Number(q.discount_amount) - Number(q.promotion_amount ?? 0))}</td></tr>}
                 {q.with_tax && <tr><td colSpan={4} style={{ textAlign: 'right' }}>TVA</td><td style={{ textAlign: 'right' }}>{n2(q.tax_amount)}</td></tr>}
                 <tr style={{ fontWeight: 700 }}><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Total TTC</td><td style={{ textAlign: 'right' }}>{n2(q.total)} DH</td></tr>
               </tfoot>
