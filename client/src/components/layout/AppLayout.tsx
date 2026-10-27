@@ -166,7 +166,7 @@ export default function AppLayout() {
       )}
 
       {/* Main content — pas de padding sur les pages Stock (style Odoo full-width) */}
-      <main className={`flex-1 overflow-auto ${(location.pathname.startsWith('/stock') || location.pathname.startsWith('/recipes') || location.pathname.startsWith('/products') || location.pathname.startsWith('/production') || location.pathname.startsWith('/replenishment') || location.pathname.startsWith('/accounting') || location.pathname.startsWith('/sales') || location.pathname.startsWith('/purchasing') || location.pathname.startsWith('/orders') || location.pathname === '/employees' || location.pathname === '/forecast' || location.pathname === '/haccp' || location.pathname === '/customers' || location.pathname === '/controle' || location.pathname === '/boutique' || location.pathname === '/reports' || location.pathname.startsWith('/projects')) ? '' : 'p-6'}`}>
+      <main className={`flex-1 overflow-auto ${(location.pathname.startsWith('/stock') || location.pathname.startsWith('/recipes') || location.pathname.startsWith('/products') || location.pathname.startsWith('/production') || location.pathname.startsWith('/replenishment') || location.pathname.startsWith('/accounting') || location.pathname.startsWith('/sales') || location.pathname.startsWith('/purchasing') || location.pathname.startsWith('/orders') || location.pathname === '/employees' || location.pathname === '/forecast' || location.pathname === '/haccp' || location.pathname === '/customers' || location.pathname === '/controle' || location.pathname === '/boutique' || location.pathname === '/reports' || location.pathname.startsWith('/projects') || location.pathname === '/maintenance') ? '' : 'p-6'}`}>
         <Outlet />
       </main>
 

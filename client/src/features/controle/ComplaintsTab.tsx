@@ -18,6 +18,10 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import ComplaintFormModal from '../../components/sav/ComplaintFormModal';
 import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { InterventionFormModal } from '../maintenance/forms';
+import { usePermissions } from '../../context/PermissionsContext';
+import { useNavigate } from 'react-router-dom';
+import { Wrench } from 'lucide-react';
 
 /**
  * Contrôle & Qualité › Réclamations (SAV, mig 357). Même squelette que les autres
@@ -140,6 +144,9 @@ function Due({ c }: { c: Complaint }) {
 function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const { hasModule } = usePermissions();
+  const navigate = useNavigate();
+  const [intervention, setIntervention] = useState(false);
   const { getLabel } = useReferentiel('complaint_categories');
   const { data: c, isLoading } = useQuery({ queryKey: ['complaint', id], queryFn: () => complaintsApi.get(id) });
   const [note, setNote] = useState('');
@@ -222,6 +229,10 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                   c.assigned_to === user?.id
                     ? <button className="odoo-btn-secondary" onClick={() => unassign.mutate()}><User size={13} /> Me retirer</button>
                     : <button className="odoo-btn-secondary" onClick={() => assignMe.mutate()}><User size={13} /> Me l'affecter</button>
+                )}
+                {/* Pont vers la Maintenance (mig 359) : panne chez le client, installation défectueuse… */}
+                {['open', 'in_progress'].includes(c.status) && hasModule('maintenance') && (
+                  <button className="odoo-btn-secondary" onClick={() => setIntervention(true)}><Wrench size={13} /> Créer une intervention</button>
                 )}
                 {['open', 'in_progress'].includes(c.status) && (
                   <select className="odoo-filter-dropdown" value={c.priority} onChange={e => setPriority.mutate(e.target.value as ComplaintPriority)} title="Changer la priorité">
@@ -312,6 +323,11 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
           </>
         )}
       </div>
+      {intervention && c && (
+        <InterventionFormModal onClose={() => setIntervention(false)} onCreated={id => navigate(`/maintenance?tab=interventions&open=${id}`)}
+          defaults={{ title: c.subject, customerId: c.customer_id, customerName: c.customer_label ?? '', equipmentLabel: c.product_name ?? '',
+            reportedProblem: c.description ?? '', complaintId: c.id, priority: c.priority, kind: 'corrective' }} />
+      )}
     </ModalBackdrop>
   );
 }

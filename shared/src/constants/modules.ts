@@ -41,6 +41,8 @@ export const APP_MODULES = {
   controle: 'controle',
   /** Projets (mig 358) : chantiers, événements, missions ; tâches et temps passé. */
   projects: 'projects',
+  /** Maintenance (mig 359) : plans d'entretien et interventions, interne ou chez le client. */
+  maintenance: 'maintenance',
 } as const;
 
 export type AppModule = (typeof APP_MODULES)[keyof typeof APP_MODULES];
@@ -92,13 +94,14 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   reconciliation: 'Contrôle des ventes',
   controle: 'Contrôle & Qualité',
   projects: 'Projets',
+  maintenance: 'Maintenance',
 };
 
 /** Default permissions per role (used when no custom permissions are set).
  *  Cles CANONIQUES (stock = economat+pesage unifies, cf. MODULE_ALIASES). */
 export const DEFAULT_ROLE_MODULES: Record<string, AppModule[]> = {
   admin: Object.values(APP_MODULES),
-  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'stock', 'recipes', 'production', 'employees', 'accounting', 'purchasing', 'reports', 'replenishment', 'unsold', 'packaging', 'reconciliation', 'controle', 'projects'],
+  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'stock', 'recipes', 'production', 'employees', 'accounting', 'purchasing', 'reports', 'replenishment', 'unsold', 'packaging', 'reconciliation', 'controle', 'projects', 'maintenance'],
   cashier: ['pos', 'orders', 'customers', 'production', 'replenishment', 'unsold'],
   saleswoman: ['pos', 'orders', 'customers', 'production', 'replenishment', 'unsold'],
   // Les chefs demandent les ingredients depuis leur plan ; le pesage (preparation

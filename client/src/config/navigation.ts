@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
   Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
-  Package, Box, Store, Tag, FolderKanban, ShieldCheck, TrendingUp, Thermometer, ShieldAlert, ClipboardCheck,
+  Package, Box, Store, Tag, FolderKanban, Wrench, ShieldCheck, TrendingUp, Thermometer, ShieldAlert, ClipboardCheck,
 } from 'lucide-react';
 import { MODULE_LABELS, MODULE_ALIASES, ROLE_GROUPS } from '@ofauria/shared';
 import type { AppModule } from '@ofauria/shared';
@@ -139,6 +139,9 @@ export const NAV_GROUPS: NavGroup[] = [
         description: 'Caisse, charges et tresorerie' },
       { module: 'employees', href: '/employees', icon: UserCog, color: 'bg-teal-600',
         description: 'Pointage, paie et dossiers du personnel' },
+      // Maintenance (mig 359) : entretien du matériel (immobilisations) et interventions chez le client.
+      { module: 'maintenance', href: '/maintenance', icon: Wrench, color: 'bg-stone-600',
+        description: 'Entretien du matériel et interventions chez le client' },
       // Les rapports vivent dans leurs modules (Ventes › Rapports, Production › Coûts) ;
       // cette tuile ouvre le tableau de bord des ventes.
       { module: 'reports', href: '/reports', icon: BarChart3, color: 'bg-red-500',
