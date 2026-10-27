@@ -1,3 +1,4 @@
+import { landedCostRepository } from '../repositories/landed-cost.repository.js';
 import type { Response } from 'express';
 import { approvalService } from '../services/approval.service.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
@@ -202,7 +203,14 @@ export const purchaseOrderController = {
         res.status(409).json({ success: false, error: { message: 'Le bon doit être envoyé ou en livraison partielle' } });
         return;
       }
-      const { items, supplierInvoiceNumber, supplierInvoiceDate, forceComplete } = req.body;
+      const { items, supplierInvoiceNumber, supplierInvoiceDate, forceComplete, extraFees } = req.body;
+      // Frais annexes saisis à la réception (transport, douane…) : frais d'approche (mig 361)
+      // créés et appliqués sur le bon de réception, au prorata de la valeur reçue.
+      const fees = Array.isArray(extraFees)
+        ? (extraFees as { label?: string; amount?: number | string; categoryId?: string | null }[])
+            .map(f => ({ label: String(f.label ?? '').trim(), amount: Number(f.amount), categoryId: f.categoryId || null }))
+            .filter(f => f.label && Number.isFinite(f.amount) && f.amount !== 0)
+        : [];
       if (!items || items.length === 0) {
         res.status(400).json({ success: false, error: { message: 'Articles livrés requis' } });
         return;
@@ -216,7 +224,25 @@ export const purchaseOrderController = {
       await purchaseOrderActionsRepository.log(req.params.id, 'received', req.user!.userId, {
         note: [supplierInvoiceNumber ? `facture fournisseur ${supplierInvoiceNumber}` : null, forceComplete ? 'reliquat clôturé à la réception' : null].filter(Boolean).join(' · ') || null,
       });
-      res.json({ success: true, data: result });
+      let landedCost: Record<string, unknown> | null = null;
+      let landedCostError: string | null = null;
+      if (fees.length && (result as { voucherId?: string }).voucherId) {
+        // La réception est acquise : un échec des frais ne la défait pas, il est signalé.
+        try {
+          const created = await landedCostRepository.create(
+            { receptionVoucherId: (result as { voucherId: string }).voucherId, method: 'value', charges: fees, notes: 'Saisis à la réception' },
+            { userId: req.user!.userId, storeId: req.user!.storeId ?? null },
+          );
+          if ('error' in created) landedCostError = created.error === 'no_lines' ? 'aucune ligne d\'article à charger' : 'base de répartition nulle';
+          else {
+            const applied = await landedCostRepository.apply(created.data!.id, req.user!.userId);
+            landedCost = 'error' in applied ? created.data : applied.data;
+          }
+        } catch (e) {
+          landedCostError = e instanceof Error ? e.message : 'erreur';
+        }
+      }
+      res.json({ success: true, data: { ...result, landedCost, landedCostError } });
     } catch (err: unknown) {
       console.error('[confirmDelivery] Error:', err);
       const message = err instanceof Error ? err.message : 'Erreur lors de la confirmation de livraison';

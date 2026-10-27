@@ -2097,6 +2097,15 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
   // sur ce qui a ete recu (qty_ordered alignee sur qty_delivered, lignes vides
   // supprimees).
   const [forceComplete, setForceComplete] = useState(false);
+  // Frais annexes saisis à la réception (transport, douane, manutention) : frais d'approche
+  // (mig 361) créés et appliqués sur la réception, au prorata de la valeur reçue.
+  const [fees, setFees] = useState<{ key: number; label: string; amount: string; categoryId: string }[]>([]);
+  const { byId: feeById, leavesUnder: feeLeavesUnder, resolve: feeResolve } = useStockCategories();
+  const feeCategoryOptions = useMemo(() => FEE_ROOT_IDS.filter(r => feeById.has(r)).flatMap(r => feeLeavesUnder(r)).map(leaf => ({
+    id: String(leaf.id), label: leaf.name, sublabel: (feeResolve(leaf.id)?.path.split(' / ') || []).slice(0, -1).join(' › '),
+  })), [feeById, feeLeavesUnder, feeResolve]);
+  const feesTotal = fees.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+  const addFee = () => setFees(f => [...f, { key: Date.now(), label: f.length ? '' : 'Transport', amount: '', categoryId: feeById.has(DEFAULT_FEE_CATEGORY_ID) ? DEFAULT_FEE_CATEGORY_ID : '' }]);
 
   const confirmMutation = useMutation({
     mutationFn: (data: { items: { itemId: string; quantityDelivered: number; unitPrice?: number; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[]; supplierInvoiceNumber?: string; supplierInvoiceDate?: string; forceComplete?: boolean }) =>
@@ -2169,6 +2178,7 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
       ...(supplierInvoiceNumber.trim() ? { supplierInvoiceNumber: supplierInvoiceNumber.trim() } : {}),
       ...(supplierInvoiceDate ? { supplierInvoiceDate } : {}),
       ...(forceComplete ? { forceComplete: true } : {}),
+      ...(fees.some(f => f.label.trim() && Number(f.amount)) ? { extraFees: fees.filter(f => f.label.trim() && Number(f.amount)).map(f => ({ label: f.label.trim(), amount: Number(f.amount), categoryId: f.categoryId || null })) } : {}),
     });
   };
 
@@ -2259,6 +2269,47 @@ function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void })
                   onChange={(e) => setSupplierInvoiceDate(e.target.value)} style={odooFieldStyle} />
               </div>
             </div>
+            {/* Frais annexes à la réception : intégrés au coût des articles reçus (frais d'approche, mig 361). */}
+            {fees.length === 0 ? (
+              <button type="button" onClick={addFee}
+                style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', color: 'var(--theme-accent)', fontWeight: 600 }}>
+                <Plus size={12} /> Frais annexes <span style={{ fontWeight: 400, color: 'var(--odoo-text-muted)' }}>(transport, douane, manutention… répartis sur les articles reçus)</span>
+              </button>
+            ) : (
+              <div style={{ marginTop: 10, border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.75rem', backgroundColor: 'var(--odoo-bg-alt)' }}>
+                <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
+                  <strong style={{ fontSize: '0.8125rem' }}>Frais annexes de cette réception</strong>
+                  <span style={{ fontSize: '0.8125rem' }}>Total <strong>{feesTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH</strong></span>
+                </div>
+                {fees.map(f => (
+                  <div key={f.key} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end" style={{ marginBottom: 8 }}>
+                    <div className="md:col-span-5">
+                      <label style={odooLabelStyle}>Désignation *</label>
+                      <input type="text" value={f.label} style={odooFieldStyle} placeholder="Ex : Transport, droits de douane"
+                        onChange={e => setFees(fs => fs.map(x => x.key === f.key ? { ...x, label: e.target.value } : x))} />
+                    </div>
+                    <div className="md:col-span-4">
+                      <label style={odooLabelStyle}>Catégorie de charge</label>
+                      <SearchSelect options={feeCategoryOptions} value={f.categoryId} width="100%"
+                        onChange={id => setFees(fs => fs.map(x => x.key === f.key ? { ...x, categoryId: id } : x))} placeholder="Transport, livraison…" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label style={odooLabelStyle}>Montant HT (DH)</label>
+                      <input type="number" min={0} step="0.01" value={f.amount} style={odooNumFieldStyle}
+                        onChange={e => setFees(fs => fs.map(x => x.key === f.key ? { ...x, amount: e.target.value } : x))} />
+                    </div>
+                    <div className="md:col-span-1">
+                      <button type="button" onClick={() => setFees(fs => fs.filter(x => x.key !== f.key))} className="odoo-btn-secondary w-full" style={{ justifyContent: 'center' }} title="Retirer"><X size={14} /></button>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" onClick={addFee} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem', color: 'var(--theme-accent)', fontWeight: 600 }}><Plus size={12} /> Autre frais</button>
+                <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 8 }}>
+                  Répartis au prorata de la valeur sur les articles reçus et ajoutés à leur coût (lot et coût standard) dès la réception : c'est le coût rendu.
+                  La facture du transporteur se saisit à part dans Factures reçues ; elle reste une charge en comptabilité. Détail dans Achats › Frais d'approche.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Fill all button */}
