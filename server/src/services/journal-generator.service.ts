@@ -578,6 +578,9 @@ export interface PaymentRow {
   payment_mode?: string | null;
   treasury_account_id?: string | null;
   to_treasury_account_id?: string | null;
+  // Mig 368 : règlement en devise — part de facture soldée (taux facture) et écart de change.
+  settled_amount?: string | number | null;
+  fx_difference?: string | number | null;
 }
 
 /** Compte général et nature (caisse/banque) d'un compte de trésorerie (mig 310). */
@@ -626,13 +629,17 @@ export async function fromPaymentEmission(
   let debitLine: GeneratedLine;
   let lettrageKey: string | undefined;
 
+  // Règlement en devise (mig 368) : le fournisseur est soldé au taux de la facture
+  // (settled_amount), la trésorerie sort le montant au taux du jour, l'écart va en 6331 / 7331.
+  const fxDiff = p.type === 'invoice' && p.fx_difference != null ? round2(parseFloat(String(p.fx_difference)) || 0) : 0;
   if (p.type === 'invoice' && p.invoice_id && p.supplier_id) {
     // Reglement de facture fournisseur : lettrage avec la facture
     lettrageKey = `inv-${p.invoice_id}`;
+    const settled = p.settled_amount != null ? parseFloat(String(p.settled_amount)) : amount;
     debitLine = {
       account_code: '4411',
       auxiliary_supplier_id: p.supplier_id,
-      debit: round2(amount),
+      debit: round2(settled),
       credit: 0,
       label: `Reglement ${p.reference || p.invoice_id.slice(0, 8)}`,
       lettrage_key: lettrageKey,
@@ -724,6 +731,11 @@ export async function fromPaymentEmission(
   //   debit brut = credit (net + retenue).
   const withholding = round2(parseFloat(String(p.withholding_amount ?? 0)) || 0);
   const lines: GeneratedLine[] = [debitLine];
+  if (fxDiff > 0) {
+    lines.push({ account_code: await postingAccount(client, 'fx_loss'), debit: fxDiff, credit: 0, label: 'Perte de change' });
+  } else if (fxDiff < 0) {
+    lines.push({ account_code: await postingAccount(client, 'fx_gain'), debit: 0, credit: -fxDiff, label: 'Gain de change' });
+  }
   if (withholding > 0 && p.withholding_type_id) {
     const ras = await client.query(
       `SELECT a.code FROM withholding_tax_types w JOIN accounts a ON a.id = w.account_id WHERE w.id = $1`,

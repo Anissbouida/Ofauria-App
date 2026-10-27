@@ -98,6 +98,7 @@ export default function CurrenciesTab() {
           <button className="odoo-btn-primary" disabled={!(Number(rateFor.rate) > 0) || !rateFor.validOn || addRate.isPending} onClick={() => addRate.mutate()}>Enregistrer le taux</button>
         </div>
       )}
+      <Revaluation />
       {historyFor && (
         <div>
           <div style={{ fontWeight: 600, fontSize: '0.875rem', margin: '4px 0 8px' }}>Historique des taux {historyFor}</div>
@@ -112,5 +113,45 @@ export default function CurrenciesTab() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Écarts latents (mig 368) : dettes en devise réévaluées au taux d'une date, sans écriture. */
+function Revaluation() {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const { data } = useQuery({ queryKey: ['currency-revaluation', date], queryFn: () => currenciesApi.revaluation(date) });
+  const n2 = (v: number | string | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (!data) return null;
+  return (
+    <section style={{ display: 'grid', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontWeight: 600, fontSize: '0.875rem', flex: 1 }}>Écarts de change latents sur factures fournisseurs ouvertes</div>
+        <label style={{ ...lab, display: 'flex', alignItems: 'center', gap: 6 }}>au <input type="date" style={{ ...field, width: 160 }} value={date} onChange={e => setDate(e.target.value)} /></label>
+      </div>
+      <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 }}>
+        Reste dû en devise revalorisé au taux de la date. Pour information : l'écart n'est comptabilisé qu'au règlement (6331 / 7331).
+        {data.missingRates.length > 0 && <span style={{ color: '#b85d1a' }}> Taux manquant : {data.missingRates.join(', ')}.</span>}
+      </p>
+      {data.rows.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 }}>Aucune facture en devise à régler.</p> : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="odoo-table">
+            <thead><tr><th>Facture</th><th>Fournisseur</th><th style={{ textAlign: 'right' }}>Reste dû</th><th style={{ textAlign: 'right' }}>Taux facture</th><th style={{ textAlign: 'right' }}>Taux au {d(data.date)}</th><th style={{ textAlign: 'right' }}>Écart latent</th></tr></thead>
+            <tbody>{data.rows.map(r => (
+              <tr key={r.id}>
+                <td>{r.supplier_invoice_number || r.invoice_number}<div style={{ fontSize: '0.7rem', color: 'var(--odoo-text-muted)' }}>{d(r.invoice_date)}</div></td>
+                <td>{r.supplier_name ?? '—'}</td>
+                <td style={{ textAlign: 'right' }}>{n2(r.foreign_remaining)} {String(r.currency_code).trim()}</td>
+                <td style={{ textAlign: 'right' }}>{Number(r.exchange_rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })}</td>
+                <td style={{ textAlign: 'right' }}>{r.current_rate != null ? Number(r.current_rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 }) : '—'}</td>
+                <td style={{ textAlign: 'right', fontWeight: 600, color: (r.latent ?? 0) > 0 ? '#dc3545' : (r.latent ?? 0) < 0 ? '#198754' : undefined }}>
+                  {r.latent == null ? '—' : `${r.latent > 0 ? 'perte ' : r.latent < 0 ? 'gain ' : ''}${n2(Math.abs(r.latent))} DH`}</td>
+              </tr>
+            ))}</tbody>
+            <tfoot><tr><td colSpan={5} style={{ textAlign: 'right' }}>Pertes latentes / gains latents</td>
+              <td style={{ textAlign: 'right', fontWeight: 700 }}><span style={{ color: '#dc3545' }}>{n2(data.latentLoss)}</span> / <span style={{ color: '#198754' }}>{n2(data.latentGain)}</span> DH</td></tr></tfoot>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }

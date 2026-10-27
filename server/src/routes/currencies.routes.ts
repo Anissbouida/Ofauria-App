@@ -34,6 +34,36 @@ currenciesRouter.get('/', authenticate, asyncHandler(async (req: AuthRequest, re
   res.json({ success: true, data: await list(r.data.date ?? getLocalISODate(), r.data.all !== 'true') });
 }));
 
+/**
+ * Écarts de change latents (mig 368) : factures fournisseurs en devise non soldées,
+ * réévaluées au taux de la date. Une dette dont la devise monte coûtera plus cher
+ * (perte latente). Pour information : aucune écriture (écarts de conversion de clôture).
+ */
+currenciesRouter.get('/revaluation', authenticate, authorizeSettings('currencies'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const q = z.object({ date: isoDate.optional() }).safeParse(req.query);
+  if (!q.success) { bad(res); return; }
+  const date = q.data.date ?? getLocalISODate();
+  const r = await db.query(
+    `SELECT i.id, i.invoice_number, i.supplier_invoice_number, i.invoice_date, i.currency_code, i.exchange_rate,
+            i.foreign_total_amount, i.foreign_paid_amount, s.name AS supplier_name,
+            (i.foreign_total_amount - i.foreign_paid_amount) AS foreign_remaining,
+            fn_exchange_rate(i.currency_code, $1::date) AS current_rate
+       FROM invoices i LEFT JOIN suppliers s ON s.id = i.supplier_id
+      WHERE i.invoice_type = 'received' AND i.currency_code <> 'MAD' AND i.status NOT IN ('paid', 'cancelled')
+        AND i.foreign_total_amount - i.foreign_paid_amount > 0.005
+      ORDER BY i.currency_code, i.invoice_date`, [date]);
+  const rows = r.rows.map(x => {
+    const remaining = Number(x.foreign_remaining);
+    const atInvoice = Math.round(remaining * Number(x.exchange_rate) * 100) / 100;
+    const atDate = x.current_rate != null ? Math.round(remaining * Number(x.current_rate) * 100) / 100 : null;
+    return { ...x, remaining_at_invoice_rate: atInvoice, remaining_at_date_rate: atDate, latent: atDate != null ? Math.round((atDate - atInvoice) * 100) / 100 : null };
+  });
+  const sum = (f: (x: typeof rows[number]) => number) => Math.round(rows.reduce((a, x) => a + f(x), 0) * 100) / 100;
+  res.json({ success: true, data: { date, rows,
+    latentLoss: sum(x => (x.latent ?? 0) > 0 ? x.latent! : 0), latentGain: sum(x => (x.latent ?? 0) < 0 ? -x.latent! : 0),
+    missingRates: [...new Set(rows.filter(x => x.current_rate == null).map(x => String(x.currency_code).trim()))] } });
+}));
+
 currenciesRouter.get('/:code/rates', authenticate, authorizeSettings('currencies'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const c = code.safeParse(req.params.code);
   if (!c.success) { bad(res); return; }

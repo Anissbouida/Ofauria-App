@@ -19,6 +19,9 @@ export const createPaymentSchema = z.object({
   paymentMethod: z.string().trim().max(20).optional().nullable(),
   treasuryAccountId: z.string().uuid().optional().nullable(),
   cashOverride: cashOverrideSchema.optional().nullable(),
+  // Mig 368 : règlement d'une facture en devise (le montant DH est recalculé par le serveur).
+  foreignAmount: z.coerce.number().finite().positive().max(100_000_000).optional().nullable(),
+  exchangeRate: z.coerce.number().finite().positive().max(100_000).optional().nullable(),
 }).passthrough().refine(d => !!(d.paymentMode || d.paymentMethod), { message: 'Mode de paiement requis', path: ['paymentMode'] });
 
 /** Modification : uniquement les champs descriptifs (le reste est figé par la base). */

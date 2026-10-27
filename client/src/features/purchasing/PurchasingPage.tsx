@@ -27,6 +27,7 @@ import InvoiceControlModal from '../../components/purchasing/InvoiceControlModal
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
 import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, paymentModeLabel, PaymentStatusTag, ReissuePaymentDialog, type CashOverride } from '../../components/purchasing/PaymentModeFields';
 import { apiErrorMessage } from '../../api/errors';
+import { currenciesApi } from '../../api/currencies.api';
 import { ShieldAlert, ShieldCheck, ClipboardCheck } from 'lucide-react';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { RotateCcw, FilePenLine } from 'lucide-react';
@@ -154,6 +155,18 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
   const payModeDef = payModeByCode(payMethod);
   const payLegacy = payModeDef?.legacy_method ?? payMethod;
   const [payAmount, setPayAmount] = useState('');
+  // Facture en devise (mig 368) : montant réglé en devise et taux du jour du paiement.
+  const [payForeign, setPayForeign] = useState('');
+  const [payRate, setPayRate] = useState('');
+  const payCurrency = String(showPayForm?.currency_code ?? 'MAD').trim();
+  const payIsForeign = !!showPayForm && payCurrency !== 'MAD';
+  const { data: payCurrencies = [] } = useQuery({ queryKey: ['currencies', 'at', payDate, 'all'], queryFn: () => currenciesApi.list({ date: payDate, all: true }), enabled: payIsForeign }); // devise désactivée : ses factures restent payables
+  useEffect(() => {
+    if (!payIsForeign) return;
+    const r = payCurrencies.find(c => c.code === payCurrency)?.rate;
+    if (r) setPayRate(String(Number(r)));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payIsForeign, payCurrency, payCurrencies]);
   const [payAvoir, setPayAvoir] = useState('');
   // Vue processus : « À traiter » (non réglées, filtrables par étape) ou « Historique »
   // (réglées / annulées, par période). Filtrage, tri et pagination côté serveur.
@@ -379,6 +392,9 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
     setPayOverride(null);
     setPayAmount((parseFloat(inv.total_amount as string) - parseFloat(inv.paid_amount as string)).toFixed(2));
     setPayAvoir('');
+    setPayForeign(inv.foreign_total_amount != null
+      ? (parseFloat(inv.foreign_total_amount as string) - parseFloat((inv.foreign_paid_amount as string) || '0')).toFixed(2) : '');
+    setPayRate('');
   };
 
   /** Prochaine action du processus pour une facture à traiter (bouton principal de la ligne). */
@@ -650,6 +666,9 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
                       <td style={{ textAlign: 'right' }}>
                         <span style={{ fontWeight: 700 }}>{n(total)}</span>
                         <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+                        {inv.foreign_total_amount != null && String(inv.currency_code).trim() !== 'MAD' && (
+                          <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{n(parseFloat(inv.foreign_total_amount as string))} {String(inv.currency_code).trim()}</div>
+                        )}
                         {remaining > 0 && invStage !== 'cancelled' && paid > 0 && (
                           <div style={{ color: '#dc3545', fontSize: '0.6875rem', marginTop: 2 }}>Reste {n(remaining)}</div>
                         )}
@@ -834,7 +853,9 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
                 <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>{showPayForm.invoice_number as string}</span>
               </div>
               <div style={{ flex: 1 }} />
-              <span className="odoo-tag odoo-tag-orange">Reste {n(parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string))} DH</span>
+              <span className="odoo-tag odoo-tag-orange">Reste {payIsForeign
+                ? `${n(parseFloat(showPayForm.foreign_total_amount as string) - parseFloat((showPayForm.foreign_paid_amount as string) || '0'))} ${payCurrency}`
+                : `${n(parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string))} DH`}</span>
               <button onClick={() => setShowPayForm(null)} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
             </div>
             <form onSubmit={e => {
@@ -849,6 +870,13 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
               fd.paymentMode = payMethod;
               fd.paymentMethod = payLegacy;
               if (payOverride) fd.cashOverride = payOverride;
+              if (payIsForeign) {
+                // Le serveur recalcule le DH (devise × taux) ; l'avoir déduit n'existe pas en devise.
+                fd.foreignAmount = parseFloat(payForeign);
+                fd.exchangeRate = parseFloat(payRate);
+                fd.amount = Math.round(fd.foreignAmount * fd.exchangeRate * 100) / 100;
+                fd.avoirAmount = undefined;
+              }
               if (payLegacy !== 'check' && payLegacy !== 'traite') {
                 fd.checkNumber = undefined; fd.checkDate = undefined; fd.avoirAmount = undefined;
               } else {
@@ -858,12 +886,40 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
               payMutation.mutate(fd);
             }} className="flex-1 overflow-y-auto">
               <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {payIsForeign ? (() => {
+                  const foreign = parseFloat(payForeign) || 0; const rate = parseFloat(payRate) || 0;
+                  const invRate = parseFloat(showPayForm.exchange_rate as string) || 0;
+                  const remainingF = parseFloat(showPayForm.foreign_total_amount as string) - parseFloat((showPayForm.foreign_paid_amount as string) || '0');
+                  const remainingDh = parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string);
+                  const dh = Math.round(foreign * rate * 100) / 100;
+                  const settled = foreign >= remainingF - 0.005 ? Math.round(remainingDh * 100) / 100 : Math.round(foreign * invRate * 100) / 100;
+                  const diff = Math.round((dh - settled) * 100) / 100;
+                  const lab = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 } as const;
+                  return (<>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><label style={lab}>Montant réglé ({payCurrency}) *</label>
+                        <input type="number" step="0.01" min="0.01" max={remainingF.toFixed(2)} required value={payForeign} onChange={e => setPayForeign(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+                      <div><label style={lab}>Taux du jour : 1 {payCurrency} = … DH *</label>
+                        <input type="number" step="0.0001" min="0.0001" required value={payRate} onChange={e => setPayRate(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
+                    </div>
+                    <input type="hidden" name="amount" value={dh.toFixed(2)} />
+                    <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'grid', gap: 2 }}>
+                      <span>Sortie de trésorerie : <strong>{n(dh)} DH</strong> ({n(foreign)} {payCurrency} × {rate || '—'})</span>
+                      <span>Dette soldée au taux de la facture ({invRate}) : <strong>{n(settled)} DH</strong></span>
+                      {rate > 0 && Math.abs(diff) >= 0.01 && <span style={{ color: diff > 0 ? '#dc3545' : '#198754' }}>
+                        {diff > 0 ? 'Perte' : 'Gain'} de change : <strong>{n(Math.abs(diff))} DH</strong> ({diff > 0 ? '6331' : '7331'})</span>}
+                    </div>
+                  </>);
+                })() : (
                 <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
                     {(payLegacy === 'check' || payLegacy === 'traite') && parseFloat(payAvoir) > 0
                       ? `Montant ${payLegacy === 'traite' ? 'traite' : 'chèque'} *` : 'Montant *'}
                   </label>
                   <input name="amount" type="number" step="0.01" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required
                     value={payAmount} onChange={e => setPayAmount(e.target.value)} /></div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Mode de règlement *</label>
                     <PaymentModeSelect value={payMethod} onChange={setPayMethod} /></div>
@@ -871,7 +927,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
                     <input name="paymentDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" value={payDate} onChange={e => setPayDate(e.target.value)} required /></div>
                 </div>
                 <CashLimitGauge supplierId={showPayForm.supplier_id as string} date={payDate}
-                  amount={parseFloat(payAmount) || 0} modeCode={payMethod} override={payOverride} onOverrideChange={setPayOverride} />
+                  amount={payIsForeign ? Math.round((parseFloat(payForeign) || 0) * (parseFloat(payRate) || 0) * 100) / 100 : (parseFloat(payAmount) || 0)} modeCode={payMethod} override={payOverride} onOverrideChange={setPayOverride} />
                 {(payLegacy === 'check' || payLegacy === 'traite') && (
                   <div className="odoo-alert" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <strong style={{ fontSize: '0.75rem' }}>Détails {payLegacy === 'traite' ? 'de la traite' : 'du chèque'}</strong>
@@ -882,7 +938,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
                       <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date {payLegacy === 'traite' ? 'de la traite' : 'du chèque'}</label>
                         <input name="checkDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" defaultValue={(showPayForm.due_date as string)?.slice(0, 10) || format(new Date(), 'yyyy-MM-dd')} /></div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3" style={{ marginTop: 4 }}>
+                    {!payIsForeign && <div className="grid grid-cols-2 gap-3" style={{ marginTop: 4 }}>
                       <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Avoir fournisseur (DH)</label>
                         <input name="avoirAmount" type="number" step="0.01" min="0" placeholder="0.00"
                           value={payAvoir} onChange={e => {
@@ -906,7 +962,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
                           </p>
                         </div>
                       )}
-                    </div>
+                    </div>}
                   </div>
                 )}
                 {(() => {

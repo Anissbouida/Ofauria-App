@@ -705,6 +705,8 @@ export const invoiceRepository = {
     expectedPaymentMode?: string; receptionDate?: string;
     checkNumber?: string;
     items?: { productId?: string; ingredientId?: string; description?: string; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null }[];
+    // Mig 368 : facture saisie en devise (montants transmis en DH, taux de la facture).
+    currencyCode?: string | null; exchangeRate?: number | null;
   }, outer?: PoolClient) {
     // `outer` : transaction de l'appelant (facturation de bons de livraison, mig 352) —
     // la facture et la mise à jour des pièces sources réussissent ou échouent ensemble.
@@ -733,15 +735,17 @@ export const invoiceRepository = {
         `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, customer_id, category_id,
           purchase_order_id, reception_voucher_id, order_id,
           invoice_date, due_date, amount, tax_amount, total_amount, notes, created_by, store_id,
-          expected_payment_mode, reception_date, check_number)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+          expected_payment_mode, reception_date, check_number, currency_code, exchange_rate)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
         [invoiceNumber, invoiceType, data.supplierId || null, data.customerId || null,
          data.categoryId || null, data.purchaseOrderId || null, data.receptionVoucherId || null,
          data.orderId || null, data.invoiceDate, data.dueDate || null,
          headerAmount, headerTax, totalAmount,
          data.notes || null, data.createdBy, data.storeId || null,
          data.expectedPaymentMode || null, data.receptionDate || null,
-         data.checkNumber || null]
+         data.checkNumber || null,
+         data.currencyCode && /^[A-Z]{3}$/.test(data.currencyCode) ? data.currencyCode : 'MAD',
+         data.currencyCode && data.currencyCode !== 'MAD' && Number(data.exchangeRate) > 0 ? Number(data.exchangeRate) : 1]
       );
 
       // Insert invoice items if provided
@@ -1057,10 +1061,14 @@ export const invoiceRepository = {
       const totalAmount = parseFloat(inv.rows[0].total_amount);
       const currentStatus = inv.rows[0].status as string;
 
+      // Part soldée au taux de la facture (règlement en devise, mig 368) ; sinon le montant.
       const paymentsResult = await client.query(
-        `SELECT COALESCE(SUM(amount), 0) as total_paid FROM payments WHERE invoice_id = $1`, [id]
+        `SELECT COALESCE(SUM(COALESCE(settled_amount, amount)), 0) as total_paid,
+                COALESCE(SUM(foreign_amount), 0) AS foreign_paid
+           FROM payments WHERE invoice_id = $1`, [id]
       );
-      const totalPaid = parseFloat(paymentsResult.rows[0].total_paid);
+      const totalPaid = Math.round(parseFloat(paymentsResult.rows[0].total_paid) * 100) / 100;
+      const foreignPaid = parseFloat(paymentsResult.rows[0].foreign_paid);
 
       let status = 'pending';
       if (totalPaid >= totalAmount) status = 'paid';
@@ -1073,8 +1081,8 @@ export const invoiceRepository = {
       }
 
       const result = await client.query(
-        `UPDATE invoices SET paid_amount = $1, status = $2 WHERE id = $3 RETURNING *`,
-        [totalPaid, status, id]
+        `UPDATE invoices SET paid_amount = $1, status = $2, foreign_paid_amount = $4 WHERE id = $3 RETURNING *`,
+        [totalPaid, status, id, foreignPaid]
       );
 
       if (ownTxn) await client.query('COMMIT');
@@ -2085,6 +2093,9 @@ export const paymentRepository = {
     toTreasuryAccountId?: string | null;
     replacesPaymentId?: string | null;
     cashOverride?: { reasonCodeId: string; note?: string | null } | null;
+    // Mig 368 : règlement d'une facture en devise — montant en devise et taux du jour du paiement.
+    foreignAmount?: number | null;
+    exchangeRate?: number | null;
   }) {
     // Contexte de session lu par les triggers (auteur, dérogation au plafond espèces).
     const applyContext = async (client: PoolClient) => {
@@ -2179,7 +2190,8 @@ export const paymentRepository = {
 
       // Lock la facture + lit l'etat courant
       const inv = await client.query(
-        `SELECT total_amount, paid_amount, invoice_number FROM invoices WHERE id = $1 FOR UPDATE`,
+        `SELECT total_amount, paid_amount, invoice_number, currency_code, exchange_rate, foreign_total_amount, foreign_paid_amount
+           FROM invoices WHERE id = $1 FOR UPDATE`,
         [data.invoiceId]
       );
       if (!inv.rows[0]) {
@@ -2191,9 +2203,37 @@ export const paymentRepository = {
       const currentPaid = parseFloat(inv.rows[0].paid_amount || '0');
       const invoiceNumber = inv.rows[0].invoice_number as string;
 
+      // Facture en devise (mig 368) : le règlement se saisit en devise au taux du jour.
+      // amount = trésorerie réelle en DH ; settled = part de la facture soldée au taux de
+      // la facture ; fx = différence (perte > 0, gain < 0), passée en 6331 / 7331.
+      const invCurrency = String(inv.rows[0].currency_code ?? 'MAD').trim();
+      let fx: { currency: string; rate: number; foreign: number; settled: number; diff: number } | null = null;
+      if (invCurrency !== 'MAD') {
+        const foreign = Math.round(Number(data.foreignAmount ?? 0) * 100) / 100;
+        const rate = Number(data.exchangeRate ?? 0);
+        if (!(foreign > 0) || !(rate > 0)) {
+          throw Object.assign(new Error(`Facture ${invoiceNumber} en ${invCurrency} : indiquez le montant réglé en ${invCurrency} et le taux du jour du paiement`), { statusCode: 400 });
+        }
+        if (data.avoirAmount && data.avoirAmount > 0) {
+          throw Object.assign(new Error('Avoir déduit non disponible sur une facture en devise : enregistrez l\'avoir à part'), { statusCode: 400 });
+        }
+        const invRate = Number(inv.rows[0].exchange_rate);
+        const remainingForeign = Math.round((Number(inv.rows[0].foreign_total_amount) - Number(inv.rows[0].foreign_paid_amount || 0)) * 100) / 100;
+        if (foreign > remainingForeign + 0.005) {
+          throw Object.assign(new Error(`Le règlement de ${foreign.toFixed(2)} ${invCurrency} dépasse le reste à payer (${remainingForeign.toFixed(2)} ${invCurrency}) de la facture ${invoiceNumber}.`), { statusCode: 409 });
+        }
+        // Dernier règlement : solde exactement le reste en DH (pas de reliquat d'arrondi).
+        const settled = foreign >= remainingForeign - 0.005
+          ? Math.round((totalAmount - currentPaid) * 100) / 100
+          : Math.round(foreign * invRate * 100) / 100;
+        const amountDh = Math.round(foreign * rate * 100) / 100;
+        fx = { currency: invCurrency, rate, foreign, settled, diff: Math.round((amountDh - settled) * 100) / 100 };
+        data.amount = amountDh;
+      }
+
       // Garde 1 — sur-paiement : refuse si le cumul depasse le total.
       // Tolerance de 0.01 DH pour arrondis flottants.
-      const effectiveAmount = data.amount + (data.avoirAmount ?? 0);
+      const effectiveAmount = (fx ? fx.settled : data.amount) + (data.avoirAmount ?? 0);
       if (currentPaid + effectiveAmount > totalAmount + 0.01) {
         const remaining = Math.max(0, totalAmount - currentPaid);
         const e: Error & { statusCode?: number } = new Error(
@@ -2224,8 +2264,9 @@ export const paymentRepository = {
         `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id,
           amount, payment_method, payment_date, description, created_by, store_id, purchase_order_id,
           check_number, check_date, check_attachment_url, withholding_type_id, withholding_amount,
-          scheduled_payment_id, payment_mode, treasury_account_id, replaces_payment_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
+          scheduled_payment_id, payment_mode, treasury_account_id, replaces_payment_id,
+          currency_code, exchange_rate, foreign_amount, settled_amount, fx_difference)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27) RETURNING *`,
         [data.reference || null, data.type, data.categoryId || null, data.invoiceId,
          data.supplierId || null, data.employeeId || null, data.amount,
          data.paymentMethod || 'cash', data.paymentDate, data.description || null, data.createdBy,
@@ -2233,7 +2274,8 @@ export const paymentRepository = {
          data.checkNumber || null, data.checkDate || null, data.checkAttachmentUrl || null,
          data.withholdingTypeId || null, data.withholdingAmount ?? null,
          data.scheduledPaymentId || null,
-         data.paymentMode || null, data.treasuryAccountId || null, data.replacesPaymentId || null]
+         data.paymentMode || null, data.treasuryAccountId || null, data.replacesPaymentId || null,
+         fx?.currency ?? 'MAD', fx?.rate ?? 1, fx?.foreign ?? null, fx?.settled ?? null, fx?.diff ?? null]
       );
 
       // Sync invoice.check_number avec le N° reellement utilise au paiement.
@@ -2402,12 +2444,14 @@ export const paymentRepository = {
           `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id, amount,
               payment_method, payment_mode, payment_date, description, created_by, store_id, purchase_order_id,
               withholding_type_id, withholding_amount, session_id, scheduled_payment_id, treasury_account_id,
-              to_treasury_account_id, status, voids_payment_id, executed_at, executed_by)
+              to_treasury_account_id, status, voids_payment_id, executed_at, executed_by,
+              currency_code, exchange_rate, foreign_amount, settled_amount, fx_difference)
            SELECT reference, type, category_id, invoice_id, supplier_id, employee_id, -amount,
               payment_method, payment_mode, payment_date,
               'Annulation : ' || COALESCE(description, reference, check_number, ''), $2, store_id, purchase_order_id,
               withholding_type_id, -withholding_amount, session_id, scheduled_payment_id, treasury_account_id,
-              to_treasury_account_id, 'void', id, now(), $2
+              to_treasury_account_id, 'void', id, now(), $2,
+              currency_code, exchange_rate, -foreign_amount, -settled_amount, -fx_difference
              FROM payments WHERE id = $1`,
           [pid, input.userId]);
         if (FLAGS.LEDGER_AUTOGEN) {

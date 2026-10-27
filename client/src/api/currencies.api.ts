@@ -8,6 +8,12 @@ export type Currency = {
 export type ExchangeRate = { id: string; currency_code: string; valid_on: string; rate: string; source: string | null; created_by_name: string | null; created_at: string };
 
 export const BASE_CURRENCY = 'MAD';
+export type RevaluationRow = {
+  id: string; invoice_number: string; supplier_invoice_number: string | null; supplier_name: string | null; invoice_date: string;
+  currency_code: string; exchange_rate: string; foreign_remaining: string; current_rate: string | null;
+  remaining_at_invoice_rate: number; remaining_at_date_rate: number | null; latent: number | null;
+};
+export type Revaluation = { date: string; rows: RevaluationRow[]; latentLoss: number; latentGain: number; missingRates: string[] };
 
 export const currenciesApi = {
   list: (opts: { all?: boolean; date?: string } = {}): Promise<Currency[]> =>
@@ -17,6 +23,8 @@ export const currenciesApi = {
     api.post(`/currencies/${code}/rates`, data).then(r => r.data.data),
   create: (data: { code: string; label: string; symbol?: string | null; decimals?: number }): Promise<Currency> => api.post('/currencies', data).then(r => r.data.data),
   setActive: (code: string, isActive: boolean): Promise<Currency> => api.patch(`/currencies/${code}`, { isActive }).then(r => r.data.data),
+  /** Écarts de change latents sur factures fournisseurs en devise non soldées (mig 368). */
+  revaluation: (date?: string): Promise<Revaluation> => api.get('/currencies/revaluation', { params: date ? { date } : {} }).then(r => r.data.data),
 };
 
 /** Montant formaté dans sa devise : « 1 250,00 € », « 3 685,00 DH ». */
