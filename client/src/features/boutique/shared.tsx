@@ -42,24 +42,3 @@ export function EmptyRow({ colSpan, children }: { colSpan: number; children: Rea
     </tr>
   );
 }
-
-/** Sélecteur de sous-vue (même rendu que ViewSwitch, N options). */
-export function SubSwitch<K extends string>({ value, onChange, options, ariaLabel }: {
-  value: K; onChange: (k: K) => void; options: Array<{ key: K; label: string }>; ariaLabel: string;
-}) {
-  return (
-    <div className="odoo-view-switcher" role="tablist" aria-label={ariaLabel}>
-      {options.map(o => (
-        <button key={o.key} type="button" role="tab" aria-selected={value === o.key} onClick={() => onChange(o.key)}
-          style={{
-            padding: '0.3rem 0.75rem', fontSize: '0.8125rem',
-            background: value === o.key ? 'var(--odoo-purple-light)' : 'transparent',
-            color: value === o.key ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
-            fontWeight: value === o.key ? 600 : 400,
-          }}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}

@@ -2,7 +2,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Check, ClipboardCheck, ArrowLeftRight, PackageX, ScrollText, Settings, Store } from 'lucide-react';
+import { Check, ClipboardCheck, ClipboardList, ArrowLeftRight, PackageX, ScrollText, Settings, Store, BarChart3 } from 'lucide-react';
 import { ROLE_GROUPS } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
 import { reconciliationApi, type ReconDaySummary } from '../../api/reconciliation.api';
@@ -12,7 +12,7 @@ import {
 } from '../reconciliation/ReconciliationPage';
 import OuvertureTab, { useOpeningToday, openingStatus } from './OuvertureTab';
 import InvendusTab, { InvendusDashboard } from './InvendusTab';
-import { SubSwitch } from './shared';
+import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
 import VentesIndicators from './VentesIndicators';
 
 /**
@@ -26,12 +26,20 @@ import VentesIndicators from './VentesIndicators';
  */
 
 type Tab = 'ouverture' | 'ventes' | 'invendus' | 'rapports' | 'parametres';
-const TABS: Array<{ key: Tab; label: string; icon: typeof Store; manager?: boolean }> = [
-  { key: 'ouverture', label: 'Ouverture', icon: ClipboardCheck },
-  { key: 'ventes', label: 'Appro & ventes', icon: ArrowLeftRight, manager: true },
-  { key: 'invendus', label: 'Invendus', icon: PackageX },
-  { key: 'rapports', label: 'Rapports', icon: ScrollText, manager: true },
-  { key: 'parametres', label: 'Paramètres', icon: Settings, manager: true },
+/**
+ * Écrans de la barre latérale (ModuleShell) : clé « onglet:vue » pour les onglets qui
+ * ont des sous-vues. L'URL garde ?tab=&vue= : liens et notifications déjà émis valables.
+ * La première vue de chaque onglet est celle qu'il ouvre sans ?vue=.
+ */
+const VIEWS: Array<Omit<ModuleView, 'hidden'> & { tab: Tab; vue?: string; manager?: boolean }> = [
+  { key: 'ouverture', tab: 'ouverture', label: 'Ouverture', icon: ClipboardCheck, section: 'operations' },
+  { key: 'ventes:journee', tab: 'ventes', vue: 'journee', label: 'Journée (shifts)', icon: ArrowLeftRight, section: 'operations', manager: true },
+  { key: 'ventes:fiche', tab: 'ventes', vue: 'fiche', label: 'Fiche de besoin', icon: ClipboardList, section: 'operations', manager: true },
+  { key: 'invendus', tab: 'invendus', label: 'Invendus', icon: PackageX, section: 'operations' },
+  { key: 'rapports:ventes', tab: 'rapports', vue: 'ventes', label: 'Écarts de ventes', icon: ScrollText, section: 'reports', manager: true },
+  { key: 'rapports:invendus', tab: 'rapports', vue: 'invendus', label: 'Invendus du mois', icon: BarChart3, section: 'reports', manager: true },
+  { key: 'parametres:catalogue', tab: 'parametres', vue: 'catalogue', label: 'Catalogue Loyverse', icon: Store, section: 'setup', manager: true },
+  { key: 'parametres:regles', tab: 'parametres', vue: 'regles', label: 'Report, créneaux et traductions', icon: Settings, section: 'setup', manager: true },
 ];
 
 type Step = { key: string; label: string; detail: string; done: boolean; tab: Tab };
@@ -72,39 +80,38 @@ export default function JourneeBoutiquePage() {
   }
   const currentIdx = steps.findIndex(s => !s.done);
 
-  // ── Onglet : URL, sinon l'étape en cours ──
-  const tabs = TABS.filter(t => !t.manager || isManager);
+  // ── Écran : URL, sinon l'étape en cours ──
+  const views: ModuleView[] = VIEWS.map(({ tab: _t, vue: _v, manager, ...v }) => ({ ...v, hidden: manager && !isManager }));
+  const visible = VIEWS.filter(v => !v.manager || isManager);
   const [searchParams, setSearchParams] = useSearchParams();
   const fromUrl = searchParams.get('tab') as Tab | null;
   const fallback = steps[currentIdx]?.tab ?? 'invendus';
-  const tab: Tab = fromUrl && tabs.some(t => t.key === fromUrl) ? fromUrl : fallback;
-  const setTab = (t: Tab) => {
-    searchParams.set('tab', t);
-    searchParams.delete('vue');
-    setSearchParams(searchParams, { replace: true });
+  const tab: Tab = fromUrl && visible.some(v => v.tab === fromUrl) ? fromUrl : fallback;
+  const tabViews = visible.filter(v => v.tab === tab);
+  const vue = tabViews.find(v => v.vue === searchParams.get('vue')) ?? tabViews[0];
+  const go = (t: Tab, v?: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', t);
+    if (v) next.set('vue', v); else next.delete('vue');
+    setSearchParams(next);
   };
-  const vue = searchParams.get('vue');
-  const setVue = (v: string) => { searchParams.set('tab', tab); searchParams.set('vue', v); setSearchParams(searchParams, { replace: true }); };
-  const current = tabs.find(t => t.key === tab)!;
+  const select = (key: string) => {
+    const v = VIEWS.find(x => x.key === key);
+    if (v) go(v.tab, v.vue);
+  };
+  const current = views.find(v => v.key === vue?.key);
 
   return (
-    <div className="odoo-scope" style={{ minHeight: '100%' }}>
-      <div className="odoo-control-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <div className="odoo-breadcrumb">
-          <Store size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Journée boutique</span>
-          <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">{current.label}</span>
-        </div>
-        <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', textTransform: 'capitalize' }}>
+    <ModuleShell title="Journée boutique" views={views} current={current} onSelect={select} flush
+      actions={
+        <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', color: 'var(--theme-text-muted)', textTransform: 'capitalize' }}>
           {format(new Date(), 'EEEE d MMMM yyyy', { locale: fr })}
         </span>
-      </div>
-
+      }>
       <ol className="ui-timeline" aria-label="Avancement de la journée">
         {steps.map((s, i) => (
           <li key={s.key} className={`ui-timeline-step ${s.done ? 'is-done' : ''} ${i === currentIdx ? 'is-current' : ''}`}>
-            <button type="button" onClick={() => setTab(s.tab)} aria-current={i === currentIdx ? 'step' : undefined}
+            <button type="button" onClick={() => go(s.tab)} aria-current={i === currentIdx ? 'step' : undefined}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', background: 'none', border: 0, padding: 0, cursor: 'pointer' }}>
               <span className="ui-timeline-dot">{s.done ? <Check size={12} /> : i + 1}</span>
               <span className="ui-timeline-label">{s.label}</span>
@@ -114,71 +121,25 @@ export default function JourneeBoutiquePage() {
         ))}
       </ol>
 
-      <div className="odoo-tabs">
-        {tabs.map(t => {
-          const Icon = t.icon;
-          return (
-            <button key={t.key} type="button" onClick={() => setTab(t.key)} className={`odoo-tab ${tab === t.key ? 'active' : ''}`}>
-              <Icon size={13} style={{ marginRight: 4 }} /> {t.label}
-            </button>
-          );
-        })}
-      </div>
-
       <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {isManager && tab !== 'parametres' && (
-          <VentesIndicators onManquants={() => {
-            searchParams.set('tab', 'rapports'); searchParams.set('vue', 'ventes'); setSearchParams(searchParams, { replace: true });
-          }} />
+          <VentesIndicators onManquants={() => go('rapports', 'ventes')} />
         )}
         {tab === 'ouverture' && <OuvertureTab />}
         {tab === 'invendus' && <InvendusTab />}
-        {tab === 'ventes' && <VentesTab vue={vue} setVue={setVue} />}
-        {tab === 'rapports' && <RapportsTab vue={vue} setVue={setVue} />}
-        {tab === 'parametres' && <ParametresTab vue={vue} setVue={setVue} />}
+        {vue?.key === 'ventes:fiche' && <FicheBesoinsView onValidated={() => go('ventes', 'journee')} />}
+        {vue?.key === 'ventes:journee' && <DayView />}
+        {vue?.key === 'rapports:ventes' && <ReportView />}
+        {vue?.key === 'rapports:invendus' && <InvendusDashboard />}
+        {vue?.key === 'parametres:catalogue' && <CatalogView />}
+        {vue?.key === 'parametres:regles' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+            <CarryOverSettingsView />
+            <SlotsSettingsView />
+            <DarijaSettingsView />
+          </div>
+        )}
       </div>
-    </div>
-  );
-}
-
-type SubProps = { vue: string | null; setVue: (v: string) => void };
-
-/** Fiche de besoin le matin, Journée (shifts, import Loyverse, clôture) ensuite. */
-function VentesTab({ vue, setVue }: SubProps) {
-  const v = vue === 'fiche' ? 'fiche' : 'journee';
-  return (
-    <>
-      <SubSwitch ariaLabel="Appro & ventes" value={v} onChange={setVue}
-        options={[{ key: 'fiche', label: 'Fiche de besoin' }, { key: 'journee', label: 'Journée (shifts)' }]} />
-      {v === 'fiche' ? <FicheBesoinsView onValidated={() => setVue('journee')} /> : <DayView />}
-    </>
-  );
-}
-
-function RapportsTab({ vue, setVue }: SubProps) {
-  const v = vue === 'invendus' ? 'invendus' : 'ventes';
-  return (
-    <>
-      <SubSwitch ariaLabel="Rapports" value={v} onChange={setVue}
-        options={[{ key: 'ventes', label: 'Écarts de ventes' }, { key: 'invendus', label: 'Invendus du mois' }]} />
-      {v === 'ventes' ? <ReportView /> : <InvendusDashboard />}
-    </>
-  );
-}
-
-function ParametresTab({ vue, setVue }: SubProps) {
-  const v = vue === 'regles' ? 'regles' : 'catalogue';
-  return (
-    <>
-      <SubSwitch ariaLabel="Paramètres" value={v} onChange={setVue}
-        options={[{ key: 'catalogue', label: 'Catalogue Loyverse' }, { key: 'regles', label: 'Report, créneaux et traductions' }]} />
-      {v === 'catalogue' ? <CatalogView /> : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
-          <CarryOverSettingsView />
-          <SlotsSettingsView />
-          <DarijaSettingsView />
-        </div>
-      )}
-    </>
+    </ModuleShell>
   );
 }
