@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { orderRepository } from './order.repository.js';
+import { crmRepository } from './crm.repository.js';
 import { loadCustomer, isProCustomer, priceLines, taxAfterDiscount, creditWarning, creditGate, notifyProductionChefs } from '../controllers/order.controller.js';
 
 /**
@@ -20,6 +21,8 @@ export type QuoteInput = {
   customerId?: string | null; prospectName?: string | null; prospectCompany?: string | null; prospectPhone?: string | null; prospectEmail?: string | null;
   title?: string | null; quoteDate?: string; validUntil?: string; withTax?: boolean; discountPct?: number;
   deliveryTerms?: string | null; notes?: string | null; internalNotes?: string | null; items: QuoteLineInput[];
+  /** Opportunité d'origine (CRM, mig 371). */
+  opportunityId?: string | null;
 };
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -156,13 +159,13 @@ export const quoteRepository = {
       const r = await client.query(
         `INSERT INTO quotes (number, store_id, customer_id, prospect_name, prospect_company, prospect_phone, prospect_email, title,
                              quote_date, valid_until, with_tax, discount_pct, subtotal, discount_amount, tax_amount, total,
-                             delivery_terms, notes, internal_notes, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING id`,
+                             delivery_terms, notes, internal_notes, created_by, opportunity_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING id`,
         [number, ctx.storeId, input.customerId ?? null,
          input.customerId ? null : input.prospectName?.trim() || null, input.customerId ? null : input.prospectCompany?.trim() || null,
          input.customerId ? null : input.prospectPhone?.trim() || null, input.customerId ? null : input.prospectEmail?.trim() || null,
          input.title?.trim() || null, quoteDate, validUntil, c.withTax, c.pct, c.subtotal, c.discount, c.tax, c.total,
-         input.deliveryTerms?.trim() || null, input.notes?.trim() || null, input.internalNotes?.trim() || null, ctx.userId]);
+         input.deliveryTerms?.trim() || null, input.notes?.trim() || null, input.internalNotes?.trim() || null, ctx.userId, input.opportunityId ?? null]);
       const id = r.rows[0].id as string;
       await this._writeLines(client, id, c.lines);
       await addEvent(client, id, { type: 'created', to: 'draft', userId: ctx.userId });
@@ -243,6 +246,7 @@ export const quoteRepository = {
               expiry_notified_at = CASE WHEN $2::text = 'draft' THEN NULL ELSE expiry_notified_at END
         WHERE id = $1`, [id, to, p.reasonCode ?? null, p.note?.trim() || null]);
     await addEvent(db as unknown as Runner, id, { type: 'status', from, to, note: p.note ?? (action === 'refuse' ? p.reasonCode : null), userId: p.userId });
+    if (action === 'send') await crmRepository.onQuoteEvent(id, 'sent', p.userId);
     if (action === 'accept' && cur.created_by && cur.created_by !== p.userId) {
       await db.query(
         `INSERT INTO notifications (target_role, target_user_id, store_id, type, title, message, reference_type, reference_id, created_by)
@@ -341,6 +345,7 @@ export const quoteRepository = {
                            customer_id = COALESCE(customer_id, $3), decided_at = COALESCE(decided_at, now()) WHERE id = $1`,
       [id, order.id, customerId]);
     await addEvent(db as unknown as Runner, id, { type: 'status', from: q.status, to: 'converted', note: `Commande ${orderNumber}`, userId: p.userId });
+    await crmRepository.onQuoteEvent(id, 'converted', p.userId);
     const planId = (order as Record<string, unknown>)._productionPlanId as string | null;
     if (planId) await notifyProductionChefs({ productionPlanId: planId, products: priced.products, storeId: p.storeId, orderNumber, pickupDate: p.pickupDate, userId: p.userId });
     const warning = pro ? await creditWarning(pro, total, order.id) : null;

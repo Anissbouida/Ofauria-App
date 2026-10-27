@@ -130,6 +130,25 @@ async function quotesExpire(): Promise<JobResult> {
   return { items: r.rowCount ?? 0, message: r.rowCount ? `${r.rowCount} devis expiré(s)` : 'Aucun devis expiré' };
 }
 
+/** Activités commerciales échues (mig 371) : une alerte par activité, au commercial à qui elle est confiée. */
+async function crmActivitiesDue(): Promise<JobResult> {
+  const r = await db.query(
+    `UPDATE crm_activities a SET notified_at = now()
+       FROM opportunities o
+      WHERE o.id = a.opportunity_id AND a.done_at IS NULL AND a.kind <> 'note' AND a.due_at IS NOT NULL AND a.due_at <= now()
+        AND a.notified_at IS NULL AND o.stage NOT IN ('won', 'lost')
+      RETURNING a.id, a.subject, a.kind, a.due_at, a.assigned_to, o.id AS opp_id, o.number, o.title, o.store_id, o.owner_id`);
+  const KIND: Record<string, string> = { call: 'Appel', meeting: 'Rendez-vous', email: 'E-mail', task: 'Tâche' };
+  for (const a of r.rows) {
+    const to = a.assigned_to ?? a.owner_id;
+    await db.query(
+      `INSERT INTO notifications (target_role, target_user_id, store_id, type, title, message, reference_type, reference_id)
+       VALUES ($1, $2, $3, 'crm_activity_due', $4, $5, 'opportunity', $6)`,
+      [to ? 'all' : 'manager', to, a.store_id, `${KIND[a.kind] ?? 'Activité'} à faire · ${a.number}`, `${a.subject} — ${a.title}`, a.opp_id]);
+  }
+  return { items: r.rowCount ?? 0, message: r.rowCount ? `${r.rowCount} activité(s) signalée(s)` : 'Aucune activité échue' };
+}
+
 async function housekeeping(): Promise<JobResult> {
   const a = await db.query(`DELETE FROM scheduled_job_runs WHERE started_at < now() - interval '30 days'`);
   const b = await db.query(`DELETE FROM email_outbox WHERE status = 'sent' AND sent_at < now() - interval '90 days'`);
@@ -150,6 +169,7 @@ export const JOBS: Record<string, Handler> = {
   rfq_deadline: rfqDeadline,
   quotes_expire: quotesExpire,
   dunning_run: () => dunningRepository.run(),
+  crm_activities_due: crmActivitiesDue,
   housekeeping,
 };
 

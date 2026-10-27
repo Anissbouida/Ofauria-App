@@ -30,6 +30,7 @@ import ProductionDashboardPage from './features/production/ProductionDashboardPa
 import ProductionLayout from './features/production/ProductionLayout';
 import SalesLayout from './features/sales/SalesLayout';
 import QuotesPage from './features/quotes/QuotesPage';
+import CrmPage from './features/crm/CrmPage';
 import DunningPage from './features/dunning/DunningPage';
 import ProjectsPage from './features/projects/ProjectsPage';
 import ProjectDetailPage from './features/projects/ProjectDetailPage';
@@ -71,6 +72,7 @@ export default function App() {
               <Route path="/pos" element={<POSPage />} />
               {/* Module Ventes : commandes, ventes, clients et produits sous une même barre latérale. */}
               <Route element={<SalesLayout />}>
+                <Route path="/crm" element={<CrmPage />} />
                 <Route path="/quotes" element={<QuotesPage />} />
                 <Route path="/dunning" element={<DunningPage />} />
                 <Route path="/orders" element={<OrdersPage />} />

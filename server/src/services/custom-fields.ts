@@ -14,6 +14,7 @@ export const CF_ENTITIES = {
   order:          { table: 'orders',                    module: 'orders',      label: 'Commandes' },
   intervention:   { table: 'maintenance_interventions', module: 'maintenance', label: 'Interventions' },
   project:        { table: 'projects',                  module: 'projects',    label: 'Projets' },
+  opportunity:    { table: 'opportunities',             module: 'crm',         label: 'Opportunités' },
 } as const satisfies Record<string, { table: string; module: AppModule; label: string }>;
 export type CfEntity = keyof typeof CF_ENTITIES;
 export const isCfEntity = (e: unknown): e is CfEntity => typeof e === 'string' && e in CF_ENTITIES;

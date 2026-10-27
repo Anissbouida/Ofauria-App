@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
-import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent, FileSignature, BellRing } from 'lucide-react';
+import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent, FileSignature, BellRing, Target } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
@@ -28,6 +28,7 @@ export default function SalesLayout() {
   const views: ModuleView[] = [
     { key: 'reports:overview', label: "Vue d'ensemble", icon: LayoutDashboard, section: 'dashboard', href: '/reports', hidden: !hasModule('reports') },
     { key: 'pos', label: 'Point de vente', icon: Monitor, section: 'operations', href: '/pos', external: true, hidden: !hasModule('pos') },
+    { key: 'crm', label: 'Pipeline', icon: Target, section: 'operations', href: '/crm', hidden: !hasModule('crm') },
     { key: 'quotes', label: 'Devis', icon: FileSignature, section: 'operations', href: '/quotes', hidden: !hasModule('orders') || !isDirection },
     { key: 'orders', label: 'Commandes', icon: ClipboardList, section: 'operations', href: '/orders', hidden: !hasModule('orders') },
     salesView('sales', Receipt),

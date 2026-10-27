@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   FileSignature, FileText, Send, CheckCircle2, XCircle, ShoppingCart, Plus, Search, Loader2, X, Copy, RotateCcw, Ban, Trash2, Printer, Clock,
 } from 'lucide-react';
@@ -16,6 +16,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { useReferentiel } from '../../hooks/useReferentiel';
+import { crmApi, type Opportunity } from '../../api/crm.api';
 import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
 
 /**
@@ -53,6 +54,12 @@ export default function QuotesPage() {
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<Quote | 'new' | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  // « Créer un devis » depuis une opportunité du CRM : /quotes?opportunity=<id> ouvre la saisie préremplie.
+  const [urlParams, setUrlParams] = useSearchParams();
+  const opportunityId = urlParams.get('opportunity');
+  const { data: fromOpp } = useQuery({ queryKey: ['crm', 'opp', opportunityId], queryFn: () => crmApi.get(opportunityId!), enabled: !!opportunityId });
+  useEffect(() => { if (fromOpp) setEditing('new'); }, [fromOpp]);
+  const closeForm = () => { setEditing(null); if (opportunityId) { urlParams.delete('opportunity'); setUrlParams(urlParams, { replace: true }); } };
   useEffect(() => { const t = setTimeout(() => setSearch(searchInput.trim()), 300); return () => clearTimeout(t); }, [searchInput]);
   useEffect(() => { setPage(1); }, [status, search]);
   const params: Record<string, string> = { page: String(page), limit: String(PAGE_SIZE) };
@@ -138,8 +145,9 @@ export default function QuotesPage() {
       )}
 
       {editing && <QuoteFormModal quote={editing === 'new' ? null : editing} validityDays={ov?.validityDays ?? 30}
-        onClose={() => setEditing(null)}
-        onSaved={q => { qc.invalidateQueries({ queryKey: ['quotes'] }); setEditing(null); setOpenId(q.id); }} />}
+        opportunity={editing === 'new' ? fromOpp ?? null : null}
+        onClose={closeForm}
+        onSaved={q => { qc.invalidateQueries({ queryKey: ['quotes'] }); qc.invalidateQueries({ queryKey: ['crm'] }); closeForm(); setOpenId(q.id); }} />}
       {openId && !editing && <QuoteDetailModal id={openId} onClose={() => setOpenId(null)} onEdit={q => setEditing(q)} onOpen={setOpenId} />}
     </div>
   );
@@ -151,12 +159,16 @@ const emptyLine = (): Line => ({ productId: '', quantity: '1', unitPrice: '', tv
 const today = () => format(new Date(), 'yyyy-MM-dd');
 const addDays = (iso: string, n: number) => { const d = new Date(`${iso}T00:00:00`); d.setDate(d.getDate() + n); return format(d, 'yyyy-MM-dd'); };
 
-function QuoteFormModal({ quote, validityDays, onClose, onSaved }: { quote: Quote | null; validityDays: number; onClose: () => void; onSaved: (q: Quote) => void }) {
-  const [mode, setMode] = useState<'customer' | 'prospect'>(quote && !quote.customer_id ? 'prospect' : 'customer');
-  const [customerId, setCustomerId] = useState(quote?.customer_id ?? '');
-  const [prospect, setProspect] = useState({ name: quote?.prospect_name ?? '', company: quote?.prospect_company ?? '', phone: quote?.prospect_phone ?? '', email: quote?.prospect_email ?? '' });
+function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: { quote: Quote | null; opportunity?: Opportunity | null; validityDays: number; onClose: () => void; onSaved: (q: Quote) => void }) {
+  const o = opportunity;
+  const [mode, setMode] = useState<'customer' | 'prospect'>((quote && !quote.customer_id) || (o && !o.customer_id) ? 'prospect' : 'customer');
+  const [customerId, setCustomerId] = useState(quote?.customer_id ?? o?.customer_id ?? '');
+  const [prospect, setProspect] = useState({
+    name: quote?.prospect_name ?? o?.prospect_name ?? '', company: quote?.prospect_company ?? o?.prospect_company ?? '',
+    phone: quote?.prospect_phone ?? o?.prospect_phone ?? '', email: quote?.prospect_email ?? o?.prospect_email ?? '',
+  });
   const [head, setHead] = useState({
-    title: quote?.title ?? '', quoteDate: d10(quote?.quote_date) || today(), validUntil: d10(quote?.valid_until) || addDays(today(), validityDays),
+    title: quote?.title ?? o?.title ?? '', quoteDate: d10(quote?.quote_date) || today(), validUntil: d10(quote?.valid_until) || addDays(today(), validityDays),
     discountPct: quote ? String(Number(quote.discount_pct)) : '0', deliveryTerms: quote?.delivery_terms ?? '', notes: quote?.notes ?? '', internalNotes: quote?.internal_notes ?? '',
     withTax: quote?.with_tax ?? false,
   });
@@ -206,7 +218,7 @@ function QuoteFormModal({ quote, validityDays, onClose, onSaved }: { quote: Quot
         customerId: mode === 'customer' ? customerId || null : null,
         prospectName: mode === 'prospect' ? prospect.name || null : null, prospectCompany: mode === 'prospect' ? prospect.company || null : null,
         prospectPhone: mode === 'prospect' ? prospect.phone || null : null, prospectEmail: mode === 'prospect' ? prospect.email || null : null,
-        title: head.title || null, quoteDate: head.quoteDate, validUntil: head.validUntil, withTax: mode === 'prospect' ? head.withTax : undefined,
+        title: head.title || null, opportunityId: quote ? undefined : o?.id ?? null, quoteDate: head.quoteDate, validUntil: head.validUntil, withTax: mode === 'prospect' ? head.withTax : undefined,
         discountPct: pct, deliveryTerms: head.deliveryTerms || null, notes: head.notes || null, internalNotes: head.internalNotes || null,
         items: valid.map(l => ({ productId: l.productId, quantity: Math.round(Number(l.quantity)), unitPrice: l.unitPrice === '' ? null : Number(l.unitPrice),
           tvaRate: withTax && l.tvaRate !== '' ? Number(l.tvaRate) : null, description: l.description || null })),

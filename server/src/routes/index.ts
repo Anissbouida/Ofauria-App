@@ -71,6 +71,7 @@ import { quotesRouter } from './quotes.routes.js';
 import { dunningRouter } from './dunning.routes.js';
 import { stockCountsRouter } from './stock-counts.routes.js';
 import { customFieldsRouter } from './custom-fields.routes.js';
+import { crmRouter } from './crm.routes.js';
 
 const router = Router();
 
@@ -167,5 +168,6 @@ router.use('/quotes', quotesRouter);
 router.use('/dunning', dunningRouter);
 router.use('/stock-counts', stockCountsRouter);
 router.use('/custom-fields', customFieldsRouter);
+router.use('/crm', crmRouter);
 
 export default router;

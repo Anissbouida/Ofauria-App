@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from './client';
 
 /** Champs personnalisés (mig 369). */
-export type CfEntity = 'customer' | 'supplier' | 'ingredient' | 'packaging_item' | 'product' | 'order' | 'intervention' | 'project';
+export type CfEntity = 'customer' | 'supplier' | 'ingredient' | 'packaging_item' | 'product' | 'order' | 'intervention' | 'project' | 'opportunity';
 export type CfType = 'text' | 'number' | 'date' | 'select' | 'boolean';
 export type CustomFieldDef = {
   id: string; entity: CfEntity; code: string; label: string; field_type: CfType; options: string[];

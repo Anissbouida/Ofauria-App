@@ -40,6 +40,7 @@ const body = z.object({
   notes: z.string().trim().max(2000).nullish(),
   internalNotes: z.string().trim().max(2000).nullish(),
   items: z.array(line).min(1, 'Ajoutez au moins un article').max(200),
+  opportunityId: z.string().uuid().nullish(),
 }).refine(b => b.customerId || b.prospectName || b.prospectCompany, { message: 'Choisissez un client ou saisissez le nom du prospect' });
 
 function bad(res: Response, message = 'Paramètres invalides', status = 400) { res.status(status).json({ success: false, error: { message } }); }

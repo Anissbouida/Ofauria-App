@@ -20,7 +20,7 @@ export type Quote = {
 };
 export type QuoteInput = {
   customerId?: string | null; prospectName?: string | null; prospectCompany?: string | null; prospectPhone?: string | null; prospectEmail?: string | null;
-  title?: string | null; quoteDate?: string; validUntil?: string; withTax?: boolean; discountPct?: number;
+  title?: string | null; opportunityId?: string | null; quoteDate?: string; validUntil?: string; withTax?: boolean; discountPct?: number;
   deliveryTerms?: string | null; notes?: string | null; internalNotes?: string | null;
   items: { productId: string; quantity: number; unitPrice?: number | null; tvaRate?: number | null; description?: string | null }[];
 };

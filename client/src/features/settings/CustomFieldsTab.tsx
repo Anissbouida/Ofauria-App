@@ -26,6 +26,7 @@ const EXAMPLES: Record<CfEntity, string> = {
   order: 'n° de bon client, lieu de livraison, occasion…',
   intervention: 'kilométrage, n° d\'immatriculation, pièce remplacée…',
   project: 'référence du marché, chef de chantier, lieu…',
+  opportunity: 'budget du client, nombre de convives, concurrent en lice…',
 };
 
 export default function CustomFieldsTab() {
