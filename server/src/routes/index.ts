@@ -64,6 +64,7 @@ import { projectsRouter } from './projects.routes.js';
 import { maintenanceRouter } from './maintenance.routes.js';
 import { rfqRouter } from './rfq.routes.js';
 import { landedCostRouter } from './landed-cost.routes.js';
+import { supplierScoreRouter } from './supplier-score.routes.js';
 
 const router = Router();
 
@@ -153,5 +154,6 @@ router.use('/projects', projectsRouter);
 router.use('/maintenance', maintenanceRouter);
 router.use('/rfqs', rfqRouter);
 router.use('/landed-costs', landedCostRouter);
+router.use('/supplier-scores', supplierScoreRouter);
 
 export default router;

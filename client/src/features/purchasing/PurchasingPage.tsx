@@ -11,7 +11,7 @@ import {
   X, Check, Download, AlertTriangle, ChevronRight,
   ClipboardList, Receipt, Paperclip, Eye, Trash2, Upload,
   Loader2, Search, Coins, Filter, ArrowUpDown, ArrowUp, ArrowDown,
-  Clock, CheckCircle2, Scale, CalendarClock, Ban, Settings, FileQuestion, Ship,
+  Clock, CheckCircle2, Scale, CalendarClock, Ban, Settings, FileQuestion, Ship, Award,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -22,6 +22,7 @@ import SuppliersTab from './SuppliersTab';
 import PurchasingPilotageTab from './PurchasingPilotageTab';
 import RfqTab from './RfqTab';
 import LandedCostTab from './LandedCostTab';
+import SupplierScoreTab from './SupplierScoreTab';
 import InvoiceControlModal from '../../components/purchasing/InvoiceControlModal';
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
 import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, paymentModeLabel, PaymentStatusTag, ReissuePaymentDialog, type CashOverride } from '../../components/purchasing/PaymentModeFields';
@@ -36,7 +37,7 @@ import {
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 
-type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'pilotage' | 'rfq' | 'landed';
+type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'pilotage' | 'rfq' | 'landed' | 'scores';
 
 /**
  * Étapes du processus d'une facture reçue (dérivées côté serveur, cf.
@@ -87,6 +88,8 @@ export default function PurchasingPage() {
     { key: 'landed', label: 'Frais d\'approche', icon: Ship, section: 'operations' },
     // Boîte d'approbation (lot 8), sans passer par la cloche.
     { key: 'approvals', label: 'À approuver', icon: ClipboardCheck, section: 'operations', href: '/approvals', external: true, badge: approvalsCount },
+    // Évaluation des fournisseurs (mig 362) : note calculée délais / complétude / conformité / prix / litiges.
+    { key: 'scores', label: 'Évaluation des fournisseurs', icon: Award, section: 'reports' },
     { key: 'suppliers', label: 'Fournisseurs', icon: Truck, section: 'setup' },
     { key: 'settings', label: 'Réglages des achats', icon: Settings, section: 'setup', href: '/settings?page=purchasing', external: true },
   ];
@@ -109,6 +112,7 @@ export default function PurchasingPage() {
       {tab === 'purchase_orders' && <PurchaseOrdersTab initialSupplierId={focus.supplierId} />}
       {tab === 'invoices' && <InvoicesTab {...focus} />}
       {tab === 'landed' && <LandedCostTab />}
+      {tab === 'scores' && <SupplierScoreTab />}
       {tab === 'pilotage' && <PurchasingPilotageTab onOpenInvoice={(f) => openTab('invoices', f)} />}
     </ModuleShell>
   );

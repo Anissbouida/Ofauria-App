@@ -9,6 +9,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { suppliersApi, type SupplierIdentifierInput, type IdentifierType } from '../../api/accounting.api';
+import { supplierScoreApi, STANDING_TAG } from '../../api/supplier-score.api';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -171,6 +172,9 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
     placeholderData: (prev) => prev,
   });
   const { data: summary } = useQuery({ queryKey: ['suppliers', 'board-summary'], queryFn: suppliersApi.boardSummary });
+  // Dernière note figée (mig 362) : badge A/B/C/D, détail dans Achats › Évaluation des fournisseurs.
+  const { data: latestScores = [] } = useQuery({ queryKey: ['supplier-scores', 'latest'], queryFn: supplierScoreApi.latest });
+  const scoreOf = (id: string) => latestScores.find(x => x.supplier_id === id);
   // Référentiel complet : seulement pour la fiche (choix de l'entité parente).
   const { data: allSuppliers = [] } = useQuery<Supplier[]>({ queryKey: ['suppliers'], queryFn: suppliersApi.list, enabled: showForm });
 
@@ -375,6 +379,7 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
                 {sortableTh('city', 'Ville')}
                 <th>ICE / TVA</th>
                 <th style={{ minWidth: 190 }}>Situation</th>
+                <th title="Dernière note figée (Achats › Évaluation des fournisseurs)">Note</th>
                 {sortableTh('last_order_date', 'Dernière commande')}
                 {sortableTh('purchased_12m', 'Achats 12 mois', 'right')}
                 {sortableTh('amount_due', 'Reste dû', 'right')}
@@ -433,6 +438,11 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
                           {[latePo > 0 && `${latePo} livraison${latePo > 1 ? 's' : ''} en retard`, overdue > 0 && `${overdue} facture${overdue > 1 ? 's' : ''} échue${overdue > 1 ? 's' : ''}`].filter(Boolean).join(' · ')}
                         </div>
                       )}
+                    </td>
+                    <td>
+                      {(() => { const sc = scoreOf(s.id); return sc
+                        ? <span className={`odoo-tag ${STANDING_TAG[sc.standing]}`} title={`Note ${sc.score ?? '—'} figée au ${fmtDate(sc.period_to) ?? ''}`}>{sc.standing === 'new' ? 'récent' : `${sc.standing} · ${Number(sc.score).toFixed(0)}`}</span>
+                        : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>; })()}
                     </td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>
                       {fmtDate(s.last_order_date as string) ?? <span style={{ fontStyle: 'italic' }}>jamais</span>}
