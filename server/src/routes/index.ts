@@ -62,6 +62,7 @@ import recallRoutes from './recall.routes.js';
 import { complaintsRouter } from './complaints.routes.js';
 import { projectsRouter } from './projects.routes.js';
 import { maintenanceRouter } from './maintenance.routes.js';
+import { rfqRouter } from './rfq.routes.js';
 
 const router = Router();
 
@@ -149,5 +150,6 @@ router.use('/traceability', recallRoutes);
 router.use('/complaints', complaintsRouter);
 router.use('/projects', projectsRouter);
 router.use('/maintenance', maintenanceRouter);
+router.use('/rfqs', rfqRouter);
 
 export default router;

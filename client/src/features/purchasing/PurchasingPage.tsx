@@ -11,7 +11,7 @@ import {
   X, Check, Download, AlertTriangle, ChevronRight,
   ClipboardList, Receipt, Paperclip, Eye, Trash2, Upload,
   Loader2, Search, Coins, Filter, ArrowUpDown, ArrowUp, ArrowDown,
-  Clock, CheckCircle2, Scale, CalendarClock, Ban, Settings,
+  Clock, CheckCircle2, Scale, CalendarClock, Ban, Settings, FileQuestion,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -20,6 +20,7 @@ import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import PurchaseOrdersTab from '../accounting/PurchaseOrdersTab';
 import SuppliersTab from './SuppliersTab';
 import PurchasingPilotageTab from './PurchasingPilotageTab';
+import RfqTab from './RfqTab';
 import InvoiceControlModal from '../../components/purchasing/InvoiceControlModal';
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
 import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, paymentModeLabel, PaymentStatusTag, ReissuePaymentDialog, type CashOverride } from '../../components/purchasing/PaymentModeFields';
@@ -34,7 +35,7 @@ import {
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 
-type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'pilotage';
+type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'pilotage' | 'rfq';
 
 /**
  * Étapes du processus d'une facture reçue (dérivées côté serveur, cf.
@@ -77,6 +78,8 @@ export default function PurchasingPage() {
     // Mig 312 (D9) : reçu non facturé, facturé non reçu, engagements, par ligne de BC.
     { key: 'pilotage', label: 'Pilotage', icon: Scale, section: 'dashboard' },
     // « Liste d'attente » retirée : les besoins se traitent dans Stock › À commander (BC directs).
+    // Appels d'offres (mig 360) : demande de prix à plusieurs fournisseurs, devis, comparatif, BC.
+    { key: 'rfq', label: 'Appels d\'offres', icon: FileQuestion, section: 'operations' },
     { key: 'purchase_orders', label: 'Bons de commande', icon: ClipboardList, section: 'operations' },
     { key: 'invoices', label: 'Factures reçues', icon: FileText, section: 'operations' },
     // Boîte d'approbation (lot 8), sans passer par la cloche.
@@ -99,6 +102,7 @@ export default function PurchasingPage() {
           onOpenInvoices={id => openTab('invoices', { supplierId: id })}
         />
       )}
+      {tab === 'rfq' && <RfqTab onOpenOrder={() => openTab('purchase_orders')} />}
       {tab === 'purchase_orders' && <PurchaseOrdersTab initialSupplierId={focus.supplierId} />}
       {tab === 'invoices' && <InvoicesTab {...focus} />}
       {tab === 'pilotage' && <PurchasingPilotageTab onOpenInvoice={(f) => openTab('invoices', f)} />}
