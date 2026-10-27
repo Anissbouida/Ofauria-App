@@ -63,6 +63,7 @@ import { complaintsRouter } from './complaints.routes.js';
 import { projectsRouter } from './projects.routes.js';
 import { maintenanceRouter } from './maintenance.routes.js';
 import { rfqRouter } from './rfq.routes.js';
+import { landedCostRouter } from './landed-cost.routes.js';
 
 const router = Router();
 
@@ -151,5 +152,6 @@ router.use('/complaints', complaintsRouter);
 router.use('/projects', projectsRouter);
 router.use('/maintenance', maintenanceRouter);
 router.use('/rfqs', rfqRouter);
+router.use('/landed-costs', landedCostRouter);
 
 export default router;
