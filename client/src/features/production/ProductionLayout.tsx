@@ -1,11 +1,11 @@
 import { Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Factory, TrendingUp, Thermometer, Package, ChefHat } from 'lucide-react';
+import { LayoutDashboard, Factory, TrendingUp, Thermometer, Package, ChefHat, Wallet } from 'lucide-react';
 import { ROLE_GROUPS } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
 
-type ProductionView = 'dashboard' | 'plans' | 'forecast' | 'haccp' | 'replenishment' | 'recipes';
+type ProductionView = 'dashboard' | 'plans' | 'forecast' | 'haccp' | 'replenishment' | 'costs' | 'recipes';
 
 /**
  * Module Production : ses écrans sont des pages distinctes (plans, tableau de bord,
@@ -29,6 +29,7 @@ export default function ProductionLayout() {
     { key: 'haccp', label: 'Relevés HACCP', icon: Thermometer, section: 'operations', href: '/haccp', hidden: !isProductionRole },
     // Libellés du menu principal (MODULE_LABELS) : Besoins, Fiches techniques.
     { key: 'replenishment', label: 'Besoins', icon: Package, section: 'operations', href: '/replenishment', hidden: !hasModule('replenishment') },
+    { key: 'costs', label: 'Coûts', icon: Wallet, section: 'reports', href: '/production/costs', hidden: !hasModule('reports') },
     { key: 'recipes', label: 'Fiches techniques', icon: ChefHat, section: 'setup', href: '/recipes', hidden: !hasModule('recipes') },
   ];
   const current = views.find(v => !v.external && v.href === pathname);

@@ -135,8 +135,10 @@ export const NAV_GROUPS: NavGroup[] = [
         description: 'Caisse, charges et tresorerie' },
       { module: 'employees', href: '/employees', icon: UserCog, color: 'bg-teal-600',
         description: 'Pointage, paie et dossiers du personnel' },
+      // Les rapports vivent dans leurs modules (Ventes › Rapports, Production › Coûts) ;
+      // cette tuile ouvre le tableau de bord des ventes.
       { module: 'reports', href: '/reports', icon: BarChart3, color: 'bg-red-500',
-        description: 'Statistiques et analyses' },
+        description: 'Tableau de bord des ventes, marges et coûts' },
     ],
   },
   {

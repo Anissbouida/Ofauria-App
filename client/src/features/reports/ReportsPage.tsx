@@ -14,17 +14,23 @@ import {
 import {
   TrendingUp, ShoppingCart, Banknote, Package, ClipboardList,
   AlertTriangle, Calendar, ArrowUpRight, ArrowDownRight, Crown, BarChart3,
-  ChevronRight, LayoutDashboard, Sparkles, Wallet, Search, X, Percent,
+  ChevronRight, Search, X,
 } from 'lucide-react';
+import { Navigate, useSearchParams } from 'react-router-dom';
 
 type DatePreset = 'today' | '7d' | '30d' | '90d' | 'custom';
 type Tab = 'overview' | 'menu' | 'cost' | 'margins';
 
-const tabs: { key: Tab; label: string; icon: typeof LayoutDashboard }[] = [
-  { key: 'overview', label: "Vue d'ensemble", icon: LayoutDashboard },
-  { key: 'menu', label: 'Menu Engineering', icon: Sparkles },
-  { key: 'cost', label: 'Couts', icon: Wallet },
-  { key: 'margins', label: 'Marges', icon: Percent },
+/**
+ * Écrans de la page, répartis dans les modules (rubriques ModuleShell) : Vue d'ensemble
+ * = tableau de bord de Ventes, Menu Engineering et Marges = rapports de Ventes
+ * (/reports?tab=…), Coûts = rapport de Production (/production/costs).
+ */
+const tabs: { key: Tab; label: string; subtitle: string }[] = [
+  { key: 'overview', label: "Vue d'ensemble", subtitle: "Chiffre d'affaires, ventes et produits phares" },
+  { key: 'menu', label: 'Menu Engineering', subtitle: 'Popularité et marge de chaque produit' },
+  { key: 'cost', label: 'Coûts', subtitle: "Coût matière, main-d'œuvre et prime cost" },
+  { key: 'margins', label: 'Marges', subtitle: 'Marge par produit sur la période' },
 ];
 
 const CLASS_META: Record<MenuEngineeringClass, { label: string; color: string; bg: string; border: string; dot: string; advice: string }> = {
@@ -78,8 +84,10 @@ function ChangeIndicator({ value, suffix = '' }: { value: number; suffix?: strin
   );
 }
 
-export default function ReportsPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
+export default function ReportsPage({ fixedTab }: { fixedTab?: Tab } = {}) {
+  const [params] = useSearchParams();
+  const requested = params.get('tab');
+  const activeTab: Tab = fixedTab ?? (tabs.some(t => t.key === requested && t.key !== 'cost') ? requested as Tab : 'overview');
   const [activePreset, setActivePreset] = useState<DatePreset>('30d');
   const [customStart, setCustomStart] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [customEnd, setCustomEnd] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -205,38 +213,22 @@ export default function ReportsPage() {
   </div>
   );
 
+  // Ancien lien /reports?tab=cost : les coûts sont désormais un rapport de Production.
+  if (!fixedTab && requested === 'cost') return <Navigate to="/production/costs" replace />;
+  const current = tabs.find(t => t.key === activeTab)!;
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* Header */}
+    <div className="space-y-6 max-w-7xl mx-auto p-6">
+      {/* Header : l'écran est choisi dans la barre latérale du module */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Rapports</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Vue d'ensemble, ingenierie de menu et couts</p>
+          <h1 className="text-2xl font-bold text-gray-800">{current.label}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{current.subtitle}</p>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <Calendar size={16} />
           <span>{format(new Date(), "EEEE d MMMM yyyy", { locale: fr })}</span>
         </div>
-      </div>
-
-      {/* Tabs bar */}
-      <div className="bg-white rounded-xl border border-gray-100 p-1 flex gap-1 overflow-x-auto">
-        {tabs.map((t) => {
-          const Icon = t.icon;
-          const isActive = activeTab === t.key;
-          return (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-                isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              <Icon size={16} />
-              {t.label}
-            </button>
-          );
-        })}
       </div>
 
       {/* ============ Tab: Vue d'ensemble ============ */}

@@ -70,6 +70,7 @@ export default function App() {
                 <Route path="/sales" element={<SalesPage />} />
                 <Route path="/customers" element={<CustomersPage />} />
                 <Route path="/products" element={<ProductsPage />} />
+                <Route path="/reports" element={<ReportsPage />} />
               </Route>
               {/* Module Stock = ex-Économat (/inventory) + ex-Pesage (/warehouse), fusion du
                   2026-10-11. Les anciennes URL redirigent (bookmarks, notifications deja emises). */}
@@ -94,6 +95,7 @@ export default function App() {
                 <Route path="/haccp" element={<HaccpPage />} />
                 <Route path="/replenishment" element={<ReplenishmentPage />} />
                 <Route path="/recipes" element={<RecipesPage />} />
+                <Route path="/production/costs" element={<ReportsPage fixedTab="cost" />} />
               </Route>
               <Route path="/production/:id" element={<PlanDetailPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />
@@ -110,7 +112,6 @@ export default function App() {
               <Route path="/users" element={<UsersPage />} />
               <Route path="/accounting" element={<AccountingPage />} />
               <Route path="/purchasing" element={<PurchasingPage />} />
-              <Route path="/reports" element={<ReportsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/approvals" element={<ApprovalsPage />} />
             </Route>

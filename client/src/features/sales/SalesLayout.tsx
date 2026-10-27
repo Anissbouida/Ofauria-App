@@ -1,12 +1,12 @@
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
-import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio } from 'lucide-react';
+import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
 import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
 import { SALES_MAIN_TABS } from './SalesPage';
 
 /**
- * Module Ventes : commandes, ventes (et leurs écrans ?tab=), clients et produits,
- * regroupés sous les rubriques standard. Chaque page garde son fil d'Ariane et ses
+ * Module Ventes : commandes, ventes (et leurs écrans ?tab=), clients, produits et
+ * rapports de vente (/reports), regroupés sous les rubriques standard. Chaque page garde son fil d'Ariane et ses
  * boutons ; l'entrée active suit l'URL. Le point de vente reste plein écran (lien).
  */
 export default function SalesLayout() {
@@ -22,6 +22,7 @@ export default function SalesLayout() {
     hidden: !hasModule('sales'),
   });
   const views: ModuleView[] = [
+    { key: 'reports:overview', label: "Vue d'ensemble", icon: LayoutDashboard, section: 'dashboard', href: '/reports', hidden: !hasModule('reports') },
     { key: 'pos', label: 'Point de vente', icon: Monitor, section: 'operations', href: '/pos', external: true, hidden: !hasModule('pos') },
     { key: 'orders', label: 'Commandes', icon: ClipboardList, section: 'operations', href: '/orders', hidden: !hasModule('orders') },
     salesView('sales', Receipt),
@@ -29,6 +30,8 @@ export default function SalesLayout() {
     salesView('sessions', Lock),
     salesView('invoices', FileText),
     salesView('unpaid', Clock),
+    { key: 'reports:menu', label: 'Menu Engineering', icon: Sparkles, section: 'reports', href: '/reports?tab=menu', hidden: !hasModule('reports') },
+    { key: 'reports:margins', label: 'Marges', icon: Percent, section: 'reports', href: '/reports?tab=margins', hidden: !hasModule('reports') },
     { key: 'customers', label: 'Clients', icon: Users, section: 'setup', href: '/customers', hidden: !hasModule('customers') },
     { key: 'products', label: 'Produits', icon: ShoppingBag, section: 'setup', href: '/products', hidden: !hasModule('products') },
     { key: 'channels', label: 'Canaux de vente', icon: Radio, section: 'setup', href: '/settings?page=channels', external: true, hidden: !hasModule('settings') },
@@ -36,7 +39,9 @@ export default function SalesLayout() {
   const tab = params.get('tab');
   const currentKey = pathname === '/sales'
     ? `sales:${SALES_MAIN_TABS.some(t => t.key === tab) ? tab : 'sales'}`
-    : pathname.slice(1);
+    : pathname === '/reports'
+      ? `reports:${tab === 'menu' || tab === 'margins' ? tab : 'overview'}`
+      : pathname.slice(1);
   const current = views.find(v => v.key === currentKey);
 
   return (
