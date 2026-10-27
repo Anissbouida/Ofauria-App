@@ -64,7 +64,7 @@ function PromotionsTab({ canEdit }: { canEdit: boolean }) {
   const remove = useMutation({
     mutationFn: (id: string) => promotionsApi.remove(id),
     onSuccess: r => { qc.invalidateQueries({ queryKey: ['promotions'] }); notify.success(r.archived ? 'Promotion arrêtée (déjà utilisée : elle reste dans l\'historique)' : 'Promotion supprimée'); },
-    onError: e => notify.error(apiErrorMessage(e)),
+    onError: e => { notify.error(apiErrorMessage(e)); if ((e as { response?: { status?: number } })?.response?.status === 404) qc.invalidateQueries({ queryKey: ['promotions'] }); },
   });
   const rows = data.filter(p => showEnded || !['ended', 'inactive'].includes(p.state));
   const running = data.filter(p => p.state === 'running');
@@ -104,7 +104,8 @@ function PromotionsTab({ canEdit }: { canEdit: boolean }) {
           </table>
         </div>
       )}
-      {editing && <PromotionForm promo={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { qc.invalidateQueries({ queryKey: ['promotions'] }); setEditing(null); }} />}
+      {editing && <PromotionForm promo={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { qc.invalidateQueries({ queryKey: ['promotions'] }); setEditing(null); }}
+        onGone={() => { qc.invalidateQueries({ queryKey: ['promotions'] }); setEditing(null); }} />}
     </>
   );
 }
@@ -129,7 +130,7 @@ function periodText(p: Promotion) {
   return p.starts_on ? `dès le ${fr(p.starts_on)}` : `jusqu'au ${fr(p.ends_on)}`;
 }
 
-function PromotionForm({ promo, onClose, onSaved }: { promo: Promotion | null; onClose: () => void; onSaved: () => void }) {
+function PromotionForm({ promo, onClose, onSaved, onGone }: { promo: Promotion | null; onClose: () => void; onSaved: () => void; onGone: () => void }) {
   const [f, setF] = useState(() => ({
     name: promo?.name ?? '', description: promo?.description ?? '', target: (promo?.target ?? 'items') as PromoTarget, kind: (promo?.kind ?? 'percent') as PromoKind,
     value: promo ? String(Number(promo.value)) : '', buyQty: String(promo?.buy_qty ?? 2), getQty: String(promo?.get_qty ?? 1),
@@ -166,7 +167,8 @@ function PromotionForm({ promo, onClose, onSaved }: { promo: Promotion | null; o
       return promo ? promotionsApi.update(promo.id, d) : promotionsApi.create(d);
     },
     onSuccess: () => { notify.success(promo ? 'Promotion enregistrée' : 'Promotion créée'); onSaved(); },
-    onError: e => notify.error(apiErrorMessage(e)),
+    // Promotion supprimée entre-temps (autre poste, autre onglet) : on recharge la liste et on ferme.
+    onError: e => { notify.error(apiErrorMessage(e)); if ((e as { response?: { status?: number } })?.response?.status === 404) onGone(); },
   });
   const valueLabel = f.kind === 'percent' ? 'Remise (%)' : f.kind === 'amount' ? (isCart ? 'Remise (DH)' : 'Remise par article (DH, par kg au poids)') : 'Prix spécial (DH, par kg au poids)';
 
