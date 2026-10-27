@@ -20,6 +20,7 @@ import StoresPanel from './StoresPanel';
 import TaxCodesTab from './TaxCodesTab';
 import CurrenciesTab from './CurrenciesTab';
 import MailTab from './MailTab';
+import CustomFieldsTab from './CustomFieldsTab';
 import JobsTab from './JobsTab';
 import DocumentsTab from './DocumentsTab';
 import NotificationsTab from './NotificationsTab';
@@ -161,6 +162,7 @@ function SettingsShell() {
     data: <DataTab />,
     notifications: <NotificationsTab />,
     mail: <MailTab />,
+    customFields: <CustomFieldsTab />,
     jobs: <JobsTab />,
     approvals: <ApprovalsTab />,
     audit: <AuditLogTab />,

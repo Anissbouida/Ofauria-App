@@ -6,6 +6,9 @@ import { referentielApi } from '../../api/referentiel.api';
 import { AllergenSelector } from '../../components/ui/AllergenSelector';
 import SearchSelect, { type SearchSelectOption } from '../../components/ui/SearchSelect';
 import { useStockCategories, STOCKABLE_ROOT_IDS } from './useStockCategories';
+import CustomFieldsEditor from '../../components/custom-fields/CustomFieldsEditor';
+import { useCustomFieldsForm } from '../../api/custom-fields.api';
+import { notify } from '../../components/ui/InlineNotification';
 
 /*
  * Formulaire unique de creation / modification d'un ingredient.
@@ -101,6 +104,9 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [byId, rootIds]);
   const consumable = !!form.categoryId && !!isConsumable?.(form.categoryId);
+  // Champs personnalisés (mig 369) : ceux des matières, ou des consommables selon la catégorie.
+  const cfEntity = consumable ? 'packaging_item' as const : 'ingredient' as const;
+  const cf = useCustomFieldsForm(cfEntity, (ing as Record<string, unknown>).custom_fields);
 
   const activeContainerTypes = containerTypes.filter(ct => ct.is_active !== false);
   const containerType = activeContainerTypes.find(ct => String(ct.id) === form.containerTypeId);
@@ -129,6 +135,10 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
       allergens: form.allergens,
     };
     if (mode === 'edit') payload.threshold = parseFloat(form.threshold) || 0;
+    const cfMissing = cf.missing();
+    if (cfMissing.length) { notify.error(`À renseigner : ${cfMissing.join(', ')}`); return; }
+    // Enregistrés par ingredientsApi après la fiche (id connu).
+    if (cf.defs.length) { payload.__cf = cf.values; payload.__cfEntity = cfEntity; }
     onSave(payload);
   };
 
@@ -282,6 +292,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
               aside={form.allergens.length ? `${form.allergens.length} sélectionné${form.allergens.length > 1 ? 's' : ''}` : 'Aucun'}>
               <AllergenSelector value={form.allergens} onChange={allergens => set('allergens', allergens)} />
             </Section>}
+            <CustomFieldsEditor entity={cfEntity} values={cf.values} onChange={cf.setValues} />
           </div>
 
           {/* Pied fixe : toujours visible, meme si le contenu defile */}

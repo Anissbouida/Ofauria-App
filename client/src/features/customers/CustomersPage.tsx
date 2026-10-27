@@ -10,6 +10,8 @@ import { format, differenceInDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
+import CustomFieldsEditor, { useCustomListColumns } from '../../components/custom-fields/CustomFieldsEditor';
+import { customFieldsApi, useCustomFieldsForm, formatCfValue, type CfValues } from '../../api/custom-fields.api';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -151,9 +153,15 @@ export default function CustomersPage() {
     onError: (e) => notify.error(apiErrorMessage(e, 'Impossible de supprimer ce client (commandes ou ventes liées)')),
   });
 
+  const cfColumns = useCustomListColumns('customer');
   const saveMutation = useMutation({
-    mutationFn: (payload: Customer) =>
-      editing ? customersApi.update(editing.id as string, payload) : customersApi.create(payload),
+    // Champs personnalisés (mig 369) enregistrés après la fiche, une fois l'id connu.
+    mutationFn: async ({ payload, cf }: { payload: Customer; cf: CfValues | null }) => {
+      const saved = editing ? await customersApi.update(editing.id as string, payload) : await customersApi.create(payload);
+      const id = (editing?.id as string) ?? (saved as Customer)?.id;
+      if (cf && id) await customFieldsApi.save('customer', id as string, cf);
+      return saved;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       queryClient.invalidateQueries({ queryKey: ['customers-global-stats'] });
@@ -360,6 +368,7 @@ export default function CustomersPage() {
                   {sortableTh('purchases', 'Achats', 'right')}
                   {sortableTh('loyalty_points', 'Fidélité', 'right')}
                   {sortableTh('total_spent', 'CA cumulé', 'right')}
+                  {cfColumns.map(d => <th key={d.id}>{d.label}</th>)}
                   <th style={{ textAlign: 'right' }}>Prochaine action</th>
                   <th style={{ textAlign: 'right', width: 70 }}>Actions</th>
                 </tr>
@@ -418,6 +427,7 @@ export default function CustomersPage() {
                         {spent > 0 ? <><span style={{ fontWeight: 600 }}>{n(spent)}</span> <span style={{ ...muted, fontSize: '0.6875rem' }}>DH</span></>
                           : <span style={muted}>—</span>}
                       </td>
+                      {cfColumns.map(d => <td key={d.id} style={muted}>{formatCfValue(d, (c.custom_fields as CfValues | undefined)?.[d.code]) || '—'}</td>)}
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
                         {action && <button type="button" onClick={action.run} className="odoo-btn-primary">{action.label}</button>}
                       </td>
@@ -450,7 +460,7 @@ export default function CustomersPage() {
         <CustomerFormModal
           editing={editing}
           onClose={() => { setShowForm(false); setEditing(null); }}
-          onSubmit={(payload) => saveMutation.mutate(payload)}
+          onSubmit={(payload, cf) => saveMutation.mutate({ payload, cf })}
           isPending={saveMutation.isPending}
         />
       )}
@@ -698,9 +708,10 @@ function HistoryTable({ rows, head, render, empty }: {
 function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
   editing: Customer | null;
   onClose: () => void;
-  onSubmit: (data: Customer) => void;
+  onSubmit: (data: Customer, cf: CfValues | null) => void;
   isPending: boolean;
 }) {
+  const cf = useCustomFieldsForm('customer', editing?.custom_fields);
   const [customerType, setCustomerType] = useState<CustomerType>(
     (editing?.customer_type as CustomerType) || 'particulier'
   );
@@ -729,7 +740,9 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
           const fd = new FormData(e.currentTarget);
           const payload: Customer = Object.fromEntries(fd);
           payload.tvaExonere = tvaExonere;
-          onSubmit(payload);
+          const missing = cf.missing();
+          if (missing.length) { notify.error(`À renseigner : ${missing.join(', ')}`); return; }
+          onSubmit(payload, cf.defs.length ? cf.values : null);
         }} className="flex-1 overflow-y-auto">
           <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={sectionTitle}><Users size={12} /> Type de client</div>
@@ -888,6 +901,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
             )}
             <div><label style={fieldLabel}>Notes internes</label>
               <textarea name="notes" defaultValue={editing?.notes} rows={2} className={inputCls} placeholder="Préférences, habitudes, informations utiles…" /></div>
+            <CustomFieldsEditor entity="customer" values={cf.values} onChange={cf.setValues} />
           </div>
 
           <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

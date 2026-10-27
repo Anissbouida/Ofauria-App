@@ -138,12 +138,23 @@ export interface DataStatus {
   counts: Record<string, number | null>; size: string;
   lastMigration: { name: string; executed_at: string } | null;
   exports: { event_type: 'config_export' | 'data_export' | 'data_import'; created_at: string; details: Record<string, unknown> | null; by_name: string | null }[];
-  entities: { key: string; label: string }[];
+  entities: { key: string; label: string; modes?: ImportMode[]; note?: string | null }[];
 }
+export type ImportMode = 'upsert' | 'create' | 'update';
 export interface ImportPreview {
   columns: string[]; unknownHeaders: string[];
   summary: { create: number; update: number; error: number; skip: number };
-  rows: { line: number; action: 'create' | 'update' | 'error' | 'skip'; values: Record<string, unknown>; errors: { column: string; message: string }[] }[];
+  rows: { line: number; action: 'create' | 'update' | 'error' | 'skip'; values: Record<string, unknown>; errors: { column: string; message: string }[]; reason?: string }[];
+  /** Import générique (mig 370) : colonnes du fichier, association retenue, champs cibles, mode. */
+  headers: string[]; mapping: Record<string, string>;
+  fields: { key: string; header: string; required: boolean; custom: boolean; match: boolean }[];
+  mode: ImportMode; modes: ImportMode[];
+}
+export interface DataImport {
+  id: string; entity: string; entity_label: string; file_name: string | null; mode: ImportMode; status: 'done' | 'undone';
+  created_count: number; updated_count: number; skipped_count: number; created_at: string; by_name: string | null;
+  undone_at: string | null; undone_by_name: string | null; can_undo: boolean;
+  undo_report: { restored: number; deleted: number; deactivated: number; kept: number } | null;
 }
 
 /** Accueil de la configuration (refonte lot B) : un point de contrôle par réglage clé. */
@@ -194,14 +205,20 @@ export const settingsApi = {
     const cd = String(r.headers['content-disposition'] ?? '');
     return { blob: r.data as Blob, filename: /filename="([^"]+)"/.exec(cd)?.[1] ?? 'export' };
   }),
-  importPreview: (entity: string, file: File) => {
+  importPreview: (entity: string, file: File, opts: { mapping?: Record<string, string> | null; mode?: ImportMode } = {}) => {
     const fd = new FormData(); fd.append('file', file);
+    if (opts.mapping) fd.append('mapping', JSON.stringify(opts.mapping));
+    if (opts.mode) fd.append('mode', opts.mode);
     return api.post(`/settings/data/import/${entity}/preview`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data.data) as Promise<ImportPreview>;
   },
-  importCommit: (entity: string, file: File) => {
+  importCommit: (entity: string, file: File, opts: { mapping?: Record<string, string> | null; mode?: ImportMode } = {}) => {
     const fd = new FormData(); fd.append('file', file);
+    if (opts.mapping) fd.append('mapping', JSON.stringify(opts.mapping));
+    if (opts.mode) fd.append('mode', opts.mode);
     return api.post(`/settings/data/import/${entity}/commit`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data.data) as Promise<{ created: number; updated: number }>;
   },
+  imports: () => api.get('/settings/data/imports').then(r => r.data.data as DataImport[]),
+  undoImport: (id: string) => api.post(`/settings/data/imports/${id}/undo`).then(r => r.data.data as { restored: number; deleted: number; deactivated: number; kept: number }),
   uploadLogo: (file: File) => {
     const formData = new FormData();
     formData.append('logo', file);

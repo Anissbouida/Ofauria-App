@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Store, Paintbrush, Printer, Radio, ShoppingBag, Factory, Truck, Percent, Hash, FileText,
-  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing,
+  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal,
 } from 'lucide-react';
 import type { SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingAnchor } from './SettingsPrimitives';
@@ -18,7 +18,7 @@ export type SettingsPageKey =
   | 'print' | 'channels' | 'sachets' | 'salesRules'
   | 'production' | 'purchasing'
   | 'tax' | 'currencies' | 'numbering' | 'documents' | 'ledger'
-  | 'referentiel' | 'data'
+  | 'referentiel' | 'customFields' | 'data'
   | 'notifications' | 'mail' | 'jobs' | 'approvals' | 'audit';
 
 export interface SettingsPageDef {
@@ -94,6 +94,8 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
 
   { key: 'referentiel', group: 'Données de base', section: 'referentiel', label: 'Référentiel', icon: Database,
     description: 'Tables de paramétrage', keywords: 'table categorie unite motif' },
+  { key: 'customFields', group: 'Données de base', section: 'custom_fields', label: 'Champs personnalisés', icon: SlidersHorizontal,
+    description: 'Informations propres à votre métier sur les fiches', keywords: 'champ personnalise attribut specifique fiche formulaire colonne' },
   { key: 'data', group: 'Données de base', section: 'data', label: 'Import et export', icon: HardDrive,
     description: 'Import, export et état de la base', keywords: 'donnees csv excel sauvegarde import export' },
 

@@ -1,4 +1,5 @@
 import api from './client';
+import { customFieldsApi } from './custom-fields.api';
 
 export const inventoryApi = {
   list: () => api.get('/inventory').then(r => r.data.data),
@@ -62,8 +63,19 @@ export const ingredientLotsApi = {
 export const ingredientsApi = {
   list: () => api.get('/ingredients').then(r => r.data.data),
   getById: (id: string) => api.get(`/ingredients/${id}`).then(r => r.data.data),
-  create: (data: Record<string, any>) => api.post('/ingredients', data).then(r => r.data.data),
-  update: (id: string, data: Record<string, any>) => api.put(`/ingredients/${id}`, data).then(r => r.data.data),
+  // Champs personnalisés (mig 369) : __cf / __cfEntity retirés du corps et enregistrés après la fiche.
+  create: async (data: Record<string, any>) => {
+    const { __cf, __cfEntity, ...rest } = data;
+    const created = await api.post('/ingredients', rest).then(r => r.data.data);
+    if (__cf && created?.id) await customFieldsApi.save(__cfEntity ?? 'ingredient', created.id, __cf);
+    return created;
+  },
+  update: async (id: string, data: Record<string, any>) => {
+    const { __cf, __cfEntity, ...rest } = data;
+    const updated = await api.put(`/ingredients/${id}`, rest).then(r => r.data.data);
+    if (__cf) await customFieldsApi.save(__cfEntity ?? 'ingredient', id, __cf);
+    return updated;
+  },
   remove: (id: string, opts: { force?: boolean } = {}) =>
     api.delete(`/ingredients/${id}`, { params: opts.force ? { force: 'true' } : undefined }),
   /** Convertit un ingredient mal range en consommable (packaging_items). */

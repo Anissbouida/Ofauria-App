@@ -12,6 +12,8 @@ import { suppliersApi, type SupplierIdentifierInput, type IdentifierType } from 
 import { supplierScoreApi, STANDING_TAG } from '../../api/supplier-score.api';
 import { apiErrorMessage } from '../../api/errors';
 import { currenciesApi } from '../../api/currencies.api';
+import CustomFieldsEditor, { useCustomListColumns } from '../../components/custom-fields/CustomFieldsEditor';
+import { useCustomFieldsForm, formatCfValue, type CfValues } from '../../api/custom-fields.api';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -36,7 +38,7 @@ type Supplier = {
   parent_supplier_id: string | null; parent_supplier_name: string | null;
   contact_name: string | null; phone: string | null; email: string | null;
   address: string | null; city: string | null; ice: string | null; notes: string | null;
-  is_active: boolean; auxiliary_code: string | null; updated_at: string; currency_code?: string | null;
+  is_active: boolean; auxiliary_code: string | null; updated_at: string; currency_code?: string | null; custom_fields?: CfValues;
   identifiers: Array<{ typeCode: string; value: string; qualifier: string | null; label: string; requiredForVatDeduction: boolean }>;
 };
 
@@ -191,6 +193,7 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
   });
 
   const rows = (board?.rows ?? []) as Array<Supplier & Record<string, any>>;
+  const cfColumns = useCustomListColumns('supplier');
   const total = board?.total ?? 0;
 
   const stageStats = useMemo(() => {
@@ -384,6 +387,7 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
                 {sortableTh('last_order_date', 'Dernière commande')}
                 {sortableTh('purchased_12m', 'Achats 12 mois', 'right')}
                 {sortableTh('amount_due', 'Reste dû', 'right')}
+                {cfColumns.map(d => <th key={d.id}>{d.label}</th>)}
                 <th style={{ textAlign: 'right' }}>Prochaine action</th>
                 <th style={{ textAlign: 'right', width: 70 }}>Actions</th>
               </tr>
@@ -456,6 +460,7 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
                       {due > 0.005 ? <><span style={{ fontWeight: 700, color: overdue > 0 ? '#dc3545' : undefined }}>{n(due)}</span> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>DH</span></>
                         : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                     </td>
+                    {cfColumns.map(d => <td key={d.id} style={{ color: 'var(--theme-text-muted)' }}>{formatCfValue(d, s.custom_fields?.[d.code]) || '—'}</td>)}
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
                       {action && <button type="button" onClick={action.run} className={action.cls}>{action.label}</button>}
                     </td>
@@ -513,6 +518,7 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
 }) {
   const [tab, setTab] = useState<'fiche' | 'historique'>('fiche');
   const [form, setForm] = useState<FormState>(() => (supplier ? formFromSupplier(supplier) : emptyForm()));
+  const cf = useCustomFieldsForm('supplier', supplier?.custom_fields);
   const { data: currencies = [] } = useQuery({ queryKey: ['currencies'], queryFn: () => currenciesApi.list(), staleTime: 60_000 });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [duplicates, setDuplicates] = useState<Array<{ id: string; name: string; reason: string }>>([]);
@@ -547,7 +553,7 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
   }, [form.name, form.identifiers, identifierTypes, supplier?.id]);
 
   const saveMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const identifiers: SupplierIdentifierInput[] = Object.entries(form.identifiers)
         .filter(([, v]) => v.value.trim())
         .map(([typeCode, v]) => ({ typeCode, value: v.value.trim(), qualifier: v.qualifier.trim() || null }));
@@ -556,7 +562,10 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
         parentSupplierId: form.parentSupplierId || null, contactName: form.contactName, phone: form.phone, email: form.email,
         address: form.address, city: form.city, notes: form.notes, currencyCode: form.currencyCode, identifiers,
       };
-      return supplier ? suppliersApi.update(supplier.id, payload) : suppliersApi.create(payload);
+      const saved = supplier ? await suppliersApi.update(supplier.id, payload) : await suppliersApi.create(payload);
+      // Champs personnalisés (mig 369) : enregistrés une fois l'id connu.
+      await cf.save(supplier?.id ?? (saved as { id?: string })?.id);
+      return saved;
     },
     onSuccess: () => { notify.success(supplier ? 'Fournisseur modifié' : 'Fournisseur créé'); onSaved(); },
     onError: (e: unknown) => {
@@ -652,7 +661,12 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
         {tab === 'historique' && supplier ? (
           <SupplierHistory rows={history as HistoryRow[]} loading={historyLoading} />
         ) : (
-          <form onSubmit={e => { e.preventDefault(); setFieldErrors({}); saveMutation.mutate(); }} className="flex-1 overflow-y-auto" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <form onSubmit={e => {
+            e.preventDefault(); setFieldErrors({});
+            const missing = cf.missing();
+            if (missing.length) { notify.error(`À renseigner : ${missing.join(', ')}`); return; }
+            saveMutation.mutate();
+          }} className="flex-1 overflow-y-auto" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
               {duplicates.length > 0 && (
                 <StatusBanner tone="danger" icon={AlertTriangle} title="Doublon probable">
@@ -772,6 +786,9 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
                     placeholder="Jours de livraison, conditions, minimum de commande…" /></div>
                 </div>
               </Disclosure>
+
+              {/* 6. Champs personnalisés (mig 369) : affichés seulement s'il en existe. */}
+              <CustomFieldsEditor entity="supplier" values={cf.values} onChange={cf.setValues} />
 
               {supplier?.auxiliary_code && (
                 <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', margin: 0 }}>

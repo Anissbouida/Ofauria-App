@@ -1,5 +1,8 @@
 import * as XLSX from 'xlsx';
 import { db } from '../config/database.js';
+import { listDefs, type CfEntity } from './custom-fields.js';
+
+const CF_BY_TABLE: Record<string, CfEntity> = { products: 'product', ingredients: 'ingredient', suppliers: 'supplier', customers: 'customer' };
 
 /**
  * Exports de l'administrateur (audit Paramètres, lot 7).
@@ -65,13 +68,13 @@ export async function exportConfiguration() {
 /** Données de base, une feuille par référentiel. */
 export async function exportBaseData(): Promise<{ buffer: Buffer; counts: Record<string, number> }> {
   const sheets: [string, string, string][] = [
-    ['Produits', 'products', `SELECT p.name AS "Produit", c.name AS "Catégorie", p.price AS "Prix", p.cost_price AS "Coût", p.is_available AS "Disponible", p.created_at AS "Créé le"
+    ['Produits', 'products', `SELECT p.name AS "Produit", c.name AS "Catégorie", p.price AS "Prix", p.cost_price AS "Coût", p.is_available AS "Disponible", p.created_at AS "Créé le", p.custom_fields AS "__cf"
                               FROM products p LEFT JOIN categories c ON c.id = p.category_id ORDER BY c.name, p.name`],
-    ['Ingrédients', 'ingredients', `SELECT name AS "Ingrédient", unit AS "Unité", unit_cost AS "Coût unitaire", supplier AS "Fournisseur", allergens AS "Allergènes"
+    ['Ingrédients', 'ingredients', `SELECT name AS "Ingrédient", unit AS "Unité", unit_cost AS "Coût unitaire", supplier AS "Fournisseur", allergens AS "Allergènes", custom_fields AS "__cf"
                                      FROM ingredients ORDER BY name`],
-    ['Fournisseurs', 'suppliers', `SELECT name AS "Nom", contact_name AS "Contact", phone AS "Téléphone", email AS "E-mail", address AS "Adresse", city AS "Ville", ice AS "ICE", is_active AS "Actif"
+    ['Fournisseurs', 'suppliers', `SELECT name AS "Nom", contact_name AS "Contact", phone AS "Téléphone", email AS "E-mail", address AS "Adresse", city AS "Ville", ice AS "ICE", is_active AS "Actif", custom_fields AS "__cf"
                                     FROM suppliers ORDER BY name`],
-    ['Clients', 'customers', `SELECT first_name AS "Prénom", last_name AS "Nom", phone AS "Téléphone", email AS "E-mail", city AS "Ville", loyalty_points AS "Points", total_spent AS "Total acheté", created_at AS "Créé le"
+    ['Clients', 'customers', `SELECT first_name AS "Prénom", last_name AS "Nom", phone AS "Téléphone", email AS "E-mail", city AS "Ville", loyalty_points AS "Points", total_spent AS "Total acheté", created_at AS "Créé le", custom_fields AS "__cf"
                                FROM customers ORDER BY last_name, first_name`],
     ['Personnel', 'employees', `SELECT first_name AS "Prénom", last_name AS "Nom", role AS "Fonction", phone AS "Téléphone", hire_date AS "Embauche", is_active AS "Actif"
                                  FROM employees ORDER BY last_name, first_name`],
@@ -82,7 +85,21 @@ export async function exportBaseData(): Promise<{ buffer: Buffer; counts: Record
   for (const [name, table, sql] of sheets) {
     let data: Record<string, unknown>[] | null;
     try { data = await rows(sql, table); } catch { data = null; } // colonne absente sur une base ancienne
+    if (data === null) {
+      // Base sans champs personnalisés (mig 369 non passée) : même requête sans la colonne.
+      try { data = await rows(sql.replace(/, (?:[a-z]\.)?custom_fields AS "__cf"/, ''), table); } catch { data = null; }
+    }
     if (data === null) continue;
+    // Champs personnalisés (mig 369) : une colonne par champ, libellé en en-tête.
+    const cfEntity = CF_BY_TABLE[table];
+    if (cfEntity && data.some(r => '__cf' in r)) {
+      const defs = await listDefs(cfEntity, true);
+      data = data.map(r => {
+        const { __cf, ...rest } = r as Record<string, unknown> & { __cf?: Record<string, unknown> };
+        for (const d of defs) rest[d.label] = __cf?.[d.code] ?? null;
+        return rest;
+      });
+    }
     counts[name] = data.length;
     const ws = XLSX.utils.json_to_sheet(data.length ? data : [{ '(vide)': '' }]);
     XLSX.utils.book_append_sheet(wb, ws, name);

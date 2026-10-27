@@ -14,6 +14,8 @@ export const SETTINGS_SECTIONS = {
   tax: 'tax',
   /** Devises et taux de change (mig 363). */
   currencies: 'currencies',
+  /** Champs personnalisés des fiches (mig 369). */
+  customFields: 'custom_fields',
   documents: 'documents',
   notifications: 'notifications',
   approvals: 'approvals',
@@ -35,6 +37,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSection, string> = {
   business: 'Paramètres métier',
   tax: 'TVA',
   currencies: 'Devises et taux de change',
+  custom_fields: 'Champs personnalisés',
   documents: 'Modèles de documents',
   notifications: 'Notifications',
   approvals: 'Circuits d\'approbation',

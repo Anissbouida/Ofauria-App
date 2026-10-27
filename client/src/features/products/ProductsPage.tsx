@@ -12,6 +12,8 @@ import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, Aler
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import { notify } from '../../components/ui/InlineNotification';
+import CustomFieldsEditor from '../../components/custom-fields/CustomFieldsEditor';
+import { customFieldsApi, useCustomFieldsForm, type CfValues } from '../../api/custom-fields.api';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import ProductPipelineTab from '../pipeline/ProductPipelinePage';
 import ProductionProfileTab from './ProductionProfileTab';
@@ -189,7 +191,9 @@ function CatalogueTab() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async ({ data, imageFile, pendingProfile }: { data: Record<string, any>; imageFile?: File | null; pendingProfile?: ProfileFormData | null }) => {
+    mutationFn: async ({ data: raw, imageFile, pendingProfile }: { data: Record<string, any>; imageFile?: File | null; pendingProfile?: ProfileFormData | null }) => {
+      // Champs personnalisés (mig 369) : transmis à part, enregistrés une fois l'id connu.
+      const { __cf, ...data } = raw as Record<string, any> & { __cf?: CfValues | null };
       const result = editingProduct
         ? await productsApi.update(editingProduct.id as string, data)
         : await productsApi.create(data);
@@ -197,6 +201,7 @@ function CatalogueTab() {
       if (imageFile && productId) {
         await productsApi.uploadImage(productId, imageFile);
       }
+      if (__cf && productId) await customFieldsApi.save('product', productId, __cf);
       // Save pending production profile after product creation/update
       if (pendingProfile && productId) {
         await contenantsApi.upsertProfile(productId, pendingProfile as unknown as Record<string, any>);
@@ -672,6 +677,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 }) {
   const [activeTab, setActiveTab] = useState<FormTab>('general');
   const [pendingProfile, setPendingProfile] = useState<ProfileFormData | null>(null);
+  const cf = useCustomFieldsForm('product', product?.custom_fields);
   const [form, setForm] = useState({
     name: (product?.name as string) || '',
     categoryId: (product?.category_id as number) || categories[0]?.id || 1,
@@ -919,6 +925,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
       notify.error('Veuillez sélectionner une recette. Créez d\'abord la recette dans le module Recettes.');
       return;
     }
+    const cfMissing = cf.missing();
+    if (cfMissing.length) { setActiveTab('general'); notify.error(`À renseigner : ${cfMissing.join(', ')}`); return; }
     const { recipeId, ...rest } = form;
 
     // Audit P1.1 : purge finale cote client — le serveur (validator + CHECK
@@ -948,6 +956,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
         maxReexpositions,
         saleType,
         ...(recipeId ? { recipeId } : {}),
+        __cf: cf.defs.length ? cf.values : null,
       },
       imageFile,
       pendingProfile || undefined
@@ -1277,6 +1286,10 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   />
                 )}
               </>
+            )}
+
+            {activeTab === 'general' && cf.defs.length > 0 && (
+              <div style={{ marginTop: 16 }}><CustomFieldsEditor entity="product" values={cf.values} onChange={cf.setValues} /></div>
             )}
 
             {/* ═══ Tab: Production ═══ */}

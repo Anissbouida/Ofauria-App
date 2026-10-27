@@ -68,6 +68,8 @@ router.get('/data/status', authenticate, authorizeSettings('data'), asyncHandler
 router.get('/data/import/:entity/template', authenticate, authorizeSettings('data'), asyncHandler(dataController.template));
 router.post('/data/import/:entity/preview', authenticate, authorizeSettings('data', 'create'), importUpload.single('file'), asyncHandler(dataController.preview));
 router.post('/data/import/:entity/commit', authenticate, authorizeSettings('data', 'create'), importUpload.single('file'), asyncHandler(dataController.commit));
+router.get('/data/imports', authenticate, authorizeSettings('data'), asyncHandler(dataController.imports));
+router.post('/data/imports/:id/undo', authenticate, authorizeSettings('data', 'edit'), asyncHandler(dataController.undo));
 router.get('/data/export/configuration', authenticate, authorizeSettings('data'), asyncHandler(dataController.exportConfiguration));
 router.get('/data/export/base', authenticate, authorizeSettings('data'), asyncHandler(dataController.exportData));
 
