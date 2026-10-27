@@ -60,6 +60,7 @@ import approvalRoutes from './approval.routes.js';
 import '../services/approval-handlers.js';
 import recallRoutes from './recall.routes.js';
 import { complaintsRouter } from './complaints.routes.js';
+import { projectsRouter } from './projects.routes.js';
 
 const router = Router();
 
@@ -145,5 +146,6 @@ router.use('/recurring-charges', recurringChargesRouter);
 router.use('/approvals', approvalRoutes);
 router.use('/traceability', recallRoutes);
 router.use('/complaints', complaintsRouter);
+router.use('/projects', projectsRouter);
 
 export default router;

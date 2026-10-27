@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
   Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
-  Package, Box, Store, Tag, ShieldCheck, TrendingUp, Thermometer, ShieldAlert, ClipboardCheck,
+  Package, Box, Store, Tag, FolderKanban, ShieldCheck, TrendingUp, Thermometer, ShieldAlert, ClipboardCheck,
 } from 'lucide-react';
 import { MODULE_LABELS, MODULE_ALIASES, ROLE_GROUPS } from '@ofauria/shared';
 import type { AppModule } from '@ofauria/shared';
@@ -79,6 +79,10 @@ export const NAV_GROUPS: NavGroup[] = [
         description: 'Commandes clients a produire' },
       { module: 'customers', href: '/customers', icon: Users, color: 'bg-cyan-600',
         description: 'Fichier clients et fidelite' },
+      // Projets (mig 358) : travaux suivis dans le temps pour un client — événement,
+      // chantier, mission, commande sur devis — avec tâches et temps passé.
+      { module: 'projects', href: '/projects', icon: FolderKanban, color: 'bg-fuchsia-600',
+        description: 'Événements, chantiers, missions : tâches et temps passé' },
       // Catalogue et tarifs : c'est ce qu'on vend (prix, canaux) ; les recettes,
       // elles, restent en Production.
       { module: 'products', href: '/products', icon: Tag, color: 'bg-purple-500',

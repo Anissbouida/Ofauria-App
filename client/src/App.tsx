@@ -29,6 +29,8 @@ import BonSortiePrelevementPage from './features/production/BonSortiePrelevement
 import ProductionDashboardPage from './features/production/ProductionDashboardPage';
 import ProductionLayout from './features/production/ProductionLayout';
 import SalesLayout from './features/sales/SalesLayout';
+import ProjectsPage from './features/projects/ProjectsPage';
+import ProjectDetailPage from './features/projects/ProjectDetailPage';
 import UsersPage from './features/users/UsersPage';
 import SettingsPage from './features/settings/SettingsPage';
 import AccountingPage from './features/accounting/AccountingPage';
@@ -114,6 +116,9 @@ export default function App() {
               <Route path="/purchasing" element={<PurchasingPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/approvals" element={<ApprovalsPage />} />
+              {/* Projets (mig 358) : module à rubriques, fiche en pleine page. */}
+              <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/projects/:id" element={<ProjectDetailPage />} />
             </Route>
           </Routes>
         </BrowserRouter>
