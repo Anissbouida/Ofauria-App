@@ -59,6 +59,7 @@ import approvalRoutes from './approval.routes.js';
 // Effets des approbations par type de pièce (lot 8) : enregistrés au chargement.
 import '../services/approval-handlers.js';
 import recallRoutes from './recall.routes.js';
+import { complaintsRouter } from './complaints.routes.js';
 
 const router = Router();
 
@@ -143,5 +144,6 @@ router.use('/debts', debtsRouter);
 router.use('/recurring-charges', recurringChargesRouter);
 router.use('/approvals', approvalRoutes);
 router.use('/traceability', recallRoutes);
+router.use('/complaints', complaintsRouter);
 
 export default router;

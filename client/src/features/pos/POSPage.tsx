@@ -19,7 +19,7 @@ import api, { serverUrl } from '../../api/client';
 import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, Check, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock, Settings, ScanLine, ChevronRight } from 'lucide-react';
+import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, Check, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock, Settings, ScanLine, ChevronRight, MessageSquareWarning } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ReceiptModal from './ReceiptModal';
 import POSSettingsModal from './POSSettingsModal';
@@ -37,6 +37,7 @@ const GRID_DIMS: Record<GridSize, { minPx: number; cardH: string }> = {
 };
 import OrderFormModal from '../../components/orders/OrderFormModal';
 import LossDeclarationModal from './LossDeclarationModal';
+import ComplaintFormModal from '../../components/sav/ComplaintFormModal';
 import { useAuth } from '../../context/AuthContext';
 import { getApiErrorMessage } from '../../utils/api-error';
 
@@ -278,6 +279,7 @@ export default function POSPage() {
 
   // Loss declaration state
   const [showLossModal, setShowLossModal] = useState(false);
+  const [showComplaintModal, setShowComplaintModal] = useState(false);
   // Parametres locaux du poste (modal ⚙️ : impression auto, tiroir, imprimante,
   // sons, veille, taille grille, scanner). Relus a la fermeture du modal.
   const [showPosSettings, setShowPosSettings] = useState(false);
@@ -1397,6 +1399,11 @@ export default function POSPage() {
           <button onClick={() => setShowLossModal(true)} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-orange-400 hover:bg-orange-50 hover:text-orange-600 transition-colors">
             <Trash2 size={17} />
             <span className="text-[9px] font-medium">Perte</span>
+          </button>
+          {/* SAV (mig 357) : le client se plaint au comptoir, on note en 30 secondes. */}
+          <button onClick={() => setShowComplaintModal(true)} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+            <MessageSquareWarning size={17} />
+            <span className="text-[9px] font-medium">Réclam.</span>
           </button>
           <button onClick={() => setShowPosSettings(true)} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
             <Settings size={17} />
@@ -3782,6 +3789,7 @@ export default function POSPage() {
       )}
 
       {/* Loss Declaration Modal */}
+      {showComplaintModal && <ComplaintFormModal mode="quick" onClose={() => setShowComplaintModal(false)} />}
       {showLossModal && (
         <LossDeclarationModal
           onClose={() => setShowLossModal(false)}

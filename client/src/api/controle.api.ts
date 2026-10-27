@@ -3,13 +3,13 @@ import api from './client';
 /** Contrôle & Qualité (mig 313) : vue d'ensemble des anomalies et registre unifié des pertes. */
 export type ControlIndicator = {
   key: string;
-  domain: 'ventes' | 'achats' | 'production' | 'pertes' | 'haccp';
+  domain: 'ventes' | 'achats' | 'production' | 'pertes' | 'haccp' | 'sav';
   label: string;
   hint: string;
   count: number | null;
   value: number | null;
   severity: 'ok' | 'warning' | 'danger' | 'unknown';
-  target: 'ventes' | 'achats' | 'production' | 'pertes' | 'haccp' | 'tracabilite' | 'stock' | 'produits';
+  target: 'ventes' | 'achats' | 'production' | 'pertes' | 'haccp' | 'tracabilite' | 'stock' | 'produits' | 'sav';
   aged?: number | null;
   missing?: number | null;
 };

@@ -44,6 +44,15 @@ const logoFilter = (_req: Express.Request, file: Express.Multer.File, cb: multer
 // (company_settings.logo_url) et donc disponible a la generation des PDF.
 const uploadLogo = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: logoFilter });
 const uploadLossPhoto = multer({ storage: lossPhotoStorage, limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: imageFilter });
+// Photo jointe à une réclamation client (mig 357) : même mécanique, dossier dédié.
+const complaintPhotoStorage = multer.diskStorage({
+  destination: path.resolve(__dirname, '../../../uploads/complaints'),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `complaint-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+  },
+});
+const uploadComplaintPhoto = multer({ storage: complaintPhotoStorage, limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: imageFilter });
 
 const router = Router();
 
@@ -64,6 +73,14 @@ router.post('/loss-photo', authenticate, uploadLossPhoto.single('photo'), (req: 
   }
   const url = `/uploads/losses/${req.file.filename}`;
   res.json({ success: true, data: { url } });
+});
+
+router.post('/complaint-photo', authenticate, uploadComplaintPhoto.single('photo'), (req: AuthRequest, res: Response) => {
+  if (!req.file) {
+    res.status(400).json({ success: false, error: { message: 'Aucune photo envoyee' } });
+    return;
+  }
+  res.json({ success: true, data: { url: `/uploads/complaints/${req.file.filename}` } });
 });
 
 export default router;

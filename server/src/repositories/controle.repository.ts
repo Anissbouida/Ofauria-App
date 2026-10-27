@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { haccpRepository } from './haccp.repository.js';
+import { complaintRepository } from './complaint.repository.js';
 
 /**
  * Contrôle & Qualité (mig 313) : lectures transverses, rien n'est saisi ici.
@@ -226,7 +227,7 @@ export const controleRepository = {
       return { where: cond.join(' AND '), v };
     };
 
-    const [ventes, caisse, holds, rni, reception, rendement, pesees, refus, pertes, lotsMatiere, lotsProduit, haccp, rappels] = await Promise.all([
+    const [ventes, caisse, holds, rni, reception, rendement, pesees, refus, pertes, lotsMatiere, lotsProduit, haccp, rappels, sav] = await Promise.all([
       run(() => { const r = rng('d.business_date', 'd.store_id'); return one(
         `SELECT COUNT(*) FILTER (WHERE l.ecart_qty < 0)::int AS count,
                 COALESCE(SUM(l.ecart_value) FILTER (WHERE l.ecart_value < 0), 0) AS value
@@ -280,6 +281,7 @@ export const controleRepository = {
             ${p.storeId ? 'AND (store_id IS NULL OR store_id = $1::uuid)' : ''}`, p.storeId ? [p.storeId] : [])),
       // Mig 315 : plan de maîtrise sanitaire.
       run(() => haccpRepository.indicators(p.storeId ?? null, p.dateFrom, p.dateTo)),
+      run(() => complaintRepository.indicators(p)),
       // Mig 316 : rappels en cours, quelle que soit la période.
       run(() => one(`SELECT COUNT(*)::int AS count FROM product_recalls WHERE status IN ('open', 'blocked')`, [])),
     ]);
@@ -324,6 +326,13 @@ export const controleRepository = {
         count: num(haccp, 'cleaning_late'), value: null, severity: sev(num(haccp, 'cleaning_late')), target: 'haccp' },
       { key: 'rappels', domain: 'haccp', label: 'Rappels produit en cours', hint: 'lots à retirer et à solder',
         count: num(rappels, 'count'), value: null, severity: sev(num(rappels, 'count'), true), target: 'tracabilite' },
+      // SAV (mig 357) : réclamations clients.
+      { key: 'sav_ouvertes', domain: 'sav', label: 'Réclamations ouvertes', hint: 'à prendre en charge ou en cours',
+        count: num(sav, 'open'), value: num(sav, 'amount'), severity: sev(num(sav, 'open')), target: 'sav' },
+      { key: 'sav_retard', domain: 'sav', label: 'Réclamations en retard', hint: 'délai de traitement dépassé',
+        count: num(sav, 'overdue'), value: null, severity: sev(num(sav, 'overdue'), true), target: 'sav' },
+      { key: 'sav_critiques', domain: 'sav', label: 'Réclamations critiques', hint: 'sécurité, allergène : à traiter sans délai',
+        count: num(sav, 'critical'), value: null, severity: sev(num(sav, 'critical'), true), target: 'sav' },
     ];
   },
 };

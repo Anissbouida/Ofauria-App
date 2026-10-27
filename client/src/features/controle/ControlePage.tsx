@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ShoppingCart, Truck, Factory, Trash2, AlertTriangle, CheckCircle2, Loader2, Search, X, Filter,
   Camera, Package, Recycle, Clock, Store, Boxes, Plus, ArrowRight, LayoutDashboard, Thermometer, Siren,
-  ClipboardCheck, Settings,
+  ClipboardCheck, Settings, MessageSquareWarning,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -27,6 +27,7 @@ import { useReferentiel } from '../../hooks/useReferentiel';
 import LossDeclare from './LossDeclare';
 import HaccpManagerTab from '../haccp/HaccpManagerTab';
 import TraceabilityTab from '../traceability/TraceabilityTab';
+import ComplaintsTab from './ComplaintsTab';
 
 /**
  * Contrôle & Qualité (décision du 2026-10-18) : un seul endroit pour tous les
@@ -36,7 +37,7 @@ import TraceabilityTab from '../traceability/TraceabilityTab';
  * coût de revient (mig 313), jamais au prix de vente.
  */
 
-type Tab = 'overview' | 'achats' | 'production' | 'pertes' | 'haccp' | 'tracabilite';
+type Tab = 'overview' | 'achats' | 'production' | 'pertes' | 'haccp' | 'tracabilite' | 'sav';
 
 const n = (v: number) => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const DOT = { danger: '#dc3545', warning: '#d9822b', ok: '#28a745', unknown: '#adb5bd' } as const;
@@ -57,6 +58,8 @@ export default function ControlePage() {
     { key: 'pertes', label: 'Pertes', icon: Trash2, section: 'operations' },
     { key: 'haccp', label: 'HACCP', icon: Thermometer, section: 'operations' },
     { key: 'tracabilite', label: 'Traçabilité & rappels', icon: Siren, section: 'operations' },
+    // SAV (mig 357) : réclamations clients, saisies ici ou depuis la caisse.
+    { key: 'sav', label: 'Réclamations clients', icon: MessageSquareWarning, section: 'operations' },
     { key: 'approvals', label: 'À approuver', icon: ClipboardCheck, section: 'operations', href: '/approvals', external: true, badge: approvalsCount, hidden: !hasModule('purchasing') },
     { key: 'approval_rules', label: 'Circuits d\'approbation', icon: Settings, section: 'setup', href: '/settings?page=approvals', external: true, hidden: !hasModule('settings') },
   ];
@@ -70,7 +73,7 @@ export default function ControlePage() {
 
   return (
     <ModuleShell title="Contrôle & Qualité" views={views} current={current} onSelect={select}>
-      {(tab === 'overview' || tab === 'production' || tab === 'pertes') && (
+      {(tab === 'overview' || tab === 'production' || tab === 'pertes' || tab === 'sav') && (
         <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0 }}>
           <PeriodFilter label="Période" title="Période analysée"
             period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
@@ -85,6 +88,7 @@ export default function ControlePage() {
       {tab === 'pertes' && <LossRegister range={range} periodText={periodLabel(period, customFrom, customTo)} />}
       {tab === 'haccp' && <><DomainIndicators range={range} domain="haccp" /><HaccpManagerTab /></>}
       {tab === 'tracabilite' && <TraceabilityTab />}
+      {tab === 'sav' && <ComplaintsTab range={range} periodText={periodLabel(period, customFrom, customTo)} />}
     </ModuleShell>
   );
 }
@@ -94,6 +98,7 @@ export default function ControlePage() {
 const DOMAINS: Array<StageDef & { key: ControlIndicator['domain'] }> = [
   { key: 'ventes', label: 'Ventes', hint: 'écarts de ventes et de caisse', icon: ShoppingCart },
   { key: 'achats', label: 'Achats & réception', hint: 'factures, réceptions, traçabilité', icon: Truck },
+  { key: 'sav', label: 'Réclamations', hint: 'clients mécontents, délais de réponse', icon: MessageSquareWarning },
   { key: 'production', label: 'Production', hint: 'rendement, pesées, préparations', icon: Factory },
   { key: 'pertes', label: 'Pertes', hint: 'déclarées et à risque', icon: Trash2 },
   { key: 'haccp', label: 'HACCP', hint: 'températures, nettoyage, actions', icon: Thermometer },
