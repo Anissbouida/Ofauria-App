@@ -26,6 +26,8 @@ const supplierBase = z.object({
   legalName: emptyToNull(200),
   legalForm: z.enum(LEGAL_FORMS).nullable().optional(),
   vatRegime: z.enum(VAT_REGIMES).optional(),
+  /** Devise habituelle (mig 363) ; DH par défaut. */
+  currencyCode: z.string().trim().regex(/^[A-Z]{3}$/, 'Devise invalide').optional(),
   parentSupplierId: z.string().uuid().nullable().optional(),
   contactName: emptyToNull(100),
   phone: emptyToNull(20),

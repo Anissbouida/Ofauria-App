@@ -18,6 +18,7 @@ import ParametersPanel from './ParametersPanel';
 import CompanyBankAccounts from './CompanyBankAccounts';
 import StoresPanel from './StoresPanel';
 import TaxCodesTab from './TaxCodesTab';
+import CurrenciesTab from './CurrenciesTab';
 import DocumentsTab from './DocumentsTab';
 import NotificationsTab from './NotificationsTab';
 import DataTab from './DataTab';
@@ -149,6 +150,7 @@ function SettingsShell() {
     ),
     purchasing: <ParametersPanel domains={['purchasing']} />,
     tax: <TaxCodesTab />,
+    currencies: <CurrenciesTab />,
     numbering: <NumberingTab />,
     documents: <DocumentsTab />,
     ledger: <ParametersPanel keys={['ledger.posting_mode', 'accounting.card_commission']} />,

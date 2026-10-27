@@ -12,6 +12,8 @@ export const SETTINGS_SECTIONS = {
   numbering: 'numbering',
   business: 'business',
   tax: 'tax',
+  /** Devises et taux de change (mig 363). */
+  currencies: 'currencies',
   documents: 'documents',
   notifications: 'notifications',
   approvals: 'approvals',
@@ -32,6 +34,7 @@ export const SETTINGS_SECTION_LABELS: Record<SettingsSection, string> = {
   numbering: 'Numérotation des pièces',
   business: 'Paramètres métier',
   tax: 'TVA',
+  currencies: 'Devises et taux de change',
   documents: 'Modèles de documents',
   notifications: 'Notifications',
   approvals: 'Circuits d\'approbation',

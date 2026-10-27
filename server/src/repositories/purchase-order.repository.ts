@@ -12,6 +12,8 @@ export interface PoLineInput {
   ingredientId?: string | null; packagingId?: string | null;
   lineType?: PoLineType | null; description?: string | null; categoryId?: string | null; unit?: string | null;
   quantityOrdered: number; unitPrice?: number | null;
+  /** Prix dans la devise du BC (mig 363) ; unitPrice reste en DH. */
+  foreignUnitPrice?: number | null;
 }
 
 export function lineTypeOf(it: PoLineInput): PoLineType {
@@ -141,7 +143,7 @@ export const purchaseOrderRepository = {
   _stagedCte(storeParam: string | null) {
     return `WITH base AS (
         SELECT po.id, po.order_number, po.order_date, po.expected_delivery_date, po.status,
-               po.supplier_id, po.on_hold, po.frozen, po.locked_at, po.created_at,
+               po.supplier_id, po.on_hold, po.frozen, po.locked_at, po.created_at, po.currency_code, po.exchange_rate,
                s.name AS supplier_name,
                agg.item_count, agg.total_amount, agg.delivered_amount, agg.items_without_price, agg.lines_done,
                EXISTS (
@@ -269,6 +271,8 @@ export const purchaseOrderRepository = {
   async create(data: {
     supplierId: string; expectedDeliveryDate?: string; notes?: string;
     createdBy: string; storeId?: string;
+    /** Devise et taux figé (mig 363) ; DH par défaut. */
+    currencyCode?: string; exchangeRate?: number;
     // Une ligne porte SOIT un ingredient (matiere premiere) SOIT un consommable
     // (packaging_items) — routage decide par la categorie (fn_purchasable_kind) —
     // SOIT, sans article, un service ou une immobilisation : designation libre +
@@ -285,10 +289,12 @@ export const purchaseOrderRepository = {
       // hangent indefiniment (deadlock de pool).
       const orderNumber = await this.generateOrderNumber(client);
       const poResult = await client.query(
-        `INSERT INTO purchase_orders (order_number, supplier_id, expected_delivery_date, notes, created_by, store_id)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        `INSERT INTO purchase_orders (order_number, supplier_id, expected_delivery_date, notes, created_by, store_id, currency_code, exchange_rate)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
         [orderNumber, data.supplierId, data.expectedDeliveryDate || null,
-         data.notes || null, data.createdBy, data.storeId || null]
+         data.notes || null, data.createdBy, data.storeId || null,
+         data.currencyCode && data.currencyCode !== 'MAD' ? data.currencyCode : 'MAD',
+         data.currencyCode && data.currencyCode !== 'MAD' && data.exchangeRate ? data.exchangeRate : 1]
       );
 
       // F-012 — L'arrondi au contenant (210 kg -> 225 = 9 sacs) etait silencieux :
@@ -316,10 +322,11 @@ export const purchaseOrderRepository = {
         const free = freeLineFields(item);
         await client.query(
           `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, packaging_id, quantity_ordered, unit_price,
-                                             line_type, description, category_id, base_unit)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                                             line_type, description, category_id, base_unit, foreign_unit_price)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [poResult.rows[0].id, item.ingredientId ?? null, item.packagingId ?? null, qty, item.unitPrice ?? null,
-           lineTypeOf(item), free.description, free.categoryId, free.unit]
+           lineTypeOf(item), free.description, free.categoryId, free.unit,
+           data.currencyCode && data.currencyCode !== 'MAD' ? (item.foreignUnitPrice ?? null) : null]
         );
       }
 

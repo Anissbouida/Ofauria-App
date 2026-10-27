@@ -9,6 +9,7 @@ import { ingredientsApi } from '../../api/inventory.api';
 import { packagingApi } from '../../api/packaging.api';
 import { suppliersApi } from '../../api/accounting.api';
 import { apiErrorMessage } from '../../api/errors';
+import { currenciesApi } from '../../api/currencies.api';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -329,11 +330,11 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
                     ))}
                     <tr style={{ fontWeight: 600 }}>
                       <td colSpan={3}>Total HT (remise et port compris)</td>
-                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right', color: q.id === r.best_total_quotation_id ? '#28a745' : undefined }}>{n2(q.total_ht)}{!q.complete && <div style={{ fontSize: '0.7rem', fontWeight: 400, color: '#d9822b' }}>{q.covered}/{items.length} lignes</div>}</td>)}
+                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right', color: q.id === r.best_total_quotation_id ? '#28a745' : undefined }}>{n2(q.total_ht)}{q.total_foreign && <div style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--theme-text-muted)' }}>{n2(q.total_foreign)} {String(q.currency_code).trim()}</div>}{!q.complete && <div style={{ fontSize: '0.7rem', fontWeight: 400, color: '#d9822b' }}>{q.covered}/{items.length} lignes</div>}</td>)}
                     </tr>
                     <tr style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
                       <td colSpan={3}>Délai · validité · conditions</td>
-                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right' }}>{q.delivery_days != null ? `${q.delivery_days} j` : '—'}{q.valid_until ? ` · jusqu'au ${format(new Date(q.valid_until), 'dd/MM')}` : ''}{q.payment_terms ? ` · ${q.payment_terms}` : ''}{Number(q.shipping_cost) > 0 ? ` · port ${n2(q.shipping_cost)}` : ''}{Number(q.discount_pct) > 0 ? ` · remise ${q.discount_pct} %` : ''}</td>)}
+                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right' }}>{q.delivery_days != null ? `${q.delivery_days} j` : '—'}{q.valid_until ? ` · jusqu'au ${format(new Date(q.valid_until), 'dd/MM')}` : ''}{q.payment_terms ? ` · ${q.payment_terms}` : ''}{Number(q.shipping_cost) > 0 ? ` · port ${n2(q.shipping_cost)}${q.currency_code && String(q.currency_code).trim() !== 'MAD' ? ` ${String(q.currency_code).trim()}` : ''}` : ''}{Number(q.discount_pct) > 0 ? ` · remise ${q.discount_pct} %` : ''}</td>)}
                     </tr>
                     {open && (
                       <tr>
@@ -372,15 +373,27 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
     validUntil: existing?.valid_until?.slice(0, 10) ?? '', deliveryDays: existing?.delivery_days != null ? String(existing.delivery_days) : '',
     paymentTerms: existing?.payment_terms ?? '', shippingCost: existing ? String(existing.shipping_cost) : '0', discountPct: existing ? String(existing.discount_pct) : '0', notes: existing?.notes ?? '',
   });
+  // Devise du devis (mig 363) : prix et port saisis dans la devise du fournisseur, comparés en DH.
+  const { data: currencies = [] } = useQuery({ queryKey: ['currencies'], queryFn: () => currenciesApi.list(), staleTime: 60_000 });
+  const [currency, setCurrency] = useState(String(existing?.currency_code ?? supplier.supplier_currency ?? 'MAD').trim());
+  const [rateInput, setRateInput] = useState(existing?.exchange_rate && currency !== 'MAD' ? String(Number(existing.exchange_rate)) : '');
+  const rate = currency === 'MAD' ? 1 : (parseFloat(rateInput) || 0);
+  useEffect(() => {
+    if (currency !== 'MAD' && !rateInput) { const c = currencies.find(x => x.code === currency); if (c?.rate) setRateInput(String(Number(c.rate))); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currency, currencies]);
+  const cur = currency === 'MAD' ? 'DH' : currency;
   const [lines, setLines] = useState<Record<string, { price: string; qty: string; note: string; available: boolean }>>(() => Object.fromEntries(items.map(it => {
     const l = existing?.lines.find(x => x.rfq_item_id === it.id);
-    return [it.id, { price: l?.unit_price ?? '', qty: l?.quantity ?? '', note: l?.note ?? '', available: l ? l.available : true }];
+    const price = l?.foreign_unit_price ?? l?.unit_price;
+    return [it.id, { price: price != null ? String(Number(price)) : '', qty: l?.quantity ?? '', note: l?.note ?? '', available: l ? l.available : true }];
   })));
   const save = useMutation({
     mutationFn: () => rfqApi.saveQuotation(rfq.id, {
       supplierId: supplier.supplier_id, quotationRef: head.quotationRef || null, receivedAt: head.receivedAt, validUntil: head.validUntil || null,
       deliveryDays: head.deliveryDays === '' ? null : Number(head.deliveryDays), paymentTerms: head.paymentTerms || null,
       shippingCost: Number(head.shippingCost) || 0, discountPct: Number(head.discountPct) || 0, notes: head.notes || null,
+      currencyCode: currency, ...(currency !== 'MAD' ? { exchangeRate: rate } : {}),
       items: items.map(it => { const l = lines[it.id]; const available = l.available && l.price !== ''; return { rfqItemId: it.id, available, unitPrice: available ? Number(l.price) : null, quantity: l.qty ? Number(l.qty) : null, note: l.note || null }; }),
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['rfq', rfq.id] }); qc.invalidateQueries({ queryKey: ['rfqs'] }); notify.success('Devis enregistré'); onClose(); },
@@ -405,15 +418,22 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
             <div><span style={label}>Valable jusqu'au</span><input className="input" type="date" style={{ width: '100%' }} value={head.validUntil} onChange={e => set('validUntil', e.target.value)} /></div>
             <div><span style={label}>Délai (jours)</span><input className="input" type="number" min="0" style={{ width: '100%' }} value={head.deliveryDays} onChange={e => set('deliveryDays', e.target.value)} /></div>
             <div><span style={label}>Conditions de paiement</span><input className="input" style={{ width: '100%' }} value={head.paymentTerms} onChange={e => set('paymentTerms', e.target.value)} placeholder="30 j fin de mois…" /></div>
-            <div><span style={label}>Frais de port (DH)</span><input className="input" type="number" min="0" step="0.01" style={{ width: '100%' }} value={head.shippingCost} onChange={e => set('shippingCost', e.target.value)} /></div>
+            <div><span style={label}>Devise</span><select className="input" style={{ width: '100%' }} value={currency} onChange={e => { setCurrency(e.target.value); setRateInput(''); }}>
+              {(currencies.length ? currencies : [{ code: 'MAD', label: 'Dirham marocain' }]).map(c => <option key={c.code} value={c.code}>{c.code} — {c.label}</option>)}
+            </select></div>
+            <div><span style={label}>{currency === 'MAD' ? 'Taux' : `1 ${currency} = … DH`}</span>{currency === 'MAD'
+              ? <div style={{ paddingTop: 6, color: 'var(--theme-text-muted)' }}>—</div>
+              : <input className="input" type="number" min="0" step="0.0001" style={{ width: '100%' }} value={rateInput} onChange={e => setRateInput(e.target.value)} />}</div>
+            <div><span style={label}>Frais de port ({cur})</span><input className="input" type="number" min="0" step="0.01" style={{ width: '100%' }} value={head.shippingCost} onChange={e => set('shippingCost', e.target.value)} /></div>
             <div><span style={label}>Remise globale (%)</span><input className="input" type="number" min="0" max="100" step="0.01" style={{ width: '100%' }} value={head.discountPct} onChange={e => set('discountPct', e.target.value)} /></div>
-            <div><span style={label}>Total HT</span><div style={{ fontSize: '1.125rem', fontWeight: 700, paddingTop: 4 }}>{n2(total)} DH</div></div>
+            <div><span style={label}>Total HT</span><div style={{ fontSize: '1.125rem', fontWeight: 700, paddingTop: 4 }}>{n2(total)} {cur}</div>
+              {currency !== 'MAD' && rate > 0 && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>≈ {n2(total * rate)} DH</div>}</div>
           </div>
           <table className="odoo-table">
-            <thead><tr><th>Article</th><th style={{ textAlign: 'right' }}>Qté demandée</th><th style={{ width: 130 }}>Prix unitaire HT</th><th style={{ width: 110 }}>Qté proposée</th><th>Remarque</th><th style={{ width: 70 }}>Proposé</th></tr></thead>
+            <thead><tr><th>Article</th><th style={{ textAlign: 'right' }}>Qté demandée</th><th style={{ width: 130 }}>Prix unitaire HT ({cur})</th><th style={{ width: 110 }}>Qté proposée</th><th>Remarque</th><th style={{ width: 70 }}>Proposé</th></tr></thead>
             <tbody>{items.map(it => { const l = lines[it.id]; const upd = (p: Partial<typeof l>) => setLines(s => ({ ...s, [it.id]: { ...s[it.id], ...p } })); return (
               <tr key={it.id} style={{ opacity: l.available ? 1 : 0.5 }}>
-                <td>{it.label}{it.last_price && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>dernier prix {n4(it.last_price)}</div>}</td>
+                <td>{it.label}{it.last_price && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>dernier prix {n4(it.last_price)} DH</div>}</td>
                 <td style={{ textAlign: 'right' }}>{Number(it.quantity).toLocaleString('fr-FR')} {it.unit_label ?? ''}</td>
                 <td><input className="input" type="number" min="0" step="0.0001" style={{ width: '100%' }} value={l.price} disabled={!l.available} onChange={e => upd({ price: e.target.value })} /></td>
                 <td><input className="input" type="number" min="0" step="any" style={{ width: '100%' }} value={l.qty} disabled={!l.available} onChange={e => upd({ qty: e.target.value })} placeholder={String(Number(it.quantity))} /></td>
@@ -426,7 +446,7 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
         </div>
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--odoo-border)', display: 'flex', justifyContent: 'flex-end', gap: 8, position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)' }}>
           <button className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button className="odoo-btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Enregistrer le devis</button>
+          <button className="odoo-btn-primary" disabled={save.isPending || !(rate > 0)} title={rate > 0 ? undefined : 'Saisissez le taux de change'} onClick={() => save.mutate()}>{save.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Enregistrer le devis</button>
         </div>
       </div>
     </ModalBackdrop>

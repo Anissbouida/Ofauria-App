@@ -11,6 +11,7 @@ import { fr } from 'date-fns/locale';
 import { suppliersApi, type SupplierIdentifierInput, type IdentifierType } from '../../api/accounting.api';
 import { supplierScoreApi, STANDING_TAG } from '../../api/supplier-score.api';
 import { apiErrorMessage } from '../../api/errors';
+import { currenciesApi } from '../../api/currencies.api';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -35,7 +36,7 @@ type Supplier = {
   parent_supplier_id: string | null; parent_supplier_name: string | null;
   contact_name: string | null; phone: string | null; email: string | null;
   address: string | null; city: string | null; ice: string | null; notes: string | null;
-  is_active: boolean; auxiliary_code: string | null; updated_at: string;
+  is_active: boolean; auxiliary_code: string | null; updated_at: string; currency_code?: string | null;
   identifiers: Array<{ typeCode: string; value: string; qualifier: string | null; label: string; requiredForVatDeduction: boolean }>;
 };
 
@@ -61,14 +62,14 @@ const LEGAL_FORM_OPTIONS = LEGAL_FORMS.map(f => ({ id: f, label: LEGAL_FORM_LABE
 type FormState = {
   name: string; legalName: string; legalForm: string; vatRegime: Supplier['vat_regime'];
   parentSupplierId: string; contactName: string; phone: string; email: string;
-  address: string; city: string; notes: string;
+  address: string; city: string; notes: string; currencyCode: string;
   identifiers: Record<string, { value: string; qualifier: string }>;
 };
 
 function emptyForm(): FormState {
   return {
     name: '', legalName: '', legalForm: '', vatRegime: 'assujetti', parentSupplierId: '',
-    contactName: '', phone: '', email: '', address: '', city: '', notes: '', identifiers: {},
+    contactName: '', phone: '', email: '', address: '', city: '', notes: '', currencyCode: 'MAD', identifiers: {},
   };
 }
 
@@ -78,7 +79,7 @@ function formFromSupplier(s: Supplier): FormState {
   return {
     name: s.name, legalName: s.legal_name ?? '', legalForm: s.legal_form ?? '', vatRegime: s.vat_regime,
     parentSupplierId: s.parent_supplier_id ?? '', contactName: s.contact_name ?? '', phone: s.phone ?? '',
-    email: s.email ?? '', address: s.address ?? '', city: s.city ?? '', notes: s.notes ?? '', identifiers,
+    email: s.email ?? '', address: s.address ?? '', city: s.city ?? '', notes: s.notes ?? '', currencyCode: (s.currency_code ?? 'MAD').trim(), identifiers,
   };
 }
 
@@ -512,6 +513,7 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
 }) {
   const [tab, setTab] = useState<'fiche' | 'historique'>('fiche');
   const [form, setForm] = useState<FormState>(() => (supplier ? formFromSupplier(supplier) : emptyForm()));
+  const { data: currencies = [] } = useQuery({ queryKey: ['currencies'], queryFn: () => currenciesApi.list(), staleTime: 60_000 });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [duplicates, setDuplicates] = useState<Array<{ id: string; name: string; reason: string }>>([]);
 
@@ -552,7 +554,7 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
       const payload = {
         name: form.name.trim(), legalName: form.legalName, legalForm: form.legalForm || null, vatRegime: form.vatRegime,
         parentSupplierId: form.parentSupplierId || null, contactName: form.contactName, phone: form.phone, email: form.email,
-        address: form.address, city: form.city, notes: form.notes, identifiers,
+        address: form.address, city: form.city, notes: form.notes, currencyCode: form.currencyCode, identifiers,
       };
       return supplier ? suppliersApi.update(supplier.id, payload) : suppliersApi.create(payload);
     },
@@ -695,6 +697,12 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
                   <div><label style={fieldLabel}>Email</label>
                     <input type="email" value={form.email} onChange={e => set('email', e.target.value)} className={inputCls} maxLength={255} placeholder="Pour l'envoi des BC" />
                     {errorText('email')}</div>
+                  <div><label style={fieldLabel}>Devise des achats</label>
+                    <select value={form.currencyCode} onChange={e => set('currencyCode', e.target.value)} className={inputCls}>
+                      {(currencies.length ? currencies : [{ code: 'MAD', label: 'Dirham marocain' }]).map(c => <option key={c.code} value={c.code}>{c.code} — {c.label}</option>)}
+                    </select>
+                    {form.currencyCode !== 'MAD' && <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>Proposée sur ses BC et devis ; le stock reste valorisé en DH.</span>}
+                  </div>
                 </div>
               </div>
 

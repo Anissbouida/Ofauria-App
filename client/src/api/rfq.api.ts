@@ -12,13 +12,16 @@ export type RfqItem = {
 export type RfqSupplier = {
   id: string; supplier_id: string; supplier_name: string; email: string | null; phone: string | null; contact_name: string | null;
   status: 'invited' | 'quoted' | 'declined' | 'no_response'; invited_at: string | null; contact_note: string | null; quotation_id: string | null;
+  supplier_currency?: string | null;
 };
-export type QuotationLine = { id: string; quotation_id: string; rfq_item_id: string; available: boolean; unit_price: string | null; quantity: string | null; note: string | null };
+export type QuotationLine = { id: string; quotation_id: string; rfq_item_id: string; available: boolean; unit_price: string | null; foreign_unit_price?: string | null; quantity: string | null; note: string | null };
 export type Quotation = {
   id: string; rfq_id: string; supplier_id: string; supplier_name: string; quotation_ref: string | null; received_at: string; valid_until: string | null;
   delivery_days: number | null; payment_terms: string | null; shipping_cost: string; discount_pct: string; notes: string | null;
   status: 'received' | 'selected' | 'rejected'; created_by_name: string | null; lines: QuotationLine[];
   subtotal: string; discount_amount: string; total_ht: string; covered: number; complete: boolean;
+  /** Devise du devis (mig 363) : unit_price et total_ht en DH, foreign_unit_price / total_foreign / shipping_cost en devise. */
+  currency_code?: string; exchange_rate?: string; total_foreign?: string | null;
 };
 export type Rfq = {
   id: string; number: string; title: string; status: RfqStatus; needed_by: string | null; response_deadline: string | null; notes: string | null;
@@ -32,7 +35,7 @@ export type RfqItemInput = { lineType?: LineType; ingredientId?: string | null; 
 export type RfqInput = { title: string; neededBy?: string | null; responseDeadline?: string | null; notes?: string | null; items: RfqItemInput[]; supplierIds: string[] };
 export type QuotationInput = {
   supplierId: string; quotationRef?: string | null; receivedAt?: string; validUntil?: string | null; deliveryDays?: number | null; paymentTerms?: string | null;
-  shippingCost?: number; discountPct?: number; notes?: string | null;
+  shippingCost?: number; discountPct?: number; notes?: string | null; currencyCode?: string; exchangeRate?: number;
   items: { rfqItemId: string; available?: boolean; unitPrice?: number | null; quantity?: number | null; note?: string | null }[];
 };
 

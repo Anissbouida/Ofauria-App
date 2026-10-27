@@ -90,7 +90,7 @@ export const purchaseOrderController = {
   },
 
   async create(req: AuthRequest, res: Response) {
-    const { supplierId, expectedDeliveryDate, notes, items } = req.body;
+    const { supplierId, expectedDeliveryDate, notes, items, currencyCode, exchangeRate } = req.body;
     if (!supplierId || !items || items.length === 0) {
       res.status(400).json({ success: false, error: { message: 'Fournisseur et articles requis' } });
       return;
@@ -101,7 +101,7 @@ export const purchaseOrderController = {
     // on renvoie une 500 propre.
     try {
       const po = await purchaseOrderRepository.create({
-        supplierId, expectedDeliveryDate, notes,
+        supplierId, expectedDeliveryDate, notes, currencyCode, exchangeRate,
         createdBy: req.user!.userId, storeId: req.user!.storeId,
         items,
       });

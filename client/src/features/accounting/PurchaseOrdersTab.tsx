@@ -30,6 +30,7 @@ import {
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey,
 } from '../../components/purchasing/ProcessBoard';
 import { apiErrorMessage } from '../../api/errors';
+import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
 import { Lock, PauseCircle, PlayCircle, Snowflake, FilePenLine, Scissors, Undo2 } from 'lucide-react';
 
 /** Actions motivées sur un BC (mig 306) : un code motif du référentiel est obligatoire. */
@@ -169,6 +170,7 @@ type POItem = {
   quantity_ordered: string;
   quantity_delivered: string;
   unit_price: string;
+  foreign_unit_price?: string | null;
   // Categorie de l'article (feuille expense_categories), pour affichage.
   item_category_id?: string | null;
   // Contenant par defaut de l'ingredient : permet de saisir la reception par contenant
@@ -654,6 +656,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '' }: {
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           {isExpanded ? <ChevronUp size={13} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronDown size={13} style={{ color: 'var(--theme-text-muted)' }} />}
                           <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{po.order_number as string}</span>
+                          {po.currency_code && String(po.currency_code).trim() !== 'MAD' && <span className="odoo-tag odoo-tag-blue" title={`Négocié en ${String(po.currency_code).trim()} · taux ${po.exchange_rate}`}>{String(po.currency_code).trim()}</span>}
                         </span>
                         <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginLeft: 17 }}>
                           créé le {fmtDate(po.order_date as string)}
@@ -1278,6 +1281,26 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   const searchRef = useRef<HTMLInputElement>(null);
 
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
+  // Devise du BC (mig 363) : les prix des lignes se saisissent dans cette devise ; le taux
+  // (DH pour 1 unité) est figé à la création et le serveur garde les deux prix.
+  const { data: currencies = [] } = useQuery({ queryKey: ['currencies'], queryFn: () => currenciesApi.list(), staleTime: 60_000 });
+  const [currency, setCurrency] = useState(BASE_CURRENCY);
+  const [rateInput, setRateInput] = useState('1');
+  const rate = currency === BASE_CURRENCY ? 1 : (parseFloat(rateInput) || 0);
+  const curLabel = currency === BASE_CURRENCY ? 'DH' : currency;
+  /** Change la devise : les prix déjà saisis sont convertis au taux du jour (prix en DH inchangé). */
+  const changeCurrency = (code: string) => {
+    if (code === currency) return;
+    const next = code === BASE_CURRENCY ? 1 : parseFloat(String(currencies.find(c => c.code === code)?.rate ?? '')) || 0;
+    if (code !== BASE_CURRENCY && !next) notify.error(`Aucun taux saisi pour ${code} : renseignez-le ici ou dans Paramètres › Devises.`);
+    if (rate > 0 && next > 0) {
+      setItems(prev => prev.map(it => it.unitPrice ? { ...it, unitPrice: Math.round(it.unitPrice * rate / next * 10000) / 10000 } : it));
+    }
+    setCurrency(code);
+    setRateInput(next ? String(next) : '');
+  };
+  /** Coût standard (DH) converti dans la devise du BC pour préremplir une ligne. */
+  const toCur = (dh: number) => (dh > 0 && rate > 0 ? Math.round(dh / rate * 10000) / 10000 : null);
   const { data: ingredients = [] } = useQuery({ queryKey: ['ingredients'], queryFn: ingredientsApi.list });
   const { data: consumables = [] } = useQuery({ queryKey: ['packaging-items'], queryFn: () => packagingApi.list({ activeOnly: true }) });
   const { kindOf, resolve, byId, leavesUnder } = useStockCategories();
@@ -1327,7 +1350,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
       unit: created.unit as string,
       categoryId: (created.category_id as string) || null,
       quantityOrdered: container ? container.size : 1,
-      unitPrice: cost > 0 ? cost : null,
+      unitPrice: toCur(cost),
       container, containerCount: 1,
     }]);
     setShowNewIngredient(false);
@@ -1394,7 +1417,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
       unit: p.unit as string,
       categoryId: (p.category_id as string) || null,
       quantityOrdered: container ? container.size : 1,
-      unitPrice: cost > 0 ? cost : null,
+      unitPrice: toCur(cost),
       container, containerCount: 1,
     }]);
     setSearchIngredient('');
@@ -1443,16 +1466,19 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
     if (items.length === 0) { notify.error('Ajoutez au moins un article'); return; }
     const invalidItems = items.filter(it => it.quantityOrdered <= 0);
     if (invalidItems.length > 0) { notify.error('Les quantités doivent être supérieures à 0'); return; }
+    if (!(rate > 0)) { notify.error(`Saisissez le taux de change ${currency}`); return; }
     createMutation.mutate({
       supplierId,
       expectedDeliveryDate: expectedDate || undefined,
       notes: notes || undefined,
+      ...(currency !== BASE_CURRENCY ? { currencyCode: currency, exchangeRate: rate } : {}),
       items: items.map(({ kind, refId, name, categoryId, quantityOrdered, unitPrice }) => ({
         ingredientId: kind === 'ingredient' ? refId : null,
         packagingId: kind === 'consumable' ? refId : null,
         ...(isFreeLine(kind) ? { lineType: kind, description: name, categoryId, unit: 'unit' } : {}),
         quantityOrdered,
-        unitPrice: unitPrice != null && unitPrice > 0 ? unitPrice : null,
+        unitPrice: unitPrice != null && unitPrice > 0 ? Math.round(unitPrice * rate * 10000) / 10000 : null,
+        ...(currency !== BASE_CURRENCY && unitPrice != null && unitPrice > 0 ? { foreignUnitPrice: unitPrice } : {}),
       })),
     });
   };
@@ -1517,7 +1543,11 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             <div>
               <label style={odooLabelStyle}>Fournisseur *</label>
               <SearchSelect options={supplierOptions} value={supplierId} width="100%"
-                onChange={id => { setSupplierId(id); if (id && orderType === 'stock') setTimeout(() => searchRef.current?.focus(), 0); }}
+                onChange={id => {
+                  setSupplierId(id);
+                  const sc = String((suppliers as Record<string, any>[]).find(s => String(s.id) === id)?.currency_code ?? BASE_CURRENCY).trim();
+                  if (id && currencies.some(c => c.code === sc)) changeCurrency(sc);
+                  if (id && orderType === 'stock') setTimeout(() => searchRef.current?.focus(), 0); }}
                 placeholder="Rechercher un fournisseur…" />
             </div>
             <div>
@@ -1541,6 +1571,29 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
               <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} style={odooFieldStyle} placeholder="Optionnel…" />
             </div>
           </div>
+
+          {currencies.length > 1 && (
+            <div className="flex items-end gap-3 flex-wrap">
+              <div style={{ width: 200 }}>
+                <label style={odooLabelStyle}>Devise du bon</label>
+                <select value={currency} onChange={e => changeCurrency(e.target.value)} style={odooFieldStyle}>
+                  {currencies.map(c => <option key={c.code} value={c.code}>{c.code} — {c.label}</option>)}
+                </select>
+              </div>
+              {currency !== BASE_CURRENCY && (<>
+                <div style={{ width: 180 }}>
+                  <label style={odooLabelStyle}>Taux : 1 {currency} =</label>
+                  <div className="flex items-center gap-1">
+                    <input type="number" min={0} step="0.0001" value={rateInput} onChange={e => setRateInput(e.target.value)} style={odooNumFieldStyle} />
+                    <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>DH</span>
+                  </div>
+                </div>
+                <p style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', margin: 0, flex: '1 1 260px' }}>
+                  Prix saisis en {currency}. Le taux est figé sur le bon ; stock, coût matière et facture restent en DH.
+                </p>
+              </>)}
+            </div>
+          )}
 
           {/* Recherche d'articles (ingredients + consommables) */}
           <div>
@@ -1636,7 +1689,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                       onChange={e => setFreeLine({ ...freeLine, quantity: e.target.value })} />
                   </div>
                   <div className="md:col-span-2">
-                    <label style={odooLabelStyle}>Prix unit. HT (DH)</label>
+                    <label style={odooLabelStyle}>Prix unit. HT ({curLabel})</label>
                     <input type="number" min={0} step="0.01" value={freeLine.unitPrice} style={odooNumFieldStyle}
                       onChange={e => setFreeLine({ ...freeLine, unitPrice: e.target.value })}
                       onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addFreeLine(); } }} />
@@ -1681,7 +1734,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                     <th>Article</th>
                     <th>Catégorie</th>
                     <th style={{ textAlign: 'right', width: 128 }}>Quantité</th>
-                    <th style={{ textAlign: 'right', width: 128 }}>Prix unit. (DH)</th>
+                    <th style={{ textAlign: 'right', width: 128 }}>Prix unit. ({curLabel})</th>
                     <th style={{ textAlign: 'right', width: 112 }}>Sous-total</th>
                     <th style={{ width: 40 }}></th>
                   </tr>
@@ -1750,7 +1803,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                   {items.length} article{items.length > 1 ? 's' : ''}
                   {hasMissingPrices && <span style={{ marginLeft: 8, color: '#b85d1a', fontSize: '0.6875rem' }}>(prix à définir par le fournisseur)</span>}
                 </span>
-                <span style={{ fontWeight: 700, color: 'var(--theme-accent)' }}>{totalAmount > 0 ? `Total: ${n(totalAmount)} DH` : 'Prix à définir'}</span>
+                <span style={{ fontWeight: 700, color: 'var(--theme-accent)' }}>{totalAmount > 0 ? `Total: ${n(totalAmount)} ${curLabel}${currency !== BASE_CURRENCY && rate > 0 ? ` ≈ ${n(totalAmount * rate)} DH` : ''}` : 'Prix à définir'}</span>
               </div>
             </div>
           )}
@@ -1774,7 +1827,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
           style={{ backgroundColor: 'var(--odoo-bg)', borderTop: '1px solid var(--odoo-border)', padding: '0.75rem 1.25rem' }}>
           <div>
             {items.length > 0 && (
-              <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{items.length} article{items.length > 1 ? 's' : ''} — <span style={{ fontWeight: 700, color: 'var(--odoo-text)' }}>{n(totalAmount)} DH</span></p>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{items.length} article{items.length > 1 ? 's' : ''} — <span style={{ fontWeight: 700, color: 'var(--odoo-text)' }}>{n(totalAmount)} {curLabel}</span>{currency !== BASE_CURRENCY && rate > 0 && <> ≈ {n(totalAmount * rate)} DH</>}</p>
             )}
           </div>
           <div className="flex gap-2">
@@ -1837,6 +1890,9 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
   const price = (it: POItem) => (it.unit_price != null ? num(it.unit_price) : 0);
   const totalOrdered = items.reduce((s, it) => s + num(it.quantity_ordered) * price(it), 0);
   const totalReceived = items.reduce((s, it) => s + num(it.quantity_delivered) * price(it), 0);
+  // Devise du BC (mig 363) : prix DH = référence ; prix devise affiché en regard.
+  const poCur = String(po.currency_code ?? 'MAD').trim();
+  const totalForeign = items.reduce((s, it) => s + num(it.quantity_ordered) * (it.foreign_unit_price != null ? num(it.foreign_unit_price) : price(it) / (num(po.exchange_rate) || 1)), 0);
   const totalInvoiced = invoices.reduce((s, i) => s + num(i.total_amount), 0);
   const linesDone = items.filter(it => num(it.qty_remaining_base ?? Math.max(0, num(it.quantity_ordered) - num(it.quantity_delivered))) <= 0).length;
   const missingPrices = items.filter(it => it.unit_price == null).length;
@@ -1921,6 +1977,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
             <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--odoo-text)' }}>{po.supplier_name}</span>
             <span style={{ color: 'var(--odoo-text-muted)' }}>
               {items.length} article{items.length > 1 ? 's' : ''} · <strong style={{ color: 'var(--odoo-text)' }}>{n(totalOrdered)} DH</strong>
+              {poCur !== 'MAD' && <> · <strong style={{ color: 'var(--odoo-text)' }}>{n(totalForeign)} {poCur}</strong> <span className="odoo-tag odoo-tag-blue">1 {poCur} = {num(po.exchange_rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })} DH</span></>}
               {po.created_by_name && <> · créé par {po.created_by_name}</>}
             </span>
           </div>
@@ -1993,6 +2050,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
                           <td style={{ textAlign: 'right', color: remaining > 0 ? '#b85d1a' : 'var(--odoo-text-muted)', fontWeight: remaining > 0 ? 600 : 400 }}>{remaining > 0 ? trimQty(remaining) : '—'}</td>
                           <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
                             {it.unit_price != null ? n(num(it.unit_price)) : <span style={{ color: '#b85d1a', fontWeight: 600, fontSize: '0.75rem' }}>à définir</span>}
+                            {poCur !== 'MAD' && it.foreign_unit_price != null && <div style={{ fontSize: '0.6875rem' }}>{n(num(it.foreign_unit_price))} {poCur}</div>}
                           </td>
                           <td style={{ textAlign: 'right', fontWeight: 600 }}>{it.unit_price != null ? n(ordered * num(it.unit_price)) : '—'}</td>
                         </tr>

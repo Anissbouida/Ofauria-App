@@ -44,6 +44,9 @@ export const createPurchaseOrderSchema = z.object({
   supplierId: z.string().uuid('Fournisseur invalide'),
   expectedDeliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ').optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
+  // BC en devise (mig 363) : taux figé, prix des lignes en DH, prix d'origine dans foreignUnitPrice.
+  currencyCode: z.string().regex(/^[A-Z]{3}$/, 'Devise invalide').optional(),
+  exchangeRate: z.coerce.number().positive('Taux de change invalide').max(100_000).optional(),
   items: z.array(
     z.object({
       ingredientId: z.string().uuid('Ingrédient invalide').optional().nullable(),
@@ -55,6 +58,7 @@ export const createPurchaseOrderSchema = z.object({
       unit: z.string().max(20).optional().nullable(),
       quantityOrdered: z.coerce.number().positive('Quantité commandée invalide (doit être > 0)').max(1_000_000),
       unitPrice: z.coerce.number().min(0, 'Prix invalide').max(1_000_000).optional().nullable(),
+      foreignUnitPrice: z.coerce.number().min(0, 'Prix en devise invalide').max(1_000_000).optional().nullable(),
     }).refine((i) => {
       if (i.lineType === 'service' || i.lineType === 'asset') {
         return !i.ingredientId && !i.packagingId && Boolean(i.description?.trim()) && Boolean(i.categoryId);

@@ -27,6 +27,7 @@ const quotationBody = z.object({
   supplierId: uuid, quotationRef: text(80).nullish(), receivedAt: isoDate.optional(), validUntil: isoDate.nullish(),
   deliveryDays: z.coerce.number().int().min(0).max(3650).nullish(), paymentTerms: text(200).nullish(),
   shippingCost: z.coerce.number().min(0).optional(), discountPct: z.coerce.number().min(0).max(100).optional(), notes: text(4000).nullish(),
+  currencyCode: z.string().regex(/^[A-Z]{3}$/).optional(), exchangeRate: z.coerce.number().positive().max(100_000).optional(),
   items: z.array(z.object({
     rfqItemId: uuid, available: z.boolean().optional(), unitPrice: z.coerce.number().min(0).nullish(),
     quantity: z.coerce.number().positive().nullish(), note: text(300).nullish(),

@@ -277,12 +277,12 @@ export const supplierRepository = {
       const ins = await client.query(
         `INSERT INTO suppliers
            (name, legal_name, legal_form, vat_regime, parent_supplier_id,
-            contact_name, phone, email, address, city, notes, created_by, updated_by)
-         VALUES ($1,$2,$3,COALESCE($4,'assujetti'),$5,$6,$7,$8,$9,$10,$11,$12,$12)
+            contact_name, phone, email, address, city, notes, created_by, updated_by, currency_code)
+         VALUES ($1,$2,$3,COALESCE($4,'assujetti'),$5,$6,$7,$8,$9,$10,$11,$12,$12,COALESCE($13,'MAD'))
          RETURNING id`,
         [data.name, data.legalName ?? null, data.legalForm ?? null, data.vatRegime ?? null, data.parentSupplierId ?? null,
          data.contactName ?? null, data.phone ?? null, data.email ?? null, data.address ?? null, data.city ?? null,
-         data.notes ?? null, userId],
+         data.notes ?? null, userId, data.currencyCode ?? null],
       );
       const id: string = ins.rows[0].id;
       if (data.identifiers?.length) await replaceIdentifiers(client, id, userId, data.identifiers);
@@ -300,7 +300,7 @@ export const supplierRepository = {
     const mapping: Record<string, string> = {
       name: 'name', legalName: 'legal_name', legalForm: 'legal_form', vatRegime: 'vat_regime',
       parentSupplierId: 'parent_supplier_id', contactName: 'contact_name', phone: 'phone', email: 'email',
-      address: 'address', city: 'city', notes: 'notes', isActive: 'is_active',
+      address: 'address', city: 'city', notes: 'notes', isActive: 'is_active', currencyCode: 'currency_code',
     };
     const fields: string[] = []; const values: unknown[] = []; let i = 1;
     for (const [key, col] of Object.entries(mapping)) {

@@ -21,6 +21,8 @@ export type RfqInput = {
 export type QuotationInput = {
   supplierId: string; quotationRef?: string | null; receivedAt?: string; validUntil?: string | null; deliveryDays?: number | null;
   paymentTerms?: string | null; shippingCost?: number; discountPct?: number; notes?: string | null;
+  /** Devise du devis et taux (mig 363) : prix et port saisis en devise. */
+  currencyCode?: string; exchangeRate?: number;
   items: { rfqItemId: string; available?: boolean; unitPrice?: number | null; quantity?: number | null; note?: string | null }[];
 };
 
@@ -133,7 +135,7 @@ export const rfqRepository = {
     if (!rfq) return null;
     const [items, suppliers, quotations, qItems] = await Promise.all([
       db.query(`${ITEMS} WHERE i.rfq_id = $1 ORDER BY i.display_order`, [id]),
-      db.query(`SELECT rs.*, s.name AS supplier_name, s.email, s.phone, s.contact_name,
+      db.query(`SELECT rs.*, s.name AS supplier_name, s.email, s.phone, s.contact_name, s.currency_code AS supplier_currency,
                        q.id AS quotation_id
                   FROM rfq_suppliers rs JOIN suppliers s ON s.id = rs.supplier_id
                   LEFT JOIN supplier_quotations q ON q.rfq_id = rs.rfq_id AND q.supplier_id = rs.supplier_id
@@ -148,15 +150,18 @@ export const rfqRepository = {
     const byQuot = new Map<string, Record<string, unknown>[]>();
     for (const qi of qItems.rows) { const arr = byQuot.get(qi.quotation_id) ?? []; arr.push(qi); byQuot.set(qi.quotation_id, arr); }
     const quotes = quotations.rows.map(q => {
-      const lines = byQuot.get(q.id) ?? [];
+      // Lignes ramenées en DH au taux du devis (mig 363) ; le prix d'origine reste dans foreign_unit_price.
+      const rate = Number(q.exchange_rate) || 1;
+      const lines: Record<string, any>[] = (byQuot.get(q.id) ?? []).map(l => ({ ...l, foreign_unit_price: l.unit_price, unit_price: l.unit_price == null ? null : Number(l.unit_price) * rate }));
       let subtotal = 0; let covered = 0;
       for (const it of items.rows) {
         const l = lines.find(x => x.rfq_item_id === it.id);
         if (l && l.available && l.unit_price != null) { subtotal += Number(l.unit_price) * Number(l.quantity ?? it.quantity); covered++; }
       }
       const discount = subtotal * Number(q.discount_pct) / 100;
-      const total = subtotal - discount + Number(q.shipping_cost);
-      return { ...q, lines, subtotal: subtotal.toFixed(2), discount_amount: discount.toFixed(2), total_ht: total.toFixed(2), covered, complete: covered === items.rows.length };
+      const total = subtotal - discount + Number(q.shipping_cost) * rate;
+      return { ...q, lines, subtotal: subtotal.toFixed(2), discount_amount: discount.toFixed(2), total_ht: total.toFixed(2),
+               total_foreign: rate !== 1 ? (total / rate).toFixed(2) : null, covered, complete: covered === items.rows.length };
     });
     const bestByItem: Record<string, { quotationId: string; unitPrice: number } | null> = {};
     for (const it of items.rows) {
@@ -237,14 +242,16 @@ export const rfqRepository = {
       await client.query(`INSERT INTO rfq_suppliers (rfq_id, supplier_id, status, invited_at) VALUES ($1, $2, 'quoted', now())
                           ON CONFLICT (rfq_id, supplier_id) DO UPDATE SET status = 'quoted'`, [rfqId, input.supplierId]);
       const q = await client.query(
-        `INSERT INTO supplier_quotations (rfq_id, supplier_id, quotation_ref, received_at, valid_until, delivery_days, payment_terms, shipping_cost, discount_pct, notes, created_by)
-         VALUES ($1, $2, $3, COALESCE($4::date, CURRENT_DATE), $5, $6, $7, $8, $9, $10, $11)
+        `INSERT INTO supplier_quotations (rfq_id, supplier_id, quotation_ref, received_at, valid_until, delivery_days, payment_terms, shipping_cost, discount_pct, notes, created_by, currency_code, exchange_rate)
+         VALUES ($1, $2, $3, COALESCE($4::date, CURRENT_DATE), $5, $6, $7, $8, $9, $10, $11, $12, $13)
          ON CONFLICT (rfq_id, supplier_id) DO UPDATE SET quotation_ref = EXCLUDED.quotation_ref, received_at = EXCLUDED.received_at, valid_until = EXCLUDED.valid_until,
            delivery_days = EXCLUDED.delivery_days, payment_terms = EXCLUDED.payment_terms, shipping_cost = EXCLUDED.shipping_cost, discount_pct = EXCLUDED.discount_pct,
-           notes = EXCLUDED.notes, status = 'received'
+           notes = EXCLUDED.notes, status = 'received', currency_code = EXCLUDED.currency_code, exchange_rate = EXCLUDED.exchange_rate
          RETURNING id`,
         [rfqId, input.supplierId, input.quotationRef?.trim() || null, input.receivedAt ?? null, input.validUntil ?? null, input.deliveryDays ?? null,
-         input.paymentTerms?.trim() || null, input.shippingCost ?? 0, input.discountPct ?? 0, input.notes?.trim() || null, userId],
+         input.paymentTerms?.trim() || null, input.shippingCost ?? 0, input.discountPct ?? 0, input.notes?.trim() || null, userId,
+         input.currencyCode && input.currencyCode !== 'MAD' ? input.currencyCode : 'MAD',
+         input.currencyCode && input.currencyCode !== 'MAD' && input.exchangeRate ? input.exchangeRate : 1],
       );
       const qid = q.rows[0].id as string;
       await client.query(`DELETE FROM supplier_quotation_items WHERE quotation_id = $1`, [qid]);
@@ -279,7 +286,8 @@ export const rfqRepository = {
         if (!l || !l.available || l.unit_price == null) return null;
         return {
           lineType: it.line_type, ingredientId: it.ingredient_id, packagingId: it.packaging_id, description: it.description, categoryId: it.category_id,
-          unit: it.unit, quantityOrdered: Number(l.quantity ?? it.quantity), unitPrice: Number(l.unit_price),
+          unit: it.unit, quantityOrdered: Number(l.quantity ?? it.quantity), unitPrice: Math.round(Number(l.unit_price) * 10000) / 10000,
+          foreignUnitPrice: q.currency_code !== 'MAD' ? Number(l.foreign_unit_price) : null,
         };
       })
       .filter(Boolean);
@@ -289,6 +297,7 @@ export const rfqRepository = {
       expectedDeliveryDate: p.expectedDeliveryDate ?? (q.delivery_days != null ? new Date(Date.now() + Number(q.delivery_days) * 86400000).toISOString().slice(0, 10) : undefined),
       notes: p.notes ?? `Appel d'offres ${rfq.number}${q.quotation_ref ? ` · devis ${q.quotation_ref}` : ''}`,
       createdBy: p.userId, storeId: p.storeId, items: items as never,
+      currencyCode: q.currency_code as string, exchangeRate: Number(q.exchange_rate) || 1,
     });
     await db.query(`UPDATE supplier_quotations SET status = CASE WHEN id = $2 THEN 'selected' ELSE 'rejected' END WHERE rfq_id = $1`, [rfqId, quotationId]);
     await db.query(`UPDATE rfqs SET status = 'awarded', awarded_quotation_id = $2, awarded_at = now(), purchase_order_id = $3 WHERE id = $1`, [rfqId, quotationId, po.id]);

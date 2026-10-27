@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Store, Paintbrush, Printer, Radio, ShoppingBag, Factory, Truck, Percent, Hash, FileText,
-  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck,
+  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins,
 } from 'lucide-react';
 import type { SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingAnchor } from './SettingsPrimitives';
@@ -17,7 +17,7 @@ export type SettingsPageKey =
   | 'company' | 'stores' | 'appearance'
   | 'print' | 'channels' | 'sachets'
   | 'production' | 'purchasing'
-  | 'tax' | 'numbering' | 'documents' | 'ledger'
+  | 'tax' | 'currencies' | 'numbering' | 'documents' | 'ledger'
   | 'referentiel' | 'data'
   | 'notifications' | 'approvals' | 'audit';
 
@@ -80,6 +80,8 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
 
   { key: 'tax', group: 'Comptabilité', section: 'tax', label: 'TVA', icon: Percent,
     description: 'Taux de TVA datés', keywords: 'taxe taux tva' },
+  { key: 'currencies', group: 'Comptabilité', section: 'currencies', label: 'Devises', icon: Coins,
+    description: 'Devises d\'achat et taux de change datés', keywords: 'devise monnaie euro dollar taux change import' },
   { key: 'numbering', group: 'Comptabilité', section: 'numbering', label: 'Numérotation', icon: Hash,
     description: 'Séries de numéros des pièces', keywords: 'serie numero compteur piece' },
   { key: 'documents', group: 'Comptabilité', section: 'documents', label: 'Documents', icon: FileText,
