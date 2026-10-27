@@ -46,6 +46,7 @@ import EcheancierView from './EcheancierView';
 import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, paymentModeLabel, PaymentStatusTag, type CashOverride } from '../../components/purchasing/PaymentModeFields';
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
 import {
   StagePipeline, ViewSwitch, PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel,
   periodLabel as periodLabelOf, type PeriodKey, type StageDef,
@@ -265,124 +266,70 @@ function buildDailyData(
   return days;
 }
 
-type AccSection = 'exploitation' | 'comptabilite';
-
-const TAB_META: { key: AccTab; label: string; icon: typeof Wallet; section: AccSection }[] = [
-  // ─── Exploitation (vue métier, tous rôles) ───
-  { key: 'pilotage', label: 'Pilotage', icon: LayoutDashboard, section: 'exploitation' },
-  { key: 'caisse', label: 'Caisse', icon: Wallet, section: 'exploitation' },
-  { key: 'charges', label: 'Charges & Dépenses', icon: TrendingDown, section: 'exploitation' },
-  { key: 'cheques', label: 'Chèques et Traites', icon: Receipt, section: 'exploitation' },
-  { key: 'dettes', label: 'Dettes', icon: Scale, section: 'exploitation' },
-  { key: 'resume', label: 'Résumé', icon: BarChart3, section: 'exploitation' },
-  { key: 'losses', label: 'Pertes', icon: AlertTriangle, section: 'exploitation' },
-  // ─── Comptabilité (vue normée, admin) ───
-  { key: 'plan_comptable', label: 'Plan comptable', icon: ListTree, section: 'comptabilite' },
-  { key: 'ecritures', label: 'Journal', icon: Notebook, section: 'comptabilite' },
-  { key: 'grand_livre', label: 'Grand livre', icon: BookOpen, section: 'comptabilite' },
-  { key: 'balance', label: 'Balance', icon: Scale, section: 'comptabilite' },
-  { key: 'cpc', label: 'CPC', icon: FileBarChart, section: 'comptabilite' },
-  { key: 'budget', label: 'Budget', icon: Target, section: 'comptabilite' },
-  { key: 'bilan', label: 'Bilan', icon: Scale, section: 'comptabilite' },
-  { key: 'tva', label: 'TVA', icon: Receipt, section: 'comptabilite' },
-  { key: 'ras', label: 'Retenues source', icon: Scale, section: 'comptabilite' },
-  { key: 'immobilisations', label: 'Immobilisations', icon: Building2, section: 'comptabilite' },
-  { key: 'banque', label: 'Banque', icon: Landmark, section: 'comptabilite' },
-  { key: 'cloture', label: 'Clôture', icon: Lock, section: 'comptabilite' },
+/**
+ * Rubriques standard (ModuleShell) : Opérations = le travail courant, Rapports = les
+ * états, Paramétrage = le référentiel. `adminOnly` = vue normée CGNC, réservée à
+ * l'admin et au gérant (ancienne section « Comptabilité »).
+ */
+const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[] = [
+  { key: 'pilotage', label: 'Pilotage', icon: LayoutDashboard, section: 'dashboard' },
+  // ─── Opérations ───
+  { key: 'caisse', label: 'Caisse', icon: Wallet, section: 'operations' },
+  { key: 'charges', label: 'Charges & Dépenses', icon: TrendingDown, section: 'operations' },
+  { key: 'cheques', label: 'Chèques et Traites', icon: Receipt, section: 'operations' },
+  { key: 'dettes', label: 'Dettes', icon: Scale, section: 'operations' },
+  { key: 'banque', label: 'Banque', icon: Landmark, section: 'operations', adminOnly: true },
+  { key: 'ecritures', label: 'Journal', icon: Notebook, section: 'operations', adminOnly: true },
+  { key: 'immobilisations', label: 'Immobilisations', icon: Building2, section: 'operations', adminOnly: true },
+  { key: 'ras', label: 'Retenues source', icon: Scale, section: 'operations', adminOnly: true },
+  { key: 'cloture', label: 'Clôture', icon: Lock, section: 'operations', adminOnly: true },
+  // ─── Rapports ───
+  { key: 'resume', label: 'Résumé', icon: BarChart3, section: 'reports' },
+  { key: 'losses', label: 'Pertes', icon: AlertTriangle, section: 'reports' },
+  { key: 'grand_livre', label: 'Grand livre', icon: BookOpen, section: 'reports', adminOnly: true },
+  { key: 'balance', label: 'Balance', icon: Scale, section: 'reports', adminOnly: true },
+  { key: 'cpc', label: 'CPC', icon: FileBarChart, section: 'reports', adminOnly: true },
+  { key: 'bilan', label: 'Bilan', icon: Scale, section: 'reports', adminOnly: true },
+  { key: 'tva', label: 'TVA', icon: Receipt, section: 'reports', adminOnly: true },
+  { key: 'budget', label: 'Budget', icon: Target, section: 'reports', adminOnly: true },
+  // ─── Paramétrage ───
+  { key: 'plan_comptable', label: 'Plan comptable', icon: ListTree, section: 'setup', adminOnly: true },
 ];
 
 export default function AccountingPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<AccTab>('pilotage');
-  const [section, setSection] = useState<AccSection>('exploitation');
 
-  // La section Comptabilité (états normés CGNC) est accessible à l'admin et au gérant.
+  // La vue normée (états CGNC) est accessible à l'admin et au gérant.
   // L'admin pourra étendre l'accès via la gestion des utilisateurs.
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
-
-  const sections: { key: AccSection; label: string; icon: typeof Wallet }[] = [
-    { key: 'exploitation', label: 'Exploitation', icon: LayoutDashboard },
-    ...(isAdmin ? [{ key: 'comptabilite' as const, label: 'Comptabilité', icon: BookOpen }] : []),
-  ];
-
-  const visibleTabs = TAB_META.filter(t => t.section === section && (t.section === 'exploitation' || isAdmin));
-  const currentLabel = TAB_META.find(t => t.key === tab)?.label;
-
-  const switchSection = (s: AccSection) => {
-    setSection(s);
-    const first = TAB_META.find(t => t.section === s);
-    if (first) setTab(first.key);
-  };
+  const views: ModuleView<AccTab>[] = TAB_META.map(({ adminOnly, ...v }) => ({ ...v, hidden: adminOnly && !isAdmin }));
+  const { current, select } = useModuleView(views);
+  const tab = current?.key;
 
   return (
-    <div className="odoo-scope" style={{ minHeight: '100%' }}>
-      {/* Control bar + sélecteur de section */}
-      <div className="odoo-control-bar" style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-        <div className="odoo-breadcrumb">
-          <span>Comptabilité</span>
-          <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">{currentLabel}</span>
-        </div>
-        {sections.length > 1 && (
-          <div style={{ display: 'inline-flex', gap: 2, padding: 2, background: 'var(--theme-bg-secondary)', borderRadius: 8, marginLeft: 'auto' }}>
-            {sections.map(s => {
-              const SIcon = s.icon;
-              const active = section === s.key;
-              return (
-                <button key={s.key} onClick={() => switchSection(s.key)}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    padding: '6px 14px', borderRadius: 6, border: 'none', cursor: 'pointer',
-                    fontSize: '0.8125rem', fontWeight: active ? 600 : 400,
-                    background: active ? 'var(--theme-bg-card)' : 'transparent',
-                    color: active ? 'var(--theme-text)' : 'var(--theme-text-muted)',
-                    boxShadow: active ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
-                  }}>
-                  <SIcon size={14} /> {s.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Tabs de la section active */}
-      <div className="odoo-tabs">
-        {visibleTabs.map(t => {
-          const Icon = t.icon;
-          return (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className={`odoo-tab ${tab === t.key ? 'active' : ''}`}>
-              <Icon size={13} style={{ marginRight: 4 }} /> {t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Suivi des echeances fournisseurs (visible sur tous les onglets) */}
-        <PaymentAlertsWidget />
-        {tab === 'pilotage' && <PilotageTab />}
-        {tab === 'caisse' && <CaisseTab />}
-        {tab === 'charges' && <ChargesTab />}
-        {tab === 'cheques' && <ChequesTab />}
-        {tab === 'dettes' && <DettesTab />}
-        {tab === 'resume' && <ResumeTab />}
-        {tab === 'losses' && <LossesTab />}
-        {tab === 'plan_comptable' && <PlanComptableTab />}
-        {tab === 'ecritures' && <EcrituresTab />}
-        {tab === 'grand_livre' && <GrandLivreTab />}
-        {tab === 'balance' && <BalanceTab />}
-        {tab === 'cpc' && <CpcTab />}
-        {tab === 'budget' && <BudgetTab />}
-        {tab === 'bilan' && <BilanTab />}
-        {tab === 'tva' && <TvaTab />}
-        {tab === 'ras' && <RetenuesSourceTab />}
-        {tab === 'immobilisations' && <ImmobilisationsTab />}
-        {tab === 'banque' && <BanqueTab />}
-        {tab === 'cloture' && <ClotureTab />}
-      </div>
-    </div>
+    <ModuleShell title="Comptabilité" views={views} current={current} onSelect={select}>
+      {/* Suivi des echeances fournisseurs (visible sur tous les onglets) */}
+      <PaymentAlertsWidget />
+      {tab === 'pilotage' && <PilotageTab />}
+      {tab === 'caisse' && <CaisseTab />}
+      {tab === 'charges' && <ChargesTab />}
+      {tab === 'cheques' && <ChequesTab />}
+      {tab === 'dettes' && <DettesTab />}
+      {tab === 'resume' && <ResumeTab />}
+      {tab === 'losses' && <LossesTab />}
+      {tab === 'plan_comptable' && <PlanComptableTab />}
+      {tab === 'ecritures' && <EcrituresTab />}
+      {tab === 'grand_livre' && <GrandLivreTab />}
+      {tab === 'balance' && <BalanceTab />}
+      {tab === 'cpc' && <CpcTab />}
+      {tab === 'budget' && <BudgetTab />}
+      {tab === 'bilan' && <BilanTab />}
+      {tab === 'tva' && <TvaTab />}
+      {tab === 'ras' && <RetenuesSourceTab />}
+      {tab === 'immobilisations' && <ImmobilisationsTab />}
+      {tab === 'banque' && <BanqueTab />}
+      {tab === 'cloture' && <ClotureTab />}
+    </ModuleShell>
   );
 }
 

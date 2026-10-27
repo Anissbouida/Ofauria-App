@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
   Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
-  Package, Box, Store, ShieldCheck, TrendingUp, Thermometer, ShieldAlert, ClipboardCheck,
+  Package, Box, Store, Tag, ShieldCheck, TrendingUp, Thermometer, ShieldAlert, ClipboardCheck,
 } from 'lucide-react';
 import { MODULE_LABELS, MODULE_ALIASES, ROLE_GROUPS } from '@ofauria/shared';
 import type { AppModule } from '@ofauria/shared';
@@ -79,6 +79,10 @@ export const NAV_GROUPS: NavGroup[] = [
         description: 'Commandes clients a produire' },
       { module: 'customers', href: '/customers', icon: Users, color: 'bg-cyan-600',
         description: 'Fichier clients et fidelite' },
+      // Catalogue et tarifs : c'est ce qu'on vend (prix, canaux) ; les recettes,
+      // elles, restent en Production.
+      { module: 'products', href: '/products', icon: Tag, color: 'bg-purple-500',
+        description: 'Catalogue et tarifs' },
     ],
   },
   {
@@ -95,8 +99,6 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'Production',
     items: [
-      { module: 'products', href: '/products', icon: ShoppingBag, color: 'bg-purple-500',
-        description: 'Catalogue et tarifs' },
       { module: 'recipes', href: '/recipes', icon: ChefHat, color: 'bg-pink-500',
         description: 'Nomenclatures et couts de fabrication' },
       { module: 'production', href: '/production', icon: Factory, color: 'bg-indigo-500',

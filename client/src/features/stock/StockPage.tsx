@@ -16,9 +16,9 @@ import IngredientFormModal from './IngredientFormModal';
 import {
   AlertTriangle, Package, Search, TrendingUp, TrendingDown,
   Clock, X, Boxes, CalendarClock, ChevronRight, ChevronDown, ChevronLeft,
-  ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen, Warehouse,
+  ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen,
   Plus, List, LayoutGrid, ShoppingCart, Upload, Download, BarChart3,
-  ClipboardList, Archive, Beaker, Loader2,
+  ClipboardList, Archive, Beaker, Loader2, ListTree,
 } from 'lucide-react';
 import IngredientImportModal from './IngredientImportModal';
 import ConsommationTab from './ConsommationTab';
@@ -27,6 +27,8 @@ import PackagingPage from '../packaging/PackagingPage';
 import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
+import { usePermissions } from '../../context/PermissionsContext';
+import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useStockCategories } from './useStockCategories';
 import { format } from 'date-fns';
@@ -89,6 +91,7 @@ export default function StockPage() {
   const navigate = useNavigate();
   const { settings } = useSettings();
   const { user } = useAuth();
+  const { hasModule } = usePermissions();
   const isWarehouseUser = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
   // Admin/gerant uniquement : actions de gestion en masse (import/export ingredients).
   const canManageIngredients = ['admin', 'manager'].includes(user?.role || '');
@@ -117,7 +120,7 @@ export default function StockPage() {
     searchParams.delete('view');
     searchParams.delete('zone');
     searchParams.delete('bon');
-    setSearchParams(searchParams, { replace: true });
+    setSearchParams(searchParams);
   };
   const bonsView: BonsView = (['queue', 'transfers', 'history'] as BonsView[]).includes(searchParams.get('view') as BonsView)
     ? (searchParams.get('view') as BonsView) : 'queue';
@@ -128,10 +131,6 @@ export default function StockPage() {
     setSearchParams(searchParams, { replace: true });
   };
   const zone: StockZone = searchParams.get('zone') === 'entame' ? 'entame' : 'scelle';
-  const changeZone = (next: StockZone) => {
-    if (next === 'scelle') searchParams.delete('zone'); else searchParams.set('zone', next);
-    setSearchParams(searchParams, { replace: true });
-  };
   // Demande ouverte en traitement (?bon=<id>) : deep-linkable, survit au rafraichissement.
   const selectedBonId = searchParams.get('bon');
   const openBon = (bonId: string | null) => {
@@ -334,23 +333,38 @@ export default function StockPage() {
     );
   };
 
+  // Rubriques standard (ModuleShell). Les deux zones du stock (réserve scellée, poste
+  // de pesée entamé) deviennent deux écrans de la barre latérale ; le registre et
+  // l'analyse sont des rapports. Hors magasin (ni magasinier, ni gérant) : la réserve seule.
+  type StockView = Exclude<StockTab, 'stock'> | 'reserve' | 'pesee' | 'referentiel';
+  const views: ModuleView<StockView>[] = [
+    { key: 'reserve', label: 'Réserve', icon: Package, section: 'operations' },
+    { key: 'pesee', label: 'Poste de pesée', icon: Beaker, section: 'operations', hidden: !isWarehouseUser },
+    { key: 'bons', label: 'Bons de sortie', icon: ClipboardList, section: 'operations', hidden: !isWarehouseUser, badge: bons.length },
+    { key: 'commander', label: 'À commander', icon: ShoppingCart, section: 'operations', hidden: !isWarehouseUser, badge: toOrderCount },
+    { key: 'consumables', label: 'Consommables', icon: Boxes, section: 'operations', hidden: !isWarehouseUser },
+    // Mig 312 (D9) : registre des entrées (traçabilité ONSSA), magasinier compris.
+    { key: 'registre', label: 'Registre des entrées', icon: Archive, section: 'reports', hidden: !isWarehouseUser },
+    // Analyse : les endpoints consommation/achats sont reserves admin/gerant cote serveur.
+    { key: 'analyse', label: 'Analyse', icon: BarChart3, section: 'reports', hidden: !canManageIngredients },
+    // Types de contenant, catégories : tenus dans Paramètres › Référentiel.
+    { key: 'referentiel', label: 'Référentiels', icon: ListTree, section: 'setup', hidden: !hasModule('settings'), href: '/settings?page=referentiel' },
+  ];
+  const currentKey: StockView = econoTab === 'stock' ? (zone === 'entame' ? 'pesee' : 'reserve') : econoTab;
+  const selectView = (key: StockView) => {
+    if (key === 'reserve' || key === 'pesee') {
+      setEconoTab('stock');
+      ['tab', 'view', 'bon', 'ingredient'].forEach(k => searchParams.delete(k));
+      if (key === 'pesee') searchParams.set('zone', 'entame'); else searchParams.delete('zone');
+      setSearchParams(searchParams);
+    } else if (key !== 'referentiel') {
+      changeEconoTab(key);
+    }
+  };
+
   return (
-    <div className="odoo-scope">
-      {/* ══════ CONTROL BAR (Odoo) ══════ */}
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <Warehouse size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Stock</span>
-          <span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current">
-            {econoTab === 'bons' ? 'Bons de sortie'
-              : econoTab === 'commander' ? 'À commander'
-              : econoTab === 'consumables' ? 'Consommables'
-              : econoTab === 'analyse' ? 'Analyse'
-              : econoTab === 'registre' ? 'Registre des entrées'
-              : zone === 'entame' ? 'Poste de pesée' : 'Réserve'}
-          </span>
-        </div>
+    <ModuleShell title="Stock" views={views} current={views.find(v => v.key === currentKey)} onSelect={selectView} flush
+      actions={<>
         {econoTab === 'stock' && zone === 'scelle' && canManageIngredients && (
           <button onClick={() => setShowAddIngredient(true)} className="odoo-btn-primary">
             <Plus size={14} /> Nouveau
@@ -393,73 +407,8 @@ export default function StockPage() {
             </button>
           </div>
         )}
-      </div>
+      </>}>
 
-      {/* Onglets du module Stock */}
-      {isWarehouseUser && (
-        <div className="odoo-tabs">
-          <button type="button" onClick={() => changeEconoTab('stock')}
-            className={`odoo-tab ${econoTab === 'stock' ? 'active' : ''}`}>
-            <Warehouse size={13} />
-            <span>Stock</span>
-          </button>
-          <button type="button" onClick={() => changeEconoTab('bons')}
-            className={`odoo-tab ${econoTab === 'bons' ? 'active' : ''}`}>
-            <ClipboardList size={13} />
-            <span>Bons de sortie</span>
-            {bons.length > 0 && (
-              <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: '0.25rem' }}>{bons.length}</span>
-            )}
-            {transferRequests.length > 0 && (
-              <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: '0.25rem' }} title="Contenants à ouvrir">
-                {transferRequests.length}
-              </span>
-            )}
-          </button>
-          <button type="button" onClick={() => changeEconoTab('commander')}
-            className={`odoo-tab ${econoTab === 'commander' ? 'active' : ''}`}>
-            <ShoppingCart size={13} />
-            <span>À commander</span>
-            {toOrderCount > 0 && (
-              <span className="odoo-tag odoo-tag-red" style={{ marginLeft: '0.25rem' }}>{toOrderCount}</span>
-            )}
-          </button>
-          <button type="button" onClick={() => changeEconoTab('consumables')}
-            className={`odoo-tab ${econoTab === 'consumables' ? 'active' : ''}`}>
-            <Boxes size={13} />
-            <span>Consommables</span>
-          </button>
-          {/* Mig 312 (D9) : registre des entrées (traçabilité ONSSA), magasinier compris. */}
-          {isWarehouseUser && (
-            <button type="button" onClick={() => changeEconoTab('registre')}
-              className={`odoo-tab ${econoTab === 'registre' ? 'active' : ''}`}>
-              <ClipboardList size={13} />
-              <span>Registre des entrées</span>
-            </button>
-          )}
-          {/* Analyse : les endpoints consommation/achats sont reserves admin/gerant cote serveur. */}
-          {canManageIngredients && (
-            <button type="button" onClick={() => changeEconoTab('analyse')}
-              className={`odoo-tab ${econoTab === 'analyse' ? 'active' : ''}`}>
-              <BarChart3 size={13} />
-              <span>Analyse</span>
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Sous-navigation : zones de l'onglet Stock, vues de l'onglet Bons de sortie */}
-      {isWarehouseUser && econoTab === 'stock' && (
-        <div className="odoo-tabs stock-subtabs">
-          <button type="button" onClick={() => changeZone('scelle')} className={`odoo-tab ${zone === 'scelle' ? 'active' : ''}`}>
-            <Package size={12} /><span>Réserve · contenants fermés</span>
-          </button>
-          <button type="button" onClick={() => changeZone('entame')} className={`odoo-tab ${zone === 'entame' ? 'active' : ''}`}>
-            <Beaker size={12} /><span>Poste de pesée · contenants ouverts</span>
-            {pesageStock.length > 0 && <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: '0.25rem' }}>{pesageStock.length}</span>}
-          </button>
-        </div>
-      )}
       {isWarehouseUser && econoTab === 'bons' && !selectedBonId && (
         <div className="odoo-tabs stock-subtabs">
           <button type="button" onClick={() => changeBonsView('queue')} className={`odoo-tab ${bonsView === 'queue' ? 'active' : ''}`}>
@@ -885,7 +834,7 @@ export default function StockPage() {
       {showImport && <IngredientImportModal onClose={() => setShowImport(false)} />}
       </>
       )}
-    </div>
+    </ModuleShell>
   );
 }
 

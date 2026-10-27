@@ -1,5 +1,4 @@
 import { useState, useMemo, useRef, useEffect, Fragment } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useApprovalsCount } from '../../api/approvals.api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { suppliersApi, invoicesApi, paymentsApi } from '../../api/accounting.api';
@@ -10,9 +9,9 @@ import { fr } from 'date-fns/locale';
 import {
   Plus, Pencil, Truck, FileText, Banknote,
   X, Check, Download, AlertTriangle, ChevronRight,
-  ClipboardList, ShoppingCart, Receipt, Paperclip, Eye, Trash2, Upload,
+  ClipboardList, Receipt, Paperclip, Eye, Trash2, Upload,
   Loader2, Search, Coins, Filter, ArrowUpDown, ArrowUp, ArrowDown,
-  Clock, CheckCircle2, Scale, CalendarClock, Ban,
+  Clock, CheckCircle2, Scale, CalendarClock, Ban, Settings,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -29,6 +28,7 @@ import { ShieldAlert, ShieldCheck, ClipboardCheck } from 'lucide-react';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { RotateCcw, FilePenLine } from 'lucide-react';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
 import {
   StagePipeline, StageProgress, ViewSwitch, PeriodFilter, SelectFilter, Pager,
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
@@ -66,79 +66,43 @@ const INV_VIEW_STATUSES: Record<'open' | 'history', Array<{ key: string; label: 
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
+/**
+ * Rubriques standard (ModuleShell). Le tableau de bord est le Pilotage (ce qui reste à
+ * recevoir, à facturer, à vérifier) ; les fournisseurs sont le référentiel du module.
+ * Approbations et réglages vivent ailleurs : entrées-liens.
+ */
 export default function PurchasingPage() {
+  const approvalsCount = useApprovalsCount();
+  const views: ModuleView<PurchasingTab | 'approvals' | 'settings'>[] = [
+    // Mig 312 (D9) : reçu non facturé, facturé non reçu, engagements, par ligne de BC.
+    { key: 'pilotage', label: 'Pilotage', icon: Scale, section: 'dashboard' },
+    // « Liste d'attente » retirée : les besoins se traitent dans Stock › À commander (BC directs).
+    { key: 'purchase_orders', label: 'Bons de commande', icon: ClipboardList, section: 'operations' },
+    { key: 'invoices', label: 'Factures reçues', icon: FileText, section: 'operations' },
+    // Boîte d'approbation (lot 8), sans passer par la cloche.
+    { key: 'approvals', label: 'À approuver', icon: ClipboardCheck, section: 'operations', href: '/approvals', badge: approvalsCount },
+    { key: 'suppliers', label: 'Fournisseurs', icon: Truck, section: 'setup' },
+    { key: 'settings', label: 'Réglages des achats', icon: Settings, section: 'setup', href: '/settings?page=purchasing' },
+  ];
   // Onglet ouvrable par lien (?tab=purchase_orders), ex. depuis Stock › À commander après création des BC.
-  const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState<PurchasingTab>(() => {
-    const t = searchParams.get('tab') as PurchasingTab | null;
-    return t && ['suppliers', 'purchase_orders', 'invoices', 'pilotage'].includes(t) ? t : 'suppliers';
-  });
-  // Ouverture d'un onglet pré-filtré sur un fournisseur (depuis l'onglet Fournisseurs).
+  const { current, select } = useModuleView(views);
+  const tab = current?.key;
   // Ouverture d'un onglet pré-filtré (fournisseur, recherche, vue) depuis Fournisseurs ou Pilotage.
   const [focus, setFocus] = useState<TabFocus>({});
-  const openTab = (next: PurchasingTab, f: TabFocus = {}) => { setFocus(f); setTab(next); };
-
-  const allTabs: { key: PurchasingTab; label: string; icon: typeof Truck }[] = [
-    // « Liste d'attente » retirée : les besoins se traitent dans Stock › À commander (BC directs).
-    { key: 'suppliers', label: 'Fournisseurs', icon: Truck },
-    { key: 'purchase_orders', label: 'Bons de commande', icon: ClipboardList },
-    { key: 'invoices', label: 'Factures reçues', icon: FileText },
-    // Mig 312 (D9) : reçu non facturé, facturé non reçu, engagements, par ligne de BC.
-    { key: 'pilotage', label: 'Pilotage', icon: Scale },
-  ];
-
-  const currentTab = allTabs.find(t => t.key === tab);
-  const navigate = useNavigate();
-  const approvalsCount = useApprovalsCount();
+  const openTab = (next: PurchasingTab, f: TabFocus = {}) => { setFocus(f); select(next); };
 
   return (
-    <div className="odoo-scope" style={{ minHeight: '100%' }}>
-      {/* Control bar */}
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <ShoppingCart size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Achats</span>
-          <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">{currentTab?.label}</span>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="odoo-tabs">
-        {allTabs.map(t => {
-          const Icon = t.icon;
-          return (
-            <button key={t.key} onClick={() => openTab(t.key)}
-              className={`odoo-tab ${tab === t.key ? 'active' : ''}`}>
-              <Icon size={13} style={{ marginRight: 4 }} /> {t.label}
-            </button>
-          );
-        })}
-        {/* Raccourci vers la boîte d'approbation (lot 8), sans passer par la cloche. */}
-        <button onClick={() => navigate('/approvals')} className="odoo-tab"
-          style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-          title="Bons de commande et autres pièces qui attendent une décision">
-          <ClipboardCheck size={13} /> À approuver
-          {approvalsCount > 0 && (
-            <span style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: '#dc3545', color: '#fff', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-              {approvalsCount}
-            </span>
-          )}
-        </button>
-      </div>
-
-      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {tab === 'suppliers' && (
-          <SuppliersTab
-            onOpenOrders={id => openTab('purchase_orders', { supplierId: id })}
-            onOpenInvoices={id => openTab('invoices', { supplierId: id })}
-          />
-        )}
-        {tab === 'purchase_orders' && <PurchaseOrdersTab initialSupplierId={focus.supplierId} />}
-        {tab === 'invoices' && <InvoicesTab {...focus} />}
-        {tab === 'pilotage' && <PurchasingPilotageTab onOpenInvoice={(f) => openTab('invoices', f)} />}
-      </div>
-    </div>
+    <ModuleShell title="Achats" views={views} current={current} onSelect={k => openTab(k as PurchasingTab)}>
+      {tab === 'suppliers' && (
+        <SuppliersTab
+          onOpenOrders={id => openTab('purchase_orders', { supplierId: id })}
+          onOpenInvoices={id => openTab('invoices', { supplierId: id })}
+        />
+      )}
+      {tab === 'purchase_orders' && <PurchaseOrdersTab initialSupplierId={focus.supplierId} />}
+      {tab === 'invoices' && <InvoicesTab {...focus} />}
+      {tab === 'pilotage' && <PurchasingPilotageTab onOpenInvoice={(f) => openTab('invoices', f)} />}
+    </ModuleShell>
   );
 }
 

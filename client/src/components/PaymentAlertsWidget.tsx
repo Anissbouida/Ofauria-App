@@ -203,7 +203,7 @@ export default function PaymentAlertsWidget({
                 </div>
                 {isExpanded && it.rows.map(r => (
                   <div key={`${r.kind as string}-${r.id as string}`}
-                    onClick={() => navigate('/accounting')}
+                    onClick={() => navigate('/accounting?tab=cheques')}
                     className="pl-11 pr-4 py-2 flex items-center gap-3 bg-gray-50/60 hover:bg-gray-100 cursor-pointer">
                     <div className="flex-1 min-w-0">
                       <span className="text-xs text-gray-600">
@@ -234,7 +234,7 @@ export default function PaymentAlertsWidget({
               : (a.invoice_number as string);
           return (
             <div key={`${a.kind as string}-${a.id as string}`}
-              onClick={() => navigate(isCheck || isSchedule ? '/accounting' : '/purchasing')}
+              onClick={() => navigate(isCheck ? '/accounting?tab=cheques' : isSchedule ? '/accounting?tab=dettes' : '/purchasing')}
               className="px-4 py-2.5 flex items-center gap-3 hover:bg-gray-50 cursor-pointer">
               {isCheck
                 ? <FileText size={14} className={isOverdue ? 'text-red-600' : 'text-amber-500'} />
