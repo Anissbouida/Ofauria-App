@@ -19,6 +19,8 @@ import CompanyBankAccounts from './CompanyBankAccounts';
 import StoresPanel from './StoresPanel';
 import TaxCodesTab from './TaxCodesTab';
 import CurrenciesTab from './CurrenciesTab';
+import MailTab from './MailTab';
+import JobsTab from './JobsTab';
 import DocumentsTab from './DocumentsTab';
 import NotificationsTab from './NotificationsTab';
 import DataTab from './DataTab';
@@ -157,6 +159,8 @@ function SettingsShell() {
     referentiel: <ReferentielTab />,
     data: <DataTab />,
     notifications: <NotificationsTab />,
+    mail: <MailTab />,
+    jobs: <JobsTab />,
     approvals: <ApprovalsTab />,
     audit: <AuditLogTab />,
   };

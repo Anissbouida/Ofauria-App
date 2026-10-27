@@ -112,6 +112,7 @@ export const documentsNotificationsController = {
     const sets: string[] = [];
     const vals: unknown[] = [req.params.type];
     if (b.enabled !== undefined) { vals.push(!!b.enabled); sets.push(`enabled = $${vals.length}`); }
+    if (b.emailEnabled !== undefined) { vals.push(!!b.emailEnabled); sets.push(`email_enabled = $${vals.length}`); }
     if (b.extraRoles !== undefined) {
       if (!Array.isArray(b.extraRoles) || b.extraRoles.some((r: unknown) => typeof r !== 'string' || !ROLE_CODE.test(r))) { bad(res, 'Liste de rôles invalide'); return; }
       const roles = [...new Set(b.extraRoles as string[])];

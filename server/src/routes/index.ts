@@ -66,6 +66,7 @@ import { rfqRouter } from './rfq.routes.js';
 import { landedCostRouter } from './landed-cost.routes.js';
 import { supplierScoreRouter } from './supplier-score.routes.js';
 import { currenciesRouter } from './currencies.routes.js';
+import { automationRouter } from './automation.routes.js';
 
 const router = Router();
 
@@ -157,5 +158,6 @@ router.use('/rfqs', rfqRouter);
 router.use('/landed-costs', landedCostRouter);
 router.use('/supplier-scores', supplierScoreRouter);
 router.use('/currencies', currenciesRouter);
+router.use('/automation', automationRouter);
 
 export default router;

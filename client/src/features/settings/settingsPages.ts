@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Store, Paintbrush, Printer, Radio, ShoppingBag, Factory, Truck, Percent, Hash, FileText,
-  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins,
+  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer,
 } from 'lucide-react';
 import type { SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingAnchor } from './SettingsPrimitives';
@@ -19,7 +19,7 @@ export type SettingsPageKey =
   | 'production' | 'purchasing'
   | 'tax' | 'currencies' | 'numbering' | 'documents' | 'ledger'
   | 'referentiel' | 'data'
-  | 'notifications' | 'approvals' | 'audit';
+  | 'notifications' | 'mail' | 'jobs' | 'approvals' | 'audit';
 
 export interface SettingsPageDef {
   key: SettingsPageKey;
@@ -96,6 +96,10 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
 
   { key: 'notifications', group: 'Sécurité et contrôle', section: 'notifications', label: 'Notifications', icon: Bell,
     description: 'Qui est prévenu, et de quoi', keywords: 'alerte notification destinataire' },
+  { key: 'mail', group: 'Sécurité et contrôle', section: 'notifications', label: 'E-mails', icon: Mail,
+    description: 'Serveur d\'envoi, expéditeur et file des e-mails', keywords: 'email mail smtp envoi expediteur courriel' },
+  { key: 'jobs', group: 'Sécurité et contrôle', section: 'notifications', label: 'Tâches planifiées', icon: Timer,
+    description: 'Ce que l\'application fait seule et quand', keywords: 'cron planification automatique relance retard echeance tache' },
   { key: 'approvals', group: 'Sécurité et contrôle', section: 'approvals', label: "Circuits d'approbation", icon: ClipboardCheck,
     description: 'Règles qui soumettent une pièce à l\'accord d\'un approbateur', keywords: 'approbation validation seuil bon de commande avoir ecart delegation escalade' },
   { key: 'audit', group: 'Sécurité et contrôle', section: 'audit', label: 'Journal', icon: ShieldCheck,

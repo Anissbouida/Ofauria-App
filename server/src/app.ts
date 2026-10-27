@@ -7,6 +7,7 @@ import pinoHttp from 'pino-http';
 import { fileURLToPath } from 'url';
 import { env } from './config/env.js';
 import routes from './routes/index.js';
+import { cronTick } from './routes/automation.routes.js';
 import { errorHandler } from './middleware/error.middleware.js';
 import { originCheck } from './middleware/csrf.middleware.js';
 import { runWithTimezone } from './utils/timezone.js';
@@ -113,6 +114,10 @@ app.use(cookieParser());
 
 // OWASP A08 : Origin/Referer check anti-CSRF pour toute mutation.
 // A faire AVANT les routes, APRES cors + cookieParser.
+// Déclencheur des tâches planifiées (Cloud Scheduler) : authentifié par secret, sans cookie ni
+// Origin, donc monté avant le contrôle anti-CSRF (mig 364).
+app.post('/api/v1/cron/tick', cronTick);
+
 app.use('/api/v1', originCheck(allowedOrigins));
 
 // Body parsing — limite stricte 10 Ko par defaut (OWASP A04, surface DoS reduite).

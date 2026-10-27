@@ -129,7 +129,7 @@ export interface DocumentTemplate {
 }
 /** Règle de notification par type d'événement (mig 332). */
 export interface NotificationRule {
-  type: string; label: string; domain: string; enabled: boolean; extra_roles: string[];
+  type: string; label: string; domain: string; enabled: boolean; extra_roles: string[]; email_enabled?: boolean;
   sent_30d: number; recipients_30d: string[] | null; updated_at: string; updated_by_name: string | null;
 }
 
@@ -186,7 +186,7 @@ export const settingsApi = {
   documentPreview: (docType: string) =>
     api.get(`/settings/documents/${docType}/preview`, { responseType: 'blob' }).then(r => r.data as Blob),
   notificationRules: () => api.get('/settings/notification-rules').then(r => r.data.data) as Promise<NotificationRule[]>,
-  updateNotificationRule: (type: string, data: { enabled?: boolean; extraRoles?: string[] }) =>
+  updateNotificationRule: (type: string, data: { enabled?: boolean; emailEnabled?: boolean; extraRoles?: string[] }) =>
     api.put(`/settings/notification-rules/${type}`, data).then(r => r.data.data) as Promise<NotificationRule>,
   dataStatus: () => api.get('/settings/data/status').then(r => r.data.data) as Promise<DataStatus>,
   /** Téléchargement (modèle, exports) : renvoie le fichier et son nom. */

@@ -17,6 +17,7 @@ import { notify } from '../../components/ui/InlineNotification';
 const DOMAINS: Record<string, string> = {
   production: 'Production', stock: 'Stock et bons de sortie', replenishment: 'Réapprovisionnement',
   sales: 'Ventes', products: 'Nouveaux produits', quality: 'Qualité', approvals: 'Approbations',
+  sav: 'SAV / réclamations', projects: 'Projets', maintenance: 'Maintenance', purchasing: 'Achats',
 };
 
 function errorMessage(err: unknown, fallback: string) {
@@ -38,7 +39,7 @@ export default function NotificationsTab() {
   const roleLabel = (c: string) => roleOptions.find(r => r[0] === c)?.[1] ?? c;
 
   const save = useMutation({
-    mutationFn: ({ type, data }: { type: string; data: { enabled?: boolean; extraRoles?: string[] } }) => settingsApi.updateNotificationRule(type, data),
+    mutationFn: ({ type, data }: { type: string; data: { enabled?: boolean; emailEnabled?: boolean; extraRoles?: string[] } }) => settingsApi.updateNotificationRule(type, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notification-rules'] }),
     onError: (err) => notify.error(errorMessage(err, 'Enregistrement refusé')),
   });
@@ -54,7 +55,8 @@ export default function NotificationsTab() {
     <div className="odoo-scope" style={{ display: 'grid', gap: 16 }}>
       <StatusBanner tone="neutral" icon={Bell} title="Qui est prévenu, et de quoi">
         Chaque événement prévient le rôle prévu par l'application. Vous pouvez couper un événement trop bavard ou prévenir
-        d'autres rôles en plus. Le changement s'applique aux notifications suivantes.
+        d'autres rôles en plus. Cochez « E-mail » pour qu'un événement parte aussi par e-mail aux personnes concernées qui ont une
+        adresse (réglages d'envoi : <a href="?page=mail">E-mails</a>). Le changement s'applique aux notifications suivantes.
       </StatusBanner>
       {!rules.length && <StatusBanner tone="warning" icon={Bell} title="Règles indisponibles">La migration 332 n'est pas appliquée sur cette base.</StatusBanner>}
       {groups.map(([domain, list]) => (
@@ -62,7 +64,7 @@ export default function NotificationsTab() {
           <h3 style={{ margin: 0, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--odoo-text-muted)' }}>{DOMAINS[domain] ?? domain}</h3>
           <div style={{ overflowX: 'auto' }}>
             <table className="odoo-table">
-              <thead><tr><th style={{ width: 70 }}>Active</th><th>Événement</th><th>Prévenus (30 jours)</th><th style={{ textAlign: 'right' }}>Envois (30 j)</th><th>Prévenir aussi</th></tr></thead>
+              <thead><tr><th style={{ width: 70 }}>Active</th><th style={{ width: 70 }}>E-mail</th><th>Événement</th><th>Prévenus (30 jours)</th><th style={{ textAlign: 'right' }}>Envois (30 j)</th><th>Prévenir aussi</th></tr></thead>
               <tbody>
                 {list.map(r => (
                   <tr key={r.type} id={`notif-row-${r.type}`} style={{ opacity: r.enabled ? 1 : 0.6 }}>
@@ -70,6 +72,11 @@ export default function NotificationsTab() {
                       <input id={`notif-${r.type}`} type="checkbox" checked={r.enabled} disabled={!editable || save.isPending}
                         aria-label={`Activer « ${r.label} »`}
                         onChange={e => save.mutate({ type: r.type, data: { enabled: e.target.checked } })} />
+                    </td>
+                    <td>
+                      <input type="checkbox" checked={!!r.email_enabled} disabled={!editable || !r.enabled || save.isPending}
+                        aria-label={`Envoyer aussi par e-mail « ${r.label} »`}
+                        onChange={e => save.mutate({ type: r.type, data: { emailEnabled: e.target.checked } })} />
                     </td>
                     <td>{r.label}</td>
                     <td style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{(r.recipients_30d ?? []).map(roleLabel).join(', ') || '—'}</td>
