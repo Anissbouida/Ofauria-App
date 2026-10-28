@@ -667,7 +667,7 @@ function CatalogueTab() {
    Product Form Modal — Redesigned with tabs
    ═══════════════════════════════════════════════════════════════════════════ */
 
-type FormTab = 'general' | 'pricing' | 'production' | 'lifecycle';
+type FormTab = 'general' | 'pricing' | 'lifecycle';
 
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
 const fieldInput: React.CSSProperties = { width: '100%', fontSize: '0.875rem', padding: '8px 10px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', boxSizing: 'border-box' };
@@ -976,8 +976,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   const tabs: { key: FormTab; label: string; icon: React.ReactNode }[] = [
     { key: 'general', label: 'General', icon: <ShoppingBag size={16} /> },
     { key: 'pricing', label: 'Tarifs', icon: <Coins size={16} /> },
-    { key: 'production', label: 'Production', icon: <Factory size={16} /> },
-    { key: 'lifecycle', label: 'Cycle de vie', icon: <Clock size={16} /> },
+    { key: 'lifecycle', label: 'Production & cycle de vie', icon: <Clock size={16} /> },
   ];
 
   return (
@@ -1337,8 +1336,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
               </>
             )}
 
-            {/* ═══ Tab: Production ═══ */}
-            {activeTab === 'production' && (
+            {/* ═══ Tab: Cycle de vie ═══ */}
+            {activeTab === 'lifecycle' && (
               <>
                 <StatusBanner tone="warning" icon={Factory} title="Paramètres de production">
                   Ces paramètres influencent les plans de production automatiques.
@@ -1382,12 +1381,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     </div>
                   </div>
                 )}
-              </>
-            )}
 
-            {/* ═══ Tab: Cycle de vie ═══ */}
-            {activeTab === 'lifecycle' && (
-              <>
                 <StatusBanner tone="info" icon={Clock} title="Cycle de vie du produit">
                   DLC, type de vente, exposition et valorisation.
                 </StatusBanner>
