@@ -8,7 +8,7 @@ import { serverUrl } from '../../api/client';
 import { categoriesApi } from '../../api/categories.api';
 import { usersApi } from '../../api/users.api';
 import { recipesApi } from '../../api/recipes.api';
-import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays, Coins, Target, ChevronDown, ChevronRight, type LucideIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays, Coins, Target, ChevronDown, ChevronRight, Recycle, type LucideIcon } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import { notify } from '../../components/ui/InlineNotification';
@@ -1317,7 +1317,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${form.isAvailable ? 'translate-x-5.5 left-[1px]' : 'left-[2px]'}`}
                         style={{ transform: form.isAvailable ? 'translateX(22px)' : 'translateX(0)' }} />
                     </div>
-                    <span className="text-sm font-medium text-gray-700">Disponible a la vente</span>
+                    <span className="text-sm font-medium text-gray-700">Disponible à la vente</span>
                   </label>
                   <label className="flex items-center gap-3 cursor-pointer group">
                     <div className={`relative w-11 h-6 rounded-full transition-colors ${form.isCustomOrderable ? 'bg-blue-500' : 'bg-gray-300'}`}
@@ -1342,12 +1342,12 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   <div>
                     <label style={fieldLabel}>Prix de vente (DH)</label>
                     <input type="number" step="0.01" readOnly tabIndex={-1} style={{ ...fieldInputRO, fontWeight: 700 }} value={form.price} placeholder="0.00" />
-                    <p className="text-xs text-gray-400 mt-1">Calculé depuis la recette (coût × marge ou prix saisi)</p>
+                    <p className="text-xs text-gray-400 mt-1">Calculé automatiquement depuis la recette (coût × marge).</p>
                   </div>
                   <div>
                     <label style={fieldLabel}>Prix de revient (DH)</label>
                     <input type="number" step="0.01" readOnly tabIndex={-1} style={fieldInputRO} value={form.costPrice} placeholder="Auto" />
-                    <p className="text-xs text-gray-400 mt-1">Calculé depuis le coût des ingrédients de la recette</p>
+                    <p className="text-xs text-gray-400 mt-1">Somme du coût des ingrédients de la recette.</p>
                   </div>
                 </div>
 
@@ -1382,7 +1382,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     <input type="number" step="0.01" min={0} style={{ ...fieldInput, fontWeight: 600 }}
                       value={form.pricePerPerson} onChange={e => setForm({ ...form, pricePerPerson: e.target.value })}
                       placeholder="Ex : 30" />
-                    <p className="text-xs text-gray-400 mt-1">En caisse, la caissière choisit le nombre de personnes ; le prix = ce montant × le nombre de parts.</p>
+                    <p className="text-xs text-gray-400 mt-1">Ce montant est multiplié par le nombre de parts choisi en caisse.</p>
                   </div>
                 )}
 
@@ -1418,7 +1418,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     style={fieldInput}
                     value={form.stockMinThreshold} onChange={(e) => setForm({ ...form, stockMinThreshold: e.target.value })}
                     placeholder="0 = pas d'alerte" />
-                  <p className="text-xs text-gray-400 mt-1.5 ml-1">Alerte quand le stock descend en dessous de ce seuil</p>
+                  <p className="text-xs text-gray-400 mt-1.5 ml-1">Déclenche une alerte de réassort dès que le stock passe sous ce seuil.</p>
                 </div>
 
                 <div>
@@ -1429,7 +1429,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     style={fieldInput}
                     value={form.minProductionQuantity} onChange={(e) => setForm({ ...form, minProductionQuantity: e.target.value })}
                     placeholder="0 = pas de minimum" />
-                  <p className="text-xs text-gray-400 mt-1.5 ml-1">Quantite minimale a produire a chaque lancement (le surplus reste en stock central)</p>
+                  <p className="text-xs text-gray-400 mt-1.5 ml-1">Quantité minimale produite à chaque lancement ; le surplus va en stock central.</p>
                 </div>
 
                 {/* Production summary info */}
@@ -1458,7 +1458,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   <label style={fieldLabel}>Type de vente</label>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                     {([
-                      { value: 'jour', label: 'Vente du jour', desc: 'Invendu = perte ou valorisation', icon: Sun },
+                      { value: 'jour', label: 'Vente du jour', desc: 'Produit du jour, non stocké', icon: Sun },
                       { value: 'dlv', label: 'Multi-jours (DLC)', desc: 'Vendable sur plusieurs jours', icon: CalendarDays },
                       { value: 'commande', label: 'Sur commande', desc: 'Pas de stock vitrine', icon: ClipboardList },
                     ] as const).map(opt => {
@@ -1484,7 +1484,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 {/* Bannière type=commande : rien d'autre à saisir */}
                 {form.saleType === 'commande' && (
                   <StatusBanner tone="info" icon={ClipboardList} title="Sur commande — pas de cycle de vie vitrine">
-                    Le produit n&apos;est jamais exposé : ni DLC, ni exposition, ni remise en vente, ni valorisation. Il est produit à la demande.
+                    Produit à la demande : ni DLC, ni exposition, ni remise en vente, ni valorisation.
                   </StatusBanner>
                 )}
 
@@ -1499,12 +1499,12 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                         <input type="number" step="1" min="0"
                           style={fieldInput}
                           value={form.shelfLifeDays} onChange={(e) => setForm({ ...form, shelfLifeDays: e.target.value })}
-                          placeholder={form.saleType === 'dlv' ? 'Obligatoire (ex: 3)' : 'Optionnel — vide = jour même'}
+                          placeholder={form.saleType === 'dlv' ? 'Obligatoire — ex. 3' : 'Vide = jour même'}
                           required={form.saleType === 'dlv'} />
                         <p className="text-xs text-gray-400 mt-1.5 ml-1">
                           {form.saleType === 'jour'
-                            ? 'Vente du jour : laisser vide (implicite = jour de production)'
-                            : 'Compte à partir de la date de production, indep. du transfert vitrine'}
+                            ? 'Laisser vide pour une vente le jour même.'
+                            : 'Durée de conservation à compter de la date de production.'}
                         </p>
                       </div>
                       <div>
@@ -1512,7 +1512,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                         <input type="number" step="1" min="0"
                           style={fieldInput}
                           value={form.displayLifeHours} onChange={(e) => setForm({ ...form, displayLifeHours: e.target.value })} placeholder="Ex: 24" />
-                        <p className="text-xs text-gray-400 mt-1.5 ml-1">Compte à partir du <strong>transfert en vitrine</strong>. Échéance effective = MIN(DLC, exposition)</p>
+                        <p className="text-xs text-gray-400 mt-1.5 ml-1">Durée maximale en vitrine après la mise en rayon ; la première échéance atteinte (DLC ou exposition) s’applique.</p>
                       </div>
                     </div>
 
@@ -1525,7 +1525,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                           </div>
                           <div>
                             <span className="text-sm font-semibold text-gray-900">Remise en vente J+1</span>
-                            <p className="text-xs text-gray-400">Peut être remis en vitrine le lendemain</p>
+                            <p className="text-xs text-gray-400">Le produit peut être remis en vitrine le lendemain.</p>
                           </div>
                         </div>
                         <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${form.isReexposable ? 'bg-green-500' : 'bg-gray-300'}`}
@@ -1555,8 +1555,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                             onChange={(e) => setForm({ ...form, maxReexpositions: e.target.value })}
                             placeholder="1" />
                           <p className="text-xs text-gray-400 mt-1.5">
-                            Combien de fois le produit peut être remis en vente (J+1, J+2…) avant destruction/valorisation.
-                            Défaut : 1.
+                            Nombre de remises en vitrine autorisées avant retrait du produit. Par défaut : 1.
                           </p>
                         </div>
                       )}
@@ -1567,11 +1566,11 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-cyan-50 flex items-center justify-center">
-                            <span className="text-lg">♻️</span>
+                            <Recycle size={18} className="text-cyan-600" />
                           </div>
                           <div>
                             <span className="text-sm font-semibold text-gray-900">Valorisable en production</span>
-                            <p className="text-xs text-gray-400">Retraité en ingrédient — rework (chapelure, pudding…)</p>
+                            <p className="text-xs text-gray-400">Réutilisé comme ingrédient en production (chapelure, pudding…).</p>
                           </div>
                         </div>
                         <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${form.isRecyclable ? 'bg-cyan-500' : 'bg-gray-300'}`}
