@@ -312,6 +312,23 @@ export const productController = {
     }
 
     const product = await productRepository.update(productId, data);
+
+    // Store-scoped (bug "seuil produit non enregistre") : des que l'utilisateur
+    // a un store, la liste et la fiche LISENT pss.stock_min_threshold
+    // (product_store_stock), alors que productRepository.update n'ecrit que la
+    // colonne legacy products.stock_min_threshold. Le seuil semblait donc
+    // non enregistre. On upsert la ligne pss du store courant pour que la
+    // valeur affichee (relecture depuis pss) reflete la saisie.
+    if (req.user!.storeId && data.stockMinThreshold !== undefined && data.stockMinThreshold !== null) {
+      await db.query(
+        `INSERT INTO product_store_stock (product_id, store_id, stock_min_threshold)
+           VALUES ($1, $2, $3)
+         ON CONFLICT (product_id, store_id)
+           DO UPDATE SET stock_min_threshold = EXCLUDED.stock_min_threshold, updated_at = NOW()`,
+        [productId, req.user!.storeId, data.stockMinThreshold]
+      );
+    }
+
     res.json({ success: true, data: product });
   },
   async remove(req: AuthRequest, res: Response) {
