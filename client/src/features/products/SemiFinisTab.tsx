@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery } from '@tanstack/react-query';
 import { recipesApi } from '../../api/recipes.api';
@@ -352,6 +353,7 @@ function SemiFiniRow({
   lots: StockEntry[];
   onToggle: () => void;
 }) {
+  const navigate = useNavigate();
   // Fetch full recipe details on expand (ingredients + sub-recipes)
   const { data: fullRecipe } = useQuery({
     queryKey: ['recipe', recipe.id],
@@ -520,12 +522,15 @@ function SemiFiniRow({
                     <table className="odoo-table" style={{ margin: 0 }}>
                       <tbody>
                         {lineage.reservations.map(r => (
-                          <tr key={r.id}>
+                          <tr key={r.id} onClick={() => navigate(`/production/${r.parent_plan_id}`)} style={{ cursor: 'pointer' }} title="Voir la fiche du plan">
                             <td>
                               <div style={{ fontWeight: 600 }}>{r.plan_notes || `Plan du ${format(new Date(r.plan_date), 'dd/MM', { locale: fr })}`}</div>
                               <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{format(new Date(r.plan_date), 'dd MMM yyyy', { locale: fr })} · {r.plan_status} · {r.target_role}</div>
                             </td>
-                            <td style={{ textAlign: 'right', fontWeight: 600, color: '#b85d1a', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{parseFloat(r.quantity_from_stock).toFixed(2)} {recipe.yield_unit}</td>
+                            <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              <span style={{ fontWeight: 600, color: '#b85d1a', fontVariantNumeric: 'tabular-nums' }}>{parseFloat(r.quantity_from_stock).toFixed(2)} {recipe.yield_unit}</span>
+                              <ChevronRight size={13} style={{ color: 'var(--theme-text-muted)', marginLeft: 6, verticalAlign: 'middle' }} />
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -542,13 +547,14 @@ function SemiFiniRow({
                     <table className="odoo-table" style={{ margin: 0 }}>
                       <tbody>
                         {lineage.productions.slice(0, 5).map(p => (
-                          <tr key={p.id}>
+                          <tr key={p.id} onClick={() => navigate(`/production/${p.id}`)} style={{ cursor: 'pointer' }} title="Voir la fiche du plan">
                             <td>
                               <div style={{ fontWeight: 500 }}>{p.notes || `Plan ${format(new Date(p.plan_date), 'dd/MM', { locale: fr })}`}</div>
                               <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{format(new Date(p.plan_date), 'dd MMM yyyy', { locale: fr })} · {p.status}{p.completed_at && ` · Terminé ${format(new Date(p.completed_at), 'dd/MM HH:mm', { locale: fr })}`}</div>
                             </td>
-                            <td style={{ textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                              {(p.actual_quantity != null ? parseFloat(String(p.actual_quantity)) : parseFloat(String(p.planned_quantity))).toFixed(2)} batch{parseFloat(String(p.actual_quantity ?? p.planned_quantity)) > 1 ? 'es' : ''}
+                            <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{(p.actual_quantity != null ? parseFloat(String(p.actual_quantity)) : parseFloat(String(p.planned_quantity))).toFixed(2)} batch{parseFloat(String(p.actual_quantity ?? p.planned_quantity)) > 1 ? 'es' : ''}</span>
+                              <ChevronRight size={13} style={{ color: 'var(--theme-text-muted)', marginLeft: 6, verticalAlign: 'middle' }} />
                             </td>
                           </tr>
                         ))}
