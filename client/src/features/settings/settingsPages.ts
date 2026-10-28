@@ -1,8 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Store, Paintbrush, Printer, Radio, ShoppingBag, Factory, Truck, Percent, Hash, FileText,
-  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal,
-} from 'lucide-react';
+  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal, Layers } from 'lucide-react';
 import type { SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingAnchor } from './SettingsPrimitives';
 
@@ -15,7 +14,7 @@ import { settingAnchor } from './SettingsPrimitives';
 export type SettingsPageKey =
   | 'home'
   | 'company' | 'stores' | 'appearance'
-  | 'print' | 'channels' | 'sachets' | 'salesRules'
+  | 'print' | 'channels' | 'sachets' | 'salesRules' | 'posRules' | 'productCategories'
   | 'production' | 'purchasing'
   | 'tax' | 'currencies' | 'numbering' | 'documents' | 'ledger'
   | 'referentiel' | 'customFields' | 'data'
@@ -71,6 +70,9 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
   { key: 'sachets', group: 'Ventes et caisse', section: 'sachets', label: 'Sachets', icon: ShoppingBag,
     description: 'Contrôle des sachets de caisse', keywords: 'sachet emballage ratio vendeuse',
     fields: ['Réglage global', 'Ratio par catégorie'] },
+  { key: 'posRules', group: 'Ventes et caisse', section: 'business', label: 'Règles de caisse', icon: ShoppingBag,
+    description: 'Vente des produits sans stock vitrine', keywords: 'caisse rupture stock negatif vente sans stock vitrine',
+    fields: ['Caisse : produits sans stock vitrine'] },
   { key: 'salesRules', group: 'Ventes et caisse', section: 'business', label: 'Devis et crédit clients', icon: BellRing,
     description: 'Validité des devis, relances et plafond de crédit', keywords: 'devis proforma validite relance recouvrement impaye plafond credit blocage',
     fields: ['Devis clients', 'Relances clients et contrôle du crédit'] },
@@ -92,6 +94,9 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
   { key: 'ledger', group: 'Comptabilité', section: 'business', label: 'Règles comptables', icon: BookOpen,
     description: 'Passation des écritures, commission carte', keywords: 'ecriture comptabilisation journal grand livre commission carte tpe banque' },
 
+  { key: 'productCategories', group: 'Données de base', section: 'referentiel', label: 'Catégories de vente', icon: Layers,
+    description: 'Familles et ordre des catégories en caisse', keywords: 'categorie famille caisse pos classement boulangerie patisserie',
+    fields: ['Catégories et familles'] },
   { key: 'referentiel', group: 'Données de base', section: 'referentiel', label: 'Référentiel', icon: Database,
     description: 'Tables de paramétrage', keywords: 'table categorie unite motif' },
   { key: 'customFields', group: 'Données de base', section: 'custom_fields', label: 'Champs personnalisés', icon: SlidersHorizontal,

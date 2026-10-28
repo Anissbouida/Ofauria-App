@@ -16,12 +16,15 @@ import { unsoldDecisionApi } from '../../api/unsold-decision.api';
 import { productionApi } from '../../api/production.api';
 import { returnsApi } from '../../api/returns.api';
 import { promotionsApi } from '../../api/promotions.api';
+import { posParkedApi, type ParkedTicket } from '../../api/pos-parked.api';
 import api, { serverUrl } from '../../api/client';
 import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, Check, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock, Settings, ScanLine, ChevronRight, MessageSquareWarning, BadgePercent, Star } from 'lucide-react';
+import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, Check, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock, Settings, ScanLine, ChevronRight, MessageSquareWarning, BadgePercent, Star, MoreHorizontal, PauseCircle, Play, Percent, Wifi, WifiOff, Keyboard, ChevronDown } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import { apiErrorMessage } from '../../api/errors';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ReceiptModal from './ReceiptModal';
 import POSSettingsModal from './POSSettingsModal';
 import BarcodeScannerModal from './BarcodeScannerModal';
@@ -31,6 +34,8 @@ import { playPosSound } from './pos-sounds';
 // Dimensions de la grille produits selon la taille choisie dans les
 // parametres du poste (vignettes plus grandes = moins de produits a l'ecran,
 // plus facile au doigt sur petite tablette).
+// Hauteur d'une case de catégorie (grille alignée, 2 rangées visibles repliées).
+const CAT_ROW = 40;
 const GRID_DIMS: Record<GridSize, { minPx: number; cardH: string }> = {
   compact: { minPx: 96, cardH: 'h-[112px]' },
   normal: { minPx: 120, cardH: 'h-[140px]' },
@@ -42,16 +47,11 @@ import ComplaintFormModal from '../../components/sav/ComplaintFormModal';
 import { useAuth } from '../../context/AuthContext';
 import { getApiErrorMessage } from '../../utils/api-error';
 
-// FLAG DE TEST : desactive les blocages UI de rupture (filtre catalogue,
-// bouton disabled, alerte "Max X en stock"). A combiner avec le flag serveur
-// POS_ALLOW_NEGATIVE_STOCK. NE PAS ACTIVER EN PRODUCTION.
-// Defaut : ON en dev (import.meta.env.DEV), OFF sinon. VITE_POS_ALLOW_NEGATIVE_STOCK
-// permet de forcer explicitement OFF (=off/false/0/no).
+// Vente sans stock vitrine : règle métier décidée par l'admin (Paramètres › Règles de caisse,
+// mig 374) et lue au chargement de la caisse (voir sellWithoutStock dans le composant).
+// VITE_POS_ALLOW_NEGATIVE_STOCK ne sert plus qu'à forcer explicitement ON pour un test local.
 const _viteEnv = (import.meta as { env?: Record<string, string | boolean | undefined> }).env || {};
-const _rawFlag = String(_viteEnv.VITE_POS_ALLOW_NEGATIVE_STOCK ?? '').toLowerCase();
-const ALLOW_NEGATIVE_STOCK = _rawFlag
-  ? ['1', 'true', 'yes', 'on'].includes(_rawFlag)
-  : Boolean(_viteEnv.DEV);
+const ENV_ALLOW_NEGATIVE_STOCK = ['1', 'true', 'yes', 'on'].includes(String(_viteEnv.VITE_POS_ALLOW_NEGATIVE_STOCK ?? '').toLowerCase());
 
 interface CartItem {
   productId: string;
@@ -96,7 +96,7 @@ interface ReceiptData {
   isAdvanceReceipt?: boolean;
 }
 
-type PosTab = 'sell' | 'orders' | 'returns' | 'unpaid';
+type PosTab = 'sell' | 'orders' | 'returns' | 'unpaid' | 'parked';
 
 const statusColors: Record<string, string> = {
   pending: 'bg-gray-100 text-gray-600',
@@ -109,6 +109,11 @@ const statusColors: Record<string, string> = {
 
 export default function POSPage() {
   const queryClient = useQueryClient();
+  const confirmDialog = useConfirm();
+  // Règle de caisse (mig 374) : produits sans stock vendables ou non. Le serveur applique la
+  // même règle à l'encaissement ; ici elle pilote le grisage des tuiles et les garde-fous du panier.
+  const { data: posRules } = useQuery({ queryKey: ['pos-rules'], queryFn: salesApi.posRules, staleTime: 60_000 });
+  const ALLOW_NEGATIVE_STOCK = ENV_ALLOW_NEGATIVE_STOCK || posRules?.sellWithoutStock === true;
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
@@ -164,6 +169,19 @@ export default function POSPage() {
   const [cashGivenInput, setCashGivenInput] = useState<string>('');
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [showUnpaidModal, setShowUnpaidModal] = useState(false);
+  // Refonte caisse (lots 1-2) : menu « Plus » de la barre, remise inline du ticket,
+  // ligne du ticket sélectionnée (raccourcis Suppr / + / −), état de la connexion.
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  // Catégories (mig 375) : première rangée = familles, seconde = catégories de la famille choisie.
+  const [selectedFamily, setSelectedFamily] = useState<string | null>(null);
+  const [showDiscountRow, setShowDiscountRow] = useState(false);
+  const [selectedLine, setSelectedLine] = useState<string | null>(null);
+  const [online, setOnline] = useState<boolean>(typeof navigator === 'undefined' ? true : navigator.onLine);
+  useEffect(() => {
+    const up = () => setOnline(true), down = () => setOnline(false);
+    window.addEventListener('online', up); window.addEventListener('offline', down);
+    return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down); };
+  }, []);
   // Modal tunnel paiement (Encaisser) : mode + billet donne + rendu monnaie.
   // Deplace hors du panneau panier pour un UX aligne aux POS classiques.
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -365,11 +383,29 @@ export default function POSPage() {
     enabled: !activeSession && !sessionLoading,
   });
 
+  const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: categoriesApi.list });
   const isTopCategory = selectedCategory === '__top__';
   const isRecentCategory = selectedCategory === '__recent__';
+  // Familles (mig 375) : ordre d'apparition des catégories ; les catégories sans famille vont dans « Autres ».
+  const catList = categories as { id: number; name: string; family?: string | null }[];
+  const families = useMemo(() => {
+    const seen: string[] = [];
+    for (const c of catList) { const f = (c.family || '').trim(); if (f && !seen.includes(f)) seen.push(f); }
+    return seen;
+  }, [catList]);
+  const hasFamilies = families.length > 0;
+  const orphanCats = catList.filter(c => !(c.family || '').trim());
+  const familyOf = (id: string) => {
+    const c = catList.find(x => String(x.id) === id);
+    return c ? ((c.family || '').trim() || '__other__') : null;
+  };
+  const activeFamily = hasFamilies ? (selectedFamily ?? (selectedCategory && !isTopCategory && !isRecentCategory ? familyOf(selectedCategory) : null)) : null;
+  const familyCats = !hasFamilies ? catList : activeFamily === '__other__' ? orphanCats : activeFamily ? catList.filter(c => (c.family || '').trim() === activeFamily) : [];
+  // Famille choisie sans catégorie précise : la grille montre toutes ses catégories.
+  const familyCategoryIds = activeFamily && !selectedCategory ? familyCats.map(c => String(c.id)).join(',') : '';
   const { data: productsData, isLoading: productsLoading } = useQuery({
-    queryKey: ['pos-products', { categoryId: selectedCategory, search: debouncedSearch, isAvailable: 'true' }],
-    queryFn: () => productsApi.list({ categoryId: (isTopCategory || isRecentCategory) ? '' : selectedCategory, search: debouncedSearch, isAvailable: 'true', limit: '500', strictStore: 'true' }),
+    queryKey: ['pos-products', { categoryId: selectedCategory, search: debouncedSearch, isAvailable: 'true' }, familyCategoryIds],
+    queryFn: () => productsApi.list({ categoryId: (isTopCategory || isRecentCategory) ? '' : selectedCategory, ...(familyCategoryIds ? { categoryIds: familyCategoryIds } : {}), search: debouncedSearch, isAvailable: 'true', limit: '500', strictStore: 'true' }),
     enabled: !!activeSession && !!user?.storeId && ((!isTopCategory && !isRecentCategory) || !!debouncedSearch),
   });
   // Fetch all products for recent tab (filter client-side by recent IDs)
@@ -386,7 +422,6 @@ export default function POSPage() {
     enabled: !!activeSession && !!user?.storeId,
     staleTime: 5 * 60_000,
   });
-  const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: categoriesApi.list });
   // Catalogue complet pour le panneau "Ajouter un produit manquant" de la modal de fermeture.
   // Chargement paresseux : ne s'active que quand l'operateur ouvre le panneau.
   const { data: allCatalogForClose } = useQuery({
@@ -877,7 +912,8 @@ export default function POSPage() {
     const ruptures: Record<string, any>[] = [];
     for (const p of products) {
       const stock = parseFloat(p.stock_quantity as string) || 0;
-      if (stock <= 0 && p.is_expired !== true) ruptures.push(p);
+      // Règle « tout vendre » (mig 374) : les produits sans stock restent dans la grille.
+      if (stock <= 0 && p.is_expired !== true && !ALLOW_NEGATIVE_STOCK) ruptures.push(p);
       else sellable.push(p);
     }
     // Top ventes (deja trie par ventes) et Recents (ordre de recence) gardent
@@ -894,7 +930,7 @@ export default function POSPage() {
       ruptures.sort(byRankThenName);
     }
     return { sellableProducts: sellable, ruptureProducts: ruptures };
-  }, [products, topRank, debouncedSearch, isTopCategory, isRecentCategory]);
+  }, [products, topRank, debouncedSearch, isTopCategory, isRecentCategory, ALLOW_NEGATIVE_STOCK]);
 
   // Etat de chargement de la grille (skeleton) selon la source affichee.
   const gridLoading = debouncedSearch
@@ -1100,6 +1136,100 @@ export default function POSPage() {
     }).filter(Boolean));
   };
 
+  // « X achetés = Y offerts » (mig 372) : dès que le panier contient les articles payants,
+  // la caisse ajoute d'elle-même l'article offert ; le moteur le rend gratuit. Une seule
+  // fois par situation du panier : si le caissier le retire, on ne le remet pas de force,
+  // un bouton « Ajouter » reste proposé.
+  const autoFreeRef = useRef<Set<string>>(new Set());
+  // Mémoire par article et par composition du panier (pas par promotion : deux offres qui
+  // se recouvrent ne donnent qu'un seul article offert, comme le moteur).
+  const freeKey = (f: { productId: string }) =>
+    `${f.productId}:${cart.filter(i => i.unit === 'unit').map(i => `${i.productId}x${i.quantity}`).sort().join(',')}`;
+  const addFree = (f: { productId: string; quantity: number; label: string }, silent = false) => {
+    const line = cart.find(i => i.productId === f.productId && i.unit === 'unit');
+    if (!line) return;
+    if (!ALLOW_NEGATIVE_STOCK && line.quantity + f.quantity > getProductStock(f.productId)) {
+      if (!silent) showStockAlert(f.productId, getProductStock(f.productId));
+      else notify.warning(`${line.name} offert : stock vitrine insuffisant`);
+      return;
+    }
+    setCart(cart.map(i => (i === line ? { ...i, quantity: i.quantity + f.quantity } : i)));
+    notify.success(`${f.quantity > 1 ? `${f.quantity} × ` : ''}${line.name} offert${f.quantity > 1 ? 's' : ''} ajouté${f.quantity > 1 ? 's' : ''} · ${f.label}`);
+  };
+  const freeOffers = (!promoQuery.isFetching && !promoQuery.isPlaceholderData ? promoEval?.promotion.freeToAdd ?? [] : [])
+    .filter((f, i, all) => all.findIndex(x => x.productId === f.productId) === i);
+  useEffect(() => {
+    if (cart.length === 0) { autoFreeRef.current.clear(); return; }
+    for (const f of freeOffers) {
+      const key = freeKey(f);
+      if (autoFreeRef.current.has(key)) continue;
+      autoFreeRef.current.add(key);
+      addFree(f, true);
+      break; // un ajout à la fois : le panier change, l'aperçu est recalculé
+    }
+  }, [freeOffers, cart.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Tickets en attente (mig 373) et ligne sélectionnée du ticket ────────────
+  const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+  // Ligne visée par Suppr / + / − : celle cliquée, sinon la dernière ajoutée.
+  const activeLineId = selectedLine && cart.some(i => i.productId === selectedLine) ? selectedLine : cart[cart.length - 1]?.productId ?? null;
+  const { data: parkedTickets = [] } = useQuery<ParkedTicket[]>({
+    queryKey: ['pos-parked'], queryFn: posParkedApi.list, enabled: !!activeSession, refetchInterval: 30_000,
+  });
+  // Remet le ticket à zéro (après une mise en attente ou « Vider »).
+  const resetTicket = () => {
+    setCart([]); setCustomerId(''); setCustomerSearch(''); setShowCustomerSearch(false);
+    setCouponInput(''); setCouponCode(''); setLoyaltyPointsInput(''); setDiscountInput(''); setShowDiscountRow(false);
+    setSachetsGiven(0); setSachetReason(''); setUserOverrode(false); setCashGiven(null); setSelectedLine(null);
+  };
+  const parkMutation = useMutation({
+    mutationFn: posParkedApi.park,
+    onSuccess: (t) => {
+      queryClient.invalidateQueries({ queryKey: ['pos-parked'] });
+      resetTicket();
+      notify.success(`Ticket mis en attente${t.customer_label ? ` · ${t.customer_label}` : ''} (${Number(t.total).toFixed(2)} DH)`);
+    },
+    onError: (e) => notify.error(apiErrorMessage(e)),
+  });
+  const takeMutation = useMutation({
+    mutationFn: posParkedApi.take,
+    onSuccess: (t) => {
+      queryClient.invalidateQueries({ queryKey: ['pos-parked'] });
+      setCart(t.items as CartItem[]);
+      setCustomerId(t.customer_id ?? ''); setCustomerSearch(t.customer_label ?? '');
+      if (t.channel_id) setChannelId(t.channel_id);
+      setCouponInput(t.coupon_code ?? ''); setCouponCode(t.coupon_code ?? '');
+      if (t.sachets_given != null) { setSachetsGiven(t.sachets_given); setUserOverrode(true); }
+      setPosTab('sell');
+      notify.success(`Ticket repris${t.customer_label ? ` · ${t.customer_label}` : ''}`);
+    },
+    // Déjà repris sur un autre poste : la liste se rafraîchit.
+    onError: (e) => { notify.error(apiErrorMessage(e)); queryClient.invalidateQueries({ queryKey: ['pos-parked'] }); },
+  });
+  const dropMutation = useMutation({
+    mutationFn: posParkedApi.take,
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['pos-parked'] }); notify.success('Ticket en attente supprimé'); },
+    onError: (e) => { notify.error(apiErrorMessage(e)); queryClient.invalidateQueries({ queryKey: ['pos-parked'] }); },
+  });
+  const parkCurrentCart = useCallback(() => {
+    if (cart.length === 0 || parkMutation.isPending) return;
+    parkMutation.mutate({
+      items: cart.map(i => ({ productId: i.productId, name: i.name, price: i.price, quantity: i.quantity, unit: i.unit, displayUnit: i.displayUnit, imageUrl: i.imageUrl })),
+      customerId: customerId || null, customerLabel: customerSearch || null, channelId: channelId || null,
+      couponCode: couponCode || null, sachetsGiven, total,
+    });
+  }, [cart, customerId, customerSearch, channelId, couponCode, sachetsGiven, total, parkMutation]);
+  const resumeParked = (t: ParkedTicket) => {
+    if (takeMutation.isPending) return;
+    if (cart.length > 0) { notify.error('Mettez d\'abord le ticket en cours en attente (F8) ou videz-le'); return; }
+    takeMutation.mutate(t.id);
+  };
+  const dropParked = async (t: ParkedTicket) => {
+    const ok = await confirmDialog(`Le panier de ${Number(t.total).toFixed(2)} DH sera perdu ; aucune vente n'a été enregistrée.`,
+      { title: `Supprimer le ticket${t.customer_label ? ` de ${t.customer_label}` : ' en attente'} ?`, confirmLabel: 'Supprimer', danger: true });
+    if (ok) dropMutation.mutate(t.id);
+  };
+
   const handleCheckout = () => {
     if (!sachetReasonOK) {
       notify.error('Indiquez un motif pour le sachet supplémentaire');
@@ -1200,26 +1330,48 @@ export default function POSPage() {
         closeNumpad();
         return;
       }
+      const modalOpen = showPaymentModal || showUnpaidModal || weightModal || receiptData || showScanner || numpadItem;
       if (e.key === 'F9') {
         if (cart.length === 0 || checkoutMutation.isPending) return;
-        if (showPaymentModal || showUnpaidModal || weightModal || receiptData || showScanner || numpadItem) return;
+        if (modalOpen) return;
         if (!sachetReasonOK) { notify.error('Indiquez un motif pour le sachet supplémentaire'); return; }
         e.preventDefault();
         // Meme preparation que le bouton Encaisser : montant donne remis a zero.
         setCashGiven(null);
         setCashGivenInput('');
         setShowPaymentModal(true);
+        return;
       }
+      if (e.key === 'F8') { e.preventDefault(); if (!modalOpen) parkCurrentCart(); return; }
+      if (e.key === 'F4') { e.preventDefault(); if (!modalOpen) setShowCustomerSearch(v => !v); return; }
+      // Les touches suivantes agissent sur la ligne sélectionnée du ticket, jamais pendant une saisie.
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (modalOpen || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const line = activeLineId ? cart.find(i => i.productId === activeLineId) : undefined;
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        if (!cart.length) return;
+        e.preventDefault();
+        const idx = Math.max(0, cart.findIndex(i => i.productId === activeLineId));
+        const next = cart[Math.min(cart.length - 1, Math.max(0, idx + (e.key === 'ArrowDown' ? 1 : -1)))];
+        if (next) setSelectedLine(next.productId);
+        return;
+      }
+      if (!line) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); setCart(cart.filter(i => i.productId !== line.productId)); return; }
+      if (line.unit === 'unit' && (e.key === '+' || e.key === '=')) { e.preventDefault(); updateQuantity(line.productId, 1); return; }
+      if (line.unit === 'unit' && e.key === '-') { e.preventDefault(); updateQuantity(line.productId, -1); }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [posTab, cart.length, sachetReasonOK, showPaymentModal, showUnpaidModal, weightModal, receiptData, showScanner, numpadItem, closeNumpad, checkoutMutation.isPending]);
+  }, [posTab, cart, activeLineId, sachetReasonOK, showPaymentModal, showUnpaidModal, weightModal, receiptData, showScanner, numpadItem, closeNumpad, checkoutMutation.isPending, parkCurrentCart, updateQuantity]);
 
   // Carte produit de la grille — partagee entre la section "disponibles" et la
   // section "ruptures" repliee.
   const renderProductCard = (p: Record<string, any>) => {
     const stock = parseFloat(p.stock_quantity as string) || 0;
     const outOfStock = stock <= 0;
+    // Grisé et bloqué seulement si la règle de caisse respecte le stock (mig 374).
+    const blocked = outOfStock && !ALLOW_NEGATIVE_STOCK;
     const isAlerted = stockAlert?.productId === p.id;
     const threshold = parseFloat(p.stock_min_threshold as string) || 0;
     const isLowStock = !outOfStock && threshold > 0 && stock <= threshold;
@@ -1240,7 +1392,7 @@ export default function POSPage() {
         className={`rounded-xl p-2 text-left transition-all border flex flex-col relative ${GRID_DIMS[terminalPrefs.gridSize].cardH} ${
           isExpired
             ? 'bg-red-50 border-red-300 opacity-60 cursor-not-allowed'
-            : outOfStock
+            : blocked
             ? 'bg-gray-100 border-gray-200 opacity-50 cursor-not-allowed'
             : isAlerted
               ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200'
@@ -1270,7 +1422,9 @@ export default function POSPage() {
           </span>
         )}
         {outOfStock && (
-          <span className="absolute top-1 right-1 text-[9px] font-bold text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full z-10">Rupture</span>
+          <span className={`absolute top-1 right-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full z-10 ${blocked ? 'text-red-500 bg-red-50' : 'text-gray-500 bg-gray-100 border border-gray-200'}`} title={blocked ? 'Vente refusée : stock vitrine à zéro' : 'Stock vitrine à zéro, vente autorisée'}>
+            {blocked ? 'Rupture' : 'Stock 0'}
+          </span>
         )}
         {isAlerted && (
           <span className="absolute inset-0 flex items-center justify-center z-20 animate-pulse">
@@ -1281,13 +1435,13 @@ export default function POSPage() {
         )}
         <div className="flex-1 w-full rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
           {p.image_url ? (
-            <img src={serverUrl(p.image_url as string)} alt="" loading="lazy" className={`h-full w-full object-contain ${outOfStock ? 'grayscale' : ''}`} />
+            <img src={serverUrl(p.image_url as string)} alt="" loading="lazy" className={`h-full w-full object-contain ${blocked ? 'grayscale' : ''}`} />
           ) : (
             <span className="text-3xl">🥖</span>
           )}
         </div>
         <span className="font-medium text-xs line-clamp-2 leading-tight mt-1.5">{p.name as string}</span>
-        <span className={`font-bold text-sm mt-0.5 ${outOfStock ? 'text-gray-400' : 'text-primary-600'}`}>{parseFloat(p.price as string).toFixed(2)} DH</span>
+        <span className={`font-bold text-sm mt-0.5 ${blocked ? 'text-gray-400' : 'text-primary-600'}`}>{parseFloat(p.price as string).toFixed(2)} DH</span>
       </button>
     );
   };
@@ -1416,119 +1570,65 @@ export default function POSPage() {
               </span>
             )}
           </button>
+          <button onClick={() => setPosTab('parked')}
+            className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold transition-all ${
+              posTab === 'parked' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}>
+            <PauseCircle size={15} /> En attente
+            {parkedTickets.length > 0 && (
+              <span className="ml-0.5 bg-primary-500 text-white rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-bold">
+                {parkedTickets.length}
+              </span>
+            )}
+          </button>
         </div>
 
         <div className="flex-1" />
 
-        {/* Right actions */}
-        <div className="flex items-center gap-1">
-          {(() => {
-            const repCount = (pendingTransfers as Record<string, any>[]).length;
-            const prodCount = (pendingProductionTransfers as Record<string, any>[]).length;
-            const totalCount = repCount + prodCount;
-            return (
-              <button onClick={() => setShowTransfers(true)}
-                className={`relative flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg transition-colors ${totalCount > 0 ? 'text-purple-700 bg-purple-50 animate-pulse' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'}`}>
-                <Truck size={17} />
-                <span className="text-[9px] font-medium">Transferts</span>
-                {totalCount > 0 && <span className="absolute -top-0.5 -right-0.5 bg-purple-600 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold">{totalCount}</span>}
-              </button>
-            );
-          })()}
-          <button onClick={() => setShowProductionForm(true)} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
-            <Package size={17} />
-            <span className="text-[9px] font-medium">Approv.</span>
-          </button>
-          <button onClick={() => setShowLossModal(true)} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-orange-400 hover:bg-orange-50 hover:text-orange-600 transition-colors">
-            <Trash2 size={17} />
-            <span className="text-[9px] font-medium">Perte</span>
-          </button>
-          {/* SAV (mig 357) : le client se plaint au comptoir, on note en 30 secondes. */}
-          <button onClick={() => setShowComplaintModal(true)} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
-            <MessageSquareWarning size={17} />
-            <span className="text-[9px] font-medium">Réclam.</span>
-          </button>
-          <button onClick={() => setShowPosSettings(true)} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
-            <Settings size={17} />
-            <span className="text-[9px] font-medium">Poste</span>
-          </button>
-          <button onClick={() => { setCloseStep('choose-type'); setShowCloseModal(true); }} disabled={closeMutation.isPending} className={`flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg transition-colors ${closeMutation.isPending ? 'text-red-600 bg-red-50 animate-pulse' : 'text-red-400 hover:bg-red-50 hover:text-red-500'}`}>
-            {closeMutation.isPending ? <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin" /> : <Lock size={17} />}
-            <span className="text-[9px] font-medium">{closeMutation.isPending ? 'Fermeture...' : 'Fermer'}</span>
-          </button>
-          {isCashierRole && (
-            <button onClick={logout} className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
-              <LogOut size={17} />
-              <span className="text-[9px] font-medium">Sortir</span>
+        {/* Outils rares dans un menu « Plus » : la barre reste lisible pour la caissière. */}
+        {(() => {
+          const transferCount = (pendingTransfers as Record<string, any>[]).length + (pendingProductionTransfers as Record<string, any>[]).length;
+          const item = (label: string, Icon: typeof Truck, onClick: () => void, extra?: { badge?: number; tone?: 'danger' | 'warn' }) => (
+            <button key={label} onClick={() => { setShowMoreMenu(false); onClick(); }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left rounded-lg transition-colors ${
+                extra?.tone === 'danger' ? 'text-red-600 hover:bg-red-50' : extra?.tone === 'warn' ? 'text-orange-600 hover:bg-orange-50' : 'text-gray-700 hover:bg-gray-50'}`}>
+              <Icon size={16} /> <span className="flex-1">{label}</span>
+              {extra?.badge ? <span className="bg-purple-600 text-white rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-bold">{extra.badge}</span> : null}
             </button>
-          )}
-        </div>
+          );
+          return (
+            <div className="relative">
+              <button onClick={() => setShowMoreMenu(v => !v)} aria-haspopup="menu" aria-expanded={showMoreMenu}
+                className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${showMoreMenu ? 'bg-gray-100 text-gray-800' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'}`}>
+                <MoreHorizontal size={18} /> Plus
+                {transferCount > 0 && <span className="absolute -top-1 -right-1 bg-purple-600 text-white rounded-full w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold animate-pulse">{transferCount}</span>}
+              </button>
+              {showMoreMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)} />
+                  <div role="menu" className="absolute right-0 mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-xl z-50 p-1.5">
+                    {item('Transferts à confirmer', Truck, () => setShowTransfers(true), { badge: transferCount })}
+                    {item('Approvisionnement vitrine', Package, () => setShowProductionForm(true))}
+                    {item('Déclarer une perte', Trash2, () => setShowLossModal(true), { tone: 'warn' })}
+                    {item('Réclamation client', MessageSquareWarning, () => setShowComplaintModal(true), { tone: 'warn' })}
+                    {lastReceipt && item('Réimprimer le dernier ticket', Printer, () => setReceiptData({ ...lastReceipt }))}
+                    {item('Réglages du poste', Settings, () => setShowPosSettings(true))}
+                    <div className="my-1 border-t border-gray-100" />
+                    {item(closeMutation.isPending ? 'Fermeture…' : 'Fermer la caisse', Lock, () => { setCloseStep('choose-type'); setShowCloseModal(true); }, { tone: 'danger' })}
+                    {isCashierRole && item('Se déconnecter', LogOut, logout)}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ═══════════ SELL TAB ═══════════ */}
       {posTab === 'sell' && (
         <div className="flex-1 flex overflow-hidden">
-          {/* Left sidebar: Categories */}
-          <div className="hidden md:flex w-44 bg-white border-r border-gray-200 flex-col shrink-0">
-            <div className="px-3 py-2.5 border-b border-gray-100">
-              <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Catégories</h3>
-            </div>
-            <div className="flex-1 overflow-y-auto p-2 space-y-1">
-              <button onClick={() => setSelectedCategory('__top__')}
-                className={`w-full text-left px-3 py-3 rounded-xl text-sm font-semibold transition-all ${
-                  selectedCategory === '__top__' ? 'bg-amber-50 text-amber-700 shadow-sm ring-1 ring-amber-200' : 'text-gray-600 hover:bg-gray-50'
-                }`}>
-                ⭐ Top ventes
-              </button>
-              <button onClick={() => setSelectedCategory('__recent__')}
-                className={`w-full text-left px-3 py-3 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 ${
-                  selectedCategory === '__recent__' ? 'bg-violet-50 text-violet-700 shadow-sm ring-1 ring-violet-200' : 'text-gray-600 hover:bg-gray-50'
-                }`}>
-                <Clock size={14} /> Récents
-              </button>
-              <button onClick={() => setSelectedCategory('')}
-                className={`w-full text-left px-3 py-3 rounded-xl text-sm font-semibold transition-all ${
-                  !selectedCategory ? 'bg-primary-50 text-primary-700 shadow-sm ring-1 ring-primary-200' : 'text-gray-600 hover:bg-gray-50'
-                }`}>
-                Tous
-              </button>
-              {categories.map((c: { id: number; name: string }) => (
-                <button key={c.id} onClick={() => setSelectedCategory(String(c.id))}
-                  className={`w-full text-left px-3 py-3 rounded-xl text-sm font-semibold transition-all ${
-                    selectedCategory === String(c.id) ? 'bg-primary-50 text-primary-700 shadow-sm ring-1 ring-primary-200' : 'text-gray-600 hover:bg-gray-50'
-                  }`}>
-                  {c.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Center: Products */}
           <div className="flex-1 flex flex-col min-w-0 bg-gray-50">
-            {/* Mobile: horizontal categories */}
-            <div className="md:hidden bg-white border-b border-gray-200 px-3 py-2 shrink-0">
-              <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
-                <button onClick={() => setSelectedCategory('__top__')}
-                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    selectedCategory === '__top__' ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200 shadow-sm' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                  }`}>⭐ Top</button>
-                <button onClick={() => setSelectedCategory('__recent__')}
-                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 ${
-                    selectedCategory === '__recent__' ? 'bg-violet-50 text-violet-700 ring-1 ring-violet-200 shadow-sm' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                  }`}><Clock size={11} /> Récents</button>
-                <button onClick={() => setSelectedCategory('')}
-                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    !selectedCategory ? 'bg-primary-50 text-primary-700 ring-1 ring-primary-200 shadow-sm' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                  }`}>Tous</button>
-                {categories.map((c: { id: number; name: string }) => (
-                  <button key={c.id} onClick={() => setSelectedCategory(String(c.id))}
-                    className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      selectedCategory === String(c.id) ? 'bg-primary-50 text-primary-700 ring-1 ring-primary-200 shadow-sm' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                    }`}>{c.name}</button>
-                ))}
-              </div>
-            </div>
-
             {/* Search */}
             <div className="px-3 py-2 shrink-0 flex items-center gap-2">
               <div className="relative flex-1">
@@ -1553,6 +1653,50 @@ export default function POSPage() {
                 </button>
               )}
             </div>
+
+            {/* Catégories (mig 375) : une rangée de familles, chaque famille affichant tous ses produits.
+                Cases alignées de même taille ; sans famille définie, la rangée montre les catégories. */}
+            {(() => {
+              const cell = (on: boolean, tone: 'amber' | 'violet' | 'primary' | 'family' = 'primary') => {
+                const onCls = { amber: 'bg-amber-50 border-amber-400 text-amber-800', violet: 'bg-violet-50 border-violet-400 text-violet-800',
+                  primary: 'bg-primary-600 border-primary-600 text-white', family: 'bg-gray-800 border-gray-800 text-white' }[tone];
+                return `h-10 px-2 rounded-lg text-[13px] leading-tight font-semibold border flex items-center justify-center gap-1.5 min-w-0 transition-colors ${
+                  on ? `${onCls} shadow-sm` : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50'}`;
+              };
+              const pickFamily = (f: string | null) => { setSelectedFamily(f); setSelectedCategory(''); };
+              const grid = { gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gridAutoRows: `${CAT_ROW}px` };
+              return (
+                <div className="px-3 pb-2 shrink-0 space-y-1.5">
+                  <div className="grid gap-1.5" style={grid}>
+                    <button onClick={() => { setSelectedFamily(null); setSelectedCategory('__top__'); }} className={cell(isTopCategory, 'amber')}><Star size={14} className="shrink-0" /><span className="truncate">Top ventes</span></button>
+                    <button onClick={() => { setSelectedFamily(null); setSelectedCategory('__recent__'); }} className={cell(isRecentCategory, 'violet')}><Clock size={14} className="shrink-0" /><span className="truncate">Récents</span></button>
+                    <button onClick={() => pickFamily(null)} className={cell(!selectedCategory && !activeFamily)}>Tous</button>
+                    {hasFamilies && families.map(f => (
+                      <button key={f} onClick={() => pickFamily(f)} className={cell(activeFamily === f, 'family')}><span className="line-clamp-2 text-center">{f}</span></button>
+                    ))}
+                    {hasFamilies && orphanCats.length > 0 && (
+                      <button onClick={() => pickFamily('__other__')} className={cell(activeFamily === '__other__', 'family')}>Autres</button>
+                    )}
+                  </div>
+                  {/* Avec des familles, la caisse s'arrête là : les produits de la famille s'affichent
+                      directement. La rangée des catégories ne sert qu'aux entreprises sans famille. */}
+                  {!hasFamilies && familyCats.length > 0 && (
+                    <div className="grid gap-1.5 pl-3 border-l-2 border-gray-300" style={grid}>
+                      {hasFamilies && (
+                        <button onClick={() => setSelectedCategory('')} className={cell(!selectedCategory)}>
+                          <span className="truncate">Toute la famille</span>
+                        </button>
+                      )}
+                      {familyCats.map(c => (
+                        <button key={c.id} onClick={() => setSelectedCategory(String(c.id))} className={cell(selectedCategory === String(c.id))} title={c.name}>
+                          <span className="line-clamp-2 text-center">{c.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Product Grid — disponibles d'abord, ruptures repliees a la fin */}
             <div className="flex-1 overflow-y-auto px-3 pb-3">
@@ -1601,83 +1745,124 @@ export default function POSPage() {
             </div>
           </div>
 
-          {/* Right: Cart Panel */}
-          <div className="w-full md:w-[380px] bg-white border-l border-gray-200 flex flex-col shrink-0">
-            {/* Cart header */}
-            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50">
-              <div className="flex items-center justify-between">
-                <h2 className="font-bold text-base text-gray-800">Panier</h2>
-                {cart.length > 0 && (
-                  <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{cart.reduce((s, i) => s + (i.unit === 'g' ? 1 : i.quantity), 0)} article{cart.reduce((s, i) => s + (i.unit === 'g' ? 1 : i.quantity), 0) > 1 ? 's' : ''}</span>
+          {/* Right: ticket — client en tête, lignes compactes, totaux détaillés, actions, Encaisser. */}
+          <div className="w-full md:w-[400px] bg-white border-l border-gray-200 flex flex-col shrink-0">
+            {/* En-tête : client (F4) + canal de vente */}
+            <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2 bg-gray-50/60">
+              <button onClick={() => setShowCustomerSearch(v => !v)} title="Choisir un client (F4)"
+                className="flex-1 min-w-0 flex items-center gap-2.5 text-left rounded-lg px-1.5 py-1 hover:bg-white transition-colors">
+                {customerId ? (
+                  <div className="w-9 h-9 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs font-bold shrink-0">{initials(customerSearch)}</div>
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center shrink-0"><User size={16} /></div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 truncate">{customerId ? customerSearch : 'Client de passage'}</p>
+                  <p className="text-[11px] text-gray-500 truncate flex items-center gap-1">
+                    {customerId && loyaltyInfo
+                      ? <><Star size={10} /> {loyaltyInfo.balance.toLocaleString('fr-FR')} pts{loyaltyInfo.tier ? ` · ${loyaltyInfo.tier.label}` : ''}</>
+                      : customerId ? 'Client identifié'
+                      : <>Choisir un client <kbd className="hidden md:inline-block text-[9px] font-bold bg-gray-100 border border-gray-200 rounded px-1 text-gray-500">F4</kbd></>}
+                  </p>
+                </div>
+              </button>
+              {customerId && (
+                <button onClick={() => { setCustomerId(''); setCustomerSearch(''); }} title="Retirer le client"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"><XCircle size={16} /></button>
+              )}
+              {salesChannels.length > 1 && (
+                <select value={channelId} onChange={e => setChannelId(e.target.value)} title="Canal de vente"
+                  className="text-xs font-semibold bg-white border border-gray-200 rounded-lg px-2 py-1.5 cursor-pointer max-w-[120px]"
+                  style={{ color: salesChannels.find(c => c.id === channelId)?.color || '#374151' }}>
+                  {salesChannels.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </select>
+              )}
+            </div>
+            {showCustomerSearch && (
+              <div className="px-3 py-2 border-b border-gray-100">
+                <div className="relative">
+                  <User size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input type="text" placeholder="Nom, téléphone…" value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Escape') { setShowCustomerSearch(false); if (!customerId) setCustomerSearch(''); } }}
+                    className="w-full pl-8 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400"
+                    autoFocus />
+                  <button onClick={() => { setShowCustomerSearch(false); if (!customerId) setCustomerSearch(''); }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><XCircle size={16} /></button>
+                </div>
+                {customersData?.data?.length > 0 && customerSearch.length >= 2 && (
+                  <div className="mt-1 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                    {customersData.data.map((c: Record<string, any>) => (
+                      <button key={c.id as string} onClick={() => { setCustomerId(c.id as string); setCustomerSearch(`${c.first_name} ${c.last_name}`); setShowCustomerSearch(false); }}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm flex items-center justify-between gap-2">
+                        <span>{c.first_name as string} {c.last_name as string}</span>
+                        {Number(c.loyalty_points) > 0 && <span className="text-[11px] text-gray-400">{Number(c.loyalty_points).toLocaleString('fr-FR')} pts</span>}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
-            </div>
+            )}
 
-            {/* Cart items - scrollable */}
+            {/* Lignes du ticket : une rangée par article, ligne sélectionnée pour les raccourcis. */}
             <div className="flex-1 overflow-y-auto">
               {cart.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-gray-300">
+                <div className="flex flex-col items-center justify-center h-full text-gray-300 px-6 text-center">
                   <ShoppingCart size={40} className="mb-2" />
-                  <p className="text-sm">Le panier est vide</p>
+                  <p className="text-sm">Le ticket est vide</p>
+                  <p className="text-xs mt-1 text-gray-300">Touchez un produit, scannez un code ou tapez <kbd className="font-bold">F2</kbd> pour chercher</p>
                 </div>
               ) : (
-                <div className="divide-y divide-gray-50">
-                  {cart.map((item) => {
+                <div className="divide-y divide-gray-100">
+                  {cart.map((item, idx) => {
+                    const promoLine = promoEval?.promotion.lines[idx];
                     const itemStock = getProductStock(item.productId);
                     const atMax = item.quantity >= itemStock;
                     const isItemAlerted = stockAlert?.productId === item.productId;
                     const isWeight = item.unit === 'g';
                     const lineSubtotal = isWeight ? (item.quantity / 1000) * item.price : item.price * item.quantity;
+                    const selected = activeLineId === item.productId;
+                    const freeUnits = promoLine && promoLine.discount > 0 && !isWeight && item.price > 0 && Math.abs(promoLine.discount / item.price - Math.round(promoLine.discount / item.price)) < 0.001
+                      ? Math.round(promoLine.discount / item.price) : 0;
                     return (
-                      <div key={item.productId} className={`px-4 py-3 transition-colors ${isItemAlerted ? 'bg-amber-50' : 'hover:bg-gray-50/50'}`}>
-                        <div className="flex items-start gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm text-gray-800 truncate">{item.name}</p>
-                            <p className="text-xs text-gray-400 mt-0.5">
-                              {isWeight
-                                ? `${item.displayUnit === 'kg' ? (item.quantity / 1000).toFixed(3).replace(/\.?0+$/, '') + ' kg' : item.quantity + ' g'} @ ${item.price.toFixed(2)} DH/kg`
-                                : `${item.price.toFixed(2)} DH / unité`}
+                      <div key={item.productId} onClick={() => setSelectedLine(item.productId)}
+                        className={`px-3 py-2 grid grid-cols-[minmax(0,1fr)_auto_76px] gap-2 items-center cursor-pointer border-l-[3px] transition-colors ${
+                          isItemAlerted ? 'bg-amber-50 border-amber-400' : selected ? 'bg-primary-50/60 border-primary-400' : 'border-transparent hover:bg-gray-50/70'}`}>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm text-gray-800 truncate">{item.name}</p>
+                          <p className="text-[11px] text-gray-400">
+                            {isWeight
+                              ? `${item.displayUnit === 'kg' ? (item.quantity / 1000).toFixed(3).replace(/\.?0+$/, '') + ' kg' : item.quantity + ' g'} · ${item.price.toFixed(2)} DH/kg`
+                              : `${item.quantity} × ${item.price.toFixed(2)} DH`}
+                          </p>
+                          {promoLine && promoLine.discount > 0 && (
+                            <p className="text-[11px] text-emerald-700 flex items-center gap-1 truncate">
+                              <BadgePercent size={11} className="shrink-0" />
+                              {freeUnits ? `${freeUnits} offert${freeUnits > 1 ? 's' : ''}` : `−${promoLine.discount.toFixed(2)} DH`} · {promoLine.label}
                             </p>
-                            {isItemAlerted && (
-                              <p className="text-amber-600 text-[10px] font-semibold mt-0.5 animate-pulse">{stockAlert?.message}</p>
-                            )}
-                          </div>
-                          <span className="font-bold text-sm text-gray-800 shrink-0">{lineSubtotal.toFixed(2)} DH</span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-2">
-                          {isWeight ? (
-                            <button
-                              onClick={() => {
-                                // Cache global en secours : le produit peut ne plus
-                                // etre dans la liste affichee (autre categorie).
-                                const p = (products as Record<string, any>[]).find(p => p.id === item.productId)
-                                  || productCacheRef.current.get(item.productId);
-                                if (p) addToCart(p);
-                              }}
-                              className="px-3 h-8 rounded-lg bg-primary-50 hover:bg-primary-100 text-primary-700 text-xs font-semibold transition-colors">
-                              Modifier le poids
-                            </button>
-                          ) : (
-                            <div className="flex items-center bg-gray-100 rounded-lg">
-                              <button onClick={() => updateQuantity(item.productId, -1)}
-                                className="w-8 h-8 rounded-l-lg flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600">
-                                <Minus size={14} />
-                              </button>
-                              <button onClick={() => openNumpad(item.productId, item.name, item.quantity)}
-                                className={`w-10 text-center font-semibold text-sm ${atMax ? 'text-amber-600' : 'text-gray-800'} hover:bg-primary-50 rounded transition-colors`}>{item.quantity}</button>
-                              <button onClick={() => updateQuantity(item.productId, 1)}
-                                className={`w-8 h-8 rounded-r-lg flex items-center justify-center transition-colors ${
-                                  atMax ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-200 text-gray-600'
-                                }`}>
-                                <Plus size={14} />
-                              </button>
-                            </div>
                           )}
-                          <div className="flex-1" />
-                          <button onClick={() => setCart(cart.filter(i => i.productId !== item.productId))}
-                            className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
-                            <Trash2 size={14} />
-                          </button>
+                          {isItemAlerted && <p className="text-amber-600 text-[10px] font-semibold animate-pulse">{stockAlert?.message}</p>}
+                        </div>
+                        {isWeight ? (
+                          <button onClick={(e) => {
+                              e.stopPropagation();
+                              const p = (products as Record<string, any>[]).find(p => p.id === item.productId) || productCacheRef.current.get(item.productId);
+                              if (p) addToCart(p);
+                            }}
+                            className="h-8 px-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold transition-colors">Poids</button>
+                        ) : (
+                          <div className="flex items-center bg-gray-100 rounded-lg h-8" onClick={e => e.stopPropagation()}>
+                            <button onClick={() => updateQuantity(item.productId, -1)} aria-label="Moins"
+                              className="w-8 h-8 rounded-l-lg flex items-center justify-center hover:bg-gray-200 transition-colors text-gray-600"><Minus size={14} /></button>
+                            <button onClick={() => openNumpad(item.productId, item.name, item.quantity)} title="Saisir la quantité"
+                              className={`w-9 h-8 text-center font-bold text-sm ${atMax ? 'text-amber-600' : 'text-gray-800'} hover:bg-primary-50 transition-colors`}>{item.quantity}</button>
+                            <button onClick={() => updateQuantity(item.productId, 1)} aria-label="Plus"
+                              className={`w-8 h-8 rounded-r-lg flex items-center justify-center transition-colors ${atMax ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-gray-200 text-gray-600'}`}><Plus size={14} /></button>
+                          </div>
+                        )}
+                        <div className="text-right">
+                          <p className="font-bold text-sm text-gray-800 tabular-nums">{lineSubtotal.toFixed(2)}</p>
+                          <button onClick={(e) => { e.stopPropagation(); setCart(cart.filter(i => i.productId !== item.productId)); }} title="Retirer (Suppr)"
+                            className="text-[11px] text-gray-300 hover:text-red-500 transition-colors">Retirer</button>
                         </div>
                       </div>
                     );
@@ -1687,91 +1872,8 @@ export default function POSPage() {
               )}
             </div>
 
-            {/* Cart footer — contextual: elements appear only when relevant.
-                relative : ancre du numpad quantite affiche en overlay au-dessus. */}
+            {/* Pied du ticket. relative : ancre du numpad quantité affiché en overlay au-dessus. */}
             <div className="border-t border-gray-200 shrink-0 relative">
-
-              {/* Customer search — only visible when toggled */}
-              {showCustomerSearch && (
-                <div className="px-4 py-2 border-b border-gray-100 animate-in slide-in-from-top">
-                  <div className="relative">
-                    <User size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input type="text" placeholder="Rechercher un client..." value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)}
-                      className="w-full pl-8 pr-8 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400"
-                      autoFocus />
-                    <button onClick={() => { setShowCustomerSearch(false); if (!customerId) setCustomerSearch(''); }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
-                      <XCircle size={16} />
-                    </button>
-                  </div>
-                  {customersData?.data?.length > 0 && customerSearch.length >= 2 && (
-                    <div className="mt-1 bg-white border rounded-lg shadow-lg max-h-32 overflow-y-auto">
-                      {customersData.data.map((c: Record<string, any>) => (
-                        <button key={c.id as string} onClick={() => { setCustomerId(c.id as string); setCustomerSearch(`${c.first_name} ${c.last_name}`); setShowCustomerSearch(false); }}
-                          className="w-full text-left px-3 py-2 hover:bg-gray-50 text-sm">{c.first_name as string} {c.last_name as string}</button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Quick actions bar — only shows buttons that are relevant */}
-              {(lastReceipt || cart.length > 0 || customerId) && (
-                <div className="px-4 py-2 border-b border-gray-100">
-                  <div className="flex items-center gap-1.5">
-                    {/* Imprimer — only if there's a receipt */}
-                    {lastReceipt && (
-                      <button onClick={() => setReceiptData({ ...lastReceipt })}
-                        className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-primary-600 transition-colors">
-                        <Printer size={17} />
-                        <span className="text-[9px] font-medium">Imprimer</span>
-                      </button>
-                    )}
-
-                    {/* Client — toggle search or show selected */}
-                    {customerId ? (
-                      <button onClick={() => { setCustomerId(''); setCustomerSearch(''); }}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-primary-50 text-primary-700 ring-1 ring-primary-200 transition-colors">
-                        <User size={15} />
-                        <span className="text-[10px] font-semibold truncate max-w-[80px]">{customerSearch}</span>
-                        <XCircle size={12} className="text-primary-400 shrink-0" />
-                      </button>
-                    ) : (
-                      <button onClick={() => setShowCustomerSearch(!showCustomerSearch)}
-                        className={`flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded-lg transition-colors ${
-                          showCustomerSearch ? 'bg-primary-50 text-primary-700' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
-                        }`}>
-                        <User size={17} />
-                        <span className="text-[9px] font-medium">Client</span>
-                      </button>
-                    )}
-
-                    {/* Canal de vente (mig 172) — sélecteur compact */}
-                    {salesChannels.length > 1 && (
-                      <div className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-gray-50 border border-gray-200" title="Canal de vente">
-                        <span className="text-[9px] font-semibold uppercase text-gray-400">Canal</span>
-                        <select
-                          value={channelId}
-                          onChange={e => setChannelId(e.target.value)}
-                          className="text-xs font-semibold bg-transparent border-0 focus:ring-0 cursor-pointer py-0"
-                          style={{ color: salesChannels.find(c => c.id === channelId)?.color || '#374151' }}
-                        >
-                          {salesChannels.map(c => (
-                            <option key={c.id} value={c.id}>{c.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    <div className="flex-1" />
-                    {/* Le selecteur mode de reglement + billet donne sont deplaces dans
-                        PaymentModal (ouvert au clic sur "Encaisser"). */}
-                  </div>
-                </div>
-              )}
-
-              {/* Numpad quantite — overlay flottant au-dessus du pied de panier :
-                  le total et le bouton Encaisser restent visibles pendant la saisie. */}
               {numpadItem && (
                 <div className="absolute bottom-full left-2 right-2 mb-1.5 z-30 px-4 py-3 bg-white border border-gray-200 rounded-xl shadow-2xl">
                   <div className="flex items-center justify-between mb-2">
@@ -1796,123 +1898,121 @@ export default function POSPage() {
                 </div>
               )}
 
-              {/* Billet donne + rendu monnaie sont deplaces dans PaymentModal. */}
-
-              {/* Sachets — visible des qu'il y a au moins 1 article */}
+              {/* Sachets — visible dès qu'il y a au moins 1 article */}
               {cart.length > 0 && (
-                <div className="px-4 py-2.5 border-b border-gray-100">
+                <div className="px-3 py-1.5 border-b border-gray-100">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <ShoppingCart size={14} className="text-gray-400" />
+                      <ShoppingCart size={13} className="text-gray-400" />
                       <span className="text-xs font-semibold text-gray-600">Sachets</span>
-                      {sachetSuggestQuery.isFetching ? (
-                        <span className="text-[10px] text-gray-400">calcul...</span>
-                      ) : (
-                        <span className="text-[10px] text-gray-400">suggéré: {suggestedSachets}</span>
-                      )}
+                      <span className="text-[10px] text-gray-400">{sachetSuggestQuery.isFetching ? 'calcul…' : `suggéré : ${suggestedSachets}`}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUserOverrode(true);
-                          setSachetsGiven(Math.max(0, sachetsGiven - 1));
-                          if (sachetsGiven - 1 <= suggestedSachets) setSachetReason('');
-                        }}
-                        disabled={sachetsGiven <= 0}
-                        className="w-7 h-7 flex items-center justify-center rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40"
-                        aria-label="Moins de sachets"
-                      >
-                        <Minus size={14} />
-                      </button>
-                      <span className={`min-w-[1.5rem] text-center text-base font-bold ${sachetsGiven > suggestedSachets ? 'text-amber-600' : 'text-gray-800'}`}>
-                        {sachetsGiven}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => { setUserOverrode(true); setSachetsGiven(sachetsGiven + 1); }}
-                        className="w-7 h-7 flex items-center justify-center rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200"
-                        aria-label="Plus de sachets"
-                      >
-                        <Plus size={14} />
-                      </button>
+                      <button type="button" aria-label="Moins de sachets" disabled={sachetsGiven <= 0}
+                        onClick={() => { setUserOverrode(true); setSachetsGiven(Math.max(0, sachetsGiven - 1)); if (sachetsGiven - 1 <= suggestedSachets) setSachetReason(''); }}
+                        className="w-7 h-7 flex items-center justify-center rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40"><Minus size={14} /></button>
+                      <span className={`min-w-[1.5rem] text-center text-sm font-bold ${sachetsGiven > suggestedSachets ? 'text-amber-600' : 'text-gray-800'}`}>{sachetsGiven}</span>
+                      <button type="button" aria-label="Plus de sachets" onClick={() => { setUserOverrode(true); setSachetsGiven(sachetsGiven + 1); }}
+                        className="w-7 h-7 flex items-center justify-center rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200"><Plus size={14} /></button>
                     </div>
                   </div>
                   {sachetReasonRequired && (
-                    <div className="mt-2">
-                      <label className="block text-[10px] font-semibold text-amber-700 mb-1">
-                        Motif (sachet supplémentaire)
-                      </label>
-                      <select
-                        value={sachetReason}
-                        onChange={(e) => setSachetReason(e.target.value)}
-                        className="w-full bg-white border border-amber-300 rounded-md px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400"
-                      >
-                        <option value="">Choisir un motif...</option>
-                        <option value="client_demande">Client a demandé</option>
-                        <option value="produit_fragile">Produit fragile</option>
-                        <option value="produit_chaud">Produit chaud / gras</option>
-                        <option value="double_sachet">Double sachet renforcé</option>
-                        <option value="autre">Autre</option>
-                      </select>
-                    </div>
+                    <select value={sachetReason} onChange={(e) => setSachetReason(e.target.value)}
+                      className="mt-1.5 w-full bg-white border border-amber-300 rounded-md px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-amber-400">
+                      <option value="">Motif du sachet supplémentaire…</option>
+                      <option value="client_demande">Client a demandé</option>
+                      <option value="produit_fragile">Produit fragile</option>
+                      <option value="produit_chaud">Produit chaud / gras</option>
+                      <option value="double_sachet">Double sachet renforcé</option>
+                      <option value="autre">Autre</option>
+                    </select>
                   )}
                 </div>
               )}
 
-              {/* Totals + Actions — only when cart has items */}
+              {/* Remise caisse inline (même état que la fenêtre de paiement). */}
+              {showDiscountRow && cart.length > 0 && (
+                <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2 bg-amber-50/40">
+                  <Percent size={14} className="text-amber-600 shrink-0" />
+                  <span className="text-xs font-semibold text-gray-700">Remise</span>
+                  <input type="text" inputMode="decimal" value={discountInput} placeholder="0" autoFocus
+                    onChange={(e) => setDiscountInput(e.target.value.replace(/[^\d.,]/g, '').slice(0, 8))}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setShowDiscountRow(false); }}
+                    className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400" />
+                  <div className="inline-flex rounded-lg bg-gray-100 p-0.5">
+                    <button type="button" onClick={() => setDiscountType('amount')} className={`px-2.5 py-1 text-xs font-semibold rounded-md ${discountType === 'amount' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500'}`}>DH</button>
+                    <button type="button" onClick={() => setDiscountType('percent')} className={`px-2.5 py-1 text-xs font-semibold rounded-md ${discountType === 'percent' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500'}`}>%</button>
+                  </div>
+                  <button onClick={() => { setDiscountInput(''); setShowDiscountRow(false); }} title="Annuler la remise" className="text-gray-400 hover:text-red-500"><XCircle size={16} /></button>
+                </div>
+              )}
+
               {cart.length > 0 ? (
                 <>
-                  <div className="px-4 py-3 space-y-1">
-                    <div className="flex justify-between text-sm text-gray-500">
-                      <span>Articles</span>
-                      <span>{cart.reduce((s, i) => s + (i.unit === 'g' ? 1 : i.quantity), 0)}</span>
-                    </div>
+                  <div className="px-3 pt-2 pb-1 space-y-0.5 text-sm">
+                    <div className="flex justify-between text-gray-500"><span>Sous-total · {cart.reduce((s, i) => s + (i.unit === 'g' ? 1 : i.quantity), 0)} article{cart.reduce((s, i) => s + (i.unit === 'g' ? 1 : i.quantity), 0) > 1 ? 's' : ''}</span><span className="tabular-nums">{subtotal.toFixed(2)}</span></div>
+                    {freeOffers.filter(f => autoFreeRef.current.has(freeKey(f))).map(f => {
+                      const line = cart.find(i => i.productId === f.productId);
+                      return line ? (
+                        <div key={`free-${f.promotionId}`} className="flex items-center justify-between gap-2 text-xs text-emerald-800 bg-emerald-50 rounded-md px-2 py-1.5">
+                          <span className="flex items-center gap-1 truncate"><BadgePercent size={12} /> {f.quantity} × {line.name} offert{f.quantity > 1 ? 's' : ''} disponible{f.quantity > 1 ? 's' : ''}</span>
+                          <button type="button" onClick={() => addFree(f)} className="shrink-0 px-2 py-0.5 rounded bg-white border border-emerald-200 font-semibold hover:bg-emerald-100">Ajouter</button>
+                        </div>
+                      ) : null;
+                    })}
                     {(promoEval?.promotion.applied ?? []).map(a => (
-                      <div key={a.promotionId} className="flex justify-between text-xs text-emerald-700">
+                      <div key={a.promotionId} className="flex justify-between text-emerald-700 text-xs">
                         <span className="flex items-center gap-1 truncate"><BadgePercent size={12} /> {a.label}</span>
-                        <span className="whitespace-nowrap">−{a.amount.toFixed(2)} DH</span>
+                        <span className="whitespace-nowrap tabular-nums">−{a.amount.toFixed(2)}</span>
                       </div>
                     ))}
-                    <div className="flex justify-between text-xl font-bold text-gray-800 pt-1">
-                      <span>Total</span>
-                      <span className="text-primary-600">{total.toFixed(2)} DH</span>
+                    {discountAmount > 0 && (
+                      <div className="flex justify-between text-amber-700 text-xs"><span>Remise caisse{discountType === 'percent' && discountInput ? ` (${discountInput} %)` : ''}</span><span className="tabular-nums">−{discountAmount.toFixed(2)}</span></div>
+                    )}
+                    {loyaltyAmount > 0 && (
+                      <div className="flex justify-between text-violet-700 text-xs"><span>Points fidélité ({loyaltyPoints.toLocaleString('fr-FR')})</span><span className="tabular-nums">−{loyaltyAmount.toFixed(2)}</span></div>
+                    )}
+                    <div className="flex justify-between items-baseline pt-1.5 mt-1 border-t border-gray-100">
+                      <span className="text-base font-bold text-gray-800">Total</span>
+                      <span className="text-2xl font-bold text-primary-600 tabular-nums">{total.toFixed(2)} DH</span>
                     </div>
                   </div>
-                  <div className="px-4 pb-4 flex gap-2">
-                    <button onClick={() => { setCart([]); setCashGiven(null); }}
-                      className="flex flex-col items-center gap-1 px-4 py-2.5 rounded-xl text-red-500 hover:bg-red-50 transition-colors">
-                      <Trash2 size={18} />
-                      <span className="text-[10px] font-semibold">Vider</span>
-                    </button>
-                    <button onClick={() => setShowUnpaidModal(true)}
-                      disabled={checkoutMutation.isPending}
-                      title="Sauvegarder sans encaissement (client paiera plus tard)"
-                      className="flex flex-col items-center justify-center gap-1 px-3 py-3 bg-amber-50 text-amber-700 rounded-xl font-bold hover:bg-amber-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm active:scale-[0.98]">
-                      <Clock size={18} />
-                      <span className="text-[10px] font-semibold">Enregistrer</span>
-                    </button>
+                  <div className="px-3 pb-1.5 grid grid-cols-4 gap-1.5">
+                    {([
+                      { label: 'Attente', hint: 'F8', Icon: PauseCircle, onClick: parkCurrentCart, cls: 'text-gray-600 hover:bg-gray-100', disabled: parkMutation.isPending },
+                      { label: 'Remise', hint: null, Icon: Percent, onClick: () => setShowDiscountRow(v => !v), cls: showDiscountRow || discountAmount > 0 ? 'bg-amber-50 text-amber-700' : 'text-gray-600 hover:bg-gray-100', disabled: false },
+                      { label: 'À crédit', hint: null, Icon: Clock, onClick: () => setShowUnpaidModal(true), cls: 'text-gray-600 hover:bg-gray-100', disabled: checkoutMutation.isPending },
+                      { label: 'Vider', hint: null, Icon: Trash2, onClick: () => { resetTicket(); }, cls: 'text-red-500 hover:bg-red-50', disabled: false },
+                    ] as const).map(a => (
+                      <button key={a.label} onClick={a.onClick} disabled={a.disabled} title={a.hint ? `${a.label} (${a.hint})` : a.label}
+                        className={`flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl transition-colors disabled:opacity-40 ${a.cls}`}>
+                        <a.Icon size={17} />
+                        <span className="text-[10px] font-semibold">{a.label}{a.hint && <kbd className="hidden md:inline ml-1 text-[8px] text-gray-400">{a.hint}</kbd>}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="px-3 pb-3">
                     <button onClick={() => {
-                      // Garde-fous prealables (sachet motif) avant d'ouvrir le tunnel paiement.
-                      if (!sachetReasonOK) { notify.error('Indiquez un motif pour le sachet supplémentaire'); return; }
-                      // Reinitialise le montant donne a chaque ouverture — le total a change.
-                      setCashGiven(null);
-                      setCashGivenInput('');
-                      setShowPaymentModal(true);
-                    }}
+                        if (!sachetReasonOK) { notify.error('Indiquez un motif pour le sachet supplémentaire'); return; }
+                        setCashGiven(null);
+                        setCashGivenInput('');
+                        setShowPaymentModal(true);
+                      }}
                       disabled={checkoutMutation.isPending || !sachetReasonOK}
-                      className="flex-1 flex flex-col items-center justify-center gap-1 py-3 bg-primary-50 text-primary-700 rounded-xl font-bold text-base hover:bg-primary-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm active:scale-[0.98]">
-                      <ShoppingCart size={20} />
-                      <span className="text-sm flex items-center gap-1.5">
-                        {checkoutMutation.isPending ? 'En cours...' : 'Encaisser'}
-                        <kbd className="hidden md:inline-block text-[9px] font-bold bg-primary-100 border border-primary-200 rounded px-1 py-px text-primary-500">F9</kbd>
+                      className="w-full flex items-center justify-between px-4 py-3.5 bg-primary-600 text-white rounded-xl shadow-sm hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.99]">
+                      <span className="flex items-center gap-2 text-base font-bold">
+                        <ShoppingCart size={20} /> {checkoutMutation.isPending ? 'En cours…' : 'Encaisser'}
+                        <kbd className="hidden md:inline-block text-[9px] font-bold bg-white/20 border border-white/30 rounded px-1 py-px">F9</kbd>
                       </span>
+                      <span className="text-xl font-bold tabular-nums">{total.toFixed(2)} DH</span>
                     </button>
                   </div>
                 </>
               ) : (
-                <div className="px-4 py-6 text-center">
-                  <p className="text-xs text-gray-300">Ajoutez des produits pour commencer</p>
+                <div className="px-4 py-4 text-center flex items-center justify-center gap-3 text-xs text-gray-400">
+                  {parkedTickets.length > 0
+                    ? <button onClick={() => setPosTab('parked')} className="flex items-center gap-1.5 text-primary-600 font-semibold hover:underline"><PauseCircle size={14} /> {parkedTickets.length} ticket{parkedTickets.length > 1 ? 's' : ''} en attente</button>
+                    : 'Ajoutez des produits pour commencer'}
                 </div>
               )}
             </div>
@@ -2060,6 +2160,59 @@ export default function POSPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════ EN ATTENTE TAB (mig 373) ═══════════ */}
+      {posTab === 'parked' && (
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-gray-50">
+          <div className="p-3 shrink-0 bg-white border-b border-gray-200 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Tickets en attente</p>
+              <p className="text-xs text-gray-400">{parkedTickets.length} panier{parkedTickets.length > 1 ? 's' : ''} mis de côté · repris depuis n'importe quel poste du magasin</p>
+            </div>
+            <button onClick={() => setPosTab('sell')} className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary-50 text-primary-700 text-sm font-semibold hover:bg-primary-100">
+              <ShoppingCart size={15} /> Retour à la vente
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {parkedTickets.length === 0 && (
+              <div className="text-center py-16 text-gray-400">
+                <PauseCircle size={48} className="mx-auto text-gray-300 mb-3" />
+                <p>Aucun ticket en attente</p>
+                <p className="text-xs mt-1">Pendant une vente, touchez « Attente » ou tapez <kbd className="font-bold">F8</kbd> pour mettre le panier de côté et servir le client suivant.</p>
+              </div>
+            )}
+            {parkedTickets.map((t) => (
+              <div key={t.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full bg-primary-50 text-primary-700 flex items-center justify-center text-xs font-bold shrink-0">
+                  {t.customer_label ? initials(t.customer_label) : <User size={16} />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="font-semibold text-sm text-gray-800 truncate">{t.label || t.customer_label || 'Client de passage'}</span>
+                    <span className="text-xs text-gray-400 shrink-0 flex items-center gap-1"><Clock size={11} /> {format(new Date(t.created_at), 'HH:mm')} · {t.user_name}</span>
+                  </div>
+                  <p className="text-sm text-gray-600 truncate">
+                    {t.items.map(i => `${i.unit === 'g' ? `${i.quantity} g` : `${i.quantity} ×`} ${i.name}`).join(' · ')}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="font-bold text-lg tabular-nums">{Number(t.total).toFixed(2)} DH</p>
+                  <p className="text-xs text-gray-400">{t.item_count} article{t.item_count > 1 ? 's' : ''}</p>
+                </div>
+                <button onClick={() => resumeParked(t)} disabled={takeMutation.isPending}
+                  className="flex flex-col items-center gap-0.5 px-4 py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors shrink-0 disabled:opacity-40">
+                  <Play size={18} />
+                  <span className="text-[10px] font-semibold">Reprendre</span>
+                </button>
+                <button onClick={() => dropParked(t)} disabled={dropMutation.isPending} title="Supprimer ce ticket"
+                  className="p-2 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -2530,6 +2683,24 @@ export default function POSPage() {
           })()}
         </div>
       )}
+
+      {/* Barre d'état : session, caissière, connexion, imprimante, dernier ticket, raccourcis. */}
+      <div className="shrink-0 px-3 py-1 flex items-center gap-4 text-[11px] text-gray-500 bg-white border-t border-gray-200 overflow-x-auto whitespace-nowrap scrollbar-hide">
+        <span className="flex items-center gap-1"><Unlock size={12} className="text-green-600" /> Caisse ouverte{(activeSession as Record<string, any>)?.opened_at ? ` à ${format(new Date((activeSession as Record<string, any>).opened_at as string), 'HH:mm')}` : ''}</span>
+        <span className="flex items-center gap-1"><User size={12} /> {user?.firstName} {user?.lastName}</span>
+        <span className={`flex items-center gap-1 ${online ? '' : 'text-red-600 font-semibold'}`}>
+          {online ? <Wifi size={12} className="text-green-600" /> : <WifiOff size={12} />} {online ? 'En ligne' : 'Hors ligne — les encaissements échoueront'}
+        </span>
+        <span className="flex items-center gap-1"><Printer size={12} /> {terminalPrefs.printerId ? 'Imprimante du poste' : 'Impression par le navigateur'}</span>
+        {lastReceipt && (
+          <button onClick={() => setReceiptData({ ...lastReceipt })} className="flex items-center gap-1 text-primary-600 hover:underline">
+            <Printer size={12} /> Réimprimer {lastReceipt.saleNumber}
+          </button>
+        )}
+        <span className="ml-auto hidden lg:flex items-center gap-1 text-gray-400">
+          <Keyboard size={12} /> F2 chercher · F4 client · F8 attente · F9 encaisser · ↑ ↓ ligne · + − quantité · Suppr retirer
+        </span>
+      </div>
 
       {/* ═══════════ MODALS ═══════════ */}
 

@@ -1,12 +1,14 @@
 import { db } from '../config/database.js';
 
 export const productRepository = {
-  async findAll(params: { categoryId?: number; search?: string; isAvailable?: boolean; limit: number; offset: number; storeId?: string; useVitrine?: boolean }) {
+  async findAll(params: { categoryId?: number; categoryIds?: number[]; search?: string; isAvailable?: boolean; limit: number; offset: number; storeId?: string; useVitrine?: boolean }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
 
     if (params.categoryId) { conditions.push(`p.category_id = $${i++}`); values.push(params.categoryId); }
+    // Famille de catégories (mig 375) : la caisse demande toutes les catégories d'une famille.
+    if (params.categoryIds?.length) { conditions.push(`p.category_id = ANY($${i++}::int[])`); values.push(params.categoryIds); }
     if (params.isAvailable !== undefined) { conditions.push(`p.is_available = $${i++}`); values.push(params.isAvailable); }
     if (params.search) { conditions.push(`p.name ILIKE $${i++}`); values.push(`%${params.search}%`); }
 

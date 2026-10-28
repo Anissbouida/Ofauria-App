@@ -11,15 +11,15 @@ export const categoryRepository = {
     return result.rows[0] || null;
   },
 
-  async create(data: { name: string; slug: string; description?: string; displayOrder?: number }) {
+  async create(data: { name: string; slug: string; description?: string; displayOrder?: number; family?: string | null }) {
     const result = await db.query(
-      `INSERT INTO categories (name, slug, description, display_order) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [data.name, data.slug, data.description || null, data.displayOrder || 0]
+      `INSERT INTO categories (name, slug, description, display_order, family) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [data.name, data.slug, data.description || null, data.displayOrder || 0, data.family?.trim() || null]
     );
     return result.rows[0];
   },
 
-  async update(id: number, data: { name?: string; slug?: string; description?: string; displayOrder?: number }) {
+  async update(id: number, data: { name?: string; slug?: string; description?: string; displayOrder?: number; family?: string | null }) {
     const fields: string[] = [];
     const values: unknown[] = [];
     let i = 1;
@@ -28,6 +28,8 @@ export const categoryRepository = {
     if (data.slug !== undefined) { fields.push(`slug = $${i++}`); values.push(data.slug); }
     if (data.description !== undefined) { fields.push(`description = $${i++}`); values.push(data.description); }
     if (data.displayOrder !== undefined) { fields.push(`display_order = $${i++}`); values.push(data.displayOrder); }
+    // Famille (mig 375) : texte libre, vide = sans famille.
+    if (data.family !== undefined) { fields.push(`family = $${i++}`); values.push(data.family?.trim() || null); }
 
     if (fields.length === 0) return this.findById(id);
     values.push(id);

@@ -89,7 +89,7 @@ export const productController = {
   },
 
   async list(req: AuthRequest, res: Response) {
-    const { categoryId, search, isAvailable, page = '1', limit = '20', strictStore } = req.query as Record<string, string>;
+    const { categoryId, categoryIds, search, isAvailable, page = '1', limit = '20', strictStore } = req.query as Record<string, string>;
     const p = parseInt(page); const l = parseInt(limit);
 
     // strictStore mode (used by POS): refuse to fall back to global stock when
@@ -107,6 +107,7 @@ export const productController = {
 
     const result = await productRepository.findAll({
       categoryId: categoryId ? parseInt(categoryId) : undefined,
+      categoryIds: categoryIds ? categoryIds.split(',').map(x => parseInt(x)).filter(n => Number.isInteger(n)) : undefined,
       search, isAvailable: isAvailable !== undefined ? isAvailable === 'true' : undefined,
       limit: l, offset: (p - 1) * l,
       storeId: req.user!.storeId,

@@ -73,6 +73,7 @@ import { stockCountsRouter } from './stock-counts.routes.js';
 import { customFieldsRouter } from './custom-fields.routes.js';
 import { crmRouter } from './crm.routes.js';
 import { promotionsRouter, loyaltyRouter } from './promotions.routes.js';
+import { posParkedRouter } from './pos-parked.routes.js';
 
 const router = Router();
 
@@ -172,5 +173,6 @@ router.use('/custom-fields', customFieldsRouter);
 router.use('/crm', crmRouter);
 router.use('/promotions', promotionsRouter);
 router.use('/loyalty', loyaltyRouter);
+router.use('/pos/parked', posParkedRouter);
 
 export default router;

@@ -7,6 +7,7 @@ import { validate } from '../middleware/validate.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { checkoutSchema, paySaleSchema, specialSaleSchema } from '../validators/sale.validator.js';
 import { ROLE_GROUPS, ROLES } from '@ofauria/shared';
+import { posAllowsNegativeStock } from '../services/module-parameters.service.js';
 
 const router = Router();
 
@@ -14,6 +15,10 @@ const router = Router();
 // pour DLV/DDE atteinte, levee avec statusCode 409) devient une « unhandled
 // rejection » et la requete reste pendante au lieu de renvoyer une reponse (F-037).
 // asyncHandler route le rejet vers le middleware d'erreur -> reponse propre.
+// Règles de caisse (mig 374) lues par le POS : vente sans stock vitrine autorisée ou non.
+router.get('/pos-rules', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: { sellWithoutStock: await posAllowsNegativeStock() } });
+}));
 router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(saleController.list));
 router.get('/today', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(saleController.todayStats));
 router.get('/summary', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(saleController.summary));

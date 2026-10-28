@@ -15,6 +15,7 @@ import ProductionMarkupTab from './ProductionMarkupTab';
 import AuditLogTab from './AuditLogTab';
 import NumberingTab from './NumberingTab';
 import ParametersPanel from './ParametersPanel';
+import ProductCategoriesTab from './ProductCategoriesTab';
 import CompanyBankAccounts from './CompanyBankAccounts';
 import StoresPanel from './StoresPanel';
 import TaxCodesTab from './TaxCodesTab';
@@ -153,6 +154,8 @@ function SettingsShell() {
     ),
     purchasing: <ParametersPanel domains={['purchasing']} />,
     salesRules: <ParametersPanel keys={['sales.quotes', 'sales.dunning']} />,
+    posRules: <ParametersPanel keys={['sales.pos_stock']} />,
+    productCategories: <ProductCategoriesTab />,
     tax: <TaxCodesTab />,
     currencies: <CurrenciesTab />,
     numbering: <NumberingTab />,

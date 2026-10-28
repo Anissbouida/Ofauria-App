@@ -120,6 +120,14 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'sales.pos_stock', domain: 'sales', section: 'business',
+    label: 'Caisse : produits sans stock vitrine',
+    help: 'Stock respecté : un produit dont la vitrine est à zéro apparaît grisé dans « En rupture » et sa vente est refusée. Tout vendre : tous les produits actifs se vendent quel que soit le stock vitrine, qui peut alors passer en négatif (utile si la vitrine n\'est pas tenue au réel ou en attendant un approvisionnement). S\'applique aux ventes en caisse (mig 374).',
+    fields: [{ name: 'mode', label: 'Produits sans stock', type: 'enum', options: [{ value: 'block', label: 'Stock respecté : vente refusée' }, { value: 'allow', label: 'Tout vendre, même sans stock' }] }],
+    defaults: { mode: 'block' },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'purchasing.expense_requires_po', domain: 'purchasing', section: 'business',
     label: 'Bon de commande obligatoire pour les dépenses',
     help: 'Une dépense d\'une catégorie « BC requis » à partir du seuil doit être rattachée à un bon de commande engagé.',

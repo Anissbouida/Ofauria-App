@@ -6,6 +6,7 @@
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { FLAGS } from '../config/feature-flags.js';
+import { posAllowsNegativeStock } from '../services/module-parameters.service.js';
 
 /** Decrement (or increment) stock and return the new value */
 export async function adjustProductStock(
@@ -80,7 +81,8 @@ export async function adjustVitrineStock(
   // (utile en pre-prod pour tester le flux sans devoir alimenter la vitrine).
   // Quand actif : ni check bloquant, ni clamp a 0 => vitrine_quantity peut
   // passer en negatif. NE PAS ACTIVER EN PRODUCTION.
-  const allowNegative = FLAGS.POS_ALLOW_NEGATIVE_STOCK;
+  // Paramètre métier sales.pos_stock (mig 374), ou forçage de test par l'environnement.
+  const allowNegative = await posAllowsNegativeStock();
   if (change < 0 && !allowNegative) {
     const lockResult = await client.query(
       `SELECT vitrine_quantity FROM product_store_stock

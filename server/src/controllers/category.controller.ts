@@ -11,8 +11,8 @@ export const categoryController = {
     res.json({ success: true, data: categories });
   },
   async create(req: Request, res: Response) {
-    const { name, description, displayOrder } = req.body;
-    const category = await categoryRepository.create({ name, slug: slugify(name), description, displayOrder });
+    const { name, description, displayOrder, family } = req.body;
+    const category = await categoryRepository.create({ name, slug: slugify(name), description, displayOrder, family });
     res.status(201).json({ success: true, data: category });
   },
   async update(req: Request, res: Response) {

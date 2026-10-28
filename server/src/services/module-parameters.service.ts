@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { FLAGS } from '../config/feature-flags.js';
 
 /**
  * Paramètres métier en table (mig 306) : remplacent les constantes de code et les
@@ -12,7 +13,17 @@ const DEFAULTS: Record<string, unknown> = {
   'purchasing.expense_requires_po': { enabled: false, threshold: 2000, currency: 'MAD' } satisfies ExpenseRequiresPo,
   'sales.quotes': { validity_days: 30 },
   'sales.dunning': { enabled: true, auto_send: false, min_amount: 50, credit_control: 'warn', auto_release: true },
+  'sales.pos_stock': { mode: 'block' } satisfies PosStockRule,
 };
+
+/** Caisse (mig 374) : 'block' = stock vitrine respecté, 'allow' = tout produit vendable même sans stock. */
+export type PosStockRule = { mode: 'block' | 'allow' };
+
+/** Vente sans stock autorisée : par le paramètre, ou par le drapeau d'environnement de test. */
+export async function posAllowsNegativeStock(): Promise<boolean> {
+  if (FLAGS.POS_ALLOW_NEGATIVE_STOCK) return true;
+  return (await getParameter<PosStockRule>('sales.pos_stock')).mode === 'allow';
+}
 
 export async function getParameter<T>(key: string): Promise<T> {
   const r = await db.query(`SELECT value FROM module_parameters WHERE key = $1`, [key]);

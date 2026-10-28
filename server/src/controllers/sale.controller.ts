@@ -7,6 +7,7 @@ import { productRepository } from '../repositories/product.repository.js';
 import { posLinePrice } from '../services/pos-pricing.js';
 import { evaluate as evaluatePromotions, type PromoLine } from '../services/promotions.js';
 import { checkRedeem } from '../services/loyalty.js';
+import { posAllowsNegativeStock } from '../services/module-parameters.service.js';
 import { salesChannelRepository } from '../repositories/sales-channel.repository.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 import { getVitrineStock } from '../repositories/product-stock.helper.js';
@@ -85,6 +86,8 @@ export const saleController = {
       return;
     }
 
+    // Caisse : produits sans stock vendables selon le paramètre (mig 374).
+    const sellWithoutStock = await posAllowsNegativeStock();
     const saleItems: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit: 'unit' | 'g'; displayUnit: 'g' | 'kg' | null; promoDiscount: number }[] = [];
     const promoLines: PromoLine[] = [];
     let subtotal = 0;
@@ -113,7 +116,7 @@ export const saleController = {
       // Pour les produits au poids, item.quantity = poids vendu en grammes
       // et currentStock = grammes restants en vitrine (stock géré en grammes).
       const currentStock = await getVitrineStock(item.productId, req.user!.storeId);
-      if (currentStock < item.quantity) {
+      if (currentStock < item.quantity && !sellWithoutStock) {
         const unitLabel = product.sale_unit === 'weight' ? 'g' : 'pièces';
         res.status(400).json({
           success: false,

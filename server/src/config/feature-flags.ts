@@ -49,7 +49,9 @@ export const FLAGS = {
    * NE PAS ACTIVER EN PRODUCTION — sinon le stock derive silencieusement.
    * Defaut : ON en dev, OFF en production (isDev).
    */
-  POS_ALLOW_NEGATIVE_STOCK: parseFlag(process.env.POS_ALLOW_NEGATIVE_STOCK, isDev),
+  // Depuis la mig 374, la règle vit dans le paramètre métier sales.pos_stock (Paramètres) ;
+  // ce drapeau n'est plus qu'un forçage explicite pour les tests, OFF par défaut même en dev.
+  POS_ALLOW_NEGATIVE_STOCK: parseFlag(process.env.POS_ALLOW_NEGATIVE_STOCK, false),
 } as const;
 
 // Log au demarrage pour visibilite
