@@ -616,7 +616,7 @@ function CatalogueTab() {
                               </span>
                             )}
                             {saleType !== 'commande' && Boolean(p.is_reexposable) && (
-                              <span className="odoo-tag odoo-tag-purple" title={`Remise en vente J+1${p.max_reexpositions ? ` (max ${p.max_reexpositions})` : ''}`}>RV</span>
+                              <span className="odoo-tag odoo-tag-purple" title={`Remise en vente${p.max_reexpositions ? ` — ${p.max_reexpositions} j` : ''}`}>RV</span>
                             )}
                             {saleType !== 'commande' && Boolean(p.is_recyclable) && (
                               <span className="odoo-tag odoo-tag-blue" title="Valorisable en production (rework)">VAL</span>
@@ -1513,48 +1513,53 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       </div>
                     </div>
 
-                    {/* Re-exposable toggle + max_reexpositions (audit P1.4) */}
+                    {/* Re-exposable toggle + durée de remise en vente (audit P1.4).
+                        max_reexpositions = nombre de jours où le produit reste vendable
+                        après J (J+1…J+N) : on l'exprime donc comme une PÉRIODE en jours,
+                        saisie inline devant le toggle. Colonne DB inchangée. */}
                     <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 14, background: 'var(--odoo-bg)' }}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center shrink-0">
                             <Eye size={18} className="text-green-600" />
                           </div>
-                          <div>
-                            <span className="text-sm font-semibold text-gray-900">Remise en vente J+1</span>
-                            <p className="text-xs text-gray-400">Le produit peut être remis en vitrine le lendemain.</p>
+                          <div className="min-w-0">
+                            <span className="text-sm font-semibold text-gray-900">Remise en vente</span>
+                            <p className="text-xs text-gray-400">Le produit peut rester en vitrine les jours suivants.</p>
                           </div>
                         </div>
-                        <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${form.isReexposable ? 'bg-green-500' : 'bg-gray-300'}`}
-                          onClick={() => {
-                            const next = !form.isReexposable;
-                            setForm({
-                              ...form,
-                              isReexposable: next,
-                              // Aligne max_reexpositions sur le toggle
-                              maxReexpositions: next
-                                ? (form.maxReexpositions && parseInt(form.maxReexpositions) >= 1 ? form.maxReexpositions : '1')
-                                : '',
-                            });
-                          }}>
-                          <div className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
-                            style={{ transform: form.isReexposable ? 'translateX(22px)' : 'translateX(0)', left: '2px' }} />
+                        <div className="flex items-center gap-3 shrink-0">
+                          {form.isReexposable && (
+                            <div className="flex items-center gap-1.5">
+                              <input type="number" step="1" min="1" max="10"
+                                style={{ ...fieldInput, width: 60, textAlign: 'center', padding: '7px 8px' }}
+                                value={form.maxReexpositions}
+                                onChange={(e) => setForm({ ...form, maxReexpositions: e.target.value })}
+                                placeholder="1" title="Durée de remise en vente (jours)" />
+                              <span className="text-sm text-gray-500 whitespace-nowrap">jour(s)</span>
+                            </div>
+                          )}
+                          <div className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${form.isReexposable ? 'bg-green-500' : 'bg-gray-300'}`}
+                            onClick={() => {
+                              const next = !form.isReexposable;
+                              setForm({
+                                ...form,
+                                isReexposable: next,
+                                // Aligne la période sur le toggle (défaut 1 jour)
+                                maxReexpositions: next
+                                  ? (form.maxReexpositions && parseInt(form.maxReexpositions) >= 1 ? form.maxReexpositions : '1')
+                                  : '',
+                              });
+                            }}>
+                            <div className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
+                              style={{ transform: form.isReexposable ? 'translateX(22px)' : 'translateX(0)', left: '2px' }} />
+                          </div>
                         </div>
                       </div>
                       {form.isReexposable && (
-                        <div className="mt-3 pt-3 border-t border-gray-100">
-                          <label style={fieldLabel}>
-                            Nombre maximum de remises en vente
-                          </label>
-                          <input type="number" step="1" min="1" max="10"
-                            style={{ ...fieldInput, width: 160 }}
-                            value={form.maxReexpositions}
-                            onChange={(e) => setForm({ ...form, maxReexpositions: e.target.value })}
-                            placeholder="1" />
-                          <p className="text-xs text-gray-400 mt-1.5">
-                            Nombre de remises en vitrine autorisées avant retrait du produit. Par défaut : 1.
-                          </p>
-                        </div>
+                        <p className="text-xs text-gray-400 mt-2.5">
+                          Durée pendant laquelle le produit reste vendable en vitrine après son premier jour (ex. 1 = jusqu&apos;à J+1), puis il est retiré.
+                        </p>
                       )}
                     </div>
 
