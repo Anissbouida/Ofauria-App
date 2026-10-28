@@ -119,14 +119,49 @@ export const inventoryController = {
       res.status(400).json({ success: false, error: { message: 'Donnees manquantes' } });
       return;
     }
-    const storeFilter = req.user!.storeId ? ' AND store_id = $3' : '';
-    const params: unknown[] = [threshold, ingredientId];
-    if (req.user!.storeId) params.push(req.user!.storeId);
-    await db.query(
-      `UPDATE inventory SET minimum_threshold = $1, updated_at = NOW()
-       WHERE ingredient_id = $2${storeFilter}`,
-      params
-    );
+    // Robustesse (bug "seuil non retenu") : l'ancien code faisait un simple
+    // UPDATE ... WHERE ingredient_id = $2 AND store_id = $3. Quand la ligne
+    // inventory etait absente (ingredient jamais stocke) ou rattachee a un
+    // store_id NULL (lignes legacy du seed), l'UPDATE ne touchait 0 ligne et on
+    // renvoyait quand meme success => le seuil n'etait jamais persiste. On
+    // upsert desormais, en rapatriant au passage une eventuelle ligne orpheline.
+    const storeId = req.user!.storeId ?? null;
+    if (storeId) {
+      // 1) Rattache une ligne legacy orpheline (store NULL) au store courant,
+      //    sauf si une ligne existe deja pour ce couple (contrainte d'unicite).
+      //    Preserve current_quantity : la ligne devient visible sous le store.
+      await db.query(
+        `UPDATE inventory SET store_id = $1
+           WHERE ingredient_id = $2 AND store_id IS NULL
+             AND NOT EXISTS (
+               SELECT 1 FROM inventory b WHERE b.ingredient_id = $2 AND b.store_id = $1
+             )`,
+        [storeId, ingredientId]
+      );
+      // 2) Upsert du seuil pour (store, ingredient) : cree la ligne si absente.
+      await db.query(
+        `INSERT INTO inventory (ingredient_id, store_id, minimum_threshold)
+           VALUES ($2, $1, $3)
+         ON CONFLICT (store_id, ingredient_id)
+           DO UPDATE SET minimum_threshold = EXCLUDED.minimum_threshold, updated_at = NOW()`,
+        [storeId, ingredientId, threshold]
+      );
+    } else {
+      // Admin sans store : met a jour toutes les lignes de l'ingredient ;
+      // si aucune n'existe, en cree une (store NULL, comme la creation legacy).
+      const r = await db.query(
+        `UPDATE inventory SET minimum_threshold = $1, updated_at = NOW()
+         WHERE ingredient_id = $2`,
+        [threshold, ingredientId]
+      );
+      if (r.rowCount === 0) {
+        await db.query(
+          `INSERT INTO inventory (ingredient_id, store_id, minimum_threshold)
+           VALUES ($1, NULL, $2)`,
+          [ingredientId, threshold]
+        );
+      }
+    }
     res.json({ success: true, data: null });
   },
   async transactions(req: AuthRequest, res: Response) {

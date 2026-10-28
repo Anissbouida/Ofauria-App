@@ -260,6 +260,15 @@ export default function IngredientDetailPage() {
     },
   });
 
+  // IMPORTANT : tous les hooks doivent etre appeles AVANT le moindre return
+  // conditionnel. useStockCategories etait appele plus bas, apres le early-return
+  // "Ingredient introuvable" : au chargement direct de la page (cache vide), le
+  // 1er rendu prenait l'early-return (sans ce hook) puis le 2e rendu, data chargee,
+  // l'appelait => "Rendered more hooks than during the previous render" => page
+  // blanche. En navigation SPA le cache ['inventory'] evitait l'early-return, d'ou
+  // le bug invisible en navigation mais fatal en rechargement direct.
+  const { resolve: resolveCategory, tagClass: categoryTagClass } = useStockCategories();
+
   if (!item && !ingredient) {
     return (
       <div className="flex items-center justify-center h-64 text-gray-400">
@@ -284,7 +293,6 @@ export default function IngredientDetailPage() {
   const expiringSoonCount = parseInt(item?.expiring_soon_count || '0') || 0;
   const ingredientName = item?.ingredient_name || ingredient?.name || '';
   const categoryId = (item?.category_id || ingredient?.category_id || null) as string | null;
-  const { resolve: resolveCategory, tagClass: categoryTagClass } = useStockCategories();
   const unit = item?.unit || ingredient?.unit || '';
   const supplier = item?.supplier || ingredient?.supplier || '';
 
