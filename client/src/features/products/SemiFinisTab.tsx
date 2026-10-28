@@ -247,6 +247,7 @@ export default function SemiFinisTab() {
                 <SortHeader label="Rendement" sortKey="yield" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 <SortHeader label="Coût" sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 <SortHeader label="Stock frigo" sortKey="stock" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <th style={{ textAlign: 'right' }}>Réservé</th>
                 <SortHeader label="Lots" sortKey="lots" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 <SortHeader label="Proche exp." sortKey="expiry" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
               </tr>
@@ -404,11 +405,13 @@ function SemiFiniRow({
               <Snowflake size={11} style={{ color: 'var(--theme-accent)' }} />
               <span style={{ fontWeight: 600 }}>{stockQty.toFixed(2)}</span>
               <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{recipe.yield_unit}</span>
-              {reservedQty > 0 && (
-                <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 4 }} title={`Réservé: ${reservedQty.toFixed(2)} ${recipe.yield_unit}`}>
-                  −{reservedQty.toFixed(2)}
-                </span>
-              )}
+            </span>
+          ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
+        </td>
+        <td style={{ textAlign: 'right' }}>
+          {reservedQty > 0 ? (
+            <span className="odoo-tag odoo-tag-orange" title="Réservé par les plans de production en cours">
+              {reservedQty.toFixed(2)} {recipe.yield_unit}
             </span>
           ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
         </td>
@@ -435,7 +438,7 @@ function SemiFiniRow({
       {/* Expanded panel */}
       {isExpanded && (
         <tr>
-          <td colSpan={7} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '16px 20px' }}>
+          <td colSpan={8} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '16px 20px' }}>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
               {/* Ingredients */}
               <div>
