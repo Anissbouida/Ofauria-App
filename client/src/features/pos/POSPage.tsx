@@ -28,7 +28,9 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ReceiptModal from './ReceiptModal';
 import POSSettingsModal from './POSSettingsModal';
 import BarcodeScannerModal from './BarcodeScannerModal';
-import { getTerminalPrinterId, getTerminalSettings, type GridSize } from './terminal-settings';
+import { getTerminalPrinterId, getTerminalSettings, resolveTriState, type GridSize } from './terminal-settings';
+import { salePrintApi } from '../../api/printer.api';
+import { useSettings } from '../../context/SettingsContext';
 import { playPosSound } from './pos-sounds';
 
 // Dimensions de la grille produits selon la taille choisie dans les
@@ -163,6 +165,7 @@ export default function POSPage() {
   const [channelId, setChannelId] = useState<string>('');
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [lastReceipt, setLastReceipt] = useState<ReceiptData | null>(null);
+  const { settings } = useSettings();
   const [cashGiven, setCashGiven] = useState<number | null>(null);
   // Saisie libre du montant donne (chaine pour laisser l'utilisateur taper "50.5"
   // sans lock intermediaire). Synchronise avec cashGiven au blur/confirm.
@@ -754,6 +757,20 @@ export default function POSPage() {
         cardPart: !isUnpaid && paymentMethod === 'mixed' ? mixedCard : undefined,
       };
       setLastReceipt(receipt);
+      // Impression automatique silencieuse (pas de fenêtre modale : la caissière enchaîne) ;
+      // réglage du poste puis réglage global. Le serveur choisit l'imprimante du poste ou,
+      // à défaut, l'imprimante par défaut du magasin. En cas d'échec, le ticket reste
+      // réimprimable depuis la barre d'état.
+      const terminalNow = getTerminalSettings();
+      if (!isUnpaid && resolveTriState(terminalNow.autoPrint, !!settings.receiptAutoPrint)) {
+        const wantsDrawer = resolveTriState(terminalNow.openDrawer, !!settings.receiptOpenDrawer)
+          && (effectivePaymentMethod === 'cash' || effectivePaymentMethod === 'mixed');
+        salePrintApi.printSale(receipt.saleId!, {
+          cashGiven: receipt.cashGiven, changeAmount: receipt.changeAmount,
+          openDrawer: wantsDrawer, printerId: getTerminalPrinterId(),
+        }).then(() => notify.success('Ticket imprimé'))
+          .catch((e: unknown) => notify.error(`Ticket non imprimé — ${getApiErrorMessage(e, 'imprimante injoignable')}. Réimprimer depuis la barre d'état.`));
+      }
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       // Rafraichit le stock affiche sur les cartes produit : sans invalidation,
@@ -2691,7 +2708,7 @@ export default function POSPage() {
         <span className={`flex items-center gap-1 ${online ? '' : 'text-red-600 font-semibold'}`}>
           {online ? <Wifi size={12} className="text-green-600" /> : <WifiOff size={12} />} {online ? 'En ligne' : 'Hors ligne — les encaissements échoueront'}
         </span>
-        <span className="flex items-center gap-1"><Printer size={12} /> {terminalPrefs.printerId ? 'Imprimante du poste' : 'Impression par le navigateur'}</span>
+        <span className="flex items-center gap-1"><Printer size={12} /> {terminalPrefs.printerId ? 'Imprimante du poste' : 'Imprimante par défaut du magasin'}</span>
         {lastReceipt && (
           <button onClick={() => setReceiptData({ ...lastReceipt })} className="flex items-center gap-1 text-primary-600 hover:underline">
             <Printer size={12} /> Réimprimer {lastReceipt.saleNumber}

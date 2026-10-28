@@ -25,11 +25,55 @@ const run = promisify(execFile);
 async function cupsQueueExists(queue: string): Promise<boolean> {
   try { await run('lpstat', ['-p', queue], { timeout: 5000 }); return true; } catch { return false; }
 }
+/**
+ * `lp` accepte toujours le travail, même imprimante éteinte ou débranchée : il reste alors
+ * en file (« offline ») et les suivants s'empilent derrière sans que personne ne le voie.
+ * On suit donc nos propres travaux : avant d'envoyer, on annule ceux restés bloqués et on
+ * réactive la file ; après l'envoi, on attend la sortie du ticket (quelques secondes), sinon
+ * on l'annule et on remonte l'erreur à la caisse, qui pourra réimprimer.
+ */
+const CUPS_STALE_MS = 30_000;
+const CUPS_WAIT_MS = 20_000; // le backend USB de CUPS met ~7 s à ouvrir le périphérique
+const cupsPending = new Map<string, number>();
+
+async function cupsQueuedJobs(queue: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  try {
+    const { stdout } = await run('lpstat', ['-o', queue], { timeout: 5000 });
+    for (const line of stdout.split('\n')) { const m = line.match(/^(\S+)\s/); if (m) ids.add(m[1]); }
+  } catch { /* file vide ou lpstat indisponible */ }
+  return ids;
+}
+
 async function cupsSendRaw(queue: string, data: Buffer): Promise<void> {
+  const queued = await cupsQueuedJobs(queue);
+  const now = Date.now();
+  const stale = [...cupsPending].filter(([id, at]) => queued.has(id) && now - at > CUPS_STALE_MS).map(([id]) => id);
+  for (const [id] of cupsPending) if (!queued.has(id)) cupsPending.delete(id);
+  if (stale.length) {
+    await run('cancel', stale, { timeout: 5000 }).catch(() => undefined);
+    await run('cupsenable', [queue], { timeout: 5000 }).catch(() => undefined);
+    for (const id of stale) cupsPending.delete(id);
+  }
+
   const file = join(tmpdir(), `kalum-ticket-${process.pid}-${Date.now()}.bin`);
   await writeFile(file, data);
-  try { await run('lp', ['-d', queue, '-o', 'raw', '-t', 'Kalum', file], { timeout: 10000 }); }
-  finally { await unlink(file).catch(() => undefined); }
+  let jobId: string | null = null;
+  try {
+    const { stdout } = await run('lp', ['-d', queue, '-o', 'raw', '-t', 'Kalum', file], { timeout: 10000 });
+    jobId = stdout.match(/request id is (\S+)/)?.[1] ?? null;
+  } finally { await unlink(file).catch(() => undefined); }
+  if (!jobId) return;
+  cupsPending.set(jobId, Date.now());
+
+  const deadline = Date.now() + CUPS_WAIT_MS;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 400));
+    if (!(await cupsQueuedJobs(queue)).has(jobId)) { cupsPending.delete(jobId); return; }
+  }
+  await run('cancel', [jobId], { timeout: 5000 }).catch(() => undefined);
+  cupsPending.delete(jobId);
+  throw new Error(`Imprimante hors ligne ou occupée (file ${queue}) : vérifier qu'elle est allumée et branchée, puis réimprimer`);
 }
 async function printerReachable(printer: ThermalPrinter, config: PrinterConfigRow): Promise<boolean> {
   return config.interface === 'cups' ? cupsQueueExists(config.connection_string) : printer.isPrinterConnected();
