@@ -13,6 +13,10 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
+const secHeader: React.CSSProperties = { fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--theme-text-muted)', marginBottom: 8 };
+const emptyTxt: React.CSSProperties = { fontSize: '0.75rem', color: 'var(--theme-text-muted)' };
+const tileBox: React.CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', padding: '8px 10px', fontSize: '0.8125rem', display: 'grid', gap: 4 };
+
 interface BaseRecipe {
   id: string;
   name: string;
@@ -440,231 +444,184 @@ function SemiFiniRow({
         <tr>
           <td colSpan={8} style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.02))', padding: '16px 20px' }}>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {/* Ingredients */}
+              {/* Composition */}
               <div>
-                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                  Composition
-                </h4>
+                <div style={secHeader}>Composition</div>
                 {!fullRecipe ? (
-                  <p className="text-xs text-gray-400">Chargement...</p>
+                  <p style={emptyTxt}>Chargement…</p>
+                ) : (((fullRecipe as Record<string, any>).ingredients as Record<string, any>[] ?? []).length === 0 &&
+                     ((fullRecipe as Record<string, any>).sub_recipes as Record<string, any>[] ?? []).length === 0) ? (
+                  <p style={emptyTxt}>Aucun ingrédient défini</p>
                 ) : (
-                  <div className="space-y-1">
-                    {((fullRecipe as Record<string, any>).ingredients as Record<string, any>[] ?? []).length === 0 &&
-                     ((fullRecipe as Record<string, any>).sub_recipes as Record<string, any>[] ?? []).length === 0 ? (
-                      <p className="text-xs text-gray-400">Aucun ingredient defini</p>
-                    ) : (
-                      <>
-                        {((fullRecipe as Record<string, any>).ingredients as Record<string, any>[] ?? []).map((ing, i) => (
-                          <div key={`ing-${i}`} className="flex justify-between text-sm bg-white rounded px-2 py-1 border border-gray-100">
-                            <span className="text-gray-700">{ing.ingredient_name as string}</span>
-                            <span className="text-gray-500 font-mono text-xs">
-                              {ing.quantity as string} {ing.unit as string}
-                            </span>
-                          </div>
-                        ))}
-                        {((fullRecipe as Record<string, any>).sub_recipes as Record<string, any>[] ?? []).map((sr, i) => (
-                          <div key={`sr-${i}`} className="flex justify-between text-sm bg-amber-50 rounded px-2 py-1 border border-amber-100">
-                            <span className="text-amber-800 flex items-center gap-1">
-                              <Layers size={10} />
+                  <table className="odoo-table" style={{ margin: 0 }}>
+                    <tbody>
+                      {((fullRecipe as Record<string, any>).ingredients as Record<string, any>[] ?? []).map((ing, i) => (
+                        <tr key={`ing-${i}`}>
+                          <td>{ing.ingredient_name as string}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{ing.quantity as string} {ing.unit as string}</td>
+                        </tr>
+                      ))}
+                      {((fullRecipe as Record<string, any>).sub_recipes as Record<string, any>[] ?? []).map((sr, i) => (
+                        <tr key={`sr-${i}`}>
+                          <td>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                              <Layers size={11} style={{ color: 'var(--theme-accent)' }} />
                               {sr.sub_recipe_name as string}
+                              <span className="odoo-tag odoo-tag-purple">base</span>
                             </span>
-                            <span className="text-amber-600 font-mono text-xs">
-                              {sr.quantity as string} {sr.sub_yield_unit as string}
-                            </span>
-                          </div>
-                        ))}
-                      </>
-                    )}
-                  </div>
+                          </td>
+                          <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{sr.quantity as string} {sr.sub_yield_unit as string}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
                 {recipe.instructions && (
-                  <div className="mt-3">
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
-                      Instructions
-                    </h4>
-                    <p className="text-xs text-gray-600 whitespace-pre-wrap bg-white rounded p-2 border border-gray-100">
-                      {recipe.instructions}
-                    </p>
+                  <div style={{ marginTop: 12 }}>
+                    <div style={secHeader}>Instructions</div>
+                    <div style={{ ...tileBox, whiteSpace: 'pre-wrap', color: 'var(--theme-text)' }}>{recipe.instructions}</div>
                   </div>
                 )}
               </div>
 
-              {/* Traceability: productions + reservations + transactions */}
-              <div className="space-y-4">
-                {/* Current stock snapshot */}
+              {/* Traçabilité : état, réservations, productions, mouvements, lots */}
+              <div style={{ display: 'grid', gap: 16 }}>
+                {/* État actuel */}
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    Etat actuel
-                  </h4>
-                  <div className="bg-white rounded p-2 border border-gray-100 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Stock libre</span>
-                      <span className="font-semibold text-gray-800">
-                        {stockQty.toFixed(2)} {recipe.yield_unit}
-                      </span>
+                  <div style={secHeader}>État actuel</div>
+                  <div style={tileBox}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--theme-text-muted)' }}>Stock libre</span>
+                      <span style={{ fontWeight: 600 }}>{stockQty.toFixed(2)} {recipe.yield_unit}</span>
                     </div>
                     {reservedQty > 0 && (
-                      <div className="flex justify-between mt-1 text-amber-700">
-                        <span>Reserve par plans en cours</span>
-                        <span className="font-semibold">{reservedQty.toFixed(2)} {recipe.yield_unit}</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--theme-text-muted)' }}>Réservé par plans en cours</span>
+                        <span style={{ fontWeight: 600, color: '#b85d1a' }}>{reservedQty.toFixed(2)} {recipe.yield_unit}</span>
                       </div>
                     )}
                     {lineage?.current?.last_produced_at && (
-                      <div className="flex justify-between mt-1 text-gray-400">
-                        <span>Derniere production</span>
-                        <span>{format(new Date(lineage.current.last_produced_at), 'dd/MM HH:mm', { locale: fr })}</span>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--theme-text-muted)' }}>Dernière production</span>
+                        <span style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(lineage.current.last_produced_at), 'dd/MM HH:mm', { locale: fr })}</span>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Active reservations */}
+                {/* Réservations actives */}
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    Reservations actives ({lineage?.reservations.length ?? 0})
-                  </h4>
+                  <div style={secHeader}>Réservations actives ({lineage?.reservations.length ?? 0})</div>
                   {!lineage ? (
-                    <p className="text-xs text-gray-400">Chargement...</p>
+                    <p style={emptyTxt}>Chargement…</p>
                   ) : lineage.reservations.length === 0 ? (
-                    <p className="text-xs text-gray-400">Aucune reservation en cours</p>
+                    <p style={emptyTxt}>Aucune réservation en cours</p>
                   ) : (
-                    <div className="space-y-1">
-                      {lineage.reservations.map(r => (
-                        <div key={r.id} className="bg-amber-50 border border-amber-200 rounded px-2 py-1.5 text-xs">
-                          <div className="flex justify-between items-start">
-                            <div className="min-w-0 flex-1">
-                              <div className="font-semibold text-amber-800 truncate">
-                                {r.plan_notes || `Plan du ${format(new Date(r.plan_date), 'dd/MM', { locale: fr })}`}
-                              </div>
-                              <div className="text-amber-600 mt-0.5">
-                                {format(new Date(r.plan_date), 'dd MMM yyyy', { locale: fr })} · {r.plan_status} · {r.target_role}
-                              </div>
-                            </div>
-                            <span className="font-bold text-amber-900 ml-2 whitespace-nowrap">
-                              {parseFloat(r.quantity_from_stock).toFixed(2)} {recipe.yield_unit}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <table className="odoo-table" style={{ margin: 0 }}>
+                      <tbody>
+                        {lineage.reservations.map(r => (
+                          <tr key={r.id}>
+                            <td>
+                              <div style={{ fontWeight: 600 }}>{r.plan_notes || `Plan du ${format(new Date(r.plan_date), 'dd/MM', { locale: fr })}`}</div>
+                              <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{format(new Date(r.plan_date), 'dd MMM yyyy', { locale: fr })} · {r.plan_status} · {r.target_role}</div>
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: 600, color: '#b85d1a', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{parseFloat(r.quantity_from_stock).toFixed(2)} {recipe.yield_unit}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   )}
                 </div>
 
-                {/* Production history */}
+                {/* Historique de production */}
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    Historique de production ({lineage?.productions.length ?? 0})
-                  </h4>
+                  <div style={secHeader}>Historique de production ({lineage?.productions.length ?? 0})</div>
                   {!lineage ? null : lineage.productions.length === 0 ? (
-                    <p className="text-xs text-gray-400">Aucune production enregistree</p>
+                    <p style={emptyTxt}>Aucune production enregistrée</p>
                   ) : (
-                    <div className="space-y-1">
-                      {lineage.productions.slice(0, 5).map(p => (
-                        <div key={p.id} className="bg-white border border-gray-100 rounded px-2 py-1.5 text-xs">
-                          <div className="flex justify-between items-start">
-                            <div className="min-w-0 flex-1">
-                              <div className="font-medium text-gray-800 truncate">
-                                {p.notes || `Plan ${format(new Date(p.plan_date), 'dd/MM', { locale: fr })}`}
-                              </div>
-                              <div className="text-gray-500 mt-0.5">
-                                {format(new Date(p.plan_date), 'dd MMM yyyy', { locale: fr })} · {p.status}
-                                {p.completed_at && ` · Terminé ${format(new Date(p.completed_at), 'dd/MM HH:mm', { locale: fr })}`}
-                              </div>
-                            </div>
-                            <span className="text-gray-700 font-semibold ml-2 whitespace-nowrap">
-                              {p.actual_quantity != null
-                                ? `${parseFloat(String(p.actual_quantity)).toFixed(2)}`
-                                : `${parseFloat(String(p.planned_quantity)).toFixed(2)}`
-                              } batch{parseFloat(String(p.actual_quantity ?? p.planned_quantity)) > 1 ? 'es' : ''}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <table className="odoo-table" style={{ margin: 0 }}>
+                      <tbody>
+                        {lineage.productions.slice(0, 5).map(p => (
+                          <tr key={p.id}>
+                            <td>
+                              <div style={{ fontWeight: 500 }}>{p.notes || `Plan ${format(new Date(p.plan_date), 'dd/MM', { locale: fr })}`}</div>
+                              <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{format(new Date(p.plan_date), 'dd MMM yyyy', { locale: fr })} · {p.status}{p.completed_at && ` · Terminé ${format(new Date(p.completed_at), 'dd/MM HH:mm', { locale: fr })}`}</div>
+                            </td>
+                            <td style={{ textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                              {(p.actual_quantity != null ? parseFloat(String(p.actual_quantity)) : parseFloat(String(p.planned_quantity))).toFixed(2)} batch{parseFloat(String(p.actual_quantity ?? p.planned_quantity)) > 1 ? 'es' : ''}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   )}
                 </div>
 
-                {/* Recent movements */}
+                {/* Derniers mouvements */}
                 {lineage && lineage.transactions.length > 0 && (
                   <div>
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                      Derniers mouvements
-                    </h4>
-                    <div className="space-y-0.5">
-                      {lineage.transactions.slice(0, 6).map((tx, i) => {
-                        const qty = parseFloat(tx.quantity_change);
-                        const positive = qty >= 0;
-                        const typeLabel: Record<string, string> = {
-                          production: 'Production',
-                          consumption: 'Consommation',
-                          reservation: 'Reservation',
-                          release: 'Liberation',
-                          waste: 'Perte',
-                          adjustment: 'Ajustement',
-                        };
-                        return (
-                          <div key={i} className="flex justify-between items-center text-xs bg-white rounded px-2 py-1 border border-gray-50">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className={`inline-block w-1.5 h-1.5 rounded-full ${positive ? 'bg-green-500' : 'bg-amber-500'}`}></span>
-                              <span className="text-gray-700">{typeLabel[tx.type] || tx.type}</span>
-                              {tx.plan_notes && (
-                                <span className="text-gray-400 truncate">· {tx.plan_notes}</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <span className={`font-mono font-semibold ${positive ? 'text-green-700' : 'text-amber-700'}`}>
-                                {positive ? '+' : ''}{qty.toFixed(2)}
-                              </span>
-                              <span className="text-gray-400">{format(new Date(tx.created_at), 'dd/MM HH:mm', { locale: fr })}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <div style={secHeader}>Derniers mouvements</div>
+                    <table className="odoo-table" style={{ margin: 0 }}>
+                      <tbody>
+                        {lineage.transactions.slice(0, 6).map((tx, i) => {
+                          const qty = parseFloat(tx.quantity_change);
+                          const positive = qty >= 0;
+                          const typeLabel: Record<string, string> = {
+                            production: 'Production', consumption: 'Consommation', reservation: 'Réservation',
+                            release: 'Libération', waste: 'Perte', adjustment: 'Ajustement',
+                          };
+                          return (
+                            <tr key={i}>
+                              <td>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ width: 6, height: 6, borderRadius: 999, background: positive ? '#1a9d5a' : '#b85d1a', flexShrink: 0 }} />
+                                  {typeLabel[tx.type] || tx.type}
+                                  {tx.plan_notes && <span style={{ color: 'var(--theme-text-muted)' }}>· {tx.plan_notes}</span>}
+                                </span>
+                              </td>
+                              <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                <span style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: positive ? '#1a9d5a' : '#b85d1a' }}>{positive ? '+' : ''}{qty.toFixed(2)}</span>
+                                <span style={{ color: 'var(--theme-text-muted)', marginLeft: 8 }}>{format(new Date(tx.created_at), 'dd/MM HH:mm', { locale: fr })}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
 
-                {/* Lots (if any — newer tracking system) */}
+                {/* Lots frigo */}
                 {lots.length > 0 && (
                   <div>
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                      Lots frigo
-                    </h4>
-                    <div className="space-y-1">
-                      {lots.map(lot => {
-                        const expires = lot.expires_at ? new Date(lot.expires_at) : null;
-                        const expiring = expires && expires <= new Date(Date.now() + 86400000);
-                        return (
-                          <div
-                            key={lot.id}
-                            className={`flex items-center justify-between text-sm rounded px-2 py-1.5 border ${
-                              expiring ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Snowflake size={12} className="text-cyan-500 flex-shrink-0" />
-                              <span className="text-gray-700 font-mono text-xs truncate">
-                                {lot.lot_number || 'sans lot'}
-                              </span>
-                              {lot.contenant_nom && (
-                                <span className="text-xs text-gray-400 truncate">· {lot.contenant_nom}</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3 flex-shrink-0">
-                              <span className="text-gray-700 font-semibold text-xs">
-                                {parseFloat(lot.quantity).toFixed(2)} {recipe.yield_unit}
-                              </span>
-                              {expires && (
-                                <span className={`inline-flex items-center gap-1 text-xs ${expiring ? 'text-red-700 font-semibold' : 'text-gray-500'}`}>
-                                  <Clock size={10} />
-                                  {format(expires, 'dd/MM/yy', { locale: fr })}
+                    <div style={secHeader}>Lots frigo</div>
+                    <table className="odoo-table" style={{ margin: 0 }}>
+                      <tbody>
+                        {lots.map(lot => {
+                          const expires = lot.expires_at ? new Date(lot.expires_at) : null;
+                          const expiring = expires && expires <= new Date(Date.now() + 86400000);
+                          return (
+                            <tr key={lot.id}>
+                              <td>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                                  <Snowflake size={12} style={{ color: 'var(--theme-accent)', flexShrink: 0 }} />
+                                  <span style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{lot.lot_number || 'sans lot'}</span>
+                                  {lot.contenant_nom && <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>· {lot.contenant_nom}</span>}
                                 </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                              </td>
+                              <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                <span style={{ fontWeight: 600 }}>{parseFloat(lot.quantity).toFixed(2)} {recipe.yield_unit}</span>
+                                {expires && (
+                                  <span className={expiring ? 'odoo-tag odoo-tag-red' : undefined} style={expiring ? { marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 3 } : { marginLeft: 8, color: 'var(--theme-text-muted)' }}>
+                                    <Clock size={10} /> {format(expires, 'dd/MM/yy', { locale: fr })}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
