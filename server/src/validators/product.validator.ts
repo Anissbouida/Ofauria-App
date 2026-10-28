@@ -49,8 +49,9 @@ const commonProductFields = {
   responsibleUserId: uuid.nullable().optional(),
   stockMinThreshold: z.coerce.number().min(0).max(1_000_000).optional().nullable(),
   minProductionQuantity: z.coerce.number().int().min(0).max(1_000_000).optional().nullable(),
-  saleUnit: z.enum(['unit', 'weight']).optional(),
+  saleUnit: z.enum(['unit', 'weight', 'person']).optional(),
   pricePerKg: z.coerce.number().finite().min(0).max(999999.99).optional().nullable(),
+  pricePerPerson: z.coerce.number().finite().min(0).max(999999.99).optional().nullable(),
 };
 
 // Applique les règles croisées de cycle de vie.
@@ -173,6 +174,7 @@ export const updateProductSchema = z.object({
   minProductionQuantity: commonProductFields.minProductionQuantity,
   saleUnit: commonProductFields.saleUnit,
   pricePerKg: commonProductFields.pricePerKg,
+  pricePerPerson: commonProductFields.pricePerPerson,
   stockQuantity: z.coerce.number().min(0).max(1_000_000).optional().nullable(),
   ...lifecycleFields,
   // recipeId : '' = détacher, uuid = lier, undefined = ne rien toucher.
@@ -212,7 +214,7 @@ export const importProductsSchema = z.object({
     category: z.string().trim().max(100).optional().nullable(),
     price: z.coerce.number().finite().min(0, 'Prix ≥ 0').max(999999.99, 'Prix trop élevé'),
     costPrice: z.coerce.number().finite().min(0).max(999999.99).optional().nullable(),
-    saleUnit: z.enum(['unit', 'weight']).optional(),
+    saleUnit: z.enum(['unit', 'weight', 'person']).optional(),
     isAvailable: z.coerce.boolean().optional(),
   })).min(1, 'Fichier vide').max(2000, 'Trop de lignes (max 2000)'),
 });

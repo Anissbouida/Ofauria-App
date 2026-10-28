@@ -306,7 +306,7 @@ export const printerService = {
       payment_method: string;
       cashier_name?: string;
       customer_name?: string;
-      items: Array<{ name: string; quantity: number; unit_price: number; subtotal: number; unit?: 'unit' | 'g'; display_unit?: 'g' | 'kg' | null }>;
+      items: Array<{ name: string; quantity: number; unit_price: number; subtotal: number; unit?: 'unit' | 'g' | 'person'; display_unit?: 'g' | 'kg' | null }>;
       cash_given?: number;
       change_amount?: number;
       // Ventilation d'un paiement mixte (mig 250)
@@ -389,6 +389,8 @@ export const printerService = {
               ? `${Number((item.quantity / 1000).toFixed(3))} kg`
               : `${item.quantity} g`;
             left = `  ${weight} @ ${item.unit_price.toFixed(2)}/kg`;
+          } else if (item.unit === 'person') {
+            left = `  ${item.quantity} pers @ ${item.unit_price.toFixed(2)}/pers`;
           } else {
             left = `  ${item.quantity} x ${item.unit_price.toFixed(2)}`;
           }

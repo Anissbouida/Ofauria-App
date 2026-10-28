@@ -64,7 +64,7 @@ interface CartItem {
   // Pour unit='unit' : nombre de pièces.
   // Pour unit='g'    : poids vendu en grammes (entier, normalisation interne).
   quantity: number;
-  unit: 'unit' | 'g';
+  unit: 'unit' | 'g' | 'person';
   // Pour les items au poids : unité d'affichage choisie par le caissier dans
   // le modal (g ou kg). Permet d'afficher "0.50 kg" ou "500 g" selon la saisie.
   // Memorisee en DB (sale_items.display_unit) pour que le recu rouvert plus
@@ -79,7 +79,7 @@ interface ReceiptData {
   date: string;
   cashierName: string;
   customerName?: string;
-  items: { name: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g'; displayUnit?: 'g' | 'kg' }[];
+  items: { name: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g' | 'person'; displayUnit?: 'g' | 'kg' }[];
   subtotal: number;
   discountAmount: number;
   promotions?: { label: string; amount: number }[];
@@ -243,6 +243,8 @@ export default function POSPage() {
   const [numpadItem, setNumpadItem] = useState<{ productId: string; name: string } | null>(null);
   const [numpadValue, setNumpadValue] = useState('');
   const [weightModal, setWeightModal] = useState<{ product: Record<string, any>; existingQty: number } | null>(null);
+  const [personModal, setPersonModal] = useState<{ product: Record<string, any> } | null>(null);
+  const personSizes = (posRules?.personSizes && posRules.personSizes.length ? posRules.personSizes : [4, 6, 8, 10, 12, 16]);
   const [weightInput, setWeightInput] = useState('');
   // Unité de saisie choisie par le caissier dans le modal (toggle kg/g).
   // En 'kg' l'input accepte les décimales ; en 'g' uniquement des entiers.
@@ -1036,7 +1038,10 @@ export default function POSPage() {
   const addToCart = (product: Record<string, any>) => {
     const stock = parseFloat(product.stock_quantity as string) || 0;
     // FLAG DE TEST : quand ALLOW_NEGATIVE_STOCK, on ignore le stock <= 0.
-    if (stock <= 0 && !ALLOW_NEGATIVE_STOCK) return;
+    if (stock <= 0 && !ALLOW_NEGATIVE_STOCK && product.sale_unit !== 'person') return;
+
+    // Entremets vendus par personne : modal de choix du nombre de parts.
+    if (product.sale_unit === 'person') { setPersonModal({ product }); return; }
 
     // Produits au poids : on ouvre un modal pour saisir le grammage,
     // au lieu d'incrémenter par 1 (ça ne veut rien dire en grammes).
@@ -1103,6 +1108,31 @@ export default function POSPage() {
     cartScrollTrigger.current++;
     setWeightModal(null);
     setWeightInput('');
+    playPosSound('add');
+  };
+
+  // Entremets par personne : une ligne par produit (le choix remplace la taille,
+  // comme le poids). quantity = nombre de personnes, prix = prix/personne.
+  const confirmPerson = (persons: number) => {
+    if (!personModal) return;
+    const p = personModal.product;
+    const pricePerPerson = parseFloat((p.price_per_person ?? p.price) as string) || 0;
+    const existing = cart.find(i => i.productId === p.id);
+    if (existing) {
+      setCart(cart.map(i => i.productId === p.id ? { ...i, quantity: persons, price: pricePerPerson, unit: 'person' } : i));
+    } else {
+      setCart([...cart, {
+        productId: p.id as string,
+        name: p.name as string,
+        price: pricePerPerson,
+        quantity: persons,
+        unit: 'person',
+        imageUrl: p.image_url as string | undefined,
+      }]);
+    }
+    addToRecent(p.id as string);
+    cartScrollTrigger.current++;
+    setPersonModal(null);
     playPosSound('add');
   };
 
@@ -1836,9 +1866,10 @@ export default function POSPage() {
                     const atMax = item.quantity >= itemStock;
                     const isItemAlerted = stockAlert?.productId === item.productId;
                     const isWeight = item.unit === 'g';
+                    const isPerson = item.unit === 'person';
                     const lineSubtotal = isWeight ? (item.quantity / 1000) * item.price : item.price * item.quantity;
                     const selected = activeLineId === item.productId;
-                    const freeUnits = promoLine && promoLine.discount > 0 && !isWeight && item.price > 0 && Math.abs(promoLine.discount / item.price - Math.round(promoLine.discount / item.price)) < 0.001
+                    const freeUnits = promoLine && promoLine.discount > 0 && !isWeight && !isPerson && item.price > 0 && Math.abs(promoLine.discount / item.price - Math.round(promoLine.discount / item.price)) < 0.001
                       ? Math.round(promoLine.discount / item.price) : 0;
                     return (
                       <div key={item.productId} onClick={() => setSelectedLine(item.productId)}
@@ -1849,6 +1880,8 @@ export default function POSPage() {
                           <p className="text-[11px] text-gray-400">
                             {isWeight
                               ? `${item.displayUnit === 'kg' ? (item.quantity / 1000).toFixed(3).replace(/\.?0+$/, '') + ' kg' : item.quantity + ' g'} · ${item.price.toFixed(2)} DH/kg`
+                              : isPerson
+                              ? `${item.quantity} pers · ${item.price.toFixed(2)} DH/personne`
                               : `${item.quantity} × ${item.price.toFixed(2)} DH`}
                           </p>
                           {promoLine && promoLine.discount > 0 && (
@@ -1859,13 +1892,13 @@ export default function POSPage() {
                           )}
                           {isItemAlerted && <p className="text-amber-600 text-[10px] font-semibold animate-pulse">{stockAlert?.message}</p>}
                         </div>
-                        {isWeight ? (
+                        {isWeight || isPerson ? (
                           <button onClick={(e) => {
                               e.stopPropagation();
                               const p = (products as Record<string, any>[]).find(p => p.id === item.productId) || productCacheRef.current.get(item.productId);
                               if (p) addToCart(p);
                             }}
-                            className="h-8 px-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold transition-colors">Poids</button>
+                            className="h-8 px-2.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold transition-colors">{isPerson ? 'Taille' : 'Poids'}</button>
                         ) : (
                           <div className="flex items-center bg-gray-100 rounded-lg h-8" onClick={e => e.stopPropagation()}>
                             <button onClick={() => updateQuantity(item.productId, -1)} aria-label="Moins"
@@ -1967,7 +2000,7 @@ export default function POSPage() {
               {cart.length > 0 ? (
                 <>
                   <div className="px-3 pt-2 pb-1 space-y-0.5 text-sm">
-                    <div className="flex justify-between text-gray-500"><span>Sous-total · {cart.reduce((s, i) => s + (i.unit === 'g' ? 1 : i.quantity), 0)} article{cart.reduce((s, i) => s + (i.unit === 'g' ? 1 : i.quantity), 0) > 1 ? 's' : ''}</span><span className="tabular-nums">{subtotal.toFixed(2)}</span></div>
+                    <div className="flex justify-between text-gray-500"><span>Sous-total · {cart.reduce((s, i) => s + (i.unit === 'g' || i.unit === 'person' ? 1 : i.quantity), 0)} article{cart.reduce((s, i) => s + (i.unit === 'g' || i.unit === 'person' ? 1 : i.quantity), 0) > 1 ? 's' : ''}</span><span className="tabular-nums">{subtotal.toFixed(2)}</span></div>
                     {freeOffers.filter(f => autoFreeRef.current.has(freeKey(f))).map(f => {
                       const line = cart.find(i => i.productId === f.productId);
                       return line ? (
@@ -2212,7 +2245,7 @@ export default function POSPage() {
                     <span className="text-xs text-gray-400 shrink-0 flex items-center gap-1"><Clock size={11} /> {format(new Date(t.created_at), 'HH:mm')} · {t.user_name}</span>
                   </div>
                   <p className="text-sm text-gray-600 truncate">
-                    {t.items.map(i => `${i.unit === 'g' ? `${i.quantity} g` : `${i.quantity} ×`} ${i.name}`).join(' · ')}
+                    {t.items.map(i => `${i.unit === 'g' ? `${i.quantity} g` : i.unit === 'person' ? `${i.quantity} pers` : `${i.quantity} ×`} ${i.name}`).join(' · ')}
                   </p>
                 </div>
                 <div className="text-right shrink-0">
@@ -2334,6 +2367,7 @@ export default function POSPage() {
                       const subtotal = parseFloat(it.subtotal as string) || 0;
                       const qtyLabel = unit === 'g'
                         ? (displayUnit === 'kg' ? `${(qty / 1000).toFixed(3)} kg` : `${qty} g`)
+                        : unit === 'person' ? `${qty} pers`
                         : String(qty);
                       const priceLabel = unit === 'g'
                         ? `${unitPrice.toFixed(2)} / kg`
@@ -4738,6 +4772,38 @@ export default function POSPage() {
                   className="px-5 py-2 rounded-lg text-sm font-semibold text-white bg-primary-600 hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed">
                   Ajouter
                 </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Person modal — entremets vendus par personne (choix du nombre de parts) */}
+      {personModal && (() => {
+        const p = personModal.product;
+        const pricePerPerson = parseFloat((p.price_per_person ?? p.price) as string) || 0;
+        const close = () => setPersonModal(null);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={close}>
+            <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[95vw] overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className="px-5 py-3 border-b bg-gradient-to-r from-primary-50 to-white">
+                <h3 className="font-semibold text-gray-800">{p.name as string}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Prix : {pricePerPerson.toFixed(2)} DH/personne — choisissez le nombre de parts</p>
+              </div>
+              <div className="p-5">
+                <div className="grid grid-cols-3 gap-2">
+                  {personSizes.map(n => (
+                    <button key={n} onClick={() => confirmPerson(n)}
+                      className="flex flex-col items-center justify-center gap-0.5 h-20 bg-gray-50 hover:bg-primary-50 border border-gray-200 hover:border-primary-300 rounded-lg transition-colors">
+                      <span className="text-2xl font-bold text-gray-800">{n}</span>
+                      <span className="text-[11px] text-gray-500">personnes</span>
+                      <span className="text-xs font-semibold text-primary-700">{(pricePerPerson * n).toFixed(0)} DH</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="px-5 py-3 border-t bg-gray-50 flex justify-end">
+                <button onClick={close} className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100">Annuler</button>
               </div>
             </div>
           </div>

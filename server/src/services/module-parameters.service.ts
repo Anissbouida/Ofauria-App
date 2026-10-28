@@ -14,6 +14,7 @@ const DEFAULTS: Record<string, unknown> = {
   'sales.quotes': { validity_days: 30 },
   'sales.dunning': { enabled: true, auto_send: false, min_amount: 50, credit_control: 'warn', auto_release: true },
   'sales.pos_stock': { mode: 'block' } satisfies PosStockRule,
+  'sales.person_sizes': [4, 6, 8, 10, 12, 16],
 };
 
 /** Caisse (mig 374) : 'block' = stock vitrine respecté, 'allow' = tout produit vendable même sans stock. */
@@ -23,6 +24,13 @@ export type PosStockRule = { mode: 'block' | 'allow' };
 export async function posAllowsNegativeStock(): Promise<boolean> {
   if (FLAGS.POS_ALLOW_NEGATIVE_STOCK) return true;
   return (await getParameter<PosStockRule>('sales.pos_stock')).mode === 'allow';
+}
+
+/** Entremets par personne (mig 377) : tailles standard proposées en caisse. */
+export async function getPersonSizes(): Promise<number[]> {
+  const v = await getParameter<number[]>('sales.person_sizes');
+  const sizes = (Array.isArray(v) ? v : []).map(Number).filter(n => Number.isFinite(n) && n > 0);
+  return sizes.length ? sizes : [4, 6, 8, 10, 12, 16];
 }
 
 export async function getParameter<T>(key: string): Promise<T> {

@@ -172,7 +172,7 @@ export const saleRepository = {
     couponCode?: string | null;
     loyaltyPointsUsed?: number;
     loyaltyAmount?: number;
-    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g'; displayUnit?: 'g' | 'kg' | null; promoDiscount?: number }[];
+    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g' | 'person'; displayUnit?: 'g' | 'kg' | null; promoDiscount?: number }[];
   }) {
     const client = await db.getClient();
     try {
@@ -225,7 +225,10 @@ export const saleRepository = {
         const shouldSkipStock =
           data.saleType === 'advance' ||
           data.saleType === 'delivery' ||
-          data.skipStockDeduction === true;
+          data.skipStockDeduction === true ||
+          // Entremet vendu par personne : assemblé à la commande, quantity =
+          // nombre de personnes (pas des pièces de vitrine) — pas de stock à toucher.
+          item.unit === 'person';
         if (!shouldSkipStock) {
           if (!data.storeId) {
             throw new Error('storeId requis pour une vente POS (vitrine strictement par magasin)');

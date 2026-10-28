@@ -206,19 +206,19 @@ export const productController = {
         `INSERT INTO products (
            name, slug, category_id, description, price, cost_price,
            is_available, is_custom_orderable, preparation_time_min,
-           responsible_user_id, sale_unit, price_per_kg,
+           responsible_user_id, sale_unit, price_per_kg, price_per_person,
            sale_type, shelf_life_days, display_life_hours,
            is_reexposable, is_recyclable, max_reexpositions
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                 $13, $14, $15, $16, $17, $18)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                 $14, $15, $16, $17, $18, $19)
          RETURNING *`,
         [
           data.name, data.slug, data.categoryId, data.description || null,
           data.price, data.costPrice || null,
           data.isAvailable ?? true, data.isCustomOrderable ?? false,
           data.preparationTimeMin || null, data.responsibleUserId || null,
-          data.saleUnit || 'unit', data.pricePerKg ?? null,
+          data.saleUnit || 'unit', data.pricePerKg ?? null, data.pricePerPerson ?? null,
           saleType, shelfLifeDays, displayLifeHours,
           isReexposable, isRecyclable, maxReexpositions,
         ]

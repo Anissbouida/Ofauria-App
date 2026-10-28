@@ -13,7 +13,7 @@ import { tierFor } from './loyalty.js';
  */
 type Runner = PoolClient | typeof db;
 export type PromoChannel = 'pos' | 'orders' | 'quotes';
-export type PromoLine = { productId: string; categoryId: number | null; quantity: number; unit: 'unit' | 'g'; unitPrice: number; subtotal: number };
+export type PromoLine = { productId: string; categoryId: number | null; quantity: number; unit: 'unit' | 'g' | 'person'; unitPrice: number; subtotal: number };
 export type PromoContext = { channel: PromoChannel; storeId?: string | null; customerId?: string | null; couponCode?: string | null };
 export type AppliedPromo = { promotionId: string; label: string; amount: number };
 export type PromoResult = {

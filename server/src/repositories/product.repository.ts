@@ -67,7 +67,7 @@ export const productRepository = {
               p.responsible_user_id, p.min_production_quantity,
               p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
               p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
-              p.sale_unit, p.price_per_kg, p.sku,
+              p.sale_unit, p.price_per_kg, p.price_per_person, p.sku,
               p.created_at, p.updated_at,
               ${stockColumns}
               ${lotMetricsCols}
@@ -143,7 +143,7 @@ export const productRepository = {
               p.responsible_user_id, p.min_production_quantity,
               p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
               p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
-              p.sale_unit, p.price_per_kg, p.sku,
+              p.sale_unit, p.price_per_kg, p.price_per_person, p.sku,
               ${stockColumns}
               ${lotMetricsCols}
               c.name as category_name,
@@ -161,7 +161,7 @@ export const productRepository = {
                 p.responsible_user_id, p.min_production_quantity,
                 p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
                 p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
-                p.sale_unit, p.price_per_kg,
+                p.sale_unit, p.price_per_kg, p.price_per_person,
                 p.stock_quantity, p.stock_min_threshold,
                 ${params.storeId ? 'pss.vitrine_quantity, pss.stock_quantity, pss.stock_min_threshold, lot_metrics.nearest_dlv, lot_metrics.nearest_dde, lot_metrics.has_valid_lot,' : ''}
                 c.name
@@ -225,6 +225,7 @@ export const productRepository = {
       saleType: 'sale_type',
       saleUnit: 'sale_unit',
       pricePerKg: 'price_per_kg',
+      pricePerPerson: 'price_per_person',
     };
 
     const fields: string[] = [];

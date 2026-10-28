@@ -476,7 +476,7 @@ function CatalogueTab() {
                       <h3 className="text-sm font-semibold text-gray-900 truncate" title={p.name as string}>{p.name as string}</h3>
                       <p className="text-xs text-gray-400 mt-0.5 truncate">{p.category_name as string}</p>
                     </div>
-                    <span className="text-sm font-bold text-amber-700 whitespace-nowrap">{parseFloat(p.price as string).toFixed(2)} <span className="text-xs font-normal">{p.sale_unit === 'weight' ? 'DH/kg' : 'DH'}</span></span>
+                    <span className="text-sm font-bold text-amber-700 whitespace-nowrap">{parseFloat(p.price as string).toFixed(2)} <span className="text-xs font-normal">{p.sale_unit === 'weight' ? 'DH/kg' : p.sale_unit === 'person' ? 'DH/pers' : 'DH'}</span></span>
                   </div>
                   {/* Bottom row: stock + responsible */}
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
@@ -571,7 +571,7 @@ function CatalogueTab() {
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <span style={{ fontWeight: 600 }}>{parseFloat(p.price as string).toFixed(2)}</span>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{p.sale_unit === 'weight' ? 'DH/kg' : 'DH'}</span>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{p.sale_unit === 'weight' ? 'DH/kg' : p.sale_unit === 'person' ? 'DH/pers' : 'DH'}</span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       {isOut ? (
@@ -703,6 +703,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     // Audit P1.4 : plafond editable, defaut 1 quand reexposable.
     maxReexpositions: String((product?.max_reexpositions as number | undefined) ?? ''),
     saleType: (product?.sale_type as string) || 'jour',
+    saleUnit: (product?.sale_unit as string) || 'unit',
+    pricePerPerson: product?.price_per_person != null ? String(parseFloat(String(product.price_per_person))) : '',
     recipeId: '',
   });
 
@@ -949,7 +951,9 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     onSave(
       {
         ...rest,
-        price: parseFloat(rest.price),
+        saleUnit: rest.saleUnit || 'unit',
+        price: rest.saleUnit === 'person' ? (parseFloat(rest.pricePerPerson) || 0) : parseFloat(rest.price),
+        pricePerPerson: rest.saleUnit === 'person' && rest.pricePerPerson !== '' ? parseFloat(rest.pricePerPerson) : null,
         costPrice: rest.costPrice ? parseFloat(rest.costPrice) : undefined,
         responsibleUserId: rest.responsibleUserId || null,
         stockMinThreshold: parseFloat(rest.stockMinThreshold) || 0,
@@ -1222,6 +1226,42 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     <p className="text-xs text-gray-400 mt-1">Calculé depuis la recette (coût × marge ou prix saisi)</p>
                   </div>
                 </div>
+
+                {/* Mode de vente (pièce / poids / par personne) */}
+                <div>
+                  <label style={fieldLabel}>Mode de vente</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                    {([
+                      { v: 'unit', label: 'À la pièce', desc: 'Prix unitaire' },
+                      { v: 'weight', label: 'Au poids', desc: 'Prix au kg / paliers' },
+                      { v: 'person', label: 'Par personne', desc: 'Prix/personne × parts' },
+                    ] as const).map(opt => {
+                      const active = form.saleUnit === opt.v;
+                      return (
+                        <button key={opt.v} type="button" onClick={() => setForm({ ...form, saleUnit: opt.v })}
+                          style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 6px', textAlign: 'center', cursor: 'pointer',
+                            border: `1px solid ${active ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4,
+                            background: active ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)',
+                            boxShadow: active ? 'inset 0 0 0 1px var(--odoo-purple)' : 'none',
+                          }}>
+                          <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--odoo-text)' }}>{opt.label}</span>
+                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{opt.desc}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {form.saleUnit === 'person' && (
+                  <div>
+                    <label style={fieldLabel}>Prix par personne (DH)</label>
+                    <input type="number" step="0.01" min={0} style={{ ...fieldInput, fontWeight: 600 }}
+                      value={form.pricePerPerson} onChange={e => setForm({ ...form, pricePerPerson: e.target.value })}
+                      placeholder="Ex : 30" />
+                    <p className="text-xs text-gray-400 mt-1">En caisse, la caissière choisit le nombre de personnes ; le prix = ce montant × le nombre de parts.</p>
+                  </div>
+                )}
 
                 {/* Cost price + Responsible */}
                 <div className="grid grid-cols-2 gap-4">

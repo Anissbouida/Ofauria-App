@@ -1,7 +1,7 @@
 import api from './client';
 
 /** Tickets en attente à la caisse (mig 373). */
-export type ParkedItem = { productId: string; name: string; price: number; quantity: number; unit: 'unit' | 'g'; displayUnit?: 'g' | 'kg' | null; imageUrl?: string | null };
+export type ParkedItem = { productId: string; name: string; price: number; quantity: number; unit: 'unit' | 'g' | 'person'; displayUnit?: 'g' | 'kg' | null; imageUrl?: string | null };
 export type ParkedTicket = {
   id: string; store_id: string; user_id: string; user_name: string; customer_id: string | null; customer_label: string | null; label: string | null;
   channel_id: string | null; coupon_code: string | null; sachets_given: number | null; items: ParkedItem[]; item_count: number; total: string; created_at: string;

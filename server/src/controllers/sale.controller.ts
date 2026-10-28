@@ -88,7 +88,7 @@ export const saleController = {
 
     // Caisse : produits sans stock vendables selon le paramètre (mig 374).
     const sellWithoutStock = await posAllowsNegativeStock();
-    const saleItems: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit: 'unit' | 'g'; displayUnit: 'g' | 'kg' | null; promoDiscount: number }[] = [];
+    const saleItems: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit: 'unit' | 'g' | 'person'; displayUnit: 'g' | 'kg' | null; promoDiscount: number }[] = [];
     const promoLines: PromoLine[] = [];
     let subtotal = 0;
     for (const item of items) {
@@ -104,7 +104,7 @@ export const saleController = {
       // Postgres (22P02) et, sans asyncHandler, laissait la requete pendante.
       // On refuse proprement en 400 avant d'atteindre la base.
       if (!Number.isInteger(item.quantity)) {
-        const unitLabel = product.sale_unit === 'weight' ? 'grammes' : 'pièces';
+        const unitLabel = product.sale_unit === 'weight' ? 'grammes' : product.sale_unit === 'person' ? 'personnes' : 'pièces';
         res.status(400).json({
           success: false,
           error: { message: `Quantité invalide pour "${product.name}" : un nombre entier de ${unitLabel} est requis.` },
@@ -115,9 +115,11 @@ export const saleController = {
       // Verify sufficient stock in the vitrine before selling.
       // Pour les produits au poids, item.quantity = poids vendu en grammes
       // et currentStock = grammes restants en vitrine (stock géré en grammes).
+      // Entremets par personne : assemblés à la commande, quantity = nombre de
+      // personnes (pas des pièces de vitrine) — on n'applique pas le stock vitrine.
       const currentStock = await getVitrineStock(item.productId, req.user!.storeId);
-      if (currentStock < item.quantity && !sellWithoutStock) {
-        const unitLabel = product.sale_unit === 'weight' ? 'g' : 'pièces';
+      if (currentStock < item.quantity && !sellWithoutStock && product.sale_unit !== 'person') {
+        const unitLabel = product.sale_unit === 'weight' ? 'g' : product.sale_unit === 'person' ? 'pers' : 'pièces';
         res.status(400).json({
           success: false,
           error: { message: `Stock vitrine insuffisant pour "${product.name}" — disponible: ${currentStock} ${unitLabel}, demande: ${item.quantity} ${unitLabel}. Faire une demande d'approvisionnement.` },

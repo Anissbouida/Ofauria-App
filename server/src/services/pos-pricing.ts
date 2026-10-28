@@ -12,7 +12,7 @@ export async function posLinePrice(product: Record<string, any>, quantity: numbe
   const channelOverride = await channelPricingRepository.findOverride(product.id, channelId);
   let unitPrice: number;
   let subtotal: number;
-  let unit: 'unit' | 'g' = 'unit';
+  let unit: 'unit' | 'g' | 'person' = 'unit';
   if (product.sale_unit === 'weight') {
     if (channelOverride?.price_per_kg_override) {
       unitPrice = parseFloat(channelOverride.price_per_kg_override);
@@ -22,6 +22,12 @@ export async function posLinePrice(product: Record<string, any>, quantity: numbe
     }
     subtotal = (quantity / 1000) * unitPrice;
     unit = 'g';
+  } else if (product.sale_unit === 'person') {
+    // Vente au nombre de personnes (entremets) : quantity = nombre de personnes,
+    // prix = prix par personne (surchargeable par canal). Ex. 30 DH × 8 = 240 DH.
+    unitPrice = channelOverride?.price_override ? parseFloat(channelOverride.price_override) : parseFloat(product.price_per_person ?? product.price);
+    subtotal = quantity * unitPrice;
+    unit = 'person';
   } else {
     unitPrice = channelOverride?.price_override ? parseFloat(channelOverride.price_override) : parseFloat(product.price);
     subtotal = unitPrice * quantity;
