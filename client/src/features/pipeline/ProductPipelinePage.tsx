@@ -47,6 +47,10 @@ const STAGE_STAT_KEY: Record<string, string> = {
 };
 const STAGE_DEFS: StageDef[] = STAGES.map(s => ({ key: s.key, label: s.label, hint: STAGE_HINTS[s.key], icon: s.icon }));
 
+const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
+const fieldInput: React.CSSProperties = { width: '100%', fontSize: '0.875rem', padding: '8px 10px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', boxSizing: 'border-box' };
+const odooTile: React.CSSProperties = { background: 'var(--odoo-bg-alt)', border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 12 };
+
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
   active: { label: 'En cours', color: 'blue', icon: Clock },
   completed: { label: 'Terminé', color: 'green', icon: CheckCircle2 },
@@ -335,72 +339,42 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const isActive = p.status === 'active';
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-          <ChevronLeft size={20} />
-        </button>
-        <div className="flex-1">
-          <h1 className="text-xl font-bold text-gray-900">{String(p.name)}</h1>
-          {Boolean(p.description) && <p className="text-sm text-gray-500">{String(p.description)}</p>}
+    <div style={{ display: 'grid', gap: 12 }}>
+      {/* Barre d'action */}
+      <div className="odoo-control-bar">
+        <button onClick={onBack} className="odoo-pager-btn" title="Retour à la liste"><ChevronLeft size={16} /></button>
+        <div className="odoo-breadcrumb">
+          <GitBranch size={14} style={{ color: 'var(--theme-accent)' }} />
+          <span>Pipeline</span>
+          <span className="odoo-breadcrumb-separator">›</span>
+          <span className="odoo-breadcrumb-current">{String(p.name)}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowHistory(!showHistory)}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm border border-gray-200 rounded-xl hover:bg-gray-50"
-          >
-            <History size={14} />
-            Historique
-          </button>
-          {isActive && (
-            <button
-              onClick={() => {
-                const reason = prompt('Raison de l\'annulation:');
-                if (reason !== null) cancelMutation.mutate(reason);
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm border border-red-200 text-red-600 rounded-xl hover:bg-red-50"
-            >
-              <Ban size={14} />
-              Annuler
-            </button>
-          )}
-        </div>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowHistory(!showHistory)} className="odoo-btn-secondary"><History size={14} /> Historique</button>
+        {isActive && (
+          <button onClick={() => { const reason = prompt('Raison de l\'annulation:'); if (reason !== null) cancelMutation.mutate(reason); }} className="odoo-btn-danger"><Ban size={14} /> Annuler</button>
+        )}
       </div>
 
-      {/* Visual Stepper */}
-      <div className="bg-white rounded-xl border border-gray-100 p-6">
-        <div className="flex items-center justify-between">
+      {/* Frise des étapes */}
+      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {STAGES.map((stage, idx) => {
             const isCompleted = idx < currentStageIdx || p.status === 'completed';
             const isCurrent = idx === currentStageIdx && isActive;
-            const isFuture = idx > currentStageIdx;
             const StageIcon = stage.icon;
-
+            const circleBg = isCompleted ? 'var(--odoo-purple)' : isCurrent ? 'var(--odoo-purple-light)' : 'var(--odoo-border)';
+            const circleColor = isCompleted ? '#fff' : isCurrent ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)';
             return (
-              <div key={stage.key} className="flex items-center flex-1 last:flex-initial">
-                <div className="flex flex-col items-center">
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                      isCompleted ? 'bg-green-100 text-green-600' :
-                      isCurrent ? `bg-${stage.color}-100 text-${stage.color}-600 ring-2 ring-${stage.color}-300` :
-                      'bg-gray-100 text-gray-400'
-                    }`}
-                  >
-                    {isCompleted ? <CheckCircle2 size={20} /> : <StageIcon size={18} />}
+              <div key={stage.key} style={{ display: 'flex', alignItems: 'center', flex: idx < STAGES.length - 1 ? 1 : '0 0 auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: circleBg, color: circleColor, boxShadow: isCurrent ? '0 0 0 2px var(--odoo-purple)' : 'none' }}>
+                    {isCompleted ? <CheckCircle2 size={18} /> : <StageIcon size={16} />}
                   </div>
-                  <span className={`text-xs mt-1.5 font-medium ${
-                    isCurrent ? `text-${stage.color}-700` :
-                    isCompleted ? 'text-green-700' :
-                    'text-gray-400'
-                  }`}>
-                    {stage.label}
-                  </span>
+                  <span style={{ fontSize: '0.6875rem', marginTop: 6, fontWeight: 600, color: isCurrent ? 'var(--odoo-purple)' : isCompleted ? 'var(--odoo-text)' : 'var(--odoo-text-muted)' }}>{stage.label}</span>
                 </div>
                 {idx < STAGES.length - 1 && (
-                  <div className={`flex-1 h-0.5 mx-2 mt-[-18px] ${
-                    idx < currentStageIdx ? 'bg-green-300' : 'bg-gray-200'
-                  }`} />
+                  <div style={{ flex: 1, height: 2, margin: '-18px 8px 0', background: idx < currentStageIdx ? 'var(--odoo-purple)' : 'var(--odoo-border)' }} />
                 )}
               </div>
             );
@@ -408,25 +382,14 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
         </div>
       </div>
 
-      {/* Status banner for non-active */}
+      {/* Bandeau statut (pipeline non actif) */}
       {!isActive && (
-        <div className={`p-4 rounded-xl flex items-center gap-3 ${
-          p.status === 'completed' ? 'bg-green-50 text-green-800' :
-          p.status === 'rejected' ? 'bg-red-50 text-red-800' :
-          'bg-gray-50 text-gray-800'
-        }`}>
-          {p.status === 'completed' && <CheckCircle2 size={20} />}
-          {p.status === 'rejected' && <XCircle size={20} />}
-          {p.status === 'cancelled' && <Ban size={20} />}
-          <div>
-            <p className="font-medium">
-              {p.status === 'completed' && 'Pipeline terminé — produit intégré au catalogue'}
-              {p.status === 'rejected' && 'Pipeline rejeté par l\'administration'}
-              {p.status === 'cancelled' && 'Pipeline annulé'}
-            </p>
-            {Boolean(p.admin_comments) && <p className="text-sm mt-0.5 opacity-80">{String(p.admin_comments)}</p>}
-          </div>
-        </div>
+        <StatusBanner
+          tone={p.status === 'completed' ? 'success' : p.status === 'rejected' ? 'danger' : 'neutral'}
+          icon={p.status === 'completed' ? CheckCircle2 : p.status === 'rejected' ? XCircle : Ban}
+          title={p.status === 'completed' ? 'Pipeline terminé — produit intégré au catalogue' : p.status === 'rejected' ? "Pipeline rejeté par l'administration" : 'Pipeline annulé'}>
+          {Boolean(p.admin_comments) && String(p.admin_comments)}
+        </StatusBanner>
       )}
 
       {/* Stage-specific content */}
@@ -442,9 +405,9 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
         {/* Sidebar info */}
         <div className="space-y-4">
           {/* Info card */}
-          <div className="bg-white rounded-xl border border-gray-100 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Informations</h3>
-            <div className="space-y-2 text-sm">
+          <div className="odoo-section">
+            <div className="odoo-section-header">Informations</div>
+            <div style={{ padding: 12, display: 'grid', gap: 8, fontSize: '0.8125rem' }}>
               <InfoRow label="Catégorie" value={String(p.category_name || '—')} />
               <InfoRow label="Responsable" value={p.responsible_first_name ? `${String(p.responsible_first_name)} ${String(p.responsible_last_name)}` : '—'} />
               <InfoRow label="Date cible" value={p.target_date ? format(new Date(String(p.target_date)), 'dd MMM yyyy', { locale: fr }) : '—'} />
@@ -459,12 +422,12 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
           {/* Action button */}
           {isActive && (
-            <div className="bg-white rounded-xl border border-gray-100 p-4">
+            <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', padding: 14 }}>
               {p.current_stage === 'catalog_integration' ? (
                 <button
                   onClick={() => integrateMutation.mutate()}
                   disabled={integrateMutation.isPending}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                  className="odoo-btn-primary" style={{ width: '100%', justifyContent: 'center' }}
                 >
                   <Package size={16} />
                   Intégrer au catalogue
@@ -479,7 +442,7 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 <button
                   onClick={() => advanceMutation.mutate()}
                   disabled={advanceMutation.isPending}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-700 transition-colors disabled:opacity-50"
+                  className="odoo-btn-primary" style={{ width: '100%', justifyContent: 'center' }}
                 >
                   <ArrowRight size={16} />
                   Valider et passer à l'étape suivante
@@ -491,11 +454,9 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
 
           {/* History panel */}
           {showHistory && (
-            <div className="bg-white rounded-xl border border-gray-100 p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <History size={14} />
-                Historique
-              </h3>
+            <div className="odoo-section">
+              <div className="odoo-section-header" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><History size={14} /> Historique</div>
+              <div style={{ padding: 12 }}>
               {(history as Pipeline[]).length === 0 ? (
                 <p className="text-xs text-gray-400">Aucun historique</p>
               ) : (
@@ -513,6 +474,7 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
                   ))}
                 </div>
               )}
+              </div>
             </div>
           )}
         </div>
@@ -547,20 +509,12 @@ function StageContent({ pipeline: p, onRefresh }: { pipeline: Pipeline; onRefres
         if (!isCompleted && !isCurrent) return null;
 
         return (
-          <div key={s.key} className={`bg-white rounded-xl border p-5 ${
-            isCurrent ? `border-${s.color}-200 ring-1 ring-${s.color}-100` : 'border-gray-100'
-          }`}>
-            <div className="flex items-center gap-2 mb-4">
-              <s.icon size={18} className={isCurrent ? `text-${s.color}-600` : 'text-green-600'} />
-              <h3 className="font-semibold text-gray-900">{s.label}</h3>
-              {isCompleted && !isCurrent && (
-                <CheckCircle2 size={14} className="text-green-500" />
-              )}
-              {isCurrent && (
-                <span className={`text-xs px-2 py-0.5 bg-${s.color}-50 text-${s.color}-700 rounded-full font-medium`}>
-                  Étape actuelle
-                </span>
-              )}
+          <div key={s.key} style={{ border: `1px solid ${isCurrent ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4, background: 'var(--odoo-bg)', padding: 16, boxShadow: isCurrent ? 'inset 0 0 0 1px var(--odoo-purple)' : 'none' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <s.icon size={16} style={{ color: isCurrent ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)' }} />
+              <h3 style={{ fontWeight: 600, fontSize: '0.875rem' }}>{s.label}</h3>
+              {isCompleted && !isCurrent && <CheckCircle2 size={14} style={{ color: 'var(--odoo-purple)' }} />}
+              {isCurrent && <span className="odoo-tag odoo-tag-purple">Étape actuelle</span>}
             </div>
 
             {s.key === 'proposition' && <PropositionStage pipeline={p} editable={isCurrent} onRefresh={onRefresh} />}
@@ -602,7 +556,7 @@ function PropositionStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipe
         <p><span className="text-gray-500">Responsable:</span> {p.responsible_first_name ? `${String(p.responsible_first_name)} ${String(p.responsible_last_name)}` : '—'}</p>
         <p><span className="text-gray-500">Date cible:</span> {p.target_date ? format(new Date(String(p.target_date)), 'dd MMM yyyy', { locale: fr }) : '—'}</p>
         {editable && (
-          <button onClick={() => setEditing(true)} className="text-primary-600 text-xs hover:underline mt-2">
+          <button onClick={() => setEditing(true)} className="odoo-btn-secondary" style={{ marginTop: 8, padding: '4px 8px', fontSize: '0.75rem' }}>
             Modifier
           </button>
         )}
@@ -613,22 +567,22 @@ function PropositionStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipe
   return (
     <div className="space-y-3">
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Nom du produit *</label>
+        <label style={fieldLabel}>Nom du produit *</label>
         <input value={name} onChange={e => setName(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+          style={fieldInput} />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Description</label>
+        <label style={fieldLabel}>Description</label>
         <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
-          className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+          style={fieldInput} />
       </div>
       <div className="flex gap-2">
         <button onClick={() => updateMutation.mutate({ name, description })}
-          className="px-4 py-2 bg-primary-600 text-white rounded-xl text-sm hover:bg-primary-700">
+          className="odoo-btn-primary">
           Sauvegarder
         </button>
         <button onClick={() => setEditing(false)}
-          className="px-4 py-2 border border-gray-200 rounded-xl text-sm hover:bg-gray-50">
+          className="odoo-btn-secondary">
           Annuler
         </button>
       </div>
@@ -676,9 +630,9 @@ function RecipeStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline;
       {editable && (
         <div className="border-t border-gray-100 pt-3 space-y-3">
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Assigner une recette</label>
+            <label style={fieldLabel}>Assigner une recette</label>
             <select value={recipeId} onChange={e => setRecipeId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+              style={fieldInput}>
               <option value="">Choisir une recette...</option>
               {recipes.map(r => (
                 <option key={String(r.id)} value={String(r.id)}>{String(r.name)}</option>
@@ -686,14 +640,14 @@ function RecipeStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline;
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Notes de développement</label>
+            <label style={fieldLabel}>Notes de développement</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              style={fieldInput} />
           </div>
           <button
             onClick={() => updateMutation.mutate({ recipeId: recipeId || undefined, recipeNotes: notes || undefined })}
             disabled={updateMutation.isPending}
-            className="px-4 py-2 bg-primary-600 text-white rounded-xl text-sm hover:bg-primary-700 disabled:opacity-50">
+            className="odoo-btn-primary">
             Sauvegarder
           </button>
           <InlineMsg msg={msg} />
@@ -727,11 +681,11 @@ function CostStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline; e
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-3 gap-3">
-        <div className="bg-gray-50 rounded-lg p-3 text-center">
+        <div style={{ ...odooTile, textAlign: 'center' }}>
           <p className="text-xs text-gray-500">Coût estimé</p>
           <p className="text-lg font-bold text-gray-900">{cost.toFixed(2)} DH</p>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3 text-center">
+        <div style={{ ...odooTile, textAlign: 'center' }}>
           <p className="text-xs text-gray-500">Prix cible</p>
           <p className="text-lg font-bold text-gray-900">{price.toFixed(2)} DH</p>
         </div>
@@ -758,25 +712,25 @@ function CostStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline; e
         <div className="border-t border-gray-100 pt-3 space-y-3">
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Coût estimé (DH) *</label>
+              <label style={fieldLabel}>Coût estimé (DH) *</label>
               <input type="number" step="0.01" value={estimatedCost} onChange={e => setEstimatedCost(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                style={fieldInput} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Prix cible (DH) *</label>
+              <label style={fieldLabel}>Prix cible (DH) *</label>
               <input type="number" step="0.01" value={targetPrice} onChange={e => setTargetPrice(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                style={fieldInput} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Marge cible (%)</label>
+              <label style={fieldLabel}>Marge cible (%)</label>
               <input type="number" step="0.1" value={targetMargin} onChange={e => setTargetMargin(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                style={fieldInput} />
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Notes</label>
+            <label style={fieldLabel}>Notes</label>
             <textarea value={costNotes} onChange={e => setCostNotes(e.target.value)} rows={2}
-              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              style={fieldInput} />
           </div>
           <button
             onClick={() => updateMutation.mutate({
@@ -786,7 +740,7 @@ function CostStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline; e
               costNotes: costNotes || undefined,
             })}
             disabled={updateMutation.isPending}
-            className="px-4 py-2 bg-primary-600 text-white rounded-xl text-sm hover:bg-primary-700 disabled:opacity-50">
+            className="odoo-btn-primary">
             Sauvegarder
           </button>
           <InlineMsg msg={msg} />
@@ -834,25 +788,25 @@ function TestStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline; e
     <div className="space-y-3">
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Date de test *</label>
+          <label style={fieldLabel}>Date de test *</label>
           <input type="date" value={testDate} onChange={e => setTestDate(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            style={fieldInput} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Quantité testée *</label>
+          <label style={fieldLabel}>Quantité testée *</label>
           <input type="number" step="0.01" value={testQuantity} onChange={e => setTestQuantity(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            style={fieldInput} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1">Rendement obtenu</label>
+          <label style={fieldLabel}>Rendement obtenu</label>
           <input type="number" step="0.01" value={testYield} onChange={e => setTestYield(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            style={fieldInput} />
         </div>
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Observations *</label>
+        <label style={fieldLabel}>Observations *</label>
         <textarea value={testObservations} onChange={e => setTestObservations(e.target.value)} rows={3}
-          className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+          style={fieldInput} />
       </div>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={recipeRevised} onChange={e => setRecipeRevised(e.target.checked)}
@@ -868,7 +822,7 @@ function TestStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline; e
           recipeRevised,
         })}
         disabled={updateMutation.isPending}
-        className="px-4 py-2 bg-primary-600 text-white rounded-xl text-sm hover:bg-primary-700 disabled:opacity-50">
+        className="odoo-btn-primary">
         Sauvegarder
       </button>
       <InlineMsg msg={msg} />
@@ -910,14 +864,14 @@ function TastingStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline
       {/* Score grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {criteria.map(c => (
-          <div key={c.key} className="bg-gray-50 rounded-lg p-3 text-center">
+          <div key={c.key} style={{ ...odooTile, textAlign: 'center' }}>
             <p className="text-lg mb-1">{c.emoji}</p>
             <p className="text-xs text-gray-500 font-medium">{c.label}</p>
             {editable ? (
               <input
                 type="number" min="0" max="10" step="0.5"
                 value={c.value || ''} onChange={e => c.setter(parseFloat(e.target.value) || 0)}
-                className="w-16 mx-auto mt-1 px-2 py-1 border border-gray-200 rounded-lg text-center text-lg font-bold focus:outline-none focus:ring-2 focus:ring-primary-500"
+                style={{ ...fieldInput, width: 64, margin: '4px auto 0', textAlign: 'center', fontSize: '1.125rem', fontWeight: 700 }}
               />
             ) : (
               <p className="text-xl font-bold text-gray-900 mt-1">{c.value || '—'}</p>
@@ -942,14 +896,14 @@ function TastingStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline
       {editable && (
         <>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Date de dégustation</label>
+            <label style={fieldLabel}>Date de dégustation</label>
             <input type="date" value={tastingDate} onChange={e => setTastingDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              style={fieldInput} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Commentaires</label>
+            <label style={fieldLabel}>Commentaires</label>
             <textarea value={comments} onChange={e => setComments(e.target.value)} rows={2}
-              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              style={fieldInput} />
           </div>
           <button
             onClick={() => updateMutation.mutate({
@@ -958,7 +912,7 @@ function TastingStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline
               tastingComments: comments || undefined,
             })}
             disabled={updateMutation.isPending}
-            className="px-4 py-2 bg-primary-600 text-white rounded-xl text-sm hover:bg-primary-700 disabled:opacity-50">
+            className="odoo-btn-primary">
             Sauvegarder les scores
           </button>
           <InlineMsg msg={msg} />
@@ -980,21 +934,21 @@ function ValidationSummary({ pipeline: p }: { pipeline: Pipeline }) {
     <div className="space-y-3 text-sm">
       <p className="text-gray-500 mb-2">Récapitulatif du pipeline pour validation finale:</p>
       <div className="grid grid-cols-2 gap-3">
-        <div className="bg-gray-50 rounded-lg p-3">
+        <div style={odooTile}>
           <p className="text-xs text-gray-500 font-medium">Coût / Prix / Marge</p>
           <p className="font-medium">
             {p.estimated_cost ? `${Number(p.estimated_cost).toFixed(2)} DH` : '—'} / {p.target_price ? `${Number(p.target_price).toFixed(2)} DH` : '—'} / {p.target_margin ? `${Number(p.target_margin).toFixed(1)}%` : '—'}
           </p>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3">
+        <div style={odooTile}>
           <p className="text-xs text-gray-500 font-medium">Score dégustation</p>
           <p className="font-medium">{scores.overall ? `${Number(scores.overall).toFixed(1)}/10` : '—'}</p>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3">
+        <div style={odooTile}>
           <p className="text-xs text-gray-500 font-medium">Test production</p>
           <p className="font-medium">{p.test_yield ? `Rendement: ${String(p.test_yield)}` : '—'}</p>
         </div>
-        <div className="bg-gray-50 rounded-lg p-3">
+        <div style={odooTile}>
           <p className="text-xs text-gray-500 font-medium">Recette</p>
           <p className="font-medium">{String(p.recipe_name || '—')}</p>
         </div>
@@ -1060,16 +1014,16 @@ function AdminDecisionPanel({ pipelineId, onDecided }: { pipelineId: string; onD
   return (
     <div className="space-y-3">
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">Commentaires de décision</label>
+        <label style={fieldLabel}>Commentaires de décision</label>
         <textarea value={comments} onChange={e => setComments(e.target.value)} rows={2}
-          className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          style={fieldInput}
           placeholder="Motif de la décision..." />
       </div>
       <div className="grid grid-cols-3 gap-2">
         <button
           onClick={() => decisionMutation.mutate({ decision: 'approved', comments })}
           disabled={decisionMutation.isPending}
-          className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-green-600 text-white rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+          className="odoo-btn-primary" style={{ justifyContent: 'center' }}
         >
           <CheckCircle2 size={14} />
           Approuver
@@ -1077,7 +1031,7 @@ function AdminDecisionPanel({ pipelineId, onDecided }: { pipelineId: string; onD
         <button
           onClick={() => decisionMutation.mutate({ decision: 'revision_requested', comments })}
           disabled={decisionMutation.isPending}
-          className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-medium hover:bg-amber-600 disabled:opacity-50"
+          className="odoo-btn-secondary" style={{ justifyContent: 'center' }}
         >
           <RotateCw size={14} />
           Réviser
@@ -1085,7 +1039,7 @@ function AdminDecisionPanel({ pipelineId, onDecided }: { pipelineId: string; onD
         <button
           onClick={() => decisionMutation.mutate({ decision: 'rejected', comments })}
           disabled={decisionMutation.isPending}
-          className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+          className="odoo-btn-danger" style={{ justifyContent: 'center' }}
         >
           <XCircle size={14} />
           Rejeter
@@ -1129,34 +1083,38 @@ function CreatePipelineModal({ onClose, onCreated }: { onClose: () => void; onCr
   });
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl">
-        <div className="flex items-center justify-between p-5 border-b border-gray-100">
-          <h2 className="text-lg font-bold">Nouveau pipeline produit</h2>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
-            <X size={18} />
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)' }}>
+      <div className="odoo-scope" style={{ width: '100%', maxWidth: 512, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <GitBranch size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Pipeline</span>
+            <span className="odoo-breadcrumb-separator">›</span>
+            <span className="odoo-breadcrumb-current">Nouveau</span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div style={{ padding: 16, display: 'grid', gap: 12 }}>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Nom du produit *</label>
+            <label style={fieldLabel}>Nom du produit *</label>
             <input value={name} onChange={e => setName(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              style={fieldInput}
               placeholder="Ex: Croissant aux amandes" />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Description</label>
+            <label style={fieldLabel}>Description</label>
             <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              style={fieldInput}
               placeholder="Description du nouveau produit..." />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Catégorie *</label>
+            <label style={fieldLabel}>Catégorie *</label>
             <select value={categoryId} onChange={e => setCategoryId(e.target.value)} required
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+              style={fieldInput}>
               <option value="">Choisir une catégorie...</option>
               {(categories as Pipeline[]).map(c => (
                 <option key={String(c.id)} value={String(c.id)}>{String(c.name)}</option>
@@ -1165,9 +1123,9 @@ function CreatePipelineModal({ onClose, onCreated }: { onClose: () => void; onCr
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Responsable *</label>
+            <label style={fieldLabel}>Responsable *</label>
             <select value={responsibleUserId} onChange={e => setResponsibleUserId(e.target.value)} required
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+              style={fieldInput}>
               <option value="">Choisir un responsable...</option>
               {users.filter(u => ['baker', 'pastry_chef', 'viennoiserie'].includes(String(u.role))).map(u => (
                 <option key={String(u.id)} value={String(u.id)}>
@@ -1178,18 +1136,15 @@ function CreatePipelineModal({ onClose, onCreated }: { onClose: () => void; onCr
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Date cible</label>
+            <label style={fieldLabel}>Date cible</label>
             <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              style={fieldInput} />
           </div>
         </div>
 
-        <div className="px-5"><InlineMsg msg={msg} /></div>
-        <div className="p-5 border-t border-gray-100 flex justify-end gap-3">
-          <button onClick={onClose}
-            className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm hover:bg-gray-50">
-            Annuler
-          </button>
+        <div style={{ padding: '0 16px' }}><InlineMsg msg={msg} /></div>
+        <div style={{ padding: '10px 16px', borderTop: '1px solid var(--theme-bg-separator)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
           <button
             onClick={() => createMutation.mutate({
               name,
@@ -1199,7 +1154,7 @@ function CreatePipelineModal({ onClose, onCreated }: { onClose: () => void; onCr
               targetDate: targetDate || undefined,
             })}
             disabled={!name || !categoryId || !responsibleUserId || createMutation.isPending}
-            className="px-4 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-700 disabled:opacity-50"
+            className="odoo-btn-primary"
           >
             Créer le pipeline
           </button>
