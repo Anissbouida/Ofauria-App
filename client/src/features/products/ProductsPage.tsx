@@ -8,7 +8,7 @@ import { serverUrl } from '../../api/client';
 import { categoriesApi } from '../../api/categories.api';
 import { usersApi } from '../../api/users.api';
 import { recipesApi } from '../../api/recipes.api';
-import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays, Coins, Target } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import { notify } from '../../components/ui/InlineNotification';
@@ -1589,79 +1589,46 @@ function PricingTiersPanel({ productId }: { productId: string }) {
   });
 
   return (
-    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
-      <div className="flex items-center justify-between">
+    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', padding: 14, display: 'grid', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <div>
-          <div className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-            🪙 Paliers tarifaires (vente au kg)
-          </div>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Définit un prix au kg par tranche de poids. Au POS, le palier matchant est appliqué automatiquement.
-          </p>
+          <div style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Coins size={14} style={{ color: 'var(--theme-accent)' }} /> Paliers tarifaires (vente au kg)</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>Un prix au kg par tranche de poids ; au POS, le palier correspondant s'applique automatiquement.</div>
         </div>
-        <button type="button" onClick={addRow}
-          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5">
-          <Plus size={12} /> Ajouter
-        </button>
+        <button type="button" onClick={addRow} className="odoo-btn-secondary" style={{ whiteSpace: 'nowrap' }}><Plus size={13} /> Ajouter</button>
       </div>
 
       {rows.length === 0 ? (
-        <div className="text-xs text-gray-500 bg-white border border-dashed border-gray-300 rounded-lg p-3 text-center">
-          Aucun palier — le POS utilisera le prix unique du produit (price_per_kg).
-        </div>
+        <StatusBanner tone="info" icon={Coins} title="Aucun palier">Le POS utilisera le prix unique du produit.</StatusBanner>
       ) : (
-        <div className="space-y-1.5">
-          {rows.map((row, idx) => (
-            <div key={idx} className="grid grid-cols-12 gap-2 items-end bg-white border border-gray-200 rounded-lg p-2">
-              <div className="col-span-3">
-                <label className="block text-[10px] uppercase font-semibold text-gray-500 mb-0.5">À partir de (g)</label>
-                <input type="number" min={0} step={1}
-                  className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded text-xs text-right focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-bold"
-                  value={row.min} onChange={e => updateRow(idx, 'min', e.target.value)} placeholder="0" />
-              </div>
-              <div className="col-span-3">
-                <label className="block text-[10px] uppercase font-semibold text-gray-500 mb-0.5">Jusqu'à (g)</label>
-                <input type="number" min={0} step={1}
-                  className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded text-xs text-right focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-bold"
-                  value={row.max} onChange={e => updateRow(idx, 'max', e.target.value)} placeholder="∞ (vide)" />
-              </div>
-              <div className="col-span-5">
-                <label className="block text-[10px] uppercase font-semibold text-gray-500 mb-0.5">Prix au kg (DH)</label>
-                <input type="number" min={0} step="0.01"
-                  className="w-full px-2 py-1.5 bg-emerald-50 border border-emerald-300 rounded text-xs text-right focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-bold text-emerald-900"
-                  value={row.prix} onChange={e => updateRow(idx, 'prix', e.target.value)} placeholder="80.00" />
-              </div>
-              <div className="col-span-1 flex justify-end">
-                <button type="button" onClick={() => removeRow(idx)}
-                  className="p-1.5 text-red-500 hover:bg-red-50 rounded" title="Supprimer">
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        <table className="odoo-table" style={{ margin: 0 }}>
+          <thead><tr><th style={{ textAlign: 'right' }}>À partir de (g)</th><th style={{ textAlign: 'right' }}>Jusqu'à (g)</th><th style={{ textAlign: 'right' }}>Prix au kg (DH)</th><th style={{ width: 36 }}></th></tr></thead>
+          <tbody>
+            {rows.map((row, idx) => (
+              <tr key={idx}>
+                <td><input type="number" min={0} step={1} style={{ ...fieldInput, textAlign: 'right' }} value={row.min} onChange={e => updateRow(idx, 'min', e.target.value)} placeholder="0" /></td>
+                <td><input type="number" min={0} step={1} style={{ ...fieldInput, textAlign: 'right' }} value={row.max} onChange={e => updateRow(idx, 'max', e.target.value)} placeholder="∞ (vide)" /></td>
+                <td><input type="number" min={0} step="0.01" style={{ ...fieldInput, textAlign: 'right', fontWeight: 600 }} value={row.prix} onChange={e => updateRow(idx, 'prix', e.target.value)} placeholder="80.00" /></td>
+                <td style={{ textAlign: 'center' }}><button type="button" onClick={() => removeRow(idx)} className="odoo-pager-btn" title="Supprimer"><Trash2 size={13} /></button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
 
-      {/* Aperçu live */}
       {rows.length > 0 && (
-        <div className="text-xs bg-white border border-gray-200 rounded-lg px-3 py-2 flex items-center justify-between">
-          <span className="text-gray-500">Aperçu pour <strong>{previewWeight}g</strong> :</span>
+        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg-alt)', padding: '6px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ color: 'var(--theme-text-muted)' }}>Aperçu pour <strong>{previewWeight} g</strong> :</span>
           {matchingRow ? (
-            <span className="font-bold text-emerald-700">
-              {((previewWeight / 1000) * parseFloat(matchingRow.prix)).toFixed(2)} DH
-              <span className="ml-2 text-gray-400 font-normal">({matchingRow.prix} DH/kg)</span>
-            </span>
+            <span style={{ fontWeight: 600 }}>{((previewWeight / 1000) * parseFloat(matchingRow.prix)).toFixed(2)} DH <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, marginLeft: 6 }}>({matchingRow.prix} DH/kg)</span></span>
           ) : (
-            <span className="text-gray-400 italic">Aucun palier ne matche — fallback sur le prix produit</span>
+            <span style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>Aucun palier — repli sur le prix produit</span>
           )}
         </div>
       )}
 
-      <div className="flex justify-end">
-        <button type="button" onClick={handleSave} disabled={saving}
-          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold disabled:opacity-60">
-          {saving ? 'Enregistrement...' : 'Enregistrer les paliers'}
-        </button>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button type="button" onClick={handleSave} disabled={saving} className="odoo-btn-primary">{saving ? 'Enregistrement…' : 'Enregistrer les paliers'}</button>
       </div>
     </div>
   );
@@ -1746,70 +1713,36 @@ function RecycleDestinationsPanel({ productId }: { productId: string }) {
   };
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <h5 className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
-          Destinations de valorisation
-        </h5>
-        <button type="button" onClick={addRow}
-          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-md hover:bg-cyan-100">
-          <Plus size={12} /> Ajouter
-        </button>
+    <div style={{ display: 'grid', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--theme-text-muted)' }}>Destinations de valorisation</div>
+        <button type="button" onClick={addRow} className="odoo-btn-secondary" style={{ padding: '4px 8px', fontSize: '0.75rem' }}><Plus size={12} /> Ajouter</button>
       </div>
 
       {rows.length === 0 && (
-        <p className="text-xs text-gray-500 italic py-2">
-          Aucune destination. Ajoutez au moins un ingrédient cible pour rendre la valorisation opérationnelle.
-        </p>
+        <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>Aucune destination. Ajoutez au moins un ingrédient cible pour rendre la valorisation opérationnelle.</p>
       )}
 
-      {rows.map((row, idx) => (
-        <div key={idx} className="grid grid-cols-12 gap-2 mb-2 items-start">
-          <div className="col-span-5">
-            <select
-              value={row.ingredientId}
-              onChange={(e) => updateRow(idx, { ingredientId: e.target.value })}
-              className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-md bg-white">
-              <option value="">— Ingrédient cible —</option>
-              {ingredientOptions.map(opt => (
-                <option key={opt.id} value={opt.id}>{opt.name}{opt.unit ? ` (${opt.unit})` : ''}</option>
-              ))}
-            </select>
-          </div>
-          <div className="col-span-4">
-            <input type="text"
-              value={row.label}
-              onChange={(e) => updateRow(idx, { label: e.target.value })}
-              placeholder="Libellé (ex: Vers chapelure)"
-              className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-md bg-white" />
-          </div>
-          <div className="col-span-2">
-            <input type="number" step="0.01" min="0.01" max="2"
-              value={row.yieldRatio}
-              onChange={(e) => updateRow(idx, { yieldRatio: e.target.value })}
-              className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-md bg-white"
-              title="Rendement : 1.0 = 100 %, 0.7 = 30 % de perte au séchage" />
-          </div>
-          <div className="col-span-1 flex justify-end">
-            <button type="button" onClick={() => removeRow(idx)}
-              className="p-1 text-red-500 hover:bg-red-50 rounded-md" title="Supprimer">
-              <Trash2 size={12} />
-            </button>
-          </div>
-        </div>
-      ))}
+      {rows.length > 0 && (
+        <table className="odoo-table" style={{ margin: 0 }}>
+          <thead><tr><th>Ingrédient cible</th><th>Libellé</th><th style={{ textAlign: 'right', width: 90 }}>Rendement</th><th style={{ width: 36 }}></th></tr></thead>
+          <tbody>
+            {rows.map((row, idx) => (
+              <tr key={idx}>
+                <td><select value={row.ingredientId} onChange={(e) => updateRow(idx, { ingredientId: e.target.value })} style={fieldInput}><option value="">— Ingrédient cible —</option>{ingredientOptions.map(opt => (<option key={opt.id} value={opt.id}>{opt.name}{opt.unit ? ` (${opt.unit})` : ''}</option>))}</select></td>
+                <td><input type="text" value={row.label} onChange={(e) => updateRow(idx, { label: e.target.value })} placeholder="Libellé (ex: Vers chapelure)" style={fieldInput} /></td>
+                <td><input type="number" step="0.01" min="0.01" max="2" value={row.yieldRatio} onChange={(e) => updateRow(idx, { yieldRatio: e.target.value })} style={{ ...fieldInput, textAlign: 'right' }} title="Rendement : 1.0 = 100 %, 0.7 = 30 % de perte au séchage" /></td>
+                <td style={{ textAlign: 'center' }}><button type="button" onClick={() => removeRow(idx)} className="odoo-pager-btn" title="Supprimer"><Trash2 size={13} /></button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
 
-      <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100">
-        <p className="text-[11px] text-gray-500">
-          Rendement : 1.0 = conversion complète, 0.7 = 30 % de perte
-        </p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, paddingTop: 8, borderTop: '1px solid var(--odoo-border)' }}>
+        <p style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>Rendement : 1.0 = conversion complète, 0.7 = 30 % de perte</p>
         {dirty && (
-          <button type="button"
-            onClick={() => mutation.mutate()}
-            disabled={mutation.isPending}
-            className="px-3 py-1.5 text-xs font-semibold bg-cyan-600 text-white rounded-md hover:bg-cyan-700 disabled:opacity-50">
-            {mutation.isPending ? 'Enregistrement…' : 'Enregistrer'}
-          </button>
+          <button type="button" onClick={() => mutation.mutate()} disabled={mutation.isPending} className="odoo-btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem' }}>{mutation.isPending ? 'Enregistrement…' : 'Enregistrer'}</button>
         )}
       </div>
     </div>
@@ -1873,50 +1806,40 @@ function ChannelPricingPanel({ productId, saleUnit }: { productId: string; saleU
   if (channels.length === 0) return null;
 
   return (
-    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
-      <div className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-        🎯 Prix par canal de vente
+    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', padding: 14, display: 'grid', gap: 10 }}>
+      <div>
+        <div style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Target size={14} style={{ color: 'var(--theme-accent)' }} /> Prix par canal de vente</div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>Remplace le prix par défaut pour un canal précis. Laissez vide pour le prix de catalogue (ou le palier pour la vente au poids).</div>
       </div>
-      <p className="text-xs text-gray-500">
-        Override le prix par défaut du produit pour un canal spécifique. Laisse vide pour utiliser le prix de catalogue (ou le palier tarifaire pour la vente au poids).
-      </p>
-      <div className="space-y-2">
-        {channels.map((c: SalesChannel) => {
-          const row = rows[c.id] || { price: '', priceKg: '' };
-          const hasOverride = (saleUnit === 'weight' ? row.priceKg : row.price) !== '';
-          return (
-            <div key={c.id} className={`flex items-center gap-3 p-2 rounded-lg border ${hasOverride ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-200'}`}>
-              <div className="flex items-center gap-2 min-w-[160px]">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} />
-                <span className="text-sm font-medium text-gray-700">{c.label}</span>
-                {c.is_default && <span className="text-[9px] bg-green-100 text-green-700 px-1 rounded">défaut</span>}
-              </div>
-              {saleUnit === 'weight' ? (
-                <div className="flex items-center gap-2 flex-1">
-                  <input type="number" min={0} step="0.01"
-                    className={`flex-1 px-3 py-1.5 rounded border text-sm text-right font-bold ${hasOverride ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-gray-50 border-gray-200'}`}
-                    value={row.priceKg} onChange={e => updateField(c.id, 'priceKg', e.target.value)}
-                    placeholder="auto (prix produit / palier)" />
-                  <span className="text-xs text-gray-500 font-medium">DH/kg</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 flex-1">
-                  <input type="number" min={0} step="0.01"
-                    className={`flex-1 px-3 py-1.5 rounded border text-sm text-right font-bold ${hasOverride ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-gray-50 border-gray-200'}`}
-                    value={row.price} onChange={e => updateField(c.id, 'price', e.target.value)}
-                    placeholder="auto (prix produit)" />
-                  <span className="text-xs text-gray-500 font-medium">DH/pièce</span>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex justify-end">
-        <button type="button" onClick={handleSave} disabled={saving}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold disabled:opacity-60">
-          {saving ? 'Enregistrement...' : 'Enregistrer les prix par canal'}
-        </button>
+      <table className="odoo-table" style={{ margin: 0 }}>
+        <tbody>
+          {channels.map((c: SalesChannel) => {
+            const row = rows[c.id] || { price: '', priceKg: '' };
+            return (
+              <tr key={c.id}>
+                <td>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 999, background: c.color, flexShrink: 0 }} />
+                    <span style={{ fontWeight: 500 }}>{c.label}</span>
+                    {c.is_default && <span className="odoo-tag odoo-tag-green">défaut</span>}
+                  </span>
+                </td>
+                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                    <input type="number" min={0} step="0.01" style={{ ...fieldInput, width: 150, textAlign: 'right', fontWeight: 600 }}
+                      value={saleUnit === 'weight' ? row.priceKg : row.price}
+                      onChange={e => updateField(c.id, saleUnit === 'weight' ? 'priceKg' : 'price', e.target.value)}
+                      placeholder={saleUnit === 'weight' ? 'auto (produit / palier)' : 'auto (prix produit)'} />
+                    <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{saleUnit === 'weight' ? 'DH/kg' : 'DH/pièce'}</span>
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button type="button" onClick={handleSave} disabled={saving} className="odoo-btn-primary">{saving ? 'Enregistrement…' : 'Enregistrer les prix par canal'}</button>
       </div>
     </div>
   );
