@@ -1312,7 +1312,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 {/* Toggles */}
                 <div className="flex gap-6">
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className={`relative w-11 h-6 rounded-full transition-colors ${form.isAvailable ? 'bg-green-500' : 'bg-gray-300'}`}
+                    <div className={`relative w-11 h-6 rounded-full transition-colors ${form.isAvailable ? '' : 'bg-gray-300'}`}
+                      style={form.isAvailable ? { background: 'var(--theme-accent)' } : undefined}
                       onClick={() => setForm({ ...form, isAvailable: !form.isAvailable })}>
                       <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${form.isAvailable ? 'translate-x-5.5 left-[1px]' : 'left-[2px]'}`}
                         style={{ transform: form.isAvailable ? 'translateX(22px)' : 'translateX(0)' }} />
@@ -1320,7 +1321,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     <span className="text-sm font-medium text-gray-700">Disponible à la vente</span>
                   </label>
                   <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className={`relative w-11 h-6 rounded-full transition-colors ${form.isCustomOrderable ? 'bg-blue-500' : 'bg-gray-300'}`}
+                    <div className={`relative w-11 h-6 rounded-full transition-colors ${form.isCustomOrderable ? '' : 'bg-gray-300'}`}
+                      style={form.isCustomOrderable ? { background: 'var(--theme-accent)' } : undefined}
                       onClick={() => setForm({ ...form, isCustomOrderable: !form.isCustomOrderable })}>
                       <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform`}
                         style={{ transform: form.isCustomOrderable ? 'translateX(22px)' : 'translateX(0)', left: '2px' }} />
