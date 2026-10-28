@@ -8,7 +8,7 @@ import { serverUrl } from '../../api/client';
 import { categoriesApi } from '../../api/categories.api';
 import { usersApi } from '../../api/users.api';
 import { recipesApi } from '../../api/recipes.api';
-import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays, Coins, Target, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays, Coins, Target, ChevronDown, ChevronRight, type LucideIcon } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import { notify } from '../../components/ui/InlineNotification';
@@ -672,6 +672,27 @@ type FormTab = 'general' | 'pricing' | 'lifecycle';
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
 const fieldInput: React.CSSProperties = { width: '100%', fontSize: '0.875rem', padding: '9px 11px', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', boxSizing: 'border-box' };
 const fieldInputRO: React.CSSProperties = { ...fieldInput, background: 'var(--odoo-bg-alt)', cursor: 'not-allowed' };
+
+/** Section de formulaire repliable avec en-tête compact (remplace les grands
+ *  bandeaux pour raccourcir les onglets longs). */
+function FormSection({ title, subtitle, icon: Icon, defaultOpen = true, children }: {
+  title: string; subtitle?: string; icon?: LucideIcon; defaultOpen?: boolean; children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, overflow: 'hidden' }}>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--odoo-bg-alt)', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--odoo-text)' }}>
+        {Icon && <Icon size={15} style={{ color: 'var(--theme-accent)', flexShrink: 0 }} />}
+        <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>{title}</span>
+        {subtitle && <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>· {subtitle}</span>}
+        <span style={{ flex: 1 }} />
+        {open ? <ChevronDown size={15} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronRight size={15} style={{ color: 'var(--theme-text-muted)' }} />}
+      </button>
+      {open && <div style={{ padding: 14, display: 'grid', gap: 14 }}>{children}</div>}
+    </div>
+  );
+}
 
 /** Aperçu live de la fiche produit (colonne droite du formulaire) : se met à
  *  jour en temps réel pendant la saisie. */
@@ -1387,9 +1408,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
             {/* ═══ Tab: Cycle de vie ═══ */}
             {activeTab === 'lifecycle' && (
               <>
-                <StatusBanner tone="warning" icon={Factory} title="Paramètres de production">
-                  Ces paramètres influencent les plans de production automatiques.
-                </StatusBanner>
+                <FormSection title="Paramètres de production" subtitle="plans de production automatiques" icon={Factory} defaultOpen={false}>
 
                 <div>
                   <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1430,9 +1449,9 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   </div>
                 )}
 
-                <StatusBanner tone="info" icon={Clock} title="Cycle de vie du produit">
-                  DLC, type de vente, exposition et valorisation.
-                </StatusBanner>
+                </FormSection>
+
+                <FormSection title="Cycle de vie du produit" subtitle="DLC, type de vente, exposition, valorisation" icon={Clock} defaultOpen>
 
                 {/* Type de vente (audit P1.1 : pilote de l'onglet) */}
                 <div>
@@ -1574,6 +1593,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     </div>
                   </>
                 )}
+                </FormSection>
               </>
             )}
             </div>
