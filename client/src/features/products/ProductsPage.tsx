@@ -476,7 +476,7 @@ function CatalogueTab() {
                       <h3 className="text-sm font-semibold text-gray-900 truncate" title={p.name as string}>{p.name as string}</h3>
                       <p className="text-xs text-gray-400 mt-0.5 truncate">{p.category_name as string}</p>
                     </div>
-                    <span className="text-sm font-bold text-amber-700 whitespace-nowrap">{parseFloat(p.price as string).toFixed(2)} <span className="text-xs font-normal">{p.sale_unit === 'weight' ? 'DH/kg' : p.sale_unit === 'person' ? 'DH/pers' : 'DH'}</span></span>
+                    <span className="text-sm font-bold whitespace-nowrap" style={{ color: 'var(--theme-accent)' }}>{parseFloat(p.price as string).toFixed(2)} <span className="text-xs font-normal">{p.sale_unit === 'weight' ? 'DH/kg' : p.sale_unit === 'person' ? 'DH/pers' : 'DH'}</span></span>
                   </div>
                   {/* Bottom row: stock + responsible */}
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
@@ -488,7 +488,7 @@ function CatalogueTab() {
                     </div>
                     {p.responsible_first_name && (
                       <div className="flex items-center gap-1 text-xs text-gray-400">
-                        <ChefHat size={12} className="text-amber-400" />
+                        <ChefHat size={12} className="text-gray-400" />
                         <span className="truncate max-w-[80px]">{p.responsible_first_name as string}</span>
                       </div>
                     )}
@@ -1104,7 +1104,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                           </button>
                           <button type="button" onClick={startCamera}
                             className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
-                            <Camera size={14} className="text-blue-600" />
+                            <Camera size={14} style={{ color: 'var(--theme-accent)' }} />
                           </button>
                           <button type="button" onClick={removeImage}
                             className="w-8 h-8 rounded-full bg-white/90 flex items-center justify-center">
@@ -1115,14 +1115,14 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     ) : (
                       <div className="flex gap-3 shrink-0">
                         <div onClick={() => fileInputRef.current?.click()}
-                          className="w-32 h-32 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:border-amber-400 hover:bg-amber-50 transition-colors">
-                          <Upload size={24} className="text-gray-400 mb-2" />
-                          <span className="text-xs text-gray-400 font-medium">Galerie</span>
+                          className="w-32 h-32 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors">
+                          <Upload size={24} className="mb-2" style={{ color: 'var(--theme-accent)' }} />
+                          <span className="text-xs font-medium" style={{ color: 'var(--theme-accent)' }}>Galerie</span>
                         </div>
                         <div onClick={startCamera}
-                          className="w-32 h-32 rounded-xl border-2 border-dashed border-blue-300 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
-                          <Camera size={24} className="text-blue-400 mb-2" />
-                          <span className="text-xs text-blue-400 font-medium">Camera</span>
+                          className="w-32 h-32 rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors">
+                          <Camera size={24} className="mb-2" style={{ color: 'var(--theme-accent)' }} />
+                          <span className="text-xs font-medium" style={{ color: 'var(--theme-accent)' }}>Camera</span>
                         </div>
                       </div>
                     )}
@@ -1155,7 +1155,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 {/* Recipe smart search — mandatory */}
                 <div ref={recipeDropdownRef} className="relative">
                   <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <BookOpen size={14} className="text-amber-500" /> Recette <span className="text-red-500">*</span>
+                    <BookOpen size={14} style={{ color: 'var(--theme-accent)' }} /> Recette <span className="text-red-500">*</span>
                   </label>
                   {allRecipesList.length === 0 ? (
                     <StatusBanner tone="warning" icon={AlertTriangle} title="Aucune recette disponible">
@@ -1289,7 +1289,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   </div>
                   <div>
                     <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <ChefHat size={14} className="text-amber-500" /> Responsable
+                      <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} /> Responsable
                     </label>
                     <select style={fieldInput} value={form.responsibleUserId} onChange={(e) => setForm({ ...form, responsibleUserId: e.target.value })}>
                       <option value="">Aucun responsable</option>
@@ -1413,7 +1413,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Package size={14} className="text-blue-500" /> Seuil d'alerte stock
+                      <Package size={14} style={{ color: 'var(--theme-accent)' }} /> Seuil d'alerte stock
                     </label>
                     <input type="number" step="1" min="0" style={fieldInput}
                       value={form.stockMinThreshold} onChange={(e) => setForm({ ...form, stockMinThreshold: e.target.value })}
@@ -1422,7 +1422,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   </div>
                   <div>
                     <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Factory size={14} className="text-amber-500" /> Lot minimum de production
+                      <Factory size={14} style={{ color: 'var(--theme-accent)' }} /> Lot minimum de production
                     </label>
                     <input type="number" step="1" min="0" style={fieldInput}
                       value={form.minProductionQuantity} onChange={(e) => setForm({ ...form, minProductionQuantity: e.target.value })}
