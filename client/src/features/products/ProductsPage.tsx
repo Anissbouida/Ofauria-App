@@ -1410,44 +1410,41 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
               <>
                 <FormSection title="Paramètres de production" subtitle="plans de production automatiques" icon={Factory} defaultOpen={false}>
 
-                <div>
-                  <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Package size={14} className="text-blue-500" /> Seuil d'alerte stock
-                  </label>
-                  <input type="number" step="1" min="0"
-                    style={fieldInput}
-                    value={form.stockMinThreshold} onChange={(e) => setForm({ ...form, stockMinThreshold: e.target.value })}
-                    placeholder="0 = pas d'alerte" />
-                  <p className="text-xs text-gray-400 mt-1.5 ml-1">Déclenche une alerte de réassort dès que le stock passe sous ce seuil.</p>
-                </div>
-
-                <div>
-                  <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Factory size={14} className="text-amber-500" /> Lot minimum de production
-                  </label>
-                  <input type="number" step="1" min="0"
-                    style={fieldInput}
-                    value={form.minProductionQuantity} onChange={(e) => setForm({ ...form, minProductionQuantity: e.target.value })}
-                    placeholder="0 = pas de minimum" />
-                  <p className="text-xs text-gray-400 mt-1.5 ml-1">Quantité minimale produite à chaque lancement ; le surplus va en stock central.</p>
-                </div>
-
-                {/* Production summary info */}
-                {product && (
-                  <div className="odoo-section">
-                    <div className="odoo-section-header">Informations actuelles</div>
-                    <div style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Stock actuel</span>
-                        <span style={{ fontSize: '0.875rem', fontWeight: 700 }}>{product.sale_unit === 'weight' ? `${(parseFloat((product.stock_quantity as string) || '0') / 1000).toFixed(2)} kg` : parseFloat((product.stock_quantity as string) || '0')}</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Seuil alerte</span>
-                        <span style={{ fontSize: '0.875rem', fontWeight: 700 }}>{product.sale_unit === 'weight' ? `${(parseFloat((product.stock_min_threshold as string) || '0') / 1000).toFixed(2)} kg` : parseFloat((product.stock_min_threshold as string) || '0')}</span>
-                      </div>
-                    </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Package size={14} className="text-blue-500" /> Seuil d'alerte stock
+                    </label>
+                    <input type="number" step="1" min="0" style={fieldInput}
+                      value={form.stockMinThreshold} onChange={(e) => setForm({ ...form, stockMinThreshold: e.target.value })}
+                      placeholder="0 = pas d'alerte" />
+                    <p className="text-xs text-gray-400 mt-1.5">Alerte de réassort dès que le stock passe sous ce seuil.</p>
                   </div>
-                )}
+                  <div>
+                    <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Factory size={14} className="text-amber-500" /> Lot minimum de production
+                    </label>
+                    <input type="number" step="1" min="0" style={fieldInput}
+                      value={form.minProductionQuantity} onChange={(e) => setForm({ ...form, minProductionQuantity: e.target.value })}
+                      placeholder="0 = pas de minimum" />
+                    <p className="text-xs text-gray-400 mt-1.5">Minimum produit à chaque lancement ; le surplus va en stock central.</p>
+                  </div>
+                </div>
+
+                {product && (() => {
+                  const stockN = product.sale_unit === 'weight'
+                    ? parseFloat((product.stock_quantity as string) || '0') / 1000
+                    : parseFloat((product.stock_quantity as string) || '0');
+                  return (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', padding: '7px 11px', borderRadius: 6, background: 'var(--odoo-bg-alt)', border: '1px solid var(--odoo-border)', justifySelf: 'start' }}>
+                      <Package size={13} style={{ color: 'var(--theme-text-muted)' }} />
+                      <span style={{ color: 'var(--theme-text-muted)' }}>Stock actuel :</span>
+                      <strong style={{ color: stockN < 0 ? '#dc3545' : 'var(--odoo-text)', fontVariantNumeric: 'tabular-nums' }}>
+                        {product.sale_unit === 'weight' ? `${stockN.toFixed(2)} kg` : stockN}
+                      </strong>
+                    </div>
+                  );
+                })()}
 
                 </FormSection>
 
