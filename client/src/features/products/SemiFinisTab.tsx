@@ -18,6 +18,20 @@ const secHeader: React.CSSProperties = { fontSize: '0.6875rem', fontWeight: 600,
 const emptyTxt: React.CSSProperties = { fontSize: '0.75rem', color: 'var(--theme-text-muted)' };
 const tileBox: React.CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', padding: '8px 10px', fontSize: '0.8125rem', display: 'grid', gap: 4 };
 
+function CollapsibleSection({ title, defaultOpen = true, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        style={{ ...secHeader, marginBottom: 0, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', background: 'none', border: 'none', padding: 0, width: '100%', textAlign: 'left' }}>
+        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        {title}
+      </button>
+      {open && <div style={{ marginTop: 8 }}>{children}</div>}
+    </div>
+  );
+}
+
 interface BaseRecipe {
   id: string;
   name: string;
@@ -512,8 +526,7 @@ function SemiFiniRow({
                 </div>
 
                 {/* Réservations actives */}
-                <div>
-                  <div style={secHeader}>Réservations actives ({lineage?.reservations.length ?? 0})</div>
+                <CollapsibleSection title={`Réservations actives (${lineage?.reservations.length ?? 0})`} defaultOpen={false}>
                   {!lineage ? (
                     <p style={emptyTxt}>Chargement…</p>
                   ) : lineage.reservations.length === 0 ? (
@@ -536,11 +549,10 @@ function SemiFiniRow({
                       </tbody>
                     </table>
                   )}
-                </div>
+                </CollapsibleSection>
 
                 {/* Historique de production */}
-                <div>
-                  <div style={secHeader}>Historique de production ({lineage?.productions.length ?? 0})</div>
+                <CollapsibleSection title={`Historique de production (${lineage?.productions.length ?? 0})`} defaultOpen>
                   {!lineage ? null : lineage.productions.length === 0 ? (
                     <p style={emptyTxt}>Aucune production enregistrée</p>
                   ) : (
@@ -561,12 +573,11 @@ function SemiFiniRow({
                       </tbody>
                     </table>
                   )}
-                </div>
+                </CollapsibleSection>
 
                 {/* Derniers mouvements */}
                 {lineage && lineage.transactions.length > 0 && (
-                  <div>
-                    <div style={secHeader}>Derniers mouvements</div>
+                  <CollapsibleSection title="Derniers mouvements" defaultOpen>
                     <table className="odoo-table" style={{ margin: 0 }}>
                       <tbody>
                         {lineage.transactions.slice(0, 6).map((tx, i) => {
@@ -594,13 +605,12 @@ function SemiFiniRow({
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </CollapsibleSection>
                 )}
 
                 {/* Lots frigo */}
                 {lots.length > 0 && (
-                  <div>
-                    <div style={secHeader}>Lots frigo</div>
+                  <CollapsibleSection title="Lots frigo" defaultOpen>
                     <table className="odoo-table" style={{ margin: 0 }}>
                       <tbody>
                         {lots.map(lot => {
@@ -628,7 +638,7 @@ function SemiFiniRow({
                         })}
                       </tbody>
                     </table>
-                  </div>
+                  </CollapsibleSection>
                 )}
               </div>
             </div>
