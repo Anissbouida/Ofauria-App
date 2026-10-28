@@ -39,6 +39,17 @@ async function send(printer: ThermalPrinter, config: PrinterConfigRow): Promise<
   await send(printer, config);
 }
 
+/**
+ * Ouverture du tiroir : impulsion sur les deux broches du port tiroir (certaines caisses
+ * sont câblées sur la broche 5), avec une impulsion plus longue que celle de la librairie
+ * (ESC p m 60 255 : ~120 ms) — des tiroirs à solénoïde lent ne réagissent pas à 50 ms.
+ */
+function kickDrawer(printer: ThermalPrinter) {
+  printer.openCashDrawer();
+  printer.raw(Buffer.from([0x1b, 0x70, 0x00, 0x3c, 0xff]));
+  printer.raw(Buffer.from([0x1b, 0x70, 0x01, 0x3c, 0xff]));
+}
+
 export type SystemPrinter = { kind: 'queue' | 'usb'; name: string; uri: string; status: string | null };
 
 /** Imprimantes vues par le système du serveur : files CUPS et imprimantes USB « direct ». */
@@ -328,7 +339,7 @@ export const printerService = {
           config.open_drawer_on_cash &&
           (params.sale.payment_method === 'cash' || params.sale.payment_method === 'mixed')
         ) {
-          printer.openCashDrawer();
+          kickDrawer(printer);
         }
       }
 
@@ -451,7 +462,7 @@ export const printerService = {
     try {
       const connected = await printerReachable(printer, config);
       if (!connected) return { ok: false, error: 'Imprimante injoignable' };
-      printer.openCashDrawer();
+      kickDrawer(printer);
       await send(printer, config);
       return { ok: true };
     } catch (err) {
@@ -496,7 +507,7 @@ export const printerService = {
       printer.cut();
 
       // Test du tiroir aussi
-      printer.openCashDrawer();
+      kickDrawer(printer);
 
       await send(printer, config);
       return { ok: true };
