@@ -8,7 +8,7 @@ import { serverUrl } from '../../api/client';
 import { categoriesApi } from '../../api/categories.api';
 import { usersApi } from '../../api/users.api';
 import { recipesApi } from '../../api/recipes.api';
-import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays, Coins, Target } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays, Coins, Target, ChevronDown, ChevronRight } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import { notify } from '../../components/ui/InlineNotification';
@@ -667,7 +667,7 @@ function CatalogueTab() {
    Product Form Modal — Redesigned with tabs
    ═══════════════════════════════════════════════════════════════════════════ */
 
-type FormTab = 'general' | 'production' | 'lifecycle';
+type FormTab = 'general' | 'pricing' | 'production' | 'lifecycle';
 
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
 const fieldInput: React.CSSProperties = { width: '100%', fontSize: '0.875rem', padding: '8px 10px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', boxSizing: 'border-box' };
@@ -681,6 +681,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   isLoading: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<FormTab>('general');
+  const [showChannels, setShowChannels] = useState(false);
   const [pendingProfile, setPendingProfile] = useState<ProfileFormData | null>(null);
   const cf = useCustomFieldsForm('product', product?.custom_fields);
   const [form, setForm] = useState({
@@ -974,6 +975,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
   const tabs: { key: FormTab; label: string; icon: React.ReactNode }[] = [
     { key: 'general', label: 'General', icon: <ShoppingBag size={16} /> },
+    { key: 'pricing', label: 'Tarifs', icon: <Coins size={16} /> },
     { key: 'production', label: 'Production', icon: <Factory size={16} /> },
     { key: 'lifecycle', label: 'Cycle de vie', icon: <Clock size={16} /> },
   ];
@@ -1209,75 +1211,19 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   )}
                 </div>
 
-                {/* Category + Price */}
+                {/* Catégorie + Responsable */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label style={fieldLabel}>Catégorie</label>
-                    <select style={fieldInput}
-                      value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: parseInt(e.target.value) })}>
+                    <select style={fieldInput} value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: parseInt(e.target.value) })}>
                       {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
-                  </div>
-                  <div>
-                    <label style={fieldLabel}>Prix de vente (DH)</label>
-                    <input type="number" step="0.01" readOnly tabIndex={-1}
-                      style={{ ...fieldInputRO, fontWeight: 700 }}
-                      value={form.price} placeholder="0.00" />
-                    <p className="text-xs text-gray-400 mt-1">Calculé depuis la recette (coût × marge ou prix saisi)</p>
-                  </div>
-                </div>
-
-                {/* Mode de vente (pièce / poids / par personne) */}
-                <div>
-                  <label style={fieldLabel}>Mode de vente</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                    {([
-                      { v: 'unit', label: 'À la pièce', desc: 'Prix unitaire' },
-                      { v: 'weight', label: 'Au poids', desc: 'Prix au kg / paliers' },
-                      { v: 'person', label: 'Par personne', desc: 'Prix/personne × parts' },
-                    ] as const).map(opt => {
-                      const active = form.saleUnit === opt.v;
-                      return (
-                        <button key={opt.v} type="button" onClick={() => setForm({ ...form, saleUnit: opt.v })}
-                          style={{
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 6px', textAlign: 'center', cursor: 'pointer',
-                            border: `1px solid ${active ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4,
-                            background: active ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)',
-                            boxShadow: active ? 'inset 0 0 0 1px var(--odoo-purple)' : 'none',
-                          }}>
-                          <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--odoo-text)' }}>{opt.label}</span>
-                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{opt.desc}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {form.saleUnit === 'person' && (
-                  <div>
-                    <label style={fieldLabel}>Prix par personne (DH)</label>
-                    <input type="number" step="0.01" min={0} style={{ ...fieldInput, fontWeight: 600 }}
-                      value={form.pricePerPerson} onChange={e => setForm({ ...form, pricePerPerson: e.target.value })}
-                      placeholder="Ex : 30" />
-                    <p className="text-xs text-gray-400 mt-1">En caisse, la caissière choisit le nombre de personnes ; le prix = ce montant × le nombre de parts.</p>
-                  </div>
-                )}
-
-                {/* Cost price + Responsible */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label style={fieldLabel}>Prix de revient (DH)</label>
-                    <input type="number" step="0.01" readOnly tabIndex={-1}
-                      style={fieldInputRO}
-                      value={form.costPrice} placeholder="Auto" />
-                    <p className="text-xs text-gray-400 mt-1">Calculé depuis le coût des ingrédients de la recette</p>
                   </div>
                   <div>
                     <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <ChefHat size={14} className="text-amber-500" /> Responsable
                     </label>
-                    <select style={fieldInput}
-                      value={form.responsibleUserId} onChange={(e) => setForm({ ...form, responsibleUserId: e.target.value })}>
+                    <select style={fieldInput} value={form.responsibleUserId} onChange={(e) => setForm({ ...form, responsibleUserId: e.target.value })}>
                       <option value="">Aucun responsable</option>
                       {chefUsers.map((u: Record<string, any>) => (
                         <option key={u.id as string} value={u.id as string}>
@@ -1314,24 +1260,81 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     <span className="text-sm font-medium text-gray-700">Sur commande</span>
                   </label>
                 </div>
-
-                {/* Paliers tarifaires (mig 171) — visible uniquement pour les produits vendus au poids */}
-                {product && product.sale_unit === 'weight' && (
-                  <PricingTiersPanel productId={product.id as string} />
-                )}
-
-                {/* Prix par canal de vente (mig 173) — visible pour tous les produits existants */}
-                {product && (
-                  <ChannelPricingPanel
-                    productId={product.id as string}
-                    saleUnit={(product.sale_unit as string) || 'unit'}
-                  />
-                )}
               </>
             )}
 
             {activeTab === 'general' && cf.defs.length > 0 && (
               <div style={{ marginTop: 16 }}><CustomFieldsEditor entity="product" values={cf.values} onChange={cf.setValues} /></div>
+            )}
+
+            {/* ═══ Tab: Tarifs ═══ */}
+            {activeTab === 'pricing' && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label style={fieldLabel}>Prix de vente (DH)</label>
+                    <input type="number" step="0.01" readOnly tabIndex={-1} style={{ ...fieldInputRO, fontWeight: 700 }} value={form.price} placeholder="0.00" />
+                    <p className="text-xs text-gray-400 mt-1">Calculé depuis la recette (coût × marge ou prix saisi)</p>
+                  </div>
+                  <div>
+                    <label style={fieldLabel}>Prix de revient (DH)</label>
+                    <input type="number" step="0.01" readOnly tabIndex={-1} style={fieldInputRO} value={form.costPrice} placeholder="Auto" />
+                    <p className="text-xs text-gray-400 mt-1">Calculé depuis le coût des ingrédients de la recette</p>
+                  </div>
+                </div>
+
+                <div>
+                  <label style={fieldLabel}>Mode de vente</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                    {([
+                      { v: 'unit', label: 'À la pièce', desc: 'Prix unitaire' },
+                      { v: 'weight', label: 'Au poids', desc: 'Prix au kg / paliers' },
+                      { v: 'person', label: 'Par personne', desc: 'Prix/personne × parts' },
+                    ] as const).map(opt => {
+                      const active = form.saleUnit === opt.v;
+                      return (
+                        <button key={opt.v} type="button" onClick={() => setForm({ ...form, saleUnit: opt.v })}
+                          style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 6px', textAlign: 'center', cursor: 'pointer',
+                            border: `1px solid ${active ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4,
+                            background: active ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)',
+                            boxShadow: active ? 'inset 0 0 0 1px var(--odoo-purple)' : 'none',
+                          }}>
+                          <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--odoo-text)' }}>{opt.label}</span>
+                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{opt.desc}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {form.saleUnit === 'person' && (
+                  <div>
+                    <label style={fieldLabel}>Prix par personne (DH)</label>
+                    <input type="number" step="0.01" min={0} style={{ ...fieldInput, fontWeight: 600 }}
+                      value={form.pricePerPerson} onChange={e => setForm({ ...form, pricePerPerson: e.target.value })}
+                      placeholder="Ex : 30" />
+                    <p className="text-xs text-gray-400 mt-1">En caisse, la caissière choisit le nombre de personnes ; le prix = ce montant × le nombre de parts.</p>
+                  </div>
+                )}
+
+                {product && product.sale_unit === 'weight' && (
+                  <PricingTiersPanel productId={product.id as string} />
+                )}
+
+                {product && (
+                  <div>
+                    <button type="button" onClick={() => setShowChannels(sv => !sv)} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      {showChannels ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Prix par canal de vente
+                    </button>
+                    {showChannels && (
+                      <div style={{ marginTop: 8 }}>
+                        <ChannelPricingPanel productId={product.id as string} saleUnit={(product.sale_unit as string) || 'unit'} />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             )}
 
             {/* ═══ Tab: Production ═══ */}
