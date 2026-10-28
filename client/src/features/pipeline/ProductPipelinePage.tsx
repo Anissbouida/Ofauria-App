@@ -4,7 +4,7 @@ import {
   Plus, Search, ChevronRight, ChevronLeft, X, Clock,
   CheckCircle2, XCircle, AlertTriangle, ArrowRight,
   FileText, ChefHat, Calculator, Factory, Star, Shield, Package,
-  RotateCw, History, Ban
+  RotateCw, History, Ban, GitBranch
 } from 'lucide-react';
 import { productPipelineApi } from '../../api/product-pipeline.api';
 import { recipesApi } from '../../api/recipes.api';
@@ -12,6 +12,8 @@ import { categoriesApi } from '../../api/categories.api';
 import { usersApi } from '../../api/users.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { StagePipeline, StageProgress, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { StatusBanner } from '../../components/ui/StatusBanner';
 
 /* ═══ Constants ═══ */
 const STAGES = [
@@ -23,6 +25,27 @@ const STAGES = [
   { key: 'admin_validation', label: 'Validation', icon: Shield, color: 'red' },
   { key: 'catalog_integration', label: 'Catalogue', icon: Package, color: 'emerald' },
 ] as const;
+
+const STAGE_HINTS: Record<string, string> = {
+  proposition: 'Idée soumise',
+  recipe_development: 'Mise au point',
+  cost_calculation: 'Calcul du revient',
+  production_test: 'Essai en production',
+  tasting_evaluation: 'Panel de dégustation',
+  admin_validation: 'Accord direction',
+  catalog_integration: 'Mise en vente',
+};
+// Les compteurs renvoyés par l'API utilisent des clés abrégées.
+const STAGE_STAT_KEY: Record<string, string> = {
+  proposition: 'stage_proposition',
+  recipe_development: 'stage_recipe',
+  cost_calculation: 'stage_cost',
+  production_test: 'stage_test',
+  tasting_evaluation: 'stage_tasting',
+  admin_validation: 'stage_validation',
+  catalog_integration: 'stage_integration',
+};
+const STAGE_DEFS: StageDef[] = STAGES.map(s => ({ key: s.key, label: s.label, hint: STAGE_HINTS[s.key], icon: s.icon }));
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
   active: { label: 'En cours', color: 'blue', icon: Clock },
@@ -60,6 +83,7 @@ export default function ProductPipelinePage() {
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('active');
+  const [stageFilter, setStageFilter] = useState<string | null>(null);
 
   const { data: statsData } = useQuery({
     queryKey: ['pipeline-stats'],
@@ -76,6 +100,11 @@ export default function ProductPipelinePage() {
 
   const pipelines = (listData?.rows || []) as Pipeline[];
   const stats = statsData || {} as Record<string, number>;
+  // Filtrage par étape : fait côté client sur les pipelines déjà chargés.
+  const visiblePipelines = stageFilter ? pipelines.filter(p => p.current_stage === stageFilter) : pipelines;
+  const stageStats: Record<string, { count: number; sub: string }> = Object.fromEntries(
+    STAGES.map(s => [s.key, { count: Number(stats[STAGE_STAT_KEY[s.key]] || 0), sub: '' }])
+  );
 
   const openDetail = (id: string) => {
     setSelectedId(id);
@@ -92,99 +121,142 @@ export default function ProductPipelinePage() {
   }
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Pipeline Produits</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Workflow d'intégration de nouveaux produits en 7 étapes
-          </p>
-        </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-700 transition-colors"
-        >
-          <Plus size={18} />
-          Nouveau pipeline
+    <div style={{ display: 'grid', gap: 12 }}>
+      {/* ══════ Barre d'action ══════ */}
+      <div className="odoo-control-bar">
+        <button onClick={() => setShowCreate(true)} className="odoo-btn-primary">
+          <Plus size={14} /> Nouveau pipeline
         </button>
+        <div style={{ flex: 1 }} />
+        <span className="odoo-pager">
+          <strong>{visiblePipelines.length}</strong> pipeline{visiblePipelines.length > 1 ? 's' : ''}
+        </span>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'En cours', value: stats.active_count || 0, color: 'blue', filter: 'active' },
-          { label: 'Terminés', value: stats.completed_count || 0, color: 'green', filter: 'completed' },
-          { label: 'Rejetés', value: stats.rejected_count || 0, color: 'red', filter: 'rejected' },
-          { label: 'Total', value: stats.total_count || 0, color: 'gray', filter: '' },
-        ].map(card => (
-          <button
-            key={card.label}
-            onClick={() => setStatusFilter(card.filter)}
-            className={`p-4 rounded-xl border transition-all text-left ${
-              statusFilter === card.filter
-                ? `bg-${card.color}-50 border-${card.color}-200 ring-2 ring-${card.color}-200`
-                : 'bg-white border-gray-100 hover:border-gray-200'
-            }`}
-          >
-            <p className="text-xs text-gray-500 font-medium">{card.label}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{String(card.value)}</p>
-          </button>
-        ))}
+      <StatusBanner tone="info" icon={GitBranch} title="Intégration de nouveaux produits en 7 étapes">
+        De la proposition au catalogue : chaque produit franchit les étapes recette, coût, test de production,
+        dégustation puis validation avant sa mise en vente.
+      </StatusBanner>
+
+      {/* ══════ STAT TILES (statut) ══════ */}
+      <div className="odoo-stat-grid">
+        {([
+          { label: 'En cours', value: stats.active_count || 0, filter: 'active', icon: Clock },
+          { label: 'Terminés', value: stats.completed_count || 0, filter: 'completed', icon: CheckCircle2 },
+          { label: 'Rejetés', value: stats.rejected_count || 0, filter: 'rejected', icon: XCircle },
+          { label: 'Total', value: stats.total_count || 0, filter: '', icon: Package },
+        ] as const).map(card => {
+          const Icon = card.icon;
+          return (
+            <button key={card.label}
+              onClick={() => { setStatusFilter(card.filter); setStageFilter(null); }}
+              className={`odoo-stat-card ${statusFilter === card.filter ? 'active' : ''}`}>
+              <div className="odoo-stat-card-label"><Icon size={11} style={{ display: 'inline', marginRight: 4 }} />{card.label}</div>
+              <div className="odoo-stat-card-value">{String(card.value)}</div>
+              <div className="odoo-stat-card-sub">{card.filter === '' ? 'au total' : 'pipeline' + (Number(card.value) > 1 ? 's' : '')}</div>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Stage funnel (active pipelines) */}
-      {statusFilter === 'active' && (
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-3">Répartition par étape</h3>
-          <div className="flex items-center gap-1 overflow-x-auto">
-            {STAGES.map((stage, idx) => {
-              const count = stats[`stage_${stage.key === 'recipe_development' ? 'recipe' : stage.key === 'cost_calculation' ? 'cost' : stage.key === 'production_test' ? 'test' : stage.key === 'tasting_evaluation' ? 'tasting' : stage.key === 'admin_validation' ? 'validation' : stage.key === 'catalog_integration' ? 'integration' : stage.key}`] || 0;
-              const StageIcon = stage.icon;
-              return (
-                <div key={stage.key} className="flex items-center">
-                  <div className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-${stage.color}-50 min-w-[110px]`}>
-                    <StageIcon size={14} className={`text-${stage.color}-600`} />
-                    <div>
-                      <p className="text-xs font-medium text-gray-700">{stage.label}</p>
-                      <p className={`text-sm font-bold text-${stage.color}-700`}>{String(count)}</p>
-                    </div>
-                  </div>
-                  {idx < STAGES.length - 1 && <ChevronRight size={14} className="text-gray-300 mx-1 flex-shrink-0" />}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* ══════ Répartition par étape (pipelines actifs) ══════ */}
+      <StagePipeline
+        title="Répartition par étape"
+        summary="Pipelines actifs à chaque étape — cliquez pour filtrer"
+        stages={STAGE_DEFS}
+        stats={stageStats}
+        isActive={(k) => stageFilter === k}
+        onPick={(k) => { setStatusFilter('active'); setStageFilter(stageFilter === k ? null : k); }}
+      />
 
-      {/* Search */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Rechercher un pipeline..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-          />
-        </div>
+      {/* ══════ Recherche ══════ */}
+      <div className="odoo-search-panel">
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
+        <input type="text" placeholder="Rechercher un pipeline..."
+          value={search} onChange={e => setSearch(e.target.value)} className="odoo-search-input" />
+        {search && (
+          <span className="odoo-filter-chip">
+            Recherche: {search}
+            <span className="odoo-filter-chip-remove" onClick={() => setSearch('')}>×</span>
+          </span>
+        )}
+        {stageFilter && (
+          <span className="odoo-filter-chip">
+            {STAGES.find(st => st.key === stageFilter)?.label}
+            <span className="odoo-filter-chip-remove" onClick={() => setStageFilter(null)}>×</span>
+          </span>
+        )}
       </div>
 
-      {/* List */}
+      {/* ══════ Liste (table) ══════ */}
       {isLoading ? (
-        <div className="text-center py-12 text-gray-400">Chargement...</div>
-      ) : pipelines.length === 0 ? (
-        <div className="text-center py-12">
-          <Package size={48} className="mx-auto text-gray-300 mb-3" />
-          <p className="text-gray-500">Aucun pipeline trouvé</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4rem' }}>
+          <div style={{ width: 28, height: 28, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
         </div>
+      ) : visiblePipelines.length === 0 ? (
+        <StatusBanner tone="info" icon={Package} title="Aucun pipeline trouvé">
+          Lancez l'intégration d'un nouveau produit avec « Nouveau pipeline ».
+        </StatusBanner>
       ) : (
-        <div className="space-y-3">
-          {pipelines.map(p => (
-            <PipelineCard key={String(p.id)} pipeline={p} onClick={() => openDetail(String(p.id))} />
-          ))}
+        <div className="odoo-section">
+          <table className="odoo-table">
+            <thead>
+              <tr>
+                <th>Produit</th>
+                <th>Catégorie</th>
+                <th>Avancement</th>
+                <th>Statut</th>
+                <th>Responsable</th>
+                <th style={{ textAlign: 'right' }}>Créé le</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visiblePipelines.map(p => {
+                const stageIdx = STAGES.findIndex(st => st.key === p.current_stage);
+                const sc = STATUS_CONFIG[String(p.status)] || STATUS_CONFIG.active;
+                const tagColor = sc.color === 'blue' ? 'odoo-tag-blue'
+                  : sc.color === 'green' ? 'odoo-tag-green'
+                  : sc.color === 'red' ? 'odoo-tag-red' : 'odoo-tag-grey';
+                const StatusIcon = sc.icon;
+                return (
+                  <tr key={String(p.id)} onClick={() => openDetail(String(p.id))} style={{ cursor: 'pointer' }}>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{String(p.name)}</div>
+                      {Boolean(p.description) && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {String(p.description)}
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      {Boolean(p.category_name)
+                        ? <span className="odoo-tag odoo-tag-grey">{String(p.category_name)}</span>
+                        : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>}
+                    </td>
+                    <td style={{ minWidth: 160 }}>
+                      <StageProgress count={STAGES.length} current={stageIdx} done={p.status === 'completed'} />
+                      <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
+                        Étape {stageIdx + 1}/7 — {STAGES[stageIdx]?.label || ''}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`odoo-tag ${tagColor}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <StatusIcon size={11} />{sc.label}
+                      </span>
+                    </td>
+                    <td>
+                      {Boolean(p.responsible_first_name)
+                        ? `${String(p.responsible_first_name)} ${String(p.responsible_last_name || '')}`.trim()
+                        : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>}
+                    </td>
+                    <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>
+                      {Boolean(p.created_at) ? format(new Date(String(p.created_at)), 'dd MMM yyyy', { locale: fr }) : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
@@ -201,71 +273,6 @@ export default function ProductPipelinePage() {
         />
       )}
     </div>
-  );
-}
-
-/* ═══ Pipeline Card ═══ */
-function PipelineCard({ pipeline: p, onClick }: { pipeline: Pipeline; onClick: () => void }) {
-  const stageIdx = STAGES.findIndex(s => s.key === p.current_stage);
-  const statusConf = STATUS_CONFIG[String(p.status)] || STATUS_CONFIG.active;
-  const StatusIcon = statusConf.icon;
-
-  return (
-    <button
-      onClick={onClick}
-      className="w-full bg-white rounded-xl border border-gray-100 p-4 hover:border-gray-200 hover:shadow-sm transition-all text-left"
-    >
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-gray-900">{String(p.name)}</h3>
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-${statusConf.color}-50 text-${statusConf.color}-700`}>
-              <StatusIcon size={12} />
-              {statusConf.label}
-            </span>
-          </div>
-          {Boolean(p.description) && (
-            <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{String(p.description)}</p>
-          )}
-        </div>
-        <div className="text-right text-xs text-gray-400">
-          {Boolean(p.created_at) && format(new Date(String(p.created_at)), 'dd MMM yyyy', { locale: fr })}
-        </div>
-      </div>
-
-      {/* Mini stepper */}
-      <div className="flex items-center gap-0.5">
-        {STAGES.map((stage, idx) => {
-          const isCompleted = idx < stageIdx;
-          const isCurrent = idx === stageIdx;
-          return (
-            <div key={stage.key} className="flex items-center flex-1">
-              <div
-                className={`h-1.5 flex-1 rounded-full transition-colors ${
-                  isCompleted ? 'bg-green-400' :
-                  isCurrent ? `bg-${stage.color}-400` :
-                  'bg-gray-100'
-                }`}
-              />
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="flex items-center justify-between mt-2">
-        <span className="text-xs text-gray-500">
-          Étape {stageIdx + 1}/7 — {STAGES[stageIdx]?.label || ''}
-        </span>
-        <div className="flex items-center gap-3 text-xs text-gray-400">
-          {Boolean(p.responsible_first_name) && (
-            <span>{String(p.responsible_first_name)} {String(p.responsible_last_name)}</span>
-          )}
-          {Boolean(p.category_name) && (
-            <span className="px-2 py-0.5 bg-gray-100 rounded-full">{String(p.category_name)}</span>
-          )}
-        </div>
-      </div>
-    </button>
   );
 }
 

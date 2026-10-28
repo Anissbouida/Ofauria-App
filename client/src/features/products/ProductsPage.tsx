@@ -8,10 +8,11 @@ import { serverUrl } from '../../api/client';
 import { categoriesApi } from '../../api/categories.api';
 import { usersApi } from '../../api/users.api';
 import { recipesApi } from '../../api/recipes.api';
-import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusBanner } from '../../components/ui/StatusBanner';
 import CustomFieldsEditor from '../../components/custom-fields/CustomFieldsEditor';
 import { customFieldsApi, useCustomFieldsForm, type CfValues } from '../../api/custom-fields.api';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -668,6 +669,10 @@ function CatalogueTab() {
 
 type FormTab = 'general' | 'production' | 'lifecycle';
 
+const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
+const fieldInput: React.CSSProperties = { width: '100%', fontSize: '0.875rem', padding: '8px 10px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', boxSizing: 'border-box' };
+const fieldInputRO: React.CSSProperties = { ...fieldInput, background: 'var(--odoo-bg-alt)', cursor: 'not-allowed' };
+
 function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   product: Record<string, any> | null;
   categories: { id: number; name: string }[];
@@ -1013,7 +1018,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
               <>
                 {/* Image upload */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Photo du produit</label>
+                  <label style={fieldLabel}>Photo du produit</label>
                   <div className="flex items-start gap-4">
                     {imagePreview ? (
                       <div className="relative w-32 h-32 rounded-xl overflow-hidden border border-gray-200 shrink-0 group">
@@ -1068,30 +1073,27 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
                 {/* Name */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nom du produit</label>
-                  <input className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 focus:bg-white transition-colors font-medium"
+                  <label style={fieldLabel}>Nom du produit</label>
+                  <input style={{ ...fieldInput, fontWeight: 500 }}
                     value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="Ex: Croissant au beurre" />
                 </div>
 
                 {/* Recipe smart search — mandatory */}
                 <div ref={recipeDropdownRef} className="relative">
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                  <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <BookOpen size={14} className="text-amber-500" /> Recette <span className="text-red-500">*</span>
                   </label>
                   {allRecipesList.length === 0 ? (
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-800">
-                      <AlertTriangle size={14} className="inline mr-1.5" />
-                      Aucune recette dans le système. Veuillez d'abord créer une recette dans le module <strong>Recettes</strong> avant de pouvoir ajouter un produit.
-                    </div>
+                    <StatusBanner tone="warning" icon={AlertTriangle} title="Aucune recette disponible">
+                      Créez d'abord une recette dans le module <strong>Recettes</strong> avant d'ajouter un produit.
+                    </StatusBanner>
                   ) : (
                     <>
                       {/* Search input — always visible */}
                       <div className="relative">
                         <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input ref={recipeInputRef} type="text"
-                          className={`w-full pl-10 pr-10 py-3 border rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-colors ${
-                            selectedRecipe ? 'bg-amber-50 border-amber-300 font-semibold text-amber-800' : 'bg-gray-50 border-gray-200'
-                          }`}
+                          style={{ ...fieldInput, paddingLeft: 34, paddingRight: 34, ...(selectedRecipe ? { background: 'var(--odoo-purple-light)', fontWeight: 600 } : {}) }}
                           placeholder="Tapez pour rechercher une recette..."
                           value={recipeDropdownOpen ? recipeSearch : (selectedRecipe ? (selectedRecipe.name as string) : recipeSearch)}
                           onChange={(e) => { setRecipeSearch(e.target.value); setRecipeDropdownOpen(true); if (form.recipeId) setForm(f => ({ ...f, recipeId: '' })); }}
@@ -1206,16 +1208,16 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 {/* Category + Price */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Catégorie</label>
-                    <select className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    <label style={fieldLabel}>Catégorie</label>
+                    <select style={fieldInput}
                       value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: parseInt(e.target.value) })}>
                       {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Prix de vente (DH)</label>
+                    <label style={fieldLabel}>Prix de vente (DH)</label>
                     <input type="number" step="0.01" readOnly tabIndex={-1}
-                      className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 cursor-not-allowed"
+                      style={{ ...fieldInputRO, fontWeight: 700 }}
                       value={form.price} placeholder="0.00" />
                     <p className="text-xs text-gray-400 mt-1">Calculé depuis la recette (coût × marge ou prix saisi)</p>
                   </div>
@@ -1224,17 +1226,17 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 {/* Cost price + Responsible */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Prix de revient (DH)</label>
+                    <label style={fieldLabel}>Prix de revient (DH)</label>
                     <input type="number" step="0.01" readOnly tabIndex={-1}
-                      className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-xl text-sm text-gray-700 cursor-not-allowed"
+                      style={fieldInputRO}
                       value={form.costPrice} placeholder="Auto" />
                     <p className="text-xs text-gray-400 mt-1">Calculé depuis le coût des ingrédients de la recette</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                    <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <ChefHat size={14} className="text-amber-500" /> Responsable
                     </label>
-                    <select className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    <select style={fieldInput}
                       value={form.responsibleUserId} onChange={(e) => setForm({ ...form, responsibleUserId: e.target.value })}>
                       <option value="">Aucun responsable</option>
                       {chefUsers.map((u: Record<string, any>) => (
@@ -1248,8 +1250,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
                 {/* Description */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Description</label>
-                  <textarea className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
+                  <label style={fieldLabel}>Description</label>
+                  <textarea style={{ ...fieldInput, resize: 'vertical' }}
                     rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description optionnelle..." />
                 </div>
 
@@ -1295,33 +1297,27 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
             {/* ═══ Tab: Production ═══ */}
             {activeTab === 'production' && (
               <>
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                  <div className="flex items-start gap-3">
-                    <Factory size={20} className="text-amber-600 mt-0.5 shrink-0" />
-                    <div>
-                      <h3 className="text-sm font-semibold text-amber-800">Parametres de production</h3>
-                      <p className="text-xs text-amber-600 mt-0.5">Ces parametres influencent les plans de production automatiques</p>
-                    </div>
-                  </div>
-                </div>
+                <StatusBanner tone="warning" icon={Factory} title="Paramètres de production">
+                  Ces paramètres influencent les plans de production automatiques.
+                </StatusBanner>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                  <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Package size={14} className="text-blue-500" /> Seuil d'alerte stock
                   </label>
                   <input type="number" step="1" min="0"
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    style={fieldInput}
                     value={form.stockMinThreshold} onChange={(e) => setForm({ ...form, stockMinThreshold: e.target.value })}
                     placeholder="0 = pas d'alerte" />
                   <p className="text-xs text-gray-400 mt-1.5 ml-1">Alerte quand le stock descend en dessous de ce seuil</p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                  <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <Factory size={14} className="text-amber-500" /> Lot minimum de production
                   </label>
                   <input type="number" step="1" min="0"
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                    style={fieldInput}
                     value={form.minProductionQuantity} onChange={(e) => setForm({ ...form, minProductionQuantity: e.target.value })}
                     placeholder="0 = pas de minimum" />
                   <p className="text-xs text-gray-400 mt-1.5 ml-1">Quantite minimale a produire a chaque lancement (le surplus reste en stock central)</p>
@@ -1329,16 +1325,16 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
                 {/* Production summary info */}
                 {product && (
-                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Informations actuelles</h4>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-600">Stock actuel</span>
-                        <span className="text-sm font-bold text-gray-900">{product.sale_unit === 'weight' ? `${(parseFloat((product.stock_quantity as string) || '0') / 1000).toFixed(2)} kg` : parseFloat((product.stock_quantity as string) || '0')}</span>
+                  <div className="odoo-section">
+                    <div className="odoo-section-header">Informations actuelles</div>
+                    <div style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Stock actuel</span>
+                        <span style={{ fontSize: '0.875rem', fontWeight: 700 }}>{product.sale_unit === 'weight' ? `${(parseFloat((product.stock_quantity as string) || '0') / 1000).toFixed(2)} kg` : parseFloat((product.stock_quantity as string) || '0')}</span>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-600">Seuil alerte</span>
-                        <span className="text-sm font-bold text-gray-900">{product.sale_unit === 'weight' ? `${(parseFloat((product.stock_min_threshold as string) || '0') / 1000).toFixed(2)} kg` : parseFloat((product.stock_min_threshold as string) || '0')}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Seuil alerte</span>
+                        <span style={{ fontSize: '0.875rem', fontWeight: 700 }}>{product.sale_unit === 'weight' ? `${(parseFloat((product.stock_min_threshold as string) || '0') / 1000).toFixed(2)} kg` : parseFloat((product.stock_min_threshold as string) || '0')}</span>
                       </div>
                     </div>
                   </div>
@@ -1349,54 +1345,43 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
             {/* ═══ Tab: Cycle de vie ═══ */}
             {activeTab === 'lifecycle' && (
               <>
-                <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-                  <div className="flex items-start gap-3">
-                    <Clock size={20} className="text-purple-600 mt-0.5 shrink-0" />
-                    <div>
-                      <h3 className="text-sm font-semibold text-purple-800">Cycle de vie du produit</h3>
-                      <p className="text-xs text-purple-600 mt-0.5">DLC, type de vente, exposition et valorisation</p>
-                    </div>
-                  </div>
-                </div>
+                <StatusBanner tone="info" icon={Clock} title="Cycle de vie du produit">
+                  DLC, type de vente, exposition et valorisation.
+                </StatusBanner>
 
                 {/* Type de vente (audit P1.1 : pilote de l'onglet) */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Type de vente</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { value: 'jour', label: 'Vente du jour', desc: 'Invendu = perte ou valorisation', color: 'amber', icon: '☀️' },
-                      { value: 'dlv', label: 'Multi-jours (DLC)', desc: 'Vendable sur plusieurs jours', color: 'green', icon: '📅' },
-                      { value: 'commande', label: 'Sur commande', desc: 'Pas de stock vitrine', color: 'blue', icon: '📋' },
-                    ].map(opt => (
-                      <button key={opt.value} type="button"
-                        onClick={() => setSaleType(opt.value)}
-                        className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all text-center ${
-                          form.saleType === opt.value
-                            ? `border-${opt.color}-400 bg-${opt.color}-50 ring-1 ring-${opt.color}-200`
-                            : 'border-gray-200 bg-white hover:border-gray-300'
-                        }`}>
-                        <span className="text-xl">{opt.icon}</span>
-                        <span className="text-xs font-semibold text-gray-800">{opt.label}</span>
-                        <span className="text-[10px] text-gray-500 leading-tight">{opt.desc}</span>
-                      </button>
-                    ))}
+                  <label style={fieldLabel}>Type de vente</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                    {([
+                      { value: 'jour', label: 'Vente du jour', desc: 'Invendu = perte ou valorisation', icon: Sun },
+                      { value: 'dlv', label: 'Multi-jours (DLC)', desc: 'Vendable sur plusieurs jours', icon: CalendarDays },
+                      { value: 'commande', label: 'Sur commande', desc: 'Pas de stock vitrine', icon: ClipboardList },
+                    ] as const).map(opt => {
+                      const active = form.saleType === opt.value;
+                      const OptIcon = opt.icon;
+                      return (
+                        <button key={opt.value} type="button" onClick={() => setSaleType(opt.value)}
+                          style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: 12, textAlign: 'center', cursor: 'pointer',
+                            border: `1px solid ${active ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4,
+                            background: active ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)',
+                            boxShadow: active ? 'inset 0 0 0 1px var(--odoo-purple)' : 'none',
+                          }}>
+                          <OptIcon size={20} style={{ color: active ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)' }} />
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--odoo-text)' }}>{opt.label}</span>
+                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', lineHeight: 1.2 }}>{opt.desc}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
                 {/* Bannière type=commande : rien d'autre à saisir */}
                 {form.saleType === 'commande' && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                    <div className="flex items-start gap-3">
-                      <span className="text-lg">📋</span>
-                      <div>
-                        <h4 className="text-sm font-semibold text-blue-800">Sur commande — pas de cycle de vie vitrine</h4>
-                        <p className="text-xs text-blue-600 mt-0.5">
-                          Le produit n&apos;est jamais expose : ni DLC, ni exposition, ni remise en vente, ni valorisation.
-                          Il est produit à la demande.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+                  <StatusBanner tone="info" icon={ClipboardList} title="Sur commande — pas de cycle de vie vitrine">
+                    Le produit n&apos;est jamais exposé : ni DLC, ni exposition, ni remise en vente, ni valorisation. Il est produit à la demande.
+                  </StatusBanner>
                 )}
 
                 {/* Sections cycle de vie visibles uniquement pour jour/dlv */}
@@ -1404,11 +1389,11 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   <>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                        <label style={fieldLabel}>
                           DLC — Durée de vie (jours) {form.saleType === 'dlv' && <span className="text-red-500">*</span>}
                         </label>
                         <input type="number" step="1" min="0"
-                          className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                          style={fieldInput}
                           value={form.shelfLifeDays} onChange={(e) => setForm({ ...form, shelfLifeDays: e.target.value })}
                           placeholder={form.saleType === 'dlv' ? 'Obligatoire (ex: 3)' : 'Optionnel — vide = jour même'}
                           required={form.saleType === 'dlv'} />
@@ -1419,16 +1404,16 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                         </p>
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">Exposition max en vitrine (heures)</label>
+                        <label style={fieldLabel}>Exposition max en vitrine (heures)</label>
                         <input type="number" step="1" min="0"
-                          className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                          style={fieldInput}
                           value={form.displayLifeHours} onChange={(e) => setForm({ ...form, displayLifeHours: e.target.value })} placeholder="Ex: 24" />
                         <p className="text-xs text-gray-400 mt-1.5 ml-1">Compte à partir du <strong>transfert en vitrine</strong>. Échéance effective = MIN(DLC, exposition)</p>
                       </div>
                     </div>
 
                     {/* Re-exposable toggle + max_reexpositions (audit P1.4) */}
-                    <div className="bg-white border border-gray-200 rounded-xl p-4">
+                    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 14, background: 'var(--odoo-bg)' }}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
@@ -1457,11 +1442,11 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       </div>
                       {form.isReexposable && (
                         <div className="mt-3 pt-3 border-t border-gray-100">
-                          <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          <label style={fieldLabel}>
                             Nombre maximum de remises en vente
                           </label>
                           <input type="number" step="1" min="1" max="10"
-                            className="w-40 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                            style={{ ...fieldInput, width: 160 }}
                             value={form.maxReexpositions}
                             onChange={(e) => setForm({ ...form, maxReexpositions: e.target.value })}
                             placeholder="1" />
@@ -1474,7 +1459,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     </div>
 
                     {/* Recyclable toggle + gestion destinations (audit P1.3) */}
-                    <div className="bg-white border border-gray-200 rounded-xl p-4">
+                    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 14, background: 'var(--odoo-bg)' }}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-cyan-50 flex items-center justify-center">
