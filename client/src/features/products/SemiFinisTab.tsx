@@ -9,6 +9,7 @@ import {
   Layers, Search, ChevronDown, ChevronRight, Snowflake,
   AlertTriangle, Package, Clock, ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react';
+import { StatusBanner } from '../../components/ui/StatusBanner';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -177,6 +178,10 @@ export default function SemiFinisTab() {
 
   return (
     <>
+      <StatusBanner tone="info" icon={Layers} title="Produits de base (semi-finis)">
+        Recettes intermédiaires stockées au frigo et réutilisées comme composants d'autres produits. Suivez leur stock disponible, leurs lots et les réservations des plans de production.
+      </StatusBanner>
+
       {/* ─── Stat tiles ─── */}
       <div className="odoo-stat-grid">
         <div className="odoo-stat-card">
@@ -229,13 +234,9 @@ export default function SemiFinisTab() {
           Chargement...
         </div>
       ) : filtered.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Layers size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Aucun produit de base</p>
-          <p style={{ fontSize: '0.75rem', marginTop: 4 }}>
-            Créez des recettes marquées comme &quot;recette de base&quot; dans le module Recettes
-          </p>
-        </div>
+        <StatusBanner tone="info" icon={Layers} title="Aucun produit de base">
+          Créez des recettes marquées comme « recette de base » dans le module Recettes.
+        </StatusBanner>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table">
