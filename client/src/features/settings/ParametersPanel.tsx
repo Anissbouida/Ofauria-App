@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, History, Search, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { settingsApi, type BusinessParameter, type ParamField } from '../../api/settings.api';
@@ -184,6 +184,9 @@ function FieldInput({ id, field, value, disabled, onChange }: {
       </label>
     );
   }
+  if (field.type === 'list') {
+    return <ListField id={id} field={field} value={value} disabled={disabled} onChange={onChange} box={box} labelStyle={label} />;
+  }
   const unit = field.type === 'percent' ? '%' : field.unit;
   return (
     <label htmlFor={id} style={label}>{field.label}
@@ -193,6 +196,32 @@ function FieldInput({ id, field, value, disabled, onChange }: {
           min={field.min} max={field.max} step={field.type === 'integer' ? 1 : 'any'}
           onChange={e => onChange(e.target.value === '' ? '' : Number(e.target.value))} />
         {unit && <span style={{ color: 'var(--odoo-text-muted)' }}>{unit}</span>}
+      </span>
+    </label>
+  );
+}
+
+/** Champ « liste de nombres » (ex. tailles d'entremets « 4, 6, 8… »). État local
+ *  pour ne pas casser la saisie ; resynchronise sur un changement externe
+ *  (sauvegarde ou réinitialisation). */
+function ListField({ id, field, value, disabled, onChange, box, labelStyle }: {
+  id: string; field: ParamField; value: unknown; disabled: boolean; onChange: (v: unknown) => void;
+  box: React.CSSProperties; labelStyle: React.CSSProperties;
+}) {
+  const arr = Array.isArray(value) ? (value as number[]) : [];
+  const [text, setText] = useState(arr.join(', '));
+  const parse = (t: string) => t.split(/[,;\s]+/).filter(Boolean).map(Number).filter(n => Number.isFinite(n));
+  useEffect(() => {
+    if (arr.join(',') !== parse(text).join(',')) setText(arr.join(', '));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+  return (
+    <label htmlFor={id} style={labelStyle}>{field.label}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <input id={id} type="text" style={{ ...box, width: 240 }} value={text} disabled={disabled}
+          placeholder="4, 6, 8, 10, 12, 16" inputMode="numeric"
+          onChange={e => { setText(e.target.value); onChange(parse(e.target.value)); }} />
+        {field.unit && <span style={{ color: 'var(--odoo-text-muted)' }}>{field.unit}</span>}
       </span>
     </label>
   );

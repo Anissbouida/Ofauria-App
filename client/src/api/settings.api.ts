@@ -112,7 +112,7 @@ export type DocumentSequenceInput = { pattern: string; padding: number; resetPer
 
 /** Paramètre métier du catalogue (Paramètres › Paramètres métier, lot 4). */
 export interface ParamField {
-  name: string; label: string; type: 'boolean' | 'number' | 'integer' | 'percent' | 'enum';
+  name: string; label: string; type: 'boolean' | 'number' | 'integer' | 'percent' | 'enum' | 'list';
   unit?: string; min?: number; max?: number; options?: { value: string; label: string }[];
 }
 export interface BusinessParameter {

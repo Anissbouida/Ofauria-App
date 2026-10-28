@@ -13,7 +13,7 @@ import type { SettingsSection } from '@ofauria/shared';
  * Ajouter un paramètre = ajouter une entrée ici (et sa valeur initiale en base).
  */
 
-export type FieldType = 'boolean' | 'number' | 'integer' | 'percent' | 'enum';
+export type FieldType = 'boolean' | 'number' | 'integer' | 'percent' | 'enum' | 'list';
 
 export interface ParamField {
   name: string;
@@ -117,6 +117,14 @@ export const PARAMETERS: ParamDef[] = [
       { name: 'auto_release', label: 'Débloquer un client dès qu\'il est à jour', type: 'boolean' },
     ],
     defaults: { enabled: true, auto_send: false, min_amount: 50, credit_control: 'warn', auto_release: true },
+    storage: { kind: 'module_parameters' },
+  },
+  {
+    key: 'sales.person_sizes', domain: 'sales', section: 'business',
+    label: 'Entremets vendus par personne — tailles',
+    help: 'Nombre de personnes proposés en caisse pour un entremet vendu au nombre de parts (mode de vente « par personne »). Séparez les valeurs par une virgule. Le prix = prix/personne du produit × le nombre de parts choisi (mig 377).',
+    fields: [{ name: 'sizes', label: 'Nombres de personnes', type: 'list', unit: 'personnes' }],
+    defaults: { sizes: [4, 6, 8, 10, 12, 16] },
     storage: { kind: 'module_parameters' },
   },
   {
@@ -252,6 +260,17 @@ export function validateParameter(def: ParamDef, input: unknown, current: Record
         if (!f.options?.some(o => o.value === raw)) return `${f.label} : valeur non proposée`;
         out[name] = raw;
         break;
+      case 'list': {
+        const arr: unknown[] = Array.isArray(raw)
+          ? raw
+          : typeof raw === 'string' ? raw.split(/[,;\s]+/).filter(Boolean) : [];
+        const nums = arr.map(x => (typeof x === 'number' ? x : Number(x)));
+        if (nums.some(n => !Number.isInteger(n) || n < 1 || n > 200)) return `${f.label} : des nombres entiers de 1 à 200 sont attendus`;
+        const uniq = [...new Set(nums)].sort((a, b) => a - b);
+        if (uniq.length === 0) return `${f.label} : au moins une valeur`;
+        out[name] = uniq;
+        break;
+      }
       default: {
         const n = typeof raw === 'number' ? raw : Number(raw);
         if (!Number.isFinite(n)) return `${f.label} : nombre attendu`;

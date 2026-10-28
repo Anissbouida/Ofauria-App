@@ -14,7 +14,7 @@ const DEFAULTS: Record<string, unknown> = {
   'sales.quotes': { validity_days: 30 },
   'sales.dunning': { enabled: true, auto_send: false, min_amount: 50, credit_control: 'warn', auto_release: true },
   'sales.pos_stock': { mode: 'block' } satisfies PosStockRule,
-  'sales.person_sizes': [4, 6, 8, 10, 12, 16],
+  'sales.person_sizes': { sizes: [4, 6, 8, 10, 12, 16] },
 };
 
 /** Caisse (mig 374) : 'block' = stock vitrine respecté, 'allow' = tout produit vendable même sans stock. */
@@ -28,8 +28,9 @@ export async function posAllowsNegativeStock(): Promise<boolean> {
 
 /** Entremets par personne (mig 377) : tailles standard proposées en caisse. */
 export async function getPersonSizes(): Promise<number[]> {
-  const v = await getParameter<number[]>('sales.person_sizes');
-  const sizes = (Array.isArray(v) ? v : []).map(Number).filter(n => Number.isFinite(n) && n > 0);
+  const v = await getParameter<number[] | { sizes?: number[] }>('sales.person_sizes');
+  const raw = Array.isArray(v) ? v : (v?.sizes ?? []);
+  const sizes = [...new Set(raw.map(Number).filter(n => Number.isInteger(n) && n > 0))].sort((a, b) => a - b);
   return sizes.length ? sizes : [4, 6, 8, 10, 12, 16];
 }
 
