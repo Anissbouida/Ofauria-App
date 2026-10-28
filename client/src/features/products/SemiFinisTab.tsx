@@ -552,7 +552,7 @@ function SemiFiniRow({
                 </CollapsibleSection>
 
                 {/* Historique de production */}
-                <CollapsibleSection title={`Historique de production (${lineage?.productions.length ?? 0})`} defaultOpen>
+                <CollapsibleSection title={`Historique de production (${lineage?.productions.length ?? 0})`} defaultOpen={false}>
                   {!lineage ? null : lineage.productions.length === 0 ? (
                     <p style={emptyTxt}>Aucune production enregistrée</p>
                   ) : (
@@ -577,7 +577,7 @@ function SemiFiniRow({
 
                 {/* Derniers mouvements */}
                 {lineage && lineage.transactions.length > 0 && (
-                  <CollapsibleSection title="Derniers mouvements" defaultOpen>
+                  <CollapsibleSection title="Derniers mouvements" defaultOpen={false}>
                     <table className="odoo-table" style={{ margin: 0 }}>
                       <tbody>
                         {lineage.transactions.slice(0, 6).map((tx, i) => {
@@ -610,7 +610,7 @@ function SemiFiniRow({
 
                 {/* Lots frigo */}
                 {lots.length > 0 && (
-                  <CollapsibleSection title="Lots frigo" defaultOpen>
+                  <CollapsibleSection title="Lots frigo" defaultOpen={false}>
                     <table className="odoo-table" style={{ margin: 0 }}>
                       <tbody>
                         {lots.map(lot => {
