@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Printer, Plus, Pencil, Trash2, Zap, CheckCircle2 } from 'lucide-react';
-import { printersApi, type PrinterConfig } from '../../api/printer.api';
+import { printersApi, type PrinterConfig, type SystemPrinter } from '../../api/printer.api';
+import { Search, Usb } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 
 const PRINTER_MODELS = ['EPSON', 'STAR', 'TANCA', 'DARUMA', 'BROTHER', 'CUSTOM'] as const;
@@ -37,6 +38,20 @@ export default function PrinterSettingsCard() {
     queryKey: ['printers'],
     queryFn: printersApi.list,
   });
+  // Détection (mig 376) : files d'impression et imprimantes USB vues par la machine du serveur.
+  const [detect, setDetect] = useState(false);
+  const systemQuery = useQuery({ queryKey: ['printers-system'], queryFn: printersApi.system, enabled: detect });
+  const [attachName, setAttachName] = useState('Caisse');
+  const attachMutation = useMutation({
+    mutationFn: (p: SystemPrinter) => printersApi.attachSystem(attachName, p.uri),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['printers-system'] }); notify.success('File d\'impression créée : choisissez-la ci-dessous'); },
+    onError: (err: unknown) => notify.error((err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message || 'Impossible de créer la file'),
+  });
+  const useQueue = (p: SystemPrinter) => {
+    setEditing(null);
+    setForm({ ...EMPTY_FORM, name: form.name || p.name, interface: 'cups', connectionString: p.name });
+    setShowForm(true);
+  };
 
   const saveMutation = useMutation({
     mutationFn: () => editing
@@ -161,6 +176,42 @@ export default function PrinterSettingsCard() {
         </div>
       )}
 
+      {/* Détection sur le poste serveur (mig 376) */}
+      <div className="border-t pt-3 mt-2">
+        <button onClick={() => setDetect(true)} className="btn-secondary flex items-center gap-2 text-sm">
+          <Search size={14} /> Détecter les imprimantes du poste
+        </button>
+        {detect && (
+          <div className="mt-3 text-sm">
+            {systemQuery.isLoading && <p className="text-gray-400">Recherche…</p>}
+            {systemQuery.data && !systemQuery.data.available && (
+              <p className="text-amber-700">Aucun système d'impression sur la machine du serveur (CUPS absent). Une thermique USB doit être branchée sur la machine qui fait tourner Kalum, ou être en réseau (TCP).</p>
+            )}
+            {systemQuery.data?.available && systemQuery.data.printers.length === 0 && <p className="text-gray-500">Aucune imprimante détectée.</p>}
+            {systemQuery.data?.printers.map(p => (
+              <div key={p.uri} className="flex items-center gap-3 py-2 border-b border-gray-100 last:border-0">
+                {p.kind === 'usb' ? <Usb size={16} className="text-primary-600" /> : <Printer size={16} className="text-gray-500" />}
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{p.name}</p>
+                  <p className="text-xs text-gray-400 font-mono truncate">{p.uri}{p.status ? ` · ${p.status}` : ''}</p>
+                </div>
+                {p.kind === 'queue' ? (
+                  <button onClick={() => useQueue(p)} className="btn-secondary text-xs">Utiliser cette file</button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input value={attachName} onChange={e => setAttachName(e.target.value.replace(/[^A-Za-z0-9_-]/g, ''))} className="input text-xs w-28" placeholder="Nom de file" />
+                    <button onClick={() => attachMutation.mutate(p)} disabled={attachMutation.isPending || !attachName} className="btn-primary text-xs">Ajouter au système</button>
+                  </div>
+                )}
+              </div>
+            ))}
+            {systemQuery.data?.available && (
+              <p className="text-xs text-gray-400 mt-2">Une imprimante USB doit d'abord être ajoutée au système (file brute), puis déclarée ici avec l'interface « Système ».</p>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Formulaire */}
       {showForm && (
         <div className="border-t pt-4 mt-2">
@@ -194,6 +245,7 @@ export default function PrinterSettingsCard() {
               <select value={form.interface} onChange={(e) => setForm({ ...form, interface: e.target.value as PrinterConfig['interface'] })}
                 className="input">
                 <option value="tcp">TCP (reseau)</option>
+                <option value="cups">Système du poste (file d'impression)</option>
                 <option value="usb">USB</option>
                 <option value="serial">Serie</option>
               </select>
@@ -215,12 +267,14 @@ export default function PrinterSettingsCard() {
               <input value={form.connectionString} onChange={(e) => setForm({ ...form, connectionString: e.target.value })}
                 placeholder={
                   form.interface === 'tcp' ? 'tcp://192.168.1.100:9100' :
+                  form.interface === 'cups' ? 'Nom de la file (ex. Caisse)' :
                   form.interface === 'usb' ? 'usb:///dev/usb/lp0 ou printer://NomImprimanteWindows' :
                   '/dev/ttyUSB0'
                 }
                 className="input font-mono text-sm" />
               <p className="text-xs text-gray-400 mt-1">
                 {form.interface === 'tcp' && 'IP fixe recommandee. Port standard 9100. Tester avec : telnet IP 9100'}
+                {form.interface === 'cups' && 'File d\'impression du système de la machine serveur, créée en mode brut (voir « Détecter »)'}
                 {form.interface === 'usb' && 'Necessite un agent local sur le poste caisse'}
                 {form.interface === 'serial' && 'Port serie RS-232 (rare aujourd\'hui)'}
               </p>

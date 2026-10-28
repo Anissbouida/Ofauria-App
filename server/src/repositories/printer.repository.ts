@@ -23,7 +23,7 @@ export const printerRepository = {
     storeId: string;
     name: string;
     type: 'receipt' | 'kitchen' | 'label';
-    interface: 'tcp' | 'usb' | 'serial';
+    interface: 'tcp' | 'usb' | 'serial' | 'cups';
     connectionString: string;
     printerModel?: string;
     characterSet?: string;

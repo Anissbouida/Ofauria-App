@@ -8,14 +8,96 @@
 //   poste/tablette du reseau, sans driver a installer.
 
 import { ThermalPrinter, PrinterTypes, CharacterSet } from 'node-thermal-printer';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { writeFile, unlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { db } from '../config/database.js';
+
+const run = promisify(execFile);
+
+/**
+ * Interface « cups » (mig 376) : l'imprimante est une file d'impression du système du
+ * poste (macOS/Linux), déclarée en mode brut ; le ticket ESC/POS lui est envoyé tel quel
+ * avec `lp -o raw`. C'est la voie pour une thermique USB sans agent ni pilote.
+ */
+async function cupsQueueExists(queue: string): Promise<boolean> {
+  try { await run('lpstat', ['-p', queue], { timeout: 5000 }); return true; } catch { return false; }
+}
+async function cupsSendRaw(queue: string, data: Buffer): Promise<void> {
+  const file = join(tmpdir(), `kalum-ticket-${process.pid}-${Date.now()}.bin`);
+  await writeFile(file, data);
+  try { await run('lp', ['-d', queue, '-o', 'raw', '-t', 'Kalum', file], { timeout: 10000 }); }
+  finally { await unlink(file).catch(() => undefined); }
+}
+async function printerReachable(printer: ThermalPrinter, config: PrinterConfigRow): Promise<boolean> {
+  return config.interface === 'cups' ? cupsQueueExists(config.connection_string) : printer.isPrinterConnected();
+}
+async function send(printer: ThermalPrinter, config: PrinterConfigRow): Promise<void> {
+  if (config.interface === 'cups') { await cupsSendRaw(config.connection_string, printer.getBuffer()); printer.clear(); return; }
+  await send(printer, config);
+}
+
+export type SystemPrinter = { kind: 'queue' | 'usb'; name: string; uri: string; status: string | null };
+
+/** Imprimantes vues par le système du serveur : files CUPS et imprimantes USB « direct ». */
+export async function listSystemPrinters(): Promise<{ available: boolean; printers: SystemPrinter[] }> {
+  const out: SystemPrinter[] = [];
+  let available = false;
+  try {
+    const { stdout } = await run('lpstat', ['-v'], { timeout: 5000 });
+    available = true;
+    for (const line of stdout.split('\n')) {
+      const m = line.match(/^device for ([^:]+): (.+)$/);
+      if (m) out.push({ kind: 'queue', name: m[1].trim(), uri: m[2].trim(), status: null });
+    }
+    try {
+      const { stdout: st } = await run('lpstat', ['-p'], { timeout: 5000 });
+      for (const line of st.split('\n')) {
+        const m = line.match(/^printer (\S+) (.*)$/);
+        const q = m && out.find(x => x.name === m[1]);
+        if (q) q.status = m[2].replace(/\.$/, '');
+      }
+    } catch { /* statut facultatif */ }
+  } catch { /* lpstat absent : pas de CUPS (Windows, conteneur) */ }
+  try {
+    const { stdout } = await run('lpinfo', ['-v'], { timeout: 8000 });
+    for (const line of stdout.split('\n')) {
+      const m = line.match(/^direct (usb:\/\/\S+)/);
+      if (!m) continue;
+      const uri = m[1];
+      if (out.some(x => x.uri === uri)) continue;
+      const name = decodeURIComponent(uri.replace(/^usb:\/\//, '').split('?')[0]).replace(/\//g, ' ').trim();
+      out.push({ kind: 'usb', name, uri, status: null });
+    }
+  } catch { /* lpinfo indisponible */ }
+  return { available, printers: out };
+}
+
+/** Crée la file brute du système pour une imprimante USB détectée (lpadmin). */
+export async function attachSystemPrinter(queueName: string, uri: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const name = queueName.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 60);
+  if (!name) return { ok: false, error: 'Nom de file invalide' };
+  if (!/^usb:\/\//.test(uri)) return { ok: false, error: 'Seule une imprimante USB détectée peut être ajoutée' };
+  try {
+    await run('lpadmin', ['-p', name, '-E', '-v', uri, '-m', 'raw'], { timeout: 15000 });
+    await run('cupsenable', [name], { timeout: 5000 }).catch(() => undefined);
+    await run('cupsaccept', [name], { timeout: 5000 }).catch(() => undefined);
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: `lpadmin a échoué : ${msg.split('\n').pop() || msg}` };
+  }
+}
+
 
 export type PrinterConfigRow = {
   id: string;
   store_id: string;
   name: string;
   type: 'receipt' | 'kitchen' | 'label';
-  interface: 'tcp' | 'usb' | 'serial';
+  interface: 'tcp' | 'usb' | 'serial' | 'cups';
   connection_string: string;
   printer_model: 'EPSON' | 'STAR' | 'TANCA' | 'DARUMA' | 'BROTHER' | 'CUSTOM';
   character_set: string;
@@ -44,7 +126,8 @@ function buildPrinter(config: PrinterConfigRow): ThermalPrinter {
 
   return new ThermalPrinter({
     type: printerType,
-    interface: config.connection_string,
+    // cups : le tampon est envoyé par lp, l'interface de la librairie ne sert pas.
+    interface: config.interface === 'cups' ? 'file:///dev/null' : config.connection_string,
     characterSet: charSet,
     removeSpecialCharacters: false,
     lineCharacter: '-',
@@ -130,7 +213,7 @@ export const printerService = {
     const printer = buildPrinter(config);
 
     try {
-      const isConnected = await printer.isPrinterConnected();
+      const isConnected = await printerReachable(printer, config);
       if (!isConnected) {
         return { ok: false, error: `Imprimante injoignable (${config.connection_string})` };
       }
@@ -249,7 +332,7 @@ export const printerService = {
         }
       }
 
-      await printer.execute();
+      await send(printer, config);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : 'Erreur imprimante inconnue' };
@@ -292,7 +375,7 @@ export const printerService = {
 
     const printer = buildPrinter(config);
     try {
-      const isConnected = await printer.isPrinterConnected();
+      const isConnected = await printerReachable(printer, config);
       if (!isConnected) {
         return { ok: false, error: `Imprimante injoignable (${config.connection_string})` };
       }
@@ -349,7 +432,7 @@ export const printerService = {
       printer.newLine();
       printer.cut();
 
-      await printer.execute();
+      await send(printer, config);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : 'Erreur imprimante inconnue' };
@@ -366,10 +449,10 @@ export const printerService = {
 
     const printer = buildPrinter(config);
     try {
-      const connected = await printer.isPrinterConnected();
+      const connected = await printerReachable(printer, config);
       if (!connected) return { ok: false, error: 'Imprimante injoignable' };
       printer.openCashDrawer();
-      await printer.execute();
+      await send(printer, config);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : 'Erreur tiroir' };
@@ -385,7 +468,7 @@ export const printerService = {
 
     const printer = buildPrinter(config);
     try {
-      const connected = await printer.isPrinterConnected();
+      const connected = await printerReachable(printer, config);
       if (!connected) {
         return { ok: false, error: `Imprimante injoignable (${config.connection_string})` };
       }
@@ -415,7 +498,7 @@ export const printerService = {
       // Test du tiroir aussi
       printer.openCashDrawer();
 
-      await printer.execute();
+      await send(printer, config);
       return { ok: true };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : 'Erreur impression test' };

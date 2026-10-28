@@ -10,6 +10,9 @@ const router = Router();
 // Lecture ouverte au groupe SALES : le POS liste les imprimantes du magasin
 // pour le selecteur "imprimante du poste" (parametres locaux du terminal).
 // Les mutations restent admin/manager.
+// Détection sur la machine du serveur (mig 376) : files CUPS et imprimantes USB.
+router.get('/system', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), printerController.system);
+router.post('/system/attach', authenticate, authorizeSettings('print', 'create'), printerController.attachSystem);
 router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), printerController.list);
 router.post('/', authenticate, authorizeSettings('print', 'create'), printerController.create);
 router.put('/:id', authenticate, authorizeSettings('print', 'edit'), printerController.update);

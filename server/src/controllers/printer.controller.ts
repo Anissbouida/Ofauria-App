@@ -1,12 +1,24 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { printerRepository } from '../repositories/printer.repository.js';
-import { printerService } from '../services/printer.service.js';
+import { printerService, listSystemPrinters, attachSystemPrinter } from '../services/printer.service.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { saleRepository } from '../repositories/sale.repository.js';
 import { companyLegalFromRow } from '../utils/company-legal.js';
 
 export const printerController = {
+  async system(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await listSystemPrinters() });
+  },
+
+  async attachSystem(req: AuthRequest, res: Response) {
+    const { name, uri } = req.body as { name?: string; uri?: string };
+    if (!name || !uri) { res.status(400).json({ success: false, error: { message: 'Nom et adresse USB requis' } }); return; }
+    const r = await attachSystemPrinter(name, uri);
+    if (!r.ok) { res.status(500).json({ success: false, error: { message: r.error } }); return; }
+    res.json({ success: true, data: await listSystemPrinters() });
+  },
+
   async list(req: AuthRequest, res: Response) {
     if (!req.user!.storeId) {
       res.status(400).json({ success: false, error: { message: 'Utilisateur non rattache a un magasin' } });

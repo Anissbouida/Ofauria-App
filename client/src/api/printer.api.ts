@@ -5,7 +5,7 @@ export type PrinterConfig = {
   store_id: string;
   name: string;
   type: 'receipt' | 'kitchen' | 'label';
-  interface: 'tcp' | 'usb' | 'serial';
+  interface: 'tcp' | 'usb' | 'serial' | 'cups';
   connection_string: string;
   printer_model: 'EPSON' | 'STAR' | 'TANCA' | 'DARUMA' | 'BROTHER' | 'CUSTOM';
   character_set: string;
@@ -25,7 +25,11 @@ export const printersApi = {
   remove: (id: string) => api.delete(`/printers/${id}`),
   test: (id: string) => api.post(`/printers/${id}/test`).then(r => r.data),
   openDrawer: (id: string) => api.post(`/printers/${id}/open-drawer`).then(r => r.data),
+  /** Imprimantes vues par le système du serveur (mig 376). */
+  system: () => api.get('/printers/system').then(r => r.data.data as { available: boolean; printers: SystemPrinter[] }),
+  attachSystem: (name: string, uri: string) => api.post('/printers/system/attach', { name, uri }).then(r => r.data.data as { available: boolean; printers: SystemPrinter[] }),
 };
+export type SystemPrinter = { kind: 'queue' | 'usb'; name: string; uri: string; status: string | null };
 
 export const salePrintApi = {
   // printerId : imprimante choisie par le poste (parametres locaux du terminal),
