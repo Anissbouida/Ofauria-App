@@ -670,8 +670,55 @@ function CatalogueTab() {
 type FormTab = 'general' | 'pricing' | 'lifecycle';
 
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
-const fieldInput: React.CSSProperties = { width: '100%', fontSize: '0.875rem', padding: '8px 10px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', boxSizing: 'border-box' };
+const fieldInput: React.CSSProperties = { width: '100%', fontSize: '0.875rem', padding: '9px 11px', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', boxSizing: 'border-box' };
 const fieldInputRO: React.CSSProperties = { ...fieldInput, background: 'var(--odoo-bg-alt)', cursor: 'not-allowed' };
+
+/** Aperçu live de la fiche produit (colonne droite du formulaire) : se met à
+ *  jour en temps réel pendant la saisie. */
+function ProductPreview({ form, imagePreview, categories, chefUsers }: {
+  form: Record<string, any>; imagePreview: string | null;
+  categories: { id: number; name: string }[]; chefUsers: Record<string, any>[];
+}) {
+  const catName = categories.find(c => c.id === form.categoryId)?.name;
+  const resp = chefUsers.find(u => (u.id as string) === form.responsibleUserId);
+  const priceStr = form.saleUnit === 'person'
+    ? (form.pricePerPerson ? `${parseFloat(String(form.pricePerPerson)).toFixed(2)} DH` : '—')
+    : (form.price ? `${parseFloat(String(form.price)).toFixed(2)} DH` : '—');
+  const priceUnit = form.saleUnit === 'weight' ? '/kg' : form.saleUnit === 'person' ? '/personne' : '';
+  const modeLabel = form.saleUnit === 'weight' ? 'Au poids' : form.saleUnit === 'person' ? 'Par personne' : 'À la pièce';
+  const saleTypeLabel = form.saleType === 'dlv' ? 'Multi-jours' : form.saleType === 'commande' ? 'Sur commande' : 'Vente du jour';
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--theme-text-muted)' }}>Aperçu</div>
+      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, background: 'var(--odoo-bg)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+        <div style={{ aspectRatio: '4 / 3', background: 'var(--odoo-bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {imagePreview
+            ? <img src={imagePreview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <ShoppingBag size={40} style={{ color: 'var(--theme-text-muted)', opacity: 0.35 }} />}
+        </div>
+        <div style={{ padding: 14, display: 'grid', gap: 8 }}>
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--odoo-text)', lineHeight: 1.2 }}>{form.name || 'Nom du produit'}</div>
+          {catName && <span className="odoo-tag odoo-tag-grey" style={{ justifySelf: 'start' }}>{catName}</span>}
+          <div style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--theme-accent)' }}>
+            {priceStr}<span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--theme-text-muted)', marginLeft: 4 }}>{priceUnit}</span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <span className={`odoo-tag ${form.isAvailable ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{form.isAvailable ? 'Disponible' : 'Indisponible'}</span>
+            {form.isCustomOrderable && <span className="odoo-tag odoo-tag-blue">Sur commande</span>}
+            <span className="odoo-tag odoo-tag-purple">{modeLabel}</span>
+            <span className="odoo-tag odoo-tag-yellow">{saleTypeLabel}</span>
+          </div>
+          {(resp || form.description) && (
+            <div style={{ borderTop: '1px solid var(--odoo-border)', paddingTop: 8, display: 'grid', gap: 5, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+              {resp && <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><ChefHat size={12} /> {resp.firstName as string} {resp.lastName as string}</div>}
+              {form.description && <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{form.description}</div>}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   product: Record<string, any> | null;
@@ -984,7 +1031,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.35)' }}>
       <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 720, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
+        style={{ width: '100%', maxWidth: 980, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
         {/* Control bar */}
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
@@ -1016,7 +1063,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
         {/* Form content */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div className="p-5 space-y-5">
+          <div style={{ display: 'grid', gridTemplateColumns: '1.45fr 0.95fr', alignItems: 'start' }}>
+            <div className="p-5 space-y-5" style={{ minWidth: 0 }}>
 
             {/* ═══ Tab: General ═══ */}
             {activeTab === 'general' && (
@@ -1528,6 +1576,10 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 )}
               </>
             )}
+            </div>
+            <aside style={{ position: 'sticky', top: 0, alignSelf: 'start', borderLeft: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)', padding: 16 }}>
+              <ProductPreview form={form} imagePreview={imagePreview} categories={categories} chefUsers={chefUsers} />
+            </aside>
           </div>
 
           {/* Footer actions Odoo */}
