@@ -145,6 +145,8 @@ export const printerController = {
         receipt_header: settings?.receipt_header || undefined,
         receipt_footer: settings?.receipt_footer || undefined,
         receipt_extra_lines: settings?.receipt_extra_lines || undefined,
+        // Logo imprime seulement si l'option est active (Parametres > Caisse et tickets).
+        logo: settings?.receipt_show_logo ? (settings?.logo_url || undefined) : undefined,
       },
       options: {
         openDrawer: openDrawer ?? settings?.receipt_open_drawer ?? false,

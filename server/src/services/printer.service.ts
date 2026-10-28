@@ -10,9 +10,15 @@
 import { ThermalPrinter, PrinterTypes, CharacterSet } from 'node-thermal-printer';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { writeFile, unlink } from 'node:fs/promises';
+import { writeFile, unlink, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+const nodeRequire = createRequire(import.meta.url);
+// pngjs (dep transitive de node-thermal-printer) : decode/encode PNG en JS pur,
+// evite d'ajouter sharp/jimp juste pour redimensionner le logo du ticket.
+const { PNG } = nodeRequire('pngjs') as { PNG: any };
 import { db } from '../config/database.js';
 
 const run = promisify(execFile);
@@ -92,6 +98,62 @@ function kickDrawer(printer: ThermalPrinter) {
   printer.openCashDrawer();
   printer.raw(Buffer.from([0x1b, 0x70, 0x00, 0x3c, 0xff]));
   printer.raw(Buffer.from([0x1b, 0x70, 0x01, 0x3c, 0xff]));
+}
+
+/**
+ * Prepare le logo pour l'impression thermique : resolution (data URI base64 en prod,
+ * fichier /uploads en local), reduction a la largeur imprimable (le PNG source fait
+ * souvent plusieurs milliers de px) et aplatissement de la transparence sur blanc —
+ * sinon un fond transparent ressort en noir. Retourne un PNG pret pour printImageBuffer,
+ * ou null si le logo est absent/illisible (le ticket s'imprime alors sans logo).
+ */
+async function renderLogoForPrinter(logoUrl: string | undefined | null, targetWidth: number): Promise<Buffer | null> {
+  if (!logoUrl) return null;
+  try {
+    let raw: Buffer;
+    if (logoUrl.startsWith('data:')) {
+      raw = Buffer.from(logoUrl.slice(logoUrl.indexOf(',') + 1), 'base64');
+    } else {
+      const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+      const rel = logoUrl.replace(/^\/+/, '');
+      let found: Buffer | null = null;
+      for (const c of [resolve(projectRoot, rel), resolve(projectRoot, 'uploads', rel.replace(/^uploads\//, ''))]) {
+        try { found = await readFile(c); break; } catch { /* candidat suivant */ }
+      }
+      if (!found) return null;
+      raw = found;
+    }
+
+    // pngjs ne lit que le PNG : un logo JPG/SVG est ignore sans faire echouer le ticket.
+    const src = PNG.sync.read(raw);
+    const width = Math.min(targetWidth, src.width) & ~7; // multiple de 8 (trame EPSON)
+    if (width < 8) return null;
+    const scale = src.width / width;
+    const height = Math.max(1, Math.round(src.height / scale));
+    const dst = new PNG({ width, height });
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const sx0 = Math.floor(x * scale), sx1 = Math.max(sx0 + 1, Math.min(src.width, Math.floor((x + 1) * scale)));
+        const sy0 = Math.floor(y * scale), sy1 = Math.max(sy0 + 1, Math.min(src.height, Math.floor((y + 1) * scale)));
+        let r = 0, g = 0, b = 0, a = 0, n = 0;
+        for (let sy = sy0; sy < sy1; sy++) {
+          for (let sx = sx0; sx < sx1; sx++) {
+            const i = (src.width * sy + sx) << 2;
+            r += src.data[i]; g += src.data[i + 1]; b += src.data[i + 2]; a += src.data[i + 3]; n++;
+          }
+        }
+        const alpha = (a / n) / 255;
+        const di = (width * y + x) << 2;
+        dst.data[di] = Math.round((r / n) * alpha + 255 * (1 - alpha));
+        dst.data[di + 1] = Math.round((g / n) * alpha + 255 * (1 - alpha));
+        dst.data[di + 2] = Math.round((b / n) * alpha + 255 * (1 - alpha));
+        dst.data[di + 3] = 255;
+      }
+    }
+    return PNG.sync.write(dst);
+  } catch {
+    return null;
+  }
 }
 
 export type SystemPrinter = { kind: 'queue' | 'usb'; name: string; uri: string; status: string | null };
@@ -257,6 +319,8 @@ export const printerService = {
       receipt_header?: string;
       receipt_footer?: string;
       receipt_extra_lines?: string;
+      // Logo (data URI en prod, chemin /uploads en local) deja filtre par receipt_show_logo.
+      logo?: string | null;
     };
     options?: { openDrawer?: boolean; numCopies?: number; printerId?: string };
   }): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -274,12 +338,18 @@ export const printerService = {
       }
 
       const copies = Math.max(1, Math.min(5, params.options?.numCopies ?? 1));
+      // Logo rendu une seule fois (meme image pour toutes les copies).
+      const logoDots = (config.paper_width ?? 48) >= 48 ? 512 : 384;
+      const logoBuf = await renderLogoForPrinter(params.company.logo, logoDots);
 
       for (let copy = 0; copy < copies; copy++) {
         printer.clear();
 
-        // ─── En-tete : nom magasin centre ───
+        // ─── En-tete : logo puis nom magasin, centres ───
         printer.alignCenter();
+        if (logoBuf) {
+          try { await printer.printImageBuffer(logoBuf); printer.println(''); } catch { /* logo ignore */ }
+        }
         printer.bold(true);
         printer.setTextDoubleHeight();
         printer.println(params.company.name);
