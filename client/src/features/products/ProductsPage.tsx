@@ -303,8 +303,38 @@ function CatalogueTab() {
 
   return (
     <>
+      {/* ══════ Situation du stock (bandeau encadré, cartes cliquables — comme Achats) ══════ */}
+      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '10px 16px 0' }}>
+          <span style={{ fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--odoo-text-muted)' }}>État du stock</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{totalProducts} produits · cliquez pour filtrer</span>
+        </div>
+        <div className="odoo-stat-grid" style={{ borderBottom: 'none' }}>
+          <button onClick={() => setStockFilter('all')} className={`odoo-stat-card ${stockFilter === 'all' ? 'active' : ''}`}>
+            <div className="odoo-stat-card-label"><ShoppingBag size={11} style={{ display: 'inline', marginRight: 4 }} />Total produits</div>
+            <div className="odoo-stat-card-value">{totalProducts}</div>
+            <div className="odoo-stat-card-sub">au catalogue</div>
+          </button>
+          <button onClick={() => setStockFilter(stockFilter === 'available' ? 'all' : 'available')} className={`odoo-stat-card ${stockFilter === 'available' ? 'active' : ''}`}>
+            <div className="odoo-stat-card-label"><Eye size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Disponibles</div>
+            <div className="odoo-stat-card-value">{availableCount}</div>
+            <div className="odoo-stat-card-sub">en vente</div>
+          </button>
+          <button onClick={() => setStockFilter(stockFilter === 'low' ? 'all' : 'low')} className={`odoo-stat-card ${stockFilter === 'low' ? 'active' : ''}`}>
+            <div className="odoo-stat-card-label"><TrendingUp size={11} style={{ display: 'inline', marginRight: 4, color: '#b85d1a' }} />Stock bas</div>
+            <div className="odoo-stat-card-value" style={{ color: lowStockCount > 0 ? '#b85d1a' : undefined }}>{lowStockCount}</div>
+            <div className="odoo-stat-card-sub">à réassortir</div>
+          </button>
+          <button onClick={() => setStockFilter(stockFilter === 'out' ? 'all' : 'out')} className={`odoo-stat-card ${stockFilter === 'out' ? 'active' : ''}`}>
+            <div className="odoo-stat-card-label"><AlertTriangle size={11} style={{ display: 'inline', marginRight: 4, color: '#dc3545' }} />Rupture</div>
+            <div className="odoo-stat-card-value" style={{ color: outOfStockCount > 0 ? '#dc3545' : undefined }}>{outOfStockCount}</div>
+            <div className="odoo-stat-card-sub">à produire</div>
+          </button>
+        </div>
+      </div>
+
       {/* ══════ Action sub-bar (Nouveau produit + import + pager + view switcher) ══════ */}
-      <div className="odoo-control-bar" style={{ borderTop: '1px solid var(--theme-bg-separator)' }}>
+      <div className="odoo-control-bar">
         <button onClick={() => { setEditingProduct(null); setShowForm(true); }} className="odoo-btn-primary">
           <Plus size={14} /> Nouveau
         </button>
@@ -338,38 +368,6 @@ function CatalogueTab() {
             <LayoutGrid size={14} />
           </button>
         </div>
-      </div>
-
-      {/* ══════ STAT TILES (sober) ══════ */}
-      <div className="odoo-stat-grid">
-        <button onClick={() => setStockFilter('all')}
-          className={`odoo-stat-card ${stockFilter === 'all' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <ShoppingBag size={11} style={{ display: 'inline', marginRight: 4 }} />Total produits
-          </div>
-          <div className="odoo-stat-card-value">{totalProducts}</div>
-        </button>
-        <button onClick={() => setStockFilter(stockFilter === 'available' ? 'all' : 'available')}
-          className={`odoo-stat-card ${stockFilter === 'available' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <Eye size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Disponibles
-          </div>
-          <div className="odoo-stat-card-value">{availableCount}</div>
-        </button>
-        <button onClick={() => setStockFilter(stockFilter === 'low' ? 'all' : 'low')}
-          className={`odoo-stat-card ${stockFilter === 'low' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <TrendingUp size={11} style={{ display: 'inline', marginRight: 4, color: '#b85d1a' }} />Stock bas
-          </div>
-          <div className="odoo-stat-card-value" style={{ color: lowStockCount > 0 ? '#b85d1a' : undefined }}>{lowStockCount}</div>
-        </button>
-        <button onClick={() => setStockFilter(stockFilter === 'out' ? 'all' : 'out')}
-          className={`odoo-stat-card ${stockFilter === 'out' ? 'active' : ''}`}>
-          <div className="odoo-stat-card-label">
-            <AlertTriangle size={11} style={{ display: 'inline', marginRight: 4, color: '#dc3545' }} />Rupture
-          </div>
-          <div className="odoo-stat-card-value" style={{ color: outOfStockCount > 0 ? '#dc3545' : undefined }}>{outOfStockCount}</div>
-        </button>
       </div>
 
       {/* ══════ SEARCH PANEL ══════ */}
