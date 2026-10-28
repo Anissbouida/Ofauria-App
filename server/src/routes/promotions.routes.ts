@@ -73,6 +73,8 @@ const SELECT_PROMO = `
   SELECT p.*, s.name AS store_name, t.label AS min_tier_label,
          (SELECT COUNT(*)::int FROM document_promotions d WHERE d.promotion_id = p.id AND d.sale_id IS NOT NULL) AS sales_count,
          (SELECT COALESCE(SUM(d.amount), 0)::numeric(14,2) FROM document_promotions d WHERE d.promotion_id = p.id AND d.quote_id IS NULL) AS granted_amount,
+         (SELECT COALESCE(SUM(d.amount), 0)::numeric(14,2) FROM document_promotions d
+           WHERE d.promotion_id = p.id AND d.quote_id IS NULL AND d.created_at > now() - interval '30 days') AS granted_30d,
          CASE WHEN NOT p.is_active THEN 'inactive'
               WHEN p.ends_on IS NOT NULL AND p.ends_on < CURRENT_DATE THEN 'ended'
               WHEN p.starts_on IS NOT NULL AND p.starts_on > CURRENT_DATE THEN 'scheduled'
@@ -118,6 +120,21 @@ promotionsRouter.put('/:id', authenticate, MANAGE, asyncHandler(async (req: Auth
     if ((e as { code?: string }).code === '23505') { bad(res, 'Ce code promo est déjà utilisé par une autre promotion', 409); return; }
     throw e;
   }
+}));
+
+/** Actions rapides de la liste : activer / arrêter, prolonger de N jours (à partir d'aujourd'hui si déjà finie). */
+promotionsRouter.patch('/:id/quick', authenticate, MANAGE, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const b = z.object({ isActive: z.boolean().optional(), extendDays: z.coerce.number().int().min(1).max(365).optional() })
+    .refine(x => x.isActive !== undefined || x.extendDays !== undefined).safeParse(req.body);
+  if (!b.success) { bad(res); return; }
+  const r = await db.query(
+    `UPDATE promotions SET is_active = COALESCE($2, is_active),
+            ends_on = CASE WHEN $3::int IS NULL OR ends_on IS NULL THEN ends_on ELSE GREATEST(ends_on, CURRENT_DATE) + $3::int END,
+            updated_at = now()
+      WHERE id = $1 RETURNING id`, [req.params.id, b.data.isActive ?? null, b.data.extendDays ?? null]);
+  if (!r.rows[0]) { bad(res, 'Promotion introuvable', 404); return; }
+  const row = (await db.query(`${SELECT_PROMO} WHERE p.id = $1`, [req.params.id])).rows[0];
+  res.json({ success: true, data: { ...row, label: promoLabel(row) } });
 }));
 
 /** Une promotion déjà utilisée s'arrête (désactivée) ; jamais utilisée, elle se supprime. */

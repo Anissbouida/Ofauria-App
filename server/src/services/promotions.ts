@@ -22,6 +22,9 @@ export type PromoResult = {
   itemsAmount: number; cartAmount: number; total: number;
   // superseded : le code est valable mais une promotion plus avantageuse s'applique déjà (non bloquant).
   coupon: { code: string; status: 'applied' | 'superseded' | 'invalid' | 'not_applicable'; message: string } | null;
+  // « X achetés = Y offerts » : articles offerts auxquels le client a droit mais qui ne sont
+  // pas encore dans le panier (la caisse les ajoute ; le moteur les rend gratuits ensuite).
+  freeToAdd: { promotionId: string; label: string; productId: string; quantity: number }[];
 };
 type Promo = Record<string, any>;
 
@@ -104,6 +107,26 @@ function itemDiscounts(p: Promo, lines: PromoLine[]): number[] {
   return out.map((d, i) => round2(Math.min(d, lines[i].subtotal)));
 }
 
+/**
+ * Articles offerts manquants : le panier contient de quoi déclencher l'offre (au moins
+ * « X achetés » dans le dernier groupe) mais pas encore les Y articles offerts. L'article
+ * à ajouter est le moins cher des articles concernés, celui que le moteur rendra gratuit.
+ */
+function missingFree(p: Promo, lines: PromoLine[]) {
+  const idx = lines.map((l, i) => (eligible(p, l) && l.unit === 'unit' ? i : -1)).filter(i => i >= 0);
+  if (!idx.length) return null;
+  const buy = Number(p.buy_qty), get = Number(p.get_qty);
+  const n = idx.reduce((s, i) => s + lines[i].quantity, 0);
+  const rem = n % (buy + get);
+  if (rem < buy) return null;
+  const quantity = get - (rem - buy);
+  if (quantity <= 0) return null;
+  if (p.min_amount && idx.reduce((s, i) => s + lines[i].subtotal, 0) < Number(p.min_amount)) return null;
+  if (p.min_quantity && n + quantity < Number(p.min_quantity)) return null;
+  const cheapest = idx.reduce((a, i) => (lines[i].unitPrice < lines[a].unitPrice ? i : a), idx[0]);
+  return { promotionId: p.id as string, label: promoLabel(p), productId: lines[cheapest].productId, quantity };
+}
+
 /** Libellé lisible d'une promotion, pour le ticket et les documents. */
 export function promoLabel(p: Promo) {
   const v = Number(p.value);
@@ -163,9 +186,11 @@ export async function evaluate(lines: PromoLine[], ctx: PromoContext, runner: Ru
   }
 
   const cartAmount = cart?.amount ?? 0;
+  const freeToAdd = usable.filter(p => p.target === 'items' && p.kind === 'buy_x_get_y')
+    .map(p => missingFree(p, lines)).filter((x): x is NonNullable<typeof x> => !!x);
   return {
     lines: best.map(b => ({ discount: b.discount, promotionId: b.promo?.id ?? null, label: b.promo ? promoLabel(b.promo) : null })),
-    applied, itemsAmount, cartAmount, total: round2(itemsAmount + cartAmount), coupon,
+    applied, itemsAmount, cartAmount, total: round2(itemsAmount + cartAmount), coupon, freeToAdd,
   };
 }
 

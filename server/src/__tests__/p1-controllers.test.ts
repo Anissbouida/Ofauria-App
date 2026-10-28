@@ -16,10 +16,11 @@ process.env.DATABASE_URL ||= 'postgres://localhost:5432/kalum_test';
 
 // Promotions et fidélité (mig 372) : aucune promotion en vigueur dans ces scénarios.
 vi.mock('../services/promotions.js', () => ({
-  evaluate: vi.fn(async (lines: unknown[]) => ({ lines: lines.map(() => ({ discount: 0, promotionId: null, label: null })), applied: [], itemsAmount: 0, cartAmount: 0, total: 0, coupon: null })),
+  evaluate: vi.fn(async (lines: unknown[]) => ({ lines: lines.map(() => ({ discount: 0, promotionId: null, label: null })), applied: [], itemsAmount: 0, cartAmount: 0, total: 0, coupon: null, freeToAdd: [] })),
   recordApplied: vi.fn(async () => undefined),
   promoLabel: vi.fn(() => ''),
 }));
+vi.mock('../services/module-parameters.service.js', () => ({ posAllowsNegativeStock: vi.fn(async () => false), getParameter: vi.fn(async () => ({})) }));
 vi.mock('../services/loyalty.js', () => ({ checkRedeem: vi.fn(async () => ({ error: 'Programme de fidélité non simulé' })) }));
 vi.mock('../repositories/product.repository.js', () => ({ productRepository: { findById: vi.fn() } }));
 vi.mock('../repositories/sales-channel.repository.js', () => ({ salesChannelRepository: { findDefault: vi.fn() } }));

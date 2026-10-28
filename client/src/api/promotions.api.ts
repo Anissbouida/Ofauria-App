@@ -13,7 +13,7 @@ export type Promotion = {
   on_pos: boolean; on_orders: boolean; on_quotes: boolean; store_id: string | null; store_name: string | null;
   starts_on: string | null; ends_on: string | null; days_of_week: number[]; time_from: string | null; time_to: string | null;
   max_uses: number | null; uses_count: number; priority: number; is_active: boolean;
-  sales_count: number; granted_amount: string; state: PromoState; label: string; created_at: string;
+  sales_count: number; granted_amount: string; granted_30d: string; state: PromoState; label: string; created_at: string;
 };
 export type PromotionInput = {
   name: string; description?: string | null; target: PromoTarget; kind: PromoKind; value: number; buyQty?: number | null; getQty?: number | null;
@@ -29,6 +29,7 @@ export type PromoEvaluation = {
     lines: { discount: number; promotionId: string | null; label: string | null }[];
     applied: AppliedPromo[]; itemsAmount: number; cartAmount: number; total: number;
     coupon: { code: string; status: 'applied' | 'superseded' | 'invalid' | 'not_applicable'; message: string } | null;
+    freeToAdd: { promotionId: string; label: string; productId: string; quantity: number }[];
   };
   loyalty: {
     enabled: boolean; balance: number; value: number; pointValue: number; minRedeemPoints: number; maxRedeemPct: number;
@@ -78,6 +79,7 @@ export const promotionsApi = {
   create: (d: PromotionInput): Promise<Promotion> => api.post('/promotions', d).then(r => r.data.data),
   update: (id: string, d: PromotionInput): Promise<Promotion> => api.put(`/promotions/${id}`, d).then(r => r.data.data),
   remove: (id: string): Promise<{ archived?: boolean; deleted?: boolean }> => api.delete(`/promotions/${id}`).then(r => r.data.data),
+  quick: (id: string, d: { isActive?: boolean; extendDays?: number }): Promise<Promotion> => api.patch(`/promotions/${id}/quick`, d).then(r => r.data.data),
   evaluate: (d: { items: { productId: string; quantity: number }[]; customerId?: string | null; channelId?: string | null; couponCode?: string | null; manualDiscount?: number }): Promise<PromoEvaluation> =>
     api.post('/promotions/evaluate', d).then(r => r.data.data),
 };

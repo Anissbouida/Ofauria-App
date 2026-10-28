@@ -122,6 +122,25 @@ describe.skipIf(!hasTestDb)('Promotions et fidélité', () => {
     await testPool().query(`UPDATE promotions SET is_active = false WHERE id = $1`, [auto]);
   });
 
+  it('X achetés = Y offerts : signale l\'article offert à ajouter au panier', async () => {
+    const a = await makeProduct('offert-a', 12);
+    const b = await makeProduct('offert-b', 8);
+    const promo = await makePromo({ name: `2+1 offert ${RUN}`, target: 'items', kind: 'buy_x_get_y', buy_qty: 2, get_qty: 1, product_ids: [a, b], store_id: fx.storeId });
+    const ctx = { channel: 'pos' as const, storeId: fx.storeId };
+    // 2 achetés : 1 offert manquant, le moins cher des articles concernés.
+    const two = await promotions.evaluate([line(a, 1, 12), line(b, 1, 8)], ctx);
+    expect(two.freeToAdd).toEqual([expect.objectContaining({ promotionId: promo, productId: b, quantity: 1 })]);
+    expect(two.total).toBe(0);
+    // L'offert ajouté : plus rien à ajouter, il est gratuit.
+    const three = await promotions.evaluate([line(a, 1, 12), line(b, 2, 8)], ctx);
+    expect(three.freeToAdd).toEqual([]);
+    expect(three.total).toBe(8);
+    // 5 articles : un 2e groupe entamé avec 2 achetés → un 2e offert à ajouter.
+    const five = await promotions.evaluate([line(a, 5, 12)], ctx);
+    expect(five.freeToAdd).toEqual([expect.objectContaining({ productId: a, quantity: 1 })]);
+    await testPool().query(`UPDATE promotions SET is_active = false WHERE id = $1`, [promo]);
+  });
+
   it('vente : promotions tracées, points gagnés sur le payé, dette en 4491', async () => {
     const p = await makeProduct('fid-1', 50);
     const promoId = await makePromo({ name: `Trace ${RUN}`, target: 'cart', kind: 'amount', value: 10, store_id: fx.storeId });
