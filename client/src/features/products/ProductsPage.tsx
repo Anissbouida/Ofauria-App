@@ -13,6 +13,7 @@ import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 import CustomFieldsEditor from '../../components/custom-fields/CustomFieldsEditor';
 import { customFieldsApi, useCustomFieldsForm, type CfValues } from '../../api/custom-fields.api';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -92,6 +93,7 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 }
 
 function CatalogueTab() {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -176,7 +178,7 @@ function CatalogueTab() {
         console.warn('Lignes CSV ignorées :', ignored);
         notify.error(`${ignored.length} ligne${ignored.length > 1 ? 's' : ''} ignorée${ignored.length > 1 ? 's' : ''} (prix « variable », doublons...) — détail en console`);
       }
-      if (!confirm(`Importer ${items.length} produit${items.length > 1 ? 's' : ''} depuis « ${file.name} » ?\nLes produits déjà existants (même nom) seront ignorés.`)) return;
+      if (!(await confirm(`Importer ${items.length} produit${items.length > 1 ? 's' : ''} depuis « ${file.name} » ?\nLes produits déjà existants (même nom) seront ignorés.`, { title: 'Importer un CSV', confirmLabel: 'Importer' }))) return;
       importMutation.mutate(items);
     } catch (err) {
       notify.error(err instanceof Error ? err.message : 'Fichier CSV illisible');
@@ -294,10 +296,10 @@ function CatalogueTab() {
       return next;
     });
   };
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     const n = selectedIds.size;
     if (n === 0) return;
-    if (!confirm(`Supprimer définitivement ${n} produit${n > 1 ? 's' : ''} ?\nCette action est irréversible. Les produits utilisés dans des ventes/commandes/plans ne seront pas supprimés.`)) return;
+    if (!(await confirm(`Supprimer définitivement ${n} produit${n > 1 ? 's' : ''} ?\nCette action est irréversible. Les produits utilisés dans des ventes/commandes/plans ne seront pas supprimés.`, { title: 'Supprimer des produits', danger: true, confirmLabel: 'Supprimer' }))) return;
     bulkDeleteMutation.mutate([...selectedIds]);
   };
 
@@ -461,7 +463,7 @@ function CatalogueTab() {
                       title={p.is_available ? 'Désactiver' : 'Activer'}>
                       {p.is_available ? <EyeOff size={14} className="text-amber-600" /> : <Eye size={14} className="text-green-600" />}
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); if (confirm('Supprimer définitivement ce produit ? Cette action est irréversible.')) deleteMutation.mutate(p.id as string); }}
+                    <button onClick={async (e) => { e.stopPropagation(); if (await confirm('Supprimer définitivement ce produit ? Cette action est irréversible.', { title: 'Supprimer le produit', danger: true, confirmLabel: 'Supprimer' })) deleteMutation.mutate(p.id as string); }}
                       className="w-9 h-9 rounded-full bg-white/90 backdrop-blur shadow-lg flex items-center justify-center hover:bg-red-50 transition-colors" title="Supprimer">
                       <Trash2 size={14} className="text-red-500" />
                     </button>
@@ -633,7 +635,7 @@ function CatalogueTab() {
                           className="odoo-pager-btn" title={p.is_available ? 'Désactiver' : 'Activer'}>
                           {p.is_available ? <EyeOff size={13} /> : <Eye size={13} />}
                         </button>
-                        <button onClick={() => { if (confirm('Supprimer définitivement ce produit ? Cette action est irréversible.')) deleteMutation.mutate(p.id as string); }}
+                        <button onClick={async () => { if (await confirm('Supprimer définitivement ce produit ? Cette action est irréversible.', { title: 'Supprimer le produit', danger: true, confirmLabel: 'Supprimer' })) deleteMutation.mutate(p.id as string); }}
                           className="odoo-pager-btn" title="Supprimer"
                           style={{ color: '#dc3545' }}>
                           <Trash2 size={13} />
