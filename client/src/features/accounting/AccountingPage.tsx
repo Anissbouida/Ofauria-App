@@ -41,6 +41,7 @@ import ImmobilisationsTab from './ImmobilisationsTab';
 import BanqueTab from './BanqueTab';
 import BilanTab from './BilanTab';
 import BudgetTab from './BudgetTab';
+import PrepaidChargesTab from './PrepaidChargesTab';
 import RetenuesSourceTab from './RetenuesSourceTab';
 import EcheancierView from './EcheancierView';
 import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, paymentModeLabel, PaymentStatusTag, type CashOverride } from '../../components/purchasing/PaymentModeFields';
@@ -52,7 +53,7 @@ import {
   periodLabel as periodLabelOf, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 
-type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque';
+type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -279,6 +280,7 @@ const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[]
   { key: 'cheques', label: 'Chèques et Traites', icon: Receipt, section: 'operations' },
   { key: 'dettes', label: 'Dettes', icon: Scale, section: 'operations' },
   { key: 'banque', label: 'Banque', icon: Landmark, section: 'operations', adminOnly: true },
+  { key: 'cca', label: "Charges payées d'avance", icon: CalendarClock, section: 'operations', adminOnly: true },
   { key: 'ecritures', label: 'Journal', icon: Notebook, section: 'operations', adminOnly: true },
   { key: 'immobilisations', label: 'Immobilisations', icon: Building2, section: 'operations', adminOnly: true },
   { key: 'ras', label: 'Retenues source', icon: Scale, section: 'operations', adminOnly: true },
@@ -329,6 +331,7 @@ export default function AccountingPage() {
       {tab === 'immobilisations' && <ImmobilisationsTab />}
       {tab === 'banque' && <BanqueTab />}
       {tab === 'cloture' && <ClotureTab />}
+      {tab === 'cca' && <PrepaidChargesTab />}
     </ModuleShell>
   );
 }
