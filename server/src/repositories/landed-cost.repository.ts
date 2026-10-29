@@ -7,7 +7,7 @@ import { nextDocumentNumber } from '../utils/document-number.js';
  * de l'article (CMUP), sans écriture comptable.
  */
 
-export type AllocationMethod = 'value' | 'quantity';
+export type AllocationMethod = 'value' | 'quantity' | 'weight';
 export type ChargeInput = { label: string; amount: number; categoryId?: string | null; supplierId?: string | null; invoiceId?: string | null };
 
 const NAME = (a: string) => `${a}.first_name || ' ' || ${a}.last_name`;
@@ -18,6 +18,7 @@ const RECEPTION_LINES = `
          COALESCE(ing.name, pk.name) AS label, COALESCE(ing.unit, pk.unit) AS unit,
          rvi.quantity_received AS quantity, COALESCE(rvi.unit_price, rvi.po_unit_price, 0) AS unit_price,
          rvi.quantity_received * COALESCE(rvi.unit_price, rvi.po_unit_price, 0) AS value,
+         fn_ingredient_weight_kg(rvi.ingredient_id, rvi.quantity_received) AS weight_kg,
          il.id AS ingredient_lot_id, il.lot_number, il.unit_cost AS lot_unit_cost,
          COALESCE(ing.unit_cost, pk.unit_cost) AS standard_cost
     FROM reception_voucher_items rvi
@@ -42,9 +43,14 @@ const SELECT = `
 
 function round(v: number, d: number) { const f = 10 ** d; return Math.round(v * f) / f; }
 
-/** Répartition au prorata (valeur ou quantité) ; le dernier reçoit l'arrondi résiduel. */
-export function allocate(lines: { id: string; quantity: number; value: number }[], total: number, method: AllocationMethod) {
-  const basisOf = (l: { quantity: number; value: number }) => (method === 'value' ? l.value : l.quantity);
+/**
+ * Répartition au prorata (valeur, quantité ou poids) ; le dernier reçoit l'arrondi
+ * résiduel. Au poids, une ligne sans poids déterminable (weight null) a une base
+ * nulle : elle ne porte aucun frais (et est signalée en amont à l'utilisateur).
+ */
+export function allocate(lines: { id: string; quantity: number; value: number; weight?: number | null }[], total: number, method: AllocationMethod) {
+  const basisOf = (l: { quantity: number; value: number; weight?: number | null }) =>
+    method === 'value' ? l.value : method === 'weight' ? Number(l.weight ?? 0) : l.quantity;
   const sum = lines.reduce((s, l) => s + basisOf(l), 0);
   if (!lines.length || sum <= 0) return [];
   const out: { id: string; basis: number; sharePct: number; amount: number; quantity: number; unitIncrement: number }[] = [];
@@ -89,7 +95,7 @@ export const landedCostRepository = {
   /** Aperçu de la répartition sans rien enregistrer. */
   async preview(receptionVoucherId: string, total: number, method: AllocationMethod) {
     const lines = await this.receptionLines(receptionVoucherId);
-    const alloc = allocate(lines.map(l => ({ id: l.id, quantity: Number(l.quantity), value: Number(l.value) })), total, method);
+    const alloc = allocate(lines.map(l => ({ id: l.id, quantity: Number(l.quantity), value: Number(l.value), weight: l.weight_kg == null ? null : Number(l.weight_kg) })), total, method);
     return lines.map(l => {
       const a = alloc.find(x => x.id === l.id);
       return { ...l, basis_value: a?.basis ?? 0, share_pct: a?.sharePct ?? 0, amount: a?.amount ?? 0, unit_increment: a?.unitIncrement ?? 0 };
@@ -100,7 +106,7 @@ export const landedCostRepository = {
     const total = round(input.charges.reduce((s, c) => s + c.amount, 0), 2);
     const lines = await this.receptionLines(input.receptionVoucherId);
     if (!lines.length) return { error: 'no_lines' as const };
-    const alloc = allocate(lines.map(l => ({ id: l.id, quantity: Number(l.quantity), value: Number(l.value) })), total, input.method);
+    const alloc = allocate(lines.map(l => ({ id: l.id, quantity: Number(l.quantity), value: Number(l.value), weight: l.weight_kg == null ? null : Number(l.weight_kg) })), total, input.method);
     if (!alloc.length) return { error: 'no_basis' as const };
     const client = await db.getClient();
     try {

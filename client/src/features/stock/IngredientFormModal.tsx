@@ -65,6 +65,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
     containerTypeId: (ing.container_type_id as string) || '',
     containerSize: ing.container_size != null ? String(ing.container_size) : '',
     densiteKgL: ing.densite_kg_l != null ? String(ing.densite_kg_l) : '',
+    poidsPieceKg: ing.poids_piece_kg != null ? String(ing.poids_piece_kg) : '',
     allergens: (Array.isArray(ing.allergens) ? ing.allergens : []) as string[],
   });
   const [submitted, setSubmitted] = useState(false);
@@ -132,6 +133,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
       containerTypeId: !consumable && form.containerTypeId ? form.containerTypeId : null,
       containerSize: !consumable && form.containerTypeId && size > 0 ? size : null,
       densiteKgL: form.densiteKgL !== '' ? (parseFloat(form.densiteKgL) || null) : null,
+      poidsPieceKg: form.poidsPieceKg !== '' ? (parseFloat(form.poidsPieceKg) || null) : null,
       allergens: form.allergens,
     };
     if (mode === 'edit') payload.threshold = parseFloat(form.threshold) || 0;
@@ -208,6 +210,13 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                   hint="Permet les recettes saisies au poids pour un ingrédient stocké en volume. Ex : 1,03 lait · 0,92 huile · 1 eau.">
                   <input type="number" step="0.001" min="0" className="input" value={form.densiteKgL}
                     onChange={e => set('densiteKgL', e.target.value)} placeholder="ex 1.03" style={{ maxWidth: 180 }} />
+                </Field>
+              )}
+              {form.unit === 'unit' && (
+                <Field label="Poids d'une pièce (kg)"
+                  hint="Permet de répartir les frais d'approche au poids pour un article compté à la pièce. Ex : 0,25 pour une pièce de 250 g.">
+                  <input type="number" step="0.0001" min="0" className="input" value={form.poidsPieceKg}
+                    onChange={e => set('poidsPieceKg', e.target.value)} placeholder="ex 0.25" style={{ maxWidth: 180 }} />
                 </Field>
               )}
             </Section>

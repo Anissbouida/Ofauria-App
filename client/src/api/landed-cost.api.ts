@@ -1,7 +1,7 @@
 import api from './client';
 
 /** Frais d'approche (mig 361). */
-export type AllocationMethod = 'value' | 'quantity';
+export type AllocationMethod = 'value' | 'quantity' | 'weight';
 export type LandedCostStatus = 'draft' | 'applied' | 'cancelled';
 
 export type ReceptionChoice = {
@@ -11,7 +11,7 @@ export type ReceptionChoice = {
 export type PreviewLine = {
   id: string; ingredient_id: string | null; packaging_id: string | null; label: string; unit: string | null; quantity: string; unit_price: string; value: string;
   ingredient_lot_id: string | null; lot_number: string | null; lot_unit_cost: string | null; standard_cost: string | null;
-  basis_value: number; share_pct: number; amount: number; unit_increment: number;
+  basis_value: number; share_pct: number; amount: number; unit_increment: number; weight_kg: string | null;
 };
 export type LandedCharge = { id: string; label: string; amount: string; category_id: string | null; category_name: string | null; supplier_id: string | null; supplier_name: string | null; invoice_id: string | null; invoice_number: string | null };
 export type LandedAllocation = {
@@ -28,7 +28,7 @@ export type LandedCostVoucher = {
 export type ChargeInput = { label: string; amount: number; categoryId?: string | null; supplierId?: string | null; invoiceId?: string | null };
 
 export const LANDED_STATUS_LABELS: Record<LandedCostStatus, string> = { draft: 'Brouillon', applied: 'Appliqué', cancelled: 'Annulé' };
-export const METHOD_LABELS: Record<AllocationMethod, string> = { value: 'Au prorata de la valeur', quantity: 'Au prorata de la quantité' };
+export const METHOD_LABELS: Record<AllocationMethod, string> = { value: 'Au prorata de la valeur', quantity: 'Au prorata de la quantité', weight: 'Au prorata du poids' };
 
 export const landedCostApi = {
   list: (params: Record<string, string>): Promise<{ rows: LandedCostVoucher[]; total: number; appliedTotal: string }> => api.get('/landed-costs', { params }).then(r => r.data.data),

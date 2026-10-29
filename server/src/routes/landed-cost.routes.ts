@@ -12,7 +12,7 @@ const AM = [authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)];
 
 const uuid = z.string().uuid();
 const text = (max: number) => z.string().trim().max(max);
-const method = z.enum(['value', 'quantity']);
+const method = z.enum(['value', 'quantity', 'weight']);
 const body = z.object({
   receptionVoucherId: uuid,
   method: method.default('value'),

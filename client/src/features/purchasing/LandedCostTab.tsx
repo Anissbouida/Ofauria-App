@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Truck, Plus, Search, Loader2, CheckCircle2, XCircle, X, Trash2, Ship, FilePenLine, Info } from 'lucide-react';
+import { Truck, Plus, Search, Loader2, CheckCircle2, XCircle, X, Trash2, Ship, FilePenLine, Info, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   landedCostApi, LANDED_STATUS_LABELS, METHOD_LABELS, type AllocationMethod, type ChargeInput, type LandedCostStatus,
@@ -95,6 +95,7 @@ function LandedCostFormModal({ onClose, onSaved }: { onClose: () => void; onSave
   const { data: preview = [], isFetching } = useQuery({
     queryKey: ['landed-preview', receptionId, total, method], queryFn: () => landedCostApi.preview(receptionId, total, method), enabled: !!receptionId,
   });
+  const weightGaps = method === 'weight' ? preview.filter(l => l.weight_kg == null) : [];
   const options = receptions.map(r => ({ id: r.id, label: `${r.voucher_number} · ${r.supplier_name ?? '—'}`, sublabel: `${format(new Date(r.reception_date), 'dd/MM/yyyy')} · ${r.line_count} ligne(s) · ${n2(r.total_value)} DH${Number(r.landed_applied) > 0 ? ` · frais déjà appliqués ${n2(r.landed_applied)}` : ''}`, detail: r.order_number ?? undefined }));
   const save = useMutation({
     mutationFn: () => landedCostApi.create({ receptionVoucherId: receptionId, method, notes: notes.trim() || null, charges: charges.map(({ key: _k, ...c }) => ({ ...c, amount: Number(c.amount), label: c.label.trim() })) }),
@@ -150,14 +151,22 @@ function LandedCostFormModal({ onClose, onSaved }: { onClose: () => void; onSave
           {receptionId && (
             <div>
               <span style={label}>Répartition sur les lignes reçues {isFetching && <Loader2 size={11} className="animate-spin" />}</span>
+              {method === 'weight' && weightGaps.length > 0 && (
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <StatusBanner tone="warning" icon={AlertTriangle} title={`Poids inconnu sur ${weightGaps.length} ligne(s) — elles ne porteront aucun frais`}>
+                    {weightGaps.map(l => l.label).join(', ')}. Renseignez la densité (liquides) ou le poids d'une pièce (articles à l'unité) sur ces articles pour les inclure.
+                  </StatusBanner>
+                </div>
+              )}
               {preview.length === 0 ? <p style={{ fontSize: '0.8125rem', color: '#dc3545', margin: 0 }}>Cette réception n'a aucune ligne d'article valorisable.</p> : (
                 <table className="odoo-table">
-                  <thead><tr><th>Article</th><th>Lot</th><th style={{ textAlign: 'right' }}>Qté</th><th style={{ textAlign: 'right' }}>Prix reçu</th><th style={{ textAlign: 'right' }}>Part</th><th style={{ textAlign: 'right' }}>Frais</th><th style={{ textAlign: 'right' }}>+ par unité</th><th style={{ textAlign: 'right' }}>Coût rendu</th></tr></thead>
+                  <thead><tr><th>Article</th><th>Lot</th><th style={{ textAlign: 'right' }}>Qté</th>{method === 'weight' && <th style={{ textAlign: 'right' }}>Poids</th>}<th style={{ textAlign: 'right' }}>Prix reçu</th><th style={{ textAlign: 'right' }}>Part</th><th style={{ textAlign: 'right' }}>Frais</th><th style={{ textAlign: 'right' }}>+ par unité</th><th style={{ textAlign: 'right' }}>Coût rendu</th></tr></thead>
                   <tbody>{preview.map(l => (
                     <tr key={l.id}>
                       <td>{l.label}</td>
                       <td className="font-mono" style={{ fontSize: '0.75rem' }}>{l.lot_number || '—'}</td>
                       <td style={{ textAlign: 'right' }}>{Number(l.quantity).toLocaleString('fr-FR')} {l.unit ?? ''}</td>
+                      {method === 'weight' && <td style={{ textAlign: 'right', color: l.weight_kg == null ? '#dc3545' : undefined }}>{l.weight_kg == null ? 'inconnu' : `${n2(l.weight_kg)} kg`}</td>}
                       <td style={{ textAlign: 'right' }}>{n4(l.unit_price)}</td>
                       <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{l.share_pct.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %</td>
                       <td style={{ textAlign: 'right' }}>{n2(l.amount)}</td>
