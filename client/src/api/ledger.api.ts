@@ -31,6 +31,30 @@ export const journalsApi = {
     api.get('/ledger/journals').then(r => r.data.data),
 };
 
+/* ═══ Modèles d'écritures (mig 391) ═══ */
+export type EntryTemplateLine = {
+  id?: string; account_id: string; account_code?: string; account_name?: string;
+  side: 'debit' | 'credit'; amount: number; label?: string | null;
+};
+export type EntryTemplate = {
+  id: string; name: string; journal_code: string; journal_name?: string; description: string | null;
+  is_active: boolean; line_count?: number; total_debit?: number; lines?: EntryTemplateLine[];
+};
+export type EntryTemplateInput = {
+  name: string; journalCode?: string; description?: string | null;
+  lines: { accountId: string; side: 'debit' | 'credit'; amount: number; label?: string | null }[];
+};
+export const entryTemplatesApi = {
+  list: (): Promise<EntryTemplate[]> => api.get('/ledger/entry-templates').then(r => r.data.data),
+  getById: (id: string): Promise<EntryTemplate> => api.get(`/ledger/entry-templates/${id}`).then(r => r.data.data),
+  create: (data: EntryTemplateInput) => api.post('/ledger/entry-templates', data).then(r => r.data.data),
+  update: (id: string, data: EntryTemplateInput) => api.put(`/ledger/entry-templates/${id}`, data).then(r => r.data.data),
+  setActive: (id: string, active: boolean) => api.post(`/ledger/entry-templates/${id}/active`, { active }).then(r => r.data.data),
+  remove: (id: string) => api.delete(`/ledger/entry-templates/${id}`).then(r => r.data.data),
+  instantiate: (id: string, data: { date: string; label?: string | null; amounts?: Record<string, number> }): Promise<{ id: string; entry_number: string }> =>
+    api.post(`/ledger/entry-templates/${id}/instantiate`, data).then(r => r.data.data),
+};
+
 /* ═══ Periodes fiscales ═══ */
 export const fiscalPeriodsApi = {
   list: (year?: number): Promise<FiscalPeriod[]> =>
