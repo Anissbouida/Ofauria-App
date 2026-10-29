@@ -134,6 +134,36 @@ projectsRouter.post('/:id/status', ...EDIT, asyncHandler(async (req: AuthRequest
   ok(res, out.data);
 }));
 
+/* ─── Achats & charges rattachés (mig 390) ──────────────────────────────────── */
+projectsRouter.get('/:id/invoices', ...VIEW, asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
+  ok(res, await repo.listInvoices(req.params.id));
+}));
+
+projectsRouter.get('/:id/invoices/linkable', ...VIEW, asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
+  const r = z.object({ search: text(100).optional(), limit: z.coerce.number().int().min(1).max(100).default(30) }).safeParse(req.query);
+  if (!r.success) { bad(res); return; }
+  ok(res, await repo.linkableInvoices({ projectId: req.params.id, storeId: storeOf(req), search: r.data.search || undefined, limit: r.data.limit }));
+}));
+
+projectsRouter.post('/:id/invoices', ...EDIT, asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
+  const r = z.object({ invoiceId: uuid }).safeParse(req.body);
+  if (!r.success) { bad(res); return; }
+  if (!(await repo.findById(req.params.id))) { notFound(res, 'Projet introuvable'); return; }
+  const out = await repo.linkInvoice(req.params.id, r.data.invoiceId);
+  if (!out) { res.status(409).json({ success: false, error: { message: 'Facture introuvable ou déjà rattachée à un autre projet' } }); return; }
+  ok(res, out);
+}));
+
+projectsRouter.delete('/:id/invoices/:invoiceId', ...EDIT, asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!uuid.safeParse(req.params.id).success || !uuid.safeParse(req.params.invoiceId).success) { bad(res); return; }
+  const out = await repo.unlinkInvoice(req.params.id, req.params.invoiceId);
+  if (!out) { notFound(res, 'Facture non rattachée à ce projet'); return; }
+  ok(res, out);
+}));
+
 /* ─── Tâches ──────────────────────────────────────────────────────────────── */
 projectsRouter.post('/:id/tasks', ...EDIT, asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }

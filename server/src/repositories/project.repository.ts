@@ -27,6 +27,14 @@ const TIME_AGG = `
          COALESCE(SUM(t.hours) FILTER (WHERE t.billable AND t.invoice_id IS NULL), 0) AS unbilled_hours
     FROM project_time_entries t GROUP BY t.project_id`;
 
+/** Agrégats des factures rattachées (mig 390) : coût = fournisseurs, produit = émises, HT, hors annulées. */
+const INVOICE_AGG = `
+  SELECT i.project_id,
+         COALESCE(SUM(i.amount) FILTER (WHERE i.invoice_type = 'received' AND i.status <> 'cancelled'), 0) AS external_cost,
+         COALESCE(SUM(i.amount) FILTER (WHERE i.invoice_type = 'emitted' AND i.status <> 'cancelled'), 0) AS external_revenue,
+         COUNT(*) FILTER (WHERE i.status <> 'cancelled') AS invoice_count
+    FROM invoices i WHERE i.project_id IS NOT NULL GROUP BY i.project_id`;
+
 const SELECT = `
   SELECT p.*,
          COALESCE(NULLIF(btrim(COALESCE(cu.company_name, '')), ''),
@@ -39,6 +47,9 @@ const SELECT = `
          COALESCE(ta.billable_amount, 0) AS billable_amount,
          COALESCE(ta.unbilled_amount, 0) AS unbilled_amount,
          COALESCE(ta.unbilled_hours, 0) AS unbilled_hours,
+         COALESCE(ia.external_cost, 0) AS external_cost,
+         COALESCE(ia.external_revenue, 0) AS external_revenue,
+         COALESCE(ia.invoice_count, 0)::int AS invoice_count,
          COALESCE(tk.total, 0)::int AS task_count,
          COALESCE(tk.done, 0)::int AS task_done,
          COALESCE(tk.late, 0)::int AS task_late,
@@ -49,6 +60,7 @@ const SELECT = `
     LEFT JOIN users m ON m.id = p.manager_id
     LEFT JOIN users cb ON cb.id = p.created_by
     LEFT JOIN (${TIME_AGG}) ta ON ta.project_id = p.id
+    LEFT JOIN (${INVOICE_AGG}) ia ON ia.project_id = p.id
     LEFT JOIN (
       SELECT project_id, COUNT(*) FILTER (WHERE status <> 'cancelled') AS total,
              COUNT(*) FILTER (WHERE status = 'done') AS done,
@@ -317,6 +329,54 @@ export const projectRepository = {
 
   async deleteTime(id: string) {
     const r = await db.query(`DELETE FROM project_time_entries WHERE id = $1 AND invoice_id IS NULL RETURNING project_id`, [id]);
+    return r.rows[0] ?? null;
+  },
+
+  /* ─── Achats & charges rattachés (mig 390) ───────────────────────────────── */
+  /** Factures rattachées au projet : fournisseurs (coût) et émises (produit). */
+  async listInvoices(projectId: string) {
+    const r = await db.query(
+      `SELECT i.id, i.invoice_number, i.invoice_type, i.invoice_date, i.status,
+              i.amount, i.tax_amount, i.total_amount,
+              s.name AS supplier_name, ec.name AS category_name
+         FROM invoices i
+         LEFT JOIN suppliers s ON s.id = i.supplier_id
+         LEFT JOIN expense_categories ec ON ec.id = i.category_id
+        WHERE i.project_id = $1
+        ORDER BY i.invoice_date DESC, i.invoice_number`, [projectId]);
+    return r.rows;
+  },
+
+  /** Factures rattachables : non annulées, libres ou déjà sur ce projet. */
+  async linkableInvoices(p: { projectId: string; storeId?: string; search?: string; limit: number }) {
+    const values: unknown[] = [p.projectId];
+    const conds = [`i.status <> 'cancelled'`, `(i.project_id IS NULL OR i.project_id = $1)`];
+    if (p.search) { values.push(`%${p.search}%`); conds.push(`(i.invoice_number ILIKE $${values.length} OR s.name ILIKE $${values.length})`); }
+    values.push(p.limit);
+    const r = await db.query(
+      `SELECT i.id, i.invoice_number, i.invoice_type, i.invoice_date, i.status,
+              i.amount, i.total_amount, i.project_id,
+              s.name AS supplier_name, ec.name AS category_name
+         FROM invoices i
+         LEFT JOIN suppliers s ON s.id = i.supplier_id
+         LEFT JOIN expense_categories ec ON ec.id = i.category_id
+        WHERE ${conds.join(' AND ')}
+        ORDER BY i.invoice_date DESC LIMIT $${values.length}`, values);
+    return r.rows;
+  },
+
+  /** Rattache une facture au projet (seulement si libre ou déjà sur ce projet). */
+  async linkInvoice(projectId: string, invoiceId: string) {
+    const r = await db.query(
+      `UPDATE invoices SET project_id = $1
+        WHERE id = $2 AND (project_id IS NULL OR project_id = $1) RETURNING id`, [projectId, invoiceId]);
+    return r.rows[0] ?? null;
+  },
+
+  /** Détache une facture de ce projet. */
+  async unlinkInvoice(projectId: string, invoiceId: string) {
+    const r = await db.query(
+      `UPDATE invoices SET project_id = NULL WHERE id = $2 AND project_id = $1 RETURNING id`, [projectId, invoiceId]);
     return r.rows[0] ?? null;
   },
 

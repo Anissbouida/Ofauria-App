@@ -14,8 +14,14 @@ export type Project = {
   budget_amount: string | null; estimated_hours: string | null; notes: string | null;
   created_by_name: string | null; created_at: string; updated_at: string;
   hours_spent: string; cost_spent: string; billable_amount: string; unbilled_amount: string; unbilled_hours: string;
+  external_cost: string; external_revenue: string; invoice_count: number;
   task_count: number; task_done: number; task_late: number; is_overdue: boolean;
   tasks?: Task[];
+};
+export type ProjectInvoice = {
+  id: string; invoice_number: string; invoice_type: 'received' | 'emitted'; invoice_date: string;
+  status: string; amount: string; tax_amount: string; total_amount: string;
+  supplier_name: string | null; category_name: string | null; project_id?: string | null;
 };
 export type Task = {
   id: string; project_id: string; parent_task_id: string | null; title: string; description: string | null;
@@ -74,4 +80,9 @@ export const projectsApi = {
     api.get('/projects/time/entries', { params }).then(r => r.data.data),
   addTime: (data: TimeInput): Promise<TimeEntry> => api.post('/projects/time/entries', data).then(r => r.data.data),
   deleteTime: (id: string) => api.delete(`/projects/time/entries/${id}`).then(r => r.data.data),
+  listInvoices: (id: string): Promise<ProjectInvoice[]> => api.get(`/projects/${id}/invoices`).then(r => r.data.data),
+  linkableInvoices: (id: string, params: Record<string, string> = {}): Promise<ProjectInvoice[]> =>
+    api.get(`/projects/${id}/invoices/linkable`, { params }).then(r => r.data.data),
+  linkInvoice: (id: string, invoiceId: string) => api.post(`/projects/${id}/invoices`, { invoiceId }).then(r => r.data.data),
+  unlinkInvoice: (id: string, invoiceId: string) => api.delete(`/projects/${id}/invoices/${invoiceId}`).then(r => r.data.data),
 };
