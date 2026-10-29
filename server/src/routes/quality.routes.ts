@@ -15,5 +15,9 @@ router.post('/templates/:id/active', ...AM, qualityController.setTemplateActive)
 router.get('/inspections', ...AM, qualityController.listInspections);
 router.post('/inspections', ...AM, qualityController.createInspection);
 router.get('/inspections/:id', ...AM, qualityController.getInspection);
+router.get('/users', ...AM, qualityController.users);
+router.get('/nonconformities', ...AM, qualityController.listNonConformities);
+router.post('/nonconformities', ...AM, qualityController.createNonConformity);
+router.put('/nonconformities/:id', ...AM, qualityController.updateNonConformity);
 
 export default router;

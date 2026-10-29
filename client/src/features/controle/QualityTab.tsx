@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { ListChecks, Plus, X, Loader2, CheckCircle2, XCircle, Trash2, Power } from 'lucide-react';
-import { qualityApi, type QualityTemplate, type QualityItem, type QualityResult, type AppliesTo } from '../../api/quality.api';
+import { ListChecks, Plus, X, Loader2, CheckCircle2, XCircle, Trash2, Power, AlertTriangle } from 'lucide-react';
+import { qualityApi, type QualityTemplate, type QualityItem, type QualityResult, type AppliesTo,
+  type NonConformity, type NonConformityInput, type NcStatus, type NcSeverity, type NcSource } from '../../api/quality.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -13,18 +14,132 @@ const APPLIES: Record<AppliesTo, string> = { general: 'Général', reception: 'R
 const day = (d: string) => format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr });
 
 export default function QualityTab() {
-  const [view, setView] = useState<'inspections' | 'templates'>('inspections');
+  const [view, setView] = useState<'inspections' | 'templates' | 'nonconformities'>('inspections');
   return (
     <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <StatusBanner tone="info" icon={ListChecks} title="Contrôle qualité paramétrable">
-        Définissez des modèles d'inspection (points à vérifier, mesures dans une plage), puis enregistrez des inspections qui calculent la conformité. Indépendant des contrôles de réception et de production.
+        Définissez des modèles d'inspection (points à vérifier, mesures dans une plage), enregistrez des inspections, et suivez les non-conformités jusqu'à leur action corrective. Indépendant des contrôles de réception et de production.
       </StatusBanner>
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button className={view === 'inspections' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('inspections')}>Inspections</button>
+        <button className={view === 'nonconformities' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('nonconformities')}>Non-conformités</button>
         <button className={view === 'templates' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('templates')}>Modèles</button>
       </div>
-      {view === 'inspections' ? <Inspections /> : <Templates />}
+      {view === 'inspections' ? <Inspections /> : view === 'nonconformities' ? <NonConformities /> : <Templates />}
     </div>
+  );
+}
+
+/* ── Non-conformités & actions correctives (mig 385) ── */
+const NC_SEVERITY: Record<NcSeverity, { label: string; tag: string }> = {
+  low: { label: 'Faible', tag: 'odoo-tag-grey' }, medium: { label: 'Moyenne', tag: 'odoo-tag-orange' }, high: { label: 'Élevée', tag: 'odoo-tag-red' },
+};
+const NC_STATUS: Record<NcStatus, { label: string; tag: string }> = {
+  open: { label: 'Ouverte', tag: 'odoo-tag-red' }, in_progress: { label: 'En cours', tag: 'odoo-tag-orange' }, closed: { label: 'Clôturée', tag: 'odoo-tag-green' },
+};
+const NC_SOURCE: Record<NcSource, string> = { inspection: 'Inspection', reception: 'Réception', production: 'Production', complaint: 'Réclamation', other: 'Autre' };
+
+function NonConformities() {
+  const qc = useQueryClient();
+  const [filter, setFilter] = useState<'' | NcStatus>('');
+  const { data: rows = [], isLoading } = useQuery({ queryKey: ['quality', 'nc', filter], queryFn: () => qualityApi.nonconformities(filter || undefined) });
+  const [editing, setEditing] = useState<NonConformity | 'new' | null>(null);
+  const setStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: NcStatus }) => qualityApi.updateNonConformity(id, { status }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['quality', 'nc'] }),
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={14} /> Nouvelle non-conformité</button>
+        <div style={{ flex: 1 }} />
+        {([['', 'Toutes'], ['open', 'Ouvertes'], ['in_progress', 'En cours'], ['closed', 'Clôturées']] as const).map(([k, l]) => (
+          <button key={k} className={filter === k ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem' }} onClick={() => setFilter(k)}>{l}</button>
+        ))}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="odoo-table">
+          <thead><tr><th>Détectée</th><th>Non-conformité</th><th>Source</th><th>Gravité</th><th>Responsable</th><th>Échéance</th><th>Statut</th><th /></tr></thead>
+          <tbody>
+            {isLoading && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
+            {!isLoading && rows.length === 0 && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucune non-conformité.</td></tr>}
+            {rows.map(nc => (
+              <tr key={nc.id} style={{ cursor: 'pointer' }} onClick={() => setEditing(nc)}>
+                <td style={{ whiteSpace: 'nowrap' }}>{day(nc.detected_on)}</td>
+                <td style={{ fontWeight: 500 }}>{nc.title}{nc.reference_note && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{nc.reference_note}</div>}</td>
+                <td style={{ fontSize: '0.85rem' }}>{NC_SOURCE[nc.source]}</td>
+                <td><span className={`odoo-tag ${NC_SEVERITY[nc.severity].tag}`}>{NC_SEVERITY[nc.severity].label}</span></td>
+                <td style={{ fontSize: '0.85rem', color: 'var(--theme-text-muted)' }}>{nc.responsible_name || '—'}</td>
+                <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem', color: nc.overdue ? '#dc2626' : 'var(--theme-text-muted)', fontWeight: nc.overdue ? 600 : 400 }}>
+                  {nc.overdue && <AlertTriangle size={11} style={{ display: 'inline', verticalAlign: -1, marginRight: 3 }} />}{nc.due_date ? day(nc.due_date) : '—'}
+                </td>
+                <td><span className={`odoo-tag ${NC_STATUS[nc.status].tag}`}>{NC_STATUS[nc.status].label}</span></td>
+                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                  {nc.status !== 'closed'
+                    ? <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => setStatus.mutate({ id: nc.id, status: 'closed' })}>Clôturer</button>
+                    : <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => setStatus.mutate({ id: nc.id, status: 'in_progress' })}>Rouvrir</button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {editing && <NcForm nc={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { qc.invalidateQueries({ queryKey: ['quality', 'nc'] }); setEditing(null); }} />}
+    </>
+  );
+}
+
+function NcForm({ nc, onClose, onSaved }: { nc: NonConformity | null; onClose: () => void; onSaved: () => void }) {
+  const { data: users = [] } = useQuery({ queryKey: ['quality', 'users'], queryFn: qualityApi.users });
+  const [f, setF] = useState({
+    title: nc?.title ?? '', source: (nc?.source ?? 'other') as NcSource, referenceNote: nc?.reference_note ?? '',
+    description: nc?.description ?? '', severity: (nc?.severity ?? 'medium') as NcSeverity,
+    correctiveAction: nc?.corrective_action ?? '', responsibleId: nc?.responsible_id ?? '',
+    dueDate: nc?.due_date?.slice(0, 10) ?? '', status: (nc?.status ?? 'open') as NcStatus,
+  });
+  const set = (k: keyof typeof f, v: string) => setF(x => ({ ...x, [k]: v }));
+  const save = useMutation({
+    mutationFn: () => {
+      const payload: NonConformityInput & { status?: NcStatus } = {
+        title: f.title.trim(), source: f.source, referenceNote: f.referenceNote || null, description: f.description || null,
+        severity: f.severity, correctiveAction: f.correctiveAction || null, responsibleId: f.responsibleId || null, dueDate: f.dueDate || null,
+      };
+      return nc ? qualityApi.updateNonConformity(nc.id, { ...payload, status: f.status }) : qualityApi.createNonConformity(payload);
+    },
+    onSuccess: () => { notify.success(nc ? 'Non-conformité enregistrée' : 'Non-conformité créée'); onSaved(); },
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(600px, 96vw)', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
+          <span style={{ fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}><AlertTriangle size={16} /> {nc ? 'Non-conformité' : 'Nouvelle non-conformité'}</span>
+          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+        </div>
+        <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Field label="Intitulé"><input type="text" value={f.title} onChange={e => set('title', e.target.value)} placeholder="Ex. Lot beurre rance" style={inp} /></Field>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <Field label="Source"><select value={f.source} onChange={e => set('source', e.target.value)} style={inp}>{(Object.keys(NC_SOURCE) as NcSource[]).map(k => <option key={k} value={k}>{NC_SOURCE[k]}</option>)}</select></Field>
+            <Field label="Gravité"><select value={f.severity} onChange={e => set('severity', e.target.value)} style={inp}>{(Object.keys(NC_SEVERITY) as NcSeverity[]).map(k => <option key={k} value={k}>{NC_SEVERITY[k].label}</option>)}</select></Field>
+            <Field label="Référence (optionnel)"><input type="text" value={f.referenceNote} onChange={e => set('referenceNote', e.target.value)} style={inp} /></Field>
+          </div>
+          <Field label="Description"><textarea value={f.description} onChange={e => set('description', e.target.value)} style={{ ...inp, minHeight: 56 }} placeholder="Qu'est-ce qui ne va pas ?" /></Field>
+          <Field label="Action corrective"><textarea value={f.correctiveAction} onChange={e => set('correctiveAction', e.target.value)} style={{ ...inp, minHeight: 56 }} placeholder="Que fait-on pour corriger et éviter que ça se reproduise ?" /></Field>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <Field label="Responsable"><select value={f.responsibleId} onChange={e => set('responsibleId', e.target.value)} style={inp}><option value="">—</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
+            <Field label="Échéance"><input type="date" value={f.dueDate} onChange={e => set('dueDate', e.target.value)} style={inp} /></Field>
+            {nc && <Field label="Statut"><select value={f.status} onChange={e => set('status', e.target.value)} style={inp}>{(Object.keys(NC_STATUS) as NcStatus[]).map(k => <option key={k} value={k}>{NC_STATUS[k].label}</option>)}</select></Field>}
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
+          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
+          <button type="button" className="odoo-btn-primary" disabled={f.title.trim().length < 2 || save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {nc ? 'Enregistrer' : 'Créer'}
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
   );
 }
 

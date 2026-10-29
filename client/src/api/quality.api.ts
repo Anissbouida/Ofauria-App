@@ -26,4 +26,24 @@ export const qualityApi = {
   getInspection: (id: string): Promise<QualityInspection> => api.get(`/quality/inspections/${id}`).then(r => r.data.data),
   createInspection: (data: { templateId?: string | null; title: string; referenceNote?: string | null; inspectedOn?: string | null; results: QualityResult[]; notes?: string | null }): Promise<QualityInspection> =>
     api.post('/quality/inspections', data).then(r => r.data.data),
+  users: (): Promise<{ id: string; name: string }[]> => api.get('/quality/users').then(r => r.data.data),
+  nonconformities: (status?: string): Promise<NonConformity[]> =>
+    api.get('/quality/nonconformities', { params: status ? { status } : {} }).then(r => r.data.data),
+  createNonConformity: (data: NonConformityInput): Promise<NonConformity> =>
+    api.post('/quality/nonconformities', data).then(r => r.data.data),
+  updateNonConformity: (id: string, data: Partial<NonConformityInput> & { status?: NcStatus }): Promise<NonConformity> =>
+    api.put(`/quality/nonconformities/${id}`, data).then(r => r.data.data),
 };
+
+export type NcStatus = 'open' | 'in_progress' | 'closed';
+export type NcSeverity = 'low' | 'medium' | 'high';
+export type NcSource = 'inspection' | 'reception' | 'production' | 'complaint' | 'other';
+export interface NonConformity {
+  id: string; title: string; source: NcSource; reference_note: string | null; description: string | null;
+  severity: NcSeverity; corrective_action: string | null; responsible_id: string | null; responsible_name: string | null;
+  due_date: string | null; status: NcStatus; detected_on: string; detected_by_name: string | null; closed_at: string | null; overdue: boolean;
+}
+export interface NonConformityInput {
+  title: string; source?: NcSource; referenceNote?: string | null; description?: string | null;
+  severity?: NcSeverity; correctiveAction?: string | null; responsibleId?: string | null; dueDate?: string | null; detectedOn?: string | null;
+}

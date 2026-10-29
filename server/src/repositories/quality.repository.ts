@@ -104,4 +104,63 @@ export const qualityRepository = {
        input.inspectedOn || null, JSON.stringify(results), conformity, input.notes?.trim() || null, input.storeId ?? null, input.userId]);
     return this.getInspection(r.rows[0].id);
   },
+
+  /* ── Non-conformités & actions correctives (mig 385) ── */
+  async listNonConformities(p: { storeId?: string | null; status?: string; limit: number }) {
+    const params: unknown[] = [];
+    const cond: string[] = ['true'];
+    if (p.storeId) { params.push(p.storeId); cond.push(`(nc.store_id IS NULL OR nc.store_id = $${params.length})`); }
+    if (p.status) { params.push(p.status); cond.push(`nc.status = $${params.length}`); }
+    params.push(p.limit);
+    const r = await db.query(
+      `SELECT nc.*, ru.first_name || ' ' || ru.last_name AS responsible_name,
+              du.first_name || ' ' || du.last_name AS detected_by_name,
+              (nc.status <> 'closed' AND nc.due_date IS NOT NULL AND nc.due_date < CURRENT_DATE) AS overdue
+         FROM quality_nonconformities nc
+         LEFT JOIN users ru ON ru.id = nc.responsible_id
+         LEFT JOIN users du ON du.id = nc.detected_by
+        WHERE ${cond.join(' AND ')}
+        ORDER BY (nc.status <> 'closed') DESC, nc.due_date NULLS LAST, nc.detected_on DESC
+        LIMIT $${params.length}`, params);
+    return r.rows;
+  },
+
+  async createNonConformity(input: {
+    title: string; source?: string; referenceNote?: string | null; description?: string | null;
+    severity?: string; correctiveAction?: string | null; responsibleId?: string | null; dueDate?: string | null;
+    detectedOn?: string | null; storeId?: string | null; userId: string | null;
+  }) {
+    const source = ['inspection', 'reception', 'production', 'complaint', 'other'].includes(input.source ?? '') ? input.source : 'other';
+    const severity = ['low', 'medium', 'high'].includes(input.severity ?? '') ? input.severity : 'medium';
+    const r = await db.query(
+      `INSERT INTO quality_nonconformities (title, source, reference_note, description, severity, corrective_action, responsible_id, due_date, detected_on, detected_by, store_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9::date, CURRENT_DATE),$10,$11) RETURNING id`,
+      [input.title.trim().slice(0, 200), source, input.referenceNote?.trim()?.slice(0, 200) || null, input.description?.trim() || null,
+       severity, input.correctiveAction?.trim() || null, input.responsibleId || null, input.dueDate || null,
+       input.detectedOn || null, input.userId, input.storeId ?? null]);
+    return (await this.listNonConformities({ storeId: input.storeId, limit: 1000 })).find((x: { id: string }) => x.id === r.rows[0].id);
+  },
+
+  async updateNonConformity(id: string, input: {
+    title?: string; severity?: string; correctiveAction?: string | null; responsibleId?: string | null;
+    dueDate?: string | null; description?: string | null; status?: string;
+  }) {
+    const cur = (await db.query(`SELECT * FROM quality_nonconformities WHERE id = $1`, [id])).rows[0];
+    if (!cur) return null;
+    const status = input.status && ['open', 'in_progress', 'closed'].includes(input.status) ? input.status : cur.status;
+    const severity = input.severity && ['low', 'medium', 'high'].includes(input.severity) ? input.severity : cur.severity;
+    await db.query(
+      `UPDATE quality_nonconformities SET
+         title = $2, severity = $3, corrective_action = $4, responsible_id = $5, due_date = $6, description = $7,
+         status = $8::text,
+         closed_at = CASE WHEN $8::text = 'closed' AND closed_at IS NULL THEN now()
+                          WHEN $8::text <> 'closed' THEN NULL ELSE closed_at END
+       WHERE id = $1`,
+      [id, (input.title ?? cur.title).trim().slice(0, 200), severity,
+       input.correctiveAction !== undefined ? (input.correctiveAction?.trim() || null) : cur.corrective_action,
+       input.responsibleId !== undefined ? (input.responsibleId || null) : cur.responsible_id,
+       input.dueDate !== undefined ? (input.dueDate || null) : cur.due_date,
+       input.description !== undefined ? (input.description?.trim() || null) : cur.description, status]);
+    return (await this.listNonConformities({ storeId: cur.store_id, limit: 1000 })).find((x: { id: string }) => x.id === id);
+  },
 };
