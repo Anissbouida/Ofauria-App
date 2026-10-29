@@ -159,11 +159,23 @@ export const reportsApi = {
   customUpdate: (id: string, data: { name: string; sourceKey: string; config: ReportConfig }) =>
     api.put(`/reports/custom/definitions/${id}`, data).then(r => r.data.data),
   customDelete: (id: string) => api.delete(`/reports/custom/definitions/${id}`).then(r => r.data.data),
+  // Tableaux de bord (mig 395)
+  dashboards: (): Promise<DashboardSummary[]> => api.get('/reports/custom/dashboards').then(r => r.data.data),
+  getDashboard: (id: string): Promise<Dashboard> => api.get(`/reports/custom/dashboards/${id}`).then(r => r.data.data),
+  dashboardCreate: (data: { name: string; tiles?: DashboardTile[] }): Promise<{ id: string }> =>
+    api.post('/reports/custom/dashboards', data).then(r => r.data.data),
+  dashboardUpdate: (id: string, data: { name: string; tiles: DashboardTile[] }) =>
+    api.put(`/reports/custom/dashboards/${id}`, data).then(r => r.data.data),
+  dashboardDelete: (id: string) => api.delete(`/reports/custom/dashboards/${id}`).then(r => r.data.data),
 };
+
+export type DashboardTile = { id: string; title: string; source_key: string; config: ReportConfig; viz: 'table' | 'bar' | 'line' | 'kpi' };
+export type DashboardSummary = { id: string; name: string; tile_count: number; created_by_name: string | null; updated_at: string };
+export type Dashboard = { id: string; name: string; tiles: DashboardTile[]; created_at: string; updated_at: string };
 
 export type ReportField = { key: string; label: string; type?: string; format?: string };
 export type ReportSource = { key: string; label: string; dimensions: ReportField[]; measures: ReportField[]; filters: ReportField[] };
-export type ReportConfig = { dimensions: string[]; measures: string[]; filters: Record<string, string>; dateFrom?: string; dateTo?: string; sort?: { key: string; dir: 'asc' | 'desc' }; chart?: { type: 'bar' | 'none'; measure?: string } };
+export type ReportConfig = { dimensions: string[]; measures: string[]; filters: Record<string, string>; dateFrom?: string; dateTo?: string; sort?: { key: string; dir: 'asc' | 'desc' }; viz?: 'table' | 'bar' | 'line' | 'kpi' };
 export type ReportRunConfig = ReportConfig & { sourceKey: string; limit?: number };
 export type ReportColumn = { key: string; label: string; kind: 'dimension' | 'measure'; type?: string; format?: string };
 export type ReportRunResult = { columns: ReportColumn[]; rows: Record<string, any>[]; source_key: string };

@@ -63,4 +63,34 @@ router.delete('/custom/definitions/:id', ...AM, asyncHandler(async (req: AuthReq
   res.json({ success: true, data: null });
 }));
 
+/* ─── Tableaux de bord (mig 395) ───────────────────────────────────────── */
+router.get('/custom/dashboards', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await rb.listDashboards(storeOf(req)) });
+}));
+
+router.get('/custom/dashboards/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const d = await rb.getDashboard(req.params.id);
+  if (!d) { res.status(404).json({ success: false, error: { message: 'Introuvable' } }); return; }
+  res.json({ success: true, data: d });
+}));
+
+router.post('/custom/dashboards', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { name, tiles } = req.body ?? {};
+  if (typeof name !== 'string' || !name.trim()) { bad(res, 'Nom requis'); return; }
+  res.status(201).json({ success: true, data: await rb.createDashboard({ name, tiles }, { userId: req.user!.userId, storeId: storeOf(req) }) });
+}));
+
+router.put('/custom/dashboards/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { name, tiles } = req.body ?? {};
+  if (typeof name !== 'string' || !name.trim()) { bad(res, 'Nom requis'); return; }
+  const out = await rb.updateDashboard(req.params.id, { name, tiles: Array.isArray(tiles) ? tiles : [] });
+  if ('error' in out) { res.status(404).json({ success: false, error: { message: out.error } }); return; }
+  res.json({ success: true, data: out });
+}));
+
+router.delete('/custom/dashboards/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  await rb.removeDashboard(req.params.id);
+  res.json({ success: true, data: null });
+}));
+
 export default router;

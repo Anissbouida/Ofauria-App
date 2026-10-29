@@ -15,6 +15,7 @@ type FilterDef = { key: string; label: string; sql: string; type: 'enum'; option
 type DataSource = {
   key: string; label: string;
   from: string;
+  baseWhere?: string;   // prédicat fixe toujours appliqué (ex. invoice_type = 'received')
   dateColumn: string;
   storeColumn?: string;
   dimensions: Dimension[];
@@ -81,6 +82,33 @@ const SOURCES: Record<string, DataSource> = {
       { key: 'atelier', label: 'Atelier', sql: `pl.target_role`, type: 'enum', optionsSql: `SELECT DISTINCT target_role AS v FROM production_plans WHERE target_role IS NOT NULL ORDER BY 1` },
     ],
   },
+  achats: {
+    key: 'achats', label: 'Achats & charges',
+    from: `invoices i
+           LEFT JOIN suppliers s ON s.id = i.supplier_id
+           LEFT JOIN projects pr ON pr.id = i.project_id`,
+    baseWhere: `i.invoice_type = 'received'`,
+    dateColumn: 'i.invoice_date',
+    storeColumn: 'i.store_id',
+    dimensions: [
+      { key: 'date_day', label: 'Jour', sql: `i.invoice_date`, type: 'date' },
+      { key: 'date_month', label: 'Mois', sql: `to_char(i.invoice_date, 'YYYY-MM')`, type: 'text' },
+      { key: 'supplier', label: 'Fournisseur', sql: `COALESCE(s.name, '—')`, type: 'text' },
+      { key: 'status', label: 'Statut', sql: `COALESCE(i.status, '—')`, type: 'text' },
+      { key: 'project', label: 'Projet', sql: `COALESCE(pr.name, 'Hors projet')`, type: 'text' },
+    ],
+    measures: [
+      { key: 'ht', label: 'Montant HT', sql: `SUM(i.amount)`, format: 'currency' },
+      { key: 'tva', label: 'TVA', sql: `SUM(i.tax_amount)`, format: 'currency' },
+      { key: 'ttc', label: 'Montant TTC', sql: `SUM(i.total_amount)`, format: 'currency' },
+      { key: 'paid', label: 'Payé', sql: `SUM(COALESCE(i.paid_amount, 0))`, format: 'currency' },
+      { key: 'count', label: 'Nb factures', sql: `COUNT(*)`, format: 'integer' },
+    ],
+    filters: [
+      { key: 'status', label: 'Statut', sql: `i.status`, type: 'enum', optionsSql: `SELECT DISTINCT status AS v FROM invoices WHERE invoice_type = 'received' AND status IS NOT NULL ORDER BY 1` },
+      { key: 'supplier', label: 'Fournisseur', sql: `s.name`, type: 'enum', optionsSql: `SELECT DISTINCT s.name AS v FROM invoices i JOIN suppliers s ON s.id = i.supplier_id WHERE i.invoice_type = 'received' AND s.name IS NOT NULL ORDER BY 1` },
+    ],
+  },
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -133,6 +161,8 @@ export const reportBuilderRepository = {
     const add = (v: unknown) => { values.push(v); return `$${values.length}`; };
     const where: string[] = [];
 
+    // Prédicat fixe de la source (ex. factures reçues uniquement).
+    if (src.baseWhere) where.push(src.baseWhere);
     // Portée magasin.
     if (src.storeColumn && ctx.storeId) where.push(`(${src.storeColumn} = ${add(ctx.storeId)}::uuid OR ${src.storeColumn} IS NULL)`);
     // Plage de dates.
@@ -203,5 +233,40 @@ export const reportBuilderRepository = {
 
   async remove(id: string) {
     await db.query(`DELETE FROM report_definitions WHERE id = $1`, [id]);
+  },
+
+  /* ─── Tableaux de bord (mig 395) ──────────────────────────────────────── */
+  async listDashboards(storeId: string | null) {
+    const { rows } = await db.query(
+      `SELECT d.id, d.name, d.tiles, d.created_at, d.updated_at,
+              u.first_name || ' ' || u.last_name AS created_by_name,
+              jsonb_array_length(d.tiles) AS tile_count
+         FROM report_dashboards d LEFT JOIN users u ON u.id = d.created_by
+        WHERE ($1::uuid IS NULL OR d.store_id IS NULL OR d.store_id = $1)
+        ORDER BY d.name`, [storeId]);
+    return rows;
+  },
+
+  async getDashboard(id: string) {
+    const { rows } = await db.query(`SELECT * FROM report_dashboards WHERE id = $1`, [id]);
+    return rows[0] ?? null;
+  },
+
+  async createDashboard(input: { name: string; tiles?: unknown[] }, ctx: { userId: string; storeId: string | null }) {
+    const { rows } = await db.query(
+      `INSERT INTO report_dashboards (name, tiles, store_id, created_by) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [input.name.trim(), JSON.stringify(input.tiles ?? []), ctx.storeId, ctx.userId]);
+    return { id: rows[0].id };
+  },
+
+  async updateDashboard(id: string, input: { name: string; tiles: unknown[] }) {
+    const { rows } = await db.query(
+      `UPDATE report_dashboards SET name = $2, tiles = $3, updated_at = now() WHERE id = $1 RETURNING id`,
+      [id, input.name.trim(), JSON.stringify(input.tiles ?? [])]);
+    return rows[0] ? { id } : { error: 'Tableau de bord introuvable' };
+  },
+
+  async removeDashboard(id: string) {
+    await db.query(`DELETE FROM report_dashboards WHERE id = $1`, [id]);
   },
 };
