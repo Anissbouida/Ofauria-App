@@ -61,6 +61,7 @@ ledgerRouter.get('/general-ledger',      authenticate, authorize(...ROLE_GROUPS.
 ledgerRouter.get('/general-ledger-full', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), financialStatementsController.generalLedgerFull);
 ledgerRouter.get('/balance',          authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), financialStatementsController.balance);
 ledgerRouter.get('/income-statement', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), financialStatementsController.incomeStatement);
+ledgerRouter.get('/cash-flow',        authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), financialStatementsController.cashFlow);
 
 // Declaration TVA (CA20 Maroc)
 ledgerRouter.get('/tva-declaration',  authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), tvaDeclarationController.declaration);

@@ -240,6 +240,20 @@ export const financialStatementsController = {
     });
     res.json({ success: true, data });
   },
+  /**
+   * GET /api/v1/ledger/cash-flow?startDate=...&endDate=...
+   * État de flux de trésorerie (comptes classe 5) : par compte et par nature.
+   */
+  async cashFlow(req: AuthRequest, res: Response) {
+    const startDate = req.query.startDate as string | undefined;
+    const endDate = req.query.endDate as string | undefined;
+    if (!startDate || !endDate) {
+      res.status(400).json({ success: false, error: { message: 'startDate et endDate requis' } });
+      return;
+    }
+    const data = await financialStatementsRepository.cashFlow({ startDate, endDate, storeId: req.user!.storeId });
+    res.json({ success: true, data });
+  },
 };
 
 /* ═══ Declaration TVA (CA20) ═══ */

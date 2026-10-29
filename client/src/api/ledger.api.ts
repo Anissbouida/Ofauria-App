@@ -215,7 +215,16 @@ export const financialStatementsApi = {
     api.get('/ledger/income-statement', { params }).then(r => r.data.data),
   balanceSheet: (endDate: string): Promise<BalanceSheet> =>
     api.get('/ledger/balance-sheet', { params: { endDate } }).then(r => r.data.data),
+  cashFlow: (params: { startDate: string; endDate: string }): Promise<CashFlowResult> =>
+    api.get('/ledger/cash-flow', { params }).then(r => r.data.data),
 };
+
+export interface CashFlowResult {
+  startDate: string; endDate: string;
+  accounts: { code: string; label: string; opening: number; inflow: number; outflow: number; closing: number }[];
+  openingTotal: number; inflowTotal: number; outflowTotal: number; closingTotal: number;
+  nature: { account_class: number; label: string; inflow: number; outflow: number }[];
+}
 
 /* ═══ Declaration TVA (CA20) ═══ */
 export interface TvaLine {

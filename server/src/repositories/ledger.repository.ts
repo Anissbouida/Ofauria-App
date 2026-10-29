@@ -577,6 +577,78 @@ export const financialStatementsRepository = {
   },
 
   /**
+   * Etat de flux de tresorerie sur une periode. Base sur les mouvements des
+   * comptes de tresorerie (classe 5 : caisses, banques, effets) :
+   *   - par compte : solde d'ouverture (avant startDate), encaissements (debit)
+   *     et decaissements (credit) de la periode, solde de cloture ;
+   *   - ventilation par nature : contreparties (lignes non classe-5 des ecritures
+   *     touchant la tresorerie), groupees par classe de compte -> d'ou vient et ou
+   *     va la tresorerie. Les virements internes tresorerie<->tresorerie
+   *     n'apparaissent pas dans la ventilation (contrepartie classe 5 exclue).
+   */
+  async cashFlow(params: { startDate: string; endDate: string; storeId?: string }) {
+    const storeAnd = params.storeId ? ` AND (je.store_id IS NULL OR je.store_id = $3)` : '';
+    const vals: unknown[] = [params.startDate, params.endDate];
+    if (params.storeId) vals.push(params.storeId);
+
+    // 1) Par compte de tresorerie
+    const accounts = (await db.query(
+      `SELECT a.code, a.label,
+         (COALESCE(SUM(jel.debit)  FILTER (WHERE je.entry_date < $1), 0)
+        - COALESCE(SUM(jel.credit) FILTER (WHERE je.entry_date < $1), 0))::float8 AS opening,
+         COALESCE(SUM(jel.debit)  FILTER (WHERE je.entry_date BETWEEN $1 AND $2), 0)::float8 AS inflow,
+         COALESCE(SUM(jel.credit) FILTER (WHERE je.entry_date BETWEEN $1 AND $2), 0)::float8 AS outflow
+       FROM journal_entry_lines jel
+       JOIN journal_entries je ON je.id = jel.journal_entry_id
+       JOIN accounts a ON a.id = jel.account_id
+      WHERE a.account_class = 5 AND je.status IN ('posted','reversed') AND je.entry_date <= $2${storeAnd}
+      GROUP BY a.code, a.label
+      HAVING (COALESCE(SUM(jel.debit) FILTER (WHERE je.entry_date < $1),0) - COALESCE(SUM(jel.credit) FILTER (WHERE je.entry_date < $1),0)) <> 0
+          OR COALESCE(SUM(jel.debit)  FILTER (WHERE je.entry_date BETWEEN $1 AND $2),0) <> 0
+          OR COALESCE(SUM(jel.credit) FILTER (WHERE je.entry_date BETWEEN $1 AND $2),0) <> 0
+      ORDER BY a.code`, vals)).rows as { code: string; label: string; opening: number; inflow: number; outflow: number }[];
+
+    const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+    const accountRows = accounts.map(a => ({ ...a, opening: r2(a.opening), inflow: r2(a.inflow), outflow: r2(a.outflow), closing: r2(a.opening + a.inflow - a.outflow) }));
+    const openingTotal = r2(accountRows.reduce((s, a) => s + a.opening, 0));
+    const inflowTotal = r2(accountRows.reduce((s, a) => s + a.inflow, 0));
+    const outflowTotal = r2(accountRows.reduce((s, a) => s + a.outflow, 0));
+
+    // 2) Ventilation par nature (contreparties classe != 5 des ecritures de tresorerie)
+    const CLASS_LABEL: Record<number, string> = {
+      1: 'Financement permanent', 2: 'Immobilisations', 3: 'Stocks & créances',
+      4: 'Tiers (clients, fournisseurs, État, personnel)', 6: 'Charges', 7: 'Produits',
+    };
+    const nat = (await db.query(
+      `WITH tre AS (
+         SELECT DISTINCT je.id FROM journal_entries je
+         JOIN journal_entry_lines l ON l.journal_entry_id = je.id
+         JOIN accounts a ON a.id = l.account_id
+        WHERE a.account_class = 5 AND je.status IN ('posted','reversed') AND je.entry_date BETWEEN $1 AND $2${storeAnd})
+       SELECT a.account_class,
+              COALESCE(SUM(jel.credit),0)::float8 AS sources,
+              COALESCE(SUM(jel.debit),0)::float8  AS uses
+         FROM journal_entry_lines jel
+         JOIN tre ON tre.id = jel.journal_entry_id
+         JOIN accounts a ON a.id = jel.account_id
+        WHERE a.account_class <> 5
+        GROUP BY a.account_class
+        ORDER BY a.account_class`, vals)).rows as { account_class: number; sources: number; uses: number }[];
+    const nature = nat.map(n => ({
+      account_class: n.account_class,
+      label: CLASS_LABEL[n.account_class] || `Classe ${n.account_class}`,
+      inflow: r2(n.sources), outflow: r2(n.uses),
+    }));
+
+    return {
+      startDate: params.startDate, endDate: params.endDate,
+      accounts: accountRows,
+      openingTotal, inflowTotal, outflowTotal, closingTotal: r2(openingTotal + inflowTotal - outflowTotal),
+      nature,
+    };
+  },
+
+  /**
    * CPC (Compte de Produits et Charges) : agregats classe 6 (charges) et
    * classe 7 (produits) par compte, et resultat net = produits - charges.
    */
