@@ -5,6 +5,7 @@ import {
   ShoppingCart, Truck, Factory, Trash2, AlertTriangle, CheckCircle2, Loader2, Search, X, Filter,
   Camera, Package, Recycle, Clock, Store, Boxes, Plus, ArrowRight, LayoutDashboard, Thermometer, Siren,
   ClipboardCheck, Settings, MessageSquareWarning,
+  ListChecks,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -28,6 +29,7 @@ import LossDeclare from './LossDeclare';
 import HaccpManagerTab from '../haccp/HaccpManagerTab';
 import TraceabilityTab from '../traceability/TraceabilityTab';
 import ComplaintsTab from './ComplaintsTab';
+import QualityTab from './QualityTab';
 
 /**
  * Contrôle & Qualité (décision du 2026-10-18) : un seul endroit pour tous les
@@ -37,7 +39,7 @@ import ComplaintsTab from './ComplaintsTab';
  * coût de revient (mig 313), jamais au prix de vente.
  */
 
-type Tab = 'overview' | 'achats' | 'production' | 'pertes' | 'haccp' | 'tracabilite' | 'sav';
+type Tab = 'overview' | 'achats' | 'production' | 'pertes' | 'haccp' | 'tracabilite' | 'sav' | 'qualite';
 
 const n = (v: number) => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const DOT = { danger: '#dc3545', warning: '#d9822b', ok: '#28a745', unknown: '#adb5bd' } as const;
@@ -60,6 +62,7 @@ export default function ControlePage() {
     { key: 'tracabilite', label: 'Traçabilité & rappels', icon: Siren, section: 'operations' },
     // SAV (mig 357) : réclamations clients, saisies ici ou depuis la caisse.
     { key: 'sav', label: 'Réclamations clients', icon: MessageSquareWarning, section: 'operations' },
+    { key: 'qualite', label: 'Qualité', icon: ListChecks, section: 'operations' },
     { key: 'approvals', label: 'À approuver', icon: ClipboardCheck, section: 'operations', href: '/approvals', external: true, badge: approvalsCount, hidden: !hasModule('purchasing') },
     { key: 'approval_rules', label: 'Circuits d\'approbation', icon: Settings, section: 'setup', href: '/settings?page=approvals', external: true, hidden: !hasModule('settings') },
   ];
@@ -89,6 +92,7 @@ export default function ControlePage() {
       {tab === 'haccp' && <><DomainIndicators range={range} domain="haccp" /><HaccpManagerTab /></>}
       {tab === 'tracabilite' && <TraceabilityTab />}
       {tab === 'sav' && <ComplaintsTab range={range} periodText={periodLabel(period, customFrom, customTo)} />}
+      {tab === 'qualite' && <QualityTab />}
     </ModuleShell>
   );
 }
