@@ -61,6 +61,16 @@ export const productionController = {
     res.json({ success: true, data: await mrpRepository.netRequirements(storeId, date) });
   },
 
+  /** MRP — génère les plans de production depuis les besoins nets du jour. */
+  async mrpGenerate(req: AuthRequest, res: Response) {
+    const date = typeof req.body?.date === 'string' ? req.body.date : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { res.status(400).json({ success: false, error: { message: 'Date requise (YYYY-MM-DD)' } }); return; }
+    const requested = typeof req.body?.store === 'string' ? req.body.store : undefined;
+    const storeId = await forecastRepository.resolveStore(req.user!.storeId, requested);
+    if (!storeId) { res.status(400).json({ success: false, error: { message: 'Plusieurs magasins : précisez lequel' } }); return; }
+    res.json({ success: true, data: await mrpRepository.generatePlans(storeId, date, { userId: req.user!.userId, userRole: req.user!.role }) });
+  },
+
   async getById(req: AuthRequest, res: Response) {
     const plan = await loadOwnedPlan(req, res);
     if (!plan) return;

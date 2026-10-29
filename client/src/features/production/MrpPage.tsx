@@ -1,8 +1,11 @@
 import { useState, Fragment } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ClipboardList, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { ClipboardList, Loader2, ChevronLeft, ChevronRight, Factory } from 'lucide-react';
 import { productionApi, type MrpRow } from '../../api/production.api';
 import { apiErrorMessage } from '../../api/errors';
+import { notify } from '../../components/ui/InlineNotification';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 
 const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -17,9 +20,25 @@ const inp: React.CSSProperties = { padding: '0.4rem 0.55rem', border: '1px solid
  */
 export default function MrpPage() {
   const [date, setDate] = useState(tomorrow());
+  const qc = useQueryClient();
+  const confirm = useConfirm();
+  const navigate = useNavigate();
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['mrp', date],
     queryFn: () => productionApi.mrp(date),
+  });
+
+  const generate = useMutation({
+    mutationFn: () => productionApi.mrpGenerate(date),
+    onSuccess: (r) => {
+      if (r.nothingToProduce || r.plans.length === 0) { notify.success('Rien à produire : la demande est déjà couverte.'); return; }
+      notify.success(`${r.plans.length} plan(s) créé(s) : ${r.plans.map(p => `${p.atelier_label} (${p.item_count})`).join(', ')}`);
+      qc.invalidateQueries({ queryKey: ['mrp'] });
+      qc.invalidateQueries({ queryKey: ['production-plans'] });
+      if (r.plans.length === 1) navigate(`/production/${r.plans[0].plan_id}`);
+      else navigate('/production');
+    },
+    onError: e => notify.error(apiErrorMessage(e)),
   });
 
   const rows = data?.rows ?? [];
@@ -45,6 +64,16 @@ export default function MrpPage() {
         <button type="button" className="odoo-btn-secondary" aria-label="Jour suivant" onClick={() => setDate(addDays(date, 1))}><ChevronRight size={14} /></button>
         {date !== tomorrow() && <button type="button" className="odoo-btn-secondary" onClick={() => setDate(tomorrow())}>Demain</button>}
         {!isLoading && !isError && <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>{toProduce} article(s) à produire</span>}
+        <button
+          type="button"
+          className="odoo-btn-primary"
+          disabled={toProduce === 0 || generate.isPending}
+          onClick={async () => {
+            if (await confirm(`Créer les plans de production du ${date} pour les ${toProduce} article(s) à produire ? Un plan par atelier, chaque article sur son format par défaut.`, { title: 'Générer les plans' }))
+              generate.mutate();
+          }}>
+          {generate.isPending ? <Loader2 size={14} className="animate-spin" /> : <Factory size={14} />} Générer les plans
+        </button>
       </div>
 
       {isError && <StatusBanner tone="danger" icon={ClipboardList} title="Erreur">{apiErrorMessage(error)}</StatusBanner>}

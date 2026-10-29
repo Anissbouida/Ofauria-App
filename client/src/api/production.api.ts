@@ -15,6 +15,9 @@ export const productionApi = {
   /** MRP — besoins nets de production du jour (plan directeur). */
   mrp: (date: string, store?: string): Promise<MrpResult> =>
     api.get('/production/mrp', { params: { date, ...(store ? { store } : {}) } }).then(r => r.data.data),
+  /** MRP — génère les plans de production depuis les besoins nets. */
+  mrpGenerate: (date: string, store?: string): Promise<{ plans: { plan_id: string; target_role: string | null; atelier_label: string; item_count: number }[]; nothingToProduce: boolean }> =>
+    api.post('/production/mrp/generate', { date, ...(store ? { store } : {}) }).then(r => r.data.data),
   getById: (id: string) => api.get(`/production/${id}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/production', data).then(r => r.data.data),
   confirm: (id: string) => api.post(`/production/${id}/confirm`).then(r => r.data),

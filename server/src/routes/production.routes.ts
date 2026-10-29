@@ -20,6 +20,7 @@ router.get('/transfers/pending', authenticate, asyncHandler(productionController
 
 // MRP — besoins nets du jour (plan directeur). Avant /:id pour ne pas être capturé comme id.
 router.get('/mrp', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrp));
+router.post('/mrp/generate', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrpGenerate));
 router.post('/transfers/:transferId/receive', authenticate, validateUuidParams('transferId'), authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.confirmProductionTransfer));
 
 router.get('/:id/sub-recipe-analysis', authenticate, id, asyncHandler(productionController.analyzeSubRecipes));
