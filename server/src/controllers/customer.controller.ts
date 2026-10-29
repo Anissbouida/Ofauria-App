@@ -38,6 +38,19 @@ export const customerController = {
   async situation(req: AuthRequest, res: Response) {
     res.json({ success: true, data: await receivablesRepository.customerSituation(req.params.id) });
   },
+  /**
+   * Relevé de compte du client sur une période (factures + règlements, solde
+   * glissant). ?from=YYYY-MM-DD&to=YYYY-MM-DD — défaut : année civile en cours.
+   */
+  async statement(req: AuthRequest, res: Response) {
+    const today = new Date();
+    const y = today.getFullYear();
+    const from = (req.query.from as string) || `${y}-01-01`;
+    const to = (req.query.to as string) || `${y}-12-31`;
+    const data = await receivablesRepository.customerStatement(req.params.id, from, to);
+    if (!data) { res.status(404).json({ success: false, error: { message: 'Client introuvable' } }); return; }
+    res.json({ success: true, data });
+  },
   async remove(req: AuthRequest, res: Response) {
     await customerRepository.delete(req.params.id);
     res.json({ success: true, data: null });

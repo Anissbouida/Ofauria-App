@@ -29,6 +29,7 @@ const router = Router();
 router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), customerController.list);
 router.get('/global-stats', authenticate, authorize(...ROLE_GROUPS.SALES), statsLimiter, customerController.globalStats);
 router.get('/:id/situation', authenticate, authorize(...ROLE_GROUPS.SALES), customerController.situation);
+router.get('/:id/statement', authenticate, authorize(...ROLE_GROUPS.SALES), customerController.statement);
 router.get('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), customerController.getById);
 router.get('/:id/stats', authenticate, authorize(...ROLE_GROUPS.SALES), statsLimiter, customerController.stats);
 router.post('/', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, customerController.create);

@@ -166,4 +166,62 @@ export const receivablesRepository = {
       documents: docs,
     };
   },
+
+  /**
+   * Relevé de compte d'un client sur une période : factures émises (débit) et
+   * règlements reçus (crédit) classés par date, avec solde d'ouverture, solde
+   * glissant et solde de clôture. Comme un relevé bancaire, pour le recouvrement.
+   * Porte sur les factures et leurs règlements datés (les tickets de caisse à
+   * crédit non facturés restent visibles dans la « situation » / balance âgée).
+   */
+  async customerStatement(customerId: string, from: string, to: string) {
+    const c = (await db.query(
+      `SELECT first_name, last_name, company_name, email, phone, ice, address, city FROM customers WHERE id = $1`,
+      [customerId],
+    )).rows[0];
+    if (!c) return null;
+
+    // Toutes les écritures (factures = débit, règlements = crédit), toutes dates
+    // confondues : on calcule l'ouverture (avant `from`) puis le solde glissant.
+    const rows = (await db.query(
+      `SELECT d::date AS date, kind, label, number, debit::numeric AS debit, credit::numeric AS credit
+         FROM (
+           SELECT i.invoice_date AS d, 'invoice'::text AS kind, 'Facture'::text AS label,
+                  i.invoice_number AS number, i.total_amount::numeric AS debit, 0::numeric AS credit
+             FROM invoices i
+            WHERE i.customer_id = $1 AND i.invoice_type = 'emitted' AND i.status <> 'cancelled'
+           UNION ALL
+           SELECT p.payment_date, 'payment', 'Règlement',
+                  COALESCE(p.reference, i.invoice_number), 0::numeric, p.amount::numeric
+             FROM payments p
+             JOIN invoices i ON i.id = p.invoice_id
+            WHERE i.customer_id = $1 AND i.invoice_type = 'emitted'
+         ) t
+        ORDER BY d, (kind = 'payment')`,
+      [customerId],
+    )).rows as { date: string; kind: string; label: string; number: string; debit: string; credit: string }[];
+
+    const fmt = (v: Date | string) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v));
+    let opening = 0;
+    const entries: { date: string; kind: string; label: string; number: string; debit: number; credit: number; balance: number }[] = [];
+    let running = 0;
+    let totalDebit = 0;
+    let totalCredit = 0;
+    for (const r of rows) {
+      const date = fmt(r.date);
+      const debit = round2(Number(r.debit));
+      const credit = round2(Number(r.credit));
+      if (date < from) { opening = round2(opening + debit - credit); continue; }
+      if (date > to) continue;
+      running = round2((entries.length ? running : opening) + debit - credit);
+      totalDebit = round2(totalDebit + debit);
+      totalCredit = round2(totalCredit + credit);
+      entries.push({ date, kind: r.kind, label: r.label, number: r.number, debit, credit, balance: running });
+    }
+    const closing = round2(opening + totalDebit - totalCredit);
+    return {
+      customer: { id: customerId, name: customerName(c), email: c.email, phone: c.phone, ice: c.ice, address: c.address, city: c.city },
+      from, to, opening, closing, totalDebit, totalCredit, entries,
+    };
+  },
 };
