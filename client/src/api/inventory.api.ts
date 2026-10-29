@@ -14,7 +14,20 @@ export const inventoryApi = {
   /** Achats matieres par periode (entrees de stock : BC + achat direct, prix de reception). */
   purchases: (params: { dateFrom: string; dateTo: string }) =>
     api.get('/inventory/purchases', { params }).then(r => r.data.data),
+  /** Age du stock matiere : lots actifs par anciennete (tranches + detail). */
+  aging: (): Promise<StockAging> => api.get('/inventory/aging').then(r => r.data.data),
 };
+
+export interface StockAgingLot {
+  id: string; lot_number: string; ingredient_id: string; ingredient_name: string; unit: string;
+  quantity_remaining: number; unit_cost: number; value: number;
+  received_at: string; expiration_date: string | null; days_in_stock: number; days_to_expiry: number | null;
+}
+export interface StockAging {
+  buckets: { key: string; label: string; lots: number; value: number }[];
+  totalValue: number;
+  lots: StockAgingLot[];
+}
 
 export type LotMovementType = 'open' | 'return' | 'waste' | 'losses' | 'quarantine';
 export interface LotMovementPayload {

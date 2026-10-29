@@ -19,6 +19,8 @@ router.get('/transactions', authenticate, inventoryController.transactions);
 router.get('/consumption', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.consumption);
 // Achats / approvisionnement matieres par periode (entrees de stock, BC + achat direct)
 router.get('/purchases', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.purchases);
+// Age du stock matiere : lots actifs par anciennete (admin/gerant)
+router.get('/aging', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.aging);
 
 export default router;
 

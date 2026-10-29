@@ -195,6 +195,16 @@ export const inventoryController = {
     });
     res.json({ success: true, data: rows });
   },
+  /**
+   * GET /inventory/aging
+   * Âge du stock matière : lots actifs encore en stock classés par ancienneté,
+   * avec valeur et DLC. Résumé par tranche (0-30 / 31-60 / 61-90 / 90+) sur la
+   * valeur, pour repérer les lots dormants et les risques de perte.
+   */
+  async aging(req: AuthRequest, res: Response) {
+    const data = await inventoryRepository.stockAging(req.user!.storeId);
+    res.json({ success: true, data });
+  },
 };
 
 export const ingredientController = {

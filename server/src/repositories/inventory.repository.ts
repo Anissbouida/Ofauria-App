@@ -262,6 +262,50 @@ export const inventoryRepository = {
     return result.rows;
   },
 
+  /**
+   * Âge du stock matière : lots actifs encore en stock, avec le nombre de jours
+   * depuis la réception, la valeur (quantité restante × coût unitaire) et la DLC.
+   * Les quantités portent des unités différentes (kg, u, g) donc le résumé par
+   * tranche agrège la VALEUR (DH) et le nombre de lots, jamais les quantités.
+   * Tranches d'ancienneté : 0-30, 31-60, 61-90, plus de 90 jours.
+   */
+  async stockAging(storeId?: string) {
+    const params: unknown[] = [];
+    let storeFilter = '';
+    if (storeId) { params.push(storeId); storeFilter = ` AND il.store_id = $${params.length}`; }
+    const r = await db.query(
+      `SELECT il.id, il.lot_number, i.id AS ingredient_id, i.name AS ingredient_name, i.unit,
+              il.quantity_remaining::float8                               AS quantity_remaining,
+              COALESCE(il.unit_cost, 0)::float8                           AS unit_cost,
+              ROUND((il.quantity_remaining * COALESCE(il.unit_cost, 0))::numeric, 2)::float8 AS value,
+              il.received_at, il.expiration_date,
+              (CURRENT_DATE - il.received_at)::int                        AS days_in_stock,
+              CASE WHEN il.expiration_date IS NOT NULL
+                   THEN (il.expiration_date - CURRENT_DATE)::int END      AS days_to_expiry
+         FROM ingredient_lots il
+         JOIN ingredients i ON i.id = il.ingredient_id
+        WHERE il.status = 'active' AND il.quantity_remaining > 0${storeFilter}
+        ORDER BY il.received_at ASC, value DESC`,
+      params,
+    );
+    const BUCKETS = [
+      { key: '0-30', label: '0 à 30 j', min: 0, max: 30 },
+      { key: '31-60', label: '31 à 60 j', min: 31, max: 60 },
+      { key: '61-90', label: '61 à 90 j', min: 61, max: 90 },
+      { key: '90+', label: 'Plus de 90 j', min: 91, max: Infinity },
+    ];
+    const buckets = BUCKETS.map(b => ({ key: b.key, label: b.label, lots: 0, value: 0 }));
+    let totalValue = 0;
+    for (const row of r.rows) {
+      const d = row.days_in_stock as number;
+      const v = (row.value as number) || 0;
+      totalValue += v;
+      const bi = BUCKETS.findIndex(b => d >= b.min && d <= b.max);
+      if (bi >= 0) { buckets[bi].lots += 1; buckets[bi].value = Math.round((buckets[bi].value + v) * 100) / 100; }
+    }
+    return { buckets, totalValue: Math.round(totalValue * 100) / 100, lots: r.rows };
+  },
+
   async getTransactions(ingredientId?: string, limit = 50, storeId?: string) {
     const conditions: string[] = [];
     const values: unknown[] = [];
