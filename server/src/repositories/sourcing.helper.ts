@@ -62,9 +62,12 @@ export async function computeSourcingAndCreatePlan(
 
   const productIds = items.map((i) => i.productId);
 
-  // 1) Stock magasin (backroom)
+  // 1) Stock magasin (backroom) DISPONIBLE À LA VENTE = stock − déjà réservé
+  //    (mig 389). Une commande ne peut promettre que ce que les commandes
+  //    précédentes non livrées n'ont pas déjà réservé.
   const stockResult = await client.query(
-    `SELECT product_id, COALESCE(stock_quantity, 0) as stock_quantity
+    `SELECT product_id,
+            GREATEST(COALESCE(stock_quantity, 0) - COALESCE(reserved_quantity, 0), 0) as stock_quantity
      FROM product_store_stock
      WHERE product_id = ANY($1) AND store_id = $2`,
     [productIds, storeId]
@@ -136,12 +139,20 @@ export async function computeSourcingAndCreatePlan(
   const stockRemaining = { ...stockMap };
   const frigoRemaining = { ...frigoMap };
 
+  // Réservations à poser sur le stock magasin (mig 389) : uniquement en contexte
+  // commande (linkColumn 'order_id'), pour la part backroom servie du stock.
+  const reservations: { itemId: string; productId: string; quantity: number }[] = [];
+
   for (const item of items) {
     const available = Math.max(stockRemaining[item.productId] || 0, 0);
     const requested = item.requestedQuantity;
     const fromStock = Math.min(available, requested);
     stockRemaining[item.productId] = available - fromStock;
     let remaining = requested - fromStock;
+
+    if (linkColumn === 'order_id' && fromStock > 0) {
+      reservations.push({ itemId: item.itemId, productId: item.productId, quantity: fromStock });
+    }
 
     const frigoAvailable = Math.max(frigoRemaining[item.productId] || 0, 0);
     const fromFrigo = Math.min(frigoAvailable, remaining);
@@ -235,6 +246,24 @@ export async function computeSourcingAndCreatePlan(
       const resultItem = resultItems.find((r) => r.itemId === pi.itemId);
       if (resultItem) resultItem.productionPlanId = productionPlanId;
     }
+  }
+
+  // 5 bis) Réservation du stock magasin promis à la commande (mig 389).
+  //        Posée dans la même transaction que le sourcing : le reserved_quantity
+  //        bougera de pair avec les réservations. Relâché par trigger quand la
+  //        commande est livrée (completed) ou annulée (cancelled).
+  for (const r of reservations) {
+    await client.query(
+      `INSERT INTO order_stock_reservations (order_id, order_item_id, product_id, store_id, quantity)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [linkId, r.itemId, r.productId, storeId, r.quantity]
+    );
+    await client.query(
+      `UPDATE product_store_stock
+          SET reserved_quantity = reserved_quantity + $3, updated_at = now()
+        WHERE product_id = $1 AND store_id = $2`,
+      [r.productId, storeId, r.quantity]
+    );
   }
 
   // 6) Detection semi-finis (best-effort, apres commit cote appelant idealement,

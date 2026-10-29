@@ -535,6 +535,7 @@ function CatalogueTab() {
               ) : sortedProducts.map((p: Record<string, any>) => {
                 const stock = parseFloat((p.stock_quantity as string) || '0');
                 const threshold = parseFloat((p.stock_min_threshold as string) || '0');
+                const reserved = parseFloat((p.reserved_quantity as string) || '0');
                 const isLow = threshold > 0 && stock <= threshold && stock > 0;
                 const isOut = stock <= 0;
                 const dotClass = isOut ? 'danger' : isLow ? 'warning' : 'ok';
@@ -580,6 +581,12 @@ function CatalogueTab() {
                         <span className="odoo-tag odoo-tag-orange">{p.sale_unit === 'weight' ? `${(stock / 1000).toFixed(2)} kg` : stock}</span>
                       ) : (
                         <span style={{ fontWeight: 500 }}>{p.sale_unit === 'weight' ? `${(stock / 1000).toFixed(2)} kg` : stock}</span>
+                      )}
+                      {reserved > 0 && (
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 1 }}
+                          title="Réservé par des commandes clients non encore livrées">
+                          dont {p.sale_unit === 'weight' ? `${(reserved / 1000).toFixed(2)} kg` : reserved} réservé
+                        </div>
                       )}
                     </td>
                     <td>
