@@ -71,13 +71,13 @@ rfqRouter.patch('/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Respon
 
 rfqRouter.post('/:id/send', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
-  const out = await repo.send(req.params.id);
+  const out = await repo.send(req.params.id, req.user?.userId ?? null);
   if ('error' in out) {
     if (out.error === 'not_found') { notFound(res); return; }
     if (out.error === 'incomplete') { bad(res, 'Ajouter au moins un article et un fournisseur avant d\'envoyer'); return; }
     conflict(res, out.from); return;
   }
-  ok(res, out.data);
+  ok(res, { ...out.data, emailsQueued: out.emailed });
 }));
 
 rfqRouter.post('/:id/status', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {

@@ -1,6 +1,61 @@
 import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { purchaseOrderRepository } from './purchase-order.repository.js';
+import { enqueueEmail } from '../services/mailer.js';
+import { loadCompanyLegal } from '../utils/company-legal.js';
+
+/**
+ * Envoi d'un appel d'offres par e-mail : un message par fournisseur invité qui a
+ * une adresse valide, mis en file dans email_outbox (il part une fois le SMTP
+ * configuré, exactement comme les relances clients). Renvoie le nombre mis en file.
+ */
+async function enqueueRfqSupplierEmails(rfqId: string, userId: string | null): Promise<number> {
+  const head = (await db.query(
+    `SELECT number, title, needed_by, response_deadline, notes FROM rfqs WHERE id = $1`, [rfqId])).rows[0] as
+    { number: string; title: string; needed_by: string | null; response_deadline: string | null; notes: string | null } | undefined;
+  if (!head) return 0;
+  const suppliers = (await db.query(
+    `SELECT s.name, s.contact_name, s.email
+       FROM rfq_suppliers rs JOIN suppliers s ON s.id = rs.supplier_id
+      WHERE rs.rfq_id = $1`, [rfqId])).rows as { name: string; contact_name: string | null; email: string | null }[];
+  const items = (await db.query(
+    `SELECT COALESCE(NULLIF(ri.description, ''), i.name, pk.name, 'Article') AS label, ri.quantity, ri.unit
+       FROM rfq_items ri
+       LEFT JOIN ingredients i ON i.id = ri.ingredient_id
+       LEFT JOIN packaging_items pk ON pk.id = ri.packaging_id
+      WHERE ri.rfq_id = $1 ORDER BY ri.display_order, ri.id`, [rfqId])).rows as
+    { label: string; quantity: string; unit: string | null }[];
+
+  const legal = await loadCompanyLegal();
+  const company = legal.name || 'Notre société';
+  const frDate = (d: string | null) => d ? new Date(d).toLocaleDateString('fr-FR') : '';
+  const lines = items.map(it => `- ${it.label} : ${Number(it.quantity)}${it.unit ? ' ' + it.unit : ''}`).join('\n');
+  const emailRe = /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i;
+
+  let emailed = 0;
+  for (const s of suppliers) {
+    const to = (s.email || '').trim();
+    if (!emailRe.test(to)) continue;
+    const parts: string[] = [
+      `Bonjour ${s.contact_name || s.name},`, '',
+      `${company} souhaite recevoir votre offre de prix pour les articles suivants :`, '',
+      lines, '',
+    ];
+    if (head.response_deadline) parts.push(`Merci de nous retourner votre offre avant le ${frDate(head.response_deadline)}.`);
+    if (head.needed_by) parts.push(`Livraison souhaitée pour le ${frDate(head.needed_by)}.`);
+    parts.push('', 'Merci de préciser vos prix unitaires, vos délais de livraison et vos conditions de règlement.');
+    if (head.notes) parts.push('', head.notes);
+    parts.push('', 'Cordialement,', company);
+    await enqueueEmail({
+      to, toName: s.name,
+      subject: `Demande de prix — ${head.title} (${head.number})`,
+      text: parts.join('\n'),
+      type: 'rfq', referenceType: 'rfq', referenceId: rfqId, createdBy: userId,
+    });
+    emailed++;
+  }
+  return emailed;
+}
 
 /**
  * Appels d'offres fournisseurs (mig 360) : articles demandés, fournisseurs
@@ -203,7 +258,7 @@ export const rfqRepository = {
   },
 
   /** Envoi : l'AO est figé (lignes), les fournisseurs sont marqués consultés. */
-  async send(id: string) {
+  async send(id: string, userId: string | null = null) {
     const cur = await db.query(`SELECT status, (SELECT COUNT(*) FROM rfq_items WHERE rfq_id = $1) AS n, (SELECT COUNT(*) FROM rfq_suppliers WHERE rfq_id = $1) AS s FROM rfqs WHERE id = $1`, [id]);
     const row = cur.rows[0];
     if (!row) return { error: 'not_found' as const };
@@ -211,7 +266,9 @@ export const rfqRepository = {
     if (Number(row.n) === 0 || Number(row.s) === 0) return { error: 'incomplete' as const };
     await db.query(`UPDATE rfqs SET status = 'sent', sent_at = now() WHERE id = $1`, [id]);
     await db.query(`UPDATE rfq_suppliers SET invited_at = COALESCE(invited_at, now()) WHERE rfq_id = $1`, [id]);
-    return { data: await this.findById(id) };
+    // Met en file un e-mail pour chaque fournisseur invité ayant une adresse valide.
+    const emailed = await enqueueRfqSupplierEmails(id, userId);
+    return { data: await this.findById(id), emailed };
   },
 
   async setStatus(id: string, to: 'cancelled' | 'closed' | 'draft') {

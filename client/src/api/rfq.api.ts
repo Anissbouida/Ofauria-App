@@ -49,7 +49,7 @@ export const rfqApi = {
   get: (id: string): Promise<Rfq> => api.get(`/rfqs/${id}`).then(r => r.data.data),
   create: (data: RfqInput): Promise<Rfq> => api.post('/rfqs', data).then(r => r.data.data),
   update: (id: string, data: Partial<RfqInput>): Promise<Rfq> => api.patch(`/rfqs/${id}`, data).then(r => r.data.data),
-  send: (id: string): Promise<Rfq> => api.post(`/rfqs/${id}/send`).then(r => r.data.data),
+  send: (id: string): Promise<Rfq & { emailsQueued?: number }> => api.post(`/rfqs/${id}/send`).then(r => r.data.data),
   setStatus: (id: string, status: 'cancelled' | 'closed' | 'draft'): Promise<Rfq> => api.post(`/rfqs/${id}/status`, { status }).then(r => r.data.data),
   setSupplierStatus: (id: string, supplierId: string, status: 'invited' | 'declined' | 'no_response', note?: string): Promise<Rfq> =>
     api.post(`/rfqs/${id}/suppliers/${supplierId}/status`, { status, note }).then(r => r.data.data),

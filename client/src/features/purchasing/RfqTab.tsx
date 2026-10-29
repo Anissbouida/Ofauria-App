@@ -212,7 +212,7 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
   const [editing, setEditing] = useState(false);
   const [quoting, setQuoting] = useState<RfqSupplier | null>(null);
   const refresh = () => { qc.invalidateQueries({ queryKey: ['rfq', id] }); qc.invalidateQueries({ queryKey: ['rfqs'] }); };
-  const send = useMutation({ mutationFn: () => rfqApi.send(id), onSuccess: () => { refresh(); notify.success('Appel d\'offres envoyé : saisissez les devis au fur et à mesure'); }, onError: e => notify.error(apiErrorMessage(e)) });
+  const send = useMutation({ mutationFn: () => rfqApi.send(id), onSuccess: (data) => { refresh(); const n = data?.emailsQueued ?? 0; notify.success(n > 0 ? `Appel d'offres envoyé — ${n} e-mail(s) fournisseur mis en file` : 'Appel d\'offres envoyé : aucun fournisseur avec e-mail, saisissez les devis au fur et à mesure'); }, onError: e => notify.error(apiErrorMessage(e)) });
   const setStatus = useMutation({ mutationFn: (s: 'cancelled' | 'closed' | 'draft') => rfqApi.setStatus(id, s), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
   const supplierStatus = useMutation({ mutationFn: (p: { supplierId: string; status: 'invited' | 'declined' | 'no_response' }) => rfqApi.setSupplierStatus(id, p.supplierId, p.status), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
   const award = useMutation({
