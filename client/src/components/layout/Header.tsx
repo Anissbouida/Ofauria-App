@@ -6,6 +6,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import NotificationBell from './NotificationBell';
+import GlobalSearch from './GlobalSearch';
 import { NAV_LABEL_BY_PATH } from '../../config/navigation';
 
 export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
@@ -47,7 +48,9 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
         )}
       </div>
 
-      <div className="flex-1" />
+      <div className="flex-1 flex justify-center px-4">
+        <GlobalSearch />
+      </div>
 
       {/* Notifications */}
       <NotificationBell />
