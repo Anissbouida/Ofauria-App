@@ -146,4 +146,25 @@ export const reportsApi = {
     api.get('/reports/cost-summary', { params: { startDate, endDate } }).then(r => r.data.data),
   menuEngineering: (startDate: string, endDate: string, categoryId?: string): Promise<MenuEngineering> =>
     api.get('/reports/menu-engineering', { params: { startDate, endDate, categoryId } }).then(r => r.data.data),
+
+  // Rapports configurables (mig 394)
+  customSources: (): Promise<ReportSource[]> => api.get('/reports/custom/sources').then(r => r.data.data),
+  customFilterOptions: (source: string, filter: string): Promise<string[]> =>
+    api.get('/reports/custom/filter-options', { params: { source, filter } }).then(r => r.data.data),
+  customRun: (config: ReportRunConfig): Promise<ReportRunResult> =>
+    api.post('/reports/custom/run', config).then(r => r.data.data),
+  customList: (): Promise<SavedReport[]> => api.get('/reports/custom/definitions').then(r => r.data.data),
+  customCreate: (data: { name: string; sourceKey: string; config: ReportConfig }) =>
+    api.post('/reports/custom/definitions', data).then(r => r.data.data),
+  customUpdate: (id: string, data: { name: string; sourceKey: string; config: ReportConfig }) =>
+    api.put(`/reports/custom/definitions/${id}`, data).then(r => r.data.data),
+  customDelete: (id: string) => api.delete(`/reports/custom/definitions/${id}`).then(r => r.data.data),
 };
+
+export type ReportField = { key: string; label: string; type?: string; format?: string };
+export type ReportSource = { key: string; label: string; dimensions: ReportField[]; measures: ReportField[]; filters: ReportField[] };
+export type ReportConfig = { dimensions: string[]; measures: string[]; filters: Record<string, string>; dateFrom?: string; dateTo?: string; sort?: { key: string; dir: 'asc' | 'desc' }; chart?: { type: 'bar' | 'none'; measure?: string } };
+export type ReportRunConfig = ReportConfig & { sourceKey: string; limit?: number };
+export type ReportColumn = { key: string; label: string; kind: 'dimension' | 'measure'; type?: string; format?: string };
+export type ReportRunResult = { columns: ReportColumn[]; rows: Record<string, any>[]; source_key: string };
+export type SavedReport = { id: string; name: string; source_key: string; config: ReportConfig; created_by_name: string | null; created_at: string; updated_at: string };

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { reportsApi, type MenuEngineeringClass } from '../../api/reports.api';
 import { productLossesApi } from '../../api/product-losses.api';
 import MarginsTab from './MarginsTab';
+import ReportBuilder from './ReportBuilder';
 import { format, subDays, subMonths } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -19,7 +20,7 @@ import {
 import { Navigate, useSearchParams } from 'react-router-dom';
 
 type DatePreset = 'today' | '7d' | '30d' | '90d' | 'custom';
-type Tab = 'overview' | 'menu' | 'cost' | 'margins';
+type Tab = 'overview' | 'menu' | 'cost' | 'margins' | 'builder';
 
 /**
  * Écrans de la page, répartis dans les modules (rubriques ModuleShell) : Vue d'ensemble
@@ -31,6 +32,7 @@ const tabs: { key: Tab; label: string; subtitle: string }[] = [
   { key: 'menu', label: 'Menu Engineering', subtitle: 'Popularité et marge de chaque produit' },
   { key: 'cost', label: 'Coûts', subtitle: "Coût matière, main-d'œuvre et prime cost" },
   { key: 'margins', label: 'Marges', subtitle: 'Marge par produit sur la période' },
+  { key: 'builder', label: 'Rapports personnalisés', subtitle: 'Construisez vos propres analyses' },
 ];
 
 const CLASS_META: Record<MenuEngineeringClass, { label: string; color: string; bg: string; border: string; dot: string; advice: string }> = {
@@ -565,6 +567,8 @@ export default function ReportsPage({ fixedTab }: { fixedTab?: Tab } = {}) {
 
       {/* ============ Tab: Marges (mig 317) ============ */}
       {activeTab === 'margins' && <>{periodBar}<MarginsTab from={startDate} to={endDate} /></>}
+
+      {activeTab === 'builder' && <ReportBuilder />}
 
       {/* ============ Tab: Couts ============ */}
       {activeTab === 'cost' && (
