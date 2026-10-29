@@ -9,6 +9,12 @@ export type MrpResult = {
   store_id: string; date: string; rows: MrpRow[];
   totals: { demand: number; on_hand: number; planned_qty: number; net_to_produce: number };
 };
+export type MrpHorizonRow = {
+  product_id: string; product_name: string; category_name: string | null;
+  days: Record<string, { demand: number; net: number }>; total_net: number;
+};
+export type MrpHorizon = { store_id: string; dates: string[]; rows: MrpHorizonRow[]; totals_by_date: Record<string, number> };
+export type SemiFinishedNeed = { recipe_id: string; name: string; unit: string; needed: number; from_stock: number; to_produce: number };
 
 export const productionApi = {
   list: (params?: Record<string, string>) => api.get('/production', { params }).then(r => r.data),
@@ -18,6 +24,12 @@ export const productionApi = {
   /** MRP — génère les plans de production depuis les besoins nets. */
   mrpGenerate: (date: string, store?: string): Promise<{ plans: { plan_id: string; target_role: string | null; atelier_label: string; item_count: number }[]; nothingToProduce: boolean }> =>
     api.post('/production/mrp/generate', { date, ...(store ? { store } : {}) }).then(r => r.data.data),
+  /** MRP — besoins nets par jour sur un horizon (vue semaine). */
+  mrpHorizon: (from: string, to: string, store?: string): Promise<MrpHorizon> =>
+    api.get('/production/mrp/horizon', { params: { from, to, ...(store ? { store } : {}) } }).then(r => r.data.data),
+  /** MRP — besoins semi-finis nets du jour (lecture seule). */
+  mrpSemiFinished: (date: string, store?: string): Promise<{ date: string; rows: SemiFinishedNeed[] }> =>
+    api.get('/production/mrp/semi-finished', { params: { date, ...(store ? { store } : {}) } }).then(r => r.data.data),
   getById: (id: string) => api.get(`/production/${id}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/production', data).then(r => r.data.data),
   confirm: (id: string) => api.post(`/production/${id}/confirm`).then(r => r.data),

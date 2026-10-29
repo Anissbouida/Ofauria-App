@@ -71,6 +71,27 @@ export const productionController = {
     res.json({ success: true, data: await mrpRepository.generatePlans(storeId, date, { userId: req.user!.userId, userRole: req.user!.role }) });
   },
 
+  /** MRP — besoins nets par jour sur un horizon (plan directeur, vue semaine). */
+  async mrpHorizon(req: AuthRequest, res: Response) {
+    const from = typeof req.query.from === 'string' ? req.query.from : '';
+    const to = typeof req.query.to === 'string' ? req.query.to : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from) {
+      res.status(400).json({ success: false, error: { message: 'Plage de dates invalide' } }); return;
+    }
+    const storeId = await forecastRepository.resolveStore(req.user!.storeId, typeof req.query.store === 'string' ? req.query.store : undefined);
+    if (!storeId) { res.status(400).json({ success: false, error: { message: 'Plusieurs magasins : précisez lequel' } }); return; }
+    res.json({ success: true, data: await mrpRepository.horizon(storeId, from, to) });
+  },
+
+  /** MRP — besoins semi-finis (bases) nets du jour (lecture seule). */
+  async mrpSemiFinished(req: AuthRequest, res: Response) {
+    const date = typeof req.query.date === 'string' ? req.query.date : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { res.status(400).json({ success: false, error: { message: 'Date requise (YYYY-MM-DD)' } }); return; }
+    const storeId = await forecastRepository.resolveStore(req.user!.storeId, typeof req.query.store === 'string' ? req.query.store : undefined);
+    if (!storeId) { res.status(400).json({ success: false, error: { message: 'Plusieurs magasins : précisez lequel' } }); return; }
+    res.json({ success: true, data: await mrpRepository.semiFinishedNeeds(storeId, date) });
+  },
+
   async getById(req: AuthRequest, res: Response) {
     const plan = await loadOwnedPlan(req, res);
     if (!plan) return;
