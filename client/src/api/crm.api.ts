@@ -10,6 +10,7 @@ export type Opportunity = {
   customer_phone: string | null; customer_email: string | null;
   source_code: string | null; source_label: string | null; expected_amount: string | null; probability: number; weighted_amount: string;
   expected_close_date: string | null; owner_id: string | null; owner_name: string | null; description: string | null;
+  campaign_id: string | null;
   lost_reason_code: string | null; lost_reason_label: string | null; lost_note: string | null; closed_at: string | null;
   next_activity_id: string | null; next_activity_kind: ActivityKind | null; next_activity_subject: string | null; next_activity_due: string | null; activity_overdue: boolean;
   quote_count: number; custom_fields?: CfValues; created_at: string; updated_at: string;
@@ -23,8 +24,15 @@ export type Activity = {
 export type OpportunityInput = {
   title: string; customerId?: string | null; prospectName?: string | null; prospectCompany?: string | null; prospectPhone?: string | null; prospectEmail?: string | null;
   prospectCity?: string | null; sourceCode?: string | null; expectedAmount?: number | null; probability?: number | null; expectedCloseDate?: string | null;
-  ownerId?: string | null; description?: string | null;
+  ownerId?: string | null; description?: string | null; campaignId?: string | null;
 };
+
+export interface Campaign {
+  id: string; name: string; start_date: string | null; end_date: string | null; budget: number | null;
+  status: 'active' | 'closed'; notes: string | null;
+  opportunities: number; won: number; lost: number; won_amount: number; pipeline_amount: number;
+}
+export interface CampaignOption { id: string; name: string }
 export type CrmOverview = {
   byStage: Partial<Record<Stage, { count: number; amount: number; weighted: number }>>;
   month: { won: number; wonAmount: number; lost: number };
@@ -59,4 +67,9 @@ export const crmApi = {
   doneActivity: (id: string, outcome?: string | null) => api.post(`/crm/activities/${id}/done`, { outcome }).then(r => r.data.data),
   deleteActivity: (id: string) => api.delete(`/crm/activities/${id}`).then(r => r.data),
   todo: (all = false): Promise<Activity[]> => api.get('/crm/activities', { params: all ? { all: 'true' } : {} }).then(r => r.data.data),
+  campaigns: (): Promise<Campaign[]> => api.get('/crm/campaigns').then(r => r.data.data),
+  campaignOptions: (): Promise<CampaignOption[]> => api.get('/crm/campaign-options').then(r => r.data.data),
+  createCampaign: (data: { name: string; startDate?: string | null; endDate?: string | null; budget?: number | null; notes?: string }): Promise<Campaign> =>
+    api.post('/crm/campaigns', data).then(r => r.data.data),
+  setCampaignStatus: (id: string, status: 'active' | 'closed') => api.post(`/crm/campaigns/${id}/status`, { status }).then(r => r.data.data),
 };

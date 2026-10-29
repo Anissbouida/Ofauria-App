@@ -15,6 +15,7 @@ export type OpportunityInput = {
   title: string; customerId?: string | null; prospectName?: string | null; prospectCompany?: string | null; prospectPhone?: string | null;
   prospectEmail?: string | null; prospectCity?: string | null; sourceCode?: string | null; expectedAmount?: number | null;
   probability?: number | null; expectedCloseDate?: string | null; ownerId?: string | null; description?: string | null;
+  campaignId?: string | null;
 };
 
 const SELECT = `
@@ -108,11 +109,11 @@ export const crmRepository = {
       const number = await nextDocumentNumber(client, 'opportunity');
       const r = await client.query(
         `INSERT INTO opportunities (number, store_id, title, customer_id, prospect_name, prospect_company, prospect_phone, prospect_email, prospect_city,
-                                    source_code, expected_amount, probability, expected_close_date, owner_id, description, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
+                                    source_code, expected_amount, probability, expected_close_date, owner_id, description, created_by, campaign_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
         [number, ctx.storeId, input.title.trim(), input.customerId ?? null, ...prospect(input),
          input.sourceCode ?? null, input.expectedAmount ?? null, input.probability ?? STAGE_PROBABILITY.new,
-         input.expectedCloseDate ?? null, input.ownerId ?? ctx.userId, input.description?.trim() || null, ctx.userId]);
+         input.expectedCloseDate ?? null, input.ownerId ?? ctx.userId, input.description?.trim() || null, ctx.userId, input.campaignId ?? null]);
       await client.query('COMMIT');
       const id = r.rows[0].id as string;
       if (input.ownerId && input.ownerId !== ctx.userId) await notifyOwner(id, ctx.userId);
@@ -131,10 +132,10 @@ export const crmRepository = {
     await db.query(
       `UPDATE opportunities SET title = $2, customer_id = $3, prospect_name = $4, prospect_company = $5, prospect_phone = $6, prospect_email = $7,
               prospect_city = $8, source_code = $9, expected_amount = $10, probability = COALESCE($11, probability), expected_close_date = $12,
-              owner_id = COALESCE($13, owner_id), description = $14
+              owner_id = COALESCE($13, owner_id), description = $14, campaign_id = $15
         WHERE id = $1`,
       [id, input.title.trim(), input.customerId ?? null, ...prospect(input), input.sourceCode ?? null, input.expectedAmount ?? null,
-       input.probability ?? null, input.expectedCloseDate ?? null, input.ownerId ?? null, input.description?.trim() || null]);
+       input.probability ?? null, input.expectedCloseDate ?? null, input.ownerId ?? null, input.description?.trim() || null, input.campaignId ?? null]);
     if (input.ownerId && input.ownerId !== cur.owner_id && input.ownerId !== userId) await notifyOwner(id, userId);
     return this.findById(id);
   },
@@ -209,6 +210,50 @@ export const crmRepository = {
   /** Utilisateurs actifs à qui confier une opportunité. */
   async owners() {
     return (await db.query(`SELECT id, ${NAME('u')} AS name, role FROM users u WHERE u.is_active IS NOT FALSE ORDER BY u.first_name, u.last_name`)).rows;
+  },
+
+  /* ── Campagnes marketing (mig 383) ── */
+  /** Liste des campagnes avec leur retour : opportunités, gagnées, chiffre gagné. */
+  async campaigns(storeId?: string | null) {
+    const params: unknown[] = [];
+    let where = '';
+    if (storeId) { params.push(storeId); where = `WHERE (c.store_id IS NULL OR c.store_id = $1)`; }
+    const r = await db.query(
+      `SELECT c.*,
+              COUNT(o.id)::int                                            AS opportunities,
+              COUNT(o.id) FILTER (WHERE o.stage = 'won')::int             AS won,
+              COUNT(o.id) FILTER (WHERE o.stage = 'lost')::int            AS lost,
+              COALESCE(SUM(o.expected_amount) FILTER (WHERE o.stage = 'won'), 0)::float8 AS won_amount,
+              COALESCE(SUM(o.expected_amount) FILTER (WHERE o.stage NOT IN ('won','lost')), 0)::float8 AS pipeline_amount
+         FROM crm_campaigns c
+         LEFT JOIN opportunities o ON o.campaign_id = c.id
+         ${where}
+        GROUP BY c.id
+        ORDER BY (c.status = 'active') DESC, c.start_date DESC NULLS LAST, c.created_at DESC`, params);
+    return r.rows.map((row: Record<string, unknown>) => ({ ...row, budget: row.budget != null ? Number(row.budget) : null }));
+  },
+
+  async createCampaign(input: { name: string; startDate?: string | null; endDate?: string | null; budget?: number | null; notes?: string | null; storeId?: string | null; userId: string | null }) {
+    if (input.endDate && input.startDate && input.endDate < input.startDate) return { error: 'La date de fin doit suivre le début' };
+    const r = await db.query(
+      `INSERT INTO crm_campaigns (name, start_date, end_date, budget, store_id, notes, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      [input.name.trim(), input.startDate || null, input.endDate || null,
+       input.budget != null && input.budget >= 0 ? input.budget : null, input.storeId ?? null, input.notes?.trim() || null, input.userId]);
+    return { data: (await this.campaigns(input.storeId)).find((c: Record<string, unknown>) => c.id === r.rows[0].id) };
+  },
+
+  async setCampaignStatus(id: string, status: 'active' | 'closed') {
+    await db.query(`UPDATE crm_campaigns SET status = $2 WHERE id = $1`, [id, status]);
+    return (await db.query(`SELECT * FROM crm_campaigns WHERE id = $1`, [id])).rows[0] || null;
+  },
+
+  /** Campagnes actives pour le sélecteur du formulaire d'opportunité. */
+  async campaignOptions(storeId?: string | null) {
+    const params: unknown[] = [];
+    let where = `WHERE status = 'active'`;
+    if (storeId) { params.push(storeId); where += ` AND (store_id IS NULL OR store_id = $1)`; }
+    return (await db.query(`SELECT id, name FROM crm_campaigns ${where} ORDER BY name`, params)).rows;
   },
 
   /** Effets d'un devis lié (mig 371) : envoyé → proposition ; transformé en commande → gagné. */

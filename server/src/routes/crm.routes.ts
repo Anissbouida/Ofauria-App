@@ -25,6 +25,7 @@ const body = z.object({
   expectedCloseDate: isoDate.nullish(),
   ownerId: z.string().uuid().nullish(),
   description: z.string().trim().max(4000).nullish(),
+  campaignId: z.string().uuid().nullish(),
 }).refine(b => b.customerId || b.prospectName || b.prospectCompany, { message: 'Choisissez un client ou saisissez le prospect' });
 
 crmRouter.get('/overview', authenticate, authorizeModule('crm'), asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -110,4 +111,35 @@ crmRouter.delete('/activities/:id', authenticate, authorizeModule('crm', 'edit')
   const r = await crmRepository.deleteActivity(req.params.id);
   if (!r) { bad(res, 'Activité introuvable ou déjà faite', 404); return; }
   res.json({ success: true });
+}));
+
+/* ── Campagnes marketing (mig 383) ── */
+crmRouter.get('/campaigns', authenticate, authorizeModule('crm'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await crmRepository.campaigns(req.user!.storeId ?? null) });
+}));
+
+crmRouter.get('/campaign-options', authenticate, authorizeModule('crm'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await crmRepository.campaignOptions(req.user!.storeId ?? null) });
+}));
+
+crmRouter.post('/campaigns', authenticate, authorizeModule('crm', 'create'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const schema = z.object({
+    name: z.string().trim().min(2).max(160),
+    startDate: isoDate.nullish(), endDate: isoDate.nullish(),
+    budget: z.coerce.number().min(0).max(1_000_000_000).nullish(),
+    notes: z.string().trim().max(4000).nullish(),
+  });
+  const b = schema.safeParse(req.body);
+  if (!b.success) { bad(res, b.error.issues[0]?.message); return; }
+  const out = await crmRepository.createCampaign({ ...b.data, storeId: req.user!.storeId ?? null, userId: req.user!.userId });
+  if ('error' in out) { bad(res, out.error); return; }
+  res.status(201).json({ success: true, data: out.data });
+}));
+
+crmRouter.post('/campaigns/:id/status', authenticate, authorizeModule('crm', 'edit'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const status = String((req.body as Record<string, unknown>).status);
+  if (!['active', 'closed'].includes(status)) { bad(res, 'Statut invalide'); return; }
+  const r = await crmRepository.setCampaignStatus(req.params.id, status as 'active' | 'closed');
+  if (!r) { bad(res, 'Campagne introuvable', 404); return; }
+  res.json({ success: true, data: r });
 }));

@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Target, Plus, Search, Loader2, X, Phone, CalendarClock, Mail, CheckSquare, StickyNote, Trophy, XCircle, FileSignature, UserPlus, Check, Trash2, AlertTriangle,
+  Target, Plus, Search, Loader2, X, Phone, CalendarClock, Mail, CheckSquare, StickyNote, Trophy, XCircle, FileSignature, UserPlus, Check, Trash2, AlertTriangle, Megaphone,
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { crmApi, STAGES, STAGE_LABEL, ACTIVITY_LABEL, type Opportunity, type Stage, type ActivityKind, type OpportunityInput } from '../../api/crm.api';
+import { crmApi, STAGES, STAGE_LABEL, ACTIVITY_LABEL, type Opportunity, type Stage, type ActivityKind, type OpportunityInput, type Campaign } from '../../api/crm.api';
 import { customersApi } from '../../api/customers.api';
 import { useCustomFieldsForm } from '../../api/custom-fields.api';
 import CustomFieldsEditor from '../../components/custom-fields/CustomFieldsEditor';
@@ -39,6 +39,7 @@ export default function CrmPage() {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<Opportunity | 'new' | null>(null);
+  const [showCampaigns, setShowCampaigns] = useState(false);
   const [openId, setOpenId] = useState<string | null>(params.get('opportunity'));
   const [losing, setLosing] = useState<Opportunity | null>(null);
   useEffect(() => { const t = setTimeout(() => setSearch(searchInput.trim()), 300); return () => clearTimeout(t); }, [searchInput]);
@@ -84,6 +85,7 @@ export default function CrmPage() {
             {v === 'activities' && (ov?.overdueActivities ?? 0) > 0 && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }}>{ov!.overdueActivities}</span>}
           </button>
         ))}
+        <button className="odoo-btn-secondary" onClick={() => setShowCampaigns(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Megaphone size={14} /> Campagnes</button>
         <button className="odoo-btn-primary" onClick={() => setEditing('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle opportunité</button>
       </div>
 
@@ -162,6 +164,7 @@ export default function CrmPage() {
       )}
 
       {editing && <OpportunityForm opp={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={o => { refresh(); setEditing(null); setOpenId(o.id); }} />}
+      {showCampaigns && <CampaignsModal onClose={() => setShowCampaigns(false)} />}
       {openId && !editing && <OpportunityDetail id={openId} onClose={() => { setOpenId(null); params.delete('opportunity'); setParams(params, { replace: true }); }} onEdit={o => setEditing(o)} onLose={o => setLosing(o)} />}
       {losing && <LoseDialog opp={losing} onClose={() => setLosing(null)} onDone={() => { setLosing(null); refresh(); }} />}
     </div>
@@ -211,10 +214,11 @@ function OpportunityForm({ opp, onClose, onSaved }: { opp: Opportunity | null; o
     title: opp?.title ?? '', customerId: opp?.customer_id ?? '', prospectName: opp?.prospect_name ?? '', prospectCompany: opp?.prospect_company ?? '',
     prospectPhone: opp?.prospect_phone ?? '', prospectEmail: opp?.prospect_email ?? '', prospectCity: opp?.prospect_city ?? '',
     sourceCode: opp?.source_code ?? '', expectedAmount: opp?.expected_amount ? String(Number(opp.expected_amount)) : '', probability: opp ? String(opp.probability) : '',
-    expectedCloseDate: opp?.expected_close_date?.slice(0, 10) ?? '', ownerId: opp?.owner_id ?? user?.id ?? '', description: opp?.description ?? '',
+    expectedCloseDate: opp?.expected_close_date?.slice(0, 10) ?? '', ownerId: opp?.owner_id ?? user?.id ?? '', description: opp?.description ?? '', campaignId: opp?.campaign_id ?? '',
   });
   const cf = useCustomFieldsForm('opportunity', opp?.custom_fields);
   const { entries: sources } = useReferentiel('crm_sources');
+  const { data: campaignOpts = [] } = useQuery({ queryKey: ['crm', 'campaign-options'], queryFn: crmApi.campaignOptions, staleTime: 300_000 });
   const { data: owners = [] } = useQuery({ queryKey: ['crm', 'owners'], queryFn: crmApi.owners, staleTime: 300_000 });
   const { data: customersResp } = useQuery({ queryKey: ['customers', 'all-for-crm'], queryFn: () => customersApi.list({ limit: '1000' }), enabled: mode === 'customer' });
   const customers = ((customersResp as { data?: Record<string, any>[] } | undefined)?.data ?? []) as Record<string, any>[];
@@ -227,7 +231,7 @@ function OpportunityForm({ opp, onClose, onSaved }: { opp: Opportunity | null; o
         prospectName: f.prospectName || null, prospectCompany: f.prospectCompany || null, prospectPhone: f.prospectPhone || null,
         prospectEmail: f.prospectEmail || null, prospectCity: f.prospectCity || null, sourceCode: f.sourceCode || null,
         expectedAmount: f.expectedAmount === '' ? null : Number(f.expectedAmount), probability: f.probability === '' ? null : Number(f.probability),
-        expectedCloseDate: f.expectedCloseDate || null, ownerId: f.ownerId || null, description: f.description || null,
+        expectedCloseDate: f.expectedCloseDate || null, ownerId: f.ownerId || null, description: f.description || null, campaignId: f.campaignId || null,
       };
       const saved = opp ? await crmApi.update(opp.id, payload) : await crmApi.create(payload);
       await cf.save(saved.id);
@@ -266,6 +270,7 @@ function OpportunityForm({ opp, onClose, onSaved }: { opp: Opportunity | null; o
             <label style={lab}>Conclusion prévue<input style={field} type="date" value={f.expectedCloseDate} onChange={e => set('expectedCloseDate', e.target.value)} /></label>
             <label style={lab}>Source<select style={field} value={f.sourceCode} onChange={e => set('sourceCode', e.target.value)}><option value="">—</option>{sources.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}</select></label>
             <label style={lab}>Responsable<select style={field} value={f.ownerId} onChange={e => set('ownerId', e.target.value)}>{owners.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
+            <label style={lab}>Campagne<select style={field} value={f.campaignId} onChange={e => set('campaignId', e.target.value)}><option value="">—</option>{campaignOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
           </div>
           <label style={lab}>Description<textarea style={{ ...field, minHeight: 70 }} maxLength={4000} value={f.description} onChange={e => set('description', e.target.value)} placeholder="Besoin du client, contexte, interlocuteurs…" /></label>
           <CustomFieldsEditor entity="opportunity" values={cf.values} onChange={cf.setValues} />
@@ -419,6 +424,77 @@ function LoseDialog({ opp, onClose, onDone }: { opp: Opportunity; onClose: () =>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
           <button className="odoo-btn-primary" disabled={!reason || lose.isPending} onClick={() => lose.mutate()}>Classer perdue</button>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+/* ─── Campagnes marketing (mig 383) ─────────────────────────────────────────── */
+function CampaignsModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const { data: campaigns = [], isLoading } = useQuery({ queryKey: ['crm', 'campaigns'], queryFn: crmApi.campaigns });
+  const [showForm, setShowForm] = useState(false);
+  const money = (v: number | null) => v == null ? '—' : `${v.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} DH`;
+  const status = useMutation({
+    mutationFn: ({ id, s }: { id: string; s: 'active' | 'closed' }) => crmApi.setCampaignStatus(id, s),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['crm'] }),
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
+  const [form, setForm] = useState({ name: '', startDate: '', endDate: '', budget: '' });
+  const create = useMutation({
+    mutationFn: () => crmApi.createCampaign({ name: form.name.trim(), startDate: form.startDate || null, endDate: form.endDate || null, budget: form.budget === '' ? null : Number(form.budget) }),
+    onSuccess: () => { notify.success('Campagne créée'); setShowForm(false); setForm({ name: '', startDate: '', endDate: '', budget: '' }); qc.invalidateQueries({ queryKey: ['crm'] }); },
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 820, maxHeight: '92vh', overflowY: 'auto', background: 'var(--theme-bg-card)', borderRadius: 10 }}>
+        <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
+          <div className="odoo-breadcrumb"><Megaphone size={14} style={{ color: 'var(--theme-accent)' }} /><span className="odoo-breadcrumb-current">Campagnes marketing</span></div>
+          <div style={{ flex: 1 }} />
+          <button className="odoo-btn-primary" onClick={() => setShowForm(v => !v)} style={{ marginRight: 8 }}><Plus size={14} /> Nouvelle</button>
+          <button className="odoo-btn-secondary" onClick={onClose} aria-label="Fermer"><X size={14} /></button>
+        </div>
+        <div style={{ padding: '14px 18px', display: 'grid', gap: 12 }}>
+          {showForm && (
+            <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, padding: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, alignItems: 'end' }}>
+              <label style={lab}>Nom *<input style={field} maxLength={160} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ex. Salon pro 2026" /></label>
+              <label style={lab}>Début<input style={field} type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} /></label>
+              <label style={lab}>Fin<input style={field} type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} /></label>
+              <label style={lab}>Budget (DH)<input style={field} type="number" min={0} value={form.budget} onChange={e => setForm(f => ({ ...f, budget: e.target.value }))} /></label>
+              <button className="odoo-btn-primary" disabled={form.name.trim().length < 2 || create.isPending} onClick={() => create.mutate()}>Créer</button>
+            </div>
+          )}
+          {isLoading ? <Loader2 className="animate-spin" size={18} /> : campaigns.length === 0 ? (
+            <p style={{ color: 'var(--theme-text-muted)', textAlign: 'center', padding: 24 }}>Aucune campagne. Créez-en une pour regrouper et mesurer vos opportunités.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="odoo-table">
+                <thead><tr><th>Campagne</th><th>Période</th><th style={{ textAlign: 'right' }}>Budget</th><th style={{ textAlign: 'right' }}>Opport.</th><th style={{ textAlign: 'right' }}>Gagnées</th><th style={{ textAlign: 'right' }}>Chiffre gagné</th><th>État</th><th /></tr></thead>
+                <tbody>
+                  {(campaigns as Campaign[]).map(c => (
+                    <tr key={c.id}>
+                      <td style={{ fontWeight: 500 }}>{c.name}</td>
+                      <td style={{ fontSize: '0.82rem', color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>{c.start_date ? format(new Date(c.start_date.slice(0, 10) + 'T00:00:00'), 'dd/MM/yy') : '—'}{c.end_date ? ` → ${format(new Date(c.end_date.slice(0, 10) + 'T00:00:00'), 'dd/MM/yy')}` : ''}</td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(c.budget)}</td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{c.opportunities}</td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{c.won}</td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(c.won_amount)}</td>
+                      <td><span className={`odoo-tag ${c.status === 'active' ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{c.status === 'active' ? 'Active' : 'Clôturée'}</span></td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
+                          onClick={() => status.mutate({ id: c.id, s: c.status === 'active' ? 'closed' : 'active' })}>
+                          {c.status === 'active' ? 'Clôturer' : 'Rouvrir'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </ModalBackdrop>
