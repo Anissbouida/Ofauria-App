@@ -28,6 +28,7 @@ import PlanDetailPage from './features/production/PlanDetailPage';
 import BonSortiePrelevementPage from './features/production/BonSortiePrelevementPage';
 import ProductionDashboardPage from './features/production/ProductionDashboardPage';
 import ProductionLayout from './features/production/ProductionLayout';
+import WorkCentersPage from './features/production/WorkCentersPage';
 import SalesLayout from './features/sales/SalesLayout';
 import QuotesPage from './features/quotes/QuotesPage';
 import CrmPage from './features/crm/CrmPage';
@@ -107,6 +108,7 @@ export default function App() {
                 <Route path="/replenishment" element={<ReplenishmentPage />} />
                 <Route path="/recipes" element={<RecipesPage />} />
                 <Route path="/production/costs" element={<ReportsPage fixedTab="cost" />} />
+                <Route path="/production/work-centers" element={<WorkCentersPage />} />
               </Route>
               <Route path="/production/:id" element={<PlanDetailPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />
