@@ -43,6 +43,7 @@ import BilanTab from './BilanTab';
 import BudgetTab from './BudgetTab';
 import PrepaidChargesTab from './PrepaidChargesTab';
 import CashFlowTab from './CashFlowTab';
+import CostCentersTab from './CostCentersTab';
 import RetenuesSourceTab from './RetenuesSourceTab';
 import EcheancierView from './EcheancierView';
 import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, paymentModeLabel, PaymentStatusTag, type CashOverride } from '../../components/purchasing/PaymentModeFields';
@@ -54,7 +55,7 @@ import {
   periodLabel as periodLabelOf, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 
-type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow';
+type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -296,6 +297,7 @@ const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[]
   { key: 'tva', label: 'TVA', icon: Receipt, section: 'reports', adminOnly: true },
   { key: 'budget', label: 'Budget', icon: Target, section: 'reports', adminOnly: true },
   { key: 'cashflow', label: 'Flux de trésorerie', icon: ArrowLeftRight, section: 'reports', adminOnly: true },
+  { key: 'costcenters', label: 'Centres de coûts', icon: Target, section: 'reports', adminOnly: true },
   // ─── Paramétrage ───
   { key: 'plan_comptable', label: 'Plan comptable', icon: ListTree, section: 'setup', adminOnly: true },
 ];
@@ -335,6 +337,7 @@ export default function AccountingPage() {
       {tab === 'cloture' && <ClotureTab />}
       {tab === 'cca' && <PrepaidChargesTab />}
       {tab === 'cashflow' && <CashFlowTab />}
+      {tab === 'costcenters' && <CostCentersTab />}
     </ModuleShell>
   );
 }
