@@ -22,6 +22,13 @@ router.get('/purchases', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), 
 // Age du stock matiere : lots actifs par anciennete (admin/gerant)
 router.get('/aging', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.aging);
 
+// Cloture de stock par periode (mig 381) : instantane valorise (admin/gerant)
+router.get('/closings/preview', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.closingPreview);
+router.get('/closings', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.closingList);
+router.post('/closings', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.closingCreate);
+router.get('/closings/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.closingGet);
+router.delete('/closings/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.closingDelete);
+
 export default router;
 
 // Upload xlsx ingredients (in-memory, 5MB max, .xlsx/.xls)

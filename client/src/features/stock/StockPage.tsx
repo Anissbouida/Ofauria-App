@@ -18,13 +18,14 @@ import {
   Clock, X, Boxes, CalendarClock, ChevronRight, ChevronDown, ChevronLeft,
   ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen,
   Plus, List, LayoutGrid, ShoppingCart, Upload, Download, BarChart3,
-  ClipboardList, ClipboardCheck, Archive, Beaker, Loader2, ListTree,
+  ClipboardList, ClipboardCheck, Archive, Beaker, Loader2, ListTree, Lock,
 } from 'lucide-react';
 import IngredientImportModal from './IngredientImportModal';
 import ConsommationTab from './ConsommationTab';
 import StockCountsTab from './StockCountsTab';
 import GoodsEntryRegisterTab from './GoodsEntryRegisterTab';
 import StockAgingTab from './StockAgingTab';
+import StockClosingTab from './StockClosingTab';
 import PackagingPage from '../packaging/PackagingPage';
 import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
@@ -80,7 +81,7 @@ function situationOf(i: InventoryItem): Situation {
 }
 
 /** Onglets du module Stock (fusion Économat + Pesage, 2026-10-11). */
-type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'aging' | 'registre';
+type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'aging' | 'closing' | 'registre';
 /** Sous-vues de l'onglet Bons de sortie (?view=). */
 type BonsView = 'queue' | 'transfers' | 'history';
 /** Zone affichee dans l'onglet Stock (?zone=) : scelle (ex-Économat) ou entame (ex-Pesage). */
@@ -103,7 +104,7 @@ export default function StockPage() {
   //   -> A commander (ruptures BSI) -> Consommables -> Analyse (admin/gerant).
   // Tout est persiste en URL (?tab=&view=&zone=&bon=) pour les deep-links
   // (notifications, liens « Ouvrir au pesage », rafraichissement).
-  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'aging', 'registre'];
+  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'aging', 'closing', 'registre'];
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') as StockTab | null;
   const [econoTab, setEconoTab] = useState<StockTab>(
@@ -353,6 +354,8 @@ export default function StockPage() {
     { key: 'analyse', label: 'Analyse', icon: BarChart3, section: 'reports', hidden: !canManageIngredients },
     // Age du stock : lots matiere actifs par anciennete (admin/gerant).
     { key: 'aging', label: 'Âge du stock', icon: Clock, section: 'reports', hidden: !canManageIngredients },
+    // Clôture de stock : instantané valorisé par période (admin/gérant).
+    { key: 'closing', label: 'Clôtures', icon: Lock, section: 'reports', hidden: !canManageIngredients },
     // Types de contenant, catégories : tenus dans Paramètres › Référentiel.
     { key: 'referentiel', label: 'Référentiels', icon: ListTree, section: 'setup', hidden: !hasModule('settings'), href: '/settings?page=referentiel', external: true },
   ];
@@ -492,6 +495,8 @@ export default function StockPage() {
         </div>
       ) : econoTab === 'aging' ? (
         <StockAgingTab />
+      ) : econoTab === 'closing' ? (
+        <StockClosingTab />
       ) : zone === 'entame' ? (
         <div style={{ padding: '1rem 0' }}>
           <PesageStockList rows={pesageStock} isLoading={isLoadingPesage}

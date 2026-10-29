@@ -205,6 +205,39 @@ export const inventoryController = {
     const data = await inventoryRepository.stockAging(req.user!.storeId);
     res.json({ success: true, data });
   },
+  /* ── Clôture de stock par période (mig 381) ── */
+  /** GET /inventory/closings/preview — valorisation courante (avant de clôturer). */
+  async closingPreview(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await inventoryRepository.stockValuation(req.user!.storeId) });
+  },
+  /** GET /inventory/closings — liste des clôtures. */
+  async closingList(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await inventoryRepository.listStockClosings(req.user!.storeId) });
+  },
+  /** GET /inventory/closings/:id — détail (lignes valorisées figées). */
+  async closingGet(req: AuthRequest, res: Response) {
+    const data = await inventoryRepository.getStockClosing(req.params.id);
+    if (!data) { res.status(404).json({ success: false, error: { message: 'Clôture introuvable' } }); return; }
+    res.json({ success: true, data });
+  },
+  /** POST /inventory/closings — fige la valorisation pour une période. */
+  async closingCreate(req: AuthRequest, res: Response) {
+    const b = req.body as Record<string, unknown>;
+    if (!b.periodLabel || !b.closingDate) {
+      res.status(400).json({ success: false, error: { message: 'Libellé de période et date requis' } });
+      return;
+    }
+    const data = await inventoryRepository.createStockClosing({
+      periodLabel: String(b.periodLabel), closingDate: String(b.closingDate),
+      storeId: req.user!.storeId ?? null, notes: b.notes ? String(b.notes) : null, userId: req.user!.userId,
+    });
+    res.json({ success: true, data });
+  },
+  /** DELETE /inventory/closings/:id — rouvre (supprime l'instantané). */
+  async closingDelete(req: AuthRequest, res: Response) {
+    await inventoryRepository.deleteStockClosing(req.params.id);
+    res.json({ success: true, data: null });
+  },
 };
 
 export const ingredientController = {

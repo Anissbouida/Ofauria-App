@@ -306,6 +306,87 @@ export const inventoryRepository = {
     return { buckets, totalValue: Math.round(totalValue * 100) / 100, lots: r.rows };
   },
 
+  /**
+   * Valorisation courante du stock matière, agrégée par article : quantité
+   * restante (somme des lots actifs), coût unitaire moyen pondéré, valeur.
+   * Base de l'aperçu et de l'instantané de clôture (mig 381).
+   */
+  async stockValuation(storeId?: string) {
+    const params: unknown[] = [];
+    let storeFilter = '';
+    if (storeId) { params.push(storeId); storeFilter = ` AND il.store_id = $${params.length}`; }
+    const r = await db.query(
+      `SELECT i.id AS ingredient_id, i.name AS ingredient_name, i.unit,
+              SUM(il.quantity_remaining)::float8 AS quantity,
+              CASE WHEN SUM(il.quantity_remaining) > 0
+                   THEN (SUM(il.quantity_remaining * COALESCE(il.unit_cost, 0)) / SUM(il.quantity_remaining))::float8
+                   ELSE 0 END AS unit_cost,
+              ROUND(SUM(il.quantity_remaining * COALESCE(il.unit_cost, 0))::numeric, 2)::float8 AS value
+         FROM ingredient_lots il
+         JOIN ingredients i ON i.id = il.ingredient_id
+        WHERE il.status = 'active' AND il.quantity_remaining > 0${storeFilter}
+        GROUP BY i.id, i.name, i.unit
+       HAVING SUM(il.quantity_remaining) > 0
+        ORDER BY value DESC, i.name`,
+      params,
+    );
+    const total = Math.round(r.rows.reduce((s: number, row: { value: number }) => s + (row.value || 0), 0) * 100) / 100;
+    return { lines: r.rows, total, count: r.rows.length };
+  },
+
+  /** Instantané : fige la valorisation courante pour une période. */
+  async createStockClosing(p: { periodLabel: string; closingDate: string; storeId?: string | null; notes?: string | null; userId: string | null }) {
+    const val = await this.stockValuation(p.storeId ?? undefined);
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const c = (await client.query(
+        `INSERT INTO stock_closings (period_label, closing_date, store_id, total_value, lines_count, notes, closed_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [p.periodLabel.trim(), p.closingDate, p.storeId ?? null, val.total, val.count, p.notes?.trim() || null, p.userId])).rows[0];
+      for (const l of val.lines as { ingredient_id: string; ingredient_name: string; unit: string | null; quantity: number; unit_cost: number; value: number }[]) {
+        await client.query(
+          `INSERT INTO stock_closing_lines (closing_id, ingredient_id, ingredient_name, unit, quantity, unit_cost, value)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [c.id, l.ingredient_id, l.ingredient_name, l.unit, l.quantity, l.unit_cost, l.value]);
+      }
+      await client.query('COMMIT');
+      return await this.getStockClosing(c.id);
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  },
+
+  async listStockClosings(storeId?: string) {
+    const params: unknown[] = [];
+    let where = '';
+    if (storeId) { params.push(storeId); where = `WHERE (sc.store_id IS NULL OR sc.store_id = $1)`; }
+    const r = await db.query(
+      `SELECT sc.*, u.first_name || ' ' || u.last_name AS closed_by_name
+         FROM stock_closings sc LEFT JOIN users u ON u.id = sc.closed_by
+         ${where}
+        ORDER BY sc.closing_date DESC, sc.created_at DESC`, params);
+    return r.rows;
+  },
+
+  async getStockClosing(id: string) {
+    const sc = (await db.query(
+      `SELECT sc.*, u.first_name || ' ' || u.last_name AS closed_by_name
+         FROM stock_closings sc LEFT JOIN users u ON u.id = sc.closed_by WHERE sc.id = $1`, [id])).rows[0];
+    if (!sc) return null;
+    const lines = (await db.query(
+      `SELECT ingredient_name, unit, quantity::float8 AS quantity, unit_cost::float8 AS unit_cost, value::float8 AS value
+         FROM stock_closing_lines WHERE closing_id = $1 ORDER BY value DESC, ingredient_name`, [id])).rows;
+    return { ...sc, total_value: Number(sc.total_value), lines };
+  },
+
+  async deleteStockClosing(id: string) {
+    await db.query(`DELETE FROM stock_closings WHERE id = $1`, [id]);
+  },
+
   async getTransactions(ingredientId?: string, limit = 50, storeId?: string) {
     const conditions: string[] = [];
     const values: unknown[] = [];

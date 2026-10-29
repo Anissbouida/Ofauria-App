@@ -16,7 +16,25 @@ export const inventoryApi = {
     api.get('/inventory/purchases', { params }).then(r => r.data.data),
   /** Age du stock matiere : lots actifs par anciennete (tranches + detail). */
   aging: (): Promise<StockAging> => api.get('/inventory/aging').then(r => r.data.data),
+
+  /* Cloture de stock par periode (mig 381). */
+  closingPreview: (): Promise<StockValuation> => api.get('/inventory/closings/preview').then(r => r.data.data),
+  closingList: (): Promise<StockClosing[]> => api.get('/inventory/closings').then(r => r.data.data),
+  closingGet: (id: string): Promise<StockClosingDetail> => api.get(`/inventory/closings/${id}`).then(r => r.data.data),
+  closingCreate: (data: { periodLabel: string; closingDate: string; notes?: string }): Promise<StockClosingDetail> =>
+    api.post('/inventory/closings', data).then(r => r.data.data),
+  closingDelete: (id: string) => api.delete(`/inventory/closings/${id}`),
 };
+
+export interface StockValuationLine { ingredient_id: string; ingredient_name: string; unit: string; quantity: number; unit_cost: number; value: number }
+export interface StockValuation { lines: StockValuationLine[]; total: number; count: number }
+export interface StockClosing {
+  id: string; period_label: string; closing_date: string; total_value: number; lines_count: number;
+  status: 'closed' | 'reopened'; notes: string | null; closed_by_name: string | null; created_at: string;
+}
+export interface StockClosingDetail extends StockClosing {
+  lines: { ingredient_name: string; unit: string | null; quantity: number; unit_cost: number; value: number }[];
+}
 
 export interface StockAgingLot {
   id: string; lot_number: string; ingredient_id: string; ingredient_name: string; unit: string;
