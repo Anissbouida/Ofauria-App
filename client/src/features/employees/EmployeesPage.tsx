@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Users, Clock, CalendarOff, Banknote, CalendarDays, AlertOctagon, HandCoins, BarChart3, UserCircle,
+  Users, Clock, CalendarOff, Banknote, CalendarDays, AlertOctagon, HandCoins, BarChart3, UserCircle, Percent,
 } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -14,6 +14,7 @@ import AdvancesTab from './tabs/AdvancesTab';
 import ScheduleTab from './tabs/ScheduleTab';
 import HrAnalyticsTab from './tabs/HrAnalyticsTab';
 import MySpace from './self/MySpace';
+import CommissionsTab from './CommissionsTab';
 import { selfApi } from '../../api/employees.api';
 
 export default function EmployeesPage() {
@@ -34,6 +35,7 @@ export default function EmployeesPage() {
     { key: 'leaves', label: 'Congés', icon: CalendarOff, section: 'operations' },
     { key: 'advances', label: 'Avances', icon: HandCoins, section: 'operations' },
     { key: 'payroll', label: 'Paie', icon: Banknote, section: 'operations' },
+    { key: 'commissions', label: 'Commissions', icon: Percent, section: 'operations' },
     { key: 'employees', label: 'Employés', icon: Users, section: 'setup' },
   ];
   const { current, select } = useModuleView(views);
@@ -80,6 +82,7 @@ export default function EmployeesPage() {
       {tab === 'advances' && <AdvancesTab queryClient={queryClient} />}
       {tab === 'schedule' && <ScheduleTab queryClient={queryClient} />}
       {tab === 'analytics' && <HrAnalyticsTab />}
+      {tab === 'commissions' && <CommissionsTab />}
       {tab === 'me' && <MySpace />}
     </ModuleShell>
   );

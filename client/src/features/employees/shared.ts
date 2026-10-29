@@ -1,4 +1,4 @@
-export type HrTab = 'employees' | 'attendance' | 'leaves' | 'payroll' | 'advances' | 'schedule' | 'analytics' | 'me';
+export type HrTab = 'employees' | 'attendance' | 'leaves' | 'payroll' | 'advances' | 'schedule' | 'analytics' | 'me' | 'commissions';
 
 export const LEAVE_STATUS_COLORS: Record<string, string> = { pending: 'odoo-tag-yellow', approved: 'odoo-tag-green', rejected: 'odoo-tag-red' };
 export const ATTENDANCE_STATUS: { value: string; label: string; color: string }[] = [
