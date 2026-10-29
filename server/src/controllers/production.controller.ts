@@ -1,6 +1,8 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productionRepository } from '../repositories/production.repository.js';
+import { mrpRepository } from '../repositories/mrp.repository.js';
+import { forecastRepository } from '../repositories/forecast.repository.js';
 import { orderRepository } from '../repositories/order.repository.js';
 import { bonSortieRepository } from '../repositories/bon-sortie.repository.js';
 import { createNotification } from '../utils/notify.js';
@@ -47,6 +49,16 @@ export const productionController = {
       limit: l, offset: (p - 1) * l,
     });
     res.json({ success: true, data: result.rows, total: result.total, page: p, limit: l, totalPages: Math.ceil(result.total / l) });
+  },
+
+  /** MRP — besoins nets de production du jour (plan directeur). Lecture seule. */
+  async mrp(req: AuthRequest, res: Response) {
+    const date = typeof req.query.date === 'string' ? req.query.date : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { res.status(400).json({ success: false, error: { message: 'Date requise (YYYY-MM-DD)' } }); return; }
+    const requested = typeof req.query.store === 'string' ? req.query.store : undefined;
+    const storeId = await forecastRepository.resolveStore(req.user!.storeId, requested);
+    if (!storeId) { res.status(400).json({ success: false, error: { message: 'Plusieurs magasins : précisez lequel' } }); return; }
+    res.json({ success: true, data: await mrpRepository.netRequirements(storeId, date) });
   },
 
   async getById(req: AuthRequest, res: Response) {

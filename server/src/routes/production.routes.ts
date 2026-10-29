@@ -17,6 +17,9 @@ const router = Router();
 router.get('/', authenticate, validateQuery(listQuerySchema), asyncHandler(productionController.list));
 // Static routes BEFORE /:id to avoid capture
 router.get('/transfers/pending', authenticate, asyncHandler(productionController.pendingProductionTransfers));
+
+// MRP — besoins nets du jour (plan directeur). Avant /:id pour ne pas être capturé comme id.
+router.get('/mrp', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrp));
 router.post('/transfers/:transferId/receive', authenticate, validateUuidParams('transferId'), authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.confirmProductionTransfer));
 
 router.get('/:id/sub-recipe-analysis', authenticate, id, asyncHandler(productionController.analyzeSubRecipes));

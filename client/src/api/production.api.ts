@@ -1,8 +1,20 @@
 import api from './client';
 import type { ProductionPlanEvent } from '@ofauria/shared';
 
+export type MrpRow = {
+  product_id: string; product_name: string; category_id: number | null; category_name: string | null;
+  forecast_qty: number; order_qty: number; demand: number; on_hand: number; planned_qty: number; net_to_produce: number;
+};
+export type MrpResult = {
+  store_id: string; date: string; rows: MrpRow[];
+  totals: { demand: number; on_hand: number; planned_qty: number; net_to_produce: number };
+};
+
 export const productionApi = {
   list: (params?: Record<string, string>) => api.get('/production', { params }).then(r => r.data),
+  /** MRP — besoins nets de production du jour (plan directeur). */
+  mrp: (date: string, store?: string): Promise<MrpResult> =>
+    api.get('/production/mrp', { params: { date, ...(store ? { store } : {}) } }).then(r => r.data.data),
   getById: (id: string) => api.get(`/production/${id}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/production', data).then(r => r.data.data),
   confirm: (id: string) => api.post(`/production/${id}/confirm`).then(r => r.data),
