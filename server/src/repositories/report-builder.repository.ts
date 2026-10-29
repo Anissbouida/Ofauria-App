@@ -16,7 +16,7 @@ type DataSource = {
   key: string; label: string;
   from: string;
   baseWhere?: string;   // prédicat fixe toujours appliqué (ex. invoice_type = 'received')
-  dateColumn: string;
+  dateColumn?: string;  // absent = source sans date (instantané, ex. stock) : pas de plage
   storeColumn?: string;
   dimensions: Dimension[];
   measures: Measure[];
@@ -109,6 +109,49 @@ const SOURCES: Record<string, DataSource> = {
       { key: 'supplier', label: 'Fournisseur', sql: `s.name`, type: 'enum', optionsSql: `SELECT DISTINCT s.name AS v FROM invoices i JOIN suppliers s ON s.id = i.supplier_id WHERE i.invoice_type = 'received' AND s.name IS NOT NULL ORDER BY 1` },
     ],
   },
+  stock: {
+    key: 'stock', label: 'Stock (instantané)',
+    from: `product_store_stock pss
+           JOIN products p ON p.id = pss.product_id
+           LEFT JOIN categories c ON c.id = p.category_id`,
+    storeColumn: 'pss.store_id',
+    dimensions: [
+      { key: 'category', label: 'Catégorie', sql: `COALESCE(c.name, 'Sans catégorie')`, type: 'text' },
+      { key: 'product', label: 'Produit', sql: `p.name`, type: 'text' },
+    ],
+    measures: [
+      { key: 'backroom', label: 'Arrière-boutique', sql: `SUM(pss.stock_quantity)`, format: 'number' },
+      { key: 'vitrine', label: 'Vitrine', sql: `SUM(pss.vitrine_quantity)`, format: 'number' },
+      { key: 'reserved', label: 'Réservé', sql: `SUM(COALESCE(pss.reserved_quantity, 0))`, format: 'number' },
+      { key: 'available', label: 'Disponible', sql: `SUM(GREATEST(pss.stock_quantity + pss.vitrine_quantity - COALESCE(pss.reserved_quantity, 0), 0))`, format: 'number' },
+    ],
+    filters: [
+      { key: 'category', label: 'Catégorie', sql: `c.name`, type: 'enum', optionsSql: `SELECT DISTINCT name AS v FROM categories WHERE name IS NOT NULL ORDER BY 1` },
+    ],
+  },
+  paie: {
+    key: 'paie', label: 'Paie',
+    from: `payroll p JOIN employees e ON e.id = p.employee_id`,
+    dateColumn: 'make_date(p.year, p.month, 1)',
+    storeColumn: 'p.store_id',
+    dimensions: [
+      { key: 'month', label: 'Mois', sql: `to_char(make_date(p.year, p.month, 1), 'YYYY-MM')`, type: 'text' },
+      { key: 'year', label: 'Année', sql: `p.year::text`, type: 'text' },
+      { key: 'employee', label: 'Employé', sql: `e.first_name || ' ' || e.last_name`, type: 'text' },
+      { key: 'role', label: 'Poste', sql: `COALESCE(e.role, '—')`, type: 'text' },
+    ],
+    measures: [
+      { key: 'gross', label: 'Brut', sql: `SUM(COALESCE(p.gross_salary, 0))`, format: 'currency' },
+      { key: 'net', label: 'Net', sql: `SUM(COALESCE(p.net_salary, 0))`, format: 'currency' },
+      { key: 'cnss', label: 'CNSS salarié', sql: `SUM(COALESCE(p.cnss_employee, 0))`, format: 'currency' },
+      { key: 'ir', label: 'IR', sql: `SUM(COALESCE(p.ir_net, 0))`, format: 'currency' },
+      { key: 'employer_charges', label: 'Charges patronales', sql: `SUM(COALESCE(p.total_charges_patron, 0))`, format: 'currency' },
+      { key: 'count', label: 'Nb bulletins', sql: `COUNT(*)`, format: 'integer' },
+    ],
+    filters: [
+      { key: 'role', label: 'Poste', sql: `e.role`, type: 'enum', optionsSql: `SELECT DISTINCT role AS v FROM employees WHERE role IS NOT NULL ORDER BY 1` },
+    ],
+  },
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -128,7 +171,7 @@ export const reportBuilderRepository = {
   /** Catalogue des sources (métadonnées pour le constructeur) — sans les expressions SQL. */
   listSources() {
     return Object.values(SOURCES).map(s => ({
-      key: s.key, label: s.label,
+      key: s.key, label: s.label, hasDate: !!s.dateColumn,
       dimensions: s.dimensions.map(d => ({ key: d.key, label: d.label, type: d.type })),
       measures: s.measures.map(m => ({ key: m.key, label: m.label, format: m.format })),
       filters: s.filters.map(f => ({ key: f.key, label: f.label, type: f.type })),
@@ -165,9 +208,9 @@ export const reportBuilderRepository = {
     if (src.baseWhere) where.push(src.baseWhere);
     // Portée magasin.
     if (src.storeColumn && ctx.storeId) where.push(`(${src.storeColumn} = ${add(ctx.storeId)}::uuid OR ${src.storeColumn} IS NULL)`);
-    // Plage de dates.
-    if (cfg.dateFrom && ISO_DATE.test(cfg.dateFrom)) where.push(`${src.dateColumn}::date >= ${add(cfg.dateFrom)}::date`);
-    if (cfg.dateTo && ISO_DATE.test(cfg.dateTo)) where.push(`${src.dateColumn}::date <= ${add(cfg.dateTo)}::date`);
+    // Plage de dates (uniquement si la source est datée).
+    if (src.dateColumn && cfg.dateFrom && ISO_DATE.test(cfg.dateFrom)) where.push(`${src.dateColumn}::date >= ${add(cfg.dateFrom)}::date`);
+    if (src.dateColumn && cfg.dateTo && ISO_DATE.test(cfg.dateTo)) where.push(`${src.dateColumn}::date <= ${add(cfg.dateTo)}::date`);
     // Filtres (clés validées, valeurs paramétrées).
     for (const [key, val] of Object.entries(cfg.filters ?? {})) {
       const f = src.filters.find(x => x.key === key);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BarChart3, Loader2, Save, Trash2, Play, Plus, X, Download, LayoutGrid, Table2, LineChart, Hash } from 'lucide-react';
+import { BarChart3, Loader2, Save, Trash2, Play, Plus, X, Download, LayoutGrid, Table2, LineChart, Hash, ChevronUp, ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
 import { format, subDays } from 'date-fns';
 import { reportsApi, type ReportConfig, type ReportField, type DashboardTile } from '../../api/reports.api';
 import { notify } from '../../components/ui/InlineNotification';
@@ -106,8 +106,10 @@ function BuilderView() {
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Source</span>
             <select value={sourceKey} onChange={e => pickSource(e.target.value)} style={{ ...inp, minWidth: 150 }}>{sources.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}</select></label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Du</span><input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={inp} /></label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Au</span><input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={inp} /></label>
+          {source?.hasDate !== false && <>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Du</span><input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={inp} /></label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Au</span><input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={inp} /></label>
+          </>}
           {isFetching && <Loader2 size={15} className="animate-spin" style={{ marginBottom: 8 }} />}
         </div>
 
@@ -234,10 +236,19 @@ function Dashboards() {
   const activeId = selId ?? dashboards[0]?.id ?? null;
   const { data: dash } = useQuery({ queryKey: ['rb-dash-one', activeId], queryFn: () => reportsApi.getDashboard(activeId!), enabled: !!activeId });
 
-  async function removeTile(tileId: string) {
+  async function saveTiles(tiles: DashboardTile[]) {
     if (!dash) return;
-    await reportsApi.dashboardUpdate(dash.id, { name: dash.name, tiles: dash.tiles.filter(t => t.id !== tileId) });
+    await reportsApi.dashboardUpdate(dash.id, { name: dash.name, tiles });
     qc.invalidateQueries({ queryKey: ['rb-dash-one', dash.id] });
+  }
+  const removeTile = (id: string) => dash && saveTiles(dash.tiles.filter(t => t.id !== id));
+  const resizeTile = (id: string, size: 'half' | 'full') => dash && saveTiles(dash.tiles.map(t => t.id === id ? { ...t, size } : t));
+  function moveTile(i: number, dir: -1 | 1) {
+    if (!dash) return;
+    const j = i + dir; const tiles = [...dash.tiles];
+    if (j < 0 || j >= tiles.length) return;
+    [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+    saveTiles(tiles);
   }
   async function del() {
     if (!dash || !await confirm(`Supprimer le tableau de bord « ${dash.name} » ?`, { danger: true })) return;
@@ -254,28 +265,39 @@ function Dashboards() {
         {dash && <button type="button" className="odoo-btn-secondary" onClick={del} style={{ marginLeft: 'auto' }}><Trash2 size={13} /> Supprimer</button>}
       </div>
       {dash && dash.tiles.length === 0 && <StatusBanner tone="info" icon={LayoutGrid} title="Tableau de bord vide">Ajoutez des tuiles depuis le Constructeur.</StatusBanner>}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 12 }}>
-        {dash?.tiles.map(t => <Tile key={t.id} tile={t} onRemove={() => removeTile(t.id)} />)}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+        {dash?.tiles.map((t, i) => (
+          <div key={t.id} style={{ gridColumn: (t.size ?? 'half') === 'full' ? '1 / -1' : 'auto', minWidth: 0 }}>
+            <Tile tile={t} onRemove={() => removeTile(t.id)} onResize={() => resizeTile(t.id, (t.size ?? 'half') === 'full' ? 'half' : 'full')}
+              onUp={() => moveTile(i, -1)} onDown={() => moveTile(i, 1)} isFirst={i === 0} isLast={i === dash.tiles.length - 1} />
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-function Tile({ tile, onRemove }: { tile: DashboardTile; onRemove: () => void }) {
+function Tile({ tile, onRemove, onResize, onUp, onDown, isFirst, isLast }: {
+  tile: DashboardTile; onRemove: () => void; onResize: () => void; onUp: () => void; onDown: () => void; isFirst: boolean; isLast: boolean;
+}) {
   const { data: result, isFetching, isError } = useQuery({
     queryKey: ['rb-tile', tile.id, tile.config],
     queryFn: () => reportsApi.customRun({ sourceKey: tile.source_key, ...tile.config, limit: 200 }),
   });
+  const full = (tile.size ?? 'half') === 'full';
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderBottom: '1px solid var(--odoo-border)', background: 'var(--theme-bg-subtle, #f7f8fa)' }}>
         <span style={{ fontWeight: 600, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tile.title}>{tile.title}</span>
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           {isFetching && <Loader2 size={13} className="animate-spin" />}
+          <button type="button" onClick={onUp} disabled={isFirst} className="odoo-pager-btn" title="Monter"><ChevronUp size={13} /></button>
+          <button type="button" onClick={onDown} disabled={isLast} className="odoo-pager-btn" title="Descendre"><ChevronDown size={13} /></button>
+          <button type="button" onClick={onResize} className="odoo-pager-btn" title={full ? 'Demi-largeur' : 'Pleine largeur'}>{full ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</button>
           <button type="button" onClick={onRemove} className="odoo-pager-btn" title="Retirer"><X size={13} /></button>
         </div>
       </div>
-      <div style={{ padding: 4, minHeight: 60 }}>
+      <div style={{ padding: 4, minHeight: 60, flex: 1 }}>
         {isError ? <p style={{ fontSize: '0.8rem', color: '#dc3545', padding: 12 }}>Erreur de chargement.</p>
           : result ? <ReportViz columns={result.columns} rows={result.rows} viz={tile.viz} />
             : <div style={{ padding: 20, textAlign: 'center' }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></div>}

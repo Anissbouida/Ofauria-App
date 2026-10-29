@@ -169,12 +169,12 @@ export const reportsApi = {
   dashboardDelete: (id: string) => api.delete(`/reports/custom/dashboards/${id}`).then(r => r.data.data),
 };
 
-export type DashboardTile = { id: string; title: string; source_key: string; config: ReportConfig; viz: 'table' | 'bar' | 'line' | 'kpi' };
+export type DashboardTile = { id: string; title: string; source_key: string; config: ReportConfig; viz: 'table' | 'bar' | 'line' | 'kpi'; size?: 'half' | 'full' };
 export type DashboardSummary = { id: string; name: string; tile_count: number; created_by_name: string | null; updated_at: string };
 export type Dashboard = { id: string; name: string; tiles: DashboardTile[]; created_at: string; updated_at: string };
 
 export type ReportField = { key: string; label: string; type?: string; format?: string };
-export type ReportSource = { key: string; label: string; dimensions: ReportField[]; measures: ReportField[]; filters: ReportField[] };
+export type ReportSource = { key: string; label: string; hasDate: boolean; dimensions: ReportField[]; measures: ReportField[]; filters: ReportField[] };
 export type ReportConfig = { dimensions: string[]; measures: string[]; filters: Record<string, string>; dateFrom?: string; dateTo?: string; sort?: { key: string; dir: 'asc' | 'desc' }; viz?: 'table' | 'bar' | 'line' | 'kpi' };
 export type ReportRunConfig = ReportConfig & { sourceKey: string; limit?: number };
 export type ReportColumn = { key: string; label: string; kind: 'dimension' | 'measure'; type?: string; format?: string };
