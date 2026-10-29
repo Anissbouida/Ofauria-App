@@ -19,6 +19,7 @@ import {
 import DateRangePicker from '../../components/DateRangePicker';
 import ReceiptModal from '../pos/ReceiptModal';
 import EmittedInvoicesTab from './EmittedInvoicesTab';
+import SubscriptionsTab from './SubscriptionsTab';
 import ManualShiftEntries from './ManualShiftEntries';
 import ReceivablesTab from './ReceivablesTab';
 
@@ -106,7 +107,7 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 }
 
 /** Écrans de la page Ventes, repris par la barre latérale du module (SalesLayout). */
-const MAIN_TAB_KEYS = ['sales', 'unpaid', 'returns', 'sessions', 'invoices'] as const;
+const MAIN_TAB_KEYS = ['sales', 'unpaid', 'returns', 'sessions', 'invoices', 'subscriptions'] as const;
 export const SALES_MAIN_TABS: { key: typeof MAIN_TAB_KEYS[number]; label: string }[] = [
   { key: 'sales', label: 'Ventes' },
   // Créances clients : balance âgée (tickets sur compte client + factures ouvertes).
@@ -114,6 +115,7 @@ export const SALES_MAIN_TABS: { key: typeof MAIN_TAB_KEYS[number]; label: string
   { key: 'returns', label: 'Retours & Échanges' },
   { key: 'sessions', label: 'Périodes de travail' },
   { key: 'invoices', label: 'Factures émises' },
+  { key: 'subscriptions', label: 'Abonnements' },
 ];
 
 export default function SalesPage() {
@@ -1096,6 +1098,7 @@ export default function SalesPage() {
 
       {/* ═══════════ INVOICES TAB ═══════════ */}
       {mainTab === 'invoices' && <EmittedInvoicesTab />}
+      {mainTab === 'subscriptions' && <SubscriptionsTab />}
 
       </div>{/* close padded content */}
 
