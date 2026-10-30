@@ -558,4 +558,95 @@ export const productionCoutRepository = {
     );
     return result.rows;
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Ecart MO : standard (gamme mig 388) vs reel (etapes mig 089) — roadmap lot 1
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Detail par item d'un plan + totaux (sur les seuls items ayant une gamme,
+  // sinon std est NULL et non sommable).
+  async getMoEcartByPlan(planId: string) {
+    const result = await db.query(
+      `SELECT me.*, p.name AS product_name,
+              COALESCE(ppi.actual_quantity, ppi.planned_quantity) AS quantity,
+              rt.name AS routing_name
+       FROM v_production_mo_ecart me
+       JOIN production_plan_items ppi ON ppi.id = me.plan_item_id
+       JOIN products p ON p.id = me.product_id
+       LEFT JOIN routings rt ON rt.id = me.routing_id
+       WHERE me.plan_id = $1 AND ppi.status != 'cancelled'
+       ORDER BY p.name`,
+      [planId]
+    );
+    const items = result.rows.map(r => ({
+      plan_item_id: r.plan_item_id,
+      product_id: r.product_id,
+      product_name: r.product_name,
+      quantity: r.quantity != null ? parseInt(r.quantity) : null,
+      routing_id: r.routing_id,
+      routing_name: r.routing_name,
+      std_minutes: r.std_minutes != null ? parseInt(r.std_minutes) : null,
+      std_cost: r.std_cost != null ? parseFloat(r.std_cost) : null,
+      reel_minutes: parseInt(r.reel_minutes),
+      reel_cost: parseFloat(r.reel_cost),
+      ecart_minutes: r.ecart_minutes != null ? parseInt(r.ecart_minutes) : null,
+      ecart_cost: r.ecart_cost != null ? parseFloat(r.ecart_cost) : null,
+    }));
+    const withStd = items.filter(i => i.std_cost != null);
+    const stdMinutes = withStd.reduce((s, i) => s + (i.std_minutes ?? 0), 0);
+    const stdCost = Math.round(withStd.reduce((s, i) => s + (i.std_cost ?? 0), 0) * 100) / 100;
+    const reelMinutes = withStd.reduce((s, i) => s + i.reel_minutes, 0);
+    const reelCost = Math.round(withStd.reduce((s, i) => s + i.reel_cost, 0) * 100) / 100;
+    const totals = {
+      std_minutes: stdMinutes,
+      std_cost: stdCost,
+      reel_minutes: reelMinutes,
+      reel_cost: reelCost,
+      ecart_minutes: reelMinutes - stdMinutes,
+      ecart_cost: Math.round((reelCost - stdCost) * 100) / 100,
+      nb_items: items.length,
+      nb_items_sans_gamme: items.length - withStd.length,
+    };
+    return { items, totals };
+  },
+
+  // Agrege par produit sur une periode (plans completes d'un magasin), trie par
+  // ecart decroissant. Ne garde que les produits ayant au moins une gamme.
+  async getMoEcartByProduct(storeId: string, dateFrom?: string, dateTo?: string) {
+    const params: unknown[] = [storeId];
+    let dateFilter = '';
+    if (dateFrom) { params.push(dateFrom); dateFilter += ` AND pp.plan_date >= $${params.length}`; }
+    if (dateTo) { params.push(dateTo); dateFilter += ` AND pp.plan_date <= $${params.length}`; }
+
+    const result = await db.query(
+      `SELECT me.product_id, p.name AS product_name,
+              COUNT(*) FILTER (WHERE me.std_cost IS NOT NULL) AS nb_avec_gamme,
+              SUM(me.std_minutes) AS std_minutes,
+              ROUND(SUM(me.std_cost), 2) AS std_cost,
+              SUM(me.reel_minutes) FILTER (WHERE me.std_cost IS NOT NULL) AS reel_minutes,
+              ROUND(SUM(me.reel_cost) FILTER (WHERE me.std_cost IS NOT NULL), 2) AS reel_cost
+       FROM v_production_mo_ecart me
+       JOIN production_plans pp ON pp.id = me.plan_id
+       JOIN products p ON p.id = me.product_id
+       WHERE pp.store_id = $1 AND pp.status = 'completed'${dateFilter}
+       GROUP BY me.product_id, p.name
+       HAVING SUM(me.std_cost) IS NOT NULL
+       ORDER BY ROUND(SUM(me.reel_cost - me.std_cost), 2) DESC NULLS LAST`,
+      params
+    );
+    return result.rows.map(r => {
+      const stdCost = r.std_cost != null ? parseFloat(r.std_cost) : 0;
+      const reelCost = r.reel_cost != null ? parseFloat(r.reel_cost) : 0;
+      return {
+        product_id: r.product_id,
+        product_name: r.product_name,
+        nb_avec_gamme: parseInt(r.nb_avec_gamme),
+        std_minutes: r.std_minutes != null ? parseInt(r.std_minutes) : 0,
+        std_cost: stdCost,
+        reel_minutes: r.reel_minutes != null ? parseInt(r.reel_minutes) : 0,
+        reel_cost: reelCost,
+        ecart_cost: Math.round((reelCost - stdCost) * 100) / 100,
+      };
+    });
+  },
 };

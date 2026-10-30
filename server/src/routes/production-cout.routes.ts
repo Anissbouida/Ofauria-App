@@ -39,4 +39,8 @@ router.get('/by-product', authenticate, asyncHandler(productionCoutController.co
 router.get('/plans-with-cost', authenticate, asyncHandler(productionCoutController.plansWithCost));
 router.post('/batch-calculate', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(productionCoutController.batchCalculate));
 
+// ─── Ecart MO standard (gamme mig 388) vs reel (etapes mig 089) — roadmap lot 1 ───
+router.get('/plans/:planId/mo-ecart', authenticate, asyncHandler(productionCoutController.getMoEcartByPlan));
+router.get('/by-product/mo-ecart', authenticate, asyncHandler(productionCoutController.getMoEcartByProduct));
+
 export default router;

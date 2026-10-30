@@ -5,7 +5,7 @@ import { productionCoutApi } from '../../api/production-cout.api';
 import { notify } from '../../components/ui/InlineNotification';
 import {
   Calculator, Loader2,
-  ChevronDown, ChevronRight, Users, Package, DollarSign, Building2, Plus, Equal, Zap, TrendingDown
+  ChevronDown, ChevronRight, Users, Package, DollarSign, Building2, Plus, Equal, Zap, TrendingDown, Clock
 } from 'lucide-react';
 
 interface CoutReelPanelProps {
@@ -45,6 +45,30 @@ interface CoutReel {
   calculated_at: string;
 }
 
+// Ecart MO : gamme standard (mig 388) vs reel (etapes mig 089) — roadmap lot 1
+interface MoEcartItem {
+  plan_item_id: string;
+  product_name: string;
+  quantity: number | null;
+  routing_id: string | null;
+  routing_name: string | null;
+  std_minutes: number | null;
+  std_cost: number | null;
+  reel_minutes: number;
+  reel_cost: number;
+  ecart_minutes: number | null;
+  ecart_cost: number | null;
+}
+interface MoEcart {
+  items: MoEcartItem[];
+  totals: {
+    std_minutes: number; std_cost: number;
+    reel_minutes: number; reel_cost: number;
+    ecart_minutes: number; ecart_cost: number;
+    nb_items: number; nb_items_sans_gamme: number;
+  };
+}
+
 function toNum(v: Money): number {
   if (v == null) return 0;
   const n = typeof v === 'number' ? v : parseFloat(v);
@@ -58,6 +82,13 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
   const { data: cout, isLoading } = useQuery<CoutReel | null>({
     queryKey: ['production-cout', planId],
     queryFn: () => productionCoutApi.getCost(planId).catch(() => null),
+    enabled: ['in_progress', 'completed'].includes(planStatus),
+  });
+
+  // Ecart MO standard (gamme) vs reel (etapes) — roadmap lot 1
+  const { data: moEcart } = useQuery<MoEcart | null>({
+    queryKey: ['production-mo-ecart', planId],
+    queryFn: () => productionCoutApi.moEcartByPlan(planId).catch(() => null),
     enabled: ['in_progress', 'completed'].includes(planStatus),
   });
 
@@ -283,6 +314,58 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                     </tr>
                   ))}</tbody>
                 </table>
+              </DetailSection>
+            )}
+
+            {moEcart && moEcart.items.length > 0 && (
+              <DetailSection title="Ecart M.O. : gamme standard vs reel" icon={<Clock size={12} className="text-indigo-500" />}
+                isExpanded={expandedSection === 'mo-ecart'} onToggle={() => setExpandedSection(expandedSection === 'mo-ecart' ? null : 'mo-ecart')}>
+                {moEcart.totals.nb_items_sans_gamme === moEcart.totals.nb_items ? (
+                  <p className="text-xs text-gray-500 px-2 py-1">
+                    Aucune gamme de production rattachée. Définissez des gammes (Production › Postes & gammes)
+                    pour comparer le temps de main-d'œuvre standard au temps réellement passé.
+                  </p>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead><tr className="text-gray-400 uppercase">
+                      <th className="text-left py-1 px-2">Produit</th>
+                      <th className="text-right py-1 px-2">Std (min)</th>
+                      <th className="text-right py-1 px-2">Réel (min)</th>
+                      <th className="text-right py-1 px-2">Std (DH)</th>
+                      <th className="text-right py-1 px-2">Réel (DH)</th>
+                      <th className="text-right py-1 px-2">Écart (DH)</th>
+                    </tr></thead>
+                    <tbody>{moEcart.items.map((d) => (
+                      <tr key={d.plan_item_id} className="border-t border-gray-50">
+                        <td className="py-1 px-2 text-gray-700">
+                          {d.product_name}
+                          {d.std_cost == null && <span className="text-gray-300"> (sans gamme)</span>}
+                        </td>
+                        <td className="py-1 px-2 text-right text-gray-500">{d.std_minutes ?? '—'}</td>
+                        <td className="py-1 px-2 text-right text-gray-500">{d.reel_minutes}</td>
+                        <td className="py-1 px-2 text-right text-gray-500">{d.std_cost != null ? d.std_cost.toFixed(2) : '—'}</td>
+                        <td className="py-1 px-2 text-right text-gray-500">{d.reel_cost.toFixed(2)}</td>
+                        <td className="py-1 px-2 text-right font-medium"
+                          style={{ color: d.ecart_cost == null ? '#9ca3af' : d.ecart_cost > 0 ? '#c62828' : d.ecart_cost < 0 ? '#2e7d32' : undefined }}>
+                          {d.ecart_cost == null ? '—' : `${d.ecart_cost > 0 ? '+' : ''}${d.ecart_cost.toFixed(2)}`}
+                        </td>
+                      </tr>
+                    ))}</tbody>
+                    <tfoot>
+                      <tr className="border-t border-gray-200 font-semibold text-gray-800">
+                        <td className="py-1 px-2">Total (items avec gamme)</td>
+                        <td className="py-1 px-2 text-right">{moEcart.totals.std_minutes}</td>
+                        <td className="py-1 px-2 text-right">{moEcart.totals.reel_minutes}</td>
+                        <td className="py-1 px-2 text-right">{moEcart.totals.std_cost.toFixed(2)}</td>
+                        <td className="py-1 px-2 text-right">{moEcart.totals.reel_cost.toFixed(2)}</td>
+                        <td className="py-1 px-2 text-right"
+                          style={{ color: moEcart.totals.ecart_cost > 0 ? '#c62828' : moEcart.totals.ecart_cost < 0 ? '#2e7d32' : undefined }}>
+                          {moEcart.totals.ecart_cost > 0 ? '+' : ''}{moEcart.totals.ecart_cost.toFixed(2)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                )}
               </DetailSection>
             )}
 

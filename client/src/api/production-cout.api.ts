@@ -45,4 +45,10 @@ export const productionCoutApi = {
     api.get('/production-cout/plans-with-cost', { params: { storeId, dateFrom, dateTo } }).then(r => r.data.data),
   batchCalculate: () =>
     api.post('/production-cout/batch-calculate').then(r => r.data.data),
+
+  // Ecart MO standard (gamme) vs reel (etapes) — roadmap lot 1
+  moEcartByPlan: (planId: string) =>
+    api.get(`/production-cout/plans/${planId}/mo-ecart`).then(r => r.data.data),
+  moEcartByProduct: (storeId: string, dateFrom?: string, dateTo?: string) =>
+    api.get('/production-cout/by-product/mo-ecart', { params: { storeId, dateFrom, dateTo } }).then(r => r.data.data),
 };

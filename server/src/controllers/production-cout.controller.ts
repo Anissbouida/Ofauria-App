@@ -146,4 +146,19 @@ export const productionCoutController = {
     );
     res.json({ success: true, data });
   },
+
+  // ═══ Ecart MO standard vs reel (roadmap lot 1) ═══
+
+  async getMoEcartByPlan(req: AuthRequest, res: Response) {
+    const data = await productionCoutRepository.getMoEcartByPlan(req.params.planId as string);
+    res.json({ success: true, data });
+  },
+
+  async getMoEcartByProduct(req: AuthRequest, res: Response) {
+    const storeId = (req.query.storeId as string) || req.user!.storeId!;
+    const data = await productionCoutRepository.getMoEcartByProduct(
+      storeId, req.query.dateFrom as string | undefined, req.query.dateTo as string | undefined
+    );
+    res.json({ success: true, data });
+  },
 };
