@@ -19,15 +19,30 @@ export const routingRepository = {
          FROM work_centers w ${where} ORDER BY w.is_active DESC, w.name`, params);
     return r.rows.map((x: Record<string, unknown>) => ({ ...x, hourly_cost: Number(x.hourly_cost) }));
   },
-  async createWorkCenter(input: { name: string; hourlyCost: number; storeId?: string | null; userId: string | null }) {
+  async createWorkCenter(input: { name: string; hourlyCost: number; capacityMinutesPerDay?: number | null; storeId?: string | null; userId: string | null }) {
+    const cap = input.capacityMinutesPerDay != null && input.capacityMinutesPerDay > 0 ? input.capacityMinutesPerDay : null;
     const r = await db.query(
-      `INSERT INTO work_centers (name, hourly_cost, store_id, created_by) VALUES ($1,$2,$3,$4) RETURNING *`,
-      [input.name.trim().slice(0, 120), input.hourlyCost >= 0 ? round2(input.hourlyCost) : 0, input.storeId ?? null, input.userId]);
+      `INSERT INTO work_centers (name, hourly_cost, capacity_minutes_per_day, store_id, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [input.name.trim().slice(0, 120), input.hourlyCost >= 0 ? round2(input.hourlyCost) : 0, cap, input.storeId ?? null, input.userId]);
     return { ...r.rows[0], hourly_cost: Number(r.rows[0].hourly_cost), operations_count: 0 };
   },
   async setWorkCenterActive(id: string, active: boolean) {
     const r = await db.query(`UPDATE work_centers SET is_active = $2 WHERE id = $1 RETURNING *`, [id, active]);
     return r.rows[0] ? { ...r.rows[0], hourly_cost: Number(r.rows[0].hourly_cost) } : null;
+  },
+  // Édition d'un poste : nom, coût horaire, capacité (mig 398).
+  async updateWorkCenter(id: string, input: { name?: string; hourlyCost?: number; capacityMinutesPerDay?: number | null }) {
+    const cur = (await db.query(`SELECT * FROM work_centers WHERE id = $1`, [id])).rows[0];
+    if (!cur) return null;
+    const cap = input.capacityMinutesPerDay === undefined
+      ? cur.capacity_minutes_per_day
+      : (input.capacityMinutesPerDay != null && input.capacityMinutesPerDay > 0 ? input.capacityMinutesPerDay : null);
+    const r = await db.query(
+      `UPDATE work_centers SET name = $2, hourly_cost = $3, capacity_minutes_per_day = $4 WHERE id = $1 RETURNING *`,
+      [id, (input.name ?? cur.name).trim().slice(0, 120),
+       input.hourlyCost !== undefined && input.hourlyCost >= 0 ? round2(input.hourlyCost) : Number(cur.hourly_cost),
+       cap]);
+    return { ...r.rows[0], hourly_cost: Number(r.rows[0].hourly_cost) };
   },
 
   /* ── Gammes ── */
@@ -65,24 +80,27 @@ export const routingRepository = {
     return { ...r, operations: ops, labor_cost: laborCost, total_minutes: totalMinutes };
   },
 
-  async createRouting(input: { name: string; productId?: string | null; notes?: string | null; storeId?: string | null; userId: string | null }) {
+  async createRouting(input: { name: string; productId?: string | null; notes?: string | null; batchSize?: number; storeId?: string | null; userId: string | null }) {
     const r = await db.query(
-      `INSERT INTO routings (name, product_id, notes, store_id, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-      [input.name.trim().slice(0, 160), input.productId || null, input.notes?.trim() || null, input.storeId ?? null, input.userId]);
+      `INSERT INTO routings (name, product_id, notes, batch_size, store_id, created_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [input.name.trim().slice(0, 160), input.productId || null, input.notes?.trim() || null,
+       input.batchSize != null && input.batchSize > 0 ? input.batchSize : 1,
+       input.storeId ?? null, input.userId]);
     return this.getRouting(r.rows[0].id);
   },
 
-  async updateRouting(id: string, input: { name?: string; productId?: string | null; notes?: string | null; operations?: OperationInput[] }) {
+  async updateRouting(id: string, input: { name?: string; productId?: string | null; notes?: string | null; batchSize?: number; operations?: OperationInput[] }) {
     const cur = (await db.query(`SELECT * FROM routings WHERE id = $1`, [id])).rows[0];
     if (!cur) return null;
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
       await client.query(
-        `UPDATE routings SET name = $2, product_id = $3, notes = $4 WHERE id = $1`,
+        `UPDATE routings SET name = $2, product_id = $3, notes = $4, batch_size = $5 WHERE id = $1`,
         [id, (input.name ?? cur.name).trim().slice(0, 160),
          input.productId !== undefined ? (input.productId || null) : cur.product_id,
-         input.notes !== undefined ? (input.notes?.trim() || null) : cur.notes]);
+         input.notes !== undefined ? (input.notes?.trim() || null) : cur.notes,
+         input.batchSize != null && input.batchSize > 0 ? input.batchSize : cur.batch_size]);
       if (input.operations !== undefined) {
         await client.query(`DELETE FROM routing_operations WHERE routing_id = $1`, [id]);
         let seq = 0;

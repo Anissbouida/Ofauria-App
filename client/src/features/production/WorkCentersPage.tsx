@@ -78,14 +78,15 @@ function Centers() {
       </Toolbar>
       <div style={{ overflowX: 'auto' }}>
         <table className="odoo-table">
-          <thead><tr><th>Poste</th><th style={{ textAlign: 'right' }}>Coût horaire</th><th style={{ textAlign: 'right' }}>Utilisé dans</th><th>État</th><th style={{ width: 48 }} /></tr></thead>
+          <thead><tr><th>Poste</th><th style={{ textAlign: 'right' }}>Coût horaire</th><th style={{ textAlign: 'right' }}>Capacité</th><th style={{ textAlign: 'right' }}>Utilisé dans</th><th>État</th><th style={{ width: 48 }} /></tr></thead>
           <tbody>
-            {isLoading && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
-            {!isLoading && rows.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucun poste. Créez-en un (ex. Pétrin, Four, Façonnage) avec son coût horaire.</td></tr>}
+            {isLoading && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
+            {!isLoading && rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucun poste. Créez-en un (ex. Pétrin, Four, Façonnage) avec son coût horaire.</td></tr>}
             {rows.map(w => (
               <tr key={w.id} style={{ opacity: w.is_active ? 1 : 0.6 }}>
                 <td style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}><Wrench size={13} style={{ color: 'var(--theme-accent)' }} /> {w.name}</td>
                 <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(w.hourly_cost)}<span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}> /h</span></td>
+                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{w.capacity_minutes_per_day != null ? <>{w.capacity_minutes_per_day}<span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}> min/j</span></> : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}</td>
                 <td style={{ textAlign: 'right' }}>{w.operations_count} op.</td>
                 <td><span className={`odoo-tag ${w.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{w.is_active ? 'Actif' : 'Inactif'}</span></td>
                 <td style={{ textAlign: 'right' }}><button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem' }} title={w.is_active ? 'Désactiver' : 'Activer'} onClick={() => toggle.mutate({ id: w.id, active: !w.is_active })}><Power size={12} /></button></td>
@@ -102,8 +103,9 @@ function Centers() {
 function CenterForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState('');
   const [cost, setCost] = useState('');
+  const [capacity, setCapacity] = useState('');
   const save = useMutation({
-    mutationFn: () => routingsApi.createWorkCenter({ name: name.trim(), hourlyCost: Number(cost) || 0 }),
+    mutationFn: () => routingsApi.createWorkCenter({ name: name.trim(), hourlyCost: Number(cost) || 0, capacityMinutesPerDay: capacity ? Number(capacity) : null }),
     onSuccess: () => { notify.success('Poste créé'); onSaved(); },
     onError: e => notify.error(apiErrorMessage(e)),
   });
@@ -120,6 +122,12 @@ function CenterForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
             <div style={{ position: 'relative' }}>
               <input type="number" step="0.01" min="0" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00" style={{ ...inp, paddingRight: 44 }} />
               <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>DH/h</span>
+            </div>
+          </label>
+          <label style={fieldCol}><span style={fieldLbl}>Capacité <span style={{ fontWeight: 400 }}>(optionnel)</span></span>
+            <div style={{ position: 'relative' }}>
+              <input type="number" step="1" min="0" value={capacity} onChange={e => setCapacity(e.target.value)} placeholder="Ex. 480" style={{ ...inp, paddingRight: 52 }} />
+              <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>min/j</span>
             </div>
           </label>
         </div>
@@ -143,14 +151,15 @@ function Routings() {
       </Toolbar>
       <div style={{ overflowX: 'auto' }}>
         <table className="odoo-table">
-          <thead><tr><th>Gamme</th><th>Produit associé</th><th style={{ textAlign: 'right' }}>Opérations</th><th style={{ textAlign: 'right' }}>Durée</th><th style={{ textAlign: 'right' }}>Coût MO standard</th><th>État</th></tr></thead>
+          <thead><tr><th>Gamme</th><th>Produit associé</th><th style={{ textAlign: 'right' }}>Fournée</th><th style={{ textAlign: 'right' }}>Opérations</th><th style={{ textAlign: 'right' }}>Durée</th><th style={{ textAlign: 'right' }}>Coût MO standard</th><th>État</th></tr></thead>
           <tbody>
-            {isLoading && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
-            {!isLoading && rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucune gamme. Créez-en une : une séquence d'opérations, chacune sur un poste, pour un coût de main-d'œuvre standard.</td></tr>}
+            {isLoading && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
+            {!isLoading && rows.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucune gamme. Créez-en une : une séquence d'opérations, chacune sur un poste, pour un coût de main-d'œuvre standard.</td></tr>}
             {rows.map(r => (
               <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setEditing(r.id)} title="Modifier la gamme">
                 <td style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}><Route size={13} style={{ color: 'var(--theme-accent)' }} /> {r.name}</td>
                 <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.85rem' }}>{r.product_name || '—'}</td>
+                <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.batch_size}<span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}> u.</span></td>
                 <td style={{ textAlign: 'right' }}>{r.operations_count}</td>
                 <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.total_minutes} min</td>
                 <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(r.labor_cost)}</td>
@@ -177,10 +186,12 @@ function RoutingEditor({ id, onClose, onSaved }: { id: string | null; onClose: (
   // état local initialisé depuis `existing`
   const [name, setName] = useState('');
   const [productId, setProductId] = useState('');
+  const [batchSize, setBatchSize] = useState('1');
   const [ops, setOps] = useState<OperationInput[]>([]);
   const [loaded, setLoaded] = useState(false);
   if (existing && !loaded) {
     setName(existing.name); setProductId(existing.product_id ?? '');
+    setBatchSize(String(existing.batch_size ?? 1));
     setOps(existing.operations.map(o => ({ operationName: o.operation_name, workCenterId: o.work_center_id, durationMin: o.duration_min })));
     setLoaded(true);
   }
@@ -194,8 +205,9 @@ function RoutingEditor({ id, onClose, onSaved }: { id: string | null; onClose: (
   const save = useMutation({
     mutationFn: async () => {
       const clean = ops.filter(o => o.operationName.trim());
-      if (id) return routingsApi.update(id, { name: name.trim(), productId: productId || null, operations: clean });
-      const created = await routingsApi.create({ name: name.trim(), productId: productId || null });
+      const bs = Number(batchSize) > 0 ? Number(batchSize) : 1;
+      if (id) return routingsApi.update(id, { name: name.trim(), productId: productId || null, batchSize: bs, operations: clean });
+      const created = await routingsApi.create({ name: name.trim(), productId: productId || null, batchSize: bs });
       return routingsApi.update(created.id, { operations: clean });
     },
     onSuccess: () => { notify.success(id ? 'Gamme enregistrée' : 'Gamme créée'); onSaved(); },
@@ -217,6 +229,13 @@ function RoutingEditor({ id, onClose, onSaved }: { id: string | null; onClose: (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 14 }}>
             <label style={fieldCol}><span style={fieldLbl}>Nom de la gamme</span><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ex. Fabrication baguette" style={inp} /></label>
             <label style={fieldCol}><span style={fieldLbl}>Produit associé <span style={{ fontWeight: 400 }}>(optionnel)</span></span><SearchSelect options={productOptions} value={productId} onChange={setProductId} placeholder="Associer un produit…" width="100%" /></label>
+            <label style={fieldCol}><span style={fieldLbl}>Taille de fournée</span>
+              <div style={{ position: 'relative' }}>
+                <input type="number" step="0.001" min="0" value={batchSize} onChange={e => setBatchSize(e.target.value)} placeholder="1" style={{ ...inp, paddingRight: 56 }} />
+                <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>unités</span>
+              </div>
+              <span style={{ fontSize: '0.72rem', color: 'var(--theme-text-muted)' }}>Unités produites par un passage (sert au calcul de la charge).</span>
+            </label>
           </div>
 
           {/* Opérations : tableau à en-têtes */}

@@ -46,4 +46,7 @@ router.get('/by-product/mo-ecart', authenticate, asyncHandler(productionCoutCont
 // ─── Cout de revient par sortie de coupe (mig 302/397) — roadmap lot 2 ───
 router.get('/plans/:planId/outputs-cost', authenticate, asyncHandler(productionCoutController.getOutputCostByPlan));
 
+// ─── Charge par poste vs capacite (mig 398) — roadmap lot 3 ───
+router.get('/plans/:planId/charge', authenticate, asyncHandler(productionCoutController.getChargeByPlan));
+
 export default router;

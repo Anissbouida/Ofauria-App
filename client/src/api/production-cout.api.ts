@@ -55,4 +55,8 @@ export const productionCoutApi = {
   // Cout de revient par sortie de coupe (mig 302/397) — roadmap lot 2
   outputCostByPlan: (planId: string) =>
     api.get(`/production-cout/plans/${planId}/outputs-cost`).then(r => r.data.data),
+
+  // Charge par poste vs capacite (mig 398) — roadmap lot 3
+  chargeByPlan: (planId: string) =>
+    api.get(`/production-cout/plans/${planId}/charge`).then(r => r.data.data),
 };

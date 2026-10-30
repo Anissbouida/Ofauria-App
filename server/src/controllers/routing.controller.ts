@@ -10,8 +10,22 @@ export const routingController = {
     const b = req.body as Record<string, unknown>;
     if (!b.name) { res.status(400).json({ success: false, error: { message: 'Nom requis' } }); return; }
     res.status(201).json({ success: true, data: await routingRepository.createWorkCenter({
-      name: String(b.name), hourlyCost: Number(b.hourlyCost) || 0, storeId: req.user!.storeId ?? null, userId: req.user!.userId,
+      name: String(b.name), hourlyCost: Number(b.hourlyCost) || 0,
+      capacityMinutesPerDay: b.capacityMinutesPerDay != null && b.capacityMinutesPerDay !== '' ? Number(b.capacityMinutesPerDay) : null,
+      storeId: req.user!.storeId ?? null, userId: req.user!.userId,
     }) });
+  },
+  async updateWorkCenter(req: AuthRequest, res: Response) {
+    const b = req.body as Record<string, unknown>;
+    const w = await routingRepository.updateWorkCenter(req.params.id, {
+      name: b.name !== undefined ? String(b.name) : undefined,
+      hourlyCost: b.hourlyCost !== undefined ? Number(b.hourlyCost) : undefined,
+      capacityMinutesPerDay: b.capacityMinutesPerDay !== undefined
+        ? (b.capacityMinutesPerDay != null && b.capacityMinutesPerDay !== '' ? Number(b.capacityMinutesPerDay) : null)
+        : undefined,
+    });
+    if (!w) { res.status(404).json({ success: false, error: { message: 'Poste introuvable' } }); return; }
+    res.json({ success: true, data: w });
   },
   async setWorkCenterActive(req: AuthRequest, res: Response) {
     const w = await routingRepository.setWorkCenterActive(req.params.id, Boolean((req.body as Record<string, unknown>).active));
@@ -32,6 +46,7 @@ export const routingController = {
     if (!b.name) { res.status(400).json({ success: false, error: { message: 'Nom requis' } }); return; }
     res.status(201).json({ success: true, data: await routingRepository.createRouting({
       name: String(b.name), productId: b.productId ? String(b.productId) : null, notes: b.notes ? String(b.notes) : null,
+      batchSize: b.batchSize != null && b.batchSize !== '' ? Number(b.batchSize) : undefined,
       storeId: req.user!.storeId ?? null, userId: req.user!.userId,
     }) });
   },
@@ -44,6 +59,7 @@ export const routingController = {
       name: b.name !== undefined ? String(b.name) : undefined,
       productId: b.productId !== undefined ? (b.productId ? String(b.productId) : null) : undefined,
       notes: b.notes !== undefined ? (b.notes ? String(b.notes) : null) : undefined,
+      batchSize: b.batchSize != null && b.batchSize !== '' ? Number(b.batchSize) : undefined,
       operations: ops,
     });
     if (!r) { res.status(404).json({ success: false, error: { message: 'Gamme introuvable' } }); return; }

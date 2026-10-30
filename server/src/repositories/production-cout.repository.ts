@@ -709,4 +709,33 @@ export const productionCoutRepository = {
       total_cost: Math.round(g.total_cost * 100) / 100,
     }));
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Charge par poste vs capacite (mig 398) — roadmap lot 3
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Minutes requises par poste pour un plan + % d'utilisation si capacite connue.
+  async getChargeByPlan(planId: string) {
+    const result = await db.query(
+      `SELECT work_center_id, work_center_name, capacity_minutes_per_day,
+              minutes_required
+       FROM v_production_work_center_load
+       WHERE plan_id = $1
+       ORDER BY minutes_required DESC`,
+      [planId]
+    );
+    return result.rows.map(r => {
+      const minutes = Math.round(parseFloat(r.minutes_required));
+      const capacity = r.capacity_minutes_per_day != null ? parseFloat(r.capacity_minutes_per_day) : null;
+      const utilisationPct = capacity && capacity > 0 ? Math.round((minutes / capacity) * 1000) / 10 : null;
+      return {
+        work_center_id: r.work_center_id,
+        work_center_name: r.work_center_name,
+        minutes_required: minutes,
+        capacity_minutes_per_day: capacity,
+        utilisation_pct: utilisationPct,
+        overloaded: utilisationPct != null && utilisationPct > 100,
+      };
+    });
+  },
 };

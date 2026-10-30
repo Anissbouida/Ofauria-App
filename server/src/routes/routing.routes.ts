@@ -10,6 +10,7 @@ const AM = [authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)];
 
 router.get('/work-centers', ...AM, routingController.listWorkCenters);
 router.post('/work-centers', ...AM, routingController.createWorkCenter);
+router.put('/work-centers/:id', ...AM, routingController.updateWorkCenter);
 router.post('/work-centers/:id/active', ...AM, routingController.setWorkCenterActive);
 router.get('/', ...AM, routingController.listRoutings);
 router.post('/', ...AM, routingController.createRouting);

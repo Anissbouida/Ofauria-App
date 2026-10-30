@@ -168,4 +168,11 @@ export const productionCoutController = {
     const data = await productionCoutRepository.getOutputCostByPlan(req.params.planId as string);
     res.json({ success: true, data });
   },
+
+  // ═══ Charge par poste vs capacite (roadmap lot 3) ═══
+
+  async getChargeByPlan(req: AuthRequest, res: Response) {
+    const data = await productionCoutRepository.getChargeByPlan(req.params.planId as string);
+    res.json({ success: true, data });
+  },
 };

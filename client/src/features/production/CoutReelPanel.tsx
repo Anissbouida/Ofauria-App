@@ -5,7 +5,7 @@ import { productionCoutApi } from '../../api/production-cout.api';
 import { notify } from '../../components/ui/InlineNotification';
 import {
   Calculator, Loader2,
-  ChevronDown, ChevronRight, Users, Package, DollarSign, Building2, Plus, Equal, Zap, TrendingDown, Clock, Scissors
+  ChevronDown, ChevronRight, Users, Package, DollarSign, Building2, Plus, Equal, Zap, TrendingDown, Clock, Scissors, Gauge
 } from 'lucide-react';
 
 interface CoutReelPanelProps {
@@ -87,6 +87,16 @@ interface OutputCostGroup {
   complete: boolean;
 }
 
+// Charge par poste vs capacité (mig 398) — roadmap lot 3
+interface ChargeRow {
+  work_center_id: string;
+  work_center_name: string;
+  minutes_required: number;
+  capacity_minutes_per_day: number | null;
+  utilisation_pct: number | null;
+  overloaded: boolean;
+}
+
 function toNum(v: Money): number {
   if (v == null) return 0;
   const n = typeof v === 'number' ? v : parseFloat(v);
@@ -114,6 +124,13 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
   const { data: outputsCost } = useQuery<OutputCostGroup[]>({
     queryKey: ['production-outputs-cost', planId],
     queryFn: () => productionCoutApi.outputCostByPlan(planId).catch(() => []),
+    enabled: ['in_progress', 'completed'].includes(planStatus),
+  });
+
+  // Charge par poste vs capacité — roadmap lot 3
+  const { data: charge } = useQuery<ChargeRow[]>({
+    queryKey: ['production-charge', planId],
+    queryFn: () => productionCoutApi.chargeByPlan(planId).catch(() => []),
     enabled: ['in_progress', 'completed'].includes(planStatus),
   });
 
@@ -424,6 +441,32 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                     </table>
                   </div>
                 ))}
+              </DetailSection>
+            )}
+
+            {charge && charge.length > 0 && (
+              <DetailSection title="Charge par poste (capacité)" icon={<Gauge size={12} className="text-cyan-600" />}
+                isExpanded={expandedSection === 'charge'} onToggle={() => setExpandedSection(expandedSection === 'charge' ? null : 'charge')}>
+                <table className="w-full text-xs">
+                  <thead><tr className="text-gray-400 uppercase">
+                    <th className="text-left py-1 px-2">Poste</th>
+                    <th className="text-right py-1 px-2">Charge</th>
+                    <th className="text-right py-1 px-2">Capacité</th>
+                    <th className="text-right py-1 px-2">Utilisation</th>
+                  </tr></thead>
+                  <tbody>{charge.map((c) => (
+                    <tr key={c.work_center_id} className="border-t border-gray-50">
+                      <td className="py-1 px-2 text-gray-700">{c.work_center_name}</td>
+                      <td className="py-1 px-2 text-right text-gray-500">{c.minutes_required} min</td>
+                      <td className="py-1 px-2 text-right text-gray-500">{c.capacity_minutes_per_day != null ? `${c.capacity_minutes_per_day} min/j` : '—'}</td>
+                      <td className="py-1 px-2 text-right font-medium"
+                        style={{ color: c.utilisation_pct == null ? '#9ca3af' : c.overloaded ? '#c62828' : c.utilisation_pct > 80 ? '#b45309' : '#2e7d32' }}>
+                        {c.utilisation_pct == null ? '—' : `${c.utilisation_pct}%`}{c.overloaded ? ' ⚠' : ''}
+                      </td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+                <p className="text-[11px] text-gray-400 px-2 pt-1">Charge = nb de fournées × durées de gamme. Capacité définie dans Production › Postes & gammes.</p>
               </DetailSection>
             )}
 
