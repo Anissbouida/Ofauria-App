@@ -52,6 +52,8 @@ router.patch('/:recipeId/finance', authenticate, authorize(...ROLE_GROUPS.PRODUC
 router.patch('/:recipeId/identity', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(identitySchema), recipeComponentController.saveIdentity);
 router.put('/:recipeId/etapes', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(saveEtapesSchema), recipeComponentController.saveEtapes);
 router.get('/:recipeId/children', authenticate, recipeComponentController.children);
+// Explosion à plat (mig 400) — roadmap lot 5
+router.get('/:id/explosion', authenticate, recipeController.getExplosion);
 router.get('/:recipeId/formats', authenticate, recipeComponentController.listFormats);
 router.post('/:recipeId/formats', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(createFormatSchema), recipeComponentController.createFormat);
 router.post('/:recipeId/formats/:formatId/duplicate', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(duplicateFormatSchema), recipeComponentController.duplicateFormat);

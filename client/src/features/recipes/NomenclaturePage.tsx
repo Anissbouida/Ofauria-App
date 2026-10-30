@@ -6,6 +6,7 @@ import RecipeCreateDialog from './RecipeCreateDialog';
 import { recipesApi } from '../../api/recipes.api';
 import NomenclatureEditor, { type FormatKpi } from './NomenclatureEditor';
 import EtapesSection from './EtapesSection';
+import ExplosionSection from './ExplosionSection';
 
 const dh = (v: number) => `${v.toFixed(2)} DH`;
 
@@ -92,6 +93,9 @@ export default function NomenclaturePage() {
         </p>
 
         <NomenclatureEditor recipeId={recipe.id} onFinance={setKpi} onCancel={() => navigate('/recipes?tab=product')} onSaved={() => qc.invalidateQueries({ queryKey: ['recipe', id] })} />
+
+        {/* Explosion à plat (mig 400) : tous les ingrédients élémentaires cumulés sur tous les niveaux. */}
+        <ExplosionSection recipeId={recipe.id} />
 
         {/* Mode opératoire : il n'apparaissait jusqu'ici que sur la fiche PDF. */}
         <EtapesSection etapes={recipe.etapes || []} recipeId={recipe.id} />

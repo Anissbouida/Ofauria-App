@@ -185,6 +185,11 @@ export const recipesApi = {
   listBase: () => api.get('/recipes/base').then(r => r.data.data),
   listCategories: () => api.get('/recipes/categories').then(r => r.data.data as RecipeCategory[]),
   getById: (id: string) => api.get(`/recipes/${id}`).then(r => r.data.data),
+  // Explosion à plat (mig 400) — roadmap lot 5
+  explosion: (id: string) => api.get(`/recipes/${id}/explosion`).then(r => r.data.data as {
+    lines: { ingredient_id: string; ingredient_name: string; unit: string; total_qty: number; rolled_cost: number }[];
+    total_cost: number;
+  }),
   getByProductId: (productId: string) => api.get(`/recipes/by-product/${productId}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/recipes', data).then(r => r.data.data),
   update: (id: string, data: Record<string, any>) => api.put(`/recipes/${id}`, data).then(r => r.data.data),

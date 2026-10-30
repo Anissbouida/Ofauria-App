@@ -1046,4 +1046,26 @@ export const recipeRepository = {
     );
     return { restoredCount: result.rowCount ?? 0 };
   },
+
+  // Explosion à plat (mig 400) : ingrédients élémentaires roulés sur tous les niveaux.
+  async getExplosion(recipeId: string) {
+    const result = await db.query(
+      `SELECT ingredient_id, ingredient_name, unit,
+              ROUND(total_qty, 3)  AS total_qty,
+              ROUND(rolled_cost, 4) AS rolled_cost
+       FROM v_recipe_explosion
+       WHERE recipe_id = $1
+       ORDER BY rolled_cost DESC NULLS LAST, ingredient_name`,
+      [recipeId]
+    );
+    const lines = result.rows.map(r => ({
+      ingredient_id: r.ingredient_id,
+      ingredient_name: r.ingredient_name,
+      unit: r.unit,
+      total_qty: r.total_qty != null ? parseFloat(r.total_qty) : 0,
+      rolled_cost: r.rolled_cost != null ? parseFloat(r.rolled_cost) : 0,
+    }));
+    const total = Math.round(lines.reduce((s, x) => s + x.rolled_cost, 0) * 100) / 100;
+    return { lines, total_cost: total };
+  },
 };
