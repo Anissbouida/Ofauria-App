@@ -23,6 +23,12 @@ router.get('/mrp', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHand
 router.get('/mrp/horizon', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrpHorizon));
 router.get('/mrp/semi-finished', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrpSemiFinished));
 router.post('/mrp/generate', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrpGenerate));
+// MRP — besoins matière (achats) & génération des demandes d'achat — roadmap lot 8
+router.get('/mrp/material-requirements', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrpMaterialRequirements));
+router.post('/mrp/generate-purchase-requests', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrpGeneratePurchaseRequests));
+// Réglages de production centralisés — roadmap lot 9. Avant /:id.
+router.get('/settings', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.getSettings));
+router.put('/settings', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(productionController.updateSettings));
 router.post('/transfers/:transferId/receive', authenticate, validateUuidParams('transferId'), authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.confirmProductionTransfer));
 
 router.get('/:id/sub-recipe-analysis', authenticate, id, asyncHandler(productionController.analyzeSubRecipes));

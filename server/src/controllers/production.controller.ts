@@ -7,6 +7,7 @@ import { orderRepository } from '../repositories/order.repository.js';
 import { bonSortieRepository } from '../repositories/bon-sortie.repository.js';
 import { createNotification } from '../utils/notify.js';
 import { productionCoutRepository } from '../repositories/production-cout.repository.js';
+import { settingsRepository } from '../repositories/settings.repository.js';
 import { isTransitionError, listPlanEvents } from '../services/production-state.js';
 import { db } from '../config/database.js';
 import { getCategoryRole, ASSIGNED_ROLE_LABELS } from '@ofauria/shared';
@@ -90,6 +91,44 @@ export const productionController = {
     const storeId = await forecastRepository.resolveStore(req.user!.storeId, typeof req.query.store === 'string' ? req.query.store : undefined);
     if (!storeId) { res.status(400).json({ success: false, error: { message: 'Plusieurs magasins : précisez lequel' } }); return; }
     res.json({ success: true, data: await mrpRepository.semiFinishedNeeds(storeId, date) });
+  },
+
+  /** MRP — besoins matière (achats) du jour : manquants vs stock. */
+  async mrpMaterialRequirements(req: AuthRequest, res: Response) {
+    const date = typeof req.query.date === 'string' ? req.query.date : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { res.status(400).json({ success: false, error: { message: 'Date requise (YYYY-MM-DD)' } }); return; }
+    const storeId = await forecastRepository.resolveStore(req.user!.storeId, typeof req.query.store === 'string' ? req.query.store : undefined);
+    if (!storeId) { res.status(400).json({ success: false, error: { message: 'Plusieurs magasins : précisez lequel' } }); return; }
+    res.json({ success: true, data: await mrpRepository.materialRequirements(storeId, date) });
+  },
+
+  /** MRP — génère les demandes d'achat pour les matières manquantes. */
+  async mrpGeneratePurchaseRequests(req: AuthRequest, res: Response) {
+    const date = typeof req.body?.date === 'string' ? req.body.date : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { res.status(400).json({ success: false, error: { message: 'Date requise (YYYY-MM-DD)' } }); return; }
+    const storeId = await forecastRepository.resolveStore(req.user!.storeId, typeof req.body?.store === 'string' ? req.body.store : undefined);
+    if (!storeId) { res.status(400).json({ success: false, error: { message: 'Plusieurs magasins : précisez lequel' } }); return; }
+    res.json({ success: true, data: await mrpRepository.generatePurchaseRequests(storeId, date, req.user!.userId) });
+  },
+
+  /** Réglages de production centralisés (mig 403) — roadmap lot 9. */
+  async getSettings(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await settingsRepository.getProductionSettings() });
+  },
+  async updateSettings(req: AuthRequest, res: Response) {
+    const b = req.body as Record<string, unknown>;
+    const num = (v: unknown) => v != null && v !== '' ? Number(v) : undefined;
+    const bool = (v: unknown) => v === undefined ? undefined : Boolean(v);
+    const data = await settingsRepository.updateProductionSettings({
+      chargesFixesPct: num(b.chargesFixesPct),
+      overproductionPct: num(b.overproductionPct),
+      markupPercent: num(b.markupPercent),
+      stepsEnabled: bool(b.stepsEnabled),
+      stepsBlocking: bool(b.stepsBlocking),
+      yieldEnabled: bool(b.yieldEnabled),
+      costEnabled: bool(b.costEnabled),
+    }, req.user!.userId);
+    res.json({ success: true, data });
   },
 
   async getById(req: AuthRequest, res: Response) {

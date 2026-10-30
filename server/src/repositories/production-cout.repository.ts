@@ -282,13 +282,17 @@ export const productionCoutRepository = {
     }));
     const coutPertes = Math.round(detailPertes.reduce((s, d) => s + d.total, 0) * 100) / 100;
 
-    // 3. Charges fixes = TAUX_CHARGES_FIXES_ESTIME × cout matieres
-    const coutCharges = Math.round(coutMatieres * TAUX_CHARGES_FIXES_ESTIME * 100) / 100;
+    // 3. Charges fixes = taux paramétrable (mig 403, repli constante) × cout matieres
+    const tauxRow = await db.query(`SELECT production_charges_fixes_pct FROM company_settings WHERE id = 1`);
+    const tauxCharges = tauxRow.rows[0]?.production_charges_fixes_pct != null
+      ? Number(tauxRow.rows[0].production_charges_fixes_pct)
+      : TAUX_CHARGES_FIXES_ESTIME;
+    const coutCharges = Math.round(coutMatieres * tauxCharges * 100) / 100;
     const detailCharges: { label: string; taux: number; base: number; part: number }[] = [];
     if (coutCharges > 0) {
       detailCharges.push({
         label: 'Charges fixes estimees',
-        taux: TAUX_CHARGES_FIXES_ESTIME,
+        taux: tauxCharges,
         base: coutMatieres,
         part: coutCharges,
       });

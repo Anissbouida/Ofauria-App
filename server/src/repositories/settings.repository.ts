@@ -115,4 +115,41 @@ export const settingsRepository = {
     const result = await auditedQuery(actorId, `UPDATE company_settings SET ${fields.join(', ')} WHERE id = 1 RETURNING *`, values);
     return result.rows[0];
   },
+
+  // ── Réglages de production centralisés (mig 403) — roadmap lot 9 ──
+  async getProductionSettings() {
+    const r = await db.query(
+      `SELECT production_charges_fixes_pct, production_overproduction_pct, production_markup_percent,
+              production_steps_enabled, production_steps_blocking, production_yield_enabled, production_cost_enabled
+       FROM company_settings WHERE id = 1`
+    );
+    return r.rows[0] ?? null;
+  },
+  async updateProductionSettings(data: {
+    chargesFixesPct?: number; overproductionPct?: number; markupPercent?: number;
+    stepsEnabled?: boolean; stepsBlocking?: boolean; yieldEnabled?: boolean; costEnabled?: boolean;
+  }, actorId: string | null) {
+    const mapping: Record<string, string> = {
+      chargesFixesPct: 'production_charges_fixes_pct',
+      overproductionPct: 'production_overproduction_pct',
+      markupPercent: 'production_markup_percent',
+      stepsEnabled: 'production_steps_enabled',
+      stepsBlocking: 'production_steps_blocking',
+      yieldEnabled: 'production_yield_enabled',
+      costEnabled: 'production_cost_enabled',
+    };
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    let i = 1;
+    for (const [key, col] of Object.entries(mapping)) {
+      if ((data as Record<string, unknown>)[key] !== undefined) {
+        fields.push(`${col} = $${i++}`);
+        values.push((data as Record<string, unknown>)[key]);
+      }
+    }
+    if (fields.length === 0) return this.getProductionSettings();
+    fields.push('updated_at = NOW()');
+    await auditedQuery(actorId, `UPDATE company_settings SET ${fields.join(', ')} WHERE id = 1`, values);
+    return this.getProductionSettings();
+  },
 };

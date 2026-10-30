@@ -16,6 +16,26 @@ export type MrpHorizonRow = {
 export type MrpHorizon = { store_id: string; dates: string[]; rows: MrpHorizonRow[]; totals_by_date: Record<string, number> };
 export type SemiFinishedNeed = { recipe_id: string; name: string; unit: string; needed: number; from_stock: number; to_produce: number };
 
+// Réglages de production centralisés (mig 403) — roadmap lot 9
+export interface ProductionSettings {
+  production_charges_fixes_pct: number;
+  production_overproduction_pct: number;
+  production_markup_percent: number;
+  production_steps_enabled: boolean;
+  production_steps_blocking: boolean;
+  production_yield_enabled: boolean;
+  production_cost_enabled: boolean;
+}
+export interface ProductionSettingsInput {
+  chargesFixesPct: number;
+  overproductionPct: number;
+  markupPercent: number;
+  stepsEnabled: boolean;
+  stepsBlocking: boolean;
+  yieldEnabled: boolean;
+  costEnabled: boolean;
+}
+
 export const productionApi = {
   list: (params?: Record<string, string>) => api.get('/production', { params }).then(r => r.data),
   /** MRP — besoins nets de production du jour (plan directeur). */
@@ -30,6 +50,18 @@ export const productionApi = {
   /** MRP — besoins semi-finis nets du jour (lecture seule). */
   mrpSemiFinished: (date: string, store?: string): Promise<{ date: string; rows: SemiFinishedNeed[] }> =>
     api.get('/production/mrp/semi-finished', { params: { date, ...(store ? { store } : {}) } }).then(r => r.data.data),
+  /** MRP — besoins matière (achats) du jour : manquants vs stock — roadmap lot 8. */
+  mrpMaterialRequirements: (date: string, store?: string): Promise<{
+    rows: { ingredient_id: string; ingredient_name: string; unit: string; needed: number; on_hand: number; seuil: number; shortage: number; unit_cost: number; estimated_cost: number }[];
+    totals: { ingredients: number; to_order: number; estimated_cost: number };
+  }> =>
+    api.get('/production/mrp/material-requirements', { params: { date, ...(store ? { store } : {}) } }).then(r => r.data.data),
+  mrpGeneratePurchaseRequests: (date: string, store?: string): Promise<{ created: number; skipped_existing: number; candidates: number }> =>
+    api.post('/production/mrp/generate-purchase-requests', { date, ...(store ? { store } : {}) }).then(r => r.data.data),
+  /** Réglages de production centralisés — roadmap lot 9. */
+  getSettings: (): Promise<ProductionSettings> => api.get('/production/settings').then(r => r.data.data),
+  updateSettings: (data: Partial<ProductionSettingsInput>): Promise<ProductionSettings> =>
+    api.put('/production/settings', data).then(r => r.data.data),
   getById: (id: string) => api.get(`/production/${id}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/production', data).then(r => r.data.data),
   confirm: (id: string) => api.post(`/production/${id}/confirm`).then(r => r.data),

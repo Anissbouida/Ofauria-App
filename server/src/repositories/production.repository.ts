@@ -1811,6 +1811,23 @@ export const productionRepository = {
         }
       }
 
+      // ═══ Surproduction (mig 403) : avertit si la quantité produite dépasse le
+      // planifié × (1 + tolérance%). 0 = pas de contrôle. Lecture seule, non bloquant.
+      const overRow = await client.query(`SELECT production_overproduction_pct AS pct FROM company_settings WHERE id = 1`);
+      const overPct = Number(overRow.rows[0]?.pct ?? 0);
+      if (overPct > 0) {
+        const over = await client.query(
+          `SELECT p.name, ppi.planned_quantity, ppi.actual_quantity
+           FROM production_plan_items ppi JOIN products p ON p.id = ppi.product_id
+           WHERE ppi.plan_id = $1 AND ppi.actual_quantity IS NOT NULL
+             AND ppi.actual_quantity > ppi.planned_quantity * (1 + $2 / 100.0)`,
+          [planId, overPct]
+        );
+        for (const r of over.rows) {
+          warnings.push(`Surproduction : ${r.name} — ${r.actual_quantity} produit(s) pour ${r.planned_quantity} prévu(s) (tolérance ${overPct}%).`);
+        }
+      }
+
       // ═══ Auto-complete: if all items are now produced/cancelled (no more pending or in_progress), complete the plan ═══
       const remainingActive = await client.query(
         `SELECT COUNT(*) as cnt FROM production_plan_items

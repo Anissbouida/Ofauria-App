@@ -1,11 +1,11 @@
 import { Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Factory, TrendingUp, Thermometer, Package, ChefHat, Wallet, Cog, ClipboardList, Hammer } from 'lucide-react';
+import { LayoutDashboard, Factory, TrendingUp, Thermometer, Package, ChefHat, Wallet, Cog, ClipboardList, Hammer, SlidersHorizontal } from 'lucide-react';
 import { ROLE_GROUPS } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
 
-type ProductionView = 'dashboard' | 'plans' | 'atelier' | 'forecast' | 'mrp' | 'haccp' | 'replenishment' | 'costs' | 'recipes' | 'workcenters';
+type ProductionView = 'dashboard' | 'plans' | 'atelier' | 'forecast' | 'mrp' | 'haccp' | 'replenishment' | 'costs' | 'recipes' | 'workcenters' | 'settings';
 
 /**
  * Module Production : ses écrans sont des pages distinctes (plans, tableau de bord,
@@ -34,6 +34,7 @@ export default function ProductionLayout() {
     { key: 'costs', label: 'Coûts', icon: Wallet, section: 'reports', href: '/production/costs', hidden: !hasModule('reports') },
     { key: 'recipes', label: 'Fiches techniques', icon: ChefHat, section: 'setup', href: '/recipes', hidden: !hasModule('recipes') },
     { key: 'workcenters', label: 'Postes & gammes', icon: Cog, section: 'setup', href: '/production/work-centers', hidden: !hasModule('production') },
+    { key: 'settings', label: 'Paramétrage', icon: SlidersHorizontal, section: 'setup', href: '/production/settings', hidden: !isProductionRole },
   ];
   const current = views.find(v => !v.external && v.href === pathname);
 

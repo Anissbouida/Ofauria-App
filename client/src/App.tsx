@@ -31,6 +31,7 @@ import ProductionLayout from './features/production/ProductionLayout';
 import WorkCentersPage from './features/production/WorkCentersPage';
 import MrpPage from './features/production/MrpPage';
 import AtelierPage from './features/production/AtelierPage';
+import ProductionSettingsPage from './features/production/ProductionSettingsPage';
 import SalesLayout from './features/sales/SalesLayout';
 import QuotesPage from './features/quotes/QuotesPage';
 import CrmPage from './features/crm/CrmPage';
@@ -112,6 +113,7 @@ export default function App() {
                 <Route path="/production/work-centers" element={<WorkCentersPage />} />
                 <Route path="/production/mrp" element={<MrpPage />} />
                 <Route path="/production/atelier" element={<AtelierPage />} />
+                <Route path="/production/settings" element={<ProductionSettingsPage />} />
               </Route>
               <Route path="/production/:id" element={<PlanDetailPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />
