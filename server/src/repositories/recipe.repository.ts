@@ -1068,4 +1068,106 @@ export const recipeRepository = {
     const total = Math.round(lines.reduce((s, x) => s + x.rolled_cost, 0) * 100) / 100;
     return { lines, total_cost: total };
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Remplacement de composant en masse A→B, annulable (mig 401) — roadmap lot 6
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Recettes impactées par le remplacement de `sourceId` (3 tables).
+  async previewBulkReplace(sourceId: string, targetId: string) {
+    const ings = (await db.query(
+      `SELECT id, name, unit FROM ingredients WHERE id = ANY($1::uuid[])`, [[sourceId, targetId]]
+    )).rows as { id: string; name: string; unit: string }[];
+    const source = ings.find(i => i.id === sourceId) ?? null;
+    const target = ings.find(i => i.id === targetId) ?? null;
+    const recipes = (await db.query(
+      `SELECT r.id, r.name, SUM(a.cnt)::int AS occurrences
+       FROM (
+         SELECT recipe_id, count(*) cnt FROM recipe_ingredients WHERE ingredient_id = $1 GROUP BY recipe_id
+         UNION ALL
+         SELECT recipe_id, count(*) FROM recipe_components WHERE source_ingredient_id = $1 GROUP BY recipe_id
+         UNION ALL
+         SELECT rf.recipe_id, count(*) FROM recipe_format_components rfc
+           JOIN recipe_formats rf ON rf.id = rfc.format_id
+          WHERE rfc.source_ingredient_id = $1 GROUP BY rf.recipe_id
+       ) a
+       JOIN recipes r ON r.id = a.recipe_id
+       GROUP BY r.id, r.name
+       ORDER BY occurrences DESC, r.name`,
+      [sourceId]
+    )).rows as { id: string; name: string; occurrences: number }[];
+    const rows_count = recipes.reduce((s, r) => s + r.occurrences, 0);
+    return {
+      source, target,
+      unit_mismatch: !!source && !!target && source.unit !== target.unit,
+      recipes, recipes_count: recipes.length, rows_count,
+    };
+  },
+
+  // Applique le remplacement et journalise les lignes modifiées (pour annulation).
+  async applyBulkReplace(sourceId: string, targetId: string, userId: string) {
+    if (sourceId === targetId) throw new Error('La source et la cible doivent être différentes');
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const ri = (await client.query(`SELECT id::text FROM recipe_ingredients WHERE ingredient_id = $1`, [sourceId])).rows.map(r => r.id);
+      const rc = (await client.query(`SELECT id::text FROM recipe_components WHERE source_ingredient_id = $1`, [sourceId])).rows.map(r => r.id);
+      const rfc = (await client.query(`SELECT id::text FROM recipe_format_components WHERE source_ingredient_id = $1`, [sourceId])).rows.map(r => r.id);
+      if (ri.length + rc.length + rfc.length === 0) { await client.query('ROLLBACK'); return { rows_count: 0, recipes_count: 0, log_id: null }; }
+      await client.query(`UPDATE recipe_ingredients SET ingredient_id = $2 WHERE ingredient_id = $1`, [sourceId, targetId]);
+      await client.query(`UPDATE recipe_components SET source_ingredient_id = $2, updated_at = NOW() WHERE source_ingredient_id = $1`, [sourceId, targetId]);
+      await client.query(`UPDATE recipe_format_components SET source_ingredient_id = $2, updated_at = NOW() WHERE source_ingredient_id = $1`, [sourceId, targetId]);
+      const recipesCount = (await client.query(
+        `SELECT count(DISTINCT rid)::int n FROM (
+           SELECT recipe_id rid FROM recipe_ingredients WHERE ingredient_id = $1
+           UNION SELECT recipe_id FROM recipe_components WHERE source_ingredient_id = $1
+           UNION SELECT rf.recipe_id FROM recipe_format_components rfc JOIN recipe_formats rf ON rf.id = rfc.format_id WHERE rfc.source_ingredient_id = $1
+         ) z`, [targetId]
+      )).rows[0]?.n ?? 0;
+      const affected = { recipe_ingredients: ri, recipe_components: rc, recipe_format_components: rfc };
+      const rowsCount = ri.length + rc.length + rfc.length;
+      const log = (await client.query(
+        `INSERT INTO recipe_bulk_replace_log (source_ingredient_id, target_ingredient_id, affected, recipes_count, rows_count, performed_by)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [sourceId, targetId, JSON.stringify(affected), recipesCount, rowsCount, userId]
+      )).rows[0];
+      await client.query('COMMIT');
+      return { rows_count: rowsCount, recipes_count: recipesCount, log_id: log.id };
+    } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+  },
+
+  // Annule un remplacement : restaure la source sur exactement les lignes journalisées.
+  async revertBulkReplace(logId: string, userId: string) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const log = (await client.query(`SELECT * FROM recipe_bulk_replace_log WHERE id = $1 FOR UPDATE`, [logId])).rows[0];
+      if (!log) { await client.query('ROLLBACK'); return { ok: false, reason: 'not_found' as const }; }
+      if (log.reverted_at) { await client.query('ROLLBACK'); return { ok: false, reason: 'already_reverted' as const }; }
+      const a = log.affected as { recipe_ingredients?: string[]; recipe_components?: string[]; recipe_format_components?: string[] };
+      const S = log.source_ingredient_id, T = log.target_ingredient_id;
+      const r1 = await client.query(`UPDATE recipe_ingredients SET ingredient_id = $1 WHERE id::text = ANY($3::text[]) AND ingredient_id = $2`, [S, T, a.recipe_ingredients ?? []]);
+      const r2 = await client.query(`UPDATE recipe_components SET source_ingredient_id = $1, updated_at = NOW() WHERE id::text = ANY($3::text[]) AND source_ingredient_id = $2`, [S, T, a.recipe_components ?? []]);
+      const r3 = await client.query(`UPDATE recipe_format_components SET source_ingredient_id = $1, updated_at = NOW() WHERE id::text = ANY($3::text[]) AND source_ingredient_id = $2`, [S, T, a.recipe_format_components ?? []]);
+      await client.query(`UPDATE recipe_bulk_replace_log SET reverted_at = NOW(), reverted_by = $2 WHERE id = $1`, [logId, userId]);
+      await client.query('COMMIT');
+      return { ok: true as const, restored: (r1.rowCount ?? 0) + (r2.rowCount ?? 0) + (r3.rowCount ?? 0) };
+    } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+  },
+
+  // Derniers remplacements (pour annuler).
+  async listBulkReplaceLogs(limit = 10) {
+    const r = await db.query(
+      `SELECT l.id, l.recipes_count, l.rows_count, l.performed_at, l.reverted_at,
+              si.name AS source_name, ti.name AS target_name,
+              u.first_name AS performed_by_name
+       FROM recipe_bulk_replace_log l
+       JOIN ingredients si ON si.id = l.source_ingredient_id
+       JOIN ingredients ti ON ti.id = l.target_ingredient_id
+       LEFT JOIN users u ON u.id = l.performed_by
+       ORDER BY l.performed_at DESC
+       LIMIT $1`, [limit]
+    );
+    return r.rows;
+  },
 };

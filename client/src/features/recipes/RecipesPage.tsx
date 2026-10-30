@@ -18,6 +18,7 @@ import RecipeCreateDialog, { type RecipeIdentity } from './RecipeCreateDialog';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { useAuth } from '../../context/AuthContext';
 import RecipeImportModal from './RecipeImportModal';
+import BulkReplaceModal from './BulkReplaceModal';
 import { yieldInSellingUnit, requiresPieceWeight, type SellingUnit } from '../../utils/units';
 import type { RecipeCategory } from '../../api/recipes.api';
 
@@ -260,6 +261,7 @@ export default function RecipesPage() {
   const [sortKey, setSortKey] = useState<string>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [showImport, setShowImport] = useState(false);
+  const [showReplace, setShowReplace] = useState(false);
   // Piloté depuis la barre de contrôle, consommé par l'onglet Formats de production.
   const [creatingContenant, setCreatingContenant] = useState(false);
 
@@ -538,6 +540,13 @@ export default function RecipesPage() {
               title={activeTab === 'base' ? 'Exporter les recettes de base en Excel' : 'Exporter les recettes produits en Excel'}
             >
               <Download size={13} /> Exporter
+            </button>
+            <button
+              onClick={() => setShowReplace(true)}
+              className="odoo-btn-secondary"
+              title="Remplacer un ingrédient par un autre sur toutes les recettes"
+            >
+              <Repeat size={13} /> Remplacer un ingrédient
             </button>
           </>
         )}
@@ -984,6 +993,9 @@ export default function RecipesPage() {
 
       {showImport && isAdmin && (
         <RecipeImportModal onClose={() => setShowImport(false)} />
+      )}
+      {showReplace && isAdmin && (
+        <BulkReplaceModal onClose={() => setShowReplace(false)} />
       )}
       </>}
     </div>

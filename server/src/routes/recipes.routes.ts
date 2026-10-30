@@ -87,4 +87,10 @@ router.post('/bulk-delete', authenticate, authorize(ROLES.ADMIN), validate(bulkD
 router.post('/bulk-archive', authenticate, authorize(ROLES.ADMIN), validate(bulkDeleteRecipesSchema), recipeController.bulkArchive);
 router.post('/bulk-restore', authenticate, authorize(ROLES.ADMIN), validate(bulkDeleteRecipesSchema), recipeController.bulkRestore);
 
+// Remplacement de composant en masse A→B, annulable (mig 401) — roadmap lot 6
+router.get('/bulk-replace/logs', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), recipeController.bulkReplaceLogs);
+router.post('/bulk-replace/preview', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), recipeController.bulkReplacePreview);
+router.post('/bulk-replace/apply', authenticate, authorize(ROLES.ADMIN), recipeController.bulkReplaceApply);
+router.post('/bulk-replace/:logId/revert', authenticate, authorize(ROLES.ADMIN), recipeController.bulkReplaceRevert);
+
 export default router;

@@ -142,6 +142,34 @@ export const recipeController = {
     res.json({ success: true, data: result });
   },
 
+  // ─── Remplacement de composant en masse A→B, annulable (mig 401) — lot 6 ───
+  async bulkReplacePreview(req: AuthRequest, res: Response) {
+    const b = req.body as Record<string, unknown>;
+    if (!b.sourceIngredientId || !b.targetIngredientId) { res.status(400).json({ success: false, error: { message: 'Ingrédient source et cible requis' } }); return; }
+    if (b.sourceIngredientId === b.targetIngredientId) { res.status(400).json({ success: false, error: { message: 'La source et la cible doivent être différentes' } }); return; }
+    const data = await recipeRepository.previewBulkReplace(String(b.sourceIngredientId), String(b.targetIngredientId));
+    res.json({ success: true, data });
+  },
+  async bulkReplaceApply(req: AuthRequest, res: Response) {
+    const b = req.body as Record<string, unknown>;
+    if (!b.sourceIngredientId || !b.targetIngredientId) { res.status(400).json({ success: false, error: { message: 'Ingrédient source et cible requis' } }); return; }
+    const data = await recipeRepository.applyBulkReplace(String(b.sourceIngredientId), String(b.targetIngredientId), req.user!.userId);
+    res.json({ success: true, data });
+  },
+  async bulkReplaceRevert(req: AuthRequest, res: Response) {
+    const result = await recipeRepository.revertBulkReplace(req.params.logId as string, req.user!.userId);
+    if (!result.ok) {
+      const msg = result.reason === 'already_reverted' ? 'Remplacement déjà annulé' : 'Journal introuvable';
+      res.status(result.reason === 'already_reverted' ? 409 : 404).json({ success: false, error: { message: msg } });
+      return;
+    }
+    res.json({ success: true, data: result });
+  },
+  async bulkReplaceLogs(_req: AuthRequest, res: Response) {
+    const data = await recipeRepository.listBulkReplaceLogs();
+    res.json({ success: true, data });
+  },
+
   /**
    * Fiche technique imprimable (PDF A4).
    *
