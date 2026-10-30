@@ -51,4 +51,8 @@ export const productionCoutApi = {
     api.get(`/production-cout/plans/${planId}/mo-ecart`).then(r => r.data.data),
   moEcartByProduct: (storeId: string, dateFrom?: string, dateTo?: string) =>
     api.get('/production-cout/by-product/mo-ecart', { params: { storeId, dateFrom, dateTo } }).then(r => r.data.data),
+
+  // Cout de revient par sortie de coupe (mig 302/397) — roadmap lot 2
+  outputCostByPlan: (planId: string) =>
+    api.get(`/production-cout/plans/${planId}/outputs-cost`).then(r => r.data.data),
 };

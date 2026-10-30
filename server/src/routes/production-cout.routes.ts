@@ -43,4 +43,7 @@ router.post('/batch-calculate', authenticate, authorize(...ROLE_GROUPS.ADMIN_MAN
 router.get('/plans/:planId/mo-ecart', authenticate, asyncHandler(productionCoutController.getMoEcartByPlan));
 router.get('/by-product/mo-ecart', authenticate, asyncHandler(productionCoutController.getMoEcartByProduct));
 
+// ─── Cout de revient par sortie de coupe (mig 302/397) — roadmap lot 2 ───
+router.get('/plans/:planId/outputs-cost', authenticate, asyncHandler(productionCoutController.getOutputCostByPlan));
+
 export default router;

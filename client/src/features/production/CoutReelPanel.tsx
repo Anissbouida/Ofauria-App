@@ -5,7 +5,7 @@ import { productionCoutApi } from '../../api/production-cout.api';
 import { notify } from '../../components/ui/InlineNotification';
 import {
   Calculator, Loader2,
-  ChevronDown, ChevronRight, Users, Package, DollarSign, Building2, Plus, Equal, Zap, TrendingDown, Clock
+  ChevronDown, ChevronRight, Users, Package, DollarSign, Building2, Plus, Equal, Zap, TrendingDown, Clock, Scissors
 } from 'lucide-react';
 
 interface CoutReelPanelProps {
@@ -69,6 +69,24 @@ interface MoEcart {
   };
 }
 
+// Cout de revient par sortie de coupe (mig 302/397) — roadmap lot 2
+interface OutputCostLine {
+  output_id: string;
+  label: string;
+  product_name: string | null;
+  quantity: number;
+  equiv_pieces: number;
+  unit_cost: number | null;
+  cost_share: number | null;
+}
+interface OutputCostGroup {
+  plan_item_id: string;
+  item_product_name: string | null;
+  outputs: OutputCostLine[];
+  total_cost: number;
+  complete: boolean;
+}
+
 function toNum(v: Money): number {
   if (v == null) return 0;
   const n = typeof v === 'number' ? v : parseFloat(v);
@@ -89,6 +107,13 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
   const { data: moEcart } = useQuery<MoEcart | null>({
     queryKey: ['production-mo-ecart', planId],
     queryFn: () => productionCoutApi.moEcartByPlan(planId).catch(() => null),
+    enabled: ['in_progress', 'completed'].includes(planStatus),
+  });
+
+  // Cout de revient par sortie de coupe — roadmap lot 2
+  const { data: outputsCost } = useQuery<OutputCostGroup[]>({
+    queryKey: ['production-outputs-cost', planId],
+    queryFn: () => productionCoutApi.outputCostByPlan(planId).catch(() => []),
     enabled: ['in_progress', 'completed'].includes(planStatus),
   });
 
@@ -366,6 +391,39 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                     </tfoot>
                   </table>
                 )}
+              </DetailSection>
+            )}
+
+            {outputsCost && outputsCost.length > 0 && (
+              <DetailSection title="Coût par sortie (coupe)" icon={<Scissors size={12} className="text-pink-500" />}
+                isExpanded={expandedSection === 'outputs'} onToggle={() => setExpandedSection(expandedSection === 'outputs' ? null : 'outputs')}>
+                {outputsCost.map((g) => (
+                  <div key={g.plan_item_id} className="mb-3 last:mb-0">
+                    <div className="text-xs font-semibold text-gray-700 px-2 py-1">{g.item_product_name}</div>
+                    <table className="w-full text-xs">
+                      <thead><tr className="text-gray-400 uppercase">
+                        <th className="text-left py-1 px-2">Sortie</th>
+                        <th className="text-right py-1 px-2">Qté</th>
+                        <th className="text-right py-1 px-2">Équiv/u</th>
+                        <th className="text-right py-1 px-2">Coût/u</th>
+                        <th className="text-right py-1 px-2">Coût total</th>
+                      </tr></thead>
+                      <tbody>{g.outputs.map((o) => (
+                        <tr key={o.output_id} className="border-t border-gray-50">
+                          <td className="py-1 px-2 text-gray-700">{o.product_name || o.label}</td>
+                          <td className="py-1 px-2 text-right text-gray-500">{o.quantity}</td>
+                          <td className="py-1 px-2 text-right text-gray-500">{o.equiv_pieces}</td>
+                          <td className="py-1 px-2 text-right text-gray-500">{o.unit_cost != null ? `${o.unit_cost.toFixed(2)} DH` : '—'}</td>
+                          <td className="py-1 px-2 text-right font-medium text-gray-900">{o.cost_share != null ? `${o.cost_share.toFixed(2)} DH` : '—'}</td>
+                        </tr>
+                      ))}</tbody>
+                      <tfoot><tr className="border-t border-gray-200 font-semibold text-gray-800">
+                        <td className="py-1 px-2" colSpan={4}>Total article{g.complete ? '' : ' (partiel — sortie sans coût)'}</td>
+                        <td className="py-1 px-2 text-right">{g.total_cost.toFixed(2)} DH</td>
+                      </tr></tfoot>
+                    </table>
+                  </div>
+                ))}
               </DetailSection>
             )}
 

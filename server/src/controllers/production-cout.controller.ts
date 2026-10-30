@@ -161,4 +161,11 @@ export const productionCoutController = {
     );
     res.json({ success: true, data });
   },
+
+  // ═══ Cout par sortie de coupe (roadmap lot 2) ═══
+
+  async getOutputCostByPlan(req: AuthRequest, res: Response) {
+    const data = await productionCoutRepository.getOutputCostByPlan(req.params.planId as string);
+    res.json({ success: true, data });
+  },
 };

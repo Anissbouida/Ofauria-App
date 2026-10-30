@@ -649,4 +649,64 @@ export const productionCoutRepository = {
       };
     });
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Cout de revient par sortie de coupe (mig 302/397) — roadmap lot 2
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Regroupe les sorties par article de plan, avec cout alloue par sortie.
+  async getOutputCostByPlan(planId: string) {
+    const result = await db.query(
+      `SELECT oc.output_id, oc.plan_item_id, oc.label, oc.quantity, oc.equiv_pieces,
+              oc.unit_cost, oc.cost_share,
+              p.name  AS output_product_name,
+              ip.name AS item_product_name
+       FROM v_production_output_cost oc
+       JOIN production_plan_items ppi ON ppi.id = oc.plan_item_id
+       LEFT JOIN products p  ON p.id  = oc.product_id
+       LEFT JOIN products ip ON ip.id = ppi.product_id
+       WHERE oc.plan_id = $1
+       ORDER BY ip.name, oc.label`,
+      [planId]
+    );
+    type OutputLine = {
+      output_id: string; label: string; product_name: string | null;
+      quantity: number; equiv_pieces: number;
+      unit_cost: number | null; cost_share: number | null;
+    };
+    type OutputGroup = {
+      plan_item_id: string;
+      item_product_name: string | null;
+      outputs: OutputLine[];
+      total_cost: number;
+      complete: boolean;
+    };
+    const groups = new Map<string, OutputGroup>();
+    for (const row of result.rows) {
+      const g: OutputGroup = groups.get(row.plan_item_id) ?? {
+        plan_item_id: row.plan_item_id,
+        item_product_name: row.item_product_name,
+        outputs: [],
+        total_cost: 0,
+        complete: true,
+      };
+      const costShare = row.cost_share != null ? parseFloat(row.cost_share) : null;
+      g.outputs.push({
+        output_id: String(row.output_id),
+        label: row.label,
+        product_name: row.output_product_name,
+        quantity: parseFloat(row.quantity),
+        equiv_pieces: parseFloat(row.equiv_pieces),
+        unit_cost: row.unit_cost != null ? parseFloat(row.unit_cost) : null,
+        cost_share: costShare,
+      });
+      if (costShare != null) g.total_cost += costShare;
+      else g.complete = false; // au moins une sortie sans coût (pas de snapshot ni recette)
+      groups.set(row.plan_item_id, g);
+    }
+    return Array.from(groups.values()).map(g => ({
+      ...g,
+      total_cost: Math.round(g.total_cost * 100) / 100,
+    }));
+  },
 };
