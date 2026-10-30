@@ -17,6 +17,12 @@ router.put('/etapes/:etapeId/status', authenticate, authorize(...ROLE_GROUPS.PRO
 router.post('/etapes/:etapeId/timer', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.startTimer));
 router.post('/etapes/:etapeId/repetition', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.completeRepetition));
 
+// ─── Exécution d'atelier (mig 399) — roadmap lot 4 ───
+router.put('/etapes/:etapeId/assign', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.assignEtape));
+router.post('/etapes/:etapeId/pause', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.pauseEtape));
+router.post('/etapes/:etapeId/resume', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.resumeEtape));
+router.get('/atelier/live', authenticate, asyncHandler(productionEtapesController.atelierLive));
+
 // ─── Rendement ───
 router.get('/plans/:planId/rendement', authenticate, asyncHandler(productionEtapesController.planRendement));
 router.post('/items/:itemId/rendement', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.recordRendement));

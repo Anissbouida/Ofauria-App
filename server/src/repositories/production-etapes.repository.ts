@@ -71,10 +71,14 @@ export const productionEtapesRepository = {
   // ─── Get all étapes for a plan item ───
   async findByPlanItem(planItemId: string) {
     const result = await db.query(
-      `SELECT pie.*, u1.first_name as started_by_name, u2.first_name as completed_by_name
+      `SELECT pie.*, u1.first_name as started_by_name, u2.first_name as completed_by_name,
+              wc.name as work_center_name,
+              emp.first_name || ' ' || emp.last_name as assigned_employee_name
        FROM production_item_etapes pie
        LEFT JOIN users u1 ON u1.id = pie.started_by
        LEFT JOIN users u2 ON u2.id = pie.completed_by
+       LEFT JOIN work_centers wc ON wc.id = pie.work_center_id
+       LEFT JOIN employees emp ON emp.id = pie.assigned_employee_id
        WHERE pie.plan_item_id = $1
        ORDER BY pie.ordre ASC`,
       [planItemId]
@@ -86,13 +90,17 @@ export const productionEtapesRepository = {
   async findByPlan(planId: string) {
     const result = await db.query(
       `SELECT pie.*, ppi.product_id, COALESCE(p.name, r.name) as product_name,
-              u1.first_name as started_by_name, u2.first_name as completed_by_name
+              u1.first_name as started_by_name, u2.first_name as completed_by_name,
+              wc.name as work_center_name,
+              emp.first_name || ' ' || emp.last_name as assigned_employee_name
        FROM production_item_etapes pie
        JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
        LEFT JOIN products p ON p.id = ppi.product_id
        LEFT JOIN recipes r ON r.id = ppi.base_recipe_id
        LEFT JOIN users u1 ON u1.id = pie.started_by
        LEFT JOIN users u2 ON u2.id = pie.completed_by
+       LEFT JOIN work_centers wc ON wc.id = pie.work_center_id
+       LEFT JOIN employees emp ON emp.id = pie.assigned_employee_id
        WHERE ppi.plan_id = $1
        ORDER BY ppi.id, pie.ordre ASC`,
       [planId]
@@ -122,9 +130,14 @@ export const productionEtapesRepository = {
       params.push(now, userId);
       idx += 2;
 
-      // Auto-calculate duration if started_at exists
+      // Une pause encore ouverte est close ici : son temps rejoint la pause cumulée,
+      // puis paused_at est remis à NULL (toutes les RHS lisent l'ancienne ligne).
+      sets.push(`pause_accumulee_min = pause_accumulee_min + COALESCE(CEIL(EXTRACT(EPOCH FROM (NOW() - paused_at)) / 60), 0)`);
+      sets.push(`paused_at = NULL`);
+
+      // Durée réelle = temps écoulé − pauses (cumulées + pause ouverte), plancher à 0.
       if (status === 'completed') {
-        sets.push(`duree_reelle_min = COALESCE($${idx}, EXTRACT(EPOCH FROM (NOW() - started_at)) / 60)`);
+        sets.push(`duree_reelle_min = COALESCE($${idx}, GREATEST(EXTRACT(EPOCH FROM (NOW() - started_at)) / 60 - (pause_accumulee_min + COALESCE(CEIL(EXTRACT(EPOCH FROM (NOW() - paused_at)) / 60), 0)), 0))`);
         params.push(data?.duree_reelle_min ?? null);
         idx++;
       }
@@ -220,6 +233,70 @@ export const productionEtapesRepository = {
       [etapeId]
     );
     return result.rows[0];
+  },
+
+  // ─── Exécution d'atelier (mig 399) : poste, opérateur, pause, tableau live ───
+
+  // Affecte le poste et/ou l'opérateur d'une étape (undefined = inchangé).
+  async assign(etapeId: string, input: { workCenterId?: string | null; assignedEmployeeId?: string | null }) {
+    const sets: string[] = ['updated_at = NOW()'];
+    const params: unknown[] = [];
+    let idx = 1;
+    if (input.workCenterId !== undefined) { sets.push(`work_center_id = $${idx}`); params.push(input.workCenterId || null); idx++; }
+    if (input.assignedEmployeeId !== undefined) { sets.push(`assigned_employee_id = $${idx}`); params.push(input.assignedEmployeeId || null); idx++; }
+    params.push(etapeId);
+    const r = await db.query(`UPDATE production_item_etapes SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`, params);
+    return r.rows[0] ?? null;
+  },
+
+  // Met en pause une étape en cours (sans pause ouverte).
+  async pause(etapeId: string) {
+    const r = await db.query(
+      `UPDATE production_item_etapes SET paused_at = NOW(), updated_at = NOW()
+       WHERE id = $1 AND status = 'in_progress' AND paused_at IS NULL RETURNING *`,
+      [etapeId]
+    );
+    return r.rows[0] ?? null;
+  },
+
+  // Reprend une étape en pause : la durée de pause rejoint la pause cumulée.
+  async resume(etapeId: string) {
+    const r = await db.query(
+      `UPDATE production_item_etapes
+       SET pause_accumulee_min = pause_accumulee_min + COALESCE(CEIL(EXTRACT(EPOCH FROM (NOW() - paused_at)) / 60), 0),
+           paused_at = NULL, updated_at = NOW()
+       WHERE id = $1 AND paused_at IS NOT NULL RETURNING *`,
+      [etapeId]
+    );
+    return r.rows[0] ?? null;
+  },
+
+  // Tableau de bord atelier : étapes en cours sur les plans en cours, par poste.
+  async getAtelierLive(storeId?: string | null) {
+    const params: unknown[] = [];
+    let storeFilter = '';
+    if (storeId) { params.push(storeId); storeFilter = ` AND pp.store_id = $1`; }
+    const r = await db.query(
+      `SELECT pie.id as etape_id, pie.nom, pie.ordre, pie.started_at, pie.paused_at,
+              pie.pause_accumulee_min, pie.duree_estimee_min, pie.est_bloquante,
+              pie.work_center_id, wc.name as work_center_name,
+              pie.assigned_employee_id, emp.first_name || ' ' || emp.last_name as assigned_employee_name,
+              u1.first_name as started_by_name,
+              ppi.id as plan_item_id, pp.id as plan_id, pp.plan_date,
+              COALESCE(p.name, r.name) as product_name
+       FROM production_item_etapes pie
+       JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
+       JOIN production_plans pp ON pp.id = ppi.plan_id
+       LEFT JOIN products p ON p.id = ppi.product_id
+       LEFT JOIN recipes r ON r.id = ppi.base_recipe_id
+       LEFT JOIN work_centers wc ON wc.id = pie.work_center_id
+       LEFT JOIN employees emp ON emp.id = pie.assigned_employee_id
+       LEFT JOIN users u1 ON u1.id = pie.started_by
+       WHERE pie.status = 'in_progress' AND pp.status = 'in_progress'${storeFilter}
+       ORDER BY wc.name NULLS LAST, pie.started_at`,
+      params
+    );
+    return r.rows;
   },
 
 };

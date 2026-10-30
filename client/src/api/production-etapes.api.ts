@@ -14,6 +14,16 @@ export const productionEtapesApi = {
     api.post(`/production-etapes/etapes/${etapeId}/timer`).then(r => r.data.data),
   completeRepetition: (etapeId: string, notes?: string) =>
     api.post(`/production-etapes/etapes/${etapeId}/repetition`, { notes }).then(r => r.data.data),
+
+  // Exécution d'atelier (mig 399) — roadmap lot 4
+  assign: (etapeId: string, data: { workCenterId?: string | null; assignedEmployeeId?: string | null }) =>
+    api.put(`/production-etapes/etapes/${etapeId}/assign`, data).then(r => r.data.data),
+  pause: (etapeId: string) =>
+    api.post(`/production-etapes/etapes/${etapeId}/pause`).then(r => r.data.data),
+  resume: (etapeId: string) =>
+    api.post(`/production-etapes/etapes/${etapeId}/resume`).then(r => r.data.data),
+  atelierLive: (storeId?: string) =>
+    api.get('/production-etapes/atelier/live', { params: { storeId } }).then(r => r.data.data),
   checkBlocking: (itemId: string) =>
     api.get(`/production-etapes/items/${itemId}/etapes/check-blocking`).then(r => r.data.data),
   planProgress: (planId: string) =>

@@ -206,4 +206,30 @@ export const productionEtapesController = {
     );
     res.json({ success: true, data });
   },
+
+  // ─── Exécution d'atelier (mig 399) : poste/opérateur, pause, live ───
+  async assignEtape(req: AuthRequest, res: Response) {
+    const b = req.body as Record<string, unknown>;
+    const etape = await productionEtapesRepository.assign(req.params.etapeId as string, {
+      workCenterId: b.workCenterId !== undefined ? (b.workCenterId ? String(b.workCenterId) : null) : undefined,
+      assignedEmployeeId: b.assignedEmployeeId !== undefined ? (b.assignedEmployeeId ? String(b.assignedEmployeeId) : null) : undefined,
+    });
+    if (!etape) { res.status(404).json({ success: false, error: { message: 'Etape non trouvee' } }); return; }
+    res.json({ success: true, data: etape });
+  },
+  async pauseEtape(req: AuthRequest, res: Response) {
+    const etape = await productionEtapesRepository.pause(req.params.etapeId as string);
+    if (!etape) { res.status(400).json({ success: false, error: { message: 'Etape non en cours ou deja en pause' } }); return; }
+    res.json({ success: true, data: etape });
+  },
+  async resumeEtape(req: AuthRequest, res: Response) {
+    const etape = await productionEtapesRepository.resume(req.params.etapeId as string);
+    if (!etape) { res.status(400).json({ success: false, error: { message: 'Etape non en pause' } }); return; }
+    res.json({ success: true, data: etape });
+  },
+  async atelierLive(req: AuthRequest, res: Response) {
+    const storeId = (req.query.storeId as string) || req.user!.storeId!;
+    const data = await productionEtapesRepository.getAtelierLive(storeId);
+    res.json({ success: true, data });
+  },
 };

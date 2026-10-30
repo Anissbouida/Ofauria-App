@@ -48,6 +48,11 @@ interface Etape {
   duree_reelle_min: number | null;
   checklist_resultats: { label: string; ok: boolean; notes?: string }[];
   notes: string | null;
+  // Exécution d'atelier (mig 399)
+  work_center_name?: string | null;
+  assigned_employee_name?: string | null;
+  paused_at?: string | null;
+  pause_accumulee_min?: number;
 }
 
 const statusColors = {
@@ -327,6 +332,9 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                               {etape.temperature_c != null && <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 font-bold"><Thermometer size={9} className="inline mr-0.5" />{parseFloat(String(etape.temperature_c))} °C</span>}
                               {etape.humidite_pct != null && <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-bold"><Droplets size={9} className="inline mr-0.5" />{parseFloat(String(etape.humidite_pct))} % HR</span>}
                               {etape.est_repetable && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 font-bold"><RotateCcw size={9} className="inline mr-0.5" />{etape.nb_repetitions_actuelle}/{etape.nb_repetitions_cible}</span>}
+                              {etape.work_center_name && <span className="text-[9px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 font-bold">{etape.work_center_name}</span>}
+                              {etape.assigned_employee_name && <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-bold">{etape.assigned_employee_name}</span>}
+                              {etape.paused_at && <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-bold">En pause</span>}
                             </div>
                             {etape.status === 'completed' && etape.duree_reelle_min != null && (
                               <span className="text-[10px] text-gray-400">Duree: {Math.round(etape.duree_reelle_min)} min</span>

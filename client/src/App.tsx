@@ -30,6 +30,7 @@ import ProductionDashboardPage from './features/production/ProductionDashboardPa
 import ProductionLayout from './features/production/ProductionLayout';
 import WorkCentersPage from './features/production/WorkCentersPage';
 import MrpPage from './features/production/MrpPage';
+import AtelierPage from './features/production/AtelierPage';
 import SalesLayout from './features/sales/SalesLayout';
 import QuotesPage from './features/quotes/QuotesPage';
 import CrmPage from './features/crm/CrmPage';
@@ -110,6 +111,7 @@ export default function App() {
                 <Route path="/production/costs" element={<ReportsPage fixedTab="cost" />} />
                 <Route path="/production/work-centers" element={<WorkCentersPage />} />
                 <Route path="/production/mrp" element={<MrpPage />} />
+                <Route path="/production/atelier" element={<AtelierPage />} />
               </Route>
               <Route path="/production/:id" element={<PlanDetailPage />} />
               <Route path="/replenishment/:id" element={<RequestDetailPage />} />

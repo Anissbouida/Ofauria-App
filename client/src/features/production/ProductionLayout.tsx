@@ -1,11 +1,11 @@
 import { Outlet, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Factory, TrendingUp, Thermometer, Package, ChefHat, Wallet, Cog, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Factory, TrendingUp, Thermometer, Package, ChefHat, Wallet, Cog, ClipboardList, Hammer } from 'lucide-react';
 import { ROLE_GROUPS } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
 
-type ProductionView = 'dashboard' | 'plans' | 'forecast' | 'mrp' | 'haccp' | 'replenishment' | 'costs' | 'recipes' | 'workcenters';
+type ProductionView = 'dashboard' | 'plans' | 'atelier' | 'forecast' | 'mrp' | 'haccp' | 'replenishment' | 'costs' | 'recipes' | 'workcenters';
 
 /**
  * Module Production : ses écrans sont des pages distinctes (plans, tableau de bord,
@@ -25,6 +25,7 @@ export default function ProductionLayout() {
   const views: ModuleView<ProductionView>[] = [
     { key: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard, section: 'dashboard', href: '/production/dashboard', hidden: !hasModule('production') },
     { key: 'plans', label: 'Plans de production', icon: Factory, section: 'operations', href: '/production', hidden: !hasModule('production') },
+    { key: 'atelier', label: 'Atelier', icon: Hammer, section: 'operations', href: '/production/atelier', hidden: !isProductionRole },
     { key: 'forecast', label: 'Prévisions', icon: TrendingUp, section: 'operations', href: '/forecast', hidden: !isProductionRole },
     { key: 'mrp', label: 'Plan directeur', icon: ClipboardList, section: 'operations', href: '/production/mrp', hidden: !isProductionRole },
     { key: 'haccp', label: 'Relevés HACCP', icon: Thermometer, section: 'operations', href: '/haccp', hidden: !isProductionRole },
