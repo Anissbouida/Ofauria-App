@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
-import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent, FileSignature, BellRing, Target, BadgePercent, Repeat, Truck } from 'lucide-react';
+import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent, FileSignature, BellRing, Target, BadgePercent, Repeat, Truck, BarChart3 } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
@@ -41,6 +41,7 @@ export default function SalesLayout() {
     { key: 'dunning', label: 'Relances', icon: BellRing, section: 'operations', href: '/dunning', hidden: !hasModule('sales') || !isDirection },
     { key: 'reports:menu', label: 'Menu Engineering', icon: Sparkles, section: 'reports', href: '/reports?tab=menu', hidden: !hasModule('reports') },
     { key: 'reports:margins', label: 'Marges', icon: Percent, section: 'reports', href: '/reports?tab=margins', hidden: !hasModule('reports') },
+    { key: 'reports:builder', label: 'Rapports personnalisés', icon: BarChart3, section: 'reports', href: '/reports?tab=builder', hidden: !hasModule('reports') },
     { key: 'customers', label: 'Clients', icon: Users, section: 'setup', href: '/customers', hidden: !hasModule('customers') },
     { key: 'promotions', label: 'Promotions et fidélité', icon: BadgePercent, section: 'setup', href: '/promotions', hidden: !hasModule('sales') },
     { key: 'products', label: 'Produits', icon: ShoppingBag, section: 'setup', href: '/products', hidden: !hasModule('products') },
@@ -50,7 +51,7 @@ export default function SalesLayout() {
   const currentKey = pathname === '/sales'
     ? `sales:${SALES_MAIN_TABS.some(t => t.key === tab) ? tab : 'sales'}`
     : pathname === '/reports'
-      ? `reports:${tab === 'menu' || tab === 'margins' ? tab : 'overview'}`
+      ? `reports:${tab === 'menu' || tab === 'margins' || tab === 'builder' ? tab : 'overview'}`
       : pathname.slice(1);
   const current = views.find(v => v.key === currentKey);
 
