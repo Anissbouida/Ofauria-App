@@ -229,8 +229,27 @@ export default function ApprovalsPage() {
   const [histStatus, setHistStatus] = useState('');
 
   const inbox = useQuery({ queryKey: ['approvals', 'inbox'], queryFn: approvalsApi.inbox });
-  const mine = useQuery({ queryKey: ['approvals', 'mine'], queryFn: approvalsApi.mine, enabled: tab === 'mine' });
+  const mine = useQuery({ queryKey: ['approvals', 'mine'], queryFn: approvalsApi.mine });
+  const rules = useQuery({ queryKey: ['approvals', 'rules'], queryFn: approvalsApi.rules, enabled: isManager });
   const history = useQuery({ queryKey: ['approvals', 'history', histStatus], queryFn: () => approvalsApi.history({ status: histStatus || undefined, limit: 100 }), enabled: tab === 'history' && isManager });
+  const statsHistory = useQuery({ queryKey: ['approvals', 'stats-history'], queryFn: () => approvalsApi.history({ limit: 300 }), enabled: isManager });
+
+  // ── Synthèse : métriques d'aide à la décision ───────────────────────────
+  const now = Date.now();
+  const inboxRows = inbox.data ?? [];
+  const pendingAmount = inboxRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  const overdue = inboxRows.filter(r => r.steps.some(s => s.status === 'pending' && (s.escalated_at || (s.due_at && Date.parse(s.due_at) < now)))).length;
+  const myPending = (mine.data ?? []).filter(r => r.status === 'pending').length;
+  const rulesData = rules.data ?? [];
+  const req30 = rulesData.reduce((s, r) => s + (r.requests_30d || 0), 0);
+  const rej30 = rulesData.reduce((s, r) => s + (r.rejected_30d || 0), 0);
+  const activeRules = rulesData.filter(r => r.enabled).length;
+  const approveRate = req30 > 0 ? Math.round((1 - rej30 / req30) * 100) : null;
+  const decided = (statsHistory.data?.rows ?? []).filter(r => (r.status === 'approved' || r.status === 'rejected') && r.decided_at);
+  const avgHours = decided.length ? decided.reduce((s, r) => s + (Date.parse(r.decided_at!) - Date.parse(r.requested_at)) / 3_600_000, 0) / decided.length : null;
+  const avgDelay = avgHours == null ? '—' : avgHours < 24 ? `${avgHours.toFixed(1)} h` : `${(avgHours / 24).toFixed(1)} j`;
+  // Répartition des pièces en attente par type.
+  const byType = Object.entries(inboxRows.reduce((m, r) => { const k = DOC_TYPES[r.doc_type]?.label ?? r.doc_type; m[k] = (m[k] || 0) + 1; return m; }, {} as Record<string, number>)).sort((a, b) => b[1] - a[1]);
   const delegations = useQuery({ queryKey: ['approvals', 'delegations'], queryFn: approvalsApi.delegations, enabled: tab === 'delegations' });
   const delegates = useQuery({ queryKey: ['approvals', 'delegates'], queryFn: approvalsApi.delegates, enabled: tab === 'delegations' });
 
@@ -278,6 +297,42 @@ export default function ApprovalsPage() {
           <p className="odoo-form-subtitle">Bons de commande au-dessus du seuil, annulations de factures, écarts d'inventaire : les pièces qui attendent une décision.</p>
         </div>
       </div>
+      {/* Synthèse décisionnelle */}
+      <div className="odoo-stat-grid" style={{ border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
+        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+          <div className="odoo-stat-card-label">À approuver</div>
+          <div className="odoo-stat-card-value" style={{ color: inboxRows.length ? 'var(--odoo-primary, #714B67)' : undefined }}>{inboxRows.length}</div>
+          <div className="odoo-stat-card-sub">{pendingAmount > 0 ? `${money(pendingAmount)} en attente` : 'pièces en attente de décision'}</div>
+        </div>
+        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+          <div className="odoo-stat-card-label">En retard</div>
+          <div className="odoo-stat-card-value" style={{ color: overdue > 0 ? '#dc3545' : undefined }}>{overdue}</div>
+          <div className="odoo-stat-card-sub">{overdue > 0 ? 'échéance dépassée / escaladées' : 'aucune escalade'}</div>
+        </div>
+        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+          <div className="odoo-stat-card-label">Mes demandes en cours</div>
+          <div className="odoo-stat-card-value">{myPending}</div>
+          <div className="odoo-stat-card-sub">pièces que j'ai soumises</div>
+        </div>
+        {isManager && <>
+          <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+            <div className="odoo-stat-card-label">Demandes (30 j)</div>
+            <div className="odoo-stat-card-value">{req30}</div>
+            <div className="odoo-stat-card-sub">{rej30} rejetée{rej30 > 1 ? 's' : ''}</div>
+          </div>
+          <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+            <div className="odoo-stat-card-label">Taux d'approbation</div>
+            <div className="odoo-stat-card-value">{approveRate == null ? '—' : `${approveRate} %`}</div>
+            <div className="odoo-stat-card-sub">sur 30 jours</div>
+          </div>
+          <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+            <div className="odoo-stat-card-label">Délai moyen de décision</div>
+            <div className="odoo-stat-card-value">{avgDelay}</div>
+            <div className="odoo-stat-card-sub">{activeRules} circuit{activeRules > 1 ? 's' : ''} actif{activeRules > 1 ? 's' : ''}</div>
+          </div>
+        </>}
+      </div>
+
       <div className="odoo-tabs" role="tablist">
         {tabs.map(t => (
           <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={`odoo-tab${tab === t.key ? ' active' : ''}`} onClick={() => setTab(t.key)}>
@@ -290,7 +345,13 @@ export default function ApprovalsPage() {
         <section style={{ display: 'grid', gap: 12 }}>
           {inbox.isLoading && <Loader2 className="animate-spin" size={18} />}
           {!inbox.isLoading && !inbox.data?.length && (
-            <StatusBanner tone="success" icon={CheckCircle2} title="Rien à approuver">Aucune pièce n'attend votre décision.</StatusBanner>
+            <StatusBanner tone="success" icon={CheckCircle2} title="Rien à approuver">Aucune pièce n'attend votre décision — tout est traité.</StatusBanner>
+          )}
+          {inboxRows.length > 0 && byType.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+              <span>{inboxRows.length} pièce(s){pendingAmount > 0 ? ` · ${money(pendingAmount)}` : ''} :</span>
+              {byType.map(([label, n]) => <span key={label} className="odoo-tag odoo-tag-grey">{label} · {n}</span>)}
+            </div>
           )}
           {inbox.data?.map(r => <RequestCard key={r.id} r={r} decide={(id, action, reason) => decideMutation.mutate({ id, action, reason })} />)}
         </section>
@@ -313,6 +374,13 @@ export default function ApprovalsPage() {
               {Object.entries(APPROVAL_REQUEST_STATUS_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </select>
             {history.data && <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{history.data.total} demande{history.data.total > 1 ? 's' : ''}</span>}
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {(['approved', 'rejected', 'pending', 'cancelled'] as const).map(st => {
+                const n = (statsHistory.data?.rows ?? []).filter(r => r.status === st).length;
+                return n > 0 ? <span key={st} className={`odoo-tag ${statusTag[st]}`}>{APPROVAL_REQUEST_STATUS_LABELS[st]} · {n}</span> : null;
+              })}
+              {avgHours != null && <span className="odoo-tag odoo-tag-blue">délai moyen {avgDelay}</span>}
+            </span>
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table className="odoo-table">
