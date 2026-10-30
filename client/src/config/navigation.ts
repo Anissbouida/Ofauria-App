@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
   Users, Warehouse, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
-  Package, Store, Tag, FolderKanban, Wrench, ShieldCheck, ClipboardCheck,
+  Package, Store, FolderKanban, Wrench, ShieldCheck, ClipboardCheck,
 } from 'lucide-react';
 import { MODULE_LABELS, MODULE_ALIASES } from '@ofauria/shared';
 import type { AppModule } from '@ofauria/shared';
@@ -79,10 +79,10 @@ export const NAV_GROUPS: NavGroup[] = [
       // chantier, mission, commande sur devis — avec tâches et temps passé.
       { module: 'projects', href: '/projects', icon: FolderKanban, color: 'bg-fuchsia-600',
         description: 'Événements, chantiers, missions : tâches et temps passé' },
-      // Catalogue et tarifs : c'est ce qu'on vend (prix, canaux) ; les recettes,
-      // elles, restent en Production.
-      { module: 'products', href: '/products', icon: Tag, color: 'bg-purple-500',
-        description: 'Catalogue et tarifs' },
+      // Catalogue (Produits) n'est plus une tuile du lanceur : c'est l'onglet
+      // « Produits » du module Ventes (/products rendu sous SalesLayout, rubrique
+      // Paramétrage). Seuls le gérant et l'admin détiennent 'products', et tous deux
+      // ont 'sales', donc l'accès reste par la tuile Ventes.
     ],
   },
   {
