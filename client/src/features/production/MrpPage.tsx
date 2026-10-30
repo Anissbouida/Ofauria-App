@@ -1,7 +1,7 @@
 import { useState, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, Loader2, ChevronLeft, ChevronRight, Factory, Layers } from 'lucide-react';
+import { ClipboardList, Loader2, ChevronLeft, ChevronRight, Factory, Layers, Package, ShoppingCart } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { productionApi, type MrpRow } from '../../api/production.api';
@@ -50,6 +50,17 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
   const navigate = useNavigate();
   const { data, isLoading, isError, error } = useQuery({ queryKey: ['mrp', date], queryFn: () => productionApi.mrp(date) });
   const { data: sf } = useQuery({ queryKey: ['mrp-sf', date], queryFn: () => productionApi.mrpSemiFinished(date) });
+  const { data: matReq } = useQuery({ queryKey: ['mrp-mat', date], queryFn: () => productionApi.mrpMaterialRequirements(date) });
+  const genPR = useMutation({
+    mutationFn: () => productionApi.mrpGeneratePurchaseRequests(date),
+    onSuccess: (d) => {
+      notify.success(d.created > 0
+        ? `${d.created} demande(s) d'achat créée(s)${d.skipped_existing ? ` · ${d.skipped_existing} déjà en attente` : ''}`
+        : 'Aucune nouvelle demande (déjà couvert ou déjà en attente)');
+      qc.invalidateQueries({ queryKey: ['mrp-mat'] });
+    },
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
 
   const generate = useMutation({
     mutationFn: () => productionApi.mrpGenerate(date),
@@ -151,6 +162,48 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
           <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Besoins en bases pour produire le net ci-dessus, défalqués du stock de semi-finis non périmé. Analyse — les plans de bases sont créés à la confirmation du plan fini.</p>
         </div>
       )}
+
+      {matReq && matReq.totals.to_order > 0 && (() => {
+        const short = matReq.rows.filter(r => r.shortage > 0);
+        const covered = matReq.totals.ingredients - matReq.totals.to_order;
+        return (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '4px 0' }}>
+              <h4 style={{ fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--theme-text-strong)', margin: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Package size={14} /> Besoins matière (achats)
+              </h4>
+              <span style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>
+                {matReq.totals.to_order} à commander · ~{nf(matReq.totals.estimated_cost)} DH
+              </span>
+              <button type="button" className="odoo-btn-primary" style={{ marginLeft: 'auto' }} disabled={genPR.isPending}
+                onClick={async () => { if (await confirm(`Créer ${matReq.totals.to_order} demande(s) d'achat pour les matières manquantes du ${date} ?`, { title: "Demandes d'achat" })) genPR.mutate(); }}>
+                {genPR.isPending ? <Loader2 size={14} className="animate-spin" /> : <ShoppingCart size={14} />} Générer les demandes d'achat
+              </button>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="odoo-table">
+                <thead><tr><th>Ingrédient</th><th style={{ textAlign: 'right' }}>Besoin</th><th style={{ textAlign: 'right' }}>En stock</th><th style={{ textAlign: 'right' }}>Seuil</th><th style={{ textAlign: 'right' }}>À commander</th><th style={{ textAlign: 'right' }}>Coût est.</th></tr></thead>
+                <tbody>
+                  {short.map(r => (
+                    <tr key={r.ingredient_id}>
+                      <td style={{ fontWeight: 500 }}>{r.ingredient_name}</td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{nf(r.needed)} {r.unit}</td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{nf(r.on_hand)} {r.unit}</td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{r.seuil > 0 ? `${nf(r.seuil)} ${r.unit}` : '—'}</td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: '#c62828' }}>{nf(r.shortage)} {r.unit}</td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{nf(r.estimated_cost)} DH</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+              Matières nécessaires pour produire le net ci-dessus (explosion des recettes sur tous les niveaux), défalquées du stock.
+              Manquant = besoin + seuil de sécurité − stock. {covered > 0 ? `${covered} ingrédient(s) couvert(s) par le stock.` : ''} La quantité commandée est arrondie au contenant.
+            </p>
+          </div>
+        );
+      })()}
 
       <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
         Demande = prévision de vente (majorée) + commandes fermes dues ce jour. Stock = arrière-boutique + vitrine (planché à 0). Déjà planifié = plans ouverts du jour, hors lignes produites.

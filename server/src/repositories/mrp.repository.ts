@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { forecastRepository } from './forecast.repository.js';
 import { productionRepository } from './production.repository.js';
+import { purchaseRequestRepository } from './purchase-request.repository.js';
 import { getCompositionForNeeds } from './recipe-composition.helper.js';
 import { getCategoryRole, ASSIGNED_ROLE_LABELS } from '@ofauria/shared';
 
@@ -330,5 +331,75 @@ export const mrpRepository = {
     }).sort((a, b) => a.name.localeCompare(b.name));
 
     return { date, rows: out };
+  },
+
+  /**
+   * Besoins matière (achats) du MRP — roadmap lot 8.
+   * Explose les besoins NETS à produire du jour (net_to_produce) en ingrédients
+   * élémentaires (v_recipe_explosion, mig 400), ramenés au prorata du rendement,
+   * puis défalque le stock : manquant = max(0, besoin + seuil − stock). Le seuil
+   * d'alerte (inventory.minimum_threshold) sert de stock de sécurité.
+   */
+  async materialRequirements(storeId: string, date: string) {
+    const net = await this.netRequirements(storeId, date);
+    const demand = net.rows.filter(r => r.net_to_produce > 0).map(r => ({ product_id: r.product_id, qty: r.net_to_produce }));
+    if (demand.length === 0) return { store_id: storeId, date, rows: [], totals: { ingredients: 0, to_order: 0, estimated_cost: 0 } };
+
+    const values = demand.map((_, i) => `($${i * 2 + 2}::uuid, $${i * 2 + 3}::numeric)`).join(', ');
+    const params: unknown[] = [storeId, ...demand.flatMap(d => [d.product_id, d.qty])];
+    const q = await db.query(
+      `WITH demand(product_id, qty) AS (VALUES ${values})
+       SELECT e.ingredient_id, e.ingredient_name, e.unit,
+              SUM(e.total_qty * (demand.qty / NULLIF(r.yield_quantity, 0)))::float AS needed,
+              COALESCE(inv.current_quantity, 0)::float AS on_hand,
+              COALESCE(inv.minimum_threshold, 0)::float AS seuil,
+              COALESCE(ing.unit_cost, 0)::float AS unit_cost
+       FROM demand
+       JOIN LATERAL (SELECT id, yield_quantity FROM recipes WHERE product_id = demand.product_id AND archived_at IS NULL ORDER BY id LIMIT 1) r ON true
+       JOIN v_recipe_explosion e ON e.recipe_id = r.id
+       JOIN ingredients ing ON ing.id = e.ingredient_id
+       LEFT JOIN inventory inv ON inv.ingredient_id = e.ingredient_id AND inv.store_id = $1
+       GROUP BY e.ingredient_id, e.ingredient_name, e.unit, inv.current_quantity, inv.minimum_threshold, ing.unit_cost`,
+      params
+    );
+    const r3 = (n: number) => Math.round(n * 1000) / 1000;
+    const rows = q.rows.map((x: Record<string, number | string>) => {
+      const needed = Number(x.needed), onHand = Number(x.on_hand), seuil = Number(x.seuil), unitCost = Number(x.unit_cost);
+      const shortage = Math.max(0, r3(needed + seuil - onHand));
+      return {
+        ingredient_id: x.ingredient_id as string, ingredient_name: x.ingredient_name as string, unit: x.unit as string,
+        needed: r3(needed), on_hand: r3(onHand), seuil: r3(seuil), shortage,
+        unit_cost: unitCost, estimated_cost: Math.round(shortage * unitCost * 100) / 100,
+      };
+    }).sort((a, b) => b.shortage - a.shortage || a.ingredient_name.localeCompare(b.ingredient_name));
+    const toOrder = rows.filter(r => r.shortage > 0);
+    const estimated = Math.round(toOrder.reduce((s, r) => s + r.estimated_cost, 0) * 100) / 100;
+    return { store_id: storeId, date, rows, totals: { ingredients: rows.length, to_order: toOrder.length, estimated_cost: estimated } };
+  },
+
+  /**
+   * Génère les demandes d'achat pour les matières manquantes du MRP (shortage > 0).
+   * Saute les ingrédients ayant déjà une demande « pending » (anti-doublon). La
+   * quantité est arrondie au contenant par purchaseRequestRepository.create.
+   */
+  async generatePurchaseRequests(storeId: string, date: string, userId: string) {
+    const mr = await this.materialRequirements(storeId, date);
+    const toOrder = mr.rows.filter(r => r.shortage > 0);
+    const existing = await db.query(
+      `SELECT DISTINCT ingredient_id FROM purchase_requests WHERE status = 'pending' AND (store_id = $1 OR store_id IS NULL)`,
+      [storeId]
+    );
+    const skip = new Set<string>(existing.rows.map((r: { ingredient_id: string }) => r.ingredient_id));
+    let created = 0, skipped = 0;
+    for (const r of toOrder) {
+      if (skip.has(r.ingredient_id)) { skipped++; continue; }
+      await purchaseRequestRepository.create({
+        ingredientId: r.ingredient_id, quantity: r.shortage, unit: r.unit,
+        reason: 'production', note: `MRP ${date} — besoin de production`,
+        requestedBy: userId, storeId,
+      });
+      created++;
+    }
+    return { created, skipped_existing: skipped, candidates: toOrder.length };
   },
 };
