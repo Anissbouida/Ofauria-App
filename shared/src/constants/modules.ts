@@ -92,7 +92,7 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   unsold: 'Invendus',
   pesage: 'Stock',     // alias
   warehouse: 'Stock',  // alias
-  packaging: 'Emballages',
+  packaging: 'Stock',   // alias (emballages = onglet Consommables du Stock)
   reconciliation: 'Contrôle des ventes',
   controle: 'Contrôle & Qualité',
   projects: 'Projets',
@@ -104,17 +104,17 @@ export const MODULE_LABELS: Record<AppModule, string> = {
  *  Cles CANONIQUES (stock = economat+pesage unifies, cf. MODULE_ALIASES). */
 export const DEFAULT_ROLE_MODULES: Record<string, AppModule[]> = {
   admin: Object.values(APP_MODULES),
-  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'stock', 'recipes', 'production', 'employees', 'accounting', 'purchasing', 'reports', 'replenishment', 'unsold', 'packaging', 'reconciliation', 'controle', 'projects', 'maintenance', 'crm'],
+  manager: ['dashboard', 'pos', 'sales', 'orders', 'products', 'customers', 'stock', 'recipes', 'production', 'employees', 'accounting', 'purchasing', 'reports', 'replenishment', 'unsold', 'reconciliation', 'controle', 'projects', 'maintenance', 'crm'],
   cashier: ['pos', 'orders', 'customers', 'production', 'replenishment', 'unsold'],
   saleswoman: ['pos', 'orders', 'customers', 'production', 'replenishment', 'unsold'],
   // Les chefs demandent les ingredients depuis leur plan ; le pesage (preparation
   // des bons) est le poste du magasinier.
-  baker: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
-  pastry_chef: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
-  viennoiserie: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
-  beldi_sale: ['stock', 'recipes', 'production', 'replenishment', 'packaging'],
+  baker: ['stock', 'recipes', 'production', 'replenishment'],
+  pastry_chef: ['stock', 'recipes', 'production', 'replenishment'],
+  viennoiserie: ['stock', 'recipes', 'production', 'replenishment'],
+  beldi_sale: ['stock', 'recipes', 'production', 'replenishment'],
   /** Magasinier : stock (scelle + entame + BSI) + approv + emballages. */
-  magasinier: ['stock', 'replenishment', 'packaging'],
+  magasinier: ['stock', 'replenishment'],
 };
 
 /**
@@ -124,9 +124,9 @@ export const DEFAULT_ROLE_MODULES: Record<string, AppModule[]> = {
  * cles a MASQUER dans l'ecran des droits (remplacees par 'stock').
  */
 export const MODULE_ALIASES: Partial<Record<string, string[]>> = {
-  stock: ['economat', 'inventory', 'pesage', 'warehouse'],
+  stock: ['economat', 'inventory', 'pesage', 'warehouse', 'packaging'],
 };
-export const LEGACY_MODULE_KEYS: ReadonlySet<string> = new Set(['economat', 'inventory', 'pesage', 'warehouse']);
+export const LEGACY_MODULE_KEYS: ReadonlySet<string> = new Set(['economat', 'inventory', 'pesage', 'warehouse', 'packaging']);
 
 /** Un module et ses cles equivalentes (canonique <-> legacy), dans les deux sens. */
 export function resolveModuleKeys(module: string): string[] {

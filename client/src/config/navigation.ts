@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
   Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
-  Package, Box, Store, Tag, FolderKanban, Wrench, ShieldCheck, TrendingUp, Thermometer, ShieldAlert, ClipboardCheck,
+  Package, Store, Tag, FolderKanban, Wrench, ShieldCheck, TrendingUp, Thermometer, ShieldAlert, ClipboardCheck,
 } from 'lucide-react';
 import { MODULE_LABELS, MODULE_ALIASES, ROLE_GROUPS } from '@ofauria/shared';
 import type { AppModule } from '@ofauria/shared';
@@ -95,9 +95,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { module: 'purchasing', href: '/purchasing', icon: ShoppingBag, color: 'bg-blue-700',
         description: 'Fournisseurs, commandes et factures' },
       { module: 'stock', aliases: MODULE_ALIASES.stock as AppModule[] | undefined, href: '/stock', icon: Warehouse, color: 'bg-amber-600',
-        description: 'Stock scelle, stock entame et bons de sortie' },
-      { module: 'packaging', href: '/packaging', icon: Box, color: 'bg-blue-500',
-        description: 'Caissettes, boites, etiquettes, films' },
+        description: 'Stock scelle, stock entame, emballages et bons de sortie' },
+      // Emballages fusionné dans Stock (onglet « Consommables ») : /packaging redirige vers /stock?tab=consumables.
     ],
   },
   {
