@@ -243,6 +243,7 @@ export default function ReportsPage({ fixedTab }: { fixedTab?: Tab } = {}) {
           productData={productData} productsLoading={productsLoading}
           topProducts={topProducts} maxRevenue={maxRevenue}
           lossStats={lossStats}
+          startDate={startDate} endDate={endDate}
           activePreset={activePreset} presets={presets} onPreset={handlePreset}
           customStart={customStart} customEnd={customEnd} setCustomStart={setCustomStart} setCustomEnd={setCustomEnd}
         />
