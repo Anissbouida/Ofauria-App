@@ -1,9 +1,9 @@
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
-  Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
-  Package, Store, Tag, FolderKanban, Wrench, ShieldCheck, TrendingUp, Thermometer, ClipboardCheck,
+  Users, Warehouse, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
+  Package, Store, Tag, FolderKanban, Wrench, ShieldCheck, ClipboardCheck,
 } from 'lucide-react';
-import { MODULE_LABELS, MODULE_ALIASES, ROLE_GROUPS } from '@ofauria/shared';
+import { MODULE_LABELS, MODULE_ALIASES } from '@ofauria/shared';
 import type { AppModule } from '@ofauria/shared';
 
 /**
@@ -34,22 +34,18 @@ export interface NavItem {
   /**
    * Override de libelle, reserve aux entrees qui ne sont PAS 1:1 avec un module.
    * Cas aujourd'hui : 'unsold' porte la Journée boutique (ouverture, ventes,
-   * invendus) et 'production' porte aussi Prévisions et Relevés HACCP.
-   * Partout ailleurs, laisser MODULE_LABELS decider.
+   * invendus). Partout ailleurs, laisser MODULE_LABELS decider.
    */
   label?: string;
   /**
-   * Restriction par rôle, en plus du module. Sert aux écrans hébergés par un module
-   * large : 'production' est aussi accordé aux vendeuses, mais Prévisions et
-   * Relevés HACCP ne concernent que les chefs et le gérant.
+   * Restriction par rôle, en plus du module. Sert aux tuiles hébergées par un module
+   * large qui ne concernent qu'une partie de ses détenteurs (aucune aujourd'hui, le
+   * champ reste pour ce besoin).
    */
   roles?: string[];
   /** Compteur affiché en pastille sur la tuile (ex. pièces à approuver). */
   counter?: 'approvals';
 }
-
-/** Chefs + gérant + admin : mêmes rôles que les routes serveur concernées. */
-const PRODUCTION_ROLES: string[] = ROLE_GROUPS.PRODUCTION;
 
 export interface NavGroup {
   title: string;
@@ -102,14 +98,12 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'Production',
     items: [
-      { module: 'recipes', href: '/recipes', icon: ChefHat, color: 'bg-pink-500',
-        description: 'Nomenclatures et couts de fabrication' },
+      // Fiches techniques, Prévisions et Relevés HACCP ne sont plus des tuiles du
+      // lanceur : ce sont des onglets du module Production (/recipes, /forecast,
+      // /haccp rendus sous ProductionLayout). On garde la tuile « Production » comme
+      // porte d'entrée unique du domaine fabrication.
       { module: 'production', href: '/production', icon: Factory, color: 'bg-indigo-500',
-        description: 'Planification de la fabrication' },
-      { module: 'production', href: '/forecast', icon: TrendingUp, color: 'bg-violet-500',
-        label: 'Prévisions', description: 'Quantités suggérées par produit et par jour', roles: PRODUCTION_ROLES },
-      { module: 'production', href: '/haccp', icon: Thermometer, color: 'bg-sky-600',
-        label: 'Relevés HACCP', description: 'Températures, nettoyage et actions correctives', roles: PRODUCTION_ROLES },
+        description: 'Planification, fiches techniques, prévisions et relevés HACCP' },
       { module: 'replenishment', href: '/replenishment', icon: Package, color: 'bg-rose-500',
         description: 'Demandes et transferts de stock' },
     ],
