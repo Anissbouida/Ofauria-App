@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
   Users, Warehouse, ChefHat, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
-  Package, Store, Tag, FolderKanban, Wrench, ShieldCheck, TrendingUp, Thermometer, ShieldAlert, ClipboardCheck,
+  Package, Store, Tag, FolderKanban, Wrench, ShieldCheck, TrendingUp, Thermometer, ClipboardCheck,
 } from 'lucide-react';
 import { MODULE_LABELS, MODULE_ALIASES, ROLE_GROUPS } from '@ofauria/shared';
 import type { AppModule } from '@ofauria/shared';
@@ -125,10 +125,8 @@ export const NAV_GROUPS: NavGroup[] = [
         description: 'Anomalies, contrôles et registre des pertes' },
       { module: 'unsold', aliases: ['reconciliation'], href: '/boutique', icon: Store, color: 'bg-orange-600',
         label: 'Journée boutique', description: 'Ouverture, appro et ventes, invendus du jour' },
-      // Rappel de lot : traçabilité descendante (matière → clients). Réservé admin/gérant
-      // (module 'reconciliation'), cohérent avec la route API réservée.
-      { module: 'reconciliation', href: '/traceability/recall', icon: ShieldAlert, color: 'bg-red-700',
-        label: 'Rappel de lot', description: "Remonter d'un lot matière aux clients" },
+      // Rappel de lot fusionné dans Contrôle & Qualité (onglet « Traçabilité & rappels ») :
+      // /traceability/recall redirige vers /controle?tab=tracabilite.
     ],
   },
   {
