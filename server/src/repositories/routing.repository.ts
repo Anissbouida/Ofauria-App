@@ -125,4 +125,72 @@ export const routingRepository = {
   async deleteRouting(id: string) {
     await db.query(`DELETE FROM routings WHERE id = $1`, [id]);
   },
+
+  /* ── Statut & arrêts machine / TRS (mig 402) — roadmap lot 7 ── */
+  async setWorkCenterStatus(id: string, status: string) {
+    const r = await db.query(`UPDATE work_centers SET status = $2 WHERE id = $1 RETURNING *`, [id, status]);
+    return r.rows[0] ? { ...r.rows[0], hourly_cost: Number(r.rows[0].hourly_cost) } : null;
+  },
+
+  async recordDowntime(input: { workCenterId: string; fromTime: string; toTime?: string | null; reason: string; notes?: string | null }, userId: string | null) {
+    const r = await db.query(
+      `INSERT INTO work_center_downtime (work_center_id, from_time, to_time, reason, operator_id, notes)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [input.workCenterId, input.fromTime, input.toTime || null, input.reason, userId, input.notes?.trim() || null]
+    );
+    return r.rows[0];
+  },
+
+  async listDowntime(workCenterId: string, from?: string, to?: string) {
+    const params: unknown[] = [workCenterId];
+    let f = '';
+    if (from) { params.push(from); f += ` AND d.from_time >= $${params.length}`; }
+    if (to) { params.push(to); f += ` AND d.from_time < $${params.length}`; }
+    const r = await db.query(
+      `SELECT d.id, d.from_time, d.to_time, d.reason, d.notes, u.first_name AS operator_name,
+              ROUND(EXTRACT(EPOCH FROM (COALESCE(d.to_time, now()) - d.from_time)) / 60)::int AS minutes
+       FROM work_center_downtime d
+       LEFT JOIN users u ON u.id = d.operator_id
+       WHERE d.work_center_id = $1${f}
+       ORDER BY d.from_time DESC`, params);
+    return r.rows;
+  },
+
+  // TRS ≈ disponibilité × performance (qualité non rattachable au poste, exclue).
+  async getOee(workCenterId: string, from: string, to: string) {
+    const r = await db.query(
+      `WITH dt AS (
+         SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(to_time, now()) - from_time)) / 60), 0) AS downtime
+         FROM work_center_downtime WHERE work_center_id = $1 AND from_time >= $2 AND from_time < $3
+       ),
+       perf AS (
+         SELECT COALESCE(SUM(pie.duree_estimee_min), 0) AS est,
+                COALESCE(SUM(pie.duree_reelle_min), 0)  AS reel,
+                COUNT(DISTINCT pp.plan_date)            AS active_days
+         FROM production_item_etapes pie
+         JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
+         JOIN production_plans pp ON pp.id = ppi.plan_id
+         WHERE pie.work_center_id = $1 AND pie.status = 'completed'
+           AND pie.completed_at >= $2 AND pie.completed_at < $3 AND pie.duree_reelle_min IS NOT NULL
+       ),
+       cap AS (SELECT capacity_minutes_per_day AS cap FROM work_centers WHERE id = $1)
+       SELECT ROUND(dt.downtime)::int AS downtime_min, perf.active_days::int AS active_days,
+              cap.cap, (cap.cap * perf.active_days) AS planned_min,
+              perf.est::int AS standard_min, perf.reel::int AS reel_min
+       FROM dt, perf, cap`, [workCenterId, from, to]);
+    const row = r.rows[0] || {};
+    const planned = row.planned_min != null ? parseFloat(row.planned_min) : 0;
+    const downtime = row.downtime_min != null ? parseInt(row.downtime_min) : 0;
+    const standard = row.standard_min != null ? parseInt(row.standard_min) : 0;
+    const reel = row.reel_min != null ? parseInt(row.reel_min) : 0;
+    // Division en JS : duree_*_min sont des entiers (division entière en SQL).
+    const availability = planned > 0 ? Math.max(0, Math.round((planned - downtime) / planned * 1000) / 10) : null;
+    const performance = reel > 0 ? Math.round(standard / reel * 1000) / 10 : null;
+    const trs = availability != null && performance != null ? Math.round(availability * performance / 100 * 10) / 10 : null;
+    return {
+      downtime_min: downtime, planned_min: planned, standard_min: standard, reel_min: reel,
+      active_days: row.active_days != null ? parseInt(row.active_days) : 0,
+      availability_pct: availability, performance_pct: performance, trs_pct: trs,
+    };
+  },
 };

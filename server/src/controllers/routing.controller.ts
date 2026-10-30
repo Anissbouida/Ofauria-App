@@ -74,4 +74,34 @@ export const routingController = {
     await routingRepository.deleteRouting(req.params.id);
     res.json({ success: true, data: null });
   },
+
+  // ── Statut & arrêts machine / TRS (mig 402) — roadmap lot 7 ──
+  async setWorkCenterStatus(req: AuthRequest, res: Response) {
+    const status = String((req.body as Record<string, unknown>).status || '');
+    if (!['production', 'off', 'idle', 'probleme', 'maintenance', 'reglage'].includes(status)) {
+      res.status(400).json({ success: false, error: { message: 'Statut invalide' } }); return;
+    }
+    const w = await routingRepository.setWorkCenterStatus(req.params.id, status);
+    if (!w) { res.status(404).json({ success: false, error: { message: 'Poste introuvable' } }); return; }
+    res.json({ success: true, data: w });
+  },
+  async recordDowntime(req: AuthRequest, res: Response) {
+    const b = req.body as Record<string, unknown>;
+    if (!b.fromTime || !b.reason) { res.status(400).json({ success: false, error: { message: 'Début et motif requis' } }); return; }
+    const d = await routingRepository.recordDowntime({
+      workCenterId: req.params.id, fromTime: String(b.fromTime),
+      toTime: b.toTime ? String(b.toTime) : null, reason: String(b.reason), notes: b.notes ? String(b.notes) : null,
+    }, req.user!.userId);
+    res.status(201).json({ success: true, data: d });
+  },
+  async listDowntime(req: AuthRequest, res: Response) {
+    const d = await routingRepository.listDowntime(req.params.id, req.query.from as string | undefined, req.query.to as string | undefined);
+    res.json({ success: true, data: d });
+  },
+  async getOee(req: AuthRequest, res: Response) {
+    const to = (req.query.to as string) || new Date().toISOString();
+    const from = (req.query.from as string) || new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+    const d = await routingRepository.getOee(req.params.id, from, to);
+    res.json({ success: true, data: d });
+  },
 };

@@ -1,7 +1,18 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Cog, Plus, X, Loader2, Power, Trash2, Route, Save, Wrench, ListOrdered } from 'lucide-react';
+import { Cog, Plus, X, Loader2, Power, Trash2, Route, Save, Wrench, ListOrdered, Gauge } from 'lucide-react';
 import { routingsApi, type Routing, type OperationInput } from '../../api/routings.api';
+import WorkCenterOeeModal from './WorkCenterOeeModal';
+
+// Statuts de poste (mig 402)
+const WC_STATUS: Record<string, { label: string; color: string }> = {
+  production: { label: 'En production', color: '#2e7d32' },
+  idle: { label: 'Inactif', color: '#6b7280' },
+  off: { label: 'Éteint', color: '#374151' },
+  probleme: { label: 'Problème', color: '#c62828' },
+  maintenance: { label: 'Maintenance', color: '#b45309' },
+  reglage: { label: 'Réglage', color: '#1d4ed8' },
+};
 import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -66,8 +77,14 @@ function Centers() {
   const qc = useQueryClient();
   const { data: rows = [], isLoading } = useQuery({ queryKey: ['work-centers'], queryFn: routingsApi.workCenters });
   const [showForm, setShowForm] = useState(false);
+  const [oeeFor, setOeeFor] = useState<{ id: string; name: string } | null>(null);
   const toggle = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) => routingsApi.setWorkCenterActive(id, active),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['work-centers'] }),
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
+  const setStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) => routingsApi.setWorkCenterStatus(id, status),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['work-centers'] }),
     onError: e => notify.error(apiErrorMessage(e)),
   });
@@ -78,24 +95,34 @@ function Centers() {
       </Toolbar>
       <div style={{ overflowX: 'auto' }}>
         <table className="odoo-table">
-          <thead><tr><th>Poste</th><th style={{ textAlign: 'right' }}>Coût horaire</th><th style={{ textAlign: 'right' }}>Capacité</th><th style={{ textAlign: 'right' }}>Utilisé dans</th><th>État</th><th style={{ width: 48 }} /></tr></thead>
+          <thead><tr><th>Poste</th><th style={{ textAlign: 'right' }}>Coût horaire</th><th style={{ textAlign: 'right' }}>Capacité</th><th>Statut</th><th style={{ textAlign: 'right' }}>Utilisé dans</th><th>État</th><th style={{ width: 90 }} /></tr></thead>
           <tbody>
-            {isLoading && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
-            {!isLoading && rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucun poste. Créez-en un (ex. Pétrin, Four, Façonnage) avec son coût horaire.</td></tr>}
+            {isLoading && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
+            {!isLoading && rows.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucun poste. Créez-en un (ex. Pétrin, Four, Façonnage) avec son coût horaire.</td></tr>}
             {rows.map(w => (
               <tr key={w.id} style={{ opacity: w.is_active ? 1 : 0.6 }}>
                 <td style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}><Wrench size={13} style={{ color: 'var(--theme-accent)' }} /> {w.name}</td>
                 <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(w.hourly_cost)}<span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}> /h</span></td>
                 <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{w.capacity_minutes_per_day != null ? <>{w.capacity_minutes_per_day}<span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}> min/j</span></> : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}</td>
+                <td>
+                  <select value={w.status ?? 'idle'} onChange={e => setStatus.mutate({ id: w.id, status: e.target.value })}
+                    style={{ fontSize: '0.78rem', padding: '0.2rem 0.3rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: WC_STATUS[w.status ?? 'idle']?.color, fontWeight: 600 }}>
+                    {Object.entries(WC_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </td>
                 <td style={{ textAlign: 'right' }}>{w.operations_count} op.</td>
                 <td><span className={`odoo-tag ${w.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{w.is_active ? 'Actif' : 'Inactif'}</span></td>
-                <td style={{ textAlign: 'right' }}><button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem' }} title={w.is_active ? 'Désactiver' : 'Activer'} onClick={() => toggle.mutate({ id: w.id, active: !w.is_active })}><Power size={12} /></button></td>
+                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', marginRight: 4 }} title="TRS & arrêts" onClick={() => setOeeFor({ id: w.id, name: w.name })}><Gauge size={12} /></button>
+                  <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem' }} title={w.is_active ? 'Désactiver' : 'Activer'} onClick={() => toggle.mutate({ id: w.id, active: !w.is_active })}><Power size={12} /></button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       {showForm && <CenterForm onClose={() => setShowForm(false)} onSaved={() => { qc.invalidateQueries({ queryKey: ['work-centers'] }); setShowForm(false); }} />}
+      {oeeFor && <WorkCenterOeeModal workCenter={oeeFor} onClose={() => setOeeFor(null)} />}
     </div>
   );
 }

@@ -1,6 +1,11 @@
 import api from './client';
 
-export interface WorkCenter { id: string; name: string; hourly_cost: number; is_active: boolean; operations_count: number; capacity_minutes_per_day: number | null }
+export interface WorkCenter { id: string; name: string; hourly_cost: number; is_active: boolean; operations_count: number; capacity_minutes_per_day: number | null; status?: string }
+export interface Oee {
+  downtime_min: number; planned_min: number; standard_min: number; reel_min: number; active_days: number;
+  availability_pct: number | null; performance_pct: number | null; trs_pct: number | null;
+}
+export interface Downtime { id: string; from_time: string; to_time: string | null; reason: string; notes: string | null; operator_name: string | null; minutes: number }
 export interface RoutingRow {
   id: string; name: string; product_id: string | null; product_name: string | null; notes: string | null;
   is_active: boolean; total_minutes: number; labor_cost: number; operations_count: number; batch_size: number;
@@ -25,4 +30,14 @@ export const routingsApi = {
     api.put(`/routings/${id}`, data).then(r => r.data.data),
   setActive: (id: string, active: boolean) => api.post(`/routings/${id}/active`, { active }).then(r => r.data.data),
   remove: (id: string) => api.delete(`/routings/${id}`).then(r => r.data),
+
+  // Statut & arrêts machine / TRS (mig 402) — roadmap lot 7
+  setWorkCenterStatus: (id: string, status: string): Promise<WorkCenter> =>
+    api.post(`/routings/work-centers/${id}/status`, { status }).then(r => r.data.data),
+  recordDowntime: (id: string, data: { fromTime: string; toTime?: string | null; reason: string; notes?: string | null }) =>
+    api.post(`/routings/work-centers/${id}/downtime`, data).then(r => r.data.data),
+  listDowntime: (id: string, from?: string, to?: string): Promise<Downtime[]> =>
+    api.get(`/routings/work-centers/${id}/downtime`, { params: { from, to } }).then(r => r.data.data),
+  oee: (id: string, from?: string, to?: string): Promise<Oee> =>
+    api.get(`/routings/work-centers/${id}/oee`, { params: { from, to } }).then(r => r.data.data),
 };

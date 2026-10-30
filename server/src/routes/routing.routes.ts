@@ -12,6 +12,11 @@ router.get('/work-centers', ...AM, routingController.listWorkCenters);
 router.post('/work-centers', ...AM, routingController.createWorkCenter);
 router.put('/work-centers/:id', ...AM, routingController.updateWorkCenter);
 router.post('/work-centers/:id/active', ...AM, routingController.setWorkCenterActive);
+// Statut & arrêts machine / TRS (mig 402) — roadmap lot 7
+router.post('/work-centers/:id/status', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), routingController.setWorkCenterStatus);
+router.post('/work-centers/:id/downtime', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), routingController.recordDowntime);
+router.get('/work-centers/:id/downtime', ...AM, routingController.listDowntime);
+router.get('/work-centers/:id/oee', ...AM, routingController.getOee);
 router.get('/', ...AM, routingController.listRoutings);
 router.post('/', ...AM, routingController.createRouting);
 router.get('/:id', ...AM, routingController.getRouting);
