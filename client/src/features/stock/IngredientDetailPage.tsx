@@ -20,6 +20,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import CategoryCascadeSelector, { CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
 import { useStockCategories } from './useStockCategories';
 import { containerOf, containerLabel, type ContainerDef } from '../../utils/container';
+import SupplierItemsSection from './SupplierItemsSection';
 
 const CATEGORY_COLORS: Record<string, string> = {
   farines: 'bg-amber-100 text-amber-700',
@@ -104,7 +105,7 @@ export default function IngredientDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'lots' | 'history'>('lots');
+  const [activeTab, setActiveTab] = useState<'lots' | 'suppliers' | 'history'>('lots');
   const [expandedLot, setExpandedLot] = useState<string | null>(null);
   const [showEdit, setShowEdit] = useState(false);
   const [showAdjust, setShowAdjust] = useState(false);
@@ -410,11 +411,22 @@ export default function IngredientDetailPage() {
           className={`odoo-tab ${activeTab === 'lots' ? 'active' : ''}`}>
           <ShieldCheck size={13} /> Lots &amp; Traçabilité
         </button>
+        <button onClick={() => setActiveTab('suppliers')}
+          className={`odoo-tab ${activeTab === 'suppliers' ? 'active' : ''}`}>
+          <Truck size={13} /> Fournisseurs
+        </button>
         <button onClick={() => setActiveTab('history')}
           className={`odoo-tab ${activeTab === 'history' ? 'active' : ''}`}>
           <Clock size={13} /> Historique
         </button>
       </div>
+
+      {/* ══════ FOURNISSEURS TAB (mig 404 — Achats lot prix P1) ══════ */}
+      {activeTab === 'suppliers' && id && (
+        <div className="odoo-section" style={{ padding: '0.75rem 1rem' }}>
+          <SupplierItemsSection kind="ingredient" purchasableId={id} unit={unit} />
+        </div>
+      )}
 
       {/* ══════ LOTS TAB ══════ */}
       {activeTab === 'lots' && (

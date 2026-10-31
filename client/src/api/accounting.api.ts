@@ -44,6 +44,26 @@ export const suppliersApi = {
   remove: (id: string) => api.delete(`/suppliers/${id}`),
 };
 
+// Fiche article × fournisseur (mig 404) — Achats lot prix P1
+export interface SupplierItem {
+  id: string; supplier_id: string; supplier_name: string; supplier_active: boolean;
+  purchasable_kind: 'ingredient' | 'packaging'; purchasable_id: string;
+  purchasable_name: string | null; purchasable_unit: string | null;
+  supplier_reference: string | null; container_type_id: string | null; container_label: string | null;
+  qty_per_container: number | null; lead_time_days: number | null; moq: number | null;
+  is_preferred: boolean; is_blocked: boolean; notes: string | null;
+}
+export const supplierItemsApi = {
+  byPurchasable: (kind: 'ingredient' | 'packaging', purchasableId: string): Promise<SupplierItem[]> =>
+    api.get('/supplier-items', { params: { kind, purchasableId } }).then(r => r.data.data),
+  bySupplier: (supplierId: string): Promise<SupplierItem[]> =>
+    api.get('/supplier-items', { params: { supplierId } }).then(r => r.data.data),
+  create: (data: Record<string, unknown>): Promise<SupplierItem> => api.post('/supplier-items', data).then(r => r.data.data),
+  update: (id: string, data: Record<string, unknown>): Promise<SupplierItem> => api.patch(`/supplier-items/${id}`, data).then(r => r.data.data),
+  prefer: (id: string) => api.post(`/supplier-items/${id}/prefer`).then(r => r.data.data),
+  archive: (id: string) => api.post(`/supplier-items/${id}/archive`).then(r => r.data.data),
+};
+
 export const expenseCategoriesApi = {
   list: (all = false) => api.get('/expense-categories', { params: all ? { all: 'true' } : {} }).then(r => r.data.data),
   children: (parentId: string) => api.get(`/expense-categories/${parentId}/children`).then(r => r.data.data),
