@@ -117,12 +117,24 @@ export const purchaseRequestRepository = {
     // Regle « contenant entier » : la demande est arrondie au contenant superieur
     // (un manquant de 1 kg en sacs de 2,5 kg = 1 sac).
     const { qty } = await applyContainerRule(db, data.ingredientId, data.quantity);
+    // Auto-sourcing (mig 404) : à défaut de fournisseur précisé, on prend le
+    // fournisseur PRÉFÉRÉ de l'article (fiche article × fournisseur). Profite aussi
+    // aux demandes générées par le MRP (lot 8), qui n'en précisent pas.
+    let supplierId = data.supplierId || null;
+    if (!supplierId) {
+      const pref = await db.query(
+        `SELECT supplier_id FROM supplier_items
+         WHERE purchasable_kind = 'ingredient' AND purchasable_id = $1
+           AND is_preferred AND NOT is_blocked AND archived_at IS NULL
+         LIMIT 1`, [data.ingredientId]);
+      supplierId = pref.rows[0]?.supplier_id ?? null;
+    }
     const result = await db.query(
       `INSERT INTO purchase_requests (ingredient_id, supplier_id, quantity, unit, reason, note, requested_by, store_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [
         data.ingredientId,
-        data.supplierId || null,
+        supplierId,
         qty,
         data.unit,
         data.reason || 'manual',
