@@ -62,4 +62,21 @@ export const supplierItemController = {
     if (!d) { res.status(404).json({ success: false, error: { message: 'Introuvable' } }); return; }
     res.json({ success: true, data: d });
   },
+
+  // ── Prix datés (mig 405) — lot prix P2 ──
+  async listPrices(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await supplierItemRepository.listPrices(req.params.id as string) });
+  },
+  async addPrice(req: AuthRequest, res: Response) {
+    const b = req.body as Record<string, unknown>;
+    if (b.price == null || b.price === '' || Number(b.price) < 0) { res.status(400).json({ success: false, error: { message: 'Prix requis (≥ 0)' } }); return; }
+    const d = await supplierItemRepository.addPrice(req.params.id as string, {
+      price: Number(b.price),
+      currency: b.currency ? String(b.currency) : null,
+      priceUnit: b.priceUnit === 'container' ? 'container' : 'base',
+      validFrom: b.validFrom ? String(b.validFrom) : null,
+    }, req.user!.userId);
+    if (!d) { res.status(404).json({ success: false, error: { message: 'Introuvable' } }); return; }
+    res.status(201).json({ success: true, data: d });
+  },
 };

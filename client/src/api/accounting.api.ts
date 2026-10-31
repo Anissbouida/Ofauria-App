@@ -52,6 +52,11 @@ export interface SupplierItem {
   supplier_reference: string | null; container_type_id: string | null; container_label: string | null;
   qty_per_container: number | null; lead_time_days: number | null; moq: number | null;
   is_preferred: boolean; is_blocked: boolean; notes: string | null;
+  current_price: number | null; current_price_unit: string | null; current_price_from: string | null; current_price_source: string | null;
+}
+export interface SupplierItemPrice {
+  id: string; price: number; currency: string; price_unit: string;
+  valid_from: string; valid_to: string | null; source: string; created_at: string; created_by_name: string | null;
 }
 export const supplierItemsApi = {
   byPurchasable: (kind: 'ingredient' | 'packaging', purchasableId: string): Promise<SupplierItem[]> =>
@@ -62,6 +67,9 @@ export const supplierItemsApi = {
   update: (id: string, data: Record<string, unknown>): Promise<SupplierItem> => api.patch(`/supplier-items/${id}`, data).then(r => r.data.data),
   prefer: (id: string) => api.post(`/supplier-items/${id}/prefer`).then(r => r.data.data),
   archive: (id: string) => api.post(`/supplier-items/${id}/archive`).then(r => r.data.data),
+  prices: (id: string): Promise<SupplierItemPrice[]> => api.get(`/supplier-items/${id}/prices`).then(r => r.data.data),
+  addPrice: (id: string, data: { price: number; validFrom?: string; priceUnit?: string }): Promise<SupplierItem> =>
+    api.post(`/supplier-items/${id}/prices`, data).then(r => r.data.data),
 };
 
 export const expenseCategoriesApi = {

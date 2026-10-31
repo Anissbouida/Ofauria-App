@@ -6,6 +6,7 @@ import { FLAGS } from '../config/feature-flags.js';
 import { postOrQueue, postGoodsReceiptsForPo } from '../services/ledger-posting.service.js';
 import { closePurchaseRequestsForOrder } from './purchase-request.helper.js';
 import { fromInvoice, persistEntry, reverseEntriesForSource } from '../services/journal-generator.service.js';
+import { recordSupplierPriceAtReception } from './supplier-item.repository.js';
 
 // UUIDs racine/parent des categories de depenses (cf. migration 059).
 const CAT_MATIERES_PREMIERES = '10000000-0000-0000-0000-000000000003'; // racine niveau 1
@@ -633,6 +634,16 @@ export const receptionVoucherRepository = {
             `UPDATE ingredients SET unit_cost = $1 WHERE id = $2`,
             [newUnitCost, item.ingredientId]
           );
+        }
+
+        // Prix fournisseur daté (mig 405, lot prix P2) : trace le prix par
+        // fournisseur à chaque réception (crée la fiche article × fournisseur si
+        // besoin ; n'empile rien si le prix est inchangé). N'altère pas le CMUP.
+        if (item.ingredientId && effectiveCost && effectiveCost > 0) {
+          await recordSupplierPriceAtReception(client, {
+            supplierId: po.supplier_id, kind: 'ingredient', purchasableId: item.ingredientId,
+            priceBase: effectiveCost, sourceDocId: rviId, userId: data.receivedBy, storeId: data.storeId || null,
+          });
         }
 
         // Insert inventory transaction with traceability

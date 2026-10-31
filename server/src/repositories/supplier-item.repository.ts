@@ -13,12 +13,15 @@ const BASE_SELECT = `
          s.name AS supplier_name, s.is_active AS supplier_active,
          ct.label AS container_label,
          COALESCE(i.name, p.name) AS purchasable_name,
-         COALESCE(i.unit, p.unit) AS purchasable_unit
+         COALESCE(i.unit, p.unit) AS purchasable_unit,
+         cp.price AS current_price, cp.price_unit AS current_price_unit,
+         cp.valid_from AS current_price_from, cp.source AS current_price_source
   FROM supplier_items si
   JOIN suppliers s ON s.id = si.supplier_id
   LEFT JOIN ref_entries ct ON ct.id = si.container_type_id
   LEFT JOIN ingredients i ON si.purchasable_kind = 'ingredient' AND i.id = si.purchasable_id
-  LEFT JOIN packaging_items p ON si.purchasable_kind = 'packaging' AND p.id = si.purchasable_id`;
+  LEFT JOIN packaging_items p ON si.purchasable_kind = 'packaging' AND p.id = si.purchasable_id
+  LEFT JOIN v_current_supplier_price cp ON cp.supplier_item_id = si.id`;
 
 type CreateInput = {
   supplierId: string; kind: 'ingredient' | 'packaging'; purchasableId: string;
@@ -117,4 +120,67 @@ export const supplierItemRepository = {
       return { ok: true as const };
     } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
   },
+
+  // ── Prix datés (mig 405) — Achats lot prix P2 ──
+  // Ajoute un prix : ferme le précédent « en vigueur » puis ouvre le nouveau.
+  async addPrice(supplierItemId: string, input: { price: number; currency?: string | null; priceUnit?: string | null; validFrom?: string | null }, userId: string | null) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      if (!(await client.query(`SELECT 1 FROM supplier_items WHERE id=$1`, [supplierItemId])).rowCount) { await client.query('ROLLBACK'); return null; }
+      await client.query(
+        `UPDATE supplier_item_prices SET valid_to = GREATEST(valid_from, COALESCE($2::date, CURRENT_DATE))
+         WHERE supplier_item_id=$1 AND valid_to IS NULL`, [supplierItemId, input.validFrom ?? null]);
+      await client.query(
+        `INSERT INTO supplier_item_prices (supplier_item_id, price, currency, price_unit, valid_from, source, created_by)
+         VALUES ($1,$2,COALESCE($3,'MAD'),COALESCE($4,'base'),COALESCE($5::date,CURRENT_DATE),'manual',$6)`,
+        [supplierItemId, input.price, input.currency ?? null, input.priceUnit ?? null, input.validFrom ?? null, userId]);
+      await client.query('COMMIT');
+      return this.getById(supplierItemId);
+    } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+  },
+
+  async listPrices(supplierItemId: string) {
+    return (await db.query(
+      `SELECT sip.id, sip.price, sip.currency, sip.price_unit, sip.valid_from, sip.valid_to, sip.source, sip.created_at,
+              u.first_name AS created_by_name
+       FROM supplier_item_prices sip LEFT JOIN users u ON u.id = sip.created_by
+       WHERE sip.supplier_item_id=$1 ORDER BY sip.valid_from DESC, sip.created_at DESC`, [supplierItemId])).rows;
+  },
 };
+
+/**
+ * Alimentation AUTOMATIQUE du prix fournisseur à la réception (mig 405).
+ * Trouve (ou crée) la fiche article × fournisseur et ajoute un prix daté
+ * `source='reception'` si le prix a changé. À appeler dans la transaction de
+ * réception avec le `client` courant. Best-effort : ne fait rien si données
+ * incomplètes ; n'empile pas de doublon si le prix est inchangé.
+ */
+export async function recordSupplierPriceAtReception(
+  client: import('pg').PoolClient,
+  args: { supplierId?: string | null; kind: 'ingredient' | 'packaging'; purchasableId?: string | null; priceBase?: number | null; sourceDocId?: string | null; userId?: string | null; storeId?: string | null }
+) {
+  const { supplierId, kind, purchasableId } = args;
+  const priceBase = args.priceBase ?? 0;
+  if (!supplierId || !purchasableId || !(priceBase > 0)) return;
+  let si = (await client.query(
+    `SELECT id FROM supplier_items WHERE supplier_id=$1 AND purchasable_kind=$2 AND purchasable_id=$3 AND archived_at IS NULL`,
+    [supplierId, kind, purchasableId])).rows[0];
+  if (!si) {
+    const n = (await client.query(
+      `SELECT count(*)::int n FROM supplier_items WHERE purchasable_kind=$1 AND purchasable_id=$2 AND archived_at IS NULL`,
+      [kind, purchasableId])).rows[0].n;
+    si = (await client.query(
+      `INSERT INTO supplier_items (supplier_id, purchasable_kind, purchasable_id, is_preferred, store_id, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [supplierId, kind, purchasableId, n === 0, args.storeId ?? null, args.userId ?? null])).rows[0];
+  }
+  const rounded = Math.round(priceBase * 10000) / 10000;
+  const cur = (await client.query(`SELECT price FROM supplier_item_prices WHERE supplier_item_id=$1 AND valid_to IS NULL`, [si.id])).rows[0];
+  if (cur && Math.abs(Number(cur.price) - rounded) < 0.0001) return; // inchangé
+  await client.query(`UPDATE supplier_item_prices SET valid_to = CURRENT_DATE WHERE supplier_item_id=$1 AND valid_to IS NULL`, [si.id]);
+  await client.query(
+    `INSERT INTO supplier_item_prices (supplier_item_id, price, price_unit, valid_from, source, source_doc_id, created_by)
+     VALUES ($1,$2,'base',CURRENT_DATE,'reception',$3,$4)`,
+    [si.id, rounded, args.sourceDocId ?? null, args.userId ?? null]);
+}
