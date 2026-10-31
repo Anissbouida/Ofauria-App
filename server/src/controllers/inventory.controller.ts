@@ -205,6 +205,10 @@ export const inventoryController = {
     const data = await inventoryRepository.stockAging(req.user!.storeId);
     res.json({ success: true, data });
   },
+  /** GET /inventory/price-health — anomalies de prix catalogue (mig 406, lot prix P5). */
+  async priceHealth(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await ingredientRepository.priceHealth() });
+  },
   /* ── Clôture de stock par période (mig 381) ── */
   /** GET /inventory/closings/preview — valorisation courante (avant de clôturer). */
   async closingPreview(req: AuthRequest, res: Response) {

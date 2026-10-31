@@ -16,6 +16,7 @@ import POSPage from './features/pos/POSPage';
 import CustomersPage from './features/customers/CustomersPage';
 import StockPage from './features/stock/StockPage';
 import IngredientDetailPage from './features/stock/IngredientDetailPage';
+import PriceHealthPage from './features/stock/PriceHealthPage';
 import RecipesPage from './features/recipes/RecipesPage';
 import NomenclaturePage from './features/recipes/NomenclaturePage';
 import PreparationPage from './features/recipes/PreparationPage';
@@ -89,6 +90,7 @@ export default function App() {
               {/* Module Stock = ex-Économat (/inventory) + ex-Pesage (/warehouse), fusion du
                   2026-10-11. Les anciennes URL redirigent (bookmarks, notifications deja emises). */}
               <Route path="/stock" element={<StockPage />} />
+              <Route path="/stock/price-health" element={<PriceHealthPage />} />
               <Route path="/stock/:id" element={<IngredientDetailPage />} />
               <Route path="/stock/bsi/:id" element={<BonSortiePrelevementPage />} />
               <Route path="/inventory" element={<LegacyRedirect from="inventory" to="/stock" />} />

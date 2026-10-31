@@ -21,6 +21,7 @@ router.get('/consumption', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)
 router.get('/purchases', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.purchases);
 // Age du stock matiere : lots actifs par anciennete (admin/gerant)
 router.get('/aging', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.aging);
+router.get('/price-health', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.priceHealth);
 
 // Cloture de stock par periode (mig 381) : instantane valorise (admin/gerant)
 router.get('/closings/preview', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.closingPreview);

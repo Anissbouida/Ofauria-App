@@ -16,6 +16,10 @@ export const inventoryApi = {
     api.get('/inventory/purchases', { params }).then(r => r.data.data),
   /** Age du stock matiere : lots actifs par anciennete (tranches + detail). */
   aging: (): Promise<StockAging> => api.get('/inventory/aging').then(r => r.data.data),
+  priceHealth: (): Promise<{
+    rows: { ingredient_id: string; name: string; unit: string; catalogue_cost: number | null; lot_avg_cost: number | null; lot_qty: number; lot_value: number; catalogue_value: number; value_gap: number; flag: string; divergence_pct: number | null; used_in_recipe: boolean }[];
+    summary: { ecart_prix: number; prix_manquant: number; total_gap: number };
+  }> => api.get('/inventory/price-health').then(r => r.data.data),
 
   /* Cloture de stock par periode (mig 381). */
   closingPreview: (): Promise<StockValuation> => api.get('/inventory/closings/preview').then(r => r.data.data),

@@ -18,7 +18,7 @@ import {
   Clock, X, Boxes, CalendarClock, ChevronRight, ChevronDown, ChevronLeft,
   ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen,
   Plus, List, LayoutGrid, ShoppingCart, Upload, Download, BarChart3,
-  ClipboardList, ClipboardCheck, Archive, Beaker, Loader2, ListTree, Lock,
+  ClipboardList, ClipboardCheck, Archive, Beaker, Loader2, ListTree, Lock, ShieldAlert,
 } from 'lucide-react';
 import IngredientImportModal from './IngredientImportModal';
 import ConsommationTab from './ConsommationTab';
@@ -339,7 +339,7 @@ export default function StockPage() {
   // Rubriques standard (ModuleShell). Les deux zones du stock (réserve scellée, poste
   // de pesée entamé) deviennent deux écrans de la barre latérale ; le registre et
   // l'analyse sont des rapports. Hors magasin (ni magasinier, ni gérant) : la réserve seule.
-  type StockView = Exclude<StockTab, 'stock'> | 'reserve' | 'pesee' | 'referentiel';
+  type StockView = Exclude<StockTab, 'stock'> | 'reserve' | 'pesee' | 'referentiel' | 'price-health';
   const views: ModuleView<StockView>[] = [
     { key: 'reserve', label: 'Réserve', icon: Package, section: 'operations' },
     { key: 'pesee', label: 'Poste de pesée', icon: Beaker, section: 'operations', hidden: !isWarehouseUser },
@@ -356,6 +356,8 @@ export default function StockPage() {
     { key: 'aging', label: 'Âge du stock', icon: Clock, section: 'reports', hidden: !canManageIngredients },
     // Clôture de stock : instantané valorisé par période (admin/gérant).
     { key: 'closing', label: 'Clôtures', icon: Lock, section: 'reports', hidden: !canManageIngredients },
+    // Santé des prix (mig 406) : anomalies de prix catalogue à corriger (admin/gérant).
+    { key: 'price-health', label: 'Santé des prix', icon: ShieldAlert, section: 'reports', hidden: !canManageIngredients, href: '/stock/price-health' },
     // Types de contenant, catégories : tenus dans Paramètres › Référentiel.
     { key: 'referentiel', label: 'Référentiels', icon: ListTree, section: 'setup', hidden: !hasModule('settings'), href: '/settings?page=referentiel', external: true },
   ];
@@ -366,7 +368,7 @@ export default function StockPage() {
       ['tab', 'view', 'bon', 'ingredient'].forEach(k => searchParams.delete(k));
       if (key === 'pesee') searchParams.set('zone', 'entame'); else searchParams.delete('zone');
       setSearchParams(searchParams);
-    } else if (key !== 'referentiel') {
+    } else if (key !== 'referentiel' && key !== 'price-health') {
       changeEconoTab(key);
     }
   };

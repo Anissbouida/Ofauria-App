@@ -704,4 +704,29 @@ export const ingredientRepository = {
       client.release();
     }
   },
+
+  /** Santé des prix (mig 406) : anomalies de prix catalogue à corriger. */
+  async priceHealth() {
+    const rows = (await db.query(
+      `SELECT ingredient_id, name, unit,
+              catalogue_cost::float8, lot_avg_cost::float8, lot_qty::float8,
+              lot_value::float8, catalogue_value::float8, value_gap::float8,
+              flag, divergence_pct::float8, used_in_recipe
+       FROM v_ingredient_price_health
+       WHERE flag <> 'ok'
+       ORDER BY abs(value_gap) DESC NULLS LAST, name`)).rows;
+    const sums = (await db.query(
+      `SELECT flag, count(*)::int n, ROUND(SUM(abs(value_gap)))::float8 gap
+       FROM v_ingredient_price_health WHERE flag <> 'ok' GROUP BY flag`)).rows as { flag: string; n: number; gap: number }[];
+    const ecart = sums.find(s => s.flag === 'ecart_prix');
+    const manquant = sums.find(s => s.flag === 'prix_manquant');
+    return {
+      rows,
+      summary: {
+        ecart_prix: ecart?.n ?? 0,
+        prix_manquant: manquant?.n ?? 0,
+        total_gap: Math.round(ecart?.gap ?? 0),
+      },
+    };
+  },
 };
