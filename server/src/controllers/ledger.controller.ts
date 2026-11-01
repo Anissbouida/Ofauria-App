@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { listOutbox, replayOutbox } from '../services/ledger-posting.service.js';
 import { runFullBackfill } from '../services/ledger-backfill.service.js';
+import { ledgerIntegrityRepository } from '../repositories/ledger-integrity.repository.js';
 import {
   accountRepository,
   accountAuxiliaryRepository,
@@ -313,7 +314,9 @@ export const purchaseLedgerController = {
     res.json({ success: true, data: await listOutbox(status) });
   },
   async replay(req: AuthRequest, res: Response) {
-    res.json({ success: true, data: await replayOutbox(req.user!.userId, req.params.id) });
+    const result = await replayOutbox(req.user!.userId, req.params.id);
+    await ledgerIntegrityRepository.logOutboxReplay({ userId: req.user!.userId, ip: req.ip ?? null }, result, req.params.id);
+    res.json({ success: true, data: result });
   },
   async grirOpenItems(req: AuthRequest, res: Response) {
     const { supplierId, minAge } = req.query as Record<string, string>;

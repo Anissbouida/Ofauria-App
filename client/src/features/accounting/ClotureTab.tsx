@@ -10,6 +10,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { apiErrorMessage } from '../../api/errors';
+import IntegrityPanel from './IntegrityPanel';
 
 const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
@@ -28,7 +29,8 @@ const fmt = (v: number | string | null | undefined) =>
  *  - contrôles de clôture par période (bloquants / avertissements), clôture séquentielle ;
  *  - réouverture motivée, verrou réservé à l'administrateur, historique des transitions ;
  *  - réceptions à facturer (compte d'attente 4417 par ligne de BC) ;
- *  - comptabilisations en attente (file ledger_outbox) et rejeu.
+ *  - comptabilisations en attente (file ledger_outbox) et rejeu ;
+ *  - intégrité du grand livre (mig 413) : chaînage, gardes, journal d'audit.
  */
 export default function ClotureTab() {
   const { user } = useAuth();
@@ -110,6 +112,8 @@ export default function ClotureTab() {
         />
         <div style={{ flex: 1 }} />
       </div>
+
+      <IntegrityPanel />
 
       {pendingOutbox.length > 0 && (
         <div style={{ marginBottom: 12 }}>
@@ -320,6 +324,11 @@ function PeriodChecks({ periodId }: { periodId: string }) {
             <div key={e.id} style={{ color: 'var(--theme-text-muted)' }}>
               {new Date(e.at).toLocaleString('fr-FR')} · <strong>{TRANSITION_LABEL[e.to_status] ?? e.to_status}</strong>
               {e.user_name ? ` par ${e.user_name}` : ''}{e.note ? ` — ${e.note}` : ''}
+              {e.chain_hash && (
+                <span title={e.chain_hash} style={{ fontFamily: 'ui-monospace, monospace' }}>
+                  {' '}· ancre n° {e.chain_seq} · {e.chain_hash.slice(0, 16)}…
+                </span>
+              )}
             </div>
           ))}
         </div>

@@ -70,7 +70,43 @@ export const fiscalPeriodsApi = {
 };
 
 export interface CloseCheck { code: string; label: string; item_count: number; amount: string | null; blocking: boolean }
-export interface PeriodEvent { id: string; from_status: string; to_status: string; user_name: string | null; note: string | null; at: string }
+export interface PeriodEvent {
+  id: string; from_status: string; to_status: string; user_name: string | null; note: string | null; at: string;
+  /** Tête de chaîne inscrite à la clôture/verrouillage (mig 413). */
+  chain_seq: number | null; chain_hash: string | null;
+}
+
+/* ═══ Mig 413 : inaltérabilité (chaînage, gardes, journal d'audit) ═══ */
+export interface IntegrityGuard { table: string; trigger: string; role: string; enabled: boolean; missing: boolean }
+export interface IntegrityStatus {
+  sealed: number;
+  unsealed: number;
+  last_sealed_at: string | null;
+  oldest_unsealed_at: string | null;
+  headSeq: number;
+  headHash: string | null;
+  guards: IntegrityGuard[];
+  lastVerify: { at: string; details: { ok: boolean; anomalies: number; checked: number; head_seq: number }; first_name: string | null; last_name: string | null } | null;
+  lastAnchor: { at: string; to_status: string; chain_seq: number; chain_hash: string; month: number; year: number } | null;
+}
+export interface IntegrityAnomaly { seq: number; entry_id: string | null; entry_no: string | null; problem: string }
+export interface IntegrityVerifyResult { ok: boolean; checked: number; headSeq: number; headHash: string | null; anomalies: IntegrityAnomaly[] }
+export type LedgerAuditEvent = 'post' | 'reverse' | 'draft_delete' | 'letter' | 'unletter' | 'reletter' | 'seal' | 'verify' | 'outbox_replay';
+export interface LedgerAuditRow {
+  id: string; at: string; event: LedgerAuditEvent;
+  entry_id: string | null; entry_number: string | null; line_id: string | null; lettrage_id: string | null;
+  client_ip: string | null; details: Record<string, unknown> | null;
+  first_name: string | null; last_name: string | null;
+}
+
+export const integrityApi = {
+  status: (): Promise<IntegrityStatus> => api.get('/ledger/integrity').then(r => r.data.data),
+  seal: (): Promise<{ sealed: number; headSeq: number; headHash: string | null }> =>
+    api.post('/ledger/integrity/seal').then(r => r.data.data),
+  verify: (): Promise<IntegrityVerifyResult> => api.post('/ledger/integrity/verify').then(r => r.data.data),
+  auditLog: (params: { event?: LedgerAuditEvent; before?: string; limit?: number }): Promise<LedgerAuditRow[]> =>
+    api.get('/ledger/audit-log', { params }).then(r => r.data.data),
+};
 
 /* ═══ Mig 311 (D8) : comptabilité des achats ═══ */
 export interface OutboxItem {

@@ -2,6 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { journalTemplateRepository as tplRepo } from '../repositories/journal-template.repository.js';
+import { ledgerIntegrityRepository as integrityRepo } from '../repositories/ledger-integrity.repository.js';
 import {
   planComptableController,
   accountAuxiliaryController,
@@ -114,6 +115,29 @@ ledgerRouter.post('/entry-templates/:id/instantiate', ...AM, validateUuidParams(
   const out = await tplRepo.instantiate(req.params.id, { ...r.data, storeId: req.user!.storeId ?? null, userId: req.user!.userId });
   if ('error' in out) { res.status(400).json({ success: false, error: { message: out.error } }); return; }
   res.status(201).json({ success: true, data: out });
+}));
+
+// Inaltérabilité (mig 413) : état de la chaîne et des gardes, scellement,
+// vérification, journal d'audit des actions comptables.
+const actorOf = (req: AuthRequest) => ({ userId: req.user!.userId, ip: req.ip ?? null });
+ledgerRouter.get('/integrity', ...AM, asyncHandler(async (_req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await integrityRepo.status() });
+}));
+ledgerRouter.post('/integrity/seal', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await integrityRepo.seal(actorOf(req)) });
+}));
+ledgerRouter.post('/integrity/verify', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await integrityRepo.verify(actorOf(req)) });
+}));
+ledgerRouter.get('/audit-log', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({
+    event: z.enum(['post', 'reverse', 'draft_delete', 'letter', 'unletter', 'reletter', 'seal', 'verify', 'outbox_replay']).optional(),
+    entryId: z.string().uuid().optional(),
+    before: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional(),
+  }).safeParse(req.query);
+  if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
+  res.json({ success: true, data: await integrityRepo.auditLog(r.data) });
 }));
 
 // Reconciliation legacy <-> ledger

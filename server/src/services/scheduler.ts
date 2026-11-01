@@ -3,6 +3,7 @@ import { logger } from '../utils/logger.js';
 import { processOutbox } from './mailer.js';
 import { maintenanceRepository } from '../repositories/maintenance.repository.js';
 import { dunningRepository } from '../repositories/dunning.repository.js';
+import { ledgerIntegrityRepository } from '../repositories/ledger-integrity.repository.js';
 import { expireDue as loyaltyExpireDue } from './loyalty.js';
 
 /**
@@ -172,6 +173,7 @@ export const JOBS: Record<string, Handler> = {
   dunning_run: () => dunningRepository.run(),
   crm_activities_due: crmActivitiesDue,
   loyalty_expire: loyaltyExpireDue,
+  ledger_seal: () => ledgerIntegrityRepository.sealAuto(),
   housekeeping,
 };
 
