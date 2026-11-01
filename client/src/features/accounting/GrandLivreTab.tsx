@@ -23,7 +23,9 @@ function n(v: string | number): string {
   return num.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function sign(v: number): string {
-  return `${n(Math.abs(v))} ${v >= 0 ? 'D' : 'C'}`;
+  // n() efface les zéros (colonnes de mouvements) ; un solde nul s'affiche, lui.
+  const abs = n(Math.abs(v));
+  return abs ? `${abs} ${v >= 0 ? 'D' : 'C'}` : '0,00';
 }
 function fmtDate(raw: string | null): string {
   if (!raw) return '';
@@ -175,7 +177,7 @@ export default function GrandLivreTab() {
                   <span style={{ fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.label}</span>
                   <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{a.movements.length} mvt</span>
                   <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', minWidth: 180, textAlign: 'right' }}>
-                    <span style={{ color: 'var(--theme-text-muted)' }}>D {n(a.total_debit)} · C {n(a.total_credit)}</span>
+                    <span style={{ color: 'var(--theme-text-muted)' }}>D {n(a.total_debit) || '0,00'} · C {n(a.total_credit) || '0,00'}</span>
                   </span>
                   <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, minWidth: 110, textAlign: 'right', color: a.closing >= 0 ? '#1565c0' : '#c62828' }}>
                     {sign(a.closing)}

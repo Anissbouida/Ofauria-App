@@ -203,6 +203,53 @@ export const fiscalPeriodRepository = {
   },
 };
 
+/* ═══ Exercices (mig 416) : clôture annuelle et à-nouveaux ═══ */
+export const fiscalYearRepository = {
+  /** Exercices avec leurs mois, leur résultat (provisoire tant qu'ouverts) et leurs à-nouveaux. */
+  async findAll() {
+    const r = await db.query(
+      `SELECT fy.id, fy.year, fy.start_date, fy.end_date, fy.status, fy.closed_at, fy.result_amount,
+              fy.chain_seq, fy.chain_hash,
+              TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS closed_by_name,
+              (SELECT count(*)::int FROM fiscal_periods p WHERE p.year = fy.year AND p.status = 'open') AS months_open,
+              (SELECT count(*)::int FROM fiscal_periods p WHERE p.year = fy.year) AS months_total,
+              (SELECT COALESCE(sum(jel.credit - jel.debit), 0)
+                 FROM journal_entry_lines jel
+                 JOIN journal_entries je ON je.id = jel.journal_entry_id
+                 JOIN accounts a ON a.id = jel.account_id
+                WHERE a.account_class IN (6, 7, 8) AND je.status IN ('posted', 'reversed')
+                  AND je.entry_date BETWEEN fy.start_date AND fy.end_date) AS result_to_date,
+              (SELECT COALESCE(json_agg(je.entry_number ORDER BY je.entry_number), '[]'::json)
+                 FROM journal_entries je WHERE je.source_kind = 'opening' AND je.source_id = fy.id) AS opening_entries
+         FROM fiscal_years fy
+         LEFT JOIN users u ON u.id = fy.closed_by
+        ORDER BY fy.year DESC`);
+    return r.rows;
+  },
+
+  async checklist(year: number) {
+    const r = await db.query(`SELECT * FROM fn_fiscal_year_checklist($1::smallint)`, [year]);
+    return r.rows.map((x: Record<string, unknown>) => ({ ...x, item_count: parseInt(String(x.item_count), 10) }));
+  },
+
+  /** Clôture définitive : contrôles, à-nouveaux, verrouillage, scellement (fn_close_fiscal_year). */
+  async close(year: number, userId: string) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
+      const r = await client.query(`SELECT fn_close_fiscal_year($1::smallint, $2) AS result`, [year, userId]);
+      await client.query('COMMIT');
+      return r.rows[0].result;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+};
+
 /* ═══ Reconciliation legacy <-> ledger ═══ */
 export const reconciliationRepository = {
   /**
@@ -377,6 +424,29 @@ export const journalEntryRepository = {
 };
 
 /* ═══ Etats comptables (grand livre, balance, CPC) ═══ */
+/**
+ * Débuts des fenêtres de cumul à une date (mig 416, fn_ledger_window_start) :
+ *   bilan   — lendemain du dernier exercice clôturé (les à-nouveaux y sont datés),
+ *             '-infinity' si aucun exercice n'est clôturé ;
+ *   gestion — début de l'exercice de la date (classes 6 à 8 repartent de zéro).
+ * Les à-nouveaux (source_kind 'opening') entrent dans les soldes d'ouverture,
+ * jamais dans les mouvements d'une période.
+ */
+async function windowStarts(date: string): Promise<{ bilan: string; gestion: string }> {
+  const r = await db.query(
+    `SELECT fn_ledger_window_start($1::date, 1)::text AS bilan, fn_ledger_window_start($1::date, 6)::text AS gestion`,
+    [date]);
+  return r.rows[0];
+}
+
+/** Borne basse de la fenêtre selon la classe du compte (alias a = accounts). */
+const WINDOW_SQL = (bilan: string, gestion: string) =>
+  `je.entry_date >= CASE WHEN a.account_class IN (6, 7, 8) THEN ${gestion}::date ELSE ${bilan}::date END`;
+
+/** Solde d'ouverture à $start : fenêtre, mouvements antérieurs et à-nouveaux du jour. */
+const OPENING_SQL = (start: string, bilan: string, gestion: string) =>
+  `${WINDOW_SQL(bilan, gestion)} AND (je.entry_date < ${start}::date OR (je.source_kind = 'opening' AND je.entry_date <= ${start}::date))`;
+
 export const financialStatementsRepository = {
   /**
    * Grand livre d'un compte : tous les mouvements (lignes posted) d'un compte
@@ -389,18 +459,27 @@ export const financialStatementsRepository = {
     endDate?: string;
     storeId?: string;
   }) {
-    const where: string[] = [`a.code = $1`, `je.status IN ('posted','reversed')`];
-    const values: unknown[] = [params.accountCode];
-    let p = 2;
-    if (params.startDate) { values.push(params.startDate); where.push(`je.entry_date >= $${p++}`); }
-    if (params.endDate)   { values.push(params.endDate);   where.push(`je.entry_date <= $${p++}`); }
-    if (params.storeId)   { values.push(params.storeId);   where.push(`(je.store_id IS NULL OR je.store_id = $${p++})`); }
-
     const account = await db.query(
-      `SELECT code, label, normal_side, account_type FROM accounts WHERE code = $1`,
+      `SELECT code, label, normal_side, account_type, account_class FROM accounts WHERE code = $1`,
       [params.accountCode]
     );
     if (!account.rows[0]) return null;
+
+    // Sans date de début : depuis le début de l'exercice (compte de gestion) ou
+    // depuis les derniers à-nouveaux (compte de bilan) — fenêtre de cumul, mig 416.
+    let startDate = params.startDate;
+    if (!startDate) {
+      const w = await windowStarts(params.endDate ?? new Date().toISOString().slice(0, 10));
+      const s = [6, 7, 8].includes(Number(account.rows[0].account_class)) ? w.gestion : w.bilan;
+      if (s !== '-infinity') startDate = s;
+    }
+
+    const where: string[] = [`a.code = $1`, `je.status IN ('posted','reversed')`, `je.source_kind <> 'opening'`];
+    const values: unknown[] = [params.accountCode];
+    let p = 2;
+    if (startDate)        { values.push(startDate);        where.push(`je.entry_date >= $${p++}`); }
+    if (params.endDate)   { values.push(params.endDate);   where.push(`je.entry_date <= $${p++}`); }
+    if (params.storeId)   { values.push(params.storeId);   where.push(`(je.store_id IS NULL OR je.store_id = $${p++})`); }
 
     const rows = await db.query(
       `SELECT
@@ -418,12 +497,14 @@ export const financialStatementsRepository = {
       values
     );
 
-    // Solde d'ouverture : mouvements anterieurs a startDate (si fourni).
+    // Solde d'ouverture : fenêtre de cumul, mouvements antérieurs à startDate
+    // et à-nouveaux du jour.
     let opening = 0;
-    if (params.startDate) {
-      const openWhere: string[] = [`a.code = $1`, `je.status IN ('posted','reversed')`, `je.entry_date < $2`];
-      const openValues: unknown[] = [params.accountCode, params.startDate];
-      let op = 3;
+    if (startDate) {
+      const w = await windowStarts(startDate);
+      const openWhere: string[] = [`a.code = $1`, `je.status IN ('posted','reversed')`, OPENING_SQL('$2', '$3', '$4')];
+      const openValues: unknown[] = [params.accountCode, startDate, w.bilan, w.gestion];
+      let op = 5;
       if (params.storeId) { openValues.push(params.storeId); openWhere.push(`(je.store_id IS NULL OR je.store_id = $${op++})`); }
       const openRes = await db.query(
         `SELECT COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS bal
@@ -449,7 +530,7 @@ export const financialStatementsRepository = {
     startDate?: string; endDate?: string; storeId?: string;
     accountCode?: string; accountClass?: number;
   }) {
-    const where: string[] = [`je.status IN ('posted','reversed')`];
+    const where: string[] = [`je.status IN ('posted','reversed')`, `je.source_kind <> 'opening'`];
     const values: unknown[] = [];
     let p = 1;
     if (params.startDate)   { values.push(params.startDate);   where.push(`je.entry_date >= $${p++}`); }
@@ -474,25 +555,27 @@ export const financialStatementsRepository = {
       values
     );
 
-    // Soldes d'ouverture par compte (mouvements anterieurs a startDate).
-    const openingByCode = new Map<string, number>();
+    // Soldes d'ouverture par compte : fenêtre de cumul (mig 416), mouvements
+    // antérieurs à startDate et à-nouveaux du jour.
+    const openingByCode = new Map<string, { label: string; normal_side: string; bal: number }>();
     if (params.startDate) {
-      const ow: string[] = [`je.status IN ('posted','reversed')`, `je.entry_date < $1`];
-      const ov: unknown[] = [params.startDate];
-      let op = 2;
+      const w = await windowStarts(params.startDate);
+      const ow: string[] = [`je.status IN ('posted','reversed')`, OPENING_SQL('$1', '$2', '$3')];
+      const ov: unknown[] = [params.startDate, w.bilan, w.gestion];
+      let op = 4;
       if (params.storeId)     { ov.push(params.storeId);     ow.push(`(je.store_id IS NULL OR je.store_id = $${op++})`); }
       if (params.accountCode) { ov.push(params.accountCode); ow.push(`a.code = $${op++}`); }
       if (params.accountClass){ ov.push(params.accountClass);ow.push(`a.account_class = $${op++}`); }
       const ores = await db.query(
-        `SELECT a.code, COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS bal
+        `SELECT a.code, a.label, a.normal_side, COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS bal
          FROM journal_entry_lines jel
          JOIN journal_entries je ON je.id = jel.journal_entry_id
          JOIN accounts a ON a.id = jel.account_id
          WHERE ${ow.join(' AND ')}
-         GROUP BY a.code`,
+         GROUP BY a.code, a.label, a.normal_side`,
         ov
       );
-      for (const r of ores.rows) openingByCode.set(r.code, parseFloat(r.bal) || 0);
+      for (const r of ores.rows) openingByCode.set(r.code, { label: r.label, normal_side: r.normal_side, bal: parseFloat(r.bal) || 0 });
     }
 
     // Regroupement par compte.
@@ -507,7 +590,7 @@ export const financialStatementsRepository = {
       if (!map.has(code)) {
         map.set(code, {
           code, label: m.account_label as string, normal_side: m.normal_side as string,
-          opening: openingByCode.get(code) || 0,
+          opening: openingByCode.get(code)?.bal || 0,
           total_debit: 0, total_credit: 0, movements: [],
         });
       }
@@ -520,6 +603,14 @@ export const financialStatementsRepository = {
       });
       blk.total_debit += parseFloat(m.debit as string) || 0;
       blk.total_credit += parseFloat(m.credit as string) || 0;
+    }
+
+    // Comptes porteurs d'un solde sans mouvement sur la période : ils figurent au
+    // grand livre (un compte bancaire dormant, le capital, un fournisseur inactif).
+    for (const [code, o] of openingByCode) {
+      if (!map.has(code) && Math.round(o.bal * 100) !== 0) {
+        map.set(code, { code, label: o.label, normal_side: o.normal_side, opening: o.bal, total_debit: 0, total_credit: 0, movements: [] });
+      }
     }
 
     const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -547,11 +638,12 @@ export const financialStatementsRepository = {
   },
 
   /**
-   * Balance : pour chaque compte ayant au moins un mouvement sur la periode,
-   * total debit, total credit et solde. Triee par code.
+   * Balance : pour chaque compte mouvementé sur la période ou porteur d'un solde
+   * d'ouverture — ouverture (fenêtre de cumul et à-nouveaux, mig 416), total
+   * débit, total crédit et solde de la période, clôture. Triée par code.
    */
   async balance(params: { startDate?: string; endDate?: string; storeId?: string }) {
-    const where: string[] = [`je.status IN ('posted','reversed')`];
+    const where: string[] = [`je.status IN ('posted','reversed')`, `je.source_kind <> 'opening'`];
     const values: unknown[] = [];
     let p = 1;
     if (params.startDate) { values.push(params.startDate); where.push(`je.entry_date >= $${p++}`); }
@@ -573,7 +665,37 @@ export const financialStatementsRepository = {
        ORDER BY a.code`,
       values
     );
-    return rows.rows;
+
+    type Row = Record<string, unknown> & { code: string };
+    const byCode = new Map<string, Row & { opening: number }>(
+      (rows.rows as Row[]).map(r => [r.code, { ...r, opening: 0 }]));
+    if (params.startDate) {
+      const w = await windowStarts(params.startDate);
+      const ov: unknown[] = [params.startDate, w.bilan, w.gestion];
+      const storeAnd = params.storeId ? ` AND (je.store_id IS NULL OR je.store_id = $4)` : '';
+      if (params.storeId) ov.push(params.storeId);
+      const ores = await db.query(
+        `SELECT a.code, a.label, a.account_class, a.account_type, a.normal_side,
+                COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) AS bal
+           FROM journal_entry_lines jel
+           JOIN journal_entries je ON je.id = jel.journal_entry_id
+           JOIN accounts a ON a.id = jel.account_id
+          WHERE je.status IN ('posted','reversed') AND ${OPENING_SQL('$1', '$2', '$3')}${storeAnd}
+          GROUP BY a.code, a.label, a.account_class, a.account_type, a.normal_side`, ov);
+      for (const o of ores.rows as (Row & { bal: string })[]) {
+        const bal = parseFloat(o.bal) || 0;
+        const cur = byCode.get(o.code);
+        if (cur) cur.opening = bal;
+        else if (Math.round(bal * 100) !== 0) {
+          const { bal: _b, ...acc } = o;
+          byCode.set(o.code, { ...acc, total_debit: '0', total_credit: '0', balance: '0', opening: bal });
+        }
+      }
+    }
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    return Array.from(byCode.values())
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map(r => ({ ...r, opening: r2(r.opening), closing: r2(r.opening + (parseFloat(String(r.balance)) || 0)) }));
   },
 
   /**
@@ -591,22 +713,28 @@ export const financialStatementsRepository = {
     const vals: unknown[] = [params.startDate, params.endDate];
     if (params.storeId) vals.push(params.storeId);
 
-    // 1) Par compte de tresorerie
+    // 1) Par compte de tresorerie. Ouverture : fenêtre de cumul du bilan et
+    // à-nouveaux (mig 416) ; flux de la période : hors à-nouveaux.
+    const w = await windowStarts(params.startDate);
+    const wi = vals.length + 1;
+    const OPEN = `je.entry_date >= $${wi}::date AND (je.entry_date < $1 OR (je.source_kind = 'opening' AND je.entry_date <= $1))`;
+    const MOVE = `je.entry_date BETWEEN $1 AND $2 AND je.source_kind <> 'opening'`;
     const accounts = (await db.query(
       `SELECT a.code, a.label,
-         (COALESCE(SUM(jel.debit)  FILTER (WHERE je.entry_date < $1), 0)
-        - COALESCE(SUM(jel.credit) FILTER (WHERE je.entry_date < $1), 0))::float8 AS opening,
-         COALESCE(SUM(jel.debit)  FILTER (WHERE je.entry_date BETWEEN $1 AND $2), 0)::float8 AS inflow,
-         COALESCE(SUM(jel.credit) FILTER (WHERE je.entry_date BETWEEN $1 AND $2), 0)::float8 AS outflow
+         (COALESCE(SUM(jel.debit)  FILTER (WHERE ${OPEN}), 0)
+        - COALESCE(SUM(jel.credit) FILTER (WHERE ${OPEN}), 0))::float8 AS opening,
+         COALESCE(SUM(jel.debit)  FILTER (WHERE ${MOVE}), 0)::float8 AS inflow,
+         COALESCE(SUM(jel.credit) FILTER (WHERE ${MOVE}), 0)::float8 AS outflow
        FROM journal_entry_lines jel
        JOIN journal_entries je ON je.id = jel.journal_entry_id
        JOIN accounts a ON a.id = jel.account_id
-      WHERE a.account_class = 5 AND je.status IN ('posted','reversed') AND je.entry_date <= $2${storeAnd}
+      WHERE a.account_class = 5 AND je.status IN ('posted','reversed') AND je.entry_date <= $2
+        AND je.entry_date >= $${wi}::date${storeAnd}
       GROUP BY a.code, a.label
-      HAVING (COALESCE(SUM(jel.debit) FILTER (WHERE je.entry_date < $1),0) - COALESCE(SUM(jel.credit) FILTER (WHERE je.entry_date < $1),0)) <> 0
-          OR COALESCE(SUM(jel.debit)  FILTER (WHERE je.entry_date BETWEEN $1 AND $2),0) <> 0
-          OR COALESCE(SUM(jel.credit) FILTER (WHERE je.entry_date BETWEEN $1 AND $2),0) <> 0
-      ORDER BY a.code`, vals)).rows as { code: string; label: string; opening: number; inflow: number; outflow: number }[];
+      HAVING (COALESCE(SUM(jel.debit) FILTER (WHERE ${OPEN}),0) - COALESCE(SUM(jel.credit) FILTER (WHERE ${OPEN}),0)) <> 0
+          OR COALESCE(SUM(jel.debit)  FILTER (WHERE ${MOVE}),0) <> 0
+          OR COALESCE(SUM(jel.credit) FILTER (WHERE ${MOVE}),0) <> 0
+      ORDER BY a.code`, [...vals, w.bilan])).rows as { code: string; label: string; opening: number; inflow: number; outflow: number }[];
 
     const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
     const accountRows = accounts.map(a => ({ ...a, opening: r2(a.opening), inflow: r2(a.inflow), outflow: r2(a.outflow), closing: r2(a.opening + a.inflow - a.outflow) }));
@@ -624,7 +752,8 @@ export const financialStatementsRepository = {
          SELECT DISTINCT je.id FROM journal_entries je
          JOIN journal_entry_lines l ON l.journal_entry_id = je.id
          JOIN accounts a ON a.id = l.account_id
-        WHERE a.account_class = 5 AND je.status IN ('posted','reversed') AND je.entry_date BETWEEN $1 AND $2${storeAnd})
+        WHERE a.account_class = 5 AND je.status IN ('posted','reversed') AND je.entry_date BETWEEN $1 AND $2
+          AND je.source_kind <> 'opening'${storeAnd})
        SELECT a.account_class,
               COALESCE(SUM(jel.credit),0)::float8 AS sources,
               COALESCE(SUM(jel.debit),0)::float8  AS uses
@@ -653,7 +782,7 @@ export const financialStatementsRepository = {
    * classe 7 (produits) par compte, et resultat net = produits - charges.
    */
   async incomeStatement(params: { startDate?: string; endDate?: string; storeId?: string }) {
-    const where: string[] = [`je.status IN ('posted','reversed')`, `a.account_class IN (6, 7)`];
+    const where: string[] = [`je.status IN ('posted','reversed')`, `a.account_class IN (6, 7)`, `je.source_kind <> 'opening'`];
     const values: unknown[] = [];
     let p = 1;
     if (params.startDate) { values.push(params.startDate); where.push(`je.entry_date >= $${p++}`); }
@@ -709,6 +838,7 @@ export const tvaDeclarationRepository = {
       `je.entry_date >= $1`,
       `je.entry_date <= $2`,
       `a.tva_direction IS NOT NULL`,
+      `je.source_kind <> 'opening'`,   // les reports de TVA (AN) ne sont pas des opérations du mois
     ];
     const values: unknown[] = [params.startDate, params.endDate];
     let p = 3;
@@ -789,8 +919,9 @@ export const tvaDeclarationRepository = {
 /* ═══ Bilan (actif / passif CGNC) ═══ */
 export const balanceSheetRepository = {
   /**
-   * Bilan a une date d'arrete : soldes cumules (depuis l'origine) des comptes
-   * de classes 1 a 5, avec le resultat net (classes 6-7) bascule au passif.
+   * Bilan a une date d'arrete : soldes cumules des comptes de classes 1 a 5
+   * depuis les derniers à-nouveaux (depuis l'origine si aucun exercice n'est
+   * clôturé), avec le resultat net de l'exercice (classes 6-7) bascule au passif.
    *
    * Identite fondamentale : TOTAL ACTIF = TOTAL PASSIF, garantie par le fait
    * que chaque ecriture est equilibree (somme de tous les soldes = 0).
@@ -802,9 +933,13 @@ export const balanceSheetRepository = {
    *            (classe 4), tresorerie-passif (classe 5 a solde crediteur).
    */
   async balanceSheet(params: { endDate: string; storeId?: string }) {
-    const storeFilter = params.storeId ? 'AND (je.store_id IS NULL OR je.store_id = $2)' : '';
-    const values: unknown[] = [params.endDate];
-    if (params.storeId) values.push(params.storeId);
+    // Fenêtre de cumul (mig 416) : bilan depuis les derniers à-nouveaux,
+    // résultat depuis le début de l'exercice de endDate.
+    const w = await windowStarts(params.endDate);
+    const accValues: unknown[] = [params.endDate, w.bilan];
+    const resValues: unknown[] = [params.endDate, w.bilan, w.gestion];
+    if (params.storeId) { accValues.push(params.storeId); resValues.push(params.storeId); }
+    const storeFilter = (n: number) => (params.storeId ? `AND (je.store_id IS NULL OR je.store_id = $${n})` : '');
 
     // Soldes cumules (debit - credit) des comptes 1-5 jusqu'a endDate.
     const accRows = await db.query(
@@ -814,32 +949,36 @@ export const balanceSheetRepository = {
        JOIN journal_entry_lines jel ON jel.account_id = a.id
        JOIN journal_entries je ON je.id = jel.journal_entry_id
        WHERE je.status IN ('posted','reversed')
-         AND je.entry_date <= $1::date
+         AND je.entry_date <= $1::date AND je.entry_date >= $2::date
          AND a.account_class BETWEEN 1 AND 5
-         ${storeFilter}
+         ${storeFilter(3)}
        GROUP BY a.code, a.label, a.account_class
        HAVING COALESCE(SUM(jel.debit), 0) - COALESCE(SUM(jel.credit), 0) <> 0
        ORDER BY a.code`,
-      values
+      accValues
     );
 
-    // Resultat net cumule (produits classe 7 - charges classe 6) jusqu'a endDate.
+    // Résultat de l'exercice (produits classe 7 - charges classe 6) et résultat
+    // des exercices antérieurs pas encore clôturés (entre les derniers AN et le
+    // début de l'exercice) : sans lui, l'actif ne vaudrait plus le passif.
     const resRows = await db.query(
       `SELECT
-         COALESCE(SUM(CASE WHEN a.account_class = 7 THEN jel.credit - jel.debit ELSE 0 END), 0) AS produits,
-         COALESCE(SUM(CASE WHEN a.account_class = 6 THEN jel.debit - jel.credit ELSE 0 END), 0) AS charges
+         COALESCE(SUM(CASE WHEN je.entry_date >= $3::date AND a.account_class = 7 THEN jel.credit - jel.debit ELSE 0 END), 0) AS produits,
+         COALESCE(SUM(CASE WHEN je.entry_date >= $3::date AND a.account_class = 6 THEN jel.debit - jel.credit ELSE 0 END), 0) AS charges,
+         COALESCE(SUM(CASE WHEN je.entry_date < $3::date THEN jel.credit - jel.debit ELSE 0 END), 0) AS anterieur
        FROM journal_entry_lines jel
        JOIN journal_entries je ON je.id = jel.journal_entry_id
        JOIN accounts a ON a.id = jel.account_id
        WHERE je.status IN ('posted','reversed')
-         AND je.entry_date <= $1::date
+         AND je.entry_date <= $1::date AND je.entry_date >= $2::date
          AND a.account_class IN (6, 7)
-         ${storeFilter}`,
-      values
+         ${storeFilter(4)}`,
+      resValues
     );
     const produits = parseFloat(resRows.rows[0]?.produits) || 0;
     const charges = parseFloat(resRows.rows[0]?.charges) || 0;
     const resultatNet = Math.round((produits - charges) * 100) / 100;
+    const resultatAnterieur = Math.round((parseFloat(resRows.rows[0]?.anterieur) || 0) * 100) / 100;
 
     type Line = { code: string; label: string; amount: number };
     const immobilise: Line[] = [];
@@ -875,7 +1014,7 @@ export const balanceSheetRepository = {
     const totalActif = Math.round((totalImmobilise + totalCirculantActif + totalTresorerieActif) * 100) / 100;
 
     const totalFinancementBase = sum(financementPermanent);
-    const totalFinancement = Math.round((totalFinancementBase + resultatNet) * 100) / 100;
+    const totalFinancement = Math.round((totalFinancementBase + resultatNet + resultatAnterieur) * 100) / 100;
     const totalCirculantPassif = sum(circulantPassif);
     const totalTresoreriePassif = sum(tresoreriePassif);
     const totalPassif = Math.round((totalFinancement + totalCirculantPassif + totalTresoreriePassif) * 100) / 100;
@@ -890,6 +1029,7 @@ export const balanceSheetRepository = {
       },
       passif: {
         financement_permanent: financementPermanent, resultat_net: resultatNet,
+        resultat_anterieur: resultatAnterieur,
         total_financement: totalFinancement,
         circulant: circulantPassif, total_circulant: totalCirculantPassif,
         tresorerie: tresoreriePassif, total_tresorerie: totalTresoreriePassif,

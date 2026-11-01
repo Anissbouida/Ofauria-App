@@ -11,6 +11,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { apiErrorMessage } from '../../api/errors';
 import IntegrityPanel from './IntegrityPanel';
+import FiscalYearsPanel from './FiscalYearsPanel';
 
 const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
@@ -114,6 +115,8 @@ export default function ClotureTab() {
       </div>
 
       <IntegrityPanel />
+
+      <FiscalYearsPanel isAdmin={isAdmin} />
 
       {pendingOutbox.length > 0 && (
         <div style={{ marginBottom: 12 }}>

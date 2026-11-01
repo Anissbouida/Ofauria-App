@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { journalTemplateRepository as tplRepo } from '../repositories/journal-template.repository.js';
 import { ledgerIntegrityRepository as integrityRepo } from '../repositories/ledger-integrity.repository.js';
+import { fiscalYearRepository } from '../repositories/ledger.repository.js';
 import {
   planComptableController,
   accountAuxiliaryController,
@@ -46,6 +47,23 @@ ledgerRouter.patch('/fiscal-periods/:id/status', authenticate, authorize(...ROLE
 // Mig 311 (D8) : checklist de clôture, historique, file de comptabilisation, GR/IR, relevé TVA, paramétrage.
 ledgerRouter.get('/fiscal-periods/:id/checklist', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(fiscalPeriodController.checklist));
 ledgerRouter.get('/fiscal-periods/:id/events', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(fiscalPeriodController.events));
+// Exercices (mig 416) : contrôles et clôture définitive avec à-nouveaux (admin).
+ledgerRouter.get('/fiscal-years', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(async (_req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await fiscalYearRepository.findAll() });
+}));
+const yearParam = (req: AuthRequest, res: Response): number | null => {
+  const y = Number(req.params.year);
+  if (!Number.isInteger(y) || y < 2000 || y > 2100) { res.status(400).json({ success: false, error: { message: 'Exercice invalide' } }); return null; }
+  return y;
+};
+ledgerRouter.get('/fiscal-years/:year/checklist', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = yearParam(req, res); if (y === null) return;
+  res.json({ success: true, data: await fiscalYearRepository.checklist(y) });
+}));
+ledgerRouter.post('/fiscal-years/:year/close', authenticate, authorize(ROLES.ADMIN), requireVerb('accounting', 'close'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = yearParam(req, res); if (y === null) return;
+  res.json({ success: true, data: await fiscalYearRepository.close(y, req.user!.userId) });
+}));
 ledgerRouter.get('/outbox', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseLedgerController.outbox));
 ledgerRouter.post('/outbox/replay', authenticate, authorize(ROLES.ADMIN), asyncHandler(purchaseLedgerController.replay));
 ledgerRouter.post('/outbox/:id/replay', authenticate, authorize(ROLES.ADMIN), validateUuidParams('id'), asyncHandler(purchaseLedgerController.replay));
@@ -131,7 +149,7 @@ ledgerRouter.post('/integrity/verify', ...AM, asyncHandler(async (req: AuthReque
 }));
 ledgerRouter.get('/audit-log', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({
-    event: z.enum(['post', 'reverse', 'draft_delete', 'letter', 'unletter', 'reletter', 'seal', 'verify', 'outbox_replay']).optional(),
+    event: z.enum(['post', 'reverse', 'draft_delete', 'letter', 'unletter', 'reletter', 'seal', 'verify', 'outbox_replay', 'year_close']).optional(),
     entryId: z.string().uuid().optional(),
     before: z.coerce.number().int().positive().optional(),
     limit: z.coerce.number().int().min(1).max(200).optional(),

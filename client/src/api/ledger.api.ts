@@ -55,6 +55,29 @@ export const entryTemplatesApi = {
     api.post(`/ledger/entry-templates/${id}/instantiate`, data).then(r => r.data.data),
 };
 
+/* ═══ Exercices (mig 416) : clôture annuelle et à-nouveaux ═══ */
+export interface FiscalYear {
+  id: string; year: number; start_date: string; end_date: string;
+  status: 'open' | 'closed';
+  closed_at: string | null; closed_by_name: string | null;
+  result_amount: string | null;      // figé à la clôture
+  result_to_date: string;            // provisoire tant que l'exercice est ouvert
+  months_open: number; months_total: number;
+  chain_seq: number | null; chain_hash: string | null;
+  opening_entries: string[];
+}
+export interface FiscalYearCloseResult {
+  year: number; result: number; periods_locked: number; chain_seq: number; chain_hash: string;
+  opening_entries: { entry_number: string; store_id: string | null; lines: number }[];
+}
+export const fiscalYearsApi = {
+  list: (): Promise<FiscalYear[]> => api.get('/ledger/fiscal-years').then(r => r.data.data),
+  checklist: (year: number): Promise<CloseCheck[]> =>
+    api.get(`/ledger/fiscal-years/${year}/checklist`).then(r => r.data.data),
+  close: (year: number): Promise<FiscalYearCloseResult> =>
+    api.post(`/ledger/fiscal-years/${year}/close`).then(r => r.data.data),
+};
+
 /* ═══ Periodes fiscales ═══ */
 export const fiscalPeriodsApi = {
   list: (year?: number): Promise<FiscalPeriod[]> =>
@@ -91,7 +114,7 @@ export interface IntegrityStatus {
 }
 export interface IntegrityAnomaly { seq: number; entry_id: string | null; entry_no: string | null; problem: string }
 export interface IntegrityVerifyResult { ok: boolean; checked: number; headSeq: number; headHash: string | null; anomalies: IntegrityAnomaly[] }
-export type LedgerAuditEvent = 'post' | 'reverse' | 'draft_delete' | 'letter' | 'unletter' | 'reletter' | 'seal' | 'verify' | 'outbox_replay';
+export type LedgerAuditEvent = 'post' | 'reverse' | 'draft_delete' | 'letter' | 'unletter' | 'reletter' | 'seal' | 'verify' | 'outbox_replay' | 'year_close';
 export interface LedgerAuditRow {
   id: string; at: string; event: LedgerAuditEvent;
   entry_id: string | null; entry_number: string | null; line_id: string | null; lettrage_id: string | null;
@@ -235,6 +258,9 @@ export interface BalanceRow {
   total_debit: string;
   total_credit: string;
   balance: string;
+  /** Mig 416 : ouverture (fenêtre de cumul + à-nouveaux) et clôture = ouverture + solde de la période. */
+  opening: number;
+  closing: number;
 }
 export interface IncomeStatementResult {
   charges: { code: string; label: string; account_class: number; amount: string }[];
@@ -256,7 +282,7 @@ export interface BalanceSheet {
     total: number;
   };
   passif: {
-    financement_permanent: BilanLine[]; resultat_net: number; total_financement: number;
+    financement_permanent: BilanLine[]; resultat_net: number; resultat_anterieur: number; total_financement: number;
     circulant: BilanLine[]; total_circulant: number;
     tresorerie: BilanLine[]; total_tresorerie: number;
     total: number;

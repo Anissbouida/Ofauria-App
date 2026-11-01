@@ -26,7 +26,7 @@ type Queryable = PoolClient | typeof db;
 
 export type IntegrityActor = { userId: string | null; ip?: string | null };
 
-export type AuditEvent = 'post' | 'reverse' | 'draft_delete' | 'letter' | 'unletter' | 'reletter' | 'seal' | 'verify' | 'outbox_replay';
+export type AuditEvent = 'post' | 'reverse' | 'draft_delete' | 'letter' | 'unletter' | 'reletter' | 'seal' | 'verify' | 'outbox_replay' | 'year_close';
 
 async function logEvent(
   client: Queryable,

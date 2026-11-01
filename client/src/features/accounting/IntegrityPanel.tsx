@@ -19,9 +19,10 @@ const EVENT_LABEL: Record<LedgerAuditEvent, string> = {
   seal: 'Scellement',
   verify: 'Vérification',
   outbox_replay: 'Rejeu de la file',
+  year_close: 'Clôture d\'exercice',
 };
 const EVENT_TAG: Partial<Record<LedgerAuditEvent, string>> = {
-  reverse: 'odoo-tag-orange', draft_delete: 'odoo-tag-orange', seal: 'odoo-tag-blue', verify: 'odoo-tag-blue',
+  reverse: 'odoo-tag-orange', draft_delete: 'odoo-tag-orange', seal: 'odoo-tag-blue', verify: 'odoo-tag-blue', year_close: 'odoo-tag-red',
 };
 
 const fmt = (v: unknown) =>
@@ -48,6 +49,7 @@ function detailOf(r: LedgerAuditRow): string {
     case 'verify': return d.ok ? `Intact · ${d.checked} écriture(s)` : `${d.anomalies} anomalie(s) sur ${d.checked}`;
     case 'outbox_replay': return `${d.posted} comptabilisée(s), ${d.failed} en échec`;
     case 'draft_delete': return d.source_kind ?? '';
+    case 'year_close': return `Exercice ${d.year} · résultat ${fmt(d.result)} DH · ${(d.opening_entries ?? []).length} écriture(s) d'à-nouveaux`;
     default: return '';
   }
 }

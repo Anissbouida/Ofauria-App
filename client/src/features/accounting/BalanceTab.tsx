@@ -67,10 +67,10 @@ export default function BalanceTab() {
 
   const handleExport = () => {
     const csvRows: string[][] = (rows as BalanceRow[]).map(r => [
-      r.code, r.label, r.total_debit, r.total_credit, r.balance,
+      r.code, r.label, String(r.opening ?? 0), r.total_debit, r.total_credit, String(r.closing ?? r.balance),
     ]);
     exportCSV(`balance_${startDate}_${endDate}.csv`,
-      ['COMPTE', 'LIBELLE', 'DEBIT', 'CREDIT', 'SOLDE'], csvRows);
+      ['COMPTE', 'LIBELLE', 'OUVERTURE', 'DEBIT', 'CREDIT', 'CLOTURE'], csvRows);
   };
 
   return (
@@ -128,29 +128,34 @@ export default function BalanceTab() {
               <tr>
                 <th style={{ width: 90 }}>Compte</th>
                 <th>Libelle</th>
+                <th style={{ width: 130, textAlign: 'right' }} title="Solde au début de la période, à-nouveaux compris">Ouverture</th>
                 <th style={{ width: 120, textAlign: 'right' }}>Debit</th>
                 <th style={{ width: 120, textAlign: 'right' }}>Credit</th>
-                <th style={{ width: 130, textAlign: 'right' }}>Solde</th>
+                <th style={{ width: 130, textAlign: 'right' }} title="Ouverture + mouvements de la période">Clôture</th>
               </tr>
             </thead>
             <tbody>
               {byClass.map(([cls, items]) => (
                 <Fragment key={`cls-${cls}`}>
                   <tr style={{ background: 'var(--theme-bg-secondary)' }}>
-                    <td colSpan={5} style={{ fontWeight: 600, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                    <td colSpan={6} style={{ fontWeight: 600, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
                       Classe {cls} — {CLASS_LABELS[cls]}
                     </td>
                   </tr>
                   {items.map(r => {
-                    const bal = parseFloat(r.balance) || 0;
+                    const bal = r.closing ?? (parseFloat(r.balance) || 0);
+                    const open = r.opening ?? 0;
                     return (
                       <tr key={r.code}>
                         <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.code}</td>
                         <td>{r.label}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>
+                          {open === 0 ? '—' : `${n(Math.abs(open))} ${open > 0 ? 'D' : 'C'}`}
+                        </td>
                         <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>{n(r.total_debit)}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>{n(r.total_credit)}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: bal >= 0 ? '#1565c0' : '#c62828' }}>
-                          {n(Math.abs(bal))} {bal >= 0 ? 'D' : 'C'}
+                          {Math.round(bal * 100) === 0 ? '0,00' : `${n(Math.abs(bal))} ${bal > 0 ? 'D' : 'C'}`}
                         </td>
                       </tr>
                     );
@@ -160,7 +165,7 @@ export default function BalanceTab() {
             </tbody>
             <tfoot>
               <tr style={{ background: 'var(--theme-bg-secondary)', fontWeight: 600 }}>
-                <td colSpan={2} style={{ textAlign: 'right' }}>Totaux :</td>
+                <td colSpan={3} style={{ textAlign: 'right' }}>Totaux des mouvements :</td>
                 <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(totals.debit)}</td>
                 <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(totals.credit)}</td>
                 <td></td>

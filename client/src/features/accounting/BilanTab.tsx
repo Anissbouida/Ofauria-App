@@ -72,6 +72,7 @@ export default function BilanTab() {
     rows.push(['Financement permanent', '', String(data.passif.total_financement.toFixed(2))]);
     data.passif.financement_permanent.forEach(l => rows.push([l.code, l.label, l.amount.toFixed(2)]));
     rows.push(['', 'Résultat net de l\'exercice', data.passif.resultat_net.toFixed(2)]);
+    if (data.passif.resultat_anterieur) rows.push(['', 'Résultats des exercices antérieurs non clôturés', data.passif.resultat_anterieur.toFixed(2)]);
     rows.push(['Passif circulant', '', String(data.passif.total_circulant.toFixed(2))]);
     data.passif.circulant.forEach(l => rows.push([l.code, l.label, l.amount.toFixed(2)]));
     rows.push(['Trésorerie-Passif', '', String(data.passif.total_tresorerie.toFixed(2))]);
@@ -155,6 +156,17 @@ export default function BilanTab() {
                     <td style={{ fontSize: '0.8125rem', fontStyle: 'italic' }}>Résultat net de l'exercice</td>
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums', color: data.passif.resultat_net < 0 ? '#c62828' : '#0e7c3a' }}>{n(data.passif.resultat_net)}</td>
                   </tr>
+                  {/* Mig 416 : tant que l'exercice précédent n'est pas clôturé, son résultat
+                      n'est pas encore reporté (à-nouveaux) : il reste au passif à part. */}
+                  {!!data.passif.resultat_anterieur && (
+                    <tr>
+                      <td style={{ width: 60, paddingLeft: 20 }}></td>
+                      <td style={{ fontSize: '0.8125rem', fontStyle: 'italic' }} title="Exercice précédent non encore clôturé : son résultat n'est pas reporté en à-nouveaux">
+                        Résultats des exercices antérieurs non clôturés
+                      </td>
+                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabular-nums', color: data.passif.resultat_anterieur < 0 ? '#c62828' : '#0e7c3a' }}>{n(data.passif.resultat_anterieur)}</td>
+                    </tr>
+                  )}
                   {masseHeader('Passif circulant', data.passif.total_circulant)}
                   <MasseLines lines={data.passif.circulant} />
                   {masseHeader('Trésorerie-Passif', data.passif.total_tresorerie)}
