@@ -36,22 +36,28 @@ describe.skipIf(!hasTestDb)('Export FEC (avis CNC n° 24)', () => {
     const aux = (await p.query(
       `SELECT aa.id FROM account_auxiliaries aa JOIN accounts a ON a.id = aa.account_id WHERE a.code = '4411' LIMIT 1`)).rows[0].id;
     const lettrage = crypto.randomUUID();
+    // Une seule transaction : le groupe de lettrage (facture + règlement) n'est
+    // complet qu'à la fin, et la base le contrôle au COMMIT (mig 420).
+    const tx = await p.connect();
+    await tx.query('BEGIN');
     const post = async (journal: string, n: number, lines: [string, string | null, number, number, string][]) => {
-      const e = await p.query(
+      const e = await tx.query(
         `INSERT INTO journal_entries (entry_number, journal_id, entry_date, fiscal_period_id, description, source_kind, created_by)
          SELECT $1, j.id, $2::date, fn_ensure_fiscal_period($2::date), $3, 'manual', $4 FROM journals j WHERE j.code = $5 RETURNING id`,
         [`${marker}-${n}`, day, `Test ${marker}`, admin, journal]);
       let o = 0;
       for (const [code, auxId, debit, credit, label] of lines) {
-        await p.query(
+        await tx.query(
           `INSERT INTO journal_entry_lines (journal_entry_id, line_order, account_id, auxiliary_id, debit, credit, label, lettrage_id)
            SELECT $1, $2, a.id, $3, $4, $5, $6, CASE WHEN a.code = '4411' THEN $7::uuid END FROM accounts a WHERE a.code = $8`,
           [e.rows[0].id, ++o, auxId, debit, credit, label, lettrage, code]);
       }
-      await p.query(`UPDATE journal_entries SET status = 'posted', posted_at = now(), posted_by = $2 WHERE id = $1`, [e.rows[0].id, admin]);
+      await tx.query(`UPDATE journal_entries SET status = 'posted', posted_at = now(), posted_by = $2 WHERE id = $1`, [e.rows[0].id, admin]);
     };
     await post('AC', 1, [['6181', null, 120.5, 0, `Charge\tpiégée\r\nsur deux lignes ${marker}`], ['4411', aux, 0, 120.5, `Facture ${marker}`]]);
     await post('BQ', 2, [['4411', aux, 120.5, 0, `Règlement ${marker}`], ['5141', null, 0, 120.5, `Banque ${marker}`]]);
+    await tx.query('COMMIT');
+    tx.release();
   }, 60_000);
 
   afterAll(async () => {

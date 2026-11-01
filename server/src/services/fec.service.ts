@@ -43,7 +43,7 @@ const ymd = (v: string | null) => (v ? v.slice(0, 10).replace(/-/g, '') : '');
 /** 1234.5 → « 1234,50 ». */
 const amount = (v: string | number | null) => (v == null || v === '' ? '' : Number(v).toFixed(2).replace('.', ','));
 /** Rang de lettrage → code A, B, …, Z, AA, AB… */
-const letterCode = (rank: number) => {
+export const letterCode = (rank: number) => {
   let s = '';
   for (let n = rank; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
   return s;

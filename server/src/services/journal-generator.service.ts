@@ -986,7 +986,7 @@ export async function autoLettrer(
   invoiceId: string
 ): Promise<{ lettered: boolean; lettrageId?: string; lineCount?: number }> {
   const linesRes = await client.query(
-    `SELECT jel.id, jel.debit, jel.credit
+    `SELECT jel.id, jel.debit, jel.credit, jel.account_id, jel.auxiliary_id
      FROM journal_entry_lines jel
      JOIN journal_entries je ON je.id = jel.journal_entry_id
      JOIN accounts a ON a.id = jel.account_id
@@ -1002,11 +1002,15 @@ export async function autoLettrer(
   );
 
   if (linesRes.rows.length < 2) return { lettered: false };
+  // Un groupe = un compte et un tiers (mig 420) : sinon, lettrage manuel.
+  if (new Set(linesRes.rows.map(l => `${l.account_id}|${l.auxiliary_id}`)).size > 1) return { lettered: false };
 
-  const sumD = linesRes.rows.reduce((s, l) => s + (parseFloat(l.debit) || 0), 0);
-  const sumC = linesRes.rows.reduce((s, l) => s + (parseFloat(l.credit) || 0), 0);
+  // Au centime près (mig 420 : un groupe de lettrage est soldé exactement).
+  const cents = (v: string) => Math.round((parseFloat(v) || 0) * 100);
+  const sumD = linesRes.rows.reduce((s, l) => s + cents(l.debit), 0);
+  const sumC = linesRes.rows.reduce((s, l) => s + cents(l.credit), 0);
 
-  if (Math.abs(sumD - sumC) > 0.01) {
+  if (sumD !== sumC) {
     // Paiement partiel — pas de lettrage encore.
     return { lettered: false };
   }
@@ -1153,13 +1157,23 @@ async function extourneEntry(
     `UPDATE journal_entries SET status = 'reversed', reversed_by_entry_id = $2 WHERE id = $1`,
     [orig.id, extId]
   );
-  // Original et extourne se soldent : lettrage commun sur les comptes de tiers.
+  // Original et extourne se soldent : lettrage commun sur les comptes de tiers
+  // (collectifs, 34xx, 44xx), un groupe par compte et par tiers, seulement là
+  // où les lignes encore non lettrées se soldent (mig 420 : un groupe = un
+  // compte, un tiers, soldé).
   await client.query(
-    `UPDATE journal_entry_lines jel SET lettrage_id = $3
-       FROM accounts a
-      WHERE a.id = jel.account_id AND a.is_collective
-        AND jel.journal_entry_id IN ($1, $2) AND jel.lettrage_id IS NULL`,
-    [orig.id, extId, crypto.randomUUID()]
+    `WITH g AS (
+       SELECT jel.account_id, jel.auxiliary_id, gen_random_uuid() AS lid
+         FROM journal_entry_lines jel JOIN accounts a ON a.id = jel.account_id
+        WHERE (a.is_collective OR a.code LIKE '34%' OR a.code LIKE '44%')
+          AND jel.journal_entry_id IN ($1, $2) AND jel.lettrage_id IS NULL
+        GROUP BY jel.account_id, jel.auxiliary_id
+       HAVING count(*) >= 2 AND sum(jel.debit - jel.credit) = 0)
+     UPDATE journal_entry_lines jel SET lettrage_id = g.lid
+       FROM g
+      WHERE jel.journal_entry_id IN ($1, $2) AND jel.lettrage_id IS NULL
+        AND jel.account_id = g.account_id AND jel.auxiliary_id IS NOT DISTINCT FROM g.auxiliary_id`,
+    [orig.id, extId]
   );
 }
 

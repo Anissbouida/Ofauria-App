@@ -80,6 +80,37 @@ export const manualEntriesApi = {
     api.post(`/ledger/entries/${id}/reverse`, b).then(r => r.data.data),
 };
 
+/* ═══ Lettrage manuel (mig 420) ═══ */
+export interface LettrageAccount {
+  id: string; code: string; label: string; is_collective: boolean; auxiliary_kind: 'supplier' | 'customer' | null;
+  lines: number; open_lines: number; open_balance: string;
+}
+export interface LettrageTiers { id: string; code: string; label: string; lines: number; open_lines: number; open_balance: string }
+export interface LettrageLine {
+  id: string; lettrage_id: string | null; code: string | null; lettered_at: string | null;
+  debit: string; credit: string; label: string | null;
+  entry_id: string; entry_number: string; entry_date: string; description: string; piece_ref: string | null;
+  source_kind: string; status: string; journal_code: string;
+  frozen: boolean;                   // exercice clôturé : lettrage figé
+}
+export interface LettrageView {
+  account: { id: string; code: string; label: string; is_collective: boolean };
+  closed_until: string | null;
+  totals: { open_debit: string; open_credit: string; open_lines: number; groups: number };
+  lines: LettrageLine[]; truncated: boolean;
+}
+export type LettrageStatus = 'open' | 'lettered' | 'all';
+export const lettrageApi = {
+  accounts: (): Promise<LettrageAccount[]> => api.get('/ledger/lettrage/accounts').then(r => r.data.data),
+  tiers: (accountId: string): Promise<LettrageTiers[]> => api.get(`/ledger/lettrage/accounts/${accountId}/tiers`).then(r => r.data.data),
+  lines: (p: { accountId: string; auxiliaryId?: string; status: LettrageStatus; from?: string; to?: string }): Promise<LettrageView> =>
+    api.get('/ledger/lettrage/lines', { params: p }).then(r => r.data.data),
+  letter: (lineIds: string[]): Promise<{ lettrage_id: string; lines: number }> =>
+    api.post('/ledger/lettrage', { lineIds }).then(r => r.data.data),
+  unletter: (lettrageId: string): Promise<{ lettrage_id: string; lines: number }> =>
+    api.delete(`/ledger/lettrage/${lettrageId}`).then(r => r.data.data),
+};
+
 /* ═══ Exercices (mig 416) : clôture annuelle et à-nouveaux ═══ */
 export interface FiscalYear {
   id: string; year: number; start_date: string; end_date: string;

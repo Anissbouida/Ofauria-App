@@ -6,6 +6,7 @@ import { ledgerIntegrityRepository as integrityRepo } from '../repositories/ledg
 import { fiscalYearRepository } from '../repositories/ledger.repository.js';
 import { buildFec } from '../services/fec.service.js';
 import { manualEntryRepository } from '../repositories/manual-entry.repository.js';
+import { lettrageRepository } from '../repositories/lettrage.repository.js';
 import {
   planComptableController,
   accountAuxiliaryController,
@@ -136,6 +137,34 @@ ledgerRouter.post('/entries/:id/reverse', ...AM, requireVerb('accounting', 'post
   if (!r.success) { res.status(400).json({ success: false, error: { message: 'Motif de l\'extourne obligatoire (3 caractères au moins)' } }); return; }
   res.json({ success: true, data: await manualEntryRepository.reverse(req.params.id, r.data, manualActor(req)) });
 }));
+
+// Lettrage manuel (mig 420) : consultation libre, lettrer/délettrer avec le droit « validate ».
+ledgerRouter.get('/lettrage/accounts', ...AM, asyncHandler(async (_req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await lettrageRepository.accounts() });
+}));
+ledgerRouter.get('/lettrage/accounts/:id/tiers', ...AM, validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await lettrageRepository.tiers(req.params.id) });
+}));
+ledgerRouter.get('/lettrage/lines', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({
+    accountId: z.string().uuid(),
+    auxiliaryId: z.string().uuid().optional(),
+    status: z.enum(['open', 'lettered', 'all']).default('open'),
+    from: z.string().regex(DATE_RE).optional(),
+    to: z.string().regex(DATE_RE).optional(),
+  }).safeParse(req.query);
+  if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
+  res.json({ success: true, data: await lettrageRepository.lines(r.data) });
+}));
+ledgerRouter.post('/lettrage', ...AM, requireVerb('accounting', 'validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({ lineIds: z.array(z.string().uuid()).min(2).max(1000) }).safeParse(req.body);
+  if (!r.success) { tplBad(res, 'Sélectionnez au moins deux lignes à lettrer'); return; }
+  res.status(201).json({ success: true, data: await lettrageRepository.letter(r.data.lineIds, { userId: req.user!.userId }) });
+}));
+ledgerRouter.delete('/lettrage/:id', ...AM, requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await lettrageRepository.unletter(req.params.id, { userId: req.user!.userId }) });
+}));
+
 const tplLine = z.object({
   accountId: z.string().uuid(),
   side: z.enum(['debit', 'credit']),
