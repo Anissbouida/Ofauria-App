@@ -92,6 +92,16 @@ export default function NomenclaturePage() {
           La composition est définie <strong>par format (contenant)</strong> : chaque contenant a sa propre liste de quantités. Sélectionne ou ajoute un format ci-dessous.
         </p>
 
+        {/* « Utilisée par » (surtout utile pour une préparation de base, consommée par
+            d'autres recettes) — repris de l'ancien écran PreparationPage lors de
+            l'unification du modèle (L2). */}
+        {Array.isArray((recipe as { used_by?: { name?: string }[] }).used_by) && (recipe as { used_by?: { name?: string }[] }).used_by!.length > 0 && (
+          <div className="text-sm mb-4" style={{ color: 'var(--theme-text)' }}>
+            <span className="font-medium">Utilisée par :</span>{' '}
+            {[...new Set((recipe as { used_by: { name?: string }[] }).used_by.map((u) => u.name).filter(Boolean))].join(' · ')}
+          </div>
+        )}
+
         <NomenclatureEditor recipeId={recipe.id} onFinance={setKpi} onCancel={() => navigate('/recipes?tab=product')} onSaved={() => qc.invalidateQueries({ queryKey: ['recipe', id] })} />
 
         {/* Explosion à plat (mig 400) : tous les ingrédients élémentaires cumulés sur tous les niveaux. */}

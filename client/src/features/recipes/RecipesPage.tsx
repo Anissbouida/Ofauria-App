@@ -392,7 +392,10 @@ export default function RecipesPage() {
   // pleine. Consultation et édition y sont fusionnées, comme côté produit — deux
   // entrées vers un même écran n'avaient plus de raison d'être.
   const openRecipe = (r: Record<string, any>) => {
-    navigate(r.is_base ? `/recipes/${r.id}/preparation` : `/recipes/${r.id}/nomenclature`);
+    // Modèle unique (L2) : bases et produits s'éditent via le même éditeur de
+    // composition (NomenclatureEditor), qui gère ingrédients, sous-recettes et
+    // formats. L'ancien écran PreparationPage (ancien modèle) n'est plus routé.
+    navigate(`/recipes/${r.id}/nomenclature`);
   };
   const editRecipe = openRecipe;
 
