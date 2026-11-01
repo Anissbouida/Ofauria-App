@@ -7,13 +7,15 @@ import { productsApi } from '../../api/products.api';
 import type { FormatComponentsData, FormatSummary, RecipeChild } from '../../api/recipes.api';
 import { Tag, Link2 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { apiErrorMessage as extractErr } from '../../api/errors';
 
 interface SourceOpt { type: 'recipe' | 'ingredient'; id: string; name: string; unit: string; cost: number; yieldQty?: number; }
 interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient'; sourceId: string; quantite: string; unite: string; pertePct?: string }
 interface Contenant { id: string; nom: string; quantite_theorique?: string | number | null; }
 
 const UNITES = ['g', 'kg', 'ml', 'l', 'cl', 'unit'];
-const COLS = '44px 150px minmax(0,1fr) 110px 64px 96px 96px 32px';
+const COLS = '44px 150px minmax(0,1fr) 110px 64px 56px 96px 96px 32px';
 const ROLE_BAR: Record<string, string> = {
   fond: '#BA7517', biscuit: '#BA7517', croustillant: '#D85A30', garniture: '#7F77DD',
   insert: '#D4537E', fruits: '#639922', nappage: '#1D9E75', glacage: '#378ADD',
@@ -40,10 +42,6 @@ const DIACRITICS = new RegExp('[\\u0300-\\u036f]', 'g');
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(DIACRITICS, '');
 let seq = 0;
 const newKey = () => `row-${++seq}`;
-function extractErr(err: unknown): string {
-  const e = err as { response?: { data?: { error?: { message?: string } } }; message?: string };
-  return e?.response?.data?.error?.message || e?.message || 'Erreur';
-}
 const np = (s: string): number | null => { const n = parseFloat(s); return Number.isFinite(n) ? n : null; };
 
 /** Champs editables hors lignes de composition — sert a la detection de modifications. */
@@ -53,7 +51,7 @@ interface EditableFields {
 }
 /** Empreinte stable de l'etat editable (lignes + champs), comparee a la reference. */
 function signature(rows: Row[], f: EditableFields): string {
-  return JSON.stringify([rows.map((r) => [r.role, r.type, r.sourceId, r.quantite, r.unite]), f]);
+  return JSON.stringify([rows.map((r) => [r.role, r.type, r.sourceId, r.quantite, r.unite, r.pertePct ?? '0']), f]);
 }
 
 function SourcePicker({ options, value, onPick }: {
@@ -176,6 +174,7 @@ export interface FormatKpi {
 
 export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCancel }: { recipeId: string; onSaved?: () => void; onFinance?: (k: FormatKpi | null) => void; onCancel?: () => void }) {
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [formatId, setFormatId] = useState<string | null>(null);
   // Id d'un format tout juste créé/dupliqué : protège sa sélection tant que la
   // liste des formats ne l'a pas encore intégré (sinon l'effet ci-dessous le voit
@@ -302,15 +301,17 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   }, [isDirty]);
 
   /** Changer de format recharge `rows` : sans garde, la saisie en cours disparaissait. */
-  const switchFormat = (id: string) => {
+  const switchFormat = async (id: string) => {
     if (id === formatId) return;
-    if (isDirty && !confirm('Modifications non enregistrées sur ce format.\nChanger de format les abandonnera. Continuer ?')) return;
+    if (isDirty && !(await confirm('Changer de format abandonnera les modifications non enregistrées sur ce format. Continuer ?',
+      { title: 'Modifications non enregistrées', confirmLabel: 'Changer de format', danger: true }))) return;
     setFormatId(id);
   };
 
   /** Sans onCancel, « Annuler » rétablit le dernier état enregistré au lieu de quitter. */
-  const handleCancel = () => {
-    if (isDirty && !confirm('Abandonner les modifications non enregistrées ?')) return;
+  const handleCancel = async () => {
+    if (isDirty && !(await confirm('Abandonner les modifications non enregistrées ?',
+      { title: 'Abandonner les modifications', confirmLabel: 'Abandonner', danger: true }))) return;
     if (onCancel) onCancel(); else applyData();
   };
 
@@ -562,9 +563,10 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     },
     onError: (err) => notify.error(extractErr(err)),
   });
-  const handleDeleteFormat = () => {
+  const handleDeleteFormat = async () => {
     if (!formatId || !f) return;
-    if (!confirm(`Supprimer le format « ${f.contenant_nom} » et toute sa composition ?\nCette action est irréversible.`)) return;
+    if (!(await confirm(`Supprimer le format « ${f.contenant_nom} » et toute sa composition ? Cette action est irréversible.`,
+      { title: 'Supprimer le format', confirmLabel: 'Supprimer', danger: true }))) return;
     deleteFormatMut.mutate();
   };
 
@@ -629,6 +631,13 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             value={r.unite} onChange={(e) => setRow(r.key, { unite: e.target.value })} aria-label="Unité de la quantité">
             {UNITES.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
+          <div>
+            <input type="number" step="any" min="0" max="99"
+              aria-label="Perte de la ligne en pourcentage"
+              title="Perte sur cette ligne (%) : majore la matière consommée et le coût (mig 265)"
+              className="h-8 w-full px-1.5 rounded-md text-sm text-right tabular-nums border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400"
+              value={r.pertePct ?? ''} onChange={(e) => setRow(r.key, { pertePct: e.target.value })} placeholder="0" />
+          </div>
           <div className="pt-1.5" title={src ? (src.type === 'recipe' ? 'Recette de base' : 'Matière première') : undefined}>
             {share != null && (
               <div className="flex items-center gap-1.5">
@@ -836,6 +845,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               <div className="grid items-center gap-2 px-3 py-2 bg-gray-50 rounded-t-lg text-[11px] font-medium uppercase tracking-wide text-gray-500" style={{ gridTemplateColumns: COLS }}>
                 <span /><span>Rôle</span><span>Composant</span>
                 <span className="text-right">{compoParPiece ? 'Qté / pièce' : 'Qté / fournée'}</span><span>Unité</span>
+                <span className="text-right" title="Perte sur la ligne (%) : majore la matière et le coût">Perte</span>
                 <span>% coût</span><span className="text-right">Coût</span><span />
               </div>
               {rows.map(renderRow)}
@@ -1033,10 +1043,7 @@ function PosLinkPanel({
       setPicking(false);
       notify.success('Lien produit mis à jour');
     },
-    onError: (err: unknown) => {
-      const e = err as { response?: { data?: { error?: { message?: string } } } };
-      notify.error(e?.response?.data?.error?.message || 'Erreur');
-    },
+    onError: (err: unknown) => notify.error(extractErr(err)),
   });
 
   const strong = gap != null && (Math.abs(gap) >= 2 || (gapPct != null && Math.abs(gapPct) >= 5));

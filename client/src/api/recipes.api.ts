@@ -254,7 +254,7 @@ export const recipesApi = {
   // Leviers financiers (frais indirects + multiplicateur) au niveau recette.
   saveFinance: (recipeId: string, payload: Record<string, any>) =>
     api.patch(`/recipes/${recipeId}/finance`, payload).then(r => r.data.data as CompositionData),
-  updateIdentity: (recipeId: string, payload: { name: string; categoryId: string | null; compoParPiece?: boolean }) =>
+  updateIdentity: (recipeId: string, payload: { name: string; categoryId: string | null; compoParPiece?: boolean; temperaturePateCibleC?: number | null; hydratationPct?: number | null }) =>
     api.patch(`/recipes/${recipeId}/identity`, payload).then(r => r.data.data),
   saveEtapes: (recipeId: string, etapes: Record<string, any>[]) =>
     api.put(`/recipes/${recipeId}/etapes`, { etapes }).then(r => r.data.data),

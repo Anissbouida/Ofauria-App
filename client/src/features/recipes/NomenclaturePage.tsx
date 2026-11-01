@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ChefHat, Layers, Pencil } from 'lucide-react';
+import { ArrowLeft, ChefHat, Layers, Pencil, AlertTriangle } from 'lucide-react';
 import RecipeCreateDialog from './RecipeCreateDialog';
+import { allergenLabel } from '../../constants/allergens';
 import { recipesApi } from '../../api/recipes.api';
 import NomenclatureEditor, { type FormatKpi } from './NomenclatureEditor';
 import EtapesSection from './EtapesSection';
 import ExplosionSection from './ExplosionSection';
+import VersionsSection from './VersionsSection';
 
 const dh = (v: number) => `${v.toFixed(2)} DH`;
 
@@ -85,7 +87,11 @@ export default function NomenclaturePage() {
           </button>
         </div>
         {editIdentity && (
-          <RecipeCreateDialog recipe={{ id: recipe.id, name: recipe.name, category_id: recipe.category_id ?? null, is_base: false, compo_par_piece: (recipe as { compo_par_piece?: boolean }).compo_par_piece ?? false }}
+          <RecipeCreateDialog recipe={{ id: recipe.id, name: recipe.name, category_id: recipe.category_id ?? null,
+            is_base: (recipe as { is_base?: boolean }).is_base ?? false,
+            compo_par_piece: (recipe as { compo_par_piece?: boolean }).compo_par_piece ?? false,
+            temperature_pate_cible_c: (recipe as { temperature_pate_cible_c?: number | null }).temperature_pate_cible_c ?? null,
+            hydratation_pct: (recipe as { hydratation_pct?: number | null }).hydratation_pct ?? null }}
             onClose={() => setEditIdentity(false)} />
         )}
         <p className="text-sm text-gray-500 mb-4">
@@ -102,6 +108,33 @@ export default function NomenclaturePage() {
           </div>
         )}
 
+        {/* Allergènes — agrégés sur toute la nomenclature (v_recipe_allergens, mig 343),
+            resynchronisés à chaque sauvegarde de composition. Mention réglementaire
+            (UE 1169/2011) : affichée même vide, pour que « aucun allergène » soit une
+            information et non un oubli de saisie. Réintégré depuis l'ancien écran (L3). */}
+        {(() => {
+          const allergens = (recipe as { allergens?: string[] | null }).allergens || [];
+          return (
+            <div className="odoo-section" style={{ marginBottom: '1rem' }}>
+              <div className="odoo-section-header flex items-center gap-2">
+                <AlertTriangle size={13} /> Allergènes
+                {allergens.length > 0 && (
+                  <span style={{ marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 600, color: '#dc3545' }}>{allergens.length}</span>
+                )}
+              </div>
+              <div style={{ padding: '0.625rem 1rem', display: 'flex', gap: '0.375rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                {allergens.length > 0 ? (
+                  allergens.map((a) => <span key={a} className="odoo-tag odoo-tag-red">{allergenLabel(a)}</span>)
+                ) : (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                    Aucun allergène déclaré sur les ingrédients de cette nomenclature. Vérifiez que les fiches ingrédients sont renseignées.
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
         <NomenclatureEditor recipeId={recipe.id} onFinance={setKpi} onCancel={() => navigate('/recipes?tab=product')} onSaved={() => qc.invalidateQueries({ queryKey: ['recipe', id] })} />
 
         {/* Explosion à plat (mig 400) : tous les ingrédients élémentaires cumulés sur tous les niveaux. */}
@@ -109,6 +142,9 @@ export default function NomenclaturePage() {
 
         {/* Mode opératoire : il n'apparaissait jusqu'ici que sur la fiche PDF. */}
         <EtapesSection etapes={recipe.etapes || []} recipeId={recipe.id} />
+
+        {/* Historique des versions + restauration (réintégré, L3). */}
+        <VersionsSection recipeId={recipe.id} />
       </div>
     </div>
   );

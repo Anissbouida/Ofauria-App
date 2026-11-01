@@ -362,15 +362,18 @@ export const recipeComponentRepository = {
     return { recipe: rec.rows[0], components: components.rows, finance: computeFinance(rec.rows[0]) };
   },
 
-  async updateIdentity(recipeId: string, data: { name: string; categoryId?: string | null; compoParPiece?: boolean }) {
-    // compo_par_piece (mode de saisie fournee/piece) est decide a la creation ;
-    // on autorise sa correction ici, au niveau fiche, hors du flux de composition.
+  async updateIdentity(recipeId: string, data: { name: string; categoryId?: string | null; compoParPiece?: boolean; temperaturePateCibleC?: number | null; hydratationPct?: number | null }) {
+    // compo_par_piece (mode de saisie fournee/piece) et les parametres de pate
+    // (mig 342) sont editables ici, au niveau fiche, hors du flux de composition.
     // COALESCE : non fourni => on ne touche pas a la valeur existante.
     const r = await db.query(
       `UPDATE recipes SET name = $2, category_id = $3,
-              compo_par_piece = COALESCE($4, compo_par_piece), updated_at = NOW() WHERE id = $1
-       RETURNING id, name, category_id, compo_par_piece`,
-      [recipeId, data.name.trim(), data.categoryId ?? null, data.compoParPiece ?? null]
+              compo_par_piece = COALESCE($4, compo_par_piece),
+              temperature_pate_cible_c = COALESCE($5, temperature_pate_cible_c),
+              hydratation_pct = COALESCE($6, hydratation_pct),
+              updated_at = NOW() WHERE id = $1
+       RETURNING id, name, category_id, compo_par_piece, temperature_pate_cible_c, hydratation_pct`,
+      [recipeId, data.name.trim(), data.categoryId ?? null, data.compoParPiece ?? null, data.temperaturePateCibleC ?? null, data.hydratationPct ?? null]
     );
     return r.rows[0] ?? null;
   },

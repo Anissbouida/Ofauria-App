@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChefHat, Layers, X, ArrowRight } from 'lucide-react';
 import { recipesApi } from '../../api/recipes.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { apiErrorMessage } from '../../api/errors';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
 /**
@@ -12,7 +13,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
  * formats, frais et étapes s'y saisissent ; les demander ici dans un second
  * formulaire donnait deux interfaces différentes pour une même fiche.
  */
-export interface RecipeIdentity { id: string; name: string; category_id?: string | null; is_base?: boolean; compo_par_piece?: boolean }
+export interface RecipeIdentity { id: string; name: string; category_id?: string | null; is_base?: boolean; compo_par_piece?: boolean; temperature_pate_cible_c?: number | null; hydratation_pct?: number | null }
 
 /**
  * Avec `recipe`, la même fenêtre sert à MODIFIER l'identité d'une fiche existante
@@ -30,6 +31,11 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
   // par fournée (lot découpé) ou par pièce (unité). Modifiable ensuite via cette
   // même fenêtre, mais plus pendant la composition.
   const [compoParPiece, setCompoParPiece] = useState<boolean>(recipe?.compo_par_piece ?? false);
+  // Parametres de pate (mig 342) : temperature de pate cible en fin de petrissage,
+  // hydratation en % boulanger. Edites ici pour les preparations de base (pates).
+  const [tempPate, setTempPate] = useState<string>(recipe?.temperature_pate_cible_c != null ? String(recipe.temperature_pate_cible_c) : '');
+  const [hydr, setHydr] = useState<string>(recipe?.hydratation_pct != null ? String(recipe.hydratation_pct) : '');
+  const numOrNull = (s: string) => { const n = parseFloat(s.replace(',', '.')); return Number.isFinite(n) ? n : null; };
 
   const { data: categories = [] } = useQuery({ queryKey: ['recipe-categories'], queryFn: recipesApi.listCategories });
 
@@ -40,6 +46,8 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
       // Le mode fournée/pièce ne concerne que les produits finis (nomenclature) ;
       // une préparation de base reste en « par fournée » par défaut.
       compoParPiece: isBase ? false : compoParPiece,
+      temperaturePateCibleC: isBase ? numOrNull(tempPate) : undefined,
+      hydratationPct: isBase ? numOrNull(hydr) : undefined,
       ingredients: [],
     }),
     onSuccess: (r: { id: string }) => {
@@ -47,16 +55,15 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
       notify.success(isBase ? 'Préparation créée — complète la composition' : 'Recette créée — complète la composition');
       navigate(isBase ? `/recipes/${r.id}/preparation` : `/recipes/${r.id}/nomenclature`);
     },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
-      notify.error(msg || 'Erreur lors de la création');
-    },
+    onError: (err: unknown) => notify.error(apiErrorMessage(err, 'Erreur lors de la création')),
   });
 
   const editMut = useMutation({
     mutationFn: () => recipesApi.updateIdentity(recipe!.id, {
       name: name.trim(), categoryId: categoryId || null,
       compoParPiece: isBase ? undefined : compoParPiece,
+      temperaturePateCibleC: isBase ? numOrNull(tempPate) : undefined,
+      hydratationPct: isBase ? numOrNull(hydr) : undefined,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['recipes'] });
@@ -66,10 +73,7 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
       notify.success('Fiche mise à jour');
       onClose();
     },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
-      notify.error(msg || 'Erreur lors de la mise à jour');
-    },
+    onError: (err: unknown) => notify.error(apiErrorMessage(err, 'Erreur lors de la mise à jour')),
   });
 
   const pending = createMut.isPending || editMut.isPending;
@@ -141,6 +145,21 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
                   : 'Les quantités décrivent TOUTE la fournée (cadre/plaque découpé). Coût/pièce = total ÷ rendement.'}
                 {' '}Ce choix se fait maintenant et n'apparaît plus pendant la composition.
               </p>
+            </div>
+          )}
+
+          {isBase && (
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs text-gray-500">Température de pâte cible (°C)</span>
+                <input type="number" step="any" className={`${field} mt-1`} value={tempPate}
+                  onChange={(e) => setTempPate(e.target.value)} placeholder="ex. 24" aria-label="Température de pâte cible en degrés Celsius" />
+              </label>
+              <label className="block">
+                <span className="text-xs text-gray-500">Hydratation (% boulanger)</span>
+                <input type="number" step="any" className={`${field} mt-1`} value={hydr}
+                  onChange={(e) => setHydr(e.target.value)} placeholder="ex. 65" aria-label="Hydratation en pourcentage boulanger" />
+              </label>
             </div>
           )}
 

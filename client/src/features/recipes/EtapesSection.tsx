@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ListChecks, Timer, ShieldCheck, Repeat, Languages, Pencil, Plus, Trash2, ArrowUp, ArrowDown, Save, X } from 'lucide-react';
+import { ListChecks, Timer, ShieldCheck, Repeat, Languages, Pencil, Plus, Trash2, ArrowUp, ArrowDown, Save, X, Thermometer, Droplets } from 'lucide-react';
 import { recipesApi } from '../../api/recipes.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { apiErrorMessage } from '../../api/errors';
 
 /**
  * Étapes de production d'une recette — section partagée par la page produit fini
@@ -18,10 +19,21 @@ import { notify } from '../../components/ui/InlineNotification';
  * le PDF, lui, ne sait pas faire (police Helvetica, encodage Latin-1).
  */
 
+// Types d'etape (mig 342) — meme liste que le CHECK en base et le validateur serveur.
+const ETAPE_TYPES = ['petrissage', 'pointage', 'faconnage', 'tourage', 'appret', 'cuisson', 'refroidissement', 'montage', 'finition', 'autre'] as const;
+const ETAPE_TYPE_LABELS: Record<string, string> = {
+  petrissage: 'Pétrissage', pointage: 'Pointage', faconnage: 'Façonnage', tourage: 'Tourage', appret: 'Apprêt',
+  cuisson: 'Cuisson', refroidissement: 'Refroidissement', montage: 'Montage', finition: 'Finition', autre: 'Autre',
+};
+
 export interface Etape {
   ordre: number;
   nom: string;
   nom_ar?: string | null;
+  // Parametres structures (mig 342) : conduite de l'etape.
+  type?: string | null;
+  temperature_c?: number | null;
+  humidite_pct?: number | null;
   duree_estimee_min?: number | null;
   est_bloquante?: boolean;
   timer_auto?: boolean;
@@ -36,13 +48,19 @@ const aDuDarija = (e: Etape) =>
   Boolean(e.nom_ar || (e.checklist_items_ar && e.checklist_items_ar.length > 0));
 
 /** Brouillon d'édition : les points de contrôle se saisissent un par ligne. */
-type Draft = { k: number; src: Etape; nom: string; nomAr: string; duree: string; cq: boolean; bloquante: boolean; pts: string; ptsAr: string };
+type Draft = {
+  k: number; src: Etape; nom: string; nomAr: string; duree: string; cq: boolean; bloquante: boolean; pts: string; ptsAr: string;
+  type: string; tC: string; hr: string; timer: boolean; rep: boolean; nbRep: string;
+};
 let draftSeq = 0;
 const toDraft = (e: Etape): Draft => ({
   k: ++draftSeq, src: e, nom: e.nom || '', nomAr: e.nom_ar || '',
   duree: e.duree_estimee_min ? String(e.duree_estimee_min) : '',
   cq: !!e.controle_qualite, bloquante: e.est_bloquante !== false,
   pts: (e.checklist_items || []).join('\n'), ptsAr: (e.checklist_items_ar || []).join('\n'),
+  type: e.type || '', tC: e.temperature_c != null ? String(e.temperature_c) : '',
+  hr: e.humidite_pct != null ? String(e.humidite_pct) : '',
+  timer: !!e.timer_auto, rep: !!e.est_repetable, nbRep: String(e.nb_repetitions || 1),
 });
 const lines = (t: string) => t.split('\n').map((l) => l.trim()).filter(Boolean);
 
@@ -77,14 +95,22 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
       .filter((d) => d.nom.trim())
       .map((d, i) => {
         const duree = parseFloat(d.duree.replace(',', '.'));
+        const tC = parseFloat(d.tC.replace(',', '.'));
+        const hr = parseFloat(d.hr.replace(',', '.'));
         return {
           ...d.src,
           ordre: i + 1,
           nom: d.nom.trim(),
           nom_ar: d.nomAr.trim() || null,
+          type: d.type || null,
+          temperature_c: Number.isFinite(tC) ? tC : null,
+          humidite_pct: Number.isFinite(hr) ? hr : null,
           duree_estimee_min: duree > 0 ? duree : null,
           controle_qualite: d.cq,
           est_bloquante: d.bloquante,
+          timer_auto: d.timer,
+          est_repetable: d.rep,
+          nb_repetitions: d.rep ? Math.max(1, parseInt(d.nbRep, 10) || 1) : 1,
           checklist_items: lines(d.pts),
           checklist_items_ar: lines(d.ptsAr),
         };
@@ -94,10 +120,7 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
       setDrafts(null);
       notify.success('Étapes enregistrées');
     },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
-      notify.error(msg || "Erreur lors de l'enregistrement des étapes");
-    },
+    onError: (err: unknown) => notify.error(apiErrorMessage(err, "Erreur lors de l'enregistrement des étapes")),
   });
 
   if (drafts) {
@@ -132,13 +155,44 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
                     className="odoo-pager-btn" title="Supprimer l'étape"><Trash2 size={13} /></button>
                 </span>
               </div>
-              <div className="flex items-center gap-4 mt-2" style={{ marginLeft: 30 }}>
+              <div className="flex items-center gap-3 mt-2 flex-wrap" style={{ marginLeft: 30 }}>
+                {/* Conduite de l'étape (mig 342) : type, température, hygrométrie. */}
+                <select className={`${inp} min-w-[150px]`} value={d.type} onChange={(e) => patch(d.k, { type: e.target.value })} title="Type d'étape">
+                  <option value="">Type d'étape…</option>
+                  {ETAPE_TYPES.map((t) => <option key={t} value={t}>{ETAPE_TYPE_LABELS[t]}</option>)}
+                </select>
+                <span className="inline-flex items-center gap-1" title="Température (four, étuve, ambiante…)">
+                  <Thermometer size={13} className="text-gray-400" />
+                  <input type="number" step="any" min="-40" max="400" className={`${inp} w-16 text-right tabular-nums`} value={d.tC} placeholder="°C"
+                    onChange={(e) => patch(d.k, { tC: e.target.value })} />
+                  <span className="text-xs text-gray-400">°C</span>
+                </span>
+                <span className="inline-flex items-center gap-1" title="Hygrométrie (étuve, pousse contrôlée)">
+                  <Droplets size={13} className="text-gray-400" />
+                  <input type="number" step="any" min="0" max="100" className={`${inp} w-16 text-right tabular-nums`} value={d.hr} placeholder="HR"
+                    onChange={(e) => patch(d.k, { hr: e.target.value })} />
+                  <span className="text-xs text-gray-400">% HR</span>
+                </span>
                 <label className="inline-flex items-center gap-1.5 text-xs text-gray-600">
                   <input type="checkbox" checked={d.cq} onChange={(e) => patch(d.k, { cq: e.target.checked })} /> Contrôle qualité
                 </label>
                 <label className="inline-flex items-center gap-1.5 text-xs text-gray-600" title="Empêche de passer à l'étape suivante tant qu'elle n'est pas validée">
                   <input type="checkbox" checked={d.bloquante} onChange={(e) => patch(d.k, { bloquante: e.target.checked })} /> Bloquante
                 </label>
+                <label className="inline-flex items-center gap-1.5 text-xs text-gray-600" title="Déclenche automatiquement un minuteur sur la durée estimée">
+                  <input type="checkbox" checked={d.timer} onChange={(e) => patch(d.k, { timer: e.target.checked })} /> Timer auto
+                </label>
+                <label className="inline-flex items-center gap-1.5 text-xs text-gray-600" title="L'étape se répète (tours de feuilletage, passages…)">
+                  <input type="checkbox" checked={d.rep} onChange={(e) => patch(d.k, { rep: e.target.checked })} /> Répétable
+                </label>
+                {d.rep && (
+                  <span className="inline-flex items-center gap-1">
+                    <Repeat size={12} className="text-gray-400" />
+                    <input type="number" min="1" step="1" className={`${inp} w-14 text-right tabular-nums`} value={d.nbRep}
+                      onChange={(e) => patch(d.k, { nbRep: e.target.value })} />
+                    <span className="text-xs text-gray-400">fois</span>
+                  </span>
+                )}
               </div>
               <div className="grid gap-3 mt-2" style={{ gridTemplateColumns: '1fr 1fr', marginLeft: 30 }}>
                 <label className="block">
@@ -238,9 +292,21 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold" style={{ color: 'var(--theme-text-strong)' }}>{e.nom}</span>
+                    {e.type && (
+                      <span className="odoo-tag odoo-tag-grey">{ETAPE_TYPE_LABELS[e.type] || e.type}</span>
+                    )}
                     {e.duree_estimee_min ? (
                       <span className="odoo-tag odoo-tag-grey"><Timer size={9} /> {e.duree_estimee_min} min</span>
                     ) : null}
+                    {e.temperature_c != null && (
+                      <span className="odoo-tag odoo-tag-grey"><Thermometer size={9} /> {e.temperature_c} °C</span>
+                    )}
+                    {e.humidite_pct != null && (
+                      <span className="odoo-tag odoo-tag-grey"><Droplets size={9} /> {e.humidite_pct} % HR</span>
+                    )}
+                    {e.timer_auto && (
+                      <span className="odoo-tag odoo-tag-blue"><Timer size={9} /> timer auto</span>
+                    )}
                     {e.controle_qualite && (
                       <span className="odoo-tag odoo-tag-green"><ShieldCheck size={9} /> contrôle qualité</span>
                     )}

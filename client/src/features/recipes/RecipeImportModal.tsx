@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { recipesApi } from '../../api/recipes.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { apiErrorMessage } from '../../api/errors';
 
 interface PreviewRow {
   sourceRow: number;
@@ -64,12 +65,7 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
   const previewMut = useMutation({
     mutationFn: (f: File) => recipesApi.importPreview(f),
     onSuccess: (data: PreviewData) => setPreview(data),
-    onError: (err: unknown) => {
-      const msg = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
-        : null;
-      notify.error(msg || 'Erreur d\'analyse du fichier');
-    },
+    onError: (err: unknown) => notify.error(apiErrorMessage(err, 'Erreur d\'analyse du fichier')),
   });
 
   const commitMut = useMutation({
@@ -86,12 +82,7 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
       qc.invalidateQueries({ queryKey: ['products'] });
       qc.invalidateQueries({ queryKey: ['inventory'] });
     },
-    onError: (err: unknown) => {
-      const msg = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message
-        : null;
-      notify.error(msg || 'Erreur lors de l\'import');
-    },
+    onError: (err: unknown) => notify.error(apiErrorMessage(err, 'Erreur lors de l\'import')),
   });
 
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {

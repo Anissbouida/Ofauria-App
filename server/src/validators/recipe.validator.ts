@@ -38,6 +38,10 @@ export const identitySchema = z.object({
   // creation, corrigeable ici. Sans cette cle, zod depouillait le champ et le mode
   // choisi n'etait jamais enregistre (le repository le lit via COALESCE).
   compoParPiece: z.boolean().optional(),
+  // Parametres de pate (mig 342), editables ici pour les preparations de base.
+  // Lus par updateIdentity via COALESCE (non fournis => inchanges).
+  temperaturePateCibleC: z.number().min(-10).max(60, 'Température de pâte invalide').nullable().optional(),
+  hydratationPct: z.number().min(0).max(200, 'Hydratation invalide (0-200 %)').nullable().optional(),
 });
 
 export const saveEtapesSchema = z.object({ etapes: z.array(etapeSchema.passthrough()) });
