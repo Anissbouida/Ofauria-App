@@ -1408,7 +1408,7 @@ function InvoiceScheduleModal({ invoice, onClose, onSuccess }: {
             </div>
           )}
           <p className="text-xs text-gray-500">
-            Les échéances apparaîtront dans <strong>Comptabilité → Dettes → Échéancier</strong>.
+            Les échéances apparaîtront dans <strong>Comptabilité → Créances &amp; dettes → Échéancier</strong>.
             Le reste à payer de la facture ne change pas : l'échéancier n'est qu'un calendrier.
           </p>
           <div className="flex gap-2 pt-1">
