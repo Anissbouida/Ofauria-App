@@ -322,7 +322,13 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     const src = sourceMap[`${r.type}:${r.sourceId}`];
     const q = parseFloat(r.quantite);
     if (!src || !(q > 0)) return null;
-    return q * conv(r.unite, src.unit) * src.cost;
+    // Perte par ligne (mig 265) : la matière consommée est majorée exactement
+    // comme côté serveur (v_recipe_component_cost / v_rcomp_cost, mig 340/408) →
+    // coût ÷ (1 − perte/100). Sans ça, le coût affiché par l'éditeur divergeait
+    // du cout_dh serveur dès qu'une ligne portait une perte.
+    const perte = parseFloat((r.pertePct ?? '').replace(',', '.'));
+    const perteFactor = Number.isFinite(perte) && perte > 0 && perte < 100 ? 1 - perte / 100 : 1;
+    return (q * conv(r.unite, src.unit) * src.cost) / perteFactor;
   };
   const baseEquiv = (r: Row): { val: number; unit: string } | null => {
     const q = parseFloat(r.quantite); const u = r.unite.toLowerCase();
