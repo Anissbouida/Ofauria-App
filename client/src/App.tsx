@@ -19,7 +19,6 @@ import IngredientDetailPage from './features/stock/IngredientDetailPage';
 import PriceHealthPage from './features/stock/PriceHealthPage';
 import RecipesPage from './features/recipes/RecipesPage';
 import NomenclaturePage from './features/recipes/NomenclaturePage';
-import PreparationPage from './features/recipes/PreparationPage';
 import EmployeesPage from './features/employees/EmployeesPage';
 import EmployeeDetailPage from './features/employees/EmployeeDetailPage';
 import ReportsPage from './features/reports/ReportsPage';
@@ -99,9 +98,9 @@ export default function App() {
               <Route path="/warehouse/bsi/:id" element={<LegacyRedirect from="warehouse" to="/stock/bsi/:id" />} />
               {/* Emballages repliés dans le Stock (onglet Consommables). */}
               <Route path="/packaging" element={<Navigate to="/stock?tab=consumables" replace />} />
+              {/* Bases et produits s'éditent via le même éditeur (L2, unification du
+                  modèle) — NomenclaturePage. L'ancien écran PreparationPage est supprimé. */}
               <Route path="/recipes/:id/nomenclature" element={<NomenclaturePage />} />
-              {/* Préparations de base : même ossature, contenu adapté à une fournée. */}
-              <Route path="/recipes/:id/preparation" element={<PreparationPage />} />
               {/* Module Production : plusieurs pages sous une même barre latérale. Les pages de
                   détail (plan, nomenclature, préparation, demande) restent en pleine page. */}
               <Route element={<ProductionLayout />}>

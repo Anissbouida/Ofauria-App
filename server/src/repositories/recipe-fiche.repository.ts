@@ -10,10 +10,9 @@ import { db } from '../config/database.js';
  * besoin de la nomenclature de CHAQUE format : c'est justement ce qui change
  * d'un cadre a l'autre.
  *
- * Cout par format : les deux moteurs coexistent (mig 203). On lit les deux vues
- * et on choisit selon recipes.mode_cout.
- *   - compose     -> v_recipe_compose_cost : cout du lancement complet
- *   - ratio_poids -> v_recipe_format_cost  : cout deja rapporte a la piece
+ * Cout par format : matiere du lancement via v_recipe_compose_cost, et cout par
+ * piece (matiere/complet/prix) via la fonction de cout UNIQUE fn_recipe_cost
+ * (mig 409) — plus de prorata-poids (v_recipe_format_cost).
  */
 
 export interface FicheRow {
@@ -66,12 +65,17 @@ export const recipeFicheRepository = {
               rf.margin_multiplier_override, rf.prix_vente_unitaire_override,
               pc.nom AS contenant_nom,
               vcc.cout_compose_dh,
-              vfc.cout_matiere_format, vfc.cout_matiere_unitaire,
-              vfc.cout_unitaire_complet, vfc.prix_vente_unitaire
+              -- Coût par pièce via la fonction de coût UNIQUE (mig 409) au lieu de
+              -- v_recipe_format_cost (prorata-poids) : matière des vrais composants du
+              -- format. « complet » inclut l'emballage (comme l'ancienne vue).
+              (fc.matiere_u * fc.pieces) AS cout_matiere_format,
+              fc.matiere_u             AS cout_matiere_unitaire,
+              (fc.complet_u + fc.emballage_u) AS cout_unitaire_complet,
+              fc.prix_u                AS prix_vente_unitaire
          FROM recipe_formats rf
          LEFT JOIN production_contenants pc ON pc.id = rf.contenant_id
          LEFT JOIN v_recipe_compose_cost vcc ON vcc.format_id = rf.id
-         LEFT JOIN v_recipe_format_cost vfc ON vfc.id = rf.id
+         LEFT JOIN LATERAL fn_recipe_cost(rf.recipe_id, rf.id) fc ON true
         WHERE rf.recipe_id = $1 AND rf.is_active = true
           AND ($2::uuid IS NULL OR rf.id = $2::uuid)
         ORDER BY rf.ordre, pc.nom NULLS LAST`,
