@@ -128,8 +128,10 @@ export async function restoreRecipeVersion(recipeId: string, versionNumber: numb
         );
       }
     };
+    // Miroir recipe_components : reconstruit automatiquement par trigger (mig 412)
+    // lors de la réapplication des composants du format par défaut ci-dessous. On le
+    // vide ici par sécurité (capture éventuelle sans format).
     await client.query(`DELETE FROM recipe_components WHERE recipe_id = $1`, [recipeId]);
-    await insertComponents('recipe_components', 'recipe_id', recipeId, snapshot.components);
 
     // 5. Formats : mise a jour si present, creation sinon, desactivation des absents.
     const keepIds: string[] = [];

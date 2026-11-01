@@ -287,25 +287,15 @@ export const recipeComponentRepository = {
         [formatId, data.nbParDefaut ?? null, data.nbParts ?? null, data.poidsCruG ?? null, data.poidsCuitG ?? null, userId ?? null]
       );
 
-      // Le format par défaut pilote le coût recette (v_recipe_total_cost) :
-      // recipe_components reste son MIROIR. On le resynchronise ici.
-      if (isDefault) {
-        await client.query(`DELETE FROM recipe_components WHERE recipe_id = $1`, [recipeId]);
-        for (const c of data.components) {
-          await client.query(
-            `INSERT INTO recipe_components
-               (recipe_id, role, source_recipe_id, source_ingredient_id, quantite, unite, ordre, perte_pct)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [recipeId, c.role ?? null, c.sourceRecipeId ?? null, c.sourceIngredientId ?? null,
-             c.quantite, c.unite, c.ordre, c.pertePct ?? 0]
-          );
-        }
-        // Finalise la bascule legacy → composé : la compo vit dans la nomenclature,
-        // on purge recipe_ingredients/recipe_sub_recipes (sinon double comptage du coût).
-        if (data.components.length > 0) {
-          await client.query(`DELETE FROM recipe_ingredients WHERE recipe_id = $1`, [recipeId]);
-          await client.query(`DELETE FROM recipe_sub_recipes WHERE recipe_id = $1`, [recipeId]);
-        }
+      // Le miroir recipe_components (lu par v_recipe_total_cost) est désormais
+      // reconstruit automatiquement par trigger (mig 412) depuis les composants du
+      // format par défaut — plus de resynchronisation à la main ici.
+      // Sur le format par défaut, on finalise la bascule legacy → composé : la compo
+      // vit dans la nomenclature, on purge recipe_ingredients/recipe_sub_recipes
+      // (sinon double comptage du coût).
+      if (isDefault && data.components.length > 0) {
+        await client.query(`DELETE FROM recipe_ingredients WHERE recipe_id = $1`, [recipeId]);
+        await client.query(`DELETE FROM recipe_sub_recipes WHERE recipe_id = $1`, [recipeId]);
       }
 
       // Dès qu'une nomenclature existe, la recette passe en mode composé.

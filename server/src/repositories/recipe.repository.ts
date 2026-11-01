@@ -1159,21 +1159,20 @@ export const recipeRepository = {
     try {
       await client.query('BEGIN');
       const ri = (await client.query(`SELECT id::text FROM recipe_ingredients WHERE ingredient_id = $1`, [sourceId])).rows.map(r => r.id);
-      const rc = (await client.query(`SELECT id::text FROM recipe_components WHERE source_ingredient_id = $1`, [sourceId])).rows.map(r => r.id);
       const rfc = (await client.query(`SELECT id::text FROM recipe_format_components WHERE source_ingredient_id = $1`, [sourceId])).rows.map(r => r.id);
-      if (ri.length + rc.length + rfc.length === 0) { await client.query('ROLLBACK'); return { rows_count: 0, recipes_count: 0, log_id: null }; }
+      if (ri.length + rfc.length === 0) { await client.query('ROLLBACK'); return { rows_count: 0, recipes_count: 0, log_id: null }; }
       await client.query(`UPDATE recipe_ingredients SET ingredient_id = $2 WHERE ingredient_id = $1`, [sourceId, targetId]);
-      await client.query(`UPDATE recipe_components SET source_ingredient_id = $2, updated_at = NOW() WHERE source_ingredient_id = $1`, [sourceId, targetId]);
+      // Le miroir recipe_components est resynchronisé automatiquement par trigger
+      // (mig 412) à la mise à jour de recipe_format_components ci-dessous.
       await client.query(`UPDATE recipe_format_components SET source_ingredient_id = $2, updated_at = NOW() WHERE source_ingredient_id = $1`, [sourceId, targetId]);
       const recipesCount = (await client.query(
         `SELECT count(DISTINCT rid)::int n FROM (
            SELECT recipe_id rid FROM recipe_ingredients WHERE ingredient_id = $1
-           UNION SELECT recipe_id FROM recipe_components WHERE source_ingredient_id = $1
            UNION SELECT rf.recipe_id FROM recipe_format_components rfc JOIN recipe_formats rf ON rf.id = rfc.format_id WHERE rfc.source_ingredient_id = $1
          ) z`, [targetId]
       )).rows[0]?.n ?? 0;
-      const affected = { recipe_ingredients: ri, recipe_components: rc, recipe_format_components: rfc };
-      const rowsCount = ri.length + rc.length + rfc.length;
+      const affected = { recipe_ingredients: ri, recipe_format_components: rfc };
+      const rowsCount = ri.length + rfc.length;
       const log = (await client.query(
         `INSERT INTO recipe_bulk_replace_log (source_ingredient_id, target_ingredient_id, affected, recipes_count, rows_count, performed_by)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
@@ -1195,11 +1194,13 @@ export const recipeRepository = {
       const a = log.affected as { recipe_ingredients?: string[]; recipe_components?: string[]; recipe_format_components?: string[] };
       const S = log.source_ingredient_id, T = log.target_ingredient_id;
       const r1 = await client.query(`UPDATE recipe_ingredients SET ingredient_id = $1 WHERE id::text = ANY($3::text[]) AND ingredient_id = $2`, [S, T, a.recipe_ingredients ?? []]);
-      const r2 = await client.query(`UPDATE recipe_components SET source_ingredient_id = $1, updated_at = NOW() WHERE id::text = ANY($3::text[]) AND source_ingredient_id = $2`, [S, T, a.recipe_components ?? []]);
+      // Le miroir recipe_components est resynchronisé par trigger (mig 412) au revert
+      // de recipe_format_components ci-dessous ; a.recipe_components (anciens logs) est
+      // désormais ignoré.
       const r3 = await client.query(`UPDATE recipe_format_components SET source_ingredient_id = $1, updated_at = NOW() WHERE id::text = ANY($3::text[]) AND source_ingredient_id = $2`, [S, T, a.recipe_format_components ?? []]);
       await client.query(`UPDATE recipe_bulk_replace_log SET reverted_at = NOW(), reverted_by = $2 WHERE id = $1`, [logId, userId]);
       await client.query('COMMIT');
-      return { ok: true as const, restored: (r1.rowCount ?? 0) + (r2.rowCount ?? 0) + (r3.rowCount ?? 0) };
+      return { ok: true as const, restored: (r1.rowCount ?? 0) + (r3.rowCount ?? 0) };
     } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
   },
 
