@@ -1033,3 +1033,18 @@
 [role="dialog"] .transfer-pesage-field { flex: 1 1 260px; }
 .transfer-pesage-matches button { width: 100%; text-align: left; padding: 0.5rem 0.75rem; min-height: 36px; font-size: 0.8125rem; background: transparent; }
 .transfer-pesage-matches button:hover { background: var(--theme-bg-page); }
+
+/* ── Barres larges sur mobile : défilement horizontal plutôt que troncature ──
+   La barre de contrôle (breadcrumb + actions), les onglets et la rangée de KPI
+   dépassent la largeur d'un téléphone et, sans règle, leur contenu de droite
+   (boutons, tuiles) était coupé et inatteignable. overflow-x:auto les rend
+   défilables ; la règle ne change rien au desktop car elle ne s'active que
+   lorsque le contenu dépasse, et seulement sous 820px. overflow-y:hidden sur
+   les onglets et les KPI évite une barre verticale parasite (marge -1px des
+   onglets) ; la barre de contrôle le garde en visible pour ne pas rogner un
+   menu éventuel. */
+@media (max-width: 820px) {
+  .odoo-control-bar { overflow-x: auto; }
+  .odoo-tabs { overflow-x: auto; overflow-y: hidden; }
+  .odoo-smart-button-row { overflow-x: auto; overflow-y: hidden; }
+}

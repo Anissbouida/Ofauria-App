@@ -5,7 +5,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { useProductionTimers } from '../../context/ProductionTimerContext';
 import {
   CheckCircle, Play, Clock, SkipForward, ListChecks, Timer,
-  ChevronDown, ChevronRight, RotateCcw, AlertTriangle, Loader2, Save, Lock, Thermometer, Droplets
+  ChevronDown, ChevronRight, RotateCcw, AlertTriangle, Loader2, Save, Lock, Thermometer, Droplets, Scale
 } from 'lucide-react';
 
 /** Libelles des types d'etape (mig 342). */
@@ -36,6 +36,11 @@ interface Etape {
   timer_auto: boolean;
   controle_qualite: boolean;
   checklist_items: string[];
+  // Consigne darija (mig 294/295) et ingredients peses a l'etape (mig 297),
+  // copies de la fiche a l'instanciation (mig 419).
+  nom_ar?: string | null;
+  checklist_items_ar?: string[];
+  step_ingredient_names?: string[] | null;
   est_repetable: boolean;
   nb_repetitions_cible: number;
   nb_repetitions_actuelle: number;
@@ -336,6 +341,17 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                               {etape.assigned_employee_name && <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-bold">{etape.assigned_employee_name}</span>}
                               {etape.paused_at && <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-bold">En pause</span>}
                             </div>
+                            {/* Consigne darija (mig 419) : le libelle de l'etape en darija. */}
+                            {etape.nom_ar && (
+                              <p dir="rtl" className="text-[13px] font-semibold text-gray-800 mt-0.5">{etape.nom_ar}</p>
+                            )}
+                            {/* Ingredients peses a cette etape (mig 297/419). */}
+                            {etape.step_ingredient_names && etape.step_ingredient_names.length > 0 && (
+                              <div className="mt-1 flex items-start gap-1 text-[11px] text-gray-500">
+                                <Scale size={11} className="mt-0.5 shrink-0 text-gray-400" />
+                                <span>{etape.step_ingredient_names.join(' · ')}</span>
+                              </div>
+                            )}
                             {etape.status === 'completed' && etape.duree_reelle_min != null && (
                               <span className="text-[10px] text-gray-400">Duree: {Math.round(etape.duree_reelle_min)} min</span>
                             )}
@@ -410,7 +426,12 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                                       return { ...s, [etape.id]: arr };
                                     });
                                   }} className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500" />
-                                  {label}
+                                  <span>
+                                    {label}
+                                    {etape.checklist_items_ar?.[ci] && (
+                                      <span dir="rtl" className="block text-[11px] text-gray-500">{etape.checklist_items_ar[ci]}</span>
+                                    )}
+                                  </span>
                                 </label>
                               );
                             })}

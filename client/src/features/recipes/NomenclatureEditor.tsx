@@ -591,7 +591,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     return (
       <div key={r.key} className={`border-t border-gray-100 first:border-t-0 ${dragKey === r.key ? 'opacity-40' : ''}`}
         onDragOver={(e) => e.preventDefault()} onDrop={() => onDropRow(r.key)}>
-        <div className="grid items-start gap-2 px-3 py-2 hover:bg-gray-50/70 transition-colors" style={{ gridTemplateColumns: COLS }}>
+        <div className="grid items-start gap-2 px-3 py-2 hover:bg-gray-50/70 transition-colors" style={{ gridTemplateColumns: COLS, minWidth: 910 }}>
           <div className="flex items-center gap-0.5 pt-1.5">
             <span draggable onDragStart={() => setDragKey(r.key)} onDragEnd={() => setDragKey(null)}
               className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500" title="Glisser pour réordonner">
@@ -841,8 +841,12 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               </div>
             )}
 
-            <div className="rounded-lg border border-gray-200">
-              <div className="grid items-center gap-2 px-3 py-2 bg-gray-50 rounded-t-lg text-[11px] font-medium uppercase tracking-wide text-gray-500" style={{ gridTemplateColumns: COLS }}>
+            {/* overflow-x : sur écran étroit, les colonnes fixes (≈ 650 px) ne
+                tiennent pas et la colonne Composant (1fr) s'effondrait à 0 ;
+                minWidth sur les rangées garde la grille lisible et le conteneur
+                défile horizontalement. Sans effet sur desktop (910 < largeur). */}
+            <div className="rounded-lg border border-gray-200" style={{ overflowX: 'auto' }}>
+              <div className="grid items-center gap-2 px-3 py-2 bg-gray-50 rounded-t-lg text-[11px] font-medium uppercase tracking-wide text-gray-500" style={{ gridTemplateColumns: COLS, minWidth: 910 }}>
                 <span /><span>Rôle</span><span>Composant</span>
                 <span className="text-right">{compoParPiece ? 'Qté / pièce' : 'Qté / fournée'}</span><span>Unité</span>
                 <span className="text-right" title="Perte sur la ligne (%) : majore la matière et le coût">Perte</span>
@@ -855,7 +859,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               {rows.length > 0 && (() => {
                 const [tv, tu] = splitW(poidsBrutG);
                 return (
-                  <div className="grid items-center gap-2 px-3 py-2 border-t border-gray-200 bg-gray-50 text-sm font-semibold tabular-nums" style={{ gridTemplateColumns: COLS }}>
+                  <div className="grid items-center gap-2 px-3 py-2 border-t border-gray-200 bg-gray-50 text-sm font-semibold tabular-nums" style={{ gridTemplateColumns: COLS, minWidth: 910 }}>
                     <span /><span />
                     <span className="text-gray-600">Total {compoParPiece ? 'pièce' : 'fournée'}</span>
                     <span className="text-right">{tv}</span><span className="text-xs font-normal text-gray-400">{tu}</span>

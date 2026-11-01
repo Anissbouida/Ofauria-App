@@ -52,8 +52,9 @@ export const productionEtapesRepository = {
         `INSERT INTO production_item_etapes
          (plan_item_id, ordre, nom, duree_estimee_min, est_bloquante, timer_auto,
           controle_qualite, checklist_items, est_repetable, nb_repetitions_cible,
-          responsable_role, type_etape, temperature_c, humidite_pct)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          responsable_role, type_etape, temperature_c, humidite_pct,
+          nom_ar, checklist_items_ar, ingredient_refs)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
          RETURNING *`,
         [planItemId, etape.ordre, etape.nom, etape.duree_estimee_min || null,
          etape.est_bloquante ?? true, etape.timer_auto ?? false,
@@ -61,7 +62,12 @@ export const productionEtapesRepository = {
          etape.est_repetable ?? false, etape.nb_repetitions || 1,
          etape.responsable_role || null,
          // Parametres structures (mig 342) : copies tels quels pour l'ecran de fabrication.
-         etape.type || null, etape.temperature_c ?? null, etape.humidite_pct ?? null]
+         etape.type || null, etape.temperature_c ?? null, etape.humidite_pct ?? null,
+         // Darija (mig 294/295) et ingredients peses par etape (mig 297) : copies
+         // tels quels pour que l'ecran d'atelier montre la consigne en darija et
+         // les ingredients de l'etape, comme l'assistant de lancement (mig 419).
+         etape.nom_ar || null, JSON.stringify(etape.checklist_items_ar || []),
+         JSON.stringify(etape.ingredient_refs || [])]
       );
       inserted.push(result.rows[0]);
     }
@@ -73,7 +79,10 @@ export const productionEtapesRepository = {
     const result = await db.query(
       `SELECT pie.*, u1.first_name as started_by_name, u2.first_name as completed_by_name,
               wc.name as work_center_name,
-              emp.first_name || ' ' || emp.last_name as assigned_employee_name
+              emp.first_name || ' ' || emp.last_name as assigned_employee_name,
+              (SELECT array_agg(DISTINCT i.name ORDER BY i.name)
+                 FROM jsonb_array_elements_text(pie.ingredient_refs) ref
+                 JOIN ingredients i ON i.id = split_part(ref, '#', 1)::uuid) as step_ingredient_names
        FROM production_item_etapes pie
        LEFT JOIN users u1 ON u1.id = pie.started_by
        LEFT JOIN users u2 ON u2.id = pie.completed_by
@@ -92,7 +101,10 @@ export const productionEtapesRepository = {
       `SELECT pie.*, ppi.product_id, COALESCE(p.name, r.name) as product_name,
               u1.first_name as started_by_name, u2.first_name as completed_by_name,
               wc.name as work_center_name,
-              emp.first_name || ' ' || emp.last_name as assigned_employee_name
+              emp.first_name || ' ' || emp.last_name as assigned_employee_name,
+              (SELECT array_agg(DISTINCT i.name ORDER BY i.name)
+                 FROM jsonb_array_elements_text(pie.ingredient_refs) ref
+                 JOIN ingredients i ON i.id = split_part(ref, '#', 1)::uuid) as step_ingredient_names
        FROM production_item_etapes pie
        JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
        LEFT JOIN products p ON p.id = ppi.product_id
