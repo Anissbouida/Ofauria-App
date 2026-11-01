@@ -272,18 +272,18 @@ export const salaryAdvanceRepository = {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+      // Verrou et comptage en deux requêtes : Postgres refuse FOR UPDATE avec GROUP BY.
       const existing = await client.query(
-        `SELECT a.id, a.payment_id, COUNT(sr.id)::int AS repayment_count
-           FROM salary_advances a
-           LEFT JOIN salary_advance_repayments sr ON sr.advance_id = a.id
-          WHERE a.id = $1
-          GROUP BY a.id, a.payment_id
-          FOR UPDATE OF a`,
+        `SELECT id, payment_id FROM salary_advances WHERE id = $1 FOR UPDATE`,
         [id]
       );
       const row = existing.rows[0];
       if (!row) throw new Error('Avance introuvable');
-      if (row.repayment_count > 0) {
+      const repayments = await client.query(
+        `SELECT COUNT(*)::int AS n FROM salary_advance_repayments WHERE advance_id = $1`,
+        [id]
+      );
+      if (repayments.rows[0].n > 0) {
         throw new Error('Avance deja partiellement remboursee : suppression impossible');
       }
       const paymentId = row.payment_id;

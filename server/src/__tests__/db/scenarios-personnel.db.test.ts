@@ -258,6 +258,28 @@ describe.skipIf(!hasTestDb)('Scénarios RH / Paie (2099)', () => {
       expect(num(row.rows[0].amount)).toBe(2000);
       expect(num(row.rows[0].remaining_amount)).toBe(2000);
     });
+
+    it('supprime une avance non remboursée : paiement annulé, contre-pièce, écriture extournée', async () => {
+      // Régression : remove() combinait GROUP BY et FOR UPDATE, refusé par Postgres.
+      const p = testPool();
+      const adv = await p.query(`SELECT id, payment_id FROM salary_advances WHERE employee_id = $1`, [empHebdoCap]);
+      const { id, payment_id: paymentId } = adv.rows[0];
+      expect(paymentId).toBeTruthy();
+
+      await salaryAdvanceRepository.remove(id, fx.userId);
+
+      const left = await p.query(`SELECT 1 FROM salary_advances WHERE id = $1`, [id]);
+      expect(left.rows).toHaveLength(0);
+      const pays = await p.query(
+        `SELECT amount, status FROM payments WHERE id = $1 OR voids_payment_id = $1 ORDER BY amount DESC`, [paymentId]);
+      expect(pays.rows.map(r => [num(r.amount), r.status])).toEqual([[2000, 'void'], [-2000, 'void']]);
+      const entries = await p.query(
+        `SELECT status, reversed_by_entry_id FROM journal_entries WHERE source_id = $1 AND source_kind = 'payment'`, [paymentId]);
+      for (const e of entries.rows) {
+        expect(e.status).toBe('reversed');
+        expect(e.reversed_by_entry_id).toBeTruthy();
+      }
+    });
   });
 
   // ─── 3. Planning hebdo vs congé approuvé ───
