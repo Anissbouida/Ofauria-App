@@ -153,7 +153,16 @@ export function parseRecipeWorkbook(buffer: Buffer): ParsedRecipesWorkbook {
   }
 
   const recipes: ParsedRecipeMain[] = [];
-  const seenRecipeNames = new Set<string>();
+  // Un nom present plusieurs fois dans le fichier est AMBIGU (homonyme, ex. deux
+  // « Croissant ») : impossible de savoir quelle fiche mettre a jour. On ignore
+  // alors TOUTES ses lignes avec un avertissement NON bloquant, au lieu de bloquer
+  // l'import entier. Les fiches a nom unique (et modifiees) sont importees normalement.
+  const nameCounts = new Map<string, number>();
+  for (let j = 1; j < recipesAoa.length; j++) {
+    const n = toCleanString((recipesAoa[j] || [])[0]);
+    if (n) nameCounts.set(n.toUpperCase(), (nameCounts.get(n.toUpperCase()) ?? 0) + 1);
+  }
+  const warnedDuplicateNames = new Set<string>();
 
   for (let i = 1; i < recipesAoa.length; i++) {
     const row = recipesAoa[i] || [];
@@ -167,11 +176,13 @@ export function parseRecipeWorkbook(buffer: Buffer): ParsedRecipesWorkbook {
       continue;
     }
     const nameKey = name.toUpperCase();
-    if (seenRecipeNames.has(nameKey)) {
-      errors.push({ sheet: SHEET_RECIPES, sourceRow, message: `Doublon dans le fichier : "${name}" apparait plusieurs fois` });
+    if ((nameCounts.get(nameKey) ?? 0) > 1) {
+      if (!warnedDuplicateNames.has(nameKey)) {
+        warnedDuplicateNames.add(nameKey);
+        warnings.push(`"${name}" apparait plusieurs fois dans le fichier : toutes ses lignes sont ignorees (homonyme ambigu). Les autres fiches sont importees.`);
+      }
       continue;
     }
-    seenRecipeNames.add(nameKey);
 
     const isBaseRaw = row[1];
     const isBase = toBool(isBaseRaw);
