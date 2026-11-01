@@ -1089,7 +1089,10 @@ export async function reverseEntriesForSource(
 }
 
 /** Extourne une écriture précise (ex. dotation d'une immobilisation supprimée). */
-export async function extourneEntryById(client: PoolClient, entryId: string, preferredDate?: string): Promise<boolean> {
+export async function extourneEntryById(
+  client: PoolClient, entryId: string, preferredDate?: string,
+  opts: { userId?: string | null; reason?: string | null } = {},
+): Promise<boolean> {
   const r = await client.query(
     `SELECT je.id, je.entry_number, je.entry_date, je.store_id, je.description, je.journal_id,
             je.source_id, je.source_detail, fp.status AS period_status
@@ -1097,7 +1100,7 @@ export async function extourneEntryById(client: PoolClient, entryId: string, pre
       WHERE je.id = $1 AND je.status = 'posted'`, [entryId]);
   if (!r.rows[0]) return false;
   if (r.rows[0].period_status === 'locked') throw new Error(`Ecriture ${r.rows[0].entry_number} en periode verrouillee`);
-  await extourneEntry(client, r.rows[0], preferredDate);
+  await extourneEntry(client, r.rows[0], preferredDate, opts);
   return true;
 }
 
@@ -1105,7 +1108,9 @@ async function extourneEntry(
   client: PoolClient,
   orig: { id: string; entry_number: string; entry_date: unknown; journal_id: string; store_id: string | null;
           description: string | null; source_id: string | null; source_detail: string | null },
-  preferredDate?: string
+  preferredDate?: string,
+  // Extourne manuelle (saisie libre, mig 418) : auteur réel et motif ; sinon système.
+  opts: { userId?: string | null; reason?: string | null } = {},
 ): Promise<void> {
   const target = preferredDate || toIsoDate(orig.entry_date);
   const d = await client.query(`SELECT fn_accounting_date($1::date)::text AS d`, [target]);
@@ -1116,7 +1121,7 @@ async function extourneEntry(
   const year = parseInt(extDate.slice(0, 4), 10);
   const numRes = await client.query('SELECT next_entry_number($1, $2::smallint) AS num', [orig.journal_id, year]);
   const entryNumber = numRes.rows[0].num;
-  const sysUser = await resolveUserId(client, null);
+  const sysUser = await resolveUserId(client, opts.userId ?? null);
 
   // source_detail = 'rev:<id original>' : unique par original, plusieurs
   // régénérations successives d'une même pièce ne se télescopent pas.
@@ -1127,7 +1132,7 @@ async function extourneEntry(
      ) VALUES ($1,$2,$3,$4,$5,'reversal',$6,$7,'draft',$8,$9,$10)
      RETURNING id`,
     [entryNumber, orig.journal_id, extDate, periodId,
-     `Extourne de ${orig.entry_number}${orig.description ? ' — ' + orig.description : ''}`,
+     `Extourne de ${orig.entry_number}${opts.reason ? ' — motif : ' + opts.reason : (orig.description ? ' — ' + orig.description : '')}`.slice(0, 2000),
      orig.source_id, `rev:${orig.id}`, orig.store_id, sysUser, orig.id]
   );
   const extId = insRes.rows[0].id;

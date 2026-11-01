@@ -38,7 +38,8 @@ export interface AccountAuxiliary {
   account_code: string;
 }
 
-export type JournalKind = 'purchase' | 'sales' | 'bank' | 'cash' | 'misc';
+/** 'opening' : journal des à-nouveaux (AN), réservé à la clôture d'exercice (mig 416). */
+export type JournalKind = 'purchase' | 'sales' | 'bank' | 'cash' | 'misc' | 'opening';
 
 export interface Journal {
   id: string;

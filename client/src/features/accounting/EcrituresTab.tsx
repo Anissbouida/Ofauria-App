@@ -3,9 +3,12 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, X, Download, Loader2, Notebook, Lock, FileText, Calendar, ChevronLeft, ChevronRight, ChevronDown, Eye, Wand2,
-  CheckCircle2, AlertTriangle, Filter,
+  CheckCircle2, AlertTriangle, Filter, Plus, PenLine, Trash2, RotateCcw,
 } from 'lucide-react';
-import { journalEntriesApi, journalsApi, reconciliationApi, ledgerBackfillApi } from '../../api/ledger.api';
+import { journalEntriesApi, journalsApi, reconciliationApi, ledgerBackfillApi, manualEntriesApi, type JournalEntryDetailEx } from '../../api/ledger.api';
+import ManualEntryEditor from './ManualEntryEditor';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { apiErrorMessage } from '../../api/errors';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -83,6 +86,8 @@ export default function EcrituresTab() {
   const [page, setPage] = useState(1);
   useEffect(() => { setPage(1); }, [period, customFrom, customTo]);
   const [viewing, setViewing] = useState<string | null>(null);
+  // Saisie libre (mig 418) : null = fermé ; draft = brouillon à reprendre.
+  const [editor, setEditor] = useState<{ draft: JournalEntryDetailEx | null } | null>(null);
   const [showDivergent, setShowDivergent] = useState(false);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
@@ -273,6 +278,10 @@ export default function EcrituresTab() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: rows.length === 0 ? 0.5 : 1 }}>
           <Download size={13} /> Exporter CSV
         </button>
+        <button onClick={() => setEditor({ draft: null })} className="odoo-btn-primary"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Plus size={13} /> Nouvelle écriture
+        </button>
       </div>
 
       {/* Stats du page courant */}
@@ -375,16 +384,45 @@ export default function EcrituresTab() {
       )}
 
       {/* Viewer modal en lecture seule */}
-      {viewing && <JournalEntryViewer id={viewing} onClose={() => setViewing(null)} />}
+      {viewing && <JournalEntryViewer id={viewing} onClose={() => setViewing(null)}
+        onEdit={(draft) => { setViewing(null); setEditor({ draft }); }} />}
+      {editor && <ManualEntryEditor draft={editor.draft} onClose={() => setEditor(null)} />}
     </>
   );
 }
 
-function JournalEntryViewer({ id, onClose }: { id: string; onClose: () => void }) {
-  const { data: entry, isLoading } = useQuery({
+function JournalEntryViewer({ id, onClose, onEdit }: { id: string; onClose: () => void; onEdit: (draft: JournalEntryDetailEx) => void }) {
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const { data: rawEntry, isLoading } = useQuery({
     queryKey: ['ledger-entry', id],
     queryFn: () => journalEntriesApi.getById(id),
   });
+  const entry = rawEntry as JournalEntryDetailEx | undefined;
+  // Actions de la saisie libre (mig 418) : brouillon de saisie, écriture manuelle comptabilisée.
+  const isDraft = entry?.status === 'draft' && entry.source_kind === 'manual' && entry.source_detail === 'saisie';
+  const canReverse = entry?.status === 'posted' && entry.source_kind === 'manual';
+  const [reversing, setReversing] = useState<{ date: string; reason: string } | null>(null);
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['ledger-entries'] });
+    queryClient.invalidateQueries({ queryKey: ['ledger-entry', id] });
+  };
+  const postM = useMutation({
+    mutationFn: () => manualEntriesApi.post(id),
+    onSuccess: (r) => { refresh(); notify.success(`Écriture ${r.entry_number} comptabilisée`); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Comptabilisation impossible')),
+  });
+  const deleteM = useMutation({
+    mutationFn: () => manualEntriesApi.deleteDraft(id),
+    onSuccess: () => { refresh(); notify.success('Brouillon supprimé'); onClose(); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Suppression impossible')),
+  });
+  const reverseM = useMutation({
+    mutationFn: (p: { date: string; reason: string }) => manualEntriesApi.reverse(id, { date: p.date || null, reason: p.reason }),
+    onSuccess: (r) => { refresh(); setReversing(null); notify.success(`Extournée par ${r.reversal_number ?? 'une contre-passation'}`); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Extourne impossible')),
+  });
+  const busy = postM.isPending || deleteM.isPending || reverseM.isPending;
 
   const totalD = useMemo(() => {
     if (!entry) return 0;
@@ -422,7 +460,16 @@ function JournalEntryViewer({ id, onClose }: { id: string; onClose: () => void }
               <div><span style={{ color: 'var(--theme-text-muted)' }}>Date :</span> {fmtDate(entry.entry_date)}</div>
               <div><span style={{ color: 'var(--theme-text-muted)' }}>Journal :</span> {entry.journal_code} - {entry.journal_label}</div>
               <div><span style={{ color: 'var(--theme-text-muted)' }}>Periode :</span> {String(entry.fiscal_month).padStart(2, '0')}/{entry.fiscal_year}</div>
-              <div><span style={{ color: 'var(--theme-text-muted)' }}>Source :</span> {entry.source_kind}</div>
+              <div><span style={{ color: 'var(--theme-text-muted)' }}>Source :</span> {entry.source_kind === 'manual' && entry.source_detail === 'saisie' ? 'saisie libre' : entry.source_kind}</div>
+              {(entry.piece_ref || entry.piece_date) && (
+                <div><span style={{ color: 'var(--theme-text-muted)' }}>Pièce :</span> {entry.piece_ref || '—'}{entry.piece_date ? ` du ${fmtDate(entry.piece_date)}` : ''}</div>
+              )}
+              {entry.reversed_by_number && (
+                <div><span style={{ color: 'var(--theme-text-muted)' }}>Extournée par :</span> <span style={{ fontFamily: 'ui-monospace, monospace' }}>{entry.reversed_by_number}</span></div>
+              )}
+              {entry.reversal_of_number && (
+                <div><span style={{ color: 'var(--theme-text-muted)' }}>Extourne de :</span> <span style={{ fontFamily: 'ui-monospace, monospace' }}>{entry.reversal_of_number}</span></div>
+              )}
               {entry.description && (
                 <div style={{ gridColumn: '1 / -1' }}>
                   <span style={{ color: 'var(--theme-text-muted)' }}>Libelle :</span> {entry.description}
@@ -485,6 +532,57 @@ function JournalEntryViewer({ id, onClose }: { id: string; onClose: () => void }
                 )}
               </tfoot>
             </table>
+
+            {(isDraft || canReverse) && (
+              <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--theme-bg-separator)' }}>
+                {reversing ? (
+                  <form onSubmit={(e) => { e.preventDefault(); reverseM.mutate(reversing); }}
+                    style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Date de l'extourne
+                      <input type="date" value={reversing.date} onChange={e => setReversing({ ...reversing, date: e.target.value })}
+                        className="odoo-search-input" style={{ width: 150, display: 'block' }} />
+                    </label>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', flex: 1, minWidth: 240 }}>Motif *
+                      <input value={reversing.reason} onChange={e => setReversing({ ...reversing, reason: e.target.value })} autoFocus
+                        className="odoo-search-input" style={{ width: '100%', display: 'block' }} placeholder="Ex. Erreur d'imputation" maxLength={500} />
+                    </label>
+                    <button type="button" className="odoo-btn-secondary" onClick={() => setReversing(null)} disabled={busy}>Retour</button>
+                    <button type="submit" className="odoo-btn-danger" disabled={busy || reversing.reason.trim().length < 3}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {reverseM.isPending ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} Extourner
+                    </button>
+                  </form>
+                ) : (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    {isDraft && (
+                      <>
+                        <button type="button" className="odoo-btn-danger" disabled={busy}
+                          onClick={async () => { if (await confirm('Supprimer ce brouillon ? Il n\'a pas encore de numéro : aucun trou ne restera dans la numérotation.')) deleteM.mutate(); }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <Trash2 size={12} /> Supprimer
+                        </button>
+                        <button type="button" className="odoo-btn-secondary" disabled={busy} onClick={() => onEdit(entry)}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <PenLine size={12} /> Modifier
+                        </button>
+                        <button type="button" className="odoo-btn-primary" disabled={busy || Math.abs(totalD - totalC) > 0.005}
+                          onClick={async () => { if (await confirm('Comptabiliser ce brouillon ? Il recevra son numéro de journal et ne pourra plus être modifié (correction par extourne).')) postM.mutate(); }}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          {postM.isPending ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Comptabiliser
+                        </button>
+                      </>
+                    )}
+                    {canReverse && (
+                      <button type="button" className="odoo-btn-secondary" disabled={busy}
+                        onClick={() => setReversing({ date: new Date().toISOString().slice(0, 10), reason: '' })}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <RotateCcw size={12} /> Extourner
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
       </div>

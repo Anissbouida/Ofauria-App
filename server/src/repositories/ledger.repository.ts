@@ -387,8 +387,11 @@ export const journalEntryRepository = {
     const headResult = await db.query(
       `SELECT
          je.id, je.entry_number, je.entry_date, je.description,
-         je.source_kind, je.source_id, je.status, je.posted_at, je.posted_by, je.store_id,
-         je.created_at, je.created_by,
+         je.source_kind, je.source_id, je.source_detail, je.status, je.posted_at, je.posted_by, je.store_id,
+         je.created_at, je.created_by, je.piece_ref, je.piece_date::text AS piece_date,
+         je.reversed_by_entry_id, je.reversal_of_entry_id,
+         (SELECT r.entry_number FROM journal_entries r WHERE r.id = je.reversed_by_entry_id) AS reversed_by_number,
+         (SELECT o.entry_number FROM journal_entries o WHERE o.id = je.reversal_of_entry_id) AS reversal_of_number,
          j.id AS journal_id, j.code AS journal_code, j.label AS journal_label, j.kind AS journal_kind,
          fp.id AS fiscal_period_id, fp.year AS fiscal_year, fp.month AS fiscal_month, fp.status AS fiscal_status,
          u_posted.email AS posted_by_email,

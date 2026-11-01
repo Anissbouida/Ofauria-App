@@ -5,6 +5,7 @@ import { journalTemplateRepository as tplRepo } from '../repositories/journal-te
 import { ledgerIntegrityRepository as integrityRepo } from '../repositories/ledger-integrity.repository.js';
 import { fiscalYearRepository } from '../repositories/ledger.repository.js';
 import { buildFec } from '../services/fec.service.js';
+import { manualEntryRepository } from '../repositories/manual-entry.repository.js';
 import {
   planComptableController,
   accountAuxiliaryController,
@@ -66,7 +67,7 @@ ledgerRouter.post('/fiscal-years/:year/close', authenticate, authorize(ROLES.ADM
   res.json({ success: true, data: await fiscalYearRepository.close(y, req.user!.userId) });
 }));
 // FEC (avis CNC n° 24, art. 210 CGI) : fichier + attestation d'intégrité d'une même génération.
-ledgerRouter.get('/fec', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(async (req: AuthRequest, res: Response) => {
+ledgerRouter.get('/fec', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), requireVerb('accounting', 'export'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({
     year: z.coerce.number().int().min(2000).max(2100).optional(),
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -88,6 +89,53 @@ ledgerRouter.get('/entries/:id',      authenticate, authorize(...ROLE_GROUPS.ADM
 
 // Modèles d'écritures (mig 391) : structure réutilisable + instanciation en OD.
 const AM = [authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)];
+
+// Saisie libre (mig 418) : brouillon modifiable, comptabilisation (droit « post »),
+// extourne motivée des écritures manuelles.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const manualBody = z.object({
+  journalCode: z.string().trim().min(1).max(10),
+  date: z.string().regex(DATE_RE),
+  description: z.string().trim().min(1).max(2000),
+  pieceRef: z.string().trim().max(60).nullish(),
+  pieceDate: z.string().regex(DATE_RE).nullish(),
+  lines: z.array(z.object({
+    accountId: z.string().uuid(),
+    auxiliaryId: z.string().uuid().nullish(),
+    debit: z.coerce.number().min(0),
+    credit: z.coerce.number().min(0),
+    label: z.string().trim().max(200).nullish(),
+  })).min(2).max(500),
+});
+const manualActor = (req: AuthRequest) => ({ userId: req.user!.userId, storeId: req.user!.storeId ?? null });
+const parseManual = (req: AuthRequest, res: Response) => {
+  const r = manualBody.safeParse(req.body);
+  if (!r.success) { res.status(400).json({ success: false, error: { message: r.error.issues[0]?.message ?? 'Saisie invalide' } }); return null; }
+  return r.data;
+};
+ledgerRouter.post('/entries', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const input = parseManual(req, res); if (!input) return;
+  res.status(201).json({ success: true, data: await manualEntryRepository.createDraft(input, manualActor(req)) });
+}));
+ledgerRouter.post('/entries/post', ...AM, requireVerb('accounting', 'post'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const input = parseManual(req, res); if (!input) return;
+  res.status(201).json({ success: true, data: await manualEntryRepository.createAndPost(input, manualActor(req)) });
+}));
+ledgerRouter.put('/entries/:id', ...AM, validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const input = parseManual(req, res); if (!input) return;
+  res.json({ success: true, data: await manualEntryRepository.updateDraft(req.params.id, input, manualActor(req)) });
+}));
+ledgerRouter.delete('/entries/:id', ...AM, validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await manualEntryRepository.deleteDraft(req.params.id, manualActor(req)) });
+}));
+ledgerRouter.post('/entries/:id/post', ...AM, requireVerb('accounting', 'post'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await manualEntryRepository.post(req.params.id, manualActor(req)) });
+}));
+ledgerRouter.post('/entries/:id/reverse', ...AM, requireVerb('accounting', 'post'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({ date: z.string().regex(DATE_RE).nullish(), reason: z.string().trim().min(3).max(500) }).safeParse(req.body);
+  if (!r.success) { res.status(400).json({ success: false, error: { message: 'Motif de l\'extourne obligatoire (3 caractères au moins)' } }); return; }
+  res.json({ success: true, data: await manualEntryRepository.reverse(req.params.id, r.data, manualActor(req)) });
+}));
 const tplLine = z.object({
   accountId: z.string().uuid(),
   side: z.enum(['debit', 'credit']),

@@ -55,6 +55,31 @@ export const entryTemplatesApi = {
     api.post(`/ledger/entry-templates/${id}/instantiate`, data).then(r => r.data.data),
 };
 
+/* ═══ Saisie libre d'écritures (mig 418) ═══ */
+export interface ManualEntryLineInput {
+  accountId: string; auxiliaryId?: string | null; debit: number; credit: number; label?: string | null;
+}
+export interface ManualEntryInput {
+  journalCode: string; date: string; description: string;
+  pieceRef?: string | null; pieceDate?: string | null;
+  lines: ManualEntryLineInput[];
+}
+/** Détail d'écriture enrichi : pièce justificative, origine de saisie, liens d'extourne. */
+export type JournalEntryDetailEx = JournalEntryDetail & {
+  source_detail: string | null; piece_ref: string | null; piece_date: string | null;
+  reversed_by_number: string | null; reversal_of_number: string | null;
+};
+export const manualEntriesApi = {
+  createDraft: (b: ManualEntryInput): Promise<{ id: string }> => api.post('/ledger/entries', b).then(r => r.data.data),
+  createAndPost: (b: ManualEntryInput): Promise<{ id: string; entry_number: string }> =>
+    api.post('/ledger/entries/post', b).then(r => r.data.data),
+  updateDraft: (id: string, b: ManualEntryInput): Promise<{ id: string }> => api.put(`/ledger/entries/${id}`, b).then(r => r.data.data),
+  deleteDraft: (id: string): Promise<{ id: string }> => api.delete(`/ledger/entries/${id}`).then(r => r.data.data),
+  post: (id: string): Promise<{ id: string; entry_number: string }> => api.post(`/ledger/entries/${id}/post`).then(r => r.data.data),
+  reverse: (id: string, b: { date?: string | null; reason: string }): Promise<{ reversal_number: string | null }> =>
+    api.post(`/ledger/entries/${id}/reverse`, b).then(r => r.data.data),
+};
+
 /* ═══ Exercices (mig 416) : clôture annuelle et à-nouveaux ═══ */
 export interface FiscalYear {
   id: string; year: number; start_date: string; end_date: string;

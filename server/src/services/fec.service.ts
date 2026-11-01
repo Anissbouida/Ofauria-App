@@ -72,11 +72,12 @@ async function fecRows(start: string, end: string): Promise<FecRow[]> {
      SELECT j.code AS journal_code, j.label AS journal_lib, e.num::text AS num, e.entry_number,
             e.entry_date::text AS entry_date, a.code AS compte_num, a.label AS compte_lib,
             aa.code AS aux_num, aa.label AS aux_lib,
-            COALESCE(CASE WHEN inv.invoice_type = 'received' THEN COALESCE(inv.supplier_invoice_number, inv.invoice_number)
+            COALESCE(e.piece_ref,
+                     CASE WHEN inv.invoice_type = 'received' THEN COALESCE(inv.supplier_invoice_number, inv.invoice_number)
                           ELSE inv.invoice_number END,
                      pay.reference, pay.check_number, sa.sale_number, rv.voucher_number,
                      cs.closure_number::text, e.entry_number) AS piece_ref,
-            COALESCE(inv.invoice_date, pay.payment_date, (sa.created_at AT TIME ZONE '${TZ}')::date,
+            COALESCE(e.piece_date, inv.invoice_date, pay.payment_date, (sa.created_at AT TIME ZONE '${TZ}')::date,
                      rv.reception_date, (cs.closed_at AT TIME ZONE '${TZ}')::date, e.entry_date)::text AS piece_date,
             COALESCE(NULLIF(jel.label, ''), e.description, '') AS ecriture_lib,
             jel.debit::text AS debit, jel.credit::text AS credit,
