@@ -54,7 +54,21 @@ export const cashRegisterRepository = {
          dic.total_discrepancy as inv_total_discrepancy,
          (SELECT COUNT(DISTINCT o.id) FROM orders o JOIN sales s ON s.order_id = o.id
           WHERE s.session_id = cs.id AND s.sale_type = 'advance'
-          AND o.status NOT IN ('completed', 'cancelled')) as pending_orders
+          AND o.status NOT IN ('completed', 'cancelled')) as pending_orders,
+         -- État comptable de la session : tickets payés et écritures associées
+         -- (les jours couverts par une saisie manuelle historique comptent comme
+         -- comptabilisés : la saisie porte le CA de ces jours).
+         (SELECT COUNT(*) FROM sales s
+           WHERE s.session_id = cs.id AND s.payment_status IS DISTINCT FROM 'unpaid' AND s.total > 0) as tickets_count,
+         (SELECT COUNT(*) FROM sales s
+           WHERE s.session_id = cs.id AND s.payment_status IS DISTINCT FROM 'unpaid' AND s.total > 0
+             AND NOT EXISTS (SELECT 1 FROM journal_entries je WHERE je.source_id = s.id AND je.status <> 'draft')
+             AND NOT EXISTS (SELECT 1 FROM manual_shift_entries m
+                              WHERE m.store_id = s.store_id
+                                AND m.entry_date = DATE(COALESCE(s.paid_at, s.created_at) AT TIME ZONE 'Africa/Casablanca'))) as tickets_unposted,
+         (SELECT je.entry_number FROM journal_entries je
+           WHERE je.source_id = cs.id AND je.source_kind = 'closure_diff' AND je.status = 'posted'
+           ORDER BY je.created_at DESC LIMIT 1) as closure_entry_number
        FROM cash_register_sessions cs
        JOIN users u ON u.id = cs.user_id
        LEFT JOIN daily_inventory_checks dic ON dic.session_id = cs.id
@@ -345,8 +359,9 @@ export const cashRegisterRepository = {
       // Section 4.3 — Ecart de caisse comptabilise (658/758) au lieu d'etre
       // silencieusement absorbe dans le CA. SAVEPOINT non bloquant : la
       // cloture reste valide meme si la generation ledger echoue (backfill
-      // possible via /accounting endpoints).
-      if (FLAGS.LEDGER_AUTOGEN && Math.abs(difference) > 5) {
+      // possible via /accounting endpoints). Tout écart est comptabilisé, sans
+      // seuil : sinon la caisse 5161 dérive du tiroir réel de centime en centime.
+      if (FLAGS.LEDGER_AUTOGEN && Math.abs(difference) >= 0.01) {
         await client.query('SAVEPOINT closure_ledger');
         try {
           const entry = await fromClosureDiff(client, row);

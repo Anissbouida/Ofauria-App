@@ -21,7 +21,6 @@ import ReceiptModal from '../pos/ReceiptModal';
 import EmittedInvoicesTab from './EmittedInvoicesTab';
 import SubscriptionsTab from './SubscriptionsTab';
 import RoutesTab from './RoutesTab';
-import ManualShiftEntries from './ManualShiftEntries';
 import ReceivablesTab from './ReceivablesTab';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -990,7 +989,6 @@ export default function SalesPage() {
       {mainTab === 'sessions' && (
         sessionsLoading ? <LoadingState /> : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <ManualShiftEntries dateFrom={dateFrom} dateTo={dateTo} />
             {sessions.map((s: Record<string, any>) => {
               const diff = s.difference !== null ? parseFloat(s.difference as string) : null;
               const isClosed = s.status === 'closed';
@@ -1063,6 +1061,7 @@ export default function SalesPage() {
                               <td style={{ textAlign: 'right' }}>{parseInt(String(s.pending_orders ?? s.total_orders ?? 0))}</td>
                             </tr>
                           )}
+                          <SessionLedgerRow session={s} diff={diff} />
                         </tbody>
                       </table>
                     </div>
@@ -1185,6 +1184,35 @@ function LoadingState() {
       <div style={{ width: 24, height: 24, border: '2px solid var(--theme-bg-separator)', borderTopColor: 'var(--theme-accent)', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
       <p style={{ fontSize: '0.8125rem' }}>Chargement...</p>
     </div>
+  );
+}
+
+// ═══ État comptable d'une fermeture de caisse ═══
+// Les tickets sont comptabilisés un à un (caisse/banque, CA, TVA) et l'écart de
+// fermeture passe en 6588/7588 : la session est la source des recettes.
+function SessionLedgerRow({ session, diff }: { session: Record<string, any>; diff: number | null }) {
+  const tickets = parseInt(String(session.tickets_count ?? 0), 10) || 0;
+  const unposted = parseInt(String(session.tickets_unposted ?? 0), 10) || 0;
+  const closureEntry = session.closure_entry_number as string | null;
+  const diffUnposted = diff !== null && diff !== 0 && !closureEntry;
+  const [tag, label] = unposted > 0
+    ? ['odoo-tag-orange', `${unposted} ticket(s) non comptabilisé(s)`]
+    : diffUnposted ? ['odoo-tag-red', 'Écart non comptabilisé']
+    : ['odoo-tag-green', 'Comptabilisée'];
+  return (
+    <tr>
+      <td style={{ color: 'var(--theme-text-muted)' }}>Comptabilité</td>
+      <td style={{ textAlign: 'right' }}><span className={`odoo-tag ${tag}`}>{label}</span></td>
+      <td style={{ color: 'var(--theme-text-muted)' }}>Tickets comptabilisés</td>
+      <td style={{ textAlign: 'right', fontWeight: 600 }}>
+        {tickets - unposted} / {tickets}
+        {closureEntry && (
+          <span style={{ marginLeft: 6, fontFamily: 'ui-monospace, monospace', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>
+            · écart {closureEntry}
+          </span>
+        )}
+      </td>
+    </tr>
   );
 }
 

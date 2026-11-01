@@ -448,13 +448,15 @@ export async function fromSale(
   // physiquement compte). Si une saisie manuelle existe pour ce jour/magasin,
   // elle comptabilise deja le CA reel -> on n'emet PAS d'ecriture pour la vente
   // POS (qui correspond au montant "systeme" theorique, deja couvert).
+  // Saisies gelees depuis la mig 415 : la garde ne joue plus que sur
+  // l'historique (juin-juillet 2026), sans quoi ces jours compteraient double.
   //
   // C7 — Le calcul de la date en LOCAL (Casablanca UTC+1) est fait par
   // Postgres et non par JS. Avant, toIsoDate() prenait les composantes UTC
   // (getUTC*) : une vente encaissee a 00h30 local (= 23h30 UTC la veille)
   // etait rattachee au jour UTC (la veille) alors que entry_date manuelle
   // est en local (aujourd'hui) -> le NOT EXISTS ratait -> double comptage
-  // ledger. Meme fix cote regenerateShiftEntry (voir plus bas).
+  // ledger.
   if (s.store_id) {
     const shift = await client.query(
       `SELECT 1 FROM manual_shift_entries
@@ -1252,46 +1254,6 @@ export async function regenerateSaleEntry(
   if (entry) await persistEntry(client, entry, { userId: await resolveUserId(client, userId) });
 }
 
-const SHIFT_ENTRY_SELECT = `SELECT id, entry_date, store_id,
-  matin_cash_reel, matin_carte_reel, soir_cash_reel, soir_carte_reel
-  FROM manual_shift_entries WHERE id = $1`;
-
-/**
- * Resynchronise l'ecriture d'une saisie manuelle de ventes (matin/soir).
- * A appeler apres upsert/delete d'une manual_shift_entry. Reverse l'ancienne
- * puis regenere depuis l'etat courant (ou rien si supprimee / montants nuls /
- * jour deja couvert par le POS).
- */
-export async function regenerateShiftEntry(
-  client: PoolClient,
-  shiftEntryId: string,
-  userId: string | null | undefined
-): Promise<void> {
-  await reverseEntriesForSource(client, { sourceId: shiftEntryId, sourceKinds: ['shift_entry', 'backfill'] });
-
-  const res = await client.query(SHIFT_ENTRY_SELECT, [shiftEntryId]);
-  const row = res.rows[0];
-  if (!row) return;
-
-  // La saisie manuelle est autoritaire : reverser les ecritures POS de ce
-  // jour/magasin (elles seraient un double comptage du CA).
-  // C7 — DATE en local (Africa/Casablanca) pour matcher les entry_date
-  // saisies en local, et aligner avec la garde de fromSale.
-  const day = toIsoDate(row.entry_date);
-  const posSales = await client.query(
-    `SELECT id FROM sales
-      WHERE store_id = $1 AND payment_status = 'paid'
-        AND DATE(COALESCE(paid_at, created_at) AT TIME ZONE 'Africa/Casablanca') = $2::date`,
-    [row.store_id, day]
-  );
-  for (const ps of posSales.rows) {
-    await reverseEntriesForSource(client, { sourceId: ps.id, sourceKinds: ['sale', 'backfill'] });
-  }
-
-  const entry = await fromManualShiftEntry(client, row);
-  if (entry) await persistEntry(client, entry, { userId: await resolveUserId(client, userId) });
-}
-
 /* ═══ Generateur — perte produit (section 3.3) ═══ */
 
 export interface ProductLossRow {
@@ -1362,15 +1324,16 @@ export interface ClosureDiffRow {
  *   difference < 0 (manque)   : 6588 Autres charges non courantes (manque) D
  *                               / 5161 Caisse C
  *
- * Seuil : les ecarts <= 5 DH (rendu-monnaie) sont ignores. Au dela, motif
- * obligatoire (verifie par le repo submitActualAmount).
+ * Tout ecart non nul est comptabilise (le seuil de 5 DH laissait la caisse
+ * 5161 deriver du tiroir). Le motif reste obligatoire au-dela de 5 DH
+ * (verifie par le repo submitActualAmount).
  */
 export async function fromClosureDiff(
   _client: PoolClient | typeof db,
   session: ClosureDiffRow
 ): Promise<GeneratedEntry | null> {
   const diff = round2(parseFloat(String(session.difference ?? 0)) || 0);
-  if (Math.abs(diff) <= 5) return null;
+  if (diff === 0) return null;
   if (!session.closed_at) return null;
 
   const date = toIsoDate(session.closed_at);
