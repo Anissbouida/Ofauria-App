@@ -394,6 +394,8 @@ export const recipeRepository = {
     pieceWeightKg?: number | null; isBase?: boolean;
     temperaturePateCibleC?: number | null; hydratationPct?: number | null;
     categoryId?: string | null;
+    // Auteur de la creation (audit BOM : recipe_formats.updated_by).
+    changedBy?: string | null;
     // Mode de saisie des quantites de composition, decide a la creation de la
     // fiche (par fournee/lot = false, par piece/unite = true). Colonne recipes.
     compoParPiece?: boolean;
@@ -521,8 +523,8 @@ export const recipeRepository = {
       if (data.formats && data.formats.length > 0) {
         for (const fmt of data.formats) {
           await client.query(
-            `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format, quantite_par_format_unite, nb_par_defaut, cout_emballage_unitaire, ordre, prix_vente_unitaire_override, margin_multiplier_override)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format, quantite_par_format_unite, nb_par_defaut, cout_emballage_unitaire, ordre, prix_vente_unitaire_override, margin_multiplier_override, updated_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
              ON CONFLICT (recipe_id, contenant_id) DO UPDATE SET
                quantite_par_format = EXCLUDED.quantite_par_format,
                quantite_par_format_unite = EXCLUDED.quantite_par_format_unite,
@@ -531,9 +533,10 @@ export const recipeRepository = {
                ordre = EXCLUDED.ordre,
                prix_vente_unitaire_override = EXCLUDED.prix_vente_unitaire_override,
                margin_multiplier_override = EXCLUDED.margin_multiplier_override,
+               updated_by = EXCLUDED.updated_by,
                updated_at = NOW()`,
             [recipeId, fmt.contenantId, fmt.quantiteParFormatG, fmt.quantiteParFormatUnite || 'g', fmt.nbParDefaut, fmt.coutEmballageUnitaire ?? 0, fmt.ordre ?? 0,
-             fmt.prixVenteUnitaireOverride ?? null, fmt.marginMultiplierOverride ?? null]
+             fmt.prixVenteUnitaireOverride ?? null, fmt.marginMultiplierOverride ?? null, data.changedBy ?? null]
           );
         }
       }
@@ -860,8 +863,8 @@ export const recipeRepository = {
         // 2. Upsert (insert ou reactive + maj des valeurs)
         for (const fmt of data.formats) {
           await client.query(
-            `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format, quantite_par_format_unite, nb_par_defaut, cout_emballage_unitaire, ordre, prix_vente_unitaire_override, margin_multiplier_override, is_active)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+            `INSERT INTO recipe_formats (recipe_id, contenant_id, quantite_par_format, quantite_par_format_unite, nb_par_defaut, cout_emballage_unitaire, ordre, prix_vente_unitaire_override, margin_multiplier_override, is_active, updated_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10)
              ON CONFLICT (recipe_id, contenant_id) DO UPDATE SET
                quantite_par_format = EXCLUDED.quantite_par_format,
                quantite_par_format_unite = EXCLUDED.quantite_par_format_unite,
@@ -871,9 +874,10 @@ export const recipeRepository = {
                prix_vente_unitaire_override = EXCLUDED.prix_vente_unitaire_override,
                margin_multiplier_override = EXCLUDED.margin_multiplier_override,
                is_active = true,
+               updated_by = EXCLUDED.updated_by,
                updated_at = NOW()`,
             [id, fmt.contenantId, fmt.quantiteParFormatG, fmt.quantiteParFormatUnite || 'g', fmt.nbParDefaut, fmt.coutEmballageUnitaire ?? 0, fmt.ordre ?? 0,
-             fmt.prixVenteUnitaireOverride ?? null, fmt.marginMultiplierOverride ?? null]
+             fmt.prixVenteUnitaireOverride ?? null, fmt.marginMultiplierOverride ?? null, data.changedBy ?? null]
           );
         }
         // Filet de securite : si la desactivation ci-dessus a retire le format par
@@ -957,8 +961,20 @@ export const recipeRepository = {
     if (visited.has(subRecipeId)) return; // prevent infinite loop
     visited.add(subRecipeId);
 
+    // Remonte vers les recettes parentes par TOUS les modèles de composition :
+    // ancien modèle (recipe_sub_recipes) ET modèle composé (recipe_components miroir
+    // + recipe_format_components). Sans les deux derniers, changer le coût d'une base
+    // ne resynchronisait pas le prix des produits qui l'utilisent via la nomenclature
+    // composée (propagation limitée à l'ancien modèle — corrigé, L2).
     const parents = await db.query(
-      `SELECT DISTINCT recipe_id FROM recipe_sub_recipes WHERE sub_recipe_id = $1`,
+      `SELECT recipe_id FROM recipe_sub_recipes WHERE sub_recipe_id = $1
+       UNION
+       SELECT recipe_id FROM recipe_components WHERE source_recipe_id = $1
+       UNION
+       SELECT f.recipe_id
+         FROM recipe_format_components rfc
+         JOIN recipe_formats f ON f.id = rfc.format_id
+        WHERE rfc.source_recipe_id = $1`,
       [subRecipeId]
     );
     for (const row of parents.rows) {

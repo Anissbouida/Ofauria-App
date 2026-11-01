@@ -1324,34 +1324,41 @@ export const productionRepository = {
           // theo_snapshot_at IS NULL empeche l'ecrasement d'un snapshot existant.
           await client.query(
             `UPDATE production_plan_items ppi SET
+               -- L2 (mig 409) : coût théorique figé via la fonction de coût UNIQUE
+               -- fn_recipe_cost — matière des VRAIS composants du format (perte_pct
+               -- incluse), pas une répartition au prorata du poids (fausse en multi-
+               -- formats). Repli sur coût recette / rendement pour un item sans format.
+               -- Identique à l'ancienne vue sur les données actuelles, corrige le cas
+               -- multi-formats. « complet » ajoute l'emballage (comme l'ancienne vue).
                theo_cout_matiere_u = (
-                 SELECT COALESCE(vfc.cout_matiere_unitaire,
-                                 CASE WHEN r.yield_quantity > 0
-                                      THEN vtc.total_cost / r.yield_quantity ELSE NULL END)
+                 SELECT CASE WHEN ppi.format_id IS NOT NULL THEN fc.matiere_u
+                             WHEN r.yield_quantity > 0 THEN vtc.total_cost / r.yield_quantity
+                             ELSE NULL END
                  FROM recipes r
-                 LEFT JOIN v_recipe_total_cost  vtc ON vtc.id = r.id
-                 LEFT JOIN v_recipe_format_cost vfc ON vfc.id = ppi.format_id
+                 LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+                 LEFT JOIN LATERAL fn_recipe_cost(r.id, ppi.format_id) fc ON ppi.format_id IS NOT NULL
                  WHERE r.product_id = ppi.product_id
                  LIMIT 1
                ),
                theo_cout_complet_u = (
-                 SELECT COALESCE(vfc.cout_unitaire_complet,
-                                 CASE WHEN r.yield_quantity > 0
-                                      THEN vtc.total_cost / r.yield_quantity ELSE NULL END)
+                 SELECT CASE WHEN ppi.format_id IS NOT NULL THEN fc.complet_u + fc.emballage_u
+                             WHEN r.yield_quantity > 0 THEN vtc.total_cost / r.yield_quantity
+                             ELSE NULL END
                  FROM recipes r
-                 LEFT JOIN v_recipe_total_cost  vtc ON vtc.id = r.id
-                 LEFT JOIN v_recipe_format_cost vfc ON vfc.id = ppi.format_id
+                 LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+                 LEFT JOIN LATERAL fn_recipe_cost(r.id, ppi.format_id) fc ON ppi.format_id IS NOT NULL
                  WHERE r.product_id = ppi.product_id
                  LIMIT 1
                ),
                theo_prix_u = (
-                 SELECT vfc.prix_vente_unitaire
-                 FROM v_recipe_format_cost vfc
-                 WHERE vfc.id = ppi.format_id
+                 SELECT fc.prix_u
+                 FROM recipes r
+                 JOIN LATERAL fn_recipe_cost(r.id, ppi.format_id) fc ON true
+                 WHERE r.product_id = ppi.product_id AND ppi.format_id IS NOT NULL
                  LIMIT 1
                ),
                theo_snapshot_at = $1::timestamptz,
-               theo_source_view = CASE WHEN ppi.format_id IS NOT NULL THEN 'v_recipe_format_cost'
+               theo_source_view = CASE WHEN ppi.format_id IS NOT NULL THEN 'fn_recipe_cost'
                                        ELSE 'v_recipe_total_cost' END
              WHERE ppi.id = $2 AND ppi.theo_snapshot_at IS NULL`,
             [startTime, result.rows[0].id]

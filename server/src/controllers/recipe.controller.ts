@@ -59,7 +59,7 @@ export const recipeController = {
   },
   async create(req: AuthRequest, res: Response) {
     try {
-      const recipe = await recipeRepository.create(req.body);
+      const recipe = await recipeRepository.create({ ...req.body, changedBy: req.user?.userId });
       res.status(201).json({ success: true, data: recipe });
     } catch (err: any) {
       if (err.message?.includes('circulaire')) {

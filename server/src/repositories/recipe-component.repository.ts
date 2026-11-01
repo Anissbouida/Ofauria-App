@@ -320,6 +320,13 @@ export const recipeComponentRepository = {
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');
+      // Le trigger anti-cycle (mig 410) lève une erreur « ... circulaire ... » sur un
+      // cycle via les composants de format, que detectComponentCycle ne couvre pas.
+      // On l'uniformise en code RECIPE_CYCLE pour que le contrôleur réponde 409.
+      const msg = (err as Error)?.message ?? '';
+      if (!(err as { code?: string }).code && /circulaire/i.test(msg)) {
+        (err as { code?: string }).code = 'RECIPE_CYCLE';
+      }
       throw err;
     } finally {
       client.release();
