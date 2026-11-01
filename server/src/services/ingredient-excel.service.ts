@@ -151,7 +151,15 @@ export function parseIngredientWorkbook(buffer: Buffer): ParsedIngredientsWorkbo
   const errors: IngredientParseError[] = [];
   const warnings: string[] = [];
 
-  const seenNames = new Set<string>();
+  // Un nom present plusieurs fois dans le fichier est ambigu (homonyme) : on
+  // ignore TOUTES ses lignes avec un avertissement NON bloquant (meme regle que
+  // l'import des recettes), au lieu de bloquer l'import entier.
+  const nameCounts = new Map<string, number>();
+  for (let j = 1; j < aoa.length; j++) {
+    const n = toCleanString((aoa[j] || [])[0]);
+    if (n) nameCounts.set(n.toUpperCase(), (nameCounts.get(n.toUpperCase()) ?? 0) + 1);
+  }
+  const warnedDuplicateNames = new Set<string>();
 
   // Demarre a la ligne 2 (index 1) — la ligne 1 est l'en-tete
   for (let i = 1; i < aoa.length; i++) {
@@ -178,11 +186,13 @@ export function parseIngredientWorkbook(buffer: Buffer): ParsedIngredientsWorkbo
     }
 
     const nameKey = name.toUpperCase();
-    if (seenNames.has(nameKey)) {
-      errors.push({ sourceRow, message: `Doublon dans le fichier : "${name}" apparait plusieurs fois` });
+    if ((nameCounts.get(nameKey) ?? 0) > 1) {
+      if (!warnedDuplicateNames.has(nameKey)) {
+        warnedDuplicateNames.add(nameKey);
+        warnings.push(`"${name}" apparait plusieurs fois dans le fichier : toutes ses lignes sont ignorees (homonyme ambigu). Les autres sont importees.`);
+      }
       continue;
     }
-    seenNames.add(nameKey);
 
     const category = normalizeCategory(rawCategory);
     if (!category) {
