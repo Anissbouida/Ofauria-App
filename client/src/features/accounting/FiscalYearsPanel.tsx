@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Lock, LockOpen, ShieldCheck, ListChecks, AlertTriangle, CheckCircle2, CalendarRange, Fingerprint } from 'lucide-react';
+import { Loader2, Lock, LockOpen, ShieldCheck, ListChecks, AlertTriangle, CheckCircle2, CalendarRange, Fingerprint, Download } from 'lucide-react';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
@@ -11,10 +11,20 @@ const fmt = (v: number | string | null | undefined) =>
   v == null ? '—' : Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const today = () => new Date().toISOString().slice(0, 10);
 
+/** Téléchargement d'un texte tel quel (UTF-8 sans BOM : l'empreinte SHA-256 de l'attestation porte sur ces octets). */
+function download(filename: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 /**
  * Exercices (mig 416) : clôture annuelle définitive. Elle génère les
  * à-nouveaux au 1er jour de l'exercice suivant (journal AN, par magasin et par
  * tiers, résultat au 1181), verrouille les mois et scelle le grand livre.
+ * Chaque exercice s'exporte au format FEC avec son attestation d'intégrité.
  */
 export default function FiscalYearsPanel({ isAdmin }: { isAdmin: boolean }) {
   const queryClient = useQueryClient();
@@ -32,6 +42,18 @@ export default function FiscalYearsPanel({ isAdmin }: { isAdmin: boolean }) {
       notify.success(`Exercice ${r.year} clôturé : ${r.opening_entries.length} écriture(s) d'à-nouveaux, ${r.periods_locked} mois verrouillés`);
     },
     onError: (e) => notify.error(apiErrorMessage(e, 'Clôture impossible')),
+  });
+
+  const fec = useMutation({
+    mutationFn: (year: number) => fiscalYearsApi.fec(year),
+    onSuccess: (r) => {
+      download(r.filename, r.content);
+      download(r.attestationFilename, r.attestation);
+      queryClient.invalidateQueries({ queryKey: ['ledger-audit-log'] });
+      queryClient.invalidateQueries({ queryKey: ['ledger-integrity'] });
+      notify.success(`FEC exporté : ${r.stats.entries} écriture(s), ${r.stats.lines} ligne(s) · SHA-256 ${r.stats.sha256.slice(0, 12)}…`);
+    },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Export FEC impossible')),
   });
 
   const doClose = async (fy: FiscalYear) => {
@@ -58,7 +80,7 @@ export default function FiscalYearsPanel({ isAdmin }: { isAdmin: boolean }) {
               <th style={{ width: 170 }}>Statut</th>
               <th style={{ width: 170, textAlign: 'right' }}>Résultat</th>
               <th>À-nouveaux</th>
-              <th style={{ width: 260, textAlign: 'right' }}>Actions</th>
+              <th style={{ width: 380, textAlign: 'right' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -93,10 +115,16 @@ export default function FiscalYearsPanel({ isAdmin }: { isAdmin: boolean }) {
                       {fy.opening_entries.length ? fy.opening_entries.join(', ') : '—'}
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: 6 }}>
+                      <div style={{ display: 'inline-flex', gap: 6, whiteSpace: 'nowrap' }}>
                         <button className="odoo-btn-secondary" onClick={() => setOpenYear(expanded ? null : fy.year)}
                           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           <ListChecks size={12} /> {expanded ? 'Masquer' : 'Contrôles'}
+                        </button>
+                        <button className="odoo-btn-secondary" disabled={fec.isPending} onClick={() => fec.mutate(fy.year)}
+                          title={closed ? 'Fichier des écritures comptables (avis CNC n° 24) et attestation d\'intégrité'
+                            : 'Export provisoire : l\'exercice est encore ouvert'}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          {fec.isPending && fec.variables === fy.year ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} FEC
                         </button>
                         {!closed && isAdmin && (
                           <button className="odoo-btn-danger" disabled={!ended || close.isPending} onClick={() => doClose(fy)}

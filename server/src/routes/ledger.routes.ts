@@ -4,6 +4,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { journalTemplateRepository as tplRepo } from '../repositories/journal-template.repository.js';
 import { ledgerIntegrityRepository as integrityRepo } from '../repositories/ledger-integrity.repository.js';
 import { fiscalYearRepository } from '../repositories/ledger.repository.js';
+import { buildFec } from '../services/fec.service.js';
 import {
   planComptableController,
   accountAuxiliaryController,
@@ -63,6 +64,16 @@ ledgerRouter.get('/fiscal-years/:year/checklist', authenticate, authorize(...ROL
 ledgerRouter.post('/fiscal-years/:year/close', authenticate, authorize(ROLES.ADMIN), requireVerb('accounting', 'close'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const y = yearParam(req, res); if (y === null) return;
   res.json({ success: true, data: await fiscalYearRepository.close(y, req.user!.userId) });
+}));
+// FEC (avis CNC n° 24, art. 210 CGI) : fichier + attestation d'intégrité d'une même génération.
+ledgerRouter.get('/fec', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({
+    year: z.coerce.number().int().min(2000).max(2100).optional(),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }).refine(q => q.year || (q.startDate && q.endDate), { message: 'year, ou startDate et endDate, requis' }).safeParse(req.query);
+  if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
+  res.json({ success: true, data: await buildFec({ year: r.data.year, start: r.data.startDate, end: r.data.endDate }, actorOf(req)) });
 }));
 ledgerRouter.get('/outbox', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseLedgerController.outbox));
 ledgerRouter.post('/outbox/replay', authenticate, authorize(ROLES.ADMIN), asyncHandler(purchaseLedgerController.replay));
@@ -149,7 +160,7 @@ ledgerRouter.post('/integrity/verify', ...AM, asyncHandler(async (req: AuthReque
 }));
 ledgerRouter.get('/audit-log', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({
-    event: z.enum(['post', 'reverse', 'draft_delete', 'letter', 'unletter', 'reletter', 'seal', 'verify', 'outbox_replay', 'year_close']).optional(),
+    event: z.enum(['post', 'reverse', 'draft_delete', 'letter', 'unletter', 'reletter', 'seal', 'verify', 'outbox_replay', 'year_close', 'fec_export']).optional(),
     entryId: z.string().uuid().optional(),
     before: z.coerce.number().int().positive().optional(),
     limit: z.coerce.number().int().min(1).max(200).optional(),

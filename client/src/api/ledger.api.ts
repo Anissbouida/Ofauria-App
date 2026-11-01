@@ -76,7 +76,13 @@ export const fiscalYearsApi = {
     api.get(`/ledger/fiscal-years/${year}/checklist`).then(r => r.data.data),
   close: (year: number): Promise<FiscalYearCloseResult> =>
     api.post(`/ledger/fiscal-years/${year}/close`).then(r => r.data.data),
+  /** FEC de l'exercice et son attestation d'intégrité (même génération). */
+  fec: (year: number): Promise<FecExport> => api.get('/ledger/fec', { params: { year } }).then(r => r.data.data),
 };
+export interface FecExport {
+  filename: string; content: string; attestationFilename: string; attestation: string;
+  stats: { entries: number; lines: number; totalDebit: number; totalCredit: number; sha256: string; start: string; end: string };
+}
 
 /* ═══ Periodes fiscales ═══ */
 export const fiscalPeriodsApi = {
@@ -114,7 +120,7 @@ export interface IntegrityStatus {
 }
 export interface IntegrityAnomaly { seq: number; entry_id: string | null; entry_no: string | null; problem: string }
 export interface IntegrityVerifyResult { ok: boolean; checked: number; headSeq: number; headHash: string | null; anomalies: IntegrityAnomaly[] }
-export type LedgerAuditEvent = 'post' | 'reverse' | 'draft_delete' | 'letter' | 'unletter' | 'reletter' | 'seal' | 'verify' | 'outbox_replay' | 'year_close';
+export type LedgerAuditEvent = 'post' | 'reverse' | 'draft_delete' | 'letter' | 'unletter' | 'reletter' | 'seal' | 'verify' | 'outbox_replay' | 'year_close' | 'fec_export';
 export interface LedgerAuditRow {
   id: string; at: string; event: LedgerAuditEvent;
   entry_id: string | null; entry_number: string | null; line_id: string | null; lettrage_id: string | null;
