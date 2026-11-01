@@ -76,6 +76,7 @@ function SourcePicker({ options, value, onPick }: {
   return (
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen((v) => !v)}
+        aria-label="Choisir un composant" aria-haspopup="listbox" aria-expanded={open}
         className="h-8 w-full px-2.5 bg-white border border-gray-200 rounded-md text-sm text-left flex items-center justify-between gap-1 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400">
         <span className={`truncate ${value ? 'text-gray-800' : 'text-gray-400'}`}>{value ? value.name : 'Choisir un composant…'}</span>
         <ChevronDown size={14} className="text-gray-400 shrink-0" />
@@ -539,6 +540,28 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
     onError: (err) => notify.error(extractErr(err)),
   });
 
+  // Suppression d'un format (cadre de production) et de sa composition. L'endpoint
+  // existe déjà (mig formats) ; on resélectionne un format restant pour ne pas
+  // laisser l'écran sur un cadre fantôme.
+  const deleteFormatMut = useMutation({
+    mutationFn: () => recipesApi.deleteFormat(recipeId, formatId!),
+    onSuccess: async () => {
+      const remaining = formats.filter((x) => x.id !== formatId);
+      justAddedRef.current = null;
+      setFormatId(remaining.find((x) => x.is_default)?.id ?? remaining[0]?.id ?? null);
+      await qc.invalidateQueries({ queryKey: ['recipe-formats', recipeId] });
+      qc.invalidateQueries({ queryKey: ['recipe', recipeId] });
+      qc.invalidateQueries({ queryKey: ['recipes'] });
+      notify.success('Format supprimé');
+    },
+    onError: (err) => notify.error(extractErr(err)),
+  });
+  const handleDeleteFormat = () => {
+    if (!formatId || !f) return;
+    if (!confirm(`Supprimer le format « ${f.contenant_nom} » et toute sa composition ?\nCette action est irréversible.`)) return;
+    deleteFormatMut.mutate();
+  };
+
   const renderRow = (r: Row) => {
     const src = r.type && r.sourceId ? sourceMap[`${r.type}:${r.sourceId}`] : null;
     const eq = baseEquiv(r);
@@ -574,7 +597,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             ) : <span className="block w-[15px]" />}
           </div>
           <select className={`h-8 rounded-md text-xs font-medium px-2 border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-200 ${roleCls}`}
-            value={r.role} onChange={(e) => setRow(r.key, { role: e.target.value })} title="Rôle du composant">
+            value={r.role} onChange={(e) => setRow(r.key, { role: e.target.value })} title="Rôle du composant" aria-label="Rôle du composant">
             <option value="">Sans rôle</option>
             {roles.map((ro) => <option key={ro.code} value={ro.code}>{ro.label}</option>)}
           </select>
@@ -584,6 +607,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           </div>
           <div>
             <input type="number" step="any" min="0"
+              aria-label={compoParPiece ? 'Quantité par pièce' : 'Quantité par fournée'}
               className={`h-8 w-full px-2 rounded-md text-sm text-right tabular-nums border focus:outline-none focus:ring-2 ${aberrant ? 'border-red-300 bg-red-50 text-red-700 focus:ring-red-100' : 'border-gray-200 bg-white focus:ring-primary-200 focus:border-primary-400'}`}
               value={r.quantite} onChange={(e) => setRow(r.key, { quantite: e.target.value })} placeholder="0" />
             {pp != null ? (
@@ -596,7 +620,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             ) : null}
           </div>
           <select className="h-8 px-1.5 bg-white border border-gray-200 rounded-md text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
-            value={r.unite} onChange={(e) => setRow(r.key, { unite: e.target.value })}>
+            value={r.unite} onChange={(e) => setRow(r.key, { unite: e.target.value })} aria-label="Unité de la quantité">
             {UNITES.map((u) => <option key={u} value={u}>{u}</option>)}
           </select>
           <div className="pt-1.5" title={src ? (src.type === 'recipe' ? 'Recette de base' : 'Matière première') : undefined}>
@@ -635,10 +659,12 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   const availContenants = contenants.filter((c) => !usedContenantIds.has(c.id));
 
   return (
-    <div className="odoo-section" style={{ overflow: 'clip' }}>
-      <div className="odoo-section-header flex items-center gap-2"><Layers size={13} /> Composition de la recette</div>
+    <div className="space-y-4">
+      {/* ======================= FORMAT ======================= */}
+      <div className="odoo-section" style={{ margin: 0, overflow: 'visible' }}>
+      <div className="odoo-section-header"><Box size={13} /> Format du produit</div>
 
-      {/* Onglets de format */}
+      {/* Onglets de format : chaque contenant = un cadre de cuisson distinct */}
       <div className="flex items-center gap-1.5 flex-wrap px-3 pt-3">
         {formats.map((ft) => {
           const bad = (ft.bad_conversions_count ?? 0) > 0;
@@ -655,6 +681,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
         {adding ? (
           <span className="inline-flex items-center gap-1.5">
             <select value={newContenant} onChange={(e) => setNewContenant(e.target.value)}
+              aria-label="Contenant du nouveau format"
               className="h-8 px-2 bg-white border border-gray-200 rounded-md text-sm">
               <option value="">— contenant —</option>
               {availContenants.map((c) => <option key={c.id} value={c.id}>{c.nom}</option>)}
@@ -674,84 +701,114 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             <Plus size={13} /> Ajouter un format
           </button>
         )}
+        {!adding && f && (
+          <button type="button" onClick={handleDeleteFormat} disabled={deleteFormatMut.isPending}
+            className="ml-auto inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-sm border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+            title="Supprimer ce format et toute sa composition">
+            <Trash2 size={13} /> {deleteFormatMut.isPending ? 'Suppression…' : 'Supprimer ce format'}
+          </button>
+        )}
       </div>
 
+      {/* Paramètres du format sélectionné : grille labellisée (rendement, perte,
+          poids, mode de saisie), bien plus lisible que l'ancienne rangée flex. */}
       {formats.length === 0 ? (
         <div className="text-sm text-gray-400 py-6 px-3">Aucun format. Ajoute un contenant pour composer cette recette.</div>
       ) : isLoading || !f ? (
         <div className="text-sm text-gray-400 py-4 px-3">Chargement…</div>
-      ) : (
-        <>
-        <div className="p-3">
-            {/* Bandeau du format : vignette + rendement/poids sur une ligne, pour
-                laisser toute la largeur au tableau de composition. */}
-            {(() => {
-              const [bv, bu] = splitW(poidsBrutG);
-              const [cv, cu] = splitW(poidsCuitG);
-              const cell = 'h-7 w-16 px-2 bg-white border border-gray-200 rounded-md text-sm text-right tabular-nums focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400';
-              const fld = 'inline-flex items-center gap-1.5';
-              const lbl = 'text-xs text-gray-500 whitespace-nowrap';
-              const unit = 'text-xs text-gray-400 whitespace-nowrap';
-              return (
-                <div className="flex items-center gap-x-5 gap-y-2 flex-wrap mb-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-200">
-                  <div className="w-12 h-12 shrink-0 rounded-md border border-gray-200 bg-white overflow-hidden flex items-center justify-center"
-                    title={f.product_image ? f.recipe_name : 'Photo via la fiche produit'}>
-                    {f.product_image
-                      ? <img src={f.product_image} alt={f.recipe_name} className="w-full h-full object-cover" />
-                      : <Camera size={18} className="text-gray-400" />}
-                  </div>
-                  <label className={fld}>
-                    <span className={lbl}>Rendement</span>
-                    <input type="number" min="1" className={cell} value={rendement} onChange={(e) => setRendement(e.target.value)} placeholder="50" />
-                    <span className={unit}>p.</span>
-                  </label>
-                  {(partsNum > 1 || showParts) ? (
-                    <label className={fld}>
-                      <span className={lbl}>Parts</span>
-                      <input type="number" min="1" className={cell} value={parts} onChange={(e) => setParts(e.target.value)} placeholder="1" />
-                      <span className={unit}>/pc</span>
-                    </label>
-                  ) : (
-                    <button type="button" onClick={() => setShowParts(true)}
-                      className="text-xs text-primary-700 hover:text-primary-800" title="Pour un produit coupé en portions (entremets, tarte…)">
-                      + Vendu à la part
-                    </button>
-                  )}
-                  <span className={fld}>
-                    <span className={lbl}>Poids brut</span>
-                    <span className="text-sm font-medium tabular-nums">{bv}</span><span className={unit}>{bu}</span>
-                  </span>
-                  <label className={fld}>
-                    <span className={lbl}>Perte</span>
-                    <input type="number" min="0" max="99" step="any" className={`${cell} text-amber-700`} value={perte} onChange={(e) => setPerte(e.target.value)} placeholder="0" />
-                    <span className={unit}>%</span>
-                  </label>
-                  <span className={fld}>
-                    <span className={lbl}>Poids cuit</span>
-                    <span className="text-sm font-medium tabular-nums">{cv}</span><span className={unit}>{cu}</span>
-                  </span>
-                  <span className="ml-auto inline-flex items-center gap-2">
-                    <span className="text-xs text-gray-500 inline-flex items-center gap-1">
-                      Quantités saisies
-                      <span className="inline-flex cursor-help"
-                        title={'Par fournée : quantités pour tout le lot (cadre/plaque découpé) → coût/pièce = total ÷ rendement.\nPar pièce : quantités pour une seule unité (entremets individuel…) → coût/pièce = la somme.'}>
-                        <HelpCircle size={13} className="text-gray-400" />
-                      </span>
-                    </span>
-                    <span className="inline-flex rounded-md border border-gray-200 overflow-hidden text-xs">
-                      <button type="button" onClick={() => setCompoParPiece(false)}
-                        title="Quantités pour toute la fournée (cadre/plaque découpé)"
-                        className={`px-3 py-1.5 ${!compoParPiece ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Par fournée (lot)</button>
-                      <button type="button" onClick={() => setCompoParPiece(true)}
-                        title="Quantités pour une seule pièce (entremets individuel, monoportion…)"
-                        className={`px-3 py-1.5 border-l border-gray-200 ${compoParPiece ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Par pièce (unité)</button>
-                    </span>
+      ) : (() => {
+        const [bv, bu] = splitW(poidsBrutG);
+        const [cv, cu] = splitW(poidsCuitG);
+        // Hauteur de libellé FIXE (h-4) + nowrap : quelle que soit la présence d'une
+        // icône d'aide ou la longueur du texte, toutes les cases démarrent au même Y.
+        const lbl = 'flex items-center h-4 mb-1 text-xs font-medium text-gray-600 whitespace-nowrap';
+        const box = 'flex items-center gap-1 rounded-md border border-gray-200 bg-white pr-2 focus-within:ring-2 focus-within:ring-primary-200 focus-within:border-primary-400';
+        const inp = 'h-9 w-full px-2 bg-transparent rounded-md text-sm text-right tabular-nums focus:outline-none';
+        const sfx = 'text-[11px] text-gray-400 shrink-0';
+        const read = 'h-9 flex items-center justify-end gap-1 px-2 rounded-md border border-gray-200 bg-gray-50 text-sm tabular-nums text-gray-700';
+        return (
+          <div className="p-3">
+            <div className="flex items-start gap-4">
+              <div className="w-14 h-14 shrink-0 rounded-md border border-gray-200 bg-white overflow-hidden flex items-center justify-center"
+                title={f.product_image ? f.recipe_name : 'Photo via la fiche produit'}>
+                {f.product_image
+                  ? <img src={f.product_image} alt={f.recipe_name} className="w-full h-full object-cover" />
+                  : <Camera size={18} className="text-gray-400" />}
+              </div>
+
+              {/* Une seule grille : chaque paramètre est une cellule de même gabarit
+                  (libellé + contrôle h-9), le mode inclus — les colonnes tombent droit. */}
+              <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-4 gap-y-3">
+                <div>
+                  <label className={lbl} htmlFor="fmt-rendement">Rendement</label>
+                  <span className={box}>
+                    <input id="fmt-rendement" type="number" min="1" className={inp} value={rendement} onChange={(e) => setRendement(e.target.value)} placeholder="50" />
+                    <span className={sfx}>p.</span>
                   </span>
                 </div>
-              );
-            })()}
+                {(partsNum > 1 || showParts) ? (
+                  <div>
+                    <label className={lbl} htmlFor="fmt-parts">Parts / pièce</label>
+                    <span className={box}>
+                      <input id="fmt-parts" type="number" min="1" className={inp} value={parts} onChange={(e) => setParts(e.target.value)} placeholder="1" />
+                      <span className={sfx}>/pc</span>
+                    </span>
+                  </div>
+                ) : (
+                  <div>
+                    <span className={lbl}>Portions</span>
+                    <button type="button" onClick={() => setShowParts(true)}
+                      className="h-9 w-full px-2 rounded-md border border-dashed border-gray-300 text-xs text-primary-700 hover:bg-primary-50"
+                      title="Pour un produit coupé en portions (entremets, tarte…)">
+                      + Vendu à la part
+                    </button>
+                  </div>
+                )}
+                <div>
+                  <label className={lbl} htmlFor="fmt-perte">Perte cuisson</label>
+                  <span className={box}>
+                    <input id="fmt-perte" type="number" min="0" max="99" step="any" className={`${inp} text-amber-700`} value={perte} onChange={(e) => setPerte(e.target.value)} placeholder="0" />
+                    <span className={sfx}>%</span>
+                  </span>
+                </div>
+                <div>
+                  <span className={lbl}>Poids brut</span>
+                  <div className={read}><span className="font-medium">{bv}</span><span className="text-gray-400">{bu}</span></div>
+                </div>
+                <div>
+                  <span className={lbl}>Poids cuit</span>
+                  <div className={read}><span className="font-medium">{cv}</span><span className="text-gray-400">{cu}</span></div>
+                </div>
 
-          <div>
+                {/* Mode de saisie en LECTURE SEULE : décidé à la création (corrigeable
+                    via ✎ Identité), plus modifié pendant la composition. */}
+                <div>
+                  <span className={`${lbl} gap-1`}>
+                    Quantités saisies
+                    <span className="inline-flex cursor-help"
+                      title={'Par fournée : quantités pour tout le lot (cadre/plaque découpé) → coût/pièce = total ÷ rendement.\nPar pièce : quantités pour une seule unité (entremets individuel…) → coût/pièce = la somme.\n\nCe mode se choisit à la création de la fiche ; pour le corriger, modifie l’identité de la fiche (✎).'}>
+                      <HelpCircle size={12} className="text-gray-400" />
+                    </span>
+                  </span>
+                  <div className="h-9 w-full flex items-center gap-1.5 px-2 rounded-md border border-gray-200 bg-gray-50 text-sm text-gray-700">
+                    <Box size={13} className="text-gray-400 shrink-0" />
+                    <span className="truncate">{compoParPiece ? 'Par pièce' : 'Par fournée'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      </div>
+
+      {/* Sections suivantes : uniquement si un format est chargé */}
+      {formats.length > 0 && !isLoading && f && (
+        <>
+          {/* ===================== COMPOSITION ===================== */}
+          <div className="odoo-section" style={{ margin: 0, overflow: 'visible' }}>
+            <div className="odoo-section-header"><Layers size={13} /> Composition</div>
+            <div className="p-3">
             {aberrantCount > 0 && (
               <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-red-50 border border-red-200 text-[13px] text-red-700">
                 <AlertTriangle size={15} className="shrink-0" />
@@ -769,8 +826,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               </div>
             )}
 
-            <div className="rounded-lg border border-gray-200 overflow-hidden">
-              <div className="grid items-center gap-2 px-3 py-2 bg-gray-50 text-[11px] font-medium uppercase tracking-wide text-gray-500" style={{ gridTemplateColumns: COLS }}>
+            <div className="rounded-lg border border-gray-200">
+              <div className="grid items-center gap-2 px-3 py-2 bg-gray-50 rounded-t-lg text-[11px] font-medium uppercase tracking-wide text-gray-500" style={{ gridTemplateColumns: COLS }}>
                 <span /><span>Rôle</span><span>Composant</span>
                 <span className="text-right">{compoParPiece ? 'Qté / pièce' : 'Qté / fournée'}</span><span>Unité</span>
                 <span>% coût</span><span className="text-right">Coût</span><span />
@@ -791,54 +848,60 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                   </div>
                 );
               })()}
-              <div className="px-3 py-2 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between gap-2 flex-wrap">
+              <div className="px-3 py-2 border-t border-gray-100 bg-gray-50/50 rounded-b-lg flex items-center justify-between gap-2 flex-wrap">
                 <button type="button" onClick={() => addRow('')} className="text-sm font-medium text-primary-700 hover:text-primary-800 inline-flex items-center gap-1">
                   <Plus size={15} /> Ajouter un composant
                 </button>
                 {formats.filter((ft) => ft.id !== formatId).length > 0 && (
-                  <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
-                    <Copy size={13} /> Copier depuis
-                    <select value={copySrc} onChange={(e) => setCopySrc(e.target.value)}
-                      className="h-7 px-2 bg-white border border-gray-200 rounded-md text-xs">
-                      <option value="">— format —</option>
+                  <div className="inline-flex items-center gap-2">
+                    <label htmlFor="copy-from" className="text-xs font-medium text-gray-500 inline-flex items-center gap-1 whitespace-nowrap">
+                      <Copy size={13} className="text-gray-400" /> Dupliquer depuis
+                    </label>
+                    <select id="copy-from" value={copySrc} onChange={(e) => setCopySrc(e.target.value)}
+                      aria-label="Dupliquer la composition depuis un autre format"
+                      className="h-8 min-w-[190px] px-2.5 bg-white border border-gray-200 rounded-md text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400">
+                      <option value="">Choisir un format…</option>
                       {formats.filter((ft) => ft.id !== formatId).map((ft) => (
                         <option key={ft.id} value={ft.id}>{ft.contenant_nom || 'Format'} ×{ft.nb_par_defaut}</option>
                       ))}
                     </select>
                     <button type="button" disabled={!copySrc} onClick={copyFromFormat}
-                      className="px-2 py-1 rounded-md border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40">Copier</button>
-                  </span>
+                      className="odoo-btn-secondary text-sm inline-flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed">
+                      Copier
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
+            </div>
+          </div>
 
-            {/* Frais indirects & multiplicateur */}
-            <div className="mt-5 rounded-lg border border-gray-200 overflow-hidden">
-              <div className="flex items-center gap-2 px-3 py-2 text-[13px] font-medium text-gray-700 bg-gray-50 border-b border-gray-200">
-                <SlidersHorizontal size={14} className="text-primary-600" /> Frais indirects &amp; prix de vente
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-3">
+          {/* ===================== COÛT & PRIX ===================== */}
+          <div className="odoo-section" style={{ margin: 0 }}>
+            <div className="odoo-section-header"><SlidersHorizontal size={13} /> Coût &amp; prix de vente</div>
+            <div className="p-3">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {[
-                  { lbl: "Main d'œuvre", sfx: 'DH/h', val: tauxMO, set: setTauxMO, ph: 'ex 30', step: 'any' },
-                  { lbl: 'Temps / fournée', sfx: 'min', val: moMin, set: setMoMin, ph: dureeEtapes > 0 ? `étapes ${dureeEtapes}` : 'ex 90', step: '1' },
-                  { lbl: 'Énergie', sfx: 'DH/four.', val: energie, set: setEnergie, ph: 'ex 15', step: 'any' },
-                  { lbl: 'Structure', sfx: '%', val: structPct, set: setStructPct, ph: 'ex 15', step: 'any' },
-                  { lbl: 'Multiplicateur', sfx: '×', val: mult, set: setMult, ph: 'ex 3', step: 'any' },
+                  { id: 'fin-mo', lbl: "Main d'œuvre", sfx: 'DH/h', val: tauxMO, set: setTauxMO, ph: 'ex 30', step: 'any' },
+                  { id: 'fin-temps', lbl: 'Temps / fournée', sfx: 'min', val: moMin, set: setMoMin, ph: dureeEtapes > 0 ? `étapes ${dureeEtapes}` : 'ex 90', step: '1' },
+                  { id: 'fin-energie', lbl: 'Énergie', sfx: 'DH/four.', val: energie, set: setEnergie, ph: 'ex 15', step: 'any' },
+                  { id: 'fin-structure', lbl: 'Structure', sfx: '%', val: structPct, set: setStructPct, ph: 'ex 15', step: 'any' },
+                  { id: 'fin-mult', lbl: 'Multiplicateur', sfx: '×', val: mult, set: setMult, ph: 'ex 3', step: 'any' },
                 ].map((fld) => (
-                  <label key={fld.lbl} className="block">
+                  <label key={fld.lbl} className="block" htmlFor={fld.id}>
                     <span className="text-[11px] text-gray-500">{fld.lbl}</span>
                     <span className="mt-1 flex items-center gap-1 rounded-md border border-gray-200 bg-white pr-2 focus-within:ring-2 focus-within:ring-primary-200 focus-within:border-primary-400">
-                      <input type="number" step={fld.step} min="0" value={fld.val} onChange={(e) => fld.set(e.target.value)}
+                      <input id={fld.id} type="number" step={fld.step} min="0" value={fld.val} onChange={(e) => fld.set(e.target.value)}
                         className="h-9 w-full px-2 bg-transparent rounded-md text-sm text-right tabular-nums focus:outline-none" placeholder={fld.ph} />
                       <span className="text-[11px] text-gray-400 shrink-0">{fld.sfx}</span>
                     </span>
                   </label>
                 ))}
               </div>
-              {/* Décomposition du prix sur une ligne, lue de gauche à droite :
-                  les composantes du coût, leur somme, le multiplicateur, le prix.
-                  Les chiffres de décision sont déjà dans le bandeau KPI du haut. */}
-              <div className="flex items-center gap-x-2 gap-y-1 flex-wrap px-3 py-2 border-t border-gray-200 bg-gray-50 text-[13px] tabular-nums text-gray-600">
+              {/* Décomposition du prix, lue de gauche à droite : composantes du coût,
+                  somme, multiplicateur, prix. Les chiffres de décision sont aussi
+                  rappelés dans le bandeau KPI du haut de page. */}
+              <div className="mt-3 flex items-center gap-x-2 gap-y-1 flex-wrap px-3 py-2 rounded-md border border-gray-200 bg-gray-50 text-[13px] tabular-nums text-gray-600">
                 <span className="text-[11px] uppercase tracking-wide text-gray-400">Par pièce</span>
                 <span>Matière <strong>{dh(fin.matierePiece)}</strong></span>
                 <span className="text-gray-400">+</span>
@@ -854,35 +917,36 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                   Marge {dh(fin.marge)} ({Math.round(fin.margePct)}%)
                 </span>
               </div>
+
+              {partsNum > 1 && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
+                  <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2.5">
+                    <div className="text-[11px] text-teal-700">Coût / part ({partsNum} parts)</div>
+                    <div className="text-base font-medium tabular-nums mt-0.5 text-teal-800">{dh(fin.coutPart)}</div>
+                  </div>
+                  <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2.5">
+                    <div className="text-[11px] text-teal-700">Prix / part</div>
+                    <div className="text-base font-medium tabular-nums mt-0.5 text-teal-800">{dh(fin.prixPart)}</div>
+                  </div>
+                </div>
+              )}
             </div>
+          </div>
 
-
-            {partsNum > 1 && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-                <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2.5">
-                  <div className="text-[11px] text-teal-700">Coût / part ({partsNum} parts)</div>
-                  <div className="text-base font-medium tabular-nums mt-0.5 text-teal-800">{dh(fin.coutPart)}</div>
-                </div>
-                <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2.5">
-                  <div className="text-[11px] text-teal-700">Prix / part</div>
-                  <div className="text-base font-medium tabular-nums mt-0.5 text-teal-800">{dh(fin.prixPart)}</div>
-                </div>
-              </div>
-            )}
-
-            {/* Mig 263, audit A1 : lien vers le produit vendu au POS + ecart prix. */}
-            {data?.format && (
+          {/* ===================== VENTE AU POS ===================== */}
+          {/* Mig 263, audit A1 : lien vers le produit vendu au POS + écart de prix. */}
+          {data?.format && (
+            <div className="odoo-section" style={{ margin: 0 }}>
+              <div className="odoo-section-header"><Tag size={13} /> Vente au point de vente</div>
               <PosLinkPanel recipeId={recipeId} formatId={data.format.id}
                 format={data.format} priceCalc={fin.prix} />
-            )}
+            </div>
+          )}
 
-
-          </div>
-        </div>
           {/* Barre d'actions collante : Enregistrer reste à portée quel que soit le
-              défilement (la page est longue : composition, finance, étapes). */}
-          <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 flex-wrap px-3 py-2 bg-white border-t border-gray-200"
-            style={{ boxShadow: '0 -2px 6px rgba(0,0,0,0.05)' }}>
+              défilement (la page est longue : format, composition, coût, POS). */}
+          <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 flex-wrap px-3 py-2 bg-white border border-gray-200 rounded-md"
+            style={{ boxShadow: '0 -2px 6px rgba(0,0,0,0.08)' }}>
             <p className="text-xs text-gray-400">
               Format <strong>{f.contenant_nom}</strong> · saisie <strong>{compoParPiece ? 'par pièce' : 'par fournée'}</strong>
               {!compoParPiece && <> (coût/pièce = total ÷ {rendementNum})</>}.
@@ -979,7 +1043,7 @@ function PosLinkPanel({
     : 'bg-red-50 border-red-200';
 
   return (
-    <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
+    <div className="p-3">
       <div className="flex items-center gap-2 flex-wrap">
         <Tag size={14} className="text-gray-400 shrink-0" />
         <div className="flex-1 min-w-0">

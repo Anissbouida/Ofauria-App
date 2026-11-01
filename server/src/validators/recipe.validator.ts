@@ -34,6 +34,10 @@ const etapeSchema = z.object({
 export const identitySchema = z.object({
   name: z.string().min(1, 'Le nom est requis').max(200),
   categoryId: z.string().uuid().nullable().optional(),
+  // Mode de saisie de la composition (fournee = false / piece = true). Decide a la
+  // creation, corrigeable ici. Sans cette cle, zod depouillait le champ et le mode
+  // choisi n'etait jamais enregistre (le repository le lit via COALESCE).
+  compoParPiece: z.boolean().optional(),
 });
 
 export const saveEtapesSchema = z.object({ etapes: z.array(etapeSchema.passthrough()) });
@@ -64,7 +68,12 @@ export const createRecipeSchema = z.object({
   // de base. Borne a <100 : une perte totale rendrait le rendement net nul.
   perteStandardPct: z.number().min(0).max(99.99).optional(),
   isBase: z.boolean().default(false),
-  etapes: z.array(etapeSchema).default([]),
+  // Mode de saisie de la composition (cf. identitySchema). Lu par le repository a la creation.
+  compoParPiece: z.boolean().optional(),
+  // passthrough() : conserve les cles non declarees de l'etape — notamment
+  // `ingredient_refs` (mig 297, ingredients peses par etape, lus au lancement de
+  // production) et les champs darija. Sans ca, toute sauvegarde les effacait.
+  etapes: z.array(etapeSchema.passthrough()).default([]),
   ingredients: z.array(z.object({
     ingredientId: z.string().uuid('ID ingrédient invalide'),
     quantity: z.number().positive('La quantité doit être positive'),
@@ -94,9 +103,12 @@ export const createRecipeSchema = z.object({
   })).default([]),
 });
 
-// En édition unifiée, le formulaire n'envoie que les métadonnées (la composition/les
-// formats sont gérés par l'éditeur) → ingredients devient optionnel à la mise à jour.
-export const updateRecipeSchema = createRecipeSchema.partial({ ingredients: true });
+// En mise a jour, un champ ABSENT du payload signifie « inchange », jamais « a vider ».
+// .partial() rend tous les champs optionnels ET neutralise leurs .default() : un champ
+// omis arrive `undefined` au repository (qui le preserve via COALESCE), au lieu de
+// `[]`/`false`/`3` qui ecrasaient silencieusement etapes, sous-recettes, emballages,
+// categorie, poids-piece et parametres de pate (notamment a l'import xlsx en MAJ).
+export const updateRecipeSchema = createRecipeSchema.partial();
 
 // Suppression en masse depuis la liste (sélection par onglet Produits/Bases).
 export const bulkDeleteRecipesSchema = z.object({

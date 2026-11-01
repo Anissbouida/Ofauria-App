@@ -85,7 +85,7 @@ export default function NomenclaturePage() {
           </button>
         </div>
         {editIdentity && (
-          <RecipeCreateDialog recipe={{ id: recipe.id, name: recipe.name, category_id: recipe.category_id ?? null, is_base: false }}
+          <RecipeCreateDialog recipe={{ id: recipe.id, name: recipe.name, category_id: recipe.category_id ?? null, is_base: false, compo_par_piece: (recipe as { compo_par_piece?: boolean }).compo_par_piece ?? false }}
             onClose={() => setEditIdentity(false)} />
         )}
         <p className="text-sm text-gray-500 mb-4">

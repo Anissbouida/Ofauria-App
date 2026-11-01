@@ -365,11 +365,15 @@ export const recipeComponentRepository = {
     return { recipe: rec.rows[0], components: components.rows, finance: computeFinance(rec.rows[0]) };
   },
 
-  async updateIdentity(recipeId: string, data: { name: string; categoryId?: string | null }) {
+  async updateIdentity(recipeId: string, data: { name: string; categoryId?: string | null; compoParPiece?: boolean }) {
+    // compo_par_piece (mode de saisie fournee/piece) est decide a la creation ;
+    // on autorise sa correction ici, au niveau fiche, hors du flux de composition.
+    // COALESCE : non fourni => on ne touche pas a la valeur existante.
     const r = await db.query(
-      `UPDATE recipes SET name = $2, category_id = $3, updated_at = NOW() WHERE id = $1
-       RETURNING id, name, category_id`,
-      [recipeId, data.name.trim(), data.categoryId ?? null]
+      `UPDATE recipes SET name = $2, category_id = $3,
+              compo_par_piece = COALESCE($4, compo_par_piece), updated_at = NOW() WHERE id = $1
+       RETURNING id, name, category_id, compo_par_piece`,
+      [recipeId, data.name.trim(), data.categoryId ?? null, data.compoParPiece ?? null]
     );
     return r.rows[0] ?? null;
   },

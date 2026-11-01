@@ -12,7 +12,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
  * formats, frais et étapes s'y saisissent ; les demander ici dans un second
  * formulaire donnait deux interfaces différentes pour une même fiche.
  */
-export interface RecipeIdentity { id: string; name: string; category_id?: string | null; is_base?: boolean }
+export interface RecipeIdentity { id: string; name: string; category_id?: string | null; is_base?: boolean; compo_par_piece?: boolean }
 
 /**
  * Avec `recipe`, la même fenêtre sert à MODIFIER l'identité d'une fiche existante
@@ -26,6 +26,10 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
   const [isBase, setIsBase] = useState(recipe ? !!recipe.is_base : defaultIsBase);
   const [name, setName] = useState(recipe?.name ?? '');
   const [categoryId, setCategoryId] = useState(recipe?.category_id ?? '');
+  // Mode de saisie des quantités de composition, décidé ici une fois pour toutes :
+  // par fournée (lot découpé) ou par pièce (unité). Modifiable ensuite via cette
+  // même fenêtre, mais plus pendant la composition.
+  const [compoParPiece, setCompoParPiece] = useState<boolean>(recipe?.compo_par_piece ?? false);
 
   const { data: categories = [] } = useQuery({ queryKey: ['recipe-categories'], queryFn: recipesApi.listCategories });
 
@@ -33,6 +37,9 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
     mutationFn: () => recipesApi.create({
       name: name.trim(), isBase, categoryId: categoryId || null,
       yieldQuantity: 1, yieldUnit: isBase ? 'kg' : 'unit',
+      // Le mode fournée/pièce ne concerne que les produits finis (nomenclature) ;
+      // une préparation de base reste en « par fournée » par défaut.
+      compoParPiece: isBase ? false : compoParPiece,
       ingredients: [],
     }),
     onSuccess: (r: { id: string }) => {
@@ -47,10 +54,15 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
   });
 
   const editMut = useMutation({
-    mutationFn: () => recipesApi.updateIdentity(recipe!.id, { name: name.trim(), categoryId: categoryId || null }),
+    mutationFn: () => recipesApi.updateIdentity(recipe!.id, {
+      name: name.trim(), categoryId: categoryId || null,
+      compoParPiece: isBase ? undefined : compoParPiece,
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['recipes'] });
       qc.invalidateQueries({ queryKey: ['recipe', recipe!.id] });
+      // Le mode fournée/pièce est relu par l'éditeur depuis les composants du format.
+      qc.invalidateQueries({ queryKey: ['format-components', recipe!.id] });
       notify.success('Fiche mise à jour');
       onClose();
     },
@@ -84,12 +96,12 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
 
         <div className="p-5 space-y-4 bg-white">
           {!isEdit && <div>
-            <div className="text-xs text-gray-500 mb-1">Type</div>
-            <div className="flex rounded-md border border-gray-200 overflow-hidden">
-              <button type="button" onClick={() => setIsBase(false)} className={typeBtn(!isBase)}>
+            <div className="text-xs text-gray-500 mb-1" id="recipe-type-label">Type</div>
+            <div className="flex rounded-md border border-gray-200 overflow-hidden" role="group" aria-labelledby="recipe-type-label">
+              <button type="button" aria-pressed={!isBase} onClick={() => setIsBase(false)} className={typeBtn(!isBase)}>
                 <ChefHat size={15} /> Produit fini
               </button>
-              <button type="button" onClick={() => setIsBase(true)} className={`${typeBtn(isBase)} border-l border-gray-200`}>
+              <button type="button" aria-pressed={isBase} onClick={() => setIsBase(true)} className={`${typeBtn(isBase)} border-l border-gray-200`}>
                 <Layers size={15} /> Préparation de base
               </button>
             </div>
@@ -98,19 +110,39 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
             </p>
           </div>}
 
-          <label className="block">
+          <label className="block" htmlFor="recipe-name">
             <span className="text-xs text-gray-500">Nom</span>
-            <input autoFocus className={`${field} mt-1`} value={name} onChange={(e) => setName(e.target.value)}
+            <input id="recipe-name" autoFocus className={`${field} mt-1`} value={name} onChange={(e) => setName(e.target.value)}
               maxLength={200} placeholder={isBase ? 'ex : Crème pâtissière' : 'ex : Croissant'} />
           </label>
 
-          <label className="block">
+          <label className="block" htmlFor="recipe-category">
             <span className="text-xs text-gray-500">Catégorie de production</span>
-            <select className={`${field} mt-1`} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <select id="recipe-category" className={`${field} mt-1`} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
               <option value="">— Aucune (à classifier) —</option>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
             </select>
           </label>
+
+          {!isBase && (
+            <div>
+              <div className="text-xs text-gray-500 mb-1" id="recipe-mode-label">Mode de saisie des quantités</div>
+              <div className="flex rounded-md border border-gray-200 overflow-hidden" role="group" aria-labelledby="recipe-mode-label">
+                <button type="button" aria-pressed={!compoParPiece} onClick={() => setCompoParPiece(false)} className={typeBtn(!compoParPiece)}>
+                  Par fournée (lot)
+                </button>
+                <button type="button" aria-pressed={compoParPiece} onClick={() => setCompoParPiece(true)} className={`${typeBtn(compoParPiece)} border-l border-gray-200`}>
+                  Par pièce (unité)
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">
+                {compoParPiece
+                  ? 'Les quantités décrivent UNE pièce (entremets individuel, monoportion…). Coût/pièce = somme des composants.'
+                  : 'Les quantités décrivent TOUTE la fournée (cadre/plaque découpé). Coût/pièce = total ÷ rendement.'}
+                {' '}Ce choix se fait maintenant et n'apparaît plus pendant la composition.
+              </p>
+            </div>
+          )}
 
           {!isEdit && (
             <p className="text-xs text-gray-500">

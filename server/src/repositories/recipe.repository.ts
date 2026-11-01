@@ -394,6 +394,9 @@ export const recipeRepository = {
     pieceWeightKg?: number | null; isBase?: boolean;
     temperaturePateCibleC?: number | null; hydratationPct?: number | null;
     categoryId?: string | null;
+    // Mode de saisie des quantites de composition, decide a la creation de la
+    // fiche (par fournee/lot = false, par piece/unite = true). Colonne recipes.
+    compoParPiece?: boolean;
     contenantId?: string; etapes?: unknown[]; marginMultiplier?: number; salePrice?: number | null;
     // Frais indirects (defaults pris dans company_settings via INSERT a l'inscription)
     tauxMainOeuvreDhH?: number; coutEnergieFournee?: number; tauxFraisStructurePct?: number;
@@ -467,13 +470,13 @@ export const recipeRepository = {
       const recipeResult = await client.query(
         `INSERT INTO recipes (product_id, name, instructions, yield_quantity, yield_unit, piece_weight_kg, total_cost, is_base, contenant_id, etapes, margin_multiplier,
                               taux_main_oeuvre_dh_h, cout_energie_fournee, taux_frais_structure_pct, category_id,
-                              temperature_pate_cible_c, hydratation_pct)
-         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
+                              temperature_pate_cible_c, hydratation_pct, compo_par_piece)
+         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING *`,
         [data.productId || null, data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit',
          data.pieceWeightKg ?? null,
          data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin,
          tauxMo, coutEnergie, tauxStruct, data.categoryId ?? null,
-         data.temperaturePateCibleC ?? null, data.hydratationPct ?? null]
+         data.temperaturePateCibleC ?? null, data.hydratationPct ?? null, data.compoParPiece ?? false]
       );
 
       const recipeId = recipeResult.rows[0].id;
@@ -740,23 +743,34 @@ export const recipeRepository = {
         : parseFloat(currentRecipe?.margin_multiplier || '3');
       // total_cost n'est plus stocke (vue v_recipe_total_cost gere) — on le force a 0.
       // Frais indirects : si data ne les fournit pas, on conserve les valeurs existantes (COALESCE).
+      // Un champ ABSENT du payload (undefined -> null en parametre) est PRESERVE via
+      // COALESCE : une sauvegarde partielle (edition unifiee, import xlsx en MAJ) ne
+      // doit jamais vider etapes, categorie, poids-piece ni parametres de pate. Pour
+      // effacer explicitement l'un de ces champs, utiliser l'endpoint dedie (identity,
+      // etapes) ou envoyer une valeur vide typee ("" pour instructions).
       await client.query(
-        `UPDATE recipes SET name = $1, instructions = $2, yield_quantity = $3, yield_unit = $4, piece_weight_kg = $5, total_cost = 0, is_base = $6, contenant_id = $7, etapes = $8, margin_multiplier = $9,
+        `UPDATE recipes SET name = COALESCE($1, name),
+           instructions = COALESCE($2, instructions),
+           yield_quantity = COALESCE($3, yield_quantity),
+           yield_unit = COALESCE($4, yield_unit),
+           piece_weight_kg = COALESCE($5, piece_weight_kg),
+           total_cost = 0,
+           is_base = COALESCE($6, is_base),
+           contenant_id = COALESCE($7, contenant_id),
+           etapes = COALESCE($8::jsonb, etapes),
+           margin_multiplier = $9,
            taux_main_oeuvre_dh_h = COALESCE($10, taux_main_oeuvre_dh_h),
            cout_energie_fournee = COALESCE($11, cout_energie_fournee),
            taux_frais_structure_pct = COALESCE($12, taux_frais_structure_pct),
-           category_id = $13,
-           -- Perte de transformation : editable depuis le formulaire des
-           -- preparations de base (mig 274). COALESCE pour qu'un payload qui ne
-           -- la porte pas — le formulaire produit fini — n'ecrase pas la valeur
-           -- posee par l'editeur de nomenclature.
+           category_id = COALESCE($13, category_id),
            perte_standard_pct = COALESCE($14, perte_standard_pct),
-           temperature_pate_cible_c = $16,
-           hydratation_pct = $17,
+           temperature_pate_cible_c = COALESCE($16, temperature_pate_cible_c),
+           hydratation_pct = COALESCE($17, hydratation_pct),
            updated_at = NOW()
          WHERE id = $15`,
-        [data.name, data.instructions || null, data.yieldQuantity || 1, data.yieldUnit || 'unit', data.pieceWeightKg ?? null,
-         data.isBase || false, data.contenantId || null, JSON.stringify(data.etapes || []), margin,
+        [data.name ?? null, data.instructions ?? null, data.yieldQuantity ?? null, data.yieldUnit ?? null, data.pieceWeightKg ?? null,
+         data.isBase ?? null, data.contenantId ?? null,
+         data.etapes === undefined ? null : JSON.stringify(data.etapes), margin,
          data.tauxMainOeuvreDhH ?? null, data.coutEnergieFournee ?? null, data.tauxFraisStructurePct ?? null,
          data.categoryId ?? null, data.perteStandardPct ?? null, id,
          data.temperaturePateCibleC ?? null, data.hydratationPct ?? null]
@@ -791,9 +805,11 @@ export const recipeRepository = {
         }
       }
 
-      // Re-insert recipe_packaging
-      await client.query('DELETE FROM recipe_packaging WHERE recipe_id = $1', [id]);
-      if (data.packaging && data.packaging.length > 0) {
+      // Re-insert recipe_packaging — UNIQUEMENT si la cle packaging est fournie.
+      // Un payload partiel (metadonnees) qui ne la porte pas ne doit pas vider les
+      // emballages existants (meme logique que ingredients/subRecipes ci-dessus).
+      if (data.packaging !== undefined) {
+        await client.query('DELETE FROM recipe_packaging WHERE recipe_id = $1', [id]);
         for (const pk of data.packaging) {
           await client.query(
             `INSERT INTO recipe_packaging (recipe_id, packaging_id, quantity, unit) VALUES ($1, $2, $3, $4)`,
@@ -834,7 +850,7 @@ export const recipeRepository = {
         //    les desactiver casserait leur nomenclature.
         await client.query(
           `UPDATE recipe_formats f
-           SET is_active = false, updated_at = NOW()
+           SET is_active = false, is_default = false, updated_at = NOW()
            FROM recipes r
            WHERE r.id = f.recipe_id
              AND f.recipe_id = $1
@@ -860,6 +876,22 @@ export const recipeRepository = {
              fmt.prixVenteUnitaireOverride ?? null, fmt.marginMultiplierOverride ?? null]
           );
         }
+        // Filet de securite : si la desactivation ci-dessus a retire le format par
+        // defaut (is_default remis a false), en promouvoir un parmi les formats
+        // actifs restants — sinon la recette se retrouverait sans format par defaut.
+        await client.query(
+          `UPDATE recipe_formats SET is_default = true, updated_at = NOW()
+           WHERE id = (
+             SELECT id FROM recipe_formats
+             WHERE recipe_id = $1 AND is_active
+             ORDER BY ordre, created_at LIMIT 1
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM recipe_formats
+             WHERE recipe_id = $1 AND is_active AND is_default
+           )`,
+          [id],
+        );
       }
 
       await this.syncProductPrice(
