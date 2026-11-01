@@ -281,7 +281,7 @@ const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[]
   { key: 'caisse', label: 'Caisse', icon: Wallet, section: 'operations' },
   { key: 'charges', label: 'Charges & Dépenses', icon: TrendingDown, section: 'operations' },
   { key: 'cheques', label: 'Chèques et Traites', icon: Receipt, section: 'operations' },
-  { key: 'dettes', label: 'Dettes', icon: Scale, section: 'operations' },
+  { key: 'dettes', label: 'Créances & dettes', icon: Scale, section: 'operations' },
   { key: 'banque', label: 'Banque', icon: Landmark, section: 'operations', adminOnly: true },
   { key: 'cca', label: "Charges payées d'avance", icon: CalendarClock, section: 'operations', adminOnly: true },
   { key: 'ecritures', label: 'Journal', icon: Notebook, section: 'operations', adminOnly: true },
