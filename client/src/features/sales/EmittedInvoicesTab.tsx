@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoicesApi, paymentsApi } from '../../api/accounting.api';
 import { customersApi } from '../../api/customers.api';
 import { productsApi } from '../../api/products.api';
+import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
 import { format, startOfDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -167,6 +168,12 @@ export default function EmittedInvoicesTab() {
   const [manualCustomerId, setManualCustomerId] = useState('');
   const [manualDate, setManualDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [manualNotes, setManualNotes] = useState('');
+  // Facture en devise (mig 431) : prix saisis dans la devise, convertis en DH au taux de la facture.
+  const [manualCurrency, setManualCurrency] = useState(BASE_CURRENCY);
+  const [manualRate, setManualRate] = useState('');
+  // Encaissement d'une facture en devise : montant en devise et taux du jour.
+  const [payForeign, setPayForeign] = useState('');
+  const [payRate, setPayRate] = useState('');
   // Édition d'une facture existante : id ciblé (null = création). Réutilise le formulaire manuel.
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
   const [editLoading, setEditLoading] = useState(false);
@@ -181,6 +188,8 @@ export default function EmittedInvoicesTab() {
   });
 
   const { data: customersData } = useQuery({ queryKey: ['customers'], queryFn: () => customersApi.list() });
+  const { data: currencies = [] } = useQuery({ queryKey: ['currencies'], queryFn: () => currenciesApi.list() });
+  const dayRate = (code: string) => { const c = currencies.find(x => x.code.trim() === code); return c?.rate ? String(parseFloat(c.rate)) : ''; };
   const customers = ((customersData as Record<string, any>)?.data || customersData || []) as Record<string, any>[];
 
   const createManualMutation = useMutation({
@@ -231,9 +240,20 @@ export default function EmittedInvoicesTab() {
     setManualCustomerId('');
     setManualDate(format(new Date(), 'yyyy-MM-dd'));
     setManualNotes('');
+    setManualCurrency(BASE_CURRENCY);
+    setManualRate('');
     setManualItems([{ productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null }]);
     setEditingInvoiceId(null);
   };
+  const foreign = manualCurrency !== BASE_CURRENCY;
+  const curLabel = foreign ? manualCurrency : 'DH';
+  const rateValue = parseFloat(manualRate.replace(',', '.')) || 0;
+  /** Lignes envoyées au serveur : prix convertis en DH (prix unitaire à 4 décimales) quand la facture est en devise. */
+  const linesInDh = () => manualItems.map(it => {
+    const unitPrice = foreign ? Math.round(it.unitPrice * rateValue * 10000) / 10000 : it.unitPrice;
+    return { productId: it.productId || undefined, description: it.description, quantity: it.quantity, unitPrice,
+      subtotal: Math.round(it.quantity * unitPrice * 100) / 100, tvaRate: it.tvaRate };
+  });
 
   // Saisie « intelligente » HT <-> TTC. On stocke toujours le prix unitaire HT ; le TTC
   // est dérivé du taux TVA de la ligne (taux null => 0, pas de TVA). Éditer l'un recalcule l'autre.
@@ -268,23 +288,21 @@ export default function EmittedInvoicesTab() {
     if (!manualCustomerId) { notify.error('Veuillez sélectionner un client'); return; }
     if (manualItems.some(it => !it.description || it.unitPrice <= 0)) { notify.error('Veuillez remplir tous les articles'); return; }
     if (!manualDate) { notify.error('Veuillez saisir la date de facturation'); return; }
+    if (foreign && !(rateValue > 0)) { notify.error(`Indiquez le taux du ${manualCurrency} (DH pour 1 ${manualCurrency})`); return; }
+    const lines = linesInDh();
+    const ht = Math.round(lines.reduce((s, l) => s + l.subtotal, 0) * 100) / 100;
+    const tva = Math.round(lines.reduce((s, l) => s + (l.tvaRate == null ? 0 : l.subtotal * l.tvaRate / 100), 0) * 100) / 100;
     createManualMutation.mutate({
       invoiceType: 'emitted',
       customerId: manualCustomerId,
       invoiceDate: manualDate,
       // Le backend redrive HT/TVA/TTC depuis les lignes quand un taux est saisi.
-      amount: manualTotal,
-      taxAmount: manualTva,
-      totalAmount: manualTtc,
+      amount: ht,
+      taxAmount: tva,
+      totalAmount: Math.round((ht + tva) * 100) / 100,
       notes: manualNotes,
-      items: manualItems.map(it => ({
-        productId: it.productId || undefined,
-        description: it.description,
-        quantity: it.quantity,
-        unitPrice: it.unitPrice,
-        subtotal: it.quantity * it.unitPrice,
-        tvaRate: it.tvaRate,
-      })),
+      items: lines,
+      ...(foreign ? { currencyCode: manualCurrency, exchangeRate: rateValue } : {}),
     });
   };
 
@@ -312,12 +330,17 @@ export default function EmittedInvoicesTab() {
       setManualCustomerId((full.customer_id as string) || '');
       setManualDate(full.invoice_date ? String(full.invoice_date).slice(0, 10) : format(new Date(), 'yyyy-MM-dd'));
       setManualNotes((full.notes as string) || '');
+      const cur = String(full.currency_code ?? BASE_CURRENCY).trim();
+      const rate = cur !== BASE_CURRENCY ? parseFloat(full.exchange_rate as string) || 1 : 1;
+      setManualCurrency(cur);
+      setManualRate(cur !== BASE_CURRENCY ? String(rate) : '');
       const items = (full.items as Record<string, any>[]) || [];
       setManualItems(items.length ? items.map(it => ({
         productId: (it.product_id as string) || '',
         description: (it.description as string) || (it.product_name as string) || '',
         quantity: parseFloat(it.quantity as string) || 0,
-        unitPrice: parseFloat(it.unit_price as string) || 0,
+        // Facture en devise : le prix se modifie dans la devise de la facture.
+        unitPrice: Math.round((parseFloat(it.unit_price as string) || 0) / rate * 100) / 100,
         tvaRate: it.tva_rate === null || it.tva_rate === undefined ? null : parseFloat(it.tva_rate as string),
       })) : [{ productId: '', description: '', quantity: 1, unitPrice: 0, tvaRate: null }]);
     } catch {
@@ -336,14 +359,7 @@ export default function EmittedInvoicesTab() {
     if (!manualDate) { notify.error('Veuillez saisir la date de facturation'); return; }
     updateManualMutation.mutate({
       id: editingInvoiceId,
-      items: manualItems.map(it => ({
-        productId: it.productId || undefined,
-        description: it.description,
-        quantity: it.quantity,
-        unitPrice: it.unitPrice,
-        subtotal: it.quantity * it.unitPrice,
-        tvaRate: it.tvaRate,
-      })),
+      items: linesInDh(),
       // Pas de montants ici : replaceItems a déjà recalculé HT/TVA/TTC depuis les lignes.
       header: { invoiceDate: manualDate, notes: manualNotes, customerId: manualCustomerId },
     });
@@ -409,7 +425,13 @@ export default function EmittedInvoicesTab() {
       cancelMutation.mutate(inv.id as string);
     }
   };
-  const openPay = (inv: Record<string, any>) => { setShowPayModal(inv); setPayMethod('bank'); };
+  const openPay = (inv: Record<string, any>) => {
+    setShowPayModal(inv); setPayMethod('bank');
+    const cur = String(inv.currency_code ?? BASE_CURRENCY).trim();
+    setPayForeign(cur !== BASE_CURRENCY && inv.foreign_total_amount != null
+      ? (num(inv.foreign_total_amount) - num(inv.foreign_paid_amount)).toFixed(2) : '');
+    setPayRate(cur !== BASE_CURRENCY ? dayRate(cur) : '');
+  };
   const openCreate = () => { resetManualForm(); setShowCreateModal(true); };
 
   const chipStyle = (active: boolean): CSSProperties => ({
@@ -553,6 +575,9 @@ export default function EmittedInvoicesTab() {
                         <td style={{ textAlign: 'right' }}>
                           <span style={{ fontWeight: 700 }}>{n(total)}</span>
                           <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+                          {inv.foreign_total_amount != null && String(inv.currency_code).trim() !== BASE_CURRENCY && (
+                            <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{n(num(inv.foreign_total_amount))} {String(inv.currency_code).trim()}</div>
+                          )}
                         </td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                           {status === 'cancelled' ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span>
@@ -626,7 +651,7 @@ export default function EmittedInvoicesTab() {
                 </div>
               ) : (
                 <>
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
                     <div>
                       <label style={labelStyle}>Client</label>
                       <select value={manualCustomerId} onChange={e => setManualCustomerId(e.target.value)} style={fieldStyle}>
@@ -638,7 +663,28 @@ export default function EmittedInvoicesTab() {
                       <label style={labelStyle}>Date de facturation</label>
                       <input type="date" value={manualDate} onChange={e => setManualDate(e.target.value)} style={fieldStyle} />
                     </div>
+                    <div>
+                      <label style={labelStyle}>Devise</label>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <select value={manualCurrency} disabled={!!editingInvoiceId || currencies.length <= 1}
+                          title={editingInvoiceId ? 'La devise d\'une facture émise ne change pas'
+                            : currencies.length <= 1 ? 'Activez d\'autres devises dans Paramètres › Devises' : undefined}
+                          onChange={e => { setManualCurrency(e.target.value); setManualRate(e.target.value === BASE_CURRENCY ? '' : dayRate(e.target.value)); }}
+                          style={{ ...fieldStyle, flex: foreign ? '0 0 76px' : 1 }}>
+                          {currencies.map(c => <option key={c.code} value={c.code.trim()}>{c.code.trim()}</option>)}
+                        </select>
+                        {foreign && (
+                          <input value={manualRate} onChange={e => setManualRate(e.target.value)} disabled={!!editingInvoiceId} inputMode="decimal"
+                            placeholder="taux" title={`DH pour 1 ${manualCurrency}`} style={{ ...fieldStyle, textAlign: 'right', minWidth: 0 }} />
+                        )}
+                      </div>
+                    </div>
                   </div>
+                  {foreign && (
+                    <StatusBanner tone="info" icon={Coins} title={`Facture en ${manualCurrency} au taux de ${manualRate || '…'} DH`}>
+                      Prix saisis en {manualCurrency}. La facture est comptabilisée en dirhams à ce taux ; l'écart avec le taux du jour de l'encaissement sera un gain ou une perte de change.
+                    </StatusBanner>
+                  )}
 
                   <div style={sectionStyle}>
                     <div className="odoo-section-header" style={{ display: 'flex', alignItems: 'center' }}>
@@ -651,7 +697,7 @@ export default function EmittedInvoicesTab() {
                         <tr>
                           <th>Désignation</th>
                           <th style={{ width: 70, textAlign: 'right' }}>Qté</th>
-                          <th style={{ width: 100, textAlign: 'right' }}>P.U. HT</th>
+                          <th style={{ width: 100, textAlign: 'right' }}>P.U. HT{foreign ? ` (${manualCurrency})` : ''}</th>
                           <th style={{ width: 80 }}>TVA</th>
                           <th style={{ width: 100, textAlign: 'right' }}>P.U. TTC</th>
                           <th style={{ width: 110, textAlign: 'right' }}>Total TTC</th>
@@ -692,9 +738,12 @@ export default function EmittedInvoicesTab() {
                       <input type="text" value={manualNotes} onChange={e => setManualNotes(e.target.value)} placeholder="Notes ou référence..." style={fieldStyle} />
                     </div>
                     <div style={{ ...sectionStyle, padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total HT</span><span>{n(manualTotal)} DH</span></div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>TVA</span><span>{n(manualTva)} DH</span></div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4 }}><span>Total TTC</span><span>{n(manualTtc)} DH</span></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total HT</span><span>{n(manualTotal)} {curLabel}</span></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>TVA</span><span>{n(manualTva)} {curLabel}</span></div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4 }}><span>Total TTC</span><span>{n(manualTtc)} {curLabel}</span></div>
+                      {foreign && rateValue > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}><span>Contre-valeur</span><span>{n(manualTtc * rateValue)} DH</span></div>
+                      )}
                     </div>
                   </div>
                 </>
@@ -723,18 +772,35 @@ export default function EmittedInvoicesTab() {
         const paid = num(inv.paid_amount);
         const remaining = remainingOf(inv);
         const needsRef = payMethod === 'check' || payMethod === 'traite';
+        const payCur = String(inv.currency_code ?? BASE_CURRENCY).trim();
+        const payInFx = payCur !== BASE_CURRENCY && inv.foreign_total_amount != null;
+        const remainingFx = payInFx ? Math.round((num(inv.foreign_total_amount) - num(inv.foreign_paid_amount)) * 100) / 100 : 0;
+        const fxAmount = parseFloat(payForeign.replace(',', '.')) || 0;
+        const fxRate = parseFloat(payRate.replace(',', '.')) || 0;
+        const fxDh = Math.round(fxAmount * fxRate * 100) / 100;
+        // Part de la créance soldée au taux de la facture (le dernier règlement solde le reste exact).
+        const fxSettled = fxAmount >= remainingFx - 0.005 ? remaining : Math.round(fxAmount * num(inv.exchange_rate) * 100) / 100;
+        const fxGain = Math.round((fxDh - fxSettled) * 100) / 100;
         return (
           <ModalBackdrop onClose={() => setShowPayModal(null)} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
             <form className="odoo-scope w-full" style={{ ...modalPanelStyle, maxWidth: 480 }} onClick={e => e.stopPropagation()} onSubmit={e => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
-              const amount = parseFloat(fd.get('amount') as string);
               const paymentDate = (fd.get('paymentDate') as string) || format(new Date(), 'yyyy-MM-dd');
-              if (!amount || amount <= 0) { notify.error('Montant invalide'); return; }
-              if (amount > remaining + 0.004) { notify.error(`Le montant dépasse le reste à encaisser (${n(remaining)} DH)`); return; }
+              let amount: number;
+              if (payInFx) {
+                if (!(fxAmount > 0) || !(fxRate > 0)) { notify.error(`Indiquez le montant reçu en ${payCur} et le taux du jour`); return; }
+                if (fxAmount > remainingFx + 0.005) { notify.error(`Le montant dépasse le reste à encaisser (${n(remainingFx)} ${payCur})`); return; }
+                amount = fxDh;
+              } else {
+                amount = parseFloat(fd.get('amount') as string);
+                if (!amount || amount <= 0) { notify.error('Montant invalide'); return; }
+                if (amount > remaining + 0.004) { notify.error(`Le montant dépasse le reste à encaisser (${n(remaining)} DH)`); return; }
+              }
               const reference = (fd.get('reference') as string || '').trim();
               payMutation.mutate({
                 invoiceId: inv.id as string, type: 'income', amount, paymentMethod: payMethod, paymentDate,
+                ...(payInFx ? { foreignAmount: fxAmount, exchangeRate: fxRate } : {}),
                 description: `Encaissement facture ${inv.invoice_number}`,
                 ...(reference ? { reference } : {}),
                 ...(needsRef ? { checkNumber: reference, checkDate: fd.get('checkDate') as string } : {}),
@@ -755,21 +821,47 @@ export default function EmittedInvoicesTab() {
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total TTC</span><span style={{ fontWeight: 600 }}>{n(total)} DH</span></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}><span>Déjà encaissé</span><span style={{ fontWeight: 600 }}>{n(paid)} DH</span></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4, marginTop: 2 }}>
-                      <span>Reste à encaisser</span><span style={{ color: '#b85d1a' }}>{n(remaining)} DH</span>
+                      <span>Reste à encaisser</span><span style={{ color: '#b85d1a' }}>{n(remaining)} DH{payInFx ? ` · ${n(remainingFx)} ${payCur}` : ''}</span>
                     </div>
+                    {payInFx && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Facture en {payCur} au taux de {num(inv.exchange_rate)} DH</div>}
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div>
-                    <label style={labelStyle}>Montant (DH)</label>
-                    <input name="amount" type="number" step="0.01" defaultValue={remaining.toFixed(2)} max={remaining} autoFocus
-                      style={{ ...fieldStyle, textAlign: 'right', fontWeight: 700, fontSize: '1rem' }} />
-                  </div>
+                <div style={{ display: 'grid', gridTemplateColumns: payInFx ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
+                  {payInFx ? (
+                    <>
+                      <div>
+                        <label style={labelStyle}>Montant reçu ({payCur})</label>
+                        <input value={payForeign} onChange={e => setPayForeign(e.target.value)} inputMode="decimal" autoFocus
+                          style={{ ...fieldStyle, textAlign: 'right', fontWeight: 700, fontSize: '1rem' }} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Taux du jour (DH)</label>
+                        <input value={payRate} onChange={e => setPayRate(e.target.value)} inputMode="decimal" style={{ ...fieldStyle, textAlign: 'right' }} />
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <label style={labelStyle}>Montant (DH)</label>
+                      <input name="amount" type="number" step="0.01" defaultValue={remaining.toFixed(2)} max={remaining} autoFocus
+                        style={{ ...fieldStyle, textAlign: 'right', fontWeight: 700, fontSize: '1rem' }} />
+                    </div>
+                  )}
                   <div>
                     <label style={labelStyle}>Date d'encaissement</label>
                     <input name="paymentDate" type="date" required defaultValue={format(new Date(), 'yyyy-MM-dd')} style={fieldStyle} />
                   </div>
                 </div>
+                {payInFx && fxAmount > 0 && fxRate > 0 && (
+                  <div style={{ ...sectionStyle, padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Reçu en trésorerie</span><span>{n(fxDh)} DH</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Créance soldée (taux de la facture)</span><span>{n(fxSettled)} DH</span></div>
+                    {Math.abs(fxGain) >= 0.01 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, color: fxGain > 0 ? '#155724' : '#721c24' }}>
+                        <span>{fxGain > 0 ? 'Gain de change (7331)' : 'Perte de change (6331)'}</span><span>{n(Math.abs(fxGain))} DH</span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div>
                   <label style={labelStyle}>Mode de paiement</label>
                   <div className="odoo-view-switcher" role="radiogroup" style={{ width: '100%' }}>

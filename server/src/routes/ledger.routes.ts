@@ -10,9 +10,10 @@ import { lettrageRepository } from '../repositories/lettrage.repository.js';
 import { agedBalanceRepository } from '../repositories/aged-balance.repository.js';
 import { chartOfAccountsRepository } from '../repositories/chart-of-accounts.repository.js';
 import { corporateTaxRepository } from '../repositories/corporate-tax.repository.js';
+import { fxRevaluationRepository } from '../repositories/fx-revaluation.repository.js';
 import {
   EDITION_KINDS, type EditionKind, editionContext, renderPdf, renderXlsx,
-  buildJournal, buildGrandLivre, buildBalance, buildBilan, buildCpc, buildBalanceAgee, buildImmobilisations, buildCessions, buildAnalytique, buildIs,
+  buildJournal, buildGrandLivre, buildBalance, buildBilan, buildCpc, buildBalanceAgee, buildImmobilisations, buildCessions, buildAnalytique, buildIs, buildEcartsConversion,
 } from '../services/ledger-editions.service.js';
 import {
   planComptableController,
@@ -150,6 +151,7 @@ ledgerRouter.get('/editions/:kind', authenticate, authorize(...ROLE_GROUPS.ADMIN
     : kind === 'immobilisations' ? await buildImmobilisations({ year: Number(end.slice(0, 4)), storeId })
     : kind === 'cessions' ? await buildCessions({ year: Number(end.slice(0, 4)), storeId })
     : kind === 'is' ? await buildIs({ year: Number(end.slice(0, 4)) })
+    : kind === 'ecarts-conversion' ? await buildEcartsConversion({ year: Number(end.slice(0, 4)) })
     : kind === 'analytique' ? (q.axis ? await buildAnalytique({ axisId: q.axis, startDate: start, endDate: end, storeId }) : null)
     : await buildBalanceAgee({ side: q.side, asOf: end });
   if (!edition) { tplBad(res, 'Axe analytique requis'); return; }
@@ -217,6 +219,28 @@ ledgerRouter.post('/corporate-tax/:year/unbook', ...TAX_AM, requireVerb('account
   const r = z.object({ reason: z.string().trim().min(3).max(500) }).safeParse(req.body);
   if (!r.success) { tplBad(res, 'Motif obligatoire (3 caractères au moins)'); return; }
   res.json({ success: true, data: await corporateTaxRepository.unbook(y, r.data.reason, taxActor(req)) });
+}));
+
+// Réévaluation des devises (mig 431) : calcul libre, comptabilisation et annulation avec le droit « post ».
+// Taux de clôture saisis : ?rates=EUR:10.95,USD:9.8 (lecture) ou { rates: { EUR: 10.95 } } (comptabilisation).
+const fxRates = z.record(z.string().regex(/^[A-Z]{3}$/), z.coerce.number().positive().max(100_000)).default({});
+const parseRatesQuery = (v: unknown) => Object.fromEntries(String(v ?? '').split(',').map(x => x.split(':'))
+  .filter(([k, r]) => /^[A-Z]{3}$/.test(k ?? '') && Number(r) > 0).map(([k, r]) => [k, Number(r)]));
+ledgerRouter.get('/fx-revaluation/:year', ...TAX_AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = taxYear(req, res); if (y === null) return;
+  res.json({ success: true, data: await fxRevaluationRepository.summary(y, parseRatesQuery(req.query.rates)) });
+}));
+ledgerRouter.post('/fx-revaluation/:year/book', ...TAX_AM, requireVerb('accounting', 'post'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = taxYear(req, res); if (y === null) return;
+  const r = z.object({ rates: fxRates }).safeParse(req.body ?? {});
+  if (!r.success) { tplBad(res, 'Taux de clôture invalide'); return; }
+  res.json({ success: true, data: await fxRevaluationRepository.book(y, r.data.rates, taxActor(req)) });
+}));
+ledgerRouter.post('/fx-revaluation/:year/cancel', ...TAX_AM, requireVerb('accounting', 'post'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = taxYear(req, res); if (y === null) return;
+  const r = z.object({ reason: z.string().trim().min(3).max(500) }).safeParse(req.body);
+  if (!r.success) { tplBad(res, 'Motif obligatoire (3 caractères au moins)'); return; }
+  res.json({ success: true, data: await fxRevaluationRepository.cancel(y, r.data.reason, taxActor(req)) });
 }));
 
 // Balance âgée comptable : lignes non lettrées des comptes de tiers, par échéance.

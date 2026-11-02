@@ -638,6 +638,14 @@ export const invoiceController = {
         .sort((a, b) => a[0] - b[0])
         .map(([rate, amt]) => ({ rate, amount: Math.round(amt * 100) / 100 }));
 
+      // Facture en devise (mig 431) : imprimée dans sa devise au taux de la facture,
+      // avec la contre-valeur en DH (les montants en base restent en DH).
+      const curCode = String(inv.currency_code ?? 'MAD').trim();
+      const fxRate = curCode !== 'MAD' ? Number(inv.exchange_rate) || 1 : 1;
+      const toCur = (v: number) => Math.round((v / fxRate) * 100) / 100;
+      const ttcCur = curCode !== 'MAD' && inv.foreign_total_amount != null ? Number(inv.foreign_total_amount) : toCur(totalAmount);
+      const htCur = toCur(amount);
+
       const legal = await loadCompanyLegal();
       const buffer = await generateInvoicePdf({
         invoiceNumber: inv.invoice_number as string,
@@ -651,14 +659,15 @@ export const invoiceController = {
           description: (it.description as string) || '',
           category: (it.category_name as string) || '',
           quantity: parseFloat(it.quantity as string) || 1,
-          unit_price: parseFloat(it.unit_price as string) || 0,
-          subtotal: parseFloat(it.subtotal as string) || 0,
+          unit_price: curCode !== 'MAD' ? Math.round(((parseFloat(it.unit_price as string) || 0) / fxRate) * 10000) / 10000 : parseFloat(it.unit_price as string) || 0,
+          subtotal: toCur(parseFloat(it.subtotal as string) || 0),
         })),
-        totalHT: amount,
+        totalHT: htCur,
         tvaRate,
-        totalTVA: taxAmount,
-        totalTTC: totalAmount,
-        tvaBreakdown,
+        totalTVA: Math.round((ttcCur - htCur) * 100) / 100,
+        totalTTC: ttcCur,
+        tvaBreakdown: tvaBreakdown.map(b => ({ rate: b.rate, amount: toCur(b.amount) })),
+        currency: curCode !== 'MAD' ? { code: curCode, rate: fxRate, totalDh: totalAmount } : undefined,
         companyName: legal.name,
         companyAddress: legal.address,
         companyPhone: legal.phone,

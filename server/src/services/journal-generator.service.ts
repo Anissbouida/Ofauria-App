@@ -672,12 +672,23 @@ export async function fromPaymentEmission(
     const inv = p.invoice_id
       ? (await client.query(`SELECT invoice_type, customer_id, invoice_number FROM invoices WHERE id = $1`, [p.invoice_id])).rows[0]
       : null;
-    const creditLine: GeneratedLine = inv?.invoice_type === 'emitted' && inv.customer_id
+    // Facture client en devise (mig 431) : la creance est soldee au taux de la facture
+    // (settled_amount), la tresorerie recoit le montant au taux du jour ; l'ecart est
+    // un gain de change (7331) si amount > settled, une perte (6331) sinon.
+    const isCustomerInvoice = inv?.invoice_type === 'emitted' && !!inv.customer_id;
+    const settled = isCustomerInvoice && p.settled_amount != null ? round2(parseFloat(String(p.settled_amount))) : round2(amount);
+    const fxIncome = isCustomerInvoice ? round2(round2(amount) - settled) : 0;
+    const creditLine: GeneratedLine = isCustomerInvoice
       ? {
-          account_code: '3421', auxiliary_customer_id: inv.customer_id, debit: 0, credit: round2(amount),
+          account_code: '3421', auxiliary_customer_id: inv.customer_id, debit: 0, credit: settled,
           label: `Reglement ${inv.invoice_number}`, lettrage_key: `inv-${p.invoice_id}`,
         }
       : { account_code: await resolveCategoryAccountCode(client, p.category_id, 'revenue'), debit: 0, credit: round2(amount), label: p.description || 'Revenu' };
+    const fxLines: GeneratedLine[] = fxIncome > 0
+      ? [{ account_code: await postingAccount(client, 'fx_gain'), debit: 0, credit: fxIncome, label: 'Gain de change' }]
+      : fxIncome < 0
+      ? [{ account_code: await postingAccount(client, 'fx_loss'), debit: -fxIncome, credit: 0, label: 'Perte de change' }]
+      : [];
     return {
       journal_code: journal,
       entry_date: toIsoDate(p.payment_date),
@@ -688,6 +699,7 @@ export async function fromPaymentEmission(
       lines: [
         { account_code: treasuryCode, debit: round2(amount), credit: 0, label: 'Encaissement' },
         creditLine,
+        ...fxLines,
       ],
     };
   } else {

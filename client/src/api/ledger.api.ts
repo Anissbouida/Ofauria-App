@@ -133,7 +133,7 @@ export const lettrageApi = {
 };
 
 /* ═══ Éditions comptables PDF / Excel ═══ */
-export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions' | 'analytique' | 'is';
+export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions' | 'analytique' | 'is' | 'ecarts-conversion';
 export type EditionParams = { startDate?: string; endDate?: string; journal?: string; account?: string; class?: number; side?: 'suppliers' | 'customers'; axis?: string };
 export const editionsApi = {
   /** Télécharge l'état ; une erreur (JSON renvoyé en blob) est relue pour son message. */
@@ -504,4 +504,28 @@ export const corporateTaxApi = {
   book: (year: number): Promise<{ entry_number: string; tax_due: number; imputed: number; balance_due: number }> =>
     api.post(`/ledger/corporate-tax/${year}/book`).then(r => r.data.data),
   unbook: (year: number, reason: string) => api.post(`/ledger/corporate-tax/${year}/unbook`, { reason }).then(r => r.data.data),
+};
+
+/* ═══ Réévaluation des devises (mig 431) ═══ */
+export interface FxRevaluationLine {
+  invoice_id: string; invoice_number: string; external_ref: string | null; invoice_date: string; tiers: string | null;
+  side: 'receivable' | 'payable'; currency_code: string; foreign_remaining: number; book_rate: number; book_amount: number;
+  closing_rate: number | null; closing_amount: number | null; difference: number | null; account_code: string | null;
+}
+export interface FxRevaluation {
+  year: number; closing_date: string; status: 'draft' | 'booked'; fiscal_year_closed: boolean; booked_at: string | null;
+  reval_entry_number: string | null; reopen_entry_number: string | null;
+  rates: Record<string, { rate: number | null; valid_on: string | null; source: 'saisi' | 'table' | 'manquant' }>;
+  missing_rates: string[]; lines: FxRevaluationLine[];
+  loss_total: number; gain_total: number; provision: number; provision_reversal: number; previous_provision: number;
+  realized: { loss: number; gain: number; net: number };
+}
+export const fxRevaluationApi = {
+  get: (year: number, rates: Record<string, number> = {}): Promise<FxRevaluation> => {
+    const q = Object.entries(rates).filter(([, v]) => v > 0).map(([k, v]) => `${k}:${v}`).join(',');
+    return api.get(`/ledger/fx-revaluation/${year}`, { params: q ? { rates: q } : {} }).then(r => r.data.data);
+  },
+  book: (year: number, rates: Record<string, number>): Promise<{ reval_entry_number: string; reopen_entry_number: string | null; provision: number }> =>
+    api.post(`/ledger/fx-revaluation/${year}/book`, { rates }).then(r => r.data.data),
+  cancel: (year: number, reason: string) => api.post(`/ledger/fx-revaluation/${year}/cancel`, { reason }).then(r => r.data.data),
 };

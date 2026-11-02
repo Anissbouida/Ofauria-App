@@ -21,6 +21,7 @@ import { agedBalanceRepository, AGED_BUCKETS, type AgedSide } from '../repositor
 import { fixedAssetDisposal } from './depreciation.service.js';
 import { analyticRepository } from '../repositories/analytic.repository.js';
 import { corporateTaxRepository } from '../repositories/corporate-tax.repository.js';
+import { fxRevaluationRepository } from '../repositories/fx-revaluation.repository.js';
 
 /* ─── Modèle ────────────────────────────────────────────────────────── */
 
@@ -359,6 +360,48 @@ export async function buildIs(p: { year: number }): Promise<Edition> {
   };
 }
 
+/** État des écarts de conversion (mig 431) : réévaluation au 31/12 des créances et dettes en devise. */
+export async function buildEcartsConversion(p: { year: number }): Promise<Edition> {
+  const s = await fxRevaluationRepository.summary(p.year);
+  const rows: EditionRow[] = [];
+  for (const side of ['receivable', 'payable'] as const) {
+    const ls = s.lines.filter(l => l.side === side);
+    if (!ls.length) continue;
+    rows.push({ kind: 'group', cells: { piece: side === 'receivable' ? 'Créances clients' : 'Dettes fournisseurs' } });
+    for (const l of ls) {
+      rows.push({ kind: 'line', cells: {
+        piece: l.invoice_number, tiers: l.tiers ?? '', devise: `${num(l.foreign_remaining).toFixed(2)} ${l.currency_code}`,
+        taux: `${num(l.book_rate)} → ${l.closing_rate ?? '?'}`, book: num(l.book_amount),
+        closing: l.closing_amount == null ? null : num(l.closing_amount), ecart: l.difference == null ? null : num(l.difference),
+        compte: l.account_code && l.account_code !== '-' ? l.account_code : '',
+      } });
+    }
+  }
+  const tot = (label: string, v: number, kind: EditionRowKind = 'subtotal') => rows.push({ kind, cells: { piece: label, ecart: v } });
+  tot('Écarts de conversion actif (pertes latentes, 3701 / 3702)', s.loss_total);
+  tot('Écarts de conversion passif (gains latents, 4701 / 4702)', s.gain_total);
+  tot('Provision pour perte de change (6393 / 4506)', s.provision, 'total');
+  if (s.provision_reversal) tot(`Reprise de la provision ${p.year - 1} (4506 / 7393)`, s.provision_reversal);
+  tot('Écarts de change réalisés de l\'exercice (7331 − 6331)', s.realized.net);
+  const rates = Object.entries(s.rates).map(([k, v]) => `${k} ${v.rate ?? 'manquant'}`).join(' · ');
+  return {
+    key: `ecarts_conversion_${p.year}`, title: 'État des écarts de conversion', period: `Au ${fmtDate(s.closing_date)}`, orientation: 'landscape',
+    columns: [
+      { key: 'piece', label: 'Facture', width: 16 }, { key: 'tiers', label: 'Tiers', width: 20 }, { key: 'devise', label: 'Reste en devise', width: 12, align: 'right' },
+      { key: 'taux', label: 'Taux facture → clôture', width: 13, align: 'right' }, { key: 'book', label: 'Au taux historique', width: 11, align: 'right', amount: true },
+      { key: 'closing', label: 'Au taux de clôture', width: 11, align: 'right', amount: true }, { key: 'ecart', label: 'Écart', width: 10, align: 'right', amount: true },
+      { key: 'compte', label: 'Compte', width: 7 },
+    ],
+    rows,
+    notes: [
+      rates ? `Taux de clôture (DH pour 1 unité) : ${rates}.` : 'Aucune créance ni dette en devise ouverte.',
+      s.status === 'booked'
+        ? `Réévaluation comptabilisée (${s.reval_entry_number}${s.reopen_entry_number ? `, contre-passée par ${s.reopen_entry_number}` : ''}).`
+        : 'Calcul provisoire : la réévaluation n\'est pas encore comptabilisée.',
+    ],
+  };
+}
+
 /* ─── Rendu PDF ─────────────────────────────────────────────────────── */
 
 const INK = '#2B2B2B', MUTED = '#6B6B6B', RULE = '#C9C9C9', GROUP_BG = '#F1EDE6', TOTAL_BG = '#3B3B3B';
@@ -504,5 +547,5 @@ export async function renderXlsx(e: Edition, ctx: EditionContext): Promise<Buffe
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions' | 'analytique' | 'is';
-export const EDITION_KINDS: EditionKind[] = ['journal', 'grand-livre', 'balance', 'bilan', 'cpc', 'balance-agee', 'immobilisations', 'cessions', 'analytique', 'is'];
+export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions' | 'analytique' | 'is' | 'ecarts-conversion';
+export const EDITION_KINDS: EditionKind[] = ['journal', 'grand-livre', 'balance', 'bilan', 'cpc', 'balance-agee', 'immobilisations', 'cessions', 'analytique', 'is', 'ecarts-conversion'];

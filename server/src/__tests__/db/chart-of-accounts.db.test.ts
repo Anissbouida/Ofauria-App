@@ -67,6 +67,8 @@ describe.skipIf(!hasTestDb)('Plan comptable modifiable', () => {
   });
 
   it('compte mouvementé : code figé, suppression refusée, désactivation après solde nul ; audit', async () => {
+    // Un code libéré par un test précédent peut revenir : l'audit se lit depuis le début de ce test.
+    const since = (await testPool().query(`SELECT COALESCE(max(id), 0) AS m FROM config_audit_log`)).rows[0].m;
     const a = await coa.create({ code: await freeCode('6181'), label: `Mouvementé ${RUN}` }, actor);
     const caisse = (await testPool().query(`SELECT id FROM accounts WHERE code = '5161'`)).rows[0].id;
     const e = await manual.createAndPost({ journalCode: 'CA', date: day, description: `Achat ${RUN}`, lines: [
@@ -84,7 +86,7 @@ describe.skipIf(!hasTestDb)('Plan comptable modifiable', () => {
     expect((await coa.setActive(a.id, true, actor)).is_active).toBe(true);
 
     const audit = (await testPool().query(
-      `SELECT operation, changed_by FROM config_audit_log WHERE table_name = 'accounts' AND record_id = $1 ORDER BY id`, [a.code])).rows;
+      `SELECT operation, changed_by FROM config_audit_log WHERE table_name = 'accounts' AND record_id = $1 AND id > $2 ORDER BY id`, [a.code, since])).rows;
     expect(audit.map((x: { operation: string }) => x.operation)).toEqual(['INSERT', 'UPDATE', 'UPDATE', 'UPDATE']);
     expect(audit.every((x: { changed_by: string }) => x.changed_by === actor.userId)).toBe(true);
   });
