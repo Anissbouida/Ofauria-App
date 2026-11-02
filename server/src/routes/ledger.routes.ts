@@ -10,7 +10,7 @@ import { lettrageRepository } from '../repositories/lettrage.repository.js';
 import { agedBalanceRepository } from '../repositories/aged-balance.repository.js';
 import {
   EDITION_KINDS, type EditionKind, editionContext, renderPdf, renderXlsx,
-  buildJournal, buildGrandLivre, buildBalance, buildBilan, buildCpc, buildBalanceAgee, buildImmobilisations, buildCessions,
+  buildJournal, buildGrandLivre, buildBalance, buildBilan, buildCpc, buildBalanceAgee, buildImmobilisations, buildCessions, buildAnalytique,
 } from '../services/ledger-editions.service.js';
 import {
   planComptableController,
@@ -93,6 +93,7 @@ const editionQuery = z.object({
   account: z.string().trim().max(10).optional(),
   class: z.coerce.number().int().min(1).max(8).optional(),
   side: z.enum(['suppliers', 'customers']).default('suppliers'),
+  axis: z.string().uuid().optional(),
 });
 const editionVerb = (req: AuthRequest, res: Response, next: () => void) =>
   requireVerb('accounting', req.query.format === 'xlsx' ? 'export' : 'print')(req, res, next);
@@ -114,7 +115,9 @@ ledgerRouter.get('/editions/:kind', authenticate, authorize(...ROLE_GROUPS.ADMIN
     : kind === 'cpc' ? await buildCpc({ startDate: start, endDate: end, storeId })
     : kind === 'immobilisations' ? await buildImmobilisations({ year: Number(end.slice(0, 4)), storeId })
     : kind === 'cessions' ? await buildCessions({ year: Number(end.slice(0, 4)), storeId })
+    : kind === 'analytique' ? (q.axis ? await buildAnalytique({ axisId: q.axis, startDate: start, endDate: end, storeId }) : null)
     : await buildBalanceAgee({ side: q.side, asOf: end });
+  if (!edition) { tplBad(res, 'Axe analytique requis'); return; }
   const ctx = await editionContext(req.user!.userId);
   const buf = q.format === 'xlsx' ? await renderXlsx(edition, ctx) : await renderPdf(edition, ctx);
   res.setHeader('Content-Type', q.format === 'xlsx'

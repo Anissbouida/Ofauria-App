@@ -117,8 +117,8 @@ export const lettrageApi = {
 };
 
 /* ═══ Éditions comptables PDF / Excel ═══ */
-export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions';
-export type EditionParams = { startDate?: string; endDate?: string; journal?: string; account?: string; class?: number; side?: 'suppliers' | 'customers' };
+export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions' | 'analytique';
+export type EditionParams = { startDate?: string; endDate?: string; journal?: string; account?: string; class?: number; side?: 'suppliers' | 'customers'; axis?: string };
 export const editionsApi = {
   /** Télécharge l'état ; une erreur (JSON renvoyé en blob) est relue pour son message. */
   async download(kind: EditionKind, format: 'pdf' | 'xlsx', params: EditionParams): Promise<void> {

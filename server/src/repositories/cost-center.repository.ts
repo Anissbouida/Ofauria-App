@@ -1,31 +1,32 @@
 import { db } from '../config/database.js';
 
 /**
- * Centres de coûts (mig 386) : dimension analytique posée sur les factures.
- * Charges = factures fournisseurs (received), produits = factures émises (emitted).
- * Le rapport agrège les montants HT par centre sur une période.
+ * Centres de coûts (mig 386) = sections des axes analytiques (mig 428).
+ * Affecter un centre à une facture ventile ses écritures (trigger de la mig
+ * 428) ; le résultat par section se lit dans la balance analytique
+ * (analytic.repository).
  */
-const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-
 export const costCenterRepository = {
   async list(storeId?: string | null) {
     const params: unknown[] = [];
     let where = '';
     if (storeId) { params.push(storeId); where = `WHERE (c.store_id IS NULL OR c.store_id = $1)`; }
     const r = await db.query(
-      `SELECT c.*, (SELECT COUNT(*) FROM invoices i WHERE i.cost_center_id = c.id)::int AS invoices_count
-         FROM cost_centers c ${where} ORDER BY c.is_active DESC, c.code`, params);
+      `SELECT c.*, x.code AS axis_code, x.name AS axis_name,
+              (SELECT COUNT(*) FROM invoices i WHERE i.cost_center_id = c.id)::int AS invoices_count
+         FROM cost_centers c JOIN analytic_axes x ON x.id = c.axis_id ${where} ORDER BY x.code, c.is_active DESC, c.code`, params);
     return r.rows;
   },
 
-  async create(input: { code: string; name: string; storeId?: string | null; userId: string | null }) {
+  async create(input: { code: string; name: string; axisId?: string | null; storeId?: string | null; userId: string | null }) {
     const code = input.code.trim().toUpperCase().slice(0, 20);
     if (!code) return { error: 'Code requis' };
     const dup = await db.query(`SELECT 1 FROM cost_centers WHERE code = $1`, [code]);
     if (dup.rows.length) return { error: 'Ce code existe déjà' };
     const r = await db.query(
-      `INSERT INTO cost_centers (code, name, store_id, created_by) VALUES ($1,$2,$3,$4) RETURNING *`,
-      [code, input.name.trim().slice(0, 120), input.storeId ?? null, input.userId]);
+      `INSERT INTO cost_centers (code, name, store_id, created_by, axis_id)
+       VALUES ($1, $2, $3, $4, COALESCE($5::uuid, (SELECT id FROM analytic_axes WHERE code = 'ACT'))) RETURNING *`,
+      [code, input.name.trim().slice(0, 120), input.storeId ?? null, input.userId, input.axisId ?? null]);
     return { data: { ...r.rows[0], invoices_count: 0 } };
   },
 
@@ -61,35 +62,5 @@ export const costCenterRepository = {
         ORDER BY i.invoice_date DESC, i.invoice_number DESC
         LIMIT $${params.length}`, params);
     return r.rows;
-  },
-
-  /** Résultat par centre de coût sur une période : charges, produits, résultat. */
-  async report(p: { from: string; to: string; storeId?: string | null }) {
-    const params: unknown[] = [p.from, p.to];
-    let storeAnd = '';
-    if (p.storeId) { params.push(p.storeId); storeAnd = ` AND (i.store_id IS NULL OR i.store_id = $3)`; }
-    const r = await db.query(
-      `SELECT c.id, c.code, c.name,
-              COALESCE(SUM(i.amount) FILTER (WHERE i.invoice_type = 'received'), 0)::float8 AS charges,
-              COALESCE(SUM(i.amount) FILTER (WHERE i.invoice_type = 'emitted'), 0)::float8 AS produits
-         FROM cost_centers c
-         LEFT JOIN invoices i ON i.cost_center_id = c.id AND i.status <> 'cancelled'
-              AND i.invoice_date BETWEEN $1 AND $2${storeAnd}
-        GROUP BY c.id, c.code, c.name
-        ORDER BY c.code`, params);
-    const unassigned = (await db.query(
-      `SELECT COALESCE(SUM(i.amount) FILTER (WHERE i.invoice_type = 'received'), 0)::float8 AS charges,
-              COALESCE(SUM(i.amount) FILTER (WHERE i.invoice_type = 'emitted'), 0)::float8 AS produits
-         FROM invoices i
-        WHERE i.cost_center_id IS NULL AND i.status <> 'cancelled'
-          AND i.invoice_type IN ('received','emitted') AND i.invoice_date BETWEEN $1 AND $2${storeAnd}`, params)).rows[0];
-    const rows = r.rows.map((row: { id: string; code: string; name: string; charges: number; produits: number }) => ({
-      id: row.id, code: row.code, name: row.name,
-      charges: round2(row.charges), produits: round2(row.produits), result: round2(row.produits - row.charges),
-    }));
-    return {
-      from: p.from, to: p.to, rows,
-      unassigned: { charges: round2(unassigned.charges), produits: round2(unassigned.produits), result: round2(unassigned.produits - unassigned.charges) },
-    };
   },
 };

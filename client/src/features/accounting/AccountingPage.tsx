@@ -302,7 +302,7 @@ const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[]
   { key: 'tva', label: 'TVA', icon: Receipt, section: 'reports', adminOnly: true },
   { key: 'budget', label: 'Budget', icon: Target, section: 'reports', adminOnly: true },
   { key: 'cashflow', label: 'Flux de trésorerie', icon: ArrowLeftRight, section: 'reports', adminOnly: true },
-  { key: 'costcenters', label: 'Centres de coûts', icon: Target, section: 'reports', adminOnly: true },
+  { key: 'costcenters', label: 'Analytique', icon: Target, section: 'reports', adminOnly: true },
   // ─── Paramétrage ───
   { key: 'plan_comptable', label: 'Plan comptable', icon: ListTree, section: 'setup', adminOnly: true },
   { key: 'entry_templates', label: 'Modèles d’écritures', icon: NotebookPen, section: 'setup', adminOnly: true },

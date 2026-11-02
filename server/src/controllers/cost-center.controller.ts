@@ -9,7 +9,7 @@ export const costCenterController = {
   async create(req: AuthRequest, res: Response) {
     const b = req.body as Record<string, unknown>;
     if (!b.code || !b.name) { res.status(400).json({ success: false, error: { message: 'Code et nom requis' } }); return; }
-    const out = await costCenterRepository.create({ code: String(b.code), name: String(b.name), storeId: req.user!.storeId ?? null, userId: req.user!.userId });
+    const out = await costCenterRepository.create({ code: String(b.code), name: String(b.name), axisId: b.axisId ? String(b.axisId) : null, storeId: req.user!.storeId ?? null, userId: req.user!.userId });
     if ('error' in out) { res.status(400).json({ success: false, error: { message: out.error } }); return; }
     res.status(201).json({ success: true, data: out.data });
   },
@@ -36,11 +36,5 @@ export const costCenterController = {
       to: typeof q.to === 'string' ? q.to : undefined,
       limit: Math.min(Number(q.limit) || 200, 500),
     }) });
-  },
-  async report(req: AuthRequest, res: Response) {
-    const today = new Date(); const y = today.getFullYear();
-    const from = (req.query.from as string) || `${y}-01-01`;
-    const to = (req.query.to as string) || `${y}-12-31`;
-    res.json({ success: true, data: await costCenterRepository.report({ from, to, storeId: req.user!.storeId ?? null }) });
   },
 };

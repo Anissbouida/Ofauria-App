@@ -19,6 +19,7 @@ import { loadCompanyLegal, type CompanyLegal } from '../utils/company-legal.js';
 import { financialStatementsRepository, balanceSheetRepository } from '../repositories/ledger.repository.js';
 import { agedBalanceRepository, AGED_BUCKETS, type AgedSide } from '../repositories/aged-balance.repository.js';
 import { fixedAssetDisposal } from './depreciation.service.js';
+import { analyticRepository } from '../repositories/analytic.repository.js';
 
 /* ─── Modèle ────────────────────────────────────────────────────────── */
 
@@ -305,6 +306,29 @@ export async function buildCessions(p: { year: number; storeId?: string | null }
   };
 }
 
+/** Balance analytique d'un axe : par section, comptes de produits et de charges, résultat. */
+export async function buildAnalytique(p: { axisId: string; startDate: string; endDate: string; storeId?: string | null }): Promise<Edition> {
+  const b = await analyticRepository.balance({ axisId: p.axisId, from: p.startDate, to: p.endDate, storeId: p.storeId });
+  const rows: EditionRow[] = [];
+  const block = (title: string, s: { produits: number; charges: number; result: number; accounts: { code: string; label: string; produits: number; charges: number }[] }) => {
+    if (!s.accounts.length) return;
+    rows.push({ kind: 'group', cells: { label: title } });
+    for (const a of s.accounts) rows.push({ kind: 'line', cells: { code: a.code, label: a.label, produits: a.produits || null, charges: a.charges || null } });
+    rows.push({ kind: 'subtotal', cells: { label: `Résultat ${title}`, produits: s.produits, charges: s.charges, result: s.result } });
+  };
+  for (const s of b.sections) block(`${s.code} ${s.name}`, s);
+  block('Non ventilé', b.unventilated);
+  rows.push({ kind: 'total', cells: { label: 'Total (= CPC)', produits: b.totals.produits, charges: b.totals.charges, result: b.totals.result } });
+  const amt = (key: string, label: string): EditionCol => ({ key, label, width: 15, align: 'right', amount: true });
+  return {
+    key: `analytique_${b.axis.code}_${p.startDate}_${p.endDate}`, title: `Balance analytique — ${b.axis.name}`,
+    period: periodLabel(p.startDate, p.endDate), orientation: 'portrait',
+    columns: [{ key: 'code', label: 'Compte', width: 11 }, { key: 'label', label: 'Section / compte', width: 44 }, amt('produits', 'Produits'), amt('charges', 'Charges'), amt('result', 'Résultat')],
+    rows,
+    notes: [`Taux de ventilation : ${b.ventilated_rate} % des charges et produits.`],
+  };
+}
+
 /* ─── Rendu PDF ─────────────────────────────────────────────────────── */
 
 const INK = '#2B2B2B', MUTED = '#6B6B6B', RULE = '#C9C9C9', GROUP_BG = '#F1EDE6', TOTAL_BG = '#3B3B3B';
@@ -450,5 +474,5 @@ export async function renderXlsx(e: Edition, ctx: EditionContext): Promise<Buffe
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions';
-export const EDITION_KINDS: EditionKind[] = ['journal', 'grand-livre', 'balance', 'bilan', 'cpc', 'balance-agee', 'immobilisations', 'cessions'];
+export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions' | 'analytique';
+export const EDITION_KINDS: EditionKind[] = ['journal', 'grand-livre', 'balance', 'bilan', 'cpc', 'balance-agee', 'immobilisations', 'cessions', 'analytique'];
