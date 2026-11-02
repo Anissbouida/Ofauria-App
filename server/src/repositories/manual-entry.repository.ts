@@ -188,11 +188,15 @@ export const manualEntryRepository = {
   /** Extourne d'une écriture manuelle comptabilisée, datée et motivée. */
   reverse(id: string, p: { date?: string | null; reason: string }, actor: Actor) {
     return withTx(actor.userId, async c => {
-      const e = (await c.query(`SELECT status, source_kind, entry_number FROM journal_entries WHERE id = $1 FOR UPDATE`, [id])).rows[0];
+      const e = (await c.query(`SELECT status, source_kind, source_detail, entry_number FROM journal_entries WHERE id = $1 FOR UPDATE`, [id])).rows[0];
       if (!e) throw fail('Écriture introuvable', 404);
       if (e.status !== 'posted') throw fail(`Écriture ${e.entry_number} : seule une écriture comptabilisée non extournée s'extourne`, 409);
       if (e.source_kind !== 'manual') {
         throw fail(`Écriture ${e.entry_number} générée par une pièce (${e.source_kind}) : corrigez ou annulez la pièce elle-même`, 409);
+      }
+      // Dotations et cessions d'immobilisations (mig 427) : elles s'annulent depuis Immobilisations.
+      if (e.source_detail === 'cession' || String(e.source_detail ?? '').startsWith('depr:')) {
+        throw fail(`Écriture ${e.entry_number} d'immobilisation : annulez-la depuis Comptabilité › Immobilisations`, 409);
       }
       await extourneEntryById(c, id, p.date || undefined, { userId: actor.userId, reason: p.reason.trim() });
       const rev = (await c.query(

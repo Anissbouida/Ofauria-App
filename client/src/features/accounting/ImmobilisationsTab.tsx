@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Loader2, Lock, Plus, Trash2, X, Download, Building2, Play, CalendarClock, Eye,
+  Loader2, Lock, Plus, Trash2, X, Download, Building2, Play, CalendarClock, Eye, LogOut, Undo2,
 } from 'lucide-react';
+import { DisposalModal, CancelDisposalModal, AssetsTableView } from './ImmobilisationsCession';
+import { apiErrorMessage } from '../../api/errors';
 import { fixedAssetsApi } from '../../api/fixed-assets.api';
 import type { FixedAsset } from '../../api/fixed-assets.api';
 import { planComptableApi } from '../../api/ledger.api';
@@ -36,7 +38,7 @@ const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Jui
 const STATUS_LABELS: Record<string, { label: string; bg: string; color: string }> = {
   active: { label: 'En cours', bg: '#E1F5EE', color: '#085041' },
   fully_depreciated: { label: 'Amortie', bg: '#F1EFE8', color: '#444441' },
-  disposed: { label: 'Cédée', bg: '#FCEBEB', color: '#791F1F' },
+  disposed: { label: 'Sortie', bg: '#FCEBEB', color: '#791F1F' },
 };
 
 export default function ImmobilisationsTab() {
@@ -48,6 +50,14 @@ export default function ImmobilisationsTab() {
   const [scheduleId, setScheduleId] = useState<string | null>(null);
   const [deprMonth, setDeprMonth] = useState(now.getMonth() + 1);
   const [deprYear, setDeprYear] = useState(now.getFullYear());
+  const [view, setView] = useState<'registre' | 'tableau'>('registre');
+  const [disposing, setDisposing] = useState<FixedAsset | null>(null);
+  const [cancelling, setCancelling] = useState<FixedAsset | null>(null);
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['fixed-assets'] });
+    queryClient.invalidateQueries({ queryKey: ['fixed-assets-table'] });
+    queryClient.invalidateQueries({ queryKey: ['ledger-entries'] });
+  };
 
   const { data: assets = [], isLoading } = useQuery({
     queryKey: ['fixed-assets'],
@@ -76,12 +86,13 @@ export default function ImmobilisationsTab() {
       queryClient.invalidateQueries({ queryKey: ['ledger-entries'] });
       notify.success('Immobilisation supprimée');
     },
-    onError: () => notify.error('Erreur suppression'),
+    onError: (e) => notify.error(apiErrorMessage(e, 'Erreur suppression')),
   });
 
   const totals = useMemo(() => {
     let brut = 0, amort = 0;
-    for (const a of assets as FixedAsset[]) {
+    // Les immobilisations sorties ne sont plus à l'actif.
+    for (const a of (assets as FixedAsset[]).filter(x => x.status !== 'disposed')) {
       brut += parseFloat(a.acquisition_cost) || 0;
       amort += parseFloat(a.total_depreciated) || 0;
     }
@@ -113,7 +124,7 @@ export default function ImmobilisationsTab() {
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label">Valeur brute</div>
           <div className="odoo-stat-card-value">{n(totals.brut)}</div>
-          <div className="odoo-stat-card-sub">{(assets as FixedAsset[]).length} immobilisation(s)</div>
+          <div className="odoo-stat-card-sub">{(assets as FixedAsset[]).filter(x => x.status !== 'disposed').length} immobilisation(s) à l'actif</div>
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label">Amortissements cumulés</div>
@@ -127,6 +138,15 @@ export default function ImmobilisationsTab() {
         </div>
       </div>
 
+      <div style={{ display: 'inline-flex', border: '1px solid var(--theme-bg-separator)', borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
+        {(['registre', 'tableau'] as const).map(v => (
+          <button key={v} type="button" onClick={() => setView(v)} className={view === v ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ borderRadius: 0, border: 'none', fontSize: '0.75rem' }}>
+            {v === 'registre' ? 'Registre' : 'Tableau de l\'exercice'}
+          </button>
+        ))}
+      </div>
+
+      {view === 'tableau' ? <AssetsTableView /> : <>
       {/* Barre d'actions */}
       <div className="odoo-search-panel" style={{ flexWrap: 'wrap', gap: 6 }}>
         <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
@@ -182,17 +202,26 @@ export default function ImmobilisationsTab() {
               {(assets as FixedAsset[]).map(a => {
                 const cost = parseFloat(a.acquisition_cost) || 0;
                 const amort = parseFloat(a.total_depreciated) || 0;
-                const vnc = cost - amort;
+                const out = a.status === 'disposed';
+                // Sortie : la VNC est celle du jour de sortie, plus à l'actif.
+                const vnc = out ? parseFloat(a.disposal_vnc ?? '0') || 0 : cost - amort;
+                const gain = parseFloat(a.disposal_gain ?? '0') || 0;
                 const st = STATUS_LABELS[a.status] || STATUS_LABELS.active;
                 return (
                   <tr key={a.id}>
                     <td style={{ fontWeight: 500 }}>{a.label}
                       {a.supplier_name && <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.75rem' }}> · {a.supplier_name}</span>}
+                      {out && a.disposal_date && (
+                        <div style={{ fontSize: '0.6875rem', fontWeight: 400, color: 'var(--theme-text-muted)' }}>
+                          {a.disposal_kind === 'sale' ? `Cédée le ${fmtDate(a.disposal_date)} · ${n(a.disposal_price ?? 0)} HT${a.disposal_buyer ? ` · ${a.disposal_buyer}` : ''}` : `Mise au rebut le ${fmtDate(a.disposal_date)}`}
+                          {' · '}<span style={{ color: gain >= 0 ? '#2e7d32' : '#c62828' }}>{gain >= 0 ? 'plus-value' : 'moins-value'} {n(Math.abs(gain))}</span>
+                        </div>
+                      )}
                     </td>
                     <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{a.asset_account_code}</td>
                     <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{fmtDate(a.acquisition_date)}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(cost)}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: '#c62828' }}>{n(amort)}</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: '#c62828' }}>{n(out ? parseFloat(a.disposal_cumulated ?? '0') || amort : amort)}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: '#1565c0' }}>{n(vnc)}</td>
                     <td style={{ fontSize: '0.75rem' }}>{a.duration_years} ans · {a.method === 'linear' ? 'linéaire' : 'dégressif'}</td>
                     <td>
@@ -201,7 +230,12 @@ export default function ImmobilisationsTab() {
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', gap: 4 }}>
                         <button onClick={() => setScheduleId(a.id)} className="odoo-btn-secondary" title="Plan d'amortissement" style={{ padding: '4px 6px' }}><Eye size={12} /></button>
-                        <button onClick={() => { if (window.confirm(`Supprimer "${a.label}" et ses écritures de dotation ?`)) removeAsset.mutate(a.id); }} className="odoo-btn-secondary" title="Supprimer" style={{ padding: '4px 6px', color: '#c62828' }}><Trash2 size={12} /></button>
+                        {out ? (
+                          <button onClick={() => setCancelling(a)} className="odoo-btn-secondary" title="Annuler la sortie" style={{ padding: '4px 6px' }}><Undo2 size={12} /></button>
+                        ) : (<>
+                          <button onClick={() => setDisposing(a)} className="odoo-btn-secondary" title="Céder ou mettre au rebut" style={{ padding: '4px 6px' }}><LogOut size={12} /></button>
+                          <button onClick={() => { if (window.confirm(`Supprimer "${a.label}" et ses écritures de dotation ?`)) removeAsset.mutate(a.id); }} className="odoo-btn-secondary" title="Supprimer (saisie erronée)" style={{ padding: '4px 6px', color: '#c62828' }}><Trash2 size={12} /></button>
+                        </>)}
                       </div>
                     </td>
                   </tr>
@@ -212,6 +246,10 @@ export default function ImmobilisationsTab() {
         </div>
       )}
 
+      </>}
+
+      {disposing && <DisposalModal asset={disposing} onClose={() => setDisposing(null)} onDone={() => { setDisposing(null); refresh(); }} />}
+      {cancelling && <CancelDisposalModal asset={cancelling} onClose={() => setCancelling(null)} onDone={() => { setCancelling(null); refresh(); }} />}
       {showForm && <AssetForm onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); queryClient.invalidateQueries({ queryKey: ['fixed-assets'] }); }} />}
       {scheduleId && <ScheduleModal id={scheduleId} onClose={() => setScheduleId(null)} />}
     </>

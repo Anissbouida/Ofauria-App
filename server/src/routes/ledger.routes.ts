@@ -10,7 +10,7 @@ import { lettrageRepository } from '../repositories/lettrage.repository.js';
 import { agedBalanceRepository } from '../repositories/aged-balance.repository.js';
 import {
   EDITION_KINDS, type EditionKind, editionContext, renderPdf, renderXlsx,
-  buildJournal, buildGrandLivre, buildBalance, buildBilan, buildCpc, buildBalanceAgee,
+  buildJournal, buildGrandLivre, buildBalance, buildBilan, buildCpc, buildBalanceAgee, buildImmobilisations, buildCessions,
 } from '../services/ledger-editions.service.js';
 import {
   planComptableController,
@@ -112,6 +112,8 @@ ledgerRouter.get('/editions/:kind', authenticate, authorize(...ROLE_GROUPS.ADMIN
     : kind === 'balance' ? await buildBalance({ startDate: start, endDate: end, storeId })
     : kind === 'bilan' ? await buildBilan({ endDate: end, storeId })
     : kind === 'cpc' ? await buildCpc({ startDate: start, endDate: end, storeId })
+    : kind === 'immobilisations' ? await buildImmobilisations({ year: Number(end.slice(0, 4)), storeId })
+    : kind === 'cessions' ? await buildCessions({ year: Number(end.slice(0, 4)), storeId })
     : await buildBalanceAgee({ side: q.side, asOf: end });
   const ctx = await editionContext(req.user!.userId);
   const buf = q.format === 'xlsx' ? await renderXlsx(edition, ctx) : await renderPdf(edition, ctx);

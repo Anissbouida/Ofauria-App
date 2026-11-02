@@ -39,7 +39,7 @@ describe('éditions comptables', () => {
 
   it('produit un classeur Excel aux montants numériques', async () => {
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(await renderXlsx(edition(4), ctx));
+    await wb.xlsx.load((await renderXlsx(edition(4), ctx)) as unknown as ExcelJS.Buffer);
     const ws = wb.worksheets[0];
     expect(ws.getCell('A1').value).toBe('BOULANGERIE TEST SARL');
     expect(String(ws.getCell('A2').value)).toContain('Livre-journal');

@@ -117,7 +117,7 @@ export const lettrageApi = {
 };
 
 /* ═══ Éditions comptables PDF / Excel ═══ */
-export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee';
+export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions';
 export type EditionParams = { startDate?: string; endDate?: string; journal?: string; account?: string; class?: number; side?: 'suppliers' | 'customers' };
 export const editionsApi = {
   /** Télécharge l'état ; une erreur (JSON renvoyé en blob) est relue pour son message. */

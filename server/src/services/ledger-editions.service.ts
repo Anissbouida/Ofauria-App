@@ -18,6 +18,7 @@ import { db } from '../config/database.js';
 import { loadCompanyLegal, type CompanyLegal } from '../utils/company-legal.js';
 import { financialStatementsRepository, balanceSheetRepository } from '../repositories/ledger.repository.js';
 import { agedBalanceRepository, AGED_BUCKETS, type AgedSide } from '../repositories/aged-balance.repository.js';
+import { fixedAssetDisposal } from './depreciation.service.js';
 
 /* ─── Modèle ────────────────────────────────────────────────────────── */
 
@@ -256,6 +257,54 @@ export async function buildBalanceAgee(p: { side: AgedSide; asOf: string }): Pro
   };
 }
 
+/** Tableau des immobilisations de l'exercice (brut et amortissements, modèle liasse). */
+export async function buildImmobilisations(p: { year: number; storeId?: string | null }): Promise<Edition> {
+  const t = await fixedAssetDisposal.table(p.year, p.storeId);
+  const rows: EditionRow[] = [];
+  const nums = (o: Record<string, number>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v || null]));
+  for (const g of t.groups) {
+    rows.push({ kind: 'group', cells: { label: `${g.account_code} ${g.account_label}` } });
+    for (const i of g.items) {
+      const { gross_start, acquisitions, disposals, gross_end, dep_start, dep_year, dep_out, dep_end, vnc_end } = i;
+      rows.push({ kind: 'line', cells: { label: `${i.label} (${fmtDate(i.acquisition_date)})`, ...nums({ gross_start, acquisitions, disposals, gross_end, dep_start, dep_year, dep_out, dep_end, vnc_end }) } });
+    }
+    rows.push({ kind: 'subtotal', cells: { label: `Total ${g.account_code}`, ...g.totals } });
+  }
+  rows.push({ kind: 'total', cells: { label: 'Total des immobilisations', ...t.totals } });
+  const amt = (key: string, label: string): EditionCol => ({ key, label, width: 9, align: 'right', amount: true });
+  return {
+    key: `immobilisations_${p.year}`, title: `Tableau des immobilisations ${p.year}`, period: `Exercice ${p.year}`, orientation: 'landscape',
+    columns: [
+      { key: 'label', label: 'Immobilisation', width: 19 },
+      amt('gross_start', 'Brut début'), amt('acquisitions', 'Acquisitions'), amt('disposals', 'Sorties'), amt('gross_end', 'Brut fin'),
+      amt('dep_start', 'Amort. début'), amt('dep_year', 'Dotations'), amt('dep_out', 'Amort. sorties'), amt('dep_end', 'Amort. fin'), amt('vnc_end', 'VNC fin'),
+    ],
+    rows,
+  };
+}
+
+/** Cessions et mises au rebut de l'exercice, avec plus ou moins-values. */
+export async function buildCessions(p: { year: number; storeId?: string | null }): Promise<Edition> {
+  const t = await fixedAssetDisposal.table(p.year, p.storeId);
+  const rows: EditionRow[] = t.disposals.map(d => ({ kind: 'line' as const, cells: {
+    label: `${d.label} (${d.account_code})`, date: fmtDate(d.date), kind: d.kind === 'sale' ? 'Cession' : 'Mise au rebut',
+    cost: d.cost, cumulated: d.cumulated, vnc: d.vnc, price: d.price || null, gain: d.gain,
+  } }));
+  rows.push({ kind: 'total', cells: { label: `Total (${t.disposals.length} sortie(s))`,
+    cost: r2(t.disposals.reduce((s, d) => s + d.cost, 0)), cumulated: r2(t.disposals.reduce((s, d) => s + d.cumulated, 0)),
+    vnc: r2(t.disposals.reduce((s, d) => s + d.vnc, 0)), price: r2(t.disposals.reduce((s, d) => s + d.price, 0)), gain: t.gain_total } });
+  const amt = (key: string, label: string): EditionCol => ({ key, label, width: 11, align: 'right', amount: true });
+  return {
+    key: `cessions_${p.year}`, title: `Cessions d'immobilisations ${p.year}`, period: `Exercice ${p.year}`, orientation: 'landscape',
+    columns: [
+      { key: 'label', label: 'Immobilisation', width: 25 }, { key: 'date', label: 'Date', width: 8 }, { key: 'kind', label: 'Nature', width: 9 },
+      amt('cost', 'Valeur brute'), amt('cumulated', 'Amortissements'), amt('vnc', 'VNC'), amt('price', 'Prix HT'), amt('gain', 'Plus/moins-value'),
+    ],
+    rows,
+    notes: ['VNC : valeur nette d\'amortissements à la date de sortie (6512/6513) ; prix : produit de cession (7512/7513).'],
+  };
+}
+
 /* ─── Rendu PDF ─────────────────────────────────────────────────────── */
 
 const INK = '#2B2B2B', MUTED = '#6B6B6B', RULE = '#C9C9C9', GROUP_BG = '#F1EDE6', TOTAL_BG = '#3B3B3B';
@@ -401,5 +450,5 @@ export async function renderXlsx(e: Edition, ctx: EditionContext): Promise<Buffe
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee';
-export const EDITION_KINDS: EditionKind[] = ['journal', 'grand-livre', 'balance', 'bilan', 'cpc', 'balance-agee'];
+export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions';
+export const EDITION_KINDS: EditionKind[] = ['journal', 'grand-livre', 'balance', 'bilan', 'cpc', 'balance-agee', 'immobilisations', 'cessions'];
