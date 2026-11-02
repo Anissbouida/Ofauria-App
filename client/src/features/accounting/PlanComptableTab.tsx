@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Search, X, Download, Loader2, ListTree, Users, Percent, Lock,
+  Search, X, Download, Loader2, ListTree, Users, Percent, Lock, Plus, Pencil,
 } from 'lucide-react';
+import AccountModal from './AccountModal';
 import { planComptableApi } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import type { Account } from '@ofauria/shared';
@@ -46,20 +47,23 @@ export default function PlanComptableTab() {
   const [search, setSearch] = useState('');
   const [classFilter, setClassFilter] = useState<number | 'all'>('all');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showInactive, setShowInactive] = useState(false);
+  const [editing, setEditing] = useState<Account | 'new' | null>(null);
+  const queryClient = useQueryClient();
 
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
 
   // Tous les hooks DOIVENT etre appeles avant tout return conditionnel
   // (regle des hooks React : meme ordre a chaque render).
   const { data: accounts = [], isLoading } = useQuery({
-    queryKey: ['ledger-accounts'],
-    queryFn: () => planComptableApi.list(),
+    queryKey: ['ledger-accounts', 'all'],
+    queryFn: () => planComptableApi.list(true),
     enabled: isAdmin,
   });
 
   // Filtres et regroupement par classe -> rubrique -> compte
   const filtered = useMemo(() => {
-    let list = accounts as Account[];
+    let list = (accounts as Account[]).filter(a => showInactive || a.is_active);
     if (classFilter !== 'all') list = list.filter(a => a.account_class === classFilter);
     const q = search.trim().toLowerCase();
     if (q) {
@@ -69,7 +73,7 @@ export default function PlanComptableTab() {
       );
     }
     return list;
-  }, [accounts, search, classFilter]);
+  }, [accounts, search, classFilter, showInactive]);
 
   // Regroupe par classe puis par rubrique pour l'arbre
   const tree = useMemo(() => {
@@ -91,7 +95,7 @@ export default function PlanComptableTab() {
   }, [filtered]);
 
   const stats = useMemo(() => {
-    const total = (accounts as Account[]).length;
+    const total = (accounts as Account[]).filter(a => a.is_active).length;
     const collective = (accounts as Account[]).filter(a => a.is_collective).length;
     const tva = (accounts as Account[]).filter(a => a.tva_rate !== null).length;
     const byClassCount = (accounts as Account[]).reduce((m, a) => {
@@ -195,7 +199,13 @@ export default function PlanComptableTab() {
           placeholder="Toutes les classes"
           width={220}
         />
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem' }}>
+          <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Afficher les inactifs
+        </label>
         <div style={{ flex: 1 }} />
+        <button onClick={() => setEditing('new')} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Plus size={13} /> Nouveau compte
+        </button>
         <button onClick={handleExport} className="odoo-btn-secondary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <Download size={13} /> Exporter CSV
@@ -261,11 +271,12 @@ export default function PlanComptableTab() {
                             <th style={{ width: 90 }}>Nature</th>
                             <th style={{ width: 60 }}>Sens</th>
                             <th style={{ width: 160 }}>Tags</th>
+                            <th style={{ width: 40 }} />
                           </tr>
                         </thead>
                         <tbody>
                           {items.map(acc => (
-                            <tr key={acc.id}>
+                            <tr key={acc.id} style={{ opacity: acc.is_active ? 1 : 0.5 }}>
                               <td style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text)' }}>
                                 <strong>{acc.code}</strong>
                               </td>
@@ -287,6 +298,9 @@ export default function PlanComptableTab() {
                                       Tiers {acc.auxiliary_kind === 'supplier' ? 'fournisseur' : 'client'}
                                     </span>
                                   )}
+                                  {!acc.is_active && (
+                                    <span style={{ fontSize: '0.625rem', padding: '2px 6px', background: '#EEE', color: '#555', borderRadius: 4, fontWeight: 500 }}>Inactif</span>
+                                  )}
                                   {acc.tva_rate && (
                                     <span style={{
                                       fontSize: '0.625rem', padding: '2px 6px',
@@ -297,6 +311,9 @@ export default function PlanComptableTab() {
                                     </span>
                                   )}
                                 </div>
+                              </td>
+                              <td style={{ textAlign: 'right' }}>
+                                <button onClick={() => setEditing(acc)} className="odoo-btn-secondary" title="Modifier le compte" style={{ padding: '3px 6px' }}><Pencil size={11} /></button>
                               </td>
                             </tr>
                           ))}
@@ -309,6 +326,11 @@ export default function PlanComptableTab() {
             </div>
           ))}
         </div>
+      )}
+      {editing && (
+        <AccountModal account={editing === 'new' ? null : editing} accounts={accounts as Account[]}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); queryClient.invalidateQueries({ queryKey: ['ledger-accounts'] }); }} />
       )}
     </>
   );

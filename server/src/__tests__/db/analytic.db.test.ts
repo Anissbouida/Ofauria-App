@@ -20,7 +20,9 @@ describe.skipIf(!hasTestDb)('Comptabilité analytique', () => {
   let axis: string;
   const sec: Record<string, string> = {};
   const acc: Record<string, string> = {};
-  const day = new Date().toISOString().slice(0, 10);
+  // Jour qu'aucun autre fichier de test n'utilise : les suites tournent en parallèle et
+  // la comparaison avec le CPC exige que personne d'autre n'écrive ce jour-là.
+  const day = `${new Date().getFullYear()}-12-27`;
   const tag = crypto.randomUUID().slice(0, 6).toUpperCase();
 
   /** Écriture CA validée ; renvoie la ligne de gestion (classe 6 ou 7). */

@@ -8,6 +8,7 @@ import { buildFec } from '../services/fec.service.js';
 import { manualEntryRepository } from '../repositories/manual-entry.repository.js';
 import { lettrageRepository } from '../repositories/lettrage.repository.js';
 import { agedBalanceRepository } from '../repositories/aged-balance.repository.js';
+import { chartOfAccountsRepository } from '../repositories/chart-of-accounts.repository.js';
 import {
   EDITION_KINDS, type EditionKind, editionContext, renderPdf, renderXlsx,
   buildJournal, buildGrandLivre, buildBalance, buildBilan, buildCpc, buildBalanceAgee, buildImmobilisations, buildCessions, buildAnalytique,
@@ -42,6 +43,38 @@ export const ledgerRouter = Router();
 // Plan comptable
 ledgerRouter.get('/accounts',         authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), planComptableController.list);
 ledgerRouter.get('/accounts/:code',   authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), planComptableController.getByCode);
+// Plan comptable modifiable (mig 429) : droit « validate » pour toute écriture du plan.
+const accountBody = z.object({
+  code: z.string().trim().min(4).max(10),
+  label: z.string().trim().min(2).max(200),
+  accountType: z.enum(['asset', 'liability', 'equity', 'revenue', 'expense', 'result']).nullish(),
+  normalSide: z.enum(['D', 'C']).nullish(),
+  isCollective: z.boolean().optional(),
+  auxiliaryKind: z.enum(['supplier', 'customer']).nullish(),
+  tvaRate: z.coerce.number().nullish(),
+  tvaDirection: z.enum(['collected', 'deductible']).nullish(),
+});
+const accountActor = (req: AuthRequest) => ({ userId: req.user!.userId });
+const accountBad = (res: Response, m?: string) => res.status(400).json({ success: false, error: { message: m ?? 'Saisie invalide' } });
+ledgerRouter.get('/accounts/:id/usage', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await chartOfAccountsRepository.usage(req.params.id) });
+}));
+ledgerRouter.post('/accounts', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), requireVerb('accounting', 'validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = accountBody.safeParse(req.body);
+  if (!r.success) { accountBad(res, r.error.issues[0]?.message); return; }
+  res.status(201).json({ success: true, data: await chartOfAccountsRepository.create(r.data, accountActor(req)) });
+}));
+ledgerRouter.put('/accounts/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = accountBody.safeParse(req.body);
+  if (!r.success) { accountBad(res, r.error.issues[0]?.message); return; }
+  res.json({ success: true, data: await chartOfAccountsRepository.update(req.params.id, r.data, accountActor(req)) });
+}));
+ledgerRouter.post('/accounts/:id/active', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await chartOfAccountsRepository.setActive(req.params.id, Boolean((req.body as { active?: boolean }).active), accountActor(req)) });
+}));
+ledgerRouter.delete('/accounts/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await chartOfAccountsRepository.remove(req.params.id, accountActor(req)) });
+}));
 
 // Sous-comptes tiers (auxiliaires)
 ledgerRouter.get('/auxiliaries',      authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), accountAuxiliaryController.list);

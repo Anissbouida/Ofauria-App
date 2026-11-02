@@ -16,7 +16,23 @@ export const planComptableApi = {
        .then(r => r.data.data),
   getByCode: (code: string): Promise<Account> =>
     api.get(`/ledger/accounts/${code}`).then(r => r.data.data),
+  // Plan modifiable (mig 429)
+  usage: (id: string): Promise<AccountUsage> => api.get(`/ledger/accounts/${id}/usage`).then(r => r.data.data),
+  create: (b: AccountInput): Promise<Account> => api.post('/ledger/accounts', b).then(r => r.data.data),
+  update: (id: string, b: AccountInput): Promise<Account> => api.put(`/ledger/accounts/${id}`, b).then(r => r.data.data),
+  setActive: (id: string, active: boolean): Promise<Account> => api.post(`/ledger/accounts/${id}/active`, { active }).then(r => r.data.data),
+  remove: (id: string): Promise<void> => api.delete(`/ledger/accounts/${id}`).then(() => undefined),
 };
+export interface AccountInput {
+  code: string; label: string;
+  accountType?: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense' | 'result' | null; normalSide?: 'D' | 'C' | null;
+  isCollective?: boolean; auxiliaryKind?: 'supplier' | 'customer' | null;
+  tvaRate?: number | null; tvaDirection?: 'collected' | 'deductible' | null;
+}
+export interface AccountUsage {
+  lines: number; balance: number; children: number; auxiliaries: number;
+  references: { what: string; n: number }[]; history: number;
+}
 
 /* ═══ Tiers auxiliaires ═══ */
 export const accountAuxiliariesApi = {
