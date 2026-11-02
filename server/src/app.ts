@@ -136,6 +136,8 @@ const ROUTES_WITH_LOCAL_JSON_PARSER = [
   // en masse (centaines d'UUID) — parser local elargi cote route products.
   '/api/v1/products/import',
   '/api/v1/products/bulk-delete',
+  // Import de relevés bancaires : fichier en base64 (mig 426) — parser local elargi.
+  '/api/v1/bank-reconciliation/import',
 ];
 const globalJsonParser = express.json({ limit: '10kb' });
 app.use((req, res, next) => {

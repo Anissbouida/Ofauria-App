@@ -1,13 +1,13 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Loader2, Lock, Plus, Trash2, X, Landmark, Wand2, Link2, Unlink, ArrowLeft, ChevronRight,
+  Loader2, Lock, Plus, Trash2, Landmark, Wand2, Link2, Unlink, ArrowLeft, ChevronRight,
 } from 'lucide-react';
 import { bankReconciliationApi } from '../../api/bank-reconciliation.api';
-import type { BankStatement, BankLine, LedgerLine, ImportLine } from '../../api/bank-reconciliation.api';
+import type { BankStatement, BankLine, LedgerLine } from '../../api/bank-reconciliation.api';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
-import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import BankImportModal from './BankImportModal';
 
 function n(v: string | number): string {
   const num = typeof v === 'string' ? parseFloat(v) : v;
@@ -87,7 +87,10 @@ export default function BanqueTab() {
                 const pct = s.line_count ? Math.round((s.reconciled_count / s.line_count) * 100) : 0;
                 return (
                   <tr key={s.id} style={{ cursor: 'pointer' }} onClick={() => setSelectedId(s.id)}>
-                    <td style={{ fontWeight: 500 }}>{s.label}</td>
+                    <td style={{ fontWeight: 500 }}>
+                      {s.label}
+                      {s.source_format && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6, textTransform: 'uppercase' }}>{s.source_format}</span>}
+                    </td>
                     <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{s.account_code}</td>
                     <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{fmtDate(s.statement_date)}</td>
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(s.closing_balance)}</td>
@@ -113,103 +116,8 @@ export default function BanqueTab() {
         </div>
       )}
 
-      {showImport && <ImportModal onClose={() => setShowImport(false)} onSaved={() => { setShowImport(false); queryClient.invalidateQueries({ queryKey: ['bank-statements'] }); }} />}
+      {showImport && <BankImportModal onClose={() => setShowImport(false)} onSaved={() => { setShowImport(false); queryClient.invalidateQueries({ queryKey: ['bank-statements'] }); }} />}
     </>
-  );
-}
-
-// Parse CSV : date;libellé;débit;crédit  (séparateur ; ou ,)
-function parseCsv(text: string): ImportLine[] {
-  const lines = text.trim().split('\n').filter(l => l.trim());
-  const result: ImportLine[] = [];
-  for (const raw of lines) {
-    const sep = raw.includes(';') ? ';' : ',';
-    const cols = raw.split(sep).map(c => c.trim());
-    if (cols.length < 3) continue;
-    // Skip header
-    if (/date/i.test(cols[0]) && /lib|d.bit|cr.dit/i.test(raw)) continue;
-    const [dateRaw, label, debitRaw, creditRaw] = cols;
-    // Normalise date jj/mm/aaaa -> aaaa-mm-jj
-    let date = dateRaw;
-    if (/\d{2}\/\d{2}\/\d{4}/.test(dateRaw)) {
-      const [d, m, y] = dateRaw.split('/');
-      date = `${y}-${m}-${d}`;
-    }
-    const debit = parseFloat((debitRaw || '').replace(/\s/g, '').replace(',', '.')) || 0;
-    const credit = parseFloat((creditRaw || '').replace(/\s/g, '').replace(',', '.')) || 0;
-    if (debit > 0) result.push({ operationDate: date, label, amount: debit, direction: 'out' });
-    else if (credit > 0) result.push({ operationDate: date, label, amount: credit, direction: 'in' });
-  }
-  return result;
-}
-
-function ImportModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [label, setLabel] = useState('');
-  const [accountCode, setAccountCode] = useState('5141');
-  const [statementDate, setStatementDate] = useState(new Date().toISOString().slice(0, 10));
-  const [closingBalance, setClosingBalance] = useState('');
-  const [csv, setCsv] = useState('');
-
-  const parsed = useMemo(() => parseCsv(csv), [csv]);
-
-  const save = useMutation({
-    mutationFn: () => bankReconciliationApi.createStatement({
-      label, accountCode, statementDate,
-      openingBalance: 0, closingBalance: parseFloat(closingBalance) || 0,
-      lines: parsed,
-    }),
-    onSuccess: () => { notify.success('Relevé importé'); onSaved(); },
-    onError: () => notify.error('Erreur import'),
-  });
-
-  const inputStyle = { width: '100%', padding: '7px 10px', border: '1px solid var(--theme-bg-separator)', borderRadius: 6, fontSize: '0.8125rem', background: 'var(--theme-bg-input)' };
-  const labelStyle = { fontSize: '0.75rem', color: 'var(--theme-text-muted)', display: 'block', marginBottom: 4 };
-
-  return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 600, maxHeight: '90vh', overflowY: 'auto', borderRadius: 4, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <Landmark size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span className="odoo-breadcrumb-current">Importer un relevé bancaire</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
-            <div><label style={labelStyle}>Libellé *</label><input value={label} onChange={e => setLabel(e.target.value)} placeholder="Relevé BMCE juin 2026" style={inputStyle} /></div>
-            <div><label style={labelStyle}>Compte</label>
-              <select value={accountCode} onChange={e => setAccountCode(e.target.value)} style={inputStyle}>
-                <option value="5141">5141 Banque</option>
-                <option value="5161">5161 Caisse</option>
-              </select>
-            </div>
-            <div><label style={labelStyle}>Date relevé *</label><input type="date" value={statementDate} onChange={e => setStatementDate(e.target.value)} style={inputStyle} /></div>
-          </div>
-          <div><label style={labelStyle}>Solde de clôture (DH)</label><input type="number" step="0.01" value={closingBalance} onChange={e => setClosingBalance(e.target.value)} style={{ ...inputStyle, width: 200 }} /></div>
-          <div>
-            <label style={labelStyle}>Lignes CSV — format : <code>date;libellé;débit;crédit</code> (débit = sortie, crédit = entrée)</label>
-            <textarea value={csv} onChange={e => setCsv(e.target.value)} rows={8}
-              placeholder={'06/06/2026;Virement fournisseur;3500;\n30/06/2026;Agios bancaires;50;\n10/06/2026;Encaissement client;;1200'}
-              style={{ ...inputStyle, fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', resize: 'vertical' }} />
-            {parsed.length > 0 && (
-              <p style={{ fontSize: '0.6875rem', color: '#0e7c3a', marginTop: 4 }}>
-                {parsed.length} ligne(s) détectée(s) : {parsed.filter(p => p.direction === 'in').length} entrée(s), {parsed.filter(p => p.direction === 'out').length} sortie(s)
-              </p>
-            )}
-          </div>
-        </div>
-        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--theme-bg-separator)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button onClick={() => save.mutate()} disabled={!label || parsed.length === 0 || save.isPending} className="odoo-btn-primary"
-            style={{ opacity: (!label || parsed.length === 0 || save.isPending) ? 0.5 : 1 }}>
-            {save.isPending ? 'Import...' : `Importer ${parsed.length} ligne(s)`}
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
   );
 }
 
