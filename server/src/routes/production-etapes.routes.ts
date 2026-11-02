@@ -21,6 +21,9 @@ router.post('/etapes/:etapeId/repetition', authenticate, authorize(...ROLE_GROUP
 router.post('/etapes/:etapeId/readings', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.addReading));
 router.delete('/readings/:readingId', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.deleteReading));
 
+// ─── Rétro-planning par temps de procédé (mig 432) — épic labo L6 ───
+router.post('/plans/:planId/retro-planning', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.computeRetroPlanning));
+
 // ─── Exécution d'atelier (mig 399) — roadmap lot 4 ───
 router.put('/etapes/:etapeId/assign', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.assignEtape));
 router.post('/etapes/:etapeId/pause', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.pauseEtape));

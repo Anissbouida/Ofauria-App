@@ -25,6 +25,11 @@ export const addReadingSchema = z.object({
   note: z.string().max(500).optional(),
 });
 
+// Rétro-planning (mig 432, épic labo L6) — heure de mise en vitrine « HH:MM ».
+export const retroPlanningSchema = z.object({
+  heure_vitrine: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Heure de vitrine attendue au format HH:MM').default('07:00'),
+});
+
 export const recordRendementSchema = z.object({
   quantite_brute: z.number().min(0),
   quantite_nette_reelle: z.number().min(0),

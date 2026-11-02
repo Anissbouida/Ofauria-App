@@ -3,7 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productionEtapesRepository } from '../repositories/production-etapes.repository.js';
 import { productionRendementRepository } from '../repositories/production-rendement.repository.js';
 import { stockFrigoRepository } from '../repositories/stock-frigo.repository.js';
-import { updateEtapeStatusSchema, completeRepetitionSchema, recordRendementSchema, addReadingSchema } from '../validators/production-etapes.validator.js';
+import { updateEtapeStatusSchema, completeRepetitionSchema, recordRendementSchema, addReadingSchema, retroPlanningSchema } from '../validators/production-etapes.validator.js';
 import { CCP_STEP_TYPES } from '../repositories/production-etapes.repository.js';
 
 export const productionEtapesController = {
@@ -71,6 +71,20 @@ export const productionEtapesController = {
       return;
     }
     res.json({ success: true, data: deleted });
+  },
+
+  // ─── Rétro-planning (mig 432, épic labo L6) ───
+  async computeRetroPlanning(req: AuthRequest, res: Response) {
+    const parsed = retroPlanningSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: { message: parsed.error.issues.map(i => i.message).join(', ') } });
+      return;
+    }
+    const result = await productionEtapesRepository.computeRetroPlanning(
+      req.params.planId as string,
+      parsed.data.heure_vitrine,
+    );
+    res.json({ success: true, data: result });
   },
 
   // ─── Start auto-timer ───

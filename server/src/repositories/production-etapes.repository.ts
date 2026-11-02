@@ -190,7 +190,7 @@ export const productionEtapesRepository = {
   // ─── Get all étapes for all items in a plan ───
   async findByPlan(planId: string) {
     const result = await db.query(
-      `SELECT pie.*, ppi.product_id, COALESCE(p.name, r.name) as product_name,
+      `SELECT pie.*, ppi.product_id, ppi.heure_vitrine_cible, COALESCE(p.name, r.name) as product_name,
               u1.first_name as started_by_name, u2.first_name as completed_by_name,
               wc.name as work_center_name,
               emp.first_name || ' ' || emp.last_name as assigned_employee_name,
@@ -402,6 +402,134 @@ export const productionEtapesRepository = {
       params
     );
     return r.rows;
+  },
+
+  // ─── Rétro-planning par temps de procédé (mig 432) — épic labo L6 ───
+  // À partir de l'heure de mise en vitrine, on remonte étape par étape : la
+  // dernière étape finit à l'heure de vitrine, chaque étape commence
+  // duree_estimee_min (× répétitions) avant sa fin, et cette heure de début
+  // devient la fin de l'étape précédente. Datage absolu en JS (ms) pour éviter
+  // toute dérive de fuseau ; l'heure de vitrine est résolue en timestamptz côté
+  // SQL (plan_date + heure, fuseau serveur). Détecte les conflits de capacité :
+  // deux étapes qui se chevauchent sur le même poste (le four est le goulet).
+  async computeRetroPlanning(planId: string, heureVitrineDefaut: string) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+
+      const plan = await client.query(
+        'SELECT id, plan_date FROM production_plans WHERE id = $1',
+        [planId]
+      );
+      if (plan.rows.length === 0) {
+        const e = new Error('Plan introuvable') as Error & { statusCode?: number };
+        e.statusCode = 404;
+        throw e;
+      }
+
+      // Articles non annulés, avec leur heure de vitrine résolue en timestamptz.
+      const items = await client.query(
+        `SELECT ppi.id,
+                (pp.plan_date + COALESCE(ppi.heure_vitrine_cible, $2::time))::timestamptz AS vitrine_ts
+           FROM production_plan_items ppi
+           JOIN production_plans pp ON pp.id = ppi.plan_id
+          WHERE ppi.plan_id = $1 AND ppi.cancelled_at IS NULL
+          ORDER BY ppi.id`,
+        [planId, heureVitrineDefaut]
+      );
+
+      const scheduled: Array<{
+        id: string; plan_item_id: string; ordre: number; nom: string;
+        type_etape: string | null; work_center_id: string | null;
+        planned_start: string; planned_end: string; duree_min: number;
+      }> = [];
+
+      for (const item of items.rows) {
+        const steps = await client.query(
+          `SELECT id, ordre, nom, type_etape, duree_estimee_min,
+                  est_repetable, nb_repetitions_cible, work_center_id
+             FROM production_item_etapes
+            WHERE plan_item_id = $1
+            ORDER BY ordre ASC`,
+          [item.id]
+        );
+        if (steps.rows.length === 0) continue;
+
+        let cursor = new Date(item.vitrine_ts).getTime();
+        // On remonte depuis la dernière étape.
+        for (let i = steps.rows.length - 1; i >= 0; i--) {
+          const s = steps.rows[i];
+          const reps = s.est_repetable ? Math.max(1, s.nb_repetitions_cible || 1) : 1;
+          const dureeMin = (s.duree_estimee_min || 0) * reps;
+          const endMs = cursor;
+          const startMs = endMs - dureeMin * 60_000;
+          const planned_start = new Date(startMs).toISOString();
+          const planned_end = new Date(endMs).toISOString();
+          await client.query(
+            `UPDATE production_item_etapes
+                SET planned_start = $1, planned_end = $2, updated_at = NOW()
+              WHERE id = $3`,
+            [planned_start, planned_end, s.id]
+          );
+          scheduled.push({
+            id: s.id, plan_item_id: item.id, ordre: s.ordre, nom: s.nom,
+            type_etape: s.type_etape, work_center_id: s.work_center_id,
+            planned_start, planned_end, duree_min: dureeMin,
+          });
+          cursor = startMs;
+        }
+      }
+
+      await client.query('COMMIT');
+
+      // Détection des conflits de capacité : chevauchement sur un même poste.
+      const byCenter = new Map<string, typeof scheduled>();
+      for (const s of scheduled) {
+        if (!s.work_center_id) continue;
+        const arr = byCenter.get(s.work_center_id) ?? [];
+        arr.push(s);
+        byCenter.set(s.work_center_id, arr);
+      }
+      const conflicts: Array<{
+        work_center_id: string; work_center_name: string;
+        a: string; b: string; overlap_start: string; overlap_end: string;
+      }> = [];
+      const centerIds = [...byCenter.keys()];
+      const centerNames = new Map<string, string>();
+      if (centerIds.length > 0) {
+        const nameRes = await db.query(
+          'SELECT id, name FROM work_centers WHERE id = ANY($1)', [centerIds]
+        );
+        for (const row of nameRes.rows) centerNames.set(row.id, row.name);
+      }
+      for (const [cid, arr] of byCenter) {
+        arr.sort((x, y) => x.planned_start.localeCompare(y.planned_start));
+        for (let i = 1; i < arr.length; i++) {
+          const prev = arr[i - 1];
+          const cur = arr[i];
+          if (cur.planned_start < prev.planned_end) {
+            conflicts.push({
+              work_center_id: cid,
+              work_center_name: centerNames.get(cid) ?? '—',
+              a: prev.nom, b: cur.nom,
+              overlap_start: cur.planned_start,
+              overlap_end: prev.planned_end < cur.planned_end ? prev.planned_end : cur.planned_end,
+            });
+          }
+        }
+      }
+
+      const earliest = scheduled.reduce<string | null>(
+        (min, s) => (min === null || s.planned_start < min ? s.planned_start : min), null
+      );
+
+      return { scheduled_count: scheduled.length, earliest_start: earliest, conflicts };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
 };
