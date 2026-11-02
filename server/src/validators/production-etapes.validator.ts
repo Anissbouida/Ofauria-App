@@ -36,4 +36,9 @@ export const recordRendementSchema = z.object({
     notes: z.string().optional(),
   })).default([]),
   notes: z.string().optional(),
+  // Bilan massique (épic labo L3, mig 427) — optionnels.
+  masse_petrie_kg: z.number().min(0).nullable().optional(),
+  patons_nombre: z.number().int().min(0).nullable().optional(),
+  patons_poids_unitaire_g: z.number().min(0).nullable().optional(),
+  masse_cuite_kg: z.number().min(0).nullable().optional(),
 });

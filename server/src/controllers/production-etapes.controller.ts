@@ -155,6 +155,11 @@ export const productionEtapesController = {
       pertesDetail: parsed.data.pertes_detail,
       recordedBy: req.user!.userId,
       notes: parsed.data.notes,
+      // Bilan massique (épic labo L3, mig 427).
+      massePetrieKg: parsed.data.masse_petrie_kg,
+      patonsNombre: parsed.data.patons_nombre,
+      patonsPoidsUnitaireG: parsed.data.patons_poids_unitaire_g,
+      masseCuiteKg: parsed.data.masse_cuite_kg,
     });
 
     // Surplus -> frigo AUTOMATIQUE (audit 2026-10-23 §4.2) : jusqu'ici vers_frigo
