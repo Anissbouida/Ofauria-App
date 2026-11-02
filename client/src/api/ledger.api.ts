@@ -116,6 +116,34 @@ export const lettrageApi = {
     api.post('/ledger/lettrage/auto', p).then(r => r.data.data),
 };
 
+/* ═══ Éditions comptables PDF / Excel ═══ */
+export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee';
+export type EditionParams = { startDate?: string; endDate?: string; journal?: string; account?: string; class?: number; side?: 'suppliers' | 'customers' };
+export const editionsApi = {
+  /** Télécharge l'état ; une erreur (JSON renvoyé en blob) est relue pour son message. */
+  async download(kind: EditionKind, format: 'pdf' | 'xlsx', params: EditionParams): Promise<void> {
+    let r;
+    try {
+      r = await api.get(`/ledger/editions/${kind}`, { params: { ...params, format }, responseType: 'blob' });
+    } catch (err) {
+      const data = (err as { response?: { data?: Blob } }).response?.data;
+      if (data instanceof Blob) {
+        const text = await data.text().catch(() => '');
+        let message = 'Édition impossible';
+        try { message = JSON.parse(text)?.error?.message || message; } catch { /* corps non JSON */ }
+        throw new Error(message);
+      }
+      throw err;
+    }
+    const name = /filename="([^"]+)"/.exec(String(r.headers['content-disposition'] ?? ''))?.[1] ?? `${kind}.${format}`;
+    const url = URL.createObjectURL(r.data as Blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1000);
+  },
+};
+
 /* ═══ Balance âgée comptable (lignes non lettrées des comptes de tiers) ═══ */
 export type AgedSide = 'suppliers' | 'customers';
 export type AgedBucket = 'current' | 'd30' | 'd60' | 'd90' | 'over90';

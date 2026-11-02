@@ -5,6 +5,7 @@ import { Loader2, Download, Calendar, Search, X, ChevronRight, ChevronDown, Chec
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { agedBalanceApi } from '../../api/ledger.api';
 import type { AgedBucket, AgedItem, AgedSide } from '../../api/ledger.api';
+import EditionButtons from './EditionButtons';
 
 /**
  * Balance âgée comptable : par tiers, les lignes non lettrées des comptes
@@ -116,6 +117,7 @@ export default function AgedBalanceTab() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: tiers.length ? 1 : 0.5 }}>
           <Download size={13} /> Exporter CSV
         </button>
+        <EditionButtons kind="balance-agee" params={{ side, endDate: asOf }} />
       </div>
 
       {isLoading ? (

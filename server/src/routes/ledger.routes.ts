@@ -9,6 +9,10 @@ import { manualEntryRepository } from '../repositories/manual-entry.repository.j
 import { lettrageRepository } from '../repositories/lettrage.repository.js';
 import { agedBalanceRepository } from '../repositories/aged-balance.repository.js';
 import {
+  EDITION_KINDS, type EditionKind, editionContext, renderPdf, renderXlsx,
+  buildJournal, buildGrandLivre, buildBalance, buildBilan, buildCpc, buildBalanceAgee,
+} from '../services/ledger-editions.service.js';
+import {
   planComptableController,
   accountAuxiliaryController,
   journalController,
@@ -78,6 +82,45 @@ ledgerRouter.get('/fec', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), 
   if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
   res.json({ success: true, data: await buildFec({ year: r.data.year, start: r.data.startDate, end: r.data.endDate }, actorOf(req)) });
 }));
+// Éditions comptables PDF / Excel (lot Important 8) : droit « print » pour le PDF,
+// « export » pour l'Excel.
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const editionQuery = z.object({
+  format: z.enum(['pdf', 'xlsx']).default('pdf'),
+  startDate: z.string().regex(DAY).optional(),
+  endDate: z.string().regex(DAY).optional(),
+  journal: z.string().trim().max(10).optional(),
+  account: z.string().trim().max(10).optional(),
+  class: z.coerce.number().int().min(1).max(8).optional(),
+  side: z.enum(['suppliers', 'customers']).default('suppliers'),
+});
+const editionVerb = (req: AuthRequest, res: Response, next: () => void) =>
+  requireVerb('accounting', req.query.format === 'xlsx' ? 'export' : 'print')(req, res, next);
+ledgerRouter.get('/editions/:kind', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), editionVerb, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const kind = req.params.kind as EditionKind;
+  if (!EDITION_KINDS.includes(kind)) { tplBad(res, 'État inconnu'); return; }
+  const r = editionQuery.safeParse(req.query);
+  if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
+  const q = r.data;
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Casablanca' });
+  const end = q.endDate ?? today;
+  const start = q.startDate ?? `${end.slice(0, 4)}-01-01`;
+  if (start > end) { tplBad(res, 'Période invalide'); return; }
+  const storeId = req.user!.storeId ?? null;
+  const edition = kind === 'journal' ? await buildJournal({ startDate: start, endDate: end, journalCode: q.journal, storeId })
+    : kind === 'grand-livre' ? await buildGrandLivre({ startDate: start, endDate: end, accountClass: q.class, account: q.account, storeId })
+    : kind === 'balance' ? await buildBalance({ startDate: start, endDate: end, storeId })
+    : kind === 'bilan' ? await buildBilan({ endDate: end, storeId })
+    : kind === 'cpc' ? await buildCpc({ startDate: start, endDate: end, storeId })
+    : await buildBalanceAgee({ side: q.side, asOf: end });
+  const ctx = await editionContext(req.user!.userId);
+  const buf = q.format === 'xlsx' ? await renderXlsx(edition, ctx) : await renderPdf(edition, ctx);
+  res.setHeader('Content-Type', q.format === 'xlsx'
+    ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${edition.key}.${q.format}"`);
+  res.send(buf);
+}));
+
 // Balance âgée comptable : lignes non lettrées des comptes de tiers, par échéance.
 ledgerRouter.get('/aged-balance', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({

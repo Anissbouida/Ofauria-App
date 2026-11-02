@@ -5,6 +5,7 @@ import { Loader2, Download, Lock, BookOpen, Calendar, Search, X, ChevronRight, C
 import { financialStatementsApi } from '../../api/ledger.api';
 import type { LedgerAccountBlock, LedgerMovement } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
+import EditionButtons from './EditionButtons';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -129,6 +130,7 @@ export default function GrandLivreTab() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: accounts.length === 0 ? 0.5 : 1 }}>
           <Download size={13} /> Exporter CSV
         </button>
+        <EditionButtons kind="grand-livre" params={{ startDate, endDate, class: classFilter === 'all' ? undefined : classFilter }} />
       </div>
 
       {data && (

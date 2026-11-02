@@ -4,6 +4,7 @@ import { Loader2, Download, Lock, Scale, Calendar } from 'lucide-react';
 import { financialStatementsApi } from '../../api/ledger.api';
 import type { BalanceRow } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
+import EditionButtons from './EditionButtons';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -89,6 +90,7 @@ export default function BalanceTab() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: rows.length === 0 ? 0.5 : 1 }}>
           <Download size={13} /> Exporter CSV
         </button>
+        <EditionButtons kind="balance" params={{ startDate, endDate }} />
       </div>
 
       {/* Controle d'equilibre */}

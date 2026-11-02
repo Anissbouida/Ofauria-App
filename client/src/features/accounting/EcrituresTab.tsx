@@ -15,6 +15,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import type { JournalEntryStatus, JournalEntrySummary, JournalEntryDetail } from '@ofauria/shared';
+import EditionButtons from './EditionButtons';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -278,6 +279,7 @@ export default function EcrituresTab() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: rows.length === 0 ? 0.5 : 1 }}>
           <Download size={13} /> Exporter CSV
         </button>
+        <EditionButtons kind="journal" params={{ startDate: startDate || undefined, endDate: endDate || undefined, journal: journals.find(j => j.id === journalId)?.code }} />
         <button onClick={() => setEditor({ draft: null })} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <Plus size={13} /> Nouvelle écriture
