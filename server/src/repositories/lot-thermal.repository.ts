@@ -18,6 +18,41 @@ function resolveTable(kind: string): string {
 }
 
 export const lotThermalRepository = {
+  // Lots surgelables (semi-finis + produits) encore en stock, avec leur état
+  // thermique et la DLC effective (dlc_effective si décongelé, sinon expires_at).
+  async listFreezable(storeId?: string | null, etat?: string | null) {
+    const params: unknown[] = [];
+    let storeFilter = '';
+    if (storeId) { params.push(storeId); storeFilter = ` AND store_id = $${params.length}`; }
+    let etatFilter = '';
+    if (etat && ['frais', 'surgele', 'decongele'].includes(etat)) {
+      params.push(etat); etatFilter = ` WHERE etat_thermique = $${params.length}`;
+    }
+    const r = await db.query(
+      `SELECT * FROM (
+         SELECT 'semi'::text AS kind, sl.id, sl.lot_number, r.name AS item_name, 'Semi-fini' AS item_kind,
+                sl.quantity_remaining::float AS quantity, sl.unit, sl.etat_thermique,
+                sl.surgele_a, sl.decongele_a, sl.dlc_effective, sl.expires_at,
+                COALESCE(sl.dlc_effective, sl.expires_at::timestamptz) AS dlc_affichee, sl.produced_at
+           FROM semi_finished_lots sl
+           JOIN recipes r ON r.id = sl.recipe_id
+          WHERE sl.status = 'active' AND sl.quantity_remaining > 0${storeFilter}
+         UNION ALL
+         SELECT 'product'::text, pl.id, pl.lot_number, p.name, 'Produit',
+                (pl.backroom_qty + pl.vitrine_qty)::float, 'pce', pl.etat_thermique,
+                pl.surgele_a, pl.decongele_a, pl.dlc_effective, pl.expires_at,
+                COALESCE(pl.dlc_effective, pl.expires_at::timestamptz), pl.produced_at
+           FROM product_lots pl
+           JOIN products p ON p.id = pl.product_id
+          WHERE pl.status = 'active' AND (pl.backroom_qty + pl.vitrine_qty) > 0${storeFilter}
+       ) t${etatFilter}
+       ORDER BY produced_at DESC
+       LIMIT 300`,
+      params
+    );
+    return r.rows;
+  },
+
   async freeze(kind: string, lotId: string) {
     const table = resolveTable(kind);
     const cur = await db.query(`SELECT etat_thermique FROM ${table} WHERE id = $1`, [lotId]);

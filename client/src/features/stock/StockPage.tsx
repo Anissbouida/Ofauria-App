@@ -18,7 +18,7 @@ import {
   Clock, X, Boxes, CalendarClock, ChevronRight, ChevronDown, ChevronLeft,
   ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen,
   Plus, List, LayoutGrid, ShoppingCart, Upload, Download, BarChart3,
-  ClipboardList, ClipboardCheck, Archive, Beaker, Loader2, ListTree, Lock, ShieldAlert, MapPin,
+  ClipboardList, ClipboardCheck, Archive, Beaker, Loader2, ListTree, Lock, ShieldAlert, MapPin, Snowflake,
 } from 'lucide-react';
 import IngredientImportModal from './IngredientImportModal';
 import ConsommationTab from './ConsommationTab';
@@ -27,6 +27,7 @@ import GoodsEntryRegisterTab from './GoodsEntryRegisterTab';
 import StockAgingTab from './StockAgingTab';
 import StockClosingTab from './StockClosingTab';
 import EmplacementsTab from './EmplacementsTab';
+import LotsThermalTab from './LotsThermalTab';
 import PackagingPage from '../packaging/PackagingPage';
 import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
@@ -82,7 +83,7 @@ function situationOf(i: InventoryItem): Situation {
 }
 
 /** Onglets du module Stock (fusion Économat + Pesage, 2026-10-11). */
-type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'aging' | 'closing' | 'registre' | 'emplacements';
+type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'aging' | 'closing' | 'registre' | 'emplacements' | 'surgeles';
 /** Sous-vues de l'onglet Bons de sortie (?view=). */
 type BonsView = 'queue' | 'transfers' | 'history';
 /** Zone affichee dans l'onglet Stock (?zone=) : scelle (ex-Économat) ou entame (ex-Pesage). */
@@ -105,7 +106,7 @@ export default function StockPage() {
   //   -> A commander (ruptures BSI) -> Consommables -> Analyse (admin/gerant).
   // Tout est persiste en URL (?tab=&view=&zone=&bon=) pour les deep-links
   // (notifications, liens « Ouvrir au pesage », rafraichissement).
-  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'aging', 'closing', 'registre', 'emplacements'];
+  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'aging', 'closing', 'registre', 'emplacements', 'surgeles'];
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') as StockTab | null;
   const [econoTab, setEconoTab] = useState<StockTab>(
@@ -349,6 +350,8 @@ export default function StockPage() {
     { key: 'consumables', label: 'Consommables', icon: Boxes, section: 'operations', hidden: !isWarehouseUser },
     // Mig 367 : inventaire physique (le magasin compte, la direction valide).
     { key: 'inventaires', label: 'Inventaires', icon: ClipboardCheck, section: 'operations', hidden: !isWarehouseUser },
+    // État thermique des lots (épic labo L4, mig 426) : surgélation / décongélation.
+    { key: 'surgeles', label: 'Lots surgelables', icon: Snowflake, section: 'operations', hidden: !isWarehouseUser },
     // Mig 312 (D9) : registre des entrées (traçabilité ONSSA), magasinier compris.
     { key: 'registre', label: 'Registre des entrées', icon: Archive, section: 'reports', hidden: !isWarehouseUser },
     // Analyse : les endpoints consommation/achats sont reserves admin/gerant cote serveur.
@@ -505,6 +508,8 @@ export default function StockPage() {
         <StockClosingTab />
       ) : econoTab === 'emplacements' ? (
         <EmplacementsTab />
+      ) : econoTab === 'surgeles' ? (
+        <LotsThermalTab />
       ) : zone === 'entame' ? (
         <div style={{ padding: '1rem 0' }}>
           <PesageStockList rows={pesageStock} isLoading={isLoadingPesage}

@@ -3,6 +3,13 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { lotThermalRepository } from '../repositories/lot-thermal.repository.js';
 
 export const lotThermalController = {
+  async listFreezable(req: AuthRequest, res: Response) {
+    const storeId = (req.query.storeId as string) || null;
+    const etat = (req.query.etat as string) || null;
+    const rows = await lotThermalRepository.listFreezable(storeId, etat);
+    res.json({ success: true, data: rows });
+  },
+
   async freeze(req: AuthRequest, res: Response) {
     const lot = await lotThermalRepository.freeze(req.params.kind as string, req.params.id as string);
     if (!lot) { res.status(404).json({ success: false, error: { message: 'Lot non trouvé' } }); return; }
