@@ -110,7 +110,7 @@ export const payrollDeclarationRepository = {
       `SELECT e.id, e.first_name, e.last_name, e.cin, e.cnss_number, e.address, e.city,
               e.hire_date, MAX(p.nb_dependents) AS dependents,
               COUNT(*)::int AS months, SUM(p.worked_days) AS days,
-              SUM(p.gross_salary) AS brut,
+              SUM(p.base_salary) AS base, SUM(p.gross_salary) AS brut,
               SUM(COALESCE(p.brut_imposable, p.gross_salary)) AS brut_imposable,
               SUM(p.gross_salary - COALESCE(p.brut_imposable, p.gross_salary)) AS exonere,
               SUM(p.frais_pro) AS frais_pro,
@@ -124,10 +124,10 @@ export const payrollDeclarationRepository = {
       [year]
     );
     return r.rows.map(x => ({
-      name: `${x.last_name} ${x.first_name}`, cin: x.cin, cnssNumber: x.cnss_number,
+      name: `${x.last_name} ${x.first_name}`, firstName: x.first_name as string, lastName: x.last_name as string, cin: x.cin, cnssNumber: x.cnss_number,
       address: [x.address, x.city].filter(Boolean).join(', '),
       dependents: num(x.dependents), months: x.months, days: num(x.days),
-      brut: num(x.brut), exonere: r2(num(x.exonere)), brutImposable: num(x.brut_imposable),
+      base: num(x.base), brut: num(x.brut), exonere: r2(num(x.exonere)), brutImposable: num(x.brut_imposable),
       fraisPro: num(x.frais_pro), cotisations: num(x.cotisations), netImposable: num(x.net_imposable), ir: num(x.ir),
     }));
   },

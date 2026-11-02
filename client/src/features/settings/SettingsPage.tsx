@@ -284,7 +284,7 @@ function CompanyInfoSection() {
 }
 
 /* ─── Identite legale (mig 326) ─── */
-const LEGAL_FIELDS: Array<{ key: 'legalName' | 'legalAddress' | 'legalCity' | 'legalPhone' | 'legalEmail' | 'legalRc' | 'legalIf' | 'legalIce' | 'legalPatente'; title: string; description: string; placeholder?: string }> = [
+const LEGAL_FIELDS: Array<{ key: 'legalName' | 'legalAddress' | 'legalCity' | 'legalPhone' | 'legalEmail' | 'legalRc' | 'legalIf' | 'legalIce' | 'legalPatente' | 'legalCommuneCode'; title: string; description: string; placeholder?: string }> = [
   { key: 'legalName', title: 'Raison sociale', description: 'Nom légal (ex. « SARL ») sur les factures, bons de commande, bulletins et attestations' },
   { key: 'legalAddress', title: 'Siège social', description: 'Adresse légale complète' },
   { key: 'legalCity', title: 'Ville', description: 'Utilisée dans « Fait à … » des attestations et pièces RH' },
@@ -294,6 +294,7 @@ const LEGAL_FIELDS: Array<{ key: 'legalName' | 'legalAddress' | 'legalCity' | 'l
   { key: 'legalIf', title: 'Identifiant fiscal (IF)', description: 'Numéro IF' },
   { key: 'legalIce', title: 'ICE', description: 'Identifiant commun de l\'entreprise : 15 chiffres', placeholder: '000000000000000' },
   { key: 'legalPatente', title: 'Patente / Taxe professionnelle', description: 'Numéro de patente du siège (chaque établissement peut avoir la sienne)' },
+  { key: 'legalCommuneCode', title: 'Code commune DGI', description: 'Commune du siège selon le référentiel de la DGI (état 9421, Simpl-IR)', placeholder: '111.01.01' },
 ];
 
 // Fiche societe (mig 331) : saisis avec l'identite legale, types propres.

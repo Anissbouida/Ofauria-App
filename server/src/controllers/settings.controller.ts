@@ -48,6 +48,7 @@ function toApi(row: Record<string, unknown>) {
     // Fiche societe (mig 331)
     legalForm: row.legal_form ?? '', legalCapital: row.legal_capital === null || row.legal_capital === undefined ? null : Number(row.legal_capital),
     legalWebsite: row.legal_website ?? '',
+    legalCommuneCode: row.legal_commune_code ?? '',
   };
 }
 
@@ -76,7 +77,7 @@ export const settingsController = {
     // Identite legale (mig 326) : texte libre borne, '' -> null ; ICE = 15 chiffres.
     const LEGAL_MAX: Record<string, number> = {
       legalName: 120, legalAddress: 300, legalCity: 80, legalPhone: 40, legalEmail: 120,
-      legalRc: 30, legalIf: 30, legalIce: 15, legalPatente: 30, legalForm: 30, legalWebsite: 120,
+      legalRc: 30, legalIf: 30, legalIce: 15, legalPatente: 30, legalForm: 30, legalWebsite: 120, legalCommuneCode: 12,
     };
     const legal: Record<string, string | null> = {};
     for (const [key, max] of Object.entries(LEGAL_MAX)) {
@@ -94,6 +95,10 @@ export const settingsController = {
     // Identifiants marocains : chiffres seulement (IF, patente) ; forme juridique de la liste.
     if (legal.legalIf && !/^\d{1,15}$/.test(legal.legalIf)) {
       res.status(400).json({ success: false, error: { message: 'Identifiant fiscal (IF) : chiffres uniquement' } });
+      return;
+    }
+    if (legal.legalCommuneCode && !/^\d{3}\.\d{2}\.\d{2}$/.test(legal.legalCommuneCode)) {
+      res.status(400).json({ success: false, error: { message: 'Code commune DGI : format NNN.NN.NN (ex. 111.01.01)' } });
       return;
     }
     if (legal.legalPatente && !/^\d{1,15}$/.test(legal.legalPatente)) {

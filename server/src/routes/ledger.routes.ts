@@ -13,8 +13,10 @@ import { corporateTaxRepository } from '../repositories/corporate-tax.repository
 import { fxRevaluationRepository } from '../repositories/fx-revaluation.repository.js';
 import {
   EDITION_KINDS, type EditionKind, editionContext, renderPdf, renderXlsx,
-  buildJournal, buildGrandLivre, buildBalance, buildBilan, buildCpc, buildBalanceAgee, buildImmobilisations, buildCessions, buildAnalytique, buildIs, buildEcartsConversion,
+  buildJournal, buildGrandLivre, buildBalance, buildBilan, buildCpc, buildBalanceAgee, buildImmobilisations, buildCessions, buildAnalytique, buildIs, buildEcartsConversion, buildLiasse,
 } from '../services/ledger-editions.service.js';
+import { liasseRepository } from '../repositories/liasse.repository.js';
+import { buildVatDeductionEdi, buildIr9421Edi, zipOne } from '../services/dgi-edi.service.js';
 import {
   planComptableController,
   accountAuxiliaryController,
@@ -129,6 +131,8 @@ const editionQuery = z.object({
   class: z.coerce.number().int().min(1).max(8).optional(),
   side: z.enum(['suppliers', 'customers']).default('suppliers'),
   axis: z.string().uuid().optional(),
+  table: z.enum(['actif', 'passif', 'cpc', 'esg', 'passage']).default('actif'),
+  model: z.enum(['normal', 'simplifie']).default('normal'),
 });
 const editionVerb = (req: AuthRequest, res: Response, next: () => void) =>
   requireVerb('accounting', req.query.format === 'xlsx' ? 'export' : 'print')(req, res, next);
@@ -152,6 +156,7 @@ ledgerRouter.get('/editions/:kind', authenticate, authorize(...ROLE_GROUPS.ADMIN
     : kind === 'cessions' ? await buildCessions({ year: Number(end.slice(0, 4)), storeId })
     : kind === 'is' ? await buildIs({ year: Number(end.slice(0, 4)) })
     : kind === 'ecarts-conversion' ? await buildEcartsConversion({ year: Number(end.slice(0, 4)) })
+    : kind === 'liasse' ? await buildLiasse({ year: Number(end.slice(0, 4)), model: q.model, table: q.table })
     : kind === 'analytique' ? (q.axis ? await buildAnalytique({ axisId: q.axis, startDate: start, endDate: end, storeId }) : null)
     : await buildBalanceAgee({ side: q.side, asOf: end });
   if (!edition) { tplBad(res, 'Axe analytique requis'); return; }
@@ -226,6 +231,33 @@ ledgerRouter.post('/corporate-tax/:year/unbook', ...TAX_AM, requireVerb('account
 const fxRates = z.record(z.string().regex(/^[A-Z]{3}$/), z.coerce.number().positive().max(100_000)).default({});
 const parseRatesQuery = (v: unknown) => Object.fromEntries(String(v ?? '').split(',').map(x => x.split(':'))
   .filter(([k, r]) => /^[A-Z]{3}$/.test(k ?? '') && Number(r) > 0).map(([k, r]) => [k, Number(r)]));
+// Liasse fiscale (lot Bonus 14) : bilan, CPC, ESG et passage au résultat fiscal, en lecture.
+ledgerRouter.get('/liasse/:year', ...TAX_AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = taxYear(req, res); if (y === null) return;
+  const model = req.query.model === 'simplifie' ? 'simplifie' : 'normal';
+  res.json({ success: true, data: await liasseRepository.build(y, model) });
+}));
+// Télédéclarations EDI (portail SIMPL de la DGI) : aperçu JSON, XML ou ZIP à téléverser.
+const ediFormat = (req: AuthRequest) => (req.query.format === 'xml' ? 'xml' : req.query.format === 'zip' ? 'zip' : 'json');
+const sendEdi = (req: AuthRequest, res: Response, out: { filename: string; xml: Buffer; issues: unknown[] } & Record<string, unknown>) => {
+  const f = ediFormat(req);
+  if (f === 'json') { const { xml: _xml, ...rest } = out; res.json({ success: true, data: rest }); return; }
+  const body = f === 'zip' ? zipOne(`${out.filename}.xml`, out.xml) : out.xml;
+  res.setHeader('Content-Type', f === 'zip' ? 'application/zip' : 'application/xml; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${out.filename}.${f}"`);
+  res.send(body);
+};
+ledgerRouter.get('/edi/tva-deductions/:year', ...TAX_AM, requireVerb('accounting', 'export'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = taxYear(req, res); if (y === null) return;
+  const regime = req.query.regime === '2' ? 2 : 1;
+  const period = Number(req.query.period);
+  if (!Number.isInteger(period) || period < 1 || period > (regime === 1 ? 12 : 4)) { tplBad(res, 'Période invalide'); return; }
+  sendEdi(req, res, await buildVatDeductionEdi({ year: y, period, regime }));
+}));
+ledgerRouter.get('/edi/9421/:year', ...TAX_AM, requireVerb('accounting', 'export'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = taxYear(req, res); if (y === null) return;
+  sendEdi(req, res, await buildIr9421Edi(y));
+}));
 ledgerRouter.get('/fx-revaluation/:year', ...TAX_AM, asyncHandler(async (req: AuthRequest, res: Response) => {
   const y = taxYear(req, res); if (y === null) return;
   res.json({ success: true, data: await fxRevaluationRepository.summary(y, parseRatesQuery(req.query.rates)) });

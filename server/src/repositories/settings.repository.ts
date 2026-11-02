@@ -43,7 +43,7 @@ export const settingsRepository = {
     legalPhone?: string | null; legalEmail?: string | null; legalRc?: string | null;
     legalIf?: string | null; legalIce?: string | null; legalPatente?: string | null;
     // Fiche societe (mig 331)
-    legalForm?: string | null; legalCapital?: number | null; legalWebsite?: string | null;
+    legalForm?: string | null; legalCapital?: number | null; legalWebsite?: string | null; legalCommuneCode?: string | null;
   }, actorId?: string) {
     const mapping: Record<string, string> = {
       companyName: 'company_name',
@@ -97,6 +97,8 @@ export const settingsRepository = {
       legalIf: 'legal_if', legalIce: 'legal_ice', legalPatente: 'legal_patente',
       // Fiche societe (mig 331)
       legalForm: 'legal_form', legalCapital: 'legal_capital', legalWebsite: 'legal_website',
+      // Code commune DGI (mig 433)
+      legalCommuneCode: 'legal_commune_code',
     };
 
     const fields: string[] = [];

@@ -22,6 +22,8 @@ import { fixedAssetDisposal } from './depreciation.service.js';
 import { analyticRepository } from '../repositories/analytic.repository.js';
 import { corporateTaxRepository } from '../repositories/corporate-tax.repository.js';
 import { fxRevaluationRepository } from '../repositories/fx-revaluation.repository.js';
+import { liasseRepository } from '../repositories/liasse.repository.js';
+import type { LiasseModel } from './liasse.rules.js';
 
 /* ─── Modèle ────────────────────────────────────────────────────────── */
 
@@ -402,6 +404,64 @@ export async function buildEcartsConversion(p: { year: number }): Promise<Editio
   };
 }
 
+export type LiasseTable = 'actif' | 'passif' | 'cpc' | 'esg' | 'passage';
+export const LIASSE_TABLES: LiasseTable[] = ['actif', 'passif', 'cpc', 'esg', 'passage'];
+
+/** Liasse fiscale (lot Bonus 14) : un tableau du modèle comptable, exercice N et N−1. */
+export async function buildLiasse(p: { year: number; model: LiasseModel; table: LiasseTable }): Promise<Edition> {
+  const l = await liasseRepository.build(p.year, p.model);
+  const rows: EditionRow[] = [];
+  const kindOf = (k: string): EditionRowKind => (k === 'group' ? 'subtotal' : k === 'subtotal' ? 'subtotal' : k === 'total' ? 'total' : 'line');
+  const nz = (v: number) => (Math.abs(v) < 0.005 ? null : v);
+  const two = [
+    { key: 'label', label: 'Rubrique', width: 64 },
+    { key: 'n', label: `Exercice ${p.year}`, width: 18, align: 'right' as const, amount: true },
+    { key: 'n1', label: `Exercice ${p.year - 1}`, width: 18, align: 'right' as const, amount: true },
+  ];
+  let title = '', columns: EditionCol[] = two, orientation: Edition['orientation'] = 'portrait';
+  if (p.table === 'actif') {
+    title = 'Bilan (actif) — tableau n° 1';
+    orientation = 'landscape';
+    columns = [
+      { key: 'label', label: 'Actif', width: 44 },
+      { key: 'gross', label: 'Brut', width: 14, align: 'right', amount: true },
+      { key: 'amort', label: 'Amort. et provisions', width: 14, align: 'right', amount: true },
+      { key: 'n', label: `Net ${p.year}`, width: 14, align: 'right', amount: true },
+      { key: 'n1', label: `Net ${p.year - 1}`, width: 14, align: 'right', amount: true },
+    ];
+    for (const x of l.actif) rows.push({ kind: kindOf(x.kind), cells: { label: x.label, gross: nz(x.gross), amort: nz(x.amort), n: nz(x.net), n1: nz(x.previous_net) } });
+  } else if (p.table === 'passif' || p.table === 'cpc') {
+    title = p.table === 'passif' ? 'Bilan (passif) — tableau n° 2' : 'Compte de produits et charges (hors taxes) — tableau n° 3';
+    for (const x of p.table === 'passif' ? l.passif : l.cpc) rows.push({ kind: kindOf(x.kind), cells: { label: x.label, n: nz(x.amount), n1: nz(x.previous) } });
+  } else if (p.table === 'esg') {
+    title = 'État des soldes de gestion — tableau n° 4';
+    rows.push({ kind: 'group', cells: { label: 'I. TABLEAU DE FORMATION DES RÉSULTATS (TFR)' } });
+    for (const x of l.tfr) rows.push({ kind: kindOf(x.kind), cells: { label: x.label, n: nz(x.amount), n1: nz(x.previous) } });
+    rows.push({ kind: 'group', cells: { label: 'II. CAPACITÉ D\'AUTOFINANCEMENT (CAF) — AUTOFINANCEMENT' } });
+    for (const x of l.caf) rows.push({ kind: kindOf(x.kind), cells: { label: x.label, n: nz(x.amount), n1: nz(x.previous) } });
+  } else {
+    title = 'Passage du résultat net comptable au résultat net fiscal';
+    columns = [{ key: 'label', label: 'Intitulé', width: 75 }, { key: 'n', label: 'Montant (DH)', width: 25, align: 'right', amount: true }];
+    const pa = l.passage;
+    rows.push({ kind: 'line', cells: { label: pa.net_result >= 0 ? 'I. Résultat net comptable — bénéfice' : 'I. Résultat net comptable — perte', n: pa.net_result } });
+    rows.push({ kind: 'group', cells: { label: 'II. Réintégrations fiscales' } });
+    for (const x of pa.reintegrations) rows.push({ kind: 'line', cells: { label: x.label, n: x.amount } });
+    rows.push({ kind: 'subtotal', cells: { label: 'Total des réintégrations', n: r2(pa.reintegrations.reduce((s, x) => s + x.amount, 0)) } });
+    rows.push({ kind: 'group', cells: { label: 'III. Déductions fiscales' } });
+    for (const x of pa.deductions) rows.push({ kind: 'line', cells: { label: x.label, n: x.amount } });
+    rows.push({ kind: 'subtotal', cells: { label: 'Total des déductions', n: r2(pa.deductions.reduce((s, x) => s + x.amount, 0)) } });
+    rows.push({ kind: 'total', cells: { label: pa.taxable_result >= 0 ? 'Résultat net fiscal — bénéfice (I + II − III)' : 'Résultat net fiscal — déficit (I + II − III)', n: pa.taxable_result } });
+    rows.push({ kind: 'line', cells: { label: `IS au taux de ${pa.rate} %`, n: pa.is_amount } });
+    rows.push({ kind: 'line', cells: { label: 'Cotisation minimale', n: pa.cm_amount } });
+    rows.push({ kind: 'total', cells: { label: 'Impôt dû', n: pa.tax_due } });
+  }
+  const notes = [
+    `Modèle comptable ${p.model === 'normal' ? 'normal' : 'simplifié'} (CGNC). ${l.status === 'final' ? 'Exercice clôturé : états définitifs.' : 'Exercice non clôturé : états provisoires.'}`,
+    ...l.controls.filter(c => c.level === 'error').map(c => `Contrôle : ${c.message}`),
+  ];
+  return { key: `liasse_${p.table}_${p.year}`, title, period: `Exercice du 01/01/${p.year} au 31/12/${p.year}`, orientation, columns, rows, notes };
+}
+
 /* ─── Rendu PDF ─────────────────────────────────────────────────────── */
 
 const INK = '#2B2B2B', MUTED = '#6B6B6B', RULE = '#C9C9C9', GROUP_BG = '#F1EDE6', TOTAL_BG = '#3B3B3B';
@@ -547,5 +607,5 @@ export async function renderXlsx(e: Edition, ctx: EditionContext): Promise<Buffe
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions' | 'analytique' | 'is' | 'ecarts-conversion';
-export const EDITION_KINDS: EditionKind[] = ['journal', 'grand-livre', 'balance', 'bilan', 'cpc', 'balance-agee', 'immobilisations', 'cessions', 'analytique', 'is', 'ecarts-conversion'];
+export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions' | 'analytique' | 'is' | 'ecarts-conversion' | 'liasse';
+export const EDITION_KINDS: EditionKind[] = ['journal', 'grand-livre', 'balance', 'bilan', 'cpc', 'balance-agee', 'immobilisations', 'cessions', 'analytique', 'is', 'ecarts-conversion', 'liasse'];

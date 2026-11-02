@@ -133,8 +133,8 @@ export const lettrageApi = {
 };
 
 /* ═══ Éditions comptables PDF / Excel ═══ */
-export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions' | 'analytique' | 'is' | 'ecarts-conversion';
-export type EditionParams = { startDate?: string; endDate?: string; journal?: string; account?: string; class?: number; side?: 'suppliers' | 'customers'; axis?: string };
+export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions' | 'analytique' | 'is' | 'ecarts-conversion' | 'liasse';
+export type EditionParams = { startDate?: string; endDate?: string; journal?: string; account?: string; class?: number; side?: 'suppliers' | 'customers'; axis?: string; table?: LiasseTable; model?: LiasseModel };
 export const editionsApi = {
   /** Télécharge l'état ; une erreur (JSON renvoyé en blob) est relue pour son message. */
   async download(kind: EditionKind, format: 'pdf' | 'xlsx', params: EditionParams): Promise<void> {
@@ -528,4 +528,69 @@ export const fxRevaluationApi = {
   book: (year: number, rates: Record<string, number>): Promise<{ reval_entry_number: string; reopen_entry_number: string | null; provision: number }> =>
     api.post(`/ledger/fx-revaluation/${year}/book`, { rates }).then(r => r.data.data),
   cancel: (year: number, reason: string) => api.post(`/ledger/fx-revaluation/${year}/cancel`, { reason }).then(r => r.data.data),
+};
+
+/* ═══ Liasse fiscale (lot Bonus 14) ═══ */
+export type LiasseModel = 'normal' | 'simplifie';
+export type LiasseTable = 'actif' | 'passif' | 'cpc' | 'esg' | 'passage';
+export type LiasseKind = 'line' | 'group' | 'subtotal' | 'total';
+export type LiasseAmountLine = { id: string; label: string; kind: LiasseKind; accounts: string[]; amount: number; previous: number };
+export type LiasseActifLine = { id: string; label: string; kind: LiasseKind; accounts: string[]; gross: number; amort: number; net: number; previous_net: number };
+export type Liasse = {
+  year: number; model: LiasseModel; closing_date: string; suggested_model: LiasseModel;
+  company: { name: string; if?: string; ice?: string; rc?: string; patente?: string; address?: string; city?: string };
+  actif: LiasseActifLine[]; passif: LiasseAmountLine[]; cpc: LiasseAmountLine[]; tfr: LiasseAmountLine[]; caf: LiasseAmountLine[];
+  totals: { actif: number; passif: number; result: number; revenue: number; previous_result: number };
+  passage: {
+    net_result: number; reintegrations: { label: string; amount: number }[]; deductions: { label: string; amount: number }[];
+    taxable_result: number; tax_due: number; cm_amount: number; is_amount: number; rate: number; tax_status: 'draft' | 'booked';
+  };
+  controls: { level: 'error' | 'warning'; message: string }[];
+  status: 'final' | 'provisional'; has_previous: boolean;
+};
+export const liasseApi = {
+  get: (year: number, model: LiasseModel): Promise<Liasse> => api.get(`/ledger/liasse/${year}`, { params: { model } }).then(r => r.data.data),
+};
+
+/* ═══ Télédéclarations EDI (portail SIMPL de la DGI) ═══ */
+export type EdiIssue = { level: 'error' | 'warning'; message: string };
+export type VatDeductionEdi = {
+  period: { year: number; period: number; regime: 1 | 2; start: string; end: string };
+  lines: { ord: number; invoice_id: string; num: string; des: string; mht: number; tva: number; ttc: number; supplier: string;
+    if: string | null; ice: string | null; tx: number; mp: number; payment_mode: string | null; dpai: string | null; dfac: string }[];
+  totals: { ht: number; tva: number; ttc: number }; issues: EdiIssue[]; filename: string;
+};
+export type Ir9421Edi = {
+  year: number; filename: string; issues: EdiIssue[];
+  staff: { name: string; cin: string | null; days: number; brut: number; exonere: number; brutImposable: number; fraisPro: number;
+    cotisations: number; netImposable: number; ir: number; dependents: number; situation: string; rate: string }[];
+  totals: { brut: number; brutImposable: number; netImposable: number; ir: number; deductions: number; versements: number };
+};
+async function downloadBlob(url: string, params: Record<string, unknown>, fallback: string) {
+  let r;
+  try {
+    r = await api.get(url, { params, responseType: 'blob' });
+  } catch (err) {
+    const data = (err as { response?: { data?: Blob } }).response?.data;
+    if (data instanceof Blob) {
+      let message = 'Fichier impossible';
+      try { message = JSON.parse(await data.text())?.error?.message || message; } catch { /* corps non JSON */ }
+      throw new Error(message);
+    }
+    throw err;
+  }
+  const name = /filename="([^"]+)"/.exec(String(r.headers['content-disposition'] ?? ''))?.[1] ?? fallback;
+  const href = URL.createObjectURL(r.data as Blob);
+  const a = document.createElement('a');
+  a.href = href; a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(href); }, 1000);
+}
+export const ediApi = {
+  vatDeductions: (year: number, period: number, regime: 1 | 2): Promise<VatDeductionEdi> =>
+    api.get(`/ledger/edi/tva-deductions/${year}`, { params: { period, regime } }).then(r => r.data.data),
+  downloadVatDeductions: (year: number, period: number, regime: 1 | 2, format: 'zip' | 'xml') =>
+    downloadBlob(`/ledger/edi/tva-deductions/${year}`, { period, regime, format }, `releve_deductions.${format}`),
+  ir9421: (year: number): Promise<Ir9421Edi> => api.get(`/ledger/edi/9421/${year}`).then(r => r.data.data),
+  download9421: (year: number, format: 'zip' | 'xml') => downloadBlob(`/ledger/edi/9421/${year}`, { format }, `etat_9421.${format}`),
 };

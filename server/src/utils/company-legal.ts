@@ -20,6 +20,7 @@ export interface CompanyLegal {
   legalForm?: string;
   capital?: number;
   website?: string;
+  communeCode?: string;   // code commune DGI (mig 433)
 }
 
 const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
@@ -38,6 +39,7 @@ export function companyLegalFromRow(row: Record<string, unknown> | null | undefi
     legalForm: str(row?.legal_form),
     capital: row?.legal_capital !== null && row?.legal_capital !== undefined ? Number(row.legal_capital) : undefined,
     website: str(row?.legal_website),
+    communeCode: str(row?.legal_commune_code),
   };
 }
 

@@ -20,7 +20,7 @@ import {
   ArrowUpRight, ArrowDownRight, Upload, Search, ArrowUp, ArrowDown,
   Check, RotateCcw, Calendar, ListTree, Notebook, BookOpen, FileBarChart, Lock, Building2, Landmark,
   ArrowLeftRight, Ban, Clock, CalendarClock, CheckCircle2, Filter,
-  Target, NotebookPen, Link2, Hourglass, Percent, ArrowRightLeft,
+  Target, NotebookPen, Link2, Hourglass, Percent, ArrowRightLeft, FileStack,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -37,6 +37,7 @@ import LettrageTab from './LettrageTab';
 import AgedBalanceTab from './AgedBalanceTab';
 import CorporateTaxTab from './CorporateTaxTab';
 import FxRevaluationTab from './FxRevaluationTab';
+import LiasseTab from './LiasseTab';
 import GrandLivreTab from './GrandLivreTab';
 import BalanceTab from './BalanceTab';
 import CpcTab from './CpcTab';
@@ -60,7 +61,7 @@ import {
   periodLabel as periodLabelOf, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 
-type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance' | 'is' | 'fx';
+type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance' | 'is' | 'fx' | 'liasse';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -304,6 +305,7 @@ const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[]
   { key: 'cpc', label: 'CPC', icon: FileBarChart, section: 'reports', adminOnly: true },
   { key: 'bilan', label: 'Bilan', icon: Scale, section: 'reports', adminOnly: true },
   { key: 'tva', label: 'TVA', icon: Receipt, section: 'reports', adminOnly: true },
+  { key: 'liasse', label: 'Liasse fiscale', icon: FileStack, section: 'reports', adminOnly: true },
   { key: 'budget', label: 'Budget', icon: Target, section: 'reports', adminOnly: true },
   { key: 'cashflow', label: 'Flux de trésorerie', icon: ArrowLeftRight, section: 'reports', adminOnly: true },
   { key: 'costcenters', label: 'Analytique', icon: Target, section: 'reports', adminOnly: true },
@@ -349,6 +351,7 @@ export default function AccountingPage() {
       {tab === 'banque' && <BanqueTab />}
       {tab === 'is' && <CorporateTaxTab />}
       {tab === 'fx' && <FxRevaluationTab />}
+      {tab === 'liasse' && <LiasseTab />}
       {tab === 'cloture' && <ClotureTab />}
       {tab === 'cca' && <PrepaidChargesTab />}
       {tab === 'cashflow' && <CashFlowTab />}

@@ -45,7 +45,7 @@ export interface CompanySettings {
   legalPhone?: string; legalEmail?: string; legalRc?: string;
   legalIf?: string; legalIce?: string; legalPatente?: string;
   // Fiche societe (mig 331) ; CNSS employeur lu dans les parametres de paie (lecture seule ici).
-  legalForm?: string; legalCapital?: number | null; legalWebsite?: string;
+  legalForm?: string; legalCapital?: number | null; legalWebsite?: string; legalCommuneCode?: string;
   employerCnssNumber?: string | null;
 }
 

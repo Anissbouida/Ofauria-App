@@ -124,7 +124,7 @@ describe.skipIf(!hasTestDb)('Multidevise — ventes et réévaluation de clôtur
 
     await expect(fx.book(2022, { XTS: 11 }, actor)).rejects.toThrow(/déjà comptabilisée/);
     const entryId = (await testPool().query(`SELECT id FROM journal_entries WHERE entry_number = $1`, [b.reval_entry_number])).rows[0].id;
-    await expect(manual.reverse(entryId, { reason: 'test' }, actor)).rejects.toThrow(/réévaluation des devises/);
+    await expect(manual.reverse(entryId, { reason: 'test' }, { ...actor, storeId: null })).rejects.toThrow(/réévaluation des devises/);
   });
 
   it('encaissement client en devise : gain de change réalisé', async () => {
