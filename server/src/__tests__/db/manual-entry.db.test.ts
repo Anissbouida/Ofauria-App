@@ -20,8 +20,11 @@ describe.skipIf(!hasTestDb)('Saisie libre d\'écritures', () => {
   const day = new Date().toISOString().slice(0, 10);
   const year = Number(day.slice(0, 4));
 
+  // Journal propre au test : les autres suites passent des OD en parallèle et
+  // fausseraient le contrôle de la numérotation continue.
+  const JR = 'TSL';
   const base = (over: Partial<Parameters<typeof manual.createDraft>[0]> = {}) => ({
-    journalCode: 'OD', date: day, description: `OD test ${RUN}`, pieceRef: `PIECE-${RUN}`, pieceDate: day,
+    journalCode: JR, date: day, description: `OD test ${RUN}`, pieceRef: `PIECE-${RUN}`, pieceDate: day,
     lines: [
       { accountId: acc['6181'], debit: 80, credit: 0, label: 'Charge' },
       { accountId: acc['5161'], debit: 0, credit: 80, label: 'Caisse' },
@@ -29,13 +32,14 @@ describe.skipIf(!hasTestDb)('Saisie libre d\'écritures', () => {
     ...over,
   });
   const odSeq = async () => Number((await testPool().query(
-    `SELECT COALESCE(max(current_seq), 0) AS n FROM journal_sequences s JOIN journals j ON j.id = s.journal_id WHERE j.code = 'OD' AND s.year = $1`,
-    [year])).rows[0].n);
+    `SELECT COALESCE(max(current_seq), 0) AS n FROM journal_sequences s JOIN journals j ON j.id = s.journal_id WHERE j.code = $2 AND s.year = $1`,
+    [year, JR])).rows[0].n);
 
   beforeAll(async () => {
     repos = await importRepositories();
     manual = (await import('../../repositories/manual-entry.repository.js')).manualEntryRepository;
     const p = testPool();
+    await p.query(`INSERT INTO journals (code, label, kind) VALUES ($1, 'Saisie libre (tests)', 'misc') ON CONFLICT (code) DO NOTHING`, [JR]);
     const admin = (await p.query(`SELECT id, store_id FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1`)).rows[0];
     actor = { userId: admin.id, storeId: admin.store_id ?? null };
     for (const r of (await p.query(`SELECT id, code FROM accounts WHERE code IN ('6181', '5161', '4411')`)).rows) acc[r.code] = r.id;
@@ -60,7 +64,7 @@ describe.skipIf(!hasTestDb)('Saisie libre d\'écritures', () => {
       { accountId: acc['5161'], debit: 0, credit: 95.5 },
     ] }), actor);
     const posted = await manual.post(id, actor);
-    expect(posted.entry_number).toMatch(new RegExp(`^OD-${year}-\\d{5}$`));
+    expect(posted.entry_number).toMatch(new RegExp(`^${JR}-${year}-\\d{5}$`));
     e = (await testPool().query(
       `SELECT status, description, piece_ref, posted_by, (SELECT sum(debit) FROM journal_entry_lines WHERE journal_entry_id = $1) AS total
          FROM journal_entries WHERE id = $1`, [id])).rows[0];
@@ -94,13 +98,13 @@ describe.skipIf(!hasTestDb)('Saisie libre d\'écritures', () => {
       { accountId: acc['6181'], debit: 50, credit: 0 },
       { accountId: acc['4411'], auxiliaryId: aux4411, debit: 0, credit: 50 },
     ] }), actor);
-    expect(ok.entry_number).toMatch(/^OD-/);
+    expect(ok.entry_number).toMatch(new RegExp(`^${JR}-`));
   });
 
   it('extourne une écriture manuelle avec motif, refuse celle née d\'une pièce', async () => {
     const { id, entry_number } = await manual.createAndPost(base(), actor);
     const r = await manual.reverse(id, { reason: `Erreur d'imputation ${RUN}` }, actor);
-    expect(r.reversal_number).toMatch(/^OD-/);
+    expect(r.reversal_number).toMatch(new RegExp(`^${JR}-`));
     const rows = (await testPool().query(
       `SELECT o.status, x.posted_by, x.description FROM journal_entries o JOIN journal_entries x ON x.id = o.reversed_by_entry_id WHERE o.id = $1`, [id])).rows[0];
     expect(rows.status).toBe('reversed');

@@ -20,6 +20,7 @@ import { financialStatementsRepository, balanceSheetRepository } from '../reposi
 import { agedBalanceRepository, AGED_BUCKETS, type AgedSide } from '../repositories/aged-balance.repository.js';
 import { fixedAssetDisposal } from './depreciation.service.js';
 import { analyticRepository } from '../repositories/analytic.repository.js';
+import { corporateTaxRepository } from '../repositories/corporate-tax.repository.js';
 
 /* ─── Modèle ────────────────────────────────────────────────────────── */
 
@@ -329,6 +330,35 @@ export async function buildAnalytique(p: { axisId: string; startDate: string; en
   };
 }
 
+/** Fiche de calcul de l'IS d'un exercice : résultat fiscal, IS, CM, acomptes, solde. */
+export async function buildIs(p: { year: number }): Promise<Edition> {
+  const s = await corporateTaxRepository.summary(p.year);
+  const rows: EditionRow[] = [];
+  const line = (label: string, amount: number | null, kind: EditionRowKind = 'line') => rows.push({ kind, cells: { label, amount } });
+  rows.push({ kind: 'group', cells: { label: 'Résultat fiscal' } });
+  line('Résultat comptable avant impôt', s.accounting_result);
+  for (const a of s.adjustments) line(`${a.kind === 'reintegration' ? 'Réintégration' : 'Déduction'} : ${a.label}`, a.kind === 'reintegration' ? a.amount : -a.amount);
+  line('Résultat fiscal', s.taxable_result, 'subtotal');
+  rows.push({ kind: 'group', cells: { label: 'Impôt' } });
+  line(`IS au taux de ${s.rate} %`, s.is_amount);
+  line(`Base de la cotisation minimale${s.params.cm_base_override != null ? ' (saisie)' : ''}`, s.cm_base);
+  line(s.params.cm_exempt ? 'Cotisation minimale (exonérée)' : `Cotisation minimale (${String(s.params.cm_rate).replace(".", ",")} %, minimum ${fmtAmount(s.params.cm_minimum)})`, s.cm_amount);
+  line(s.cm_applies ? 'IS dû (cotisation minimale)' : 'IS dû', s.tax_due, 'subtotal');
+  rows.push({ kind: 'group', cells: { label: 'Acomptes et solde' } });
+  if (s.prior_credit) line('Crédit d\'acomptes de l\'exercice précédent', s.prior_credit);
+  for (const pay of s.payments.filter(x => x.kind === 'acompte')) line(`Acompte n° ${pay.quarter} versé le ${fmtDate(pay.paid_on)} (${pay.entry_number})`, pay.amount);
+  line('Acomptes imputés', s.imputed, 'subtotal');
+  for (const pay of s.payments.filter(x => x.kind === 'solde')) line(`Solde versé le ${fmtDate(pay.paid_on)} (${pay.entry_number})`, pay.amount);
+  line(s.balance_due > 0 ? `Reste à payer avant le ${fmtDate(s.solde_deadline)}` : 'Reste à payer', s.balance_due, 'total');
+  if (s.credit_after) line('Crédit d\'acomptes à imputer sur l\'exercice suivant', s.credit_after, 'total');
+  return {
+    key: `is_${p.year}`, title: `Impôt sur les sociétés ${p.year}`, period: `Exercice ${p.year}`, orientation: 'portrait',
+    columns: [{ key: 'label', label: 'Élément', width: 72 }, { key: 'amount', label: 'Montant (DH)', width: 28, align: 'right', amount: true }],
+    rows,
+    notes: [s.status === 'booked' ? `Charge d'IS comptabilisée (${s.charge_entry_number}) : calcul figé.` : 'Calcul provisoire : la charge d\'IS n\'est pas encore comptabilisée.'],
+  };
+}
+
 /* ─── Rendu PDF ─────────────────────────────────────────────────────── */
 
 const INK = '#2B2B2B', MUTED = '#6B6B6B', RULE = '#C9C9C9', GROUP_BG = '#F1EDE6', TOTAL_BG = '#3B3B3B';
@@ -474,5 +504,5 @@ export async function renderXlsx(e: Edition, ctx: EditionContext): Promise<Buffe
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions' | 'analytique';
-export const EDITION_KINDS: EditionKind[] = ['journal', 'grand-livre', 'balance', 'bilan', 'cpc', 'balance-agee', 'immobilisations', 'cessions', 'analytique'];
+export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions' | 'analytique' | 'is';
+export const EDITION_KINDS: EditionKind[] = ['journal', 'grand-livre', 'balance', 'bilan', 'cpc', 'balance-agee', 'immobilisations', 'cessions', 'analytique', 'is'];

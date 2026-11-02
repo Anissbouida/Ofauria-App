@@ -133,7 +133,7 @@ export const lettrageApi = {
 };
 
 /* ═══ Éditions comptables PDF / Excel ═══ */
-export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions' | 'analytique';
+export type EditionKind = 'journal' | 'grand-livre' | 'balance' | 'bilan' | 'cpc' | 'balance-agee' | 'immobilisations' | 'cessions' | 'analytique' | 'is';
 export type EditionParams = { startDate?: string; endDate?: string; journal?: string; account?: string; class?: number; side?: 'suppliers' | 'customers'; axis?: string };
 export const editionsApi = {
   /** Télécharge l'état ; une erreur (JSON renvoyé en blob) est relue pour son message. */
@@ -471,4 +471,37 @@ export interface TvaDeclaration {
 export const tvaDeclarationApi = {
   declaration: (startDate: string, endDate: string): Promise<TvaDeclaration> =>
     api.get('/ledger/tva-declaration', { params: { startDate, endDate } }).then(r => r.data.data),
+};
+
+/* ═══ Impôt sur les sociétés (mig 430) ═══ */
+export interface TaxParams {
+  regime: 'standard' | 'credit'; rate_standard: number; rate_high: number; high_threshold: number; rate_credit: number;
+  cm_rate: number; cm_minimum: number; cm_exempt: boolean; cm_base_override: number | null;
+}
+export interface TaxPayment { id: string; kind: 'acompte' | 'solde'; quarter: number | null; amount: number; paid_on: string; treasury: string; reference: string | null; entry_number: string }
+export interface CorporateTax {
+  year: number; params: TaxParams; status: 'draft' | 'booked'; booked_at: string | null; charge_entry_number: string | null;
+  accounting_result: number; produits: number; charges: number;
+  adjustments: { id: string; kind: 'reintegration' | 'deduction'; label: string; amount: number }[];
+  reintegrations: number; deductions: number; taxable_result: number;
+  cm_lines: { code: string; label: string; amount: number }[]; cm_base_computed: number; cm_base: number;
+  rate: number; is_amount: number; cm_amount: number; tax_due: number; cm_applies: boolean;
+  basis: { source: 'previous' | 'none'; tax: number | null; taxable: number | null; cm: number | null };
+  prior_credit: number;
+  schedule: { quarter: number; due_date: string; theoretical: number | null; credit_used: number; to_pay: number | null; payment: TaxPayment | null }[];
+  payments: TaxPayment[]; acomptes_paid: number; available: number; imputed: number;
+  balance_due: number; credit_after: number; solde_paid: number; solde_deadline: string; net_result: number;
+}
+export const corporateTaxApi = {
+  get: (year: number): Promise<CorporateTax> => api.get(`/ledger/corporate-tax/${year}`).then(r => r.data.data),
+  setParams: (year: number, p: Partial<TaxParams>) => api.put(`/ledger/corporate-tax/${year}/params`, p).then(r => r.data.data),
+  addAdjustment: (year: number, b: { kind: 'reintegration' | 'deduction'; label: string; amount: number }) =>
+    api.post(`/ledger/corporate-tax/${year}/adjustments`, b).then(r => r.data.data),
+  removeAdjustment: (id: string) => api.delete(`/ledger/corporate-tax/adjustments/${id}`).then(r => r.data.data),
+  pay: (year: number, b: { kind: 'acompte' | 'solde'; quarter?: number; amount: number; date: string; treasury: 'bank' | 'cash'; reference?: string }): Promise<{ entry_number: string }> =>
+    api.post(`/ledger/corporate-tax/${year}/payments`, b).then(r => r.data.data),
+  cancelPayment: (id: string, reason: string) => api.post(`/ledger/corporate-tax/payments/${id}/cancel`, { reason }).then(r => r.data.data),
+  book: (year: number): Promise<{ entry_number: string; tax_due: number; imputed: number; balance_due: number }> =>
+    api.post(`/ledger/corporate-tax/${year}/book`).then(r => r.data.data),
+  unbook: (year: number, reason: string) => api.post(`/ledger/corporate-tax/${year}/unbook`, { reason }).then(r => r.data.data),
 };

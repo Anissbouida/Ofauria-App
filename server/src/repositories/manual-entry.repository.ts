@@ -198,6 +198,10 @@ export const manualEntryRepository = {
       if (e.source_detail === 'cession' || String(e.source_detail ?? '').startsWith('depr:')) {
         throw fail(`Écriture ${e.entry_number} d'immobilisation : annulez-la depuis Comptabilité › Immobilisations`, 409);
       }
+      // IS (mig 430) : acomptes, charge et solde s'annulent depuis l'écran IS.
+      if (String(e.source_detail ?? '').startsWith('is:')) {
+        throw fail(`Écriture ${e.entry_number} d'impôt sur les sociétés : annulez-la depuis Comptabilité › Impôt sur les sociétés`, 409);
+      }
       await extourneEntryById(c, id, p.date || undefined, { userId: actor.userId, reason: p.reason.trim() });
       const rev = (await c.query(
         `SELECT r.id, r.entry_number FROM journal_entries o JOIN journal_entries r ON r.id = o.reversed_by_entry_id WHERE o.id = $1`, [id])).rows[0];

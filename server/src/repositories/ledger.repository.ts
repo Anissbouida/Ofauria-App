@@ -1,3 +1,4 @@
+import type { QueryResult } from 'pg';
 import { db } from '../config/database.js';
 
 /* ═══ Plan comptable CGNC ═══ */
@@ -435,8 +436,10 @@ export const journalEntryRepository = {
  * Les à-nouveaux (source_kind 'opening') entrent dans les soldes d'ouverture,
  * jamais dans les mouvements d'une période.
  */
-async function windowStarts(date: string): Promise<{ bilan: string; gestion: string }> {
-  const r = await db.query(
+/** Requêteur minimal : le pool (db) ou un client de transaction. */
+type Querier = { query: (text: string, params?: unknown[]) => Promise<QueryResult> };
+async function windowStarts(date: string, c: Querier = db): Promise<{ bilan: string; gestion: string }> {
+  const r = await c.query(
     `SELECT fn_ledger_window_start($1::date, 1)::text AS bilan, fn_ledger_window_start($1::date, 6)::text AS gestion`,
     [date]);
   return r.rows[0];
@@ -936,9 +939,28 @@ export const balanceSheetRepository = {
    *            (classe 4), tresorerie-passif (classe 5 a solde crediteur).
    */
   async balanceSheet(params: { endDate: string; storeId?: string }) {
+    // Soldes et résultat lus dans un même instantané (REPEATABLE READ) : une
+    // écriture passée entre les deux requêtes déséquilibrerait actif et passif.
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      const out = await balanceSheetIn(client, params);
+      await client.query('COMMIT');
+      return out;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+};
+
+async function balanceSheetIn(db: Querier, params: { endDate: string; storeId?: string }) {
+  {
     // Fenêtre de cumul (mig 416) : bilan depuis les derniers à-nouveaux,
     // résultat depuis le début de l'exercice de endDate.
-    const w = await windowStarts(params.endDate);
+    const w = await windowStarts(params.endDate, db);
     const accValues: unknown[] = [params.endDate, w.bilan];
     const resValues: unknown[] = [params.endDate, w.bilan, w.gestion];
     if (params.storeId) { accValues.push(params.storeId); resValues.push(params.storeId); }
@@ -1040,8 +1062,8 @@ export const balanceSheetRepository = {
       },
       ecart: Math.round((totalActif - totalPassif) * 100) / 100,
     };
-  },
-};
+  }
+}
 
 /* ═══ Mig 311 (D8) : réceptions à facturer, relevé des déductions, paramétrage ═══ */
 export const purchaseLedgerRepository = {

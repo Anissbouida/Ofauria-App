@@ -20,7 +20,7 @@ import {
   ArrowUpRight, ArrowDownRight, Upload, Search, ArrowUp, ArrowDown,
   Check, RotateCcw, Calendar, ListTree, Notebook, BookOpen, FileBarChart, Lock, Building2, Landmark,
   ArrowLeftRight, Ban, Clock, CalendarClock, CheckCircle2, Filter,
-  Target, NotebookPen, Link2, Hourglass,
+  Target, NotebookPen, Link2, Hourglass, Percent,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -35,6 +35,7 @@ import JournalTemplatesTab from './JournalTemplatesTab';
 import EcrituresTab from './EcrituresTab';
 import LettrageTab from './LettrageTab';
 import AgedBalanceTab from './AgedBalanceTab';
+import CorporateTaxTab from './CorporateTaxTab';
 import GrandLivreTab from './GrandLivreTab';
 import BalanceTab from './BalanceTab';
 import CpcTab from './CpcTab';
@@ -58,7 +59,7 @@ import {
   periodLabel as periodLabelOf, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 
-type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance';
+type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance' | 'is';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -290,6 +291,7 @@ const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[]
   { key: 'lettrage', label: 'Lettrage', icon: Link2, section: 'operations', adminOnly: true },
   { key: 'immobilisations', label: 'Immobilisations', icon: Building2, section: 'operations', adminOnly: true },
   { key: 'ras', label: 'Retenues source', icon: Scale, section: 'operations', adminOnly: true },
+  { key: 'is', label: 'Impôt sur les sociétés', icon: Percent, section: 'operations', adminOnly: true },
   { key: 'cloture', label: 'Clôture', icon: Lock, section: 'operations', adminOnly: true },
   // ─── Rapports ───
   { key: 'resume', label: 'Résumé', icon: BarChart3, section: 'reports' },
@@ -343,6 +345,7 @@ export default function AccountingPage() {
       {tab === 'ras' && <RetenuesSourceTab />}
       {tab === 'immobilisations' && <ImmobilisationsTab />}
       {tab === 'banque' && <BanqueTab />}
+      {tab === 'is' && <CorporateTaxTab />}
       {tab === 'cloture' && <ClotureTab />}
       {tab === 'cca' && <PrepaidChargesTab />}
       {tab === 'cashflow' && <CashFlowTab />}

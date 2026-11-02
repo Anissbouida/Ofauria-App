@@ -467,7 +467,9 @@ export const fixedAssetDisposal = {
       const a = await lockAsset(c, id);
       if (a.status === 'disposed') throw fail('Immobilisation déjà sortie', 409);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw fail('Date de sortie invalide');
-      const period = (await c.query(`SELECT status FROM fiscal_periods WHERE id = fn_ensure_fiscal_period($1::date)`, [input.date])).rows[0];
+      // Deux requêtes : la période créée par fn_ensure_fiscal_period n'est pas visible du SELECT qui l'appelle.
+      const periodId = (await c.query(`SELECT fn_ensure_fiscal_period($1::date) AS id`, [input.date])).rows[0].id;
+      const period = (await c.query(`SELECT status FROM fiscal_periods WHERE id = $1`, [periodId])).rows[0];
       if (period.status !== 'open') throw fail('Période de la date de sortie fermée : choisissez une date dans une période ouverte', 409);
       const sale = input.kind === 'sale';
       const price = sale ? round2(input.price ?? 0) : 0;

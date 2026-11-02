@@ -9,9 +9,10 @@ import { manualEntryRepository } from '../repositories/manual-entry.repository.j
 import { lettrageRepository } from '../repositories/lettrage.repository.js';
 import { agedBalanceRepository } from '../repositories/aged-balance.repository.js';
 import { chartOfAccountsRepository } from '../repositories/chart-of-accounts.repository.js';
+import { corporateTaxRepository } from '../repositories/corporate-tax.repository.js';
 import {
   EDITION_KINDS, type EditionKind, editionContext, renderPdf, renderXlsx,
-  buildJournal, buildGrandLivre, buildBalance, buildBilan, buildCpc, buildBalanceAgee, buildImmobilisations, buildCessions, buildAnalytique,
+  buildJournal, buildGrandLivre, buildBalance, buildBilan, buildCpc, buildBalanceAgee, buildImmobilisations, buildCessions, buildAnalytique, buildIs,
 } from '../services/ledger-editions.service.js';
 import {
   planComptableController,
@@ -148,6 +149,7 @@ ledgerRouter.get('/editions/:kind', authenticate, authorize(...ROLE_GROUPS.ADMIN
     : kind === 'cpc' ? await buildCpc({ startDate: start, endDate: end, storeId })
     : kind === 'immobilisations' ? await buildImmobilisations({ year: Number(end.slice(0, 4)), storeId })
     : kind === 'cessions' ? await buildCessions({ year: Number(end.slice(0, 4)), storeId })
+    : kind === 'is' ? await buildIs({ year: Number(end.slice(0, 4)) })
     : kind === 'analytique' ? (q.axis ? await buildAnalytique({ axisId: q.axis, startDate: start, endDate: end, storeId }) : null)
     : await buildBalanceAgee({ side: q.side, asOf: end });
   if (!edition) { tplBad(res, 'Axe analytique requis'); return; }
@@ -157,6 +159,64 @@ ledgerRouter.get('/editions/:kind', authenticate, authorize(...ROLE_GROUPS.ADMIN
     ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${edition.key}.${q.format}"`);
   res.send(buf);
+}));
+
+// Impôt sur les sociétés (mig 430) : calcul libre, versements et comptabilisation avec le droit « post ».
+const taxYear = (req: AuthRequest, res: Response): number | null => {
+  const y = Number(req.params.year);
+  if (!Number.isInteger(y) || y < 2000 || y > 2100) { res.status(400).json({ success: false, error: { message: 'Exercice invalide' } }); return null; }
+  return y;
+};
+const taxActor = (req: AuthRequest) => ({ userId: req.user!.userId });
+const TAX_AM = [authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)];
+ledgerRouter.get('/corporate-tax/:year', ...TAX_AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = taxYear(req, res); if (y === null) return;
+  res.json({ success: true, data: await corporateTaxRepository.summary(y) });
+}));
+ledgerRouter.put('/corporate-tax/:year/params', ...TAX_AM, requireVerb('accounting', 'post'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = taxYear(req, res); if (y === null) return;
+  const r = z.object({
+    regime: z.enum(['standard', 'credit']).optional(),
+    rate_standard: z.coerce.number().min(0).max(60).optional(), rate_high: z.coerce.number().min(0).max(60).optional(),
+    high_threshold: z.coerce.number().min(0).optional(), rate_credit: z.coerce.number().min(0).max(60).optional(),
+    cm_rate: z.coerce.number().min(0).max(5).optional(), cm_minimum: z.coerce.number().min(0).optional(),
+    cm_exempt: z.boolean().optional(), cm_base_override: z.coerce.number().min(0).nullable().optional(),
+  }).safeParse(req.body);
+  if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
+  res.json({ success: true, data: await corporateTaxRepository.setParams(y, r.data, taxActor(req)) });
+}));
+ledgerRouter.post('/corporate-tax/:year/adjustments', ...TAX_AM, requireVerb('accounting', 'post'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = taxYear(req, res); if (y === null) return;
+  const r = z.object({ kind: z.enum(['reintegration', 'deduction']), label: z.string().trim().min(2).max(200), amount: z.coerce.number().positive() }).safeParse(req.body);
+  if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
+  res.status(201).json({ success: true, data: await corporateTaxRepository.addAdjustment(y, r.data, taxActor(req)) });
+}));
+ledgerRouter.delete('/corporate-tax/adjustments/:id', ...TAX_AM, requireVerb('accounting', 'post'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await corporateTaxRepository.removeAdjustment(req.params.id, taxActor(req)) });
+}));
+ledgerRouter.post('/corporate-tax/:year/payments', ...TAX_AM, requireVerb('accounting', 'post'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = taxYear(req, res); if (y === null) return;
+  const r = z.object({
+    kind: z.enum(['acompte', 'solde']), quarter: z.coerce.number().int().min(1).max(4).nullish(), amount: z.coerce.number().positive(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), treasury: z.enum(['bank', 'cash']), reference: z.string().trim().max(60).nullish(),
+  }).safeParse(req.body);
+  if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
+  res.status(201).json({ success: true, data: await corporateTaxRepository.pay(y, r.data, taxActor(req)) });
+}));
+ledgerRouter.post('/corporate-tax/payments/:id/cancel', ...TAX_AM, requireVerb('accounting', 'post'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({ reason: z.string().trim().min(3).max(500) }).safeParse(req.body);
+  if (!r.success) { tplBad(res, 'Motif obligatoire (3 caractères au moins)'); return; }
+  res.json({ success: true, data: await corporateTaxRepository.cancelPayment(req.params.id, r.data.reason, taxActor(req)) });
+}));
+ledgerRouter.post('/corporate-tax/:year/book', ...TAX_AM, requireVerb('accounting', 'post'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = taxYear(req, res); if (y === null) return;
+  res.json({ success: true, data: await corporateTaxRepository.book(y, taxActor(req)) });
+}));
+ledgerRouter.post('/corporate-tax/:year/unbook', ...TAX_AM, requireVerb('accounting', 'post'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = taxYear(req, res); if (y === null) return;
+  const r = z.object({ reason: z.string().trim().min(3).max(500) }).safeParse(req.body);
+  if (!r.success) { tplBad(res, 'Motif obligatoire (3 caractères au moins)'); return; }
+  res.json({ success: true, data: await corporateTaxRepository.unbook(y, r.data.reason, taxActor(req)) });
 }));
 
 // Balance âgée comptable : lignes non lettrées des comptes de tiers, par échéance.

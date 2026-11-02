@@ -21,11 +21,14 @@ describe.skipIf(!hasTestDb)('Éditions comptables', () => {
     await closeTestPool();
   });
 
-  it('balance : mouvements et soldes débit = crédit', async () => {
+  it('balance : mouvements équilibrés, soldes = ouvertures + mouvements', async () => {
     const t = total(await E.buildBalance({ startDate: start, endDate: end }));
+    const r = (v: unknown) => Math.round(Number(v) * 100);
     expect(t.md).toBe(t.mc);
-    expect(t.cd).toBe(t.cc);
     expect(Number(t.md)).toBeGreaterThan(0);
+    // Les ouvertures ne s'équilibrent que si les exercices antérieurs sont clôturés
+    // (à-nouveaux) ; l'identité, elle, tient toujours.
+    expect(r(t.cd) - r(t.cc)).toBe(r(t.od) - r(t.oc) + r(t.md) - r(t.mc));
   });
 
   it('livre-journal : total débit = total crédit, une ligne de titre par écriture', async () => {
@@ -36,12 +39,12 @@ describe.skipIf(!hasTestDb)('Éditions comptables', () => {
     expect(String(t.label)).toContain(`(${groups} écriture(s))`);
   });
 
-  it('bilan : total actif = total passif, comme le repository', async () => {
+  it('bilan : total actif = total passif', async () => {
+    // Un seul calcul (les suites parallèles écrivent dans l'exercice) : l'état s'équilibre lui-même.
     const b = await E.buildBilan({ endDate: end });
-    const totals = b.rows.filter(r => r.kind === 'total').map(r => r.cells.amount);
-    const { balanceSheetRepository } = await import('../../repositories/ledger.repository.js');
-    const sheet = await balanceSheetRepository.balanceSheet({ endDate: end });
-    expect(totals).toEqual([sheet.actif.total, sheet.passif.total]);
+    const [actif, passif] = b.rows.filter(r => r.kind === 'total').map(r => Number(r.cells.amount));
+    expect(actif).toBe(passif);
+    expect(b.notes).toBeUndefined();          // pas d'écart signalé
   });
 
   it('rend chaque état en PDF et en Excel', async () => {

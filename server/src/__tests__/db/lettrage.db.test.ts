@@ -129,7 +129,9 @@ describe.skipIf(!hasTestDb)('Lettrage manuel', () => {
 
   it('lettre automatiquement une facture reprise avec ses règlements, pas une facture partiellement payée', async () => {
     const p = testPool();
-    const supplier = (await p.query(`SELECT supplier_id FROM account_auxiliaries WHERE id = $1`, [auxA])).rows[0].supplier_id;
+    // Fournisseur propre au test : d'autres suites créent factures et règlements en parallèle.
+    const supplier = (await p.query(`INSERT INTO suppliers (name) VALUES ($1) RETURNING id`, [`Fournisseur lettrage ${RUN}`])).rows[0].id;
+    const auxS = (await p.query(`SELECT id FROM account_auxiliaries WHERE supplier_id = $1`, [supplier])).rows[0].id;
     // Pièces et écritures « backfill » : la reprise d'historique ne lettrait pas.
     const invoice = async (n: string, total: number, paid: number[]) => {
       const inv = (await p.query(
@@ -143,7 +145,7 @@ describe.skipIf(!hasTestDb)('Lettrage manuel', () => {
         await p.query(
           `INSERT INTO journal_entry_lines (journal_entry_id, line_order, account_id, auxiliary_id, debit, credit)
            VALUES ($1, 1, $2, $3, $4, $5), ($1, 2, $6, NULL, $5, $4)`,
-          [e, acc['4411'], auxA, tiers === 'debit' ? amount : 0, tiers === 'credit' ? amount : 0, other]);
+          [e, acc['4411'], auxS, tiers === 'debit' ? amount : 0, tiers === 'credit' ? amount : 0, other]);
         await p.query(`UPDATE journal_entries SET status = 'posted', posted_at = now(), posted_by = $2 WHERE id = $1`, [e, actor.userId]);
       };
       await entry(inv, 'credit', total, acc['6181']);
@@ -164,7 +166,7 @@ describe.skipIf(!hasTestDb)('Lettrage manuel', () => {
         WHERE jel.account_id = $2 AND (je.source_id = $1 OR je.source_id IN (SELECT id FROM payments WHERE invoice_id = $1))`,
       [inv, acc['4411']])).rows.map((r: { lettrage_id: string | null }) => r.lettrage_id);
 
-    const scope = { accountId: acc['4411'], auxiliaryId: auxA };
+    const scope = { accountId: acc['4411'], auxiliaryId: auxS };
     expect(await lettrage.autoLetter({ ...scope, dryRun: true }, actor)).toEqual({ invoices: 1, lines: 3 });
     expect(await linesOf(soldee)).toEqual([null, null, null]);              // l'aperçu ne lettre rien
     expect(await lettrage.autoLetter(scope, actor)).toEqual({ invoices: 1, lines: 3 });
