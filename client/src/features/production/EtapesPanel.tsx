@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionEtapesApi } from '../../api/production-etapes.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { apiErrorMessage } from '../../api/errors';
 import { useProductionTimers } from '../../context/ProductionTimerContext';
 import {
   CheckCircle, Play, Clock, SkipForward, ListChecks, Timer,
@@ -126,6 +127,8 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
       queryClient.invalidateQueries({ queryKey: ['production-etapes', planId] });
       queryClient.invalidateQueries({ queryKey: ['production-etapes-progress', planId] });
     },
+    // Surfacer le refus de clôture CCP sans relevé (épic labo L2).
+    onError: (err) => notify.error(apiErrorMessage(err, "Impossible de mettre à jour l'étape.")),
   });
 
   const timerMutation = useMutation({

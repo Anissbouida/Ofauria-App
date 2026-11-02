@@ -96,6 +96,26 @@ export const productLotRepository = {
       lotNumber?: string | null;
     }
   ): Promise<ProductLot> {
+    // Garde HACCP (épic labo L2, mig 423) : pas de lot produit tant qu'une action
+    // corrective d'origine « procédé » (relevé CCP hors tolérance) reste ouverte
+    // sur une étape de l'article. La mise en lot = preuve de conformité.
+    if (data.planItemId) {
+      const block = await client.query(
+        `SELECT ca.problem
+           FROM haccp_corrective_actions ca
+           JOIN production_item_etapes pie ON pie.id = ca.source_id
+          WHERE ca.source_kind = 'process' AND ca.status <> 'validated'
+            AND pie.plan_item_id = $1
+          LIMIT 1`,
+        [data.planItemId]
+      );
+      if (block.rows[0]) {
+        throw Object.assign(
+          new Error(`Mise en lot bloquée : une action corrective de procédé reste à valider (${block.rows[0].problem}).`),
+          { statusCode: 409 }
+        );
+      }
+    }
     const producedAt = data.producedAt ?? new Date();
     const tz = getUserTimezone();
     // Toute fournee a une DLC : shelf_life_days du produit, sinon jour meme

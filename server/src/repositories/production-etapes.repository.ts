@@ -20,6 +20,20 @@ type ReadingInput = {
   note?: string | null;
 };
 
+// Types d'étape considérés comme points critiques (CCP) : une telle étape ne se
+// clôture pas sans au moins un relevé (mig 422/423, épic labo L2).
+export const CCP_STEP_TYPES = ['cuisson', 'refroidissement'];
+
+// Libellés + unité des paramètres mesurés, pour le texte de l'action corrective.
+const PARAM_META: Record<string, { label: string; unit: string }> = {
+  temp_pate: { label: 'Température pâte', unit: '°C' },
+  temp_four: { label: 'Température four', unit: '°C' },
+  duree_cuisson: { label: 'Durée cuisson', unit: 'min' },
+  temp_coeur: { label: 'Température à cœur', unit: '°C' },
+  humidite: { label: 'Humidité', unit: '%' },
+  poids: { label: 'Poids', unit: 'kg' },
+};
+
 export const productionEtapesRepository = {
 
   // ─── Relevé de procédé mesuré sur une étape (mig 422) ───
@@ -39,7 +53,39 @@ export const productionEtapesRepository = {
       [etapeId, data.parametre, consigne, tolerance, data.mesure, conforme,
        data.est_ccp ?? false, data.note ?? null, userId]
     );
+    // Relevé hors tolérance → action corrective HACCP (source 'process', mig 423),
+    // qui bloquera la mise en lot produit tant qu'elle n'est pas validée.
+    if (conforme === false) {
+      const ctx = await db.query(
+        `SELECT pp.store_id, pie.nom AS etape_nom
+           FROM production_item_etapes pie
+           JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
+           JOIN production_plans pp ON pp.id = ppi.plan_id
+          WHERE pie.id = $1`,
+        [etapeId]
+      );
+      const meta = PARAM_META[data.parametre] || { label: data.parametre, unit: '' };
+      const problem = `Relevé de procédé hors tolérance — étape « ${ctx.rows[0]?.etape_nom ?? '?'} » : `
+        + `${meta.label} mesuré ${data.mesure} ${meta.unit}, cible ${consigne} ± ${tolerance} ${meta.unit}.`;
+      await db.query(
+        `INSERT INTO haccp_corrective_actions (store_id, source_kind, source_id, problem, created_by)
+         VALUES ($1, 'process', $2, $3, $4)`,
+        [ctx.rows[0]?.store_id ?? null, etapeId, problem, userId]
+      );
+    }
     return r.rows[0];
+  },
+
+  // Une étape de type CCP (cuisson / refroidissement) exige au moins un relevé
+  // avant d'être clôturée (mig 422). Renvoie { type_etape, readings } pour la garde.
+  async ccpGate(etapeId: string) {
+    const r = await db.query(
+      `SELECT pie.type_etape,
+              (SELECT COUNT(*)::int FROM production_step_readings sr WHERE sr.etape_id = pie.id) AS readings
+         FROM production_item_etapes pie WHERE pie.id = $1`,
+      [etapeId]
+    );
+    return r.rows[0] ?? null;
   },
 
   async deleteReading(readingId: string) {

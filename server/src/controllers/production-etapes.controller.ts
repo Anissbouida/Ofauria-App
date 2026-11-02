@@ -4,6 +4,7 @@ import { productionEtapesRepository } from '../repositories/production-etapes.re
 import { productionRendementRepository } from '../repositories/production-rendement.repository.js';
 import { stockFrigoRepository } from '../repositories/stock-frigo.repository.js';
 import { updateEtapeStatusSchema, completeRepetitionSchema, recordRendementSchema, addReadingSchema } from '../validators/production-etapes.validator.js';
+import { CCP_STEP_TYPES } from '../repositories/production-etapes.repository.js';
 
 export const productionEtapesController = {
 
@@ -31,6 +32,15 @@ export const productionEtapesController = {
     if (!parsed.success) {
       res.status(400).json({ success: false, error: { message: parsed.error.issues.map(i => i.message).join(', ') } });
       return;
+    }
+    // Garde CCP (épic labo L2) : une étape de point critique ne se clôture pas
+    // sans au moins un relevé de procédé (preuve de maîtrise).
+    if (parsed.data.status === 'completed') {
+      const gate = await productionEtapesRepository.ccpGate(req.params.etapeId as string);
+      if (gate && gate.type_etape && CCP_STEP_TYPES.includes(gate.type_etape) && gate.readings === 0) {
+        res.status(400).json({ success: false, error: { message: 'Étape critique (CCP) : enregistrez au moins un relevé de procédé avant de la clôturer.' } });
+        return;
+      }
     }
     const etape = await productionEtapesRepository.updateStatus(
       req.params.etapeId as string, parsed.data.status, req.user!.userId,
