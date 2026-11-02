@@ -13,7 +13,7 @@ import {
   ArrowLeft, Package, AlertTriangle, Boxes, ShieldCheck, CalendarClock,
   ChevronDown, ChevronRight, ChevronLeft, Factory, TrendingDown, Trash2, Edit3,
   X, Save, Truck, FileText, Clock, Beaker, Ban, Shield, Hash, ShoppingCart,
-  Warehouse, PackageOpen, MapPin,
+  Warehouse, PackageOpen, MapPin, Printer,
 } from 'lucide-react';
 import { stockLocationsApi, type StockLocation } from '../../api/stock-locations.api';
 import { apiErrorMessage } from '../../api/errors';
@@ -79,6 +79,9 @@ interface Lot {
   location_id?: string | null;
   location_code?: string | null;
   location_name?: string | null;
+  // Réception bloquante + DLC/DLUO + allergènes (épic labo L5, mig 428).
+  date_kind?: 'dlc' | 'dluo' | null;
+  ingredient_allergens?: string[] | null;
 }
 
 interface Transaction {
@@ -127,6 +130,8 @@ export default function IngredientDetailPage() {
   const canManage = ['admin', 'manager'].includes(user?.role || '');
   // Modale unique de mouvement de lot (ouvrir / retour / perte / lot aux pertes).
   const [movement, setMovement] = useState<{ lot: Lot; type: 'open' | 'losses' } | null>(null);
+  // Étiquette de lot (épic labo L5, mig 428).
+  const [labelLot, setLabelLot] = useState<Lot | null>(null);
 
   // Fetch inventory list and find this ingredient
   const { data: inventory = [] } = useQuery({ queryKey: ['inventory'], queryFn: inventoryApi.list });
@@ -324,6 +329,8 @@ export default function IngredientDetailPage() {
   const activeLots = lots.filter(l => l.status === 'active' && parseFloat(l.quantity_remaining) > 0);
   const depletedLots = lots.filter(l => l.status === 'depleted' || parseFloat(l.quantity_remaining) <= 0);
   const quarantinedLots = lots.filter(l => l.status === 'quarantine');
+  // Lots bloqués par un contrôle réception non conforme (épic labo L5, mig 428).
+  const blockedLots = lots.filter(l => l.status === 'blocked');
 
   return (
     <div className="odoo-scope">
@@ -471,6 +478,25 @@ export default function IngredientDetailPage() {
                     onOpenContainer={isMagasinier ? () => setMovement({ lot, type: 'open' }) : undefined}
                     locations={locations}
                     onMove={onMoveLot}
+                    onLabel={() => setLabelLot(lot)}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {blockedLots.length > 0 && (
+            <div className="odoo-section">
+              <div className="odoo-section-header" style={{ color: '#dc3545' }}>
+                <Ban size={12} /> Bloqués — contrôle réception non conforme ({blockedLots.length})
+              </div>
+              {blockedLots.map((lot, i) => (
+                <div key={lot.id} style={{ borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none' }}>
+                  <LotRow lot={lot}
+                    isExpanded={expandedLot === lot.id}
+                    onToggle={() => setExpandedLot(expandedLot === lot.id ? null : lot.id)}
+                    traceability={expandedLot === lot.id ? lotTraceability as LotTraceability[] : []}
+                    onLabel={() => setLabelLot(lot)}
                   />
                 </div>
               ))}
@@ -753,6 +779,55 @@ export default function IngredientDetailPage() {
           onClose={() => setMovement(null)}
         />
       )}
+
+      {/* Étiquette de lot (épic labo L5) */}
+      {labelLot && (
+        <LotLabelModal lot={labelLot} ingredientName={labelLot.ingredient_name} onClose={() => setLabelLot(null)} />
+      )}
+    </div>
+  );
+}
+
+/* ─── Étiquette de lot (épic labo L5, mig 428) : lot, DLC/DLUO, allergènes ─── */
+function LotLabelModal({ lot, ingredientName, onClose }: { lot: Lot; ingredientName: string; onClose: () => void }) {
+  const isDluo = lot.date_kind === 'dluo';
+  const dateStr = lot.expiration_date ? new Date(lot.expiration_date).toLocaleDateString('fr-FR') : '—';
+  const allergens = (lot.ingredient_allergens || []).filter(Boolean);
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+          <h3 className="font-bold text-gray-900 flex items-center gap-2"><FileText size={16} className="text-blue-600" /> Étiquette de lot</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+        </div>
+        {/* Zone imprimable */}
+        <div id="lot-label-print" style={{ padding: '1rem 1.25rem' }}>
+          <div style={{ border: '2px solid #111', borderRadius: 8, padding: '0.875rem 1rem' }}>
+            <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#111' }}>{ingredientName}</div>
+            <div style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.9rem', marginTop: 4 }}>
+              Lot : {lot.supplier_lot_number || lot.lot_number}
+            </div>
+            <div style={{ marginTop: 6, fontSize: '0.95rem' }}>
+              <span style={{ fontWeight: 700, background: isDluo ? '#eef2ff' : '#fde8e8', padding: '1px 6px', borderRadius: 4 }}>
+                {isDluo ? 'DLUO' : 'DLC'}
+              </span>{' '}
+              <span style={{ fontWeight: 700 }}>{dateStr}</span>
+            </div>
+            <div style={{ marginTop: 8, fontSize: '0.8rem' }}>
+              <div style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.68rem', color: '#555' }}>Allergènes</div>
+              {allergens.length > 0 ? (
+                <div style={{ fontWeight: 600 }}>{allergens.join(' · ')}</div>
+              ) : (
+                <div style={{ color: '#888' }}>Aucun déclaré</div>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100">
+          <button onClick={onClose} className="odoo-btn-secondary">Fermer</button>
+          <button onClick={() => window.print()} className="odoo-btn-primary"><Printer size={14} /> Imprimer</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -878,7 +953,7 @@ function OrderRequestModal({ ingredientName, unit, container, isLow, supplierHin
 }
 
 /* ─── Lot Row Component ─── */
-function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste, onOpenContainer, locations, onMove }: {
+function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste, onOpenContainer, locations, onMove, onLabel }: {
   lot: Lot;
   isExpanded: boolean;
   onToggle: () => void;
@@ -888,6 +963,7 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
   onOpenContainer?: () => void;
   locations?: StockLocation[];
   onMove?: (lotId: string, toLocationId: string) => void;
+  onLabel?: () => void;
 }) {
   const [moveTo, setMoveTo] = useState('');
   const remaining = parseFloat(lot.quantity_remaining);
@@ -921,6 +997,10 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
               {lot.supplier_lot_number || lot.lot_number || '—'}
             </span>
             {lot.status === 'quarantine' && <span className="odoo-tag odoo-tag-orange">QUARANTAINE</span>}
+            {lot.status === 'blocked' && <span className="odoo-tag odoo-tag-red">BLOQUÉ</span>}
+            <span className="odoo-tag" title={lot.date_kind === 'dluo' ? 'Date de durabilité minimale (sec)' : 'Date limite de consommation (périssable)'}>
+              {lot.date_kind === 'dluo' ? 'DLUO' : 'DLC'}
+            </span>
             {isExpired && lot.status === 'active' && <span className="odoo-tag odoo-tag-red">EXPIRÉ</span>}
             {!isExpired && daysUntil !== null && daysUntil <= 7 && lot.status === 'active' && (
               <span className="odoo-tag odoo-tag-yellow">{daysUntil}j</span>
@@ -1084,6 +1164,15 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
                     <Ban size={11} /> Lot aux pertes
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* Étiquette de lot (épic labo L5) : lot, DLC/DLUO, allergènes */}
+            {onLabel && (
+              <div style={{ marginTop: '0.5rem' }} onClick={(e) => e.stopPropagation()}>
+                <button className="odoo-btn-secondary" onClick={onLabel}>
+                  <FileText size={11} /> Étiquette
+                </button>
               </div>
             )}
 

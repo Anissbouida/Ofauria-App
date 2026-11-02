@@ -44,6 +44,7 @@ export const ingredientLotRepository = {
     values.push(limit, offset);
     const result = await db.query(
       `SELECT il.*, ing.name as ingredient_name, ing.unit as ingredient_unit, ing.category as ingredient_category,
+              ing.allergens as ingredient_allergens,
               s.name as supplier_name, s.phone as supplier_phone,
               rv.voucher_number as reception_voucher_number,
               po.order_number as purchase_order_number,
