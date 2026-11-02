@@ -1709,7 +1709,7 @@ export const productionRepository = {
               const sfLots = await client.query(
                 `SELECT id, quantity_remaining FROM semi_finished_lots
                   WHERE recipe_id = $1 AND store_id = $2 AND status = 'active' AND quantity_remaining > 0
-                  ORDER BY expires_at ASC NULLS LAST, produced_at ASC
+                  ORDER BY COALESCE(dlc_effective, expires_at::timestamptz) ASC NULLS LAST, produced_at ASC
                   FOR UPDATE`,
                 [item.base_recipe_id, effectiveStoreId]
               );
@@ -2518,7 +2518,7 @@ export const productionRepository = {
           const sfLots = await client.query(
             `SELECT id, quantity_remaining FROM semi_finished_lots
               WHERE recipe_id = $1 AND (store_id = $2 OR $2 IS NULL) AND status = 'active' AND quantity_remaining > 0
-              ORDER BY expires_at ASC NULLS LAST, produced_at ASC
+              ORDER BY COALESCE(dlc_effective, expires_at::timestamptz) ASC NULLS LAST, produced_at ASC
               FOR UPDATE`,
             [subRecipeId, plan.store_id]
           );

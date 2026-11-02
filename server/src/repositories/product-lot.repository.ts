@@ -173,10 +173,12 @@ export const productLotRepository = {
   ): Promise<{ lotId: string; qty: number; lot: ProductLot }[]> {
     if (qtyNeeded <= 0) return [];
     const result = await client.query(
+      // FEFO sur la DLC EFFECTIVE (épic labo L4) : un lot décongelé porte une DLC
+      // recalculée (dlc_effective) plus courte qui prime sur expires_at.
       `SELECT * FROM product_lots
        WHERE product_id = $1 AND store_id = $2
          AND status = 'active' AND backroom_qty > 0
-       ORDER BY expires_at ASC NULLS LAST, produced_at ASC, id
+       ORDER BY COALESCE(dlc_effective, expires_at::timestamptz) ASC NULLS LAST, produced_at ASC, id
        FOR UPDATE`,
       [productId, storeId]
     );
@@ -204,16 +206,19 @@ export const productLotRepository = {
     opts: { includeExpired?: boolean } = {}
   ): Promise<{ lotId: string; qty: number; lot: ProductLot }[]> {
     if (qtyNeeded <= 0) return [];
+    // DLC effective (épic labo L4) : si le lot est décongelé, dlc_effective
+    // (recalculée) remplace expires_at pour l'exclusion et l'ordre FEFO.
     const expiryFilter = opts.includeExpired
       ? ''
-      : `AND (expires_at IS NULL OR expires_at > CURRENT_DATE)
+      : `AND ((dlc_effective IS NOT NULL AND dlc_effective > NOW())
+              OR (dlc_effective IS NULL AND (expires_at IS NULL OR expires_at > CURRENT_DATE)))
          AND (display_expires_at IS NULL OR display_expires_at > NOW())`;
     const result = await client.query(
       `SELECT * FROM product_lots
        WHERE product_id = $1 AND store_id = $2
          AND status = 'active' AND vitrine_qty > 0
          ${expiryFilter}
-       ORDER BY expires_at ASC NULLS LAST, display_expires_at ASC NULLS LAST,
+       ORDER BY COALESCE(dlc_effective, expires_at::timestamptz) ASC NULLS LAST, display_expires_at ASC NULLS LAST,
                 produced_at ASC, id
        FOR UPDATE`,
       [productId, storeId]
