@@ -73,6 +73,9 @@ export const ingredientLotsApi = {
   traceability: (lotId: string) => api.get(`/ingredient-lots/${lotId}/traceability`).then(r => r.data.data),
   productionLots: (planId: string) => api.get(`/ingredient-lots/production/${planId}`).then(r => r.data.data),
   quarantine: (id: string) => api.post(`/ingredient-lots/${id}/quarantine`).then(r => r.data.data),
+  /** Déplacement physique vers un emplacement (épic labo L1, mig 424/425). */
+  moveLocation: (id: string, toLocationId: string, motif?: string) =>
+    api.post(`/ingredient-lots/${id}/move-location`, { toLocationId, motif }).then(r => r.data.data),
   /**
    * Mouvement de lot unique (module Stock) : open (scelle -> entame), return (entame -> scelle),
    * waste (perte partielle en zone entamee), losses (lot entier aux pertes), quarantine.

@@ -60,6 +60,16 @@ export const ingredientLotController = {
     res.json({ success: true, data: lot });
   },
 
+  // Déplacement physique d'un lot vers un emplacement (épic labo L1, mig 424/425).
+  async moveLocation(req: AuthRequest, res: Response) {
+    const toLocationId = typeof req.body?.toLocationId === 'string' ? req.body.toLocationId : null;
+    if (!toLocationId) { res.status(400).json({ success: false, error: { message: 'Emplacement de destination requis.' } }); return; }
+    const motif = typeof req.body?.motif === 'string' ? req.body.motif.slice(0, 30) : null;
+    const lot = await ingredientLotRepository.moveLot(req.params.id as string, toLocationId, motif, req.user!.userId);
+    if (!lot) { res.status(404).json({ success: false, error: { message: 'Lot non trouvé' } }); return; }
+    res.json({ success: true, data: lot });
+  },
+
   async stats(req: AuthRequest, res: Response) {
     const stats = await ingredientLotRepository.stats(req.user!.storeId);
     res.json({ success: true, data: stats });

@@ -47,6 +47,7 @@ export const ingredientLotRepository = {
               s.name as supplier_name, s.phone as supplier_phone,
               rv.voucher_number as reception_voucher_number,
               po.order_number as purchase_order_number,
+              loc.code as location_code, loc.name as location_name, loc.type as location_type,
               CASE
                 WHEN il.expiration_date IS NULL THEN 'no_date'
                 WHEN il.expiration_date < CURRENT_DATE THEN 'expired'
@@ -57,6 +58,7 @@ export const ingredientLotRepository = {
        FROM ingredient_lots il
        JOIN ingredients ing ON ing.id = il.ingredient_id
        LEFT JOIN suppliers s ON s.id = il.supplier_id
+       LEFT JOIN stock_locations loc ON loc.id = il.location_id
        LEFT JOIN reception_voucher_items rvi ON rvi.id = il.reception_voucher_item_id
        LEFT JOIN reception_vouchers rv ON rv.id = rvi.reception_voucher_id
        LEFT JOIN purchase_orders po ON po.id = rv.purchase_order_id
@@ -75,10 +77,12 @@ export const ingredientLotRepository = {
       `SELECT il.*, ing.name as ingredient_name, ing.unit as ingredient_unit, ing.category as ingredient_category,
               s.name as supplier_name, s.phone as supplier_phone,
               rv.voucher_number as reception_voucher_number,
-              po.order_number as purchase_order_number
+              po.order_number as purchase_order_number,
+              loc.code as location_code, loc.name as location_name, loc.type as location_type
        FROM ingredient_lots il
        JOIN ingredients ing ON ing.id = il.ingredient_id
        LEFT JOIN suppliers s ON s.id = il.supplier_id
+       LEFT JOIN stock_locations loc ON loc.id = il.location_id
        LEFT JOIN reception_voucher_items rvi ON rvi.id = il.reception_voucher_item_id
        LEFT JOIN reception_vouchers rv ON rv.id = rvi.reception_voucher_id
        LEFT JOIN purchase_orders po ON po.id = rv.purchase_order_id
@@ -86,6 +90,40 @@ export const ingredientLotRepository = {
       [id]
     );
     return result.rows[0] || null;
+  },
+
+  /**
+   * Déplace un lot vers un emplacement (épic labo L1, mig 424/425) : historise le
+   * mouvement et met à jour location_id. N'affecte PAS les zones logiques
+   * économat/pesage du BSI — c'est un déplacement PHYSIQUE (chambre, étagère, bac).
+   */
+  async moveLot(lotId: string, toLocationId: string, motif: string | null, userId: string | null) {
+    const lot = await db.query(`SELECT location_id, quantity_remaining FROM ingredient_lots WHERE id = $1`, [lotId]);
+    if (!lot.rows[0]) return null;
+    const fromLocationId = lot.rows[0].location_id as string | null;
+    if (fromLocationId === toLocationId) {
+      throw Object.assign(new Error('Le lot est déjà dans cet emplacement.'), { statusCode: 400 });
+    }
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO stock_location_moves (ingredient_lot_id, from_location_id, to_location_id, quantite, motif, moved_by)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [lotId, fromLocationId, toLocationId, lot.rows[0].quantity_remaining, motif || 'transfert', userId]
+      );
+      const upd = await client.query(
+        `UPDATE ingredient_lots SET location_id = $2 WHERE id = $1 RETURNING id, location_id`,
+        [lotId, toLocationId]
+      );
+      await client.query('COMMIT');
+      return upd.rows[0];
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   },
 
   /** Lots expiring within N days */

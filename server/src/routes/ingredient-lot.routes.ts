@@ -20,6 +20,8 @@ router.get('/production/:id', authenticate, ingredientLotController.productionLo
 router.get('/:id', authenticate, ingredientLotController.getById);
 router.get('/:id/traceability', authenticate, ingredientLotController.traceability);
 router.post('/:id/quarantine', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientLotController.quarantine);
+// Déplacement physique vers un emplacement (épic labo L1, mig 424/425).
+router.post('/:id/move-location', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(ingredientLotController.moveLocation));
 router.post('/quality-check/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientLotController.saveQualityCheck);
 // Mouvements de lot (module Stock) : point d'entree unique. Restreint au magasinier
 // (et admin/gerant) : le chef ne gere pas les zones, il passe par le bon de sortie.

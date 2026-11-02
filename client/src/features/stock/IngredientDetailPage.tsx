@@ -13,8 +13,10 @@ import {
   ArrowLeft, Package, AlertTriangle, Boxes, ShieldCheck, CalendarClock,
   ChevronDown, ChevronRight, ChevronLeft, Factory, TrendingDown, Trash2, Edit3,
   X, Save, Truck, FileText, Clock, Beaker, Ban, Shield, Hash, ShoppingCart,
-  Warehouse, PackageOpen,
+  Warehouse, PackageOpen, MapPin,
 } from 'lucide-react';
+import { stockLocationsApi, type StockLocation } from '../../api/stock-locations.api';
+import { apiErrorMessage } from '../../api/errors';
 import { format } from 'date-fns';
 import { notify } from '../../components/ui/InlineNotification';
 import CategoryCascadeSelector, { CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
@@ -73,6 +75,10 @@ interface Lot {
   expiration_status: string;
   reception_voucher_number?: string;
   purchase_order_number?: string;
+  // Emplacement physique courant (épic labo L1, mig 424/425).
+  location_id?: string | null;
+  location_code?: string | null;
+  location_name?: string | null;
 }
 
 interface Transaction {
@@ -242,6 +248,24 @@ export default function IngredientDetailPage() {
       notify.success('Lot mis en quarantaine');
     },
   });
+
+  // Emplacements (épic labo L1) : liste pour le déplacement physique d'un lot.
+  const { data: locations = [] } = useQuery<StockLocation[]>({
+    queryKey: ['stock-locations'],
+    queryFn: () => stockLocationsApi.list(),
+  });
+  const moveLocationMutation = useMutation({
+    mutationFn: ({ lotId, toLocationId }: { lotId: string; toLocationId: string }) =>
+      ingredientLotsApi.moveLocation(lotId, toLocationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ingredient-lots', id] });
+      notify.success('Lot déplacé.');
+    },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Échec du déplacement.')),
+  });
+  const onMoveLot = canManage || isMagasinier
+    ? (lotId: string, toLocationId: string) => moveLocationMutation.mutate({ lotId, toLocationId })
+    : undefined;
 
   const addToWaitingListMutation = useMutation({
     mutationFn: (data: { quantity: number; reason?: string; note?: string; supplierId?: string | null }) =>
@@ -445,6 +469,8 @@ export default function IngredientDetailPage() {
                     onQuarantine={canManage ? () => quarantineMutation.mutate(lot.id) : undefined}
                     onWaste={canManage ? () => setMovement({ lot, type: 'losses' }) : undefined}
                     onOpenContainer={isMagasinier ? () => setMovement({ lot, type: 'open' }) : undefined}
+                    locations={locations}
+                    onMove={onMoveLot}
                   />
                 </div>
               ))}
@@ -852,7 +878,7 @@ function OrderRequestModal({ ingredientName, unit, container, isLow, supplierHin
 }
 
 /* ─── Lot Row Component ─── */
-function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste, onOpenContainer }: {
+function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste, onOpenContainer, locations, onMove }: {
   lot: Lot;
   isExpanded: boolean;
   onToggle: () => void;
@@ -860,7 +886,10 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
   onQuarantine?: () => void;
   onWaste?: () => void;
   onOpenContainer?: () => void;
+  locations?: StockLocation[];
+  onMove?: (lotId: string, toLocationId: string) => void;
 }) {
+  const [moveTo, setMoveTo] = useState('');
   const remaining = parseFloat(lot.quantity_remaining);
   const received = parseFloat(lot.quantity_received);
   const economat = parseFloat(lot.economat_quantity || '0');
@@ -899,6 +928,11 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
             {lot.supplier_name && <span>{lot.supplier_name}</span>}
+            {lot.location_code && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }} title={lot.location_name || undefined}>
+                <MapPin size={10} style={{ color: 'var(--theme-primary, #2563eb)' }} /> {lot.location_code}
+              </span>
+            )}
             {lot.unit_cost && parseFloat(lot.unit_cost) > 0 && (
               <span style={{ fontWeight: 500 }}>
                 {parseFloat(lot.unit_cost).toFixed(2)} DH/{lot.ingredient_unit}
@@ -1050,6 +1084,24 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
                     <Ban size={11} /> Lot aux pertes
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* Déplacement physique vers un emplacement (épic labo L1) */}
+            {onMove && locations && locations.length > 0 && lot.status === 'active' && remaining > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.5rem', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                <MapPin size={12} style={{ color: 'var(--theme-text-muted)' }} />
+                <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)}
+                  style={{ fontSize: '0.75rem', padding: '2px 6px', border: '1px solid var(--theme-bg-separator)', borderRadius: 6 }}>
+                  <option value="">Déplacer vers…</option>
+                  {locations.filter(l => l.id !== lot.location_id).map(l => (
+                    <option key={l.id} value={l.id}>{l.code} — {l.name}</option>
+                  ))}
+                </select>
+                <button className="odoo-btn-secondary" disabled={!moveTo}
+                  onClick={() => { if (moveTo) { onMove(lot.id, moveTo); setMoveTo(''); } }}>
+                  Déplacer
+                </button>
               </div>
             )}
           </div>
