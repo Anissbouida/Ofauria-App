@@ -33,6 +33,7 @@ import PrintOverlay from '../../components/PrintOverlay';
 import PrintModeSelectorModal from './PrintModeSelectorModal';
 import type { LotLabelData } from '../../lib/niimbot';
 import EtapesPanel from './EtapesPanel';
+import RetroPlanningPanel from './RetroPlanningPanel';
 import RendementPanel from './RendementPanel';
 import CoutReelPanel from './CoutReelPanel';
 
@@ -1718,6 +1719,7 @@ export default function PlanDetailPage() {
       {/* ══════════════ ÉTAPES + RENDEMENT + COUT REEL ══════════════ */}
       {showProd && plan && ['in_progress', 'completed'].includes(plan.status) && (
         <>
+          <RetroPlanningPanel planId={id!} planStatus={plan.status} isChef={isChef} />
           <EtapesPanel planId={id!} planStatus={plan.status} isChef={isChef} />
           <RendementPanel planId={id!} planStatus={plan.status} items={items} isChef={isChef} />
           <CoutReelPanel planId={id!} planStatus={plan.status} isChef={isChef}

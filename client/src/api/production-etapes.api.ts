@@ -21,6 +21,14 @@ export const productionEtapesApi = {
   deleteReading: (readingId: string) =>
     api.delete(`/production-etapes/readings/${readingId}`).then(r => r.data.data),
 
+  // Rétro-planning par temps de procédé (mig 432) — épic labo L6
+  computeRetroPlanning: (planId: string, heure_vitrine: string) =>
+    api.post(`/production-etapes/plans/${planId}/retro-planning`, { heure_vitrine }).then(r => r.data.data as {
+      scheduled_count: number;
+      earliest_start: string | null;
+      conflicts: { work_center_id: string; work_center_name: string; a: string; b: string; overlap_start: string; overlap_end: string }[];
+    }),
+
   // Exécution d'atelier (mig 399) — roadmap lot 4
   assign: (etapeId: string, data: { workCenterId?: string | null; assignedEmployeeId?: string | null }) =>
     api.put(`/production-etapes/etapes/${etapeId}/assign`, data).then(r => r.data.data),
