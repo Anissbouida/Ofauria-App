@@ -7,6 +7,7 @@ import { fiscalYearRepository } from '../repositories/ledger.repository.js';
 import { buildFec } from '../services/fec.service.js';
 import { manualEntryRepository } from '../repositories/manual-entry.repository.js';
 import { lettrageRepository } from '../repositories/lettrage.repository.js';
+import { agedBalanceRepository } from '../repositories/aged-balance.repository.js';
 import {
   planComptableController,
   accountAuxiliaryController,
@@ -77,7 +78,17 @@ ledgerRouter.get('/fec', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), 
   if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
   res.json({ success: true, data: await buildFec({ year: r.data.year, start: r.data.startDate, end: r.data.endDate }, actorOf(req)) });
 }));
-ledgerRouter.get('/outbox', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseLedgerController.outbox));
+// Balance âgée comptable : lignes non lettrées des comptes de tiers, par échéance.
+ledgerRouter.get('/aged-balance', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({
+    side: z.enum(['suppliers', 'customers']).default('suppliers'),
+    asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }).safeParse(req.query);
+  if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
+  const asOf = r.data.asOf ?? new Date().toLocaleDateString('sv-SE', { timeZone: 'Africa/Casablanca' });
+  res.json({ success: true, data: await agedBalanceRepository.compute({ side: r.data.side, asOf }) });
+}));
+ledgerRouter.get('/outbox',authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseLedgerController.outbox));
 ledgerRouter.post('/outbox/replay', authenticate, authorize(ROLES.ADMIN), asyncHandler(purchaseLedgerController.replay));
 ledgerRouter.post('/outbox/:id/replay', authenticate, authorize(ROLES.ADMIN), validateUuidParams('id'), asyncHandler(purchaseLedgerController.replay));
 ledgerRouter.get('/grir/open-items', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseLedgerController.grirOpenItems));

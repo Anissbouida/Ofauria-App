@@ -20,7 +20,7 @@ import {
   ArrowUpRight, ArrowDownRight, Upload, Search, ArrowUp, ArrowDown,
   Check, RotateCcw, Calendar, ListTree, Notebook, BookOpen, FileBarChart, Lock, Building2, Landmark,
   ArrowLeftRight, Ban, Clock, CalendarClock, CheckCircle2, Filter,
-  Target, NotebookPen, Link2,
+  Target, NotebookPen, Link2, Hourglass,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -34,6 +34,7 @@ import PlanComptableTab from './PlanComptableTab';
 import JournalTemplatesTab from './JournalTemplatesTab';
 import EcrituresTab from './EcrituresTab';
 import LettrageTab from './LettrageTab';
+import AgedBalanceTab from './AgedBalanceTab';
 import GrandLivreTab from './GrandLivreTab';
 import BalanceTab from './BalanceTab';
 import CpcTab from './CpcTab';
@@ -57,7 +58,7 @@ import {
   periodLabel as periodLabelOf, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 
-type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage';
+type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -295,6 +296,7 @@ const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[]
   { key: 'losses', label: 'Pertes', icon: AlertTriangle, section: 'reports' },
   { key: 'grand_livre', label: 'Grand livre', icon: BookOpen, section: 'reports', adminOnly: true },
   { key: 'balance', label: 'Balance', icon: Scale, section: 'reports', adminOnly: true },
+  { key: 'aged_balance', label: 'Balance âgée', icon: Hourglass, section: 'reports', adminOnly: true },
   { key: 'cpc', label: 'CPC', icon: FileBarChart, section: 'reports', adminOnly: true },
   { key: 'bilan', label: 'Bilan', icon: Scale, section: 'reports', adminOnly: true },
   { key: 'tva', label: 'TVA', icon: Receipt, section: 'reports', adminOnly: true },
@@ -333,6 +335,7 @@ export default function AccountingPage() {
       {tab === 'lettrage' && <LettrageTab />}
       {tab === 'grand_livre' && <GrandLivreTab />}
       {tab === 'balance' && <BalanceTab />}
+      {tab === 'aged_balance' && <AgedBalanceTab />}
       {tab === 'cpc' && <CpcTab />}
       {tab === 'budget' && <BudgetTab />}
       {tab === 'bilan' && <BilanTab />}

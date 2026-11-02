@@ -116,6 +116,30 @@ export const lettrageApi = {
     api.post('/ledger/lettrage/auto', p).then(r => r.data.data),
 };
 
+/* ═══ Balance âgée comptable (lignes non lettrées des comptes de tiers) ═══ */
+export type AgedSide = 'suppliers' | 'customers';
+export type AgedBucket = 'current' | 'd30' | 'd60' | 'd90' | 'over90';
+export interface AgedItem {
+  key: string; kind: 'invoice' | 'payment' | 'opening' | 'other';
+  reference: string; label: string; doc_date: string; due_date: string; days_late: number;
+  amount: number; bucket: AgedBucket;
+}
+export interface AgedTiers {
+  auxiliary_id: string; code: string; label: string; account_code: string;
+  customer_id: string | null; supplier_id: string | null;
+  total: number; overdue: number; buckets: Record<AgedBucket, number>; max_days_late: number; items: AgedItem[];
+}
+export interface AgedBalance {
+  side: AgedSide; as_of: string;
+  totals: { total: number; overdue: number; buckets: Record<AgedBucket, number>; tiers: number };
+  ledger_balance: number;            // solde comptable des comptes de tiers : doit égaler totals.total
+  tiers: AgedTiers[];
+}
+export const agedBalanceApi = {
+  get: (side: AgedSide, asOf: string): Promise<AgedBalance> =>
+    api.get('/ledger/aged-balance', { params: { side, asOf } }).then(r => r.data.data),
+};
+
 /* ═══ Exercices (mig 416) : clôture annuelle et à-nouveaux ═══ */
 export interface FiscalYear {
   id: string; year: number; start_date: string; end_date: string;
