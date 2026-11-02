@@ -17,6 +17,10 @@ router.put('/etapes/:etapeId/status', authenticate, authorize(...ROLE_GROUPS.PRO
 router.post('/etapes/:etapeId/timer', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.startTimer));
 router.post('/etapes/:etapeId/repetition', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.completeRepetition));
 
+// ─── Relevés de procédé par fournée (mig 422) — épic labo L2 ───
+router.post('/etapes/:etapeId/readings', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.addReading));
+router.delete('/readings/:readingId', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.deleteReading));
+
 // ─── Exécution d'atelier (mig 399) — roadmap lot 4 ───
 router.put('/etapes/:etapeId/assign', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.assignEtape));
 router.post('/etapes/:etapeId/pause', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionEtapesController.pauseEtape));

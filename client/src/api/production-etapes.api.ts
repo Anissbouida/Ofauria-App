@@ -15,6 +15,12 @@ export const productionEtapesApi = {
   completeRepetition: (etapeId: string, notes?: string) =>
     api.post(`/production-etapes/etapes/${etapeId}/repetition`, { notes }).then(r => r.data.data),
 
+  // Relevés de procédé par fournée (mig 422)
+  addReading: (etapeId: string, data: { parametre: string; consigne?: number | null; tolerance?: number | null; mesure: number; est_ccp?: boolean; note?: string }) =>
+    api.post(`/production-etapes/etapes/${etapeId}/readings`, data).then(r => r.data.data),
+  deleteReading: (readingId: string) =>
+    api.delete(`/production-etapes/readings/${readingId}`).then(r => r.data.data),
+
   // Exécution d'atelier (mig 399) — roadmap lot 4
   assign: (etapeId: string, data: { workCenterId?: string | null; assignedEmployeeId?: string | null }) =>
     api.put(`/production-etapes/etapes/${etapeId}/assign`, data).then(r => r.data.data),

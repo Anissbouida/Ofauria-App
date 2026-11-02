@@ -1,6 +1,51 @@
 import { db } from '../config/database.js';
 
+// Relevés de procédé (mig 422) agrégés par étape : évite un appel par étape sur
+// l'écran d'atelier. Fragment SQL corrélé réutilisé par findByPlan/findByPlanItem.
+const READINGS_AGG = `COALESCE((
+  SELECT jsonb_agg(jsonb_build_object(
+    'id', sr.id, 'parametre', sr.parametre, 'consigne', sr.consigne,
+    'tolerance', sr.tolerance, 'mesure', sr.mesure, 'conforme', sr.conforme,
+    'est_ccp', sr.est_ccp, 'note', sr.note, 'mesure_a', sr.mesure_a,
+    'mesure_par_name', (SELECT first_name FROM users WHERE id = sr.mesure_par))
+    ORDER BY sr.mesure_a)
+  FROM production_step_readings sr WHERE sr.etape_id = pie.id), '[]'::jsonb)`;
+
+type ReadingInput = {
+  parametre: string;
+  consigne?: number | null;
+  tolerance?: number | null;
+  mesure: number;
+  est_ccp?: boolean;
+  note?: string | null;
+};
+
 export const productionEtapesRepository = {
+
+  // ─── Relevé de procédé mesuré sur une étape (mig 422) ───
+  // Conforme = |mesure - consigne| <= tolerance, seulement si les deux seuils
+  // sont fournis ; sinon NULL (relevé libre, pas de verdict).
+  async addReading(etapeId: string, data: ReadingInput, userId: string | null) {
+    const consigne = data.consigne ?? null;
+    const tolerance = data.tolerance ?? null;
+    const conforme = (consigne !== null && tolerance !== null)
+      ? Math.abs(Number(data.mesure) - Number(consigne)) <= Number(tolerance)
+      : null;
+    const r = await db.query(
+      `INSERT INTO production_step_readings
+         (etape_id, parametre, consigne, tolerance, mesure, conforme, est_ccp, note, mesure_par)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [etapeId, data.parametre, consigne, tolerance, data.mesure, conforme,
+       data.est_ccp ?? false, data.note ?? null, userId]
+    );
+    return r.rows[0];
+  },
+
+  async deleteReading(readingId: string) {
+    const r = await db.query(`DELETE FROM production_step_readings WHERE id = $1 RETURNING id`, [readingId]);
+    return r.rows[0] ?? null;
+  },
 
   // ─── Initialize étapes for a plan item (called at startItems time) ───
   // Copies steps from recipe.etapes or produit_profil_production.etapes_surcharges
@@ -82,7 +127,8 @@ export const productionEtapesRepository = {
               emp.first_name || ' ' || emp.last_name as assigned_employee_name,
               (SELECT array_agg(DISTINCT i.name ORDER BY i.name)
                  FROM jsonb_array_elements_text(pie.ingredient_refs) ref
-                 JOIN ingredients i ON i.id = split_part(ref, '#', 1)::uuid) as step_ingredient_names
+                 JOIN ingredients i ON i.id = split_part(ref, '#', 1)::uuid) as step_ingredient_names,
+              ${READINGS_AGG} as readings
        FROM production_item_etapes pie
        LEFT JOIN users u1 ON u1.id = pie.started_by
        LEFT JOIN users u2 ON u2.id = pie.completed_by
@@ -104,7 +150,8 @@ export const productionEtapesRepository = {
               emp.first_name || ' ' || emp.last_name as assigned_employee_name,
               (SELECT array_agg(DISTINCT i.name ORDER BY i.name)
                  FROM jsonb_array_elements_text(pie.ingredient_refs) ref
-                 JOIN ingredients i ON i.id = split_part(ref, '#', 1)::uuid) as step_ingredient_names
+                 JOIN ingredients i ON i.id = split_part(ref, '#', 1)::uuid) as step_ingredient_names,
+              ${READINGS_AGG} as readings
        FROM production_item_etapes pie
        JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
        LEFT JOIN products p ON p.id = ppi.product_id

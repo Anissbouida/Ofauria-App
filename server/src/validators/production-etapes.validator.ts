@@ -15,6 +15,16 @@ export const completeRepetitionSchema = z.object({
   notes: z.string().optional(),
 });
 
+// Relevé de procédé mesuré sur une étape (mig 422).
+export const addReadingSchema = z.object({
+  parametre: z.enum(['temp_pate', 'temp_four', 'duree_cuisson', 'temp_coeur', 'humidite', 'poids']),
+  consigne: z.number().nullable().optional(),
+  tolerance: z.number().min(0).nullable().optional(),
+  mesure: z.number(),
+  est_ccp: z.boolean().optional(),
+  note: z.string().max(500).optional(),
+});
+
 export const recordRendementSchema = z.object({
   quantite_brute: z.number().min(0),
   quantite_nette_reelle: z.number().min(0),

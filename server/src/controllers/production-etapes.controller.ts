@@ -3,7 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productionEtapesRepository } from '../repositories/production-etapes.repository.js';
 import { productionRendementRepository } from '../repositories/production-rendement.repository.js';
 import { stockFrigoRepository } from '../repositories/stock-frigo.repository.js';
-import { updateEtapeStatusSchema, completeRepetitionSchema, recordRendementSchema } from '../validators/production-etapes.validator.js';
+import { updateEtapeStatusSchema, completeRepetitionSchema, recordRendementSchema, addReadingSchema } from '../validators/production-etapes.validator.js';
 
 export const productionEtapesController = {
 
@@ -41,6 +41,26 @@ export const productionEtapesController = {
       return;
     }
     res.json({ success: true, data: etape });
+  },
+
+  // ─── Relevé de procédé sur une étape (mig 422) ───
+  async addReading(req: AuthRequest, res: Response) {
+    const parsed = addReadingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ success: false, error: { message: parsed.error.issues.map(i => i.message).join(', ') } });
+      return;
+    }
+    const reading = await productionEtapesRepository.addReading(req.params.etapeId as string, parsed.data, req.user!.userId);
+    res.status(201).json({ success: true, data: reading });
+  },
+
+  async deleteReading(req: AuthRequest, res: Response) {
+    const deleted = await productionEtapesRepository.deleteReading(req.params.readingId as string);
+    if (!deleted) {
+      res.status(404).json({ success: false, error: { message: 'Relevé non trouvé' } });
+      return;
+    }
+    res.json({ success: true, data: deleted });
   },
 
   // ─── Start auto-timer ───

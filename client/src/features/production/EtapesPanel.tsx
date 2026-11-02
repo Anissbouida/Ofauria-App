@@ -5,7 +5,8 @@ import { notify } from '../../components/ui/InlineNotification';
 import { useProductionTimers } from '../../context/ProductionTimerContext';
 import {
   CheckCircle, Play, Clock, SkipForward, ListChecks, Timer,
-  ChevronDown, ChevronRight, RotateCcw, AlertTriangle, Loader2, Save, Lock, Thermometer, Droplets, Scale
+  ChevronDown, ChevronRight, RotateCcw, AlertTriangle, Loader2, Save, Lock, Thermometer, Droplets, Scale,
+  Plus, Trash2, ShieldCheck
 } from 'lucide-react';
 
 /** Libelles des types d'etape (mig 342). */
@@ -13,6 +14,32 @@ const ETAPE_TYPE_LABELS: Record<string, string> = {
   petrissage: 'Pétrissage', pointage: 'Pointage', faconnage: 'Façonnage', tourage: 'Tourage', appret: 'Apprêt',
   cuisson: 'Cuisson', refroidissement: 'Refroidissement', montage: 'Montage', finition: 'Finition', autre: 'Autre',
 };
+
+/** Relevé de procédé mesuré sur une étape (mig 422, épic labo L2). */
+interface Reading {
+  id: string;
+  parametre: string;
+  consigne: number | string | null;
+  tolerance: number | string | null;
+  mesure: number | string;
+  conforme: boolean | null;
+  est_ccp: boolean;
+  note: string | null;
+  mesure_a: string;
+  mesure_par_name: string | null;
+}
+
+/** Paramètres mesurables et leur unité (mig 422). */
+const PARAM_LABELS: Record<string, { label: string; unit: string }> = {
+  temp_pate: { label: 'Température pâte', unit: '°C' },
+  temp_four: { label: 'Température four', unit: '°C' },
+  duree_cuisson: { label: 'Durée cuisson', unit: 'min' },
+  temp_coeur: { label: 'Température à cœur', unit: '°C' },
+  humidite: { label: 'Humidité', unit: '%' },
+  poids: { label: 'Poids', unit: 'kg' },
+};
+/** Types d'étape considérés comme CCP (points critiques) par défaut. */
+const CCP_TYPES = new Set(['cuisson', 'refroidissement']);
 
 interface EtapesPanelProps {
   planId: string;
@@ -41,6 +68,8 @@ interface Etape {
   nom_ar?: string | null;
   checklist_items_ar?: string[];
   step_ingredient_names?: string[] | null;
+  // Relevés de procédé mesurés (mig 422).
+  readings?: Reading[];
   est_repetable: boolean;
   nb_repetitions_cible: number;
   nb_repetitions_actuelle: number;
@@ -126,6 +155,52 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
       queryClient.invalidateQueries({ queryKey: ['production-etapes', planId] });
     },
   });
+
+  // Relevés de procédé (mig 422) : brouillon de saisie par étape + mutations.
+  const [readingDraft, setReadingDraft] = useState<Record<string, { parametre: string; consigne: string; tolerance: string; mesure: string }>>({});
+  const addReadingMutation = useMutation({
+    mutationFn: ({ etapeId, data }: { etapeId: string; data: { parametre: string; consigne?: number | null; tolerance?: number | null; mesure: number; est_ccp?: boolean } }) =>
+      productionEtapesApi.addReading(etapeId, data),
+    onSuccess: (_r, vars) => {
+      setReadingDraft(s => { const n = { ...s }; delete n[vars.etapeId]; return n; });
+      queryClient.invalidateQueries({ queryKey: ['production-etapes', planId] });
+    },
+    onError: () => notify.error("Échec de l'enregistrement du relevé."),
+  });
+  const deleteReadingMutation = useMutation({
+    mutationFn: (readingId: string) => productionEtapesApi.deleteReading(readingId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['production-etapes', planId] }),
+  });
+
+  const submitReading = (etape: Etape) => {
+    const d = readingDraft[etape.id];
+    if (!d || d.mesure.trim() === '') { notify.error('Saisis une mesure.'); return; }
+    const mesure = parseFloat(d.mesure.replace(',', '.'));
+    if (!Number.isFinite(mesure)) { notify.error('Mesure invalide.'); return; }
+    const consigne = d.consigne.trim() === '' ? null : parseFloat(d.consigne.replace(',', '.'));
+    const tolerance = d.tolerance.trim() === '' ? null : parseFloat(d.tolerance.replace(',', '.'));
+    addReadingMutation.mutate({
+      etapeId: etape.id,
+      data: {
+        parametre: d.parametre,
+        consigne: consigne !== null && Number.isFinite(consigne) ? consigne : null,
+        tolerance: tolerance !== null && Number.isFinite(tolerance) ? tolerance : null,
+        mesure,
+        est_ccp: etape.type_etape ? CCP_TYPES.has(etape.type_etape) : false,
+      },
+    });
+  };
+
+  // Brouillon par défaut : paramètre déduit du type d'étape, consigne pré-remplie
+  // depuis la fiche (temperature_c / humidite_pct déjà copiées sur l'étape).
+  const draftFor = (etape: Etape) => {
+    if (readingDraft[etape.id]) return readingDraft[etape.id];
+    const t = etape.type_etape;
+    const parametre: string = t === 'cuisson' ? 'temp_four' : t === 'refroidissement' ? 'temp_coeur' : 'temp_pate';
+    const consigne = (parametre === 'temp_pate' && etape.temperature_c != null) ? String(parseFloat(String(etape.temperature_c)))
+      : (parametre === 'humidite' && etape.humidite_pct != null) ? String(parseFloat(String(etape.humidite_pct))) : '';
+    return { parametre, consigne, tolerance: '', mesure: '' };
+  };
 
   // Group by plan_item_id (memoized so the same Map is reused across renders).
   const grouped = useMemo(() => {
@@ -447,6 +522,63 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                                 <span className={cr.ok ? 'text-gray-500' : 'text-red-600'}>{cr.label}</span>
                               </div>
                             ))}
+                          </div>
+                        )}
+
+                        {/* Relevés de procédé mesurés (mig 422, épic labo L2) */}
+                        {(etape.status === 'in_progress' || etape.status === 'completed') && (
+                          <div className="mt-2 pl-9">
+                            <div className="flex items-center gap-1 text-[10px] font-bold text-gray-500 uppercase mb-1">
+                              <ShieldCheck size={11} className="text-violet-500" /> Relevés de procédé
+                            </div>
+                            {etape.readings && etape.readings.length > 0 && (
+                              <div className="space-y-1 mb-1.5">
+                                {etape.readings.map((rd) => {
+                                  const meta = PARAM_LABELS[rd.parametre] || { label: rd.parametre, unit: '' };
+                                  return (
+                                    <div key={rd.id} className="flex items-center gap-2 text-[11px]">
+                                      {rd.est_ccp && <span className="text-[8px] px-1 py-0.5 rounded bg-violet-100 text-violet-700 font-bold uppercase">CCP</span>}
+                                      <span className="text-gray-600">{meta.label}</span>
+                                      <span className="font-semibold text-gray-900 tabular-nums">{parseFloat(String(rd.mesure))} {meta.unit}</span>
+                                      {rd.consigne != null && (
+                                        <span className="text-gray-400">cible {parseFloat(String(rd.consigne))}{rd.tolerance != null ? ` ±${parseFloat(String(rd.tolerance))}` : ''} {meta.unit}</span>
+                                      )}
+                                      {rd.conforme === true && <span className="text-[8px] px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold">Conforme</span>}
+                                      {rd.conforme === false && <span className="text-[8px] px-1 py-0.5 rounded bg-red-100 text-red-700 font-bold">Hors tolérance</span>}
+                                      {isChef && planStatus === 'in_progress' && (
+                                        <button onClick={() => deleteReadingMutation.mutate(rd.id)} className="text-gray-300 hover:text-red-500" title="Supprimer ce relevé">
+                                          <Trash2 size={11} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {isChef && planStatus === 'in_progress' && (() => {
+                              const d = draftFor(etape);
+                              const meta = PARAM_LABELS[d.parametre] || { label: d.parametre, unit: '' };
+                              const set = (patch: Partial<typeof d>) => setReadingDraft(s => ({ ...s, [etape.id]: { ...d, ...patch } }));
+                              return (
+                                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                                  <select value={d.parametre} onChange={e => set({ parametre: e.target.value })}
+                                    className="border border-gray-200 rounded px-1 py-0.5 text-[11px] bg-white">
+                                    {Object.entries(PARAM_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                                  </select>
+                                  <input value={d.consigne} onChange={e => set({ consigne: e.target.value })} placeholder="cible"
+                                    inputMode="decimal" className="w-14 border border-gray-200 rounded px-1 py-0.5 text-[11px]" />
+                                  <span className="text-gray-400">±</span>
+                                  <input value={d.tolerance} onChange={e => set({ tolerance: e.target.value })} placeholder="tol."
+                                    inputMode="decimal" className="w-12 border border-gray-200 rounded px-1 py-0.5 text-[11px]" />
+                                  <input value={d.mesure} onChange={e => set({ mesure: e.target.value })} placeholder={`mesure ${meta.unit}`}
+                                    inputMode="decimal" className="w-20 border border-gray-300 rounded px-1 py-0.5 text-[11px] font-medium" />
+                                  <button onClick={() => submitReading(etape)} disabled={addReadingMutation.isPending}
+                                    className="px-2 py-0.5 bg-violet-600 text-white rounded text-[11px] font-medium hover:bg-violet-700 transition inline-flex items-center gap-1 disabled:opacity-50">
+                                    <Plus size={11} /> Relever
+                                  </button>
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
