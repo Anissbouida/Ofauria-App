@@ -109,6 +109,11 @@ export const lettrageApi = {
     api.post('/ledger/lettrage', { lineIds }).then(r => r.data.data),
   unletter: (lettrageId: string): Promise<{ lettrage_id: string; lines: number }> =>
     api.delete(`/ledger/lettrage/${lettrageId}`).then(r => r.data.data),
+  /** Factures soldées par leurs règlements (lien des pièces), à lettrer d'un coup. */
+  autoPreview: (p: { accountId?: string; auxiliaryId?: string }): Promise<{ invoices: number; lines: number }> =>
+    api.get('/ledger/lettrage/auto', { params: p }).then(r => r.data.data),
+  auto: (p: { accountId?: string; auxiliaryId?: string }): Promise<{ invoices: number; lines: number }> =>
+    api.post('/ledger/lettrage/auto', p).then(r => r.data.data),
 };
 
 /* ═══ Exercices (mig 416) : clôture annuelle et à-nouveaux ═══ */
@@ -269,6 +274,7 @@ export interface BackfillSummary {
   created: number;
   skipped: number;
   resynced: number;
+  lettered: number;
   errors: number;
   errorSamples: string[];
 }

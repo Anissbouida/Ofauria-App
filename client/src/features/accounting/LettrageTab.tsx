@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Link2, Unlink, Lock, Calendar, CheckCircle2, Info } from 'lucide-react';
+import { Loader2, Link2, Unlink, Lock, Calendar, CheckCircle2, Info, Wand2 } from 'lucide-react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -90,6 +90,7 @@ export default function LettrageTab() {
     qc.invalidateQueries({ queryKey: ['lettrage-lines'] });
     qc.invalidateQueries({ queryKey: ['lettrage-accounts'] });
     qc.invalidateQueries({ queryKey: ['lettrage-tiers'] });
+    qc.invalidateQueries({ queryKey: ['lettrage-auto'] });
   };
   const letterMut = useMutation({
     mutationFn: () => lettrageApi.letter([...selected]),
@@ -101,6 +102,23 @@ export default function LettrageTab() {
     onSuccess: (r) => { notify.success(`Groupe délettré : ${r.lines} lignes redeviennent à lettrer`); refresh(); },
     onError: (e) => notify.error(apiErrorMessage(e, 'Délettrage impossible')),
   });
+  // Lettrage automatique facture ↔ règlements (compte collectif ; un tiers ou tout le compte).
+  const autoScope = { accountId, auxiliaryId: auxiliaryId || undefined };
+  const autoQ = useQuery({
+    queryKey: ['lettrage-auto', accountId, auxiliaryId],
+    queryFn: () => lettrageApi.autoPreview(autoScope),
+    enabled: !!account?.is_collective,
+  });
+  const autoMut = useMutation({
+    mutationFn: () => lettrageApi.auto(autoScope),
+    onSuccess: (r) => { notify.success(`${r.invoices} facture(s) lettrée(s) avec leurs règlements (${r.lines} lignes)`); refresh(); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Lettrage automatique impossible')),
+  });
+  const askAuto = async () => {
+    const scope = auxiliaryId ? (tiersQ.data?.find(x => x.id === auxiliaryId)?.label ?? 'ce tiers') : `tout le compte ${account?.code}`;
+    if (await confirm(`Lettrer ${autoQ.data?.invoices} facture(s) avec leurs règlements sur ${scope} ?\nChaque groupe pourra être délettré ensuite.`,
+      { title: 'Lettrage automatique', confirmLabel: 'Lettrer' })) autoMut.mutate();
+  };
   const askUnletter = async (l: LettrageLine) => {
     const size = groupSize.get(l.lettrage_id!) ?? 0;
     if (await confirm(`Délettrer le groupe ${l.code} ? Ses ${size} lignes redeviendront à lettrer.`, { title: 'Délettrage', confirmLabel: 'Délettrer' })) {
@@ -154,6 +172,17 @@ export default function LettrageTab() {
           <input type="date" value={to} onChange={e => setTo(e.target.value)} className="odoo-search-input" style={{ width: 140 }} aria-label="Au" />
         </div>
       </div>
+
+      {!!autoQ.data?.invoices && (
+        <StatusBanner tone="orange" icon={Wand2}
+          title={`${autoQ.data.invoices} facture(s) soldée(s) par leurs règlements, non lettrée(s)`}
+          actions={<button type="button" className="odoo-btn-primary" disabled={autoMut.isPending} onClick={askAuto}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {autoMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Lettrer automatiquement
+          </button>}>
+          {auxiliaryId ? 'Sur ce tiers' : 'Sur tout le compte'}, chaque facture et ses règlements se compensent exactement d'après le lien des pièces : ils peuvent être lettrés d'un coup.
+        </StatusBanner>
+      )}
 
       {!ready ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>

@@ -6,7 +6,9 @@
  *   2. Refus : sélection non soldée, tiers différents, compte non lettrable,
  *      ligne déjà lettrée, écriture en brouillon.
  *   3. Garde en base (au COMMIT) : délettrage partiel et groupe multi-tiers refusés.
- *   4. Exercice clôturé : son lettrage est figé (ni lettrage ni délettrage).
+ *   4. Lettrage automatique d'une facture reprise (backfill) soldée par ses
+ *      règlements ; une facture partiellement payée reste ouverte.
+ *   5. Exercice clôturé : son lettrage est figé (ni lettrage ni délettrage).
  */
 import crypto from 'crypto';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
@@ -21,11 +23,12 @@ describe.skipIf(!hasTestDb)('Lettrage manuel', () => {
   let auxA: string, auxB: string;
   const day = new Date().toISOString().slice(0, 10);
 
-  /** Écriture comptabilisée : une ligne sur le tiers, la contrepartie en caisse ou en charge. */
+  /** Écriture comptabilisée : une ligne sur le tiers, la contrepartie en caisse ou en charge.
+   *  Journal CA, pas OD : manual-entry.db.test contrôle la séquence OD en parallèle. */
   const tiersEntry = async (aux: string, side: 'debit' | 'credit', amount: number, label: string, date = day) => {
     const tiersLine = { accountId: acc['4411'], auxiliaryId: aux, debit: side === 'debit' ? amount : 0, credit: side === 'credit' ? amount : 0, label };
     const other = { accountId: side === 'debit' ? acc['5161'] : acc['6181'], debit: side === 'credit' ? amount : 0, credit: side === 'debit' ? amount : 0 };
-    const { id } = await manual.createAndPost({ journalCode: 'OD', date, description: `${label} ${RUN}`, lines: [tiersLine, other] }, actor);
+    const { id } = await manual.createAndPost({ journalCode: 'CA', date, description: `${label} ${RUN}`, lines: [tiersLine, other] }, actor);
     return (await testPool().query(
       `SELECT id FROM journal_entry_lines WHERE journal_entry_id = $1 AND account_id = $2`, [id, acc['4411']])).rows[0].id as string;
   };
@@ -85,7 +88,7 @@ describe.skipIf(!hasTestDb)('Lettrage manuel', () => {
     await expect(lettrage.letter([fA, rB], actor)).rejects.toThrow(/même tiers/);
 
     // Compte non lettrable (charge 6181).
-    const { id } = await manual.createAndPost({ journalCode: 'OD', date: day, description: `Charges ${RUN}`, lines: [
+    const { id } = await manual.createAndPost({ journalCode: 'CA', date: day, description: `Charges ${RUN}`, lines: [
       { accountId: acc['6181'], debit: 10, credit: 0 }, { accountId: acc['5161'], debit: 0, credit: 10 },
       { accountId: acc['6181'], debit: 0, credit: 10 }, { accountId: acc['5161'], debit: 10, credit: 0 },
     ] }, actor);
@@ -100,7 +103,7 @@ describe.skipIf(!hasTestDb)('Lettrage manuel', () => {
     await expect(lettrage.letter([fA, rA2], actor)).rejects.toThrow(/déjà lettrée/);
 
     // Brouillon.
-    const draft = await manual.createDraft({ journalCode: 'OD', date: day, description: `Brouillon ${RUN}`, lines: [
+    const draft = await manual.createDraft({ journalCode: 'CA', date: day, description: `Brouillon ${RUN}`, lines: [
       { accountId: acc['4411'], auxiliaryId: auxA, debit: 0, credit: 25 }, { accountId: acc['6181'], debit: 25, credit: 0 },
     ] }, actor);
     const draftLine = (await testPool().query(
@@ -122,6 +125,54 @@ describe.skipIf(!hasTestDb)('Lettrage manuel', () => {
     const rA = await tiersEntry(auxA, 'debit', 15, 'Règlement autre tiers');
     await expect(p.query(
       `UPDATE journal_entry_lines SET lettrage_id = $2 WHERE id = ANY($1::uuid[])`, [[fB, rA], crypto.randomUUID()])).rejects.toThrow(/un seul compte et un seul tiers/);
+  });
+
+  it('lettre automatiquement une facture reprise avec ses règlements, pas une facture partiellement payée', async () => {
+    const p = testPool();
+    const supplier = (await p.query(`SELECT supplier_id FROM account_auxiliaries WHERE id = $1`, [auxA])).rows[0].supplier_id;
+    // Pièces et écritures « backfill » : la reprise d'historique ne lettrait pas.
+    const invoice = async (n: string, total: number, paid: number[]) => {
+      const inv = (await p.query(
+        `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, invoice_date, amount, total_amount, status)
+         VALUES ($1, 'received', $2, $3, $4, $4, 'pending') RETURNING id`, [`${n}-${RUN}`, supplier, day, total])).rows[0].id;
+      const entry = async (sourceId: string, tiers: 'debit' | 'credit', amount: number, other: string) => {
+        const e = (await p.query(
+          `INSERT INTO journal_entries (entry_number, journal_id, entry_date, fiscal_period_id, description, source_kind, source_id, created_by)
+           SELECT $1::text, j.id, $2::date, fn_ensure_fiscal_period($2::date), $1::text, 'backfill', $3, $4 FROM journals j WHERE j.code = 'OD' RETURNING id`,
+          [`BF-${crypto.randomUUID().slice(0, 8)}`, day, sourceId, actor.userId])).rows[0].id;
+        await p.query(
+          `INSERT INTO journal_entry_lines (journal_entry_id, line_order, account_id, auxiliary_id, debit, credit)
+           VALUES ($1, 1, $2, $3, $4, $5), ($1, 2, $6, NULL, $5, $4)`,
+          [e, acc['4411'], auxA, tiers === 'debit' ? amount : 0, tiers === 'credit' ? amount : 0, other]);
+        await p.query(`UPDATE journal_entries SET status = 'posted', posted_at = now(), posted_by = $2 WHERE id = $1`, [e, actor.userId]);
+      };
+      await entry(inv, 'credit', total, acc['6181']);
+      for (const amount of paid) {
+        const pay = (await p.query(
+          `INSERT INTO payments (type, invoice_id, supplier_id, amount, payment_date, payment_method, payment_mode, reference)
+           VALUES ('invoice', $1, $2, $3, $4, 'virement', 'virement', $5) RETURNING id`, [inv, supplier, amount, day, `VIR-${crypto.randomUUID().slice(0, 8)}`])).rows[0].id;
+        await entry(pay, 'debit', amount, acc['5161']);
+      }
+      return inv as string;
+    };
+    // Montants propres à chaque passage : la détection de doublons bloquerait le paiement.
+    const k = Math.round(Math.random() * 90000) / 100;
+    const soldee = await invoice('FA-AUTO', 90 + k, [50 + k, 40]);
+    const partielle = await invoice('FA-PART', 190 + k, [50]);
+    const linesOf = async (inv: string) => (await p.query(
+      `SELECT jel.lettrage_id FROM journal_entry_lines jel JOIN journal_entries je ON je.id = jel.journal_entry_id
+        WHERE jel.account_id = $2 AND (je.source_id = $1 OR je.source_id IN (SELECT id FROM payments WHERE invoice_id = $1))`,
+      [inv, acc['4411']])).rows.map((r: { lettrage_id: string | null }) => r.lettrage_id);
+
+    const scope = { accountId: acc['4411'], auxiliaryId: auxA };
+    expect(await lettrage.autoLetter({ ...scope, dryRun: true }, actor)).toEqual({ invoices: 1, lines: 3 });
+    expect(await linesOf(soldee)).toEqual([null, null, null]);              // l'aperçu ne lettre rien
+    expect(await lettrage.autoLetter(scope, actor)).toEqual({ invoices: 1, lines: 3 });
+    const l1 = await linesOf(soldee);
+    expect(l1[0]).not.toBeNull();
+    expect(new Set(l1).size).toBe(1);
+    expect(await linesOf(partielle)).toEqual([null, null]);
+    expect((await lettrage.autoLetter({ ...scope, dryRun: true }, actor)).invoices).toBe(0);
   });
 
   it('fige le lettrage d\'un exercice clôturé', async () => {

@@ -128,7 +128,7 @@ export default function EcrituresTab() {
     onSuccess: (r) => {
       queryClient.invalidateQueries({ queryKey: ['ledger-entries'] });
       queryClient.invalidateQueries({ queryKey: ['ledger-reconciliation'] });
-      notify.success(`${r.created} écriture(s) générée(s)${r.resynced ? ` · ${r.resynced} resynchronisée(s)` : ''}${r.skipped ? ` · ${r.skipped} déjà existante(s)` : ''}${r.errors ? ` · ${r.errors} erreur(s)` : ''}`);
+      notify.success(`${r.created} écriture(s) générée(s)${r.resynced ? ` · ${r.resynced} resynchronisée(s)` : ''}${r.lettered ? ` · ${r.lettered} facture(s) lettrée(s)` : ''}${r.skipped ? ` · ${r.skipped} déjà existante(s)` : ''}${r.errors ? ` · ${r.errors} erreur(s)` : ''}`);
     },
     onError: () => notify.error('Erreur lors de la génération des écritures'),
   });

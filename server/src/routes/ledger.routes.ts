@@ -156,6 +156,17 @@ ledgerRouter.get('/lettrage/lines', ...AM, asyncHandler(async (req: AuthRequest,
   if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
   res.json({ success: true, data: await lettrageRepository.lines(r.data) });
 }));
+const autoScope = z.object({ accountId: z.string().uuid().optional(), auxiliaryId: z.string().uuid().optional() });
+ledgerRouter.get('/lettrage/auto', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = autoScope.safeParse(req.query);
+  if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
+  res.json({ success: true, data: await lettrageRepository.autoLetter({ ...r.data, dryRun: true }, { userId: req.user!.userId }) });
+}));
+ledgerRouter.post('/lettrage/auto', ...AM, requireVerb('accounting', 'validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = autoScope.safeParse(req.body ?? {});
+  if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
+  res.json({ success: true, data: await lettrageRepository.autoLetter(r.data, { userId: req.user!.userId }) });
+}));
 ledgerRouter.post('/lettrage', ...AM, requireVerb('accounting', 'validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ lineIds: z.array(z.string().uuid()).min(2).max(1000) }).safeParse(req.body);
   if (!r.success) { tplBad(res, 'Sélectionnez au moins deux lignes à lettrer'); return; }

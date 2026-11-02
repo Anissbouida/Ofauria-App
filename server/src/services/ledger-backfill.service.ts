@@ -13,6 +13,7 @@
 
 import { db } from '../config/database.js';
 import { postGoodsReceiptsForPo } from './ledger-posting.service.js';
+import { lettrageRepository } from '../repositories/lettrage.repository.js';
 import {
   fromInvoice, fromSale, fromPaymentEmission, fromPaymentCashing, fromManualShiftEntry, persistEntry,
   regenerateInvoiceEntry, reverseEntriesForSource,
@@ -28,6 +29,7 @@ export interface BackfillSummary {
   created: number;
   skipped: number;
   resynced: number;
+  lettered: number;              // factures lettrées avec leurs règlements
   errors: number;
   errorSamples: string[];
 }
@@ -39,7 +41,7 @@ export interface BackfillSummary {
 export async function runFullBackfill(userId: string): Promise<BackfillSummary> {
   const summary: BackfillSummary = {
     invoices: 0, payments: 0, cashings: 0, sales: 0, shiftEntries: 0,
-    created: 0, skipped: 0, resynced: 0, errors: 0, errorSamples: [],
+    created: 0, skipped: 0, resynced: 0, lettered: 0, errors: 0, errorSamples: [],
   };
 
   const persistOne = async (entry: Awaited<ReturnType<typeof fromInvoice>>, label: string) => {
@@ -253,6 +255,16 @@ export async function runFullBackfill(userId: string): Promise<BackfillSummary> 
     } finally {
       client.release();
     }
+  }
+
+  // ─── Lettrage facture ↔ règlements de l'historique repris ───
+  // persistEntry ne lettre pas : sans cette passe, les factures payées restaient
+  // « ouvertes » sur le compte de tiers.
+  try {
+    summary.lettered = (await lettrageRepository.autoLetter({}, { userId })).invoices;
+  } catch (err) {
+    summary.errors++;
+    if (summary.errorSamples.length < 10) summary.errorSamples.push(`lettrage: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   return summary;

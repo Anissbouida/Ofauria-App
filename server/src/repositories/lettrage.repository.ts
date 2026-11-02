@@ -12,11 +12,16 @@
  *     repris en à-nouveaux, c'est la ligne d'AN qui se lettre ensuite.
  *   - Chaque ligne lettrée ou délettrée est tracée dans ledger_audit_log
  *     (trigger de la mig 413), au nom de l'utilisateur.
+ *   - Lettrage automatique : une facture avec ses règlements, d'après le lien
+ *     des pièces (payments.invoice_id), quand l'ensemble se solde exactement.
+ *     Rattrape notamment l'historique repris (écritures « backfill »), que la
+ *     reprise ne lettrait pas.
  */
 import type { PoolClient } from 'pg';
 import crypto from 'crypto';
 import { db } from '../config/database.js';
 import { letterCode } from '../services/fec.service.js';
+import { autoLettrer } from '../services/journal-generator.service.js';
 
 type Actor = { userId: string };
 export type LettrageStatus = 'open' | 'lettered' | 'all';
@@ -51,6 +56,13 @@ async function closedUntil(c: PoolClient | typeof db): Promise<{ end: string | n
     `SELECT end_date::text AS end, year FROM fiscal_years WHERE status = 'closed' ORDER BY end_date DESC LIMIT 1`)).rows[0];
   return { end: r?.end ?? null, year: r?.year ?? null };
 }
+
+type LineRow = {
+  id: string; lettrage_id: string | null; debit: string; credit: string; label: string | null;
+  entry_id: string; entry_number: string; entry_date: string; description: string; piece_ref: string | null;
+  source_kind: string; status: string; journal_code: string;
+  rank: number | null; lettered_at: string | null; frozen: boolean;
+};
 
 type LockedLine = {
   id: string; account_id: string; auxiliary_id: string | null; debit: string; credit: string;
@@ -142,9 +154,7 @@ export const lettrageRepository = {
         ORDER BY s.entry_date, s.entry_number, s.line_order
         LIMIT 3000`,
       [p.accountId, p.auxiliaryId || null, p.status, p.from || null, p.to || null, closed.end]);
-    const lines = r.rows.map((l: { rank: number | null } & Record<string, unknown>) => ({
-      ...l, code: l.rank ? letterCode(l.rank) : null,
-    }));
+    const lines = (r.rows as LineRow[]).map(l => ({ ...l, code: l.rank ? letterCode(l.rank) : null }));
     const tot = (await db.query(
       `SELECT COALESCE(sum(jel.debit) FILTER (WHERE jel.lettrage_id IS NULL), 0) AS open_debit,
               COALESCE(sum(jel.credit) FILTER (WHERE jel.lettrage_id IS NULL), 0) AS open_credit,
@@ -186,6 +196,50 @@ export const lettrageRepository = {
       const lettrageId = crypto.randomUUID();
       await c.query(`UPDATE journal_entry_lines SET lettrage_id = $1 WHERE id = ANY($2::uuid[])`, [lettrageId, ids]);
       return { lettrage_id: lettrageId, lines: ids.length };
+    });
+  },
+
+  /**
+   * Lettrage automatique facture ↔ règlements (mêmes lignes et même règle que
+   * autoLettrer) sur les factures dont les lignes non lettrées se soldent, sur
+   * un seul compte et un seul tiers, hors exercice clôturé. Facultativement
+   * limité à un compte et un tiers ; dryRun = compter sans lettrer.
+   */
+  async autoLetter(p: { accountId?: string; auxiliaryId?: string; dryRun?: boolean }, actor: Actor) {
+    const candidates = async (c: PoolClient | typeof db) => {
+      const closed = await closedUntil(c);
+      return (await c.query(
+        `WITH l AS (
+           SELECT jel.debit, jel.credit, jel.account_id, jel.auxiliary_id, je.entry_date,
+                  COALESCE(i.id, pay.invoice_id) AS inv
+             FROM journal_entry_lines jel
+             JOIN journal_entries je ON je.id = jel.journal_entry_id
+             JOIN accounts a ON a.id = jel.account_id
+             LEFT JOIN invoices i ON i.id = je.source_id
+             LEFT JOIN payments pay ON pay.id = je.source_id
+            WHERE a.code IN ('4411', '3421') AND jel.lettrage_id IS NULL
+              AND je.status = 'posted' AND je.source_kind <> 'reversal')
+         SELECT inv, count(*)::int AS lines
+           FROM l WHERE inv IS NOT NULL
+          GROUP BY inv
+         HAVING count(*) >= 2 AND sum(debit - credit) = 0
+            AND count(DISTINCT account_id) = 1 AND count(DISTINCT COALESCE(auxiliary_id::text, '-')) = 1
+            AND ($1::uuid IS NULL OR bool_and(account_id = $1::uuid))
+            AND ($2::uuid IS NULL OR bool_and(auxiliary_id = $2::uuid))
+            AND ($3::date IS NULL OR min(entry_date) > $3::date)`,
+        [p.accountId || null, p.auxiliaryId || null, closed.end])).rows as { inv: string; lines: number }[];
+    };
+    if (p.dryRun) {
+      const rows = await candidates(db);
+      return { invoices: rows.length, lines: rows.reduce((s, r) => s + r.lines, 0) };
+    }
+    return withTx(actor.userId, async c => {
+      let invoices = 0, lines = 0;
+      for (const r of await candidates(c)) {
+        const out = await autoLettrer(c, r.inv);
+        if (out.lettered) { invoices++; lines += out.lineCount ?? 0; }
+      }
+      return { invoices, lines };
     });
   },
 
