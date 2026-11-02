@@ -854,6 +854,18 @@ export const ingredientLotRepository = {
        data.visualOk ?? null, data.packagingOk ?? null, data.labelsOk ?? null,
        data.overallConformity, data.notes || null, data.checkedBy]
     );
+
+    // Réception bloquante (épic labo L5, mig 428) : un contrôle non conforme
+    // VERROUILLE les lots de la réception (status 'blocked' → exclus de la
+    // consommation) ; un contrôle conforme les libère. On ne touche qu'aux lots
+    // encore en stock (active ↔ blocked), jamais aux lots consommés/en perte.
+    const lotFilter = `reception_voucher_item_id IN (
+      SELECT id FROM reception_voucher_items WHERE reception_voucher_id = $1)`;
+    if (data.overallConformity === false) {
+      await db.query(`UPDATE ingredient_lots SET status = 'blocked' WHERE ${lotFilter} AND status = 'active'`, [data.receptionVoucherId]);
+    } else {
+      await db.query(`UPDATE ingredient_lots SET status = 'active' WHERE ${lotFilter} AND status = 'blocked'`, [data.receptionVoucherId]);
+    }
     return result.rows[0];
   },
 
