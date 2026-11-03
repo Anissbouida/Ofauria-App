@@ -159,12 +159,13 @@ function LotSalesRow({ lot, colSpan }: { lot: ProductLotTrace; colSpan: number }
   return (
     <tr><td colSpan={colSpan} style={{ background: 'var(--odoo-bg-hover)' }}>
       {isLoading ? <Loading /> : data.length === 0 ? (
-        <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Aucune vente tracée pour ce lot (les ventes ne sont rattachées aux lots que depuis la mise en service).</span>
+        <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Aucune vente ni livraison tracée pour ce lot (les ventes ne sont rattachées aux lots que depuis la mise en service).</span>
       ) : (
         <table className="odoo-table" style={{ margin: 0 }}>
-          <thead><tr><th>Date</th><th>Ticket</th><th style={{ textAlign: 'right' }}>Qté du lot</th><th>Client</th></tr></thead>
+          <thead><tr><th>Date</th><th>Pièce</th><th style={{ textAlign: 'right' }}>Qté du lot</th><th>Client</th></tr></thead>
           <tbody>{data.map((s, i) => (
-            <tr key={`${s.sale_id}-${i}`}><td>{dt(s.created_at)}</td><td>{s.sale_number ?? '—'}</td><td style={{ textAlign: 'right' }}>{q(s.quantity)}</td>
+            <tr key={`${s.sale_id ?? s.delivery_note_id}-${i}`}><td>{dt(s.created_at)}</td>
+              <td>{s.kind === 'delivery' ? <>BL {s.delivery_note_number} <span className="odoo-tag odoo-tag-blue">pro</span></> : (s.sale_number ?? '—')}</td><td style={{ textAlign: 'right' }}>{q(s.quantity)}</td>
               <td>{s.customer_name ? `${s.customer_name}${s.customer_phone ? ` · ${s.customer_phone}` : ''}` : <span style={{ color: 'var(--theme-text-muted)' }}>anonyme</span>}</td></tr>
           ))}</tbody>
         </table>

@@ -40,7 +40,9 @@ export type BackwardTrace = {
   }>;
 };
 
-export type LotSale = { created_at: string; quantity: number; sale_id: string | null; sale_number: string | null; total: number | null; customer_name: string | null; customer_phone: string | null };
+export type LotSale = { created_at: string; quantity: number; sale_id: string | null; sale_number: string | null; total: number | null; customer_name: string | null; customer_phone: string | null;
+  /** 'sale' ticket de caisse ; 'delivery' bon de livraison professionnel (O2C L1). */
+  kind?: 'sale' | 'delivery'; delivery_note_id?: string | null; delivery_note_number?: string | null };
 
 export type Recall = {
   id: string; reference: string; origin_kind: 'ingredient_lot' | 'product_lot'; origin_id: string; origin_label: string; reason: string;
