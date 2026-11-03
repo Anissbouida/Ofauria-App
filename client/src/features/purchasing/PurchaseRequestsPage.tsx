@@ -130,7 +130,7 @@ export default function PurchaseRequestsPage() {
       queryClient.invalidateQueries({ queryKey: ['purchase-requests-grouped'] });
       queryClient.invalidateQueries({ queryKey: ['rfqs'] });
       setSelectedRequests({});
-      notify.success(`Appel d'offres ${rfq.number} créé`);
+      notify.success(`Demande de prix ${rfq.number} créée`);
       navigate('/purchasing?tab=rfq');
     },
     onError: (e) => notify.error(apiErrorMessage(e, 'Création de l\'appel d\'offres impossible')),
@@ -271,7 +271,7 @@ export default function PurchaseRequestsPage() {
                           className="odoo-btn-primary" disabled={rfqMutation.isPending}
                           title="Mettre ces demandes en concurrence avant de commander"
                           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <FileQuestion size={11} /> Lancer l'appel d'offres ({selected.size})
+                          <FileQuestion size={11} /> Lancer la demande de prix ({selected.size})
                         </button>
                       )}
                       {!group.supplier_id && (

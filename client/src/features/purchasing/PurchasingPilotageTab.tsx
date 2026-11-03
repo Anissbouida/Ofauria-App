@@ -126,7 +126,7 @@ function P2PFlowBand({ summary, onOpenTab }: {
       count: pr?.count ?? null, onClick: () => openTab('purchase_requests') },
     { n: 3, label: 'Approbation', hint: 'en attente de décision', icon: ClipboardCheck,
       count: appr ?? null, onClick: () => navigate('/approvals') },
-    { n: 4, label: 'Sourcing', hint: "appels d'offres en cours", icon: FileQuestion,
+    { n: 4, label: 'Sourcing', hint: "demandes de prix en cours", icon: FileQuestion,
       count: rfqOpen, late: rfqOverdue, lateLabel: 'en retard', onClick: () => openTab('rfq') },
     { n: 5, label: 'Bon de commande', hint: 'commandé, non reçu', icon: ClipboardList,
       count: summary?.open_commitments.pos ?? null, onClick: () => openTab('purchase_orders') },

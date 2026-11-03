@@ -93,7 +93,7 @@ export default function PurchasingPage() {
     { key: 'purchase_requests', label: '2 · Demande d\'achat', icon: FilePlus2, section: 'operations' },
     { key: 'approvals', label: '3 · Approbation', icon: ClipboardCheck, section: 'operations', badge: approvalsCount },
     // Appels d'offres (mig 360) : demande de prix à plusieurs fournisseurs, devis, comparatif, BC.
-    { key: 'rfq', label: '4 · Appels d\'offres', icon: FileQuestion, section: 'operations' },
+    { key: 'rfq', label: '4 · Demandes de prix', icon: FileQuestion, section: 'operations' },
     { key: 'purchase_orders', label: '5 · Bons de commande', icon: ClipboardList, section: 'operations' },
     // Réception (étape 6) : liste des bons de réception ; la réception se complète dans le détail du BC.
     { key: 'reception', label: '6 · Réceptions', icon: PackageCheck, section: 'operations' },

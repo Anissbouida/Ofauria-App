@@ -47,7 +47,7 @@ export default function RfqTab({ onOpenOrder }: { onOpenOrder?: (purchaseOrderId
   const by = data?.byStatus ?? {};
   return (
     <>
-      <StagePipeline title="Où en sont les appels d'offres" summary={`${(by.sent?.count ?? 0) + (by.quoted?.count ?? 0)} en cours · ${(by.sent?.overdue ?? 0) + (by.quoted?.overdue ?? 0)} au-delà de la date limite`}
+      <StagePipeline title="Où en sont les demandes de prix" summary={`${(by.sent?.count ?? 0) + (by.quoted?.count ?? 0)} en cours · ${(by.sent?.overdue ?? 0) + (by.quoted?.overdue ?? 0)} au-delà de la date limite`}
         stages={STAGES} stats={Object.fromEntries(STAGES.map(s => [s.key, { count: by[s.key]?.count ?? 0, sub: '', late: by[s.key]?.overdue ?? 0, alertLabel: 'en retard' }]))}
         isActive={k => status === k} onPick={k => setStatus(status === k ? '' : (k as RfqStatus))} />
       <div className="odoo-search-panel" style={{ margin: 0 }}>
@@ -58,10 +58,10 @@ export default function RfqTab({ onOpenOrder }: { onOpenOrder?: (purchaseOrderId
           {Object.entries(RFQ_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <div style={{ flex: 1 }} />
-        <button className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouvel appel d'offres</button>
+        <button className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouvelle demande de prix</button>
       </div>
       {isLoading ? <Loading /> : !data?.rows.length ? (
-        <StatusBanner tone="info" icon={FileQuestion} title="Aucun appel d'offres">Demandez des prix à plusieurs fournisseurs sur une même liste d'articles, puis comparez.</StatusBanner>
+        <StatusBanner tone="info" icon={FileQuestion} title="Aucune demande de prix">Demandez des prix à plusieurs fournisseurs sur une même liste d'articles, puis comparez les devis par notation.</StatusBanner>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table">
@@ -133,7 +133,7 @@ function RfqFormModal({ rfq, onClose, onSaved }: { rfq?: Rfq | null; onClose: ()
         items: items.map(({ key: _k, label: _l, ...i }) => i), supplierIds };
       return rfq ? rfqApi.update(rfq.id, body) : rfqApi.create(body);
     },
-    onSuccess: r => { qc.invalidateQueries({ queryKey: ['rfqs'] }); qc.invalidateQueries({ queryKey: ['rfq', r.id] }); notify.success(rfq ? 'Appel d\'offres enregistré' : `Appel d'offres ${r.number} créé`); onSaved?.(r.id); onClose(); },
+    onSuccess: r => { qc.invalidateQueries({ queryKey: ['rfqs'] }); qc.invalidateQueries({ queryKey: ['rfq', r.id] }); notify.success(rfq ? 'Demande de prix enregistrée' : `Demande de prix ${r.number} créée`); onSaved?.(r.id); onClose(); },
     onError: e => notify.error(apiErrorMessage(e)),
   });
   const can = title.trim().length > 0 && items.length > 0 && items.every(i => i.quantity > 0) && !save.isPending;
@@ -142,7 +142,7 @@ function RfqFormModal({ rfq, onClose, onSaved }: { rfq?: Rfq | null; onClose: ()
     <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 820, maxHeight: '92vh', overflowY: 'auto', background: 'var(--theme-bg-card)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
         <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">{rfq ? `Modifier ${rfq.number}` : 'Nouvel appel d\'offres'}</span></div>
+          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">{rfq ? `Modifier ${rfq.number}` : 'Nouvelle demande de prix'}</span></div>
           <div style={{ flex: 1 }} />
           <button type="button" onClick={onClose} className="odoo-btn-secondary" aria-label="Fermer"><X size={14} /></button>
         </div>
@@ -212,7 +212,7 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
   const [editing, setEditing] = useState(false);
   const [quoting, setQuoting] = useState<RfqSupplier | null>(null);
   const refresh = () => { qc.invalidateQueries({ queryKey: ['rfq', id] }); qc.invalidateQueries({ queryKey: ['rfqs'] }); };
-  const send = useMutation({ mutationFn: () => rfqApi.send(id), onSuccess: (data) => { refresh(); const n = data?.emailsQueued ?? 0; notify.success(n > 0 ? `Appel d'offres envoyé — ${n} e-mail(s) fournisseur mis en file` : 'Appel d\'offres envoyé : aucun fournisseur avec e-mail, saisissez les devis au fur et à mesure'); }, onError: e => notify.error(apiErrorMessage(e)) });
+  const send = useMutation({ mutationFn: () => rfqApi.send(id), onSuccess: (data) => { refresh(); const n = data?.emailsQueued ?? 0; notify.success(n > 0 ? `Demande de prix envoyée — ${n} e-mail(s) fournisseur mis en file` : 'Demande de prix envoyée : aucun fournisseur avec e-mail, saisissez les devis au fur et à mesure'); }, onError: e => notify.error(apiErrorMessage(e)) });
   const setStatus = useMutation({ mutationFn: (s: 'cancelled' | 'closed' | 'draft') => rfqApi.setStatus(id, s), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
   const supplierStatus = useMutation({ mutationFn: (p: { supplierId: string; status: 'invited' | 'declined' | 'no_response' }) => rfqApi.setSupplierStatus(id, p.supplierId, p.status), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
   const award = useMutation({
@@ -266,7 +266,7 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
           {/* Fournisseurs consultés */}
           <div>
             <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Fournisseurs consultés</div>
-            {suppliers.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucun fournisseur. Modifiez l'appel d'offres pour en ajouter.</p> : (
+            {suppliers.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucun fournisseur. Modifiez la demande de prix pour en ajouter.</p> : (
               <table className="odoo-table">
                 <thead><tr><th>Fournisseur</th><th>Contact</th><th>Réponse</th><th /></tr></thead>
                 <tbody>{suppliers.map(s => (
@@ -307,7 +307,7 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
                   <thead>
                     <tr>
                       <th>Article</th><th style={{ textAlign: 'right' }}>Qté</th><th style={{ textAlign: 'right' }}>Dernier prix</th>
-                      {quotes.map(q => <th key={q.id} style={{ textAlign: 'right', background: q.id === r.best_total_quotation_id ? 'rgba(40,167,69,0.08)' : undefined }}>{q.supplier_name}{q.status === 'selected' && <Trophy size={12} style={{ marginLeft: 4, color: '#28a745' }} />}</th>)}
+                      {quotes.map(q => <th key={q.id} style={{ textAlign: 'right', background: q.id === r.recommended_quotation_id ? 'rgba(40,167,69,0.08)' : undefined }}>{q.supplier_name}{q.status === 'selected' && <Trophy size={12} style={{ marginLeft: 4, color: '#28a745' }} />}{q.status !== 'selected' && q.id === r.recommended_quotation_id && <div style={{ fontSize: '0.65rem', fontWeight: 600, color: '#28a745' }}>recommandé</div>}</th>)}
                     </tr>
                   </thead>
                   <tbody>
@@ -330,7 +330,24 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
                     ))}
                     <tr style={{ fontWeight: 600 }}>
                       <td colSpan={3}>Total HT (remise et port compris)</td>
-                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right', color: q.id === r.best_total_quotation_id ? '#28a745' : undefined }}>{n2(q.total_ht)}{q.total_foreign && <div style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--theme-text-muted)' }}>{n2(q.total_foreign)} {String(q.currency_code).trim()}</div>}{!q.complete && <div style={{ fontSize: '0.7rem', fontWeight: 400, color: '#d9822b' }}>{q.covered}/{items.length} lignes</div>}</td>)}
+                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right', color: q.id === r.best_total_quotation_id ? '#1a73c7' : undefined }} title={q.id === r.best_total_quotation_id ? 'Le moins cher' : undefined}>{n2(q.total_ht)}{q.total_foreign && <div style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--theme-text-muted)' }}>{n2(q.total_foreign)} {String(q.currency_code).trim()}</div>}{!q.complete && <div style={{ fontSize: '0.7rem', fontWeight: 400, color: '#d9822b' }}>{q.covered}/{items.length} lignes</div>}</td>)}
+                    </tr>
+                    {/* Notation multi-critères (mig 458) : prix + qualité + fournisseur, pondérés. Le mieux noté est recommandé. */}
+                    <tr style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                      <td colSpan={3}>Note prix (poids {r.scoring_weights?.price ?? 50})</td>
+                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right' }}>{q.score_price ?? '—'}</td>)}
+                    </tr>
+                    <tr style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                      <td colSpan={3}>Note qualité (poids {r.scoring_weights?.quality ?? 25})</td>
+                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right' }}>{q.quality_score != null ? Number(q.quality_score) : <span title="non notée">{q.score_quality ?? 50}*</span>}</td>)}
+                    </tr>
+                    <tr style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                      <td colSpan={3}>Note fournisseur (poids {r.scoring_weights?.supplier ?? 25})</td>
+                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right' }}>{q.supplier_score != null ? Number(q.supplier_score) : <span title="non évalué">{q.score_supplier ?? 50}*</span>}</td>)}
+                    </tr>
+                    <tr style={{ fontWeight: 700 }}>
+                      <td colSpan={3}>Note globale /100</td>
+                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right', color: q.id === r.recommended_quotation_id ? '#28a745' : undefined }}>{q.score ?? '—'}</td>)}
                     </tr>
                     <tr style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
                       <td colSpan={3}>Délai · validité · conditions</td>
@@ -341,8 +358,8 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
                         <td colSpan={3} />
                         {quotes.map(q => (
                           <td key={q.id} style={{ textAlign: 'right' }}>
-                            <button className={q.id === r.best_total_quotation_id ? 'odoo-btn-primary' : 'odoo-btn-secondary'} disabled={award.isPending}
-                              onClick={async () => { if (await confirm(`Retenir le devis de ${q.supplier_name} et créer le bon de commande (${n2(q.total_ht)} DH HT) ?`)) award.mutate(q.id); }}>
+                            <button className={q.id === r.recommended_quotation_id ? 'odoo-btn-primary' : 'odoo-btn-secondary'} disabled={award.isPending}
+                              onClick={async () => { if (await confirm(`Retenir le devis de ${q.supplier_name} (note ${q.score ?? '—'}/100${q.id === r.recommended_quotation_id ? ', recommandé' : ''}) et créer le bon de commande (${n2(q.total_ht)} DH HT) ?`)) award.mutate(q.id); }}>
                               <Award size={12} /> Retenir
                             </button>
                           </td>
@@ -372,6 +389,7 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
     quotationRef: existing?.quotation_ref ?? '', receivedAt: existing?.received_at?.slice(0, 10) ?? format(new Date(), 'yyyy-MM-dd'),
     validUntil: existing?.valid_until?.slice(0, 10) ?? '', deliveryDays: existing?.delivery_days != null ? String(existing.delivery_days) : '',
     paymentTerms: existing?.payment_terms ?? '', shippingCost: existing ? String(existing.shipping_cost) : '0', discountPct: existing ? String(existing.discount_pct) : '0', notes: existing?.notes ?? '',
+    qualityScore: existing?.quality_score != null ? String(Number(existing.quality_score)) : '',
   });
   // Devise du devis (mig 363) : prix et port saisis dans la devise du fournisseur, comparés en DH.
   const { data: currencies = [] } = useQuery({ queryKey: ['currencies'], queryFn: () => currenciesApi.list(), staleTime: 60_000 });
@@ -393,6 +411,7 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
       supplierId: supplier.supplier_id, quotationRef: head.quotationRef || null, receivedAt: head.receivedAt, validUntil: head.validUntil || null,
       deliveryDays: head.deliveryDays === '' ? null : Number(head.deliveryDays), paymentTerms: head.paymentTerms || null,
       shippingCost: Number(head.shippingCost) || 0, discountPct: Number(head.discountPct) || 0, notes: head.notes || null,
+      qualityScore: head.qualityScore === '' ? null : Number(head.qualityScore),
       currencyCode: currency, ...(currency !== 'MAD' ? { exchangeRate: rate } : {}),
       items: items.map(it => { const l = lines[it.id]; const available = l.available && l.price !== ''; return { rfqItemId: it.id, available, unitPrice: available ? Number(l.price) : null, quantity: l.qty ? Number(l.qty) : null, note: l.note || null }; }),
     }),
@@ -426,6 +445,7 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
               : <input className="input" type="number" min="0" step="0.0001" style={{ width: '100%' }} value={rateInput} onChange={e => setRateInput(e.target.value)} />}</div>
             <div><span style={label}>Frais de port ({cur})</span><input className="input" type="number" min="0" step="0.01" style={{ width: '100%' }} value={head.shippingCost} onChange={e => set('shippingCost', e.target.value)} /></div>
             <div><span style={label}>Remise globale (%)</span><input className="input" type="number" min="0" max="100" step="0.01" style={{ width: '100%' }} value={head.discountPct} onChange={e => set('discountPct', e.target.value)} /></div>
+            <div><span style={label}>Note qualité (0-100)</span><input className="input" type="number" min="0" max="100" step="1" style={{ width: '100%' }} value={head.qualityScore} onChange={e => set('qualityScore', e.target.value)} placeholder="ex. 80" title="Appréciation de la qualité de l'offre — critère de la notation" /></div>
             <div><span style={label}>Total HT</span><div style={{ fontSize: '1.125rem', fontWeight: 700, paddingTop: 4 }}>{n2(total)} {cur}</div>
               {currency !== 'MAD' && rate > 0 && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>≈ {n2(total * rate)} DH</div>}</div>
           </div>
