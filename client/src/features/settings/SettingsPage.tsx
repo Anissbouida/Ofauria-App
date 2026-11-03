@@ -15,6 +15,7 @@ import ProductionMarkupTab from './ProductionMarkupTab';
 import AuditLogTab from './AuditLogTab';
 import NumberingTab from './NumberingTab';
 import ParametersPanel from './ParametersPanel';
+import SodMonitor from './SodMonitor';
 import ProductCategoriesTab from './ProductCategoriesTab';
 import CompanyBankAccounts from './CompanyBankAccounts';
 import StoresPanel from './StoresPanel';
@@ -152,7 +153,12 @@ function SettingsShell() {
         <ProductionMarkupTab />
       </>
     ),
-    purchasing: <ParametersPanel domains={['purchasing']} />,
+    purchasing: (
+      <div style={{ display: 'grid', gap: 16 }}>
+        <SodMonitor />
+        <ParametersPanel domains={['purchasing']} />
+      </div>
+    ),
     salesRules: <ParametersPanel keys={['sales.quotes', 'sales.dunning']} />,
     posRules: <ParametersPanel keys={['sales.pos_stock', 'sales.person_sizes']} />,
     productCategories: <ProductCategoriesTab />,

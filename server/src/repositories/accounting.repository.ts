@@ -1197,8 +1197,10 @@ export const invoiceRepository = {
          fields.declaredHt ?? null, fields.declaredVat ?? null, fields.declaredTtc ?? null]
       );
 
-      // 2. Transition brouillon → validée (le trigger mig 436 bloque sans n°/TTC).
-      await client.query(`UPDATE invoices SET validation_status = 'validated' WHERE id = $1`, [id]);
+      // 2. Transition brouillon → validée (le trigger mig 438 bloque sans n°/TTC).
+      //    validated_by trace le valideur, nécessaire à la séparation des tâches
+      //    (lot L2 : le valideur ≠ le réceptionnaire, et ≠ le payeur).
+      await client.query(`UPDATE invoices SET validation_status = 'validated', validated_by = $2 WHERE id = $1`, [id, userId]);
 
       // 3. Événements IR : quantité facturée par ligne de BC rattachée (une par
       //    ligne de facture, > 0). Idempotent par ref_doc.
