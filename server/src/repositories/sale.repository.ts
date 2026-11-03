@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { adjustProductStock, adjustVitrineStock } from './product-stock.helper.js';
@@ -177,10 +178,11 @@ export const saleRepository = {
     loyaltyPointsUsed?: number;
     loyaltyAmount?: number;
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g' | 'person'; displayUnit?: 'g' | 'kg' | null; promoDiscount?: number }[];
-  }) {
-    const client = await db.getClient();
+  }, outer?: PoolClient) {
+    // `outer` : transaction de l'appelant (avance prise avec la commande, O2C L3 G-OM-07).
+    const client = outer ?? await db.getClient();
     try {
-      await client.query('BEGIN');
+      if (!outer) await client.query('BEGIN');
       if (data.completeOrder && data.orderId) {
         const o = (await client.query(`SELECT status, order_number FROM orders WHERE id = $1 FOR UPDATE`, [data.orderId])).rows[0];
         if (!o) throw Object.assign(new Error('Commande non trouvee'), { statusCode: 404 });
@@ -350,13 +352,13 @@ export const saleRepository = {
         await client.query(`UPDATE order_items SET qty_delivered = quantity - qty_cancelled WHERE order_id = $1`, [data.orderId]);
         await client.query(`UPDATE orders SET status = 'completed', completed_at = NOW(), cancelled_at = NULL WHERE id = $1`, [data.orderId]);
       }
-      await client.query('COMMIT');
+      if (!outer) await client.query('COMMIT');
       return saleResult.rows[0];
     } catch (err) {
-      await client.query('ROLLBACK');
+      if (!outer) await client.query('ROLLBACK');
       throw err;
     } finally {
-      client.release();
+      if (!outer) client.release();
     }
   },
 

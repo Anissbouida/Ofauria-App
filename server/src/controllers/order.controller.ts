@@ -8,10 +8,10 @@ import { createNotification } from '../utils/notify.js';
 import { paymentRepository, invoiceRepository } from '../repositories/accounting.repository.js';
 import { getLocalNow } from '../utils/timezone.js';
 import { deliveryNoteRepository } from '../repositories/delivery-note.repository.js';
-import { receivablesRepository } from '../repositories/receivables.repository.js';
 import { db } from '../config/database.js';
-import { dunningRepository, dunningSettings } from '../repositories/dunning.repository.js';
 import { evaluate as evaluatePromotions, recordApplied } from '../services/promotions.js';
+import { checkCredit, customerExposure } from '../services/credit-control.js';
+import { getParameter, type PricingRules } from '../services/module-parameters.service.js';
 
 /** Category slug → chef role mapping */
 const CATEGORY_ROLE_MAP: Record<string, string> = {
@@ -55,13 +55,24 @@ export async function loadCustomer(customerId?: string | null) {
 export const isProCustomer = (c: { customer_type?: string | null } | null) => !!c && (c.customer_type ?? 'particulier') !== 'particulier';
 
 type InItem = { productId: string; quantity: number; unitPrice?: number | string | null; tvaRate?: number | string | null; notes?: string };
-type OrderLine = { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate: number | null; notes?: string };
+type OrderLine = { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate: number | null; notes?: string;
+  /** Prix grille au moment de la saisie et dérogation éventuelle (O2C L3, mig 443). */
+  listPrice?: number; overrideBy?: string | null; overrideReason?: string | null };
+/** Contexte de saisie : rôle et auteur pour les dérogations de prix (absent : pas de contrôle, ex. devis). */
+export type PriorLine = { unitPrice: number; listPrice: number | null; overrideBy: string | null; overrideReason: string | null };
+/** `prior` (modification) : lignes déjà en commande par produit — un prix inchangé n'est pas une nouvelle dérogation. */
+export type PricingCtx = { role: string; userId: string; overrideReason?: string | null; prior?: Record<string, PriorLine> };
 
 /**
  * Remise de commande en % (mig 355) : discountPct prioritaire, sinon ancien
  * montant discountAmount converti. Renvoie le taux et le montant arrondi.
  */
-function orderDiscount(body: Record<string, unknown>, subtotal: number): { pct: number; amount: number } | { error: string } {
+async function orderDiscount(body: Record<string, unknown>, subtotal: number, role: string): Promise<{ pct: number; amount: number } | { error: string }> {
+  // Remise personnel : taux de la société, imposé par le serveur (plus seulement par l'écran).
+  if (body.type === 'staff') {
+    const staff = Number((await db.query(`SELECT staff_discount_percent FROM company_settings LIMIT 1`)).rows[0]?.staff_discount_percent ?? 10) || 10;
+    return { pct: round2(staff), amount: round2(subtotal * staff / 100) };
+  }
   const raw = body.discountPct;
   let pct: number;
   if (raw !== undefined && raw !== null && raw !== '') {
@@ -72,6 +83,12 @@ function orderDiscount(body: Record<string, unknown>, subtotal: number): { pct: 
   }
   if (!Number.isFinite(pct) || pct < 0 || pct > 100) return { error: 'Remise invalide : entre 0 et 100 %' };
   pct = round2(pct);
+  // O2C L3 (G-OM-05) : remise bornée par rôle côté serveur.
+  if (role !== 'admin' && pct > 0) {
+    const rules = await getParameter<PricingRules>('sales.pricing');
+    const max = role === 'manager' ? rules.max_discount_pct_manager : rules.max_discount_pct_sales;
+    if (pct > max + 0.001) return { error: `Remise de ${pct} % au-delà de votre plafond (${max} %) : demandez à la direction` };
+  }
   return { pct, amount: round2(subtotal * pct / 100) };
 }
 
@@ -96,9 +113,15 @@ export function taxAfterDiscount(lines: OrderLine[], subtotal: number, discountA
   return round2(lines.reduce((s, l) => s + (l.tvaRate ? Math.round(l.subtotal * ratio * l.tvaRate) / 100 : 0), 0));
 }
 
-/** Lignes chiffrées : prix saisi, sinon catalogue (particulier) ou catalogue remisé + dernière TVA (professionnel). */
-export async function priceLines(items: InItem[], pro: Record<string, unknown> | null) {
+/**
+ * Lignes chiffrées : prix saisi, sinon catalogue (particulier) ou catalogue remisé + dernière TVA
+ * (professionnel). O2C L3 (G-OM-04) : le prix grille est figé sur la ligne ; avec un contexte de
+ * saisie, un prix différent est une dérogation réservée à la direction, motivée, et au-delà de
+ * l'écart paramétré réservée à l'administrateur.
+ */
+export async function priceLines(items: InItem[], pro: Record<string, unknown> | null, ctx?: PricingCtx) {
   const defaults = pro ? await deliveryNoteRepository.lineDefaults(pro.id as string, items.map(i => i.productId)) : {};
+  const rules = ctx ? await getParameter<PricingRules>('sales.pricing') : null;
   const lines: OrderLine[] = [];
   const products: Record<string, unknown>[] = [];
   for (const item of items) {
@@ -108,34 +131,50 @@ export async function priceLines(items: InItem[], pro: Record<string, unknown> |
     if (!(qty > 0)) return { error: 'Quantite invalide' };
     const given = item.unitPrice != null && item.unitPrice !== '' && Number.isFinite(parseFloat(String(item.unitPrice))) && parseFloat(String(item.unitPrice)) >= 0
       ? parseFloat(String(item.unitPrice)) : null;
-    const unitPrice = given ?? (pro ? (defaults[item.productId]?.unitPrice ?? parseFloat(product.price)) : parseFloat(product.price));
+    let listPrice = pro ? (defaults[item.productId]?.unitPrice ?? parseFloat(product.price)) : parseFloat(product.price);
+    const unitPrice = given ?? listPrice;
+    let overrideBy: string | null = null, overrideReason: string | null = null;
+    const prior = ctx?.prior?.[item.productId];
+    if (prior && Math.abs(unitPrice - prior.unitPrice) <= 0.005) {
+      // Ligne reprise à l'identique : prix grille et dérogation d'origine conservés.
+      listPrice = prior.listPrice ?? unitPrice; overrideBy = prior.overrideBy; overrideReason = prior.overrideReason;
+    } else if (ctx && rules && Math.abs(unitPrice - listPrice) > 0.005) {
+      if (ctx.role !== 'admin' && ctx.role !== 'manager') {
+        return { error: `Prix de « ${product.name} » modifié (${unitPrice.toFixed(2)} au lieu de ${listPrice.toFixed(2)}) : réservé à la direction` };
+      }
+      const gap = listPrice > 0 ? Math.abs(unitPrice - listPrice) / listPrice * 100 : 100;
+      if (ctx.role === 'manager' && gap > rules.max_price_override_pct + 0.001) {
+        return { error: `Prix de « ${product.name} » à ${gap.toFixed(1)} % du prix grille : au-delà de ${rules.max_price_override_pct} %, réservé à l'administrateur` };
+      }
+      if (!ctx.overrideReason || ctx.overrideReason.trim().length < 3) {
+        return { error: `Prix de « ${product.name} » différent du prix grille (${listPrice.toFixed(2)}) : indiquez le motif de la dérogation` };
+      }
+      overrideBy = ctx.userId; overrideReason = ctx.overrideReason.trim().slice(0, 300);
+    }
     let tvaRate: number | null = null;
     if (pro) {
       const t = item.tvaRate != null && item.tvaRate !== '' ? Number(item.tvaRate) : defaults[item.productId]?.tvaRate ?? null;
       tvaRate = pro.tva_exonere ? 0 : (t != null && Number.isFinite(t) && t >= 0 ? t : null);
     }
-    lines.push({ productId: item.productId, quantity: qty, unitPrice, subtotal: round2(unitPrice * qty), tvaRate, notes: item.notes });
+    lines.push({ productId: item.productId, quantity: qty, unitPrice, subtotal: round2(unitPrice * qty), tvaRate, notes: item.notes,
+      listPrice: round2(listPrice), overrideBy, overrideReason });
     products.push(product);
   }
   const subtotal = round2(lines.reduce((s, l) => s + l.subtotal, 0));
   return { lines, products, subtotal };
 }
 
-/** Alerte plafond (non bloquante) : créances ouvertes + BL non facturés + cette commande. */
+/**
+ * Alerte plafond (non bloquante, non journalisée) : encours unique (fn_customer_exposure,
+ * O2C L3 — tickets impayés, factures ouvertes, BL non facturés, reste des commandes) + cette commande.
+ */
 export async function creditWarning(customer: Record<string, unknown>, orderTotal: number, excludeOrderId?: string) {
   const limit = customer.credit_limit != null ? Number(customer.credit_limit) : 0;
   if (!(limit > 0)) return null;
-  const situation = await receivablesRepository.customerSituation(customer.id as string);
-  const pending = (await db.query(
-    `SELECT COALESCE(SUM(o.total), 0) AS t FROM orders o
-      WHERE o.customer_id = $1 AND o.status NOT IN ('cancelled')
-        AND ($2::uuid IS NULL OR o.id <> $2)
-        AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.order_id = o.id AND i.status <> 'cancelled')
-        AND NOT EXISTS (SELECT 1 FROM delivery_notes d WHERE d.order_id = o.id AND d.status = 'invoiced')`,
-    [customer.id, excludeOrderId ?? null])).rows[0].t;
-  const exposure = round2(situation.total + Number(pending) + orderTotal);
+  const outstanding = await customerExposure(db, customer.id as string, excludeOrderId ?? null);
+  const exposure = round2(outstanding + orderTotal);
   if (exposure <= limit + 0.005) return null;
-  return { creditLimit: limit, outstanding: situation.total, pendingOrders: Number(pending), exposure,
+  return { creditLimit: limit, outstanding, exposure,
     message: `Plafond de crédit dépassé : ${exposure.toFixed(2)} DH engagés pour un plafond de ${limit.toFixed(2)} DH.` };
 }
 
@@ -166,12 +205,14 @@ export async function notifyProductionChefs(p: {
  * direction → refus ; plafond dépassé → refus si le contrôle est « bloquant ».
  * Renvoie le motif du refus, ou null.
  */
-export async function creditGate(customer: Record<string, unknown>, orderTotal: number, excludeOrderId?: string): Promise<string | null> {
-  const hold = await dunningRepository.creditCheck(customer.id as string, 0);
-  if (hold.blocked) return hold.blocked;
-  const warning = await creditWarning(customer, orderTotal, excludeOrderId);
-  if (warning && (await dunningSettings()).credit_control === 'block') return `${warning.message} Commande refusée (contrôle du plafond bloquant).`;
-  return null;
+export async function creditGate(customer: Record<string, unknown>, orderTotal: number, excludeOrderId?: string,
+  checkpoint: 'create' | 'confirm' = 'create', documentType: 'order' | 'quote' = 'order', documentId: string | null = null): Promise<string | null> {
+  // O2C L3 : encours unique et décision journalisée (credit_check_events).
+  const d = await checkCredit(db, { customerId: customer.id as string, amount: orderTotal, checkpoint, documentType, documentId, excludeOrderId: excludeOrderId ?? null });
+  if (d.decision !== 'block') return null;
+  return d.onHold
+    ? `${d.message} Débloquez-le dans Ventes › Relances ou faites régler comptant.`
+    : `${d.message} Commande refusée (contrôle du plafond bloquant).`;
 }
 
 export const orderController = {
@@ -214,10 +255,10 @@ export const orderController = {
     const pro = isProCustomer(customer) ? customer : null;
     if (pro && !isDirection(req)) { fail(res, 403, 'Les commandes de professionnels sont prises par la direction'); return; }
 
-    const priced = await priceLines(items, pro);
+    const priced = await priceLines(items, pro, { role: req.user!.role, userId: req.user!.userId, overrideReason: req.body.priceOverrideReason ?? null });
     if ('error' in priced) { fail(res, 400, priced.error as string); return; }
     const { lines: orderItems, products, subtotal } = priced;
-    const disc = orderDiscount(req.body, subtotal);
+    const disc = await orderDiscount(req.body, subtotal, req.user!.role);
     if ('error' in disc) { fail(res, 400, disc.error); return; }
     const promo = await documentDiscount(orderItems, products as Record<string, any>[], subtotal, disc.pct, { channel: 'orders', storeId: req.user!.storeId, customerId: customerId || null });
     const discountAmount = promo.discount, discountPct = disc.pct;
@@ -251,50 +292,63 @@ export const orderController = {
     if (advance > 0 && !activeSession) { fail(res, 400, 'Ouvrez la caisse pour encaisser l\'avance'); return; }
 
     const orderNumber = await orderRepository.generateOrderNumber();
-    const order = await orderRepository.create({
-      orderNumber, customerId, customerName, customerPhone,
-      userId: req.user!.userId, type: type || 'custom',
-      subtotal, taxAmount, discountAmount, discountPct, total, advanceAmount: advance, paymentMethod, notes, pickupDate, orderDate, items: orderItems,
-      sessionId: activeSession?.id, storeId: req.user!.storeId,
-    });
-    if (promo.applied.length) {
-      await db.query(`UPDATE orders SET promotion_amount = $2 WHERE id = $1`, [order.id, promo.promotionAmount]);
-      await recordApplied(db, { orderId: order.id }, promo.applied);
-    }
-
-    // Create a sale record for the advance so it appears in cash register & sales reports
+    // O2C L3 (G-OM-07) : commande, promotion et ticket d'avance dans UNE transaction — plus de
+    // commande enregistrée sans son avance (ou l'inverse) si l'une des écritures échoue.
+    const client = await db.getClient();
+    let order: Record<string, any>;
     let advanceReceipt = null;
-    if (advance > 0 && activeSession) {
-      await saleRepository.create({
-        customerId: customerId || undefined,
-        userId: req.user!.userId,
-        subtotal: advance,
-        taxAmount: 0,
-        discountAmount: 0,
-        total: advance,
-        paymentMethod,
-        notes: `Avance commande ${orderNumber} — Total: ${total.toFixed(2)} DH, Reste: ${(total - advance).toFixed(2)} DH`,
-        sessionId: activeSession.id,
-        storeId: req.user!.storeId,
-        orderId: order.id,
-        saleType: 'advance',
-        skipStockDeduction: true, // stock is deducted at delivery
-        items: orderItems.map(it => ({
-          productId: it.productId,
-          quantity: 0, // zero qty = no stock impact, items listed for reference only
-          unitPrice: it.unitPrice,
-          subtotal: 0,
-        })),
-      });
+    try {
+      await client.query('BEGIN');
+      order = await orderRepository.create({
+        orderNumber, customerId, customerName, customerPhone,
+        userId: req.user!.userId, type: type || 'custom',
+        subtotal, taxAmount, discountAmount, discountPct, total, advanceAmount: advance, paymentMethod, notes, pickupDate, orderDate, items: orderItems,
+        sessionId: activeSession?.id, storeId: req.user!.storeId, channelId: req.body.channelId ?? null,
+      }, client);
+      if (promo.applied.length) {
+        await client.query(`UPDATE orders SET promotion_amount = $2 WHERE id = $1`, [order.id, promo.promotionAmount]);
+        await recordApplied(client, { orderId: order.id }, promo.applied);
+      }
 
-      advanceReceipt = {
-        orderNumber,
-        advanceAmount: advance,
-        total,
-        remaining: round2(total - advance),
-        paymentMethod,
-        date: getLocalNow().toISOString(),
-      };
+      // Ticket d'avance : il apparaît dans la caisse et les ventes du jour.
+      if (advance > 0 && activeSession) {
+        await saleRepository.create({
+          customerId: customerId || undefined,
+          userId: req.user!.userId,
+          subtotal: advance,
+          taxAmount: 0,
+          discountAmount: 0,
+          total: advance,
+          paymentMethod,
+          notes: `Avance commande ${orderNumber} — Total: ${total.toFixed(2)} DH, Reste: ${(total - advance).toFixed(2)} DH`,
+          sessionId: activeSession.id,
+          storeId: req.user!.storeId,
+          orderId: order.id,
+          saleType: 'advance',
+          channelId: order.channel_id ?? null,
+          skipStockDeduction: true, // stock is deducted at delivery
+          items: orderItems.map(it => ({
+            productId: it.productId,
+            quantity: 0, // zero qty = no stock impact, items listed for reference only
+            unitPrice: it.unitPrice,
+            subtotal: 0,
+          })),
+        }, client);
+        advanceReceipt = {
+          orderNumber,
+          advanceAmount: advance,
+          total,
+          remaining: round2(total - advance),
+          paymentMethod,
+          date: getLocalNow().toISOString(),
+        };
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
     }
 
     const warning = pro ? await creditWarning(pro, total, order.id) : null;
@@ -337,10 +391,17 @@ export const orderController = {
       fail(res, 400, 'Pour changer la date de retrait, utilisez « Reporter »'); return;
     }
 
-    const priced = await priceLines(items, pro);
+    // Lignes déjà en commande : un prix inchangé garde son prix grille et sa dérogation d'origine.
+    const prior: Record<string, PriorLine> = {};
+    for (const r of (await db.query(
+      `SELECT product_id, unit_price, list_price, price_override_by, price_override_reason FROM order_items WHERE order_id = $1`, [req.params.id])).rows) {
+      prior[r.product_id] = { unitPrice: Number(r.unit_price), listPrice: r.list_price != null ? Number(r.list_price) : null,
+        overrideBy: r.price_override_by, overrideReason: r.price_override_reason };
+    }
+    const priced = await priceLines(items, pro, { role: req.user!.role, userId: req.user!.userId, overrideReason: req.body.priceOverrideReason ?? null, prior });
     if ('error' in priced) { fail(res, 400, priced.error as string); return; }
     const { lines: orderItems, products: updProducts, subtotal } = priced;
-    const disc = orderDiscount(req.body, subtotal);
+    const disc = await orderDiscount({ ...req.body, type: req.body.type ?? existing.type }, subtotal, req.user!.role);
     if ('error' in disc) { fail(res, 400, disc.error); return; }
     const promo = await documentDiscount(orderItems, updProducts as Record<string, any>[], subtotal, disc.pct, { channel: 'orders', storeId: existing.store_id ?? req.user!.storeId, customerId: customerId || null });
     const discountAmount = promo.discount, discountPct = disc.pct;
@@ -375,6 +436,12 @@ export const orderController = {
     if (current.status === 'completed' || current.status === 'cancelled') { fail(res, 409, 'Commande déjà terminée ou annulée'); return; }
     if (current.status === 'partially_delivered') { fail(res, 409, 'Commande partiellement livrée : livrez le reste ou soldez le reliquat'); return; }
     if (isProCustomer(current) && !isDirection(req)) { fail(res, 403, 'Les commandes de professionnels sont gérées par la direction'); return; }
+    // O2C L3 (G-CR-02) : contrôle de crédit à la confirmation (la commande figure déjà dans l'encours).
+    if (status === 'confirmed' && isProCustomer(current) && current.customer_id) {
+      const customer = await loadCustomer(current.customer_id);
+      const refused = customer ? await creditGate(customer, 0, undefined, 'confirm', 'order', req.params.id) : null;
+      if (refused) { fail(res, 409, refused); return; }
+    }
 
     // Annulation ou absence au retrait : l'avance d'un particulier reste acquise (rien n'est remboursé).
     const order = await orderRepository.updateStatus(req.params.id, status,
@@ -495,6 +562,7 @@ export const orderController = {
       advanceAmount: hasAdvance ? advanceAmount : 0,
       advanceDate: hasAdvance ? order.created_at : null,
       completeOrder: true,
+      channelId: order.channel_id ?? null,
     });
 
     res.json({ success: true, data: { remaining, paid, change: round2(paid - remaining), orderNumber: order.order_number } });

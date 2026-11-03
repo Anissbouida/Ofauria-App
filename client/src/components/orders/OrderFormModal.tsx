@@ -283,6 +283,12 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   const appliedPct = type === 'staff' ? staffDiscountPercent : discountPct;
   const effectiveDiscount = Math.round(subtotal * appliedPct) / 100;
   const validItems = items.filter((it) => it.productId && it.quantity > 0);
+  // Prix saisi différent de la grille : dérogation de la direction, motivée (O2C L3).
+  const [priceOverrideReason, setPriceOverrideReason] = useState('');
+  const pricesOverridden = validItems.some((it) => {
+    const prod = products.find((p) => p.id === it.productId);
+    return prod && Math.abs(it.unitPrice - catalogPrice(prod)) > 0.005;
+  });
 
   // Professionnel : TVA par ligne, taux par défaut = dernier taux utilisé pour ce client/produit.
   const proProductIds = isPro ? validItems.map(it => it.productId).sort().join(',') : '';
@@ -340,6 +346,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
       notes: notes || undefined,
       discountPct: appliedPct,
       advanceAmount: isPro ? 0 : advanceAmount,
+      ...(priceOverrideReason.trim() ? { priceOverrideReason: priceOverrideReason.trim() } : {}),
       items: validItems.map((it) => ({
         productId: it.productId, quantity: it.quantity, unitPrice: it.unitPrice, notes: it.notes || undefined,
         ...(isPro ? { tvaRate: lineTva(it) } : {}),
@@ -881,6 +888,21 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                   <span>{subtotal.toFixed(2)} DH</span>
                 </div>
               </div>
+
+              {pricesOverridden && (
+                <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 space-y-2">
+                  <p className="flex gap-2"><AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                    {isDirection
+                      ? 'Prix modifié par rapport à la grille : la dérogation est tracée avec son motif.'
+                      : 'Prix modifié par rapport à la grille : seule la direction peut déroger au prix.'}</p>
+                  {isDirection && (
+                    <input type="text" value={priceOverrideReason} maxLength={300}
+                      onChange={(e) => setPriceOverrideReason(e.target.value)}
+                      placeholder="Motif de la dérogation (ex. geste commercial, prix négocié)"
+                      className="input py-2 w-full text-sm bg-white" />
+                  )}
+                </div>
+              )}
 
               {isPro ? (
                 <>

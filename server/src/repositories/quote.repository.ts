@@ -162,8 +162,12 @@ export const quoteRepository = {
       const r = await client.query(
         `INSERT INTO quotes (number, store_id, customer_id, prospect_name, prospect_company, prospect_phone, prospect_email, title,
                              quote_date, valid_until, with_tax, discount_pct, subtotal, discount_amount, tax_amount, total,
-                             delivery_terms, notes, internal_notes, created_by, opportunity_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING id`,
+                             delivery_terms, notes, internal_notes, created_by, opportunity_id, channel_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
+                 -- Canal (O2C L3) : « gros » pour un client professionnel, « commande » sinon.
+                 (SELECT id FROM sales_channels WHERE code = CASE
+                    WHEN EXISTS (SELECT 1 FROM customers cu WHERE cu.id = $3::uuid AND COALESCE(cu.customer_type, 'particulier') <> 'particulier')
+                    THEN 'gros' ELSE 'commande' END)) RETURNING id`,
         [number, ctx.storeId, input.customerId ?? null,
          input.customerId ? null : input.prospectName?.trim() || null, input.customerId ? null : input.prospectCompany?.trim() || null,
          input.customerId ? null : input.prospectPhone?.trim() || null, input.customerId ? null : input.prospectEmail?.trim() || null,
@@ -312,7 +316,9 @@ export const quoteRepository = {
   async convert(id: string, p: { pickupDate: string; customerId?: string | null; userId: string; storeId: string | null }) {
     const q = await this.findById(id);
     if (!q) return { error: 'not_found' as const };
-    if (!['accepted', 'sent', 'draft'].includes(q.status)) return { error: 'Seul un devis en cours ou accepté se convertit en commande' };
+    // O2C L3 (G-OM-10) : un brouillon n'est pas encore une offre — il s'envoie (ou s'accepte) d'abord.
+    if (q.status === 'draft') return { error: 'Devis en brouillon : envoyez-le au client (ou marquez-le accepté) avant de le convertir' };
+    if (!['accepted', 'sent'].includes(q.status)) return { error: 'Seul un devis envoyé ou accepté se convertit en commande' };
     const customerId = q.customer_id ?? p.customerId ?? null;
     const customer = await loadCustomer(customerId);
     if (customerId && !customer) return { error: 'Client introuvable' };
@@ -341,7 +347,17 @@ export const quoteRepository = {
     }
 
     const orderNumber = await orderRepository.generateOrderNumber();
-    const order = await orderRepository.create({
+    // O2C L3 (G-OM-07) : conversion en une transaction, devis verrouillé (pas de double conversion).
+    const client = await db.getClient();
+    let order: Record<string, any>;
+    try {
+      await client.query('BEGIN');
+      const locked = (await client.query(`SELECT status FROM quotes WHERE id = $1 FOR UPDATE`, [id])).rows[0];
+      if (!locked || !['accepted', 'sent'].includes(locked.status)) {
+        await client.query('ROLLBACK');
+        return { error: 'Ce devis vient d\'être converti ou n\'est plus convertible' };
+      }
+      order = await orderRepository.create({
       orderNumber, customerId: customerId ?? undefined,
       customerName: customerId ? undefined : (q.prospect_company || q.prospect_name),
       customerPhone: customerId ? undefined : (q.prospect_phone ?? undefined),
@@ -349,16 +365,24 @@ export const quoteRepository = {
       advanceAmount: 0, paymentMethod: pro ? 'deferred' : 'cash',
       notes: [`Devis ${q.number}`, q.title, q.delivery_terms].filter(Boolean).join(' · '),
       pickupDate: p.pickupDate, storeId: p.storeId ?? q.store_id ?? undefined, items: priced.lines,
-    });
-    if (promotionAmount > 0) {
-      const applied = (await db.query(`SELECT promotion_id, label, amount FROM document_promotions WHERE quote_id = $1`, [id])).rows;
-      await db.query(`UPDATE orders SET promotion_amount = $2 WHERE id = $1`, [order.id, promotionAmount]);
-      await recordApplied(db, { orderId: order.id }, applied.map(a => ({ promotionId: a.promotion_id, label: a.label, amount: Number(a.amount) })));
+      channelId: q.channel_id ?? null,
+    }, client);
+      if (promotionAmount > 0) {
+        const applied = (await client.query(`SELECT promotion_id, label, amount FROM document_promotions WHERE quote_id = $1`, [id])).rows;
+        await client.query(`UPDATE orders SET promotion_amount = $2 WHERE id = $1`, [order.id, promotionAmount]);
+        await recordApplied(client, { orderId: order.id }, applied.map(a => ({ promotionId: a.promotion_id, label: a.label, amount: Number(a.amount) })));
+      }
+      await client.query(`UPDATE quotes SET status = 'converted', order_id = $2, converted_at = now(),
+                             customer_id = COALESCE(customer_id, $3), decided_at = COALESCE(decided_at, now()) WHERE id = $1`,
+        [id, order.id, customerId]);
+      await addEvent(client as unknown as Runner, id, { type: 'status', from: q.status, to: 'converted', note: `Commande ${orderNumber}`, userId: p.userId });
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw e;
+    } finally {
+      client.release();
     }
-    await db.query(`UPDATE quotes SET status = 'converted', order_id = $2, converted_at = now(),
-                           customer_id = COALESCE(customer_id, $3), decided_at = COALESCE(decided_at, now()) WHERE id = $1`,
-      [id, order.id, customerId]);
-    await addEvent(db as unknown as Runner, id, { type: 'status', from: q.status, to: 'converted', note: `Commande ${orderNumber}`, userId: p.userId });
     await crmRepository.onQuoteEvent(id, 'converted', p.userId);
     const planId = (order as Record<string, unknown>)._productionPlanId as string | null;
     if (planId) await notifyProductionChefs({ productionPlanId: planId, products: priced.products, storeId: p.storeId, orderNumber, pickupDate: p.pickupDate, userId: p.userId });

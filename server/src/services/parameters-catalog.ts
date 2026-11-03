@@ -120,6 +120,18 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'sales.pricing', domain: 'sales', section: 'business',
+    label: 'Prix et remises sur commandes',
+    help: 'Remise manuelle maximale accordée par une vendeuse ou une caissière, puis par un gérant (l\'administrateur n\'est pas limité ; la remise personnel suit le paramètre de la société). Un prix différent du prix grille est une dérogation réservée à la direction, motivée et tracée ; au-delà de l\'écart indiqué, seul l\'administrateur peut la faire (O2C L3).',
+    fields: [
+      { name: 'max_discount_pct_sales', label: 'Remise maximale — vente et caisse', type: 'number', unit: '%', min: 0, max: 100 },
+      { name: 'max_discount_pct_manager', label: 'Remise maximale — gérant', type: 'number', unit: '%', min: 0, max: 100 },
+      { name: 'max_price_override_pct', label: 'Écart maximal au prix grille — gérant', type: 'number', unit: '%', min: 0, max: 100 },
+    ],
+    defaults: { max_discount_pct_sales: 10, max_discount_pct_manager: 30, max_price_override_pct: 30 },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'sales.person_sizes', domain: 'sales', section: 'business',
     label: 'Entremets vendus par personne — tailles',
     help: 'Nombre de personnes proposés en caisse pour un entremet vendu au nombre de parts (mode de vente « par personne »). Séparez les valeurs par une virgule. Le prix = prix/personne du produit × le nombre de parts choisi (mig 377).',

@@ -910,6 +910,9 @@ function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onC
   const perDelivery = order.billing_frequency === 'per_delivery';
 
   const [closeRemainder, setCloseRemainder] = useState(false);
+  // Crédit bloqué à l'expédition (O2C L3) : la direction peut déroger en motivant.
+  const [creditBlock, setCreditBlock] = useState<string | null>(null);
+  const [overrideReason, setOverrideReason] = useState('');
   // Par défaut : le reste à livrer de chaque ligne (O2C L2, livraisons partielles).
   const qtyOf = (l: { id: string; remaining: string }) => (qty[l.id] !== undefined ? parseFloat(qty[l.id]) || 0 : num(l.remaining));
   const totals = lines.reduce((acc, l) => {
@@ -926,6 +929,7 @@ function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onC
       receivedByName: receivedBy.trim() || undefined,
       deliveryDate,
       closeRemainder: short && closeRemainder,
+      creditOverrideReason: creditBlock && overrideReason.trim().length >= 3 ? overrideReason.trim() : undefined,
     }),
     onSuccess: (note) => {
       if ((note as { closed?: boolean }).closed) { notify.success('Reliquat soldé : commande terminée'); onDelivered(); return; }
@@ -935,7 +939,11 @@ function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onC
       openDeliveryNotePdf(note.id);
       onDelivered();
     },
-    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Création du bon de livraison impossible')),
+    onError: (e: unknown) => {
+      const code = (e as { response?: { data?: { error?: { code?: string } } } }).response?.data?.error?.code;
+      if (code === 'CREDIT_BLOCKED') { setCreditBlock(getApiErrorMessage(e, 'Crédit bloqué')); return; }
+      notify.error(getApiErrorMessage(e, 'Création du bon de livraison impossible'));
+    },
   });
 
   return (
@@ -996,6 +1004,16 @@ function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onC
               La facture portera les quantités livrées.{short && ' Le reste demeure à livrer sur un prochain bon, sauf si vous soldez le reliquat.'}
             </StatusBanner>
           )}
+          {creditBlock && (
+            <StatusBanner tone="danger" icon={AlertTriangle} title="Expédition bloquée par le contrôle de crédit">
+              {creditBlock}
+              <div style={{ marginTop: 8 }}>
+                <label style={labelStyle}>Motif de la dérogation (direction)</label>
+                <input type="text" value={overrideReason} onChange={e => setOverrideReason(e.target.value)} maxLength={500}
+                  placeholder="Ex. règlement promis vendredi, accord du gérant" style={fieldStyle} />
+              </div>
+            </StatusBanner>
+          )}
           {short && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem' }}>
               <input type="checkbox" checked={closeRemainder} onChange={e => setCloseRemainder(e.target.checked)} />
@@ -1023,9 +1041,9 @@ function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onC
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
           <button onClick={onClose} className="odoo-btn-secondary" disabled={mutation.isPending}>Annuler</button>
-          <button onClick={() => mutation.mutate()} disabled={mutation.isPending || isLoading || (totals.ht <= 0 && !(short && closeRemainder))} className="odoo-btn-primary">
+          <button onClick={() => mutation.mutate()} disabled={mutation.isPending || isLoading || (totals.ht <= 0 && !(short && closeRemainder)) || (!!creditBlock && overrideReason.trim().length < 3)} className="odoo-btn-primary">
             {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
-            {perDelivery ? 'Livrer, facturer et imprimer le BL' : 'Livrer et imprimer le BL'}
+            {creditBlock ? 'Déroger et livrer' : perDelivery ? 'Livrer, facturer et imprimer le BL' : 'Livrer et imprimer le BL'}
           </button>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { nextDocumentNumber } from '../utils/document-number.js';
 import { invoiceRepository } from './accounting.repository.js';
 import { shipProduct, reverseAllocations } from '../services/product-shipment.js';
 import { recordDelivered, closeRemainder, reverseDelivered } from '../services/order-fulfilment.js';
+import { checkCredit } from '../services/credit-control.js';
 
 /**
  * Ventes aux professionnels (mig 352) : bon de livraison client → facture.
@@ -144,6 +145,8 @@ export const deliveryNoteRepository = {
     receivedByName?: string | null;
     /** Commande : solder le reliquat après ce BL (rien d'autre ne sera livré). */
     closeRemainder?: boolean;
+    /** Dérogation de la direction au blocage de crédit à l'expédition (motif obligatoire). */
+    creditOverride?: { userId: string; reason: string } | null;
   }, outer?: PoolClient) {
     if (!data.items.length) throw fail(400, 'Ajoutez au moins une ligne');
     const client = outer ?? await db.getClient();
@@ -214,6 +217,15 @@ export const deliveryNoteRepository = {
         await recordDelivered(client, data.orderId, [...perLine].map(([orderItemId, qty]) => ({ orderItemId, qty })), tol);
         if (data.closeRemainder) await closeRemainder(client, data.orderId);
       }
+      // O2C L3 (G-CR-02) : contrôle de crédit BLOQUANT à l'expédition, là où la marchandise sort.
+      // L'encours inclut déjà ce BL (livré non facturé) et le reste de la commande : rien à ajouter.
+      const credit = await checkCredit(client, {
+        customerId: data.customerId, amount: 0, checkpoint: 'ship', documentType: 'delivery_note', documentId: head.id,
+        override: data.creditOverride ?? null,
+      });
+      if (credit.decision === 'block') {
+        throw Object.assign(new Error(`${credit.message} Expédition bloquée : la direction peut déroger en motivant.`), { statusCode: 409, code: 'CREDIT_BLOCKED' });
+      }
       if (!outer) await client.query('COMMIT');
       return head;
     } catch (err) {
@@ -233,7 +245,7 @@ export const deliveryNoteRepository = {
    */
   async createFromOrder(orderId: string, createdBy: string, storeId?: string | null, opts: {
     quantities?: Record<string, number>; receivedByName?: string | null; deliveryDate?: string | null; notes?: string | null;
-    closeRemainder?: boolean;
+    closeRemainder?: boolean; creditOverride?: { userId: string; reason: string } | null;
   } = {}) {
     const order = (await db.query(
       `SELECT o.id, o.customer_id, o.store_id, o.status, c.customer_type, c.billing_frequency
@@ -278,7 +290,7 @@ export const deliveryNoteRepository = {
       const note = await this.create({
         customerId: order.customer_id, orderId, createdBy, storeId: order.store_id ?? storeId ?? null,
         deliveryDate: opts.deliveryDate ?? null, notes: opts.notes ?? null, receivedByName: opts.receivedByName ?? null, items,
-        closeRemainder: opts.closeRemainder ?? false,
+        closeRemainder: opts.closeRemainder ?? false, creditOverride: opts.creditOverride ?? null,
       }, client);
       let invoice: Record<string, unknown> | null = null;
       if (order.billing_frequency === 'per_delivery') {

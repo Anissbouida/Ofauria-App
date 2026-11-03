@@ -4,6 +4,13 @@ import { deliveryNoteRepository } from '../repositories/delivery-note.repository
 import { generateDeliveryNotePdf } from '../services/delivery-note-pdf.service.js';
 
 /** Ventes aux professionnels (mig 352) : bons de livraison clients et facturation groupée. */
+/** Dérogation au blocage de crédit à l'expédition : direction seulement, motif obligatoire (O2C L3). */
+function creditOverrideOf(req: AuthRequest, reason: unknown) {
+  if (typeof reason !== 'string' || reason.trim().length < 3) return null;
+  if (!['admin', 'manager'].includes(req.user!.role)) return null;
+  return { userId: req.user!.userId, reason: reason.trim().slice(0, 500) };
+}
+
 export const deliveryNoteController = {
   async list(req: AuthRequest, res: Response) {
     const q = req.query as Record<string, string | undefined>;
@@ -42,11 +49,12 @@ export const deliveryNoteController = {
     const note = await deliveryNoteRepository.create({
       customerId: b.customerId, deliveryDate: b.deliveryDate ?? null, orderId: b.orderId ?? null, notes: b.notes ?? null,
       items: Array.isArray(b.items) ? b.items.map((i: Record<string, any>) => ({
-        productId: i.productId ?? null, description: i.description ?? null,
+        productId: i.productId ?? null, description: i.description ?? null, orderItemId: i.orderItemId ?? null,
         quantity: Number(i.quantity), unitPrice: Number(i.unitPrice),
         tvaRate: i.tvaRate === null || i.tvaRate === undefined || i.tvaRate === '' ? null : Number(i.tvaRate),
       })) : [],
       createdBy: req.user!.userId, storeId: req.user!.storeId ?? null, receivedByName: b.receivedByName ?? null,
+      creditOverride: creditOverrideOf(req, b.creditOverrideReason),
     });
     res.status(201).json({ success: true, data: note });
   },
@@ -56,6 +64,7 @@ export const deliveryNoteController = {
       quantities: b.quantities && typeof b.quantities === 'object' ? b.quantities : undefined,
       receivedByName: b.receivedByName ?? null, deliveryDate: b.deliveryDate ?? null, notes: b.notes ?? null,
       closeRemainder: b.closeRemainder === true,
+      creditOverride: creditOverrideOf(req, (b as { creditOverrideReason?: string }).creditOverrideReason),
     });
     res.status(201).json({ success: true, data: note });
   },

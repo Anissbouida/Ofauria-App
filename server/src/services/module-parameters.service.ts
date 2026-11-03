@@ -15,7 +15,15 @@ const DEFAULTS: Record<string, unknown> = {
   'sales.dunning': { enabled: true, auto_send: false, min_amount: 50, credit_control: 'warn', auto_release: true },
   'sales.pos_stock': { mode: 'block' } satisfies PosStockRule,
   'sales.person_sizes': { sizes: [4, 6, 8, 10, 12, 16] },
+  'sales.pricing': { max_discount_pct_sales: 10, max_discount_pct_manager: 30, max_price_override_pct: 30 } satisfies PricingRules,
 };
+
+/**
+ * Prix et remises (O2C L3, mig 443) : remise manuelle maximale par rôle (vendeuse/caissière,
+ * gérant ; l'administrateur n'est pas borné) et écart maximal d'un prix saisi au prix grille
+ * pour un gérant (au-delà, administrateur seulement).
+ */
+export type PricingRules = { max_discount_pct_sales: number; max_discount_pct_manager: number; max_price_override_pct: number };
 
 /** Caisse (mig 374) : 'block' = stock vitrine respecté, 'allow' = tout produit vendable même sans stock. */
 export type PosStockRule = { mode: 'block' | 'allow' };

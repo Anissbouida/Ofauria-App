@@ -291,15 +291,12 @@ export const dunningRepository = {
    * refus si le contrôle est « bloquant », sinon simple alerte (comportement mig 354).
    */
   async creditCheck(customerId: string, amount: number): Promise<{ blocked: string | null; warning: string | null }> {
-    const c = (await db.query(`SELECT credit_hold, credit_hold_reason, credit_limit FROM customers WHERE id = $1`, [customerId])).rows[0];
-    if (!c) return { blocked: null, warning: null };
-    if (c.credit_hold) return { blocked: `Client bloqué : achats à crédit suspendus${c.credit_hold_reason ? ` (${c.credit_hold_reason})` : ''}. Débloquez-le dans Ventes › Relances ou faites régler comptant.`, warning: null };
-    const limit = Number(c.credit_limit ?? 0);
-    if (!(limit > 0)) return { blocked: null, warning: null };
-    const docs = await openDocuments({ customerId });
-    const exposure = round2(docs.reduce((s, d) => s + d.remaining, 0) + amount);
-    if (exposure <= limit + 0.005) return { blocked: null, warning: null };
-    const msg = `Plafond de crédit dépassé : ${n2(exposure)} DH engagés pour un plafond de ${n2(limit)} DH.`;
-    return (await dunningSettings()).credit_control === 'block' ? { blocked: msg, warning: null } : { blocked: null, warning: msg };
+    // O2C L3 : même encours que la commande et le BL (fn_customer_exposure), décision journalisée.
+    const { checkCredit } = await import('../services/credit-control.js');
+    const d = await checkCredit(db, { customerId, amount, checkpoint: 'sale', documentType: 'sale' });
+    if (d.decision === 'block') {
+      return { blocked: d.onHold ? `${d.message} Débloquez-le dans Ventes › Relances ou faites régler comptant.` : d.message, warning: null };
+    }
+    return { blocked: null, warning: d.decision === 'warn' ? d.message : null };
   },
 };

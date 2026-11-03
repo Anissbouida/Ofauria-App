@@ -15,7 +15,7 @@ export interface DeliveryNote {
 export interface ToInvoiceGroup {
   customerId: string; name: string; notes: DeliveryNote[]; totalHt: number; totalTtc: number; firstDate: string; lastDate: string;
 }
-export interface DeliveryLinePayload { productId?: string | null; description?: string | null; quantity: number; unitPrice: number; tvaRate?: number | null }
+export interface DeliveryLinePayload { productId?: string | null; description?: string | null; quantity: number; unitPrice: number; tvaRate?: number | null; orderItemId?: string | null }
 
 export const deliveryNotesApi = {
   list: (params?: Record<string, string>) => api.get('/delivery-notes', { params }).then(r => r.data.data as DeliveryNote[]),
@@ -30,10 +30,10 @@ export const deliveryNotesApi = {
       qty_delivered: string; qty_cancelled: string; remaining: string }>),
   /** BL imprimable à faire signer (mig 354). */
   pdf: (id: string) => api.get(`/delivery-notes/${id}/pdf`, { responseType: 'blob' }).then(r => r.data as Blob),
-  create: (data: { customerId: string; deliveryDate?: string; orderId?: string | null; notes?: string; items: DeliveryLinePayload[] }) =>
+  create: (data: { customerId: string; deliveryDate?: string; orderId?: string | null; notes?: string; items: DeliveryLinePayload[]; creditOverrideReason?: string }) =>
     api.post('/delivery-notes', data).then(r => r.data.data as DeliveryNote),
   /** Livrer une commande prête sur BL (module Commandes). */
-  createFromOrder: (orderId: string, data?: { quantities?: Record<string, number>; receivedByName?: string; deliveryDate?: string; closeRemainder?: boolean }) =>
+  createFromOrder: (orderId: string, data?: { quantities?: Record<string, number>; receivedByName?: string; deliveryDate?: string; closeRemainder?: boolean; creditOverrideReason?: string }) =>
     api.post(`/delivery-notes/from-order/${orderId}`, data ?? {})
       .then(r => r.data.data as DeliveryNote & { invoice: { id: string; invoice_number: string } | null }),
   cancel: (id: string) => api.post(`/delivery-notes/${id}/cancel`).then(r => r.data.data),

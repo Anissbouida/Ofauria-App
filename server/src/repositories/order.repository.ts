@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { computeSourcingAndCreatePlan } from './sourcing.helper.js';
@@ -74,23 +75,30 @@ export const orderRepository = {
     subtotal: number; taxAmount: number; discountAmount: number; discountPct?: number; total: number;
     advanceAmount?: number; paymentMethod: string; notes?: string; pickupDate?: string;
     sessionId?: string; storeId?: string; orderDate?: string;
-    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null; notes?: string }[];
-  }) {
-    const client = await db.getClient();
+    /** Canal de vente (O2C L3) : « gros » pour un professionnel, « commande » sinon, par défaut. */
+    channelId?: string | null;
+    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null; notes?: string;
+      listPrice?: number; overrideBy?: string | null; overrideReason?: string | null }[];
+  }, outer?: PoolClient) {
+    // `outer` : transaction de l'appelant (commande + avance + promotion, O2C L3 G-OM-07).
+    const client = outer ?? await db.getClient();
     try {
-      await client.query('BEGIN');
+      if (!outer) await client.query('BEGIN');
 
       // orderDate permet de saisir une commande retroactivement (created_at au
       // lieu de NOW()). Conserve l'heure exacte de saisie pour l'audit en
       // ajoutant le time courant a la date fournie.
       const orderResult = await client.query(
-        `INSERT INTO orders (order_number, customer_id, customer_name, customer_phone, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date, session_id, store_id, created_at, discount_pct)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::timestamp, NOW()), $18) RETURNING *`,
+        `INSERT INTO orders (order_number, customer_id, customer_name, customer_phone, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date, session_id, store_id, created_at, discount_pct, channel_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::timestamp, NOW()), $18,
+                 COALESCE($19::uuid, (SELECT id FROM sales_channels WHERE code = CASE
+                   WHEN EXISTS (SELECT 1 FROM customers c WHERE c.id = $2::uuid AND COALESCE(c.customer_type, 'particulier') <> 'particulier')
+                   THEN 'gros' ELSE 'commande' END))) RETURNING *`,
         [data.orderNumber, data.customerId || null, data.customerName || null, data.customerPhone || null,
          data.userId, data.type,
          data.subtotal, data.taxAmount, data.discountAmount, data.total,
          data.advanceAmount || 0, data.paymentMethod, data.notes || null, data.pickupDate || null, data.sessionId || null, data.storeId || null,
-         data.orderDate || null, data.discountPct ?? null]
+         data.orderDate || null, data.discountPct ?? null, data.channelId ?? null]
       );
 
       const orderId = orderResult.rows[0].id;
@@ -98,9 +106,10 @@ export const orderRepository = {
 
       for (const item of data.items) {
         const itemRes = await client.query(
-          `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal, notes, status, tva_rate)
-           VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7) RETURNING id`,
-          [orderId, item.productId, item.quantity, item.unitPrice, item.subtotal, item.notes || null, item.tvaRate ?? null]
+          `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal, notes, status, tva_rate, list_price, price_override_by, price_override_reason)
+           VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, $9, $10) RETURNING id`,
+          [orderId, item.productId, item.quantity, item.unitPrice, item.subtotal, item.notes || null, item.tvaRate ?? null,
+           item.listPrice ?? null, item.overrideBy ?? null, item.overrideReason ?? null]
         );
         insertedItems.push({
           itemId: itemRes.rows[0].id,
@@ -161,13 +170,13 @@ export const orderRepository = {
       // donc comptee deux a trois fois. On ne credite desormais qu'a l'encaissement
       // reel (avance + livraison = total, une seule fois).
 
-      await client.query('COMMIT');
+      if (!outer) await client.query('COMMIT');
       return { ...orderResult.rows[0], _productionPlanId: productionPlanId, _semiFinishedInfo: semiFinishedInfo };
     } catch (err) {
-      await client.query('ROLLBACK');
+      if (!outer) await client.query('ROLLBACK');
       throw err;
     } finally {
-      client.release();
+      if (!outer) client.release();
     }
   },
 
@@ -176,7 +185,8 @@ export const orderRepository = {
     type?: string; subtotal: number; taxAmount: number;
     discountAmount: number; discountPct?: number; total: number; advanceAmount?: number;
     paymentMethod?: string; notes?: string; pickupDate?: string;
-    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null; notes?: string }[];
+    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null; notes?: string;
+      listPrice?: number; overrideBy?: string | null; overrideReason?: string | null }[];
   }) {
     const client = await db.getClient();
     try {
@@ -219,8 +229,10 @@ export const orderRepository = {
         if (i >= 0) {
           const [line] = pool.splice(i, 1);
           await client.query(
-            `UPDATE order_items SET quantity = $2, unit_price = $3, subtotal = $4, notes = $5, tva_rate = $6 WHERE id = $1`,
-            [line.id, item.quantity, item.unitPrice, item.subtotal, item.notes || null, item.tvaRate ?? null]);
+            `UPDATE order_items SET quantity = $2, unit_price = $3, subtotal = $4, notes = $5, tva_rate = $6,
+                    list_price = $7, price_override_by = $8, price_override_reason = $9 WHERE id = $1`,
+            [line.id, item.quantity, item.unitPrice, item.subtotal, item.notes || null, item.tvaRate ?? null,
+             item.listPrice ?? null, item.overrideBy ?? null, item.overrideReason ?? null]);
           // Quantité réduite sous la réservation : l'excédent de stock réservé est relâché.
           const over = (await client.query(
             `SELECT COALESCE(SUM(quantity), 0)::float8 - $2::float8 AS over, MIN(product_id::text) AS product_id, MIN(store_id::text) AS store_id
@@ -235,9 +247,10 @@ export const orderRepository = {
           }
         } else {
           await client.query(
-            `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal, notes, tva_rate)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.notes || null, item.tvaRate ?? null]);
+            `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal, notes, tva_rate, list_price, price_override_by, price_override_reason)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.notes || null, item.tvaRate ?? null,
+             item.listPrice ?? null, item.overrideBy ?? null, item.overrideReason ?? null]);
         }
       }
       for (const gone of pool) {

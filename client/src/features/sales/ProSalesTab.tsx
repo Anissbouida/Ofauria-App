@@ -194,7 +194,7 @@ function InvoiceGroup({ g, onOpen }: { g: ToInvoiceGroup; onOpen: (id: string) =
   );
 }
 
-type Line = { productId: string; description: string; quantity: string; unitPrice: string; tvaRate: string };
+type Line = { productId: string; description: string; quantity: string; unitPrice: string; tvaRate: string; orderItemId?: string };
 const emptyLine = (): Line => ({ productId: '', description: '', quantity: '1', unitPrice: '', tvaRate: '' });
 
 function NewNoteModal({ onClose }: { onClose: () => void }) {
@@ -204,6 +204,9 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
   const [orderId, setOrderId] = useState('');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
+  // Crédit bloqué à l'expédition (O2C L3) : dérogation motivée de la direction.
+  const [creditBlock, setCreditBlock] = useState<string | null>(null);
+  const [overrideReason, setOverrideReason] = useState('');
 
   const { data: customersResp } = useQuery({ queryKey: ['customers', 'all-for-bl'], queryFn: () => customersApi.list({ limit: '500' }) });
   const customers = ((customersResp as { data?: Record<string, any>[] } | undefined)?.data ?? []) as Record<string, any>[];
@@ -233,8 +236,10 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
     setOrderId(id);
     if (!id) return;
     const ol = await deliveryNotesApi.orderLines(id);
-    setLines(await applyDefaults(ol.map(l => l.product_id), ol.map(l => ({
-      productId: l.product_id, description: l.description, quantity: String(Number(l.quantity)), unitPrice: String(Number(l.unit_price)), tvaRate: '',
+    // Lignes rattachées à la commande (O2C L2) : reste à livrer par défaut, lignes soldées omises.
+    setLines(await applyDefaults(ol.map(l => l.product_id), ol.filter(l => Number(l.remaining) > 0).map(l => ({
+      productId: l.product_id, description: l.description, quantity: String(Number(l.remaining)), unitPrice: String(Number(l.unit_price)), tvaRate: '',
+      orderItemId: l.id,
     }))));
   };
 
@@ -248,10 +253,15 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
   const save = useMutation({
     mutationFn: () => deliveryNotesApi.create({
       customerId, deliveryDate: date, orderId: orderId || null, notes: notes.trim() || undefined,
-      items: lines.map(l => ({ productId: l.productId || null, description: l.description.trim() || null, quantity: parseFloat(l.quantity), unitPrice: parseFloat(l.unitPrice), tvaRate: l.tvaRate === '' ? null : Number(l.tvaRate) })),
+      items: lines.map(l => ({ productId: l.productId || null, description: l.description.trim() || null, quantity: parseFloat(l.quantity), unitPrice: parseFloat(l.unitPrice), tvaRate: l.tvaRate === '' ? null : Number(l.tvaRate), orderItemId: orderId ? l.orderItemId ?? null : null })),
+      creditOverrideReason: creditBlock && overrideReason.trim().length >= 3 ? overrideReason.trim() : undefined,
     }),
     onSuccess: (n) => { queryClient.invalidateQueries({ queryKey: ['delivery-notes'] }); notify.success(`Bon de livraison ${n.number} enregistré`); onClose(); },
-    onError: (e) => notify.error(apiErrorMessage(e, 'Enregistrement impossible')),
+    onError: (e) => {
+      const code = (e as { response?: { data?: { error?: { code?: string } } } }).response?.data?.error?.code;
+      if (code === 'CREDIT_BLOCKED') { setCreditBlock(apiErrorMessage(e, 'Crédit bloqué')); return; }
+      notify.error(apiErrorMessage(e, 'Enregistrement impossible'));
+    },
   });
 
   const field: React.CSSProperties = { padding: '0.35rem 0.5rem', border: '1px solid var(--odoo-border)', borderRadius: 4, fontSize: '0.8125rem', width: '100%' };
@@ -314,13 +324,22 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
           <p style={{ margin: 0, fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
-            Prix proposés : tarif catalogue moins la remise du client ; TVA : dernier taux utilisé pour le produit. Le BL ne touche ni à la comptabilité ni au stock vitrine : il sera facturé depuis « À facturer ».
+            Prix proposés : tarif catalogue moins la remise du client ; TVA : dernier taux utilisé pour le produit. Le BL sort les produits du stock avec leurs lots ; il sera facturé depuis « À facturer ».
           </p>
+          {creditBlock && (
+            <div style={{ border: '1px solid #f5c2c7', background: '#f8d7da', color: '#842029', borderRadius: 4, padding: '8px 10px', fontSize: '0.8125rem' }}>
+              <b>Expédition bloquée par le contrôle de crédit.</b> {creditBlock}
+              <div style={{ marginTop: 6 }}>
+                <input type="text" value={overrideReason} onChange={e => setOverrideReason(e.target.value)} maxLength={500} style={field}
+                  placeholder="Motif de la dérogation (direction) — ex. règlement promis vendredi" />
+              </div>
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
           <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={!valid || save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <ClipboardList size={13} />} Enregistrer le bon de livraison
+          <button type="button" className="odoo-btn-primary" disabled={!valid || save.isPending || (!!creditBlock && overrideReason.trim().length < 3)} onClick={() => save.mutate()}>
+            {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <ClipboardList size={13} />} {creditBlock ? 'Déroger et enregistrer' : 'Enregistrer le bon de livraison'}
           </button>
         </div>
       </div>
