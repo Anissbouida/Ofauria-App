@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Wallet, AlertTriangle, Users, ChevronDown, ChevronRight, Banknote, X, Loader2, Receipt, FileText, Phone, ScrollText } from 'lucide-react';
+import { Wallet, AlertTriangle, Users, ChevronDown, ChevronRight, Banknote, X, Loader2, Receipt, FileText, Phone, ScrollText, Layers, PiggyBank } from 'lucide-react';
 import { salesApi, type AgingBucket, type CustomerReceivable, type ReceivableDoc } from '../../api/sales.api';
 import { customersApi, type CustomerStatement } from '../../api/customers.api';
 import { paymentsApi } from '../../api/accounting.api';
@@ -36,6 +36,7 @@ export default function ReceivablesTab() {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [paying, setPaying] = useState<{ doc: ReceivableDoc; customer: string } | null>(null);
   const [statement, setStatement] = useState<{ id: string; name: string } | null>(null);
+  const [receipt, setReceipt] = useState<CustomerReceivable | null>(null);
 
   const { data, isLoading } = useQuery({ queryKey: ['receivables'], queryFn: salesApi.receivables });
 
@@ -96,7 +97,8 @@ export default function ReceivablesTab() {
               return (
                 <CustomerRows key={key} c={c} isOpen={isOpen} onToggle={() => toggle(key)}
                   onPay={doc => setPaying({ doc, customer: c.name })}
-                  onStatement={() => c.customerId && setStatement({ id: c.customerId, name: c.name })} />
+                  onStatement={() => c.customerId && setStatement({ id: c.customerId, name: c.name })}
+                  onReceipt={() => setReceipt(c)} />
               );
             })}
           </tbody>
@@ -114,6 +116,7 @@ export default function ReceivablesTab() {
 
       {paying && <PayDialog doc={paying.doc} customer={paying.customer} onClose={() => setPaying(null)} />}
       {statement && <StatementDialog customerId={statement.id} name={statement.name} onClose={() => setStatement(null)} />}
+      {receipt && <ReceiptDialog c={receipt} onClose={() => setReceipt(null)} />}
     </div>
   );
 }
@@ -128,7 +131,7 @@ function Kpi({ icon: Icon, label, value, sub, tone }: { icon: typeof Wallet; lab
   );
 }
 
-function CustomerRows({ c, isOpen, onToggle, onPay, onStatement }: { c: CustomerReceivable; isOpen: boolean; onToggle: () => void; onPay: (d: ReceivableDoc) => void; onStatement: () => void }) {
+function CustomerRows({ c, isOpen, onToggle, onPay, onStatement, onReceipt }: { c: CustomerReceivable; isOpen: boolean; onToggle: () => void; onPay: (d: ReceivableDoc) => void; onStatement: () => void; onReceipt: () => void }) {
   const overLimit = c.creditLimit != null && c.total > c.creditLimit;
   return (
     <>
@@ -157,13 +160,21 @@ function CustomerRows({ c, isOpen, onToggle, onPay, onStatement }: { c: Customer
         <tr>
           <td colSpan={7} style={{ background: 'var(--odoo-bg-alt, #f8f9fa)', padding: '8px 12px 12px 32px' }}>
             {c.customerId && (
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginBottom: 6 }}>
+                {c.docs.some(d => d.kind === 'invoice') && (
+                  <button type="button" className="odoo-btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem' }}
+                    title="Un chèque ou un virement qui règle plusieurs factures ; le reste devient une avance"
+                    onClick={e => { e.stopPropagation(); onReceipt(); }}>
+                    <Layers size={12} /> Règlement sur plusieurs factures
+                  </button>
+                )}
                 <button type="button" className="odoo-btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem' }}
                   onClick={e => { e.stopPropagation(); onStatement(); }}>
                   <ScrollText size={12} /> Relevé de compte
                 </button>
               </div>
             )}
+            {c.customerId && <AdvancesBlock customerId={c.customerId} invoices={c.docs.filter(d => d.kind === 'invoice')} />}
             <table style={{ width: '100%', fontSize: '0.8125rem', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ color: 'var(--odoo-text-muted)', textAlign: 'left' }}>
@@ -404,6 +415,171 @@ function StatementDialog({ customerId, name, onClose }: { customerId: string; na
               )}
             </table>
           )}
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+/**
+ * Avances du client (O2C L5) : règlements reçus pas encore affectés à une facture,
+ * en 4421. « Affecter » solde une facture ouverte avec l'avance (écriture 4421 → 3421).
+ */
+function AdvancesBlock({ customerId, invoices }: { customerId: string; invoices: ReceivableDoc[] }) {
+  const queryClient = useQueryClient();
+  const [target, setTarget] = useState<Record<string, string>>({});
+  const { data = [] } = useQuery({ queryKey: ['customer-receipts', customerId], queryFn: () => paymentsApi.customerReceipts(customerId) });
+  const advances = data.filter(r => r.unapplied > 0.004);
+  const mutation = useMutation({
+    mutationFn: (v: { id: string; invoiceId: string }) => paymentsApi.allocateCustomerReceipt(v.id, { invoiceId: v.invoiceId }),
+    onSuccess: (r) => {
+      ['receivables', 'invoices', 'customer-receipts', 'customer-situation'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+      notify.success(`${money(r.allocated)} affectés`);
+    },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Affectation impossible')),
+  });
+  if (!advances.length) return null;
+  return (
+    <div style={{ marginBottom: 8, padding: '6px 10px', border: '1px dashed var(--odoo-border)', borderRadius: 4, fontSize: '0.8125rem', display: 'grid', gap: 6 }}>
+      {advances.map(a => (
+        <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <PiggyBank size={13} style={{ color: '#6f42c1' }} />
+          <span>Avance de <b>{money(a.unapplied)}</b> non affectée
+            <span style={{ color: 'var(--odoo-text-muted)' }}> · règlement du {day(a.payment_date)}{a.check_number ? ` · n° ${a.check_number}` : ''}</span></span>
+          {invoices.length > 0 && (
+            <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }} onClick={e => e.stopPropagation()}>
+              <select value={target[a.id] ?? invoices[0].id} onChange={e => setTarget(t => ({ ...t, [a.id]: e.target.value }))}
+                style={{ padding: '0.2rem 0.4rem', border: '1px solid var(--odoo-border)', borderRadius: 4, fontSize: '0.75rem' }}>
+                {invoices.map(i => <option key={i.id} value={i.id}>{i.number} · reste {money(i.remaining)}</option>)}
+              </select>
+              <button type="button" className="odoo-btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem' }} disabled={mutation.isPending}
+                onClick={() => mutation.mutate({ id: a.id, invoiceId: target[a.id] ?? invoices[0].id })}>Affecter</button>
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Règlement sur plusieurs factures (O2C L5) : un seul chèque ou virement réparti
+ * sur les factures ouvertes du client, des plus anciennes aux plus récentes par
+ * défaut ; ce qui reste devient une avance du client (4421).
+ */
+function ReceiptDialog({ c, onClose }: { c: CustomerReceivable; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const invoices = c.docs.filter(d => d.kind === 'invoice').sort((a, b) => a.due_date.localeCompare(b.due_date));
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState('bank');
+  const [date, setDate] = useState(today);
+  const [reference, setReference] = useState('');
+  const [checkNumber, setCheckNumber] = useState('');
+  const [checkDate, setCheckDate] = useState('');
+  const [alloc, setAlloc] = useState<Record<string, string>>({});
+  const total = parseFloat(amount.replace(',', '.')) || 0;
+  const allocated = Math.round(invoices.reduce((s, i) => s + (parseFloat((alloc[i.id] ?? '').replace(',', '.')) || 0), 0) * 100) / 100;
+  const rest = Math.round((total - allocated) * 100) / 100;
+  /** Répartit le montant sur les factures, de la plus ancienne échéance à la plus récente. */
+  const spread = (v: number) => {
+    let left = v; const next: Record<string, string> = {};
+    for (const i of invoices) { const take = Math.min(left, i.remaining); next[i.id] = take > 0 ? take.toFixed(2) : ''; left = Math.round((left - take) * 100) / 100; }
+    setAlloc(next);
+  };
+  const overInvoice = invoices.some(i => (parseFloat((alloc[i.id] ?? '').replace(',', '.')) || 0) > i.remaining + 0.004);
+  const invalid = !(total > 0) || rest < -0.004 || overInvoice || ((method === 'check' || method === 'traite') && !checkNumber.trim());
+  const mutation = useMutation({
+    mutationFn: () => paymentsApi.createCustomerReceipt({
+      customerId: c.customerId!, amount: total, paymentMethod: method, paymentDate: date,
+      reference: reference.trim() || undefined, description: `Règlement ${c.name}`,
+      ...(method === 'check' || method === 'traite' ? { checkNumber: checkNumber.trim(), checkDate: checkDate || undefined } : {}),
+      allocations: invoices.map(i => ({ invoiceId: i.id, amount: parseFloat((alloc[i.id] ?? '').replace(',', '.')) || 0 })).filter(a => a.amount > 0),
+    }),
+    onSuccess: (r) => {
+      ['receivables', 'invoices', 'customer-receipts', 'customer-situation'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+      notify.success(r.unapplied > 0.004 ? `Règlement enregistré · ${money(r.unapplied)} en avance du client` : 'Règlement enregistré');
+      onClose();
+    },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Règlement impossible')),
+  });
+  const field = { padding: '0.4rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4 } as const;
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 620, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 6, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', background: 'var(--odoo-bg)' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb"><Layers size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span className="odoo-breadcrumb-current">Règlement de {c.name}</span></div>
+          <div style={{ flex: 1 }} />
+          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
+        </div>
+        <div style={{ padding: 16, display: 'grid', gap: 12, fontSize: '0.8125rem', overflowY: 'auto' }}>
+          <div className="grid grid-cols-2 gap-2">
+            <label style={{ display: 'grid', gap: 4 }}>Montant reçu
+              <input inputMode="decimal" value={amount} onChange={e => { setAmount(e.target.value); spread(parseFloat(e.target.value.replace(',', '.')) || 0); }}
+                style={{ ...field, fontSize: '0.9375rem', fontWeight: 600 }} placeholder="0,00" />
+            </label>
+            <label style={{ display: 'grid', gap: 4 }}>Date
+              <input type="date" value={date} max={today} onChange={e => setDate(e.target.value)} style={field} />
+            </label>
+          </div>
+          <div style={{ display: 'grid', gap: 4 }}>Mode de paiement
+            <div className="flex gap-2">
+              {INVOICE_METHODS.map(m => (
+                <button key={m.value} type="button" onClick={() => setMethod(m.value)}
+                  className={method === m.value ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ flex: 1, justifyContent: 'center' }}>{m.label}</button>
+              ))}
+            </div>
+          </div>
+          {method === 'check' || method === 'traite' ? (
+            <div className="grid grid-cols-2 gap-2">
+              <label style={{ display: 'grid', gap: 4 }}>N° {method === 'traite' ? 'de la traite' : 'du chèque'}
+                <input value={checkNumber} onChange={e => setCheckNumber(e.target.value)} style={field} />
+              </label>
+              <label style={{ display: 'grid', gap: 4 }}>Échéance du titre
+                <input type="date" value={checkDate} onChange={e => setCheckDate(e.target.value)} style={field} />
+              </label>
+            </div>
+          ) : (
+            <label style={{ display: 'grid', gap: 4 }}>Référence (virement, bordereau)
+              <input value={reference} onChange={e => setReference(e.target.value)} style={field} />
+            </label>
+          )}
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ color: 'var(--odoo-text-muted)', textAlign: 'left' }}>
+                <th style={{ padding: 4 }}>Facture</th><th style={{ padding: 4 }}>Échéance</th>
+                <th style={{ padding: 4, textAlign: 'right' }}>Reste dû</th><th style={{ padding: 4, textAlign: 'right', width: 120 }}>Affecté</th>
+              </tr>
+            </thead>
+            <tbody>
+              {invoices.map(i => (
+                <tr key={i.id} style={{ borderTop: '1px solid var(--odoo-border)' }}>
+                  <td style={{ padding: 4, fontFamily: 'ui-monospace, monospace' }}>{i.number}</td>
+                  <td style={{ padding: 4, color: i.days_late > 0 ? '#dc2626' : undefined }}>{day(i.due_date)}</td>
+                  <td style={{ padding: 4, textAlign: 'right' }}>{money(i.remaining)}</td>
+                  <td style={{ padding: 4 }}>
+                    <input inputMode="decimal" value={alloc[i.id] ?? ''} onChange={e => setAlloc(a => ({ ...a, [i.id]: e.target.value }))}
+                      style={{ ...field, width: '100%', textAlign: 'right' }} placeholder="0,00" />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ display: 'grid', gap: 4, padding: 10, borderRadius: 6, background: 'var(--odoo-bg-alt, #f8f9fa)' }}>
+            <div className="flex justify-between"><span>Affecté aux factures</span><b>{money(allocated)}</b></div>
+            <div className="flex justify-between" style={{ color: rest < -0.004 ? '#dc2626' : rest > 0.004 ? '#6f42c1' : undefined }}>
+              <span>{rest < -0.004 ? 'Affecté au-delà du montant reçu' : 'Reste en avance du client (4421)'}</span><b>{money(Math.abs(rest))}</b>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
+          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
+          <button type="button" className="odoo-btn-primary" disabled={invalid || mutation.isPending} onClick={() => mutation.mutate()}>
+            {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Banknote size={13} />} Enregistrer le règlement
+          </button>
         </div>
       </div>
     </ModalBackdrop>

@@ -189,9 +189,22 @@ export const caisseImportApi = {
   },
 };
 
+export type CustomerReceipt = {
+  id: string; reference: string | null; payment_method: string; payment_date: string; check_number: string | null;
+  amount: number; allocated: number; unapplied: number;
+  allocations: { invoice_id: string; invoice_number: string; amount: number }[];
+};
+
 export const paymentsApi = {
   list: (params?: Record<string, string>) => api.get('/payments', { params }).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/payments', data).then(r => r.data.data),
+  /** Encaissements clients répartis sur plusieurs factures, avances (O2C L5). */
+  customerReceipts: (customerId: string) => api.get('/payments/customer-receipts', { params: { customerId } }).then(r => r.data.data as CustomerReceipt[]),
+  createCustomerReceipt: (data: { customerId: string; amount: number; paymentMethod: string; paymentDate: string; reference?: string;
+    checkNumber?: string; checkDate?: string; description?: string; allocations: { invoiceId: string; amount: number }[] }) =>
+    api.post('/payments/customer-receipts', data).then(r => r.data.data as { allocated: number; unapplied: number }),
+  allocateCustomerReceipt: (id: string, data: { invoiceId: string; amount?: number }) =>
+    api.post(`/payments/customer-receipts/${id}/allocate`, data).then(r => r.data.data as { allocated: number; unapplied: number }),
   update: (id: string, data: Record<string, any>) => api.put(`/payments/${id}`, data).then(r => r.data.data),
   remove: (id: string) => api.delete(`/payments/${id}`),
   summary: (dateFrom: string, dateTo: string) =>

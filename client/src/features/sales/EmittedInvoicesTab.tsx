@@ -1065,7 +1065,10 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
                       <span style={{ color: 'var(--odoo-text-muted)' }}>
                         {fmtDate(p.payment_date, 'dd/MM/yyyy')} · {payLabel(getPaymentLabel, (p.payment_method as string) || '')}{p.reference ? ` · ${p.reference as string}` : ''}
                       </span>
-                      <span style={{ fontWeight: 600, textDecoration: p.voided_at ? 'line-through' : undefined }}>{n(num(p.amount))} DH</span>
+                      {/* Règlement réparti sur plusieurs factures (O2C L5) : la part de cette facture. */}
+                      <span style={{ fontWeight: 600, textDecoration: p.voided_at ? 'line-through' : undefined }}
+                        title={p.allocated_amount != null && num(p.allocated_amount) !== num(p.amount) ? `Règlement de ${n(num(p.amount))} DH réparti sur plusieurs factures` : undefined}>
+                        {n(num(p.allocated_amount ?? p.amount))} DH</span>
                     </div>
                   ))}
                 </div>

@@ -313,6 +313,7 @@ export const saleController = {
       paymentMethod,
       sessionId: activeSession?.id ?? null,
       paidAt: paidAtTs,
+      userId: req.user!.userId,
     });
     if (!result.ok) {
       if (result.reason === 'not_found') {

@@ -145,7 +145,7 @@ async function backfillPayments(stats: Stats, userId: string, args: Args) {
   const rows = (await db.query(
     `SELECT id, reference, type, category_id, invoice_id, supplier_id, employee_id,
             amount, payment_method, payment_date::TEXT AS payment_date,
-            cashed_at::TEXT AS cashed_at, description, store_id, credit_note_id
+            cashed_at::TEXT AS cashed_at, description, store_id, credit_note_id, customer_id
      FROM payments
      ORDER BY payment_date, created_at
      ${limit}`
@@ -216,10 +216,10 @@ async function backfillSales(stats: Stats, userId: string, args: Args) {
   const limit = args.limit ? `LIMIT ${args.limit}` : '';
   const rows = (await db.query(
     `SELECT id, sale_number, customer_id, subtotal, tax_amount, discount_amount, total,
-            payment_method, payment_status,
+            payment_method, payment_status, cash_amount, card_amount, sold_on_credit,
             paid_at::TEXT AS paid_at, created_at::TEXT AS created_at, store_id
      FROM sales
-     WHERE payment_status = 'paid'
+     WHERE payment_status = 'paid' OR sold_on_credit
      ORDER BY COALESCE(paid_at, created_at), created_at
      ${limit}`
   )).rows as unknown as SaleRow[];

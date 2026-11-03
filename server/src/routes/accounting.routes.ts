@@ -153,6 +153,10 @@ paymentsRouter.get('/summary', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANA
 paymentsRouter.get('/checks', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(paymentController.listChecks));
 // asyncHandler : un paiement refusé par la base (facture bloquée, mig 309) remonte en 409 lisible.
 paymentsRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(createPaymentSchema), asyncHandler(paymentController.create));
+// Encaissements clients répartis sur plusieurs factures, avances (O2C L5, mig 451).
+paymentsRouter.get('/customer-receipts', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(paymentController.customerReceipts));
+paymentsRouter.post('/customer-receipts', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(paymentController.createCustomerReceipt));
+paymentsRouter.post('/customer-receipts/:id/allocate', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(paymentController.allocateCustomerReceipt));
 // Mig 310 (D7) : modes typés, plafond espèces, annulation par contre-pièce, virements internes.
 paymentsRouter.get('/modes', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(paymentController.modes));
 paymentsRouter.get('/cash-cumul', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER),

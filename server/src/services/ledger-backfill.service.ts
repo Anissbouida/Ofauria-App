@@ -15,7 +15,7 @@ import { db } from '../config/database.js';
 import { postGoodsReceiptsForPo } from './ledger-posting.service.js';
 import { lettrageRepository } from '../repositories/lettrage.repository.js';
 import {
-  fromInvoice, fromSale, fromPaymentEmission, fromPaymentCashing, fromManualShiftEntry, persistEntry,
+  fromInvoice, fromSale, fromSaleSettlement, fromAllocation, fromPaymentEmission, fromPaymentCashing, fromManualShiftEntry, persistEntry,
   regenerateInvoiceEntry, reverseEntriesForSource,
   type InvoiceRow, type PaymentRow, type SaleRow, type ShiftEntryRow,
 } from './journal-generator.service.js';
@@ -95,7 +95,7 @@ export async function runFullBackfill(userId: string): Promise<BackfillSummary> 
     `SELECT id, reference, type, category_id, invoice_id, supplier_id, employee_id,
             amount, payment_method, payment_date::TEXT AS payment_date,
             cashed_at::TEXT AS cashed_at, description, store_id,
-            withholding_type_id, withholding_amount, payment_mode, treasury_account_id, to_treasury_account_id, credit_note_id
+            withholding_type_id, withholding_amount, payment_mode, treasury_account_id, to_treasury_account_id, credit_note_id, customer_id
      FROM payments
      -- Mig 310/311 : un paiement annulé (et sa contre-pièce) n'est jamais recomptabilisé.
      WHERE status <> 'void' AND voids_payment_id IS NULL
@@ -109,24 +109,32 @@ export async function runFullBackfill(userId: string): Promise<BackfillSummary> 
       }
       const cashing = isPosted(p.id, 'cashing') ? null : fromPaymentCashing(p);
       if (cashing) { summary.cashings++; await persistOne(cashing, `cashing ${p.reference || p.id}`); }
+      // Avances affectées après coup (O2C L5) : une écriture OD par affectation.
+      for (const a of (await db.query(`SELECT id FROM payment_allocations WHERE payment_id = $1 AND NOT posted_with_payment`, [p.id])).rows) {
+        const alloc = isPosted(p.id, `alloc:${a.id}`) ? null : await fromAllocation(db, a.id);
+        if (alloc) { summary.payments++; await persistOne(alloc, `allocation ${a.id}`); }
+      }
     } catch (err) {
       summary.errors++;
       if (summary.errorSamples.length < 10) summary.errorSamples.push(`payment ${p.id}: ${err instanceof Error ? err.message : err}`);
     }
   }
 
-  // ─── Ventes POS payees ───
+  // ─── Ventes POS payees, et tickets a credit (mig 451) ───
+  // O2C L5 (G-CA-07) : parts especes / carte des tickets mixtes reprises.
   const sales = (await db.query(
     `SELECT id, sale_number, customer_id, subtotal, tax_amount, discount_amount, total,
-            payment_method, payment_status,
+            payment_method, payment_status, cash_amount, card_amount, sold_on_credit,
             paid_at::TEXT AS paid_at, created_at::TEXT AS created_at, store_id
-     FROM sales WHERE payment_status = 'paid'
+     FROM sales WHERE payment_status = 'paid' OR sold_on_credit
      ORDER BY COALESCE(paid_at, created_at), created_at`
   )).rows as unknown as SaleRow[];
   for (const s of sales) {
     try {
-      const entry = await fromSale(db, s);
+      const entry = isPosted(s.id) ? null : await fromSale(db, s);
       if (entry) { summary.sales++; await persistOne(entry, `sale ${s.sale_number}`); }
+      const settlement = isPosted(s.id, 'settlement') ? null : await fromSaleSettlement(db, s);
+      if (settlement) { summary.sales++; await persistOne(settlement, `settlement ${s.sale_number}`); }
     } catch (err) {
       summary.errors++;
       if (summary.errorSamples.length < 10) summary.errorSamples.push(`sale ${s.id}: ${err instanceof Error ? err.message : err}`);

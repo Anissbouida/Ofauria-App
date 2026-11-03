@@ -5,7 +5,7 @@ import { adjustProductStock, adjustVitrineStock } from './product-stock.helper.j
 import { productLotRepository } from './product-lot.repository.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
-import { fromSale, persistEntry, reverseEntriesForSource, regenerateSaleEntry } from '../services/journal-generator.service.js';
+import { fromSale, fromSaleSettlement, persistEntry, reverseEntriesForSource, regenerateSaleEntry, autoLettrer } from '../services/journal-generator.service.js';
 import { earnForSale, redeemForSale, reverseForSale } from '../services/loyalty.js';
 import { recordApplied, type AppliedPromo } from '../services/promotions.js';
 import { shipProduct } from '../services/product-shipment.js';
@@ -330,10 +330,15 @@ export const saleRepository = {
         await earnForSale(client, saleResult.rows[0], data.userId);
       }
 
-      // Generation auto de l'ecriture comptable (LEDGER_AUTOGEN)
-      // Seules les ventes payees generent une ecriture (les unpaid attendront
-      // l'encaissement differe via paymentRepository.create).
-      if (FLAGS.LEDGER_AUTOGEN && saleResult.rows[0].payment_status === 'paid') {
+      // Ticket à crédit (O2C L5, G-CA-03) : créance client 3421 dès la vente.
+      if (saleResult.rows[0].payment_status === 'unpaid') {
+        Object.assign(saleResult.rows[0], (await client.query(
+          `UPDATE sales SET sold_on_credit = true WHERE id = $1 RETURNING sold_on_credit`, [saleResult.rows[0].id])).rows[0]);
+      }
+
+      // Generation auto de l'ecriture comptable (LEDGER_AUTOGEN) : vente payee, ou
+      // vente a credit (3421, soldee a l'encaissement par markPaid).
+      if (FLAGS.LEDGER_AUTOGEN && (saleResult.rows[0].payment_status === 'paid' || saleResult.rows[0].sold_on_credit)) {
         await client.query('SAVEPOINT ledger_gen');
         try {
           const entry = await fromSale(client, saleResult.rows[0]);
@@ -366,7 +371,7 @@ export const saleRepository = {
   // p.ex. un admin qui solde un impaye depuis l'onglet Impayes).
   // paidAt : date d'encaissement choisie (defaut : maintenant). C'est cette
   // date qui rattache la vente au CA d'une journee.
-  async markPaid(saleId: string, params: { paymentMethod: string; sessionId: string | null; paidAt?: string | null }) {
+  async markPaid(saleId: string, params: { paymentMethod: string; sessionId: string | null; paidAt?: string | null; userId?: string | null }) {
     const dbClient = await db.getClient();
     try {
       await dbClient.query('BEGIN');
@@ -401,6 +406,23 @@ export const saleRepository = {
       if (existing.customer_id) {
         await dbClient.query(`UPDATE customers SET total_spent = total_spent + $1 WHERE id = $2`, [parseFloat(existing.total), existing.customer_id]);
         await earnForSale(dbClient, result.rows[0], null);
+      }
+
+      // Écriture d'encaissement (O2C L5, G-CA-03) : ticket à crédit → trésorerie / 3421, lettré
+      // avec la vente ; ticket impayé antérieur (sans créance) → écriture de vente complète.
+      if (FLAGS.LEDGER_AUTOGEN) {
+        await dbClient.query('SAVEPOINT ledger_gen');
+        try {
+          const row = result.rows[0];
+          const entry = row.sold_on_credit ? await fromSaleSettlement(dbClient, row) : await fromSale(dbClient, row);
+          if (entry) await persistEntry(dbClient, entry, { userId: params.userId ?? null });
+          if (row.sold_on_credit) await autoLettrer(dbClient, saleId);
+          await dbClient.query('RELEASE SAVEPOINT ledger_gen');
+        } catch (genErr) {
+          await dbClient.query('ROLLBACK TO SAVEPOINT ledger_gen');
+          // eslint-disable-next-line no-console
+          console.error('[ledger] encaissement non comptabilise pour vente', saleId, genErr instanceof Error ? genErr.message : genErr);
+        }
       }
 
       await dbClient.query('COMMIT');

@@ -50,6 +50,8 @@ export interface GeneratedLine {
   po_line_id?: string | null;
   receipt_item_id?: string | null;
   supplier_id?: string | null;
+  // Mig 451 (O2C L5) : axe de lettrage par facture client (règlement réparti).
+  invoice_id?: string | null;
 }
 
 export interface GeneratedEntry {
@@ -341,6 +343,7 @@ export async function fromInvoice(
     lines.push({
       account_code: '3421', auxiliary_customer_id: inv.customer_id, debit: 0, credit: round2(total),
       label: `Avoir client — ${inv.invoice_number}`, lettrage_key: `inv-${inv.credited_invoice_id ?? inv.id}`,
+      invoice_id: inv.credited_invoice_id ?? inv.id,
     });
     return {
       journal_code: 'VE',
@@ -367,6 +370,7 @@ export async function fromInvoice(
         credit: 0,
         label: `Client — ${inv.invoice_number}`,
         lettrage_key: lettrageKey,
+        invoice_id: inv.id,
       },
       { account_code: revCode, debit: 0, credit: round2(amount), label: `Vente ${inv.invoice_number}` },
     ];
@@ -462,21 +466,84 @@ export interface SaleRow {
   // mig 250 — ventilation d'un paiement mixte (payment_method='mixed')
   cash_amount?: string | number | null;
   card_amount?: string | number | null;
+  // mig 451 — ticket à crédit : créance 3421 à la vente, soldée à l'encaissement
+  sold_on_credit?: boolean | null;
+}
+
+/** Trésorerie d'un ticket encaissé : caisse, banque, carte (commission) ou mixte. */
+async function saleTreasuryLines(client: PoolClient | typeof db, s: SaleRow, total: number): Promise<GeneratedLine[]> {
+  const lines: GeneratedLine[] = [];
+  if (s.payment_method === 'mixed') {
+    // Paiement mixte (mig 250) : la tresorerie se ventile entre caisse (5161)
+    // et banque (5141) selon les parts reellement encaissees.
+    const cashPart = parseFloat(String(s.cash_amount ?? 0)) || 0;
+    const cardPart = parseFloat(String(s.card_amount ?? 0)) || 0;
+    if (cashPart > 0) lines.push({ account_code: '5161', debit: round2(cashPart), credit: 0, label: `Vente ${s.sale_number} (especes)` });
+    if (cardPart > 0) lines.push(...cardLines(cardPart, await cardCommissionPct(client), `Vente ${s.sale_number} (carte)`));
+  } else if (s.payment_method === 'card') {
+    lines.push(...cardLines(total, await cardCommissionPct(client), `Vente ${s.sale_number}`));
+  } else {
+    lines.push({ account_code: s.payment_method === 'cash' ? '5161' : '5141', debit: round2(total), credit: 0, label: `Vente ${s.sale_number}` });
+  }
+  return lines;
+}
+
+/**
+ * Encaissement d'un ticket à crédit (O2C L5, G-CA-03) : trésorerie au débit, créance
+ * 3421 du client soldée, lettrée avec la vente (même source). Date = encaissement.
+ */
+export async function fromSaleSettlement(client: PoolClient | typeof db, s: SaleRow): Promise<GeneratedEntry | null> {
+  if (!s.sold_on_credit || s.payment_status !== 'paid') return null;
+  const total = parseFloat(String(s.total)) || 0;
+  if (total <= 0) return null;
+  const isCash = s.payment_method === 'cash' || s.payment_method === 'mixed';
+  return {
+    journal_code: isCash ? 'CA' : 'BQ',
+    entry_date: toIsoDate(s.paid_at || s.created_at),
+    description: `Encaissement ticket ${s.sale_number}`,
+    source_kind: 'sale',
+    source_id: s.id,
+    source_detail: 'settlement',
+    store_id: s.store_id,
+    lines: [
+      ...await saleTreasuryLines(client, s, total),
+      { account_code: '3421', auxiliary_customer_id: s.customer_id, debit: 0, credit: round2(total), label: `Ticket ${s.sale_number}` },
+    ],
+  };
 }
 
 export async function fromSale(
   client: PoolClient | typeof db,
   s: SaleRow
 ): Promise<GeneratedEntry | null> {
-  // Ventes impayees : pas d'encaissement -> pas d'ecriture caisse/banque.
-  // (Une facture emise sera generee separement par fromInvoice si elle existe.)
-  if (s.payment_status !== 'paid') return null;
-
   const subtotal = parseFloat(String(s.subtotal)) || 0;
   const tax      = parseFloat(String(s.tax_amount ?? 0)) || 0;
   const discount = parseFloat(String(s.discount_amount ?? 0)) || 0;
   const total    = parseFloat(String(s.total)) || 0;
   if (total <= 0) return null;
+
+  // Ticket à crédit (O2C L5, G-CA-03) : la vente naît en créance client 3421, à sa date ;
+  // l'encaissement (fromSaleSettlement) la soldera. Payé ou non, cette écriture ne change pas.
+  if (s.sold_on_credit) {
+    const lines: GeneratedLine[] = [
+      { account_code: '3421', auxiliary_customer_id: s.customer_id, debit: round2(total), credit: 0, label: `Ticket à crédit ${s.sale_number}` },
+      { account_code: '7111', debit: 0, credit: round2(subtotal), label: 'Vente à crédit' },
+    ];
+    if (tax > 0) lines.push({ account_code: tvaAccountForRate(computeTvaRate(subtotal, tax), 'collected'), debit: 0, credit: round2(tax), label: 'TVA facturee' });
+    if (discount > 0) lines.push({ account_code: '7129', debit: round2(discount), credit: 0, label: 'Remise accordee' });
+    return {
+      journal_code: 'VE',
+      entry_date: toIsoDate(s.created_at),
+      description: `Vente à crédit ${s.sale_number}`,
+      source_kind: 'sale',
+      source_id: s.id,
+      store_id: s.store_id,
+      lines,
+    };
+  }
+
+  // Ventes impayees (historique, avant la mig 451) : l'ecriture complete est passee a l'encaissement.
+  if (s.payment_status !== 'paid') return null;
 
   // GARDE-FOU : la saisie manuelle par shift est AUTORITAIRE (montant
   // physiquement compte). Si une saisie manuelle existe pour ce jour/magasin,
@@ -504,21 +571,8 @@ export async function fromSale(
 
   const isCash = s.payment_method === 'cash';
   const isMixed = s.payment_method === 'mixed';
-  const treasuryCode = isCash ? '5161' : '5141';
 
-  const lines: GeneratedLine[] = [];
-  if (isMixed) {
-    // Paiement mixte (mig 250) : la tresorerie se ventile entre caisse (5161)
-    // et banque (5141) selon les parts reellement encaissees.
-    const cashPart = parseFloat(String(s.cash_amount ?? 0)) || 0;
-    const cardPart = parseFloat(String(s.card_amount ?? 0)) || 0;
-    if (cashPart > 0) lines.push({ account_code: '5161', debit: round2(cashPart), credit: 0, label: `Vente ${s.sale_number} (especes)` });
-    if (cardPart > 0) lines.push(...cardLines(cardPart, await cardCommissionPct(client), `Vente ${s.sale_number} (carte)`));
-  } else if (s.payment_method === 'card') {
-    lines.push(...cardLines(total, await cardCommissionPct(client), `Vente ${s.sale_number}`));
-  } else {
-    lines.push({ account_code: treasuryCode, debit: round2(total), credit: 0, label: `Vente ${s.sale_number}` });
-  }
+  const lines: GeneratedLine[] = await saleTreasuryLines(client, s, total);
   lines.push({ account_code: '7111', debit: 0, credit: round2(subtotal), label: 'Vente du jour' });
 
   if (tax > 0) {
@@ -621,6 +675,8 @@ export interface PaymentRow {
   remittance_kind?: 'collection' | 'discount' | null;
   // Mig 450 : imputation d'un avoir client (sans écriture propre).
   credit_note_id?: string | null;
+  // Mig 451 : client du règlement (règlement réparti, avance).
+  customer_id?: string | null;
   remittance_bank_code?: string | null;
 }
 
@@ -718,12 +774,38 @@ export async function fromPaymentEmission(
     // (settled_amount), la tresorerie recoit le montant au taux du jour ; l'ecart est
     // un gain de change (7331) si amount > settled, une perte (6331) sinon.
     const isCustomerInvoice = inv?.invoice_type === 'emitted' && !!inv.customer_id;
+    // Règlement client réparti sur des factures, ou avance (O2C L5, G-CA-01/02) : 3421 par
+    // facture affectée (axe de lettrage), le reste en avance client 4421 — jamais en produit.
+    if (!isCustomerInvoice && p.customer_id) {
+      const allocs = (await client.query(
+        `SELECT a.invoice_id, a.amount, i.invoice_number FROM payment_allocations a JOIN invoices i ON i.id = a.invoice_id
+          WHERE a.payment_id = $1 AND a.posted_with_payment ORDER BY i.invoice_date, i.invoice_number`, [p.id])).rows as { invoice_id: string; amount: string; invoice_number: string }[];
+      const lines: GeneratedLine[] = [{ account_code: treasuryCode, debit: round2(amount), credit: 0, label: 'Encaissement' }];
+      let allocated = 0;
+      for (const a of allocs) {
+        const v = round2(parseFloat(a.amount));
+        allocated = round2(allocated + v);
+        lines.push({ account_code: '3421', auxiliary_customer_id: p.customer_id, debit: 0, credit: v,
+          label: `Reglement ${a.invoice_number}`, invoice_id: a.invoice_id });
+      }
+      const rest = round2(amount - allocated);
+      if (rest > 0) lines.push({ account_code: await postingAccount(client, 'customer_advance'), debit: 0, credit: rest, label: 'Avance client non affectée' });
+      return {
+        journal_code: journal,
+        entry_date: toIsoDate(p.payment_date),
+        description: p.description || `Encaissement client ${p.reference || ''}`.trim(),
+        source_kind: 'payment',
+        source_id: p.id,
+        store_id: p.store_id,
+        lines,
+      };
+    }
     const settled = isCustomerInvoice && p.settled_amount != null ? round2(parseFloat(String(p.settled_amount))) : round2(amount);
     const fxIncome = isCustomerInvoice ? round2(round2(amount) - settled) : 0;
     const creditLine: GeneratedLine = isCustomerInvoice
       ? {
           account_code: '3421', auxiliary_customer_id: inv.customer_id, debit: 0, credit: settled,
-          label: `Reglement ${inv.invoice_number}`, lettrage_key: `inv-${p.invoice_id}`,
+          label: `Reglement ${inv.invoice_number}`, lettrage_key: `inv-${p.invoice_id}`, invoice_id: p.invoice_id,
         }
       : { account_code: await resolveCategoryAccountCode(client, p.category_id, 'revenue'), debit: 0, credit: round2(amount), label: p.description || 'Revenu' };
     const fxLines: GeneratedLine[] = fxIncome > 0
@@ -876,6 +958,38 @@ export function fromPaymentCashing(p: PaymentRow): GeneratedEntry | null {
  * Si une entry de meme (source_kind, source_id) existe deja, retourne son id
  * sans rien creer (idempotence).
  */
+/**
+ * Affectation ultérieure d'une avance client à une facture (O2C L5) : l'avance
+ * 4421 passe en règlement de la facture (3421, axe facture). Une écriture OD par
+ * affectation (source = le règlement, détail = l'affectation).
+ */
+export async function fromAllocation(
+  client: PoolClient | typeof db,
+  allocationId: string
+): Promise<GeneratedEntry | null> {
+  const a = (await client.query(
+    // Une affectation ne précède jamais le règlement qu'elle affecte.
+    `SELECT a.id, a.amount, a.invoice_id, GREATEST((a.allocated_at AT TIME ZONE 'Africa/Casablanca')::date, p.payment_date)::text AS allocated_on,
+            p.id AS payment_id, p.customer_id, p.store_id, i.invoice_number
+       FROM payment_allocations a JOIN payments p ON p.id = a.payment_id JOIN invoices i ON i.id = a.invoice_id
+      WHERE a.id = $1 AND NOT a.posted_with_payment`, [allocationId])).rows[0];
+  if (!a) return null;
+  const v = round2(parseFloat(a.amount));
+  return {
+    journal_code: 'OD',
+    entry_date: a.allocated_on,
+    description: `Avance affectée à ${a.invoice_number}`,
+    source_kind: 'payment',
+    source_id: a.payment_id,
+    source_detail: `alloc:${a.id}`,
+    store_id: a.store_id,
+    lines: [
+      { account_code: await postingAccount(client, 'customer_advance'), debit: v, credit: 0, label: 'Avance client affectée' },
+      { account_code: '3421', auxiliary_customer_id: a.customer_id, debit: 0, credit: v, label: `Reglement ${a.invoice_number}`, invoice_id: a.invoice_id },
+    ],
+  };
+}
+
 export async function persistEntry(
   client: PoolClient,
   entry: GeneratedEntry,
@@ -1011,10 +1125,10 @@ export async function persistEntry(
     await client.query(
       `INSERT INTO journal_entry_lines (
          journal_entry_id, line_order, account_id, auxiliary_id, debit, credit, label,
-         po_line_id, receipt_item_id, supplier_id
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+         po_line_id, receipt_item_id, supplier_id, invoice_id
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [entryId, i + 1, acc.id, auxId, l.debit, l.credit, l.label || null,
-       l.po_line_id ?? null, l.receipt_item_id ?? null, l.supplier_id ?? null]
+       l.po_line_id ?? null, l.receipt_item_id ?? null, l.supplier_id ?? null, l.invoice_id ?? null]
     );
   }
 
@@ -1053,10 +1167,14 @@ export async function autoLettrer(
        AND je.status = 'posted'
        AND je.source_kind <> 'reversal'
        AND (
-         je.source_id = $1
-         OR je.source_id IN (SELECT id::text::uuid FROM payments WHERE invoice_id = $1)
-         -- Avoirs imputés sur la facture (O2C L4).
-         OR je.source_id IN (SELECT credit_note_id FROM payments WHERE invoice_id = $1 AND credit_note_id IS NOT NULL)
+         -- Lignes portant l'axe facture (mig 451) : règlement réparti, affectation d'avance.
+         jel.invoice_id = $1
+         OR (jel.invoice_id IS NULL AND (
+           je.source_id = $1
+           OR je.source_id IN (SELECT id::text::uuid FROM payments WHERE invoice_id = $1)
+           -- Avoirs imputés sur la facture (O2C L4).
+           OR je.source_id IN (SELECT credit_note_id FROM payments WHERE invoice_id = $1 AND credit_note_id IS NOT NULL)
+         ))
        )`,
     [invoiceId]
   );
@@ -1203,9 +1321,9 @@ async function extourneEntry(
 
   await client.query(
     `INSERT INTO journal_entry_lines (journal_entry_id, line_order, account_id, auxiliary_id, debit, credit, label,
-                                      po_line_id, receipt_item_id, supplier_id)
+                                      po_line_id, receipt_item_id, supplier_id, invoice_id)
      SELECT $1, line_order, account_id, auxiliary_id, credit, debit, 'Extourne: ' || COALESCE(label, ''),
-            po_line_id, receipt_item_id, supplier_id
+            po_line_id, receipt_item_id, supplier_id, invoice_id
      FROM journal_entry_lines WHERE journal_entry_id = $2`,
     [extId, orig.id]
   );
@@ -1259,14 +1377,14 @@ const INVOICE_SELECT = `SELECT id, invoice_number, invoice_type, supplier_id, cu
 
 const PAYMENT_SELECT = `SELECT id, reference, type, category_id, invoice_id, supplier_id,
   employee_id, amount, payment_method, payment_date, cashed_at, description, store_id,
-  withholding_type_id, withholding_amount, payment_mode, treasury_account_id, to_treasury_account_id, credit_note_id,
+  withholding_type_id, withholding_amount, payment_mode, treasury_account_id, to_treasury_account_id, credit_note_id, customer_id,
   (SELECT br.kind FROM bill_remittances br WHERE br.id = payments.remittance_id AND br.status = 'posted') AS remittance_kind,
   (SELECT ta.account_code FROM bill_remittances br JOIN treasury_accounts ta ON ta.id = br.treasury_account_id
     WHERE br.id = payments.remittance_id AND br.status = 'posted') AS remittance_bank_code
   FROM payments WHERE id = $1`;
 
 const SALE_SELECT = `SELECT id, sale_number, customer_id, subtotal, tax_amount, discount_amount,
-  total, payment_method, payment_status, paid_at, created_at, store_id
+  total, payment_method, payment_status, paid_at, created_at, store_id, cash_amount, card_amount, sold_on_credit
   FROM sales WHERE id = $1`;
 
 /**
@@ -1315,8 +1433,17 @@ export async function regeneratePaymentEntries(
   const cashing = fromPaymentCashing(p);
   if (cashing) await persistEntry(client, cashing, { userId: uid });
 
-  // Re-lettrage de la facture liee (si reglement de facture).
-  if (p.invoice_id) await autoLettrer(client, p.invoice_id);
+  // Affectations ultérieures d'une avance (O2C L5) : une écriture OD chacune.
+  const allocs = (await client.query(
+    `SELECT id, invoice_id, posted_with_payment FROM payment_allocations WHERE payment_id = $1`, [paymentId])).rows;
+  for (const a of allocs.filter((x: { posted_with_payment: boolean }) => !x.posted_with_payment)) {
+    const e = await fromAllocation(client, a.id);
+    if (e) await persistEntry(client, e, { userId: uid });
+  }
+
+  // Re-lettrage de la facture liee (si reglement de facture) et des factures affectées.
+  const invoiceIds = new Set<string>([...(p.invoice_id ? [p.invoice_id] : []), ...allocs.map((a: { invoice_id: string }) => a.invoice_id)]);
+  for (const id of invoiceIds) await autoLettrer(client, id);
 }
 
 /**
@@ -1333,8 +1460,15 @@ export async function regenerateSaleEntry(
   const s = sale.rows[0];
   if (!s) return;
 
+  const uid = await resolveUserId(client, userId);
   const entry = await fromSale(client, s);
-  if (entry) await persistEntry(client, entry, { userId: await resolveUserId(client, userId) });
+  if (entry) await persistEntry(client, entry, { userId: uid });
+  // Ticket à crédit encaissé (O2C L5) : écriture d'encaissement, lettrée avec la vente.
+  const settlement = await fromSaleSettlement(client, s);
+  if (settlement) {
+    await persistEntry(client, settlement, { userId: uid });
+    await autoLettrer(client, saleId);
+  }
 }
 
 /* ═══ Generateur — perte produit (section 3.3) ═══ */

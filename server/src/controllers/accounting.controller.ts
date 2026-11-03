@@ -10,6 +10,7 @@ import { db } from '../config/database.js';
 import { refEntryRepository } from '../repositories/referentiel.repository.js';
 import { paymentScheduleRepository } from '../repositories/payment-schedule.repository.js';
 import { creditNoteRepository, CREDIT_REASONS, type CreditReason } from '../repositories/credit-note.repository.js';
+import { customerReceiptRepository } from '../repositories/customer-receipt.repository.js';
 import { getParameter, type ExpenseRequiresPo } from '../services/module-parameters.service.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
 
@@ -747,6 +748,33 @@ export const invoiceController = {
 };
 
 export const paymentController = {
+  /** GET /payments/customer-receipts?customerId= — règlements du client, affectations, avances (O2C L5). */
+  async customerReceipts(req: AuthRequest, res: Response) {
+    const customerId = String(req.query.customerId ?? '');
+    if (!/^[0-9a-f-]{36}$/i.test(customerId)) { res.status(400).json({ success: false, error: { message: 'Client requis' } }); return; }
+    res.json({ success: true, data: await customerReceiptRepository.list(customerId) });
+  },
+  /** POST /payments/customer-receipts — un règlement client réparti sur ses factures, le reste en avance. */
+  async createCustomerReceipt(req: AuthRequest, res: Response) {
+    const b = req.body as Record<string, any>;
+    if (!b.customerId || !b.paymentMethod || !b.paymentDate) { res.status(400).json({ success: false, error: { message: 'Client, mode et date requis' } }); return; }
+    const r = await customerReceiptRepository.create({
+      customerId: b.customerId, amount: Number(b.amount), paymentMethod: b.paymentMethod, paymentDate: b.paymentDate,
+      reference: b.reference ?? null, checkNumber: b.checkNumber ?? null, checkDate: b.checkDate ?? null,
+      treasuryAccountId: b.treasuryAccountId ?? null, description: b.description ?? null,
+      allocations: Array.isArray(b.allocations) ? b.allocations : [],
+      userId: req.user!.userId, storeId: req.user!.storeId ?? null,
+    });
+    res.status(201).json({ success: true, data: r });
+  },
+  /** POST /payments/customer-receipts/:id/allocate — affecte une avance à une facture. */
+  async allocateCustomerReceipt(req: AuthRequest, res: Response) {
+    const { invoiceId, amount } = req.body as { invoiceId?: string; amount?: number };
+    if (!invoiceId) { res.status(400).json({ success: false, error: { message: 'Facture requise' } }); return; }
+    const r = await customerReceiptRepository.allocate({ paymentId: req.params.id, invoiceId, amount: amount ?? null, userId: req.user!.userId });
+    res.json({ success: true, data: r });
+  },
+
   async list(req: AuthRequest, res: Response) {
     const { type, dateFrom, dateTo, supplierId } = req.query as Record<string, string>;
     const payments = await paymentRepository.findAll({ type, dateFrom, dateTo, supplierId, storeId: req.user!.storeId });

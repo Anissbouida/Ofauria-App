@@ -64,7 +64,7 @@ export const caisseRepository = {
        LEFT JOIN expense_categories ec ON ec.id = p.category_id
        LEFT JOIN employees e ON e.id = p.employee_id
        LEFT JOIN invoices inv ON inv.id = p.invoice_id
-       LEFT JOIN customers c ON c.id = inv.customer_id
+       LEFT JOIN customers c ON c.id = COALESCE(inv.customer_id, p.customer_id)
        WHERE (p.payment_method NOT IN ('check', 'traite') OR p.cashed_at IS NOT NULL)
          AND (CASE WHEN p.payment_method IN ('check', 'traite') THEN p.cashed_at ELSE p.payment_date END) BETWEEN $1 AND $2
          ${storeFilterP}
@@ -694,8 +694,13 @@ export const invoiceRepository = {
     );
 
     // Get payments linked to this invoice
+    // Règlements de la facture, y compris ceux répartis sur plusieurs factures (O2C L5) :
+    // `allocated_amount` = part affectée à cette facture.
     const paymentsResult = await db.query(
-      `SELECT p.* FROM payments p WHERE p.invoice_id = $1 ORDER BY p.payment_date DESC`, [id]
+      `SELECT p.*, (SELECT SUM(a.amount) FROM payment_allocations a WHERE a.payment_id = p.id AND a.invoice_id = $1)::float8 AS allocated_amount
+         FROM payments p
+        WHERE p.invoice_id = $1 OR EXISTS (SELECT 1 FROM payment_allocations a WHERE a.payment_id = p.id AND a.invoice_id = $1)
+        ORDER BY p.payment_date DESC`, [id]
     );
 
     return { ...result.rows[0], items: itemsResult.rows, payments: paymentsResult.rows };
@@ -1042,7 +1047,14 @@ export const invoiceRepository = {
                 COALESCE(SUM(foreign_amount), 0) AS foreign_paid
            FROM payments WHERE ${isCreditNote ? 'credit_note_id' : 'invoice_id'} = $1`, [id]
       );
-      const totalPaid = Math.round(parseFloat(paymentsResult.rows[0].total_paid) * 100) / 100;
+      let totalPaid = Math.round(parseFloat(paymentsResult.rows[0].total_paid) * 100) / 100;
+      // Facture client (O2C L5, mig 451) : réglé = somme des affectations de règlements non annulés
+      // (un règlement peut couvrir plusieurs factures ; l'imputation d'un avoir en est une).
+      if (inv.rows[0].invoice_type === 'emitted' && !isCreditNote) {
+        totalPaid = Math.round(parseFloat((await client.query(
+          `SELECT COALESCE(SUM(a.amount), 0) AS v FROM payment_allocations a JOIN payments p ON p.id = a.payment_id
+            WHERE a.invoice_id = $1 AND p.status <> 'void'`, [id])).rows[0].v) * 100) / 100;
+      }
       const foreignPaid = parseFloat(paymentsResult.rows[0].foreign_paid);
 
       let status = 'pending';
@@ -2177,6 +2189,11 @@ export const paymentRepository = {
     foreignAmount?: number | null;
     exchangeRate?: number | null;
   }) {
+    // O2C L5 (G-CA-06) : un avoir client est une pièce AV imputée sur la facture, pas un
+    // « règlement avoir » (qui débitait la banque sans aucun flux).
+    if (data.type === 'income' && data.paymentMethod === 'avoir') {
+      throw Object.assign(new Error('Un avoir client s\'émet depuis la facture (Factures émises › Émettre un avoir) : il s\'impute sans mouvement de trésorerie.'), { statusCode: 400 });
+    }
     // Contexte de session lu par les triggers (auteur, dérogation au plafond espèces).
     const applyContext = async (client: PoolClient) => {
       await withActor(client, data.createdBy);
@@ -2539,13 +2556,13 @@ export const paymentRepository = {
             payment_method, payment_mode, payment_date, description, created_by, store_id, purchase_order_id,
             withholding_type_id, withholding_amount, session_id, scheduled_payment_id, treasury_account_id,
             to_treasury_account_id, status, voids_payment_id, executed_at, executed_by,
-            currency_code, exchange_rate, foreign_amount, settled_amount, fx_difference)
+            currency_code, exchange_rate, foreign_amount, settled_amount, fx_difference, customer_id)
          SELECT reference, type, category_id, invoice_id, supplier_id, employee_id, -amount,
             payment_method, payment_mode, payment_date,
             'Annulation : ' || COALESCE(description, reference, check_number, ''), $2, store_id, purchase_order_id,
             withholding_type_id, -withholding_amount, session_id, scheduled_payment_id, treasury_account_id,
             to_treasury_account_id, 'void', id, now(), $2,
-            currency_code, exchange_rate, -foreign_amount, -settled_amount, -fx_difference
+            currency_code, exchange_rate, -foreign_amount, -settled_amount, -fx_difference, customer_id
            FROM payments WHERE id = $1`,
         [pid, input.userId]);
       if (FLAGS.LEDGER_AUTOGEN) {
@@ -2555,9 +2572,12 @@ export const paymentRepository = {
       }
     }
 
-    if (p.invoice_id) {
-      await invoiceRepository.updatePaidAmount(p.invoice_id, client);
-      if (FLAGS.LEDGER_AUTOGEN) await autoLettrer(client, p.invoice_id);
+    // Facture du règlement et factures de ses affectations (règlement réparti, O2C L5).
+    const touched = new Set<string>(p.invoice_id ? [p.invoice_id] : []);
+    for (const r of (await client.query(`SELECT DISTINCT invoice_id FROM payment_allocations WHERE payment_id = ANY($1::uuid[])`, [toVoid])).rows) touched.add(r.invoice_id);
+    for (const invId of touched) {
+      await invoiceRepository.updatePaidAmount(invId, client);
+      if (FLAGS.LEDGER_AUTOGEN) await autoLettrer(client, invId);
     }
     await recordAction(client, {
       documentType: 'payment', documentId: id, action: 'cancelled', actorId: input.userId,

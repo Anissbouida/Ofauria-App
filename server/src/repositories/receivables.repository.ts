@@ -159,11 +159,18 @@ export const receivablesRepository = {
       `SELECT COALESCE(SUM(total_amount - COALESCE(paid_amount, 0)), 0) AS v FROM invoices
         WHERE customer_id = $1 AND invoice_type = 'emitted' AND kind = 'credit_note' AND status NOT IN ('paid', 'cancelled')`,
       [customerId])).rows[0].v));
-    const total = round2(docs.reduce((s, d) => s + d.remaining, 0) - unappliedCredits);
+    // Règlements reçus pas encore affectés à une facture (avances, O2C L5).
+    const unappliedCash = round2(Number((await db.query(
+      `SELECT COALESCE(SUM(GREATEST(COALESCE(p.settled_amount, p.amount)
+                - COALESCE((SELECT SUM(a.amount) FROM payment_allocations a WHERE a.payment_id = p.id), 0), 0)), 0) AS v
+         FROM payments p
+        WHERE p.customer_id = $1 AND p.type = 'income' AND p.status <> 'void' AND p.voids_payment_id IS NULL AND p.credit_note_id IS NULL`,
+      [customerId])).rows[0].v));
+    const total = round2(docs.reduce((s, d) => s + d.remaining, 0) - unappliedCredits - unappliedCash);
     const overdue = round2(docs.filter(d => d.days_late > 0).reduce((s, d) => s + d.remaining, 0));
     const creditLimit = c?.credit_limit != null && Number(c.credit_limit) > 0 ? Number(c.credit_limit) : null;
     return {
-      total, overdue, unappliedCredits,
+      total, overdue, unappliedCredits, unappliedCash,
       creditLimit,
       available: creditLimit != null ? round2(creditLimit - total) : null,
       paymentTermDays: c?.delai_paiement_jours != null ? Number(c.delai_paiement_jours) : 0,
@@ -201,11 +208,13 @@ export const receivablesRepository = {
              FROM invoices i
             WHERE i.customer_id = $1 AND i.invoice_type = 'emitted' AND i.kind = 'credit_note' AND i.status <> 'cancelled'
            UNION ALL
+           -- Règlements du client, répartis ou non sur ses factures, avances comprises (O2C L5).
            SELECT p.payment_date, 'payment', 'Règlement',
-                  COALESCE(p.reference, i.invoice_number), 0::numeric, p.amount::numeric
+                  COALESCE(p.reference, p.check_number, i.invoice_number, 'Avance'), 0::numeric, p.amount::numeric
              FROM payments p
-             JOIN invoices i ON i.id = p.invoice_id
-            WHERE i.customer_id = $1 AND i.invoice_type = 'emitted' AND p.credit_note_id IS NULL
+             LEFT JOIN invoices i ON i.id = p.invoice_id
+            WHERE COALESCE(p.customer_id, i.customer_id) = $1 AND p.type = 'income' AND p.credit_note_id IS NULL
+              AND (i.id IS NULL OR i.invoice_type = 'emitted')
          ) t
         ORDER BY d, (kind = 'payment')`,
       [customerId],
