@@ -177,18 +177,8 @@ export const PARAMETERS: ParamDef[] = [
     defaults: { on_time: 30, fill_rate: 20, quality: 20, price: 20, disputes: 10, min_orders: 3, months: 12, a_min: 85, b_min: 70, c_min: 50 },
     storage: { kind: 'module_parameters' },
   },
-  {
-    key: 'purchasing.rfq_scoring', domain: 'purchasing', section: 'business',
-    label: 'Notation des demandes de prix',
-    help: 'Poids des critères pour recommander le devis à retenir : prix (le moins cher = 100), qualité (note saisie sur le devis) et note d\'évaluation du fournisseur (mig 362). Le mieux noté est recommandé ; l\'acheteur reste libre d\'attribuer un autre devis.',
-    fields: [
-      { name: 'price', label: 'Poids prix', type: 'integer', min: 0, max: 100 },
-      { name: 'quality', label: 'Poids qualité', type: 'integer', min: 0, max: 100 },
-      { name: 'supplier', label: 'Poids fournisseur', type: 'integer', min: 0, max: 100 },
-    ],
-    defaults: { price: 50, quality: 25, supplier: 25 },
-    storage: { kind: 'module_parameters' },
-  },
+  // Notation des demandes de prix : remplacée par des critères configurables
+  // (table rfq_scoring_criteria, mig 459) éditables dans Paramètres › Achats.
   {
     key: 'purchasing.over_receipt_tolerance_pct', domain: 'purchasing', section: 'business',
     label: 'Sur-livraison tolérée',

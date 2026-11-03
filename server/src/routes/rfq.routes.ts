@@ -28,6 +28,7 @@ const quotationBody = z.object({
   deliveryDays: z.coerce.number().int().min(0).max(3650).nullish(), paymentTerms: text(200).nullish(),
   shippingCost: z.coerce.number().min(0).optional(), discountPct: z.coerce.number().min(0).max(100).optional(), notes: text(4000).nullish(),
   qualityScore: z.coerce.number().min(0).max(100).nullish(),
+  criteriaScores: z.record(z.string().max(40), z.coerce.number().min(0).max(100).nullable()).optional(),
   currencyCode: z.string().regex(/^[A-Z]{3}$/).optional(), exchangeRate: z.coerce.number().positive().max(100_000).optional(),
   items: z.array(z.object({
     rfqItemId: uuid, available: z.boolean().optional(), unitPrice: z.coerce.number().min(0).nullish(),
@@ -66,6 +67,31 @@ rfqRouter.post('/from-requests', ...AM, asyncHandler(async (req: AuthRequest, re
     const err = e as { statusCode?: number; message?: string };
     res.status(err.statusCode ?? 400).json({ success: false, error: { message: err.message ?? 'Création de l\'appel d\'offres impossible' } });
   }
+}));
+
+// Critères de notation configurables (mig 459). Avant « /:id » pour ne pas être capturé.
+rfqRouter.get('/criteria', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  ok(res, await repo.listCriteria(req.query.all === '1'));
+}));
+rfqRouter.post('/criteria', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({ label: text(80).min(1), type: z.enum(['price', 'supplier', 'delivery', 'manual']), weight: z.coerce.number().int().min(0).max(100).optional() }).safeParse(req.body);
+  if (!r.success) { bad(res, r.error.issues[0]?.message); return; }
+  try { res.status(201).json({ success: true, data: await repo.createCriterion(r.data) }); }
+  catch (e) { const err = e as { statusCode?: number; message?: string }; res.status(err.statusCode ?? 400).json({ success: false, error: { message: err.message ?? 'Création impossible' } }); }
+}));
+rfqRouter.patch('/criteria/:cid', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!uuid.safeParse(req.params.cid).success) { bad(res); return; }
+  const r = z.object({ label: text(80).optional(), weight: z.coerce.number().int().min(0).max(100).optional(), active: z.boolean().optional(), position: z.coerce.number().int().optional() }).safeParse(req.body);
+  if (!r.success) { bad(res); return; }
+  const data = await repo.updateCriterion(req.params.cid, r.data);
+  if (!data) { notFound(res, 'Critère introuvable'); return; }
+  ok(res, data);
+}));
+rfqRouter.delete('/criteria/:cid', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!uuid.safeParse(req.params.cid).success) { bad(res); return; }
+  const data = await repo.deleteCriterion(req.params.cid);
+  if (!data) { notFound(res, 'Critère introuvable'); return; }
+  ok(res, data);
 }));
 
 rfqRouter.get('/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {

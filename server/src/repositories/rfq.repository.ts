@@ -84,8 +84,10 @@ export type RfqInput = {
 export type QuotationInput = {
   supplierId: string; quotationRef?: string | null; receivedAt?: string; validUntil?: string | null; deliveryDays?: number | null;
   paymentTerms?: string | null; shippingCost?: number; discountPct?: number; notes?: string | null;
-  /** Note qualité de l'offre (0-100), critère de la notation multi-critères (mig 458). */
+  /** Note qualité de l'offre (0-100), legacy mig 458 (critère manuel « quality »). */
   qualityScore?: number | null;
+  /** Notes des critères MANUELS configurables (mig 459) : { code: note 0-100 }. */
+  criteriaScores?: Record<string, number | null> | null;
   /** Devise du devis et taux (mig 363) : prix et port saisis en devise. */
   currencyCode?: string; exchangeRate?: number;
   items: { rfqItemId: string; available?: boolean; unitPrice?: number | null; quantity?: number | null; note?: string | null }[];
@@ -277,16 +279,22 @@ export const rfqRepository = {
     const byQuot = new Map<string, Record<string, unknown>[]>();
     for (const qi of qItems.rows) { const arr = byQuot.get(qi.quotation_id) ?? []; arr.push(qi); byQuot.set(qi.quotation_id, arr); }
 
-    // Notation multi-critères (mig 458) : pondérations globales + note d'évaluation
-    // du fournisseur (dernier instantané, mig 362). Par défaut prix 50 / qualité 25 / fournisseur 25.
-    const wRow = (await db.query(`SELECT value FROM module_parameters WHERE key = 'purchasing.rfq_scoring'`)).rows[0]?.value as { price?: number; quality?: number; supplier?: number } | undefined;
-    const w = { price: Number(wRow?.price ?? 50), quality: Number(wRow?.quality ?? 25), supplier: Number(wRow?.supplier ?? 25) };
-    const wSum = (w.price + w.quality + w.supplier) || 1;
-    const supplierIds = [...new Set(quotations.rows.map(q => q.supplier_id as string))];
-    const scoreRows = supplierIds.length
-      ? (await db.query(`SELECT DISTINCT ON (supplier_id) supplier_id, score FROM supplier_score_snapshots WHERE supplier_id = ANY($1::uuid[]) ORDER BY supplier_id, period_to DESC`, [supplierIds])).rows
-      : [];
-    const supplierScore = new Map(scoreRows.map((r: { supplier_id: string; score: string | null }) => [r.supplier_id, r.score == null ? null : Number(r.score)]));
+    // Notation CONFIGURABLE (mig 459) : la liste des critères actifs est éditable
+    // (en ajouter / en retirer, y compris « prix »). Chaque critère a un type :
+    //   price    → le moins cher = 100, les autres au prorata inverse ;
+    //   supplier → dernière note d'évaluation du fournisseur (mig 362), 50 si non évalué ;
+    //   delivery → le délai le plus court = 100, les autres au prorata inverse, 50 si inconnu ;
+    //   manual   → note saisie par l'acheteur sur le devis (criteria_scores[code]), 50 si non saisie.
+    const criteria = (await db.query(
+      `SELECT code, label, type, weight FROM rfq_scoring_criteria WHERE active ORDER BY position, label`)).rows as { code: string; label: string; type: string; weight: number }[];
+    const supplierScore = new Map<string, number | null>();
+    if (criteria.some(c => c.type === 'supplier')) {
+      const supplierIds = [...new Set(quotations.rows.map(q => q.supplier_id as string))];
+      if (supplierIds.length) {
+        const scoreRows = (await db.query(`SELECT DISTINCT ON (supplier_id) supplier_id, score FROM supplier_score_snapshots WHERE supplier_id = ANY($1::uuid[]) ORDER BY supplier_id, period_to DESC`, [supplierIds])).rows;
+        for (const r of scoreRows as { supplier_id: string; score: string | null }[]) supplierScore.set(r.supplier_id, r.score == null ? null : Number(r.score));
+      }
+    }
 
     const base = quotations.rows.map(q => {
       // Lignes ramenées en DH au taux du devis (mig 363) ; le prix d'origine reste dans foreign_unit_price.
@@ -302,16 +310,24 @@ export const rfqRepository = {
       return { ...q, lines, subtotal: subtotal.toFixed(2), discount_amount: discount.toFixed(2), total_ht: total.toFixed(2),
                total_foreign: rate !== 1 ? (total / rate).toFixed(2) : null, covered, complete: covered === items.rows.length };
     });
-    // Le moins cher (parmi les devis chiffrés) sert de référence pour la note prix.
+    // Références : le moins cher et le délai le plus court parmi les devis renseignés.
     const minTotal = Math.min(...base.map(q => Number(q.total_ht)).filter(t => t > 0), Infinity);
+    const minDelivery = Math.min(...base.map(q => Number(q.delivery_days)).filter(d => Number.isFinite(d) && d > 0), Infinity);
     const quotes = base.map(q => {
       const total = Number(q.total_ht);
-      const score_price = Number.isFinite(minTotal) && minTotal > 0 && total > 0 ? Math.round(100 * minTotal / total) : 0;
-      const score_quality = q.quality_score == null ? 50 : Number(q.quality_score);
-      const raw = supplierScore.get(q.supplier_id as string);
-      const score_supplier = raw == null ? 50 : raw;
-      const score = Math.round(((w.price * score_price + w.quality * score_quality + w.supplier * score_supplier) / wSum) * 10) / 10;
-      return { ...q, supplier_score: raw ?? null, score_price, score_quality, score_supplier, score };
+      const cs = (q.criteria_scores ?? {}) as Record<string, unknown>;
+      const scores: Record<string, number> = {};
+      let wSum = 0, acc = 0;
+      for (const c of criteria) {
+        let s: number;
+        if (c.type === 'price') s = Number.isFinite(minTotal) && minTotal > 0 && total > 0 ? Math.round(100 * minTotal / total) : 0;
+        else if (c.type === 'supplier') { const raw = supplierScore.get(q.supplier_id as string); s = raw == null ? 50 : raw; }
+        else if (c.type === 'delivery') { const d = Number(q.delivery_days); s = Number.isFinite(minDelivery) && minDelivery > 0 && d > 0 ? Math.round(100 * minDelivery / d) : 50; }
+        else { const v = cs[c.code]; s = v == null ? 50 : Math.max(0, Math.min(100, Number(v))); }
+        scores[c.code] = s; wSum += c.weight; acc += c.weight * s;
+      }
+      const score = wSum > 0 ? Math.round((acc / wSum) * 10) / 10 : 0;
+      return { ...q, supplier_score: supplierScore.get(q.supplier_id as string) ?? null, scores, score };
     });
 
     const bestByItem: Record<string, { quotationId: string; unitPrice: number } | null> = {};
@@ -331,7 +347,7 @@ export const rfqRepository = {
     const recommendedId = candidates.length
       ? candidates.reduce((a, b) => (b.score > a.score || (b.score === a.score && Number(b.total_ht) < Number(a.total_ht)) ? b : a)).id
       : null;
-    return { ...rfq, items: items.rows, suppliers: suppliers.rows, quotations: quotes, best_by_item: bestByItem, best_total_quotation_id: bestTotalId, recommended_quotation_id: recommendedId, scoring_weights: w };
+    return { ...rfq, items: items.rows, suppliers: suppliers.rows, quotations: quotes, criteria, best_by_item: bestByItem, best_total_quotation_id: bestTotalId, recommended_quotation_id: recommendedId };
   },
 
   async list(p: { status?: RfqStatus; search?: string; storeId?: string; limit: number; offset: number }) {
@@ -400,18 +416,26 @@ export const rfqRepository = {
       await client.query('BEGIN');
       await client.query(`INSERT INTO rfq_suppliers (rfq_id, supplier_id, status, invited_at) VALUES ($1, $2, 'quoted', now())
                           ON CONFLICT (rfq_id, supplier_id) DO UPDATE SET status = 'quoted'`, [rfqId, input.supplierId]);
+      // Notes des critères manuels (mig 459) : map { code: 0-100 }. On replie l'ancienne
+      // note qualité (mig 458) sur le critère « quality » pour la compatibilité.
+      const critScores: Record<string, number> = {};
+      for (const [k, v] of Object.entries(input.criteriaScores ?? {})) {
+        if (v != null && Number.isFinite(Number(v))) critScores[k] = Math.max(0, Math.min(100, Number(v)));
+      }
+      if (critScores.quality == null && input.qualityScore != null) critScores.quality = Math.max(0, Math.min(100, input.qualityScore));
+      const legacyQuality = critScores.quality ?? null;
       const q = await client.query(
-        `INSERT INTO supplier_quotations (rfq_id, supplier_id, quotation_ref, received_at, valid_until, delivery_days, payment_terms, shipping_cost, discount_pct, notes, created_by, currency_code, exchange_rate, quality_score)
-         VALUES ($1, $2, $3, COALESCE($4::date, CURRENT_DATE), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        `INSERT INTO supplier_quotations (rfq_id, supplier_id, quotation_ref, received_at, valid_until, delivery_days, payment_terms, shipping_cost, discount_pct, notes, created_by, currency_code, exchange_rate, quality_score, criteria_scores)
+         VALUES ($1, $2, $3, COALESCE($4::date, CURRENT_DATE), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb)
          ON CONFLICT (rfq_id, supplier_id) DO UPDATE SET quotation_ref = EXCLUDED.quotation_ref, received_at = EXCLUDED.received_at, valid_until = EXCLUDED.valid_until,
            delivery_days = EXCLUDED.delivery_days, payment_terms = EXCLUDED.payment_terms, shipping_cost = EXCLUDED.shipping_cost, discount_pct = EXCLUDED.discount_pct,
-           notes = EXCLUDED.notes, status = 'received', currency_code = EXCLUDED.currency_code, exchange_rate = EXCLUDED.exchange_rate, quality_score = EXCLUDED.quality_score
+           notes = EXCLUDED.notes, status = 'received', currency_code = EXCLUDED.currency_code, exchange_rate = EXCLUDED.exchange_rate, quality_score = EXCLUDED.quality_score, criteria_scores = EXCLUDED.criteria_scores
          RETURNING id`,
         [rfqId, input.supplierId, input.quotationRef?.trim() || null, input.receivedAt ?? null, input.validUntil ?? null, input.deliveryDays ?? null,
          input.paymentTerms?.trim() || null, input.shippingCost ?? 0, input.discountPct ?? 0, input.notes?.trim() || null, userId,
          input.currencyCode && input.currencyCode !== 'MAD' ? input.currencyCode : 'MAD',
          input.currencyCode && input.currencyCode !== 'MAD' && input.exchangeRate ? input.exchangeRate : 1,
-         input.qualityScore == null ? null : Math.max(0, Math.min(100, input.qualityScore))],
+         legacyQuality, JSON.stringify(critScores)],
       );
       const qid = q.rows[0].id as string;
       await client.query(`DELETE FROM supplier_quotation_items WHERE quotation_id = $1`, [qid]);
@@ -491,5 +515,49 @@ export const rfqRepository = {
       }
     }
     return { data: await this.findById(rfqId), purchaseOrder: po };
+  },
+
+  // ── Critères de notation configurables (mig 459) ──────────────────────────
+  async listCriteria(includeInactive = false) {
+    const r = await db.query(
+      `SELECT id, code, label, type, weight, position, active FROM rfq_scoring_criteria
+        ${includeInactive ? '' : 'WHERE active'} ORDER BY position, label`);
+    return r.rows;
+  },
+
+  async createCriterion(input: { label: string; type: string; weight?: number; code?: string }) {
+    const label = input.label.trim();
+    if (!label) throw httpError(400, 'Libellé requis');
+    if (!['price', 'supplier', 'delivery', 'manual'].includes(input.type)) throw httpError(400, 'Type de critère invalide');
+    // Les critères calculés sont uniques (un seul « prix », un seul « fournisseur », un seul « délai »).
+    if (input.type !== 'manual') {
+      const dup = await db.query(`SELECT 1 FROM rfq_scoring_criteria WHERE type = $1`, [input.type]);
+      if (dup.rows.length) throw httpError(409, 'Ce critère calculé existe déjà');
+    }
+    const base = (input.code?.trim() || label).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'critere';
+    let code = /^[a-z]/.test(base) ? base : `c_${base}`.slice(0, 40);
+    for (let i = 2; (await db.query(`SELECT 1 FROM rfq_scoring_criteria WHERE code = $1`, [code])).rows.length; i++) code = `${base}_${i}`.slice(0, 40);
+    const pos = Number((await db.query(`SELECT COALESCE(MAX(position), 0) + 10 AS p FROM rfq_scoring_criteria`)).rows[0].p);
+    const r = await db.query(
+      `INSERT INTO rfq_scoring_criteria (code, label, type, weight, position) VALUES ($1, $2, $3, $4, $5) RETURNING id, code, label, type, weight, position, active`,
+      [code, label.slice(0, 80), input.type, Math.max(0, Math.min(100, Math.round(input.weight ?? 10))), pos]);
+    return r.rows[0];
+  },
+
+  async updateCriterion(id: string, patch: { label?: string; weight?: number; active?: boolean; position?: number }) {
+    const sets: string[] = []; const vals: unknown[] = [];
+    if (patch.label !== undefined) { vals.push(patch.label.trim().slice(0, 80)); sets.push(`label = $${vals.length}`); }
+    if (patch.weight !== undefined) { vals.push(Math.max(0, Math.min(100, Math.round(patch.weight)))); sets.push(`weight = $${vals.length}`); }
+    if (patch.active !== undefined) { vals.push(patch.active); sets.push(`active = $${vals.length}`); }
+    if (patch.position !== undefined) { vals.push(Math.round(patch.position)); sets.push(`position = $${vals.length}`); }
+    if (!sets.length) return (await db.query(`SELECT id, code, label, type, weight, position, active FROM rfq_scoring_criteria WHERE id = $1`, [id])).rows[0] ?? null;
+    vals.push(id);
+    const r = await db.query(`UPDATE rfq_scoring_criteria SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING id, code, label, type, weight, position, active`, vals);
+    return r.rows[0] ?? null;
+  },
+
+  async deleteCriterion(id: string) {
+    const r = await db.query(`DELETE FROM rfq_scoring_criteria WHERE id = $1 RETURNING code`, [id]);
+    return r.rows[0] ?? null;
   },
 };
