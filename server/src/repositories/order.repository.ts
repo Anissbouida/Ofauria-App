@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { computeSourcingAndCreatePlan } from './sourcing.helper.js';
+import { releaseSemiFinishedReservations } from './production.repository.js';
 
 export const orderRepository = {
   async findAll(params: { status?: string; type?: string; customerId?: string; storeId?: string; hidePro?: boolean; limit: number; offset: number }) {
@@ -127,6 +128,7 @@ export const orderRepository = {
           targetRole: null,
           linkColumn: 'order_id',
           linkId: orderId,
+          needDate: data.pickupDate ?? null,
         });
         productionPlanId = sourcing.productionPlanId;
         semiFinishedInfo = sourcing.semiFinishedInfo;
@@ -190,7 +192,7 @@ export const orderRepository = {
          subtotal = $5, tax_amount = $6, discount_amount = $7, total = $8, advance_amount = $9,
          payment_method = COALESCE($10, payment_method), notes = $11, pickup_date = COALESCE($12, pickup_date),
          discount_pct = $14
-         WHERE id = $13 AND status NOT IN ('completed', 'cancelled') RETURNING *`,
+         WHERE id = $13 AND status NOT IN ('completed', 'cancelled', 'partially_delivered') RETURNING *`,
         [data.customerId || null, data.customerName || null, data.customerPhone || null,
          data.type || null, data.subtotal, data.taxAmount,
          data.discountAmount, data.total, data.advanceAmount || 0,
@@ -202,14 +204,52 @@ export const orderRepository = {
         return null;
       }
 
-      // Replace items
-      await client.query('DELETE FROM order_items WHERE order_id = $1', [id]);
+      // O2C L2 (G-OM-06) : lignes stables. Une ligne existante du même produit est mise à jour
+      // (elle garde son identifiant, son sourcing et ses liens de BL ou de réservation) ; seules
+      // les lignes retirées disparaissent, leur réservation de stock relâchée.
+      const existing = (await client.query(
+        `SELECT id, product_id, qty_delivered::float8 AS qty_delivered FROM order_items WHERE order_id = $1 ORDER BY id FOR UPDATE`, [id])).rows as
+        { id: string; product_id: string; qty_delivered: number }[];
+      if (existing.some(l => l.qty_delivered > 0)) {
+        throw Object.assign(new Error('Commande déjà livrée en partie : elle ne se modifie plus'), { statusCode: 409 });
+      }
+      const pool = [...existing];
       for (const item of data.items) {
-        await client.query(
-          `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal, notes, tva_rate)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.notes || null, item.tvaRate ?? null]
-        );
+        const i = pool.findIndex(l => l.product_id === item.productId);
+        if (i >= 0) {
+          const [line] = pool.splice(i, 1);
+          await client.query(
+            `UPDATE order_items SET quantity = $2, unit_price = $3, subtotal = $4, notes = $5, tva_rate = $6 WHERE id = $1`,
+            [line.id, item.quantity, item.unitPrice, item.subtotal, item.notes || null, item.tvaRate ?? null]);
+          // Quantité réduite sous la réservation : l'excédent de stock réservé est relâché.
+          const over = (await client.query(
+            `SELECT COALESCE(SUM(quantity), 0)::float8 - $2::float8 AS over, MIN(product_id::text) AS product_id, MIN(store_id::text) AS store_id
+               FROM order_stock_reservations WHERE order_item_id = $1 AND status = 'reserved'`, [line.id, item.quantity])).rows[0];
+          if (Number(over.over) > 0) {
+            await client.query(
+              `UPDATE order_stock_reservations SET quantity = GREATEST(quantity - $2, 0) WHERE order_item_id = $1 AND status = 'reserved'`,
+              [line.id, over.over]);
+            await client.query(
+              `UPDATE product_store_stock SET reserved_quantity = GREATEST(reserved_quantity - $3, 0) WHERE product_id = $1 AND store_id = $2`,
+              [over.product_id, over.store_id, over.over]);
+          }
+        } else {
+          await client.query(
+            `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal, notes, tva_rate)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.notes || null, item.tvaRate ?? null]);
+        }
+      }
+      for (const gone of pool) {
+        const res = (await client.query(
+          `UPDATE order_stock_reservations SET status = 'released', resolved_at = now()
+            WHERE order_item_id = $1 AND status = 'reserved' RETURNING product_id, store_id, quantity`, [gone.id])).rows;
+        for (const r of res) {
+          await client.query(
+            `UPDATE product_store_stock SET reserved_quantity = GREATEST(reserved_quantity - $3, 0) WHERE product_id = $1 AND store_id = $2`,
+            [r.product_id, r.store_id, r.quantity]);
+        }
+        await client.query(`DELETE FROM order_items WHERE id = $1`, [gone.id]);
       }
 
       await client.query('COMMIT');
@@ -224,15 +264,48 @@ export const orderRepository = {
 
   async updateStatus(id: string, status: string, cancel?: { userId: string; reason?: string | null }) {
     const completedAt = status === 'completed' ? 'NOW()' : 'NULL';
-    const result = await db.query(
-      `UPDATE orders SET status = $1::varchar, completed_at = ${completedAt},
-              cancelled_at = CASE WHEN $1::varchar = 'cancelled' THEN NOW() ELSE NULL END,
-              cancelled_by = CASE WHEN $1::varchar = 'cancelled' THEN $3::uuid ELSE NULL END,
-              cancel_reason = CASE WHEN $1::varchar = 'cancelled' THEN $4::text ELSE NULL END
-        WHERE id = $2 RETURNING *`,
-      [status, id, cancel?.userId ?? null, cancel?.reason ?? null]
-    );
-    return result.rows[0];
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        `UPDATE orders SET status = $1::varchar, completed_at = ${completedAt},
+                cancelled_at = CASE WHEN $1::varchar = 'cancelled' THEN NOW() ELSE NULL END,
+                cancelled_by = CASE WHEN $1::varchar = 'cancelled' THEN $3::uuid ELSE NULL END,
+                cancel_reason = CASE WHEN $1::varchar = 'cancelled' THEN $4::text ELSE NULL END
+          WHERE id = $2 RETURNING *`,
+        [status, id, cancel?.userId ?? null, cancel?.reason ?? null]
+      );
+      const order = result.rows[0];
+      const warnings: string[] = [];
+      // O2C L2 (G-FF-03) : une commande annulée n'est plus produite. Ses plans pas encore lancés
+      // (sans bon de sortie actif) sont annulés ; un plan déjà en cours est signalé à la production.
+      if (order && status === 'cancelled') {
+        const plans = (await client.query(
+          `SELECT pp.id, pp.status, pp.store_id, pp.plan_date::text AS plan_date,
+                  EXISTS (SELECT 1 FROM production_bons_sortie b WHERE b.plan_id = pp.id AND b.status <> 'annule') AS has_bsi
+             FROM production_plans pp
+            WHERE pp.order_id = $1 AND pp.status NOT IN ('completed', 'cancelled') FOR UPDATE OF pp`, [id])).rows;
+        for (const pl of plans) {
+          if (['draft', 'confirmed'].includes(pl.status) && !pl.has_bsi) {
+            await client.query(
+              `UPDATE production_plan_items SET status = 'cancelled', waiting_status = NULL, cancelled_at = NOW(),
+                      cancellation_reason = 'Commande annulée'
+                WHERE plan_id = $1 AND status = 'pending'`, [pl.id]);
+            await client.query(`UPDATE production_plans SET status = 'cancelled', updated_at = NOW() WHERE id = $1`, [pl.id]);
+            await releaseSemiFinishedReservations(client, pl.id, pl.store_id, 'Liberee (commande annulee)');
+          } else {
+            warnings.push(`Plan de production du ${pl.plan_date.split('-').reverse().join('/')} déjà lancé : à arrêter par la production`);
+          }
+        }
+      }
+      await client.query('COMMIT');
+      return order ? { ...order, plan_warnings: warnings } : order;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   /**

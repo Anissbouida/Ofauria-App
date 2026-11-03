@@ -346,6 +346,8 @@ export const saleRepository = {
       }
 
       if (data.completeOrder && data.orderId) {
+        // Remise en caisse : tout le reste est livré (cumuls O2C L2), la commande est terminée.
+        await client.query(`UPDATE order_items SET qty_delivered = quantity - qty_cancelled WHERE order_id = $1`, [data.orderId]);
         await client.query(`UPDATE orders SET status = 'completed', completed_at = NOW(), cancelled_at = NULL WHERE id = $1`, [data.orderId]);
       }
       await client.query('COMMIT');

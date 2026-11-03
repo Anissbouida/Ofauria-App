@@ -31,6 +31,7 @@ const STAGES: StageDef[] = [
   { key: 'confirmed',     label: 'Confirmées',    hint: 'à lancer',           icon: CheckCircle2 },
   { key: 'in_production', label: 'En production', hint: 'en atelier',         icon: Factory },
   { key: 'ready',         label: 'Prêtes',        hint: 'à livrer',           icon: Package },
+  { key: 'partially_delivered', label: 'Livrées en partie', hint: 'reliquat à livrer', icon: Truck },
   { key: 'completed',     label: 'Terminées',     hint: 'livrées',            icon: Truck },
 ];
 const STAGE_KEYS = STAGES.map(s => s.key);
@@ -40,12 +41,13 @@ const STATUS_TAG: Record<string, string> = {
   confirmed: 'odoo-tag-blue',
   in_production: 'odoo-tag-yellow',
   ready: 'odoo-tag-green',
+  partially_delivered: 'odoo-tag-orange',
   completed: 'odoo-tag-purple',
   cancelled: 'odoo-tag-red',
 };
 const STATUS_DOT: Record<string, string> = {
   pending: 'neutral', confirmed: 'warning', in_production: 'warning',
-  ready: 'ok', completed: 'ok', cancelled: 'danger',
+  ready: 'ok', partially_delivered: 'warning', completed: 'ok', cancelled: 'danger',
 };
 
 const TYPE_LABELS: Record<string, string> = { custom: 'Sur mesure', online: 'En ligne', event: 'Événement', staff: 'Personnel' };
@@ -57,11 +59,12 @@ const FILTER_CHIPS: Array<{ key: string; label: string; icon: typeof Clock }> = 
   { key: 'confirmed', label: 'Confirmées', icon: CheckCircle2 },
   { key: 'in_production', label: 'En production', icon: Factory },
   { key: 'ready', label: 'Prêtes', icon: Package },
+  { key: 'partially_delivered', label: 'Livrées en partie', icon: Truck },
   { key: 'completed', label: 'Terminées', icon: Truck },
   { key: 'cancelled', label: 'Annulées', icon: Ban },
 ];
 
-const OPEN_STATUSES = new Set(['pending', 'confirmed', 'in_production', 'ready']);
+const OPEN_STATUSES = new Set(['pending', 'confirmed', 'in_production', 'ready', 'partially_delivered']);
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function num(v: unknown) { const x = parseFloat(String(v ?? '0')); return Number.isFinite(x) ? x : 0; }
@@ -137,7 +140,12 @@ export default function OrdersPage() {
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) => ordersApi.updateStatus(id, status),
-    onSuccess: () => { invalidate(); notify.success('Statut mis à jour'); },
+    onSuccess: (res: unknown) => {
+      invalidate(); notify.success('Statut mis à jour');
+      // Annulation : plan de production déjà lancé, à arrêter par l'atelier (O2C L2).
+      const warnings = (res as { plan_warnings?: string[] } | undefined)?.plan_warnings ?? [];
+      for (const w of warnings) notify.warning(w);
+    },
     onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Erreur lors de la mise à jour')),
   });
 
@@ -437,7 +445,7 @@ export default function OrdersPage() {
                                   <PackageCheck size={13} />
                                 </button>
                               )}
-                              {status === 'ready' && (
+                              {(status === 'ready' || (status === 'partially_delivered' && isPro(o))) && (
                                 <button onClick={() => setDeliverOrder(o)} title={isPro(o) ? 'Livrer sur bon de livraison' : 'Remettre contre le solde'} className="odoo-pager-btn" style={{ color: '#28a745' }}>
                                   <Truck size={13} />
                                 </button>
@@ -450,7 +458,7 @@ export default function OrdersPage() {
                               <button onClick={() => setViewingOrder(o)} title="Voir le détail" className="odoo-pager-btn">
                                 <Eye size={13} />
                               </button>
-                              {status !== 'completed' && status !== 'cancelled' && (
+                              {status !== 'completed' && status !== 'cancelled' && status !== 'partially_delivered' && (
                                 <button onClick={() => setEditingOrder(o)} title="Modifier" className="odoo-pager-btn">
                                   <Pencil size={13} />
                                 </button>
@@ -777,8 +785,8 @@ function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver
           {status === 'in_production' && (
             <button onClick={() => onStatus(o, 'ready')} className="odoo-btn-primary"><PackageCheck size={13} /> Marquer prête</button>
           )}
-          {status === 'ready' && (
-            <button onClick={() => onDeliver(o)} className="odoo-btn-primary"><Truck size={13} /> {pro ? 'Livrer sur BL' : 'Remettre au client'}</button>
+          {(status === 'ready' || (status === 'partially_delivered' && pro)) && (
+            <button onClick={() => onDeliver(o)} className="odoo-btn-primary"><Truck size={13} /> {pro ? (status === 'partially_delivered' ? 'Livrer le reliquat' : 'Livrer sur BL') : 'Remettre au client'}</button>
           )}
         </div>
       </div>
@@ -901,20 +909,26 @@ function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onC
   const [deliveryDate, setDeliveryDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const perDelivery = order.billing_frequency === 'per_delivery';
 
-  const qtyOf = (l: { id: string; quantity: string }) => (qty[l.id] !== undefined ? parseFloat(qty[l.id]) || 0 : num(l.quantity));
+  const [closeRemainder, setCloseRemainder] = useState(false);
+  // Par défaut : le reste à livrer de chaque ligne (O2C L2, livraisons partielles).
+  const qtyOf = (l: { id: string; remaining: string }) => (qty[l.id] !== undefined ? parseFloat(qty[l.id]) || 0 : num(l.remaining));
   const totals = lines.reduce((acc, l) => {
     const ht = qtyOf(l) * num(l.unit_price);
     return { ht: acc.ht + ht, tva: acc.tva + Math.round(ht * num(l.tva_rate)) / 100 };
   }, { ht: 0, tva: 0 });
-  const changed = lines.some(l => Math.abs(qtyOf(l) - num(l.quantity)) > 0.0001);
+  const short = lines.some(l => qtyOf(l) + 0.0001 < num(l.remaining));
+  const changed = lines.some(l => Math.abs(qtyOf(l) - num(l.remaining)) > 0.0001);
+  const alreadyDelivered = lines.some(l => num(l.qty_delivered) > 0);
 
   const mutation = useMutation({
     mutationFn: () => deliveryNotesApi.createFromOrder(order.id as string, {
       quantities: Object.fromEntries(lines.map(l => [l.id, qtyOf(l)])),
       receivedByName: receivedBy.trim() || undefined,
       deliveryDate,
+      closeRemainder: short && closeRemainder,
     }),
     onSuccess: (note) => {
+      if ((note as { closed?: boolean }).closed) { notify.success('Reliquat soldé : commande terminée'); onDelivered(); return; }
       notify.success(note.invoice
         ? `Bon de livraison ${note.number} et facture ${note.invoice.invoice_number} créés`
         : `Bon de livraison ${note.number} créé : à facturer en fin de mois`);
@@ -952,7 +966,8 @@ function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onC
                   <tr>
                     <th>Produit</th>
                     <th style={{ textAlign: 'right' }}>Commandé</th>
-                    <th style={{ textAlign: 'right', width: 110 }}>Livré</th>
+                    {alreadyDelivered && <th style={{ textAlign: 'right' }}>Déjà livré</th>}
+                    <th style={{ textAlign: 'right', width: 110 }}>À livrer</th>
                     <th style={{ textAlign: 'right' }}>P.U. HT</th>
                     <th style={{ textAlign: 'right' }}>TVA</th>
                   </tr>
@@ -962,8 +977,9 @@ function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onC
                     <tr key={l.id} style={{ cursor: 'default' }}>
                       <td style={{ fontWeight: 500 }}>{l.description}</td>
                       <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{num(l.quantity)}</td>
+                      {alreadyDelivered && <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{num(l.qty_delivered)}</td>}
                       <td style={{ textAlign: 'right' }}>
-                        <input type="number" min="0" step="0.01" value={qty[l.id] ?? String(num(l.quantity))}
+                        <input type="number" min="0" step="0.01" value={qty[l.id] ?? String(num(l.remaining))}
                           onChange={e => setQty({ ...qty, [l.id]: e.target.value })}
                           style={{ ...fieldStyle, width: 90, textAlign: 'right', fontWeight: 600 }} />
                       </td>
@@ -976,9 +992,15 @@ function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onC
             )}
           </div>
           {changed && (
-            <StatusBanner tone="warning" icon={AlertTriangle} title="Quantités différentes de la commande">
-              La facture portera les quantités livrées.
+            <StatusBanner tone="warning" icon={AlertTriangle} title={short ? 'Livraison partielle' : 'Quantités différentes de la commande'}>
+              La facture portera les quantités livrées.{short && ' Le reste demeure à livrer sur un prochain bon, sauf si vous soldez le reliquat.'}
             </StatusBanner>
+          )}
+          {short && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem' }}>
+              <input type="checkbox" checked={closeRemainder} onChange={e => setCloseRemainder(e.target.checked)} />
+              Solder le reliquat : rien d'autre ne sera livré, la commande est terminée
+            </label>
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -1001,7 +1023,7 @@ function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onC
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
           <button onClick={onClose} className="odoo-btn-secondary" disabled={mutation.isPending}>Annuler</button>
-          <button onClick={() => mutation.mutate()} disabled={mutation.isPending || isLoading || totals.ht <= 0} className="odoo-btn-primary">
+          <button onClick={() => mutation.mutate()} disabled={mutation.isPending || isLoading || (totals.ht <= 0 && !(short && closeRemainder))} className="odoo-btn-primary">
             {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Printer size={13} />}
             {perDelivery ? 'Livrer, facturer et imprimer le BL' : 'Livrer et imprimer le BL'}
           </button>

@@ -373,6 +373,7 @@ export const orderController = {
     const current = await orderRepository.findById(req.params.id);
     if (!current) { fail(res, 404, 'Commande non trouvee'); return; }
     if (current.status === 'completed' || current.status === 'cancelled') { fail(res, 409, 'Commande déjà terminée ou annulée'); return; }
+    if (current.status === 'partially_delivered') { fail(res, 409, 'Commande partiellement livrée : livrez le reste ou soldez le reliquat'); return; }
     if (isProCustomer(current) && !isDirection(req)) { fail(res, 403, 'Les commandes de professionnels sont gérées par la direction'); return; }
 
     // Annulation ou absence au retrait : l'avance d'un particulier reste acquise (rien n'est remboursé).

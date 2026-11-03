@@ -2643,7 +2643,7 @@ export const productionRepository = {
  *
  * Must be called from within a transaction.
  */
-async function releaseSemiFinishedReservations(
+export async function releaseSemiFinishedReservations(
   client: import('pg').PoolClient,
   planId: string,
   storeId: string | null,

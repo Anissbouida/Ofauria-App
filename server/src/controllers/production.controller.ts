@@ -591,7 +591,12 @@ export const productionController = {
     // If linked to an order, mark order as 'ready'
     if (updated?.order_id) {
       try {
-        await orderRepository.updateStatus(updated.order_id, 'ready');
+        // Seule une commande encore en préparation devient prête (une commande annulée,
+        // livrée ou partiellement livrée garde son statut — O2C L2, matrice de transitions).
+        const linked = await orderRepository.findById(updated.order_id);
+        if (linked && ['pending', 'confirmed', 'in_production'].includes(linked.status)) {
+          await orderRepository.updateStatus(updated.order_id, 'ready');
+        }
       } catch (err) {
         console.error('Failed to update linked order status:', err);
       }

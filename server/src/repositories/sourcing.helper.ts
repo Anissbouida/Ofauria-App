@@ -48,13 +48,15 @@ export interface ComputeSourcingParams {
   /** Colonne de liaison sur production_plans : 'replenishment_request_id' ou 'order_id' */
   linkColumn: 'replenishment_request_id' | 'order_id';
   linkId: string;
+  /** Date du besoin (retrait de la commande) : le plan est daté dessus, jamais avant aujourd'hui (O2C L2, G-FF-01). */
+  needDate?: string | null;
 }
 
 export async function computeSourcingAndCreatePlan(
   client: PoolClient,
   params: ComputeSourcingParams
 ): Promise<SourcingResult> {
-  const { items, storeId, createdBy, planLabel, targetRole, linkColumn, linkId } = params;
+  const { items, storeId, createdBy, planLabel, targetRole, linkColumn, linkId, needDate } = params;
 
   if (items.length === 0) {
     return { items: [], productionPlanId: null, semiFinishedInfo: null };
@@ -211,8 +213,9 @@ export async function computeSourcingAndCreatePlan(
     // Le nom de colonne est valide par le typage TS sur linkColumn — donc safe a inliner.
     const planResult = await client.query(
       `INSERT INTO production_plans (plan_date, type, notes, created_by, target_role, store_id, ${linkColumn})
-       VALUES (CURRENT_DATE, 'daily', $1, $2, $3, $4, $5) RETURNING id`,
-      [planLabel, createdBy, targetRole ?? null, storeId, linkId]
+       VALUES (GREATEST(CURRENT_DATE, COALESCE(($6::timestamptz AT TIME ZONE 'Africa/Casablanca')::date, CURRENT_DATE)),
+               'daily', $1, $2, $3, $4, $5) RETURNING id`,
+      [planLabel, createdBy, targetRole ?? null, storeId, linkId, needDate ?? null]
     );
     productionPlanId = planResult.rows[0].id;
 

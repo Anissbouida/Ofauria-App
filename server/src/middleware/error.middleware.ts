@@ -21,7 +21,10 @@ export function errorHandler(err: AppError, req: Request, res: Response, _next: 
     err.message = UNIQUE_MESSAGES[constraint];
     err.statusCode = 409;
   }
-  const status = err.statusCode ?? err.status ?? (err.code === 'OF409' ? 409 : 500);
+  // Invariants portés par la base (CHECK, triggers RAISE … USING ERRCODE = 'check_violation',
+  // mig 439-441 : facture client figée, couverture des lots, transitions de commande) :
+  // un refus métier, pas une panne.
+  const status = err.statusCode ?? err.status ?? (err.code === 'OF409' || err.code === '23514' ? 409 : 500);
   const isClientError = status >= 400 && status < 500;
 
   // OWASP A09 : log structure avec redaction automatique (voir logger.ts).

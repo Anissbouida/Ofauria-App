@@ -25,13 +25,15 @@ export const deliveryNotesApi = {
       .then(r => r.data.data as Record<string, { unitPrice: number; tvaRate: number | null }>),
   eligibleOrders: (customerId: string) => api.get(`/delivery-notes/orders/${customerId}`).then(r => r.data.data as Array<{ id: string; order_number: string; pickup_date: string | null; total: string; status: string }>),
   orderLines: (orderId: string) => api.get(`/delivery-notes/order-lines/${orderId}`)
-    .then(r => r.data.data as Array<{ id: string; product_id: string; description: string; quantity: string; unit_price: string; tva_rate: string | null }>),
+    .then(r => r.data.data as Array<{ id: string; product_id: string; description: string; quantity: string; unit_price: string; tva_rate: string | null;
+      /** Cumuls O2C L2 : déjà livré, reliquat soldé, reste à livrer. */
+      qty_delivered: string; qty_cancelled: string; remaining: string }>),
   /** BL imprimable à faire signer (mig 354). */
   pdf: (id: string) => api.get(`/delivery-notes/${id}/pdf`, { responseType: 'blob' }).then(r => r.data as Blob),
   create: (data: { customerId: string; deliveryDate?: string; orderId?: string | null; notes?: string; items: DeliveryLinePayload[] }) =>
     api.post('/delivery-notes', data).then(r => r.data.data as DeliveryNote),
   /** Livrer une commande prête sur BL (module Commandes). */
-  createFromOrder: (orderId: string, data?: { quantities?: Record<string, number>; receivedByName?: string; deliveryDate?: string }) =>
+  createFromOrder: (orderId: string, data?: { quantities?: Record<string, number>; receivedByName?: string; deliveryDate?: string; closeRemainder?: boolean }) =>
     api.post(`/delivery-notes/from-order/${orderId}`, data ?? {})
       .then(r => r.data.data as DeliveryNote & { invoice: { id: string; invoice_number: string } | null }),
   cancel: (id: string) => api.post(`/delivery-notes/${id}/cancel`).then(r => r.data.data),

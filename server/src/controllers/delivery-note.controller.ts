@@ -51,10 +51,11 @@ export const deliveryNoteController = {
     res.status(201).json({ success: true, data: note });
   },
   async createFromOrder(req: AuthRequest, res: Response) {
-    const b = (req.body ?? {}) as { quantities?: Record<string, number>; receivedByName?: string; deliveryDate?: string; notes?: string };
+    const b = (req.body ?? {}) as { quantities?: Record<string, number>; receivedByName?: string; deliveryDate?: string; notes?: string; closeRemainder?: boolean };
     const note = await deliveryNoteRepository.createFromOrder(req.params.orderId, req.user!.userId, req.user!.storeId ?? null, {
       quantities: b.quantities && typeof b.quantities === 'object' ? b.quantities : undefined,
       receivedByName: b.receivedByName ?? null, deliveryDate: b.deliveryDate ?? null, notes: b.notes ?? null,
+      closeRemainder: b.closeRemainder === true,
     });
     res.status(201).json({ success: true, data: note });
   },

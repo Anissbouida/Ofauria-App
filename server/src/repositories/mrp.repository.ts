@@ -34,9 +34,12 @@ export const mrpRepository = {
     const [fc, ordersRes, stockRes, plannedRes] = await Promise.all([
       // 1. Prévision de vente (demande walk-in) du jour, majorée (comme la fiche de besoin).
       forecastRepository.compute(storeId, date, date, { withMarkup: true }),
-      // 2. Commandes fermes dues ce jour (hors annulées / livrées).
+      // 2. Commandes fermes dues ce jour (hors annulées / livrées), pour leur reste à livrer
+      //    (O2C L2 : une commande partiellement livrée ne compte que son reliquat). Le plan
+      //    auto d'une commande est daté sur son retrait (G-FF-01) : il entre au point 4 le même
+      //    jour, la demande est donc nettée une seule fois (G-FF-02).
       db.query(
-        `SELECT oi.product_id, COALESCE(SUM(oi.quantity), 0)::float AS qty
+        `SELECT oi.product_id, COALESCE(SUM(GREATEST(oi.quantity - oi.qty_delivered - oi.qty_cancelled, 0)), 0)::float AS qty
            FROM orders o JOIN order_items oi ON oi.order_id = o.id
           WHERE o.pickup_date::date = $1::date AND o.status NOT IN ('completed', 'cancelled')
             AND (o.store_id = $2 OR o.store_id IS NULL)

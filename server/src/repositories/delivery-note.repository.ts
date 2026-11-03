@@ -3,6 +3,7 @@ import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { invoiceRepository } from './accounting.repository.js';
 import { shipProduct, reverseAllocations } from '../services/product-shipment.js';
+import { recordDelivered, closeRemainder, reverseDelivered } from '../services/order-fulfilment.js';
 
 /**
  * Ventes aux professionnels (mig 352) : bon de livraison client → facture.
@@ -43,11 +44,18 @@ const NOTE_SELECT = `
         FROM delivery_note_items WHERE delivery_note_id = dn.id
     ) t ON true`;
 
-/** Une facture annulée (avoir) rend ses BL à facturer de nouveau. */
+/** Une facture annulée (avoir) rend ses BL à facturer de nouveau, et le « facturé » de leurs lignes de commande redescend. */
 async function releaseCancelledInvoices(runner: { query: (text: string, params?: unknown[]) => Promise<unknown> }) {
   await runner.query(
-    `UPDATE delivery_notes SET status = 'delivered', invoice_id = NULL
-      WHERE status = 'invoiced' AND invoice_id IN (SELECT id FROM invoices WHERE status = 'cancelled')`);
+    `WITH released AS (
+       UPDATE delivery_notes SET status = 'delivered', invoice_id = NULL
+        WHERE status = 'invoiced' AND invoice_id IN (SELECT id FROM invoices WHERE status = 'cancelled')
+        RETURNING id),
+     per_line AS (
+       SELECT i.order_item_id, SUM(i.quantity) AS q FROM delivery_note_items i
+        WHERE i.delivery_note_id IN (SELECT id FROM released) AND i.order_item_id IS NOT NULL GROUP BY 1)
+     UPDATE order_items oi SET qty_invoiced = GREATEST(oi.qty_invoiced - pl.q, 0)
+       FROM per_line pl WHERE oi.id = pl.order_item_id`);
 }
 
 export const deliveryNoteRepository = {
@@ -108,12 +116,13 @@ export const deliveryNoteRepository = {
       `SELECT o.id, o.order_number, o.pickup_date, o.total, o.status
          FROM orders o
          JOIN customers c ON c.id = o.customer_id
-        WHERE o.customer_id = $1 AND o.status IN ('ready', 'completed')
+        WHERE o.customer_id = $1 AND o.status IN ('ready', 'partially_delivered')
           AND COALESCE(c.customer_type, 'particulier') <> 'particulier'
           AND COALESCE(o.advance_amount, 0) = 0
           AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.order_id = o.id)
           AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.order_id = o.id AND i.status <> 'cancelled')
-          AND NOT EXISTS (SELECT 1 FROM delivery_notes d WHERE d.order_id = o.id AND d.status <> 'cancelled')
+          -- O2C L2 : plusieurs BL par commande, tant qu'il reste à livrer.
+          AND EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.quantity - oi.qty_delivered - oi.qty_cancelled > 0)
         ORDER BY o.created_at DESC LIMIT 50`, [customerId]);
     return r.rows;
   },
@@ -122,6 +131,7 @@ export const deliveryNoteRepository = {
     const r = await db.query(
       // Prix remisés de la remise de commande (mig 355) : le BL et la facture la portent.
       `SELECT oi.id, oi.product_id, p.name AS description, oi.quantity, oi.tva_rate,
+              oi.qty_delivered, oi.qty_cancelled, GREATEST(oi.quantity - oi.qty_delivered - oi.qty_cancelled, 0) AS remaining,
               ROUND(oi.unit_price * (1 - COALESCE(o.discount_amount, 0) / NULLIF(o.subtotal, 0)), 2) AS unit_price
          FROM order_items oi JOIN orders o ON o.id = oi.order_id JOIN products p ON p.id = oi.product_id
         WHERE oi.order_id = $1 ORDER BY p.name`, [orderId]);
@@ -132,6 +142,8 @@ export const deliveryNoteRepository = {
     customerId: string; deliveryDate?: string | null; orderId?: string | null; notes?: string | null;
     items: DeliveryLineInput[]; createdBy: string; storeId?: string | null;
     receivedByName?: string | null;
+    /** Commande : solder le reliquat après ce BL (rien d'autre ne sera livré). */
+    closeRemainder?: boolean;
   }, outer?: PoolClient) {
     if (!data.items.length) throw fail(400, 'Ajoutez au moins une ligne');
     const client = outer ?? await db.getClient();
@@ -142,12 +154,16 @@ export const deliveryNoteRepository = {
       if (data.orderId) {
         const ok = (await client.query(
           `SELECT 1 FROM orders o JOIN customers c ON c.id = o.customer_id
-            WHERE o.id = $1 AND o.customer_id = $2 AND o.status IN ('ready', 'completed')
+            WHERE o.id = $1 AND o.customer_id = $2 AND o.status IN ('ready', 'partially_delivered')
               AND COALESCE(c.customer_type, 'particulier') <> 'particulier'
-              AND NOT EXISTS (SELECT 1 FROM delivery_notes d WHERE d.order_id = o.id AND d.status <> 'cancelled')
               AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.order_id = o.id AND i.status <> 'cancelled')
-              AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.order_id = o.id)`, [data.orderId, data.customerId])).rows[0];
+              AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.order_id = o.id)
+            FOR UPDATE OF o`, [data.orderId, data.customerId])).rows[0];
         if (!ok) throw fail(409, 'Cette commande n\'est pas une commande de professionnel à livrer, ou elle est déjà livrée, réglée ou facturée');
+        // O2C L2 (G-GI-07) : sur un BL de commande, chaque produit livré vient d'une ligne de la commande.
+        if (data.items.some(i => i.productId && !i.orderItemId)) {
+          throw fail(400, 'BL de commande : chaque produit livré doit correspondre à une ligne de la commande');
+        }
       }
       const date = data.deliveryDate || undefined;
       // Magasin expéditeur : celui de l'utilisateur ou de la commande ; à défaut, le magasin unique de la société.
@@ -189,9 +205,14 @@ export const deliveryNoteRepository = {
              VALUES ($1, $2, $3, $4, $5::timestamptz)`, [line.id, a.lotId, a.qty, a.source, a.dlc]);
         }
       }
-      // Livrée : la commande prête passe « terminée » (elle sort du suivi de production).
+      // O2C L2 : livré cumulé par ligne (tolérance de sur-livraison du client), réservation
+      // consommée, commande « partiellement livrée » ou « terminée ».
       if (data.orderId) {
-        await client.query(`UPDATE orders SET status = 'completed', completed_at = COALESCE(completed_at, now()) WHERE id = $1 AND status = 'ready'`, [data.orderId]);
+        const tol = Number((await client.query(`SELECT over_delivery_tolerance_pct FROM customers WHERE id = $1`, [data.customerId])).rows[0]?.over_delivery_tolerance_pct ?? 0);
+        const perLine = new Map<string, number>();
+        for (const it of data.items) if (it.orderItemId) perLine.set(it.orderItemId, (perLine.get(it.orderItemId) ?? 0) + it.quantity);
+        await recordDelivered(client, data.orderId, [...perLine].map(([orderItemId, qty]) => ({ orderItemId, qty })), tol);
+        if (data.closeRemainder) await closeRemainder(client, data.orderId);
       }
       if (!outer) await client.query('COMMIT');
       return head;
@@ -212,6 +233,7 @@ export const deliveryNoteRepository = {
    */
   async createFromOrder(orderId: string, createdBy: string, storeId?: string | null, opts: {
     quantities?: Record<string, number>; receivedByName?: string | null; deliveryDate?: string | null; notes?: string | null;
+    closeRemainder?: boolean;
   } = {}) {
     const order = (await db.query(
       `SELECT o.id, o.customer_id, o.store_id, o.status, c.customer_type, c.billing_frequency
@@ -221,20 +243,33 @@ export const deliveryNoteRepository = {
     if ((order.customer_type ?? 'particulier') === 'particulier') {
       throw fail(400, 'Commande de particulier : elle se remet en caisse contre le solde, sans bon de livraison');
     }
-    if (order.status !== 'ready') throw fail(409, 'La commande doit être prête pour être livrée');
+    if (order.status !== 'ready' && order.status !== 'partially_delivered') throw fail(409, 'La commande doit être prête pour être livrée');
     const lines = await this.orderLines(orderId);
     if (!lines.length) throw fail(400, 'La commande n\'a aucune ligne');
     const defaults = await this.lineDefaults(order.customer_id, lines.map((l: Record<string, unknown>) => l.product_id as string));
     const items = lines.map((l: Record<string, unknown>) => {
       const id = l.id as string;
-      const qty = opts.quantities && opts.quantities[id] !== undefined ? Number(opts.quantities[id]) : Number(l.quantity);
+      // Par défaut : le reste à livrer de la ligne (O2C L2).
+      const qty = opts.quantities && opts.quantities[id] !== undefined ? Number(opts.quantities[id]) : Number(l.remaining);
       return {
         productId: l.product_id as string, description: l.description as string, orderItemId: id,
         quantity: qty, unitPrice: Number(l.unit_price),
         tvaRate: l.tva_rate != null ? Number(l.tva_rate) : defaults[l.product_id as string]?.tvaRate ?? null,
       };
     }).filter(i => i.quantity > 0);
-    if (!items.length) throw fail(400, 'Aucune quantité livrée');
+    if (!items.length && !opts.closeRemainder) throw fail(400, 'Aucune quantité livrée');
+    if (!items.length) {
+      // Rien à livrer de plus : on solde seulement le reliquat.
+      const c = await db.getClient();
+      try {
+        await c.query('BEGIN');
+        await closeRemainder(c, orderId);
+        await c.query('COMMIT');
+        return { closed: true };
+      } catch (err) {
+        await c.query('ROLLBACK'); throw err;
+      } finally { c.release(); }
+    }
     if (items.some(i => !Number.isFinite(i.quantity) || i.quantity < 0)) throw fail(400, 'Quantité livrée invalide');
 
     const client: PoolClient = await db.getClient();
@@ -243,6 +278,7 @@ export const deliveryNoteRepository = {
       const note = await this.create({
         customerId: order.customer_id, orderId, createdBy, storeId: order.store_id ?? storeId ?? null,
         deliveryDate: opts.deliveryDate ?? null, notes: opts.notes ?? null, receivedByName: opts.receivedByName ?? null, items,
+        closeRemainder: opts.closeRemainder ?? false,
       }, client);
       let invoice: Record<string, unknown> | null = null;
       if (order.billing_frequency === 'per_delivery') {
@@ -284,6 +320,13 @@ export const deliveryNoteRepository = {
             ref: { type: 'delivery_note', id }, label: `Annulation BL ${note.number}`, userId,
           });
         }
+      }
+      // O2C L2 (G-GI-09) : la commande se rouvre (livré retiré, stock remis de nouveau réservé).
+      if (note.order_id) {
+        const back = (await client.query(
+          `SELECT order_item_id, SUM(quantity)::float8 AS qty FROM delivery_note_items
+            WHERE delivery_note_id = $1 AND order_item_id IS NOT NULL GROUP BY 1`, [id])).rows as { order_item_id: string; qty: number }[];
+        await reverseDelivered(client, note.order_id, back.map(b => ({ orderItemId: b.order_item_id, qty: b.qty })), note.store_id);
       }
       await client.query('COMMIT');
       return note;
@@ -364,6 +407,12 @@ export const deliveryNoteRepository = {
       await client.query(
         `UPDATE delivery_notes SET status = 'invoiced', invoice_id = $2 WHERE id = ANY($1::uuid[])`,
         [data.deliveryNoteIds, invoice.id]);
+      // O2C L2 : facturé cumulé sur les lignes de commande (borné par le livré, contrainte en base).
+      await client.query(
+        `UPDATE order_items oi SET qty_invoiced = oi.qty_invoiced + x.q
+           FROM (SELECT order_item_id, SUM(quantity) AS q FROM delivery_note_items
+                  WHERE delivery_note_id = ANY($1::uuid[]) AND order_item_id IS NOT NULL GROUP BY 1) x
+          WHERE oi.id = x.order_item_id`, [data.deliveryNoteIds]);
       if (!outer) await client.query('COMMIT');
       return invoice;
     } catch (err) {

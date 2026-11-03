@@ -3,6 +3,8 @@ export const ORDER_STATUS = {
   CONFIRMED: 'confirmed',
   IN_PRODUCTION: 'in_production',
   READY: 'ready',
+  /** Livrée en partie, reliquat attendu (O2C L2, mig 441). */
+  PARTIALLY_DELIVERED: 'partially_delivered',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled',
 } as const;
@@ -14,6 +16,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   confirmed: 'Confirmee',
   in_production: 'En production',
   ready: 'Prete',
+  partially_delivered: 'Livree en partie',
   completed: 'Terminee',
   cancelled: 'Annulee',
 };
