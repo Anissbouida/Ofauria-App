@@ -1091,4 +1091,42 @@ export const receptionVoucherRepository = {
     );
     return result.rows;
   },
+
+  /** Lignes de réception en écart de prix (lot L3 P2P, incrément 2/5) : à décider ou décidées. */
+  async listPriceVariances(storeId?: string | null) {
+    const result = await db.query(
+      `SELECT rvi.id, rvi.reception_voucher_id, rvi.quantity_received,
+              rvi.unit_price, rvi.po_unit_price, (rvi.unit_price - rvi.po_unit_price) AS unit_delta,
+              rvi.price_status, rvi.price_decision_note, rvi.price_decided_at,
+              COALESCE(dec.first_name || ' ' || dec.last_name, dec.email) AS decided_by_name,
+              COALESCE(ing.name, pkg.name) AS item_name,
+              rv.voucher_number, rv.reception_date, po.order_number, s.name AS supplier_name
+         FROM reception_voucher_items rvi
+         JOIN reception_vouchers rv ON rv.id = rvi.reception_voucher_id
+         LEFT JOIN purchase_orders po ON po.id = rv.purchase_order_id
+         LEFT JOIN suppliers s ON s.id = po.supplier_id
+         LEFT JOIN ingredients ing ON ing.id = rvi.ingredient_id
+         LEFT JOIN packaging_items pkg ON pkg.id = rvi.packaging_id
+         LEFT JOIN users dec ON dec.id = rvi.price_decided_by
+        WHERE rvi.price_status IN ('variance', 'approved', 'rejected')
+          AND ($1::uuid IS NULL OR rv.store_id = $1)
+        ORDER BY (rvi.price_status = 'variance') DESC, rv.reception_date DESC
+        LIMIT 200`,
+      [storeId ?? null]
+    );
+    return result.rows;
+  },
+
+  /** Décision d'un responsable sur un écart de prix : approuvé ou rejeté, tracé. */
+  async decidePrice(itemId: string, decision: 'approved' | 'rejected', note: string | null, userId: string) {
+    const r = await db.query(
+      `UPDATE reception_voucher_items
+          SET price_status = $2, price_decided_by = $3, price_decided_at = now(), price_decision_note = $4
+        WHERE id = $1 AND price_status IN ('variance', 'approved', 'rejected')
+        RETURNING id, price_status`,
+      [itemId, decision, userId, note]
+    );
+    if (!r.rowCount) { const e = new Error('Ligne introuvable ou sans écart de prix à décider') as Error & { statusCode: number }; e.statusCode = 404; throw e; }
+    return r.rows[0];
+  },
 };

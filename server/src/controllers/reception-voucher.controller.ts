@@ -55,4 +55,26 @@ export const receptionVoucherController = {
     const data = await receptionVoucherRepository.findByPurchaseOrder(req.params.poId);
     res.json({ success: true, data });
   },
+
+  /** Écarts de prix à la réception à décider / décidés (lot L3 P2P, incrément 2/5). */
+  async priceVariances(req: AuthRequest, res: Response) {
+    const data = await receptionVoucherRepository.listPriceVariances(req.user!.storeId);
+    res.json({ success: true, data });
+  },
+
+  /** Décision d'un responsable sur un écart de prix de réception : approuvé ou rejeté. */
+  async decidePrice(req: AuthRequest, res: Response) {
+    const { decision, note } = req.body as { decision?: string; note?: string };
+    if (decision !== 'approved' && decision !== 'rejected') {
+      res.status(400).json({ success: false, error: { message: 'Décision invalide (approved ou rejected)' } });
+      return;
+    }
+    try {
+      const r = await receptionVoucherRepository.decidePrice(req.params.id, decision, note?.trim() || null, req.user!.userId);
+      res.json({ success: true, data: r });
+    } catch (err) {
+      const e = err as { statusCode?: number; message?: string };
+      res.status(e?.statusCode ?? 400).json({ success: false, error: { message: e?.message ?? 'Erreur lors de la décision' } });
+    }
+  },
 };

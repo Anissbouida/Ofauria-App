@@ -153,9 +153,9 @@ export const productionCoutRepository = {
     const lotUsageResult = await db.query(
       `SELECT plu.ingredient_id, i.name,
               SUM(plu.quantity_used) as qty,
-              SUM(plu.quantity_used * COALESCE(il.unit_cost, 0)) as total,
+              SUM(plu.quantity_used * COALESCE(plu.unit_cost_at_use, il.unit_cost, 0)) as total,
               CASE WHEN SUM(plu.quantity_used) > 0
-                   THEN SUM(plu.quantity_used * COALESCE(il.unit_cost, 0)) / SUM(plu.quantity_used)
+                   THEN SUM(plu.quantity_used * COALESCE(plu.unit_cost_at_use, il.unit_cost, 0)) / SUM(plu.quantity_used)
                    ELSE 0 END as unit_cost_avg
        FROM production_lot_usage plu
        JOIN ingredient_lots il ON il.id = plu.ingredient_lot_id
@@ -450,7 +450,7 @@ export const productionCoutRepository = {
              FROM production_plan_items ppi
              JOIN products p ON p.id = ppi.product_id
              LEFT JOIN LATERAL (
-               SELECT SUM(plu.quantity_used * COALESCE(il.unit_cost, 0)) as cout_matieres_item
+               SELECT SUM(plu.quantity_used * COALESCE(plu.unit_cost_at_use, il.unit_cost, 0)) as cout_matieres_item
                FROM production_lot_usage plu
                JOIN ingredient_lots il ON il.id = plu.ingredient_lot_id
                WHERE plu.production_plan_id = pp.id
@@ -540,7 +540,7 @@ export const productionCoutRepository = {
          SUM(COALESCE(ppi.actual_quantity, ppi.planned_quantity)) as total_quantity,
          SUM(
            COALESCE((
-             SELECT SUM(plu.quantity_used * COALESCE(il.unit_cost, 0))
+             SELECT SUM(plu.quantity_used * COALESCE(plu.unit_cost_at_use, il.unit_cost, 0))
              FROM production_lot_usage plu
              JOIN ingredient_lots il ON il.id = plu.ingredient_lot_id
              WHERE plu.production_plan_id = pp.id
