@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { env } from './env.js';
 
 /**
@@ -27,8 +28,52 @@ pool.on('error', (err) => {
   process.exit(-1);
 });
 
+/**
+ * Cloisonnement par établissement (RLS, mig 436). Une requête HTTP d'un
+ * utilisateur rattaché à un magasin s'exécute dans runWithStoreScope : chaque
+ * connexion qu'elle emprunte porte app.store_scope, et Postgres filtre les
+ * tables comptables (politiques p_store_scope). Hors périmètre : aucune
+ * surcharge, le pool est utilisé tel quel. Le paramètre est remis à zéro avant
+ * de rendre la connexion au pool, pour ne jamais fuiter vers une autre requête.
+ */
+const storeScope = new AsyncLocalStorage<{ storeId: string }>();
+export function runWithStoreScope<T>(storeId: string, fn: () => T): T {
+  return storeScope.run({ storeId }, fn);
+}
+export const currentStoreScope = () => storeScope.getStore()?.storeId ?? null;
+
+async function scopedClient(storeId: string): Promise<pg.PoolClient> {
+  const client = await pool.connect();
+  try {
+    await client.query(`SELECT set_config('app.store_scope', $1, false)`, [storeId]);
+  } catch (err) {
+    client.release(true);
+    throw err;
+  }
+  const release = client.release.bind(client);
+  // Remise à zéro avant retour au pool ; en cas d'échec, la connexion est détruite.
+  client.release = ((err?: Error | boolean) => {
+    client.release = release;
+    if (err) { release(err); return; }
+    client.query(`RESET app.store_scope`).then(() => release(), () => release(true));
+  }) as typeof client.release;
+  return client;
+}
+
 export const db = {
-  query: (text: string, params?: unknown[]) => pool.query(text, params),
-  getClient: () => pool.connect(),
+  query: async (text: string, params?: unknown[]) => {
+    const scope = storeScope.getStore();
+    if (!scope) return pool.query(text, params);
+    const client = await scopedClient(scope.storeId);
+    try {
+      return await client.query(text, params);
+    } finally {
+      client.release();
+    }
+  },
+  getClient: () => {
+    const scope = storeScope.getStore();
+    return scope ? scopedClient(scope.storeId) : pool.connect();
+  },
   pool,
 };

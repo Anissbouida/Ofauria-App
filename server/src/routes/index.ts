@@ -53,6 +53,7 @@ import productionMarkupRoutes from './production-markup.routes.js';
 import manualShiftEntryRoutes from './manual-shift-entry.routes.js';
 import salesChannelRoutes from './sales-channel.routes.js';
 import { ledgerRouter } from './ledger.routes.js';
+import { rlsStoreScope } from '../middleware/rls-scope.middleware.js';
 import { commissionsRouter } from './commission.routes.js';
 import fixedAssetRoutes from './fixed-asset.routes.js';
 import prepaidChargeRoutes from './prepaid-charge.routes.js';
@@ -120,8 +121,8 @@ router.use('/suppliers', suppliersRouter);
 router.use('/supplier-items', supplierItemsRoutes);
 router.use('/expense-categories', expenseCategoriesRouter);
 router.use('/revenue-categories', revenueCategoriesRouter);
-router.use('/invoices', invoicesRouter);
-router.use('/payments', paymentsRouter);
+router.use('/invoices', rlsStoreScope('accounting'), invoicesRouter);
+router.use('/payments', rlsStoreScope('accounting'), paymentsRouter);
 router.use('/returns', returnRoutes);
 router.use('/stores', storeRoutes);
 router.use('/upload', uploadRoutes);
@@ -145,7 +146,7 @@ router.use('/haccp', haccpRouter);
 // Mig 316 : traçabilité aval et rappel produit.
 router.use('/traceability', traceabilityRouter);
 // Mig 317 : budget et contrôle de gestion.
-router.use('/gestion', managementRouter);
+router.use('/gestion', rlsStoreScope('accounting'), managementRouter);
 router.use('/packaging-items', packagingRoutes);
 router.use('/product-lots', productLotRoutes);
 router.use('/product-pipeline', productPipelineRoutes);
@@ -163,7 +164,8 @@ router.use('/sachet-config', sachetConfigRoutes);
 router.use('/production-markup', productionMarkupRoutes);
 router.use('/manual-shift-entries', manualShiftEntryRoutes);
 router.use('/sales-channels', salesChannelRoutes);
-router.use('/ledger', ledgerRouter);
+// Cloisonnement par établissement en base (RLS, mig 436) sur les routes comptables.
+router.use('/ledger', rlsStoreScope('accounting'), ledgerRouter);
 router.use('/commissions', commissionsRouter);
 router.use('/fixed-assets', fixedAssetRoutes);
 router.use('/prepaid-charges', prepaidChargeRoutes);

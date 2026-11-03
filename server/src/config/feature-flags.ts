@@ -52,6 +52,14 @@ export const FLAGS = {
   // Depuis la mig 374, la règle vit dans le paramètre métier sales.pos_stock (Paramètres) ;
   // ce drapeau n'est plus qu'un forçage explicite pour les tests, OFF par défaut même en dev.
   POS_ALLOW_NEGATIVE_STOCK: parseFlag(process.env.POS_ALLOW_NEGATIVE_STOCK, false),
+
+  /**
+   * Cloisonnement par établissement en base (RLS, mig 436) : les requêtes
+   * comptables d'un utilisateur limité à son magasin déclarent app.store_scope
+   * et Postgres filtre lui-même. Sans effet tant que le serveur se connecte en
+   * superutilisateur ; à activer avec le rôle applicatif kalum_app (script L0).
+   */
+  RLS_STORE_SCOPE: parseFlag(process.env.RLS_STORE_SCOPE, false),
 } as const;
 
 // Log au demarrage pour visibilite

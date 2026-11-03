@@ -158,6 +158,15 @@ async function housekeeping(): Promise<JobResult> {
   return { items: n, message: `${a.rowCount ?? 0} passage(s) et ${b.rowCount ?? 0} e-mail(s) supprimés` };
 }
 
+/** Partitions d'exercice du journal d'audit comptable (mig 436) : exercice courant et suivant. */
+async function ledgerPartitions(): Promise<JobResult> {
+  const y = Number((await db.query(`SELECT EXTRACT(YEAR FROM now() AT TIME ZONE 'Africa/Casablanca')::int AS y`)).rows[0].y);
+  const before = Number((await db.query(`SELECT count(*)::int AS n FROM pg_inherits WHERE inhparent = 'ledger_audit_log'::regclass`)).rows[0].n);
+  for (const year of [y, y + 1]) await db.query(`SELECT fn_ensure_audit_partition($1)`, [year]);
+  const after = Number((await db.query(`SELECT count(*)::int AS n FROM pg_inherits WHERE inhparent = 'ledger_audit_log'::regclass`)).rows[0].n);
+  return { items: after - before, message: after > before ? `${after - before} partition(s) créée(s)` : `Partitions ${y} et ${y + 1} déjà prêtes` };
+}
+
 async function emailOutbox(): Promise<JobResult> {
   const r = await processOutbox();
   return { items: r.sent, message: `${r.message}${r.waiting ? ` · ${r.waiting} en attente` : ''}` };
@@ -174,6 +183,7 @@ export const JOBS: Record<string, Handler> = {
   crm_activities_due: crmActivitiesDue,
   loyalty_expire: loyaltyExpireDue,
   ledger_seal: () => ledgerIntegrityRepository.sealAuto(),
+  ledger_partitions: ledgerPartitions,
   housekeeping,
 };
 
