@@ -170,7 +170,7 @@ Principe : **d'abord rendre les contrôles bloquants et non contournables, ensui
 | **L6 — MRP déclencheur** | Identification automatique | Tâche planifiée `purchase_suggestions` (cron existant `/cron/tick`) : besoin net = brut − stock − **BC ouverts**, avec délai, MOQ, conditionnement et stock de sécurité distinct du seuil. Elle crée des DA à l'état `proposed`, qu'un humain transforme en BC. Unifier les calculs du MRP et de l'écran « À commander » | 431 | L4 | M |
 | **Correctif immédiat** | Bug du CHECK `closed` | Recréer `purchase_requests_status_check` avec `closed` (et l'état `proposed` du L6) ; vérifier l'état en prod | 424 | — | XS |
 
-Ordre recommandé : **Correctif → L0 → L1 → L2 → L3**. Ce sont ces lots qui rendent le coût de revient fiable. **L4 → L5 → L6** viennent ensuite. L3 est le seul lot qui déplace des montants (réévaluation) : il passe par un **dry-run sur staging**, comme le backfill CMUP.
+Ordre recommandé : **Correctif → L0 → L1 → L2 → L3**. Ce sont ces lots qui rendent le coût de revient fiable. **L4 → L5 → L6** viennent ensuite. L3 est le seul lot qui déplace des montants (réévaluation) : il passe par un **dry-run sur staging**, comme le backfill CMUP. Procédure de ce dry-run : `docs/p2p-l3-staging-dryrun-runbook.md` (script autonome `server/scripts/l3-revaluation-staging-check.sql`).
 
 Reprise de l'historique : les 302 factures `legacy_auto`/`from_receipt` restent `validated` avec un drapeau `needs_supplier_document` ; on ne les ré-ouvre pas. Les règles bloquantes ne s'appliquent qu'aux pièces créées après la mise en service (date pivot dans `module_parameters`).
 
