@@ -10,6 +10,8 @@ import { notify } from '../../components/ui/InlineNotification';
  * Comptabilité › Budget (mig 317) : budget annuel par compte du CPC et par mois,
  * comparé au réel comptabilisé. Comparaison au cumul à date (mois écoulés)
  * pour ne pas confronter un budget annuel à un réel partiel.
+ * Contrôle budgétaire (mig 435) : engagé = BC envoyés ni reçus ni facturés ;
+ * à l'envoi d'un BC, dépassement du disponible → alerte ou blocage.
  */
 
 const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
@@ -26,6 +28,11 @@ export default function BudgetTab() {
   const status = useMutation({
     mutationFn: (s: 'draft' | 'approved') => managementApi.setStatus(data!.budget!.id, s),
     onSuccess: (_r, s) => { refresh(); notify.success(s === 'approved' ? 'Budget approuvé' : 'Budget repassé en brouillon'); },
+    onError: (e) => notify.error(e),
+  });
+  const control = useMutation({
+    mutationFn: (c: { action: 'none' | 'warn' | 'block'; period: 'annual' | 'cumulative' }) => managementApi.setControl(data!.budget!.id, c),
+    onSuccess: () => { refresh(); notify.success('Contrôle budgétaire mis à jour'); },
     onError: (e) => notify.error(e),
   });
   const remove = useMutation({
@@ -51,6 +58,18 @@ export default function BudgetTab() {
               <button type="button" className={view === 'compare' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('compare')}>Budget vs réel</button>
               <button type="button" className={view === 'edit' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('edit')}>Saisie</button>
             </div>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}
+              title="Appliqué à l'envoi des bons de commande, budget approuvé seulement">
+              Contrôle des BC
+              <select value={b.control_action} disabled={control.isPending} onChange={e => control.mutate({ action: e.target.value as 'none' | 'warn' | 'block', period: b.control_period })}
+                className="odoo-search-input" aria-label="Action sur dépassement">
+                <option value="none">Aucun</option><option value="warn">Alerte</option><option value="block">Blocage</option>
+              </select>
+              <select value={b.control_period} disabled={control.isPending || b.control_action === 'none'} onChange={e => control.mutate({ action: b.control_action, period: e.target.value as 'annual' | 'cumulative' })}
+                className="odoo-search-input" aria-label="Période de contrôle">
+                <option value="annual">sur l'année</option><option value="cumulative">au cumul du mois</option>
+              </select>
+            </label>
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
               {b.status === 'draft' ? (
                 <>
@@ -206,7 +225,7 @@ function Comparison({ data }: { data: BudgetComparison }) {
     Budget: Math.round(data.totals.resultat.budget[i]),
     Réel: i < n ? Math.round(data.totals.resultat.actual[i]) : null,
   })), [data, n]);
-  const rows = data.rows.filter(r => r.budget_year !== 0 || r.actual_year !== 0);
+  const rows = data.rows.filter(r => r.budget_year !== 0 || r.actual_year !== 0 || r.committed !== 0);
   const totalRow = (label: string, key: 'produits' | 'charges' | 'resultat', cls: 6 | 7 | 0) => {
     const t = data.totals[key];
     return (
@@ -216,6 +235,8 @@ function Comparison({ data }: { data: BudgetComparison }) {
         <td style={{ textAlign: 'right' }}>{dh(sumTo(t.actual))}</td>
         <td style={{ textAlign: 'right' }}><Variance budget={sumTo(t.budget)} actual={sumTo(t.actual)} cls={cls} /></td>
         <td style={{ textAlign: 'right' }}>{dh(t.budget.reduce((s, v) => s + v, 0))}</td>
+        <td style={{ textAlign: 'right' }}>{key === 'charges' ? dh(data.totals.charges.committed ?? 0) : ''}</td>
+        <td />
       </tr>
     );
   };
@@ -246,7 +267,9 @@ function Comparison({ data }: { data: BudgetComparison }) {
       </div>
       <div style={tableWrap}>
         <table className="odoo-table" style={{ margin: 0 }}>
-          <thead><tr><th>Compte</th><th style={{ textAlign: 'right' }}>Budget à date</th><th style={{ textAlign: 'right' }}>Réel à date</th><th style={{ textAlign: 'right' }}>Écart</th><th style={{ textAlign: 'right' }}>Budget annuel</th></tr></thead>
+          <thead><tr><th>Compte</th><th style={{ textAlign: 'right' }}>Budget à date</th><th style={{ textAlign: 'right' }}>Réel à date</th><th style={{ textAlign: 'right' }}>Écart</th><th style={{ textAlign: 'right' }}>Budget annuel</th>
+            <th style={{ textAlign: 'right' }} title="Bons de commande envoyés, ni reçus ni facturés">Engagé</th>
+            <th style={{ textAlign: 'right' }} title="Budget annuel − réel − engagé">Disponible</th></tr></thead>
           <tbody>
             {[7, 6].map(cls => [
               ...rows.filter(r => r.account_class === cls).map(r => (
@@ -256,6 +279,8 @@ function Comparison({ data }: { data: BudgetComparison }) {
                   <td style={{ textAlign: 'right' }}>{dh(r.actual_ytd)}</td>
                   <td style={{ textAlign: 'right' }}><Variance budget={r.budget_ytd} actual={r.actual_ytd} cls={r.account_class} /></td>
                   <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{dh(r.budget_year)}</td>
+                  <td style={{ textAlign: 'right' }}>{cls === 6 && r.committed ? dh(r.committed) : ''}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600, color: r.available < 0 ? '#dc3545' : undefined }}>{cls === 6 && r.budget_year ? dh(r.available) : ''}</td>
                 </tr>
               )),
               totalRow(cls === 7 ? 'Total produits' : 'Total charges', cls === 7 ? 'produits' : 'charges', cls as 6 | 7),

@@ -583,6 +583,9 @@ export interface PaymentRow {
   // Mig 368 : règlement en devise — part de facture soldée (taux facture) et écart de change.
   settled_amount?: string | number | null;
   fx_difference?: string | number | null;
+  // Mig 435 : effet client remis en banque par bordereau (encaissement ou escompte).
+  remittance_kind?: 'collection' | 'discount' | null;
+  remittance_bank_code?: string | null;
 }
 
 /** Compte général et nature (caisse/banque) d'un compte de trésorerie (mig 310). */
@@ -790,18 +793,22 @@ export function fromPaymentCashing(p: PaymentRow): GeneratedEntry | null {
   const fromCode = p.payment_method === 'check' ? '5111' : '4415';
 
   // Cheque / traite RECU d'un client : la remise en banque debite la banque et
-  // solde 5111 / 5113 (sens inverse d'un effet emis).
+  // solde 5111 / 5113 (sens inverse d'un effet emis). Traite escomptee (mig 435) :
+  // la banque a deja avance le nominal, l'echeance denoue le credit d'escompte 5520.
   if (p.type === 'income') {
+    const discounted = p.remittance_kind === 'discount' && p.payment_method === 'traite';
     return {
-      journal_code: 'BQ',
+      journal_code: discounted ? 'OD' : 'BQ',
       entry_date: toIsoDate(p.cashed_at),
-      description: `Remise en banque ${p.payment_method === 'check' ? 'cheque' : 'traite'} ${p.reference || ''}`.trim(),
+      description: `${discounted ? 'Echeance traite escomptee' : `Remise en banque ${p.payment_method === 'check' ? 'cheque' : 'traite'}`} ${p.reference || ''}`.trim(),
       source_kind: 'payment',
       source_id: p.id,
       source_detail: 'cashing',
       store_id: p.store_id,
       lines: [
-        { account_code: '5141', debit: round2(amount), credit: 0, label: 'Credit bancaire' },
+        discounted
+          ? { account_code: '5520', debit: round2(amount), credit: 0, label: 'Denouement credit d\'escompte' }
+          : { account_code: p.remittance_bank_code || '5141', debit: round2(amount), credit: 0, label: 'Credit bancaire' },
         { account_code: p.payment_method === 'check' ? '5111' : '5113', debit: 0, credit: round2(amount), label: 'Effet remis a l\'encaissement' },
       ],
     };
@@ -1210,7 +1217,10 @@ const INVOICE_SELECT = `SELECT id, invoice_number, invoice_type, supplier_id, cu
 
 const PAYMENT_SELECT = `SELECT id, reference, type, category_id, invoice_id, supplier_id,
   employee_id, amount, payment_method, payment_date, cashed_at, description, store_id,
-  withholding_type_id, withholding_amount, payment_mode, treasury_account_id, to_treasury_account_id
+  withholding_type_id, withholding_amount, payment_mode, treasury_account_id, to_treasury_account_id,
+  (SELECT br.kind FROM bill_remittances br WHERE br.id = payments.remittance_id AND br.status = 'posted') AS remittance_kind,
+  (SELECT ta.account_code FROM bill_remittances br JOIN treasury_accounts ta ON ta.id = br.treasury_account_id
+    WHERE br.id = payments.remittance_id AND br.status = 'posted') AS remittance_bank_code
   FROM payments WHERE id = $1`;
 
 const SALE_SELECT = `SELECT id, sale_number, customer_id, subtotal, tax_amount, discount_amount,

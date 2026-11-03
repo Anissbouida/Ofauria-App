@@ -5,16 +5,25 @@ import api from './client';
 export type BudgetHeader = {
   id: string; fiscal_year: number; store_id: string | null; name: string; status: 'draft' | 'approved';
   approved_at: string | null; approved_by_name: string | null;
+  control_action: 'none' | 'warn' | 'block'; control_period: 'annual' | 'cumulative';
 };
+
+/** Contrôle budgétaire d'une demande (mig 435) : une ligne par compte budgété touché. */
+export type BudgetControlLine = {
+  account_id: string; code: string; label: string;
+  budget: number; actual: number; committed: number; available: number; request: number; exceeded: number;
+};
+export type BudgetControl = { outcome: 'ok' | 'warn' | 'block'; lines: BudgetControlLine[]; budget: { name: string; control_action: string } | null };
 
 export type BudgetRow = {
   id: string; code: string; label: string; account_class: 6 | 7; rubrique: string; rubrique_label: string;
   budget: number[]; actual: number[]; budget_year: number; actual_year: number; budget_ytd: number; actual_ytd: number;
+  committed: number; available: number;
 };
 
 export type BudgetComparison = {
   year: number; budget: BudgetHeader | null; elapsed_months: number; rows: BudgetRow[];
-  totals: Record<'produits' | 'charges' | 'resultat', { budget: number[]; actual: number[] }>;
+  totals: Record<'produits' | 'charges' | 'resultat', { budget: number[]; actual: number[]; committed?: number }>;
 };
 
 export type MarginGroup = {
@@ -37,6 +46,8 @@ export const managementApi = {
     api.put(`/gestion/budget/${id}/lines`, { lines }).then(r => r.data),
   setStatus: (id: string, status: 'draft' | 'approved') => data<BudgetHeader>(api.post(`/gestion/budget/${id}/status`, { status })),
   deleteBudget: (id: string) => api.delete(`/gestion/budget/${id}`).then(r => r.data),
+  setControl: (id: string, control: { action: 'none' | 'warn' | 'block'; period: 'annual' | 'cumulative' }) =>
+    data<BudgetHeader>(api.put(`/gestion/budget/${id}/control`, control)),
   resultByStore: (year: number) =>
     data<Array<{ store_id: string | null; store_name: string | null; produits: number; charges: number; resultat: number }>>(api.get('/gestion/result-by-store', { params: { year } })),
   margins: (params: { from: string; to: string; groupBy: 'category' | 'channel' | 'product' }) =>

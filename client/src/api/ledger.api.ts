@@ -602,3 +602,30 @@ export const ediApi = {
   downloadLiasse: (year: number, model: LiasseModel, format: 'zip' | 'xml') =>
     downloadBlob(`/ledger/edi/liasse/${year}`, { model, format }, `liasse_is.${format}`),
 };
+
+/* ═══ Portefeuille d'effets clients (lot Bonus 15, mig 435) ═══ */
+export type BillStatus = 'portfolio' | 'remitted' | 'discounted' | 'cashed' | 'unpaid';
+export type BillEffect = {
+  id: string; payment_method: 'check' | 'traite'; amount: number; received_on: string; due_date: string;
+  check_number: string | null; reference: string | null; description: string | null; cashed_at: string | null;
+  unpaid_at: string | null; unpaid_fees: number | null; remittance_id: string | null; remittance_number: string | null;
+  remittance_kind: 'collection' | 'discount' | null; remittance_date: string | null;
+  invoice_id: string | null; invoice_number: string | null; customer_name: string | null; status: BillStatus; overdue: boolean;
+};
+export type BillRemittance = {
+  id: string; remittance_number: string; kind: 'collection' | 'discount'; remittance_date: string; status: 'posted' | 'cancelled';
+  gross_amount: number; interest: number; commission: number; commission_vat: number; net_amount: number; note: string | null;
+  bank_label: string; bank_code: string; entry_number: string | null; effects: number; pending: number;
+};
+export const billsApi = {
+  list: (status: BillStatus | 'open' | 'all'): Promise<{ effects: BillEffect[]; totals: Record<'portfolio' | 'remitted' | 'discounted' | 'unpaid' | 'overdue', number> }> =>
+    api.get('/ledger/bills', { params: { status } }).then(r => r.data.data),
+  remittances: (): Promise<BillRemittance[]> => api.get('/ledger/bills/remittances').then(r => r.data.data),
+  createRemittance: (body: { kind: 'collection' | 'discount'; treasuryAccountId: string; date: string; paymentIds: string[];
+    interest?: number; commission?: number; commissionVat?: number; note?: string | null }) =>
+    api.post('/ledger/bills/remittances', body).then(r => r.data.data as { remittance_number: string; gross_amount: number; net_amount: number; entry_number: string | null }),
+  settle: (id: string, date: string) => api.post(`/ledger/bills/remittances/${id}/settle`, { date }).then(r => r.data.data as { settled: number }),
+  cancel: (id: string) => api.post(`/ledger/bills/remittances/${id}/cancel`).then(r => r.data),
+  unpaid: (id: string, body: { date: string; fees: number; note?: string | null }) =>
+    api.post(`/ledger/bills/${id}/unpaid`, body).then(r => r.data.data as { entry_number: string | null }),
+};

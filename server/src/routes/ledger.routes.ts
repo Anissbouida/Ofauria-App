@@ -16,6 +16,7 @@ import {
   buildJournal, buildGrandLivre, buildBalance, buildBilan, buildCpc, buildBalanceAgee, buildImmobilisations, buildCessions, buildAnalytique, buildIs, buildEcartsConversion, buildLiasse,
 } from '../services/ledger-editions.service.js';
 import { liasseRepository } from '../repositories/liasse.repository.js';
+import { billPortfolioRepository } from '../repositories/bill-portfolio.repository.js';
 import { buildVatDeductionEdi, buildIr9421Edi, buildLiasseIsEdi, zipOne } from '../services/dgi-edi.service.js';
 import {
   planComptableController,
@@ -261,6 +262,41 @@ ledgerRouter.get('/edi/9421/:year', ...TAX_AM, requireVerb('accounting', 'export
 ledgerRouter.get('/edi/liasse/:year', ...TAX_AM, requireVerb('accounting', 'export'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const y = taxYear(req, res); if (y === null) return;
   sendEdi(req, res, await buildLiasseIsEdi(y, req.query.model === 'simplifie' ? 'simplifie' : 'normal'));
+}));
+// Portefeuille d'effets clients (lot Bonus 15, mig 435) : bordereaux de remise, escompte, impayés.
+const billDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+ledgerRouter.get('/bills', ...TAX_AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const s = String(req.query.status ?? 'all');
+  const status = (['portfolio', 'remitted', 'discounted', 'cashed', 'unpaid', 'open', 'all'] as const).find(x => x === s) ?? 'all';
+  res.json({ success: true, data: await billPortfolioRepository.list({ status }) });
+}));
+ledgerRouter.get('/bills/remittances', ...TAX_AM, asyncHandler(async (_req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await billPortfolioRepository.remittances() });
+}));
+ledgerRouter.post('/bills/remittances', ...TAX_AM, requireVerb('accounting', 'validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({
+    kind: z.enum(['collection', 'discount']), treasuryAccountId: z.string().uuid(), date: billDate,
+    paymentIds: z.array(z.string().uuid()).min(1).max(500),
+    interest: z.number().min(0).max(1e9).optional(), commission: z.number().min(0).max(1e9).optional(), commissionVat: z.number().min(0).max(1e9).optional(),
+    note: z.string().trim().max(500).nullish(),
+  }).safeParse(req.body);
+  if (!r.success) { tplBad(res); return; }
+  const data = await billPortfolioRepository.createRemittance({ ...r.data, userId: req.user!.userId, storeId: req.user!.storeId ?? null });
+  res.status(201).json({ success: true, data });
+}));
+ledgerRouter.post('/bills/remittances/:id/settle', ...TAX_AM, requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({ date: billDate }).safeParse(req.body);
+  if (!r.success) { tplBad(res); return; }
+  res.json({ success: true, data: await billPortfolioRepository.settleRemittance(req.params.id, { date: r.data.date, userId: req.user!.userId }) });
+}));
+ledgerRouter.post('/bills/remittances/:id/cancel', ...TAX_AM, requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  await billPortfolioRepository.cancelRemittance(req.params.id, { userId: req.user!.userId });
+  res.json({ success: true });
+}));
+ledgerRouter.post('/bills/:id/unpaid', ...TAX_AM, requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({ date: billDate, fees: z.number().min(0).max(1e7).default(0), note: z.string().trim().max(500).nullish() }).safeParse(req.body);
+  if (!r.success) { tplBad(res); return; }
+  res.json({ success: true, data: await billPortfolioRepository.markUnpaid(req.params.id, { ...r.data, userId: req.user!.userId }) });
 }));
 ledgerRouter.get('/fx-revaluation/:year', ...TAX_AM, asyncHandler(async (req: AuthRequest, res: Response) => {
   const y = taxYear(req, res); if (y === null) return;

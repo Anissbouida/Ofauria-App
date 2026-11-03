@@ -30,6 +30,10 @@ import {
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey,
 } from '../../components/purchasing/ProcessBoard';
 import { apiErrorMessage } from '../../api/errors';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import type { BudgetControl } from '../../api/management.api';
+
+const fmtDh = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
 import { Lock, PauseCircle, PlayCircle, Snowflake, FilePenLine, Scissors, Undo2 } from 'lucide-react';
 
@@ -267,8 +271,9 @@ export default function PurchaseOrdersTab({ initialSupplierId = '' }: {
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers'], queryFn: suppliersApi.list });
   const { entries: unitEntries } = useReferentiel('units');
 
+  const confirmDialog = useConfirm();
   const sendMutation = useMutation({
-    mutationFn: purchaseOrdersApi.send,
+    mutationFn: (v: string | { id: string; ack: boolean }) => typeof v === 'string' ? purchaseOrdersApi.send(v) : purchaseOrdersApi.send(v.id, v.ack),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       // 202 : le BC dépasse un seuil (Paramètres › Approbations) et attend l'approbateur.
@@ -279,7 +284,24 @@ export default function PurchaseOrdersTab({ initialSupplierId = '' }: {
         notify.success('BC envoyé au fournisseur');
       }
     },
-    onError: (e) => notify.error(apiErrorMessage(e, 'Envoi impossible')),
+    onError: async (e, v) => {
+      // Contrôle budgétaire (mig 435) : dépassement du disponible → confirmation (alerte)
+      // ou refus (blocage, que seul l'administrateur peut lever en confirmant).
+      const body = (e as { response?: { data?: { error?: { code?: string }; budget?: BudgetControl } } }).response?.data;
+      const code = body?.error?.code;
+      if ((code === 'BUDGET_WARNING' || code === 'BUDGET_EXCEEDED') && body?.budget) {
+        const id = typeof v === 'string' ? v : v.id;
+        const detail = body.budget.lines.filter(l => l.exceeded > 0).map(l =>
+          `${l.code} ${l.label} : demandé ${fmtDh(l.request)}, disponible ${fmtDh(l.available)} (budget ${fmtDh(l.budget)}, réel ${fmtDh(l.actual)}, engagé ${fmtDh(l.committed)})`).join('\n');
+        const blocking = code === 'BUDGET_EXCEEDED';
+        if (blocking && !isAdmin) { notify.error(`Budget dépassé : envoi refusé.\n${detail}`); return; }
+        const ok = await confirmDialog(`${blocking ? 'Le budget bloque ce bon de commande.' : 'Ce bon de commande dépasse le disponible budgétaire.'}\n\n${detail}`,
+          { title: blocking ? 'Budget dépassé' : 'Alerte budgétaire', confirmLabel: blocking ? 'Passer outre et envoyer' : 'Envoyer quand même', danger: blocking });
+        if (ok) sendMutation.mutate({ id, ack: true });
+        return;
+      }
+      notify.error(apiErrorMessage(e, 'Envoi impossible'));
+    },
   });
   // Annuler / non livré / bloquer : motif codé obligatoire, action journalisée (mig 306).
   const [poReason, setPoReason] = useState<PoReasonAction | null>(null);

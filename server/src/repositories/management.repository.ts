@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { controlRequest, type AccountPosition, type ControlAction, type ControlLine, type ControlPeriod } from '../services/budget-control.rules.js';
 
 /**
  * Contrôle de gestion (mig 317).
@@ -41,7 +42,87 @@ async function actualByAccountMonth(year: number, storeId: string | null) {
   return rows as { account_id: string; month: number; amount: number }[];
 }
 
+/** Engagé ouvert par compte (BC envoyés ni reçus ni facturés, mig 435), commandés jusqu'au `until`. */
+async function committedByAccount(until: string, storeId: string | null, excludePurchaseOrderId: string | null = null) {
+  const { rows } = await db.query(
+    `SELECT account_id, SUM(committed)::float AS amount
+       FROM v_budget_commitments
+      WHERE committed > 0 AND account_id IS NOT NULL AND order_date <= $1::date
+        AND ($2::uuid IS NULL OR store_id IS NULL OR store_id = $2::uuid)
+        AND ($3::uuid IS NULL OR purchase_order_id <> $3::uuid)
+      GROUP BY 1`,
+    [until, storeId, excludePurchaseOrderId],
+  );
+  return new Map((rows as { account_id: string; amount: number }[]).map(r => [r.account_id, r.amount]));
+}
+
 export const managementRepository = {
+  /**
+   * Contrôle budgétaire d'une demande (montants HT par compte de charge) à une
+   * date. Budget approuvé du magasin, sinon budget commun ; rien à contrôler
+   * sans budget approuvé ou si son action est « aucune ».
+   */
+  async budgetControl(p: { date: string; storeId: string | null; request: Map<string, number>; excludePurchaseOrderId?: string | null }) {
+    const year = Number(p.date.slice(0, 4)), month = Number(p.date.slice(5, 7));
+    const { rows: [budget] } = await db.query(
+      `SELECT id, name, store_id, control_action, control_period FROM budgets
+        WHERE fiscal_year = $1 AND status = 'approved' AND (store_id = $2::uuid OR store_id IS NULL)
+        ORDER BY store_id NULLS LAST LIMIT 1`,
+      [year, p.storeId],
+    );
+    if (!budget || budget.control_action === 'none') return { budget: budget ?? null, outcome: 'ok' as const, lines: [] as ControlLine[] };
+    const accountIds = [...p.request.keys()];
+    const { rows: lines } = await db.query(
+      `SELECT bl.account_id, bl.month, bl.amount::float AS amount, a.code, a.label
+         FROM budget_lines bl JOIN accounts a ON a.id = bl.account_id
+        WHERE bl.budget_id = $1 AND bl.account_id = ANY($2::uuid[])`,
+      [budget.id, accountIds],
+    );
+    const scope = budget.store_id as string | null;
+    const [actual, committed] = await Promise.all([
+      actualByAccountMonth(year, scope),
+      committedByAccount(`${year}-12-31`, scope, p.excludePurchaseOrderId ?? null),
+    ]);
+    const positions = new Map<string, AccountPosition>();
+    for (const l of lines as { account_id: string; month: number; amount: number; code: string; label: string }[]) {
+      const pos = positions.get(l.account_id) ?? { account_id: l.account_id, code: l.code, label: l.label, budget: Array(12).fill(0), actual: Array(12).fill(0), committed: committed.get(l.account_id) ?? 0 };
+      pos.budget[l.month - 1] = l.amount;
+      positions.set(l.account_id, pos);
+    }
+    for (const a of actual) { const pos = positions.get(a.account_id); if (pos) pos.actual[a.month - 1] = a.amount; }
+    const res = controlRequest({ action: budget.control_action, period: budget.control_period, month, positions: [...positions.values()], request: p.request });
+    return { budget, ...res };
+  },
+
+  /** Montants HT d'un BC par compte de charge (même résolution que la réception). */
+  async purchaseOrderAmounts(purchaseOrderId: string) {
+    const { rows } = await db.query(
+      `SELECT po.store_id, COALESCE(po.order_date, po.created_at::date)::text AS order_date,
+              fn_expense_category_account(COALESCE(poi.category_id, ing.category_id, pkg.category_id)) AS account_id,
+              SUM(COALESCE(poi.amount_ht, poi.quantity_ordered * COALESCE(poi.unit_price, 0) * (1 - COALESCE(poi.discount_pct, 0) / 100))
+                  * COALESCE(po.exchange_rate, 1))::float AS amount
+         FROM purchase_order_items poi
+         JOIN purchase_orders po ON po.id = poi.purchase_order_id
+         LEFT JOIN ingredients ing ON ing.id = poi.ingredient_id
+         LEFT JOIN packaging_items pkg ON pkg.id = poi.packaging_id
+        WHERE po.id = $1
+        GROUP BY 1, 2, 3`,
+      [purchaseOrderId],
+    );
+    const request = new Map<string, number>();
+    for (const r of rows as { account_id: string | null; amount: number }[]) if (r.account_id) request.set(r.account_id, (request.get(r.account_id) ?? 0) + r.amount);
+    return { storeId: (rows[0]?.store_id ?? null) as string | null, request };
+  },
+
+  /** Action et période du contrôle budgétaire (modifiables même budget approuvé). */
+  async setControl(budgetId: string, control: { action: ControlAction; period: ControlPeriod }) {
+    const { rows } = await db.query(
+      `UPDATE budgets SET control_action = $2, control_period = $3 WHERE id = $1 RETURNING *`,
+      [budgetId, control.action, control.period],
+    );
+    return rows[0] ?? null;
+  },
+
   async accounts() {
     const { rows } = await db.query(
       `SELECT id, code, label, account_class FROM accounts
@@ -146,10 +227,11 @@ export const managementRepository = {
    * sans comparer un budget annuel à un réel partiel.
    */
   async comparison(year: number, storeId: string | null) {
-    const [accounts, budget, actual] = await Promise.all([
+    const [accounts, budget, actual, committed] = await Promise.all([
       this.accounts(),
       this.findBudget(year, storeId),
       actualByAccountMonth(year, storeId),
+      committedByAccount(`${year}-12-31`, storeId),
     ]);
     const { rows: lines } = budget
       ? await db.query(`SELECT account_id, month, amount::float FROM budget_lines WHERE budget_id = $1`, [budget.id])
@@ -170,6 +252,9 @@ export const managementRepository = {
       actual_year: sum(r.actual),
       budget_ytd: sum(r.budget, elapsed),
       actual_ytd: sum(r.actual, elapsed),
+      // Engagé ouvert (BC ni reçus ni facturés) et disponible sur l'année.
+      committed: committed.get(r.id as string) ?? 0,
+      available: sum(r.budget) - sum(r.actual) - (committed.get(r.id as string) ?? 0),
     }));
     const total = (cls: number, key: 'budget' | 'actual') => Array.from({ length: 12 }, (_, m) =>
       withTotals.filter(r => r.account_class === cls).reduce((s, r) => s + r[key][m], 0));
@@ -181,7 +266,7 @@ export const managementRepository = {
       rows: withTotals,
       totals: {
         produits: { budget: produitsB, actual: produitsA },
-        charges: { budget: chargesB, actual: chargesA },
+        charges: { budget: chargesB, actual: chargesA, committed: withTotals.filter(r => r.account_class === 6).reduce((s, r) => s + r.committed, 0) },
         resultat: {
           budget: produitsB.map((v, i) => v - chargesB[i]),
           actual: produitsA.map((v, i) => v - chargesA[i]),

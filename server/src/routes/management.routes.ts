@@ -68,6 +68,22 @@ managementRouter.post('/budget/:id/status', ...AM, asyncHandler(async (req: Auth
   res.json({ success: true, data });
 }));
 
+// Contrôle budgétaire (mig 435) : action sur dépassement et période de contrôle.
+managementRouter.put('/budget/:id/control', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({ action: z.enum(['none', 'warn', 'block']), period: z.enum(['annual', 'cumulative']) }).safeParse(req.body);
+  if (!uuid.safeParse(req.params.id).success || !r.success) return bad(res);
+  const data = await repo.setControl(req.params.id, r.data);
+  if (!data) { res.status(404).json({ success: false, error: { message: 'Budget introuvable' } }); return; }
+  res.json({ success: true, data });
+}));
+// Disponible budgétaire d'un BC (aperçu avant envoi).
+managementRouter.get('/budget/check/purchase-order/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  if (!uuid.safeParse(req.params.id).success) return bad(res);
+  const po = await repo.purchaseOrderAmounts(req.params.id);
+  const date = new Date().toISOString().slice(0, 10);
+  res.json({ success: true, data: await repo.budgetControl({ date, storeId: po.storeId, request: po.request, excludePurchaseOrderId: req.params.id }) });
+}));
+
 managementRouter.delete('/budget/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) return bad(res);
   const ok = await repo.deleteBudget(req.params.id);

@@ -38,6 +38,7 @@ import AgedBalanceTab from './AgedBalanceTab';
 import CorporateTaxTab from './CorporateTaxTab';
 import FxRevaluationTab from './FxRevaluationTab';
 import LiasseTab from './LiasseTab';
+import BillsPortfolioTab from './BillsPortfolioTab';
 import GrandLivreTab from './GrandLivreTab';
 import BalanceTab from './BalanceTab';
 import CpcTab from './CpcTab';
@@ -61,7 +62,7 @@ import {
   periodLabel as periodLabelOf, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 
-type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance' | 'is' | 'fx' | 'liasse';
+type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance' | 'is' | 'fx' | 'liasse' | 'effets';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -286,6 +287,7 @@ const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[]
   { key: 'caisse', label: 'Caisse', icon: Wallet, section: 'operations' },
   { key: 'charges', label: 'Charges & Dépenses', icon: TrendingDown, section: 'operations' },
   { key: 'cheques', label: 'Chèques et Traites', icon: Receipt, section: 'operations' },
+  { key: 'effets', label: "Portefeuille d'effets", icon: Wallet, section: 'operations', adminOnly: true },
   { key: 'dettes', label: 'Créances & dettes', icon: Scale, section: 'operations' },
   { key: 'banque', label: 'Banque', icon: Landmark, section: 'operations', adminOnly: true },
   { key: 'cca', label: "Charges payées d'avance", icon: CalendarClock, section: 'operations', adminOnly: true },
@@ -352,6 +354,7 @@ export default function AccountingPage() {
       {tab === 'is' && <CorporateTaxTab />}
       {tab === 'fx' && <FxRevaluationTab />}
       {tab === 'liasse' && <LiasseTab />}
+      {tab === 'effets' && <BillsPortfolioTab />}
       {tab === 'cloture' && <ClotureTab />}
       {tab === 'cca' && <PrepaidChargesTab />}
       {tab === 'cashflow' && <CashFlowTab />}

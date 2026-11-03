@@ -2403,73 +2403,7 @@ export const paymentRepository = {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
-      await withActor(client, input.userId);
-      await assertReasonCode(client, input.reasonCodeId, 'void_payment', input.note);
-
-      const r = await client.query(`SELECT * FROM payments WHERE id = $1 FOR UPDATE`, [id]);
-      const p = r.rows[0];
-      if (!p) throw Object.assign(new Error('Paiement introuvable'), { statusCode: 404 });
-      const conflict = (msg: string) => Object.assign(new Error(msg), { statusCode: 409 });
-      if (p.voids_payment_id) throw conflict('Une contre-pièce d\'annulation ne s\'annule pas.');
-      if (p.status === 'void') throw conflict('Ce paiement est déjà annulé.');
-      if (p.payment_method === 'avoir') throw conflict('Un avoir déduit ne s\'annule pas ici : il suit le règlement qui l\'a appliqué.');
-      if (p.type === 'salary' || p.type === 'advance') {
-        throw conflict('Un paiement de paie ou d\'avance s\'annule depuis le module Paie, qui tient aussi le bulletin et la retenue.');
-      }
-      if (p.cashed_at) {
-        throw conflict(`Le ${p.payment_method === 'traite' ? 'effet' : 'chèque'} est déjà encaissé le ${String(p.cashed_at).slice(0, 10)} : annulez d'abord l'encaissement.`);
-      }
-      const reconciled = await client.query(
-        `SELECT 1 FROM bank_statement_lines bsl
-           JOIN journal_entry_lines jel ON jel.id = bsl.matched_entry_line_id
-           JOIN journal_entries je ON je.id = jel.journal_entry_id
-          WHERE je.source_id = $1 LIMIT 1`, [id]);
-      if (reconciled.rows[0]) throw conflict('Ce paiement est rapproché sur un relevé bancaire : dé-rapprochez la ligne avant de l\'annuler.');
-
-      // Avoir déduit dans le même acte (même facture, même date) : il suit le règlement.
-      const linkedAvoir = p.invoice_id ? await client.query(
-        `SELECT id FROM payments WHERE invoice_id = $1 AND payment_method = 'avoir' AND payment_date = $2
-           AND status <> 'void' AND voids_payment_id IS NULL AND created_at BETWEEN $3::timestamptz - interval '5 seconds' AND $3::timestamptz + interval '5 seconds'`,
-        [p.invoice_id, p.payment_date, p.created_at]) : { rows: [] as { id: string }[] };
-
-      const toVoid = [p.id as string, ...linkedAvoir.rows.map((a: { id: string }) => a.id)];
-      const today = new Date().toISOString().slice(0, 10);
-      for (const pid of toVoid) {
-        await client.query(
-          `UPDATE payments SET status = 'void', voided_at = now(), voided_by = $2, void_reason_code_id = $3,
-                  void_note = $4, updated_by = $2 WHERE id = $1`,
-          [pid, input.userId, input.reasonCodeId, input.note ?? null]);
-        // Contre-pièce : mêmes attributs, montant opposé, même date (les cumuls du jour se neutralisent).
-        await client.query(
-          `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id, amount,
-              payment_method, payment_mode, payment_date, description, created_by, store_id, purchase_order_id,
-              withholding_type_id, withholding_amount, session_id, scheduled_payment_id, treasury_account_id,
-              to_treasury_account_id, status, voids_payment_id, executed_at, executed_by,
-              currency_code, exchange_rate, foreign_amount, settled_amount, fx_difference)
-           SELECT reference, type, category_id, invoice_id, supplier_id, employee_id, -amount,
-              payment_method, payment_mode, payment_date,
-              'Annulation : ' || COALESCE(description, reference, check_number, ''), $2, store_id, purchase_order_id,
-              withholding_type_id, -withholding_amount, session_id, scheduled_payment_id, treasury_account_id,
-              to_treasury_account_id, 'void', id, now(), $2,
-              currency_code, exchange_rate, -foreign_amount, -settled_amount, -fx_difference
-             FROM payments WHERE id = $1`,
-          [pid, input.userId]);
-        if (FLAGS.LEDGER_AUTOGEN) {
-          await reverseEntriesForSource(client, {
-            sourceId: pid, sourceKinds: ['payment', 'backfill'], forceExtourne: true, extourneDate: today,
-          });
-        }
-      }
-
-      if (p.invoice_id) {
-        await invoiceRepository.updatePaidAmount(p.invoice_id, client);
-        if (FLAGS.LEDGER_AUTOGEN) await autoLettrer(client, p.invoice_id);
-      }
-      await recordAction(client, {
-        documentType: 'payment', documentId: id, action: 'cancelled', actorId: input.userId,
-        reasonCodeId: input.reasonCodeId, note: input.note ?? null, snapshotAmount: parseFloat(p.amount),
-        diff: linkedAvoir.rows.length ? { linked_avoirs: linkedAvoir.rows.map((a: { id: string }) => a.id) } : null,
-      });
+      await this.voidPaymentInTx(client, id, input);
       await client.query('COMMIT');
       const out = await db.query(`SELECT * FROM payments WHERE id = $1`, [id]);
       return out.rows[0];
@@ -2479,6 +2413,77 @@ export const paymentRepository = {
     } finally {
       client.release();
     }
+  },
+
+  /** Corps de voidPayment dans une transaction ouverte (impayé d'effet, mig 435). */
+  async voidPaymentInTx(client: PoolClient, id: string, input: { reasonCodeId: string; note?: string | null; userId: string; date?: string }) {
+    await withActor(client, input.userId);
+    await assertReasonCode(client, input.reasonCodeId, 'void_payment', input.note);
+
+    const r = await client.query(`SELECT * FROM payments WHERE id = $1 FOR UPDATE`, [id]);
+    const p = r.rows[0];
+    if (!p) throw Object.assign(new Error('Paiement introuvable'), { statusCode: 404 });
+    const conflict = (msg: string) => Object.assign(new Error(msg), { statusCode: 409 });
+    if (p.voids_payment_id) throw conflict('Une contre-pièce d\'annulation ne s\'annule pas.');
+    if (p.status === 'void') throw conflict('Ce paiement est déjà annulé.');
+    if (p.payment_method === 'avoir') throw conflict('Un avoir déduit ne s\'annule pas ici : il suit le règlement qui l\'a appliqué.');
+    if (p.type === 'salary' || p.type === 'advance') {
+      throw conflict('Un paiement de paie ou d\'avance s\'annule depuis le module Paie, qui tient aussi le bulletin et la retenue.');
+    }
+    if (p.cashed_at) {
+      throw conflict(`Le ${p.payment_method === 'traite' ? 'effet' : 'chèque'} est déjà encaissé le ${String(p.cashed_at).slice(0, 10)} : annulez d'abord l'encaissement.`);
+    }
+    const reconciled = await client.query(
+      `SELECT 1 FROM bank_statement_lines bsl
+         JOIN journal_entry_lines jel ON jel.id = bsl.matched_entry_line_id
+         JOIN journal_entries je ON je.id = jel.journal_entry_id
+        WHERE je.source_id = $1 LIMIT 1`, [id]);
+    if (reconciled.rows[0]) throw conflict('Ce paiement est rapproché sur un relevé bancaire : dé-rapprochez la ligne avant de l\'annuler.');
+
+    // Avoir déduit dans le même acte (même facture, même date) : il suit le règlement.
+    const linkedAvoir = p.invoice_id ? await client.query(
+      `SELECT id FROM payments WHERE invoice_id = $1 AND payment_method = 'avoir' AND payment_date = $2
+         AND status <> 'void' AND voids_payment_id IS NULL AND created_at BETWEEN $3::timestamptz - interval '5 seconds' AND $3::timestamptz + interval '5 seconds'`,
+      [p.invoice_id, p.payment_date, p.created_at]) : { rows: [] as { id: string }[] };
+
+    const toVoid = [p.id as string, ...linkedAvoir.rows.map((a: { id: string }) => a.id)];
+    const today = input.date ?? new Date().toISOString().slice(0, 10);
+    for (const pid of toVoid) {
+      await client.query(
+        `UPDATE payments SET status = 'void', voided_at = now(), voided_by = $2, void_reason_code_id = $3,
+                void_note = $4, updated_by = $2 WHERE id = $1`,
+        [pid, input.userId, input.reasonCodeId, input.note ?? null]);
+      // Contre-pièce : mêmes attributs, montant opposé, même date (les cumuls du jour se neutralisent).
+      await client.query(
+        `INSERT INTO payments (reference, type, category_id, invoice_id, supplier_id, employee_id, amount,
+            payment_method, payment_mode, payment_date, description, created_by, store_id, purchase_order_id,
+            withholding_type_id, withholding_amount, session_id, scheduled_payment_id, treasury_account_id,
+            to_treasury_account_id, status, voids_payment_id, executed_at, executed_by,
+            currency_code, exchange_rate, foreign_amount, settled_amount, fx_difference)
+         SELECT reference, type, category_id, invoice_id, supplier_id, employee_id, -amount,
+            payment_method, payment_mode, payment_date,
+            'Annulation : ' || COALESCE(description, reference, check_number, ''), $2, store_id, purchase_order_id,
+            withholding_type_id, -withholding_amount, session_id, scheduled_payment_id, treasury_account_id,
+            to_treasury_account_id, 'void', id, now(), $2,
+            currency_code, exchange_rate, -foreign_amount, -settled_amount, -fx_difference
+           FROM payments WHERE id = $1`,
+        [pid, input.userId]);
+      if (FLAGS.LEDGER_AUTOGEN) {
+        await reverseEntriesForSource(client, {
+          sourceId: pid, sourceKinds: ['payment', 'backfill'], forceExtourne: true, extourneDate: today,
+        });
+      }
+    }
+
+    if (p.invoice_id) {
+      await invoiceRepository.updatePaidAmount(p.invoice_id, client);
+      if (FLAGS.LEDGER_AUTOGEN) await autoLettrer(client, p.invoice_id);
+    }
+    await recordAction(client, {
+      documentType: 'payment', documentId: id, action: 'cancelled', actorId: input.userId,
+      reasonCodeId: input.reasonCodeId, note: input.note ?? null, snapshotAmount: parseFloat(p.amount),
+      diff: linkedAvoir.rows.length ? { linked_avoirs: linkedAvoir.rows.map((a: { id: string }) => a.id) } : null,
+    });
   },
 
   /**

@@ -8,6 +8,7 @@ import { generatePurchaseOrderPdf } from '../services/purchase-order-pdf.service
 import { db } from '../config/database.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { purchaseOrderActionsRepository } from '../repositories/purchase-order-actions.repository.js';
+import { managementRepository } from '../repositories/management.repository.js';
 import { existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -163,6 +164,23 @@ export const purchaseOrderController = {
       [req.params.id]
     );
     const amount = Number(amountRes.rows[0]?.amount ?? 0);
+    // Contrôle budgétaire (lot Bonus 15, mig 435) : le BC engage la dépense. Au-delà
+    // du disponible (budget − réel − engagé), alerte à confirmer ou blocage ;
+    // seul l'administrateur passe outre un blocage, en confirmant.
+    const poAmounts = await managementRepository.purchaseOrderAmounts(req.params.id);
+    const budget = await managementRepository.budgetControl({
+      date: new Date().toISOString().slice(0, 10), storeId: poAmounts.storeId ?? po.store_id ?? null,
+      request: poAmounts.request, excludePurchaseOrderId: req.params.id,
+    });
+    const ack = req.body?.budgetAck === true;
+    if (budget.outcome === 'block' && !(ack && req.user!.role === 'admin')) {
+      res.status(409).json({ success: false, error: { code: 'BUDGET_EXCEEDED', message: 'Budget dépassé : ce bon de commande excède le disponible budgétaire' }, budget });
+      return;
+    }
+    if (budget.outcome === 'warn' && !ack) {
+      res.status(409).json({ success: false, error: { code: 'BUDGET_WARNING', message: 'Ce bon de commande dépasse le disponible budgétaire' }, budget });
+      return;
+    }
     // Circuit d'approbation (lot 8, mig 350) : si une règle active correspond
     // (BC au-dessus du seuil paramétré), le bon attend l'accord d'un
     // approbateur et c'est le moteur qui l'enverra. On passe AVANT le plafond :
