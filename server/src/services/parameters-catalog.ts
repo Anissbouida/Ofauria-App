@@ -210,6 +210,30 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'purchasing.off_contract_enforcement', domain: 'purchasing', section: 'business',
+    label: 'Prix hors tarif contractuel (à l\'envoi du BC)',
+    help: 'À l\'envoi d\'un bon de commande, le prix de chaque ligne est comparé au tarif contractuel du fournisseur (un tarif saisi ou négocié, pas un prix appris d\'une réception passée). Au-delà de la tolérance, « Bloquer » met le BC en blocage — ni réception ni facture tant qu\'un responsable ne le lève pas ; « Observer » journalise seulement. « Tarif contractuel exigé » étend le contrôle aux articles référencés chez le fournisseur mais sans tarif contractuel. Dormant tant qu\'aucun tarif contractuel n\'est saisi (mig 453).',
+    fields: [
+      { name: 'mode', label: 'Contrôle', type: 'enum', options: [
+        { value: 'off', label: 'Désactivé' },
+        { value: 'warn', label: 'Observer (journaliser sans bloquer)' },
+        { value: 'block', label: 'Bloquer (poser un blocage)' },
+      ] },
+      { name: 'price_tol_pct', label: 'Tolérance de dépassement', type: 'percent', min: 0, max: 100 },
+      { name: 'require_contract_price', label: 'Tarif contractuel exigé', type: 'boolean' },
+    ],
+    defaults: { mode: 'warn', price_tol_pct: 5, require_contract_price: false },
+    storage: { kind: 'module_parameters' },
+  },
+  {
+    key: 'purchasing.po_requires_request', domain: 'purchasing', section: 'business',
+    label: 'Demande d\'achat obligatoire pour un BC',
+    help: 'Un bon de commande doit référencer une demande d\'achat pour être envoyé. « Bloquer » refuse l\'envoi d\'un BC sans demande d\'achat, sauf à préciser un motif d\'urgence (tracé sur le BC) ; « Observer » journalise seulement. Beaucoup de BC étant aujourd\'hui des régularisations sans demande, laissez « Observer » tant que le flux demande → BC n\'est pas généralisé (mig 454).',
+    fields: [{ name: 'mode', label: 'Contrôle', type: 'enum', options: MODE_WARN_BLOCK }],
+    defaults: { mode: 'warn' },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'purchasing.invoice_holds_enforcement', domain: 'purchasing', section: 'business',
     label: 'Blocages de facture fournisseur',
     help: 'Un écart de rapprochement (prix, quantité, doublon) bloque-t-il le paiement de la facture ?',
