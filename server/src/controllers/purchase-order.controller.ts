@@ -242,6 +242,13 @@ export const purchaseOrderController = {
     }
     // Envoi motive et journalise (mig 306), apres le plafond d'approbation ci-dessus.
     const updated = await purchaseOrderActionsRepository.send(req.params.id, req.user!.userId, effectiveStoreFilter(req));
+    // L4 (P2P, 3/5) — si l'envoi a posé un hold hors tarif, on l'annonce : le BC
+    // est bien envoyé mais bloqué (ni réception ni facture) jusqu'à levée.
+    const offContract = (updated as { off_contract?: { held?: boolean } })?.off_contract;
+    if (offContract?.held) {
+      res.json({ success: true, data: updated, message: 'Bon envoyé mais bloqué : prix hors tarif contractuel. Un responsable doit lever le blocage avant toute réception.' });
+      return;
+    }
     res.json({ success: true, data: updated });
   },
 

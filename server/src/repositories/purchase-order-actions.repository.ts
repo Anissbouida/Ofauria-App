@@ -193,8 +193,96 @@ export const purchaseOrderActionsRepository = {
         `SELECT COALESCE(SUM(quantity_ordered * COALESCE(unit_price, 0)), 0) AS t FROM purchase_order_items WHERE purchase_order_id = $1`, [id],
       );
       await recordAction(client, { documentType: 'purchase_order', documentId: id, action: 'sent', actorId: userId, snapshotAmount: Number(total.rows[0].t) });
-      return r.rows[0];
+      // L4 (P2P, 3/5) — contrôle hors tarif : une ligne au-dessus du tarif
+      // CONTRACTUEL du fournisseur bloque le BC (hold OFF_CONTRACT), ce qui
+      // suspend réception et facturation jusqu'à revue d'un responsable. Dans la
+      // même transaction que l'envoi : BC envoyé + bloqué d'un bloc.
+      const offContract = await this._applyOffContractHold(client, id, userId);
+      const row = offContract.held
+        ? (await client.query(`SELECT * FROM purchase_orders WHERE id = $1`, [id])).rows[0]
+        : r.rows[0];
+      (row as Record<string, unknown>).off_contract = offContract;
+      return row;
     });
+  },
+
+  /**
+   * Contrôle hors tarif à l'envoi (lot L4 P2P, 3/5). Confronte le prix unitaire
+   * de chaque ligne chiffrée au tarif CONTRACTUEL du fournisseur
+   * (supplier_item_prices, source <> 'reception' : un tarif saisi/négocié, pas un
+   * prix appris d'une réception passée). Gate purchasing.off_contract_enforcement :
+   *   - 'off'   : rien ;
+   *   - 'warn'  : journalise seulement (défaut, dormant) ;
+   *   - 'block' : pose le hold OFF_CONTRACT (motif dédié, mig 453).
+   * Hors tarif = prix > tarif × (1 + tol%) ; ou, si require_contract_price, une
+   * ligne d'un article référencé chez le fournisseur mais sans tarif contractuel.
+   * N'écrase jamais un hold déjà posé. Aucun tarif contractuel aujourd'hui → dormant.
+   */
+  async _applyOffContractHold(
+    client: { query: typeof db.query }, id: string, userId: string,
+  ): Promise<{ held: boolean; mode: string; lines: Array<{ item: string; unitPrice: number; contractPrice: number | null }> }> {
+    const param = (await client.query(
+      `SELECT value FROM module_parameters WHERE key = 'purchasing.off_contract_enforcement'`)).rows[0]?.value as
+      { mode?: string; price_tol_pct?: number; require_contract_price?: boolean } | undefined;
+    const mode = param?.mode ?? 'warn';
+    if (mode === 'off') return { held: false, mode, lines: [] };
+    const tol = Number(param?.price_tol_pct ?? 5);
+    const requireContract = param?.require_contract_price === true;
+
+    const rows = (await client.query(
+      `SELECT poi.id,
+              COALESCE(ing.name, pkg.name, poi.description, 'ligne') AS item,
+              poi.unit_price::numeric AS unit_price,
+              si.id AS supplier_item_id,
+              sip.price::numeric AS contract_price
+         FROM purchase_order_items poi
+         JOIN purchase_orders po ON po.id = poi.purchase_order_id
+         LEFT JOIN ingredients ing ON ing.id = poi.ingredient_id
+         LEFT JOIN packaging_items pkg ON pkg.id = poi.packaging_id
+         LEFT JOIN supplier_items si ON si.supplier_id = po.supplier_id AND si.archived_at IS NULL
+           AND ((poi.ingredient_id IS NOT NULL AND si.purchasable_kind = 'ingredient' AND si.purchasable_id = poi.ingredient_id)
+             OR (poi.packaging_id  IS NOT NULL AND si.purchasable_kind = 'packaging'  AND si.purchasable_id = poi.packaging_id))
+         LEFT JOIN LATERAL (
+           SELECT sp.price FROM supplier_item_prices sp
+            WHERE sp.supplier_item_id = si.id AND sp.source <> 'reception'
+              AND sp.valid_from <= po.order_date AND (sp.valid_to IS NULL OR sp.valid_to >= po.order_date)
+            ORDER BY sp.valid_from DESC, sp.created_at DESC LIMIT 1) sip ON true
+        WHERE poi.purchase_order_id = $1 AND poi.unit_price IS NOT NULL AND poi.unit_price > 0`,
+      [id])).rows as Array<{ id: string; item: string; unit_price: string; supplier_item_id: string | null; contract_price: string | null }>;
+
+    const offending = rows
+      .filter(l => l.contract_price != null
+        ? Number(l.unit_price) > Number(l.contract_price) * (1 + tol / 100)
+        : requireContract && l.supplier_item_id != null)
+      .map(l => ({
+        item: l.item,
+        unitPrice: Number(l.unit_price),
+        contractPrice: l.contract_price != null ? Number(l.contract_price) : null,
+      }));
+    if (offending.length === 0) return { held: false, mode, lines: [] };
+
+    const note = ('Prix hors tarif contractuel : ' + offending.map(l => l.contractPrice != null
+      ? `${l.item} ${l.unitPrice.toFixed(2)} > tarif ${l.contractPrice.toFixed(2)} (+${tol}%)`
+      : `${l.item} ${l.unitPrice.toFixed(2)} sans tarif contractuel`).join(' ; ')).slice(0, 1000);
+
+    if (mode !== 'block') {
+      console.warn(`[off-contract][warn] BC ${id} : ${note}`);
+      return { held: false, mode, lines: offending };
+    }
+
+    // block : hold OFF_CONTRACT avec le motif dédié (mig 453). N'écrase pas un hold en place.
+    const reason = (await client.query(
+      `SELECT id FROM ref_entries WHERE table_id = 'purchase_reason_codes' AND code = 'off_contract_price' AND is_active`)).rows[0]?.id as string | undefined;
+    if (!reason) { console.warn(`[off-contract] motif off_contract_price absent (mig 453 non appliquée) : BC ${id}`); return { held: false, mode, lines: offending }; }
+    const upd = await client.query(
+      `UPDATE purchase_orders
+          SET on_hold = true, hold_reason_code_id = $2, hold_note = $3, held_by = $4, held_at = now(), updated_at = now()
+        WHERE id = $1 AND NOT on_hold`,
+      [id, reason, note, userId]);
+    if (upd.rowCount) {
+      await recordAction(client, { documentType: 'purchase_order', documentId: id, action: 'held', actorId: userId, reasonCodeId: reason, note });
+    }
+    return { held: !!upd.rowCount, mode, lines: offending };
   },
 
   /**
