@@ -23,6 +23,18 @@ const STATUS_INFO: Record<string, { label: string; tag: string; dot: string }> =
   cancelled: { label: 'Annulé',      tag: 'odoo-tag-grey',   dot: 'neutral' },
 };
 
+/**
+ * État du circuit d'approbation (dimension séparée de la couverture, mig 456).
+ * Flux procure-to-pay : une DA n'est transformable en BC que si approuvée.
+ */
+const APPROVAL_INFO: Record<string, { label: string; tag: string }> = {
+  draft:    { label: 'Brouillon',   tag: 'odoo-tag-grey' },
+  pending:  { label: 'À approuver', tag: 'odoo-tag-yellow' },
+  approved: { label: 'Approuvée',   tag: 'odoo-tag-green' },
+  rejected: { label: 'Refusée',     tag: 'odoo-tag-red' },
+};
+const isApproved = (s: string | undefined) => (s ?? 'approved') === 'approved';
+
 type ReasonAction = { kind: 'cancel' | 'close'; id: string; label: string };
 
 const REASON_LABELS: Record<string, { label: string; color: string }> = {
@@ -50,6 +62,7 @@ interface SupplierGroup {
     unit: string;
     reason: string;
     note: string | null;
+    approval_status: string;
     requested_by_name: string;
     created_at: string;
   }[];
@@ -118,7 +131,7 @@ export default function PurchaseRequestsPage() {
       setQuantityOverrides({});
       notify.success(`Bon de commande ${po.order_number} cree`);
     },
-    onError: () => notify.error('Erreur lors de la creation du BC'),
+    onError: (e) => notify.error(apiErrorMessage(e, 'Erreur lors de la création du BC')),
   });
 
   const filteredGroups = useMemo(() => {
@@ -136,11 +149,13 @@ export default function PurchaseRequestsPage() {
 
   const toggleSelectAll = (supplierId: string, requests: SupplierGroup['requests']) => {
     const key = supplierId || '__none__';
+    // Seules les DA approuvées peuvent rejoindre un BC (flux procure-to-pay).
+    const selectable = requests.filter(r => isApproved(r.approval_status));
     const current = selectedRequests[key] || new Set();
-    if (current.size === requests.length) {
+    if (current.size === selectable.length && selectable.length > 0) {
       setSelectedRequests({ ...selectedRequests, [key]: new Set() });
     } else {
-      setSelectedRequests({ ...selectedRequests, [key]: new Set(requests.map(r => r.id)) });
+      setSelectedRequests({ ...selectedRequests, [key]: new Set(selectable.map(r => r.id)) });
     }
   };
 
@@ -217,7 +232,8 @@ export default function PurchaseRequestsPage() {
             const suppKey = group.supplier_id || '__none__';
             const isExpanded = expandedSupplier === suppKey;
             const selected = getSelectedForSupplier(group.supplier_id || '');
-            const allSelected = selected.size === group.requests.length && group.requests.length > 0;
+            const approvedCount = group.requests.filter(r => isApproved(r.approval_status)).length;
+            const allSelected = selected.size === approvedCount && approvedCount > 0;
             const someSelected = selected.size > 0;
             const dotClass = group.supplier_id ? 'ok' : 'warning';
 
@@ -290,6 +306,7 @@ export default function PurchaseRequestsPage() {
                           <th style={{ width: 24 }}></th>
                           <th>Ingrédient</th>
                           <th>Motif</th>
+                          <th>Approbation</th>
                           <th>Demandeur</th>
                           <th>Date</th>
                           <th>Note</th>
@@ -306,14 +323,18 @@ export default function PurchaseRequestsPage() {
                             : req.reason === 'production' ? 'odoo-tag-blue'
                             : req.reason === 'replenishment' ? 'odoo-tag-purple'
                             : 'odoo-tag-grey';
+                          const approved = isApproved(req.approval_status);
+                          const appr = APPROVAL_INFO[req.approval_status] ?? APPROVAL_INFO.approved;
                           return (
-                            <tr key={req.id}>
+                            <tr key={req.id} style={{ opacity: approved ? 1 : 0.7 }}>
                               <td>
-                                <input type="checkbox" checked={isSelected}
+                                <input type="checkbox" checked={isSelected} disabled={!approved}
+                                  title={approved ? undefined : 'Demande non approuvée : à approuver avant de générer un BC'}
                                   onChange={() => toggleSelect(group.supplier_id || '', req.id)} />
                               </td>
                               <td style={{ fontWeight: 500 }}>{req.ingredient_name}</td>
                               <td><span className={`odoo-tag ${reasonTag}`}>{reasonInfo.label}</span></td>
+                              <td><span className={`odoo-tag ${appr.tag}`}>{appr.label}</span></td>
                               <td style={{ color: 'var(--theme-text-muted)' }}>
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                                   <User size={10} /> {req.requested_by_name}
@@ -385,6 +406,7 @@ export default function PurchaseRequestsPage() {
                   <th>Fournisseur</th>
                   <th>Motif</th>
                   <th>Statut</th>
+                  <th>Approbation</th>
                   <th>Demandeur</th>
                   <th>Date</th>
                   <th>BC</th>
@@ -395,9 +417,9 @@ export default function PurchaseRequestsPage() {
               </thead>
               <tbody>
                 {allLoading ? (
-                  <tr><td colSpan={11} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Chargement...</td></tr>
+                  <tr><td colSpan={12} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Chargement...</td></tr>
                 ) : (allRequests as Record<string, any>[]).length === 0 ? (
-                  <tr><td colSpan={11} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune demande</td></tr>
+                  <tr><td colSpan={12} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune demande</td></tr>
                 ) : (allRequests as Record<string, any>[]).map((req) => {
                   const reasonInfo = REASON_LABELS[req.reason as string] || REASON_LABELS.manual;
                   const reasonTag = req.reason === 'stock_bas' ? 'odoo-tag-red'
@@ -423,6 +445,7 @@ export default function PurchaseRequestsPage() {
                       <td style={{ color: 'var(--theme-text-muted)' }}>{(req.supplier_name as string) || '—'}</td>
                       <td><span className={`odoo-tag ${reasonTag}`}>{reasonInfo.label}</span></td>
                       <td><span className={`odoo-tag ${statusTag}`} title={traceTitle}>{statusLabel}</span></td>
+                      <td>{(() => { const a = APPROVAL_INFO[req.approval_status as string] ?? APPROVAL_INFO.approved; return <span className={`odoo-tag ${a.tag}`}>{a.label}</span>; })()}</td>
                       <td style={{ color: 'var(--theme-text-muted)' }}>{req.requested_by_name as string}</td>
                       <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{format(new Date(req.created_at as string), 'dd/MM HH:mm')}</td>
                       <td style={{ color: 'var(--theme-accent)', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{(req.purchase_order_number as string) || '—'}</td>

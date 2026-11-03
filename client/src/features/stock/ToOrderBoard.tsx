@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Loader2, AlertTriangle, ShoppingCart, CheckCircle2, Search, Plus, X, ClipboardList, TrendingDown, Hourglass, Send,
+  Loader2, AlertTriangle, ShoppingCart, CheckCircle2, Search, Plus, ClipboardList, TrendingDown, Hourglass, Send,
 } from 'lucide-react';
 import { purchaseRequestsApi, type ToOrderRow } from '../../api/purchase-requests.api';
 import { suppliersApi } from '../../api/accounting.api';
@@ -11,7 +11,6 @@ import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import SearchSelect from '../../components/ui/SearchSelect';
-import { useAuth } from '../../context/AuthContext';
 import { fmtQty } from './types';
 
 /**
@@ -20,10 +19,10 @@ import { fmtQty } from './types';
  * sous le seuil, fusionnés par ingrédient, déduction faite de ce qui est déjà en
  * commande.
  *
- *   - Admin / gérant : cocher → fournisseur → « Créer les BC » (un BC brouillon par
- *     fournisseur, à envoyer depuis Achats › Bons de commande).
- *   - Magasinier : « Demander » ; la demande reste visible ici (« demandé par … »)
- *     et le gérant la transforme en BC au même endroit.
+ * Flux procure-to-pay (mig 456) : l'action unique, pour TOUS les rôles, est
+ * « Créer la demande d'achat ». Le chemin « BC direct » est supprimé. La DA créée
+ * passe par l'approbation (selon les règles configurées) ; une fois approuvée,
+ * elle devient un bon de commande depuis Achats › Demande d'achat.
  */
 
 type Source = 'all' | 'rupture' | 'request' | 'low' | 'covered';
@@ -42,16 +41,12 @@ function reasonOf(r: ToOrderRow | ManualRow): 'production' | 'manual' | 'stock_b
 export function ToOrderBoard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const canOrder = user?.role === 'admin' || user?.role === 'manager';
 
   const [source, setSource] = useState<Source>('all');
   const [search, setSearch] = useState('');
   const [lines, setLines] = useState<Record<string, LineState>>({});
   const [manualRows, setManualRows] = useState<ManualRow[]>([]);
   const [addIngredient, setAddIngredient] = useState('');
-  const [deliveryDate, setDeliveryDate] = useState('');
-  const [created, setCreated] = useState<Array<{ order_number: string }>>([]);
 
   const { data, isLoading, isError, error } = useQuery({ queryKey: ['to-order'], queryFn: purchaseRequestsApi.toOrder, refetchInterval: 60000 });
   const { data: suppliers = [] } = useQuery({ queryKey: ['suppliers', 'active'], queryFn: suppliersApi.listActive });
@@ -63,8 +58,6 @@ export function ToOrderBoard() {
     () => (suppliers as Record<string, any>[]).map(s => ({ id: s.id as string, label: s.name as string })).sort((a, b) => a.label.localeCompare(b.label)),
     [suppliers],
   );
-  const supplierName = (id: string) => supplierOptions.find(s => s.id === id)?.label ?? '';
-
   // État de saisie par ligne, initialisé une fois par ingrédient (on n'écrase pas la saisie au rafraîchissement).
   useEffect(() => {
     setLines(prev => {
@@ -103,12 +96,9 @@ export function ToOrderBoard() {
 
   const patch = (id: string, p: Partial<LineState>) => setLines(prev => ({ ...prev, [id]: { ...prev[id], ...p } }));
   const selectedRows = rows.filter(r => !r.covered && lines[r.ingredient_id]?.selected && (parseFloat(lines[r.ingredient_id].qty) || 0) > 0);
-  const missingSupplier = selectedRows.filter(r => !lines[r.ingredient_id].supplierId);
-  const bySupplier = new Map<string, number>();
   let estimated = 0;
   for (const r of selectedRows) {
     const l = lines[r.ingredient_id];
-    if (l.supplierId) bySupplier.set(l.supplierId, (bySupplier.get(l.supplierId) ?? 0) + 1);
     estimated += (parseFloat(l.qty) || 0) * (r.unit_price ?? 0);
   }
   const allVisibleSelected = visible.length > 0 && visible.filter(r => !r.covered).every(r => lines[r.ingredient_id]?.selected);
@@ -132,49 +122,35 @@ export function ToOrderBoard() {
     setManualRows(prev => prev.filter(m => !ids.includes(m.ingredient_id)));
   };
 
-  const orderMutation = useMutation({
-    mutationFn: () => purchaseRequestsApi.orderDirect({
-      expectedDeliveryDate: deliveryDate || undefined,
-      lines: selectedRows.map(r => ({
-        ingredientId: r.ingredient_id,
-        quantity: parseFloat(lines[r.ingredient_id].qty),
-        supplierId: lines[r.ingredient_id].supplierId,
-        unit: r.unit || 'kg',
-        requestIds: r.request_ids,
-        reason: reasonOf(r),
-        note: r.rupture_refs.length ? `Rupture ${r.rupture_refs.join(', ')}` : undefined,
-      })),
-    }),
-    onSuccess: (orders) => {
-      setCreated(orders);
-      resetSelection(selectedRows.map(r => r.ingredient_id));
-      refresh();
-      notify.success(`${orders.length} bon${orders.length > 1 ? 's' : ''} de commande créé${orders.length > 1 ? 's' : ''} (brouillon)`);
-    },
-    onError: (e) => notify.error(apiErrorMessage(e, 'Création des BC impossible')),
-  });
-
-  // Magasinier : la demande porte le complément au-delà de ce qui est déjà demandé.
+  // Flux procure-to-pay (mig 456) : l'action unique crée des DEMANDES D'ACHAT
+  // (plus de BC direct). La demande porte le complément au-delà de ce qui est déjà
+  // demandé, pour ne pas compter deux fois un besoin déjà exprimé. Chaque DA passe
+  // ensuite par l'approbation ; au moins une peut requérir un accord selon les règles.
+  const [createdRequests, setCreatedRequests] = useState<{ count: number; pending: number } | null>(null);
   const requestMutation = useMutation({
     mutationFn: async () => {
       let createdCount = 0;
+      let pendingCount = 0;
       for (const r of selectedRows) {
         const l = lines[r.ingredient_id];
         const extra = (parseFloat(l.qty) || 0) - r.request_qty;
         if (extra <= 0) continue;
-        await purchaseRequestsApi.create({
+        const res = await purchaseRequestsApi.create({
           ingredientId: r.ingredient_id, quantity: Math.round(extra * 1000) / 1000, unit: r.unit || 'kg',
           reason: reasonOf(r), supplierId: l.supplierId || null,
           note: r.rupture_refs.length ? `Rupture ${r.rupture_refs.join(', ')}` : r.low_stock ? `Stock bas : ${fmtQty(r.low_stock.current)} ${r.unit} (seuil ${fmtQty(r.low_stock.threshold)})` : undefined,
         });
         createdCount++;
+        if (res?.approval_status === 'pending') pendingCount++;
       }
-      return createdCount;
+      return { count: createdCount, pending: pendingCount };
     },
-    onSuccess: (k) => {
+    onSuccess: ({ count, pending }) => {
       resetSelection(selectedRows.map(r => r.ingredient_id));
       refresh();
-      notify.success(k ? `${k} demande${k > 1 ? 's' : ''} envoyée${k > 1 ? 's' : ''} au gérant` : 'Déjà demandé');
+      if (!count) { notify.success('Déjà demandé'); return; }
+      setCreatedRequests({ count, pending });
+      notify.success(`${count} demande${count > 1 ? 's' : ''} d'achat créée${count > 1 ? 's' : ''}`);
     },
     onError: (e) => { refresh(); notify.error(apiErrorMessage(e, 'Demande impossible')); },
   });
@@ -227,14 +203,15 @@ export function ToOrderBoard() {
 
   return (
     <>
-      {created.length > 0 && (
+      {createdRequests && (
         <StatusBanner tone="success" icon={CheckCircle2}
-          title={`${created.length} BC créé${created.length > 1 ? 's' : ''} en brouillon : ${created.map(o => o.order_number).join(', ')}`}
-          actions={<>
-            <button type="button" className="odoo-btn-primary" onClick={() => navigate('/purchasing?tab=purchase_orders')}>Voir et envoyer</button>
-            <button type="button" className="odoo-btn-secondary" onClick={() => setCreated([])} aria-label="Fermer"><X size={13} /></button>
-          </>}>
-          Vérifiez les prix puis envoyez-les au fournisseur depuis Achats › Bons de commande.
+          title={`${createdRequests.count} demande${createdRequests.count > 1 ? 's' : ''} d'achat créée${createdRequests.count > 1 ? 's' : ''}`}
+          actions={
+            <button type="button" className="odoo-btn-primary" onClick={() => navigate('/purchasing?tab=purchase_requests')}>Voir les demandes</button>
+          }>
+          {createdRequests.pending > 0
+            ? `${createdRequests.pending} en attente d'approbation. Une fois approuvée, la demande devient un bon de commande depuis Achats › Demande d'achat.`
+            : "Approuvées d'office. Transformez-les en bon de commande depuis Achats › Demande d'achat."}
         </StatusBanner>
       )}
 
@@ -383,34 +360,17 @@ export function ToOrderBoard() {
         }}>
           <span style={{ fontSize: '0.8125rem' }}>
             <strong>{selectedRows.length}</strong> article{selectedRows.length > 1 ? 's' : ''}
-            {canOrder && bySupplier.size > 0 && <> · <strong>{bySupplier.size}</strong> BC ({[...bySupplier.keys()].map(supplierName).join(', ')})</>}
             {estimated > 0 && <> · estimé <strong>{n2(estimated)} DH</strong></>}
           </span>
-          {canOrder && missingSupplier.length > 0 && (
-            <span style={{ fontSize: '0.75rem', color: '#b85d1a', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <AlertTriangle size={12} /> fournisseur à choisir pour {missingSupplier.map(r => r.ingredient_name).join(', ')}
-            </span>
-          )}
+          <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+            Fournisseur facultatif · soumis à approbation selon les règles
+          </span>
           <div style={{ flex: 1 }} />
-          {canOrder ? (
-            <>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
-                Livraison souhaitée
-                <input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="odoo-filter-dropdown" />
-              </label>
-              <button type="button" className="odoo-btn-primary" disabled={missingSupplier.length > 0 || orderMutation.isPending}
-                onClick={() => orderMutation.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                {orderMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <ShoppingCart size={13} />}
-                Créer {bySupplier.size > 1 ? `les ${bySupplier.size} BC` : 'le BC'}
-              </button>
-            </>
-          ) : (
-            <button type="button" className="odoo-btn-primary" disabled={requestMutation.isPending}
-              onClick={() => requestMutation.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              {requestMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-              Demander au gérant
-            </button>
-          )}
+          <button type="button" className="odoo-btn-primary" disabled={requestMutation.isPending}
+            onClick={() => requestMutation.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {requestMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+            Créer la demande d'achat
+          </button>
         </div>
       )}
     </>

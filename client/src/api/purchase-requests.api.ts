@@ -32,11 +32,10 @@ export const purchaseRequestsApi = {
   /** Stock › À commander : besoins fusionnés par ingrédient (ruptures, demandes, stock bas). */
   toOrder: () =>
     api.get('/purchase-requests/to-order').then(r => r.data.data as { rows: ToOrderRow[] }),
-  /** Crée un BC brouillon par fournisseur depuis À commander (admin / gérant). */
-  orderDirect: (data: {
-    lines: Array<{ ingredientId: string; quantity: number; supplierId: string; unit: string; requestIds: string[]; reason: string; note?: string }>;
-    expectedDeliveryDate?: string;
-  }) => api.post('/purchase-requests/order-direct', data).then(r => r.data.data as Array<{ id: string; order_number: string; supplier_id: string }>),
+  /**
+   * Génère un BC depuis des demandes d'achat APPROUVÉES (flux procure-to-pay,
+   * mig 456). Seul point de création d'un BC : plus de « BC direct ».
+   */
   generatePO: (data: {
     supplierId: string;
     requestIds: string[];
