@@ -40,17 +40,3 @@ export const generatePOSchema = z.object({
   notes: z.string().trim().max(2000).optional(),
   quantityOverrides: z.record(uuid, quantity).optional(),
 });
-
-/** Stock › À commander → BC directs (un BC brouillon par fournisseur). */
-export const orderDirectSchema = z.object({
-  lines: z.array(z.object({
-    ingredientId: z.string().uuid(),
-    quantity: z.number().positive().max(1_000_000),
-    supplierId: z.string().uuid(),
-    unit: z.string().trim().min(1).max(20),
-    requestIds: z.array(z.string().uuid()).max(200).default([]),
-    reason: z.enum(['stock_bas', 'production', 'manual', 'replenishment']),
-    note: z.string().trim().max(500).optional(),
-  })).min(1).max(200),
-  expectedDeliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-});

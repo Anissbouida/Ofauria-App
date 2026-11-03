@@ -222,9 +222,10 @@ export function isCapability(v: unknown): v is Capability {
 }
 
 /** Types de document soumis à un plafond d'approbation par rôle. */
-export type ApprovalDocumentType = 'purchase_order' | 'expense' | 'invoice' | 'payment';
-export const APPROVAL_DOCUMENT_TYPES: ApprovalDocumentType[] = ['purchase_order', 'expense', 'invoice', 'payment'];
+export type ApprovalDocumentType = 'purchase_request' | 'purchase_order' | 'expense' | 'invoice' | 'payment';
+export const APPROVAL_DOCUMENT_TYPES: ApprovalDocumentType[] = ['purchase_request', 'purchase_order', 'expense', 'invoice', 'payment'];
 export const APPROVAL_DOCUMENT_LABELS: Record<ApprovalDocumentType, string> = {
+  purchase_request: "Demande d'achat",
   purchase_order: 'Bon de commande',
   expense: 'Dépense',
   invoice: 'Facture',

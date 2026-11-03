@@ -87,6 +87,7 @@ export const purchaseRequestRepository = {
            'unit', pr.unit,
            'reason', pr.reason,
            'note', pr.note,
+           'approval_status', pr.approval_status,
            'requested_by_name', u.first_name || ' ' || u.last_name,
            'created_at', pr.created_at
          ) ORDER BY ing.name) as requests
@@ -285,6 +286,14 @@ export const purchaseRequestRepository = {
         throw httpError(409, `${uniqueRequested.size - reqResult.rows.length} demande(s) ne sont plus en attente pour ce fournisseur : rechargez la liste`, 'PR_STALE_SELECTION');
       }
 
+      // Flux procure-to-pay (mig 456) : le BC ne naît que d'une DEMANDE D'ACHAT
+      // APPROUVÉE. Une DA en attente d'approbation (ou refusée) ne peut pas être
+      // commandée. Dimension approval_status, distincte du statut de couverture.
+      const notApproved = reqResult.rows.filter(r => r.approval_status !== 'approved');
+      if (notApproved.length) {
+        throw httpError(409, `${notApproved.length} demande(s) ne sont pas approuvées : seule une demande d'achat approuvée peut devenir un bon de commande`, 'PR_NOT_APPROVED');
+      }
+
       // Numero de BC : on reutilise le generateur unique du module Achats
       // (MAX(suffixe)+1 sous advisory lock). L'ancienne version locale faisait
       // COUNT(*)+1, qui retombait sur un numero deja attribue des qu'un BC
@@ -346,6 +355,19 @@ export const purchaseRequestRepository = {
 
       return poResult.rows[0];
     }
+  },
+
+  /**
+   * État du circuit d'approbation de la DA (mig 456), dimension SÉPARÉE du statut
+   * de couverture. Posé à la création (pending si une règle a matché, approved
+   * sinon) et par le moteur d'approbation (approved / rejected à la décision).
+   */
+  async setApprovalStatus(id: string, approvalStatus: 'draft' | 'pending' | 'approved' | 'rejected') {
+    const result = await db.query(
+      `UPDATE purchase_requests SET approval_status = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [id, approvalStatus]
+    );
+    return result.rows[0] || null;
   },
 
   /** Count pending requests */

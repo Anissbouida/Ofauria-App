@@ -3,7 +3,48 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { purchaseRequestRepository } from '../repositories/purchase-request.repository.js';
 import { toOrderRepository } from '../repositories/to-order.repository.js';
 import { recordAction, listActions } from '../services/document-actions.service.js';
+import { approvalService } from '../services/approval.service.js';
 import { db } from '../config/database.js';
+
+/**
+ * Soumet une demande d'achat au circuit d'approbation (flux procure-to-pay, mig 456).
+ * Valeurs confrontées aux règles (approval_rules, mig 350) :
+ *   - amount     : montant estimé = quantité × coût unitaire de l'article ;
+ *   - buyer_role : rôle du demandeur ;
+ *   - category   : catégorie d'achat de l'article (valeur-liste) ;
+ *   - supplier   : fournisseur pressenti (valeur-liste, facultatif).
+ * Aucune règle applicable → approuvée d'emblée (approval_status = 'approved'),
+ * donc immédiatement commandable. Une règle a matché → 'pending', le BC est
+ * bloqué jusqu'à la décision d'un approbateur (approval-handlers.ts).
+ */
+async function submitRequestForApproval(
+  request: { id: string; ingredient_id: string; supplier_id: string | null; quantity: string | number; store_id: string | null },
+  actor: { userId: string; role: string; storeId?: string | null },
+) {
+  const ing = (await db.query(
+    `SELECT name, category_id, unit_cost FROM ingredients WHERE id = $1`, [request.ingredient_id])).rows[0];
+  const qty = parseFloat(String(request.quantity)) || 0;
+  const unitCost = ing?.unit_cost != null ? parseFloat(String(ing.unit_cost)) : 0;
+  const amount = Math.round(qty * unitCost * 100) / 100;
+  const result = await approvalService.submit({
+    docType: 'purchase_request',
+    docId: request.id,
+    docLabel: `DA ${ing?.name ?? ''}`.trim(),
+    amount,
+    values: {
+      amount,
+      buyer_role: actor.role,
+      // Valeurs-listes : approvalConditionMatches traite eq comme « contient ».
+      category: ing?.category_id ? [String(ing.category_id)] : [],
+      supplier: request.supplier_id ? [String(request.supplier_id)] : [],
+    },
+    storeId: request.store_id ?? actor.storeId ?? null,
+    requestedBy: actor.userId,
+  });
+  const approvalStatus = result.outcome === 'not_required' ? 'approved' : 'pending';
+  await purchaseRequestRepository.setApprovalStatus(request.id, approvalStatus);
+  return { approvalStatus, approval: 'request' in result ? result.request : null };
+}
 
 export const purchaseRequestController = {
   async list(req: AuthRequest, res: Response) {
@@ -20,21 +61,6 @@ export const purchaseRequestController = {
   /** GET /purchase-requests/to-order : besoins d'achat fusionnés par ingrédient. */
   async toOrder(req: AuthRequest, res: Response) {
     res.json({ success: true, data: await toOrderRepository.board(req.user!.storeId) });
-  },
-
-  /** POST /purchase-requests/order-direct : un BC brouillon par fournisseur, depuis À commander. */
-  async orderDirect(req: AuthRequest, res: Response) {
-    const { lines, expectedDeliveryDate } = req.body;
-    const result = await toOrderRepository.orderDirect({
-      lines, expectedDeliveryDate, createdBy: req.user!.userId, storeId: req.user!.storeId,
-    });
-    for (const po of result.orders) {
-      await recordAction(db, { documentType: 'purchase_order', documentId: po.id, action: 'created', actorId: req.user!.userId, note: 'depuis Stock › À commander' });
-    }
-    for (const id of new Set<string>(result.requestIds)) {
-      await recordAction(db, { documentType: 'purchase_request', documentId: id, action: 'approved', actorId: req.user!.userId, note: 'commandé depuis À commander', channel: 'web' });
-    }
-    res.status(201).json({ success: true, data: result.orders });
   },
 
   async grouped(req: AuthRequest, res: Response) {
@@ -56,7 +82,13 @@ export const purchaseRequestController = {
       storeId: req.user!.storeId,
     });
     await recordAction(db, { documentType: 'purchase_request', documentId: request.id, action: 'created', actorId: req.user!.userId });
-    res.status(201).json({ success: true, data: request });
+    // Flux procure-to-pay (mig 456) : la DA passe par l'approbation selon les
+    // règles. Sans règle applicable → approuvée d'emblée, commandable.
+    const { approvalStatus, approval } = await submitRequestForApproval(request, req.user!);
+    if (approvalStatus === 'pending') {
+      await recordAction(db, { documentType: 'purchase_request', documentId: request.id, action: 'submitted', actorId: req.user!.userId, note: 'soumise à approbation' });
+    }
+    res.status(201).json({ success: true, data: { ...request, approval_status: approvalStatus }, approval });
   },
 
   async updateQuantity(req: AuthRequest, res: Response) {
@@ -91,6 +123,8 @@ export const purchaseRequestController = {
       return;
     }
     await recordAction(db, { documentType: 'purchase_request', documentId: req.params.id, action: 'cancelled', actorId: req.user!.userId, note: req.body.reason });
+    // Une demande d'approbation en attente sur cette DA n'a plus d'objet (mig 456).
+    await approvalService.cancelPending('purchase_request', req.params.id, req.user!.userId, 'Demande d\'achat annulée');
     res.json({ success: true, data: cancelled });
   },
 

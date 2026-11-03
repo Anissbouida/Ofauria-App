@@ -7,7 +7,7 @@ import { ROLE_GROUPS } from '@ofauria/shared';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import {
   createPurchaseRequestSchema, updateQuantitySchema, assignSupplierSchema,
-  bulkAssignSupplierSchema, reasonSchema, generatePOSchema, orderDirectSchema,
+  bulkAssignSupplierSchema, reasonSchema, generatePOSchema,
 } from '../validators/purchase-request.validator.js';
 
 // Qui exprime un besoin : chefs, magasinier, gérant, admin (pas la caisse ni la vente).
@@ -19,9 +19,10 @@ const router = Router();
 // controleur async ne rejoint jamais le middleware d'erreur — la requete reste
 // pendante et le front tourne indefiniment sans message.
 router.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseRequestController.list));
-// Stock › À commander : besoins fusionnés (ruptures, demandes, stock bas) ; création directe des BC.
+// Stock › À commander : besoins fusionnés (ruptures, demandes, stock bas). Flux
+// procure-to-pay (mig 456) : cet écran ne crée que des DA (plus de BC direct),
+// via POST / ci-dessous ; le BC naît ensuite d'une DA approuvée.
 router.get('/to-order', authenticate, authorize(...REQUESTERS), asyncHandler(purchaseRequestController.toOrder));
-router.post('/order-direct', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(orderDirectSchema), asyncHandler(purchaseRequestController.orderDirect));
 router.get('/grouped', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseRequestController.grouped));
 router.get('/count', authenticate, authorize(...REQUESTERS), asyncHandler(purchaseRequestController.count));
 router.get('/:id/actions', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(purchaseRequestController.actions));

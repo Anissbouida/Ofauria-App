@@ -1,16 +1,6 @@
 import { db } from '../config/database.js';
-import { applyContainerRule } from '../services/container-rule.js';
 import { bonSortieRepository } from './bon-sortie.repository.js';
 import { inventoryRepository } from './inventory.repository.js';
-import { purchaseRequestRepository } from './purchase-request.repository.js';
-
-type HttpError = Error & { statusCode: number; code?: string };
-function httpError(statusCode: number, message: string, code?: string): HttpError {
-  const e = new Error(message) as HttpError;
-  e.statusCode = statusCode;
-  if (code) e.code = code;
-  return e;
-}
 
 /**
  * Écran Stock › « À commander » : un seul endroit pour TOUS les besoins d'achat
@@ -23,10 +13,10 @@ function httpError(statusCode: number, message: string, code?: string): HttpErro
  * On déduit ce qui est déjà en commande (reste à recevoir des BC ouverts) et on
  * propose un fournisseur (celui de la demande, sinon le dernier BC) et un prix.
  *
- * Les demandes d'achat restent la trace « qui a demandé quoi » et alimentent
- * l'indicateur « déjà commandé » des bons de sortie : la création de BC passe
- * toujours par elles (créées à la volée si besoin), elles ne sont simplement
- * plus un écran à part.
+ * Flux procure-to-pay (mig 456) : l'action unique de cet écran est « Créer la
+ * demande d'achat » (pour tous les rôles). Le chemin « BC direct » est supprimé ;
+ * la DA créée ici passe par l'approbation puis, une fois approuvée, devient un BC
+ * depuis Achats › Demande d'achat. Cet écran ne crée donc QUE des DA.
  */
 
 type Need = {
@@ -143,72 +133,5 @@ export const toOrderRepository = {
     }).sort((a, b) => Number(a.covered) - Number(b.covered) || a.priority - b.priority || a.ingredient_name.localeCompare(b.ingredient_name, 'fr'));
 
     return { rows };
-  },
-
-  /**
-   * Crée les BC (brouillons) depuis « À commander », en UNE transaction : pour chaque
-   * ligne, les demandes en attente sont rattachées (ou une demande est créée pour le
-   * besoin non demandé), le fournisseur leur est affecté, puis un BC par fournisseur.
-   */
-  async orderDirect(data: {
-    lines: Array<{ ingredientId: string; quantity: number; supplierId: string; unit: string; requestIds: string[]; reason: string; note?: string }>;
-    expectedDeliveryDate?: string;
-    createdBy: string;
-    storeId?: string;
-  }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
-      const bySupplier = new Map<string, { requestIds: string[]; overrides: Record<string, number> }>();
-      for (const line of data.lines) {
-        const locked = line.requestIds.length
-          ? (await client.query(
-              `SELECT id, quantity FROM purchase_requests
-                WHERE id = ANY($1::uuid[]) AND ingredient_id = $2 AND status = 'pending'
-                FOR UPDATE`,
-              [line.requestIds, line.ingredientId])).rows
-          : [];
-        if (locked.length !== new Set(line.requestIds).size) {
-          throw httpError(409, 'Une demande a été traitée entre-temps : rechargez la liste', 'TO_ORDER_STALE');
-        }
-        const requested = locked.reduce((s, r) => s + (parseFloat(r.quantity) || 0), 0);
-        const ids = locked.map(r => r.id as string);
-        const overrides: Record<string, number> = {};
-        if (line.quantity > requested + 0.0005) {
-          // Besoin non encore demandé (rupture, stock bas, quantité augmentée) : on crée la demande du complément.
-          const { qty } = await applyContainerRule(client, line.ingredientId, line.quantity - requested);
-          const ins = await client.query(
-            `INSERT INTO purchase_requests (ingredient_id, supplier_id, quantity, unit, reason, note, requested_by, store_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-            [line.ingredientId, line.supplierId, qty, line.unit, line.reason, line.note ?? 'Créé depuis Stock › À commander', data.createdBy, data.storeId ?? null]
-          );
-          ids.push(ins.rows[0].id);
-        } else if (line.quantity < requested - 0.0005 && requested > 0) {
-          // Quantité réduite : on répartit au prorata sur les demandes rattachées.
-          const ratio = line.quantity / requested;
-          for (const r of locked) overrides[r.id] = Math.round((parseFloat(r.quantity) || 0) * ratio * 1000) / 1000;
-        }
-        await client.query(`UPDATE purchase_requests SET supplier_id = $1, updated_at = NOW() WHERE id = ANY($2::uuid[])`, [line.supplierId, ids]);
-        const g = bySupplier.get(line.supplierId) ?? { requestIds: [], overrides: {} };
-        g.requestIds.push(...ids);
-        Object.assign(g.overrides, overrides);
-        bySupplier.set(line.supplierId, g);
-      }
-      const orders: Record<string, any>[] = [];
-      for (const [supplierId, g] of bySupplier) {
-        orders.push(await purchaseRequestRepository._generatePurchaseOrderTx(client, {
-          supplierId, requestIds: g.requestIds, quantityOverrides: g.overrides,
-          expectedDeliveryDate: data.expectedDeliveryDate, createdBy: data.createdBy, storeId: data.storeId,
-          notes: 'Créé depuis Stock › À commander',
-        }));
-      }
-      await client.query('COMMIT');
-      return { orders, requestIds: [...bySupplier.values()].flatMap(g => g.requestIds) };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
   },
 };

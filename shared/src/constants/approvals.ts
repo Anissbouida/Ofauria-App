@@ -24,6 +24,33 @@ export interface ApprovalDocTypeDef {
 }
 
 export const APPROVAL_DOC_TYPES = {
+  purchase_request: {
+    label: "Demande d'achat",
+    effect: 'La demande est approuvée : elle peut être transformée en bon de commande.',
+    fields: {
+      // Montant estimé de la demande = quantité × coût unitaire de l'article.
+      // C'est le besoin exprimé, AVANT tout engagement fournisseur (le BC viendra
+      // après l'approbation). Permet « DA au-dessus de X DH → approbation ».
+      amount: { label: 'Montant estimé', kind: 'number', unit: 'DH' },
+      // Barème par rôle du demandeur (magasinier, production, gérant…), comme pour
+      // le BC : se combine au montant via une condition composée {all:[...]}.
+      buyer_role: {
+        label: 'Rôle du demandeur', kind: 'enum',
+        options: [
+          { value: 'magasinier', label: 'Magasinier' },
+          { value: 'manager', label: 'Gérant' },
+          { value: 'admin', label: 'Administrateur' },
+          { value: 'cashier', label: 'Caissier' },
+        ],
+      },
+      // Catégorie d'achat de l'article (une seule par demande). Options câblées
+      // côté UI (catégories dynamiques), comme pour le BC.
+      category: { label: "Catégorie d'achat", kind: 'enum' },
+      // Fournisseur pressenti de la demande (facultatif à ce stade). Options
+      // câblées côté UI (liste des fournisseurs).
+      supplier: { label: 'Fournisseur', kind: 'enum' },
+    },
+  },
   purchase_order: {
     label: 'Bon de commande fournisseur',
     effect: 'Le bon est envoyé au fournisseur.',
