@@ -158,12 +158,43 @@ export const purchaseOrderController = {
     // F-083 — Le montant doit etre calcule depuis les lignes : findById n'expose
     // PAS total_amount (purchase_orders n'a pas la colonne), donc lire
     // po.total_amount valait toujours 0 et contournait le plafond (garde morte).
+    // L4 (P2P, incrément 1/5) — engagement réel : le montant confronté à
+    // l'approbation est le TTC (HT net remisé + TVA par ligne), pas le HT brut.
+    // amount_ht est déjà net de remise ; fallback au calcul si absent. Les frais
+    // d'approche ne sont pas connus au BC (ajoutés à la réception, mig 361) :
+    // exclus ici, l'incrément cumul/jour les intègrera côté réception.
     const amountRes = await db.query(
-      `SELECT COALESCE(SUM(quantity_ordered * COALESCE(unit_price, 0)), 0)::numeric AS amount
+      `SELECT COALESCE(SUM(
+                COALESCE(amount_ht, quantity_ordered * COALESCE(unit_price, 0) * (1 - COALESCE(discount_pct, 0) / 100))
+                  * (1 + COALESCE(tva_rate, 0) / 100)
+              ), 0)::numeric AS amount
          FROM purchase_order_items WHERE purchase_order_id = $1`,
       [req.params.id]
     );
     const amount = Number(amountRes.rows[0]?.amount ?? 0);
+
+    // L4 (P2P, incrément 1/5) — anti-fractionnement : deux BC de 4 900 DH le même
+    // jour pour le même fournisseur contournent le seuil s'ils sont évalués
+    // isolément. On confronte à l'approbation le cumul engagé du jour (même
+    // fournisseur, même order_date, hors BC annulés), ce BC compris. L'égalité
+    // sur supplier_id NULL ne remonte aucune autre ligne → cumul = ce BC seul.
+    const cumRes = await db.query(
+      `SELECT COALESCE(SUM(line.ttc), 0)::numeric AS cum
+         FROM purchase_orders po
+         JOIN LATERAL (
+           SELECT SUM(COALESCE(poi.amount_ht, poi.quantity_ordered * COALESCE(poi.unit_price, 0) * (1 - COALESCE(poi.discount_pct, 0) / 100))
+                      * (1 + COALESCE(poi.tva_rate, 0) / 100)) AS ttc
+             FROM purchase_order_items poi WHERE poi.purchase_order_id = po.id
+         ) line ON true
+        WHERE po.status <> 'annule' AND po.id <> $1
+          AND po.supplier_id = (SELECT supplier_id FROM purchase_orders WHERE id = $1)
+          AND po.order_date  = (SELECT order_date  FROM purchase_orders WHERE id = $1)`,
+      [req.params.id]
+    );
+    const cumulativeSupplierDay = Number(cumRes.rows[0]?.cum ?? 0) + amount;
+    // Montant confronté à l'approbation = le plus engageant des deux.
+    const engagementAmount = Math.max(amount, cumulativeSupplierDay);
+
     // Contrôle budgétaire (lot Bonus 15, mig 435) : le BC engage la dépense. Au-delà
     // du disponible (budget − réel − engagé), alerte à confirmer ou blocage ;
     // seul l'administrateur passe outre un blocage, en confirmant.
@@ -187,7 +218,7 @@ export const purchaseOrderController = {
     // le demandeur ne fait que soumettre, il n'approuve pas.
     const approval = await approvalService.submit({
       docType: 'purchase_order', docId: req.params.id, docLabel: `BC ${po.order_number} · ${po.supplier_name ?? ''}`.trim(),
-      amount, values: { amount }, storeId: po.store_id ?? req.user!.storeId ?? null, requestedBy: req.user!.userId,
+      amount: engagementAmount, values: { amount: engagementAmount, bc_ttc: amount }, storeId: po.store_id ?? req.user!.storeId ?? null, requestedBy: req.user!.userId,
     });
     if (approval.outcome === 'already_pending') {
       res.status(409).json({ success: false, error: { message: 'Ce bon attend déjà une approbation' }, approval: approval.request });
@@ -200,11 +231,12 @@ export const purchaseOrderController = {
     // Aucun circuit requis : l'envoyeur engage directement le bon. Le plafond
     // d'approbation (mig 336) borne alors ce qu'il peut envoyer seul ; dormant
     // tant qu'aucun plafond BC n'est défini, illimité pour l'administrateur.
-    const { allowed, limit } = await checkApprovalLimit(req.user!.userId, 'purchase_order', amount);
+    const { allowed, limit } = await checkApprovalLimit(req.user!.userId, 'purchase_order', engagementAmount);
     if (!allowed) {
+      const suffix = engagementAmount > amount ? ' (cumul fournisseur du jour)' : '';
       res.status(403).json({
         success: false,
-        error: { message: `Montant ${amount.toFixed(2)} au-dessus de votre plafond d'approbation (${limit.toFixed(2)}) pour un bon de commande` },
+        error: { message: `Montant ${engagementAmount.toFixed(2)}${suffix} au-dessus de votre plafond d'approbation (${limit.toFixed(2)}) pour un bon de commande` },
       });
       return;
     }
