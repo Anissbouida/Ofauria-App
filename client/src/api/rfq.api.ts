@@ -22,9 +22,16 @@ export type Quotation = {
   subtotal: string; discount_amount: string; total_ht: string; covered: number; complete: boolean;
   /** Devise du devis (mig 363) : unit_price et total_ht en DH, foreign_unit_price / total_foreign / shipping_cost en devise. */
   currency_code?: string; exchange_rate?: string; total_foreign?: string | null;
-  /** Notation multi-critères (mig 458) : note qualité saisie + notes calculées (0-100) + score pondéré. */
+  /** Notation configurable (mig 459) : notes par critère (code → 0-100) + score pondéré global. */
   quality_score?: string | null; supplier_score?: string | number | null;
-  score_price?: number; score_quality?: number; score_supplier?: number; score?: number;
+  criteria_scores?: Record<string, number> | null; scores?: Record<string, number>; score?: number;
+};
+
+/** Critère de notation configurable (mig 459). */
+export type RfqCriterionType = 'price' | 'supplier' | 'delivery' | 'manual';
+export type RfqCriterion = { id: string; code: string; label: string; type: RfqCriterionType; weight: number; position: number; active: boolean };
+export const RFQ_CRITERION_TYPE_LABELS: Record<RfqCriterionType, string> = {
+  price: 'Prix (le moins cher = 100)', supplier: 'Note fournisseur (évaluation)', delivery: 'Délai (le plus court = 100)', manual: 'Note saisie sur le devis',
 };
 export type Rfq = {
   id: string; number: string; title: string; status: RfqStatus; needed_by: string | null; response_deadline: string | null; notes: string | null;
@@ -33,14 +40,14 @@ export type Rfq = {
   item_count: number; supplier_count: number; quotation_count: number; is_overdue: boolean;
   items?: RfqItem[]; suppliers?: RfqSupplier[]; quotations?: Quotation[];
   best_by_item?: Record<string, { quotationId: string; unitPrice: number } | null>; best_total_quotation_id?: string | null;
-  /** Notation multi-critères (mig 458) : devis recommandé (meilleure note) + pondérations appliquées. */
-  recommended_quotation_id?: string | null; scoring_weights?: { price: number; quality: number; supplier: number };
+  /** Notation configurable (mig 459) : critères actifs appliqués + devis recommandé (meilleure note). */
+  recommended_quotation_id?: string | null; criteria?: RfqCriterion[];
 };
 export type RfqItemInput = { lineType?: LineType; ingredientId?: string | null; packagingId?: string | null; description?: string | null; categoryId?: string | null; unit?: string | null; quantity: number };
 export type RfqInput = { title: string; neededBy?: string | null; responseDeadline?: string | null; notes?: string | null; items: RfqItemInput[]; supplierIds: string[] };
 export type QuotationInput = {
   supplierId: string; quotationRef?: string | null; receivedAt?: string; validUntil?: string | null; deliveryDays?: number | null; paymentTerms?: string | null;
-  shippingCost?: number; discountPct?: number; notes?: string | null; qualityScore?: number | null; currencyCode?: string; exchangeRate?: number;
+  shippingCost?: number; discountPct?: number; notes?: string | null; qualityScore?: number | null; criteriaScores?: Record<string, number | null>; currencyCode?: string; exchangeRate?: number;
   items: { rfqItemId: string; available?: boolean; unitPrice?: number | null; quantity?: number | null; note?: string | null }[];
 };
 
@@ -63,4 +70,9 @@ export const rfqApi = {
   saveQuotation: (id: string, data: QuotationInput): Promise<Rfq> => api.put(`/rfqs/${id}/quotations`, data).then(r => r.data.data),
   award: (id: string, quotationId: string, extra?: { expectedDeliveryDate?: string | null; notes?: string | null }): Promise<{ data: Rfq; purchaseOrder: { id: string; order_number: string } }> =>
     api.post(`/rfqs/${id}/award`, { quotationId, ...extra }).then(r => ({ data: r.data.data, purchaseOrder: r.data.purchaseOrder })),
+  // Critères de notation configurables (mig 459).
+  listCriteria: (all = false): Promise<RfqCriterion[]> => api.get('/rfqs/criteria', { params: all ? { all: '1' } : {} }).then(r => r.data.data),
+  createCriterion: (data: { label: string; type: RfqCriterionType; weight?: number }): Promise<RfqCriterion> => api.post('/rfqs/criteria', data).then(r => r.data.data),
+  updateCriterion: (id: string, patch: { label?: string; weight?: number; active?: boolean }): Promise<RfqCriterion> => api.patch(`/rfqs/criteria/${id}`, patch).then(r => r.data.data),
+  deleteCriterion: (id: string): Promise<{ code: string }> => api.delete(`/rfqs/criteria/${id}`).then(r => r.data.data),
 };

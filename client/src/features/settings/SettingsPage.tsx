@@ -28,6 +28,7 @@ import DocumentsTab from './DocumentsTab';
 import NotificationsTab from './NotificationsTab';
 import DataTab from './DataTab';
 import ApprovalsTab from './ApprovalsTab';
+import RfqCriteriaCard from './RfqCriteriaCard';
 import ReferentielTab from './ReferentielTab';
 import SettingsSearch from './SettingsSearch';
 import SetupHome from './SetupHome';
@@ -157,6 +158,7 @@ function SettingsShell() {
       <div style={{ display: 'grid', gap: 16 }}>
         <SodMonitor />
         <ParametersPanel domains={['purchasing']} />
+        <RfqCriteriaCard />
       </div>
     ),
     salesRules: <ParametersPanel keys={['sales.quotes', 'sales.dunning']} />,

@@ -332,19 +332,13 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
                       <td colSpan={3}>Total HT (remise et port compris)</td>
                       {quotes.map(q => <td key={q.id} style={{ textAlign: 'right', color: q.id === r.best_total_quotation_id ? '#1a73c7' : undefined }} title={q.id === r.best_total_quotation_id ? 'Le moins cher' : undefined}>{n2(q.total_ht)}{q.total_foreign && <div style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--theme-text-muted)' }}>{n2(q.total_foreign)} {String(q.currency_code).trim()}</div>}{!q.complete && <div style={{ fontSize: '0.7rem', fontWeight: 400, color: '#d9822b' }}>{q.covered}/{items.length} lignes</div>}</td>)}
                     </tr>
-                    {/* Notation multi-critères (mig 458) : prix + qualité + fournisseur, pondérés. Le mieux noté est recommandé. */}
-                    <tr style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                      <td colSpan={3}>Note prix (poids {r.scoring_weights?.price ?? 50})</td>
-                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right' }}>{q.score_price ?? '—'}</td>)}
-                    </tr>
-                    <tr style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                      <td colSpan={3}>Note qualité (poids {r.scoring_weights?.quality ?? 25})</td>
-                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right' }}>{q.quality_score != null ? Number(q.quality_score) : <span title="non notée">{q.score_quality ?? 50}*</span>}</td>)}
-                    </tr>
-                    <tr style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                      <td colSpan={3}>Note fournisseur (poids {r.scoring_weights?.supplier ?? 25})</td>
-                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right' }}>{q.supplier_score != null ? Number(q.supplier_score) : <span title="non évalué">{q.score_supplier ?? 50}*</span>}</td>)}
-                    </tr>
+                    {/* Notation configurable (mig 459) : une ligne par critère actif + la note globale. Le mieux noté est recommandé. */}
+                    {(r.criteria ?? []).map(c => (
+                      <tr key={c.code} style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                        <td colSpan={3}>{c.label} <span style={{ opacity: 0.6 }}>(poids {c.weight})</span></td>
+                        {quotes.map(q => <td key={q.id} style={{ textAlign: 'right' }}>{q.scores?.[c.code] ?? '—'}{c.type === 'manual' && (q.criteria_scores?.[c.code] == null) ? <span title="non notée"> *</span> : ''}</td>)}
+                      </tr>
+                    ))}
                     <tr style={{ fontWeight: 700 }}>
                       <td colSpan={3}>Note globale /100</td>
                       {quotes.map(q => <td key={q.id} style={{ textAlign: 'right', color: q.id === r.recommended_quotation_id ? '#28a745' : undefined }}>{q.score ?? '—'}</td>)}
@@ -389,8 +383,14 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
     quotationRef: existing?.quotation_ref ?? '', receivedAt: existing?.received_at?.slice(0, 10) ?? format(new Date(), 'yyyy-MM-dd'),
     validUntil: existing?.valid_until?.slice(0, 10) ?? '', deliveryDays: existing?.delivery_days != null ? String(existing.delivery_days) : '',
     paymentTerms: existing?.payment_terms ?? '', shippingCost: existing ? String(existing.shipping_cost) : '0', discountPct: existing ? String(existing.discount_pct) : '0', notes: existing?.notes ?? '',
-    qualityScore: existing?.quality_score != null ? String(Number(existing.quality_score)) : '',
   });
+  // Critères manuels configurables (mig 459) : une note par critère, saisie sur le devis.
+  const manualCriteria = (rfq.criteria ?? []).filter(c => c.type === 'manual');
+  const [critScores, setCritScores] = useState<Record<string, string>>(() => Object.fromEntries(manualCriteria.map(c => {
+    const v = existing?.criteria_scores?.[c.code];
+    const legacy = c.code === 'quality' && existing?.quality_score != null ? Number(existing.quality_score) : null;
+    return [c.code, v != null ? String(v) : (legacy != null ? String(legacy) : '')];
+  })));
   // Devise du devis (mig 363) : prix et port saisis dans la devise du fournisseur, comparés en DH.
   const { data: currencies = [] } = useQuery({ queryKey: ['currencies'], queryFn: () => currenciesApi.list(), staleTime: 60_000 });
   const [currency, setCurrency] = useState(String(existing?.currency_code ?? supplier.supplier_currency ?? 'MAD').trim());
@@ -411,7 +411,7 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
       supplierId: supplier.supplier_id, quotationRef: head.quotationRef || null, receivedAt: head.receivedAt, validUntil: head.validUntil || null,
       deliveryDays: head.deliveryDays === '' ? null : Number(head.deliveryDays), paymentTerms: head.paymentTerms || null,
       shippingCost: Number(head.shippingCost) || 0, discountPct: Number(head.discountPct) || 0, notes: head.notes || null,
-      qualityScore: head.qualityScore === '' ? null : Number(head.qualityScore),
+      criteriaScores: Object.fromEntries(manualCriteria.map(c => [c.code, critScores[c.code] === '' || critScores[c.code] == null ? null : Number(critScores[c.code])])),
       currencyCode: currency, ...(currency !== 'MAD' ? { exchangeRate: rate } : {}),
       items: items.map(it => { const l = lines[it.id]; const available = l.available && l.price !== ''; return { rfqItemId: it.id, available, unitPrice: available ? Number(l.price) : null, quantity: l.qty ? Number(l.qty) : null, note: l.note || null }; }),
     }),
@@ -445,7 +445,10 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
               : <input className="input" type="number" min="0" step="0.0001" style={{ width: '100%' }} value={rateInput} onChange={e => setRateInput(e.target.value)} />}</div>
             <div><span style={label}>Frais de port ({cur})</span><input className="input" type="number" min="0" step="0.01" style={{ width: '100%' }} value={head.shippingCost} onChange={e => set('shippingCost', e.target.value)} /></div>
             <div><span style={label}>Remise globale (%)</span><input className="input" type="number" min="0" max="100" step="0.01" style={{ width: '100%' }} value={head.discountPct} onChange={e => set('discountPct', e.target.value)} /></div>
-            <div><span style={label}>Note qualité (0-100)</span><input className="input" type="number" min="0" max="100" step="1" style={{ width: '100%' }} value={head.qualityScore} onChange={e => set('qualityScore', e.target.value)} placeholder="ex. 80" title="Appréciation de la qualité de l'offre — critère de la notation" /></div>
+            {manualCriteria.map(c => (
+              <div key={c.code}><span style={label}>{c.label} (0-100)</span><input className="input" type="number" min="0" max="100" step="1" style={{ width: '100%' }}
+                value={critScores[c.code] ?? ''} onChange={e => setCritScores(s => ({ ...s, [c.code]: e.target.value }))} placeholder="ex. 80" title={`Note « ${c.label} » — critère de la notation`} /></div>
+            ))}
             <div><span style={label}>Total HT</span><div style={{ fontSize: '1.125rem', fontWeight: 700, paddingTop: 4 }}>{n2(total)} {cur}</div>
               {currency !== 'MAD' && rate > 0 && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>≈ {n2(total * rate)} DH</div>}</div>
           </div>
