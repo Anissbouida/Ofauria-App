@@ -629,3 +629,28 @@ export const billsApi = {
   unpaid: (id: string, body: { date: string; fees: number; note?: string | null }) =>
     api.post(`/ledger/bills/${id}/unpaid`, body).then(r => r.data.data as { entry_number: string | null }),
 };
+
+/* ═══ Consolidation multi-établissements (lot Bonus 17, mig 437) ═══ */
+export type ConsolidationColumn = {
+  key: string; label: string;
+  actif: Record<string, number>; passif: Record<string, number>; cpc: Record<string, number>;
+  liaison: number; result: number; total_actif: number; total_passif: number; ecart: number;
+};
+export type LiaisonTransfer = {
+  transfer_id: string; date: string; label: string; active: boolean; from_store_id: string | null; to_store_id: string | null;
+  account_code: string; amount: number; entries: string;
+};
+export type Consolidation = {
+  year: number; columns: ConsolidationColumn[];
+  combined: ConsolidationColumn & { liaison_residual: number };
+  eliminations: { liaison: number };
+  controls: { level: 'error' | 'warning'; message: string }[];
+  company: { actif: number; result: number };
+  transfers: LiaisonTransfer[];
+};
+export const consolidationApi = {
+  get: (year: number): Promise<Consolidation> => api.get(`/ledger/consolidation/${year}`).then(r => r.data.data),
+  transfer: (body: { date: string; fromStoreId: string; toStoreId: string; accountCode: string; amount: number; label: string }) =>
+    api.post('/ledger/consolidation/transfers', body).then(r => r.data.data as { transfer_id: string; entries: string[] }),
+  cancel: (id: string, reason: string) => api.post(`/ledger/consolidation/transfers/${id}/cancel`, { reason }).then(r => r.data),
+};

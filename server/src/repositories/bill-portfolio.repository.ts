@@ -14,12 +14,12 @@
  * Comme un état « AS OF », le statut d'un effet se déduit de ses colonnes ;
  * rien n'est stocké en double.
  */
-import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { paymentRepository } from './accounting.repository.js';
 import { regeneratePaymentEntries, extourneEntryById } from '../services/journal-generator.service.js';
 import { withActor } from '../services/document-actions.service.js';
 import { FLAGS } from '../config/feature-flags.js';
+import { postManualEntry as postEntry } from '../services/ledger-post.js';
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const fr = (d: string) => d.split('-').reverse().join('/');
@@ -46,30 +46,6 @@ const EFFECTS_SQL = `
     LEFT JOIN customers c ON c.id = i.customer_id
    WHERE p.type = 'income' AND p.payment_method IN ('check', 'traite') AND p.voids_payment_id IS NULL
      AND (p.status = 'executed' OR p.unpaid_at IS NOT NULL)`;
-
-/** Écriture validée d'un journal (numéro pris à la validation). */
-async function postEntry(c: PoolClient, p: { journal: 'BQ' | 'OD'; date: string; label: string; detail: string; userId: string; storeId: string | null;
-  lines: { code: string; debit: number; credit: number; label: string }[] }) {
-  // Deux requêtes : la période créée par fn_ensure_fiscal_period n'est pas visible du SELECT qui l'appelle.
-  const periodId = (await c.query(`SELECT fn_ensure_fiscal_period($1::date) AS id`, [p.date])).rows[0].id;
-  const period = (await c.query(`SELECT id, status FROM fiscal_periods WHERE id = $1`, [periodId])).rows[0];
-  if (period.status !== 'open') throw fail(`Période du ${fr(p.date)} fermée : choisissez une date dans une période ouverte`);
-  const jrn = (await c.query(`SELECT id FROM journals WHERE code = $1`, [p.journal])).rows[0].id;
-  const num = (await c.query(`SELECT next_entry_number($1, $2::smallint) AS n`, [jrn, Number(p.date.slice(0, 4))])).rows[0].n as string;
-  const ids = new Map<string, string>((await c.query(`SELECT id, code FROM accounts WHERE code = ANY($1::text[])`, [p.lines.map(l => l.code)])).rows
-    .map((r: { id: string; code: string }) => [r.code, r.id]));
-  const id = (await c.query(
-    `INSERT INTO journal_entries (entry_number, journal_id, entry_date, fiscal_period_id, description, source_kind, source_detail, status, created_by, store_id)
-     VALUES ($1, $2, $3, $4, $5, 'manual', $6, 'draft', $7, $8) RETURNING id`,
-    [num, jrn, p.date, period.id, p.label, p.detail, p.userId, p.storeId])).rows[0].id as string;
-  let order = 0;
-  for (const l of p.lines.filter(x => x.debit > 0 || x.credit > 0)) {
-    await c.query(`INSERT INTO journal_entry_lines (journal_entry_id, line_order, account_id, debit, credit, label) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [id, ++order, ids.get(l.code), r2(l.debit), r2(l.credit), l.label.slice(0, 200)]);
-  }
-  await c.query(`UPDATE journal_entries SET status = 'posted', posted_at = now(), posted_by = $2 WHERE id = $1`, [id, p.userId]);
-  return { id, entry_number: num };
-}
 
 /** Écritures d'un bordereau d'escompte, sans accès à la base (testable). */
 export function discountLines(p: { gross: number; interest: number; commission: number; commissionVat: number; bankCode: string; number: string }) {

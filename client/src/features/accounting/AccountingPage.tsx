@@ -39,6 +39,7 @@ import CorporateTaxTab from './CorporateTaxTab';
 import FxRevaluationTab from './FxRevaluationTab';
 import LiasseTab from './LiasseTab';
 import BillsPortfolioTab from './BillsPortfolioTab';
+import ConsolidationTab from './ConsolidationTab';
 import GrandLivreTab from './GrandLivreTab';
 import BalanceTab from './BalanceTab';
 import CpcTab from './CpcTab';
@@ -62,7 +63,7 @@ import {
   periodLabel as periodLabelOf, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 
-type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance' | 'is' | 'fx' | 'liasse' | 'effets';
+type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance' | 'is' | 'fx' | 'liasse' | 'effets' | 'consolidation';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -308,6 +309,7 @@ const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[]
   { key: 'bilan', label: 'Bilan', icon: Scale, section: 'reports', adminOnly: true },
   { key: 'tva', label: 'TVA', icon: Receipt, section: 'reports', adminOnly: true },
   { key: 'liasse', label: 'Liasse fiscale', icon: FileStack, section: 'reports', adminOnly: true },
+  { key: 'consolidation', label: 'Consolidation', icon: Building2, section: 'reports', adminOnly: true },
   { key: 'budget', label: 'Budget', icon: Target, section: 'reports', adminOnly: true },
   { key: 'cashflow', label: 'Flux de trésorerie', icon: ArrowLeftRight, section: 'reports', adminOnly: true },
   { key: 'costcenters', label: 'Analytique', icon: Target, section: 'reports', adminOnly: true },
@@ -355,6 +357,7 @@ export default function AccountingPage() {
       {tab === 'fx' && <FxRevaluationTab />}
       {tab === 'liasse' && <LiasseTab />}
       {tab === 'effets' && <BillsPortfolioTab />}
+      {tab === 'consolidation' && <ConsolidationTab />}
       {tab === 'cloture' && <ClotureTab />}
       {tab === 'cca' && <PrepaidChargesTab />}
       {tab === 'cashflow' && <CashFlowTab />}

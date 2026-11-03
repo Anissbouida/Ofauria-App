@@ -206,6 +206,14 @@ export const manualEntryRepository = {
       if (String(e.source_detail ?? '').startsWith('fx:')) {
         throw fail(`Écriture ${e.entry_number} de réévaluation des devises : annulez-la depuis Comptabilité › Écarts de change`, 409);
       }
+      // Bordereaux d'effets et impayés (mig 435) : ils s'annulent depuis le portefeuille d'effets.
+      if (String(e.source_detail ?? '').startsWith('bill:')) {
+        throw fail(`Écriture ${e.entry_number} du portefeuille d'effets : annulez le bordereau depuis Comptabilité › Portefeuille d'effets`, 409);
+      }
+      // Transferts entre établissements (mig 437) : les deux écritures s'annulent ensemble.
+      if (String(e.source_detail ?? '').startsWith('liaison:')) {
+        throw fail(`Écriture ${e.entry_number} de liaison entre établissements : annulez le transfert depuis Comptabilité › Consolidation`, 409);
+      }
       await extourneEntryById(c, id, p.date || undefined, { userId: actor.userId, reason: p.reason.trim() });
       const rev = (await c.query(
         `SELECT r.id, r.entry_number FROM journal_entries o JOIN journal_entries r ON r.id = o.reversed_by_entry_id WHERE o.id = $1`, [id])).rows[0];

@@ -17,6 +17,7 @@ import {
 } from '../services/ledger-editions.service.js';
 import { liasseRepository } from '../repositories/liasse.repository.js';
 import { billPortfolioRepository } from '../repositories/bill-portfolio.repository.js';
+import { consolidationRepository } from '../repositories/consolidation.repository.js';
 import { buildVatDeductionEdi, buildIr9421Edi, buildLiasseIsEdi, zipOne } from '../services/dgi-edi.service.js';
 import {
   planComptableController,
@@ -297,6 +298,25 @@ ledgerRouter.post('/bills/:id/unpaid', ...TAX_AM, requireVerb('accounting', 'val
   const r = z.object({ date: billDate, fees: z.number().min(0).max(1e7).default(0), note: z.string().trim().max(500).nullish() }).safeParse(req.body);
   if (!r.success) { tplBad(res); return; }
   res.json({ success: true, data: await billPortfolioRepository.markUnpaid(req.params.id, { ...r.data, userId: req.user!.userId }) });
+}));
+// Consolidation multi-établissements (lot Bonus 17, mig 437).
+ledgerRouter.get('/consolidation/:year', ...TAX_AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = taxYear(req, res); if (y === null) return;
+  res.json({ success: true, data: await consolidationRepository.build(y) });
+}));
+ledgerRouter.post('/consolidation/transfers', ...TAX_AM, requireVerb('accounting', 'validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({
+    date: billDate, fromStoreId: z.string().uuid(), toStoreId: z.string().uuid(),
+    accountCode: z.string().regex(/^[35]\d{3,9}$/), amount: z.number().positive().max(1e9), label: z.string().trim().max(150).default(''),
+  }).safeParse(req.body);
+  if (!r.success) { tplBad(res); return; }
+  res.status(201).json({ success: true, data: await consolidationRepository.transfer({ ...r.data, userId: req.user!.userId }) });
+}));
+ledgerRouter.post('/consolidation/transfers/:id/cancel', ...TAX_AM, requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({ reason: z.string().trim().min(3).max(300) }).safeParse(req.body);
+  if (!r.success) { tplBad(res, 'Motif requis'); return; }
+  await consolidationRepository.cancelTransfer(req.params.id, { userId: req.user!.userId, reason: r.data.reason });
+  res.json({ success: true });
 }));
 ledgerRouter.get('/fx-revaluation/:year', ...TAX_AM, asyncHandler(async (req: AuthRequest, res: Response) => {
   const y = taxYear(req, res); if (y === null) return;
