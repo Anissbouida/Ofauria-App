@@ -65,6 +65,22 @@ async function poEngagementAmount(poId: string): Promise<{ amount: number; engag
   return { amount, engagementAmount: Math.max(amount, Number(cumRes.rows[0]?.cum ?? 0) + amount) };
 }
 
+/**
+ * DA obligatoire à l'envoi (lot L4 P2P, 4/5). Un BC doit référencer une demande
+ * d'achat (lien de couverture, mig 305) ou porter une dispense d'urgence motivée
+ * (request_exempt_reason, mig 454). Gate purchasing.po_requires_request :
+ *   - 'warn'  : journalise seulement (défaut, dormant) ;
+ *   - 'block' : refuse l'envoi d'un BC sans DA ni dispense.
+ */
+async function poRequestGate(poId: string): Promise<{ mode: string; satisfied: boolean; hasDa: boolean; exempt: boolean }> {
+  const param = (await db.query(
+    `SELECT value FROM module_parameters WHERE key = 'purchasing.po_requires_request'`)).rows[0]?.value as { mode?: string } | undefined;
+  const mode = param?.mode ?? 'warn';
+  const hasDa = (await db.query(`SELECT 1 FROM purchase_requests WHERE purchase_order_id = $1 LIMIT 1`, [poId])).rows.length > 0;
+  const exempt = (await db.query(`SELECT request_exempt_reason FROM purchase_orders WHERE id = $1`, [poId])).rows[0]?.request_exempt_reason != null;
+  return { mode, hasDa, exempt, satisfied: hasDa || exempt };
+}
+
 export const purchaseOrderController = {
   async list(req: AuthRequest, res: Response) {
     const { supplierId, status, dateFrom, dateTo } = req.query as Record<string, string>;
@@ -184,6 +200,33 @@ export const purchaseOrderController = {
         },
       });
       return;
+    }
+
+    // L4 (P2P, 4/5) — DA obligatoire sauf urgence. En mode 'block', un BC sans
+    // demande d'achat ni dispense exige un motif d'urgence (urgencyReason) ; on le
+    // persiste comme dispense tracée puis on poursuit l'envoi. En 'warn' (défaut),
+    // on journalise sans bloquer, pour ne pas casser les 75 % de régularisations.
+    const reqGate = await poRequestGate(req.params.id);
+    if (!reqGate.satisfied) {
+      if (reqGate.mode === 'block') {
+        const urgency = typeof req.body?.urgencyReason === 'string' ? req.body.urgencyReason.trim() : '';
+        if (urgency.length < 5) {
+          res.status(409).json({
+            success: false,
+            error: {
+              code: 'PO_REQUIRES_REQUEST',
+              message: "Ce bon doit référencer une demande d'achat. À défaut, précisez un motif d'urgence (au moins 5 caractères).",
+            },
+          });
+          return;
+        }
+        await db.query(
+          `UPDATE purchase_orders SET request_exempt_reason = $2, request_exempt_by = $3, request_exempt_at = now(), updated_at = now() WHERE id = $1`,
+          [req.params.id, urgency.slice(0, 500), req.user!.userId]);
+        await purchaseOrderActionsRepository.log(req.params.id, 'changed', req.user!.userId, { note: `Dispense de DA (urgence) : ${urgency.slice(0, 200)}` });
+      } else {
+        console.warn(`[po-requires-request][warn] BC ${req.params.id} envoyé sans demande d'achat`);
+      }
     }
 
     // Plafond d'approbation (mig 336) : dormant tant qu'aucun plafond BC n'est
