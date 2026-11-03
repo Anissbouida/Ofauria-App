@@ -6,9 +6,9 @@ import { ROLE_GROUPS } from '@ofauria/shared';
 
 const router = Router();
 
-router.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), receptionVoucherController.list);
-router.get('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), receptionVoucherController.getById);
-router.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), receptionVoucherController.create);
-router.get('/purchase-order/:poId', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), receptionVoucherController.findByPurchaseOrder);
+router.get('/', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), receptionVoucherController.list);
+router.get('/:id', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), receptionVoucherController.getById);
+router.post('/', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), receptionVoucherController.create);
+router.get('/purchase-order/:poId', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), receptionVoucherController.findByPurchaseOrder);
 
 export default router;

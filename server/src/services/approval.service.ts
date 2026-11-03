@@ -172,10 +172,17 @@ export const approvalService = {
     if (existing.rows[0]) return { outcome: 'already_pending', request: (await attachSteps(existing.rows))[0] };
 
     // Un administrateur est l'approbateur final de tous les circuits : sa propre
-    // action vaut approbation. Sans cela, la séparation des tâches (pas
-    // d'approbation de sa propre demande) bloquerait un admin seul.
+    // action vaut approbation. Séparation des tâches (lot L2 P2P) : en mode
+    // « block » (purchasing.sod_mode), ce court-circuit tombe — la demande de
+    // l'admin suit le circuit normal, où un AUTRE approbateur agit (le demandeur
+    // ne peut jamais approuver sa propre demande). En « warn » (défaut), on garde
+    // le comportement actuel pour ne pas bloquer un admin seul.
     const requester = await db.query(`SELECT role FROM users WHERE id = $1`, [input.requestedBy]);
-    if (requester.rows[0] && (await isAdmin(requester.rows[0].role))) return { outcome: 'not_required' };
+    if (requester.rows[0] && (await isAdmin(requester.rows[0].role))) {
+      const sodMode = (await db.query(
+        `SELECT value->>'mode' AS m FROM module_parameters WHERE key = 'purchasing.sod_mode'`)).rows[0]?.m ?? 'warn';
+      if (sodMode !== 'block') return { outcome: 'not_required' };
+    }
 
     const rules = await db.query(
       `SELECT * FROM approval_rules WHERE doc_type = $1 AND enabled ORDER BY display_order, code`, [input.docType]);
