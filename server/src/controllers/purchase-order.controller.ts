@@ -32,6 +32,39 @@ async function poScope(req: AuthRequest): Promise<{ storeId?: string; createdBy?
   return scopeStoreFilter(scope, req.user!.storeId, req.user!.userId);
 }
 
+/**
+ * Engagement d'un BC confronté à l'approbation (lot L4 P2P). Retourne le TTC du
+ * BC (`amount` : HT net de remise + TVA par ligne) et l'`engagementAmount` =
+ * max(ce BC, cumul du jour pour le même fournisseur hors BC annulés, ce BC
+ * compris) — anti-fractionnement. supplier_id NULL → aucun autre BC ne matche,
+ * cumul = ce BC seul. Frais d'approche exclus (inconnus au stade BC, mig 361).
+ */
+async function poEngagementAmount(poId: string): Promise<{ amount: number; engagementAmount: number }> {
+  const ttcRes = await db.query(
+    `SELECT COALESCE(SUM(
+              COALESCE(amount_ht, quantity_ordered * COALESCE(unit_price, 0) * (1 - COALESCE(discount_pct, 0) / 100))
+                * (1 + COALESCE(tva_rate, 0) / 100)
+            ), 0)::numeric AS amount
+       FROM purchase_order_items WHERE purchase_order_id = $1`,
+    [poId]
+  );
+  const amount = Number(ttcRes.rows[0]?.amount ?? 0);
+  const cumRes = await db.query(
+    `SELECT COALESCE(SUM(line.ttc), 0)::numeric AS cum
+       FROM purchase_orders po
+       JOIN LATERAL (
+         SELECT SUM(COALESCE(poi.amount_ht, poi.quantity_ordered * COALESCE(poi.unit_price, 0) * (1 - COALESCE(poi.discount_pct, 0) / 100))
+                    * (1 + COALESCE(poi.tva_rate, 0) / 100)) AS ttc
+           FROM purchase_order_items poi WHERE poi.purchase_order_id = po.id
+       ) line ON true
+      WHERE po.status <> 'annule' AND po.id <> $1
+        AND po.supplier_id = (SELECT supplier_id FROM purchase_orders WHERE id = $1)
+        AND po.order_date  = (SELECT order_date  FROM purchase_orders WHERE id = $1)`,
+    [poId]
+  );
+  return { amount, engagementAmount: Math.max(amount, Number(cumRes.rows[0]?.cum ?? 0) + amount) };
+}
+
 export const purchaseOrderController = {
   async list(req: AuthRequest, res: Response) {
     const { supplierId, status, dateFrom, dateTo } = req.query as Record<string, string>;
@@ -158,42 +191,9 @@ export const purchaseOrderController = {
     // F-083 — Le montant doit etre calcule depuis les lignes : findById n'expose
     // PAS total_amount (purchase_orders n'a pas la colonne), donc lire
     // po.total_amount valait toujours 0 et contournait le plafond (garde morte).
-    // L4 (P2P, incrément 1/5) — engagement réel : le montant confronté à
-    // l'approbation est le TTC (HT net remisé + TVA par ligne), pas le HT brut.
-    // amount_ht est déjà net de remise ; fallback au calcul si absent. Les frais
-    // d'approche ne sont pas connus au BC (ajoutés à la réception, mig 361) :
-    // exclus ici, l'incrément cumul/jour les intègrera côté réception.
-    const amountRes = await db.query(
-      `SELECT COALESCE(SUM(
-                COALESCE(amount_ht, quantity_ordered * COALESCE(unit_price, 0) * (1 - COALESCE(discount_pct, 0) / 100))
-                  * (1 + COALESCE(tva_rate, 0) / 100)
-              ), 0)::numeric AS amount
-         FROM purchase_order_items WHERE purchase_order_id = $1`,
-      [req.params.id]
-    );
-    const amount = Number(amountRes.rows[0]?.amount ?? 0);
-
-    // L4 (P2P, incrément 1/5) — anti-fractionnement : deux BC de 4 900 DH le même
-    // jour pour le même fournisseur contournent le seuil s'ils sont évalués
-    // isolément. On confronte à l'approbation le cumul engagé du jour (même
-    // fournisseur, même order_date, hors BC annulés), ce BC compris. L'égalité
-    // sur supplier_id NULL ne remonte aucune autre ligne → cumul = ce BC seul.
-    const cumRes = await db.query(
-      `SELECT COALESCE(SUM(line.ttc), 0)::numeric AS cum
-         FROM purchase_orders po
-         JOIN LATERAL (
-           SELECT SUM(COALESCE(poi.amount_ht, poi.quantity_ordered * COALESCE(poi.unit_price, 0) * (1 - COALESCE(poi.discount_pct, 0) / 100))
-                      * (1 + COALESCE(poi.tva_rate, 0) / 100)) AS ttc
-             FROM purchase_order_items poi WHERE poi.purchase_order_id = po.id
-         ) line ON true
-        WHERE po.status <> 'annule' AND po.id <> $1
-          AND po.supplier_id = (SELECT supplier_id FROM purchase_orders WHERE id = $1)
-          AND po.order_date  = (SELECT order_date  FROM purchase_orders WHERE id = $1)`,
-      [req.params.id]
-    );
-    const cumulativeSupplierDay = Number(cumRes.rows[0]?.cum ?? 0) + amount;
-    // Montant confronté à l'approbation = le plus engageant des deux.
-    const engagementAmount = Math.max(amount, cumulativeSupplierDay);
+    // L4 (P2P) — montant confronté à l'approbation = engagement réel : TTC par
+    // ligne + cumul fournisseur/jour (anti-fractionnement). Voir poEngagementAmount.
+    const { amount, engagementAmount } = await poEngagementAmount(req.params.id);
 
     // Contrôle budgétaire (lot Bonus 15, mig 435) : le BC engage la dépense. Au-delà
     // du disponible (budget − réel − engagé), alerte à confirmer ou blocage ;
@@ -344,6 +344,30 @@ export const purchaseOrderController = {
   /** Avenant motivé sur un BC engagé : nouvelle version numérotée (mig 307). */
   async changeOrder(req: AuthRequest, res: Response) {
     const updated = await purchaseOrderActionsRepository.changeOrder(req.params.id, req.body, req.user!.userId, effectiveStoreFilter(req));
+    // L4 (P2P, 2/5) — ré-approbation sur avenant : un avenant qui touche le prix
+    // ou la quantité et porte l'engagement au-dessus du seuil repasse par
+    // l'approbation (il ne s'applique plus silencieusement sur un BC envoyé). La
+    // réception reste bloquée tant que cette approbation est pendante (garde
+    // dans reception-voucher.controller). Avenant en-tête seul (date/notes) : rien.
+    const lines = Array.isArray(req.body?.lines) ? req.body.lines : [];
+    const touchesEngagement = lines.some((l: { unitPrice?: unknown; qtyContainer?: unknown; discountPct?: unknown; tvaRate?: unknown }) =>
+      l?.unitPrice !== undefined || l?.qtyContainer !== undefined || l?.discountPct !== undefined || l?.tvaRate !== undefined);
+    if (touchesEngagement) {
+      const { amount, engagementAmount } = await poEngagementAmount(req.params.id);
+      const approval = await approvalService.submit({
+        docType: 'purchase_order', docId: req.params.id,
+        docLabel: `Avenant BC ${updated.order_number ?? ''}`.trim(),
+        amount: engagementAmount, values: { amount: engagementAmount, bc_ttc: amount, avenant: true },
+        storeId: updated.store_id ?? req.user!.storeId ?? null, requestedBy: req.user!.userId,
+      });
+      if (approval.outcome === 'submitted') {
+        res.status(202).json({
+          success: true, data: updated, approval: approval.request,
+          message: "Avenant enregistré : il attend une nouvelle approbation avant toute réception.",
+        });
+        return;
+      }
+    }
     res.json({ success: true, data: updated });
   },
 

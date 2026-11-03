@@ -36,7 +36,10 @@ export const receptionVoucherController = {
       res.status(409).json({ success: false, error: { message: 'Le bon de commande n\'est pas en attente de livraison' } });
       return;
     }
-    if (po.status === 'en_attente' && await approvalService.hasPending('purchase_order', purchaseOrderId)) {
+    // L4 (P2P, 2/5) — une approbation pendante bloque la réception quel que soit
+    // le statut : couvre la soumission initiale (BC en_attente) ET la
+    // ré-approbation d'un avenant sur un BC déjà envoyé.
+    if (await approvalService.hasPending('purchase_order', purchaseOrderId)) {
       res.status(409).json({ success: false, error: { message: 'Ce bon attend une approbation : il ne peut pas être réceptionné' } });
       return;
     }
