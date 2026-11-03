@@ -125,7 +125,10 @@ export async function createInvoiceFromPo(
                WHERE rvi.purchase_order_item_id = poi.id AND rvi.unit_price IS NOT NULL
                ORDER BY rvi.id DESC LIMIT 1),
               poi.unit_price
-            ) AS effective_unit_price
+            ) AS effective_unit_price,
+            -- Lien vers la ligne de réception (lot L1 P2P) : la dernière saisie pour cette ligne de BC.
+            (SELECT rvi.id FROM reception_voucher_items rvi
+              WHERE rvi.purchase_order_item_id = poi.id ORDER BY rvi.id DESC LIMIT 1) AS rvi_id
      FROM purchase_order_items poi
      LEFT JOIN ingredients ing ON ing.id = poi.ingredient_id
      LEFT JOIN packaging_items pkg ON pkg.id = poi.packaging_id
@@ -140,6 +143,7 @@ export async function createInvoiceFromPo(
     const tvaRate = it.tva_rate != null ? parseFloat(it.tva_rate as string) : null;
     return {
       poItemId: it.id as string,
+      receptionVoucherItemId: (it.rvi_id as string | null) ?? null,
       taxCode: (it.tax_code as string | null) ?? null,
       tvaRate,
       ingredientId: (it.ingredient_id as string | null) ?? null,
@@ -209,10 +213,10 @@ export async function createInvoiceFromPo(
   for (const item of invoiceItems) {
     await client.query(
       `INSERT INTO invoice_items (invoice_id, ingredient_id, packaging_id, category_id, description, quantity, unit_price, subtotal,
-                                  tva_rate, tva_amount, tax_code, purchase_order_item_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+                                  tva_rate, tva_amount, tax_code, purchase_order_item_id, reception_voucher_item_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [invoice.id, item.ingredientId, item.packagingId, item.categoryId, item.description, item.quantity, item.unitPrice, item.subtotal,
-       item.tvaRate, item.tvaRate != null ? Math.round(item.subtotal * item.tvaRate) / 100 : null, item.taxCode, item.poItemId]
+       item.tvaRate, item.tvaRate != null ? Math.round(item.subtotal * item.tvaRate) / 100 : null, item.taxCode, item.poItemId, item.receptionVoucherItemId]
     );
   }
 

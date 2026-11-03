@@ -1118,9 +1118,97 @@ export const invoiceRepository = {
           WHERE id = $1 RETURNING *`,
         [id, userId, reasonCodeId, note]
       );
+      // Facture validée annulée : on extourne aussi la quantité facturée des
+      // lignes de BC (événements IR_REVERSAL), symétriques des IR posés à la
+      // validation (lot L1 P2P, mig 436). Une facture brouillon n'a pas d'IR.
+      if (cur.validation_status === 'validated') {
+        await client.query(
+          `INSERT INTO po_line_events (po_line_id, event_type, sign, qty_base, ref_doc_type, ref_doc_id, posted_by, note)
+           SELECT ii.purchase_order_item_id, 'IR_REVERSAL', -1, ii.quantity, 'invoice_item', ii.id, $2,
+                  'Annulation facture — extourne le facturé'
+             FROM invoice_items ii
+            WHERE ii.invoice_id = $1 AND ii.purchase_order_item_id IS NOT NULL AND ii.quantity > 0
+              AND EXISTS (SELECT 1 FROM po_line_events e WHERE e.event_type = 'IR'
+                           AND e.ref_doc_type = 'invoice_item' AND e.ref_doc_id = ii.id)
+              AND NOT EXISTS (SELECT 1 FROM po_line_events e WHERE e.event_type = 'IR_REVERSAL'
+                               AND e.ref_doc_type = 'invoice_item' AND e.ref_doc_id = ii.id)`,
+          [id, userId]
+        );
+      }
       if (FLAGS.LEDGER_AUTOGEN) await regenerateInvoiceEntry(client, id, userId);
       await client.query('COMMIT');
       return r.rows[0];
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Validation d'une facture reçue (lot L1 P2P, mig 436) : on confronte la
+   * pré-facture au papier du fournisseur. On enregistre au besoin son numéro et
+   * ses montants IMPRIMÉS (declared_*), puis on passe brouillon → validée — le
+   * trigger trg_invoice_requires_document refuse sans n° + TTC déclaré. On pose
+   * alors les événements IR (quantité facturée) sur les lignes de BC rattachées,
+   * ce qui alimente qty_invoiced_base et rend le rapprochement à trois réel.
+   * Le posting comptable n'est pas touché ici (relève du lot L3).
+   */
+  async validate(id: string, fields: {
+    supplierInvoiceNumber?: string | null;
+    invoiceDate?: string | null;
+    declaredHt?: number | null;
+    declaredVat?: number | null;
+    declaredTtc?: number | null;
+  }, userId: string) {
+    const client = await db.getClient();
+    const fail = (code: number, m: string) => { const e = new Error(m) as Error & { statusCode: number }; e.statusCode = code; return e; };
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
+      const cur = (await client.query(`SELECT * FROM invoices WHERE id = $1 FOR UPDATE`, [id])).rows[0];
+      if (!cur) throw fail(404, 'Facture non trouvee');
+      if (cur.invoice_type !== 'received') throw fail(400, 'Seule une facture reçue se valide par confrontation');
+      if (cur.validation_status === 'cancelled') throw fail(409, 'Facture annulée');
+      if (cur.validation_status === 'validated') { await client.query('ROLLBACK'); return cur; }
+
+      // 1. Pièce du fournisseur : n° + montants imprimés si fournis (declared_ttc
+      //    sert de garde à la validation). Champs additifs : on ne vide rien.
+      await client.query(
+        `UPDATE invoices SET
+           supplier_invoice_number = COALESCE(NULLIF(btrim($2), ''), supplier_invoice_number),
+           invoice_date = COALESCE($3::date, invoice_date),
+           declared_ht  = COALESCE($4::numeric, declared_ht),
+           declared_vat = COALESCE($5::numeric, declared_vat),
+           declared_ttc = COALESCE($6::numeric, declared_ttc),
+           needs_supplier_document = false
+         WHERE id = $1`,
+        [id, fields.supplierInvoiceNumber ?? null, fields.invoiceDate ?? null,
+         fields.declaredHt ?? null, fields.declaredVat ?? null, fields.declaredTtc ?? null]
+      );
+
+      // 2. Transition brouillon → validée (le trigger mig 436 bloque sans n°/TTC).
+      await client.query(`UPDATE invoices SET validation_status = 'validated' WHERE id = $1`, [id]);
+
+      // 3. Événements IR : quantité facturée par ligne de BC rattachée (une par
+      //    ligne de facture, > 0). Idempotent par ref_doc.
+      await client.query(
+        `INSERT INTO po_line_events (po_line_id, event_type, sign, qty_base, ref_doc_type, ref_doc_id, posted_by, note)
+         SELECT ii.purchase_order_item_id, 'IR', 1, ii.quantity, 'invoice_item', ii.id, $2,
+                'Facturé — validation facture ' || COALESCE(i.supplier_invoice_number, i.invoice_number)
+           FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id
+          WHERE ii.invoice_id = $1 AND ii.purchase_order_item_id IS NOT NULL AND ii.quantity > 0
+            AND NOT EXISTS (SELECT 1 FROM po_line_events e WHERE e.event_type = 'IR'
+                             AND e.ref_doc_type = 'invoice_item' AND e.ref_doc_id = ii.id)`,
+        [id, userId]
+      );
+
+      // 4. Recalcule blocages / rapprochement : les holds QTY/PRICE deviennent significatifs.
+      await client.query(`SELECT fn_validate_invoice($1)`, [id]);
+
+      await client.query('COMMIT');
+      return (await db.query(`SELECT * FROM invoices WHERE id = $1`, [id])).rows[0];
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -1306,7 +1394,7 @@ export const invoiceRepository = {
    * Note : on prefere subtotal envoye par le client (deja arrondi a l'affichage)
    * plutot que recalculer qty * unit_price, pour eviter les drift de centimes.
    */
-  async replaceItems(id: string, items: { productId?: string | null; ingredientId?: string | null; description?: string | null; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null }[]) {
+  async replaceItems(id: string, items: { productId?: string | null; ingredientId?: string | null; description?: string | null; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null; purchaseOrderItemId?: string | null; receptionVoucherItemId?: string | null }[]) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -1344,10 +1432,14 @@ export const invoiceRepository = {
         const tvaRate = it.tvaRate ?? null;
         const tvaAmount = lineTvaAmount(it.subtotal, tvaRate);
         await client.query(
-          `INSERT INTO invoice_items (invoice_id, product_id, ingredient_id, description, quantity, unit_price, subtotal, tva_rate, tva_amount)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          // Les liens vers la ligne de BC / de réception sont conservés (lot L1
+          // P2P) : sans eux, corriger les lignes rendait le rapprochement aveugle.
+          `INSERT INTO invoice_items (invoice_id, product_id, ingredient_id, description, quantity, unit_price, subtotal, tva_rate, tva_amount,
+                                      purchase_order_item_id, reception_voucher_item_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
           [id, it.productId || null, it.ingredientId || null, it.description || null,
-           it.quantity, it.unitPrice, it.subtotal, tvaRate, tvaAmount]
+           it.quantity, it.unitPrice, it.subtotal, tvaRate, tvaAmount,
+           it.purchaseOrderItemId || null, it.receptionVoucherItemId || null]
         );
       }
 
