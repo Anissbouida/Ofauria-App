@@ -1,7 +1,13 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, PackageCheck, FileWarning, Hourglass, FileX, Download, AlertTriangle, Search, Clock, X, ChevronRight } from 'lucide-react';
-import { purchasingReportsApi, type PilotageKind } from '../../api/purchasing-reports.api';
+import { useNavigate } from 'react-router-dom';
+import { Loader2, PackageCheck, FileWarning, Hourglass, FileX, Download, AlertTriangle, Search, Clock, X, ChevronRight,
+  Boxes, FilePlus2, ClipboardCheck, FileQuestion, ClipboardList, FileText, ArrowRight, type LucideIcon } from 'lucide-react';
+import { purchasingReportsApi, type PilotageKind, type ReportsSummary } from '../../api/purchasing-reports.api';
+import { purchaseRequestsApi } from '../../api/purchase-requests.api';
+import { approvalsApi } from '../../api/approvals.api';
+import { rfqApi } from '../../api/rfq.api';
+import { replenishmentApi } from '../../api/replenishment.api';
 import { suppliersApi } from '../../api/accounting.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
@@ -83,14 +89,111 @@ function TotalRow({ label, amount, span }: { label: string; amount: number; span
   );
 }
 
+/* ═══ Frise du cycle d'achat (7 étapes P2P) ═══
+ * Vue « processus » de bout en bout : de l'identification du besoin (MRP / réappro) à la
+ * facture. Chaque étape affiche le nombre de pièces en attente à ce relais et ouvre l'écran
+ * correspondant — y compris ceux des autres modules (Production, Réappro, Approbations).
+ * Lecture seule ; complète le rapprochement 3-voies affiché juste en dessous.
+ */
+type FlowStep = {
+  n: number; label: string; hint: string; icon: LucideIcon;
+  count: number | null; late?: number; lateLabel?: string; onClick: () => void;
+};
+/** Cible de navigation interne (onglet de la coquille Achats) pour les étapes 4 à 7. */
+type PurchasingDeepTab = 'rfq' | 'purchase_orders' | 'invoices';
+
+function P2PFlowBand({ summary, onOpenTab }: {
+  summary?: ReportsSummary;
+  onOpenTab?: (key: PurchasingDeepTab) => void;
+}) {
+  const navigate = useNavigate();
+  const openTab = onOpenTab ?? ((k: PurchasingDeepTab) => navigate(`/purchasing?tab=${k}`));
+  // Compteurs amont (autres modules) : requêtes autonomes, sans retry — si le contexte manque
+  // (ex. magasin absent pour les recommandations), l'étape affiche « — » plutôt que de casser.
+  const { data: reco } = useQuery({ queryKey: ['p2p-flow', 'reco'], queryFn: replenishmentApi.recommendations, retry: false, staleTime: 60_000 });
+  const { data: pr } = useQuery({ queryKey: ['p2p-flow', 'pr-count'], queryFn: purchaseRequestsApi.count, retry: false, staleTime: 60_000 });
+  const { data: appr } = useQuery({ queryKey: ['approvals', 'count'], queryFn: approvalsApi.count, retry: false, staleTime: 60_000 });
+  const { data: rfq } = useQuery({ queryKey: ['p2p-flow', 'rfq'], queryFn: () => rfqApi.list({ page: '1', pageSize: '1' }), retry: false, staleTime: 60_000 });
+
+  const RFQ_OPEN = ['draft', 'sent', 'quoted'] as const;
+  const rfqOpen = rfq ? RFQ_OPEN.reduce((a, k) => a + (rfq.byStatus?.[k]?.count ?? 0), 0) : null;
+  const rfqOverdue = rfq ? RFQ_OPEN.reduce((a, k) => a + (rfq.byStatus?.[k]?.overdue ?? 0), 0) : 0;
+
+  const steps: FlowStep[] = [
+    { n: 1, label: 'Identification', hint: 'besoins détectés', icon: Boxes,
+      count: Array.isArray(reco) ? reco.length : null, onClick: () => navigate('/production/mrp') },
+    { n: 2, label: "Demande d'achat", hint: 'à traiter', icon: FilePlus2,
+      count: pr?.count ?? null, onClick: () => navigate('/replenishment') },
+    { n: 3, label: 'Approbation', hint: 'en attente de décision', icon: ClipboardCheck,
+      count: appr ?? null, onClick: () => navigate('/approvals') },
+    { n: 4, label: 'Sourcing', hint: "appels d'offres en cours", icon: FileQuestion,
+      count: rfqOpen, late: rfqOverdue, lateLabel: 'en retard', onClick: () => openTab('rfq') },
+    { n: 5, label: 'Bon de commande', hint: 'commandé, non reçu', icon: ClipboardList,
+      count: summary?.open_commitments.pos ?? null, onClick: () => openTab('purchase_orders') },
+    { n: 6, label: 'Réception', hint: 'reçu, non facturé', icon: PackageCheck,
+      count: summary?.received_not_invoiced.lines ?? null, late: summary?.received_not_invoiced.aged, lateLabel: '> 30 j',
+      onClick: () => openTab('purchase_orders') },
+    { n: 7, label: 'Facturation', hint: 'facturé au-delà du reçu', icon: FileText,
+      count: summary?.invoiced_not_received.lines ?? null, late: summary?.invoiced_not_received.lines, lateLabel: 'à vérifier',
+      onClick: () => openTab('invoices') },
+  ];
+
+  return (
+    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', marginBottom: 12 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '10px 16px 0' }}>
+        <span style={{ fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--odoo-text-muted)' }}>
+          Cycle d'achat — de l'identification à la facture
+        </span>
+        <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Pièces en attente à chaque étape · cliquez pour ouvrir</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'stretch', overflowX: 'auto', padding: '10px 12px 12px' }}>
+        {steps.map((st, i) => {
+          const Icon = st.icon;
+          return (
+            <Fragment key={st.n}>
+              {i > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', color: 'var(--theme-text-muted)', flexShrink: 0, padding: '0 2px' }} aria-hidden="true">
+                  <ArrowRight size={14} />
+                </div>
+              )}
+              <button type="button" onClick={st.onClick} title={`Ouvrir : ${st.label}`}
+                style={{
+                  flex: '1 0 128px', minWidth: 128, textAlign: 'left', cursor: 'pointer',
+                  border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)',
+                  padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 2,
+                }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--odoo-text-muted)', fontWeight: 600 }}>
+                  <span style={{ width: 18, height: 18, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.625rem', fontWeight: 700, background: 'var(--odoo-border)', color: 'var(--odoo-text)', flexShrink: 0 }}>{st.n}</span>
+                  <Icon size={12} /> {st.label}
+                </span>
+                <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--odoo-text)', lineHeight: 1.1 }}>
+                  {st.count == null ? '—' : st.count}
+                </span>
+                <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{st.hint}</span>
+                {(st.late ?? 0) > 0 && (
+                  <span className="odoo-tag odoo-tag-red" style={{ marginTop: 4, display: 'inline-block', alignSelf: 'flex-start' }}>
+                    {st.late} {st.lateLabel}
+                  </span>
+                )}
+              </button>
+            </Fragment>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Pilotage des achats (mig 312, D9 G-D9-03) : ce qui est commandé et pas reçu, reçu et pas
  * facturé, facturé sans réception — mesuré par LIGNE de BC, au prix du BC — et les factures
  * qui échappent au rapprochement. Même chiffre que la carte du tableau de bord.
  */
-export default function PurchasingPilotageTab({ onOpenInvoice }: {
+export default function PurchasingPilotageTab({ onOpenInvoice, onOpenTab }: {
   /** Ouvre l'onglet Factures reçues sur une facture (recherche + vue). */
   onOpenInvoice?: (f: { supplierId?: string; search?: string; view?: 'open' | 'history' }) => void;
+  /** Change d'onglet dans la coquille Achats (frise du cycle : étapes Sourcing → Facturation). */
+  onOpenTab?: (key: PurchasingDeepTab) => void;
 }) {
   const [kind, setKind] = useState<PilotageKind>('rni');
   const [group, setGroup] = useState<'detail' | 'supplier'>('detail');
@@ -163,6 +266,9 @@ export default function PurchasingPilotageTab({ onOpenInvoice }: {
 
   return (
     <>
+      {/* Frise du cycle d'achat : les 7 étapes P2P, de l'identification à la facture */}
+      <P2PFlowBand summary={s} onOpenTab={onOpenTab} />
+
       {/* Les 4 contrôles du rapprochement : une carte par liste, clic = afficher */}
       <StagePipeline
         title="Rapprochement commande → réception → facture"
