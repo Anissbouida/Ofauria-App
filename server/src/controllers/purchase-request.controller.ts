@@ -147,23 +147,9 @@ export const purchaseRequestController = {
     res.json({ success: true, data: await listActions('purchase_request', req.params.id) });
   },
 
-  async generatePO(req: AuthRequest, res: Response) {
-    const { supplierId, requestIds, expectedDeliveryDate, notes, quantityOverrides } = req.body;
-    const po = await purchaseRequestRepository.generatePurchaseOrder({
-      supplierId,
-      requestIds,
-      expectedDeliveryDate,
-      notes,
-      createdBy: req.user!.userId,
-      storeId: req.user!.storeId,
-      quantityOverrides,
-    });
-    for (const id of new Set<string>(requestIds)) {
-      await recordAction(db, { documentType: 'purchase_request', documentId: id, action: 'approved', actorId: req.user!.userId, note: `converti en ${po.order_number}`, channel: 'web' });
-    }
-    await recordAction(db, { documentType: 'purchase_order', documentId: po.id, action: 'created', actorId: req.user!.userId, note: `depuis ${new Set(requestIds).size} demande(s)` });
-    res.status(201).json({ success: true, data: po });
-  },
+  // Flux procure-to-pay (mig 457) : plus de « Générer le BC » depuis une DA. Une DA
+  // approuvée passe par un appel d'offres (POST /rfqs/from-requests) ; le BC naît de
+  // l'attribution de l'AO.
 
   async count(req: AuthRequest, res: Response) {
     const count = await purchaseRequestRepository.countPending(req.user!.storeId);

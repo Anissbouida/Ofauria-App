@@ -1,7 +1,5 @@
 import { db } from '../config/database.js';
 import { applyContainerRule } from '../services/container-rule.js';
-import { purchaseOrderRepository } from './purchase-order.repository.js';
-import type { PoolClient } from 'pg';
 
 type HttpError = Error & { statusCode: number; code?: string };
 function httpError(statusCode: number, message: string, code?: string): HttpError {
@@ -97,6 +95,9 @@ export const purchaseRequestRepository = {
        LEFT JOIN suppliers s ON s.id = pr.supplier_id
        LEFT JOIN users u ON u.id = pr.requested_by
        WHERE pr.status = 'pending' ${storeFilter}
+         -- DA déjà en sourcing (AO vivant) : retirée de la liste pour ne pas être sourcée deux fois (mig 457).
+         AND NOT EXISTS (SELECT 1 FROM rfq_requests rr JOIN rfqs r ON r.id = rr.rfq_id
+                          WHERE rr.purchase_request_id = pr.id AND r.status IN ('draft', 'sent', 'quoted'))
        GROUP BY pr.supplier_id, s.name, s.phone, s.contact_name
        ORDER BY s.name NULLS LAST`,
       params
@@ -229,133 +230,11 @@ export const purchaseRequestRepository = {
     return r.rows;
   },
 
-  /** Generate a purchase order from pending requests for a supplier */
-  async generatePurchaseOrder(data: {
-    supplierId: string;
-    requestIds: string[];
-    expectedDeliveryDate?: string;
-    notes?: string;
-    createdBy: string;
-    storeId?: string;
-    quantityOverrides?: Record<string, number>; // requestId -> new quantity
-  }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
-      const po = await this._generatePurchaseOrderTx(client, data);
-      await client.query('COMMIT');
-      return po;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
-  },
-
-  /** Cœur de la génération d'un BC depuis des demandes, dans la transaction de l'appelant. */
-  async _generatePurchaseOrderTx(client: PoolClient, data: {
-    supplierId: string;
-    requestIds: string[];
-    expectedDeliveryDate?: string;
-    notes?: string;
-    createdBy: string;
-    storeId?: string;
-    quantityOverrides?: Record<string, number>;
-  }) {
-    {
-      // Get the requests
-      const reqResult = await client.query(
-        `SELECT pr.*, ing.unit_cost as ingredient_unit_cost
-         FROM purchase_requests pr
-         JOIN ingredients ing ON ing.id = pr.ingredient_id
-         WHERE pr.id = ANY($1) AND pr.status = 'pending' AND pr.supplier_id = $2
-           AND ($3::uuid IS NULL OR pr.store_id = $3)
-         FOR UPDATE OF pr`,
-        [data.requestIds, data.supplierId, data.storeId ?? null]
-      );
-
-      // On ne commande que ce qui a réellement été verrouillé. Si une demande a été
-      // annulée, réaffectée ou commandée par quelqu'un d'autre entre l'affichage et
-      // le clic, on refuse plutôt que de rattacher une demande que le BC ne contient pas.
-      if (reqResult.rows.length === 0) {
-        throw httpError(409, 'Aucune demande en attente trouvée pour ce fournisseur', 'PR_NONE_PENDING');
-      }
-      const uniqueRequested = new Set(data.requestIds);
-      if (reqResult.rows.length !== uniqueRequested.size) {
-        throw httpError(409, `${uniqueRequested.size - reqResult.rows.length} demande(s) ne sont plus en attente pour ce fournisseur : rechargez la liste`, 'PR_STALE_SELECTION');
-      }
-
-      // Flux procure-to-pay (mig 456) : le BC ne naît que d'une DEMANDE D'ACHAT
-      // APPROUVÉE. Une DA en attente d'approbation (ou refusée) ne peut pas être
-      // commandée. Dimension approval_status, distincte du statut de couverture.
-      const notApproved = reqResult.rows.filter(r => r.approval_status !== 'approved');
-      if (notApproved.length) {
-        throw httpError(409, `${notApproved.length} demande(s) ne sont pas approuvées : seule une demande d'achat approuvée peut devenir un bon de commande`, 'PR_NOT_APPROVED');
-      }
-
-      // Numero de BC : on reutilise le generateur unique du module Achats
-      // (MAX(suffixe)+1 sous advisory lock). L'ancienne version locale faisait
-      // COUNT(*)+1, qui retombait sur un numero deja attribue des qu'un BC
-      // etait supprime au milieu de la sequence -> duplicate key sur
-      // order_number, transaction en erreur, generation impossible.
-      const orderNumber = await purchaseOrderRepository.generateOrderNumber(client);
-
-      // Create purchase order
-      const poResult = await client.query(
-        `INSERT INTO purchase_orders (order_number, supplier_id, expected_delivery_date, notes, created_by, store_id)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-        [
-          orderNumber,
-          data.supplierId,
-          data.expectedDeliveryDate || null,
-          data.notes || null,
-          data.createdBy,
-          data.storeId || null,
-        ]
-      );
-      const poId = poResult.rows[0].id;
-
-      // Merge requests by ingredient (sum quantities for same ingredient)
-      const mergedByIngredient = new Map<string, {
-        ingredientId: string; totalQty: number; unitPrice: number | null;
-        requests: Array<{ id: string; qty: number }>;
-      }>();
-      for (const req of reqResult.rows) {
-        const finalQty = data.quantityOverrides?.[req.id] ?? parseFloat(req.quantity);
-        const unitPrice = req.ingredient_unit_cost ? parseFloat(req.ingredient_unit_cost) : null;
-        const existing = mergedByIngredient.get(req.ingredient_id);
-        if (existing) {
-          existing.totalQty += finalQty;
-          existing.requests.push({ id: req.id, qty: finalQty });
-        } else {
-          mergedByIngredient.set(req.ingredient_id, { ingredientId: req.ingredient_id, totalQty: finalQty, unitPrice, requests: [{ id: req.id, qty: finalQty }] });
-        }
-      }
-
-      // Create PO items (one per ingredient, with merged quantities), par contenant
-      // entier pour les ingredients qui en ont un (regle d'affaires).
-      for (const item of mergedByIngredient.values()) {
-        const { qty } = await applyContainerRule(client, item.ingredientId, item.totalQty);
-        const line = await client.query(
-          `INSERT INTO purchase_order_items (purchase_order_id, ingredient_id, quantity_ordered, unit_price)
-           VALUES ($1, $2, $3, $4) RETURNING id`,
-          [poId, item.ingredientId, qty, item.unitPrice]
-        );
-        // Couverture : chaque demande pointe la ligne de BC qui la porte réellement.
-        // Le statut de la demande est recalculé par la base (trigger, mig 305).
-        for (const r of item.requests) {
-          await client.query(
-            `INSERT INTO request_po_lines (purchase_request_id, po_item_id, quantity, created_by)
-             VALUES ($1, $2, $3, $4)`,
-            [r.id, line.rows[0].id, r.qty, data.createdBy]
-          );
-        }
-      }
-
-      return poResult.rows[0];
-    }
-  },
+  // Flux procure-to-pay (mig 457) : le BC ne naît plus directement d'une DA. Une DA
+  // approuvée passe OBLIGATOIREMENT par un appel d'offres (sourcing) ; le BC est créé
+  // à l'attribution de l'AO, qui couvre les DA (rfq.repository.award → request_po_lines).
+  // L'ancien chemin « Générer le BC depuis la DA » (generatePurchaseOrder /
+  // _generatePurchaseOrderTx) est donc supprimé.
 
   /**
    * État du circuit d'approbation de la DA (mig 456), dimension SÉPARÉE du statut

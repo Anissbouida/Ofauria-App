@@ -39,6 +39,9 @@ export const toOrderRepository = {
            JOIN ingredients ing ON ing.id = pr.ingredient_id
            LEFT JOIN users u ON u.id = pr.requested_by
           WHERE pr.status = 'pending' AND ($1::uuid IS NULL OR pr.store_id = $1)
+            -- DA déjà en sourcing (AO vivant) : retirée du besoin pour ne pas être sourcée deux fois (mig 457).
+            AND NOT EXISTS (SELECT 1 FROM rfq_requests rr JOIN rfqs r ON r.id = rr.rfq_id
+                             WHERE rr.purchase_request_id = pr.id AND r.status IN ('draft', 'sent', 'quoted'))
           ORDER BY pr.created_at`,
         [storeId ?? null]
       ),

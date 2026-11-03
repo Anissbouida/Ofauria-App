@@ -33,10 +33,5 @@ export const reasonSchema = z.object({
   reason: z.string().trim().min(3, 'Motif requis (3 caractères minimum)').max(500),
 });
 
-export const generatePOSchema = z.object({
-  supplierId: uuid,
-  requestIds: z.array(uuid).min(1, 'Sélectionnez au moins une demande').max(500),
-  expectedDeliveryDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ').optional().or(z.literal('').transform(() => undefined)),
-  notes: z.string().trim().max(2000).optional(),
-  quantityOverrides: z.record(uuid, quantity).optional(),
-});
+// Flux procure-to-pay (mig 457) : plus de génération de BC depuis une DA
+// (generatePOSchema supprimé) ; le sourcing passe par POST /rfqs/from-requests.

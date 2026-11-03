@@ -4,6 +4,14 @@ import { purchaseOrderRepository } from './purchase-order.repository.js';
 import { enqueueEmail } from '../services/mailer.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
 
+type HttpError = Error & { statusCode: number; code?: string };
+function httpError(statusCode: number, message: string, code?: string): HttpError {
+  const e = new Error(message) as HttpError;
+  e.statusCode = statusCode;
+  if (code) e.code = code;
+  return e;
+}
+
 /**
  * Envoi d'un appel d'offres par e-mail : un message par fournisseur invité qui a
  * une adresse valide, mis en file dans email_outbox (il part une fois le SMTP
@@ -135,6 +143,68 @@ export const rfqRepository = {
       }
       await client.query('COMMIT');
       return this.findById(id);
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Crée un appel d'offres à partir de DEMANDES D'ACHAT approuvées (sourcing
+   * obligatoire, mig 457). Ne retient que les DA approuvées, en attente de
+   * couverture et pas déjà en sourcing vivant. Les lignes sont fusionnées par
+   * ingrédient ; le lien AO↔DA (rfq_requests) sert à couvrir les DA à l'attribution.
+   * Les fournisseurs pressentis des DA sont pré-invités.
+   */
+  async createFromRequests(requestIds: string[], ctx: { userId: string; storeId: string | null }) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const das = (await client.query(
+        `SELECT pr.id, pr.ingredient_id, pr.quantity, pr.supplier_id, ing.unit, ing.category_id
+           FROM purchase_requests pr
+           JOIN ingredients ing ON ing.id = pr.ingredient_id
+          WHERE pr.id = ANY($1::uuid[]) AND pr.status = 'pending' AND pr.approval_status = 'approved'
+            AND NOT EXISTS (SELECT 1 FROM rfq_requests rr JOIN rfqs r ON r.id = rr.rfq_id
+                             WHERE rr.purchase_request_id = pr.id AND r.status IN ('draft', 'sent', 'quoted'))
+            AND ($2::uuid IS NULL OR pr.store_id = $2)
+          FOR UPDATE OF pr`,
+        [requestIds, ctx.storeId ?? null])).rows;
+      if (!das.length) {
+        throw httpError(409, 'Aucune demande approuvée et sourçable dans la sélection (déjà en appel d\'offres, non approuvée ou commandée)', 'RFQ_NO_SOURCEABLE');
+      }
+
+      // Fusion par ingrédient → une ligne d'AO par article.
+      const byIng = new Map<string, { ingredientId: string; unit: string | null; categoryId: string | null; qty: number }>();
+      for (const d of das) {
+        const e = byIng.get(d.ingredient_id) ?? { ingredientId: d.ingredient_id, unit: d.unit, categoryId: d.category_id, qty: 0 };
+        e.qty += parseFloat(d.quantity) || 0;
+        byIng.set(d.ingredient_id, e);
+      }
+
+      const number = await nextDocumentNumber(client, 'rfq');
+      const r = await client.query(
+        `INSERT INTO rfqs (number, store_id, title, notes, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [number, ctx.storeId, `Sourcing de ${das.length} demande(s) d'achat`.slice(0, 200), 'Créé depuis les demandes d\'achat approuvées', ctx.userId]);
+      const rfqId = r.rows[0].id as string;
+      let order = 0;
+      for (const e of byIng.values()) {
+        await client.query(
+          `INSERT INTO rfq_items (rfq_id, line_type, ingredient_id, category_id, unit, quantity, display_order)
+           VALUES ($1, 'ingredient', $2, $3, $4, $5, $6)`,
+          [rfqId, e.ingredientId, e.categoryId ?? null, e.unit ?? null, e.qty, (order += 10)]);
+      }
+      for (const d of das) {
+        await client.query(`INSERT INTO rfq_requests (rfq_id, purchase_request_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [rfqId, d.id]);
+      }
+      // Fournisseurs pressentis des DA → pré-invités (le gérant en ajoute d'autres).
+      for (const sid of new Set(das.map(d => d.supplier_id).filter(Boolean) as string[])) {
+        await client.query(`INSERT INTO rfq_suppliers (rfq_id, supplier_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [rfqId, sid]);
+      }
+      await client.query('COMMIT');
+      return this.findById(rfqId);
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;
@@ -358,6 +428,35 @@ export const rfqRepository = {
     });
     await db.query(`UPDATE supplier_quotations SET status = CASE WHEN id = $2 THEN 'selected' ELSE 'rejected' END WHERE rfq_id = $1`, [rfqId, quotationId]);
     await db.query(`UPDATE rfqs SET status = 'awarded', awarded_quotation_id = $2, awarded_at = now(), purchase_order_id = $3 WHERE id = $1`, [rfqId, quotationId, po.id]);
+
+    // Couverture des demandes d'achat sourcées (mig 457) : le BC attribué couvre les
+    // DA liées à cet AO, au prorata de la quantité demandée par ingrédient. Le statut
+    // de couverture des DA (mig 305) se recalcule alors tout seul (→ assigned).
+    const links = (await db.query(
+      `SELECT rr.purchase_request_id, pr.ingredient_id, pr.quantity
+         FROM rfq_requests rr JOIN purchase_requests pr ON pr.id = rr.purchase_request_id
+        WHERE rr.rfq_id = $1 AND pr.status = 'pending'`, [rfqId])).rows as { purchase_request_id: string; ingredient_id: string; quantity: string }[];
+    if (links.length) {
+      const poItems = (await db.query(
+        `SELECT id, ingredient_id, quantity_ordered FROM purchase_order_items WHERE purchase_order_id = $1 AND ingredient_id IS NOT NULL`, [po.id])).rows as { id: string; ingredient_id: string; quantity_ordered: string }[];
+      const poByIng = new Map<string, { id: string; qty: number }>();
+      for (const it of poItems) if (!poByIng.has(it.ingredient_id)) poByIng.set(it.ingredient_id, { id: it.id, qty: Number(it.quantity_ordered) });
+      const daByIng = new Map<string, { id: string; qty: number }[]>();
+      for (const l of links) { const a = daByIng.get(l.ingredient_id) ?? []; a.push({ id: l.purchase_request_id, qty: Number(l.quantity) }); daByIng.set(l.ingredient_id, a); }
+      for (const [ing, das] of daByIng) {
+        const line = poByIng.get(ing);
+        if (!line) continue;
+        const totalReq = das.reduce((s, d) => s + d.qty, 0) || 1;
+        for (const d of das) {
+          const covered = Math.round(Math.min(d.qty, line.qty * d.qty / totalReq) * 10000) / 10000;
+          if (covered > 0) {
+            await db.query(
+              `INSERT INTO request_po_lines (purchase_request_id, po_item_id, quantity, created_by) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+              [d.id, line.id, covered, p.userId]);
+          }
+        }
+      }
+    }
     return { data: await this.findById(rfqId), purchaseOrder: po };
   },
 };

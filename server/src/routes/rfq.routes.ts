@@ -53,6 +53,20 @@ rfqRouter.post('/', ...AM, asyncHandler(async (req: AuthRequest, res: Response) 
   res.status(201).json({ success: true, data: await repo.create(r.data, { userId: req.user!.userId, storeId: req.user!.storeId ?? null }) });
 }));
 
+// Sourcing obligatoire (mig 457) : créer un appel d'offres depuis des demandes
+// d'achat approuvées. Le BC ne naîtra qu'à l'attribution de cet AO.
+rfqRouter.post('/from-requests', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = z.object({ requestIds: z.array(uuid).min(1).max(200) }).safeParse(req.body);
+  if (!r.success) { bad(res, 'Sélectionnez au moins une demande d\'achat'); return; }
+  try {
+    const data = await repo.createFromRequests(r.data.requestIds, { userId: req.user!.userId, storeId: req.user!.storeId ?? null });
+    res.status(201).json({ success: true, data });
+  } catch (e) {
+    const err = e as { statusCode?: number; message?: string };
+    res.status(err.statusCode ?? 400).json({ success: false, error: { message: err.message ?? 'Création de l\'appel d\'offres impossible' } });
+  }
+}));
+
 rfqRouter.get('/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
   const data = await repo.findById(req.params.id);

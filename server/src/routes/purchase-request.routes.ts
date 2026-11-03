@@ -7,7 +7,7 @@ import { ROLE_GROUPS } from '@ofauria/shared';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import {
   createPurchaseRequestSchema, updateQuantitySchema, assignSupplierSchema,
-  bulkAssignSupplierSchema, reasonSchema, generatePOSchema,
+  bulkAssignSupplierSchema, reasonSchema,
 } from '../validators/purchase-request.validator.js';
 
 // Qui exprime un besoin : chefs, magasinier, gérant, admin (pas la caisse ni la vente).
@@ -33,6 +33,7 @@ router.put('/:id/supplier', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER
 router.post('/bulk-assign-supplier', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(bulkAssignSupplierSchema), asyncHandler(purchaseRequestController.bulkAssignSupplier));
 router.post('/:id/cancel', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), validate(reasonSchema), asyncHandler(purchaseRequestController.cancel));
 router.post('/:id/close', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), validate(reasonSchema), asyncHandler(purchaseRequestController.close));
-router.post('/generate-po', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(generatePOSchema), asyncHandler(purchaseRequestController.generatePO));
+// Flux procure-to-pay (mig 457) : plus de route DA→BC direct. Le sourcing se fait via
+// POST /rfqs/from-requests, et le BC naît de l'attribution de l'appel d'offres.
 
 export default router;
