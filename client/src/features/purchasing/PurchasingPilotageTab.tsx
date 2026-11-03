@@ -99,8 +99,8 @@ type FlowStep = {
   n: number; label: string; hint: string; icon: LucideIcon;
   count: number | null; late?: number; lateLabel?: string; onClick: () => void;
 };
-/** Cible de navigation interne (onglet de la coquille Achats) pour les étapes 4 à 7. */
-type PurchasingDeepTab = 'rfq' | 'purchase_orders' | 'invoices';
+/** Cible de navigation interne (onglet de la coquille Achats) pour les étapes du cycle. */
+type PurchasingDeepTab = 'rfq' | 'purchase_orders' | 'invoices' | 'identification' | 'purchase_requests' | 'reception';
 
 function P2PFlowBand({ summary, onOpenTab }: {
   summary?: ReportsSummary;
@@ -121,9 +121,9 @@ function P2PFlowBand({ summary, onOpenTab }: {
 
   const steps: FlowStep[] = [
     { n: 1, label: 'Identification', hint: 'besoins détectés', icon: Boxes,
-      count: Array.isArray(reco) ? reco.length : null, onClick: () => navigate('/production/mrp') },
+      count: Array.isArray(reco) ? reco.length : null, onClick: () => openTab('identification') },
     { n: 2, label: "Demande d'achat", hint: 'à traiter', icon: FilePlus2,
-      count: pr?.count ?? null, onClick: () => navigate('/replenishment') },
+      count: pr?.count ?? null, onClick: () => openTab('purchase_requests') },
     { n: 3, label: 'Approbation', hint: 'en attente de décision', icon: ClipboardCheck,
       count: appr ?? null, onClick: () => navigate('/approvals') },
     { n: 4, label: 'Sourcing', hint: "appels d'offres en cours", icon: FileQuestion,
@@ -132,7 +132,7 @@ function P2PFlowBand({ summary, onOpenTab }: {
       count: summary?.open_commitments.pos ?? null, onClick: () => openTab('purchase_orders') },
     { n: 6, label: 'Réception', hint: 'reçu, non facturé', icon: PackageCheck,
       count: summary?.received_not_invoiced.lines ?? null, late: summary?.received_not_invoiced.aged, lateLabel: '> 30 j',
-      onClick: () => openTab('purchase_orders') },
+      onClick: () => openTab('reception') },
     { n: 7, label: 'Facturation', hint: 'facturé au-delà du reçu', icon: FileText,
       count: summary?.invoiced_not_received.lines ?? null, late: summary?.invoiced_not_received.lines, lateLabel: 'à vérifier',
       onClick: () => openTab('invoices') },

@@ -12,6 +12,7 @@ import {
   ClipboardList, Receipt, Paperclip, Eye, Trash2, Upload,
   Loader2, Search, Coins, Filter, ArrowUpDown, ArrowUp, ArrowDown,
   Clock, CheckCircle2, Scale, CalendarClock, Ban, Settings, FileQuestion, Ship, Award,
+  Boxes, FilePlus2, PackageCheck,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -23,6 +24,9 @@ import PurchasingPilotageTab from './PurchasingPilotageTab';
 import RfqTab from './RfqTab';
 import LandedCostTab from './LandedCostTab';
 import SupplierScoreTab from './SupplierScoreTab';
+import ReceptionsTab from './ReceptionsTab';
+import PurchaseRequestsPage from './PurchaseRequestsPage';
+import MrpPage from '../production/MrpPage';
 import InvoiceControlModal from '../../components/purchasing/InvoiceControlModal';
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
 import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, paymentModeLabel, PaymentStatusTag, ReissuePaymentDialog, type CashOverride } from '../../components/purchasing/PaymentModeFields';
@@ -38,7 +42,8 @@ import {
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 
-type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'pilotage' | 'rfq' | 'landed' | 'scores';
+type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'pilotage' | 'rfq' | 'landed' | 'scores'
+  | 'identification' | 'purchase_requests' | 'reception';
 
 /**
  * Étapes du processus d'une facture reçue (dérivées côté serveur, cf.
@@ -80,15 +85,20 @@ export default function PurchasingPage() {
   const views: ModuleView<PurchasingTab | 'approvals' | 'settings'>[] = [
     // Mig 312 (D9) : reçu non facturé, facturé non reçu, engagements, par ligne de BC.
     { key: 'pilotage', label: 'Pilotage', icon: Scale, section: 'dashboard' },
-    // « Liste d'attente » retirée : les besoins se traitent dans Stock › À commander (BC directs).
+    // ─── OPÉRATIONS : les 7 étapes du cycle procure-to-pay, dans l'ordre ───
+    // 1 Identification (Plan directeur MRP) et 2 Demande d'achat sont intégrées ici
+    // depuis Production et le réappro ; 3 Approbation reste une entrée-lien vers la boîte commune.
+    { key: 'identification', label: '1 · Identification', icon: Boxes, section: 'operations' },
+    { key: 'purchase_requests', label: '2 · Demande d\'achat', icon: FilePlus2, section: 'operations' },
+    { key: 'approvals', label: '3 · Approbation', icon: ClipboardCheck, section: 'operations', href: '/approvals', external: true, badge: approvalsCount },
     // Appels d'offres (mig 360) : demande de prix à plusieurs fournisseurs, devis, comparatif, BC.
-    { key: 'rfq', label: 'Appels d\'offres', icon: FileQuestion, section: 'operations' },
-    { key: 'purchase_orders', label: 'Bons de commande', icon: ClipboardList, section: 'operations' },
-    { key: 'invoices', label: 'Factures reçues', icon: FileText, section: 'operations' },
+    { key: 'rfq', label: '4 · Appels d\'offres', icon: FileQuestion, section: 'operations' },
+    { key: 'purchase_orders', label: '5 · Bons de commande', icon: ClipboardList, section: 'operations' },
+    // Réception (étape 6) : liste des bons de réception ; la réception se complète dans le détail du BC.
+    { key: 'reception', label: '6 · Réceptions', icon: PackageCheck, section: 'operations' },
+    { key: 'invoices', label: '7 · Factures reçues', icon: FileText, section: 'operations' },
     // Frais d'approche (mig 361) : transport, douane répartis sur une réception, appliqués au coût.
     { key: 'landed', label: 'Frais d\'approche', icon: Ship, section: 'operations' },
-    // Boîte d'approbation (lot 8), sans passer par la cloche.
-    { key: 'approvals', label: 'À approuver', icon: ClipboardCheck, section: 'operations', href: '/approvals', external: true, badge: approvalsCount },
     // Évaluation des fournisseurs (mig 362) : note calculée délais / complétude / conformité / prix / litiges.
     { key: 'scores', label: 'Évaluation des fournisseurs', icon: Award, section: 'reports' },
     { key: 'suppliers', label: 'Fournisseurs', icon: Truck, section: 'setup' },
@@ -109,8 +119,11 @@ export default function PurchasingPage() {
           onOpenInvoices={id => openTab('invoices', { supplierId: id })}
         />
       )}
+      {tab === 'identification' && <MrpPage />}
+      {tab === 'purchase_requests' && <PurchaseRequestsPage />}
       {tab === 'rfq' && <RfqTab onOpenOrder={() => openTab('purchase_orders')} />}
       {tab === 'purchase_orders' && <PurchaseOrdersTab initialSupplierId={focus.supplierId} />}
+      {tab === 'reception' && <ReceptionsTab />}
       {tab === 'invoices' && <InvoicesTab {...focus} />}
       {tab === 'landed' && <LandedCostTab />}
       {tab === 'scores' && <SupplierScoreTab />}
