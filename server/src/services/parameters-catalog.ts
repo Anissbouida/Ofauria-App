@@ -174,6 +174,14 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'purchasing.sod_mode', domain: 'purchasing', section: 'business',
+    label: 'Séparation des tâches (achats)',
+    help: 'Sur la chaîne bon de commande → réception → facture → paiement, la personne qui fait une étape ne peut pas en faire une autre censée la contrôler : l\'auteur du BC ne le réceptionne pas, le réceptionnaire ne valide pas la facture, le valideur ne la paie pas, le payeur ne lève pas un blocage. « Observer » journalise les manquements sans bloquer (le temps de voir ce qui serait rejeté) ; « Bloquer » refuse l\'action — une dérogation motivée reste possible au cas par cas (mig 440).',
+    fields: [{ name: 'mode', label: 'Contrôle', type: 'enum', options: [{ value: 'warn', label: 'Observer (journaliser sans bloquer)' }, { value: 'block', label: 'Bloquer l\'action' }] }],
+    defaults: { mode: 'warn' },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'purchasing.receipt_correction_window_hours', domain: 'purchasing', section: 'business',
     label: 'Délai de correction d\'une réception',
     help: 'Pendant ce délai le gérant peut corriger une ligne de réception ; l\'administrateur n\'est pas limité.',
