@@ -16,7 +16,7 @@ import {
   buildJournal, buildGrandLivre, buildBalance, buildBilan, buildCpc, buildBalanceAgee, buildImmobilisations, buildCessions, buildAnalytique, buildIs, buildEcartsConversion, buildLiasse,
 } from '../services/ledger-editions.service.js';
 import { liasseRepository } from '../repositories/liasse.repository.js';
-import { buildVatDeductionEdi, buildIr9421Edi, zipOne } from '../services/dgi-edi.service.js';
+import { buildVatDeductionEdi, buildIr9421Edi, buildLiasseIsEdi, zipOne } from '../services/dgi-edi.service.js';
 import {
   planComptableController,
   accountAuxiliaryController,
@@ -257,6 +257,10 @@ ledgerRouter.get('/edi/tva-deductions/:year', ...TAX_AM, requireVerb('accounting
 ledgerRouter.get('/edi/9421/:year', ...TAX_AM, requireVerb('accounting', 'export'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const y = taxYear(req, res); if (y === null) return;
   sendEdi(req, res, await buildIr9421Edi(y));
+}));
+ledgerRouter.get('/edi/liasse/:year', ...TAX_AM, requireVerb('accounting', 'export'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const y = taxYear(req, res); if (y === null) return;
+  sendEdi(req, res, await buildLiasseIsEdi(y, req.query.model === 'simplifie' ? 'simplifie' : 'normal'));
 }));
 ledgerRouter.get('/fx-revaluation/:year', ...TAX_AM, asyncHandler(async (req: AuthRequest, res: Response) => {
   const y = taxYear(req, res); if (y === null) return;

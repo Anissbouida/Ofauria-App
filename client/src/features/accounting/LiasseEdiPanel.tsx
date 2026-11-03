@@ -69,20 +69,50 @@ function Download({ run, disabled }: { run: (f: 'zip' | 'xml') => Promise<void>;
   );
 }
 
-export default function LiasseEdiPanel({ year }: { year: number; model: LiasseModel; liasse: Liasse }) {
+export default function LiasseEdiPanel({ year, model }: { year: number; model: LiasseModel; liasse: Liasse }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       <StatusBanner tone="info" icon={Info} title="Dépôt sur le portail SIMPL de la DGI">
         Téléversez le ZIP dans « Envoi de fichiers EDI » (profil Rédacteur). Un fichier accepté charge la déclaration en brouillon : contrôlez-la, puis validez et déposez-la sur le portail.
       </StatusBanner>
+      <LiasseIs year={year} model={model} />
       <VatDeductions year={year} />
       <Ir9421 year={year} />
-      <Section title="Liasse fiscale IS (Simpl-IS)">
-        <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
-          Le fichier EDI de la liasse repose sur la codification officielle des cellules (annexes Simpl-IS). Il n'est pas encore généré : saisissez la liasse sur le portail à partir des éditions PDF des tableaux ci-dessus.
-        </div>
-      </Section>
     </div>
+  );
+}
+
+function LiasseIs({ year, model }: { year: number; model: LiasseModel }) {
+  const { data: s, isLoading } = useQuery({ queryKey: ['edi-liasse', year, model], queryFn: () => ediApi.liasse(year, model) });
+  return (
+    <Section title={`Liasse fiscale IS ${year} — modèle ${model === 'simplifie' ? 'simplifié' : 'normal'} (Simpl-IS)`} aside={<Download run={f => ediApi.downloadLiasse(year, model, f)} />}>
+      <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+        Cellules codées selon la codification officielle de la DGI (annexes EDI Simpl-IS 2026). Le modèle suit le sélecteur en haut de la liasse. À déposer avec la déclaration du résultat fiscal, dans les trois mois suivant la clôture.
+      </div>
+      {isLoading || !s ? <Loader2 size={16} className="animate-spin" /> : (
+        <>
+          <Issues issues={s.issues} />
+          <div style={{ overflowX: 'auto' }}>
+            <table className="odoo-table" style={{ width: '100%' }}>
+              <thead>
+                <tr><th style={{ width: 90 }}>Tableau DGI</th><th>Intitulé</th><th style={{ textAlign: 'right' }}>Cellules</th></tr>
+              </thead>
+              <tbody>
+                {s.tables.map(t => (
+                  <tr key={t.id}>
+                    <td style={mono}>{t.id}</td><td>{t.label}</td><td style={{ ...mono, textAlign: 'right' }}>{t.cells}</td>
+                  </tr>
+                ))}
+                <tr style={{ fontWeight: 700, background: 'var(--theme-bg-secondary)' }}>
+                  <td colSpan={2}>Total actif {n(s.totals.actif)} · passif {n(s.totals.passif)} · résultat net {n(s.totals.result)} · résultat fiscal {n(s.totals.taxable_result)}</td>
+                  <td style={{ ...mono, textAlign: 'right' }}>{s.tables.reduce((a, t) => a + t.cells, 0)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </Section>
   );
 }
 

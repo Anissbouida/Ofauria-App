@@ -566,6 +566,11 @@ export type Ir9421Edi = {
     cotisations: number; netImposable: number; ir: number; dependents: number; situation: string; rate: string }[];
   totals: { brut: number; brutImposable: number; netImposable: number; ir: number; deductions: number; versements: number };
 };
+export type LiasseIsEdi = {
+  year: number; model: LiasseModel; filename: string; status: 'final' | 'provisional'; issues: EdiIssue[];
+  tables: { id: number; label: string; cells: number }[];
+  totals: { actif: number; passif: number; result: number; taxable_result: number };
+};
 async function downloadBlob(url: string, params: Record<string, unknown>, fallback: string) {
   let r;
   try {
@@ -593,4 +598,7 @@ export const ediApi = {
     downloadBlob(`/ledger/edi/tva-deductions/${year}`, { period, regime, format }, `releve_deductions.${format}`),
   ir9421: (year: number): Promise<Ir9421Edi> => api.get(`/ledger/edi/9421/${year}`).then(r => r.data.data),
   download9421: (year: number, format: 'zip' | 'xml') => downloadBlob(`/ledger/edi/9421/${year}`, { format }, `etat_9421.${format}`),
+  liasse: (year: number, model: LiasseModel): Promise<LiasseIsEdi> => api.get(`/ledger/edi/liasse/${year}`, { params: { model } }).then(r => r.data.data),
+  downloadLiasse: (year: number, model: LiasseModel, format: 'zip' | 'xml') =>
+    downloadBlob(`/ledger/edi/liasse/${year}`, { model, format }, `liasse_is.${format}`),
 };

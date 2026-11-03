@@ -12,6 +12,9 @@
  *     V5.1 (27/07/2026), annexes 1 et 2. Racine TraitementEtSalaire, liste du
  *     personnel permanent ; situation familiale C/M/V/D, taux de frais
  *     professionnels TPP.35.2009 / TPP.25.2009.
+ *   - Liasse IS (Simpl-IS) : cahier des charges V2.0.3 et annexes EDI 2026.
+ *     Racine Liasse, modèle 1 (normal) ou 7 (simplifié), une cellule par code
+ *     DGI (liasse-edi.codes) pour le bilan, le CPC, le passage et l'ESG.
  * Rien n'est écrit en base : un fichier accepté devient un brouillon à valider
  * et déposer sur le portail (mode EFI).
  */
@@ -19,6 +22,9 @@ import { deflateRawSync } from 'node:zlib';
 import { db } from '../config/database.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
 import { payrollDeclarationRepository } from '../repositories/payroll-declarations.repository.js';
+import { liasseRepository } from '../repositories/liasse.repository.js';
+import { LIASSE_MODEL_ID, liasseEdiTables, simplifiedGaps, type EdiTable } from './liasse-edi.codes.js';
+import type { LiasseModel } from './liasse.rules.js';
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const amt = (n: number) => r2(n).toFixed(2);
@@ -269,5 +275,45 @@ export async function buildIr9421Edi(year: number) {
     year, filename: `etat_9421_${legal.if ?? 'IF'}_${year}`, xml: Buffer.from(xml, 'utf8'), issues,
     staff: staff.map(({ node: _node, ...rest }) => rest),
     totals: { brut: sum('brut'), brutImposable: sum('brutImposable'), netImposable: sum('netImposable'), ir: sum('ir'), deductions: totalDeduction, versements: r2(vers.reduce((s, v) => s + v.amount, 0)) },
+  };
+}
+
+/* ─── Liasse IS (Simpl-IS) ─────────────────────────────────────────── */
+
+/** XML de la liasse, à la façon des exemples officiels : prologue UTF-8, un ValeursTableau par tableau. */
+export function liasseXml(p: { identifiantFiscal: string; year: number; model: LiasseModel; tables: EdiTable[] }) {
+  const tables: Node[] = p.tables.map(t => ['ValeursTableau', [
+    ['tableau', [['id', t.id]]],
+    ['groupeValeurs', t.cells.map(c => ['ValeurCellule', [
+      ['cellule', [['codeEdi', c.code]]], ['valeur', c.value],
+      ...(c.line ? [['numeroLigne', c.line] as Node] : []),
+    ]] as Node)],
+    ['extraFieldvaleurs', []],
+  ]]);
+  return Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\r\n' + render([['Liasse', [
+    ['modele', [['id', LIASSE_MODEL_ID[p.model]]]],
+    ['resultatFiscal', [['identifiantFiscal', p.identifiantFiscal], ['exerciceFiscalDu', `${p.year}-01-01`], ['exerciceFiscalAu', `${p.year}-12-31`]]],
+    ['groupeValeursTableau', tables],
+  ]]]), 'utf8');
+}
+
+export async function buildLiasseIsEdi(year: number, model: LiasseModel) {
+  // La liasse est toujours calculée au détail du modèle normal ; le simplifié en regroupe les rubriques.
+  const l = await liasseRepository.build(year, 'normal');
+  const tables = liasseEdiTables(l, model);
+  const issues: EdiIssue[] = [];
+  if (!l.company.if) issues.push({ level: 'error', message: 'Identifiant fiscal (IF) de l\'entreprise manquant : Paramètres › Entreprise' });
+  for (const c of l.controls) if (!/^Identité fiscale incomplète/.test(c.message)) issues.push(c);
+  if (model === 'simplifie')
+    for (const g of simplifiedGaps(l)) issues.push({ level: 'warning', message: `${g.label} (${g.amount.toFixed(2)}) : rubrique absente du modèle simplifié, comptée dans les totaux seulement` });
+  if (model !== l.suggested_model)
+    issues.push({ level: 'warning', message: `Chiffre d'affaires ${l.totals.revenue.toFixed(2)} : le modèle ${l.suggested_model === 'simplifie' ? 'simplifié' : 'normal'} est celui attendu` });
+  issues.push({ level: 'warning', message: 'Seuls le bilan, le CPC, le passage au résultat fiscal et l\'ESG sont générés : les autres tableaux de la liasse se complètent sur le portail' });
+  return {
+    year, model, filename: `liasse_is_${l.company.if ?? 'IF'}_${year}_${model}`,
+    xml: liasseXml({ identifiantFiscal: l.company.if ?? '', year, model, tables }),
+    tables: tables.map(t => ({ id: t.id, label: t.label, cells: t.cells.length })),
+    totals: { actif: l.totals.actif, passif: l.totals.passif, result: l.totals.result, taxable_result: l.passage.taxable_result },
+    status: l.status, issues,
   };
 }

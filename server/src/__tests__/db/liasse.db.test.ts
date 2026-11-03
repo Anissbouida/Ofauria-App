@@ -94,4 +94,17 @@ describe.skipIf(!hasTestDb)('Liasse fiscale — bilan, CPC, ESG', () => {
     expect((x.match(/<PersonnelPermanent>/g) ?? []).length).toBe(ir.staff.length);
     expect(ir.totals.ir).toBeCloseTo(ir.staff.reduce((s, e) => s + e.ir, 0), 2);
   }, 60_000);
+  it('liasse IS en EDI : cellules des totaux égales à la liasse, dans les deux modèles', async () => {
+    const { buildLiasseIsEdi } = await import('../../services/dgi-edi.service.js');
+    const n = await liasse.build(2021, 'normal');
+    const val = (xml: Buffer, code: number) => Number(new RegExp(`<codeEdi>${code}</codeEdi>\\s*</cellule>\\s*<valeur>([^<]*)</valeur>`).exec(xml.toString('utf8'))?.[1]);
+    for (const [model, actif, passif, result] of [['normal', 188, 13368, 13409], ['simplifie', 4699, 5277, 5229]] as const) {
+      const e = await buildLiasseIsEdi(2021, model);
+      expect(e.xml.toString('utf8')).toContain(`<modele>\r\n\t\t<id>${model === 'normal' ? 1 : 7}</id>`);
+      expect(val(e.xml, actif)).toBeCloseTo(n.totals.actif, 2);
+      expect(val(e.xml, passif)).toBeCloseTo(n.totals.passif, 2);
+      expect(val(e.xml, result)).toBeCloseTo(n.totals.result, 2);
+      expect(val(e.xml, 1332)).toBeCloseTo(n.totals.result, 2);
+    }
+  }, 60_000);
 });
