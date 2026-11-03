@@ -66,6 +66,21 @@ async function poEngagementAmount(poId: string): Promise<{ amount: number; engag
 }
 
 /**
+ * Valeurs de barème d'un BC (lot L4 P2P, 5/5) : rôle de l'acheteur (créateur du
+ * BC) et catégories d'achat des lignes. Elles enrichissent les `values` soumises
+ * à l'approbation pour permettre des règles par rôle et/ou par catégorie
+ * (conditions composées, voir approvalConditionMatches). `category` est une LISTE :
+ * une règle « catégorie = X » matche si au moins une ligne est dans X.
+ */
+async function poApprovalExtras(poId: string): Promise<{ buyer_role: string | null; category: string[] }> {
+  const role = (await db.query(
+    `SELECT u.role FROM purchase_orders po LEFT JOIN users u ON u.id = po.created_by WHERE po.id = $1`, [poId])).rows[0]?.role ?? null;
+  const cats = (await db.query(
+    `SELECT DISTINCT category_id::text AS c FROM purchase_order_items WHERE purchase_order_id = $1 AND category_id IS NOT NULL`, [poId])).rows.map((r: { c: string }) => r.c);
+  return { buyer_role: role, category: cats };
+}
+
+/**
  * DA obligatoire à l'envoi (lot L4 P2P, 4/5). Un BC doit référencer une demande
  * d'achat (lien de couverture, mig 305) ou porter une dispense d'urgence motivée
  * (request_exempt_reason, mig 454). Gate purchasing.po_requires_request :
@@ -259,9 +274,12 @@ export const purchaseOrderController = {
     // (BC au-dessus du seuil paramétré), le bon attend l'accord d'un
     // approbateur et c'est le moteur qui l'enverra. On passe AVANT le plafond :
     // le demandeur ne fait que soumettre, il n'approuve pas.
+    // L4 (P2P, 5/5) — barème par rôle acheteur / catégorie : on enrichit les
+    // valeurs soumises pour permettre des règles composées (montant + rôle/catégorie).
+    const extras = await poApprovalExtras(req.params.id);
     const approval = await approvalService.submit({
       docType: 'purchase_order', docId: req.params.id, docLabel: `BC ${po.order_number} · ${po.supplier_name ?? ''}`.trim(),
-      amount: engagementAmount, values: { amount: engagementAmount, bc_ttc: amount }, storeId: po.store_id ?? req.user!.storeId ?? null, requestedBy: req.user!.userId,
+      amount: engagementAmount, values: { amount: engagementAmount, bc_ttc: amount, ...extras }, storeId: po.store_id ?? req.user!.storeId ?? null, requestedBy: req.user!.userId,
     });
     if (approval.outcome === 'already_pending') {
       res.status(409).json({ success: false, error: { message: 'Ce bon attend déjà une approbation' }, approval: approval.request });
@@ -404,10 +422,11 @@ export const purchaseOrderController = {
       l?.unitPrice !== undefined || l?.qtyContainer !== undefined || l?.discountPct !== undefined || l?.tvaRate !== undefined);
     if (touchesEngagement) {
       const { amount, engagementAmount } = await poEngagementAmount(req.params.id);
+      const extras = await poApprovalExtras(req.params.id);
       const approval = await approvalService.submit({
         docType: 'purchase_order', docId: req.params.id,
         docLabel: `Avenant BC ${updated.order_number ?? ''}`.trim(),
-        amount: engagementAmount, values: { amount: engagementAmount, bc_ttc: amount, avenant: true },
+        amount: engagementAmount, values: { amount: engagementAmount, bc_ttc: amount, avenant: true, ...extras },
         storeId: updated.store_id ?? req.user!.storeId ?? null, requestedBy: req.user!.userId,
       });
       if (approval.outcome === 'submitted') {

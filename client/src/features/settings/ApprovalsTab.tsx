@@ -31,6 +31,16 @@ function ConditionEditor({ docType, value, disabled, onChange }: {
   const fields = DOC_TYPES[docType]?.fields ?? {};
   const field = value.field ? fields[value.field] : undefined;
   const [draft, setDraft] = useState<string>(value.value === undefined ? '' : String(value.value));
+  // Condition composée (barème par rôle/catégorie, lot L4 P2P 5/5) : l'éditeur
+  // inline ne gère qu'une condition simple. On l'affiche en lecture seule pour ne
+  // pas l'écraser ; son réglage fin se fait pour l'instant côté règle (migration).
+  if (Array.isArray(value.all) || Array.isArray(value.any)) {
+    return (
+      <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }} title="Condition composée : modifiable via migration/API">
+        {describeApprovalCondition(docType, value)}
+      </span>
+    );
+  }
   const commit = (next: Partial<ApprovalCondition>) => {
     const merged = { ...value, ...next };
     if (!merged.field) { onChange(null); return; }

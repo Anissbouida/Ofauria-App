@@ -31,7 +31,9 @@ export interface SubmitInput {
   docId: string;
   docLabel: string;
   amount?: number | null;
-  values: Record<string, number | string | boolean | null>;
+  // string[] : valeur-liste pour un barème par appartenance (ex. catégories des
+  // lignes du BC, lot L4 P2P 5/5) — approvalConditionMatches traite eq comme « contient ».
+  values: Record<string, number | string | boolean | null | string[]>;
   storeId?: string | null;
   requestedBy: string;
 }
