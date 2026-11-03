@@ -215,6 +215,29 @@ export const invoiceController = {
     res.status(201).json({ success: true, data: invoice });
   },
   /**
+   * POST /invoices/:id/validate — confrontation de la pré-facture au papier du
+   * fournisseur (lot L1 P2P) : enregistre n°/montants déclarés, passe brouillon
+   * → validée (refus sans n° + TTC) et pose les événements « facturé ».
+   */
+  async validate(req: AuthRequest, res: Response) {
+    const b = req.body as { supplierInvoiceNumber?: string | null; invoiceDate?: string | null; declaredHt?: number | null; declaredVat?: number | null; declaredTtc?: number | null };
+    try {
+      const invoice = await invoiceRepository.validate(req.params.id, {
+        supplierInvoiceNumber: b.supplierInvoiceNumber ?? null,
+        invoiceDate: b.invoiceDate ?? null,
+        declaredHt: b.declaredHt ?? null,
+        declaredVat: b.declaredVat ?? null,
+        declaredTtc: b.declaredTtc ?? null,
+      }, req.user!.userId);
+      if (!invoice) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+      res.json({ success: true, data: invoice });
+    } catch (err) {
+      const e = err as { statusCode?: number; code?: string; message?: string };
+      const msg = e?.message ?? 'Erreur lors de la validation';
+      res.status(e?.statusCode ?? (e?.code === 'OF409' ? 409 : 400)).json({ success: false, error: { message: msg } });
+    }
+  },
+  /**
    * Retiré (mig 354) : une commande de professionnel se facture à partir de son
    * bon de livraison (quantités réellement livrées), une commande de
    * particulier se règle en caisse et ne donne pas de facture de vente.
@@ -438,6 +461,10 @@ export const invoiceController = {
       unitPrice: num(raw.unitPrice),
       subtotal: raw.subtotal !== undefined ? num(raw.subtotal) : num(raw.quantity) * num(raw.unitPrice),
       tvaRate: rate(raw.tvaRate),
+      // Liens de rapprochement conservés à l'édition (lot L1 P2P) : l'écran de
+      // confrontation les renvoie tels quels pour chaque ligne issue d'un BC.
+      purchaseOrderItemId: (raw.purchaseOrderItemId ?? raw.purchase_order_item_id ?? null) as string | null,
+      receptionVoucherItemId: (raw.receptionVoucherItemId ?? raw.reception_voucher_item_id ?? null) as string | null,
     }));
     try {
       const updated = await invoiceRepository.replaceItems(req.params.id, items);

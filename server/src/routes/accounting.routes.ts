@@ -16,6 +16,23 @@ import { listActions } from '../services/document-actions.service.js';
 import { z } from 'zod';
 
 const manualHoldSchema = z.object({ note: z.string().trim().min(3, 'Précisez la raison du blocage').max(1000) });
+
+// Confrontation d'une facture reçue (lot L1 P2P) : pièce du fournisseur. Les
+// champs vides sont ramenés à « absent » (le repository ne vide alors rien).
+const optionalMoney = z.preprocess(
+  (v) => (v === '' || v === null || v === undefined ? undefined : v),
+  z.coerce.number().nonnegative(),
+).optional();
+const validateInvoiceSchema = z.object({
+  supplierInvoiceNumber: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().trim().max(100),
+  ).optional(),
+  invoiceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue AAAA-MM-JJ').optional(),
+  declaredHt: optionalMoney,
+  declaredVat: optionalMoney,
+  declaredTtc: optionalMoney,
+});
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 
@@ -98,6 +115,8 @@ invoicesRouter.post('/merge', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAG
 // Echelonnement d'une facture en N echeances (materiel achete a credit) — mig 258.
 invoicesRouter.post('/:id/schedule', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(paymentScheduleController.createInvoiceSchedule));
 invoicesRouter.post('/:id/cancel', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.cancel));
+// Confrontation : valide une facture reçue en brouillon (lot L1 P2P).
+invoicesRouter.post('/:id/validate', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), validate(validateInvoiceSchema), asyncHandler(invoiceController.validate));
 // Contrôle et blocages (mig 309).
 invoicesRouter.get('/:id/control', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.control));
 invoicesRouter.post('/:id/holds', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), validate(manualHoldSchema), asyncHandler(invoiceController.addHold));
