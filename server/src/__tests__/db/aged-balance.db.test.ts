@@ -39,8 +39,9 @@ describe.skipIf(!hasTestDb)('Balance âgée comptable', () => {
     return (await p.query(`SELECT id FROM journal_entry_lines WHERE journal_entry_id = $1 AND line_order = 1`, [e])).rows[0].id as string;
   };
   const invoice = async (n: string, date: string, due: string, total: number) => (await testPool().query(
-    `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, invoice_date, due_date, amount, total_amount, status)
-     VALUES ($1, 'received', $2, $3, $4, $5, $5, 'pending') RETURNING id`, [`${n}-${RUN}`, supplier, date, due, total])).rows[0].id as string;
+    `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, invoice_date, due_date, amount, total_amount, status,
+                           supplier_invoice_number, declared_ttc, validation_status)
+     VALUES ($1, 'received', $2, $3, $4, $5, $5, 'pending', $1, $5, 'validated') RETURNING id`, [`${n}-${RUN}`, supplier, date, due, total])).rows[0].id as string;
   const payment = async (inv: string, date: string, amount: number) => (await testPool().query(
     `INSERT INTO payments (type, invoice_id, supplier_id, amount, payment_date, payment_method, payment_mode, reference)
      VALUES ('invoice', $1, $2, $3, $4, 'virement', 'virement', $5) RETURNING id`,
