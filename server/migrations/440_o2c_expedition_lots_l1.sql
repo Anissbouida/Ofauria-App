@@ -79,7 +79,9 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- Lot épuisé qui récupère des quantités (annulation d'expédition, retour en caisse) :
 -- il redevient actif s'il n'est pas périmé. Avant, il restait « épuisé », invisible du
 -- FEFO, et un article rendu partait en perte.
-CREATE OR REPLACE FUNCTION check_product_lot_invariant() RETURNS trigger
+-- Nouvelle fonction (et non CREATE OR REPLACE de check_product_lot_invariant, mig 106) :
+-- en production, l'ancienne appartient à un autre rôle que celui des migrations.
+CREATE OR REPLACE FUNCTION fn_product_lot_invariant() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.backroom_qty + NEW.vitrine_qty + NEW.sold_qty + NEW.wasted_qty + NEW.recycled_qty
@@ -106,3 +108,8 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+DROP TRIGGER IF EXISTS trg_product_lot_invariant ON product_lots;
+CREATE TRIGGER trg_product_lot_invariant
+  BEFORE UPDATE ON product_lots
+  FOR EACH ROW
+  EXECUTE FUNCTION fn_product_lot_invariant();
