@@ -135,8 +135,9 @@ describe.skipIf(!hasTestDb)('Lettrage manuel', () => {
     // Pièces et écritures « backfill » : la reprise d'historique ne lettrait pas.
     const invoice = async (n: string, total: number, paid: number[]) => {
       const inv = (await p.query(
-        `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, invoice_date, amount, total_amount, status)
-         VALUES ($1, 'received', $2, $3, $4, $4, 'pending') RETURNING id`, [`${n}-${RUN}`, supplier, day, total])).rows[0].id;
+        `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, invoice_date, amount, total_amount, status,
+                               supplier_invoice_number, declared_ttc, validation_status)
+         VALUES ($1, 'received', $2, $3, $4, $4, 'pending', $1, $4, 'validated') RETURNING id`, [`${n}-${RUN}`, supplier, day, total])).rows[0].id;
       const entry = async (sourceId: string, tiers: 'debit' | 'credit', amount: number, other: string) => {
         const e = (await p.query(
           `INSERT INTO journal_entries (entry_number, journal_id, entry_date, fiscal_period_id, description, source_kind, source_id, created_by)

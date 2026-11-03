@@ -2,11 +2,11 @@
  * Lot Bonus 15 (mig 435) — intégration base migrée.
  *
  * Budget : magasin et compte de charge créés pour le test (aucune autre suite
- * n'y écrit) ; budget 2024 de 100 par mois, réel 500 en mars, BC envoyé de 400
+ * n'y écrit) ; budget 2027 de 100 par mois, réel 500 en mars, BC envoyé de 400
  * non reçu → disponible annuel 300, cumulé à juin −300.
  *
  * Effets : facture client 3 000 réglée par deux traites (1 000 et 1 200) et un
- * chèque (800), en 2024. Les traites sont escomptées (agios 30, commissions 10,
+ * chèque (800), en 2027. Les traites sont escomptées (agios 30, commissions 10,
  * TVA 2), le chèque remis à l'encaissement ; la 1re traite est payée à
  * l'échéance, la 2de revient impayée avec 15 de frais.
  */
@@ -54,17 +54,17 @@ describe.skipIf(!hasTestDb)('Budgets et portefeuille d\'effets', () => {
 
   it('contrôle budgétaire : réel, engagé d\'un BC envoyé et verdict selon la période', async () => {
     const budget = (await p().query(
-      `INSERT INTO budgets (fiscal_year, store_id, name, status, control_action, control_period) VALUES (2024, $1, $2, 'approved', 'warn', 'annual') RETURNING id`,
+      `INSERT INTO budgets (fiscal_year, store_id, name, status, control_action, control_period) VALUES (2027, $1, $2, 'approved', 'warn', 'annual') RETURNING id`,
       [ids.store, `Budget ${RUN}`])).rows[0].id;
     for (let m = 1; m <= 12; m++) await p().query(`INSERT INTO budget_lines (budget_id, account_id, month, amount) VALUES ($1, $2, $3, 100)`, [budget, ids.account, m]);
     const acc = (await p().query(`SELECT id FROM accounts WHERE code = '5141'`)).rows[0].id;
-    await manual.createAndPost({ journalCode: 'OD', date: '2024-03-10', description: `Réel budget ${RUN}`, lines: [
+    await manual.createAndPost({ journalCode: 'OD', date: '2027-03-10', description: `Réel budget ${RUN}`, lines: [
       { accountId: ids.account, debit: 500, credit: 0 }, { accountId: acc, debit: 0, credit: 500 },
     ] }, { userId: actor.userId, storeId: ids.store });
     const supplier = (await p().query(`INSERT INTO suppliers (name) VALUES ($1) RETURNING id`, [`Fournisseur budget ${RUN}`])).rows[0].id;
     const po = (await p().query(
       `INSERT INTO purchase_orders (order_number, supplier_id, status, order_date, store_id, created_by)
-       VALUES ($1, $2, 'en_attente', '2024-04-02', $3, $4) RETURNING id`, [`BC-T-${RUN}`, supplier, ids.store, actor.userId])).rows[0].id;
+       VALUES ($1, $2, 'en_attente', '2027-04-02', $3, $4) RETURNING id`, [`BC-T-${RUN}`, supplier, ids.store, actor.userId])).rows[0].id;
     await p().query(
       `INSERT INTO purchase_order_items (purchase_order_id, quantity_ordered, unit_price, category_id, description, line_type)
        VALUES ($1, 4, 100, $2, 'Location matériel', 'service')`, [po, ids.category]);
@@ -74,76 +74,76 @@ describe.skipIf(!hasTestDb)('Budgets et portefeuille d\'effets', () => {
     expect(amounts.request.get(ids.account)).toBeCloseTo(400, 2);
 
     const one = (amount: number) => new Map([[ids.account, amount]]);
-    const ok = await mgmt.budgetControl({ date: '2024-06-15', storeId: ids.store, request: one(300) });
+    const ok = await mgmt.budgetControl({ date: '2027-06-15', storeId: ids.store, request: one(300) });
     expect(ok.outcome).toBe('ok');
     expect(ok.lines[0]).toMatchObject({ budget: 1200, actual: 500, committed: 400, available: 300 });
-    const warn = await mgmt.budgetControl({ date: '2024-06-15', storeId: ids.store, request: one(301) });
+    const warn = await mgmt.budgetControl({ date: '2027-06-15', storeId: ids.store, request: one(301) });
     expect(warn).toMatchObject({ outcome: 'warn', lines: [{ exceeded: 1 }] });
     // Le BC contrôlé lui-même n'est pas compté deux fois.
-    const self = await mgmt.budgetControl({ date: '2024-06-15', storeId: ids.store, request: amounts.request, excludePurchaseOrderId: po });
+    const self = await mgmt.budgetControl({ date: '2027-06-15', storeId: ids.store, request: amounts.request, excludePurchaseOrderId: po });
     expect(self.lines[0]).toMatchObject({ committed: 0, request: 400, available: 700, exceeded: 0 });
 
     await mgmt.setControl(budget, { action: 'block', period: 'cumulative' });
-    const block = await mgmt.budgetControl({ date: '2024-06-15', storeId: ids.store, request: one(10) });
+    const block = await mgmt.budgetControl({ date: '2027-06-15', storeId: ids.store, request: one(10) });
     expect(block).toMatchObject({ outcome: 'block', lines: [{ budget: 600, actual: 500, committed: 400, available: -300, exceeded: 10 }] });
 
     // BC facturé en entier : l'engagé disparaît (la charge passe au réel par la facture).
     const inv = (await p().query(
       `INSERT INTO invoices (invoice_number, invoice_date, amount, tax_amount, total_amount, invoice_type, supplier_id, purchase_order_id)
-       VALUES ($1, '2024-06-01', 400, 0, 400, 'received', $2, $3) RETURNING id`, [`FF-B-${RUN}`, supplier, po])).rows[0].id;
+       VALUES ($1, '2027-06-01', 400, 0, 400, 'received', $2, $3) RETURNING id`, [`FF-B-${RUN}`, supplier, po])).rows[0].id;
     await p().query(`INSERT INTO invoice_purchase_orders (invoice_id, purchase_order_id) VALUES ($1, $2)`, [inv, po]);
-    const after = await mgmt.budgetControl({ date: '2024-06-15', storeId: ids.store, request: one(10) });
+    const after = await mgmt.budgetControl({ date: '2027-06-15', storeId: ids.store, request: one(10) });
     expect(after.lines[0].committed).toBe(0);
 
-    const cmp = await mgmt.comparison(2024, ids.store);
+    const cmp = await mgmt.comparison(2027, ids.store);
     const row = cmp.rows.find(r => r.id === ids.account)!;
     expect(row).toMatchObject({ budget_year: 1200, actual_year: 500, committed: 0, available: 700 });
   }, 60_000);
 
   it('portefeuille d\'effets : escompte, encaissement, échéance et impayé', async () => {
-    const inv = await invoices.create({ invoiceType: 'emitted', customerId: ids.customer, invoiceDate: '2024-05-02', amount: 3000, taxAmount: 0,
+    const inv = await invoices.create({ invoiceType: 'emitted', customerId: ids.customer, invoiceDate: '2027-05-02', amount: 3000, taxAmount: 0,
       totalAmount: 3000, createdBy: actor.userId });
     const pay = (method: 'traite' | 'check', amount: number, n: number, due: string) => payments.create({
-      type: 'income', invoiceId: inv.id, amount, paymentMethod: method, paymentDate: '2024-05-10', checkNumber: `${method === 'traite' ? 'LCR' : 'CHQ'}-${n}-${RUN}`,
+      type: 'income', invoiceId: inv.id, amount, paymentMethod: method, paymentDate: '2027-05-10', checkNumber: `${method === 'traite' ? 'LCR' : 'CHQ'}-${n}-${RUN}`,
       checkDate: due, reference: `EFF-${n}-${RUN}`, createdBy: actor.userId,
     });
-    const t1 = await pay('traite', 1000, 1, '2024-07-31'), t2 = await pay('traite', 1200, 2, '2024-08-31'), c1 = await pay('check', 800, 3, '2024-05-10');
+    const t1 = await pay('traite', 1000, 1, '2027-07-31'), t2 = await pay('traite', 1200, 2, '2027-08-31'), c1 = await pay('check', 800, 3, '2027-05-10');
     expect((await linesOf(`je.source_id = $1 AND je.source_kind = 'payment'`, [t1.id])).map(l => [l.code, l.d, l.c])).toEqual([['5113', 1000, 0], ['3421', 0, 1000]]);
 
     const list0 = await bills.list({ status: 'portfolio' });
     expect(list0.effects.filter(e => [t1.id, t2.id, c1.id].includes((e as unknown as { id: string }).id))).toHaveLength(3);
 
-    await expect(bills.createRemittance({ kind: 'discount', treasuryAccountId: ids.bank, date: '2024-05-15', paymentIds: [t1.id, c1.id], userId: actor.userId, storeId: null }))
+    await expect(bills.createRemittance({ kind: 'discount', treasuryAccountId: ids.bank, date: '2027-05-15', paymentIds: [t1.id, c1.id], userId: actor.userId, storeId: null }))
       .rejects.toThrow(/Seules les traites s'escomptent/);
-    const disc = await bills.createRemittance({ kind: 'discount', treasuryAccountId: ids.bank, date: '2024-05-15', paymentIds: [t1.id, t2.id],
+    const disc = await bills.createRemittance({ kind: 'discount', treasuryAccountId: ids.bank, date: '2027-05-15', paymentIds: [t1.id, t2.id],
       interest: 30, commission: 10, commissionVat: 2, userId: actor.userId, storeId: null });
     expect(disc).toMatchObject({ gross_amount: 2200, net_amount: 2158 });
     expect((await linesOf(`je.entry_number = $1`, [disc.entry_number])).map(l => [l.code, l.d, l.c, l.journal])).toEqual([
       ['5141', 2158, 0, 'BQ'], ['6311', 30, 0, 'BQ'], ['6147', 10, 0, 'BQ'], ['34552', 2, 0, 'BQ'], ['5520', 0, 2200, 'BQ'],
     ]);
-    await expect(bills.createRemittance({ kind: 'collection', treasuryAccountId: ids.bank, date: '2024-05-16', paymentIds: [t1.id], userId: actor.userId, storeId: null }))
+    await expect(bills.createRemittance({ kind: 'collection', treasuryAccountId: ids.bank, date: '2027-05-16', paymentIds: [t1.id], userId: actor.userId, storeId: null }))
       .rejects.toThrow(/plus en portefeuille/);
 
-    const coll = await bills.createRemittance({ kind: 'collection', treasuryAccountId: ids.bank, date: '2024-05-16', paymentIds: [c1.id], userId: actor.userId, storeId: null });
+    const coll = await bills.createRemittance({ kind: 'collection', treasuryAccountId: ids.bank, date: '2027-05-16', paymentIds: [c1.id], userId: actor.userId, storeId: null });
     expect(coll.entry_number).toBeNull();
-    expect(await bills.settleRemittance(coll.id, { date: '2024-05-20', userId: actor.userId })).toEqual({ settled: 1 });
+    expect(await bills.settleRemittance(coll.id, { date: '2027-05-20', userId: actor.userId })).toEqual({ settled: 1 });
     expect((await linesOf(`je.source_id = $1 AND je.source_detail = 'cashing' AND je.status = 'posted'`, [c1.id])).map(l => [l.code, l.d, l.c]))
       .toEqual([['5141', 800, 0], ['5111', 0, 800]]);
 
     // Échéance de la 1re traite escomptée : dénouement du crédit d'escompte, sans mouvement de banque.
-    await payments.markCashed(t1.id, { cashedAt: '2024-07-31', cashedBy: actor.userId });
+    await payments.markCashed(t1.id, { cashedAt: '2027-07-31', cashedBy: actor.userId });
     expect((await linesOf(`je.source_id = $1 AND je.source_detail = 'cashing' AND je.status = 'posted'`, [t1.id])).map(l => [l.code, l.d, l.c, l.journal]))
       .toEqual([['5520', 1000, 0, 'OD'], ['5113', 0, 1000, 'OD']]);
 
     // 2de traite impayée : règlement annulé, facture de nouveau due, banque reprend nominal et frais.
-    const u = await bills.markUnpaid(t2.id, { date: '2024-08-31', fees: 15, note: null, userId: actor.userId });
+    const u = await bills.markUnpaid(t2.id, { date: '2027-08-31', fees: 15, note: null, userId: actor.userId });
     expect((await linesOf(`je.entry_number = $1`, [u.entry_number])).map(l => [l.code, l.d, l.c])).toEqual([['5520', 1200, 0], ['6147', 15, 0], ['5141', 0, 1215]]);
     const invRow = (await p().query(`SELECT paid_amount::float8 AS paid FROM invoices WHERE id = $1`, [inv.id])).rows[0];
     expect(invRow.paid).toBeCloseTo(1800, 2);
     const extourne = await linesOf(
       `je.reversal_of_entry_id IN (SELECT id FROM journal_entries WHERE source_id = $1 AND source_kind = 'payment')`, [t2.id]);
     expect(extourne.map(l => [l.code, l.d, l.c]).sort()).toEqual([['3421', 1200, 0], ['5113', 0, 1200]]);
-    await expect(bills.markUnpaid(t2.id, { date: '2024-09-01', fees: 0, userId: actor.userId })).rejects.toThrow(/déjà déclaré impayé/);
+    await expect(bills.markUnpaid(t2.id, { date: '2027-09-01', fees: 0, userId: actor.userId })).rejects.toThrow(/déjà déclaré impayé/);
 
     // Soldes : 5520 et 5113 reviennent à zéro sur nos effets.
     const net = async (code: string) => (await p().query(
@@ -162,11 +162,11 @@ describe.skipIf(!hasTestDb)('Budgets et portefeuille d\'effets', () => {
   }, 60_000);
 
   it('annulation d\'un bordereau d\'escompte : extourne et retour en portefeuille', async () => {
-    const inv = await invoices.create({ invoiceType: 'emitted', customerId: ids.customer, invoiceDate: '2024-06-02', amount: 500, taxAmount: 0,
+    const inv = await invoices.create({ invoiceType: 'emitted', customerId: ids.customer, invoiceDate: '2027-06-02', amount: 500, taxAmount: 0,
       totalAmount: 500, createdBy: actor.userId });
-    const t = await payments.create({ type: 'income', invoiceId: inv.id, amount: 500, paymentMethod: 'traite', paymentDate: '2024-06-05',
-      checkNumber: `LCR-9-${RUN}`, checkDate: '2024-09-30', createdBy: actor.userId });
-    const disc = await bills.createRemittance({ kind: 'discount', treasuryAccountId: ids.bank, date: '2024-06-06', paymentIds: [t.id], interest: 5, userId: actor.userId, storeId: null });
+    const t = await payments.create({ type: 'income', invoiceId: inv.id, amount: 500, paymentMethod: 'traite', paymentDate: '2027-06-05',
+      checkNumber: `LCR-9-${RUN}`, checkDate: '2027-09-30', createdBy: actor.userId });
+    const disc = await bills.createRemittance({ kind: 'discount', treasuryAccountId: ids.bank, date: '2027-06-06', paymentIds: [t.id], interest: 5, userId: actor.userId, storeId: null });
     await bills.cancelRemittance(disc.id, { userId: actor.userId });
     const st = (await p().query(
       `SELECT je.status, (SELECT count(*)::int FROM journal_entries x WHERE x.reversal_of_entry_id = je.id) AS rev
@@ -174,7 +174,7 @@ describe.skipIf(!hasTestDb)('Budgets et portefeuille d\'effets', () => {
     expect(st.status).toBe('reversed');
     expect((await p().query(`SELECT remittance_id FROM payments WHERE id = $1`, [t.id])).rows[0].remittance_id).toBeNull();
     // Encaissé hors bordereau : crédit bancaire direct (5141 / 5113).
-    await payments.markCashed(t.id, { cashedAt: '2024-09-30', cashedBy: actor.userId });
+    await payments.markCashed(t.id, { cashedAt: '2027-09-30', cashedBy: actor.userId });
     expect((await linesOf(`je.source_id = $1 AND je.source_detail = 'cashing' AND je.status = 'posted'`, [t.id])).map(l => [l.code, l.d, l.c]))
       .toEqual([['5141', 500, 0], ['5113', 0, 500]]);
   }, 60_000);

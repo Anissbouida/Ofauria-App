@@ -47,7 +47,7 @@ describe.skipIf(!hasTestDb)('RLS par établissement et partitions d\'exercice', 
     const acc = async (code: string) => (await p().query(`SELECT id FROM accounts WHERE code = $1`, [code])).rows[0].id as string;
     const [cash, sales] = [await acc('5161'), await acc('7111')];
     for (const k of ['A', 'B']) {
-      await manual.createAndPost({ journalCode: 'OD', date: '2024-02-12', description: `RLS ${k} ${RUN}`, lines: [
+      await manual.createAndPost({ journalCode: 'OD', date: '2027-02-12', description: `RLS ${k} ${RUN}`, lines: [
         { accountId: cash, debit: 100, credit: 0 }, { accountId: sales, debit: 0, credit: 100 },
       ] }, { userId, storeId: ids[k] });
     }
@@ -81,7 +81,7 @@ describe.skipIf(!hasTestDb)('RLS par établissement et partitions d\'exercice', 
   it('écriture refusée hors de son établissement (WITH CHECK)', async () => {
     const insert = (store: string, n: string) => asProbe(ids.A, q => q(
       `INSERT INTO bill_remittances (remittance_number, kind, treasury_account_id, remittance_date, store_id, gross_amount, net_amount)
-       VALUES ($1, 'collection', $2, '2024-02-12', $3, 10, 10) RETURNING id`, [n, ids.bank, store]));
+       VALUES ($1, 'collection', $2, '2027-02-12', $3, 10, 10) RETURNING id`, [n, ids.bank, store]));
     await expect(insert(ids.B, `RLS-B-${RUN}`.slice(0, 20))).rejects.toThrow(/row-level security/);
     const ok = await insert(ids.A, `RLS-A-${RUN}`.slice(0, 20));
     expect(ok.rows).toHaveLength(1);   // annulé par le ROLLBACK de asProbe

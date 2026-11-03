@@ -81,6 +81,10 @@ describe.skipIf(!hasTestDb)('Multidevise — ventes et réévaluation de clôtur
     const c = await invoices.create({ invoiceType: 'emitted', customerId: ids.customer, invoiceDate: '2022-11-20', amount: 5000, taxAmount: 0,
       totalAmount: 5000, currencyCode: 'XTS', exchangeRate: 10, createdBy: actor.userId });
     ids.sInv = s.id; ids.cInv = c.id;
+    // Facture reçue née en brouillon (P2P L1, mig 438) : validée sur la pièce du fournisseur avant règlement.
+    await testPool().query(
+      `UPDATE invoices SET supplier_invoice_number = $2, declared_ttc = total_amount, validation_status = 'validated' WHERE id = $1`,
+      [s.id, `FXT-${RUN}`]);
     expect(Number(c.foreign_total_amount)).toBe(500);
     const pay = await payments.create({ type: 'invoice', invoiceId: s.id, supplierId: ids.supplier, amount: 0, paymentMethod: 'bank', reference: `VIR-F-${RUN}`,
       paymentDate: '2022-12-10', foreignAmount: 400, exchangeRate: 10.5, createdBy: actor.userId });
