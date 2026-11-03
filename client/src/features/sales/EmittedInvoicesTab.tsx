@@ -591,10 +591,11 @@ export default function EmittedInvoicesTab() {
                             )}
                             <button onClick={() => setViewing(inv)} title="Voir le détail" className="odoo-pager-btn"><Eye size={13} /></button>
                             <button onClick={() => handleDownloadPdf(inv)} title="Télécharger le PDF" className="odoo-pager-btn"><Download size={13} /></button>
-                            {status !== 'cancelled' && (
+                            {/* Facture validée : figée (O2C L0), la correction passe par l'annulation. */}
+                            {status !== 'cancelled' && inv.validation_status !== 'validated' && (
                               <button onClick={() => openEdit(inv)} title="Modifier (date, TVA, articles)" className="odoo-pager-btn"><Pencil size={13} /></button>
                             )}
-                            {open && (
+                            {open && num(inv.paid_amount) <= 0.004 && (
                               <button onClick={() => cancelInvoice(inv)} title="Annuler la facture" className="odoo-pager-btn" style={{ color: '#dc3545' }}><Ban size={13} /></button>
                             )}
                           </div>
@@ -1074,12 +1075,12 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)', flexWrap: 'wrap' }}>
-          {open && (
+          {open && num(inv.paid_amount) <= 0.004 && (
             <button onClick={() => onCancel(inv)} className="odoo-btn-danger" style={{ marginRight: 'auto' }}><Ban size={13} /> Annuler la facture</button>
           )}
           <button onClick={onClose} className="odoo-btn-secondary">Fermer</button>
           <button onClick={() => onPdf(inv)} className="odoo-btn-secondary"><Download size={13} /> PDF</button>
-          {status !== 'cancelled' && (
+          {status !== 'cancelled' && inv.validation_status !== 'validated' && (
             <button onClick={() => onEdit(inv)} className="odoo-btn-secondary"><Pencil size={13} /> Modifier</button>
           )}
           {open && remaining > 0.004 && (

@@ -287,6 +287,11 @@ export const invoiceController = {
       return;
     }
     if (current.status === 'cancelled') { res.status(409).json({ success: false, error: { message: 'Facture déjà annulée' } }); return; }
+    // O2C L0 (G-IV-07) : une facture réglée ne s'annule pas, son règlement resterait orphelin au 3421.
+    if (Number(current.paid_amount ?? 0) > 0.005) {
+      res.status(409).json({ success: false, error: { message: `Facture réglée (${Number(current.paid_amount).toFixed(2)} DH) : annulez d'abord ses règlements` } });
+      return;
+    }
     // Circuit d'approbation (lot 8) : l'annulation d'une facture émise vaut
     // avoir (numérotation continue, mig 329) et passe par un approbateur.
     const approval = await approvalService.submit({
@@ -500,7 +505,8 @@ export const invoiceController = {
     const { status } = req.body as { status?: string };
     // Mig 309 (G-D6-08) : « payée / partiellement payée / à payer » découlent des paiements et ne se
     // posent plus à la main ; l'annulation passe par /cancel avec un motif. Reste manuel : le litige.
-    if (invoice.invoice_type === 'received') {
+    // O2C L0 (G-IV-04) : même règle pour les factures client, qu'on passait « payée » sans règlement.
+    if (invoice.invoice_type === 'received' || invoice.invoice_type === 'emitted') {
       if (status === 'disputed') {
         res.json({ success: true, data: await invoiceRepository.updateStatus(req.params.id, 'disputed') });
         return;
@@ -514,13 +520,7 @@ export const invoiceController = {
       res.status(400).json({ success: false, error: { message: 'Statut non modifiable à la main : le règlement découle des paiements, l\'annulation exige un motif.' } });
       return;
     }
-    const allowed = ['pending', 'partial', 'paid', 'overdue', 'cancelled', 'disputed'];
-    if (!status || !allowed.includes(status)) {
-      res.status(400).json({ success: false, error: { message: 'Statut invalide' } });
-      return;
-    }
-    const updated = await invoiceRepository.updateStatus(req.params.id, status);
-    res.json({ success: true, data: updated });
+    res.status(400).json({ success: false, error: { message: 'Statut invalide' } });
   },
   async uploadAttachment(req: AuthRequest, res: Response) {
     if (!req.file) {

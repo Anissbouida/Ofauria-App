@@ -4,6 +4,7 @@ import { customerController } from '../controllers/customer.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 // Rate limit strict pour endpoints de lecture agregee / stats
 // (evite enumeration d'IDs clients et scraping de donnees).
@@ -26,14 +27,14 @@ const writeLimiter = rateLimit({
 
 const router = Router();
 
-router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), customerController.list);
-router.get('/global-stats', authenticate, authorize(...ROLE_GROUPS.SALES), statsLimiter, customerController.globalStats);
-router.get('/:id/situation', authenticate, authorize(...ROLE_GROUPS.SALES), customerController.situation);
-router.get('/:id/statement', authenticate, authorize(...ROLE_GROUPS.SALES), customerController.statement);
-router.get('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), customerController.getById);
-router.get('/:id/stats', authenticate, authorize(...ROLE_GROUPS.SALES), statsLimiter, customerController.stats);
-router.post('/', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, customerController.create);
-router.put('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, customerController.update);
-router.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), writeLimiter, customerController.remove);
+router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.list));
+router.get('/global-stats', authenticate, authorize(...ROLE_GROUPS.SALES), statsLimiter, asyncHandler(customerController.globalStats));
+router.get('/:id/situation', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.situation));
+router.get('/:id/statement', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.statement));
+router.get('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.getById));
+router.get('/:id/stats', authenticate, authorize(...ROLE_GROUPS.SALES), statsLimiter, asyncHandler(customerController.stats));
+router.post('/', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.create));
+router.put('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.update));
+router.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), writeLimiter, asyncHandler(customerController.remove));
 
 export default router;

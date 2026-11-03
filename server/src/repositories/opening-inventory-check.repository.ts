@@ -240,7 +240,7 @@ export const openingInventoryCheckRepository = {
             );
           } else {
             // Surplus (found > expected) : on regularise a la hausse cote
-            // vitrine, on trace en transaction 'adjust'. Pas d'impact lots
+            // vitrine, on trace en transaction 'adjustment'. Pas d'impact lots
             // (impossible de savoir de quel lot vient le surplus) — la
             // divergence est absorbee par un correctif manuel si besoin.
             const surplus = -missing;
@@ -252,7 +252,7 @@ export const openingInventoryCheckRepository = {
             );
             await client.query(
               `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
-               VALUES ($1, 'adjust', $2, 0, $3, $4, $5)`,
+               VALUES ($1, 'adjustment', $2, 0, $3, $4, $5)`,
               [item.product_id, surplus,
                `Surplus controle ouverture: ${item.product_name} +${surplus}`,
                params.validatedBy, check.store_id]

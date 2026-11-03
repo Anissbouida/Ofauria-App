@@ -3,6 +3,7 @@ import { recallController } from '../controllers/recall.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
 
@@ -13,7 +14,7 @@ router.get(
   '/recall/ingredient-lot/:id',
   authenticate,
   authorize(...ROLE_GROUPS.ADMIN_MANAGER),
-  recallController.recallFromIngredientLot
+  asyncHandler(recallController.recallFromIngredientLot)
 );
 
 export default router;

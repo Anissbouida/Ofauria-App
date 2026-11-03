@@ -143,7 +143,7 @@ export const productLossRepository = {
         }
         await client.query(
           `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
-           VALUES ($1, 'adjust', $2, 0, $3, $4, $5)`,
+           VALUES ($1, 'adjustment', $2, 0, $3, $4, $5)`,
           [loss.product_id, qty,
            `Reversal suppression perte ${loss.loss_type}/${loss.reason} (id=${id})`,
            actorId, storeId]
@@ -164,7 +164,7 @@ export const productLossRepository = {
         const restored = await adjustProductStock(client, loss.product_id, qty, storeId);
         await client.query(
           `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
-           VALUES ($1, 'adjust', $2, $3, $4, $5, $6)`,
+           VALUES ($1, 'adjustment', $2, $3, $4, $5, $6)`,
           [loss.product_id, qty, restored,
            `Reversal suppression perte production/${loss.reason} (id=${id})`,
            actorId, storeId]

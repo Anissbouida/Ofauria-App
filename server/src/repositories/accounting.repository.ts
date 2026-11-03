@@ -11,11 +11,18 @@ import { withActor, assertReasonCode, recordAction } from '../services/document-
 
 /**
  * Règle d'édition d'une facture reçue (mig 309, G-D6-08) : annulée = jamais ; réglée même
- * partiellement = jamais (correction par avoir). Les factures émises ne sont pas concernées.
+ * partiellement = jamais (correction par avoir).
+ * Facture client validée (O2C L0, mig 439) : montants, date, tiers, numéro et lignes figés
+ * (`financial`) ; seuls l'échéance, les notes et le mode de règlement attendu se modifient.
+ * La correction passe par l'annulation, qui vaut avoir. La base porte le même verrou.
  */
-function assertInvoiceEditable(row: { invoice_type: string; validation_status: string }, paidAmount: number) {
-  if (row.invoice_type !== 'received') return;
+function assertInvoiceEditable(row: { invoice_type: string; validation_status: string }, paidAmount: number, financial = true) {
   const fail = (m: string) => { const e = new Error(m) as Error & { statusCode: number; code: string }; e.statusCode = 409; e.code = 'INVOICE_LOCKED'; throw e; };
+  if (row.invoice_type === 'emitted') {
+    if (financial && row.validation_status === 'validated') fail('Facture client validée : elle ne se modifie plus. Pour la corriger, annulez-la (avoir) et émettez-en une nouvelle.');
+    return;
+  }
+  if (row.invoice_type !== 'received') return;
   if (row.validation_status === 'cancelled') fail('Cette facture est annulée : elle ne se modifie plus.');
   if (paidAmount > 0.005) fail('Cette facture a déjà un règlement : elle ne se modifie plus, la correction passe par un avoir.');
 }
@@ -715,7 +722,9 @@ export const invoiceRepository = {
       if (!outer) await client.query('BEGIN');
 
       const invoiceType = data.invoiceType || 'received';
-      const invoiceNumber = data.invoiceNumber || await this.generateInvoiceNumber(invoiceType as 'received' | 'emitted', client);
+      // Facture client : numéro toujours pris dans la série continue (O2C L0, G-IV-05),
+      // jamais fourni par l'appelant.
+      const invoiceNumber = (invoiceType !== 'emitted' && data.invoiceNumber) || await this.generateInvoiceNumber(invoiceType as 'received' | 'emitted', client);
 
       // Si des lignes portent un taux de TVA explicite, elles font foi :
       // HT/TVA/TTC d'en-tete sont derives de la somme des lignes (sinon on
@@ -1037,7 +1046,7 @@ export const invoiceRepository = {
    */
   async findEmittedByOrderId(orderId: string) {
     const result = await db.query(
-      `SELECT * FROM invoices WHERE order_id = $1 AND invoice_type = 'emitted' LIMIT 1`,
+      `SELECT * FROM invoices WHERE order_id = $1 AND invoice_type = 'emitted' ORDER BY (status = 'cancelled'), created_at DESC LIMIT 1`,
       [orderId]
     );
     return result.rows[0] || null;
@@ -1503,7 +1512,9 @@ export const invoiceRepository = {
         await client.query('ROLLBACK');
         return null;
       }
-      assertInvoiceEditable(current.rows[0], parseFloat(current.rows[0].paid_amount || '0'));
+      const financial = [data.invoiceNumber, data.supplierId, data.customerId, data.categoryId, data.invoiceDate,
+        data.amount, data.taxAmount, data.totalAmount].some(v => v !== undefined);
+      assertInvoiceEditable(current.rows[0], parseFloat(current.rows[0].paid_amount || '0'), financial);
       await client.query(`SELECT set_config('app.invoice_edit', 'on', true)`);
       const currentAmount = parseFloat(current.rows[0].amount);
       const currentTax = parseFloat(current.rows[0].tax_amount);
@@ -1554,7 +1565,7 @@ export const invoiceRepository = {
 
       // Champs impactant l'ecriture (montant, tiers, categorie, date) ont pu
       // changer -> reverser + regenerer l'ecriture depuis l'etat courant.
-      if (FLAGS.LEDGER_AUTOGEN) {
+      if (FLAGS.LEDGER_AUTOGEN && financial) {
         await regenerateInvoiceEntry(client, id, null);
       }
 

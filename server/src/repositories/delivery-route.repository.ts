@@ -51,15 +51,25 @@ export const deliveryRouteRepository = {
   },
 
   async addStops(routeId: string, deliveryNoteIds: string[]) {
-    const exists = (await db.query(`SELECT 1 FROM delivery_routes WHERE id = $1`, [routeId])).rows[0];
-    if (!exists) return null;
-    const maxSeq = Number((await db.query(`SELECT COALESCE(MAX(sequence), 0) AS m FROM delivery_route_stops WHERE route_id = $1`, [routeId])).rows[0].m);
-    let seq = maxSeq;
-    for (const dnId of deliveryNoteIds) {
-      seq += 1;
-      await db.query(
-        `INSERT INTO delivery_route_stops (route_id, delivery_note_id, sequence) VALUES ($1, $2, $3)
-         ON CONFLICT (route_id, delivery_note_id) DO NOTHING`, [routeId, dnId, seq]);
+    // O2C L0 (G-GI-14) : une transaction, tournée verrouillée (numérotation des arrêts sans doublon).
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const exists = (await client.query(`SELECT 1 FROM delivery_routes WHERE id = $1 FOR UPDATE`, [routeId])).rows[0];
+      if (!exists) { await client.query('ROLLBACK'); return null; }
+      let seq = Number((await client.query(`SELECT COALESCE(MAX(sequence), 0) AS m FROM delivery_route_stops WHERE route_id = $1`, [routeId])).rows[0].m);
+      for (const dnId of deliveryNoteIds) {
+        seq += 1;
+        await client.query(
+          `INSERT INTO delivery_route_stops (route_id, delivery_note_id, sequence) VALUES ($1, $2, $3)
+           ON CONFLICT (route_id, delivery_note_id) DO NOTHING`, [routeId, dnId, seq]);
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
     }
     return this.getById(routeId);
   },

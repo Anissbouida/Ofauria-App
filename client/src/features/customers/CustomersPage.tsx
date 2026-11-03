@@ -17,6 +17,7 @@ import { customFieldsApi, useCustomFieldsForm, formatCfValue, type CfValues } fr
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { useAuth } from '../../context/AuthContext';
 import {
   StagePipeline, SelectFilter, Pager, PAGE_SIZE, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
@@ -720,6 +721,9 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
   isPending: boolean;
 }) {
   const cf = useCustomFieldsForm('customer', editing?.custom_fields);
+  // Type de client et conditions commerciales : direction seulement (O2C L0, G-CR-04).
+  const { user } = useAuth();
+  const direction = user?.role === 'admin' || user?.role === 'manager';
   const [customerType, setCustomerType] = useState<CustomerType>(
     (editing?.customer_type as CustomerType) || 'particulier'
   );
@@ -760,6 +764,8 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
                 const selected = customerType === t;
                 return (
                   <button type="button" key={t} role="radio" aria-checked={selected}
+                    disabled={!direction && !selected}
+                    title={!direction && !selected ? 'Type de client : réservé à la direction' : undefined}
                     onClick={() => {
                       setCustomerType(t);
                       if (t === 'association') setTvaExonere(true);
@@ -832,7 +838,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
                   </div>
                 )}
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={tvaExonere} onChange={(e) => setTvaExonere(e.target.checked)} />
+                  <input type="checkbox" checked={tvaExonere} disabled={!direction} onChange={(e) => setTvaExonere(e.target.checked)} />
                   Client exonéré de TVA
                 </label>
               </>
@@ -884,16 +890,16 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
 
             {customerType !== 'particulier' && (
               <>
-                <div style={sectionTitle}><CreditCard size={12} /> Conditions commerciales</div>
+                <div style={sectionTitle}><CreditCard size={12} /> Conditions commerciales{!direction && ' (fixées par la direction)'}</div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div><label style={fieldLabel}>Plafond de crédit (DH)</label>
-                    <input name="creditLimit" type="number" step="0.01" min="0" defaultValue={editing?.credit_limit} className={inputCls} placeholder="10000" /></div>
+                    <input name="creditLimit" disabled={!direction} type="number" step="0.01" min="0" defaultValue={editing?.credit_limit} className={inputCls} placeholder="10000" /></div>
                   <div><label style={fieldLabel}>Remise (%)</label>
-                    <input name="remisePct" type="number" step="0.01" min="0" max="100" defaultValue={editing?.remise_pct} className={inputCls} placeholder="5" /></div>
+                    <input name="remisePct" disabled={!direction} type="number" step="0.01" min="0" max="100" defaultValue={editing?.remise_pct} className={inputCls} placeholder="5" /></div>
                   <div><label style={fieldLabel}>Délai de paiement (jours)</label>
-                    <input name="delaiPaiementJours" type="number" step="1" min="0" defaultValue={editing?.delai_paiement_jours} className={inputCls} placeholder="30" /></div>
+                    <input name="delaiPaiementJours" disabled={!direction} type="number" step="1" min="0" defaultValue={editing?.delai_paiement_jours} className={inputCls} placeholder="30" /></div>
                   <div><label style={fieldLabel}>Facturation</label>
-                    <select name="billingFrequency" defaultValue={editing?.billing_frequency || 'monthly'} className={inputCls}
+                    <select name="billingFrequency" disabled={!direction} defaultValue={editing?.billing_frequency || 'monthly'} className={inputCls}
                       title="À chaque livraison : la facture suit le bon de livraison. Mensuelle : les BL sont regroupés sur une facture.">
                       <option value="monthly">Mensuelle (BL regroupés)</option>
                       <option value="per_delivery">À chaque livraison</option>

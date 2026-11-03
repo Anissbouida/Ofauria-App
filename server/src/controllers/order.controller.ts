@@ -317,6 +317,12 @@ export const orderController = {
     const existing = await orderRepository.findById(req.params.id);
     if (!existing) { fail(res, 404, 'Commande non trouvee'); return; }
     if (!Array.isArray(items) || items.length === 0) { fail(res, 400, 'Ajoutez au moins un produit'); return; }
+    // O2C L0 (G-IV-03) : une commande déjà facturée ne se modifie plus (la facture est figée) ;
+    // on corrige la facture par son annulation (avoir) avant de modifier la commande.
+    const linkedInvoice = await invoiceRepository.findEmittedByOrderId(req.params.id);
+    if (linkedInvoice && linkedInvoice.status !== 'cancelled') {
+      fail(res, 409, `Commande facturée (${linkedInvoice.invoice_number}) : annulez d'abord la facture pour la modifier`); return;
+    }
 
     const customer = await loadCustomer(customerId);
     if (customerId && !customer) { fail(res, 400, 'Client introuvable'); return; }
@@ -351,23 +357,6 @@ export const orderController = {
     if (!order) { fail(res, 400, 'Commande non modifiable (livree ou annulee)'); return; }
     await db.query(`UPDATE orders SET promotion_amount = $2 WHERE id = $1`, [req.params.id, promo.promotionAmount]);
     await recordApplied(db, { orderId: req.params.id }, promo.applied, false);
-
-    // Resynchroniser une ancienne facture emise liee a la commande (avant les BL).
-    // replaceItems refuse si le nouveau total devient inferieur au paid_amount.
-    try {
-      const linkedInvoice = await invoiceRepository.findEmittedByOrderId(req.params.id);
-      if (linkedInvoice) {
-        await invoiceRepository.replaceItems(linkedInvoice.id, orderItems.map(it => ({
-          productId: it.productId,
-          description: it.notes || undefined,
-          quantity: it.quantity,
-          unitPrice: it.unitPrice,
-          subtotal: it.subtotal,
-        })));
-      }
-    } catch (err) {
-      console.error('Failed to resync linked invoice after order update:', err);
-    }
 
     const warning = pro ? await creditWarning(pro, total, order.id) : null;
     res.json({ success: true, data: { ...order, creditWarning: warning } });
@@ -504,9 +493,8 @@ export const orderController = {
       saleType: hasAdvance ? 'delivery' : 'standard',
       advanceAmount: hasAdvance ? advanceAmount : 0,
       advanceDate: hasAdvance ? order.created_at : null,
+      completeOrder: true,
     });
-
-    await orderRepository.updateStatus(orderId, 'completed');
 
     res.json({ success: true, data: { remaining, paid, change: round2(paid - remaining), orderNumber: order.order_number } });
   },

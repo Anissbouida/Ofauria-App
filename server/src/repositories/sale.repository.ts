@@ -154,6 +154,9 @@ export const saleRepository = {
     subtotal: number; taxAmount: number; discountAmount: number; total: number;
     paymentMethod: string; notes?: string; sessionId?: string; storeId?: string;
     advanceAmount?: number; advanceDate?: string | null; orderId?: string;
+    /** Remise d'une commande (O2C L0, G-GI-11) : verrouille la commande « prête » et la passe
+     *  « remise » dans la même transaction que le ticket (pas de double remise). */
+    completeOrder?: boolean;
     skipStockDeduction?: boolean;
     saleType?: 'standard' | 'advance' | 'delivery' | 'special';
     createdAt?: string; // override (vente saisie a posteriori, ex: special B2B)
@@ -177,6 +180,13 @@ export const saleRepository = {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+      if (data.completeOrder && data.orderId) {
+        const o = (await client.query(`SELECT status, order_number FROM orders WHERE id = $1 FOR UPDATE`, [data.orderId])).rows[0];
+        if (!o) throw Object.assign(new Error('Commande non trouvee'), { statusCode: 404 });
+        if (o.status !== 'ready') {
+          throw Object.assign(new Error(o.status === 'completed' ? `Commande ${o.order_number} déjà remise` : 'La commande doit etre prete pour etre livree'), { statusCode: 409 });
+        }
+      }
 
       const saleNumber = await generateSaleNumber(client);
 
@@ -316,6 +326,9 @@ export const saleRepository = {
         }
       }
 
+      if (data.completeOrder && data.orderId) {
+        await client.query(`UPDATE orders SET status = 'completed', completed_at = NOW(), cancelled_at = NULL WHERE id = $1`, [data.orderId]);
+      }
       await client.query('COMMIT');
       return saleResult.rows[0];
     } catch (err) {

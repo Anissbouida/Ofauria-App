@@ -687,11 +687,11 @@ export const unsoldDecisionRepository = {
             for (const step of fefoPlan) {
               await productLotRepository.returnVitrineToBackroom(client, step.lotId, step.qty);
             }
-            // Transaction stock — type 'retour_invendus' pour distinguer
+            // Transaction stock — type 'unsold_return' pour distinguer
             // d'un waste ou d'un restock fournisseur.
             await client.query(
               `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
-               VALUES ($1, 'retour_invendus', $2, (SELECT stock_quantity FROM product_store_stock WHERE product_id = $1 AND store_id = $3), $4, $5, $3)`,
+               VALUES ($1, 'unsold_return', $2, (SELECT stock_quantity FROM product_store_stock WHERE product_id = $1 AND store_id = $3), $4, $5, $3)`,
               [d.productId, d.remainingQty,
                `Retour reserve fin de journee: ${d.productName} x${d.remainingQty}`,
                data.decidedBy, data.storeId]
@@ -782,7 +782,7 @@ export const unsoldDecisionRepository = {
         }
 
         // ─── N10 — Surplus : compte > theorique ─────────────────────────────
-        // Regularise la vitrine a la hausse et trace en transaction 'adjust'.
+        // Regularise la vitrine a la hausse et trace en transaction 'adjustment'.
         // Pas de product_losses (c'est un excedent, pas une perte). En passation
         // on ne modifie rien (comptage contradictoire uniquement).
         if (discrepancy < 0 && data.closeType === 'fin_journee') {
@@ -795,7 +795,7 @@ export const unsoldDecisionRepository = {
           );
           await client.query(
             `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
-             VALUES ($1, 'adjust', $2, 0, $3, $4, $5)`,
+             VALUES ($1, 'adjustment', $2, 0, $3, $4, $5)`,
             [d.productId, surplus,
              `Surplus inventaire fin de journee: ${d.productName} +${surplus} (motif: ${d.discrepancyMotif || 'non precise'})`,
              data.decidedBy, data.storeId]
