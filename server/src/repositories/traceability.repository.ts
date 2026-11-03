@@ -209,16 +209,32 @@ export const traceabilityRepository = {
     };
   },
 
-  /** Ventes tracées d'un lot produit (ticket par ticket). */
+  /**
+   * Sorties tracées d'un lot produit : tickets de caisse (dont remises de
+   * commande sorties de la réserve) et bons de livraison professionnels
+   * (mig 440), nets des retours et des BL annulés.
+   */
   async lotSales(productLotId: string) {
     const { rows } = await db.query(
-      `SELECT m.created_at, m.quantity::float, s.id AS sale_id, s.sale_number, s.total::float,
+      `SELECT m.created_at, m.quantity::float, 'sale' AS kind, s.id AS sale_id, s.sale_number, s.total::float,
+              NULL::uuid AS delivery_note_id, NULL::text AS delivery_note_number,
               c.first_name || ' ' || c.last_name AS customer_name, c.phone AS customer_phone
          FROM product_lot_movements m
          LEFT JOIN sales s ON s.id = m.ref_id
          LEFT JOIN customers c ON c.id = s.customer_id
-        WHERE m.product_lot_id = $1 AND m.kind = 'sale'
-        ORDER BY m.created_at`,
+        WHERE m.product_lot_id = $1 AND (m.kind = 'sale' OR (m.kind = 'delivery' AND m.ref_type = 'sale'))
+       UNION ALL
+       SELECT dn.shipped_at, SUM(l.quantity - l.returned_qty)::float, 'delivery', NULL, NULL, NULL,
+              dn.id, dn.number,
+              COALESCE(NULLIF(c.company_name, ''), concat_ws(' ', c.first_name, c.last_name)), c.phone
+         FROM delivery_note_item_lots l
+         JOIN delivery_note_items i ON i.id = l.delivery_note_item_id
+         JOIN delivery_notes dn ON dn.id = i.delivery_note_id
+         JOIN customers c ON c.id = dn.customer_id
+        WHERE l.product_lot_id = $1 AND dn.status <> 'cancelled'
+        GROUP BY dn.id, c.id
+       HAVING SUM(l.quantity - l.returned_qty) > 0
+        ORDER BY 1`,
       [productLotId],
     );
     return rows;

@@ -35,7 +35,14 @@ export interface RecallBatch {
   linkedSoldQty: number;
   sales: RecallSale[];
   approximateSales: RecallSale[];
+  /** Bons de livraison professionnels qui ont expédié ce lot (O2C L1). */
+  deliveries: RecallDelivery[];
   recycledInto: RecallNode[];
+}
+
+export interface RecallDelivery {
+  deliveryNoteId: string; number: string; deliveryDate: string | null; status: string; quantity: number;
+  customerId: string; customerName: string | null; customerPhone: string | null; storeName: string | null;
 }
 
 export interface RecallPlan {
@@ -76,6 +83,7 @@ export interface RecallResult {
     recycledQty: number;
     tracedSalesCount: number;
     approximateSalesCount: number;
+    deliveriesCount: number;
     customersToContact: number;
     anonymousSalesCount: number;
   };

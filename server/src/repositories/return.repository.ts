@@ -113,6 +113,7 @@ export const returnRepository = {
       const returnNumber = await generateReturnNumber(client);
 
       let exchangeSaleId: string | null = null;
+      const exchangeSaleItemIds = new Map<string, string>();
       let exchangeTotal = 0;
 
       // For exchanges, create a new sale with the replacement products
@@ -170,11 +171,12 @@ export const returnRepository = {
         // pour la tracabilite produit — le total de vente ci-dessus reste egal
         // au complement encaisse).
         for (const item of exchangeItems) {
-          await client.query(
+          const si = await client.query(
             `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal)
-             VALUES ($1, $2, $3, $4, $5)`,
+             VALUES ($1, $2, $3, $4, $5) RETURNING id`,
             [exchangeSaleId, item.productId, item.quantity, item.unitPrice, item.subtotal]
           );
+          exchangeSaleItemIds.set(item.productId, si.rows[0].id as string);
         }
       }
 
@@ -229,7 +231,9 @@ export const returnRepository = {
         // ce qui retrouve un lot ACTIF : un article dont le lot d'origine est
         // perime/epuise n'est pas reexpose (il serait invendable, cf. F-037).
         const soldLots = await client.query(
-          `SELECT sil.product_lot_id, sil.quantity, pl.status
+          `SELECT sil.product_lot_id, sil.quantity, sil.returned_qty, pl.status,
+                  CASE WHEN pl.dlc_effective IS NOT NULL THEN pl.dlc_effective > now()
+                       ELSE pl.expires_at IS NULL OR pl.expires_at > CURRENT_DATE END AS in_date
              FROM sale_item_lots sil
              JOIN product_lots pl ON pl.id = sil.product_lot_id
             WHERE sil.sale_item_id = $1
@@ -241,9 +245,27 @@ export const returnRepository = {
         let remaining = item.quantity;
         for (const s of soldLots.rows) {
           if (remaining <= 0) break;
-          if (s.status !== 'active') continue;
-          const give = Math.min(remaining, parseFloat(s.quantity));
+          const give = Math.min(remaining, parseFloat(s.quantity) - parseFloat(s.returned_qty ?? 0));
           if (give <= 0) continue;
+          // O2C L1 (G-GI-13) : la traçabilité est inversée — le rappel ne compte plus le
+          // produit rendu comme vendu à ce client.
+          await client.query(
+            `UPDATE sale_item_lots SET returned_qty = returned_qty + $3 WHERE sale_item_id = $1 AND product_lot_id = $2`,
+            [item.saleItemId, s.product_lot_id, give]);
+          // Lot épuisé encore dans sa DLC : il redevient actif en récupérant l'article (trigger mig 440).
+          if (s.status !== 'active' && !(s.status === 'depleted' && s.in_date)) {
+            // Lot périmé (ou retiré) : l'article rendu n'est pas remis en rayon, il passe en perte sur son lot
+            // (avant, il disparaissait sans trace et restait compté vendu).
+            await client.query(
+              `UPDATE product_lots SET sold_qty = GREATEST(0, sold_qty - $2), wasted_qty = wasted_qty + $2, updated_at = NOW() WHERE id = $1`,
+              [s.product_lot_id, give]);
+            await client.query(
+              `INSERT INTO product_lot_movements (product_lot_id, store_id, kind, quantity, ref_type, ref_id)
+               SELECT id, store_id, 'waste', $2, 'return', $3 FROM product_lots WHERE id = $1`,
+              [s.product_lot_id, give, returnResult.rows[0].id]);
+            remaining -= give;
+            continue;
+          }
           await client.query(
             `UPDATE product_lots
                 SET vitrine_qty = vitrine_qty + $2,
@@ -252,6 +274,10 @@ export const returnRepository = {
               WHERE id = $1`,
             [s.product_lot_id, give]
           );
+          await client.query(
+            `INSERT INTO product_lot_movements (product_lot_id, store_id, kind, quantity, ref_type, ref_id)
+             SELECT id, store_id, 'return', $2, 'return', $3 FROM product_lots WHERE id = $1`,
+            [s.product_lot_id, give, returnResult.rows[0].id]);
           restored += give;
           remaining -= give;
         }
@@ -290,6 +316,13 @@ export const returnRepository = {
             await productLotRepository.consumeVitrineSold(
               client, step.lotId, step.qty, { type: 'exchange', id: returnResult.rows[0].id }
             );
+            // O2C L1 (G-GI-13) : le produit donné en échange est tracé comme une vente.
+            const saleItemId = exchangeSaleItemIds.get(ep.newProductId);
+            if (saleItemId) {
+              await client.query(
+                `INSERT INTO sale_item_lots (sale_item_id, product_lot_id, quantity) VALUES ($1, $2, $3)`,
+                [saleItemId, step.lotId, step.qty]);
+            }
           }
         }
       }

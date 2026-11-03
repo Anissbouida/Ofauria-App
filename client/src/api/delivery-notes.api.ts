@@ -8,7 +8,9 @@ export interface DeliveryNote {
   notes: string | null; created_by_name: string | null; created_at: string;
   received_by_name?: string | null; received_at?: string | null; billing_frequency?: string;
   total_ht: string; total_tva: string; total_ttc: string; line_count: string;
-  items?: Array<{ id: string; product_id: string | null; product_name: string | null; description: string; quantity: string; unit_price: string; tva_rate: string | null; subtotal: string }>;
+  items?: Array<{ id: string; product_id: string | null; product_name: string | null; description: string; quantity: string; unit_price: string; tva_rate: string | null; subtotal: string;
+    /** Lots expédiés (O2C L1, mig 440). */
+    lots?: Array<{ lot_id: string; lot_number: string; quantity: string; source: 'backroom' | 'vitrine'; dlc: string | null }> }>;
 }
 export interface ToInvoiceGroup {
   customerId: string; name: string; notes: DeliveryNote[]; totalHt: number; totalTtc: number; firstDate: string; lastDate: string;

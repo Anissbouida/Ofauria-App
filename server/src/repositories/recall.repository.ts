@@ -10,6 +10,8 @@ import { db } from '../config/database.js';
  *         → product_lots (fournées de produit fini)
  *           → sale_item_lots (mig 337 : quel lot a servi quelle ligne de vente)
  *             → sales / customers (clients à contacter)
+ *           → delivery_note_item_lots (mig 440 : lots expédiés sur bon de livraison)
+ *             → delivery_notes / customers (clients professionnels livrés)
  *
  * On suit aussi les liens de recyclage : un lot produit recyclé engendre un
  * nouveau lot de matière (ingredient_lots.source_product_lot_id) qu'on explore
@@ -41,6 +43,19 @@ export interface RecallSale {
   approximate: boolean;
 }
 
+/** Livraison professionnelle d'un lot (bon de livraison, O2C L1). */
+export interface RecallDelivery {
+  deliveryNoteId: string;
+  number: string;
+  deliveryDate: string | null;
+  status: string;
+  quantity: number;
+  customerId: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  storeName: string | null;
+}
+
 export interface RecallBatch {
   productLotId: string;
   productId: string;
@@ -62,6 +77,8 @@ export interface RecallBatch {
   linkedSoldQty: number;
   sales: RecallSale[];
   approximateSales: RecallSale[];
+  /** Bons de livraison professionnels qui ont expédié ce lot. */
+  deliveries: RecallDelivery[];
   /** Lots matière issus du recyclage de cette fournée (chaîne poursuivie). */
   recycledInto: RecallNode[];
 }
@@ -107,6 +124,8 @@ export interface RecallResult {
     recycledQty: number;
     tracedSalesCount: number;
     approximateSalesCount: number;
+    /** Lignes de bons de livraison professionnels expédiant les lots. */
+    deliveriesCount: number;
     /** Clients nominatifs distincts à contacter (tracés + approximatifs). */
     customersToContact: number;
     /** Ventes sans client identifié (walk-in). */
@@ -233,6 +252,7 @@ async function buildBatches(
   for (const b of lotRows.rows) {
     const productLotId = String(b.id);
     const sales = await fetchTracedSales(productLotId);
+    const deliveries = await fetchDeliveries(productLotId);
     const linkedSoldQty = sales.reduce((s, x) => s + x.quantity, 0);
     const approximateSales = await fetchApproximateSales(
       String(b.product_id),
@@ -277,6 +297,7 @@ async function buildBatches(
       linkedSoldQty,
       sales,
       approximateSales,
+      deliveries,
       recycledInto,
     });
   }
@@ -285,7 +306,8 @@ async function buildBatches(
 
 async function fetchTracedSales(productLotId: string): Promise<RecallSale[]> {
   const res = await db.query(
-    `SELECT sil.sale_item_id, sil.quantity,
+    // Quantité nette des retours (mig 440) : un produit rendu ne compte plus comme vendu.
+    `SELECT sil.sale_item_id, sil.quantity - sil.returned_qty AS quantity,
             s.id AS sale_id, s.sale_number, s.created_at, s.customer_id,
             s.store_id, s.user_id,
             c.first_name AS customer_first, c.last_name AS customer_last, c.phone AS customer_phone,
@@ -297,11 +319,32 @@ async function fetchTracedSales(productLotId: string): Promise<RecallSale[]> {
      LEFT JOIN customers c ON c.id = s.customer_id
      LEFT JOIN stores st ON st.id = s.store_id
      LEFT JOIN users u ON u.id = s.user_id
-     WHERE sil.product_lot_id = $1
+     WHERE sil.product_lot_id = $1 AND sil.quantity > sil.returned_qty
      ORDER BY s.created_at`,
     [productLotId]
   );
   return res.rows.map(mapSaleRow(false));
+}
+
+async function fetchDeliveries(productLotId: string): Promise<RecallDelivery[]> {
+  const res = await db.query(
+    `SELECT dn.id, dn.number, dn.delivery_date, dn.status, SUM(l.quantity - l.returned_qty)::float8 AS quantity,
+            c.id AS customer_id, COALESCE(NULLIF(c.company_name, ''), concat_ws(' ', c.first_name, c.last_name)) AS customer_name,
+            c.phone AS customer_phone, st.name AS store_name
+       FROM delivery_note_item_lots l
+       JOIN delivery_note_items i ON i.id = l.delivery_note_item_id
+       JOIN delivery_notes dn ON dn.id = i.delivery_note_id
+       JOIN customers c ON c.id = dn.customer_id
+       LEFT JOIN stores st ON st.id = dn.store_id
+      WHERE l.product_lot_id = $1 AND dn.status <> 'cancelled'
+      GROUP BY dn.id, c.id, st.name
+     HAVING SUM(l.quantity - l.returned_qty) > 0
+      ORDER BY dn.delivery_date, dn.number`, [productLotId]);
+  return res.rows.map(r => ({
+    deliveryNoteId: String(r.id), number: String(r.number), deliveryDate: iso(r.delivery_date), status: String(r.status),
+    quantity: num(r.quantity), customerId: String(r.customer_id), customerName: (r.customer_name as string) ?? null,
+    customerPhone: (r.customer_phone as string) ?? null, storeName: (r.store_name as string) ?? null,
+  }));
 }
 
 async function fetchApproximateSales(
@@ -377,6 +420,7 @@ function summarize(root: RecallNode): RecallResult['summary'] {
   let tracedSalesCount = 0;
   let approximateSalesCount = 0;
   let anonymousSalesCount = 0;
+  let deliveriesCount = 0;
   const customers = new Set<string>();
 
   const walk = (node: RecallNode) => {
@@ -394,6 +438,7 @@ function summarize(root: RecallNode): RecallResult['summary'] {
           if (sale.customerId) customers.add(sale.customerId);
           else anonymousSalesCount++;
         }
+        for (const d of batch.deliveries) { deliveriesCount++; customers.add(d.customerId); }
         for (const child of batch.recycledInto) walk(child);
       }
     }
@@ -409,6 +454,7 @@ function summarize(root: RecallNode): RecallResult['summary'] {
     recycledQty,
     tracedSalesCount,
     approximateSalesCount,
+    deliveriesCount,
     customersToContact: customers.size,
     anonymousSalesCount,
   };

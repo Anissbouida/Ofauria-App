@@ -212,7 +212,8 @@ export const productLotRepository = {
       ? ''
       : `AND ((dlc_effective IS NOT NULL AND dlc_effective > NOW())
               OR (dlc_effective IS NULL AND (expires_at IS NULL OR expires_at > CURRENT_DATE)))
-         AND (display_expires_at IS NULL OR display_expires_at > NOW())`;
+         AND (display_expires_at IS NULL OR display_expires_at > NOW())
+         AND etat_thermique IS DISTINCT FROM 'surgele'`;
     const result = await client.query(
       `SELECT * FROM product_lots
        WHERE product_id = $1 AND store_id = $2
@@ -240,16 +241,22 @@ export const productLotRepository = {
    *  Retourne null si OK, sinon { reason, deadline } pour rejet. */
   async checkSaleability(productId: string, storeId: string): Promise<{ reason: string; deadline: string } | null> {
     // Cherche le pire deadline parmi les lots vitrine actifs avec stock
+    // O2C L1 (G-GI-10) : même règle que le FEFO — DLC effective d'un lot décongelé
+    // (dlc_effective) prioritaire sur expires_at ; un lot surgelé n'est pas vendable.
     const result = await db.query(
       `SELECT
-         BOOL_OR(expires_at IS NOT NULL AND expires_at <= CURRENT_DATE) AS dlv_expired,
+         BOOL_OR(CASE WHEN dlc_effective IS NOT NULL THEN dlc_effective <= NOW()
+                      ELSE expires_at IS NOT NULL AND expires_at <= CURRENT_DATE END) AS dlv_expired,
          BOOL_OR(display_expires_at IS NOT NULL AND display_expires_at <= NOW()) AS dde_expired,
+         BOOL_AND(etat_thermique = 'surgele') AS all_frozen,
          BOOL_OR(
-           (expires_at IS NULL OR expires_at > CURRENT_DATE)
+           etat_thermique IS DISTINCT FROM 'surgele'
+           AND CASE WHEN dlc_effective IS NOT NULL THEN dlc_effective > NOW()
+                    ELSE expires_at IS NULL OR expires_at > CURRENT_DATE END
            AND (display_expires_at IS NULL OR display_expires_at > NOW())
          ) AS has_valid_lot,
          MIN(LEAST(
-           COALESCE(expires_at::timestamptz, 'infinity'::timestamptz),
+           COALESCE(dlc_effective, expires_at::timestamptz, 'infinity'::timestamptz),
            COALESCE(display_expires_at, 'infinity'::timestamptz)
          )) AS effective_deadline
        FROM product_lots
@@ -261,6 +268,7 @@ export const productLotRepository = {
     if (r.has_valid_lot) return null;  // Au moins un lot vendable
     if (r.dde_expired) return { reason: 'DDE_EXPIREE', deadline: r.effective_deadline };
     if (r.dlv_expired) return { reason: 'DLV_EXPIREE', deadline: r.effective_deadline };
+    if (r.all_frozen) return { reason: 'LOT_SURGELE', deadline: r.effective_deadline };
     return null;
   },
 

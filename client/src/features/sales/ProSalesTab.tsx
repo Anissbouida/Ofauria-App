@@ -355,7 +355,13 @@ function NoteDetail({ id, onClose }: { id: string; onClose: () => void }) {
               <tbody>
                 {(n.items ?? []).map(i => (
                   <tr key={i.id}>
-                    <td>{i.description}</td>
+                    <td>{i.description}
+                      {(i.lots ?? []).length > 0 && (
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 2 }}>
+                          {(i.lots ?? []).map(l => `Lot ${l.lot_number} · ${Number(l.quantity).toLocaleString('fr-FR')}${l.dlc ? ` (DLC ${l.dlc.slice(0, 10).split('-').reverse().join('/')})` : ''}`).join(' — ')}
+                        </div>
+                      )}
+                    </td>
                     <td style={{ textAlign: 'right' }}>{Number(i.quantity).toLocaleString('fr-FR')}</td>
                     <td style={{ textAlign: 'right' }}>{money(i.unit_price)}</td>
                     <td style={{ textAlign: 'right' }}>{i.tva_rate != null ? `${Number(i.tva_rate)} %` : '—'}</td>

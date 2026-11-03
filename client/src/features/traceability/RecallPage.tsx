@@ -6,7 +6,7 @@ import {
   ShieldAlert, Search, Package, Factory, Boxes, Users, Loader2,
   Recycle, Info, AlertTriangle, PhoneOff, Phone,
 } from 'lucide-react';
-import { recallApi, type RecallResult, type RecallNode, type RecallSale } from '../../api/recall.api';
+import { recallApi, type RecallResult, type RecallNode, type RecallSale, type RecallDelivery } from '../../api/recall.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 
 /** Date lisible (jour) ou '—'. */
@@ -42,6 +42,19 @@ function flattenSales(root: RecallNode): (RecallSale & { productName: string; lo
     if (!!a.customerId !== !!b.customerId) return a.customerId ? -1 : 1;
     return (b.createdAt || '').localeCompare(a.createdAt || '');
   });
+}
+
+/** Livraisons professionnelles de l'arbre (bons de livraison, O2C L1), avec le lot d'origine. */
+function flattenDeliveries(root: RecallNode): (RecallDelivery & { productName: string; lotNumber: string })[] {
+  const out: (RecallDelivery & { productName: string; lotNumber: string })[] = [];
+  const walk = (node: RecallNode) => {
+    for (const plan of node.plans) for (const batch of plan.batches) {
+      for (const d of batch.deliveries ?? []) out.push({ ...d, productName: batch.productName, lotNumber: batch.lotNumber });
+      batch.recycledInto.forEach(walk);
+    }
+  };
+  walk(root);
+  return out.sort((a, b) => (b.deliveryDate || '').localeCompare(a.deliveryDate || ''));
 }
 
 export default function RecallPage() {
@@ -191,6 +204,34 @@ export default function RecallPage() {
             <RecallNodeView node={recall.root} depth={0} />
           </div>
 
+          {/* Clients professionnels livrés sur bon de livraison (O2C L1) */}
+          {recall && (() => {
+            const deliveries = flattenDeliveries(recall.root);
+            if (deliveries.length === 0) return null;
+            return (
+              <div className="odoo-section" style={{ marginTop: 16 }}>
+                <div className="odoo-section-header">Clients professionnels livrés ({deliveries.length})</div>
+                <table className="odoo-table">
+                  <thead><tr><th>Client</th><th>Téléphone</th><th>Produit</th><th>Lot produit</th><th>Bon de livraison</th><th>Livré le</th><th>Qté</th><th>Magasin</th></tr></thead>
+                  <tbody>
+                    {deliveries.map((d, i) => (
+                      <tr key={`${d.deliveryNoteId}-${d.lotNumber}-${i}`}>
+                        <td><Phone size={11} style={{ verticalAlign: '-1px', marginRight: 4, color: 'var(--odoo-green, #16a34a)' }} />{d.customerName || 'Client'}</td>
+                        <td>{d.customerPhone || '—'}</td>
+                        <td>{d.productName}</td>
+                        <td style={{ fontFamily: 'monospace' }}>{d.lotNumber}</td>
+                        <td style={{ fontFamily: 'monospace' }}>{d.number}</td>
+                        <td>{fmtDate(d.deliveryDate)}</td>
+                        <td>{n2(d.quantity)}</td>
+                        <td>{d.storeName || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+
           {/* Liste consolidée des clients à contacter */}
           <div className="odoo-section" style={{ marginTop: 16 }}>
             <div className="odoo-section-header">Clients à contacter ({allSales.length})</div>
@@ -305,7 +346,8 @@ function RecallNodeView({ node, depth }: { node: RecallNode; depth: number }) {
                       <td>
                         {b.sales.length > 0 && <span className="odoo-tag odoo-tag-green" style={{ marginRight: 4 }}>{b.sales.length} tracée(s)</span>}
                         {b.approximateSales.length > 0 && <span className="odoo-tag odoo-tag-orange">{b.approximateSales.length} approx.</span>}
-                        {b.sales.length === 0 && b.approximateSales.length === 0 && '—'}
+                        {(b.deliveries ?? []).length > 0 && <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 4 }}>{b.deliveries.length} BL</span>}
+                        {b.sales.length === 0 && b.approximateSales.length === 0 && (b.deliveries ?? []).length === 0 && '—'}
                       </td>
                     </tr>
                   ))}

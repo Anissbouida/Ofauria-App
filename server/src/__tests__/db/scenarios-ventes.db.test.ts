@@ -339,9 +339,15 @@ describe.skipIf(!hasTestDb)('Scenarios VENTES POS — caissiere (comptoir)', () 
       items: [{ saleItemId, productId: prod, quantity: 1, unitPrice: 6, subtotal: 6 }],
     });
 
-    // Vitrine inchangee (lot perime, invendable), lot non recredite.
+    // Vitrine inchangee (lot perime, invendable), lot non recredite en vitrine.
     expect(await vitrineOf(prod)).toBeCloseTo(2, 3);
-    expect(await lotState(lot)).toEqual({ vitrine: 0, sold: 1 });
+    // O2C L1 (G-GI-13) : l'article rendu passe en perte sur son lot au lieu de rester compté vendu,
+    // et la ligne de vente garde la trace du retour (returned_qty).
+    expect(await lotState(lot)).toEqual({ vitrine: 0, sold: 0 });
+    const lotRow = (await testPool().query(`SELECT wasted_qty FROM product_lots WHERE id = $1`, [lot])).rows[0];
+    expect(num(lotRow.wasted_qty)).toBe(1);
+    const sil = (await testPool().query(`SELECT returned_qty FROM sale_item_lots WHERE sale_item_id = $1`, [saleItemId])).rows[0];
+    expect(num(sil.returned_qty)).toBe(1);
     // La transaction de stock trace 0 remis en rayon avec la note explicite.
     const tx = await testPool().query(
       `SELECT quantity_change, note FROM product_stock_transactions

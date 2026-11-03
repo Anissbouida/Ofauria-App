@@ -7,6 +7,7 @@ import { FLAGS } from '../config/feature-flags.js';
 import { fromSale, persistEntry, reverseEntriesForSource, regenerateSaleEntry } from '../services/journal-generator.service.js';
 import { earnForSale, redeemForSale, reverseForSale } from '../services/loyalty.js';
 import { recordApplied, type AppliedPromo } from '../services/promotions.js';
+import { shipProduct } from '../services/product-shipment.js';
 
 export const saleRepository = {
   async findAll(params: {
@@ -232,6 +233,20 @@ export const saleRepository = {
         //               commande via un plan de production + BSI, il n'a
         //               jamais transite par la vitrine commune — on ne touche
         //               pas au stock vitrine.
+        // Remise d'une commande (O2C L1, G-GI-01/04) : le produit a été fabriqué pour la
+        // commande et rangé en réserve ; il sort de la réserve (puis de la vitrine) avec
+        // ses lots FEFO, au lieu de ne rien sortir (avance) ou de taper la vitrine.
+        if (data.completeOrder && data.orderId && data.storeId && !data.skipStockDeduction && item.unit !== 'person') {
+          const shipped = await shipProduct(client, {
+            productId: item.productId, storeId: data.storeId, quantity: item.quantity, strict: false,
+            ref: { type: 'sale', id: saleResult.rows[0].id }, label: `Remise commande · ${saleNumber}`, userId: data.userId,
+          });
+          for (const a of shipped.allocations) {
+            await client.query(
+              `INSERT INTO sale_item_lots (sale_item_id, product_lot_id, quantity) VALUES ($1, $2, $3)`, [saleItemId, a.lotId, a.qty]);
+          }
+          continue;
+        }
         const shouldSkipStock =
           data.saleType === 'advance' ||
           data.saleType === 'delivery' ||
@@ -249,13 +264,17 @@ export const saleRepository = {
           if (saleabilityIssue) {
             const reasonLabel = saleabilityIssue.reason === 'DDE_EXPIREE'
               ? 'duree d\'exposition vitrine (DDE)'
-              : 'date limite de vente (DLV)';
+              : saleabilityIssue.reason === 'LOT_SURGELE'
+                ? 'lots encore surgeles (a decongeler avant la vente)'
+                : 'date limite de vente (DLV)';
             // Nom du produit pour un message lisible en caisse (chemin d'erreur rare,
             // le surcout d'une requete est negligeable). Repli sur l'id si introuvable.
             const nameRes = await client.query('SELECT name FROM products WHERE id = $1', [item.productId]);
             const productLabel = nameRes.rows[0]?.name ?? item.productId;
             const err = new Error(
-              `Vente refusee : ${reasonLabel} atteinte pour « ${productLabel} »`
+              saleabilityIssue.reason === 'LOT_SURGELE'
+                ? `Vente refusee : ${reasonLabel} pour « ${productLabel} »`
+                : `Vente refusee : ${reasonLabel} atteinte pour « ${productLabel} »`
             ) as Error & { code?: string; statusCode?: number };
             err.code = saleabilityIssue.reason;
             err.statusCode = 409;
