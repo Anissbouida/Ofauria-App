@@ -26,7 +26,7 @@ import LandedCostTab from './LandedCostTab';
 import SupplierScoreTab from './SupplierScoreTab';
 import ReceptionsTab from './ReceptionsTab';
 import PurchaseRequestsPage from './PurchaseRequestsPage';
-import MrpPage from '../production/MrpPage';
+import { ToOrderBoard } from '../stock/ToOrderBoard';
 import InvoiceControlModal from '../../components/purchasing/InvoiceControlModal';
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
 import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, paymentModeLabel, PaymentStatusTag, ReissuePaymentDialog, type CashOverride } from '../../components/purchasing/PaymentModeFields';
@@ -86,8 +86,8 @@ export default function PurchasingPage() {
     // Mig 312 (D9) : reçu non facturé, facturé non reçu, engagements, par ligne de BC.
     { key: 'pilotage', label: 'Pilotage', icon: Scale, section: 'dashboard' },
     // ─── OPÉRATIONS : les 7 étapes du cycle procure-to-pay, dans l'ordre ───
-    // 1 Identification (Plan directeur MRP) et 2 Demande d'achat sont intégrées ici
-    // depuis Production et le réappro ; 3 Approbation reste une entrée-lien vers la boîte commune.
+    // 1 Identification = besoins à commander (ruptures + stock sous le seuil), via l'écran
+    // « À commander » ; 2 Demande d'achat = demandes en attente ; 3 Approbation reste un lien.
     { key: 'identification', label: '1 · Identification', icon: Boxes, section: 'operations' },
     { key: 'purchase_requests', label: '2 · Demande d\'achat', icon: FilePlus2, section: 'operations' },
     { key: 'approvals', label: '3 · Approbation', icon: ClipboardCheck, section: 'operations', href: '/approvals', external: true, badge: approvalsCount },
@@ -119,7 +119,7 @@ export default function PurchasingPage() {
           onOpenInvoices={id => openTab('invoices', { supplierId: id })}
         />
       )}
-      {tab === 'identification' && <MrpPage />}
+      {tab === 'identification' && <ToOrderBoard />}
       {tab === 'purchase_requests' && <PurchaseRequestsPage />}
       {tab === 'rfq' && <RfqTab onOpenOrder={() => openTab('purchase_orders')} />}
       {tab === 'purchase_orders' && <PurchaseOrdersTab initialSupplierId={focus.supplierId} />}
