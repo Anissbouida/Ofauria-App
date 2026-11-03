@@ -94,6 +94,10 @@ ledgerRouter.patch('/fiscal-periods/:id/status', authenticate, authorize(...ROLE
 // Mig 311 (D8) : checklist de clôture, historique, file de comptabilisation, GR/IR, relevé TVA, paramétrage.
 ledgerRouter.get('/fiscal-periods/:id/checklist', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(fiscalPeriodController.checklist));
 ledgerRouter.get('/fiscal-periods/:id/events', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(fiscalPeriodController.events));
+// Fin de période du cycle de vente (O2C L6, mig 452) : factures à établir, stock de produits finis.
+ledgerRouter.get('/fiscal-periods/:id/end-operations', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(fiscalPeriodController.endOperations));
+ledgerRouter.post('/fiscal-periods/:id/fae', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), requireVerb('accounting', 'close'), validateUuidParams('id'), asyncHandler(fiscalPeriodController.postFae));
+ledgerRouter.post('/fiscal-periods/:id/fg-stock', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), requireVerb('accounting', 'close'), validateUuidParams('id'), asyncHandler(fiscalPeriodController.postFgStock));
 // Exercices (mig 416) : contrôles et clôture définitive avec à-nouveaux (admin).
 ledgerRouter.get('/fiscal-years', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await fiscalYearRepository.findAll() });

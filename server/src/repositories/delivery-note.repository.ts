@@ -217,6 +217,8 @@ export const deliveryNoteRepository = {
         await recordDelivered(client, data.orderId, [...perLine].map(([orderItemId, qty]) => ({ orderItemId, qty })), tol);
         if (data.closeRemainder) await closeRemainder(client, data.orderId);
       }
+      // Coût figé sur chaque ligne livrée (O2C L6, G-RR-03) : lots expédiés, sinon coût standard.
+      await client.query(`SELECT fn_freeze_dn_costs($1)`, [head.id]);
       // O2C L3 (G-CR-02) : contrôle de crédit BLOQUANT à l'expédition, là où la marchandise sort.
       // L'encours inclut déjà ce BL (livré non facturé) et le reste de la commande : rien à ajouter.
       const credit = await checkCredit(client, {

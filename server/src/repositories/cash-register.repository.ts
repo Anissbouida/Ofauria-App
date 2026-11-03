@@ -3,6 +3,7 @@ import { nextDocumentNumber } from '../utils/document-number.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { fromClosureDiff, persistEntry } from '../services/journal-generator.service.js';
+import { postOrQueue } from '../services/ledger-posting.service.js';
 
 /**
  * Z-report — numerotation sequentielle inviolable (section 4.3).
@@ -362,17 +363,11 @@ export const cashRegisterRepository = {
       // possible via /accounting endpoints). Tout écart est comptabilisé, sans
       // seuil : sinon la caisse 5161 dérive du tiroir réel de centime en centime.
       if (FLAGS.LEDGER_AUTOGEN && Math.abs(difference) >= 0.01) {
-        await client.query('SAVEPOINT closure_ledger');
-        try {
+        // O2C L6 (G-RR-07) : un échec part en file d'attente (rejouable), plus un simple log.
+        await postOrQueue(client, { kind: 'closure_diff', id: row.id }, async () => {
           const entry = await fromClosureDiff(client, row);
           if (entry) await persistEntry(client, entry, { userId: session.user_id });
-          await client.query('RELEASE SAVEPOINT closure_ledger');
-        } catch (genErr) {
-          await client.query('ROLLBACK TO SAVEPOINT closure_ledger');
-          // eslint-disable-next-line no-console
-          console.error('[ledger] generation echec ecart caisse', row.id,
-            genErr instanceof Error ? genErr.message : genErr);
-        }
+        });
       }
       await client.query('COMMIT');
       return row;

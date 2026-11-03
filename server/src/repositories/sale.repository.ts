@@ -6,6 +6,7 @@ import { productLotRepository } from './product-lot.repository.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { fromSale, fromSaleSettlement, persistEntry, reverseEntriesForSource, regenerateSaleEntry, autoLettrer } from '../services/journal-generator.service.js';
+import { postOrQueue } from '../services/ledger-posting.service.js';
 import { earnForSale, redeemForSale, reverseForSale } from '../services/loyalty.js';
 import { recordApplied, type AppliedPromo } from '../services/promotions.js';
 import { shipProduct } from '../services/product-shipment.js';
@@ -330,6 +331,9 @@ export const saleRepository = {
         await earnForSale(client, saleResult.rows[0], data.userId);
       }
 
+      // Coût figé sur chaque ligne (O2C L6, G-RR-03) : lots consommés, sinon coût standard.
+      await client.query(`SELECT fn_freeze_sale_costs($1)`, [saleResult.rows[0].id]);
+
       // Ticket à crédit (O2C L5, G-CA-03) : créance client 3421 dès la vente.
       if (saleResult.rows[0].payment_status === 'unpaid') {
         Object.assign(saleResult.rows[0], (await client.query(
@@ -339,17 +343,11 @@ export const saleRepository = {
       // Generation auto de l'ecriture comptable (LEDGER_AUTOGEN) : vente payee, ou
       // vente a credit (3421, soldee a l'encaissement par markPaid).
       if (FLAGS.LEDGER_AUTOGEN && (saleResult.rows[0].payment_status === 'paid' || saleResult.rows[0].sold_on_credit)) {
-        await client.query('SAVEPOINT ledger_gen');
-        try {
+        // O2C L6 (G-RR-07) : un échec part en file d'attente (rejouable), plus un simple log.
+        await postOrQueue(client, { kind: 'sale', id: saleResult.rows[0].id }, async () => {
           const entry = await fromSale(client, saleResult.rows[0]);
           if (entry) await persistEntry(client, entry, { userId: data.userId });
-          await client.query('RELEASE SAVEPOINT ledger_gen');
-        } catch (genErr) {
-          await client.query('ROLLBACK TO SAVEPOINT ledger_gen');
-          // eslint-disable-next-line no-console
-          console.error('[ledger] generation echec pour vente', saleResult.rows[0].id,
-            genErr instanceof Error ? genErr.message : genErr);
-        }
+        });
       }
 
       if (data.completeOrder && data.orderId) {
@@ -411,18 +409,12 @@ export const saleRepository = {
       // Écriture d'encaissement (O2C L5, G-CA-03) : ticket à crédit → trésorerie / 3421, lettré
       // avec la vente ; ticket impayé antérieur (sans créance) → écriture de vente complète.
       if (FLAGS.LEDGER_AUTOGEN) {
-        await dbClient.query('SAVEPOINT ledger_gen');
-        try {
-          const row = result.rows[0];
+        const row = result.rows[0];
+        await postOrQueue(dbClient, { kind: 'sale', id: saleId, detail: row.sold_on_credit ? 'settlement' : null }, async () => {
           const entry = row.sold_on_credit ? await fromSaleSettlement(dbClient, row) : await fromSale(dbClient, row);
           if (entry) await persistEntry(dbClient, entry, { userId: params.userId ?? null });
           if (row.sold_on_credit) await autoLettrer(dbClient, saleId);
-          await dbClient.query('RELEASE SAVEPOINT ledger_gen');
-        } catch (genErr) {
-          await dbClient.query('ROLLBACK TO SAVEPOINT ledger_gen');
-          // eslint-disable-next-line no-console
-          console.error('[ledger] encaissement non comptabilise pour vente', saleId, genErr instanceof Error ? genErr.message : genErr);
-        }
+        });
       }
 
       await dbClient.query('COMMIT');

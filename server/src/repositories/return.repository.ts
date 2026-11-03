@@ -4,6 +4,9 @@ import { adjustVitrineStock } from './product-stock.helper.js';
 import { productLotRepository } from './product-lot.repository.js';
 import { generateSaleNumber } from './sale.repository.js';
 import { reverseForSale } from '../services/loyalty.js';
+import { FLAGS } from '../config/feature-flags.js';
+import { fromSale, fromSaleReturn, persistEntry } from '../services/journal-generator.service.js';
+import { postOrQueue } from '../services/ledger-posting.service.js';
 
 export const returnRepository = {
   async findAll(params: { dateFrom?: string; dateTo?: string; storeId?: string; limit?: number; offset?: number }) {
@@ -325,6 +328,25 @@ export const returnRepository = {
             }
           }
         }
+      }
+
+      // Coût figé des articles donnés en échange, et comptabilisation (O2C L6, G-RR-09) :
+      // complément payé = vente d'échange ; somme rendue = annulation de CA.
+      if (exchangeSaleId) await client.query(`SELECT fn_freeze_sale_costs($1)`, [exchangeSaleId]);
+      if (FLAGS.LEDGER_AUTOGEN) {
+        if (exchangeSaleId) {
+          const ex = (await client.query(`SELECT * FROM sales WHERE id = $1`, [exchangeSaleId])).rows[0];
+          if (Number(ex.total) > 0) {
+            await postOrQueue(client, { kind: 'sale', id: exchangeSaleId }, async () => {
+              const entry = await fromSale(client, ex);
+              if (entry) await persistEntry(client, entry, { userId: data.userId });
+            });
+          }
+        }
+        await postOrQueue(client, { kind: 'sale_return', id: returnResult.rows[0].id }, async () => {
+          const entry = await fromSaleReturn(client, returnResult.rows[0].id);
+          if (entry) await persistEntry(client, entry, { userId: data.userId });
+        });
       }
 
       await client.query('COMMIT');

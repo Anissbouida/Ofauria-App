@@ -3,6 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { listOutbox, replayOutbox } from '../services/ledger-posting.service.js';
 import { runFullBackfill } from '../services/ledger-backfill.service.js';
 import { ledgerIntegrityRepository } from '../repositories/ledger-integrity.repository.js';
+import { periodEndRepository } from '../repositories/period-end.repository.js';
 import {
   accountRepository,
   accountAuxiliaryRepository,
@@ -110,6 +111,17 @@ export const fiscalPeriodController = {
   },
   async events(req: AuthRequest, res: Response) {
     res.json({ success: true, data: await fiscalPeriodRepository.events(req.params.id) });
+  },
+  /** Opérations de fin de période du cycle de vente : FAE, stock de produits finis (O2C L6). */
+  async endOperations(req: AuthRequest, res: Response) {
+    const [operations, unbilled] = await Promise.all([periodEndRepository.list(req.params.id), periodEndRepository.unbilled(req.params.id)]);
+    res.json({ success: true, data: { operations, unbilled } });
+  },
+  async postFae(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await periodEndRepository.fae(req.params.id, req.user!.userId) });
+  },
+  async postFgStock(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await periodEndRepository.fgStock(req.params.id, req.user!.userId) });
   },
 };
 

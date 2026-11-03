@@ -216,7 +216,7 @@ async function backfillSales(stats: Stats, userId: string, args: Args) {
   const limit = args.limit ? `LIMIT ${args.limit}` : '';
   const rows = (await db.query(
     `SELECT id, sale_number, customer_id, subtotal, tax_amount, discount_amount, total,
-            payment_method, payment_status, cash_amount, card_amount, sold_on_credit,
+            payment_method, payment_status, cash_amount, card_amount, sold_on_credit, sale_type, advance_amount, order_id,
             paid_at::TEXT AS paid_at, created_at::TEXT AS created_at, store_id
      FROM sales
      WHERE payment_status = 'paid' OR sold_on_credit

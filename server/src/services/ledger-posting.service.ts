@@ -12,6 +12,7 @@ import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import {
   fromGoodsReceipt, persistEntry, regenerateInvoiceEntry, regeneratePaymentEntries,
+  regenerateSaleEntry, fromSaleReturn, fromClosureDiff, fromAdvanceForfeit,
 } from './journal-generator.service.js';
 
 export type PostingMode = 'outbox' | 'strict';
@@ -113,6 +114,18 @@ export async function replayOutbox(userId: string, onlyId?: string) {
       else if (it.source_kind === 'payment') await regeneratePaymentEntries(client, it.source_id, userId);
       else if (it.source_kind === 'goods_receipt') {
         const entry = await fromGoodsReceipt(client, it.source_id);
+        if (entry) await persistEntry(client, entry, { userId });
+      } else if (it.source_kind === 'sale') await regenerateSaleEntry(client, it.source_id, userId);
+      else if (it.source_kind === 'sale_return') {
+        const entry = await fromSaleReturn(client, it.source_id);
+        if (entry) await persistEntry(client, entry, { userId });
+      } else if (it.source_kind === 'closure_diff') {
+        const row = (await client.query(`SELECT * FROM cash_register_sessions WHERE id = $1`, [it.source_id])).rows[0];
+        const entry = row ? await fromClosureDiff(client, row) : null;
+        if (entry) await persistEntry(client, entry, { userId });
+      } else if (it.source_kind === 'advance_forfeit') {
+        const day = (await client.query(`SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date::text AS d`)).rows[0].d;
+        const entry = await fromAdvanceForfeit(client, it.source_id, day);
         if (entry) await persistEntry(client, entry, { userId });
       } else throw new Error(`Type de pièce non rejouable : ${it.source_kind}`);
       await client.query(`UPDATE ledger_outbox SET status = 'posted', posted_at = now(), updated_at = now() WHERE id = $1`, [it.id]);

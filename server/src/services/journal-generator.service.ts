@@ -468,6 +468,64 @@ export interface SaleRow {
   card_amount?: string | number | null;
   // mig 451 — ticket à crédit : créance 3421 à la vente, soldée à l'encaissement
   sold_on_credit?: boolean | null;
+  // O2C L6 — avance de commande (4421) et ticket de remise qui la reprend
+  sale_type?: string | null;
+  advance_amount?: string | number | null;
+  order_id?: string | null;
+}
+
+/** Avance de la commande passée en 4421 (O2C L6) : seul ce cas est repris à la remise. */
+async function deferredAdvanceOf(client: PoolClient | typeof db, orderId: string): Promise<{ saleId: string; amount: number; code: string } | null> {
+  const code = await postingAccount(client, 'customer_advance');
+  const r = (await client.query(
+    `SELECT s.id, SUM(jel.credit)::float8 AS amount
+       FROM sales s
+       JOIN journal_entries je ON je.source_id = s.id AND je.status = 'posted' AND COALESCE(je.source_detail, '') = ''
+       JOIN journal_entry_lines jel ON jel.journal_entry_id = je.id
+       JOIN accounts a ON a.id = jel.account_id AND a.code = $2
+      WHERE s.order_id = $1 AND s.sale_type = 'advance'
+      GROUP BY s.id LIMIT 1`, [orderId, code])).rows[0];
+  return r ? { saleId: r.id, amount: round2(r.amount), code } : null;
+}
+
+/**
+ * Avance non remboursable d'une commande annulée (O2C L6) : l'avance 4421 devient
+ * un produit acquis (7111), à la date d'annulation.
+ */
+export async function fromAdvanceForfeit(client: PoolClient | typeof db, orderId: string, date: string): Promise<GeneratedEntry | null> {
+  const adv = await deferredAdvanceOf(client, orderId);
+  if (!adv || adv.amount <= 0) return null;
+  return {
+    journal_code: 'OD', entry_date: date, description: 'Avance acquise — commande annulée',
+    source_kind: 'sale', source_id: adv.saleId, source_detail: 'forfeit', store_id: null,
+    lines: [
+      { account_code: adv.code, debit: adv.amount, credit: 0, label: 'Avance client reprise' },
+      { account_code: '7111', debit: 0, credit: adv.amount, label: 'Avance non remboursable acquise' },
+    ],
+  };
+}
+
+/**
+ * Retour ou échange en caisse (O2C L6, G-RR-09) : la somme rendue au client
+ * annule du chiffre d'affaires (7111 au débit, caisse au crédit). Le complément
+ * payé lors d'un échange est la vente d'échange (fromSale).
+ */
+export async function fromSaleReturn(client: PoolClient | typeof db, returnId: string): Promise<GeneratedEntry | null> {
+  const r = (await client.query(
+    `SELECT r.id, r.return_number, r.type, r.refund_amount::float8 AS refund, r.store_id, r.created_at,
+            COALESCE((SELECT SUM(si.subtotal) FROM sale_items si WHERE si.sale_id = r.exchange_sale_id), 0)::float8 AS exchanged
+       FROM sale_returns r WHERE r.id = $1`, [returnId])).rows[0];
+  if (!r) return null;
+  const cash = round2(r.type === 'exchange' ? Math.max(0, r.refund - r.exchanged) : r.refund);
+  if (cash <= 0) return null;
+  return {
+    journal_code: 'CA', entry_date: toIsoDate(r.created_at), description: `Retour ${r.return_number}`,
+    source_kind: 'sale', source_id: r.id, store_id: r.store_id,
+    lines: [
+      { account_code: '7111', debit: cash, credit: 0, label: `Retour ${r.return_number}` },
+      { account_code: '5161', debit: 0, credit: cash, label: 'Remboursement client' },
+    ],
+  };
 }
 
 /** Trésorerie d'un ticket encaissé : caisse, banque, carte (commission) ou mixte. */
@@ -545,6 +603,24 @@ export async function fromSale(
   // Ventes impayees (historique, avant la mig 451) : l'ecriture complete est passee a l'encaissement.
   if (s.payment_status !== 'paid') return null;
 
+  // Avance de commande (O2C L6, G-RR-01) : encaissée, pas encore vendue → avance client 4421.
+  if (s.sale_type === 'advance') {
+    return {
+      journal_code: s.payment_method === 'cash' || s.payment_method === 'mixed' ? 'CA' : 'BQ',
+      entry_date: toIsoDate(s.paid_at || s.created_at),
+      description: `Avance commande ${s.sale_number}`,
+      source_kind: 'sale', source_id: s.id, store_id: s.store_id,
+      lines: [
+        ...await saleTreasuryLines(client, s, total),
+        { account_code: await postingAccount(client, 'customer_advance'), auxiliary_customer_id: null, debit: 0, credit: round2(total), label: 'Avance client sur commande' },
+      ],
+    };
+  }
+  // Remise d'une commande dont l'avance est en 4421 : la vente porte tout le CA,
+  // l'avance est reprise (4421 au débit). Avances antérieures (déjà en 7111) : inchangé.
+  const advance = s.sale_type === 'delivery' && s.order_id && (parseFloat(String(s.advance_amount ?? 0)) || 0) > 0
+    ? await deferredAdvanceOf(client, s.order_id) : null;
+
   // GARDE-FOU : la saisie manuelle par shift est AUTORITAIRE (montant
   // physiquement compte). Si une saisie manuelle existe pour ce jour/magasin,
   // elle comptabilise deja le CA reel -> on n'emet PAS d'ecriture pour la vente
@@ -573,7 +649,8 @@ export async function fromSale(
   const isMixed = s.payment_method === 'mixed';
 
   const lines: GeneratedLine[] = await saleTreasuryLines(client, s, total);
-  lines.push({ account_code: '7111', debit: 0, credit: round2(subtotal), label: 'Vente du jour' });
+  if (advance) lines.push({ account_code: advance.code, debit: advance.amount, credit: 0, label: 'Avance reprise à la remise' });
+  lines.push({ account_code: '7111', debit: 0, credit: round2(subtotal + (advance?.amount ?? 0)), label: 'Vente du jour' });
 
   if (tax > 0) {
     const tvaCode = tvaAccountForRate(computeTvaRate(subtotal, tax), 'collected');
@@ -1384,7 +1461,8 @@ const PAYMENT_SELECT = `SELECT id, reference, type, category_id, invoice_id, sup
   FROM payments WHERE id = $1`;
 
 const SALE_SELECT = `SELECT id, sale_number, customer_id, subtotal, tax_amount, discount_amount,
-  total, payment_method, payment_status, paid_at, created_at, store_id, cash_amount, card_amount, sold_on_credit
+  total, payment_method, payment_status, paid_at, created_at, store_id, cash_amount, card_amount, sold_on_credit,
+  sale_type, advance_amount, order_id
   FROM sales WHERE id = $1`;
 
 /**

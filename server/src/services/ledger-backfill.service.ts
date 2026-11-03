@@ -124,7 +124,7 @@ export async function runFullBackfill(userId: string): Promise<BackfillSummary> 
   // O2C L5 (G-CA-07) : parts especes / carte des tickets mixtes reprises.
   const sales = (await db.query(
     `SELECT id, sale_number, customer_id, subtotal, tax_amount, discount_amount, total,
-            payment_method, payment_status, cash_amount, card_amount, sold_on_credit,
+            payment_method, payment_status, cash_amount, card_amount, sold_on_credit, sale_type, advance_amount, order_id,
             paid_at::TEXT AS paid_at, created_at::TEXT AS created_at, store_id
      FROM sales WHERE payment_status = 'paid' OR sold_on_credit
      ORDER BY COALESCE(paid_at, created_at), created_at`

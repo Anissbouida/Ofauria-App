@@ -225,7 +225,18 @@ export const fiscalPeriodsApi = {
     api.get(`/ledger/fiscal-periods/${id}/checklist`).then(r => r.data.data),
   events: (id: string): Promise<PeriodEvent[]> =>
     api.get(`/ledger/fiscal-periods/${id}/events`).then(r => r.data.data),
+  /** O2C L6 : factures à établir et stock de produits finis à la fin de la période. */
+  endOperations: (id: string): Promise<{ operations: PeriodEndOperation[]; unbilled: UnbilledDelivery[] }> =>
+    api.get(`/ledger/fiscal-periods/${id}/end-operations`).then(r => r.data.data),
+  postFae: (id: string): Promise<PeriodEndOperation> => api.post(`/ledger/fiscal-periods/${id}/fae`).then(r => r.data.data),
+  postFgStock: (id: string): Promise<PeriodEndOperation> => api.post(`/ledger/fiscal-periods/${id}/fg-stock`).then(r => r.data.data),
 };
+
+export interface PeriodEndOperation {
+  id: string; kind: 'fae' | 'fg_stock'; amount: number; created_at: string; superseded_at: string | null; created_by_name: string | null;
+  detail: { delivery_notes?: string[]; previous?: number; delta?: number; products_without_cost?: number };
+}
+export interface UnbilledDelivery { delivery_note_id: string; number: string; delivery_date: string; ht: number; customer_name: string }
 
 export interface CloseCheck { code: string; label: string; item_count: number; amount: string | null; blocking: boolean }
 export interface PeriodEvent {

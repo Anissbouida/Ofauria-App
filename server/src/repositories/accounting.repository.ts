@@ -737,6 +737,10 @@ export const invoiceRepository = {
 
       const invoiceType = data.invoiceType || 'received';
       const isCreditNote = invoiceType === 'emitted' && !!data.creditNote;
+      // O2C L6 (G-RR-08) : une facture client sans client ne se comptabiliserait pas (aucune créance).
+      if (invoiceType === 'emitted' && !data.customerId) {
+        throw Object.assign(new Error('Facture client : choisissez le client'), { statusCode: 400 });
+      }
       // O2C L4 (G-IV-01) : une facture client de marchandises se fait depuis le BL (quantités
       // livrées) ; seules les prestations (lignes sans produit) se facturent directement.
       if (invoiceType === 'emitted' && !isCreditNote && data.items?.some(i => i.productId && !i.deliveryNoteItemId)) {

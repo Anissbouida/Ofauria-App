@@ -308,12 +308,15 @@ export const managementRepository = {
     //                et la fiche (ex. entremets entier vs part) ou coût faux ;
     //   ok         : retenu dans la marge.
     const { rows } = await db.query(
+      // O2C L6 (G-RR-03/04) : toutes les ventes (caisse, rapprochement, BL pro), au coût figé
+      // sur la ligne quand il existe ; le reste au coût standard actuel.
       `WITH per_product AS (
          SELECT v.product_id, v.channel_id,
                 SUM(v.qty) AS qty, SUM(v.revenue) AS revenue,
                 BOOL_AND(v.unit = 'unit') AS unit_only,
-                MAX(uc.unit_cost) AS unit_cost
-           FROM v_sales_product_daily v
+                (COALESCE(SUM(v.frozen_cost), 0) + GREATEST(SUM(v.qty) - SUM(v.frozen_qty), 0) * MAX(uc.unit_cost))
+                  / NULLIF(SUM(v.qty), 0) AS unit_cost
+           FROM v_sales_margin_lines v
            LEFT JOIN v_product_unit_cost uc ON uc.product_id = v.product_id
           WHERE v.business_date BETWEEN $1::date AND $2::date
             AND ($3::uuid IS NULL OR v.store_id = $3::uuid)

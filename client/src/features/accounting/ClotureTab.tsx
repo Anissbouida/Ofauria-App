@@ -2,7 +2,7 @@ import { Fragment, useState } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Lock, LockOpen, ShieldCheck, ListChecks, AlertTriangle, CheckCircle2, RotateCcw, Inbox, PackageOpen, X } from 'lucide-react';
-import { fiscalPeriodsApi, purchaseLedgerApi, type CloseCheck } from '../../api/ledger.api';
+import { fiscalPeriodsApi, purchaseLedgerApi, type CloseCheck, type PeriodEndOperation } from '../../api/ledger.api';
 import type { FiscalPeriod } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
@@ -221,6 +221,7 @@ export default function ClotureTab() {
                     {expanded && (
                       <tr><td colSpan={4} style={{ background: 'var(--theme-bg-page)', padding: 12 }}>
                         <PeriodChecks periodId={p.id} />
+                        <SalesPeriodEnd periodId={p.id} open={p.status === 'open'} />
                       </td></tr>
                     )}
                   </Fragment>
@@ -336,6 +337,75 @@ function PeriodChecks({ periodId }: { periodId: string }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Fin de période du cycle de vente (O2C L6) : factures à établir sur les BL livrés
+ * non facturés (3427, extournées le 1er du mois suivant) et variation du stock de
+ * produits finis (3151 / 7132). Relancer une opération remplace la précédente.
+ */
+function SalesPeriodEnd({ periodId, open }: { periodId: string; open: boolean }) {
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const { data } = useQuery({ queryKey: ['ledger-period-end', periodId], queryFn: () => fiscalPeriodsApi.endOperations(periodId) });
+  const done = () => {
+    ['ledger-period-end', 'ledger-close-checklist'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+  };
+  const fae = useMutation({
+    mutationFn: () => fiscalPeriodsApi.postFae(periodId),
+    onSuccess: (r) => { done(); notify.success(r.amount > 0 ? `Factures à établir passées : ${fmt(r.amount)} DH` : 'Aucun BL à facturer en fin de période'); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Opération refusée')),
+  });
+  const fg = useMutation({
+    mutationFn: () => fiscalPeriodsApi.postFgStock(periodId),
+    onSuccess: (r) => { done(); notify.success(`Stock de produits finis : ${fmt(r.amount)} DH (variation ${fmt(r.detail?.delta ?? 0)} DH)`); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Opération refusée')),
+  });
+  const active = (k: 'fae' | 'fg_stock') => (data?.operations ?? []).find((o: PeriodEndOperation) => o.kind === k && !o.superseded_at);
+  const unbilled = data?.unbilled ?? [];
+  const unbilledHt = unbilled.reduce((s, u) => s + u.ht, 0);
+  const faeOp = active('fae');
+  const fgOp = active('fg_stock');
+  const run = async (kind: 'fae' | 'fg', redo: boolean) => {
+    if (redo && !(await confirm('L\'opération déjà passée sera extournée et remplacée par un nouveau calcul.', { title: 'Recalculer', confirmLabel: 'Recalculer', cancelLabel: 'Retour' }))) return;
+    (kind === 'fae' ? fae : fg).mutate();
+  };
+  return (
+    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, marginTop: 8 }}>
+      <div className="odoo-section-header"><PackageOpen size={11} /> Fin de période — ventes</div>
+      <div style={{ padding: '8px 12px', display: 'grid', gap: 8, fontSize: '0.8125rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ flex: 1, minWidth: 260 }}>
+            <strong>Factures à établir</strong> — {unbilled.length
+              ? `${unbilled.length} BL livré(s) non facturé(s) à la fin de la période, ${fmt(unbilledHt)} DH HT`
+              : 'aucun BL livré non facturé à la fin de la période'}
+            {faeOp && <span style={{ color: 'var(--theme-text-muted)' }}> · passées : {fmt(faeOp.amount)} DH (extournées le 1er du mois suivant)</span>}
+          </span>
+          {open && (
+            <button type="button" className="odoo-btn-secondary" disabled={fae.isPending} onClick={() => run('fae', !!faeOp)}>
+              {fae.isPending ? <Loader2 size={13} className="animate-spin" /> : null} {faeOp ? 'Recalculer' : 'Passer les FAE'}
+            </button>
+          )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ flex: 1, minWidth: 260 }}>
+            <strong>Stock de produits finis</strong> — {fgOp
+              ? <>valorisé à {fmt(fgOp.amount)} DH (variation {fmt(fgOp.detail?.delta ?? 0)} DH){fgOp.detail?.products_without_cost
+                  ? <span style={{ color: '#b45309' }}> · {fgOp.detail.products_without_cost} produit(s) sans coût</span> : null}</>
+              : 'non valorisé pour cette période'}
+            <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
+              Valorisation du stock au moment du calcul (lots au coût figé, sinon coût standard) : à lancer le dernier jour du mois.
+            </span>
+          </span>
+          {open && (
+            <button type="button" className="odoo-btn-secondary" disabled={fg.isPending} onClick={() => run('fg', !!fgOp)}>
+              {fg.isPending ? <Loader2 size={13} className="animate-spin" /> : null} {fgOp ? 'Recalculer' : 'Valoriser le stock'}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -9,6 +9,9 @@ import { paymentRepository, invoiceRepository } from '../repositories/accounting
 import { getLocalNow } from '../utils/timezone.js';
 import { deliveryNoteRepository } from '../repositories/delivery-note.repository.js';
 import { db } from '../config/database.js';
+import { FLAGS } from '../config/feature-flags.js';
+import { fromAdvanceForfeit, persistEntry } from '../services/journal-generator.service.js';
+import { postOrQueue } from '../services/ledger-posting.service.js';
 import { evaluate as evaluatePromotions, recordApplied } from '../services/promotions.js';
 import { checkCredit, customerExposure } from '../services/credit-control.js';
 import { getParameter, type PricingRules } from '../services/module-parameters.service.js';
@@ -447,6 +450,25 @@ export const orderController = {
     const order = await orderRepository.updateStatus(req.params.id, status,
       status === 'cancelled' ? { userId: req.user!.userId, reason: reason?.trim() || null } : undefined);
     if (!order) { fail(res, 404, 'Commande non trouvee'); return; }
+
+    // O2C L6 (G-RR-01) : l'avance (4421) d'une commande annulée devient un produit acquis.
+    if (status === 'cancelled' && FLAGS.LEDGER_AUTOGEN && Number(current.advance_amount ?? 0) > 0) {
+      const c = await db.getClient();
+      try {
+        await c.query('BEGIN');
+        await postOrQueue(c, { kind: 'advance_forfeit', id: req.params.id }, async () => {
+          const day = (await c.query(`SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date::text AS d`)).rows[0].d;
+          const entry = await fromAdvanceForfeit(c, req.params.id, day);
+          if (entry) await persistEntry(c, entry, { userId: req.user!.userId });
+        });
+        await c.query('COMMIT');
+      } catch (err) {
+        await c.query('ROLLBACK').catch(() => undefined);
+        throw err;
+      } finally {
+        c.release();
+      }
+    }
 
     // Note : a la creation de la commande, orderRepository.create a deja fait
     // le sourcing (stock vs production) et cree le plan UNIQUEMENT si
