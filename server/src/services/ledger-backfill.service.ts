@@ -74,7 +74,8 @@ export async function runFullBackfill(userId: string): Promise<BackfillSummary> 
 
   const invoices = (await db.query(
     `SELECT id, invoice_number, invoice_type, supplier_id, customer_id, category_id,
-            invoice_date::TEXT AS invoice_date, amount, tax_amount, total_amount, store_id, status
+            invoice_date::TEXT AS invoice_date, amount, tax_amount, total_amount, store_id, status,
+            kind, credit_reason, credited_invoice_id
      FROM invoices WHERE status != 'cancelled'
      ORDER BY invoice_date, created_at`
   )).rows as unknown as InvoiceRow[];
@@ -94,7 +95,7 @@ export async function runFullBackfill(userId: string): Promise<BackfillSummary> 
     `SELECT id, reference, type, category_id, invoice_id, supplier_id, employee_id,
             amount, payment_method, payment_date::TEXT AS payment_date,
             cashed_at::TEXT AS cashed_at, description, store_id,
-            withholding_type_id, withholding_amount, payment_mode, treasury_account_id, to_treasury_account_id
+            withholding_type_id, withholding_amount, payment_mode, treasury_account_id, to_treasury_account_id, credit_note_id
      FROM payments
      -- Mig 310/311 : un paiement annulé (et sa contre-pièce) n'est jamais recomptabilisé.
      WHERE status <> 'void' AND voids_payment_id IS NULL

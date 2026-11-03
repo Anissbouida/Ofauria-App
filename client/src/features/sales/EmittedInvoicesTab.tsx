@@ -1,15 +1,14 @@
-import { useState, useMemo, useRef, useEffect, type CSSProperties } from 'react';
+import { useState, useMemo, type CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoicesApi, paymentsApi } from '../../api/accounting.api';
 import { customersApi } from '../../api/customers.api';
-import { productsApi } from '../../api/products.api';
 import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
 import { format, startOfDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   Plus, Pencil, X, Check, Download, Receipt, Loader2, Search, Banknote, Eye, Ban, Trash2,
   AlertTriangle, CalendarDays, Building2, CheckCircle2, Clock, Coins, ClipboardList, Package,
-  User, FileText, CreditCard, Truck,
+  User, FileText, CreditCard, Truck, Undo2,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -32,25 +31,33 @@ const STAGES: StageDef[] = [
   { key: 'partial', label: 'Partielles', hint: 'reste dû', icon: Coins },
   { key: 'paid', label: 'Soldées', hint: 'encaissé', icon: CheckCircle2 },
 ];
-const STATUS_LABEL: Record<string, string> = { pending: 'À encaisser', partial: 'Partielle', paid: 'Soldée', cancelled: 'Annulée' };
-const STATUS_TAG: Record<string, string> = { pending: 'odoo-tag-yellow', partial: 'odoo-tag-blue', paid: 'odoo-tag-green', cancelled: 'odoo-tag-red' };
-const STATUS_DOT: Record<string, string> = { pending: 'warning', partial: 'warning', paid: 'ok', cancelled: 'neutral' };
+const STATUS_LABEL: Record<string, string> = { pending: 'À encaisser', partial: 'Partielle', paid: 'Soldée', cancelled: 'Annulée', credit: 'Avoir' };
+const STATUS_TAG: Record<string, string> = { pending: 'odoo-tag-yellow', partial: 'odoo-tag-blue', paid: 'odoo-tag-green', cancelled: 'odoo-tag-red', credit: 'odoo-tag-purple' };
+const STATUS_DOT: Record<string, string> = { pending: 'warning', partial: 'warning', paid: 'ok', cancelled: 'neutral', credit: 'neutral' };
+/** Motifs d'avoir (O2C L4, mig 450). */
+const CREDIT_REASON_LABEL: Record<string, string> = {
+  cancellation: 'Annulation', return: 'Retour de marchandise', price: 'Erreur de prix', commercial: 'Geste commercial',
+};
 const FILTER_CHIPS: Array<{ key: string; label: string; icon: typeof Clock }> = [
   { key: '', label: 'Toutes', icon: ClipboardList },
   { key: 'pending', label: 'À encaisser', icon: Clock },
   { key: 'partial', label: 'Partielles', icon: Coins },
   { key: 'paid', label: 'Soldées', icon: CheckCircle2 },
   { key: 'cancelled', label: 'Annulées', icon: Ban },
+  { key: 'credit', label: 'Avoirs', icon: Undo2 },
 ];
 
-const PAY_LABELS: Record<string, string> = { bank: 'Virement', check: 'Chèque', traite: 'Traite (LCN)', cash: 'Espèces', card: 'Carte' };
+const PAY_LABELS: Record<string, string> = { bank: 'Virement', check: 'Chèque', traite: 'Traite (LCN)', cash: 'Espèces', card: 'Carte', avoir: 'Avoir imputé' };
 /** Libellé du mode de paiement : référentiel, sinon libellé par défaut (le référentiel n'a pas « bank »). */
 const payLabel = (get: (c: string) => string, code: string) => { const l = get(code); return l && l !== code ? l : PAY_LABELS[code] ?? code; };
 
 function num(v: unknown) { const x = parseFloat(String(v ?? '0')); return Number.isFinite(x) ? x : 0; }
 function remainingOf(inv: Inv) { return Math.max(0, num(inv.total_amount) - num(inv.paid_amount)); }
+/** Avoir client (O2C L4) : pièce AV liée à une facture ; son « reste » est la part non imputée. */
+function isCredit(inv: Inv) { return inv.kind === 'credit_note'; }
 /** Étape d'affichage : « partielle » dès qu'une partie est encaissée (le statut base reste pending). */
 function stageOf(inv: Inv): string {
+  if (isCredit(inv)) return 'credit';
   if (inv.status === 'cancelled' || inv.status === 'paid') return inv.status;
   return num(inv.paid_amount) > 0.004 ? 'partial' : 'pending';
 }
@@ -59,6 +66,8 @@ function isOverdue(inv: Inv, today: Date) {
   if ((st !== 'pending' && st !== 'partial') || !inv.due_date) return false;
   return startOfDay(new Date(String(inv.due_date).slice(0, 10) + 'T00:00:00')) < today;
 }
+/** Annulation = avoir d'annulation total : facture non annulée et encore jamais créditée. */
+function canCancel(inv: Inv) { return !isCredit(inv) && inv.status !== 'cancelled' && num(inv.credited_total) <= 0.004; }
 function isPro(inv: Inv) { return !!inv.customer_type && inv.customer_type !== 'particulier'; }
 function customerLabel(inv: Inv) {
   if (inv.customer_company_name && isPro(inv)) return inv.customer_company_name as string;
@@ -88,71 +97,6 @@ const fieldStyle: CSSProperties = {
 };
 const sectionStyle: CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 4, overflow: 'hidden' };
 
-/* ═══ Composant recherche produit intelligent ═══ */
-function ProductSearchInput({ products, value, onSelect, onChange }: {
-  products: Record<string, any>[]; value: string;
-  onSelect: (product: Record<string, any>) => void; onChange: (val: string) => void;
-}) {
-  const [query, setQuery] = useState(value);
-  const [isOpen, setIsOpen] = useState(false);
-  const [highlightIdx, setHighlightIdx] = useState(0);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { setQuery(value); }, [value]);
-  useEffect(() => {
-    const handler = (e: MouseEvent) => { if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setIsOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const filtered = useMemo(() => {
-    if (!query || query.length < 1) return products.slice(0, 10);
-    const q = query.toLowerCase();
-    return products.filter(p => {
-      const name = (p.name as string || '').toLowerCase();
-      const cat = (p.category_name as string || '').toLowerCase();
-      return name.includes(q) || cat.includes(q);
-    }).slice(0, 10);
-  }, [query, products]);
-
-  const handleSelect = (product: Record<string, any>) => { setQuery(product.name as string); setIsOpen(false); onSelect(product); };
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!isOpen) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); setHighlightIdx(i => Math.min(i + 1, filtered.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlightIdx(i => Math.max(i - 1, 0)); }
-    else if (e.key === 'Enter' && filtered[highlightIdx]) { e.preventDefault(); handleSelect(filtered[highlightIdx]); }
-    else if (e.key === 'Escape') { setIsOpen(false); }
-  };
-
-  return (
-    <div ref={wrapperRef} className="flex-1 relative">
-      <div className="relative">
-        <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input ref={inputRef} type="text" placeholder="Rechercher un produit..." value={query}
-          onChange={e => { setQuery(e.target.value); onChange(e.target.value); setIsOpen(true); setHighlightIdx(0); }}
-          onFocus={() => setIsOpen(true)} onKeyDown={handleKeyDown}
-          className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-      </div>
-      {isOpen && filtered.length > 0 && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
-          {filtered.map((p, i) => (
-            <button key={p.id as string} type="button" onClick={() => handleSelect(p)} onMouseEnter={() => setHighlightIdx(i)}
-              className={`w-full text-left px-3 py-2 flex items-center justify-between transition-colors ${i === highlightIdx ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-800 truncate">{p.name as string}</p>
-                {p.category_name && <p className="text-[10px] text-gray-400">{p.category_name as string}</p>}
-              </div>
-              <span className="text-sm font-bold text-blue-600 ml-2 flex-shrink-0">{n(parseFloat(p.price as string) || 0)} DH</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ═══ Factures émises (clients) ═══ */
 export default function EmittedInvoicesTab() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
@@ -207,8 +151,10 @@ export default function EmittedInvoicesTab() {
     mutationFn: (id: string) => invoicesApi.cancel(id),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['invoice-credit-notes'] });
       if (res?.approval) notify.warning(`Annulation soumise à approbation (${res.approval.rule_label}).`);
-      else notify.success('Facture annulée');
+      else notify.success(res?.creditNote ? `Avoir d'annulation ${res.creditNote.creditNote.invoice_number} émis` : 'Facture annulée');
     },
     onError: (err: unknown) => {
       const e = err as { response?: { data?: { error?: { message?: string } } } };
@@ -229,13 +175,6 @@ export default function EmittedInvoicesTab() {
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Encaissement refusé'),
   });
 
-  const { data: productsData } = useQuery({
-    queryKey: ['products-for-invoice'],
-    queryFn: () => productsApi.list({ limit: '500' }),
-    enabled: showCreateModal,
-  });
-  const products = ((productsData as Record<string, any>)?.data || productsData || []) as Record<string, any>[];
-
   const resetManualForm = () => {
     setManualCustomerId('');
     setManualDate(format(new Date(), 'yyyy-MM-dd'));
@@ -251,7 +190,8 @@ export default function EmittedInvoicesTab() {
   /** Lignes envoyées au serveur : prix convertis en DH (prix unitaire à 4 décimales) quand la facture est en devise. */
   const linesInDh = () => manualItems.map(it => {
     const unitPrice = foreign ? Math.round(it.unitPrice * rateValue * 10000) / 10000 : it.unitPrice;
-    return { productId: it.productId || undefined, description: it.description, quantity: it.quantity, unitPrice,
+    // Facture directe = prestations (O2C L4) : les marchandises se facturent depuis le BL.
+    return { description: it.description, quantity: it.quantity, unitPrice,
       subtotal: Math.round(it.quantity * unitPrice * 100) / 100, tvaRate: it.tvaRate };
   });
 
@@ -366,6 +306,8 @@ export default function EmittedInvoicesTab() {
   };
 
   const allInvoices = invoices as Record<string, any>[];
+  // Indicateurs : factures seules ; les avoirs viennent en déduction du facturé.
+  const invoicesOnly = useMemo(() => allInvoices.filter(inv => !isCredit(inv)), [allInvoices]);
   const today = startOfDay(new Date());
 
   /* ── Compteurs du pipeline (même grammaire que Commandes et Achats) ── */
@@ -373,7 +315,7 @@ export default function EmittedInvoicesTab() {
     const stats: Record<string, StageStat> = {};
     const amounts: Record<string, number> = {};
     for (const s of STAGES) { stats[s.key] = { count: 0, sub: '', late: 0 }; amounts[s.key] = 0; }
-    for (const inv of allInvoices) {
+    for (const inv of invoicesOnly) {
       const key = stageOf(inv);
       if (!stats[key]) continue;
       stats[key].count += 1;
@@ -382,16 +324,16 @@ export default function EmittedInvoicesTab() {
     }
     for (const s of STAGES) stats[s.key].sub = `${n(amounts[s.key])} DH`;
     return stats;
-  }, [allInvoices, today]);
+  }, [invoicesOnly, today]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { '': allInvoices.length };
     for (const inv of allInvoices) { const k = stageOf(inv); c[k] = (c[k] || 0) + 1; }
     return c;
   }, [allInvoices]);
-  const overdue = useMemo(() => allInvoices.filter(inv => isOverdue(inv, today)), [allInvoices, today]);
+  const overdue = useMemo(() => invoicesOnly.filter(inv => isOverdue(inv, today)), [invoicesOnly, today]);
   const overdueAmount = overdue.reduce((s, inv) => s + remainingOf(inv), 0);
-  const billed = allInvoices.filter(inv => inv.status !== 'cancelled');
+  const billed = invoicesOnly.filter(inv => inv.status !== 'cancelled');
   const totalBilled = billed.reduce((s, inv) => s + num(inv.total_amount), 0);
   const totalPaid = billed.reduce((s, inv) => s + num(inv.paid_amount), 0);
   const rate = totalBilled > 0 ? Math.round(totalPaid / totalBilled * 100) : 0;
@@ -402,12 +344,13 @@ export default function EmittedInvoicesTab() {
       if (statusFilter && stageOf(inv) !== statusFilter) return false;
       if (lateOnly && !isOverdue(inv, today)) return false;
       if (!q) return true;
-      return [inv.invoice_number, customerLabel(inv), inv.order_number_ref, inv.delivery_note_numbers]
+      return [inv.invoice_number, customerLabel(inv), inv.order_number_ref, inv.delivery_note_numbers, inv.credited_invoice_number]
         .some(v => String(v ?? '').toLowerCase().includes(q));
     });
   }, [allInvoices, searchQuery, statusFilter, lateOnly, today]);
-  const filteredTotal = filteredInvoices.reduce((s, inv) => s + num(inv.total_amount), 0);
-  const filteredRemaining = filteredInvoices.filter(inv => inv.status !== 'cancelled').reduce((s, inv) => s + remainingOf(inv), 0);
+  const filteredTotal = filteredInvoices.filter(inv => inv.status !== 'cancelled')
+    .reduce((s, inv) => s + (isCredit(inv) ? -1 : 1) * num(inv.total_amount), 0);
+  const filteredRemaining = filteredInvoices.filter(inv => inv.status !== 'cancelled' && !isCredit(inv)).reduce((s, inv) => s + remainingOf(inv), 0);
   const hasFilters = !!(statusFilter || lateOnly || searchQuery);
 
   const handleDownloadPdf = async (inv: Record<string, any>) => {
@@ -420,8 +363,8 @@ export default function EmittedInvoicesTab() {
     } catch { notify.error('Erreur lors du téléchargement'); }
   };
   const cancelInvoice = async (inv: Record<string, any>) => {
-    if (await confirm(`Annuler la facture ${inv.invoice_number} ? Ses bons de livraison redeviendront « à facturer ».`,
-      { title: 'Annuler la facture', confirmLabel: 'Annuler la facture', cancelLabel: 'Retour', danger: true })) {
+    if (await confirm(`Annuler la facture ${inv.invoice_number} ? Un avoir d'annulation (AV) est émis : la facture garde son numéro, ses bons de livraison redeviennent « à facturer » et un règlement déjà reçu reste au crédit du client.`,
+      { title: 'Annuler la facture', confirmLabel: 'Émettre l\'avoir d\'annulation', cancelLabel: 'Retour', danger: true })) {
       cancelMutation.mutate(inv.id as string);
     }
   };
@@ -542,6 +485,12 @@ export default function EmittedInvoicesTab() {
                         <td><span className={`odoo-status-dot ${late ? 'danger' : STATUS_DOT[status] || 'neutral'}`} /></td>
                         <td style={{ whiteSpace: 'nowrap' }}>
                           <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{inv.invoice_number as string}</span>
+                          {isCredit(inv) && inv.credited_invoice_number && (
+                            <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>sur {inv.credited_invoice_number as string}</div>
+                          )}
+                          {!isCredit(inv) && inv.cancelled_by_credit && (
+                            <div style={{ fontSize: '0.6875rem', color: '#721c24' }}>annulée par avoir</div>
+                          )}
                         </td>
                         <td style={{ whiteSpace: 'nowrap' }}>
                           <span style={{ fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -550,7 +499,8 @@ export default function EmittedInvoicesTab() {
                           </span>
                         </td>
                         <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', fontFamily: 'ui-monospace, monospace' }}>
-                          {inv.delivery_note_numbers || inv.order_number_ref || <span style={{ fontFamily: 'inherit' }}>Saisie manuelle</span>}
+                          {isCredit(inv) ? <span style={{ fontFamily: 'inherit' }}>{CREDIT_REASON_LABEL[inv.credit_reason as string] ?? 'Avoir'}</span>
+                            : inv.delivery_note_numbers || inv.order_number_ref || <span style={{ fontFamily: 'inherit' }}>Saisie manuelle</span>}
                         </td>
                         <td><span className={`odoo-tag ${STATUS_TAG[status] || 'odoo-tag-grey'}`}>{STATUS_LABEL[status] || status}</span></td>
                         <td style={{ color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>{fmtDate(inv.invoice_date)}</td>
@@ -563,6 +513,8 @@ export default function EmittedInvoicesTab() {
                         <td style={{ minWidth: 110 }}>
                           {status === 'cancelled' ? (
                             <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Ban size={11} /> Annulée</span>
+                          ) : isCredit(inv) ? (
+                            <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{remaining > 0.004 ? 'à imputer' : 'imputé'}</span>
                           ) : (
                             <div title={`${Math.round(pct)} % encaissé`}>
                               <span style={{ display: 'block', height: 5, borderRadius: 3, background: 'var(--odoo-border)', overflow: 'hidden', maxWidth: 120 }}>
@@ -573,7 +525,7 @@ export default function EmittedInvoicesTab() {
                           )}
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <span style={{ fontWeight: 700 }}>{n(total)}</span>
+                          <span style={{ fontWeight: 700, color: isCredit(inv) ? '#6f42c1' : undefined }}>{isCredit(inv) ? '−' : ''}{n(total)}</span>
                           <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
                           {inv.foreign_total_amount != null && String(inv.currency_code).trim() !== BASE_CURRENCY && (
                             <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{n(num(inv.foreign_total_amount))} {String(inv.currency_code).trim()}</div>
@@ -581,22 +533,25 @@ export default function EmittedInvoicesTab() {
                         </td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                           {status === 'cancelled' ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span>
+                            : isCredit(inv) ? (remaining > 0.004
+                              ? <span style={{ color: '#6f42c1', fontWeight: 600 }} title="Crédit du client, à imputer sur une facture">{n(remaining)} DH</span>
+                              : <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>imputé</span>)
                             : remaining > 0.004 ? <span style={{ color: '#b85d1a', fontWeight: 600 }}>{n(remaining)} DH</span>
                             : <span style={{ color: '#155724', fontSize: '0.75rem' }}>soldée</span>}
                         </td>
                         <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                           <div style={{ display: 'inline-flex', gap: 2 }}>
-                            {open && remaining > 0.004 && (
+                            {open && !isCredit(inv) && remaining > 0.004 && (
                               <button onClick={() => openPay(inv)} title="Encaisser" className="odoo-pager-btn" style={{ color: '#28a745' }}><Banknote size={13} /></button>
                             )}
                             <button onClick={() => setViewing(inv)} title="Voir le détail" className="odoo-pager-btn"><Eye size={13} /></button>
                             <button onClick={() => handleDownloadPdf(inv)} title="Télécharger le PDF" className="odoo-pager-btn"><Download size={13} /></button>
-                            {/* Facture validée : figée (O2C L0), la correction passe par l'annulation. */}
-                            {status !== 'cancelled' && inv.validation_status !== 'validated' && (
+                            {/* Facture validée : figée (O2C L0), la correction passe par un avoir (L4). */}
+                            {status !== 'cancelled' && !isCredit(inv) && inv.validation_status !== 'validated' && (
                               <button onClick={() => openEdit(inv)} title="Modifier (date, TVA, articles)" className="odoo-pager-btn"><Pencil size={13} /></button>
                             )}
-                            {open && num(inv.paid_amount) <= 0.004 && (
-                              <button onClick={() => cancelInvoice(inv)} title="Annuler la facture" className="odoo-pager-btn" style={{ color: '#dc3545' }}><Ban size={13} /></button>
+                            {canCancel(inv) && (
+                              <button onClick={() => cancelInvoice(inv)} title="Annuler la facture (avoir d'annulation)" className="odoo-pager-btn" style={{ color: '#dc3545' }}><Ban size={13} /></button>
                             )}
                           </div>
                         </td>
@@ -640,9 +595,9 @@ export default function EmittedInvoicesTab() {
             </div>
             <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
               {!editingInvoiceId && (
-                <StatusBanner tone="info" icon={Truck} title="Commande de professionnel ?">
-                  Elle se facture depuis son bon de livraison (Commandes › Livrer sur BL, ou Livraisons pros › À facturer).
-                  Une commande de particulier se règle en caisse.
+                <StatusBanner tone="info" icon={Truck} title="Facture directe : prestations uniquement">
+                  Des marchandises se facturent depuis leur bon de livraison (Commandes › Livrer sur BL, ou Livraisons pros › À facturer),
+                  pour ne facturer que ce qui a été livré. Une commande de particulier se règle en caisse.
                 </StatusBanner>
               )}
               {editLoading ? (
@@ -689,7 +644,7 @@ export default function EmittedInvoicesTab() {
 
                   <div style={sectionStyle}>
                     <div className="odoo-section-header" style={{ display: 'flex', alignItems: 'center' }}>
-                      <Package size={11} /> Articles
+                      <Package size={11} /> Prestations
                       <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 8 }}>prix HT ou TTC : l'autre se calcule selon la TVA</span>
                       <button onClick={addManualItem} className="odoo-btn-secondary" style={{ marginLeft: 'auto', padding: '0.15rem 0.5rem' }}><Plus size={12} /> Ligne</button>
                     </div>
@@ -709,9 +664,8 @@ export default function EmittedInvoicesTab() {
                         {manualItems.map((item, idx) => (
                           <tr key={idx} style={{ cursor: 'default' }}>
                             <td>
-                              <ProductSearchInput products={products} value={item.description}
-                                onSelect={(product) => { const updated = [...manualItems]; updated[idx] = { ...updated[idx], productId: product.id as string, description: product.name as string, unitPrice: parseFloat(product.price as string) || 0 }; setManualItems(updated); }}
-                                onChange={(val) => { const updated = [...manualItems]; updated[idx] = { ...updated[idx], description: val, productId: '' }; setManualItems(updated); }} />
+                              <input type="text" title="Désignation de la prestation" value={item.description} placeholder="Prestation (transport, location, formation…)"
+                                onChange={e => updateManualItem(idx, 'description', e.target.value)} style={fieldStyle} />
                             </td>
                             <td><input type="number" title="Quantité" value={item.quantity || ''} min="1" onChange={e => updateManualItem(idx, 'quantity', parseFloat(e.target.value) || 0)} style={{ ...fieldStyle, textAlign: 'right' }} /></td>
                             <td><input type="number" title="Prix unitaire HT" value={item.unitPrice || ''} min="0" step="0.01" onChange={e => setUnitHt(idx, parseFloat(e.target.value) || 0)} style={{ ...fieldStyle, textAlign: 'right' }} /></td>
@@ -914,9 +868,27 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
   onCancel: (inv: Record<string, any>) => void;
 }) {
   const { getLabel: getPaymentLabel } = useReferentiel('payment_methods');
+  const queryClient = useQueryClient();
+  const [creditOpen, setCreditOpen] = useState(false);
   const { data: detail } = useQuery({
     queryKey: ['invoice-detail', inv.id],
     queryFn: () => invoicesApi.getById(inv.id as string) as Promise<Record<string, any>>,
+  });
+  const credit = isCredit(inv);
+  // Avoirs de la facture et avoirs du client encore à imputer (O2C L4).
+  const { data: credits } = useQuery({
+    queryKey: ['invoice-credit-notes', inv.id],
+    queryFn: () => invoicesApi.creditNotes(inv.id as string),
+    enabled: !credit,
+  });
+  const applyMutation = useMutation({
+    mutationFn: (creditNoteId: string) => invoicesApi.applyCredit(inv.id as string, { creditNoteId }),
+    onSuccess: (r) => {
+      ['invoices', 'invoice-detail', 'invoice-credit-notes', 'receivables'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+      notify.success(`${n(r.applied)} DH d'avoir imputés`);
+      onClose();
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Imputation refusée'),
   });
   const status = stageOf(inv);
   const total = num(inv.total_amount);
@@ -938,9 +910,12 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
               <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: '1rem' }}>{inv.invoice_number as string}</span>
               <span className={`odoo-tag ${STATUS_TAG[status] || 'odoo-tag-grey'}`}>{STATUS_LABEL[status] || status}</span>
               {late && <span className="odoo-tag odoo-tag-red">En retard</span>}
+              {inv.cancelled_by_credit && <span className="odoo-tag odoo-tag-red">Annulée par avoir</span>}
             </div>
             <div style={{ fontSize: '0.75rem', opacity: 0.85, marginTop: 2 }}>
-              Émise le {fmtDate(inv.invoice_date, 'dd/MM/yyyy')}{inv.due_date ? ` · échéance le ${fmtDate(inv.due_date, 'dd/MM/yyyy')}` : ''}
+              {credit
+                ? `Avoir du ${fmtDate(inv.invoice_date, 'dd/MM/yyyy')} sur la facture ${inv.credited_invoice_number ?? ''} · ${CREDIT_REASON_LABEL[inv.credit_reason as string] ?? ''}`
+                : <>Émise le {fmtDate(inv.invoice_date, 'dd/MM/yyyy')}{inv.due_date ? ` · échéance le ${fmtDate(inv.due_date, 'dd/MM/yyyy')}` : ''}</>}
             </div>
           </div>
           <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
@@ -950,6 +925,10 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
         <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
           {status === 'cancelled' ? (
             <span style={{ fontSize: '0.75rem', color: '#721c24', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Ban size={12} /> Facture annulée</span>
+          ) : credit ? (
+            <span style={{ fontSize: '0.75rem', color: '#6f42c1', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Undo2 size={12} /> {remaining > 0.004 ? `${n(remaining)} DH au crédit du client, à imputer sur une facture` : 'Avoir entièrement imputé'}
+            </span>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STAGES.length}, 1fr)`, gap: 6 }}>
               {STAGES.map((s, i) => {
@@ -1036,6 +1015,27 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
             )}
           </div>
 
+          {!credit && ((credits?.creditNotes.length ?? 0) > 0 || (open && (credits?.openCredits.length ?? 0) > 0)) && (
+            <div style={sectionStyle}>
+              <div className="odoo-section-header"><Undo2 size={11} /> Avoirs</div>
+              <div style={{ padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {credits?.creditNotes.map(c => (
+                  <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <span><span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{c.invoice_number}</span>
+                      <span style={{ color: 'var(--odoo-text-muted)' }}> · {fmtDate(c.invoice_date, 'dd/MM/yyyy')} · {CREDIT_REASON_LABEL[c.credit_reason] ?? c.credit_reason}</span></span>
+                    <span style={{ fontWeight: 600, color: '#6f42c1' }}>−{n(c.total_amount)} DH</span>
+                  </div>
+                ))}
+                {open && credits?.openCredits.map(c => (
+                  <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderTop: '1px dashed var(--odoo-border)', paddingTop: 6 }}>
+                    <span style={{ color: 'var(--odoo-text-muted)' }}>Crédit du client : avoir <span style={{ fontFamily: 'ui-monospace, monospace' }}>{c.invoice_number}</span>, {n(c.unapplied)} DH à imputer</span>
+                    <button className="odoo-btn-secondary" disabled={applyMutation.isPending} onClick={() => applyMutation.mutate(c.id)}>Imputer sur cette facture</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={sectionStyle}>
               <div className="odoo-section-header"><Banknote size={11} /> Règlement</div>
@@ -1045,11 +1045,11 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4, marginTop: 2 }}>
                   <span>Total TTC</span><span>{n(total)} DH</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}><span>Encaissé</span><span style={{ fontWeight: 600 }}>{n(paid)} DH</span></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}><span>{credit ? 'Imputé' : 'Encaissé'}</span><span style={{ fontWeight: 600 }}>{n(paid)} DH</span></div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-                  <span>Reste à encaisser</span>
+                  <span>{credit ? 'À imputer' : 'Reste à encaisser'}</span>
                   <span style={{ color: remaining > 0.004 && status !== 'cancelled' ? '#b85d1a' : undefined }}>
-                    {status === 'cancelled' ? 'Annulée' : remaining > 0.004 ? `${n(remaining)} DH` : 'Soldée'}
+                    {status === 'cancelled' ? 'Annulée' : remaining > 0.004 ? `${n(remaining)} DH` : credit ? 'Imputé' : 'Soldée'}
                   </span>
                 </div>
               </div>
@@ -1075,17 +1075,116 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)', flexWrap: 'wrap' }}>
-          {open && num(inv.paid_amount) <= 0.004 && (
+          {canCancel(inv) && (
             <button onClick={() => onCancel(inv)} className="odoo-btn-danger" style={{ marginRight: 'auto' }}><Ban size={13} /> Annuler la facture</button>
+          )}
+          {!credit && status !== 'cancelled' && !inv.cancelled_by_credit && (
+            <button onClick={() => setCreditOpen(true)} className="odoo-btn-secondary" disabled={!detail}><Undo2 size={13} /> Émettre un avoir</button>
           )}
           <button onClick={onClose} className="odoo-btn-secondary">Fermer</button>
           <button onClick={() => onPdf(inv)} className="odoo-btn-secondary"><Download size={13} /> PDF</button>
           {status !== 'cancelled' && inv.validation_status !== 'validated' && (
             <button onClick={() => onEdit(inv)} className="odoo-btn-secondary"><Pencil size={13} /> Modifier</button>
           )}
-          {open && remaining > 0.004 && (
+          {open && !credit && remaining > 0.004 && (
             <button onClick={() => onPay(inv)} className="odoo-btn-primary"><Banknote size={13} /> Encaisser</button>
           )}
+        </div>
+      </div>
+      {creditOpen && detail && (
+        <CreditNoteModal invoice={detail} onClose={() => setCreditOpen(false)} onDone={() => { setCreditOpen(false); onClose(); }} />
+      )}
+    </ModalBackdrop>
+  );
+}
+
+/* ═══════════════════════ Avoir partiel (O2C L4) ═══════════════════════ */
+
+function CreditNoteModal({ invoice: inv, onClose, onDone }: {
+  invoice: Record<string, any>; onClose: () => void; onDone: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [reason, setReason] = useState<'return' | 'price' | 'commercial'>('return');
+  const [note, setNote] = useState('');
+  const [values, setValues] = useState<Record<string, string>>({});
+  const items: Record<string, any>[] = inv.items || [];
+  const byQty = reason === 'return';
+  const lines = items
+    .map(it => ({ it, v: parseFloat((values[it.id as string] ?? '').replace(',', '.')) || 0 }))
+    .filter(l => l.v > 0);
+  const totalHt = Math.round(lines.reduce((s, l) => s + (byQty ? l.v * num(l.it.unit_price) : l.v), 0) * 100) / 100;
+  const mutation = useMutation({
+    mutationFn: () => invoicesApi.createCreditNote(inv.id as string, {
+      reason, note: note.trim() || undefined,
+      lines: lines.map(l => byQty ? { invoiceItemId: l.it.id as string, quantity: l.v } : { invoiceItemId: l.it.id as string, amount: l.v }),
+    }),
+    onSuccess: (r) => {
+      ['invoices', 'invoice-detail', 'invoice-credit-notes', 'receivables'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
+      notify.success(`Avoir ${r.creditNote.invoice_number} émis${r.unapplied > 0.004 ? ` · ${n(r.unapplied)} DH au crédit du client` : ''}`);
+      onDone();
+    },
+    onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Avoir refusé'),
+  });
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
+      <div className="odoo-scope w-full flex flex-col" style={{ ...modalPanelStyle, maxWidth: 680, maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Undo2 size={18} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Avoir sur la facture {inv.invoice_number as string}</div>
+            <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>Pièce AV numérotée, imputée sur la facture ; le surplus reste au crédit du client</div>
+          </div>
+          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
+        </div>
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
+          <div>
+            <label style={labelStyle}>Motif</label>
+            <select value={reason} onChange={e => { setReason(e.target.value as typeof reason); setValues({}); }} style={fieldStyle}>
+              <option value="return">Retour de marchandise (quantités, au prix facturé)</option>
+              <option value="price">Erreur de prix (montant HT par ligne)</option>
+              <option value="commercial">Geste commercial (montant HT par ligne)</option>
+            </select>
+          </div>
+          <table className="odoo-table" style={{ margin: 0 }}>
+            <thead>
+              <tr>
+                <th>Ligne facturée</th>
+                <th style={{ textAlign: 'right' }}>Qté</th>
+                <th style={{ textAlign: 'right' }}>Montant HT</th>
+                <th style={{ width: 120, textAlign: 'right' }}>{byQty ? 'Qté retournée' : 'Avoir HT'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(it => (
+                <tr key={it.id as string} style={{ cursor: 'default' }}>
+                  <td style={{ fontWeight: 500 }}>{(it.description as string) || (it.product_name as string)}</td>
+                  <td style={{ textAlign: 'right' }}>{num(it.quantity)}</td>
+                  <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{n(num(it.subtotal))} DH</td>
+                  <td>
+                    <input inputMode="decimal" value={values[it.id as string] ?? ''} placeholder="0"
+                      onChange={e => setValues(v => ({ ...v, [it.id as string]: e.target.value }))}
+                      style={{ ...fieldStyle, textAlign: 'right' }} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 200px', gap: 12, alignItems: 'end' }}>
+            <div>
+              <label style={labelStyle}>Commentaire (imprimé sur l'avoir)</label>
+              <input type="text" value={note} onChange={e => setNote(e.target.value)} style={fieldStyle} placeholder="ex. 12 baguettes rendues le 03/11" />
+            </div>
+            <div style={{ ...sectionStyle, padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--odoo-text-muted)' }}>Avoir HT</span><strong>{n(totalHt)} DH</strong>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
+          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+          <button onClick={() => mutation.mutate()} disabled={!lines.length || mutation.isPending} className="odoo-btn-primary">
+            {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Émettre l'avoir
+          </button>
         </div>
       </div>
     </ModalBackdrop>

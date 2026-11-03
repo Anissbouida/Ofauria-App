@@ -6,7 +6,6 @@ import { FLAGS } from '../config/feature-flags.js';
 import { postOrQueue, postGoodsReceiptsForPo } from '../services/ledger-posting.service.js';
 import { fromInvoice, fromPaymentEmission, fromSale, persistEntry, autoLettrer, reverseEntriesForSource, regenerateInvoiceEntry, regeneratePaymentEntries, fromGoodsReceipt, cardCommissionPct as readCardCommissionPct } from '../services/journal-generator.service.js';
 import { round2, lineTvaAmount, headerTotalsFromLines } from '../utils/tva.js';
-import { attachDeliveryNoteToOrderInvoice } from '../services/order-delivery-note.js';
 import { withActor, assertReasonCode, recordAction } from '../services/document-actions.service.js';
 
 /**
@@ -516,6 +515,12 @@ export const invoiceRepository = {
               o.order_number as order_number_ref,
               -- Bons de livraison facturés par cette facture (mig 352).
               (SELECT string_agg(d.number, ', ' ORDER BY d.number) FROM delivery_notes d WHERE d.invoice_id = inv.id) AS delivery_note_numbers,
+              -- Avoirs clients (O2C L4, mig 450) : facture créditée, total crédité, annulation par avoir.
+              (SELECT x.invoice_number FROM invoices x WHERE x.id = inv.credited_invoice_id) AS credited_invoice_number,
+              (SELECT COALESCE(SUM(x.total_amount), 0) FROM invoices x
+                WHERE x.credited_invoice_id = inv.id AND x.kind = 'credit_note' AND x.status <> 'cancelled')::float8 AS credited_total,
+              EXISTS (SELECT 1 FROM invoices x WHERE x.credited_invoice_id = inv.id AND x.credit_reason = 'cancellation'
+                         AND x.status <> 'cancelled') AS cancelled_by_credit,
               -- Contrôle (mig 309) : blocages ouverts, dont bloquants pour le paiement.
               (SELECT count(*) FROM invoice_holds h WHERE h.invoice_id = inv.id AND h.released_at IS NULL)::int AS open_holds,
               (SELECT count(*) FROM invoice_holds h WHERE h.invoice_id = inv.id AND h.released_at IS NULL AND h.blocks_payment)::int AS blocking_holds
@@ -665,7 +670,8 @@ export const invoiceRepository = {
               c.ice as customer_ice, c.if_fiscal as customer_if, c.rc as customer_rc,
               ec.name as category_name,
               po.order_number as purchase_order_number,
-              rv.voucher_number as reception_voucher_number
+              rv.voucher_number as reception_voucher_number,
+              (SELECT x.invoice_number FROM invoices x WHERE x.id = inv.credited_invoice_id) AS credited_invoice_number
        FROM invoices inv
        LEFT JOIN suppliers s ON s.id = inv.supplier_id
        LEFT JOIN customers c ON c.id = inv.customer_id
@@ -711,9 +717,12 @@ export const invoiceRepository = {
     taxAmount?: number; totalAmount?: number; notes?: string; createdBy: string; storeId?: string;
     expectedPaymentMode?: string; receptionDate?: string;
     checkNumber?: string;
-    items?: { productId?: string; ingredientId?: string; description?: string; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null }[];
+    items?: { productId?: string; ingredientId?: string; description?: string; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null;
+              deliveryNoteItemId?: string | null; orderItemId?: string | null; creditedItemId?: string | null }[];
     // Mig 368 : facture saisie en devise (montants transmis en DH, taux de la facture).
     currencyCode?: string | null; exchangeRate?: number | null;
+    /** O2C L4 (mig 450) : avoir client (série AV) lié à sa facture d'origine. */
+    creditNote?: { creditedInvoiceId: string; reason: 'cancellation' | 'return' | 'price' | 'commercial' } | null;
   }, outer?: PoolClient) {
     // `outer` : transaction de l'appelant (facturation de bons de livraison, mig 352) —
     // la facture et la mise à jour des pièces sources réussissent ou échouent ensemble.
@@ -722,9 +731,17 @@ export const invoiceRepository = {
       if (!outer) await client.query('BEGIN');
 
       const invoiceType = data.invoiceType || 'received';
+      const isCreditNote = invoiceType === 'emitted' && !!data.creditNote;
+      // O2C L4 (G-IV-01) : une facture client de marchandises se fait depuis le BL (quantités
+      // livrées) ; seules les prestations (lignes sans produit) se facturent directement.
+      if (invoiceType === 'emitted' && !isCreditNote && data.items?.some(i => i.productId && !i.deliveryNoteItemId)) {
+        throw Object.assign(new Error('Facture de marchandises : elle se fait depuis le bon de livraison (Ventes pro › À facturer). Une facture directe ne porte que des prestations.'), { statusCode: 400 });
+      }
       // Facture client : numéro toujours pris dans la série continue (O2C L0, G-IV-05),
-      // jamais fourni par l'appelant.
-      const invoiceNumber = (invoiceType !== 'emitted' && data.invoiceNumber) || await this.generateInvoiceNumber(invoiceType as 'received' | 'emitted', client);
+      // jamais fourni par l'appelant ; un avoir a sa propre série continue (AV).
+      const invoiceNumber = isCreditNote
+        ? await nextDocumentNumber(client, 'credit_note_emitted', data.invoiceDate)
+        : (invoiceType !== 'emitted' && data.invoiceNumber) || await this.generateInvoiceNumber(invoiceType as 'received' | 'emitted', client);
 
       // Si des lignes portent un taux de TVA explicite, elles font foi :
       // HT/TVA/TTC d'en-tete sont derives de la somme des lignes (sinon on
@@ -736,16 +753,22 @@ export const invoiceRepository = {
         if (t.hasPerLineTva) {
           headerAmount = t.amount;
           headerTax = t.taxAmount as number;
+        } else if (invoiceType === 'emitted') {
+          // O2C L4 (G-IV-11) : facture client = somme de ses lignes, jamais un total transmis.
+          headerAmount = round2(data.items.reduce((s, i) => s + (Number(i.subtotal) || 0), 0));
         }
       }
-      const totalAmount = data.totalAmount || (headerAmount + headerTax);
+      const totalAmount = invoiceType === 'emitted' && data.items?.length
+        ? round2(headerAmount + headerTax)
+        : data.totalAmount || (headerAmount + headerTax);
 
       const invResult = await client.query(
         `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, customer_id, category_id,
           purchase_order_id, reception_voucher_id, order_id,
           invoice_date, due_date, amount, tax_amount, total_amount, notes, created_by, store_id,
-          expected_payment_mode, reception_date, check_number, currency_code, exchange_rate)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+          expected_payment_mode, reception_date, check_number, currency_code, exchange_rate,
+          kind, credited_invoice_id, credit_reason)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`,
         [invoiceNumber, invoiceType, data.supplierId || null, data.customerId || null,
          data.categoryId || null, data.purchaseOrderId || null, data.receptionVoucherId || null,
          data.orderId || null, data.invoiceDate, data.dueDate || null,
@@ -754,7 +777,8 @@ export const invoiceRepository = {
          data.expectedPaymentMode || null, data.receptionDate || null,
          data.checkNumber || null,
          data.currencyCode && /^[A-Z]{3}$/.test(data.currencyCode) ? data.currencyCode : 'MAD',
-         data.currencyCode && data.currencyCode !== 'MAD' && Number(data.exchangeRate) > 0 ? Number(data.exchangeRate) : 1]
+         data.currencyCode && data.currencyCode !== 'MAD' && Number(data.exchangeRate) > 0 ? Number(data.exchangeRate) : 1,
+         isCreditNote ? 'credit_note' : 'invoice', isCreditNote ? data.creditNote!.creditedInvoiceId : null, isCreditNote ? data.creditNote!.reason : null]
       );
 
       // Insert invoice items if provided
@@ -763,10 +787,12 @@ export const invoiceRepository = {
           const tvaRate = item.tvaRate ?? null;
           const tvaAmount = lineTvaAmount(item.subtotal, tvaRate);
           await client.query(
-            `INSERT INTO invoice_items (invoice_id, product_id, ingredient_id, description, quantity, unit_price, subtotal, tva_rate, tva_amount)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            `INSERT INTO invoice_items (invoice_id, product_id, ingredient_id, description, quantity, unit_price, subtotal, tva_rate, tva_amount,
+                                        delivery_note_item_id, order_item_id, credited_item_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
             [invResult.rows[0].id, item.productId || null, item.ingredientId || null,
-             item.description || null, item.quantity, item.unitPrice, item.subtotal, tvaRate, tvaAmount]
+             item.description || null, item.quantity, item.unitPrice, item.subtotal, tvaRate, tvaAmount,
+             item.deliveryNoteItemId ?? null, item.orderItemId ?? null, item.creditedItemId ?? null]
           );
         }
       }
@@ -790,68 +816,6 @@ export const invoiceRepository = {
       throw err;
     } finally {
       if (!outer) client.release();
-    }
-  },
-
-  async createFromOrder(orderId: string, createdBy: string, storeId?: string) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
-
-      // Get order + items
-      const orderResult = await client.query(
-        `SELECT o.*, c.first_name as customer_first_name, c.last_name as customer_last_name
-         FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`, [orderId]
-      );
-      const order = orderResult.rows[0];
-      if (!order) throw new Error('Commande non trouvee');
-
-      const itemsResult = await client.query(
-        `SELECT oi.*, p.name as product_name FROM order_items oi
-         JOIN products p ON p.id = oi.product_id WHERE oi.order_id = $1`, [orderId]
-      );
-
-      const invoiceNumber = await this.generateInvoiceNumber('emitted', client);
-
-      const invResult = await client.query(
-        `INSERT INTO invoices (invoice_number, invoice_type, customer_id, order_id,
-          invoice_date, amount, tax_amount, total_amount, notes, created_by, store_id)
-         VALUES ($1, 'emitted', $2, $3, CURRENT_DATE, $4, $5, $6, $7, $8, $9) RETURNING *`,
-        [invoiceNumber, order.customer_id, orderId,
-         parseFloat(order.subtotal), parseFloat(order.tax_amount),
-         parseFloat(order.total),
-         `Facture generee depuis commande ${order.order_number}`,
-         createdBy, storeId || null]
-      );
-
-      for (const item of itemsResult.rows) {
-        await client.query(
-          `INSERT INTO invoice_items (invoice_id, product_id, description, quantity, unit_price, subtotal)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [invResult.rows[0].id, item.product_id, item.product_name,
-           item.quantity, parseFloat(item.unit_price), parseFloat(item.subtotal)]
-        );
-      }
-
-      // Generation de l'ecriture de facture client (pattern B : 3421 / 7111 + TVA).
-      // Mig 311 (G-D8-01) : comptabilisation obligatoire ; un échec part en file d'attente
-      // (ledger_outbox) ou annule la pièce en mode strict — plus d'échec silencieux.
-      await postOrQueue(client, { kind: 'invoice', id: invResult.rows[0].id }, async () => {
-        const entry = await fromInvoice(client, invResult.rows[0]);
-        if (entry) await persistEntry(client, entry, { userId: createdBy });
-      });
-
-      // Mig 353 : la commande facturée a été livrée — son bon de livraison client
-      // est créé (ou un BL « livré » existant est rattaché) dans la même transaction.
-      await attachDeliveryNoteToOrderInvoice(client, { invoiceId: invResult.rows[0].id, orderId, createdBy });
-
-      await client.query('COMMIT');
-      return invResult.rows[0];
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
     }
   },
 
@@ -1065,16 +1029,18 @@ export const invoiceRepository = {
       // Lock invoice row to prevent concurrent payment race conditions.
       // (En transaction partagee, la facture est deja verrouillee par l'appelant
       // — le FOR UPDATE est alors re-entrant sans cout.)
-      const inv = await client.query('SELECT total_amount, status FROM invoices WHERE id = $1 FOR UPDATE', [id]);
+      const inv = await client.query('SELECT total_amount, status, kind, invoice_type FROM invoices WHERE id = $1 FOR UPDATE', [id]);
       if (!inv.rows[0]) { if (ownTxn) await client.query('ROLLBACK'); return null; }
       const totalAmount = parseFloat(inv.rows[0].total_amount);
       const currentStatus = inv.rows[0].status as string;
+      // Avoir client (O2C L4) : son « réglé » est la part imputée sur des factures.
+      const isCreditNote = inv.rows[0].kind === 'credit_note' && inv.rows[0].invoice_type === 'emitted';
 
       // Part soldée au taux de la facture (règlement en devise, mig 368) ; sinon le montant.
       const paymentsResult = await client.query(
         `SELECT COALESCE(SUM(COALESCE(settled_amount, amount)), 0) as total_paid,
                 COALESCE(SUM(foreign_amount), 0) AS foreign_paid
-           FROM payments WHERE invoice_id = $1`, [id]
+           FROM payments WHERE ${isCreditNote ? 'credit_note_id' : 'invoice_id'} = $1`, [id]
       );
       const totalPaid = Math.round(parseFloat(paymentsResult.rows[0].total_paid) * 100) / 100;
       const foreignPaid = parseFloat(paymentsResult.rows[0].foreign_paid);
@@ -1601,10 +1567,17 @@ export const invoiceRepository = {
     try {
       await client.query('BEGIN');
 
-      const inv = await client.query(`SELECT id FROM invoices WHERE id = $1 FOR UPDATE`, [id]);
+      const inv = await client.query(`SELECT id, invoice_type, kind FROM invoices WHERE id = $1 FOR UPDATE`, [id]);
       if (!inv.rows[0]) {
         await client.query('ROLLBACK');
         throw new Error('Facture introuvable');
+      }
+      // O2C L4 : une facture client (ou un avoir) émise est numérotée sans trou — elle reste.
+      if (inv.rows[0].invoice_type === 'emitted') {
+        await client.query('ROLLBACK');
+        throw Object.assign(new Error(inv.rows[0].kind === 'credit_note'
+          ? 'Un avoir émis ne se supprime pas.'
+          : 'Facture client émise : elle ne se supprime pas, corrigez-la par un avoir.'), { code: 'OF409' });
       }
 
       const paymentsCount = await client.query(
@@ -1762,6 +1735,8 @@ export const invoiceRepository = {
   async findOpenDebts(params: { storeId?: string }) {
     const conditions: string[] = [
       `inv.status NOT IN ('paid', 'cancelled')`,
+      // Un avoir non imputé est un crédit du client, pas une créance (O2C L4).
+      `NOT (inv.invoice_type = 'emitted' AND inv.kind = 'credit_note')`,
       `(inv.total_amount - inv.paid_amount) > 0.01`,
     ];
     const values: unknown[] = [];

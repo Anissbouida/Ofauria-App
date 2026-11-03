@@ -115,6 +115,10 @@ invoicesRouter.post('/merge', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAG
 // Echelonnement d'une facture en N echeances (materiel achete a credit) — mig 258.
 invoicesRouter.post('/:id/schedule', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(paymentScheduleController.createInvoiceSchedule));
 invoicesRouter.post('/:id/cancel', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.cancel));
+// Avoirs clients (O2C L4, mig 450).
+invoicesRouter.get('/:id/credit-notes', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.creditNotes));
+invoicesRouter.post('/:id/credit-notes', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.createCreditNote));
+invoicesRouter.post('/:id/apply-credit', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.applyCredit));
 // Confrontation : valide une facture reçue en brouillon (lot L1 P2P).
 invoicesRouter.post('/:id/validate', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), validate(validateInvoiceSchema), asyncHandler(invoiceController.validate));
 // Contrôle et blocages (mig 309).

@@ -386,7 +386,7 @@ export const deliveryNoteRepository = {
       if (!outer) await client.query('BEGIN');
       await releaseCancelledInvoices(client);
       const notes = (await client.query(
-        `SELECT dn.*, c.delai_paiement_jours FROM delivery_notes dn JOIN customers c ON c.id = dn.customer_id
+        `SELECT dn.*, dn.delivery_date::text AS delivery_day, c.delai_paiement_jours FROM delivery_notes dn JOIN customers c ON c.id = dn.customer_id
           WHERE dn.id = ANY($1::uuid[]) ORDER BY dn.delivery_date, dn.number FOR UPDATE OF dn`, [data.deliveryNoteIds])).rows;
       if (notes.length !== data.deliveryNoteIds.length) throw fail(404, 'Bon de livraison introuvable');
       if (notes.some(n => n.status !== 'delivered')) throw fail(409, 'Un des bons est déjà facturé ou annulé');
@@ -398,6 +398,9 @@ export const deliveryNoteRepository = {
           WHERE i.delivery_note_id = ANY($1::uuid[]) ORDER BY d.delivery_date, d.number, i.description`, [data.deliveryNoteIds])).rows;
       const invoiceDate = data.invoiceDate || (await client.query(`SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date AS d`)).rows[0].d;
       const isoDate = String(invoiceDate instanceof Date ? invoiceDate.toISOString().slice(0, 10) : invoiceDate);
+      // O2C L4 (G-IV-09) : on ne facture pas une livraison avant qu'elle ait eu lieu.
+      const lastDelivery = notes.map(n => n.delivery_day as string).sort().at(-1)!;
+      if (isoDate < lastDelivery) throw fail(400, `Date de facture (${isoDate}) antérieure à la dernière livraison facturée (${lastDelivery})`);
       const term = Number(notes[0].delai_paiement_jours ?? 0);
       const due = (await client.query(`SELECT ($1::date + $2::int)::text AS d`, [isoDate, term])).rows[0].d as string;
       const multi = notes.length > 1;
@@ -406,6 +409,8 @@ export const deliveryNoteRepository = {
         description: multi ? `${l.note_number} · ${l.description}` : l.description,
         quantity: Number(l.quantity), unitPrice: Number(l.unit_price), subtotal: Number(l.subtotal),
         tvaRate: l.tva_rate != null ? Number(l.tva_rate) : null,
+        // O2C L4 (G-IV-02) : chaque ligne de facture désigne la ligne de BL (et de commande) qu'elle facture.
+        deliveryNoteItemId: l.id as string, orderItemId: (l.order_item_id as string | null) ?? null,
       }));
       const amount = round2(items.reduce((s, i) => s + i.subtotal, 0));
       const tax = round2(items.reduce((s, i) => s + (i.tvaRate != null ? Math.round(i.subtotal * i.tvaRate) / 100 : 0), 0));

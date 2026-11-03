@@ -5,8 +5,8 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { checkoutSchema, paySaleSchema, specialSaleSchema } from '../validators/sale.validator.js';
-import { ROLE_GROUPS, ROLES } from '@ofauria/shared';
+import { checkoutSchema, paySaleSchema } from '../validators/sale.validator.js';
+import { ROLE_GROUPS } from '@ofauria/shared';
 import { posAllowsNegativeStock, getPersonSizes } from '../services/module-parameters.service.js';
 
 const router = Router();
@@ -34,29 +34,10 @@ router.post(
   validate(checkoutSchema),
   asyncHandler(saleController.checkout),
 );
-// Vente speciale B2B : back-office, admin/manager uniquement.
-router.post(
-  '/special',
-  authenticate,
-  authorize(...ROLE_GROUPS.ADMIN_MANAGER),
-  validate(specialSaleSchema),
-  asyncHandler(saleController.createSpecial),
-);
-// Edition / suppression d'une vente speciale : admin uniquement (correction
-// retroactive d'erreurs de saisie). Restreint a sale_type='special' cote repo.
-router.put(
-  '/special/:id',
-  authenticate,
-  authorize(ROLES.ADMIN),
-  validate(specialSaleSchema),
-  asyncHandler(saleController.updateSpecial),
-);
-router.delete(
-  '/special/:id',
-  authenticate,
-  authorize(ROLES.ADMIN),
-  asyncHandler(saleController.deleteSpecial),
-);
+// Vente spéciale B2B retirée (O2C L4) : commande ou BL professionnel, facture sur livré.
+router.post('/special', authenticate, saleController.specialRetired);
+router.put('/special/:id', authenticate, saleController.specialRetired);
+router.delete('/special/:id', authenticate, saleController.specialRetired);
 router.post(
   '/:id/pay',
   authenticate,

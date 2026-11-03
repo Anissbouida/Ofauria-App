@@ -2,6 +2,7 @@ import { registerApprovalHandler } from './approval.service.js';
 import { purchaseOrderRepository } from '../repositories/purchase-order.repository.js';
 import { purchaseOrderActionsRepository } from '../repositories/purchase-order-actions.repository.js';
 import { invoiceRepository } from '../repositories/accounting.repository.js';
+import { creditNoteRepository } from '../repositories/credit-note.repository.js';
 import { openingInventoryCheckRepository } from '../repositories/opening-inventory-check.repository.js';
 
 /**
@@ -22,10 +23,15 @@ registerApprovalHandler('purchase_order', {
 });
 
 registerApprovalHandler('invoice_cancel', {
-  async onApproved(request) {
+  async onApproved(request, actorId) {
     const inv = await invoiceRepository.findById(request.doc_id);
     if (!inv) throw new Error('Facture introuvable');
     if (inv.status === 'cancelled') return;
+    // Facture client : avoir d'annulation AV (O2C L4) ; reçue : statut annulé comme avant.
+    if (inv.invoice_type === 'emitted') {
+      await creditNoteRepository.create({ invoiceId: request.doc_id, reason: 'cancellation', userId: actorId });
+      return;
+    }
     await invoiceRepository.updateStatus(request.doc_id, 'cancelled');
   },
 });

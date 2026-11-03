@@ -108,14 +108,23 @@ export const invoicesApi = {
     api.put(`/invoices/line/${lineId}/category`, { categoryId, source }).then(r => r.data.data),
   getById: (id: string) => api.get(`/invoices/${id}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/invoices', data).then(r => r.data.data),
-  createFromOrder: (orderId: string) => api.post(`/invoices/from-order/${orderId}`).then(r => r.data.data),
   /** Fusionne les factures fournisseurs des BCs en une seule. */
   merge: (data: { purchaseOrderIds: string[]; supplierInvoiceNumber?: string; invoiceDate?: string }) =>
     api.post('/invoices/merge', data).then(r => r.data.data),
   /** Facture reçue : motif obligatoire (référentiel purchase_reason_codes, mig 309).
-   *  Facture émise : 200 = annulée ; 202 = annulation soumise à approbation (r.approval, lot 8). */
-  cancel: (id: string, reason?: { reasonCodeId: string; note?: string }) => api.post(`/invoices/${id}/cancel`, reason ?? {})
-    .then(r => r.data as { success: boolean; data: Record<string, unknown>; approval?: { rule_label: string } }),
+   *  Facture émise : 200 = avoir d'annulation émis (O2C L4) ; 202 = soumise à approbation (r.approval, lot 8). */
+  cancel: (id: string, reason?: { reasonCodeId?: string; note?: string }) => api.post(`/invoices/${id}/cancel`, reason ?? {})
+    .then(r => r.data as { success: boolean; data: Record<string, unknown>; approval?: { rule_label: string };
+      creditNote?: { creditNote: { invoice_number: string }; applied: number; unapplied: number } }),
+  /** Avoirs clients (O2C L4) : avoirs de la facture et avoirs non imputés du client. */
+  creditNotes: (id: string) => api.get(`/invoices/${id}/credit-notes`).then(r => r.data.data as {
+    creditNotes: { id: string; invoice_number: string; invoice_date: string; credit_reason: string; total_amount: number; applied: number }[];
+    openCredits: { id: string; invoice_number: string; invoice_date: string; unapplied: number }[];
+  }),
+  createCreditNote: (id: string, data: { reason: 'return' | 'price' | 'commercial'; lines: { invoiceItemId: string; quantity?: number; amount?: number }[]; date?: string; note?: string }) =>
+    api.post(`/invoices/${id}/credit-notes`, data).then(r => r.data.data as { creditNote: { invoice_number: string }; applied: number; unapplied: number }),
+  applyCredit: (id: string, data: { creditNoteId: string; amount?: number }) =>
+    api.post(`/invoices/${id}/apply-credit`, data).then(r => r.data.data as { applied: number; unapplied: number }),
   /** Confrontation : valide une facture reçue en brouillon (lot L1 P2P). Exige n° fournisseur + TTC déclaré. */
   validate: (id: string, data: { supplierInvoiceNumber?: string | null; invoiceDate?: string | null; declaredHt?: number | null; declaredVat?: number | null; declaredTtc?: number | null }) =>
     api.post(`/invoices/${id}/validate`, data).then(r => r.data.data),

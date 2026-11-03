@@ -5,6 +5,7 @@ import { maintenanceRepository } from '../repositories/maintenance.repository.js
 import { dunningRepository } from '../repositories/dunning.repository.js';
 import { ledgerIntegrityRepository } from '../repositories/ledger-integrity.repository.js';
 import { expireDue as loyaltyExpireDue } from './loyalty.js';
+import { deliveryNoteRepository } from '../repositories/delivery-note.repository.js';
 
 /**
  * Tâches planifiées (mig 364).
@@ -151,6 +152,44 @@ async function crmActivitiesDue(): Promise<JobResult> {
   return { items: r.rowCount ?? 0, message: r.rowCount ? `${r.rowCount} activité(s) signalée(s)` : 'Aucune activité échue' };
 }
 
+/**
+ * Facturation des BL (O2C L4, G-IV-08) : clients mensuels une fois le mois terminé (une
+ * facture par client et par mois, datée du dernier jour du mois, ou d'aujourd'hui si la
+ * période comptable est verrouillée) ; clients « à chaque livraison » dont le BL n'a pas
+ * été facturé à la livraison, dès le lendemain (facture datée du BL).
+ */
+export async function monthlyInvoicing(opts: { customerId?: string } = {}): Promise<JobResult> {
+  const actor = (await db.query(`SELECT id FROM users WHERE role = 'admin' AND is_active ORDER BY created_at LIMIT 1`)).rows[0]?.id as string | undefined;
+  if (!actor) return { items: 0, message: 'Aucun administrateur actif pour émettre les factures' };
+  const groups = (await db.query(
+    `WITH today AS (SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date AS d)
+     SELECT dn.customer_id, COALESCE(c.billing_frequency, 'monthly') AS freq,
+            array_agg(dn.id ORDER BY dn.delivery_date, dn.number) AS ids,
+            max(dn.delivery_date)::text AS last_day,
+            (date_trunc('month', max(dn.delivery_date)) + interval '1 month - 1 day')::date::text AS month_end
+       FROM delivery_notes dn JOIN customers c ON c.id = dn.customer_id, today
+      WHERE dn.status = 'delivered' AND ($1::uuid IS NULL OR dn.customer_id = $1)
+        AND ((c.billing_frequency = 'per_delivery' AND dn.delivery_date < today.d)
+             OR (COALESCE(c.billing_frequency, 'monthly') <> 'per_delivery' AND dn.delivery_date < date_trunc('month', today.d)))
+      GROUP BY dn.customer_id, 2, CASE WHEN c.billing_frequency = 'per_delivery' THEN dn.id::text ELSE to_char(dn.delivery_date, 'YYYY-MM') END
+      ORDER BY 4`, [opts.customerId ?? null])).rows as { customer_id: string; freq: string; ids: string[]; last_day: string; month_end: string }[];
+  let done = 0; const errors: string[] = [];
+  for (const g of groups) {
+    let date = g.freq === 'per_delivery' ? g.last_day : g.month_end;
+    const locked = (await db.query(
+      `SELECT 1 FROM fiscal_periods WHERE $1::date BETWEEN start_date AND end_date AND status <> 'open'`, [date])).rows[0];
+    if (locked) date = (await db.query(`SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date::text AS d`)).rows[0].d;
+    try {
+      await deliveryNoteRepository.invoice({ deliveryNoteIds: g.ids, invoiceDate: date, createdBy: actor });
+      done++;
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+  if (errors.length) throw new Error(`${done} facture(s) émise(s), ${errors.length} échec(s) : ${errors.slice(0, 3).join(' ; ')}`);
+  return { items: done, message: done ? `${done} facture(s) émise(s)` : 'Aucun BL à facturer' };
+}
+
 async function housekeeping(): Promise<JobResult> {
   const a = await db.query(`DELETE FROM scheduled_job_runs WHERE started_at < now() - interval '30 days'`);
   const b = await db.query(`DELETE FROM email_outbox WHERE status = 'sent' AND sent_at < now() - interval '90 days'`);
@@ -184,6 +223,7 @@ export const JOBS: Record<string, Handler> = {
   loyalty_expire: loyaltyExpireDue,
   ledger_seal: () => ledgerIntegrityRepository.sealAuto(),
   ledger_partitions: ledgerPartitions,
+  monthly_invoicing: () => monthlyInvoicing(),
   housekeeping,
 };
 

@@ -97,7 +97,8 @@ async function backfillInvoices(stats: Stats, userId: string, args: Args) {
   const limit = args.limit ? `LIMIT ${args.limit}` : '';
   const rows = (await db.query(
     `SELECT id, invoice_number, invoice_type, supplier_id, customer_id, category_id,
-            invoice_date::TEXT AS invoice_date, amount, tax_amount, total_amount, store_id, status
+            invoice_date::TEXT AS invoice_date, amount, tax_amount, total_amount, store_id, status,
+            kind, credit_reason, credited_invoice_id
      FROM invoices
      WHERE status != 'cancelled'
      ORDER BY invoice_date, created_at
@@ -144,7 +145,7 @@ async function backfillPayments(stats: Stats, userId: string, args: Args) {
   const rows = (await db.query(
     `SELECT id, reference, type, category_id, invoice_id, supplier_id, employee_id,
             amount, payment_method, payment_date::TEXT AS payment_date,
-            cashed_at::TEXT AS cashed_at, description, store_id
+            cashed_at::TEXT AS cashed_at, description, store_id, credit_note_id
      FROM payments
      ORDER BY payment_date, created_at
      ${limit}`

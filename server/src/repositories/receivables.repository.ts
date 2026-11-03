@@ -75,7 +75,7 @@ export async function openDocuments(params: { storeId?: string; customerId?: str
               i.total_amount::numeric, COALESCE(i.paid_amount, 0)::numeric
          FROM invoices i
          LEFT JOIN customers c ON c.id = i.customer_id
-        WHERE i.invoice_type = 'emitted' AND i.status NOT IN ('paid', 'cancelled')
+        WHERE i.invoice_type = 'emitted' AND i.kind <> 'credit_note' AND i.status NOT IN ('paid', 'cancelled')
           AND i.total_amount - COALESCE(i.paid_amount, 0) > 0.005${invStore}${invCust}
      )
      SELECT *, ((now() AT TIME ZONE 'Africa/Casablanca')::date - due_date) AS days_late, amount - paid AS remaining
@@ -154,11 +154,16 @@ export const receivablesRepository = {
   async customerSituation(customerId: string) {
     const docs = await openDocuments({ customerId });
     const c = (await db.query(`SELECT credit_limit, delai_paiement_jours FROM customers WHERE id = $1`, [customerId])).rows[0];
-    const total = round2(docs.reduce((s, d) => s + d.remaining, 0));
+    // Avoirs émis pas encore imputés sur une facture (O2C L4) : crédit du client, en déduction.
+    const unappliedCredits = round2(Number((await db.query(
+      `SELECT COALESCE(SUM(total_amount - COALESCE(paid_amount, 0)), 0) AS v FROM invoices
+        WHERE customer_id = $1 AND invoice_type = 'emitted' AND kind = 'credit_note' AND status NOT IN ('paid', 'cancelled')`,
+      [customerId])).rows[0].v));
+    const total = round2(docs.reduce((s, d) => s + d.remaining, 0) - unappliedCredits);
     const overdue = round2(docs.filter(d => d.days_late > 0).reduce((s, d) => s + d.remaining, 0));
     const creditLimit = c?.credit_limit != null && Number(c.credit_limit) > 0 ? Number(c.credit_limit) : null;
     return {
-      total, overdue,
+      total, overdue, unappliedCredits,
       creditLimit,
       available: creditLimit != null ? round2(creditLimit - total) : null,
       paymentTermDays: c?.delai_paiement_jours != null ? Number(c.delai_paiement_jours) : 0,
@@ -189,13 +194,18 @@ export const receivablesRepository = {
            SELECT i.invoice_date AS d, 'invoice'::text AS kind, 'Facture'::text AS label,
                   i.invoice_number AS number, i.total_amount::numeric AS debit, 0::numeric AS credit
              FROM invoices i
-            WHERE i.customer_id = $1 AND i.invoice_type = 'emitted' AND i.status <> 'cancelled'
+            WHERE i.customer_id = $1 AND i.invoice_type = 'emitted' AND i.kind <> 'credit_note' AND i.status <> 'cancelled'
+           UNION ALL
+           -- Avoirs (O2C L4) : au crédit à leur date ; leur imputation n'est pas un règlement.
+           SELECT i.invoice_date, 'credit_note', 'Avoir', i.invoice_number, 0::numeric, i.total_amount::numeric
+             FROM invoices i
+            WHERE i.customer_id = $1 AND i.invoice_type = 'emitted' AND i.kind = 'credit_note' AND i.status <> 'cancelled'
            UNION ALL
            SELECT p.payment_date, 'payment', 'Règlement',
                   COALESCE(p.reference, i.invoice_number), 0::numeric, p.amount::numeric
              FROM payments p
              JOIN invoices i ON i.id = p.invoice_id
-            WHERE i.customer_id = $1 AND i.invoice_type = 'emitted'
+            WHERE i.customer_id = $1 AND i.invoice_type = 'emitted' AND p.credit_note_id IS NULL
          ) t
         ORDER BY d, (kind = 'payment')`,
       [customerId],

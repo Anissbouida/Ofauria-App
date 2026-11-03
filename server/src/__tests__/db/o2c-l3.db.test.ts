@@ -125,14 +125,14 @@ describe.skipIf(!hasTestDb)('O2C L3 — crédit et prix', () => {
       .toMatchObject({ error: expect.stringMatching(/50\.0 % du prix grille/) });
     expect(await ctrl.priceLines(line, null, { role: 'manager', userId: ids.manager })).toMatchObject({ error: expect.stringMatching(/motif/) });
     const ok = await ctrl.priceLines(line, null, { role: 'manager', userId: ids.manager, overrideReason: 'Prix négocié' });
-    expect('lines' in ok && ok.lines[0]).toMatchObject({ unitPrice: 8, listPrice: 10, overrideBy: ids.manager, overrideReason: 'Prix négocié' });
+    expect('lines' in ok && ok.lines![0]).toMatchObject({ unitPrice: 8, listPrice: 10, overrideBy: ids.manager, overrideReason: 'Prix négocié' });
     // Ligne reprise telle quelle (modification) : pas de nouvelle dérogation, même par la caisse.
     const prior = { [ids.pa]: { unitPrice: 8, listPrice: 10, overrideBy: ids.manager, overrideReason: 'Prix négocié' } };
     const again = await ctrl.priceLines(line, null, { role: 'cashier', userId: ids.cashier, prior });
-    expect('lines' in again && again.lines[0]).toMatchObject({ listPrice: 10, overrideBy: ids.manager });
+    expect('lines' in again && again.lines![0]).toMatchObject({ listPrice: 10, overrideBy: ids.manager });
     // Prix grille sans saisie : aucune dérogation.
     const plain = await ctrl.priceLines([{ productId: ids.pa, quantity: 1 }], null, { role: 'cashier', userId: ids.cashier });
-    expect('lines' in plain && plain.lines[0]).toMatchObject({ unitPrice: 10, listPrice: 10, overrideBy: null });
+    expect('lines' in plain && plain.lines![0]).toMatchObject({ unitPrice: 10, listPrice: 10, overrideBy: null });
   });
 
   it('remises : plafond par rôle, remise personnel imposée par le serveur', async () => {

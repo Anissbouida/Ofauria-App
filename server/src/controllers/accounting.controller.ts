@@ -9,6 +9,7 @@ import { settingsRepository } from '../repositories/settings.repository.js';
 import { db } from '../config/database.js';
 import { refEntryRepository } from '../repositories/referentiel.repository.js';
 import { paymentScheduleRepository } from '../repositories/payment-schedule.repository.js';
+import { creditNoteRepository, CREDIT_REASONS, type CreditReason } from '../repositories/credit-note.repository.js';
 import { getParameter, type ExpenseRequiresPo } from '../services/module-parameters.service.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
 
@@ -287,13 +288,10 @@ export const invoiceController = {
       return;
     }
     if (current.status === 'cancelled') { res.status(409).json({ success: false, error: { message: 'Facture déjà annulée' } }); return; }
-    // O2C L0 (G-IV-07) : une facture réglée ne s'annule pas, son règlement resterait orphelin au 3421.
-    if (Number(current.paid_amount ?? 0) > 0.005) {
-      res.status(409).json({ success: false, error: { message: `Facture réglée (${Number(current.paid_amount).toFixed(2)} DH) : annulez d'abord ses règlements` } });
-      return;
-    }
-    // Circuit d'approbation (lot 8) : l'annulation d'une facture émise vaut
-    // avoir (numérotation continue, mig 329) et passe par un approbateur.
+    if (current.kind === 'credit_note') { res.status(409).json({ success: false, error: { message: 'Un avoir ne s\'annule pas' } }); return; }
+    // Circuit d'approbation (lot 8) : l'annulation d'une facture émise passe par un approbateur ;
+    // elle prend la forme d'un avoir d'annulation AV (O2C L4) — la facture et son numéro restent,
+    // ses BL repassent à facturer ; un règlement déjà reçu reste au crédit du client.
     const approval = await approvalService.submit({
       docType: 'invoice_cancel', docId: req.params.id,
       docLabel: `Annulation facture ${current.invoice_number ?? ''}`.trim(),
@@ -309,8 +307,34 @@ export const invoiceController = {
       res.status(202).json({ success: true, data: current, approval: approval.request });
       return;
     }
-    const invoice = await invoiceRepository.updateStatus(req.params.id, 'cancelled');
-    res.json({ success: true, data: invoice });
+    const note = (req.body ?? {}).note as string | undefined;
+    const r = await creditNoteRepository.create({ invoiceId: req.params.id, reason: 'cancellation', userId: req.user!.userId, note: note ?? null });
+    res.json({ success: true, data: await invoiceRepository.findById(req.params.id), creditNote: r });
+  },
+
+  /** POST /invoices/:id/credit-notes — avoir client lié à la facture (O2C L4). */
+  async createCreditNote(req: AuthRequest, res: Response) {
+    const { reason, lines, date, note } = req.body as { reason?: string; lines?: { invoiceItemId: string; quantity?: number; amount?: number }[]; date?: string; note?: string };
+    if (!reason || !CREDIT_REASONS.includes(reason as CreditReason)) { res.status(400).json({ success: false, error: { message: 'Motif d\'avoir requis' } }); return; }
+    // L'annulation totale garde son circuit d'approbation (POST /:id/cancel).
+    if (reason === 'cancellation') { res.status(400).json({ success: false, error: { message: 'Annulation totale : utilisez « Annuler la facture »' } }); return; }
+    const r = await creditNoteRepository.create({ invoiceId: req.params.id, reason: reason as CreditReason, lines, date: date ?? null, note: note ?? null, userId: req.user!.userId });
+    res.status(201).json({ success: true, data: r });
+  },
+
+  /** GET /invoices/:id/credit-notes — avoirs de la facture et avoirs non imputés du client. */
+  async creditNotes(req: AuthRequest, res: Response) {
+    const data = await creditNoteRepository.forInvoice(req.params.id);
+    if (!data) { res.status(404).json({ success: false, error: { message: 'Facture non trouvee' } }); return; }
+    res.json({ success: true, data });
+  },
+
+  /** POST /invoices/:id/apply-credit — impute un avoir non imputé du client sur cette facture. */
+  async applyCredit(req: AuthRequest, res: Response) {
+    const { creditNoteId, amount } = req.body as { creditNoteId?: string; amount?: number };
+    if (!creditNoteId) { res.status(400).json({ success: false, error: { message: 'Avoir requis' } }); return; }
+    const r = await creditNoteRepository.apply({ creditNoteId, invoiceId: req.params.id, amount: amount ?? null, userId: req.user!.userId });
+    res.json({ success: true, data: r });
   },
 
   /** GET /invoices/:id/control — blocages, mentions légales, rapprochement par ligne (mig 309). */
@@ -674,10 +698,12 @@ export const invoiceController = {
       const htCur = toCur(amount);
 
       const legal = await loadCompanyLegal();
+      const isCreditNote = inv.kind === 'credit_note';
       const buffer = await generateInvoicePdf({
+        kind: isCreditNote ? 'credit_note' : 'invoice',
         invoiceNumber: inv.invoice_number as string,
         invoiceDate: dateStr,
-        dueDate: dueDateStr,
+        dueDate: isCreditNote ? String(inv.credited_invoice_number ?? '') : dueDateStr,
         paymentMethod: '',
         customerName,
         customerAddress,

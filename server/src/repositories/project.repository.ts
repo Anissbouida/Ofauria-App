@@ -31,7 +31,9 @@ const TIME_AGG = `
 const INVOICE_AGG = `
   SELECT i.project_id,
          COALESCE(SUM(i.amount) FILTER (WHERE i.invoice_type = 'received' AND i.status <> 'cancelled'), 0) AS external_cost,
-         COALESCE(SUM(i.amount) FILTER (WHERE i.invoice_type = 'emitted' AND i.status <> 'cancelled'), 0) AS external_revenue,
+         -- Avoirs clients (O2C L4) en déduction du produit.
+         COALESCE(SUM(CASE WHEN i.kind = 'credit_note' THEN -i.amount ELSE i.amount END)
+                  FILTER (WHERE i.invoice_type = 'emitted' AND i.status <> 'cancelled'), 0) AS external_revenue,
          COUNT(*) FILTER (WHERE i.status <> 'cancelled') AS invoice_count
     FROM invoices i WHERE i.project_id IS NOT NULL GROUP BY i.project_id`;
 

@@ -77,7 +77,7 @@ interface InvoiceData {
   amountInWords?: string;
   logoPath?: string;
   /** Devis et proforma (mig 365) : même mise en page, titres et mentions adaptés. Défaut : facture. */
-  kind?: 'invoice' | 'quote' | 'proforma';
+  kind?: 'invoice' | 'quote' | 'proforma' | 'credit_note';
   /** Libellé de la ligne « Remise » (ex. « 5 % (−12,00 DH) ») ; défaut « 0 % ». */
   discountLabel?: string;
   /** Texte libre ajouté aux conditions (délai de livraison, notes du devis). */
@@ -98,6 +98,8 @@ const KIND_TEXT = {
   invoice:  { title: 'FACTURE',          number: 'N\u00B0 FACTURE',  due: 'DATE D\u2019\u00C9CH\u00C9ANCE', to: 'FACTURER \u00C0', words: 'ARRETE LA PRESENTE FACTURE A LA SOMME DE :', meta: 'Facture' },
   quote:    { title: 'DEVIS',            number: 'N\u00B0 DEVIS',    due: 'VALABLE JUSQU\u2019AU',            to: 'CLIENT',          words: 'ARRETE LE PRESENT DEVIS A LA SOMME DE :',     meta: 'Devis' },
   proforma: { title: 'FACTURE PROFORMA', number: 'N\u00B0 PROFORMA', due: 'VALABLE JUSQU\u2019AU',            to: 'CLIENT',          words: 'ARRETE LA PRESENTE PROFORMA A LA SOMME DE :', meta: 'Proforma' },
+  // Avoir client (O2C L4) : le champ « échéance » porte la facture d'origine.
+  credit_note: { title: 'AVOIR',          number: 'N\u00B0 AVOIR',    due: 'FACTURE D\u2019ORIGINE',         to: 'CLIENT',          words: 'ARRETE LE PRESENT AVOIR A LA SOMME DE :',     meta: 'Avoir' },
 } as const;
 
 // ── Couleurs de la charte ──
@@ -183,7 +185,7 @@ function txt(doc: PDFKit.PDFDocument, text: string, x: number, y: number, opts: 
 export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   // Mentions communes reglees dans Parametres > Documents (mig 332) et fiche societe.
   const K = KIND_TEXT[data.kind ?? 'invoice'];
-  const tpl = await loadDocumentTemplate(data.kind && data.kind !== 'invoice' ? 'quote' : 'invoice');
+  const tpl = await loadDocumentTemplate(data.kind === 'quote' || data.kind === 'proforma' ? 'quote' : 'invoice');
   if (!tpl.showBank) {
     data = { ...data, companyBankName: undefined, companyBankAccount: undefined };
   } else if (!data.companyBankAccount && tpl.bank) {
@@ -466,7 +468,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   // ── Conditions de paiement et penalites de retard (loi 69-21) ──
   const terms = [
     data.kind === 'proforma' && 'Document sans valeur comptable : ne vaut pas facture. La facture définitive sera émise à la livraison.',
-    tpl.paymentTerms && (data.kind && data.kind !== 'invoice' ? tpl.paymentTerms : `Conditions de paiement : ${tpl.paymentTerms}`),
+    data.kind === 'credit_note' ? null : tpl.paymentTerms && (data.kind && data.kind !== 'invoice' ? tpl.paymentTerms : `Conditions de paiement : ${tpl.paymentTerms}`),
     data.extraNotes,
     data.currency && `Facture établie en ${data.currency.code} au taux de ${String(data.currency.rate).replace('.', ',')} DH pour 1 ${data.currency.code} : contre-valeur ${n(data.currency.totalDh)} DH TTC.`,
     data.kind && data.kind !== 'invoice' ? null : tpl.latePenalty,

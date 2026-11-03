@@ -52,7 +52,8 @@ describe.skipIf(!hasTestDb)('O2C L0 — correctifs bloquants', () => {
     const inv = await invoices.create({
       invoiceType: 'emitted', invoiceNumber: `PIRATE-${RUN}`, customerId: ids.customer, invoiceDate: '2027-04-02',
       amount: 100, taxAmount: 0, totalAmount: 100, createdBy: fx.userId,
-      items: [{ productId: ids.product, quantity: 10, unitPrice: 10, subtotal: 100 }],
+      // Prestation : une facture directe de marchandises est refusée (O2C L4, depuis le BL).
+      items: [{ description: 'Prestation de livraison', quantity: 10, unitPrice: 10, subtotal: 100 }],
     });
     ids.invoice = inv.id;
     expect(inv.invoice_number).not.toBe(`PIRATE-${RUN}`);

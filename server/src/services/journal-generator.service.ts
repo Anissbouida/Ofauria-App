@@ -226,6 +226,10 @@ export interface InvoiceRow {
   total_amount: string | number;
   store_id: string | null;
   status: string;
+  /** Avoir client (mig 450). */
+  kind?: string | null;
+  credit_reason?: string | null;
+  credited_invoice_id?: string | null;
 }
 
 export async function fromInvoice(
@@ -312,6 +316,36 @@ export async function fromInvoice(
       journal_code: 'AC',
       entry_date: toIsoDate(inv.invoice_date),
       description: `Facture fournisseur ${inv.invoice_number}`,
+      source_kind: 'invoice',
+      source_id: inv.id,
+      store_id: inv.store_id,
+      lines,
+    };
+  }
+
+  if (inv.invoice_type === 'emitted' && inv.kind === 'credit_note') {
+    // Pattern B' : avoir client (O2C L4) — miroir de la facture : 7111 (annulation, retour)
+    // ou 7129 RRR accordés (prix, geste) et TVA collectée au débit, 3421 au crédit, lettré
+    // avec la facture d'origine.
+    if (!inv.customer_id) return null;
+    const revCode = inv.credit_reason === 'price' || inv.credit_reason === 'commercial' ? '7129' : '7111';
+    const lines: GeneratedLine[] = [
+      { account_code: revCode, debit: round2(amount), credit: 0, label: `Avoir ${inv.invoice_number}` },
+    ];
+    const tvaGroups = await tvaGroupsForInvoice(client, inv.id, 'collected');
+    if (tvaGroups.length > 0) {
+      for (const g of tvaGroups) lines.push({ account_code: g.accountCode, debit: round2(g.tva), credit: 0, label: `TVA sur avoir ${g.rate}%` });
+    } else if (tax > 0) {
+      lines.push({ account_code: tvaAccountForRate(computeTvaRate(amount, tax), 'collected'), debit: round2(tax), credit: 0, label: 'TVA sur avoir' });
+    }
+    lines.push({
+      account_code: '3421', auxiliary_customer_id: inv.customer_id, debit: 0, credit: round2(total),
+      label: `Avoir client — ${inv.invoice_number}`, lettrage_key: `inv-${inv.credited_invoice_id ?? inv.id}`,
+    });
+    return {
+      journal_code: 'VE',
+      entry_date: toIsoDate(inv.invoice_date),
+      description: `Avoir client ${inv.invoice_number}`,
       source_kind: 'invoice',
       source_id: inv.id,
       store_id: inv.store_id,
@@ -585,6 +619,8 @@ export interface PaymentRow {
   fx_difference?: string | number | null;
   // Mig 435 : effet client remis en banque par bordereau (encaissement ou escompte).
   remittance_kind?: 'collection' | 'discount' | null;
+  // Mig 450 : imputation d'un avoir client (sans écriture propre).
+  credit_note_id?: string | null;
   remittance_bank_code?: string | null;
 }
 
@@ -609,6 +645,9 @@ export async function fromPaymentEmission(
 ): Promise<GeneratedEntry | null> {
   const amount = parseFloat(String(p.amount)) || 0;
   if (amount <= 0) return null;
+  // Imputation d'un avoir client (O2C L4) : aucun flux de trésorerie, l'écriture de
+  // l'avoir porte déjà le crédit 3421.
+  if (p.credit_note_id) return null;
 
   // Virement interne (mig 310, G-D7-17) : mouvement entre nos comptes, ni charge
   // ni tiers. Destination au debit, source au credit (ex. versement : 5141 D / 5161 C).
@@ -1016,6 +1055,8 @@ export async function autoLettrer(
        AND (
          je.source_id = $1
          OR je.source_id IN (SELECT id::text::uuid FROM payments WHERE invoice_id = $1)
+         -- Avoirs imputés sur la facture (O2C L4).
+         OR je.source_id IN (SELECT credit_note_id FROM payments WHERE invoice_id = $1 AND credit_note_id IS NOT NULL)
        )`,
     [invoiceId]
   );
@@ -1212,12 +1253,13 @@ async function resolveUserId(client: PoolClient, userId: string | null | undefin
 }
 
 const INVOICE_SELECT = `SELECT id, invoice_number, invoice_type, supplier_id, customer_id,
-  category_id, invoice_date, amount, tax_amount, total_amount, store_id, status
+  category_id, invoice_date, amount, tax_amount, total_amount, store_id, status,
+  kind, credit_reason, credited_invoice_id
   FROM invoices WHERE id = $1`;
 
 const PAYMENT_SELECT = `SELECT id, reference, type, category_id, invoice_id, supplier_id,
   employee_id, amount, payment_method, payment_date, cashed_at, description, store_id,
-  withholding_type_id, withholding_amount, payment_mode, treasury_account_id, to_treasury_account_id,
+  withholding_type_id, withholding_amount, payment_mode, treasury_account_id, to_treasury_account_id, credit_note_id,
   (SELECT br.kind FROM bill_remittances br WHERE br.id = payments.remittance_id AND br.status = 'posted') AS remittance_kind,
   (SELECT ta.account_code FROM bill_remittances br JOIN treasury_accounts ta ON ta.id = br.treasury_account_id
     WHERE br.id = payments.remittance_id AND br.status = 'posted') AS remittance_bank_code
