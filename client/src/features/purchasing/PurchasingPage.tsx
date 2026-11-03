@@ -26,6 +26,7 @@ import LandedCostTab from './LandedCostTab';
 import SupplierScoreTab from './SupplierScoreTab';
 import ReceptionsTab from './ReceptionsTab';
 import PurchaseRequestsPage from './PurchaseRequestsPage';
+import ApprovalsPage from '../approvals/ApprovalsPage';
 import { ToOrderBoard } from '../stock/ToOrderBoard';
 import InvoiceControlModal from '../../components/purchasing/InvoiceControlModal';
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
@@ -43,7 +44,7 @@ import {
 } from '../../components/purchasing/ProcessBoard';
 
 type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'pilotage' | 'rfq' | 'landed' | 'scores'
-  | 'identification' | 'purchase_requests' | 'reception';
+  | 'identification' | 'purchase_requests' | 'reception' | 'approvals';
 
 /**
  * Étapes du processus d'une facture reçue (dérivées côté serveur, cf.
@@ -90,7 +91,7 @@ export default function PurchasingPage() {
     // « À commander » ; 2 Demande d'achat = demandes en attente ; 3 Approbation reste un lien.
     { key: 'identification', label: '1 · Identification', icon: Boxes, section: 'operations' },
     { key: 'purchase_requests', label: '2 · Demande d\'achat', icon: FilePlus2, section: 'operations' },
-    { key: 'approvals', label: '3 · Approbation', icon: ClipboardCheck, section: 'operations', href: '/approvals', external: true, badge: approvalsCount },
+    { key: 'approvals', label: '3 · Approbation', icon: ClipboardCheck, section: 'operations', badge: approvalsCount },
     // Appels d'offres (mig 360) : demande de prix à plusieurs fournisseurs, devis, comparatif, BC.
     { key: 'rfq', label: '4 · Appels d\'offres', icon: FileQuestion, section: 'operations' },
     { key: 'purchase_orders', label: '5 · Bons de commande', icon: ClipboardList, section: 'operations' },
@@ -121,6 +122,7 @@ export default function PurchasingPage() {
       )}
       {tab === 'identification' && <ToOrderBoard />}
       {tab === 'purchase_requests' && <PurchaseRequestsPage />}
+      {tab === 'approvals' && <ApprovalsPage />}
       {tab === 'rfq' && <RfqTab onOpenOrder={() => openTab('purchase_orders')} />}
       {tab === 'purchase_orders' && <PurchaseOrdersTab initialSupplierId={focus.supplierId} />}
       {tab === 'reception' && <ReceptionsTab />}
