@@ -116,6 +116,9 @@ export const invoicesApi = {
    *  Facture émise : 200 = annulée ; 202 = annulation soumise à approbation (r.approval, lot 8). */
   cancel: (id: string, reason?: { reasonCodeId: string; note?: string }) => api.post(`/invoices/${id}/cancel`, reason ?? {})
     .then(r => r.data as { success: boolean; data: Record<string, unknown>; approval?: { rule_label: string } }),
+  /** Confrontation : valide une facture reçue en brouillon (lot L1 P2P). Exige n° fournisseur + TTC déclaré. */
+  validate: (id: string, data: { supplierInvoiceNumber?: string | null; invoiceDate?: string | null; declaredHt?: number | null; declaredVat?: number | null; declaredTtc?: number | null }) =>
+    api.post(`/invoices/${id}/validate`, data).then(r => r.data.data),
   /** Contrôle : blocages, mentions légales, rapprochement par ligne (mig 309). */
   control: (id: string, revalidate = false) => api.get(`/invoices/${id}/control`, { params: revalidate ? { revalidate: 'true' } : {} }).then(r => r.data.data),
   releaseHold: (holdId: string, reason: { reasonCodeId: string; note?: string }) => api.post(`/invoices/holds/${holdId}/release`, reason).then(r => r.data.data),

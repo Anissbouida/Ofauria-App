@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, Fragment } from 'react';
+import { useState, useMemo, useRef, useEffect, Fragment, type CSSProperties } from 'react';
 import { useApprovalsCount } from '../../api/approvals.api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { suppliersApi, invoicesApi, paymentsApi } from '../../api/accounting.api';
@@ -260,6 +260,14 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
     onError: (e) => notify.error(apiErrorMessage(e, 'Annulation impossible')),
   });
 
+  // Confrontation d'une pré-facture (lot L1 P2P) : saisir la pièce du fournisseur puis valider.
+  const [validateFor, setValidateFor] = useState<Record<string, any> | null>(null);
+  const validateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof invoicesApi.validate>[1] }) => invoicesApi.validate(id, data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['invoices'] }); notify.success('Facture validée'); setValidateFor(null); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Validation impossible')),
+  });
+
   /**
    * Suppression facture avec strategie 2 niveaux :
    * 1er confirm : demande s'il faut supprimer
@@ -401,7 +409,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
   const nextAction = (inv: Record<string, any>): { label: string; run: () => void; cls: string } | null => {
     switch (inv.stage as string) {
       case 'draft':
-        return { label: 'Compléter', run: () => setEditInvoice(inv), cls: 'odoo-btn-primary' };
+        return { label: 'Valider', run: () => setValidateFor(inv), cls: 'odoo-btn-primary' };
       case 'blocked':
         return {
           label: inv.status === 'disputed' ? 'Voir le litige' : 'Lever le blocage',
@@ -473,6 +481,14 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
           pending={cancelMutation.isPending}
           onClose={() => setCancelFor(null)}
           onSubmit={(reason) => cancelMutation.mutate({ id: cancelFor.id as string, reason })}
+        />
+      )}
+      {validateFor && (
+        <ValidateInvoiceModal
+          invoice={validateFor}
+          pending={validateMutation.isPending}
+          onClose={() => setValidateFor(null)}
+          onSubmit={(data) => validateMutation.mutate({ id: validateFor.id as string, data })}
         />
       )}
       {/* Échéances dépassées : seule alerte de l'écran, avec accès direct au paiement */}
@@ -992,6 +1008,82 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
 }
 
 /* EmittedInvoicesSection moved to ../sales/EmittedInvoicesTab.tsx */
+
+/**
+ * Confrontation d'une pré-facture reçue (lot L1 P2P).
+ *
+ * La facture auto-créée depuis la réception est un BROUILLON : le comptable la
+ * confronte au papier du fournisseur (son n°, son total TTC imprimé) avant de la
+ * valider. Le serveur refuse la validation sans ces deux éléments (mig 436) et
+ * pose alors les quantités « facturées » sur les lignes de BC.
+ */
+function ValidateInvoiceModal({ invoice, pending, onClose, onSubmit }: {
+  invoice: Record<string, any>;
+  pending: boolean;
+  onClose: () => void;
+  onSubmit: (data: { supplierInvoiceNumber?: string | null; invoiceDate?: string | null; declaredTtc?: number | null }) => void;
+}) {
+  const [number, setNumber] = useState<string>((invoice.supplier_invoice_number as string) ?? '');
+  const [date, setDate] = useState<string>(invoice.invoice_date ? String(invoice.invoice_date).slice(0, 10) : '');
+  const [ttc, setTtc] = useState<string>(
+    invoice.declared_ttc != null ? String(invoice.declared_ttc)
+      : (invoice.total_amount != null ? String(invoice.total_amount) : ''),
+  );
+  const computed = parseFloat(invoice.total_amount as string) || 0;
+  const declared = parseFloat(ttc) || 0;
+  const diff = declared - computed;
+  const canSubmit = number.trim().length > 0 && declared > 0 && !pending;
+  const lbl: CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
+  const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400';
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 460, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+        <div className="odoo-control-bar">
+          <div className="odoo-breadcrumb">
+            <ClipboardCheck size={14} style={{ color: 'var(--theme-accent)' }} />
+            <span>Valider la facture</span>
+            <span className="odoo-breadcrumb-separator">/</span>
+            <span className="odoo-breadcrumb-current">{(invoice.supplier_name as string) ?? ''}</span>
+          </div>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
+        </div>
+        <form onSubmit={(e) => { e.preventDefault(); if (canSubmit) onSubmit({ supplierInvoiceNumber: number.trim(), invoiceDate: date || null, declaredTtc: declared }); }}>
+          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 }}>
+              Confrontez la pré-facture au papier du fournisseur : saisissez son numéro et le total TTC imprimé, puis validez.
+            </p>
+            <div>
+              <label style={lbl}>N° facture fournisseur *</label>
+              <input value={number} onChange={e => setNumber(e.target.value)} className={inputCls} placeholder="ex. FA-2026-0142" required />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label style={lbl}>Date facture</label>
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label style={lbl}>Total TTC déclaré *</label>
+                <input type="number" step="0.01" min="0" value={ttc} onChange={e => setTtc(e.target.value)} className={inputCls} required />
+              </div>
+            </div>
+            {declared > 0 && Math.abs(diff) > 0.01 && (
+              <div style={{ fontSize: '0.75rem', color: diff > 0 ? '#dc3545' : '#b7791f' }}>
+                Écart avec le total calculé ({n(computed)} DH) : {diff > 0 ? '+' : ''}{n(diff)} DH
+              </div>
+            )}
+          </div>
+          <div className="odoo-control-bar" style={{ justifyContent: 'flex-end', gap: 8 }}>
+            <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
+            <button type="submit" disabled={!canSubmit} className="odoo-btn-primary">{pending ? 'Validation…' : 'Valider'}</button>
+          </div>
+        </form>
+      </div>
+    </ModalBackdrop>
+  );
+}
 
 /**
  * Modal de creation / modification d'une facture recue.
