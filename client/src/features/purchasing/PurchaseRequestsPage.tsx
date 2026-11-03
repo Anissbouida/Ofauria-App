@@ -1,14 +1,15 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseRequestsApi } from '../../api/purchase-requests.api';
+import { rfqApi } from '../../api/rfq.api';
 import { suppliersApi } from '../../api/accounting.api';
 import {
   ShoppingCart, Search, ChevronDown, ChevronRight, Truck,
-  X, Trash2, FileText, Clock, AlertTriangle, Check,
+  X, Trash2, FileQuestion, Clock, AlertTriangle, Check,
   User, Coins,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
-import { containerOf, roundUpToContainer, containerLabel } from '../../utils/container';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { format } from 'date-fns';
 import { apiErrorMessage } from '../../api/errors';
@@ -70,11 +71,10 @@ interface SupplierGroup {
 
 export default function PurchaseRequestsPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [expandedSupplier, setExpandedSupplier] = useState<string | null>(null);
   const [selectedRequests, setSelectedRequests] = useState<Record<string, Set<string>>>({});
-  const [showGeneratePO, setShowGeneratePO] = useState<string | null>(null);
-  const [quantityOverrides, setQuantityOverrides] = useState<Record<string, string>>({});
   const [viewMode, setViewMode] = useState<'grouped' | 'all'>('grouped');
   const [statusFilter, setStatusFilter] = useState('pending');
 
@@ -120,18 +120,20 @@ export default function PurchaseRequestsPage() {
     onError: (e) => notify.error(apiErrorMessage(e, 'Action impossible')),
   });
 
-  const generatePOMutation = useMutation({
-    mutationFn: purchaseRequestsApi.generatePO,
-    onSuccess: (po) => {
+  // Sourcing obligatoire (mig 457) : une DA approuvée ne devient pas un BC
+  // directement — on lance un appel d'offres depuis les DA sélectionnées, et le BC
+  // naîtra de l'attribution de cet AO (onglet 4 · Appels d'offres).
+  const rfqMutation = useMutation({
+    mutationFn: (requestIds: string[]) => rfqApi.createFromRequests(requestIds),
+    onSuccess: (rfq) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-requests'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-requests-grouped'] });
-      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-      setShowGeneratePO(null);
+      queryClient.invalidateQueries({ queryKey: ['rfqs'] });
       setSelectedRequests({});
-      setQuantityOverrides({});
-      notify.success(`Bon de commande ${po.order_number} cree`);
+      notify.success(`Appel d'offres ${rfq.number} créé`);
+      navigate('/purchasing?tab=rfq');
     },
-    onError: (e) => notify.error(apiErrorMessage(e, 'Erreur lors de la création du BC')),
+    onError: (e) => notify.error(apiErrorMessage(e, 'Création de l\'appel d\'offres impossible')),
   });
 
   const filteredGroups = useMemo(() => {
@@ -263,12 +265,13 @@ export default function PurchaseRequestsPage() {
                         <input type="checkbox" checked={allSelected} onChange={() => toggleSelectAll(group.supplier_id || '', group.requests)} />
                         Tout sélectionner
                       </label>
-                      {someSelected && group.supplier_id && (
+                      {someSelected && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); setShowGeneratePO(suppKey); }}
-                          className="odoo-btn-primary"
+                          onClick={(e) => { e.stopPropagation(); rfqMutation.mutate(Array.from(selected)); }}
+                          className="odoo-btn-primary" disabled={rfqMutation.isPending}
+                          title="Mettre ces demandes en concurrence avant de commander"
                           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <FileText size={11} /> Générer le BC ({selected.size} lignes)
+                          <FileQuestion size={11} /> Lancer l'appel d'offres ({selected.size})
                         </button>
                       )}
                       {!group.supplier_id && (
@@ -489,180 +492,10 @@ export default function PurchaseRequestsPage() {
         />
       )}
 
-      {/* Generate PO modal */}
-      {showGeneratePO && (() => {
-        const group = (groups as SupplierGroup[]).find(g => (g.supplier_id || '__none__') === showGeneratePO);
-        if (!group || !group.supplier_id) return null;
-        const selected = getSelectedForSupplier(group.supplier_id);
-        const selectedReqs = group.requests.filter(r => selected.has(r.id));
-
-        return (
-          <GeneratePOModal
-            supplierName={group.supplier_name || ''}
-            supplierId={group.supplier_id}
-            requests={selectedReqs}
-            quantityOverrides={quantityOverrides}
-            onQuantityChange={(id, val) => setQuantityOverrides({ ...quantityOverrides, [id]: val })}
-            onClose={() => { setShowGeneratePO(null); setQuantityOverrides({}); }}
-            onGenerate={(expectedDate, notes) => {
-              const overrides: Record<string, number> = {};
-              Object.entries(quantityOverrides).forEach(([k, v]) => {
-                const parsed = parseFloat(v);
-                if (!isNaN(parsed) && parsed > 0) overrides[k] = parsed;
-              });
-              generatePOMutation.mutate({
-                supplierId: group.supplier_id!,
-                requestIds: Array.from(selected),
-                expectedDeliveryDate: expectedDate || undefined,
-                notes: notes || undefined,
-                quantityOverrides: Object.keys(overrides).length > 0 ? overrides : undefined,
-              });
-            }}
-            isLoading={generatePOMutation.isPending}
-          />
-        );
-      })()}
     </>
   );
 }
 
-/* ─── Generate PO Modal ─── */
-function GeneratePOModal({ supplierName, supplierId, requests, quantityOverrides, onQuantityChange, onClose, onGenerate, isLoading }: {
-  supplierName: string;
-  supplierId: string;
-  requests: SupplierGroup['requests'];
-  quantityOverrides: Record<string, string>;
-  onQuantityChange: (id: string, val: string) => void;
-  onClose: () => void;
-  onGenerate: (expectedDate: string, notes: string) => void;
-  isLoading: boolean;
-}) {
-  const [expectedDate, setExpectedDate] = useState('');
-  const [notes, setNotes] = useState('');
-
-  const totalEstimated = requests.reduce((sum, r) => {
-    const c = containerOf(r);
-    const rawQty = parseFloat(quantityOverrides[r.id] || r.quantity);
-    const qty = c ? roundUpToContainer(rawQty, c.size).qty : rawQty;
-    const cost = parseFloat(r.ingredient_unit_cost || '0');
-    return sum + (isNaN(qty) ? 0 : qty * cost);
-  }, 0);
-
-  return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 720, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <FileText size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Bon de commande</span>
-            <span className="odoo-breadcrumb-separator">/</span>
-            <span className="odoo-breadcrumb-current">{supplierName}</span>
-          </div>
-          <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 8 }}>{requests.length} ligne{requests.length > 1 ? 's' : ''}</span>
-          <div style={{ flex: 1 }} />
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
-        </div>
-
-        <div className="flex-1 overflow-auto" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div className="odoo-alert" style={{ fontSize: '0.6875rem' }}>
-            <strong>Règle métier :</strong> Un bon de commande ne contient que des lignes d'un seul fournisseur. Vous pouvez ajuster les quantités avant validation.
-          </div>
-
-          <div style={{ overflowX: 'auto' }}>
-            <table className="odoo-table">
-              <thead>
-                <tr>
-                  <th>Ingrédient</th>
-                  <th style={{ width: 120, textAlign: 'right' }}>Quantité</th>
-                  <th style={{ width: 100, textAlign: 'right' }}>Prix unit.</th>
-                  <th style={{ width: 110, textAlign: 'right' }}>Sous-total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requests.map(req => {
-                  const reqContainer = containerOf(req);
-                  const rawQty = parseFloat(quantityOverrides[req.id] || req.quantity);
-                  const qty = reqContainer ? roundUpToContainer(rawQty, reqContainer.size).qty : rawQty;
-                  const cost = parseFloat(req.ingredient_unit_cost || '0');
-                  return (
-                    <tr key={req.id}>
-                      <td>
-                        <span style={{ fontWeight: 500 }}>{req.ingredient_name}</span>
-                        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({req.ingredient_unit})</span>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        {(() => {
-                          const container = containerOf(req);
-                          if (!container) {
-                            return (
-                              <input type="number" step="0.1" min="0.1"
-                                className="w-full px-2 py-1 border border-gray-200 rounded-md text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
-                                style={{ maxWidth: 100, display: 'inline-block' }}
-                                value={quantityOverrides[req.id] ?? req.quantity}
-                                onChange={e => onQuantityChange(req.id, e.target.value)} />
-                            );
-                          }
-                          // Regle « contenant entier » : saisie en nombre de contenants, arrondi au superieur.
-                          const rounded = roundUpToContainer(parseFloat(quantityOverrides[req.id] ?? req.quantity) || 0, container.size);
-                          return (
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              <input type="number" step="1" min="1"
-                                className="px-2 py-1 border border-gray-200 rounded-md text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
-                                style={{ width: 64 }}
-                                value={rounded.count || ''}
-                                onChange={e => onQuantityChange(req.id, String(Math.max(1, Math.floor(parseFloat(e.target.value) || 1)) * container.size))}
-                                title={`${containerLabel(container, req.ingredient_unit)} — commande par contenant entier`} />
-                              <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>
-                                × {containerLabel(container, req.ingredient_unit)} = <strong>{rounded.qty} {req.ingredient_unit}</strong>
-                              </span>
-                            </div>
-                          );
-                        })()}
-                      </td>
-                      <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>
-                        {cost > 0 ? `${cost.toFixed(2)} DH` : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
-                      </td>
-                      <td style={{ textAlign: 'right', fontWeight: 700 }}>
-                        {cost > 0 && !isNaN(qty) ? `${(qty * cost).toFixed(2)} DH` : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr style={{ background: 'var(--theme-bg-subtle, rgba(0,0,0,0.03))', borderTop: '2px solid var(--theme-bg-separator)' }}>
-                  <td colSpan={3} style={{ padding: 12, textAlign: 'right', fontWeight: 700 }}>Total estimé</td>
-                  <td style={{ padding: 12, textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: 'var(--theme-accent)' }}>{totalEstimated.toFixed(2)} DH</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Date de livraison prévue</label>
-              <input type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-                value={expectedDate} onChange={e => setExpectedDate(e.target.value)} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Notes</label>
-              <input className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-                value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes pour le fournisseur..." />
-            </div>
-          </div>
-        </div>
-
-        <div style={{ position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={onClose} className="odoo-btn-secondary">Annuler</button>
-          <button onClick={() => onGenerate(expectedDate, notes)} disabled={isLoading} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Check size={13} /> {isLoading ? 'Génération...' : 'Générer le BC'}
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
-  );
-}
 
 /** Saisie du motif d'une annulation ou d'une clôture de reliquat (action journalisée). */
 function ReasonModal({ action, pending, onClose, onSubmit }: {

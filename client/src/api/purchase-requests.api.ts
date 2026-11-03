@@ -32,17 +32,9 @@ export const purchaseRequestsApi = {
   /** Stock › À commander : besoins fusionnés par ingrédient (ruptures, demandes, stock bas). */
   toOrder: () =>
     api.get('/purchase-requests/to-order').then(r => r.data.data as { rows: ToOrderRow[] }),
-  /**
-   * Génère un BC depuis des demandes d'achat APPROUVÉES (flux procure-to-pay,
-   * mig 456). Seul point de création d'un BC : plus de « BC direct ».
-   */
-  generatePO: (data: {
-    supplierId: string;
-    requestIds: string[];
-    expectedDeliveryDate?: string;
-    notes?: string;
-    quantityOverrides?: Record<string, number>;
-  }) => api.post('/purchase-requests/generate-po', data).then(r => r.data.data),
+  // Flux procure-to-pay (mig 457) : plus de génération de BC depuis une DA. Une DA
+  // approuvée passe par un appel d'offres (rfqApi.createFromRequests) ; le BC naît
+  // de l'attribution de l'AO.
 };
 
 export type ToOrderRow = {

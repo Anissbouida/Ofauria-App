@@ -48,6 +48,8 @@ export const rfqApi = {
     api.get('/rfqs', { params }).then(r => r.data.data),
   get: (id: string): Promise<Rfq> => api.get(`/rfqs/${id}`).then(r => r.data.data),
   create: (data: RfqInput): Promise<Rfq> => api.post('/rfqs', data).then(r => r.data.data),
+  /** Sourcing obligatoire (mig 457) : crée un appel d'offres depuis des demandes d'achat approuvées. */
+  createFromRequests: (requestIds: string[]): Promise<Rfq> => api.post('/rfqs/from-requests', { requestIds }).then(r => r.data.data),
   update: (id: string, data: Partial<RfqInput>): Promise<Rfq> => api.patch(`/rfqs/${id}`, data).then(r => r.data.data),
   send: (id: string): Promise<Rfq & { emailsQueued?: number }> => api.post(`/rfqs/${id}/send`).then(r => r.data.data),
   setStatus: (id: string, status: 'cancelled' | 'closed' | 'draft'): Promise<Rfq> => api.post(`/rfqs/${id}/status`, { status }).then(r => r.data.data),
