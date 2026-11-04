@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseRequestsApi } from '../../api/purchase-requests.api';
@@ -7,12 +7,14 @@ import { suppliersApi } from '../../api/accounting.api';
 import {
   ShoppingCart, Search, ChevronDown, ChevronRight, Truck,
   X, Trash2, FileQuestion, Clock, AlertTriangle, Check,
-  User, Coins,
+  User, Coins, History,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { apiErrorMessage } from '../../api/errors';
+import { PeriodFilter, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 
 /** Statuts calculés par la base depuis la couverture des lignes de BC (mig 305). */
 const STATUS_INFO: Record<string, { label: string; tag: string; dot: string }> = {
@@ -76,7 +78,12 @@ export default function PurchaseRequestsPage() {
   const [expandedSupplier, setExpandedSupplier] = useState<string | null>(null);
   const [selectedRequests, setSelectedRequests] = useState<Record<string, Set<string>>>({});
   const [viewMode, setViewMode] = useState<'grouped' | 'all'>('grouped');
-  const [statusFilter, setStatusFilter] = useState('pending');
+  // Historique : « Tous » les statuts par défaut (on garde la trace des demandes traitées).
+  const [statusFilter, setStatusFilter] = useState('');
+  // Filtre de période de l'historique (sur la date de la demande).
+  const [period, setPeriod] = useState<PeriodKey>('all');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
 
   const { data: groups = [], isLoading: groupsLoading } = useQuery({
     queryKey: ['purchase-requests-grouped'],
@@ -145,6 +152,20 @@ export default function PurchaseRequestsPage() {
     );
   }, [groups, search]);
 
+  // Historique : filtre par période (date de demande) + recherche, trié décroissant (déjà trié côté serveur).
+  const { dateFrom, dateTo } = periodParams(period, customFrom, customTo) as { dateFrom?: string; dateTo?: string };
+  const historyRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (allRequests as Record<string, any>[]).filter(req => {
+      const d = String(req.created_at ?? '').slice(0, 10);
+      if (dateFrom && (!d || d < dateFrom)) return false;
+      if (dateTo && (!d || d > dateTo)) return false;
+      if (!q) return true;
+      return [req.ingredient_name, req.supplier_name, req.purchase_order_number, req.requested_by_name]
+        .some(f => String(f ?? '').toLowerCase().includes(q));
+    });
+  }, [allRequests, dateFrom, dateTo, search]);
+
   const totalPending = (groups as SupplierGroup[]).reduce((s, g) => s + parseInt(g.request_count), 0);
   const totalSuppliers = (groups as SupplierGroup[]).length;
   const totalEstimated = (groups as SupplierGroup[]).reduce((s, g) => s + parseFloat(g.estimated_total || '0'), 0);
@@ -210,11 +231,12 @@ export default function PurchaseRequestsPage() {
           </button>
           <button onClick={() => setViewMode('all')} className="odoo-filter-dropdown"
             style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
               backgroundColor: viewMode === 'all' ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
               color: viewMode === 'all' ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
               fontWeight: viewMode === 'all' ? 600 : 400,
             }}>
-            Toutes les demandes
+            <History size={12} /> Historique
           </button>
         </div>
       </div>
@@ -229,6 +251,10 @@ export default function PurchaseRequestsPage() {
               <ShoppingCart size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
               <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Aucune demande en attente</p>
               <p style={{ fontSize: '0.6875rem', marginTop: 2 }}>Les demandes apparaîtront ici lorsqu'un utilisateur demandera un ingrédient</p>
+              <button type="button" onClick={() => setViewMode('all')}
+                style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'underline', color: 'var(--theme-accent)', fontSize: '0.75rem' }}>
+                <History size={12} /> Voir l'historique des demandes
+              </button>
             </div>
           ) : filteredGroups.map((group) => {
             const suppKey = group.supplier_id || '__none__';
@@ -385,8 +411,8 @@ export default function PurchaseRequestsPage() {
       {/* All view */}
       {viewMode === 'all' && (
         <>
-          <div className="odoo-search-panel">
-            {['pending', 'assigned', 'received', 'closed', 'cancelled', ''].map(s => {
+          <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
+            {['', 'pending', 'assigned', 'received', 'closed', 'cancelled'].map(s => {
               const label = s ? STATUS_INFO[s].label : 'Tous';
               return (
                 <button key={s} onClick={() => setStatusFilter(s)} className="odoo-filter-dropdown"
@@ -399,6 +425,16 @@ export default function PurchaseRequestsPage() {
                 </button>
               );
             })}
+            <span style={{ flex: 1 }} />
+            <PeriodFilter label="Demandé" title="Filtre sur la date de la demande"
+              period={period} onPeriod={setPeriod}
+              from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
+            {period !== 'all' && (
+              <button type="button" onClick={() => { setPeriod('all'); setCustomFrom(''); setCustomTo(''); }}
+                className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <X size={12} /> Effacer
+              </button>
+            )}
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table className="odoo-table">
@@ -421,9 +457,12 @@ export default function PurchaseRequestsPage() {
               <tbody>
                 {allLoading ? (
                   <tr><td colSpan={12} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Chargement...</td></tr>
-                ) : (allRequests as Record<string, any>[]).length === 0 ? (
-                  <tr><td colSpan={12} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune demande</td></tr>
-                ) : (allRequests as Record<string, any>[]).map((req) => {
+                ) : historyRows.length === 0 ? (
+                  <tr><td colSpan={12} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucune demande pour ces filtres</td></tr>
+                ) : historyRows.map((req, i) => {
+                  const curMonth = String(req.created_at ?? '').slice(0, 7);
+                  const prevMonth = i > 0 ? String(historyRows[i - 1].created_at ?? '').slice(0, 7) : null;
+                  const showMonth = curMonth !== prevMonth;
                   const reasonInfo = REASON_LABELS[req.reason as string] || REASON_LABELS.manual;
                   const reasonTag = req.reason === 'stock_bas' ? 'odoo-tag-red'
                     : req.reason === 'production' ? 'odoo-tag-blue'
@@ -442,7 +481,15 @@ export default function PurchaseRequestsPage() {
                       ? `Reliquat clôturé${req.closed_by_name ? ` par ${req.closed_by_name}` : ''} : ${req.close_reason ?? ''}`
                       : undefined;
                   return (
-                    <tr key={req.id as string}>
+                    <Fragment key={req.id as string}>
+                    {showMonth && (
+                      <tr>
+                        <td colSpan={12} style={{ background: 'var(--odoo-bg-hover)', fontWeight: 600, fontSize: '0.75rem', textTransform: 'capitalize', color: 'var(--odoo-text)' }}>
+                          {req.created_at ? format(new Date(req.created_at as string), 'MMMM yyyy', { locale: fr }) : '—'}
+                        </td>
+                      </tr>
+                    )}
+                    <tr>
                       <td><span className={`odoo-status-dot ${dotClass}`} /></td>
                       <td style={{ fontWeight: 500 }}>{req.ingredient_name as string}</td>
                       <td style={{ color: 'var(--theme-text-muted)' }}>{(req.supplier_name as string) || '—'}</td>
@@ -475,10 +522,16 @@ export default function PurchaseRequestsPage() {
                         )}
                       </td>
                     </tr>
+                    </Fragment>
                   );
                 })}
               </tbody>
             </table>
+            {!allLoading && historyRows.length > 0 && (
+              <div style={{ padding: '8px 12px', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+                {historyRows.length} demande{historyRows.length > 1 ? 's' : ''} · {periodLabel(period, customFrom, customTo)}
+              </div>
+            )}
           </div>
         </>
       )}
