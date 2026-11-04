@@ -124,7 +124,7 @@ export default function PurchasingPage() {
       {tab === 'purchase_requests' && <PurchaseRequestsPage />}
       {tab === 'approvals' && <ApprovalsPage />}
       {tab === 'rfq' && <RfqTab onOpenOrder={() => openTab('purchase_orders')} />}
-      {tab === 'purchase_orders' && <PurchaseOrdersTab initialSupplierId={focus.supplierId} />}
+      {tab === 'purchase_orders' && <PurchaseOrdersTab initialSupplierId={focus.supplierId} onGoToReception={() => openTab('reception')} />}
       {tab === 'reception' && <ReceptionsTab />}
       {tab === 'invoices' && <InvoicesTab {...focus} />}
       {tab === 'landed' && <LandedCostTab />}

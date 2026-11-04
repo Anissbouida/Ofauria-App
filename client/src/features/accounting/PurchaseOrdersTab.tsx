@@ -196,9 +196,11 @@ type POItem = {
   tva_rate?: string | null;
 };
 
-export default function PurchaseOrdersTab({ initialSupplierId = '' }: {
+export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToReception }: {
   /** Pré-filtre fournisseur (ouverture depuis l'onglet Fournisseurs). */
   initialSupplierId?: string;
+  /** Renvoie vers l'onglet « 6 · Réceptions » : la réception d'un BC envoyé s'y fait, plus ici. */
+  onGoToReception?: () => void;
 } = {}) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -455,9 +457,11 @@ export default function PurchaseOrdersTab({ initialSupplierId = '' }: {
         if (po.approval_pending === true) return null;
         return { label: 'Envoyer', run: () => sendMutation.mutate(id), primary: true };
       case 'sent':
-        return { label: 'Réceptionner', run: () => setShowDelivery(id), primary: true, danger: !!po.is_late };
+        // La réception se fait dans l'onglet « 6 · Réceptions ». Ici on y renvoie seulement
+        // (repli : ouvrir le modal si aucun aiguillage n'est fourni, ex. onglet Fournisseurs).
+        return { label: 'Réceptionner →', run: () => (onGoToReception ? onGoToReception() : setShowDelivery(id)), primary: false, danger: !!po.is_late };
       case 'partial':
-        return { label: 'Réceptionner le reliquat', run: () => setShowDelivery(id), primary: true, danger: !!po.is_late };
+        return { label: 'Réceptionner le reliquat →', run: () => (onGoToReception ? onGoToReception() : setShowDelivery(id)), primary: false, danger: !!po.is_late };
       case 'invoice':
         if (po.status === 'en_attente_facturation') {
           return po.frozen ? null : { label: 'Compléter les prix', run: () => setEditPoId(id), primary: false };
@@ -2156,7 +2160,7 @@ function trimQty(v: number) {
 }
 
 /* ═══ Delivery Confirmation Modal ═══ */
-function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void }) {
+export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => void }) {
   // Une clé par réception ouverte : une validation rejouée ne réceptionne pas deux fois (mig 307).
   const [deliveryIdemKey] = useState(newIdempotencyKey);
   const queryClient = useQueryClient();
