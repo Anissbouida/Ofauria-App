@@ -190,8 +190,8 @@ export const PARAMETERS: ParamDef[] = [
   {
     key: 'purchasing.sod_mode', domain: 'purchasing', section: 'business',
     label: 'Séparation des tâches (achats)',
-    help: 'Sur la chaîne bon de commande → réception → facture → paiement, la personne qui fait une étape ne peut pas en faire une autre censée la contrôler : l\'auteur du BC ne le réceptionne pas, le réceptionnaire ne valide pas la facture, le valideur ne la paie pas, le payeur ne lève pas un blocage. « Observer » journalise les manquements sans bloquer (le temps de voir ce qui serait rejeté) ; « Bloquer » refuse l\'action — une dérogation motivée reste possible au cas par cas (mig 442).',
-    fields: [{ name: 'mode', label: 'Contrôle', type: 'enum', options: [{ value: 'warn', label: 'Observer (journaliser sans bloquer)' }, { value: 'block', label: 'Bloquer l\'action' }] }],
+    help: 'Sur la chaîne bon de commande → réception → facture → paiement, la personne qui fait une étape ne peut pas en faire une autre censée la contrôler : l\'auteur du BC ne le réceptionne pas, le réceptionnaire ne valide pas la facture, le valideur ne la paie pas, le payeur ne lève pas un blocage. « Observer » journalise les manquements sans bloquer (le temps de voir ce qui serait rejeté) ; « Bloquer » refuse l\'action ; « Bloquer sauf les administrateurs » laisse un administrateur passer outre (son action reste journalisée) — utile pour une petite équipe. Une dérogation motivée reste possible au cas par cas (mig 442).',
+    fields: [{ name: 'mode', label: 'Contrôle', type: 'enum', options: [{ value: 'warn', label: 'Observer (journaliser sans bloquer)' }, { value: 'block', label: 'Bloquer l\'action' }, { value: 'block_except_admin', label: 'Bloquer, sauf les administrateurs' }] }],
     defaults: { mode: 'warn' },
     storage: { kind: 'module_parameters' },
   },
