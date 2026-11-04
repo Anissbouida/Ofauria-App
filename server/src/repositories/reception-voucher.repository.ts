@@ -559,6 +559,10 @@ export const receptionVoucherRepository = {
         // Exigences lot fournisseur / DLC (mig 308) : en mode « warn », signalées dans la réponse ;
         // en mode « block », le trigger de la ligne de réception a déjà refusé.
         const reqs = (await client.query(`SELECT * FROM fn_lot_requirements($1)`, [item.ingredientId])).rows[0];
+        // Contrôle qualité obligatoire (L5 P2P, mig 461) : le lot entre en quarantaine
+        // et n'est libéré qu'après un contrôle réception conforme. Exclu de l'inventaire
+        // disponible et de la FEFO tant qu'il n'est pas 'active' (le CMUP n'est pas touché).
+        const quarantined = !!reqs?.requires_qc;
         if (reqs) {
           const missing: string[] = [];
           if (reqs.requires_dlc && !item.expirationDate) missing.push('DLC');
@@ -567,6 +571,10 @@ export const receptionVoucherRepository = {
             const nm = (await client.query(`SELECT name FROM ingredients WHERE id = $1`, [item.ingredientId])).rows[0]?.name;
             warnings.push(`${nm} : ${missing.join(' et ')} manquant(s)`);
           }
+          if (quarantined) {
+            const nm = (await client.query(`SELECT name FROM ingredients WHERE id = $1`, [item.ingredientId])).rows[0]?.name;
+            warnings.push(`${nm} : en quarantaine — à libérer par un contrôle qualité conforme`);
+          }
         }
         // Le lot reçoit son numéro interne LI-AAMMJJ-NNNNN par défaut (mig 308).
         const lotRes = await client.query(
@@ -574,13 +582,13 @@ export const receptionVoucherRepository = {
           // (épic labo L1, mig 424/425). La zone LOGIQUE (economat_quantity) reste
           // inchangée : le BSI n'est pas impacté.
           `INSERT INTO ingredient_lots (ingredient_id, reception_voucher_item_id, supplier_id, supplier_lot_number,
-            quantity_received, quantity_remaining, economat_quantity, pesage_quantity, unit_cost, manufactured_date, expiration_date, received_at, store_id, location_id)
-           VALUES ($1, $2, $3, $4, $5, $5, $5, 0, $6, $7, $8, CURRENT_DATE, $9,
+            quantity_received, quantity_remaining, economat_quantity, pesage_quantity, unit_cost, manufactured_date, expiration_date, received_at, store_id, status, location_id)
+           VALUES ($1, $2, $3, $4, $5, $5, $5, 0, $6, $7, $8, CURRENT_DATE, $9, $10,
              (SELECT id FROM stock_locations WHERE store_id = $9 AND code = 'ECONOMAT' AND is_active LIMIT 1))
            RETURNING id, lot_number`,
           [item.ingredientId, rviId, po.supplier_id, item.supplierLotNumber || null,
            item.quantityReceived, effectiveCost, item.manufacturedDate || null, item.expirationDate || null,
-           data.storeId || null]
+           data.storeId || null, quarantined ? 'quarantine' : 'active']
         );
         const lotId = lotRes.rows[0].id as string;
         lotNumbers.push(lotRes.rows[0].lot_number as string);

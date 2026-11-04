@@ -856,16 +856,18 @@ export const ingredientLotRepository = {
        data.overallConformity, data.notes || null, data.checkedBy]
     );
 
-    // Réception bloquante (épic labo L5, mig 428) : un contrôle non conforme
-    // VERROUILLE les lots de la réception (status 'blocked' → exclus de la
-    // consommation) ; un contrôle conforme les libère. On ne touche qu'aux lots
-    // encore en stock (active ↔ blocked), jamais aux lots consommés/en perte.
+    // Réception bloquante (épic labo L5, mig 428) + quarantaine à l'entrée (L5 P2P,
+    // mig 461) : un contrôle non conforme VERROUILLE les lots de la réception
+    // (status 'blocked' → exclus de la consommation) ; un contrôle conforme les
+    // LIBÈRE (→ 'active'). Cela couvre à la fois les lots nés en quarantaine
+    // (requires_qc) et les lots déjà actifs bloqués a posteriori. On ne touche
+    // qu'aux lots encore en stock, jamais aux lots consommés/en perte.
     const lotFilter = `reception_voucher_item_id IN (
       SELECT id FROM reception_voucher_items WHERE reception_voucher_id = $1)`;
     if (data.overallConformity === false) {
-      await db.query(`UPDATE ingredient_lots SET status = 'blocked' WHERE ${lotFilter} AND status = 'active'`, [data.receptionVoucherId]);
+      await db.query(`UPDATE ingredient_lots SET status = 'blocked' WHERE ${lotFilter} AND status IN ('active', 'quarantine')`, [data.receptionVoucherId]);
     } else {
-      await db.query(`UPDATE ingredient_lots SET status = 'active' WHERE ${lotFilter} AND status = 'blocked'`, [data.receptionVoucherId]);
+      await db.query(`UPDATE ingredient_lots SET status = 'active' WHERE ${lotFilter} AND status IN ('blocked', 'quarantine')`, [data.receptionVoucherId]);
     }
     return result.rows[0];
   },
