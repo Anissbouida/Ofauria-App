@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  FileQuestion, Send, Plus, Search, Loader2, CheckCircle2, XCircle, Trophy, Trash2, X, Inbox, FilePenLine, Clock, Ban, RotateCcw, Award,
+  FileQuestion, Send, Plus, Search, Loader2, CheckCircle2, XCircle, Trophy, Trash2, X, Inbox, FilePenLine, Clock, Ban, RotateCcw, Award, Filter,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { rfqApi, RFQ_STATUS_LABELS, type Rfq, type RfqStatus, type RfqItemInput, type Quotation, type RfqSupplier } from '../../api/rfq.api';
@@ -15,7 +15,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { StagePipeline, ViewSwitch, SelectFilter, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
 
 /**
  * Achats › Appels d'offres (mig 360) : articles à acheter envoyés à plusieurs
@@ -33,35 +33,55 @@ const STAGES: Array<StageDef & { key: RfqStatus }> = [
 ];
 const label: React.CSSProperties = { fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4, display: 'block' };
 
+// Vue « En cours » (à traiter) vs « Historique » (clôturés), comme les onglets BC et Factures.
+const OPEN_STATUSES: RfqStatus[] = ['draft', 'sent', 'quoted'];
+const HISTORY_STATUSES: RfqStatus[] = ['awarded', 'cancelled', 'closed'];
+
 export default function RfqTab({ onOpenOrder }: { onOpenOrder?: (purchaseOrderId: string) => void }) {
+  const [view, setView] = useState<'open' | 'history'>('open');
   const [status, setStatus] = useState<RfqStatus | ''>('');
   const [searchInput, setSearchInput] = useState(''); const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   useEffect(() => { const t = setTimeout(() => setSearch(searchInput.trim()), 300); return () => clearTimeout(t); }, [searchInput]);
-  useEffect(() => { setPage(1); }, [status, search]);
-  const params: Record<string, string> = { page: String(page), pageSize: String(PAGE_SIZE) };
+  useEffect(() => { setPage(1); }, [view, status, search]);
+  const params: Record<string, string> = { page: String(page), pageSize: String(PAGE_SIZE), view };
   if (status) params.status = status; if (search) params.search = search;
   const { data, isLoading } = useQuery({ queryKey: ['rfqs', params], queryFn: () => rfqApi.list(params) });
   const by = data?.byStatus ?? {};
+  const count = (keys: RfqStatus[]) => keys.reduce((s, k) => s + (by[k]?.count ?? 0), 0);
+  const openCount = count(OPEN_STATUSES);
+  const historyCount = count(HISTORY_STATUSES);
+  const switchView = (v: 'open' | 'history') => { if (v === view) return; setView(v); setStatus(''); };
+  // Clic sur une tuile du pipeline : filtre sur ce statut et bascule dans la bonne vue.
+  const pickStage = (k: string) => {
+    const st = k as RfqStatus;
+    const targetView = HISTORY_STATUSES.includes(st) ? 'history' : 'open';
+    if (status === st) { setStatus(''); return; }
+    setView(targetView); setStatus(st);
+  };
+  const statusOptions = (view === 'open' ? OPEN_STATUSES : HISTORY_STATUSES).map(k => ({ key: k, label: RFQ_STATUS_LABELS[k] }));
   return (
     <>
       <StagePipeline title="Où en sont les demandes de prix" summary={`${(by.sent?.count ?? 0) + (by.quoted?.count ?? 0)} en cours · ${(by.sent?.overdue ?? 0) + (by.quoted?.overdue ?? 0)} au-delà de la date limite`}
         stages={STAGES} stats={Object.fromEntries(STAGES.map(s => [s.key, { count: by[s.key]?.count ?? 0, sub: '', late: by[s.key]?.overdue ?? 0, alertLabel: 'en retard' }]))}
-        isActive={k => status === k} onPick={k => setStatus(status === k ? '' : (k as RfqStatus))} />
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)' }} />
-        <input className="odoo-search-input" value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, objet, fournisseur…" />
-        <select className="odoo-filter-dropdown" value={status} onChange={e => setStatus(e.target.value as RfqStatus | '')}>
-          <option value="">Tous statuts</option>
-          {Object.entries(RFQ_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
+        isActive={k => status === k} onPick={pickStage} />
+      <div className="odoo-search-panel" style={{ margin: 0, flexWrap: 'wrap', rowGap: 8 }}>
+        <ViewSwitch view={view} onChange={switchView}
+          openLabel={`En cours · ${openCount}`} historyLabel={`Historique · ${historyCount}`} ariaLabel="Vue des demandes de prix" />
+        <Search size={14} style={{ color: 'var(--theme-text-muted)', marginLeft: 4 }} />
+        <input className="odoo-search-input" style={{ flex: '1 1 200px', minWidth: 0 }} value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, objet, fournisseur…" />
+        <SelectFilter label="Statut" icon={Filter} value={status} onChange={v => setStatus(v as RfqStatus | '')} options={statusOptions} allLabel="Tous statuts" />
         <div style={{ flex: 1 }} />
         <button className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouvelle demande de prix</button>
       </div>
       {isLoading ? <Loading /> : !data?.rows.length ? (
-        <StatusBanner tone="info" icon={FileQuestion} title="Aucune demande de prix">Demandez des prix à plusieurs fournisseurs sur une même liste d'articles, puis comparez les devis par notation.</StatusBanner>
+        <StatusBanner tone="info" icon={FileQuestion} title={view === 'history' ? 'Aucune demande de prix clôturée' : 'Aucune demande de prix en cours'}>
+          {view === 'history'
+            ? 'Les demandes de prix attribuées, annulées ou sans suite apparaîtront ici.'
+            : 'Demandez des prix à plusieurs fournisseurs sur une même liste d\'articles, puis comparez les devis par notation.'}
+        </StatusBanner>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table">
@@ -79,7 +99,7 @@ export default function RfqTab({ onOpenOrder }: { onOpenOrder?: (purchaseOrderId
               </tr>
             ))}</tbody>
           </table>
-          <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} appel${data.total > 1 ? 's' : ''} d'offres`} />
+          <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} demande${data.total > 1 ? 's' : ''} de prix · ${view === 'history' ? 'historique' : 'en cours'}`} />
         </div>
       )}
       {creating && <RfqFormModal onClose={() => setCreating(false)} onSaved={id => setOpenId(id)} />}

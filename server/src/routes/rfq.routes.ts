@@ -43,10 +43,10 @@ const ok = (res: Response, data: unknown) => res.json({ success: true, data });
 function conflict(res: Response, from: string | undefined) { res.status(409).json({ success: false, error: { message: `Action impossible au statut « ${from} »` } }); }
 
 rfqRouter.get('/', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
-  const r = z.object({ status: rfqStatus.optional(), search: text(100).optional(), page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25) }).safeParse(req.query);
+  const r = z.object({ status: rfqStatus.optional(), view: z.enum(['open', 'history']).optional(), search: text(100).optional(), page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25) }).safeParse(req.query);
   if (!r.success) { bad(res); return; }
-  const { page, pageSize, search, status } = r.data;
-  ok(res, { ...(await repo.list({ status, search: search || undefined, storeId: storeOf(req), limit: pageSize, offset: (page - 1) * pageSize })), page, pageSize });
+  const { page, pageSize, search, status, view } = r.data;
+  ok(res, { ...(await repo.list({ status, view, search: search || undefined, storeId: storeOf(req), limit: pageSize, offset: (page - 1) * pageSize })), page, pageSize });
 }));
 
 rfqRouter.post('/', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {

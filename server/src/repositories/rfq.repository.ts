@@ -350,7 +350,7 @@ export const rfqRepository = {
     return { ...rfq, items: items.rows, suppliers: suppliers.rows, quotations: quotes, criteria, best_by_item: bestByItem, best_total_quotation_id: bestTotalId, recommended_quotation_id: recommendedId };
   },
 
-  async list(p: { status?: RfqStatus; search?: string; storeId?: string; limit: number; offset: number }) {
+  async list(p: { status?: RfqStatus; view?: 'open' | 'history'; search?: string; storeId?: string; limit: number; offset: number }) {
     const values: unknown[] = [];
     const add = (v: unknown) => { values.push(v); return `$${values.length}`; };
     const base = [p.storeId ? `(r.store_id IS NULL OR r.store_id = ${add(p.storeId)}::uuid)` : 'true'];
@@ -361,6 +361,10 @@ export const rfqRepository = {
     const nBase = values.length;
     const cond = [...base];
     if (p.status) cond.push(`r.status = ${add(p.status)}`);
+    // Vue « En cours » (à traiter) vs « Historique » (clôturés). Listes de statuts littérales :
+    // n'ajoutent pas de paramètre, les index de `values` pour byStatus/count restent valides.
+    else if (p.view === 'open') cond.push(`r.status IN ('draft', 'sent', 'quoted')`);
+    else if (p.view === 'history') cond.push(`r.status IN ('awarded', 'cancelled', 'closed')`);
     const nCond = values.length;
     const lim = add(p.limit); const off = add(p.offset);
     const [rows, total, counts] = await Promise.all([
