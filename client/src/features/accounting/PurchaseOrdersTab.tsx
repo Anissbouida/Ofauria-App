@@ -35,7 +35,7 @@ import type { BudgetControl } from '../../api/management.api';
 
 const fmtDh = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
-import { Lock, PauseCircle, PlayCircle, Snowflake, FilePenLine, Scissors, Undo2 } from 'lucide-react';
+import { Lock, PauseCircle, PlayCircle, Snowflake, FilePenLine, Scissors, Undo2, Scale } from 'lucide-react';
 
 /** Actions motivées sur un BC (mig 306) : un code motif du référentiel est obligatoire. */
 type PoReasonAction = { kind: 'cancel' | 'not_delivered' | 'hold'; poId: string; orderNumber: string };
@@ -2175,6 +2175,10 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
   const [containerCounts, setContainerCounts] = useState<Record<string, string>>({});
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [lotInfo, setLotInfo] = useState<Record<string, { supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }>>({});
+  // Pesée de contrôle (L5 P2P, mig 462) : brut/tare par ligne, net = brut − tare, saisie
+  // manuelle (balance connectée à venir). Facultative : masquée tant qu'on ne l'active pas.
+  const [weighMode, setWeighMode] = useState(false);
+  const [weights, setWeights] = useState<Record<string, { gross?: string; tare?: string }>>({});
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('');
   const [supplierInvoiceDate, setSupplierInvoiceDate] = useState('');
   // forceComplete : le fournisseur ne livrera pas le reste. Le BC est cloture
@@ -2238,11 +2242,19 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
   const handleSubmit = () => {
     const deliveredItems = Object.entries(deliveries)
       .filter(([, qty]) => qty > 0)
-      .map(([itemId, quantityDelivered]) => ({
-        itemId, quantityDelivered,
-        ...(prices[itemId] != null && prices[itemId] > 0 ? { unitPrice: prices[itemId] } : {}),
-        ...lotInfo[itemId],
-      }));
+      .map(([itemId, quantityDelivered]) => {
+        // Pesée de contrôle : on envoie brut/tare/net seulement si un poids a été saisi.
+        const w = weights[itemId];
+        const gross = w?.gross != null && w.gross !== '' ? Number(w.gross) : null;
+        const tare = w?.tare != null && w.tare !== '' ? Number(w.tare) : null;
+        const net = gross != null ? Math.max(0, gross - (tare ?? 0)) : null;
+        return {
+          itemId, quantityDelivered,
+          ...(prices[itemId] != null && prices[itemId] > 0 ? { unitPrice: prices[itemId] } : {}),
+          ...lotInfo[itemId],
+          ...(gross != null ? { grossWeight: gross, tareWeight: tare, netWeight: net } : {}),
+        };
+      });
     if (deliveredItems.length === 0) { notify.error('Saisissez au moins une quantité livrée'); return; }
     // Si cette reception va creer la facture (livraison complete), on conseille
     // fortement le N° de facture fournisseur — sinon le systeme retombera
@@ -2399,9 +2411,17 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
           {/* Fill all button */}
           <div className="flex justify-between items-center">
             <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Saisissez les quantités reçues pour chaque article</p>
-            <button onClick={fillAll} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <CheckCircle2 size={14} /> Tout reçu
-            </button>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <button onClick={() => setWeighMode(m => !m)}
+                className={weighMode ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
+                title="Saisir une pesée de contrôle (brut / tare / net) par article"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Scale size={14} /> Pesée de contrôle
+              </button>
+              <button onClick={fillAll} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <CheckCircle2 size={14} /> Tout reçu
+              </button>
+            </div>
           </div>
 
           {/* Items */}
@@ -2429,7 +2449,8 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
                   const remaining = ordered - alreadyDelivered;
                   const isComplete = remaining <= 0;
                   return (
-                    <tr key={item.id} style={isComplete ? { backgroundColor: '#f0fbf3' } : undefined}>
+                    <Fragment key={item.id}>
+                    <tr style={isComplete ? { backgroundColor: '#f0fbf3' } : undefined}>
                       <td>
                         <span style={{ fontWeight: 500, color: isComplete ? '#28a745' : 'var(--odoo-text)' }}>
                           {item.ingredient_name}
@@ -2550,6 +2571,45 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
                         ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'center' }}>—</span>}
                       </td>
                     </tr>
+                    {weighMode && !isComplete && !isFreeLine(item.kind) && (() => {
+                      const w = weights[item.id] || {};
+                      const g = w.gross != null && w.gross !== '' ? Number(w.gross) : null;
+                      const t = w.tare != null && w.tare !== '' ? Number(w.tare) : 0;
+                      const net = g != null ? Math.max(0, g - t) : null;
+                      const qty = deliveries[item.id] || 0;
+                      const ecart = net != null && qty > 0 ? net - qty : null;
+                      // Écart significatif : > 2 % de la quantité reçue (plancher 10 g).
+                      const bad = ecart != null && Math.abs(ecart) > Math.max(0.01, 0.02 * qty);
+                      const setW = (patch: { gross?: string; tare?: string }) => setWeights(s => ({ ...s, [item.id]: { ...s[item.id], ...patch } }));
+                      const wStyle = { ...odooFieldStyle, fontSize: '0.75rem', width: 90, textAlign: 'right' as const };
+                      return (
+                        <tr style={{ backgroundColor: 'var(--odoo-bg-alt, rgba(0,0,0,0.015))' }}>
+                          <td colSpan={11} style={{ padding: '6px 10px' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, fontSize: '0.75rem' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--theme-accent)', fontWeight: 600 }}>
+                                <Scale size={12} /> Pesée
+                              </span>
+                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--odoo-text-muted)' }}>
+                                Brut <input type="number" min={0} step="0.001" value={w.gross ?? ''} onChange={e => setW({ gross: e.target.value })} style={wStyle} /> {item.ingredient_unit}
+                              </label>
+                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--odoo-text-muted)' }}>
+                                Tare <input type="number" min={0} step="0.001" value={w.tare ?? ''} onChange={e => setW({ tare: e.target.value })} style={wStyle} /> {item.ingredient_unit}
+                              </label>
+                              <span style={{ color: 'var(--odoo-text-muted)' }}>
+                                Net <strong style={{ color: 'var(--odoo-text)' }}>{net != null ? net.toLocaleString('fr-FR', { maximumFractionDigits: 3 }) : '—'}</strong> {item.ingredient_unit}
+                              </span>
+                              {ecart != null && (
+                                <span style={{ color: bad ? '#dc3545' : '#28a745', fontWeight: 600 }}>
+                                  Écart vs reçu {ecart > 0 ? '+' : ''}{ecart.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {item.ingredient_unit}
+                                  {bad && ' — à vérifier avec le fournisseur'}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })()}
+                    </Fragment>
                   );
                 })}
               </tbody>

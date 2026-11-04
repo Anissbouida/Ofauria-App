@@ -357,7 +357,7 @@ export const purchaseOrderRepository = {
 
   async confirmDelivery(
     id: string,
-    items: { itemId: string; quantityDelivered: number; unitPrice?: number | null; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[],
+    items: { itemId: string; quantityDelivered: number; unitPrice?: number | null; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string; grossWeight?: number | null; tareWeight?: number | null; netWeight?: number | null }[],
     performedBy: string,
     storeId?: string,
     supplierInvoiceNumber?: string,
@@ -381,6 +381,10 @@ export const purchaseOrderRepository = {
           supplierLotNumber: it.supplierLotNumber,
           expirationDate: it.expirationDate,
           manufacturedDate: it.manufacturedDate,
+          // Pesée de contrôle (L5 P2P, mig 462) : brut/tare/net optionnels, net = brut − tare.
+          grossWeight: it.grossWeight ?? null,
+          tareWeight: it.tareWeight ?? null,
+          netWeight: it.netWeight ?? null,
         };
       });
 

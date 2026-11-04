@@ -24,7 +24,7 @@ export const purchaseOrdersApi = {
   /** 409 BUDGET_WARNING / BUDGET_EXCEEDED (mig 435) : renvoyer avec budgetAck après confirmation. */
   send: (id: string, budgetAck = false) =>
     api.post(`/purchase-orders/${id}/send`, budgetAck ? { budgetAck } : {}).then(r => r.data as { success: boolean; data: Record<string, unknown>; approval?: { rule_label: string; steps?: { approver_name?: string | null; approver_role?: string | null }[] } }),
-  confirmDelivery: (id: string, data: { items: { itemId: string; quantityDelivered: number; unitPrice?: number | null; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[]; supplierInvoiceNumber?: string; supplierInvoiceDate?: string; forceComplete?: boolean; extraFees?: { label: string; amount: number; categoryId?: string | null }[] }, idempotencyKey: string = newIdempotencyKey()) =>
+  confirmDelivery: (id: string, data: { items: { itemId: string; quantityDelivered: number; unitPrice?: number | null; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string; grossWeight?: number | null; tareWeight?: number | null; netWeight?: number | null }[]; supplierInvoiceNumber?: string; supplierInvoiceDate?: string; forceComplete?: boolean; extraFees?: { label: string; amount: number; categoryId?: string | null }[] }, idempotencyKey: string = newIdempotencyKey()) =>
     api.post(`/purchase-orders/${id}/confirm-delivery`, data, { headers: { 'Idempotency-Key': idempotencyKey } }).then(r => r.data.data),
   /** Motif codé obligatoire (référentiel purchase_reason_codes, mig 306). */
   markNotDelivered: (id: string, reason: { reasonCodeId: string; note?: string }) =>

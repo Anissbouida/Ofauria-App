@@ -380,7 +380,7 @@ export const receptionVoucherRepository = {
      */
     forceComplete?: boolean;
     // Une ligne porte SOIT un ingredient SOIT un consommable (packaging_items).
-    items: { poItemId: string; ingredientId?: string | null; packagingId?: string | null; quantityReceived: number; unitPrice?: number | null; notes?: string; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }[];
+    items: { poItemId: string; ingredientId?: string | null; packagingId?: string | null; quantityReceived: number; unitPrice?: number | null; notes?: string; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string; grossWeight?: number | null; tareWeight?: number | null; netWeight?: number | null }[];
   }) {
     const client = await db.getClient();
     try {
@@ -465,11 +465,12 @@ export const receptionVoucherRepository = {
         // Insert reception voucher item (ingredient OU consommable, lot/DLC fields)
         const rviResult = await client.query(
           `INSERT INTO reception_voucher_items (reception_voucher_id, purchase_order_item_id, ingredient_id, packaging_id, quantity_received, unit_price, notes, supplier_lot_number, expiration_date, manufactured_date,
-                                               kind, created_by, po_unit_price)
+                                               kind, created_by, po_unit_price, gross_weight, tare_weight, net_weight)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'receive', $11,
-                   (SELECT unit_price FROM purchase_order_items WHERE id = $2)) RETURNING id`,
+                   (SELECT unit_price FROM purchase_order_items WHERE id = $2), $12, $13, $14) RETURNING id`,
           [rv.id, item.poItemId, item.ingredientId ?? null, item.packagingId ?? null, item.quantityReceived, item.unitPrice ?? null, item.notes || null,
-           item.supplierLotNumber || null, item.expirationDate || null, item.manufacturedDate || null, data.receivedBy]
+           item.supplierLotNumber || null, item.expirationDate || null, item.manufacturedDate || null, data.receivedBy,
+           item.grossWeight ?? null, item.tareWeight ?? null, item.netWeight ?? null]
         );
         const rviId = rviResult.rows[0].id;
 
