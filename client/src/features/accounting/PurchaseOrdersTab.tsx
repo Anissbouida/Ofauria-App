@@ -2177,9 +2177,16 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [lotInfo, setLotInfo] = useState<Record<string, { supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string }>>({});
   // Pesée de contrôle (L5 P2P, mig 462) : brut/tare par ligne, net = brut − tare, saisie
-  // manuelle (balance connectée à venir). Facultative : masquée tant qu'on ne l'active pas.
-  const [weighMode, setWeighMode] = useState(false);
+  // manuelle (balance connectée à venir). Pertinente SEULEMENT pour les marchandises au
+  // poids (kg/g), et ouverte À LA DEMANDE par ligne (pas de sous-ligne permanente partout).
+  const [weighOpen, setWeighOpen] = useState<Set<string>>(new Set());
   const [weights, setWeights] = useState<Record<string, { gross?: string; tare?: string }>>({});
+  const toggleWeigh = (id: string) => setWeighOpen(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  // Article au poids : unité de masse/volume mesurable (pas une unité comptée à la pièce).
+  const isWeighable = (unit?: string | null) => {
+    const u = (unit || '').trim().toLowerCase();
+    return !!u && !['unit', 'unité', 'u', 'pièce', 'piece', 'pc', 'pcs', 'pce'].includes(u);
+  };
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('');
   const [supplierInvoiceDate, setSupplierInvoiceDate] = useState('');
   // forceComplete : le fournisseur ne livrera pas le reste. Le BC est cloture
@@ -2416,18 +2423,13 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
 
           {/* Fill all button */}
           <div className="flex justify-between items-center">
-            <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Saisissez les quantités reçues pour chaque article</p>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <button onClick={() => setWeighMode(m => !m)}
-                className={weighMode ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
-                title="Saisir une pesée de contrôle (brut / tare / net) par article"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <Scale size={14} /> Pesée de contrôle
-              </button>
-              <button onClick={fillAll} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <CheckCircle2 size={14} /> Tout reçu
-              </button>
-            </div>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+              Saisissez les quantités reçues pour chaque article
+              <span style={{ marginLeft: 6, fontSize: '0.6875rem' }}>· pour les articles au poids, <Scale size={11} style={{ display: 'inline', verticalAlign: '-1px' }} /> ajoute une pesée de contrôle.</span>
+            </p>
+            <button onClick={fillAll} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <CheckCircle2 size={14} /> Tout reçu
+            </button>
           </div>
 
           {/* Items */}
@@ -2462,6 +2464,14 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
                           {item.ingredient_name}
                         </span>
                         {!isFreeLine(item.kind) && <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({item.ingredient_unit})</span>}
+                        {!isComplete && !isFreeLine(item.kind) && isWeighable(item.ingredient_unit) && (
+                          <button type="button" onClick={() => toggleWeigh(item.id)}
+                            title="Pesée de contrôle (brut / tare / net)"
+                            className={weighOpen.has(item.id) ? 'odoo-btn-primary' : 'odoo-pager-btn'}
+                            style={{ marginLeft: 6, padding: '1px 5px', verticalAlign: 'middle' }}>
+                            <Scale size={12} />
+                          </button>
+                        )}
                         <LineKindTag kind={item.kind} />
                         {isFreeLine(item.kind) && (
                           <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
@@ -2577,7 +2587,7 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
                         ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'center' }}>—</span>}
                       </td>
                     </tr>
-                    {weighMode && !isComplete && !isFreeLine(item.kind) && (() => {
+                    {weighOpen.has(item.id) && !isComplete && !isFreeLine(item.kind) && isWeighable(item.ingredient_unit) && (() => {
                       const w = weights[item.id] || {};
                       const g = w.gross != null && w.gross !== '' ? Number(w.gross) : null;
                       const t = w.tare != null && w.tare !== '' ? Number(w.tare) : 0;
