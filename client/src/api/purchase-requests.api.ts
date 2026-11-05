@@ -47,6 +47,8 @@ export type ToOrderRow = {
   low_stock: { current: number; threshold: number; suggested: number } | null;
   on_order_qty: number; on_order_refs: string[];
   suggested_qty: number; covered: boolean;
+  // L6 : besoin net avant arrondi + paramètres fournisseur appliqués à la suggestion.
+  net_qty?: number; moq?: number; order_multiple?: number; lead_time_days?: number | null; rounded_up?: boolean;
   supplier_id: string | null; last_supplier_id: string | null; last_supplier_name: string | null;
   unit_price: number | null; last_order_date: string | null; priority: 1 | 2 | 3;
 };

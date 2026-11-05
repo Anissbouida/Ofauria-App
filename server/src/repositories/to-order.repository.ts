@@ -85,7 +85,8 @@ export const toOrderRepository = {
       `SELECT ing.id AS ingredient_id, ing.unit_cost,
               COALESCE(oo.on_order_qty, 0) AS on_order_qty, oo.on_order_refs,
               lp.supplier_id AS last_supplier_id, lp.supplier_name AS last_supplier_name,
-              lp.unit_price AS last_price, lp.order_date AS last_order_date
+              lp.unit_price AS last_price, lp.order_date AS last_order_date,
+              ps.moq, ps.qty_per_container, ps.lead_time_days
          FROM ingredients ing
          LEFT JOIN LATERAL (
            SELECT SUM(GREATEST(poi.quantity_ordered - poi.qty_received_base - poi.qty_cancelled_base, 0)) AS on_order_qty,
@@ -105,6 +106,15 @@ export const toOrderRepository = {
             ORDER BY po.order_date DESC, po.created_at DESC
             LIMIT 1
          ) lp ON true
+         LEFT JOIN LATERAL (
+           -- Paramètres du fournisseur préféré (L6) : quantité minimale de commande,
+           -- conditionnement (multiple), délai de livraison — pour arrondir la suggestion.
+           SELECT si.moq, si.qty_per_container, si.lead_time_days
+             FROM supplier_items si
+            WHERE si.purchasable_kind = 'ingredient' AND si.purchasable_id = ing.id
+              AND si.is_preferred AND NOT si.is_blocked AND si.archived_at IS NULL
+            LIMIT 1
+         ) ps ON true
         WHERE ing.id = ANY($1::uuid[])`,
       [ids, storeId ?? null]
     );
@@ -117,13 +127,30 @@ export const toOrderRepository = {
       // d'un stock bas : les additionner compterait deux fois la même chose).
       const gross = Math.max(n.rupture_qty, n.request_qty, n.low_stock?.suggested ?? 0);
       // Les demandes en attente ne sont pas encore sur un BC : seul le reste des BC ouverts couvre.
-      const suggested = Math.max(0, Math.round((gross - onOrder) * 1000) / 1000);
+      const net = Math.max(0, Math.round((gross - onOrder) * 1000) / 1000);
+      // Arrondi à la réalité d'achat (L6) : quantité minimale de commande (MOQ) du
+      // fournisseur préféré, puis multiple du conditionnement (on ne commande pas un
+      // demi-sac). N'inflate pas un besoin nul.
+      const moq = parseFloat(x.moq) || 0;
+      const perContainer = parseFloat(x.qty_per_container) || 0;
+      let suggested = net;
+      if (suggested > 0) {
+        if (moq > 0) suggested = Math.max(suggested, moq);
+        if (perContainer > 0) suggested = Math.ceil(suggested / perContainer) * perContainer;
+        suggested = Math.round(suggested * 1000) / 1000;
+      }
       const priority = n.rupture_qty > 0 ? 1 : n.request_qty > 0 ? 2 : 3;
       return {
         ...n,
         on_order_qty: onOrder,
         on_order_refs: (x.on_order_refs as string[] | null) ?? [],
+        net_qty: net,
         suggested_qty: suggested,
+        // Paramètres fournisseur appliqués à la suggestion (L6).
+        moq,
+        order_multiple: perContainer,
+        lead_time_days: x.lead_time_days != null ? Number(x.lead_time_days) : null,
+        rounded_up: suggested > net,
         // Rien à commander : besoin déjà couvert par les BC ouverts.
         covered: suggested <= 0,
         supplier_id: n.request_supplier_id ?? x.last_supplier_id ?? null,

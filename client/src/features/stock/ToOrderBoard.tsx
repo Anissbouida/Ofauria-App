@@ -287,6 +287,12 @@ export function ToOrderBoard() {
                 if (r.rupture_qty > 0) why.push({ text: `rupture ${fmtQty(r.rupture_qty)} ${r.unit} · ${r.rupture_refs.join(', ')}`, color: '#dc3545' });
                 if (r.request_qty > 0) why.push({ text: `demandé ${fmtQty(r.request_qty)} ${r.unit}${r.requesters.length ? ` par ${r.requesters.join(', ')}` : ''}` });
                 if (r.low_stock) why.push({ text: `stock ${fmtQty(r.low_stock.current)} / seuil ${fmtQty(r.low_stock.threshold)} ${r.unit}`, color: '#b85d1a' });
+                // L6 : arrondi à la réalité d'achat (MOQ / conditionnement du fournisseur) et délai.
+                if (!('manual' in r) && r.rounded_up) {
+                  const bits = [r.moq ? `MOQ ${fmtQty(r.moq)}` : '', r.order_multiple ? `cond. ${fmtQty(r.order_multiple)} ${r.unit}` : ''].filter(Boolean);
+                  why.push({ text: `arrondi à la commande${bits.length ? ` (${bits.join(' · ')})` : ''}` });
+                }
+                if (!('manual' in r) && r.lead_time_days) why.push({ text: `délai fournisseur ${r.lead_time_days} j` });
                 return (
                   <tr key={r.ingredient_id} style={{ opacity: r.covered ? 0.75 : 1 }}>
                     {source !== 'covered' && (
