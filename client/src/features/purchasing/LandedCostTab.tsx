@@ -252,6 +252,28 @@ function LandedCostDrawer({ id, onClose }: { id: string; onClose: () => void }) 
                   ))}</tbody>
                 </table>
               </div>
+              {(v.valuationAdjustments ?? []).length > 0 && (
+                <div>
+                  <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}><Ship size={12} /> Réévaluation — part en stock vs écart</div>
+                  <StatusBanner tone="info" icon={Ship} title="Dry-run — aucune écriture comptable n'est postée">
+                    Répartition de chaque frais entre la part <strong>capitalisée en stock</strong> (quantité encore en stock) et la part en <strong>écart</strong> (déjà consommée, destinée au compte d'écart de prix). L'écriture est différée : à valider sur un dry-run avant activation.
+                  </StatusBanner>
+                  <table className="odoo-table">
+                    <thead><tr><th>Article</th><th>Lot</th><th style={{ textAlign: 'right' }}>Qté base</th><th style={{ textAlign: 'right' }}>Encore en stock</th><th style={{ textAlign: 'right' }}>+ / unité</th><th style={{ textAlign: 'right' }}>Part en stock</th><th style={{ textAlign: 'right' }}>Part en écart</th></tr></thead>
+                    <tbody>{(v.valuationAdjustments ?? []).map(s => (
+                      <tr key={s.id}>
+                        <td>{s.label || '—'}</td>
+                        <td className="font-mono" style={{ fontSize: '0.75rem' }}>{s.lot_number || '—'}</td>
+                        <td style={{ textAlign: 'right' }}>{Number(s.qty_basis).toLocaleString('fr-FR')}</td>
+                        <td style={{ textAlign: 'right' }}>{Number(s.qty_remaining).toLocaleString('fr-FR')}</td>
+                        <td style={{ textAlign: 'right' }}>+{n4(s.unit_delta)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600, color: '#28a745' }}>{n2(s.amount_to_stock)}</td>
+                        <td style={{ textAlign: 'right', color: Number(s.amount_to_variance) > 0 ? '#b85d1a' : 'var(--theme-text-muted)' }}>{n2(s.amount_to_variance)}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </>
         )}

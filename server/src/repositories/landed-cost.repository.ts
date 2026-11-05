@@ -146,7 +146,7 @@ export const landedCostRepository = {
     const r = await db.query(`${SELECT} WHERE v.id = $1`, [id]);
     const v = r.rows[0];
     if (!v) return null;
-    const [charges, allocations] = await Promise.all([
+    const [charges, allocations, valuationAdjustments] = await Promise.all([
       db.query(`SELECT c.*, ec.name AS category_name, s.name AS supplier_name, i.invoice_number
                   FROM landed_cost_charges c LEFT JOIN expense_categories ec ON ec.id = c.category_id
                   LEFT JOIN suppliers s ON s.id = c.supplier_id LEFT JOIN invoices i ON i.id = c.invoice_id
@@ -160,8 +160,17 @@ export const landedCostRepository = {
                   LEFT JOIN packaging_items pk ON pk.id = rvi.packaging_id
                   LEFT JOIN ingredient_lots il ON il.id = a.ingredient_lot_id
                  WHERE a.voucher_id = $1 ORDER BY rvi.created_at`, [id]),
+      // Inc 4 (L3 P2P) : réévaluations enregistrées — part capitalisée en stock vs
+      // part en écart (déjà consommé). journal_entry_id NULL = écriture non encore postée.
+      db.query(`SELECT sva.*, COALESCE(ing.name, pk.name) AS label, il.lot_number
+                  FROM stock_valuation_adjustments sva
+                  LEFT JOIN ingredient_lots il ON il.id = sva.ingredient_lot_id
+                  LEFT JOIN ingredients ing ON ing.id = sva.ingredient_id
+                  LEFT JOIN packaging_items pk ON pk.id = sva.packaging_id
+                 WHERE sva.source_kind = 'landed_cost' AND sva.source_id = $1
+                 ORDER BY sva.created_at`, [id]),
     ]);
-    return { ...v, charges: charges.rows, allocations: allocations.rows };
+    return { ...v, charges: charges.rows, allocations: allocations.rows, valuationAdjustments: valuationAdjustments.rows };
   },
 
   async list(p: { status?: string; search?: string; storeId?: string; limit: number; offset: number }) {
@@ -219,6 +228,29 @@ export const landedCostRepository = {
           const delta = stock > 0 ? (inc * Math.min(remaining, stock)) / stock : inc;
           stdAfter = round((stdBefore ?? 0) + delta, 4);
           await client.query(`UPDATE ingredients SET unit_cost = $2 WHERE id = $1`, [line.ingredient_id, stdAfter]);
+
+          // ─── Inc 4 (L3 P2P) : traçabilité de la réévaluation sur le restant ───
+          // Part capitalisée en stock (restant × incrément) vs part en écart (déjà
+          // consommé). Les montants sont calculés EN SQL (mêmes valeurs arrondies que
+          // le CHECK amount_to_stock + amount_to_variance = round(unit_delta×qty_basis,2)).
+          // L'ÉCRITURE comptable reste DIFFÉRÉE (journal_entry_id NULL) : gardée OFF
+          // jusqu'au dry-run sur données réelles (cf. mig 446). Rien n'est posté ici.
+          if (a.ingredient_lot_id && inc !== 0) {
+            const unitDelta = round(inc, 4);
+            const qtyBasis = round(Number(a.quantity), 4);
+            const qtyRemaining = round(Math.max(0, Math.min(remaining, qtyBasis)), 4);
+            await client.query(
+              `INSERT INTO stock_valuation_adjustments
+                 (source_kind, source_id, ingredient_lot_id, ingredient_id, qty_basis, qty_remaining,
+                  unit_delta, amount_to_stock, amount_to_variance, cmup_before, cmup_after, created_by)
+               VALUES ('landed_cost', $1, $2, $3, $4, $5, $6,
+                       round($6::numeric * $5::numeric, 2),
+                       round($6::numeric * $4::numeric, 2) - round($6::numeric * $5::numeric, 2),
+                       $7, $8, $9)
+               ON CONFLICT (source_kind, source_id, ingredient_lot_id) DO NOTHING`,
+              [id, a.ingredient_lot_id, line.ingredient_id, qtyBasis, qtyRemaining, unitDelta, stdBefore, stdAfter, userId],
+            );
+          }
         } else if (line.packaging_id) {
           const pk = (await client.query(`SELECT unit_cost FROM packaging_items WHERE id = $1 FOR UPDATE`, [line.packaging_id])).rows[0];
           stdBefore = pk?.unit_cost != null ? Number(pk.unit_cost) : null;

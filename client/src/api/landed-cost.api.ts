@@ -19,11 +19,17 @@ export type LandedAllocation = {
   basis_value: string; share_pct: string; amount: string; quantity: string; unit_increment: string;
   lot_cost_before: string | null; lot_cost_after: string | null; standard_cost_before: string | null; standard_cost_after: string | null;
 };
+/** Réévaluation enregistrée (L3 P2P inc 4) : part capitalisée en stock vs part en écart (consommé). journal_entry_id null = écriture non postée. */
+export type LandedValuationAdjustment = {
+  id: string; ingredient_lot_id: string | null; label: string | null; lot_number: string | null;
+  qty_basis: string; qty_remaining: string; unit_delta: string; amount_to_stock: string; amount_to_variance: string;
+  cmup_before: string | null; cmup_after: string | null; journal_entry_id: string | null;
+};
 export type LandedCostVoucher = {
   id: string; number: string; reception_voucher_id: string; reception_number: string; reception_date: string; order_number: string | null; supplier_name: string | null;
   allocation_method: AllocationMethod; status: LandedCostStatus; total_amount: string; notes: string | null;
   applied_at: string | null; applied_by_name: string | null; created_by_name: string | null; created_at: string; charge_count: number; line_count: number;
-  charges?: LandedCharge[]; allocations?: LandedAllocation[];
+  charges?: LandedCharge[]; allocations?: LandedAllocation[]; valuationAdjustments?: LandedValuationAdjustment[];
 };
 export type ChargeInput = { label: string; amount: number; categoryId?: string | null; supplierId?: string | null; invoiceId?: string | null };
 
