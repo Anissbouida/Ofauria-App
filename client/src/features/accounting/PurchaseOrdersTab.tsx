@@ -2179,9 +2179,9 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
   // Pesée de contrôle (L5 P2P, mig 462) : brut/tare par ligne, net = brut − tare, saisie
   // manuelle (balance connectée à venir). Pertinente SEULEMENT pour les marchandises au
   // poids (kg/g), et ouverte À LA DEMANDE par ligne (pas de sous-ligne permanente partout).
-  const [weighOpen, setWeighOpen] = useState<Set<string>>(new Set());
+  // Pesée ouverte dans une petite fenêtre (une ligne à la fois), pas de sous-ligne.
+  const [weighFor, setWeighFor] = useState<string | null>(null);
   const [weights, setWeights] = useState<Record<string, { gross?: string; tare?: string }>>({});
-  const toggleWeigh = (id: string) => setWeighOpen(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   // Article au poids : unité de masse/volume mesurable (pas une unité comptée à la pièce).
   const isWeighable = (unit?: string | null) => {
     const u = (unit || '').trim().toLowerCase();
@@ -2464,14 +2464,17 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
                           {item.ingredient_name}
                         </span>
                         {!isFreeLine(item.kind) && <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem', marginLeft: 4 }}>({item.ingredient_unit})</span>}
-                        {!isComplete && !isFreeLine(item.kind) && isWeighable(item.ingredient_unit) && (
-                          <button type="button" onClick={() => toggleWeigh(item.id)}
-                            title="Pesée de contrôle (brut / tare / net)"
-                            className={weighOpen.has(item.id) ? 'odoo-btn-primary' : 'odoo-pager-btn'}
-                            style={{ marginLeft: 6, padding: '1px 5px', verticalAlign: 'middle' }}>
-                            <Scale size={12} />
-                          </button>
-                        )}
+                        {!isComplete && !isFreeLine(item.kind) && isWeighable(item.ingredient_unit) && (() => {
+                          const w = weights[item.id]; const hasW = !!(w?.gross || w?.tare);
+                          return (
+                            <button type="button" onClick={() => setWeighFor(item.id)}
+                              title="Pesée de contrôle (brut / tare / net)"
+                              className={hasW ? 'odoo-btn-primary' : 'odoo-pager-btn'}
+                              style={{ marginLeft: 6, padding: '1px 5px', verticalAlign: 'middle' }}>
+                              <Scale size={12} />
+                            </button>
+                          );
+                        })()}
                         <LineKindTag kind={item.kind} />
                         {isFreeLine(item.kind) && (
                           <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
@@ -2587,44 +2590,6 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
                         ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'center' }}>—</span>}
                       </td>
                     </tr>
-                    {weighOpen.has(item.id) && !isComplete && !isFreeLine(item.kind) && isWeighable(item.ingredient_unit) && (() => {
-                      const w = weights[item.id] || {};
-                      const g = w.gross != null && w.gross !== '' ? Number(w.gross) : null;
-                      const t = w.tare != null && w.tare !== '' ? Number(w.tare) : 0;
-                      const net = g != null ? Math.max(0, g - t) : null;
-                      const qty = deliveries[item.id] || 0;
-                      const ecart = net != null && qty > 0 ? net - qty : null;
-                      // Écart significatif : > 2 % de la quantité reçue (plancher 10 g).
-                      const bad = ecart != null && Math.abs(ecart) > Math.max(0.01, 0.02 * qty);
-                      const setW = (patch: { gross?: string; tare?: string }) => setWeights(s => ({ ...s, [item.id]: { ...s[item.id], ...patch } }));
-                      const wStyle = { ...odooFieldStyle, fontSize: '0.75rem', width: 90, textAlign: 'right' as const };
-                      return (
-                        <tr style={{ backgroundColor: 'var(--odoo-bg-alt, rgba(0,0,0,0.015))' }}>
-                          <td colSpan={11} style={{ padding: '6px 10px' }}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, fontSize: '0.75rem' }}>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--theme-accent)', fontWeight: 600 }}>
-                                <Scale size={12} /> Pesée
-                              </span>
-                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--odoo-text-muted)' }}>
-                                Brut <input type="number" min={0} step="0.001" value={w.gross ?? ''} onChange={e => setW({ gross: e.target.value })} style={wStyle} /> {item.ingredient_unit}
-                              </label>
-                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--odoo-text-muted)' }}>
-                                Tare <input type="number" min={0} step="0.001" value={w.tare ?? ''} onChange={e => setW({ tare: e.target.value })} style={wStyle} /> {item.ingredient_unit}
-                              </label>
-                              <span style={{ color: 'var(--odoo-text-muted)' }}>
-                                Net <strong style={{ color: 'var(--odoo-text)' }}>{net != null ? net.toLocaleString('fr-FR', { maximumFractionDigits: 3 }) : '—'}</strong> {item.ingredient_unit}
-                              </span>
-                              {ecart != null && (
-                                <span style={{ color: bad ? '#dc3545' : '#28a745', fontWeight: 600 }}>
-                                  Écart vs reçu {ecart > 0 ? '+' : ''}{ecart.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {item.ingredient_unit}
-                                  {bad && ' — à vérifier avec le fournisseur'}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })()}
                     </Fragment>
                   );
                 })}
@@ -2644,6 +2609,48 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
             </div>
           )}
         </div>
+
+        {/* Pesée de contrôle d'une ligne : petite fenêtre, indépendante de la position de la ligne. */}
+        {weighFor && (() => {
+          const id = weighFor;
+          const item = items.find(i => i.id === id);
+          if (!item) return null;
+          const w = weights[id] || {};
+          const g = w.gross != null && w.gross !== '' ? Number(w.gross) : null;
+          const t = w.tare != null && w.tare !== '' ? Number(w.tare) : 0;
+          const net = g != null ? Math.max(0, g - t) : null;
+          const qty = deliveries[id] || 0;
+          const ecart = net != null && qty > 0 ? net - qty : null;
+          const bad = ecart != null && Math.abs(ecart) > Math.max(0.01, 0.02 * qty);
+          const setW = (patch: { gross?: string; tare?: string }) => setWeights(s => ({ ...s, [id]: { ...s[id], ...patch } }));
+          const u = item.ingredient_unit;
+          return (
+            <ModalBackdrop onClose={() => setWeighFor(null)} className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+              <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, background: 'var(--odoo-bg)', borderRadius: 8, boxShadow: '0 12px 40px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+                <div className="odoo-control-bar">
+                  <div className="odoo-breadcrumb"><Scale size={14} style={{ color: 'var(--theme-accent)' }} /><span className="odoo-breadcrumb-current">Pesée · {item.ingredient_name}</span></div>
+                  <div style={{ flex: 1 }} />
+                  <button type="button" className="odoo-pager-btn" onClick={() => setWeighFor(null)} aria-label="Fermer"><X size={14} /></button>
+                </div>
+                <div style={{ padding: 16, display: 'grid', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <label style={odooLabelStyle}>Brut ({u})<input type="number" min={0} step="0.001" value={w.gross ?? ''} onChange={e => setW({ gross: e.target.value })} style={odooNumFieldStyle} autoFocus /></label>
+                    <label style={odooLabelStyle}>Tare ({u})<input type="number" min={0} step="0.001" value={w.tare ?? ''} onChange={e => setW({ tare: e.target.value })} style={odooNumFieldStyle} /></label>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: '0.8125rem', flexWrap: 'wrap', gap: 6 }}>
+                    <span>Net <strong>{net != null ? net.toLocaleString('fr-FR', { maximumFractionDigits: 3 }) : '—'}</strong> {u} <span style={{ color: 'var(--odoo-text-muted)' }}>· reçu {qty.toLocaleString('fr-FR')} {u}</span></span>
+                    {ecart != null && <span style={{ color: bad ? '#dc3545' : '#28a745', fontWeight: 600 }}>Écart {ecart > 0 ? '+' : ''}{ecart.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {u}</span>}
+                  </div>
+                  {bad && <div style={{ fontSize: '0.75rem', color: '#dc3545' }}>Écart significatif (&gt; 2 %) — à vérifier avec le fournisseur.</div>}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                    <button type="button" className="odoo-btn-secondary" onClick={() => { setWeights(s => { const n = { ...s }; delete n[id]; return n; }); setWeighFor(null); }}>Effacer</button>
+                    <button type="button" className="odoo-btn-primary" onClick={() => setWeighFor(null)}>OK</button>
+                  </div>
+                </div>
+              </div>
+            </ModalBackdrop>
+          );
+        })()}
 
         {/* Footer */}
         <div className="flex justify-end gap-2 shrink-0"
