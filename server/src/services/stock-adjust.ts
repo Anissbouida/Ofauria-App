@@ -32,11 +32,13 @@ export async function adjustIngredientStock(client: Runner, p: {
   if (qty > 0) {
     // Numéro tiré de la séquence des lots (mig 308) : COUNT+1 non verrouillé produisait des doublons.
     const seq = await client.query(`SELECT 'ADJ-' || to_char(CURRENT_DATE, 'YYMMDD') || '-' || lpad(nextval('lot_number_seq')::text, 5, '0') AS n`);
+    // Entrée en stock unique (L3 P2P inc 5, mig 463) : le lot reçoit un coût garanti
+    // (= CMUP courant, plus jamais NULL) et le CMUP est recalculé (inchangé ici
+    // puisqu'on entre au coût moyen courant). Corrige le lot à coût NULL d'un
+    // ajustement positif, qui faussait la valorisation.
     await client.query(
-      `INSERT INTO ingredient_lots
-         (ingredient_id, store_id, lot_number, quantity_received, quantity_remaining, economat_quantity, pesage_quantity, status, notes)
-       VALUES ($1, $2, $3, $4, $4, $4, 0, 'active', $5)`,
-      [ingredientId, storeId, seq.rows[0].n, qty, p.lotNote ?? `Ajustement positif (${p.type}) : ${p.note || 'sans motif'}`]);
+      `SELECT fn_stock_receipt($1, $2, $3, NULL, $4, NULL, $5)`,
+      [ingredientId, storeId, qty, seq.rows[0].n, p.lotNote ?? `Ajustement positif (${p.type}) : ${p.note || 'sans motif'}`]);
   } else if (qty < 0) {
     let remaining = -qty;
     const lots = await client.query(

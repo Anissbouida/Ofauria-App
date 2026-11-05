@@ -35,18 +35,14 @@ export const inventoryController = {
         params
       );
 
-      // Get ingredient info for lot cost
-      const ingResult = await client.query(`SELECT unit_cost FROM ingredients WHERE id = $1`, [ingredientId]);
-      const unitCost = ingResult.rows[0]?.unit_cost ? parseFloat(ingResult.rows[0].unit_cost) : null;
-
-      // Create ingredient lot for ONSSA traceability
+      // Entrée en stock unique (L3 P2P inc 5, mig 463) : le lot reçoit un coût
+      // garanti (= CMUP courant) et le CMUP est recalculé (inchangé ici, on entre
+      // au coût moyen courant). Remplace l'INSERT direct + lecture de coût.
       const lotResult = await client.query(
-        `INSERT INTO ingredient_lots (ingredient_id, supplier_lot_number,
-          quantity_received, quantity_remaining, economat_quantity, pesage_quantity, unit_cost, manufactured_date, expiration_date, received_at, store_id)
-         VALUES ($1, $2, $3, $3, $3, 0, $4, $5, $6, CURRENT_DATE, $7) RETURNING id`,
-        [ingredientId, supplierLotNumber || null,
-         quantity, unitCost, manufacturedDate || null, expirationDate || null,
-         req.user!.storeId || null]
+        `SELECT fn_stock_receipt($1, $2, $3, NULL, NULL, $4, $5, $6, $7) AS id`,
+        [ingredientId, req.user!.storeId || null, quantity, supplierLotNumber || null,
+         note || `Restockage direct — Lot fournisseur: ${supplierLotNumber || 'N/A'}`,
+         manufacturedDate || null, expirationDate || null]
       );
 
       // Record transaction with lot traceability
