@@ -6,6 +6,8 @@ import { dunningRepository } from '../repositories/dunning.repository.js';
 import { ledgerIntegrityRepository } from '../repositories/ledger-integrity.repository.js';
 import { expireDue as loyaltyExpireDue } from './loyalty.js';
 import { deliveryNoteRepository } from '../repositories/delivery-note.repository.js';
+import { toOrderRepository } from '../repositories/to-order.repository.js';
+import { purchaseRequestRepository } from '../repositories/purchase-request.repository.js';
 
 /**
  * Tâches planifiées (mig 364).
@@ -211,8 +213,32 @@ async function emailOutbox(): Promise<JobResult> {
   return { items: r.sent, message: `${r.message}${r.waiting ? ` · ${r.waiting} en attente` : ''}` };
 }
 
+/**
+ * MRP déclencheur (L6 P2P) : calcule le besoin net (ruptures + stock sous le seuil
+ * + demandes, déduction des BC ouverts faite — même calcul que « À commander ») et
+ * crée des demandes d'achat PROPOSÉES (approval_status 'draft') qu'un humain revoit
+ * puis soumet. Dédupliquées par insertProposal. Désactivée par défaut (mig 464).
+ */
+async function purchaseSuggestions(): Promise<JobResult> {
+  const { rows } = await toOrderRepository.board();
+  let created = 0;
+  for (const r of rows as Record<string, unknown>[]) {
+    if (r.covered || !(Number(r.suggested_qty) > 0)) continue;
+    const id = await purchaseRequestRepository.insertProposal({
+      ingredientId: r.ingredient_id as string,
+      supplierId: (r.supplier_id as string | null) ?? null,
+      quantity: Number(r.suggested_qty),
+      unit: r.unit as string,
+      storeId: (r.store_id as string | null) ?? null,
+    });
+    if (id) created++;
+  }
+  return { items: created, message: created ? `${created} demande(s) d'achat proposée(s)` : 'Aucune nouvelle proposition (besoins couverts)' };
+}
+
 export const JOBS: Record<string, Handler> = {
   email_outbox: emailOutbox,
+  purchase_suggestions: purchaseSuggestions,
   complaints_overdue: complaintsOverdue,
   project_tasks_overdue: projectTasksOverdue,
   maintenance_due: maintenanceDue,

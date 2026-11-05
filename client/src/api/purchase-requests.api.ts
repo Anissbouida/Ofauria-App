@@ -21,6 +21,9 @@ export const purchaseRequestsApi = {
     api.put(`/purchase-requests/${id}/supplier`, { supplierId }).then(r => r.data.data),
   bulkAssignSupplier: (requestIds: string[], supplierId: string | null) =>
     api.post(`/purchase-requests/bulk-assign-supplier`, { requestIds, supplierId }).then(r => r.data.data),
+  /** Soumet une proposition (DA brouillon générée par le MRP, L6) à l'approbation. */
+  submit: (id: string) =>
+    api.post(`/purchase-requests/${id}/submit`).then(r => r.data.data),
   /** Annulation d'une demande en attente : motif obligatoire (journalisé). */
   cancel: (id: string, reason: string) =>
     api.post(`/purchase-requests/${id}/cancel`, { reason }).then(r => r.data.data),

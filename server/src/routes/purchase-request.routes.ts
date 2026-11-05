@@ -28,6 +28,8 @@ router.get('/count', authenticate, authorize(...REQUESTERS), asyncHandler(purcha
 router.get('/:id/actions', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(purchaseRequestController.actions));
 router.get('/:id/history', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(purchaseRequestController.history));
 router.post('/', authenticate, authorize(...REQUESTERS), validate(createPurchaseRequestSchema), asyncHandler(purchaseRequestController.create));
+// Soumettre une proposition (DA brouillon générée par le MRP, L6) à l'approbation.
+router.post('/:id/submit', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(purchaseRequestController.submit));
 router.put('/:id/quantity', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), validate(updateQuantitySchema), asyncHandler(purchaseRequestController.updateQuantity));
 router.put('/:id/supplier', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), validate(assignSupplierSchema), asyncHandler(purchaseRequestController.assignSupplier));
 router.post('/bulk-assign-supplier', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(bulkAssignSupplierSchema), asyncHandler(purchaseRequestController.bulkAssignSupplier));

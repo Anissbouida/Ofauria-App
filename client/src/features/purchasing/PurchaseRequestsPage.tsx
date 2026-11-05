@@ -143,6 +143,17 @@ export default function PurchaseRequestsPage() {
     onError: (e) => notify.error(apiErrorMessage(e, 'Création de l\'appel d\'offres impossible')),
   });
 
+  // Soumettre une proposition (DA brouillon générée par le MRP, L6) à l'approbation.
+  const submitMutation = useMutation({
+    mutationFn: (id: string) => purchaseRequestsApi.submit(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchase-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-requests-grouped'] });
+      notify.success('Proposition soumise à l\'approbation');
+    },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Soumission impossible')),
+  });
+
   const filteredGroups = useMemo(() => {
     if (!search) return groups as SupplierGroup[];
     const q = search.toLowerCase();
@@ -386,7 +397,17 @@ export default function PurchaseRequestsPage() {
                                   </span>
                                 ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                               </td>
-                              <td style={{ textAlign: 'right' }}>
+                              <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                {req.approval_status === 'draft' && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); submitMutation.mutate(req.id); }}
+                                    disabled={submitMutation.isPending}
+                                    className="odoo-btn-secondary"
+                                    title="Soumettre cette proposition à l'approbation"
+                                    style={{ marginRight: 4, fontSize: '0.6875rem', padding: '2px 6px' }}>
+                                    Soumettre
+                                  </button>
+                                )}
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setReasonAction({ kind: 'cancel', id: req.id, label: req.ingredient_name }); }}
                                   className="odoo-pager-btn"

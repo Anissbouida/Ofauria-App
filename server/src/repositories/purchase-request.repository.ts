@@ -148,6 +148,27 @@ export const purchaseRequestRepository = {
     return result.rows[0];
   },
 
+  /**
+   * Proposition automatique (MRP déclencheur, lot L6) : crée une DA à l'état
+   * « proposé » (approval_status = 'draft', non soumise à l'approbation) qu'un
+   * humain revoit et soumet. Dédupliquée : rien si une DA ouverte (non clôturée/
+   * annulée) existe déjà pour cet ingrédient + magasin. Renvoie l'id ou null.
+   */
+  async insertProposal(data: { ingredientId: string; supplierId?: string | null; quantity: number; unit: string; storeId?: string | null; note?: string }) {
+    const dup = await db.query(
+      `SELECT 1 FROM purchase_requests
+        WHERE ingredient_id = $1 AND status = 'pending' AND approval_status <> 'rejected'
+          AND ($2::uuid IS NULL OR store_id = $2) LIMIT 1`,
+      [data.ingredientId, data.storeId ?? null]);
+    if (dup.rows[0]) return null;
+    const { qty } = await applyContainerRule(db, data.ingredientId, data.quantity);
+    const r = await db.query(
+      `INSERT INTO purchase_requests (ingredient_id, supplier_id, quantity, unit, reason, note, requested_by, store_id, approval_status)
+       VALUES ($1, $2, $3, $4, 'replenishment', $5, NULL, $6, 'draft') RETURNING id`,
+      [data.ingredientId, data.supplierId ?? null, qty, data.unit, data.note ?? 'Proposition automatique (réapprovisionnement)', data.storeId ?? null]);
+    return r.rows[0].id as string;
+  },
+
   /** Update quantity of a pending request */
   async updateQuantity(id: string, quantity: number, userId: string, storeId?: string) {
     const cur = await db.query(`SELECT ingredient_id FROM purchase_requests WHERE id = $1`, [id]);

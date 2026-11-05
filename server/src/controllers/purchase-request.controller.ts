@@ -91,6 +91,25 @@ export const purchaseRequestController = {
     res.status(201).json({ success: true, data: { ...request, approval_status: approvalStatus }, approval });
   },
 
+  /**
+   * Soumet une DA « proposée » (approval_status 'draft', générée par le MRP, L6) à
+   * l'approbation : un humain a revu la proposition et la lance dans le circuit.
+   * Sans règle applicable → approuvée d'emblée, commandable.
+   */
+  async submit(req: AuthRequest, res: Response) {
+    const { rows } = await db.query(
+      `SELECT id, ingredient_id, quantity, supplier_id, approval_status FROM purchase_requests WHERE id = $1`, [req.params.id]);
+    const request = rows[0];
+    if (!request) { res.status(404).json({ success: false, error: { message: 'Demande non trouvée' } }); return; }
+    if (request.approval_status !== 'draft') {
+      res.status(409).json({ success: false, error: { message: 'Seule une proposition (brouillon) peut être soumise.' } });
+      return;
+    }
+    const { approvalStatus, approval } = await submitRequestForApproval(request, req.user!);
+    await recordAction(db, { documentType: 'purchase_request', documentId: request.id as string, action: 'submitted', actorId: req.user!.userId, note: 'proposition soumise à approbation' });
+    res.json({ success: true, data: { ...request, approval_status: approvalStatus }, approval });
+  },
+
   async updateQuantity(req: AuthRequest, res: Response) {
     const updated = await purchaseRequestRepository.updateQuantity(req.params.id, req.body.quantity, req.user!.userId, req.user!.storeId);
     if (!updated) {
