@@ -112,6 +112,10 @@ const SELECT = `
 const ITEMS = `
   SELECT i.*, COALESCE(ing.name, pk.name, i.description) AS label, COALESCE(i.unit, ing.unit, pk.unit) AS unit_label,
          ec.name AS category_name,
+         -- Conditionnement d'achat (contenant de l'ingrédient) : saisie du devis par
+         -- carton quand container_size > 1, sinon par unité. 1 = pas de contenant.
+         COALESCE(NULLIF(ing.container_size, 0), 1) AS container_size,
+         ct.label AS container_label,
          (SELECT poi.unit_price FROM purchase_order_items poi JOIN purchase_orders po ON po.id = poi.purchase_order_id
            WHERE po.status NOT IN ('cancelled') AND poi.unit_price IS NOT NULL
              AND ((i.ingredient_id IS NOT NULL AND poi.ingredient_id = i.ingredient_id) OR (i.packaging_id IS NOT NULL AND poi.packaging_id = i.packaging_id))
@@ -119,6 +123,7 @@ const ITEMS = `
     FROM rfq_items i
     LEFT JOIN ingredients ing ON ing.id = i.ingredient_id
     LEFT JOIN packaging_items pk ON pk.id = i.packaging_id
+    LEFT JOIN ref_entries ct ON ct.id = ing.container_type_id
     LEFT JOIN expense_categories ec ON ec.id = i.category_id`;
 
 async function syncStatus(client: { query: typeof db.query }, rfqId: string) {

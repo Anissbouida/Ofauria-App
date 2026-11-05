@@ -4,7 +4,7 @@ import {
   FileQuestion, Send, Plus, Search, Loader2, CheckCircle2, XCircle, Trophy, Trash2, X, Inbox, FilePenLine, Clock, Ban, RotateCcw, Award, Filter,
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { rfqApi, RFQ_STATUS_LABELS, type Rfq, type RfqStatus, type RfqItemInput, type Quotation, type RfqSupplier } from '../../api/rfq.api';
+import { rfqApi, RFQ_STATUS_LABELS, type Rfq, type RfqStatus, type RfqItem, type RfqItemInput, type Quotation, type RfqSupplier } from '../../api/rfq.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import { packagingApi } from '../../api/packaging.api';
 import { suppliersApi } from '../../api/accounting.api';
@@ -399,6 +399,14 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
   const qc = useQueryClient();
   const existing: Quotation | undefined = (rfq.quotations ?? []).find(q => q.supplier_id === supplier.supplier_id);
   const items = rfq.items ?? [];
+  // Saisie selon le conditionnement d'achat : si l'article a un contenant (carton de N),
+  // le prix et les quantités se saisissent PAR CONTENANT ; sinon par unité de base.
+  // Le stockage reste en unité de base (prix/qté ÷ et × la taille) : l'attribution,
+  // le BC et la réception ne changent pas.
+  const packOf = (it: RfqItem) => {
+    const size = Number(it.container_size) || 1;
+    return { size, hasContainer: size > 1, pack: it.container_label || 'contenant' };
+  };
   const [head, setHead] = useState({
     quotationRef: existing?.quotation_ref ?? '', receivedAt: existing?.received_at?.slice(0, 10) ?? format(new Date(), 'yyyy-MM-dd'),
     validUntil: existing?.valid_until?.slice(0, 10) ?? '', deliveryDays: existing?.delivery_days != null ? String(existing.delivery_days) : '',
@@ -422,9 +430,14 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
   }, [currency, currencies]);
   const cur = currency === 'MAD' ? 'DH' : currency;
   const [lines, setLines] = useState<Record<string, { price: string; qty: string; note: string; available: boolean }>>(() => Object.fromEntries(items.map(it => {
+    const { size, hasContainer } = packOf(it);
     const l = existing?.lines.find(x => x.rfq_item_id === it.id);
-    const price = l?.foreign_unit_price ?? l?.unit_price;
-    return [it.id, { price: price != null ? String(Number(price)) : '', qty: l?.quantity ?? '', note: l?.note ?? '', available: l ? l.available : true }];
+    const basePrice = l?.foreign_unit_price ?? l?.unit_price;
+    // Stocké en unité de base → affiché par contenant (× la taille).
+    const price = basePrice != null ? Number(basePrice) * (hasContainer ? size : 1) : null;
+    const baseQty = l?.quantity != null && l.quantity !== '' ? Number(l.quantity) : null;
+    const qty = baseQty != null ? (hasContainer ? baseQty / size : baseQty) : null;
+    return [it.id, { price: price != null ? String(price) : '', qty: qty != null ? String(qty) : '', note: l?.note ?? '', available: l ? l.available : true }];
   })));
   const save = useMutation({
     mutationFn: () => rfqApi.saveQuotation(rfq.id, {
@@ -433,12 +446,26 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
       shippingCost: Number(head.shippingCost) || 0, discountPct: Number(head.discountPct) || 0, notes: head.notes || null,
       criteriaScores: Object.fromEntries(manualCriteria.map(c => [c.code, critScores[c.code] === '' || critScores[c.code] == null ? null : Number(critScores[c.code])])),
       currencyCode: currency, ...(currency !== 'MAD' ? { exchangeRate: rate } : {}),
-      items: items.map(it => { const l = lines[it.id]; const available = l.available && l.price !== ''; return { rfqItemId: it.id, available, unitPrice: available ? Number(l.price) : null, quantity: l.qty ? Number(l.qty) : null, note: l.note || null }; }),
+      // Conversion saisie (par contenant) → unité de base pour le stockage.
+      items: items.map(it => {
+        const l = lines[it.id]; const available = l.available && l.price !== '';
+        const { size, hasContainer } = packOf(it);
+        const unitPrice = available ? Number(l.price) / (hasContainer ? size : 1) : null;
+        const qtyEntry = l.qty ? Number(l.qty) : null;
+        const quantity = qtyEntry != null ? (hasContainer ? qtyEntry * size : qtyEntry) : null;
+        return { rfqItemId: it.id, available, unitPrice, quantity, note: l.note || null };
+      }),
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['rfq', rfq.id] }); qc.invalidateQueries({ queryKey: ['rfqs'] }); notify.success('Devis enregistré'); onClose(); },
     onError: e => notify.error(apiErrorMessage(e)),
   });
-  const subtotal = items.reduce((s, it) => { const l = lines[it.id]; return l.available && l.price !== '' ? s + Number(l.price) * Number(l.qty || it.quantity) : s; }, 0);
+  // Sous-total : prix (par contenant ou unité) × quantité dans la même unité de saisie.
+  const subtotal = items.reduce((s, it) => {
+    const l = lines[it.id]; if (!(l.available && l.price !== '')) return s;
+    const { size, hasContainer } = packOf(it);
+    const demandedEntry = hasContainer ? Number(it.quantity) / size : Number(it.quantity);
+    return s + Number(l.price) * (l.qty ? Number(l.qty) : demandedEntry);
+  }, 0);
   const total = subtotal * (1 - (Number(head.discountPct) || 0) / 100) + (Number(head.shippingCost) || 0);
   const set = (k: keyof typeof head, v: string) => setHead(h => ({ ...h, [k]: v }));
 
@@ -474,12 +501,21 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
           </div>
           <table className="odoo-table">
             <thead><tr><th>Article</th><th style={{ textAlign: 'right' }}>Qté demandée</th><th style={{ width: 130 }}>Prix unitaire HT ({cur})</th><th style={{ width: 110 }}>Qté proposée</th><th>Remarque</th><th style={{ width: 70 }}>Proposé</th></tr></thead>
-            <tbody>{items.map(it => { const l = lines[it.id]; const upd = (p: Partial<typeof l>) => setLines(s => ({ ...s, [it.id]: { ...s[it.id], ...p } })); return (
+            <tbody>{items.map(it => { const l = lines[it.id]; const upd = (p: Partial<typeof l>) => setLines(s => ({ ...s, [it.id]: { ...s[it.id], ...p } }));
+              const { size, hasContainer, pack } = packOf(it);
+              const entryUnit = hasContainer ? pack : (it.unit_label ?? 'unité');
+              const demandedEntry = hasContainer ? Number(it.quantity) / size : Number(it.quantity);
+              return (
               <tr key={it.id} style={{ opacity: l.available ? 1 : 0.5 }}>
-                <td>{it.label}{it.last_price && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>dernier prix {n4(it.last_price)} DH</div>}</td>
-                <td style={{ textAlign: 'right' }}>{Number(it.quantity).toLocaleString('fr-FR')} {it.unit_label ?? ''}</td>
-                <td><input className="input" type="number" min="0" step="0.0001" style={{ width: '100%' }} value={l.price} disabled={!l.available} onChange={e => upd({ price: e.target.value })} /></td>
-                <td><input className="input" type="number" min="0" step="any" style={{ width: '100%' }} value={l.qty} disabled={!l.available} onChange={e => upd({ qty: e.target.value })} placeholder={String(Number(it.quantity))} /></td>
+                <td>{it.label}
+                  {hasContainer && <div style={{ fontSize: '0.7rem', color: 'var(--theme-accent)' }}>acheté par {pack} de {Number(size).toLocaleString('fr-FR')} {it.unit_label ?? ''}</div>}
+                  {it.last_price && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>dernier prix {n4(Number(it.last_price) * (hasContainer ? size : 1))} DH{hasContainer ? ` / ${pack}` : ''}</div>}</td>
+                <td style={{ textAlign: 'right' }}>{demandedEntry.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {entryUnit}{hasContainer ? <div style={{ fontSize: '0.65rem', color: 'var(--theme-text-muted)' }}>= {Number(it.quantity).toLocaleString('fr-FR')} {it.unit_label ?? ''}</div> : null}</td>
+                <td>
+                  <input className="input" type="number" min="0" step="0.0001" style={{ width: '100%' }} value={l.price} disabled={!l.available} onChange={e => upd({ price: e.target.value })} />
+                  <div style={{ fontSize: '0.65rem', color: 'var(--theme-text-muted)' }}>/ {entryUnit}</div>
+                </td>
+                <td><input className="input" type="number" min="0" step="any" style={{ width: '100%' }} value={l.qty} disabled={!l.available} onChange={e => upd({ qty: e.target.value })} placeholder={String(demandedEntry)} /></td>
                 <td><input className="input" style={{ width: '100%' }} value={l.note} onChange={e => upd({ note: e.target.value })} placeholder="Marque, conditionnement…" /></td>
                 <td style={{ textAlign: 'center' }}><input type="checkbox" checked={l.available} onChange={e => upd({ available: e.target.checked })} title="Décocher si le fournisseur ne propose pas cet article" /></td>
               </tr>

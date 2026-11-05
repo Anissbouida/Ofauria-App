@@ -8,6 +8,8 @@ export type RfqItem = {
   id: string; rfq_id: string; line_type: LineType; ingredient_id: string | null; packaging_id: string | null; description: string | null;
   category_id: string | null; category_name: string | null; unit: string | null; unit_label: string | null; quantity: string; display_order: number;
   label: string; last_price: string | null;
+  /** Conditionnement d'achat (mig contenants) : container_size > 1 = saisie du devis par contenant. */
+  container_size?: string | number | null; container_label?: string | null;
 };
 export type RfqSupplier = {
   id: string; supplier_id: string; supplier_name: string; email: string | null; phone: string | null; contact_name: string | null;
