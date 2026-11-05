@@ -29,6 +29,7 @@ import NotificationsTab from './NotificationsTab';
 import DataTab from './DataTab';
 import ApprovalsTab from './ApprovalsTab';
 import RfqCriteriaCard from './RfqCriteriaCard';
+import ReceptionQcCategoriesCard from './ReceptionQcCategoriesCard';
 import ReferentielTab from './ReferentielTab';
 import SettingsSearch from './SettingsSearch';
 import SetupHome from './SetupHome';
@@ -158,6 +159,7 @@ function SettingsShell() {
       <div style={{ display: 'grid', gap: 16 }}>
         <SodMonitor />
         <ParametersPanel domains={['purchasing']} />
+        <ReceptionQcCategoriesCard />
         <RfqCriteriaCard />
       </div>
     ),

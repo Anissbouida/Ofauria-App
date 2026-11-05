@@ -191,6 +191,7 @@ type POItem = {
   qty_remaining_base?: string;
   requires_lot?: boolean;
   requires_dlc?: boolean;
+  requires_qc?: boolean;
   default_shelf_life_days?: number | null;
   discount_pct?: string;
   tva_rate?: string | null;
@@ -2256,6 +2257,11 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
         };
       });
     if (deliveredItems.length === 0) { notify.error('Saisissez au moins une quantité livrée'); return; }
+    // Article sous contrôle qualité (L5) : n° de lot fournisseur obligatoire avant réception.
+    const qcNoLot = deliveredItems
+      .map(d => items.find(it => it.id === d.itemId))
+      .find(it => it?.requires_qc && !lotInfo[it.id]?.supplierLotNumber?.trim());
+    if (qcNoLot) { notify.error(`${qcNoLot.ingredient_name} : n° de lot fournisseur obligatoire (article sous contrôle qualité)`); return; }
     // Si cette reception va creer la facture (livraison complete), on conseille
     // fortement le N° de facture fournisseur — sinon le systeme retombera
     // sur un numero auto-genere (legacy, non recommande).
@@ -2548,8 +2554,8 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
                           <input type="text"
                             value={lotInfo[item.id]?.supplierLotNumber ?? ''}
                             onChange={(e) => setLotInfo({ ...lotInfo, [item.id]: { ...lotInfo[item.id], supplierLotNumber: e.target.value } })}
-                            style={{ ...odooFieldStyle, fontSize: '0.75rem', ...(item.requires_lot && !lotInfo[item.id]?.supplierLotNumber ? { borderColor: '#d97706' } : {}) }}
-                            placeholder={item.requires_lot ? 'Lot *' : 'Lot'} title={item.requires_lot ? 'Lot fournisseur exigé pour cet article' : undefined} />
+                            style={{ ...odooFieldStyle, fontSize: '0.75rem', ...((item.requires_lot || item.requires_qc) && !lotInfo[item.id]?.supplierLotNumber ? { borderColor: '#d97706' } : {}) }}
+                            placeholder={(item.requires_lot || item.requires_qc) ? 'Lot *' : 'Lot'} title={item.requires_qc ? 'Lot fournisseur OBLIGATOIRE (article sous contrôle qualité)' : item.requires_lot ? 'Lot fournisseur exigé pour cet article' : undefined} />
                         ) : <span style={{ color: 'var(--odoo-text-muted)', display: 'block', textAlign: 'center' }}>—</span>}
                       </td>
                       <td>

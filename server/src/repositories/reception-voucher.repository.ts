@@ -574,6 +574,14 @@ export const receptionVoucherRepository = {
           }
           if (quarantined) {
             const nm = (await client.query(`SELECT name FROM ingredients WHERE id = $1`, [item.ingredientId])).rows[0]?.name;
+            // N° de lot fournisseur OBLIGATOIRE pour un article sous contrôle qualité (L5) :
+            // la traçabilité amont est la condition de la quarantaine/libération. Bloquant.
+            if (!item.supplierLotNumber?.trim()) {
+              const e: Error & { statusCode?: number } = new Error(
+                `${nm ?? 'Article'} : n° de lot fournisseur obligatoire (article sous contrôle qualité).`);
+              e.statusCode = 400;
+              throw e;
+            }
             warnings.push(`${nm} : en quarantaine — à libérer par un contrôle qualité conforme`);
           }
         }

@@ -394,6 +394,8 @@ export const expenseCategoryRepository = {
     const mapping: Record<string, string> = {
       name: 'name', description: 'description', parent_id: 'parent_id',
       level: 'level', requires_po: 'requires_po', display_order: 'display_order', is_active: 'is_active',
+      // Exigences réception (mig 308, 461) : contrôle qualité / DLC / lot fournisseur.
+      requires_qc: 'requires_qc', requires_dlc: 'requires_dlc', requires_lot: 'requires_lot',
     };
     const fields: string[] = []; const values: unknown[] = []; let i = 1;
     for (const [key, col] of Object.entries(mapping)) {

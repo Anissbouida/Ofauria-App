@@ -243,8 +243,9 @@ export const purchaseOrderRepository = {
               -- Contenant figé sur la ligne à la commande (mig 307), distinct de la fiche actuelle.
               lct.label as line_container_label,
               GREATEST(poi.quantity_ordered - poi.qty_received_base - poi.qty_cancelled_base, 0) as qty_remaining_base,
-              -- Exigences lot fournisseur / DLC de l'article (mig 308), pour la saisie de réception.
+              -- Exigences lot fournisseur / DLC / contrôle qualité de l'article (mig 308, 461), pour la saisie de réception.
               COALESCE(lr.requires_lot, false) as requires_lot, COALESCE(lr.requires_dlc, false) as requires_dlc,
+              COALESCE(lr.requires_qc, false) as requires_qc,
               lr.default_shelf_life_days,
               poi.line_type as kind
        FROM purchase_order_items poi
