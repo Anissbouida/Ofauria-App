@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ClipboardCheck, CheckCircle2, XCircle, Clock, Inbox, Send, History, UserCheck, Trash2, Loader2, ChevronDown, ChevronRight, FileDown, Truck } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, Inbox, Send, History, UserCheck, Trash2, Loader2, ChevronDown, ChevronRight, FileDown, Truck } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ROLE_LABELS, APPROVAL_DOC_TYPES, APPROVAL_REQUEST_STATUS_LABELS, type ApprovalDocTypeDef } from '@ofauria/shared';
@@ -10,6 +10,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
+import { StagePipeline, type StageDef } from '../../components/purchasing/ProcessBoard';
 
 /**
  * Boîte « À approuver » (lot 8). Les demandes que je peux trancher, celles
@@ -250,7 +251,7 @@ export default function ApprovalsPage() {
   const avgDelay = avgHours == null ? '—' : avgHours < 24 ? `${avgHours.toFixed(1)} h` : `${(avgHours / 24).toFixed(1)} j`;
   // Répartition des pièces en attente par type.
   const byType = Object.entries(inboxRows.reduce((m, r) => { const k = DOC_TYPES[r.doc_type]?.label ?? r.doc_type; m[k] = (m[k] || 0) + 1; return m; }, {} as Record<string, number>)).sort((a, b) => b[1] - a[1]);
-  const delegations = useQuery({ queryKey: ['approvals', 'delegations'], queryFn: approvalsApi.delegations, enabled: tab === 'delegations' });
+  const delegations = useQuery({ queryKey: ['approvals', 'delegations'], queryFn: approvalsApi.delegations });
   const delegates = useQuery({ queryKey: ['approvals', 'delegates'], queryFn: approvalsApi.delegates, enabled: tab === 'delegations' });
 
   const refresh = () => { queryClient.invalidateQueries({ queryKey: ['approvals'] }); queryClient.invalidateQueries({ queryKey: ['notifications'] }); };
@@ -282,64 +283,30 @@ export default function ApprovalsPage() {
     onError: (err) => notify.error(apiErrorMessage(err, 'Retrait refusé')),
   });
 
-  const tabs = [
-    { key: 'inbox' as const, label: 'À approuver', icon: Inbox, count: inbox.data?.length },
-    { key: 'mine' as const, label: 'Mes demandes', icon: Send },
-    ...(isManager ? [{ key: 'history' as const, label: 'Historique', icon: History }] : []),
-    { key: 'delegations' as const, label: 'Délégations', icon: UserCheck },
+  // En-tête à la charte Achats : pipeline cliquable (comme BC / Factures / Demandes de prix).
+  // Les tuiles servent de navigation entre les sections et portent les métriques de décision.
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const activeDelegations = (delegations.data ?? []).filter(d => d.starts_on.slice(0, 10) <= today && d.ends_on.slice(0, 10) >= today).length;
+  const stages: Array<StageDef & { key: typeof tab }> = [
+    { key: 'inbox', label: 'À approuver', hint: 'en attente de décision', icon: Inbox },
+    { key: 'mine', label: 'Mes demandes', hint: "pièces que j'ai soumises", icon: Send },
+    ...(isManager ? [{ key: 'history' as const, label: 'Traitées (30 j)', hint: 'historique des décisions', icon: History }] : []),
+    { key: 'delegations', label: 'Délégations', hint: 'pendant une absence', icon: UserCheck },
   ];
+  const stageStats: Record<string, { count: number; sub: string; late?: number; alertLabel?: string }> = {
+    inbox: { count: inboxRows.length, sub: pendingAmount > 0 ? money(pendingAmount) : '', late: overdue, alertLabel: 'en retard' },
+    mine: { count: myPending, sub: '' },
+    history: { count: req30, sub: rej30 > 0 ? `${rej30} refus` : '' },
+    delegations: { count: activeDelegations, sub: activeDelegations > 0 ? 'active' : '' },
+  };
+  const pipelineSummary = isManager
+    ? `Taux d'approbation ${approveRate == null ? '—' : `${approveRate} %`} · délai moyen ${avgDelay} · ${activeRules} circuit${activeRules > 1 ? 's' : ''} actif${activeRules > 1 ? 's' : ''}`
+    : `${inboxRows.length} pièce${inboxRows.length > 1 ? 's' : ''} en attente de votre décision`;
 
   return (
-    <div className="odoo-scope p-6" style={{ display: 'grid', gap: 16, maxWidth: 1100, margin: '0 auto' }}>
-      <div className="odoo-form-header">
-        <div>
-          <h1 className="odoo-form-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><ClipboardCheck size={22} /> Approbations</h1>
-          <p className="odoo-form-subtitle">Bons de commande au-dessus du seuil, annulations de factures, écarts d'inventaire : les pièces qui attendent une décision.</p>
-        </div>
-      </div>
-      {/* Synthèse décisionnelle */}
-      <div className="odoo-stat-grid" style={{ border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
-        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-          <div className="odoo-stat-card-label">À approuver</div>
-          <div className="odoo-stat-card-value" style={{ color: inboxRows.length ? 'var(--odoo-primary, #714B67)' : undefined }}>{inboxRows.length}</div>
-          <div className="odoo-stat-card-sub">{pendingAmount > 0 ? `${money(pendingAmount)} en attente` : 'pièces en attente de décision'}</div>
-        </div>
-        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-          <div className="odoo-stat-card-label">En retard</div>
-          <div className="odoo-stat-card-value" style={{ color: overdue > 0 ? '#dc3545' : undefined }}>{overdue}</div>
-          <div className="odoo-stat-card-sub">{overdue > 0 ? 'échéance dépassée / escaladées' : 'aucune escalade'}</div>
-        </div>
-        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-          <div className="odoo-stat-card-label">Mes demandes en cours</div>
-          <div className="odoo-stat-card-value">{myPending}</div>
-          <div className="odoo-stat-card-sub">pièces que j'ai soumises</div>
-        </div>
-        {isManager && <>
-          <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-            <div className="odoo-stat-card-label">Demandes (30 j)</div>
-            <div className="odoo-stat-card-value">{req30}</div>
-            <div className="odoo-stat-card-sub">{rej30} rejetée{rej30 > 1 ? 's' : ''}</div>
-          </div>
-          <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-            <div className="odoo-stat-card-label">Taux d'approbation</div>
-            <div className="odoo-stat-card-value">{approveRate == null ? '—' : `${approveRate} %`}</div>
-            <div className="odoo-stat-card-sub">sur 30 jours</div>
-          </div>
-          <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-            <div className="odoo-stat-card-label">Délai moyen de décision</div>
-            <div className="odoo-stat-card-value">{avgDelay}</div>
-            <div className="odoo-stat-card-sub">{activeRules} circuit{activeRules > 1 ? 's' : ''} actif{activeRules > 1 ? 's' : ''}</div>
-          </div>
-        </>}
-      </div>
-
-      <div className="odoo-tabs" role="tablist">
-        {tabs.map(t => (
-          <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={`odoo-tab${tab === t.key ? ' active' : ''}`} onClick={() => setTab(t.key)}>
-            <t.icon size={14} /> {t.label}{t.count ? ` (${t.count})` : ''}
-          </button>
-        ))}
-      </div>
+    <div className="odoo-scope" style={{ display: 'grid', gap: 16 }}>
+      <StagePipeline title="Où en sont les approbations" summary={pipelineSummary}
+        stages={stages} stats={stageStats} isActive={k => tab === k} onPick={k => setTab(k as typeof tab)} />
 
       {tab === 'inbox' && (
         <section style={{ display: 'grid', gap: 12 }}>
