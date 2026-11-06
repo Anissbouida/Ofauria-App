@@ -130,9 +130,9 @@ export default function PurchaseRequestsPage() {
     onError: (e) => notify.error(apiErrorMessage(e, 'Action impossible')),
   });
 
-  // Sourcing obligatoire (mig 457) : une DA approuvée ne devient pas un BC
-  // directement — on lance un appel d'offres depuis les DA sélectionnées, et le BC
-  // naîtra de l'attribution de cet AO (onglet 4 · Appels d'offres).
+  // Sourcing obligatoire (mig 457) : une DA ne devient pas un BC directement — on
+  // lance une demande de prix depuis les DA sélectionnées, et le BC naîtra de son
+  // attribution (onglet 3 · Demandes de prix). L'approbation se fait ensuite sur le BC.
   const rfqMutation = useMutation({
     mutationFn: (requestIds: string[]) => rfqApi.createFromRequests(requestIds),
     onSuccess: (rfq) => {

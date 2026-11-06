@@ -88,12 +88,14 @@ export default function PurchasingPage() {
     { key: 'pilotage', label: 'Pilotage', icon: Scale, section: 'dashboard' },
     // ─── OPÉRATIONS : les 7 étapes du cycle procure-to-pay, dans l'ordre ───
     // 1 Identification = besoins à commander (ruptures + stock sous le seuil), via l'écran
-    // « À commander » ; 2 Demande d'achat = demandes en attente ; 3 Approbation reste un lien.
+    // « À commander » ; 2 Demande d'achat = demandes en attente. L'approbation des achats
+    // (mig 465) vient APRÈS la demande de prix : on approuve l'engagement chiffré (devis
+    // retenu / BC), pas un besoin estimé. D'où l'ordre : Demande de prix (3) → Approbation (4).
     { key: 'identification', label: '1 · Identification', icon: Boxes, section: 'operations' },
     { key: 'purchase_requests', label: '2 · Demande d\'achat', icon: FilePlus2, section: 'operations' },
-    { key: 'approvals', label: '3 · Approbation', icon: ClipboardCheck, section: 'operations', badge: approvalsCount },
     // Appels d'offres (mig 360) : demande de prix à plusieurs fournisseurs, devis, comparatif, BC.
-    { key: 'rfq', label: '4 · Demandes de prix', icon: FileQuestion, section: 'operations' },
+    { key: 'rfq', label: '3 · Demandes de prix', icon: FileQuestion, section: 'operations' },
+    { key: 'approvals', label: '4 · Approbation', icon: ClipboardCheck, section: 'operations', badge: approvalsCount },
     { key: 'purchase_orders', label: '5 · Bons de commande', icon: ClipboardList, section: 'operations' },
     // Réception (étape 6) : liste des bons de réception ; la réception se complète dans le détail du BC.
     { key: 'reception', label: '6 · Réceptions', icon: PackageCheck, section: 'operations' },
