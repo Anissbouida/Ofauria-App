@@ -27,13 +27,16 @@ const STATUS_INFO: Record<string, { label: string; tag: string; dot: string }> =
 };
 
 /**
- * État du circuit d'approbation (dimension séparée de la couverture, mig 456).
- * Flux procure-to-pay : une DA n'est transformable en BC que si approuvée.
+ * État de la DA (dimension séparée de la couverture). Flux procure-to-pay (mig 465) :
+ * la DA est un besoin directement sourçable une fois validée — l'approbation des
+ * achats se fait désormais sur le BC chiffré (devis retenu), plus sur la DA.
+ * 'draft' = proposition MRP à activer ; 'approved' = prête à sourcer.
+ * ('pending'/'rejected' : données héritées de l'ancien circuit d'approbation de DA.)
  */
 const APPROVAL_INFO: Record<string, { label: string; tag: string }> = {
-  draft:    { label: 'Brouillon',   tag: 'odoo-tag-grey' },
+  draft:    { label: 'Proposition', tag: 'odoo-tag-grey' },
   pending:  { label: 'À approuver', tag: 'odoo-tag-yellow' },
-  approved: { label: 'Approuvée',   tag: 'odoo-tag-green' },
+  approved: { label: 'Prête',       tag: 'odoo-tag-green' },
   rejected: { label: 'Refusée',     tag: 'odoo-tag-red' },
 };
 const isApproved = (s: string | undefined) => (s ?? 'approved') === 'approved';
@@ -143,13 +146,14 @@ export default function PurchaseRequestsPage() {
     onError: (e) => notify.error(apiErrorMessage(e, 'Création de l\'appel d\'offres impossible')),
   });
 
-  // Soumettre une proposition (DA brouillon générée par le MRP, L6) à l'approbation.
+  // Activer une proposition (DA brouillon générée par le MRP, L6) : besoin validé,
+  // directement sourçable (mig 465, plus d'approbation de DA).
   const submitMutation = useMutation({
     mutationFn: (id: string) => purchaseRequestsApi.submit(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-requests'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-requests-grouped'] });
-      notify.success('Proposition soumise à l\'approbation');
+      notify.success('Proposition activée : prête à sourcer');
     },
     onError: (e) => notify.error(apiErrorMessage(e, 'Soumission impossible')),
   });
@@ -369,7 +373,7 @@ export default function PurchaseRequestsPage() {
                             <tr key={req.id} style={{ opacity: approved ? 1 : 0.7 }}>
                               <td>
                                 <input type="checkbox" checked={isSelected} disabled={!approved}
-                                  title={approved ? undefined : 'Demande non approuvée : à approuver avant de générer un BC'}
+                                  title={approved ? undefined : 'Proposition à activer avant de pouvoir la sourcer'}
                                   onChange={() => toggleSelect(group.supplier_id || '', req.id)} />
                               </td>
                               <td style={{ fontWeight: 500 }}>{req.ingredient_name}</td>
@@ -403,9 +407,9 @@ export default function PurchaseRequestsPage() {
                                     onClick={(e) => { e.stopPropagation(); submitMutation.mutate(req.id); }}
                                     disabled={submitMutation.isPending}
                                     className="odoo-btn-secondary"
-                                    title="Soumettre cette proposition à l'approbation"
+                                    title="Activer cette proposition : besoin validé, prête à sourcer"
                                     style={{ marginRight: 4, fontSize: '0.6875rem', padding: '2px 6px' }}>
-                                    Soumettre
+                                    Activer
                                   </button>
                                 )}
                                 <button

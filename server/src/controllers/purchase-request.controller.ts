@@ -7,43 +7,20 @@ import { approvalService } from '../services/approval.service.js';
 import { db } from '../config/database.js';
 
 /**
- * Soumet une demande d'achat au circuit d'approbation (flux procure-to-pay, mig 456).
- * Valeurs confrontées aux règles (approval_rules, mig 350) :
- *   - amount     : montant estimé = quantité × coût unitaire de l'article ;
- *   - buyer_role : rôle du demandeur ;
- *   - category   : catégorie d'achat de l'article (valeur-liste) ;
- *   - supplier   : fournisseur pressenti (valeur-liste, facultatif).
- * Aucune règle applicable → approuvée d'emblée (approval_status = 'approved'),
- * donc immédiatement commandable. Une règle a matché → 'pending', le BC est
- * bloqué jusqu'à la décision d'un approbateur (approval-handlers.ts).
+ * Flux procure-to-pay (mig 465) : l'approbation des achats se fait désormais sur le
+ * BON DE COMMANDE chiffré (le devis retenu à l'attribution), AVANT envoi au
+ * fournisseur — plus sur la demande d'achat. Approuver une DA sur un montant
+ * *estimé*, avant de connaître les prix, n'avait pas de sens.
+ *
+ * Une demande d'achat est donc un besoin directement sourçable : on la marque
+ * « approuvée » (approval_status 'approved' = prête à sourcer, le filtre de
+ * createFromRequests s'appuie dessus), sans aucun circuit d'approbation. Le
+ * contrôle réel (engagement TTC + cumul fournisseur du jour, barème mig 350)
+ * s'applique à l'envoi du BC (purchase-order.controller).
  */
-async function submitRequestForApproval(
-  request: { id: string; ingredient_id: string; supplier_id: string | null; quantity: string | number; store_id: string | null },
-  actor: { userId: string; role: string; storeId?: string | null },
-) {
-  const ing = (await db.query(
-    `SELECT name, category_id, unit_cost FROM ingredients WHERE id = $1`, [request.ingredient_id])).rows[0];
-  const qty = parseFloat(String(request.quantity)) || 0;
-  const unitCost = ing?.unit_cost != null ? parseFloat(String(ing.unit_cost)) : 0;
-  const amount = Math.round(qty * unitCost * 100) / 100;
-  const result = await approvalService.submit({
-    docType: 'purchase_request',
-    docId: request.id,
-    docLabel: `DA ${ing?.name ?? ''}`.trim(),
-    amount,
-    values: {
-      amount,
-      buyer_role: actor.role,
-      // Valeurs-listes : approvalConditionMatches traite eq comme « contient ».
-      category: ing?.category_id ? [String(ing.category_id)] : [],
-      supplier: request.supplier_id ? [String(request.supplier_id)] : [],
-    },
-    storeId: request.store_id ?? actor.storeId ?? null,
-    requestedBy: actor.userId,
-  });
-  const approvalStatus = result.outcome === 'not_required' ? 'approved' : 'pending';
-  await purchaseRequestRepository.setApprovalStatus(request.id, approvalStatus);
-  return { approvalStatus, approval: 'request' in result ? result.request : null };
+async function markRequestSourceable(requestId: string) {
+  await purchaseRequestRepository.setApprovalStatus(requestId, 'approved');
+  return { approvalStatus: 'approved' as const, approval: null };
 }
 
 export const purchaseRequestController = {
@@ -82,19 +59,17 @@ export const purchaseRequestController = {
       storeId: req.user!.storeId,
     });
     await recordAction(db, { documentType: 'purchase_request', documentId: request.id, action: 'created', actorId: req.user!.userId });
-    // Flux procure-to-pay (mig 456) : la DA passe par l'approbation selon les
-    // règles. Sans règle applicable → approuvée d'emblée, commandable.
-    const { approvalStatus, approval } = await submitRequestForApproval(request, req.user!);
-    if (approvalStatus === 'pending') {
-      await recordAction(db, { documentType: 'purchase_request', documentId: request.id, action: 'submitted', actorId: req.user!.userId, note: 'soumise à approbation' });
-    }
+    // Flux procure-to-pay (mig 465) : la DA est un besoin directement sourçable,
+    // sans approbation (celle-ci se fait sur le BC chiffré, à l'envoi fournisseur).
+    const { approvalStatus, approval } = await markRequestSourceable(request.id);
     res.status(201).json({ success: true, data: { ...request, approval_status: approvalStatus }, approval });
   },
 
   /**
-   * Soumet une DA « proposée » (approval_status 'draft', générée par le MRP, L6) à
-   * l'approbation : un humain a revu la proposition et la lance dans le circuit.
-   * Sans règle applicable → approuvée d'emblée, commandable.
+   * Active une DA « proposée » (approval_status 'draft', générée par le MRP, L6) :
+   * un humain a revu la proposition et la valide comme besoin réel. Elle devient
+   * alors directement sourçable (pas d'approbation de DA, mig 465) ; l'approbation
+   * des achats se fera sur le BC chiffré issu de l'attribution.
    */
   async submit(req: AuthRequest, res: Response) {
     const { rows } = await db.query(
@@ -102,11 +77,11 @@ export const purchaseRequestController = {
     const request = rows[0];
     if (!request) { res.status(404).json({ success: false, error: { message: 'Demande non trouvée' } }); return; }
     if (request.approval_status !== 'draft') {
-      res.status(409).json({ success: false, error: { message: 'Seule une proposition (brouillon) peut être soumise.' } });
+      res.status(409).json({ success: false, error: { message: 'Seule une proposition (brouillon) peut être activée.' } });
       return;
     }
-    const { approvalStatus, approval } = await submitRequestForApproval(request, req.user!);
-    await recordAction(db, { documentType: 'purchase_request', documentId: request.id as string, action: 'submitted', actorId: req.user!.userId, note: 'proposition soumise à approbation' });
+    const { approvalStatus, approval } = await markRequestSourceable(request.id as string);
+    await recordAction(db, { documentType: 'purchase_request', documentId: request.id as string, action: 'submitted', actorId: req.user!.userId, note: 'proposition activée (besoin validé)' });
     res.json({ success: true, data: { ...request, approval_status: approvalStatus }, approval });
   },
 
