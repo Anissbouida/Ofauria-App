@@ -1630,42 +1630,54 @@ export interface ClosureDiffRow {
   closure_number: string | null;
   difference: string | number | null;
   difference_reason: string | null;
+  card_difference?: string | number | null;
+  card_difference_reason?: string | null;
   closed_at: string | null;
   store_id: string | null;
 }
 
 /**
- * Section 4.3 — Comptabilise l'ecart de caisse constate au submit.
- *   difference > 0 (excedent) : 5161 Caisse D / 758 Autres produits non
- *                                courants (excedent) C
- *   difference < 0 (manque)   : 6588 Autres charges non courantes (manque) D
- *                               / 5161 Caisse C
+ * Section 4.3 — Comptabilise l'ecart constate au submit, especes ('cash') ou
+ * carte ('card', mig 467). L'ecart carte rapproche le ticket TPE des ventes
+ * carte enregistrees sur le POS ; il se comptabilise comme l'ecart de caisse,
+ * mais contre la banque/TPE (5141) au lieu du tiroir (5161) :
+ *   diff > 0 (excedent) : <tresorerie> D / 7588 Autres produits non courants C
+ *   diff < 0 (manque)   : 6588 Autres charges non courantes D / <tresorerie> C
  *
- * Tout ecart non nul est comptabilise (le seuil de 5 DH laissait la caisse
- * 5161 deriver du tiroir). Le motif reste obligatoire au-dela de 5 DH
- * (verifie par le repo submitActualAmount).
+ * Tout ecart non nul est comptabilise (le seuil de 5 DH laissait la tresorerie
+ * deriver du reel). Le motif reste obligatoire au-dela de 5 DH (verifie par le
+ * repo submitActualAmount). L'ecriture carte porte source_detail='card' pour ne
+ * pas entrer en collision avec l'ecriture especes (meme source_id de session).
  */
 export async function fromClosureDiff(
   _client: PoolClient | typeof db,
-  session: ClosureDiffRow
+  session: ClosureDiffRow,
+  variant: 'cash' | 'card' = 'cash'
 ): Promise<GeneratedEntry | null> {
-  const diff = round2(parseFloat(String(session.difference ?? 0)) || 0);
+  const raw = variant === 'card' ? session.card_difference : session.difference;
+  const diff = round2(parseFloat(String(raw ?? 0)) || 0);
   if (diff === 0) return null;
   if (!session.closed_at) return null;
 
+  const treasury = variant === 'card' ? '5141' : '5161';
+  const reason = (variant === 'card' ? session.card_difference_reason : session.difference_reason) || 'motif non precise';
+  const kind = variant === 'card' ? 'carte' : 'caisse';
+  const excedentLabel = variant === 'card' ? 'Excedent TPE' : 'Excedent tiroir';
+  const manqueLabel = variant === 'card' ? 'Manque TPE' : 'Manque tiroir';
+
   const date = toIsoDate(session.closed_at);
   const label = session.closure_number
-    ? `Ecart caisse ${session.closure_number} (${session.difference_reason || 'motif non precise'})`
-    : `Ecart caisse (${session.difference_reason || 'motif non precise'})`;
+    ? `Ecart ${kind} ${session.closure_number} (${reason})`
+    : `Ecart ${kind} (${reason})`;
 
   const lines: GeneratedLine[] = diff > 0
     ? [
-        { account_code: '5161', debit: round2(diff), credit: 0, label: 'Excedent tiroir' },
+        { account_code: treasury, debit: round2(diff), credit: 0, label: excedentLabel },
         { account_code: '7588', debit: 0, credit: round2(diff), label },
       ]
     : [
         { account_code: '6588', debit: round2(-diff), credit: 0, label },
-        { account_code: '5161', debit: 0, credit: round2(-diff), label: 'Manque tiroir' },
+        { account_code: treasury, debit: 0, credit: round2(-diff), label: manqueLabel },
       ];
 
   return {
@@ -1674,6 +1686,7 @@ export async function fromClosureDiff(
     description: label,
     source_kind: 'closure_diff',
     source_id: session.id,
+    source_detail: variant === 'card' ? 'card' : undefined,
     store_id: session.store_id,
     lines,
   };

@@ -121,7 +121,8 @@ export async function replayOutbox(userId: string, onlyId?: string) {
         if (entry) await persistEntry(client, entry, { userId });
       } else if (it.source_kind === 'closure_diff') {
         const row = (await client.query(`SELECT * FROM cash_register_sessions WHERE id = $1`, [it.source_id])).rows[0];
-        const entry = row ? await fromClosureDiff(client, row) : null;
+        // source_detail='card' = écart carte (TPE), sinon écart espèces (mig 467).
+        const entry = row ? await fromClosureDiff(client, row, it.source_detail === 'card' ? 'card' : 'cash') : null;
         if (entry) await persistEntry(client, entry, { userId });
       } else if (it.source_kind === 'advance_forfeit') {
         const day = (await client.query(`SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date::text AS d`)).rows[0].d;

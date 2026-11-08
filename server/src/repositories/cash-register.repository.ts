@@ -299,6 +299,8 @@ export const cashRegisterRepository = {
     actualAmount: number,
     notes?: string,
     differenceReason?: string,
+    actualCardAmount?: number | null,
+    cardDifferenceReason?: string,
   ) {
     const session = await this.findById(sessionId);
     if (!session) return null;
@@ -337,6 +339,40 @@ export const cashRegisterRepository = {
       throw err;
     }
 
+    // Mig 467 — Rapprochement carte : le total lu sur le TPE vs les ventes carte
+    // enregistrees par le POS (card_revenue, fige par close()). Symetrique de
+    // l'espece. La saisie est obligatoire des qu'il y a eu des paiements carte :
+    // sinon le total POS etait pris pour argent comptant et un manque carte
+    // restait invisible.
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+    const cardRevenue = parseFloat(session.card_revenue ?? '0') || 0;
+    let cardDifference: number | null = null;
+    let cardAmountToStore: number | null = null;
+    let cardReasonToStore: string | null = null;
+    if (actualCardAmount == null || Number.isNaN(actualCardAmount)) {
+      if (cardRevenue > 0) {
+        const err = new Error('Montant carte (TPE) requis : des paiements carte ont ete encaisses');
+        (err as Error & { code?: string }).code = 'CARD_AMOUNT_REQUIRED';
+        throw err;
+      }
+      // Pas de carte sur la session : rien a rapprocher, on laisse les colonnes a NULL.
+    } else {
+      cardAmountToStore = round2(actualCardAmount);
+      cardDifference = round2(actualCardAmount - cardRevenue);
+      if (Math.abs(cardDifference) > DISCREPANCY_THRESHOLD && !cardDifferenceReason) {
+        const err = new Error(`Motif d'ecart carte obligatoire (ecart de ${cardDifference.toFixed(2)} DH > seuil ${DISCREPANCY_THRESHOLD} DH)`);
+        (err as Error & { code?: string }).code = 'CARD_DIFFERENCE_REASON_REQUIRED';
+        throw err;
+      }
+      const validCardReasons = ['erreur_saisie_tpe', 'transaction_manquante', 'transaction_refusee', 'erreur_comptage', 'autre'];
+      if (cardDifferenceReason && !validCardReasons.includes(cardDifferenceReason)) {
+        const err = new Error(`Motif d'ecart carte invalide : ${cardDifferenceReason}`);
+        (err as Error & { code?: string }).code = 'CARD_DIFFERENCE_REASON_INVALID';
+        throw err;
+      }
+      cardReasonToStore = cardDifferenceReason || null;
+    }
+
     // locked_at pose la cloture inviolable : les endpoints qui updaten la
     // session doivent verifier locked_at IS NULL. Le Z-report devient Z-final.
     const client = await db.getClient();
@@ -346,10 +382,12 @@ export const cashRegisterRepository = {
         `UPDATE cash_register_sessions SET
           actual_amount = $1, difference = $2, notes = $3,
           difference_reason = $5,
+          actual_card_amount = $6, card_difference = $7, card_difference_reason = $8,
           status = 'closed', closed_at = NOW(),
           locked_at = NOW()
         WHERE id = $4 AND status = 'open' AND locked_at IS NULL RETURNING *`,
-        [actualAmount, difference, notes || null, sessionId, differenceReason || null]
+        [actualAmount, difference, notes || null, sessionId, differenceReason || null,
+         cardAmountToStore, cardDifference, cardReasonToStore]
       );
       const row = updated.rows[0];
       if (!row) {
@@ -366,6 +404,15 @@ export const cashRegisterRepository = {
         // O2C L6 (G-RR-07) : un échec part en file d'attente (rejouable), plus un simple log.
         await postOrQueue(client, { kind: 'closure_diff', id: row.id }, async () => {
           const entry = await fromClosureDiff(client, row);
+          if (entry) await persistEntry(client, entry, { userId: session.user_id });
+        });
+      }
+      // Mig 467 — Ecart carte comptabilise comme l'ecart especes mais contre la
+      // banque/TPE (5141). source_detail='card' : ecriture et outbox distincts
+      // de l'ecart especes (meme session), chacun rejouable independamment.
+      if (FLAGS.LEDGER_AUTOGEN && cardDifference != null && Math.abs(cardDifference) >= 0.01) {
+        await postOrQueue(client, { kind: 'closure_diff', id: row.id, detail: 'card' }, async () => {
+          const entry = await fromClosureDiff(client, row, 'card');
           if (entry) await persistEntry(client, entry, { userId: session.user_id });
         });
       }

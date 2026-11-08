@@ -266,6 +266,13 @@ export default function POSPage() {
   // est alors fige pour ne pas pouvoir sonder l'attendu en retouchant le montant.
   const [differenceReason, setDifferenceReason] = useState('');
   const [reasonRequired, setReasonRequired] = useState(false);
+  // Mig 467 — rapprochement carte : total lu sur le TPE, saisi à l'aveugle comme
+  // l'espèce. Le serveur exige la saisie dès qu'il y a eu des paiements carte
+  // (400 CARD_AMOUNT_REQUIRED) et un motif au-delà du seuil (CARD_DIFFERENCE_REASON_REQUIRED).
+  const [actualCardAmount, setActualCardAmount] = useState('');
+  const [cardDifferenceReason, setCardDifferenceReason] = useState('');
+  const [cardReasonRequired, setCardReasonRequired] = useState(false);
+  const [cardAmountRequired, setCardAmountRequired] = useState(false);
   const [closeStep, setCloseStep] = useState<'choose-type' | 'expired' | 'inventory' | 'input' | 'result'>('choose-type');
   const [closeType, setCloseType] = useState<'passation' | 'fin_journee'>('fin_journee');
   // Phase 3 — items vitrine avec DLC ou DLV depassee, bloquent la fermeture journee
@@ -697,12 +704,17 @@ export default function POSPage() {
       actualAmount: parseFloat(actualAmount),
       notes: closeNotes || undefined,
       differenceReason: differenceReason || undefined,
+      actualCardAmount: actualCardAmount !== '' ? parseFloat(actualCardAmount) : undefined,
+      cardDifferenceReason: cardDifferenceReason || undefined,
     }),
     onSuccess: (data) => {
       setCloseResult(data);
       setCloseStep('result');
       setDifferenceReason('');
       setReasonRequired(false);
+      setCardDifferenceReason('');
+      setCardReasonRequired(false);
+      setCardAmountRequired(false);
       // Don't invalidate here — wait until user clicks "Terminer"
       // Otherwise activeSession becomes null and the result screen is hidden
     },
@@ -711,6 +723,16 @@ export default function POSPage() {
       if (code === 'DIFFERENCE_REASON_REQUIRED') {
         // Pas de toast : le message serveur contient le montant de l'ecart.
         setReasonRequired(true);
+        return;
+      }
+      // Mig 467 — rapprochement carte : saisie du TPE exigée, puis motif au-delà
+      // du seuil. On révèle le champ / le motif sans toast (message serveur).
+      if (code === 'CARD_AMOUNT_REQUIRED') {
+        setCardAmountRequired(true);
+        return;
+      }
+      if (code === 'CARD_DIFFERENCE_REASON_REQUIRED') {
+        setCardReasonRequired(true);
         return;
       }
       notify.error(getApiErrorMessage(e, 'Erreur lors de la soumission'));
@@ -3836,16 +3858,45 @@ export default function POSPage() {
                   </div>
                 )}
 
+                {/* Mig 467 — Rapprochement carte : total lu sur le TPE. Saisi à
+                    l'aveugle (le POS ne révèle pas le total carte attendu). */}
+                <div className={`rounded-xl p-3 mb-3 border ${cardAmountRequired ? 'bg-amber-50 border-amber-200' : 'bg-blue-50 border-blue-100'}`}>
+                  <label className="flex items-center gap-1.5 text-sm font-medium text-blue-800 mb-2">
+                    <CreditCard size={15} /> Montant lu sur le terminal bancaire (TPE)
+                  </label>
+                  <input type="number" value={actualCardAmount}
+                    onChange={(e) => { setActualCardAmount(e.target.value); setCardAmountRequired(false); }}
+                    className="input text-center text-xl font-bold" min="0" step="0.01" placeholder="0.00" />
+                  {cardAmountRequired && (
+                    <p className="text-xs text-amber-700 mt-2">Des paiements carte ont ete encaisses : saisissez le total du ticket TPE pour cloturer.</p>
+                  )}
+                  {cardReasonRequired && (
+                    <div className="mt-2">
+                      <p className="text-xs text-amber-700 mb-1">Ecart carte superieur a 5 DH. Indiquez le motif.</p>
+                      <select value={cardDifferenceReason} onChange={(e) => setCardDifferenceReason(e.target.value)}
+                        className="input">
+                        <option value="">— Choisir un motif —</option>
+                        <option value="erreur_saisie_tpe">Erreur de saisie / lecture TPE</option>
+                        <option value="transaction_manquante">Vente carte absente du TPE</option>
+                        <option value="transaction_refusee">Transaction refusee comptee comme vente</option>
+                        <option value="erreur_comptage">Erreur de comptage</option>
+                        <option value="autre">Autre (preciser en observation)</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+
                 <label className="block text-xs font-medium text-gray-700 mb-1">Observations (optionnel)</label>
                 <textarea value={closeNotes} onChange={(e) => setCloseNotes(e.target.value)}
                   className="input mb-3" rows={1} placeholder="Remarques..." />
                 <div className="flex gap-3">
-                  <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); setDifferenceReason(''); setReasonRequired(false); setCloseInputMode('direct'); setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0]))); }}
+                  <button onClick={() => { setShowCloseModal(false); setActualAmount(''); setCloseNotes(''); setDifferenceReason(''); setReasonRequired(false); setActualCardAmount(''); setCardDifferenceReason(''); setCardReasonRequired(false); setCardAmountRequired(false); setCloseInputMode('direct'); setDenomCounts(Object.fromEntries(DENOMINATIONS.map(d => [d.value, 0]))); }}
                     className="btn-secondary flex-1">Annuler</button>
                   <button onClick={() => submitAmountMutation.mutate()}
                     disabled={
                       (closeInputMode === 'direct' ? !actualAmount || parseFloat(actualAmount) < 0 : denomTotal <= 0)
                       || (reasonRequired && !differenceReason)
+                      || (cardReasonRequired && !cardDifferenceReason)
                       || submitAmountMutation.isPending
                     }
                     className="btn-primary flex-1">
@@ -3893,6 +3944,28 @@ export default function POSPage() {
                       <span>Montant trouve</span>
                       <span>{parseFloat(closeResult!.actual_amount as string).toFixed(2)} DH</span>
                     </div>
+
+                    {/* Mig 467 — Rapprochement carte (TPE vs ventes carte POS) */}
+                    {closeResult!.actual_card_amount != null && (
+                      <>
+                        <div className="flex justify-between border-t pt-2">
+                          <span className="text-gray-500 flex items-center gap-1.5"><CreditCard size={14} /> Carte — ventes POS</span>
+                          <span className="font-medium">{parseFloat(String(closeResult!.card_revenue || 0)).toFixed(2)} DH</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Carte — ticket TPE</span>
+                          <span className="font-medium">{parseFloat(String(closeResult!.actual_card_amount)).toFixed(2)} DH</span>
+                        </div>
+                        {parseFloat(String(closeResult!.card_difference || 0)) !== 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Ecart carte</span>
+                            <span className={`font-semibold ${parseFloat(String(closeResult!.card_difference)) < 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                              {parseFloat(String(closeResult!.card_difference)) > 0 ? '+' : ''}{parseFloat(String(closeResult!.card_difference)).toFixed(2)} DH
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                   {(() => {
                     const diff = parseFloat(closeResult!.difference as string);
@@ -4033,6 +4106,10 @@ export default function POSPage() {
                   setCloseNotes('');
                   setDifferenceReason('');
                   setReasonRequired(false);
+                  setActualCardAmount('');
+                  setCardDifferenceReason('');
+                  setCardReasonRequired(false);
+                  setCardAmountRequired(false);
                   setCloseStep('choose-type');
                   setCloseType('fin_journee');
                   setCloseInputMode('direct');

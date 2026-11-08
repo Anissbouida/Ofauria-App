@@ -314,19 +314,29 @@ export default function SalesPage() {
     const date = `${dateFrom}_${dateTo}`;
     if (mainTab === 'sessions') {
       exportCSV(`sessions_${date}.csv`,
-        ['Employé', 'Ouverture', 'Fermeture', 'Fond de caisse', 'CA ventes', 'Avances', 'Montant attendu', 'Montant saisi', 'Écart', 'Statut'],
-        sessions.map((s: Record<string, any>) => [
-          `${s.first_name} ${s.last_name}`,
-          format(new Date(s.opened_at as string), 'dd/MM/yyyy HH:mm'),
-          s.closed_at ? format(new Date(s.closed_at as string), 'dd/MM/yyyy HH:mm') : '',
-          parseFloat(s.opening_amount as string).toFixed(2),
-          parseFloat(s.total_revenue as string).toFixed(2),
-          parseFloat(s.total_advances as string || '0').toFixed(2),
-          s.expected_cash ? parseFloat(s.expected_cash as string).toFixed(2) : '',
-          s.actual_amount ? parseFloat(s.actual_amount as string).toFixed(2) : '',
-          s.difference !== null ? parseFloat(s.difference as string).toFixed(2) : '',
-          s.status === 'closed' ? 'Fermé' : 'En cours',
-        ])
+        ['Employé', 'Ouverture', 'Fermeture', 'Fond de caisse', 'CA ventes', 'Avances', 'Montant attendu', 'Montant saisi', 'Écart espèces', 'Carte attendu', 'Carte TPE', 'Écart carte', 'Écart total', 'Statut'],
+        sessions.map((s: Record<string, any>) => {
+          // Mig 467 — l'écart total cumule espèces (difference) et carte (card_difference).
+          const cashD = s.difference !== null ? parseFloat(s.difference as string) : null;
+          const cardD = s.card_difference != null ? parseFloat(s.card_difference as string) : null;
+          const totD = (cashD === null && cardD === null) ? null : (cashD || 0) + (cardD || 0);
+          return [
+            `${s.first_name} ${s.last_name}`,
+            format(new Date(s.opened_at as string), 'dd/MM/yyyy HH:mm'),
+            s.closed_at ? format(new Date(s.closed_at as string), 'dd/MM/yyyy HH:mm') : '',
+            parseFloat(s.opening_amount as string).toFixed(2),
+            parseFloat(s.total_revenue as string).toFixed(2),
+            parseFloat(s.total_advances as string || '0').toFixed(2),
+            s.expected_cash ? parseFloat(s.expected_cash as string).toFixed(2) : '',
+            s.actual_amount ? parseFloat(s.actual_amount as string).toFixed(2) : '',
+            cashD !== null ? cashD.toFixed(2) : '',
+            s.card_revenue != null ? parseFloat(s.card_revenue as string).toFixed(2) : '',
+            s.actual_card_amount != null ? parseFloat(s.actual_card_amount as string).toFixed(2) : '',
+            cardD !== null ? cardD.toFixed(2) : '',
+            totD !== null ? totD.toFixed(2) : '',
+            s.status === 'closed' ? 'Fermé' : 'En cours',
+          ];
+        })
       );
       return;
     }
@@ -991,18 +1001,22 @@ export default function SalesPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {sessions.map((s: Record<string, any>) => {
               const diff = s.difference !== null ? parseFloat(s.difference as string) : null;
+              // Mig 467 — l'écart affiché cumule espèces + carte (TPE). Avant, le
+              // tag ne reflétait que le tiroir : un manque carte restait invisible.
+              const cardDiff = s.card_difference != null ? parseFloat(s.card_difference as string) : null;
+              const totalDiff = (diff === null && cardDiff === null) ? null : (diff || 0) + (cardDiff || 0);
               const isClosed = s.status === 'closed';
               const statusTag = !isClosed ? 'odoo-tag-yellow'
-                : diff === null ? 'odoo-tag-grey'
-                : diff === 0 ? 'odoo-tag-green'
-                : diff > 0 ? 'odoo-tag-blue' : 'odoo-tag-red';
+                : totalDiff === null ? 'odoo-tag-grey'
+                : totalDiff === 0 ? 'odoo-tag-green'
+                : totalDiff > 0 ? 'odoo-tag-blue' : 'odoo-tag-red';
               const statusLabel = !isClosed ? 'En cours'
-                : diff === null ? '—'
-                : diff === 0 ? 'Caisse juste'
-                : diff > 0 ? `+${diff.toFixed(2)} DH` : `${diff.toFixed(2)} DH`;
+                : totalDiff === null ? '—'
+                : totalDiff === 0 ? 'Caisse juste'
+                : totalDiff > 0 ? `+${totalDiff.toFixed(2)} DH` : `${totalDiff.toFixed(2)} DH`;
               const dotClass = !isClosed ? 'warning'
-                : diff === 0 ? 'ok'
-                : (diff !== null && Math.abs(diff) > 5) ? 'danger' : 'neutral';
+                : totalDiff === 0 ? 'ok'
+                : (totalDiff !== null && Math.abs(totalDiff) > 5) ? 'danger' : 'neutral';
               return (
                 <div key={s.id as string} className="odoo-section">
                   <div className="odoo-section-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1015,7 +1029,7 @@ export default function SalesPage() {
                     </span>
                     <span style={{ flex: 1 }} />
                     <span className={`odoo-tag ${statusTag}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                      {!isClosed ? <Clock size={9} /> : diff === 0 ? <CheckCircle size={9} /> : diff !== null && diff > 0 ? <AlertTriangle size={9} /> : <XCircle size={9} />}
+                      {!isClosed ? <Clock size={9} /> : totalDiff === 0 ? <CheckCircle size={9} /> : totalDiff !== null && totalDiff > 0 ? <AlertTriangle size={9} /> : <XCircle size={9} />}
                       {statusLabel}
                     </span>
                   </div>
@@ -1051,6 +1065,27 @@ export default function SalesPage() {
                             </td>
                             <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(parseFloat(s.card_revenue as string))}</td>
                           </tr>
+                          {/* Mig 467 — rapprochement carte : TPE saisi + écart carte */}
+                          {s.actual_card_amount != null && (
+                            <tr>
+                              <td style={{ color: 'var(--theme-text-muted)' }}>
+                                <CreditCard size={11} style={{ display: 'inline', marginRight: 4, color: 'var(--theme-accent)' }} />Carte saisie (TPE)
+                              </td>
+                              <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(parseFloat(s.actual_card_amount as string))}</td>
+                              <td style={{ color: 'var(--theme-text-muted)' }}>Écart carte</td>
+                              <td style={{ textAlign: 'right', fontWeight: 600, color: (cardDiff ?? 0) < 0 ? '#dc3545' : (cardDiff ?? 0) > 0 ? 'var(--theme-accent)' : 'var(--theme-text-muted)' }}>
+                                {(cardDiff ?? 0) > 0 ? '+' : ''}{formatCurrency(cardDiff ?? 0)}
+                              </td>
+                            </tr>
+                          )}
+                          {cardDiff != null && (
+                            <tr>
+                              <td colSpan={3} style={{ fontWeight: 700 }}>Écart total</td>
+                              <td style={{ textAlign: 'right', fontWeight: 700, color: (totalDiff ?? 0) < 0 ? '#dc3545' : (totalDiff ?? 0) > 0 ? 'var(--theme-accent)' : '#28a745' }}>
+                                {(totalDiff ?? 0) > 0 ? '+' : ''}{formatCurrency(totalDiff ?? 0)}
+                              </td>
+                            </tr>
+                          )}
                           {(parseFloat(s.total_advances as string || '0') > 0) && (
                             <tr>
                               <td style={{ color: 'var(--theme-text-muted)' }}>
@@ -1061,7 +1096,7 @@ export default function SalesPage() {
                               <td style={{ textAlign: 'right' }}>{parseInt(String(s.pending_orders ?? s.total_orders ?? 0))}</td>
                             </tr>
                           )}
-                          <SessionLedgerRow session={s} diff={diff} />
+                          <SessionLedgerRow session={s} diff={totalDiff} />
                         </tbody>
                       </table>
                     </div>

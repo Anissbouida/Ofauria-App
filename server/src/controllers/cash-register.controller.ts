@@ -146,7 +146,7 @@ export const cashRegisterController = {
   },
 
   async submitAmount(req: AuthRequest, res: Response) {
-    const { actualAmount, notes, differenceReason } = req.body;
+    const { actualAmount, notes, differenceReason, actualCardAmount, cardDifferenceReason } = req.body;
 
     if (actualAmount === undefined || actualAmount === null) {
       res.status(400).json({ success: false, error: { message: 'Montant reel requis' } });
@@ -166,7 +166,10 @@ export const cashRegisterController = {
 
     try {
       const result = await cashRegisterRepository.submitActualAmount(
-        req.params.id, parseFloat(actualAmount), notes, differenceReason
+        req.params.id, parseFloat(actualAmount), notes, differenceReason,
+        actualCardAmount === undefined || actualCardAmount === null || actualCardAmount === ''
+          ? null : parseFloat(actualCardAmount),
+        cardDifferenceReason
       );
       if (!result) {
         // UPDATE ne retourne 0 ligne = session deja verrouillee entre findById et l'update.
@@ -181,7 +184,9 @@ export const cashRegisterController = {
       const code = (err as Error & { code?: string }).code;
       // Section 4.3 — Motif d'ecart obligatoire au-dela du seuil (5 DH).
       // Le client peut afficher un select des motifs valides et retenter.
-      if (code === 'DIFFERENCE_REASON_REQUIRED' || code === 'DIFFERENCE_REASON_INVALID') {
+      if (code === 'DIFFERENCE_REASON_REQUIRED' || code === 'DIFFERENCE_REASON_INVALID'
+        || code === 'CARD_AMOUNT_REQUIRED' || code === 'CARD_DIFFERENCE_REASON_REQUIRED'
+        || code === 'CARD_DIFFERENCE_REASON_INVALID') {
         res.status(400).json({
           success: false,
           error: { code, message: (err as Error).message },
