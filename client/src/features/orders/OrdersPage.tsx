@@ -1,4 +1,5 @@
 import { useState, useMemo, type CSSProperties } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ordersApi } from '../../api/orders.api';
 import { ORDER_STATUS_LABELS } from '@ofauria/shared';
@@ -124,7 +125,14 @@ export default function OrdersPage() {
   const [viewingOrder, setViewingOrder] = useState<OrderRow | null>(null);
   const [deliverOrder, setDeliverOrder] = useState<OrderRow | null>(null);
   // Livraisons aux professionnels (mig 352) : BL et facturation groupée, à côté des commandes.
-  const [tab, setTab] = useState<'orders' | 'pro'>('orders');
+  // Onglet piloté par l'URL (?tab=pro) : l'entrée de menu « Bons de livraison » y mène directement.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab: 'orders' | 'pro' = searchParams.get('tab') === 'pro' && isDirection ? 'pro' : 'orders';
+  const setTab = (next: 'orders' | 'pro') => setSearchParams(prev => {
+    const p = new URLSearchParams(prev);
+    if (next === 'pro') p.set('tab', 'pro'); else p.delete('tab');
+    return p;
+  }, { replace: true });
   const { data: toInvoice = [] } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice(), enabled: isDirection });
   const pendingNotes = toInvoice.reduce((c, g) => c + g.notes.length, 0);
 
