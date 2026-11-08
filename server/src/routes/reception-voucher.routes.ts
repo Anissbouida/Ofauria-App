@@ -12,6 +12,9 @@ router.get('/', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), receptionVouc
 // La décision est un contrôle de gestion : réservée au gérant/admin.
 router.get('/price-variances', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), receptionVoucherController.priceVariances);
 router.put('/items/:id/price-decision', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), receptionVoucherController.decidePrice);
+// Simulation de réévaluation (lot L3 P2P, 3/5) — lecture seule, avant '/:id'.
+router.get('/revaluation-candidates', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), receptionVoucherController.revaluationCandidates);
+router.get('/invoices/:invoiceId/revaluation-preview', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('invoiceId'), receptionVoucherController.revaluationPreview);
 router.get('/:id', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), receptionVoucherController.getById);
 router.post('/', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), receptionVoucherController.create);
 router.get('/purchase-order/:poId', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), receptionVoucherController.findByPurchaseOrder);

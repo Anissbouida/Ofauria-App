@@ -99,4 +99,14 @@ export const receptionVouchersApi = {
     api.post('/reception-vouchers', data).then(r => r.data.data),
   findByPurchaseOrder: (poId: string) =>
     api.get(`/reception-vouchers/purchase-order/${poId}`).then(r => r.data.data),
+  // Écarts de prix à la réception (lot L3 P2P, 2/5) — décision gérant/admin.
+  priceVariances: () =>
+    api.get('/reception-vouchers/price-variances').then(r => r.data.data),
+  decidePrice: (itemId: string, decision: 'approved' | 'rejected', note?: string) =>
+    api.put(`/reception-vouchers/items/${itemId}/price-decision`, { decision, note }).then(r => r.data.data),
+  // Simulation de réévaluation (lot L3 P2P, 3/5) — lecture seule, aucune écriture.
+  revaluationCandidates: () =>
+    api.get('/reception-vouchers/revaluation-candidates').then(r => r.data.data),
+  revaluationPreview: (invoiceId: string) =>
+    api.get(`/reception-vouchers/invoices/${invoiceId}/revaluation-preview`).then(r => r.data.data),
 };

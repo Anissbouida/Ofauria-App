@@ -25,6 +25,7 @@ import RfqTab from './RfqTab';
 import LandedCostTab from './LandedCostTab';
 import SupplierScoreTab from './SupplierScoreTab';
 import ReceptionsTab from './ReceptionsTab';
+import PriceVariancesTab from './PriceVariancesTab';
 import PurchaseRequestsPage from './PurchaseRequestsPage';
 import ApprovalsPage from '../approvals/ApprovalsPage';
 import { ToOrderBoard } from '../stock/ToOrderBoard';
@@ -44,7 +45,7 @@ import {
 } from '../../components/purchasing/ProcessBoard';
 
 type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'pilotage' | 'rfq' | 'landed' | 'scores'
-  | 'identification' | 'purchase_requests' | 'reception' | 'approvals';
+  | 'identification' | 'purchase_requests' | 'reception' | 'approvals' | 'price_variances';
 
 /**
  * Étapes du processus d'une facture reçue (dérivées côté serveur, cf.
@@ -102,6 +103,9 @@ export default function PurchasingPage() {
     { key: 'invoices', label: '7 · Factures reçues', icon: FileText, section: 'operations' },
     // Frais d'approche (mig 361) : transport, douane répartis sur une réception, appliqués au coût.
     { key: 'landed', label: 'Frais d\'approche', icon: Ship, section: 'operations' },
+    // Écarts de prix (lot L3 P2P) : décision du gérant sur les écarts de réception + simulation
+    // de la réévaluation facture → stock / écart (IPV). Contrôle de gestion, gérant/admin.
+    { key: 'price_variances', label: 'Écarts de prix', icon: ShieldAlert, section: 'operations' },
     // Évaluation des fournisseurs (mig 362) : note calculée délais / complétude / conformité / prix / litiges.
     { key: 'scores', label: 'Évaluation des fournisseurs', icon: Award, section: 'reports' },
     { key: 'suppliers', label: 'Fournisseurs', icon: Truck, section: 'setup' },
@@ -128,6 +132,7 @@ export default function PurchasingPage() {
       {tab === 'rfq' && <RfqTab onOpenOrder={() => openTab('purchase_orders')} />}
       {tab === 'purchase_orders' && <PurchaseOrdersTab initialSupplierId={focus.supplierId} onGoToReception={() => openTab('reception')} />}
       {tab === 'reception' && <ReceptionsTab />}
+      {tab === 'price_variances' && <PriceVariancesTab />}
       {tab === 'invoices' && <InvoicesTab {...focus} />}
       {tab === 'landed' && <LandedCostTab />}
       {tab === 'scores' && <SupplierScoreTab />}

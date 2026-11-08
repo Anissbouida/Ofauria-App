@@ -1146,4 +1146,51 @@ export const receptionVoucherRepository = {
     if (!r.rowCount) { const e = new Error('Ligne introuvable ou sans écart de prix à décider') as Error & { statusCode: number }; e.statusCode = 404; throw e; }
     return r.rows[0];
   },
+
+  /**
+   * Factures reçues dont la réévaluation (écart facture / coût du lot) déplacerait
+   * un montant — lot L3 P2P, simulation (lecture seule). Réutilise
+   * fn_stock_revaluation_preview (mig 446) ligne à ligne, sans rien modifier.
+   */
+  async revaluationCandidates(storeId?: string | null) {
+    const result = await db.query(
+      `SELECT inv.id, inv.invoice_number, inv.invoice_date,
+              s.name AS supplier_name,
+              p.lines, p.total_stock, p.total_variance
+         FROM invoices inv
+         JOIN suppliers s ON s.id = inv.supplier_id
+         JOIN LATERAL (
+           SELECT count(*)                                  AS lines,
+                  COALESCE(sum(amount_to_stock), 0)         AS total_stock,
+                  COALESCE(sum(amount_to_variance), 0)      AS total_variance
+             FROM fn_stock_revaluation_preview(inv.id)
+         ) p ON TRUE
+        WHERE inv.invoice_type = 'received'
+          AND inv.status <> 'cancelled'
+          AND ($1::uuid IS NULL OR inv.store_id = $1)
+          AND p.lines > 0
+        ORDER BY inv.invoice_date DESC
+        LIMIT 200`,
+      [storeId ?? null]
+    );
+    return result.rows;
+  },
+
+  /**
+   * Simulation détaillée (par lot) de la réévaluation d'une facture + le compte
+   * d'écart (IPV) configuré, s'il existe. Aucune écriture : opérationnalise
+   * l'incrément 3/5. La réévaluation effective reste un geste séparé, conditionné
+   * à un compte 'price_variance' dans les profils de posting.
+   */
+  async revaluationPreview(invoiceId: string) {
+    const [rows, profile] = await Promise.all([
+      db.query(`SELECT * FROM fn_stock_revaluation_preview($1)`, [invoiceId]),
+      db.query(
+        `SELECT account_code FROM posting_profiles
+          WHERE event_type = 'price_variance' AND is_active = true
+          LIMIT 1`
+      ),
+    ]);
+    return { lines: rows.rows, ipv_account: profile.rows[0]?.account_code ?? null };
+  },
 };

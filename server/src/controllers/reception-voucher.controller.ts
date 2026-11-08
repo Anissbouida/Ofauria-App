@@ -80,4 +80,16 @@ export const receptionVoucherController = {
       res.status(e?.statusCode ?? 400).json({ success: false, error: { message: e?.message ?? 'Erreur lors de la décision' } });
     }
   },
+
+  /** Factures reçues dont la réévaluation déplacerait un montant (simulation, lot L3 P2P 3/5). */
+  async revaluationCandidates(req: AuthRequest, res: Response) {
+    const data = await receptionVoucherRepository.revaluationCandidates(req.user!.storeId);
+    res.json({ success: true, data });
+  },
+
+  /** Simulation détaillée (par lot) de la réévaluation d'une facture. Aucune écriture. */
+  async revaluationPreview(req: AuthRequest, res: Response) {
+    const data = await receptionVoucherRepository.revaluationPreview(req.params.invoiceId);
+    res.json({ success: true, data });
+  },
 };
