@@ -255,8 +255,8 @@ function LandedCostDrawer({ id, onClose }: { id: string; onClose: () => void }) 
               {(v.valuationAdjustments ?? []).length > 0 && (
                 <div>
                   <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}><Ship size={12} /> Réévaluation — part en stock vs écart</div>
-                  <StatusBanner tone="info" icon={Ship} title="Dry-run — aucune écriture comptable n'est postée">
-                    Répartition de chaque frais entre la part <strong>capitalisée en stock</strong> (quantité encore en stock) et la part en <strong>écart</strong> (déjà consommée, destinée au compte d'écart de prix). L'écriture est différée : à valider sur un dry-run avant activation.
+                  <StatusBanner tone="info" icon={Ship} title="Traçabilité de la réévaluation">
+                    Le coût du lot et le CMUP sont <strong>déjà mis à jour</strong> à l'application des frais. Ce tableau trace la répartition entre la part <strong>capitalisée en stock</strong> (quantité encore en stock) et la part en <strong>écart</strong> (déjà consommée). Compta en inventaire intermittent : pas d'écriture comptable, la charge est déjà au compte de frais.
                   </StatusBanner>
                   <table className="odoo-table">
                     <thead><tr><th>Article</th><th>Lot</th><th style={{ textAlign: 'right' }}>Qté base</th><th style={{ textAlign: 'right' }}>Encore en stock</th><th style={{ textAlign: 'right' }}>+ / unité</th><th style={{ textAlign: 'right' }}>Part en stock</th><th style={{ textAlign: 'right' }}>Part en écart</th></tr></thead>

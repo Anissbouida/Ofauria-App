@@ -1202,6 +1202,45 @@ export const invoiceRepository = {
       // 4. Recalcule blocages / rapprochement : les holds QTY/PRICE deviennent significatifs.
       await client.query(`SELECT fn_validate_invoice($1)`, [id]);
 
+      // 5. L3 (P2P) — réévaluation OPÉRATIONNELLE du coût au prix facturé. La compta
+      //    tourne en inventaire intermittent (achat → charge, pas de compte de stock
+      //    actif) : l'écart facture/réception est DÉJÀ absorbé en charge par fromInvoice,
+      //    AUCUNE écriture n'est passée ici. On corrige seulement le coût du lot et le
+      //    CMUP sur la quantité RESTANTE, pour que le coût de revient des recettes suive
+      //    le vrai prix. Les fournées déjà consommées restent figées
+      //    (production_lot_usage.unit_cost_at_use, mig 444). fn_stock_revaluation_preview
+      //    ne renvoie que les lignes rattachées à un lot (reception_voucher_item_id) et
+      //    réellement en écart ; les factures historiques sans ce lien → 0 ligne.
+      const reval = await client.query(`SELECT * FROM fn_stock_revaluation_preview($1)`, [id]);
+      for (const r of reval.rows as Record<string, any>[]) {
+        const newLotCost = Math.round((Number(r.lot_unit_cost) + Number(r.unit_delta)) * 10000) / 10000;
+        const lot = (await client.query(
+          `UPDATE ingredient_lots SET unit_cost = $2 WHERE id = $1 RETURNING ingredient_id`,
+          [r.ingredient_lot_id, newLotCost])).rows[0];
+        if (!lot?.ingredient_id) continue;
+        const before = (await client.query(`SELECT unit_cost FROM ingredients WHERE id = $1`, [lot.ingredient_id])).rows[0];
+        // CMUP de l'article = moyenne pondérée des lots actifs restants (même base que
+        // landed-cost.repository : economat + pesage).
+        const after = (await client.query(
+          `UPDATE ingredients i SET unit_cost = sub.wavg, updated_at = NOW()
+             FROM (SELECT SUM(unit_cost * (economat_quantity + pesage_quantity))
+                          / NULLIF(SUM(economat_quantity + pesage_quantity), 0) AS wavg
+                     FROM ingredient_lots
+                    WHERE ingredient_id = $1 AND status = 'active') sub
+            WHERE i.id = $1 AND sub.wavg IS NOT NULL
+            RETURNING i.unit_cost`, [lot.ingredient_id])).rows[0];
+        // Traçabilité idempotente ; journal_entry_id reste NULL (pas d'écriture GL).
+        // Montants repris tels quels de la preview (invariant du CHECK garanti).
+        await client.query(
+          `INSERT INTO stock_valuation_adjustments
+             (source_kind, source_id, ingredient_lot_id, ingredient_id, qty_basis, qty_remaining,
+              unit_delta, amount_to_stock, amount_to_variance, cmup_before, cmup_after, created_by)
+           VALUES ('invoice_price', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           ON CONFLICT (source_kind, source_id, ingredient_lot_id) DO NOTHING`,
+          [id, r.ingredient_lot_id, lot.ingredient_id, r.qty_basis, r.qty_remaining, r.unit_delta,
+           r.amount_to_stock, r.amount_to_variance, before?.unit_cost ?? null, after?.unit_cost ?? before?.unit_cost ?? null, userId]);
+      }
+
       await client.query('COMMIT');
       return (await db.query(`SELECT * FROM invoices WHERE id = $1`, [id])).rows[0];
     } catch (err) {
