@@ -104,6 +104,8 @@ export interface LettrageAccount {
 export interface LettrageTiers { id: string; code: string; label: string; lines: number; open_lines: number; open_balance: string }
 export interface LettrageLine {
   id: string; lettrage_id: string | null; code: string | null; lettered_at: string | null;
+  // Pré-lettrage (mig 466) : pièce et acomptes rapprochés sans être soldés ; code en minuscules.
+  lettrage_partiel_id: string | null;
   debit: string; credit: string; label: string | null;
   entry_id: string; entry_number: string; entry_date: string; description: string; piece_ref: string | null;
   source_kind: string; status: string; journal_code: string;
@@ -112,23 +114,27 @@ export interface LettrageLine {
 export interface LettrageView {
   account: { id: string; code: string; label: string; is_collective: boolean };
   closed_until: string | null;
-  totals: { open_debit: string; open_credit: string; open_lines: number; groups: number };
+  totals: { open_debit: string; open_credit: string; open_lines: number; groups: number; partial_lines: number; partial_groups: number };
   lines: LettrageLine[]; truncated: boolean;
 }
 export type LettrageStatus = 'open' | 'lettered' | 'all';
+export interface LettrageResult { lettrage_id?: string; lettrage_partiel_id?: string; lines: number; partial?: boolean }
+export interface AutoLettrageResult { invoices: number; lines: number; partial: number }
 export const lettrageApi = {
   accounts: (): Promise<LettrageAccount[]> => api.get('/ledger/lettrage/accounts').then(r => r.data.data),
   tiers: (accountId: string): Promise<LettrageTiers[]> => api.get(`/ledger/lettrage/accounts/${accountId}/tiers`).then(r => r.data.data),
   lines: (p: { accountId: string; auxiliaryId?: string; status: LettrageStatus; from?: string; to?: string }): Promise<LettrageView> =>
     api.get('/ledger/lettrage/lines', { params: p }).then(r => r.data.data),
-  letter: (lineIds: string[]): Promise<{ lettrage_id: string; lines: number }> =>
-    api.post('/ledger/lettrage', { lineIds }).then(r => r.data.data),
-  unletter: (lettrageId: string): Promise<{ lettrage_id: string; lines: number }> =>
-    api.delete(`/ledger/lettrage/${lettrageId}`).then(r => r.data.data),
-  /** Factures soldées par leurs règlements (lien des pièces), à lettrer d'un coup. */
-  autoPreview: (p: { accountId?: string; auxiliaryId?: string }): Promise<{ invoices: number; lines: number }> =>
+  /** partial : pré-lettrer une sélection non soldée (une pièce et ses acomptes). */
+  letter: (lineIds: string[], partial = false): Promise<LettrageResult> =>
+    api.post('/ledger/lettrage', { lineIds, partial }).then(r => r.data.data),
+  /** Défait un groupe lettré ou pré-lettré (même identifiant dans l'URL). */
+  unletter: (groupId: string): Promise<LettrageResult> =>
+    api.delete(`/ledger/lettrage/${groupId}`).then(r => r.data.data),
+  /** Factures soldées par leurs règlements (lien des pièces), à lettrer d'un coup ; partiellement réglées, à pré-lettrer. */
+  autoPreview: (p: { accountId?: string; auxiliaryId?: string }): Promise<AutoLettrageResult> =>
     api.get('/ledger/lettrage/auto', { params: p }).then(r => r.data.data),
-  auto: (p: { accountId?: string; auxiliaryId?: string }): Promise<{ invoices: number; lines: number }> =>
+  auto: (p: { accountId?: string; auxiliaryId?: string }): Promise<AutoLettrageResult> =>
     api.post('/ledger/lettrage/auto', p).then(r => r.data.data),
 };
 
@@ -167,6 +173,7 @@ export interface AgedItem {
   key: string; kind: 'invoice' | 'payment' | 'opening' | 'other';
   reference: string; label: string; doc_date: string; due_date: string; days_late: number;
   amount: number; bucket: AgedBucket;
+  partial: boolean;                  // pièce et acomptes pré-lettrés (mig 466) : une seule ligne, reste dû
 }
 export interface AgedTiers {
   auxiliary_id: string; code: string; label: string; account_code: string;
@@ -260,7 +267,7 @@ export interface IntegrityStatus {
 }
 export interface IntegrityAnomaly { seq: number; entry_id: string | null; entry_no: string | null; problem: string }
 export interface IntegrityVerifyResult { ok: boolean; checked: number; headSeq: number; headHash: string | null; anomalies: IntegrityAnomaly[] }
-export type LedgerAuditEvent = 'post' | 'reverse' | 'draft_delete' | 'letter' | 'unletter' | 'reletter' | 'seal' | 'verify' | 'outbox_replay' | 'year_close' | 'fec_export';
+export type LedgerAuditEvent = 'post' | 'reverse' | 'draft_delete' | 'letter' | 'unletter' | 'reletter' | 'seal' | 'verify' | 'outbox_replay' | 'year_close' | 'fec_export' | 'letter_partial' | 'unletter_partial';
 export interface LedgerAuditRow {
   id: string; at: string; event: LedgerAuditEvent;
   entry_id: string | null; entry_number: string | null; line_id: string | null; lettrage_id: string | null;

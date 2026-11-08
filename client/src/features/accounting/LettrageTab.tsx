@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Link2, Unlink, Lock, Calendar, CheckCircle2, Info, Wand2 } from 'lucide-react';
+import { Loader2, Link2, Unlink, Lock, Calendar, CheckCircle2, Info, Wand2, GitMerge } from 'lucide-react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -74,7 +74,10 @@ export default function LettrageTab() {
   }, [linesQ.data, status]);
   const groupSize = useMemo(() => {
     const m = new Map<string, number>();
-    for (const l of linesQ.data?.lines ?? []) if (l.lettrage_id) m.set(l.lettrage_id, (m.get(l.lettrage_id) ?? 0) + 1);
+    for (const l of linesQ.data?.lines ?? []) {
+      const g = l.lettrage_id ?? l.lettrage_partiel_id;
+      if (g) m.set(g, (m.get(g) ?? 0) + 1);
+    }
     return m;
   }, [linesQ.data]);
 
@@ -85,6 +88,8 @@ export default function LettrageTab() {
   const selCredit = sel.reduce((s, l) => s + cents(l.credit), 0);
   const ecart = selDebit - selCredit;
   const canLetter = sel.length >= 2 && ecart === 0;
+  // Pré-lettrage (mig 466) : rapprocher une pièce et ses acomptes qui ne se soldent pas encore.
+  const canPartial = sel.length >= 2 && ecart !== 0;
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['lettrage-lines'] });
@@ -97,9 +102,14 @@ export default function LettrageTab() {
     onSuccess: (r) => { notify.success(`${r.lines} lignes lettrées`); setSelected(new Set()); refresh(); },
     onError: (e) => notify.error(apiErrorMessage(e, 'Lettrage impossible')),
   });
+  const partialMut = useMutation({
+    mutationFn: () => lettrageApi.letter([...selected], true),
+    onSuccess: (r) => { notify.success(`${r.lines} lignes pré-lettrées (reste dû rapproché)`); setSelected(new Set()); refresh(); },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Pré-lettrage impossible')),
+  });
   const unletterMut = useMutation({
     mutationFn: (id: string) => lettrageApi.unletter(id),
-    onSuccess: (r) => { notify.success(`Groupe délettré : ${r.lines} lignes redeviennent à lettrer`); refresh(); },
+    onSuccess: (r) => { notify.success(`Groupe ${r.partial ? 'dé-pré-lettré' : 'délettré'} : ${r.lines} lignes redeviennent à lettrer`); refresh(); },
     onError: (e) => notify.error(apiErrorMessage(e, 'Délettrage impossible')),
   });
   // Lettrage automatique facture ↔ règlements (compte collectif ; un tiers ou tout le compte).
@@ -111,18 +121,22 @@ export default function LettrageTab() {
   });
   const autoMut = useMutation({
     mutationFn: () => lettrageApi.auto(autoScope),
-    onSuccess: (r) => { notify.success(`${r.invoices} facture(s) lettrée(s) avec leurs règlements (${r.lines} lignes)`); refresh(); },
+    onSuccess: (r) => { notify.success(`${r.invoices} facture(s) lettrée(s)${r.partial ? `, ${r.partial} pré-lettrée(s)` : ''} (${r.lines} lignes)`); refresh(); },
     onError: (e) => notify.error(apiErrorMessage(e, 'Lettrage automatique impossible')),
   });
   const askAuto = async () => {
     const scope = auxiliaryId ? (tiersQ.data?.find(x => x.id === auxiliaryId)?.label ?? 'ce tiers') : `tout le compte ${account?.code}`;
-    if (await confirm(`Lettrer ${autoQ.data?.invoices} facture(s) avec leurs règlements sur ${scope} ?\nChaque groupe pourra être délettré ensuite.`,
-      { title: 'Lettrage automatique', confirmLabel: 'Lettrer' })) autoMut.mutate();
+    const n = autoQ.data;
+    const what = [n?.invoices ? `lettrer ${n.invoices} facture(s) soldée(s)` : '', n?.partial ? `pré-lettrer ${n.partial} facture(s) partiellement réglée(s)` : ''].filter(Boolean).join(' et ');
+    if (await confirm(`Rapprocher automatiquement sur ${scope} : ${what} ?\nChaque groupe pourra être défait ensuite.`,
+      { title: 'Rapprochement automatique', confirmLabel: 'Rapprocher' })) autoMut.mutate();
   };
   const askUnletter = async (l: LettrageLine) => {
-    const size = groupSize.get(l.lettrage_id!) ?? 0;
-    if (await confirm(`Délettrer le groupe ${l.code} ? Ses ${size} lignes redeviendront à lettrer.`, { title: 'Délettrage', confirmLabel: 'Délettrer' })) {
-      unletterMut.mutate(l.lettrage_id!);
+    const groupId = l.lettrage_id ?? l.lettrage_partiel_id!;
+    const size = groupSize.get(groupId) ?? 0;
+    const kind = l.lettrage_id ? 'lettré' : 'pré-lettré';
+    if (await confirm(`Défaire le groupe ${kind} ${l.code} ? Ses ${size} lignes redeviendront à lettrer.`, { title: 'Délettrage', confirmLabel: 'Défaire' })) {
+      unletterMut.mutate(groupId);
     }
   };
 
@@ -173,14 +187,15 @@ export default function LettrageTab() {
         </div>
       </div>
 
-      {!!autoQ.data?.invoices && (
+      {!!(autoQ.data && (autoQ.data.invoices || autoQ.data.partial)) && (
         <StatusBanner tone="orange" icon={Wand2}
-          title={`${autoQ.data.invoices} facture(s) soldée(s) par leurs règlements, non lettrée(s)`}
+          title={[autoQ.data.invoices ? `${autoQ.data.invoices} facture(s) soldée(s) à lettrer` : '',
+                  autoQ.data.partial ? `${autoQ.data.partial} partiellement réglée(s) à pré-lettrer` : ''].filter(Boolean).join(' · ')}
           actions={<button type="button" className="odoo-btn-primary" disabled={autoMut.isPending} onClick={askAuto}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {autoMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Lettrer automatiquement
+            {autoMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Rapprocher automatiquement
           </button>}>
-          {auxiliaryId ? 'Sur ce tiers' : 'Sur tout le compte'}, chaque facture et ses règlements se compensent exactement d'après le lien des pièces : ils peuvent être lettrés d'un coup.
+          {auxiliaryId ? 'Sur ce tiers' : 'Sur tout le compte'}, chaque facture et ses règlements se rapprochent d'après le lien des pièces : soldés, ils sont lettrés ; partiels, ils sont pré-lettrés (le reste dû est l'écart).
         </StatusBanner>
       )}
 
@@ -218,6 +233,13 @@ export default function LettrageTab() {
               <div className="odoo-stat-card-value">{t!.groups}</div>
               <div className="odoo-stat-card-sub">factures ↔ règlements</div>
             </div>
+            {t!.partial_groups > 0 && (
+              <div className="odoo-stat-card">
+                <div className="odoo-stat-card-label">Pré-lettrés</div>
+                <div className="odoo-stat-card-value" style={{ color: '#c77700' }}>{t!.partial_groups}</div>
+                <div className="odoo-stat-card-sub">{t!.partial_lines} ligne(s) · reste dû rapproché</div>
+              </div>
+            )}
           </div>
 
           {t!.open_lines > 1 && openBalance === 0 && status !== 'lettered' && (
@@ -247,6 +269,13 @@ export default function LettrageTab() {
                 )}
                 <span style={{ flex: 1 }} />
                 {sel.length > 0 && <button type="button" className="odoo-btn-secondary" onClick={() => setSelected(new Set())}>Effacer</button>}
+                {canPartial && (
+                  <button type="button" className="odoo-btn-secondary" disabled={partialMut.isPending}
+                    onClick={() => partialMut.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    title="Rapprocher une pièce et ses acomptes sans attendre le solde ; le reste dû est l'écart">
+                    <GitMerge size={13} /> Pré-lettrer
+                  </button>
+                )}
                 <button type="button" className="odoo-btn-primary" disabled={!canLetter || letterMut.isPending}
                   onClick={() => letterMut.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: canLetter ? 1 : 0.5 }}
                   title={canLetter ? undefined : 'Sélectionnez au moins deux lignes dont le débit égale le crédit'}>
@@ -284,7 +313,8 @@ export default function LettrageTab() {
                         {l.frozen ? <Lock size={12} style={{ color: 'var(--theme-text-muted)' }} aria-label="Exercice clôturé" />
                           : !l.lettrage_id && <input type="checkbox" checked={selected.has(l.id)} onChange={() => toggle(l.id)} aria-label={`Sélectionner ${l.entry_number}`} />}
                       </td>
-                      <td>{l.code && <span className="odoo-tag odoo-tag-green" style={{ ...mono, fontWeight: 600 }} title={l.lettered_at ? `Lettré le ${new Date(l.lettered_at).toLocaleString('fr-FR')}` : undefined}>{l.code}</span>}</td>
+                      <td>{l.code && <span className={`odoo-tag ${l.lettrage_partiel_id ? 'odoo-tag-orange' : 'odoo-tag-green'}`} style={{ ...mono, fontWeight: 600 }}
+                        title={l.lettrage_partiel_id ? 'Pré-lettré : pièce et acomptes rapprochés, reste dû à solder' : l.lettered_at ? `Lettré le ${new Date(l.lettered_at).toLocaleString('fr-FR')}` : undefined}>{l.code}</span>}</td>
                       <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{fmtDate(l.entry_date)}</td>
                       <td style={{ ...mono, fontSize: '0.75rem', color: '#185fa5' }}>{l.entry_number}</td>
                       <td style={{ ...mono, fontSize: '0.6875rem' }}>{l.journal_code}</td>
@@ -296,10 +326,10 @@ export default function LettrageTab() {
                       <td style={{ ...mono, textAlign: 'right' }}>{n(l.debit)}</td>
                       <td style={{ ...mono, textAlign: 'right' }}>{n(l.credit)}</td>
                       <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                        {l.lettrage_id && !l.frozen && (
+                        {(l.lettrage_id || l.lettrage_partiel_id) && !l.frozen && (
                           <button type="button" className="odoo-btn-secondary" disabled={unletterMut.isPending} onClick={() => askUnletter(l)}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.6875rem', padding: '2px 8px' }}>
-                            <Unlink size={11} /> Délettrer
+                            <Unlink size={11} /> {l.lettrage_partiel_id ? 'Défaire' : 'Délettrer'}
                           </button>
                         )}
                       </td>

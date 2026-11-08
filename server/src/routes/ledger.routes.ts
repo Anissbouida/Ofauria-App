@@ -440,9 +440,10 @@ ledgerRouter.post('/lettrage/auto', ...AM, requireVerb('accounting', 'validate')
   res.json({ success: true, data: await lettrageRepository.autoLetter(r.data, { userId: req.user!.userId }) });
 }));
 ledgerRouter.post('/lettrage', ...AM, requireVerb('accounting', 'validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const r = z.object({ lineIds: z.array(z.string().uuid()).min(2).max(1000) }).safeParse(req.body);
+  // partial (mig 466) : pré-lettrage d'une sélection non soldée (pièce + acomptes).
+  const r = z.object({ lineIds: z.array(z.string().uuid()).min(2).max(1000), partial: z.boolean().optional() }).safeParse(req.body);
   if (!r.success) { tplBad(res, 'Sélectionnez au moins deux lignes à lettrer'); return; }
-  res.status(201).json({ success: true, data: await lettrageRepository.letter(r.data.lineIds, { userId: req.user!.userId }) });
+  res.status(201).json({ success: true, data: await lettrageRepository.letter(r.data.lineIds, { userId: req.user!.userId }, { partial: r.data.partial }) });
 }));
 ledgerRouter.delete('/lettrage/:id', ...AM, requireVerb('accounting', 'validate'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await lettrageRepository.unletter(req.params.id, { userId: req.user!.userId }) });

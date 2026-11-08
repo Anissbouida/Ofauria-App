@@ -25,6 +25,9 @@ export interface ReceivableDoc {
   paid: number;
   remaining: number;
   bucket: AgingBucket;
+  // false : ticket à crédit antérieur au lot L5 (sold_on_credit NULL/false) — au grand
+  // livre seulement à l'encaissement, d'où un écart avec le compte clients 3421.
+  ledger_posted: boolean;
 }
 
 export interface CustomerReceivable {
@@ -39,6 +42,21 @@ export interface CustomerReceivable {
   oldestDue: string | null;
   maxDaysLate: number;
   docs: ReceivableDoc[];
+  // Rapprochement avec le compte clients 3421 (G-CA-05).
+  ledgerBalance: number | null;   // solde 3421 du tiers (null : impayé sans fiche client)
+  gap: number | null;             // total gestion − solde 3421
+  legacyTickets: number;          // tickets à crédit non comptabilisés (expliquent une part de l'écart)
+}
+
+/** Pièces de gestion ↔ compte clients 3421 : une seule vue des créances (G-CA-05). */
+export interface ReceivablesReconciliation {
+  documents: number;          // dû par pièces (tickets + factures ouvertes) − avoirs non imputés
+  ledger: number;             // solde du compte clients 3421 (fenêtre de cumul comptable)
+  gap: number;                // documents − ledger
+  legacyTickets: number;      // tickets à crédit antérieurs au lot L5 : au grand livre à l'encaissement
+  unassigned: number;         // impayés sans fiche client : jamais au grand livre
+  unappliedCredits: number;   // avoirs émis non imputés (déduits des deux côtés)
+  gapCustomers: number;       // nombre de clients dont le solde gestion ≠ solde 3421
 }
 
 const emptyBuckets = (): Record<AgingBucket, number> => ({ current: 0, d30: 0, d60: 0, d90: 0, over90: 0 });
@@ -65,14 +83,17 @@ export async function openDocuments(params: { storeId?: string; customerId?: str
        SELECT 'ticket'::text AS kind, s.id, s.sale_number AS number, s.customer_id, s.unpaid_customer_name AS legacy_name,
               (s.created_at AT TIME ZONE 'Africa/Casablanca')::date AS doc_date,
               COALESCE(s.due_date, (s.created_at AT TIME ZONE 'Africa/Casablanca')::date) AS due_date,
-              s.total::numeric AS amount, 0::numeric AS paid
+              s.total::numeric AS amount, 0::numeric AS paid,
+              -- ticket comptabilisé à la vente (lot L5) : au compte clients 3421 ; sinon à l'encaissement.
+              COALESCE(s.sold_on_credit, false) AS ledger_posted
          FROM sales s
         WHERE s.payment_status = 'unpaid'${saleStore}${saleCust}
        UNION ALL
        SELECT 'invoice', i.id, i.invoice_number, i.customer_id, NULL,
               i.invoice_date,
               COALESCE(i.due_date, i.invoice_date + COALESCE(c.delai_paiement_jours, 0)),
-              i.total_amount::numeric, COALESCE(i.paid_amount, 0)::numeric
+              i.total_amount::numeric, COALESCE(i.paid_amount, 0)::numeric,
+              true   -- une facture émise est toujours au grand livre
          FROM invoices i
          LEFT JOIN customers c ON c.id = i.customer_id
         WHERE i.invoice_type = 'emitted' AND i.kind <> 'credit_note' AND i.status NOT IN ('paid', 'cancelled')
@@ -96,8 +117,36 @@ export async function openDocuments(params: { storeId?: string; customerId?: str
       paid: round2(Number(row.paid)),
       remaining: round2(Number(row.remaining)),
       bucket: bucketOf(daysLate),
+      ledger_posted: Boolean(row.ledger_posted),
     };
   });
+}
+
+/**
+ * Solde du compte clients 3421 par tiers (et total), sur la fenêtre de cumul
+ * comptable (depuis le dernier exercice clôturé). Base du rapprochement
+ * gestion ↔ comptabilité (G-CA-05) : ce que dit le grand livre, en regard des
+ * pièces ouvertes. Les lignes lettrées d'une pièce soldée se compensent, donc
+ * la somme vaut le reste dû comptable.
+ */
+async function customerLedgerBalances(): Promise<{ total: number; byCustomer: Map<string, number> }> {
+  const r = await db.query(
+    `SELECT ax.customer_id, SUM(jel.debit - jel.credit)::numeric AS bal
+       FROM journal_entry_lines jel
+       JOIN accounts a ON a.id = jel.account_id AND a.is_collective AND a.auxiliary_kind = 'customer'
+       JOIN account_auxiliaries ax ON ax.id = jel.auxiliary_id
+       JOIN journal_entries je ON je.id = jel.journal_entry_id AND je.status IN ('posted', 'reversed')
+      WHERE je.entry_date >= fn_ledger_window_start((now() AT TIME ZONE 'Africa/Casablanca')::date, 4)
+        AND je.entry_date <= (now() AT TIME ZONE 'Africa/Casablanca')::date
+      GROUP BY ax.customer_id`);
+  const byCustomer = new Map<string, number>();
+  let total = 0;
+  for (const row of r.rows as { customer_id: string | null; bal: string }[]) {
+    const bal = round2(Number(row.bal));
+    total = round2(total + bal);
+    if (row.customer_id) byCustomer.set(row.customer_id, bal);
+  }
+  return { total, byCustomer };
 }
 
 function customerName(c: Record<string, unknown> | undefined): string {
@@ -129,6 +178,7 @@ export const receivablesRepository = {
           customerType: (c?.customer_type as string | null) ?? null,
           creditLimit: c?.credit_limit != null && Number(c.credit_limit) > 0 ? Number(c.credit_limit) : null,
           total: 0, overdue: 0, buckets: emptyBuckets(), oldestDue: null, maxDaysLate: 0, docs: [],
+          ledgerBalance: null, gap: null, legacyTickets: 0,
         };
         groups.set(key, g);
       }
@@ -136,9 +186,28 @@ export const receivablesRepository = {
       g.total = round2(g.total + d.remaining);
       g.buckets[d.bucket] = round2(g.buckets[d.bucket] + d.remaining);
       if (d.days_late > 0) g.overdue = round2(g.overdue + d.remaining);
+      if (!d.ledger_posted) g.legacyTickets = round2(g.legacyTickets + d.remaining);
       if (!g.oldestDue || d.due_date < g.oldestDue) g.oldestDue = d.due_date;
       g.maxDaysLate = Math.max(g.maxDaysLate, d.days_late);
     }
+
+    // Rapprochement avec le compte clients 3421 (G-CA-05) : le grand livre en
+    // regard des pièces, et le pont qui explique l'écart (tickets non
+    // comptabilisés, impayés sans fiche, avoirs non imputés).
+    const ledgerBal = await customerLedgerBalances();
+    const unappliedCredits = round2(Number((await db.query(
+      `SELECT COALESCE(SUM(total_amount - COALESCE(paid_amount, 0)), 0) AS v FROM invoices
+        WHERE invoice_type = 'emitted' AND kind = 'credit_note' AND status NOT IN ('paid', 'cancelled')`)).rows[0].v));
+    let gapCustomers = 0;
+    for (const g of groups.values()) {
+      if (!g.customerId) { g.ledgerBalance = null; g.gap = null; continue; }
+      g.ledgerBalance = ledgerBal.byCustomer.get(g.customerId) ?? 0;
+      // Le reste des tickets non comptabilisés explique la différence attendue ;
+      // ce qui subsiste après l'avoir retiré est un vrai écart gestion / 3421.
+      g.gap = round2(g.total - g.ledgerBalance - g.legacyTickets);
+      if (Math.abs(g.gap) > 0.005) gapCustomers++;
+    }
+
     // Les plus urgents d'abord : retard le plus ancien, puis montant.
     const rows = Array.from(groups.values()).sort((a, b) => b.maxDaysLate - a.maxDaysLate || b.total - a.total);
     const totals = rows.reduce((t, r) => {
@@ -147,7 +216,15 @@ export const receivablesRepository = {
       (Object.keys(r.buckets) as AgingBucket[]).forEach(k => { t.buckets[k] = round2(t.buckets[k] + r.buckets[k]); });
       return t;
     }, { total: 0, overdue: 0, buckets: emptyBuckets(), customers: rows.length, documents: docs.length });
-    return { asOf: new Date().toISOString().slice(0, 10), totals, customers: rows };
+
+    const legacyTickets = round2(docs.filter(d => !d.ledger_posted && d.customer_id).reduce((s, d) => s + d.remaining, 0));
+    const unassigned = round2(docs.filter(d => !d.customer_id).reduce((s, d) => s + d.remaining, 0));
+    const documents = round2(totals.total - unappliedCredits);
+    const reconciliation: ReceivablesReconciliation = {
+      documents, ledger: ledgerBal.total, gap: round2(documents - ledgerBal.total),
+      legacyTickets, unassigned, unappliedCredits, gapCustomers,
+    };
+    return { asOf: new Date().toISOString().slice(0, 10), totals, reconciliation, customers: rows };
   },
 
   /** Situation d'un client (fiche client, contrôle d'encours) : dû, échu, plafond, disponible. */

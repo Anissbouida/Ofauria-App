@@ -61,7 +61,9 @@ describe.skipIf(!hasTestDb)('Lettrage manuel', () => {
     await expect(lettrage.letter([facture, r1], actor)).rejects.toThrow(/écart de 40\.00 DH au crédit/);
     const out = await lettrage.letter([facture, r1, r2], actor);
     expect(out.lines).toBe(3);
-    for (const l of [facture, r1, r2]) expect(await lettrageOf(l)).toBe(out.lettrage_id);
+    const lettrageId = out.lettrage_id!;   // sélection soldée : lettrage définitif (pas un pré-lettrage)
+    expect(lettrageId).toBeTruthy();
+    for (const l of [facture, r1, r2]) expect(await lettrageOf(l)).toBe(lettrageId);
 
     const view = await lettrage.lines({ accountId: acc['4411'], auxiliaryId: auxA, status: 'lettered' });
     const mine = view.lines.filter((l: { lettrage_id: string | null }) => l.lettrage_id === out.lettrage_id);
@@ -72,13 +74,13 @@ describe.skipIf(!hasTestDb)('Lettrage manuel', () => {
     expect(open.lines.some((l: { id: string }) => [facture, r1, r2].includes(l.id))).toBe(false);
 
     const trace = await testPool().query(
-      `SELECT event, actor FROM ledger_audit_log WHERE lettrage_id = $1 ORDER BY id`, [out.lettrage_id]);
+      `SELECT event, actor FROM ledger_audit_log WHERE lettrage_id = $1 ORDER BY id`, [lettrageId]);
     expect(trace.rows.map((t: { event: string }) => t.event)).toEqual(['letter', 'letter', 'letter']);
     expect(trace.rows[0].actor).toBe(actor.userId);
 
-    await lettrage.unletter(out.lettrage_id, actor);
+    await lettrage.unletter(lettrageId, actor);
     for (const l of [facture, r1, r2]) expect(await lettrageOf(l)).toBeNull();
-    const un = await testPool().query(`SELECT 1 FROM ledger_audit_log WHERE lettrage_id = $1 AND event = 'unletter'`, [out.lettrage_id]);
+    const un = await testPool().query(`SELECT 1 FROM ledger_audit_log WHERE lettrage_id = $1 AND event = 'unletter'`, [lettrageId]);
     expect(un.rows).toHaveLength(3);
   });
 
@@ -168,14 +170,76 @@ describe.skipIf(!hasTestDb)('Lettrage manuel', () => {
       [inv, acc['4411']])).rows.map((r: { lettrage_id: string | null }) => r.lettrage_id);
 
     const scope = { accountId: acc['4411'], auxiliaryId: auxS };
-    expect(await lettrage.autoLetter({ ...scope, dryRun: true }, actor)).toEqual({ invoices: 1, lines: 3 });
+    // La facture partiellement payée est candidate au pré-lettrage (mig 466), pas au lettrage.
+    expect(await lettrage.autoLetter({ ...scope, dryRun: true }, actor)).toEqual({ invoices: 1, lines: 3, partial: 1 });
     expect(await linesOf(soldee)).toEqual([null, null, null]);              // l'aperçu ne lettre rien
-    expect(await lettrage.autoLetter(scope, actor)).toEqual({ invoices: 1, lines: 3 });
+    expect(await lettrage.autoLetter(scope, actor)).toEqual({ invoices: 1, lines: 3, partial: 1 });
     const l1 = await linesOf(soldee);
     expect(l1[0]).not.toBeNull();
     expect(new Set(l1).size).toBe(1);
-    expect(await linesOf(partielle)).toEqual([null, null]);
-    expect((await lettrage.autoLetter({ ...scope, dryRun: true }, actor)).invoices).toBe(0);
+    expect(await linesOf(partielle)).toEqual([null, null]);                 // pas de lettrage définitif
+    const pre = (await p.query(
+      `SELECT jel.lettrage_partiel_id FROM journal_entry_lines jel JOIN journal_entries je ON je.id = jel.journal_entry_id
+        WHERE jel.account_id = $2 AND (je.source_id = $1 OR je.source_id IN (SELECT id FROM payments WHERE invoice_id = $1))`,
+      [partielle, acc['4411']])).rows.map((r: { lettrage_partiel_id: string | null }) => r.lettrage_partiel_id);
+    expect(pre).toHaveLength(2);
+    expect(pre[0]).not.toBeNull();
+    expect(pre[1]).toBe(pre[0]);                                            // pré-lettrées ensemble (lettre minuscule)
+    expect(await lettrage.autoLetter({ ...scope, dryRun: true }, actor)).toEqual({ invoices: 0, lines: 0, partial: 0 });
+  });
+
+  it('pré-lettre une facture et son acompte, puis les promeut en lettrage au solde', async () => {
+    const fac = await tiersEntry(auxB, 'credit', 100, 'Pré facture');
+    const ac1 = await tiersEntry(auxB, 'debit', 60, 'Pré acompte 1');
+    const gid = async (id: string) => (await testPool().query(
+      `SELECT lettrage_id, lettrage_partiel_id FROM journal_entry_lines WHERE id = $1`, [id])).rows[0] as
+      { lettrage_id: string | null; lettrage_partiel_id: string | null };
+
+    // Sélection non soldée sans « partial » : refus, comme avant.
+    await expect(lettrage.letter([fac, ac1], actor)).rejects.toThrow(/écart de 40\.00 DH/);
+
+    // Pré-lettrage (mig 466) : rapprochées malgré l'écart de 40.
+    const pre = await lettrage.letter([fac, ac1], actor, { partial: true });
+    expect(pre.partial).toBe(true);
+    const partialId = pre.lettrage_partiel_id!;
+    for (const l of [fac, ac1]) {
+      const g = await gid(l);
+      expect(g.lettrage_id).toBeNull();
+      expect(g.lettrage_partiel_id).toBe(partialId);
+    }
+    // Vue : code en minuscules, lignes toujours « à lettrer ».
+    const view = await lettrage.lines({ accountId: acc['4411'], auxiliaryId: auxB, status: 'open' });
+    const mine = view.lines.filter((l: { id: string }) => [fac, ac1].includes(l.id));
+    expect(mine).toHaveLength(2);
+    expect(mine.every((l: { code: string | null }) => !!l.code && l.code === l.code.toLowerCase())).toBe(true);
+    expect(view.totals.partial_groups).toBeGreaterThanOrEqual(1);
+
+    // Déjà pré-lettrées ensemble : refus.
+    await expect(lettrage.letter([fac, ac1], actor, { partial: true })).rejects.toThrow(/déjà pré-lettrées/);
+
+    // L'acompte qui solde promeut le groupe en lettrage définitif ; le pré-lettrage disparaît.
+    const ac2 = await tiersEntry(auxB, 'debit', 40, 'Pré acompte 2');
+    const full = await lettrage.letter([fac, ac1, ac2], actor);
+    const lettrageId = full.lettrage_id!;
+    expect(lettrageId).toBeTruthy();
+    for (const l of [fac, ac1, ac2]) {
+      const g = await gid(l);
+      expect(g.lettrage_id).toBe(lettrageId);
+      expect(g.lettrage_partiel_id).toBeNull();
+    }
+    expect((await testPool().query(`SELECT 1 FROM journal_entry_lines WHERE lettrage_partiel_id = $1`, [partialId])).rows).toHaveLength(0);
+  });
+
+  it('défait un pré-lettrage en entier', async () => {
+    const fac = await tiersEntry(auxB, 'credit', 70, 'Défaire pré facture');
+    const ac = await tiersEntry(auxB, 'debit', 30, 'Défaire pré acompte');
+    const pre = await lettrage.letter([fac, ac], actor, { partial: true });
+    const un = await lettrage.unletter(pre.lettrage_partiel_id!, actor);
+    expect(un).toMatchObject({ partial: true, lines: 2 });
+    for (const l of [fac, ac]) {
+      const r = (await testPool().query(`SELECT lettrage_partiel_id FROM journal_entry_lines WHERE id = $1`, [l])).rows[0];
+      expect(r.lettrage_partiel_id).toBeNull();
+    }
   });
 
   it('fige le lettrage d\'un exercice clôturé', async () => {

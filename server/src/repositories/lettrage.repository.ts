@@ -58,17 +58,21 @@ async function closedUntil(c: PoolClient | typeof db): Promise<{ end: string | n
 }
 
 type LineRow = {
-  id: string; lettrage_id: string | null; debit: string; credit: string; label: string | null;
+  id: string; lettrage_id: string | null; lettrage_partiel_id: string | null; debit: string; credit: string; label: string | null;
   entry_id: string; entry_number: string; entry_date: string; description: string; piece_ref: string | null;
   source_kind: string; status: string; journal_code: string;
-  rank: number | null; lettered_at: string | null; frozen: boolean;
+  rank: number | null; partial_rank: number | null; lettered_at: string | null; frozen: boolean;
 };
 
 type LockedLine = {
   id: string; account_id: string; auxiliary_id: string | null; debit: string; credit: string;
-  lettrage_id: string | null; status: string; entry_date: string; entry_number: string;
+  lettrage_id: string | null; lettrage_partiel_id: string | null; status: string; entry_date: string; entry_number: string;
   code: string; lettrable: boolean;
 };
+
+/** Groupes pré-lettrés distincts portés par des lignes. */
+const partialGroupsOf = (rows: { lettrage_partiel_id: string | null }[]) =>
+  [...new Set(rows.map(r => r.lettrage_partiel_id).filter((x): x is string => !!x))];
 
 function assertNotClosed(rows: LockedLine[], closed: { end: string | null; year: number | null }) {
   if (!closed.end) return;
@@ -115,7 +119,8 @@ export const lettrageRepository = {
 
   /**
    * Lignes d'un compte (et d'un tiers pour un collectif), avec leur code de
-   * lettrage (A, B… par ordre de première date, propre à ce compte et ce tiers)
+   * lettrage (A, B… par ordre de première date, propre à ce compte et ce tiers ;
+   * a, b… en minuscules pour un groupe pré-lettré, qui reste « à lettrer »)
    * et le drapeau « figé » pour un exercice clôturé.
    */
   async lines(p: { accountId: string; auxiliaryId?: string | null; status: LettrageStatus; from?: string; to?: string }) {
@@ -128,7 +133,7 @@ export const lettrageRepository = {
     const closed = await closedUntil(db);
     const r = await db.query(
       `WITH scope AS (
-         SELECT jel.id, jel.line_order, jel.lettrage_id, jel.debit, jel.credit, jel.label,
+         SELECT jel.id, jel.line_order, jel.lettrage_id, jel.lettrage_partiel_id, jel.debit, jel.credit, jel.label,
                 je.id AS entry_id, je.entry_number, je.entry_date, je.description, je.piece_ref,
                 je.source_kind, je.status, j.code AS journal_code
            FROM journal_entry_lines jel
@@ -138,15 +143,19 @@ export const lettrageRepository = {
        grp AS (
          SELECT lettrage_id, row_number() OVER (ORDER BY min(entry_date), lettrage_id) AS rk
            FROM scope WHERE lettrage_id IS NOT NULL GROUP BY lettrage_id),
+       pgrp AS (
+         SELECT lettrage_partiel_id, row_number() OVER (ORDER BY min(entry_date), lettrage_partiel_id) AS rk
+           FROM scope WHERE lettrage_partiel_id IS NOT NULL GROUP BY lettrage_partiel_id),
        aud AS (
          SELECT lettrage_id, max(at) AS at FROM ledger_audit_log
           WHERE event = 'letter' AND lettrage_id IN (SELECT lettrage_id FROM grp) GROUP BY lettrage_id)
-       SELECT s.id, s.lettrage_id, s.debit, s.credit, s.label, s.entry_id, s.entry_number,
+       SELECT s.id, s.lettrage_id, s.lettrage_partiel_id, s.debit, s.credit, s.label, s.entry_id, s.entry_number,
               s.entry_date::text AS entry_date, s.description, s.piece_ref, s.source_kind, s.status, s.journal_code,
-              grp.rk::int AS rank, aud.at AS lettered_at,
+              grp.rk::int AS rank, pgrp.rk::int AS partial_rank, aud.at AS lettered_at,
               ($6::date IS NOT NULL AND s.entry_date <= $6::date) AS frozen
          FROM scope s
          LEFT JOIN grp ON grp.lettrage_id = s.lettrage_id
+         LEFT JOIN pgrp ON pgrp.lettrage_partiel_id = s.lettrage_partiel_id
          LEFT JOIN aud ON aud.lettrage_id = s.lettrage_id
         WHERE ($3 = 'all' OR ($3 = 'open') = (s.lettrage_id IS NULL))
           AND ($4::date IS NULL OR s.entry_date >= $4::date)
@@ -154,12 +163,16 @@ export const lettrageRepository = {
         ORDER BY s.entry_date, s.entry_number, s.line_order
         LIMIT 3000`,
       [p.accountId, p.auxiliaryId || null, p.status, p.from || null, p.to || null, closed.end]);
-    const lines = (r.rows as LineRow[]).map(l => ({ ...l, code: l.rank ? letterCode(l.rank) : null }));
+    const lines = (r.rows as LineRow[]).map(l => ({
+      ...l, code: l.rank ? letterCode(l.rank) : l.partial_rank ? letterCode(l.partial_rank).toLowerCase() : null,
+    }));
     const tot = (await db.query(
       `SELECT COALESCE(sum(jel.debit) FILTER (WHERE jel.lettrage_id IS NULL), 0) AS open_debit,
               COALESCE(sum(jel.credit) FILTER (WHERE jel.lettrage_id IS NULL), 0) AS open_credit,
               (count(*) FILTER (WHERE jel.lettrage_id IS NULL))::int AS open_lines,
-              count(DISTINCT jel.lettrage_id)::int AS groups
+              count(DISTINCT jel.lettrage_id)::int AS groups,
+              (count(*) FILTER (WHERE jel.lettrage_partiel_id IS NOT NULL))::int AS partial_lines,
+              count(DISTINCT jel.lettrage_partiel_id)::int AS partial_groups
          FROM journal_entry_lines jel
          JOIN journal_entries je ON je.id = jel.journal_entry_id AND ${POSTED_SQL}
         WHERE jel.account_id = $1 AND jel.auxiliary_id IS NOT DISTINCT FROM $2::uuid`,
@@ -168,13 +181,18 @@ export const lettrageRepository = {
              closed_until: closed.end, totals: tot, lines, truncated: r.rows.length === 3000 };
   },
 
-  /** Lettre un ensemble de lignes qui se soldent. */
-  letter(lineIds: string[], actor: Actor) {
+  /**
+   * Lettre un ensemble de lignes qui se soldent. Avec `partial`, une sélection
+   * non soldée est pré-lettrée (mig 466) : une pièce et ses acomptes, dont le
+   * reste dû est l'écart. Des lignes déjà pré-lettrées peuvent être reprises :
+   * leur groupe s'étend, ou se promeut en lettrage si la sélection se solde.
+   */
+  letter(lineIds: string[], actor: Actor, opts: { partial?: boolean } = {}) {
     return withTx(actor.userId, async c => {
       const ids = [...new Set(lineIds)];
       if (ids.length < 2) throw fail('Sélectionnez au moins deux lignes à lettrer');
       const rows = (await c.query(
-        `SELECT jel.id, jel.account_id, jel.auxiliary_id, jel.debit, jel.credit, jel.lettrage_id,
+        `SELECT jel.id, jel.account_id, jel.auxiliary_id, jel.debit, jel.credit, jel.lettrage_id, jel.lettrage_partiel_id,
                 je.status, je.entry_date::text AS entry_date, je.entry_number, a.code, ${LETTRABLE_SQL} AS lettrable
            FROM journal_entry_lines jel
            JOIN journal_entries je ON je.id = jel.journal_entry_id
@@ -191,10 +209,23 @@ export const lettrageRepository = {
       if (!rows[0].lettrable) throw fail(`Le compte ${rows[0].code} ne se lettre pas (comptes de tiers 34xx/44xx seulement)`);
       if (new Set(rows.map(r => r.auxiliary_id ?? '-')).size > 1) throw fail('Les lignes lettrées ensemble portent sur un même tiers');
       const ecart = rows.reduce((s, r) => s + cents(r.debit) - cents(r.credit), 0);
-      if (ecart !== 0) throw fail(`Sélection non soldée : écart de ${(Math.abs(ecart) / 100).toFixed(2)} DH au ${ecart > 0 ? 'débit' : 'crédit'}`);
+      const partialIds = partialGroupsOf(rows);
+      if (ecart !== 0) {
+        if (!opts.partial) throw fail(`Sélection non soldée : écart de ${(Math.abs(ecart) / 100).toFixed(2)} DH au ${ecart > 0 ? 'débit' : 'crédit'}`);
+        assertNotClosed(rows, await closedUntil(c));
+        // Un seul groupe déjà présent : on l'étend ; plusieurs : on les fond en un nouveau.
+        const partialId = partialIds.length === 1 ? partialIds[0] : crypto.randomUUID();
+        if (rows.every(r => r.lettrage_partiel_id === partialId)) throw fail('Ces lignes sont déjà pré-lettrées ensemble', 409);
+        await c.query(
+          `UPDATE journal_entry_lines SET lettrage_partiel_id = $1 WHERE id = ANY($2::uuid[]) AND lettrage_partiel_id IS DISTINCT FROM $1`,
+          [partialId, ids]);
+        for (const old of partialIds) if (old !== partialId) await c.query(`SELECT fn_lettrage_partiel_tidy($1)`, [old]);
+        return { lettrage_partiel_id: partialId, lines: ids.length, partial: true };
+      }
       assertNotClosed(rows, await closedUntil(c));
       const lettrageId = crypto.randomUUID();
-      await c.query(`UPDATE journal_entry_lines SET lettrage_id = $1 WHERE id = ANY($2::uuid[])`, [lettrageId, ids]);
+      await c.query(`UPDATE journal_entry_lines SET lettrage_id = $1, lettrage_partiel_id = NULL WHERE id = ANY($2::uuid[])`, [lettrageId, ids]);
+      for (const old of partialIds) await c.query(`SELECT fn_lettrage_partiel_tidy($1)`, [old]);
       return { lettrage_id: lettrageId, lines: ids.length };
     });
   },
@@ -202,16 +233,18 @@ export const lettrageRepository = {
   /**
    * Lettrage automatique facture ↔ règlements (mêmes lignes et même règle que
    * autoLettrer) sur les factures dont les lignes non lettrées se soldent, sur
-   * un seul compte et un seul tiers, hors exercice clôturé. Facultativement
-   * limité à un compte et un tiers ; dryRun = compter sans lettrer.
+   * un seul compte et un seul tiers, hors exercice clôturé ; les factures
+   * partiellement réglées sont pré-lettrées (mig 466) si elles ne le sont pas
+   * déjà entièrement. Facultativement limité à un compte et un tiers ;
+   * dryRun = compter sans lettrer.
    */
   async autoLetter(p: { accountId?: string; auxiliaryId?: string; dryRun?: boolean }, actor: Actor) {
     const candidates = async (c: PoolClient | typeof db) => {
       const closed = await closedUntil(c);
       return (await c.query(
         `WITH l AS (
-           SELECT jel.debit, jel.credit, jel.account_id, jel.auxiliary_id, je.entry_date,
-                  COALESCE(i.id, pay.invoice_id) AS inv
+           SELECT jel.debit, jel.credit, jel.account_id, jel.auxiliary_id, jel.lettrage_partiel_id, je.entry_date,
+                  COALESCE(jel.invoice_id, i.id, pay.invoice_id) AS inv
              FROM journal_entry_lines jel
              JOIN journal_entries je ON je.id = jel.journal_entry_id
              JOIN accounts a ON a.id = jel.account_id
@@ -219,46 +252,62 @@ export const lettrageRepository = {
              LEFT JOIN payments pay ON pay.id = je.source_id
             WHERE a.code IN ('4411', '3421') AND jel.lettrage_id IS NULL
               AND je.status = 'posted' AND je.source_kind <> 'reversal')
-         SELECT inv, count(*)::int AS lines
+         SELECT inv, count(*)::int AS lines, (sum(debit - credit) = 0) AS balanced
            FROM l WHERE inv IS NOT NULL
           GROUP BY inv
-         HAVING count(*) >= 2 AND sum(debit - credit) = 0
+         HAVING count(*) >= 2
             AND count(DISTINCT account_id) = 1 AND count(DISTINCT COALESCE(auxiliary_id::text, '-')) = 1
+            -- soldée : à lettrer ; non soldée : à pré-lettrer sauf si déjà entièrement dans un même groupe
+            AND (sum(debit - credit) = 0
+                 OR count(*) FILTER (WHERE lettrage_partiel_id IS NULL) > 0
+                 OR count(DISTINCT lettrage_partiel_id) > 1)
             AND ($1::uuid IS NULL OR bool_and(account_id = $1::uuid))
             AND ($2::uuid IS NULL OR bool_and(auxiliary_id = $2::uuid))
             AND ($3::date IS NULL OR min(entry_date) > $3::date)`,
-        [p.accountId || null, p.auxiliaryId || null, closed.end])).rows as { inv: string; lines: number }[];
+        [p.accountId || null, p.auxiliaryId || null, closed.end])).rows as { inv: string; lines: number; balanced: boolean }[];
     };
     if (p.dryRun) {
       const rows = await candidates(db);
-      return { invoices: rows.length, lines: rows.reduce((s, r) => s + r.lines, 0) };
+      const full = rows.filter(r => r.balanced);
+      return { invoices: full.length, lines: full.reduce((s, r) => s + r.lines, 0), partial: rows.length - full.length };
     }
     return withTx(actor.userId, async c => {
-      let invoices = 0, lines = 0;
+      let invoices = 0, lines = 0, partial = 0;
       for (const r of await candidates(c)) {
         const out = await autoLettrer(c, r.inv);
-        if (out.lettered) { invoices++; lines += out.lineCount ?? 0; }
+        if (out.lettered) { invoices++; lines += out.lineCount ?? 0; } else if (out.partial) partial++;
       }
-      return { invoices, lines };
+      return { invoices, lines, partial };
     });
   },
 
-  /** Délettre un groupe entier (jamais une partie : le reste ne serait plus soldé). */
-  unletter(lettrageId: string, actor: Actor) {
+  /**
+   * Délettre un groupe entier (jamais une partie : le reste ne serait plus
+   * soldé). L'identifiant désigne un lettrage, sinon un pré-lettrage (mig 466),
+   * défait lui aussi en entier.
+   */
+  unletter(groupId: string, actor: Actor) {
     return withTx(actor.userId, async c => {
-      const rows = (await c.query(
-        `SELECT jel.id, jel.account_id, jel.auxiliary_id, jel.debit, jel.credit, jel.lettrage_id,
+      const lock = async (column: 'lettrage_id' | 'lettrage_partiel_id') => (await c.query(
+        `SELECT jel.id, jel.account_id, jel.auxiliary_id, jel.debit, jel.credit, jel.lettrage_id, jel.lettrage_partiel_id,
                 je.status, je.entry_date::text AS entry_date, je.entry_number, a.code, true AS lettrable
            FROM journal_entry_lines jel
            JOIN journal_entries je ON je.id = jel.journal_entry_id
            JOIN accounts a ON a.id = jel.account_id
-          WHERE jel.lettrage_id = $1
+          WHERE jel.${column} = $1
           ORDER BY jel.id
-          FOR UPDATE OF jel`, [lettrageId])).rows as LockedLine[];
+          FOR UPDATE OF jel`, [groupId])).rows as LockedLine[];
+      let rows = await lock('lettrage_id');
+      if (rows.length) {
+        assertNotClosed(rows, await closedUntil(c));
+        await c.query(`UPDATE journal_entry_lines SET lettrage_id = NULL WHERE lettrage_id = $1`, [groupId]);
+        return { lettrage_id: groupId, lines: rows.length };
+      }
+      rows = await lock('lettrage_partiel_id');
       if (!rows.length) throw fail('Lettrage introuvable', 404);
       assertNotClosed(rows, await closedUntil(c));
-      await c.query(`UPDATE journal_entry_lines SET lettrage_id = NULL WHERE lettrage_id = $1`, [lettrageId]);
-      return { lettrage_id: lettrageId, lines: rows.length };
+      await c.query(`UPDATE journal_entry_lines SET lettrage_partiel_id = NULL WHERE lettrage_partiel_id = $1`, [groupId]);
+      return { lettrage_partiel_id: groupId, lines: rows.length, partial: true };
     });
   },
 };

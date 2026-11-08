@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Wallet, AlertTriangle, Users, ChevronDown, ChevronRight, Banknote, X, Loader2, Receipt, FileText, Phone, ScrollText, Layers, PiggyBank } from 'lucide-react';
+import { Wallet, AlertTriangle, Users, ChevronDown, ChevronRight, Banknote, X, Loader2, Receipt, FileText, Phone, ScrollText, Layers, PiggyBank, Scale } from 'lucide-react';
 import { salesApi, type AgingBucket, type CustomerReceivable, type ReceivableDoc } from '../../api/sales.api';
 import { customersApi, type CustomerStatement } from '../../api/customers.api';
 import { paymentsApi } from '../../api/accounting.api';
@@ -51,6 +51,10 @@ export default function ReceivablesTab() {
 
   const toggle = (key: string) => setOpen(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const t = data?.totals;
+  const rec = data?.reconciliation;
+  // Concordance gestion ↔ 3421 : l'écart s'explique par les tickets à crédit non
+  // comptabilisés et les impayés sans fiche client (les avoirs sont dans les deux).
+  const reconciled = rec ? Math.abs(rec.gap - rec.legacyTickets - rec.unassigned) < 1 : true;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -61,6 +65,28 @@ export default function ReceivablesTab() {
         <Kpi icon={AlertTriangle} label="Plus de 60 jours" value={t ? money(t.buckets.d90 + t.buckets.over90) : '—'} sub="risque d'impayé" tone={t && t.buckets.d90 + t.buckets.over90 > 0 ? '#991b1b' : undefined} />
         <Kpi icon={Users} label="Clients concernés" value={t ? String(t.customers) : '—'} sub="" />
       </div>
+
+      {/* Rapprochement avec le compte clients 3421 (G-CA-05) : une seule vue des créances */}
+      {rec && (
+        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '10px 14px',
+          background: reconciled ? 'rgba(46,125,50,0.06)' : 'rgba(199,119,0,0.08)',
+          display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16, fontSize: '0.8125rem' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
+            <Scale size={14} /> Rapprochement comptable
+          </span>
+          <span>Pièces de gestion&nbsp;: <b>{money(rec.documents)}</b></span>
+          <span>Compte clients 3421&nbsp;: <b>{money(rec.ledger)}</b></span>
+          <span style={{ color: reconciled ? '#2e7d32' : '#c77700', fontWeight: 600 }}>
+            {reconciled ? 'Concorde' : `Écart non expliqué ${money(rec.gap - rec.legacyTickets - rec.unassigned)}`}
+          </span>
+          <span style={{ flex: 1 }} />
+          <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }} title="Ce qui distingue la vue gestion du grand livre">
+            {[rec.legacyTickets > 0.005 ? `${money(rec.legacyTickets)} en tickets à crédit non comptabilisés` : '',
+              rec.unassigned > 0.005 ? `${money(rec.unassigned)} sans fiche client` : '',
+              rec.unappliedCredits > 0.005 ? `${money(rec.unappliedCredits)} d'avoirs non imputés` : ''].filter(Boolean).join(' · ') || 'Tout est comptabilisé au grand livre'}
+          </span>
+        </div>
+      )}
 
       {/* Filtres */}
       <div className="flex flex-wrap items-center gap-2">
@@ -175,6 +201,12 @@ function CustomerRows({ c, isOpen, onToggle, onPay, onStatement, onReceipt }: { 
               </div>
             )}
             {c.customerId && <AdvancesBlock customerId={c.customerId} invoices={c.docs.filter(d => d.kind === 'invoice')} />}
+            {c.gap != null && Math.abs(c.gap) > 0.005 && (
+              <div style={{ fontSize: '0.75rem', color: '#c77700', marginBottom: 6, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <AlertTriangle size={11} /> Écart avec le compte 3421&nbsp;: {money(c.gap)} à vérifier
+                {c.legacyTickets > 0.005 ? ` (hors ${money(c.legacyTickets)} de tickets à crédit non comptabilisés)` : ''}
+              </div>
+            )}
             <table style={{ width: '100%', fontSize: '0.8125rem', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ color: 'var(--odoo-text-muted)', textAlign: 'left' }}>

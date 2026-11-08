@@ -1223,9 +1223,11 @@ export async function persistEntry(
  * Pour une facture donnee, trouve toutes les lignes de tiers (4411 ou 3421)
  * non encore lettrees rattachees a cette facture (entry source = invoiceId)
  * OU a un de ses paiements (payment.invoice_id = invoiceId). Si l'ensemble
- * est equilibre (SUM(D) == SUM(C) +/- 0.01), assigne a toutes les lignes un
- * meme lettrage_id UUID. Sinon, ne fait rien (paiement partiel : on attend
- * les regelements suivants).
+ * est equilibre (SUM(D) == SUM(C) au centime), assigne a toutes les lignes un
+ * meme lettrage_id UUID. Sinon (paiement partiel), les lignes sont PRÉ-LETTRÉES
+ * ensemble (mig 466, lettrage_partiel_id) : la pièce et ses acomptes forment
+ * un groupe dont le solde est le reste dû ; le règlement suivant le promeut en
+ * lettrage définitif.
  *
  * Idempotent : les lignes deja lettrees sont ignorees, donc rejouer n'a aucun
  * effet visible.
@@ -1233,9 +1235,9 @@ export async function persistEntry(
 export async function autoLettrer(
   client: PoolClient,
   invoiceId: string
-): Promise<{ lettered: boolean; lettrageId?: string; lineCount?: number }> {
+): Promise<{ lettered: boolean; lettrageId?: string; lineCount?: number; partial?: boolean; partialId?: string }> {
   const linesRes = await client.query(
-    `SELECT jel.id, jel.debit, jel.credit, jel.account_id, jel.auxiliary_id
+    `SELECT jel.id, jel.debit, jel.credit, jel.account_id, jel.auxiliary_id, jel.lettrage_partiel_id
      FROM journal_entry_lines jel
      JOIN journal_entries je ON je.id = jel.journal_entry_id
      JOIN accounts a ON a.id = jel.account_id
@@ -1264,19 +1266,31 @@ export async function autoLettrer(
   const cents = (v: string) => Math.round((parseFloat(v) || 0) * 100);
   const sumD = linesRes.rows.reduce((s, l) => s + cents(l.debit), 0);
   const sumC = linesRes.rows.reduce((s, l) => s + cents(l.credit), 0);
+  const ids = linesRes.rows.map(l => l.id);
+  // Groupes pré-lettrés déjà posés sur ces lignes : repris tels quels s'il n'y
+  // en a qu'un, fondus sinon ; ce qui en reste ailleurs est remis d'aplomb.
+  const partialIds = [...new Set(linesRes.rows.map(l => l.lettrage_partiel_id as string | null).filter((x): x is string => !!x))];
 
   if (sumD !== sumC) {
-    // Paiement partiel — pas de lettrage encore.
-    return { lettered: false };
+    // Paiement partiel — pré-lettrage (mig 466) : la pièce et ses acomptes se
+    // rapprochent sans se solder ; le reste dû est le solde du groupe.
+    const partialId = partialIds.length === 1 ? partialIds[0] : crypto.randomUUID();
+    const toMark = linesRes.rows.filter(l => l.lettrage_partiel_id !== partialId).map(l => l.id);
+    if (toMark.length) {
+      await client.query(`UPDATE journal_entry_lines SET lettrage_partiel_id = $1 WHERE id = ANY($2::uuid[])`, [partialId, toMark]);
+    }
+    for (const old of partialIds) if (old !== partialId) await client.query(`SELECT fn_lettrage_partiel_tidy($1)`, [old]);
+    return { lettered: false, partial: true, partialId, lineCount: ids.length };
   }
 
   const lettrageId = crypto.randomUUID();
   await client.query(
-    `UPDATE journal_entry_lines SET lettrage_id = $1 WHERE id = ANY($2::uuid[])`,
-    [lettrageId, linesRes.rows.map(l => l.id)]
+    `UPDATE journal_entry_lines SET lettrage_id = $1, lettrage_partiel_id = NULL WHERE id = ANY($2::uuid[])`,
+    [lettrageId, ids]
   );
+  for (const old of partialIds) await client.query(`SELECT fn_lettrage_partiel_tidy($1)`, [old]);
 
-  return { lettered: true, lettrageId, lineCount: linesRes.rows.length };
+  return { lettered: true, lettrageId, lineCount: ids.length };
 }
 
 /* ═══ Extourne des écritures d'une source (mig 311, G-D8-02) ═══ */
@@ -1412,6 +1426,14 @@ async function extourneEntry(
     `UPDATE journal_entries SET status = 'reversed', reversed_by_entry_id = $2 WHERE id = $1`,
     [orig.id, extId]
   );
+  // Lignes de l'original encore pré-lettrées (mig 466) : elles quittent leur
+  // groupe partiel pour se lettrer avec l'extourne ; le reste du groupe est
+  // remis d'aplomb (dissous s'il n'a plus qu'une ligne, promu s'il se solde).
+  const partials = (await client.query(
+    `UPDATE journal_entry_lines SET lettrage_partiel_id = NULL
+      WHERE journal_entry_id = $1 AND lettrage_partiel_id IS NOT NULL
+      RETURNING lettrage_partiel_id AS old`, [orig.id])).rows as { old: string }[];
+  for (const g of new Set(partials.map(p => p.old))) await client.query(`SELECT fn_lettrage_partiel_tidy($1)`, [g]);
   // Original et extourne se soldent : lettrage commun sur les comptes de tiers
   // (collectifs, 34xx, 44xx), un groupe par compte et par tiers, seulement là
   // où les lignes encore non lettrées se soldent (mig 420 : un groupe = un

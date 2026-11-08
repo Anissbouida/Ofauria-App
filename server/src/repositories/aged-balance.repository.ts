@@ -34,6 +34,7 @@ export interface AgedItem {
   days_late: number;
   amount: number;            // reste dû (positif = dû par nous côté fournisseurs, à nous côté clients)
   bucket: AgedBucket;
+  partial: boolean;          // pièce et acomptes pré-lettrés (mig 466) : rapprochés sans être soldés
 }
 export interface AgedTiers {
   auxiliary_id: string;
@@ -88,9 +89,11 @@ async function computeIn(c: PoolClient, p: { side: AgedSide; asOf: string }) {
          FROM journal_entry_lines jel JOIN journal_entries je ON je.id = jel.journal_entry_id
         WHERE jel.lettrage_id IS NOT NULL GROUP BY jel.lettrage_id),
      open AS (
+       -- inv : la facture rattachée, par la source OU l'axe de lettrage par ligne
+       -- (mig 451) — un règlement réparti porte jel.invoice_id sans source facture.
        SELECT jel.id, jel.auxiliary_id, a.code AS account_code, ${sgn} AS amount,
               je.entry_date, je.entry_number, je.source_kind, COALESCE(jel.label, je.description) AS label,
-              COALESCE(i.id, pay.invoice_id) AS inv
+              jel.lettrage_partiel_id, COALESCE(i.id, pay.invoice_id, jel.invoice_id) AS inv
          FROM journal_entry_lines jel
          JOIN journal_entries je ON je.id = jel.journal_entry_id AND je.status IN ('posted', 'reversed')
          JOIN accounts a ON a.id = jel.account_id AND a.is_collective AND a.auxiliary_kind = $1
@@ -110,7 +113,8 @@ async function computeIn(c: PoolClient, p: { side: AgedSide; asOf: string }) {
             min(o.label) AS label,
             COALESCE(min(inv.invoice_date), min(o.entry_date))::text AS doc_date,
             COALESCE(min(inv.due_date), min(inv.invoice_date) + COALESCE(min(c.delai_paiement_jours), 0), min(o.entry_date))::text AS due_date,
-            sum(o.amount) AS amount
+            sum(o.amount) AS amount,
+            bool_or(o.lettrage_partiel_id IS NOT NULL) AS partial
        FROM open o
        LEFT JOIN invoices inv ON inv.id = o.inv
        LEFT JOIN customers c ON c.id = inv.customer_id
@@ -125,12 +129,12 @@ async function computeIn(c: PoolClient, p: { side: AgedSide; asOf: string }) {
 
   const asOfMs = Date.parse(`${p.asOf}T00:00:00Z`);
   const groups = new Map<string, AgedTiers>();
-  for (const row of r.rows as { auxiliary_id: string; account_code: string; key: string; kind: AgedItem['kind']; reference: string; label: string; doc_date: string; due_date: string; amount: string }[]) {
+  for (const row of r.rows as { auxiliary_id: string; account_code: string; key: string; kind: AgedItem['kind']; reference: string; label: string; doc_date: string; due_date: string; amount: string; partial: boolean }[]) {
     const daysLate = Math.round((asOfMs - Date.parse(`${row.due_date}T00:00:00Z`)) / 86_400_000);
     const item: AgedItem = {
       key: row.key, kind: row.kind, reference: row.reference, label: row.label,
       doc_date: row.doc_date, due_date: row.due_date, days_late: daysLate,
-      amount: round2(Number(row.amount)), bucket: bucketOf(daysLate),
+      amount: round2(Number(row.amount)), bucket: bucketOf(daysLate), partial: Boolean(row.partial),
     };
     let g = groups.get(row.auxiliary_id);
     if (!g) {

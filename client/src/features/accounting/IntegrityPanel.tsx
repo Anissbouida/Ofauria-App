@@ -16,6 +16,8 @@ const EVENT_LABEL: Record<LedgerAuditEvent, string> = {
   letter: 'Lettrage',
   unletter: 'Délettrage',
   reletter: 'Relettrage',
+  letter_partial: 'Pré-lettrage',
+  unletter_partial: 'Pré-lettrage défait',
   seal: 'Scellement',
   verify: 'Vérification',
   outbox_replay: 'Rejeu de la file',

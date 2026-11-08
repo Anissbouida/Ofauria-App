@@ -205,6 +205,7 @@ export default function AgedBalanceTab() {
                             <td style={{ paddingLeft: 32 }}>
                               <span style={{ color: 'var(--theme-text-muted)' }}>{KIND_LABELS[i.kind]}</span>{' '}
                               <span style={{ ...mono, color: '#185fa5' }}>{i.reference}</span>
+                              {i.partial && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 4 }} title="Pièce et acomptes pré-lettrés : le montant est le reste dû">pré-lettré</span>}
                               <span style={{ color: 'var(--theme-text-muted)' }}> · du {fmtDate(i.doc_date)} · échéance {fmtDate(i.due_date)}{i.days_late > 0 ? ` · ${i.days_late} j de retard` : ''}</span>
                             </td>
                             {BUCKETS.map(b => <td key={b.key} style={{ ...mono, textAlign: 'right' }}>{b.key === i.bucket ? n(i.amount) : ''}</td>)}
