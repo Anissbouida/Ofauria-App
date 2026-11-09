@@ -19,6 +19,7 @@ import {
   ChevronRight, Search, X,
 } from 'lucide-react';
 import { Navigate, useSearchParams } from 'react-router-dom';
+import SalesPageShell from '../sales/SalesPageShell';
 
 type DatePreset = 'today' | '7d' | '30d' | '90d' | 'custom';
 type Tab = 'overview' | 'menu' | 'cost' | 'margins' | 'builder';
@@ -221,18 +222,13 @@ export default function ReportsPage({ fixedTab }: { fixedTab?: Tab } = {}) {
   const current = tabs.find(t => t.key === activeTab)!;
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto p-6">
-      {/* Header : l'écran est choisi dans la barre latérale du module */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">{current.label}</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{current.subtitle}</p>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <Calendar size={16} />
-          <span>{format(new Date(), "EEEE d MMMM yyyy", { locale: fr })}</span>
-        </div>
-      </div>
+    <SalesPageShell title={current.label} actions={
+      <span className="flex items-center gap-2 text-sm text-gray-500">
+        <Calendar size={16} />{format(new Date(), "EEEE d MMMM yyyy", { locale: fr })}
+      </span>
+    }>
+      <div className="space-y-6 max-w-7xl mx-auto">
+        <p className="text-sm text-gray-500" style={{ marginTop: -4 }}>{current.subtitle}</p>
 
       {/* ============ Tab: Vue d'ensemble ============ */}
       {activeTab === 'overview' && (
@@ -272,7 +268,8 @@ export default function ReportsPage({ fixedTab }: { fixedTab?: Tab } = {}) {
           lossStats={lossStats}
         />
       )}
-    </div>
+      </div>
+    </SalesPageShell>
   );
 }
 

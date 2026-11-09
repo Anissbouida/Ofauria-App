@@ -8,7 +8,7 @@ import type { LucideIcon } from 'lucide-react';
  * (SalesLayout rend la coquille en bar={false} flush : chaque page pose sa propre barre).
  */
 export default function SalesPageShell({ icon: Icon, title, parent, actions, children }: {
-  icon: LucideIcon;
+  icon?: LucideIcon;
   title: string;
   /** Segment parent du fil d'Ariane (ex. « Rapports ») ; omis, seul le titre s'affiche. */
   parent?: string;
@@ -20,7 +20,7 @@ export default function SalesPageShell({ icon: Icon, title, parent, actions, chi
     <div className="odoo-scope" style={{ minHeight: '100%' }}>
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
-          <Icon size={14} style={{ color: 'var(--theme-accent)' }} />
+          {Icon && <Icon size={14} style={{ color: 'var(--theme-accent)' }} />}
           {parent && <><span>{parent}</span><span className="odoo-breadcrumb-separator">/</span></>}
           <span className="odoo-breadcrumb-current">{title}</span>
         </div>
