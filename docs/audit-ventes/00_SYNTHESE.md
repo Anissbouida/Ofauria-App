@@ -166,6 +166,9 @@ D7-21 et D7-42 redescendent en P1 si la cible reste francophone et orientée cai
 
 ## 5. Feuille de route proposée
 
+> La séquence détaillée, étape par étape et fusionnée avec les lots du couplage sectoriel,
+> est dans `docs/FEUILLE_DE_ROUTE_MULTI_SECTEUR.md`.
+
 | Lot | Contenu | Effort | Dépend de |
 |---|---|---|---|
 | **V0 — Correctifs** | Bugs du § 4 (impression, suppression produit, retours, abonnements, isolation par magasin, plafonds sur devis) | S à M | — |
