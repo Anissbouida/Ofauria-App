@@ -11,6 +11,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import PrinterSettingsCard from './PrinterSettingsCard';
 import SachetsTab from './SachetsTab';
+import SectorTab from './SectorTab';
 import ProductionMarkupTab from './ProductionMarkupTab';
 import AuditLogTab from './AuditLogTab';
 import NumberingTab from './NumberingTab';
@@ -144,6 +145,7 @@ function SettingsShell() {
   const pageContent: Record<SettingsPageKey, React.ReactNode> = {
     home: <SetupHome onOpen={(page, anchor) => void goTo(page, { anchor })} onOpenUsers={() => void leaveTo('/users')} />,
     company: <CompanyPage />,
+    sector: <SectorTab />,
     stores: <StoresPanel />,
     appearance: <AppearanceTab />,
     print: <PrintTab />,

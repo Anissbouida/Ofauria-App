@@ -167,6 +167,11 @@ export interface SetupOverview {
   recent: { id: string; table_name: string; operation: string; record_label: string | null; changed_at: string; changed_by_name: string | null }[] | null;
 }
 
+export interface SectorInfo {
+  current: { code: string; label: string; modules: string[] };
+  available: { code: string; label: string }[];
+}
+
 export const settingsApi = {
   setup: () => api.get('/settings/setup').then(r => r.data.data) as Promise<SetupOverview>,
   get: () => api.get('/settings').then(r => r.data.data) as Promise<CompanySettings>,
@@ -187,6 +192,8 @@ export const settingsApi = {
   bankAccounts: () => api.get('/settings/bank-accounts').then(r => r.data.data) as Promise<CompanyBankAccount[]>,
   saveBankAccount: (id: string | null, data: Record<string, unknown>) =>
     (id ? api.put(`/settings/bank-accounts/${id}`, data) : api.post('/settings/bank-accounts', data)).then(r => r.data.data) as Promise<CompanyBankAccount>,
+  sector: () => api.get('/settings/sector').then(r => r.data.data) as Promise<SectorInfo>,
+  setSector: (code: string) => api.put('/settings/sector', { code }).then(r => r.data.data) as Promise<{ code: string; label: string; modules: string[] }>,
   taxCodes: () => api.get('/settings/tax-codes').then(r => r.data.data) as Promise<TaxCode[]>,
   addTaxRate: (data: Record<string, unknown>) => api.post('/settings/tax-codes', data).then(r => r.data.data) as Promise<TaxCode>,
   updateTaxCode: (id: string, data: Record<string, unknown>) => api.put(`/settings/tax-codes/${id}`, data).then(r => r.data.data) as Promise<TaxCode>,

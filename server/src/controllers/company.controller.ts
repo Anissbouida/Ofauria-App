@@ -4,6 +4,7 @@ import { companyBankRepository, type BankAccountInput } from '../repositories/co
 import { taxCodeRepository } from '../repositories/tax-code.repository.js';
 import { ribKeyValid } from '../services/salary-transfer.js';
 import { db } from '../config/database.js';
+import { sectorRepository } from '../repositories/sector.repository.js';
 
 const bad = (res: Response, message: string, status = 400) => res.status(status).json({ success: false, error: { message } });
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -41,6 +42,22 @@ function readBank(body: Record<string, unknown>, creating: boolean): BankAccount
 
 /** Fiche société : comptes bancaires et TVA (Paramètres, lot 5, mig 331). */
 export const companyController = {
+  /** Secteur d'activité courant + liste des secteurs (mig 468). Lisible par tout
+   *  utilisateur authentifié : le client s'en sert pour masquer les modules hors secteur. */
+  async sector(_req: AuthRequest, res: Response) {
+    const [current, available] = await Promise.all([sectorRepository.current(), sectorRepository.list()]);
+    res.json({ success: true, data: { current, available: available.map(s => ({ code: s.code, label: s.label })) } });
+  },
+
+  /** Change le secteur de la société (réservé à la direction via la route). */
+  async setSector(req: AuthRequest, res: Response) {
+    const code = String((req.body as { code?: unknown })?.code ?? '').trim();
+    if (!code) { bad(res, 'Secteur requis'); return; }
+    const updated = await sectorRepository.setSector(code);
+    if (!updated) { bad(res, 'Secteur inconnu', 404); return; }
+    res.json({ success: true, data: updated });
+  },
+
   async bankAccounts(_req: AuthRequest, res: Response) {
     res.json({ success: true, data: await companyBankRepository.list() });
   },

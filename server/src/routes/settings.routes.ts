@@ -43,6 +43,10 @@ router.get('/parameters', authenticate, asyncHandler(parametersController.list))
 router.put('/parameters/:key', authenticate, jsonParser, asyncHandler(parametersController.update));
 
 // Fiche societe (lot 5, mig 331) : comptes bancaires (section Entreprise), TVA (section TVA).
+// Secteur d'activité (mig 468) : GET lisible par tout utilisateur (masquage des modules
+// hors secteur côté client) ; PUT réservé à la direction (droit « Société »).
+router.get('/sector', authenticate, asyncHandler(companyController.sector));
+router.put('/sector', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.setSector));
 router.get('/bank-accounts', authenticate, authorizeSettings('company'), asyncHandler(companyController.bankAccounts));
 router.post('/bank-accounts', authenticate, jsonParser, authorizeSettings('company', 'create'), asyncHandler(companyController.saveBankAccount));
 router.put('/bank-accounts/:id', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.saveBankAccount));

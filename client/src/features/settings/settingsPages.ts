@@ -13,7 +13,7 @@ import { settingAnchor } from './SettingsPrimitives';
 
 export type SettingsPageKey =
   | 'home'
-  | 'company' | 'stores' | 'appearance'
+  | 'company' | 'sector' | 'stores' | 'appearance'
   | 'print' | 'channels' | 'sachets' | 'salesRules' | 'posRules' | 'productCategories'
   | 'production' | 'purchasing'
   | 'tax' | 'currencies' | 'numbering' | 'documents' | 'ledger'
@@ -53,6 +53,9 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
     description: 'Identité légale, comptes bancaires et remise du personnel',
     keywords: 'entreprise rib banque iban remise personnel pays',
     fields: ["Informations de l'entreprise", "Nom de l'entreprise", 'Sous-titre', ...LEGAL] },
+  { key: 'sector', group: 'Entreprise', section: 'company', label: "Secteur d'activité", icon: Layers,
+    description: 'Choisir le métier : adapte les modules et menus visibles',
+    keywords: 'secteur activite metier pack boulangerie generique negoce modules industrie services' },
   { key: 'stores', group: 'Entreprise', section: 'stores', label: 'Établissements', icon: Store,
     description: 'Boutiques, laboratoire, entrepôt, siège', keywords: 'boutique magasin point de vente laboratoire entrepot siege adresse' },
   { key: 'appearance', group: 'Entreprise', section: 'appearance', label: 'Apparence', icon: Paintbrush,

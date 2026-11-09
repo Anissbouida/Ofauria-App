@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { usersApi } from '../api/users.api';
+import { settingsApi } from '../api/settings.api';
 import type { AppModule, UserPermission } from '@ofauria/shared';
 import { DEFAULT_ROLE_MODULES, getRoleCategorySlugs, resolveModuleKeys } from '@ofauria/shared';
 
@@ -23,6 +24,8 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
   const [permissions, setPermissions] = useState<UserPermission[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
+  // Modules activés par le secteur de la société (mig 468) ; null tant que non chargé.
+  const [sectorModules, setSectorModules] = useState<Set<string> | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -49,7 +52,23 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
       .finally(() => setIsLoading(false));
   }, [user, reloadKey]);
 
+  // Secteur d'activité : la liste des modules activés vaut pour TOUS les rôles (admin
+  // inclus) — un secteur « générique » masque Production, Recettes, etc. Chargé une fois
+  // par session ; tant que null (non chargé), on n'applique aucun masquage (pas de
+  // disparition de menu au chargement).
+  useEffect(() => {
+    if (!user) { setSectorModules(null); return; }
+    let cancelled = false;
+    settingsApi.sector()
+      .then(s => { if (!cancelled) setSectorModules(new Set(s.current.modules)); })
+      .catch(() => { if (!cancelled) setSectorModules(null); });
+    return () => { cancelled = true; };
+  }, [user, reloadKey]);
+
   const isAdmin = user?.role === 'admin';
+  // true si le module est activé par le secteur (ou si le secteur n'est pas encore chargé).
+  const inSector = (module: AppModule): boolean =>
+    !sectorModules || resolveModuleKeys(module).some(k => sectorModules.has(k));
   const hasCustomPermissions = permissions.length > 0;
 
   // Fusion Stock : un droit stocke sous une cle (ex. 'stock') vaut pour ses
@@ -65,12 +84,14 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
   };
 
   const hasModule = (module: AppModule): boolean => {
+    if (!inSector(module)) return false;
     if (isAdmin) return true;
     if (hasCustomPermissions) return !!findPerm(module)?.canView;
     return defaultsHas(module);
   };
 
   const canView = (module: AppModule): boolean => {
+    if (!inSector(module)) return false;
     if (isAdmin) return true;
     if (hasCustomPermissions) return findPerm(module)?.canView ?? false;
     return defaultsHas(module);
