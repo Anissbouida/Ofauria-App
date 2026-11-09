@@ -16,6 +16,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -35,15 +49,25 @@ jobs:
       - name: Typecheck server
         run: npm run build --workspace=server
 
+      - name: Setup integration test database
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+          server/scripts/test-db-setup.sh
+        env:
+          PGUSER: postgres
+          TEST_PG_HOST: localhost
+          TEST_PG_PORT: '5432'
+          JWT_SECRET: ci-only-test-secret-not-used-in-production-0123456789
+
       - name: Run server tests
         run: npm run test --workspace=server -- --run
-        # Valeurs factices : config/env.ts exige JWT_SECRET et DATABASE_URL à l'import.
-        # Les tests unitaires simulent la base (aucune connexion ouverte) ; les tests
-        # d'intégration restent ignorés tant que TEST_DATABASE_URL n'est pas défini.
+        # Tests unitaires (base simulée) + tests d'intégration contre le service Postgres
+        # ci-dessus (base kalum_test montée par test-db-setup.sh, TEST_DATABASE_URL défini).
         env:
           NODE_ENV: test
           JWT_SECRET: ci-only-test-secret-not-used-in-production-0123456789
-          DATABASE_URL: postgres://ci:ci@localhost:5432/ci_unused
+          DATABASE_URL: postgres://postgres@localhost:5432/kalum_test
+          TEST_DATABASE_URL: postgres://postgres@localhost:5432/kalum_test
 
       - name: Build client
         run: npm run build --workspace=client
