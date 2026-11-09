@@ -8,6 +8,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
+import SalesPageShell from '../sales/SalesPageShell';
 
 /**
  * Relances clients (mig 366) : clients à relancer selon les niveaux, lettres (e-mail ou
@@ -26,14 +27,12 @@ async function openPdf(id: string) {
 export default function DunningPage() {
   const [tab, setTab] = useState<'letters' | 'levels'>('letters');
   return (
-    <div className="odoo-scope" style={{ display: 'grid', gap: 12, padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <h1 style={{ margin: 0, fontSize: '1.25rem', flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}><BellRing size={18} /> Relances clients</h1>
-        <button className={tab === 'letters' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setTab('letters')}>Relances</button>
-        <button className={tab === 'levels' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setTab('levels')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Settings2 size={13} /> Niveaux</button>
-      </div>
+    <SalesPageShell icon={BellRing} title="Relances clients" actions={<>
+      <button className={tab === 'letters' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setTab('letters')}>Relances</button>
+      <button className={tab === 'levels' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setTab('levels')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Settings2 size={13} /> Niveaux</button>
+    </>}>
       {tab === 'letters' ? <Letters /> : <Levels />}
-    </div>
+    </SalesPageShell>
   );
 }
 

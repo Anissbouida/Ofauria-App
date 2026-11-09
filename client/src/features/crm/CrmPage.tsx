@@ -16,6 +16,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useReferentiel } from '../../hooks/useReferentiel';
+import SalesPageShell from '../sales/SalesPageShell';
 
 /**
  * CRM (mig 371) : opportunités suivies avant le devis, du premier contact à la commande.
@@ -76,18 +77,16 @@ export default function CrmPage() {
   };
 
   return (
-    <div className="odoo-scope" style={{ display: 'grid', gap: 12, padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <h1 style={{ margin: 0, fontSize: '1.25rem', flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}><Target size={18} /> Pipeline commercial</h1>
-        {(['pipeline', 'list', 'activities'] as const).map(v => (
-          <button key={v} className={view === v ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView(v)}>
-            {{ pipeline: 'Pipeline', list: 'Liste', activities: 'Activités' }[v]}
-            {v === 'activities' && (ov?.overdueActivities ?? 0) > 0 && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }}>{ov!.overdueActivities}</span>}
-          </button>
-        ))}
-        <button className="odoo-btn-secondary" onClick={() => setShowCampaigns(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Megaphone size={14} /> Campagnes</button>
-        <button className="odoo-btn-primary" onClick={() => setEditing('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle opportunité</button>
-      </div>
+    <SalesPageShell icon={Target} title="Pipeline commercial" actions={<>
+      {(['pipeline', 'list', 'activities'] as const).map(v => (
+        <button key={v} className={view === v ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView(v)}>
+          {{ pipeline: 'Pipeline', list: 'Liste', activities: 'Activités' }[v]}
+          {v === 'activities' && (ov?.overdueActivities ?? 0) > 0 && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }}>{ov!.overdueActivities}</span>}
+        </button>
+      ))}
+      <button className="odoo-btn-secondary" onClick={() => setShowCampaigns(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Megaphone size={14} /> Campagnes</button>
+      <button className="odoo-btn-primary" onClick={() => setEditing('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle opportunité</button>
+    </>}>
 
       {ov && (
         <div className="odoo-stat-grid">
@@ -167,7 +166,7 @@ export default function CrmPage() {
       {showCampaigns && <CampaignsModal onClose={() => setShowCampaigns(false)} />}
       {openId && !editing && <OpportunityDetail id={openId} onClose={() => { setOpenId(null); params.delete('opportunity'); setParams(params, { replace: true }); }} onEdit={o => setEditing(o)} onLose={o => setLosing(o)} />}
       {losing && <LoseDialog opp={losing} onClose={() => setLosing(null)} onDone={() => { setLosing(null); refresh(); }} />}
-    </div>
+    </SalesPageShell>
   );
 }
 

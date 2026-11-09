@@ -22,6 +22,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { SelectFilter } from '../../components/purchasing/ProcessBoard';
 import { OdooToggle } from '../settings/SettingsPrimitives';
+import SalesPageShell from '../sales/SalesPageShell';
 
 /**
  * Promotions et fidélité (mig 372). Les promotions s'appliquent seules en caisse (et, si
@@ -61,16 +62,10 @@ export default function PromotionsPage() {
   const setTab = (t: Tab) => { params.set('tab', t); setParams(params, { replace: true }); };
   const [creating, setCreating] = useState(false);
   return (
-    <div className="odoo-scope" style={{ display: 'grid', gap: 12, padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 240 }}>
-          <h1 style={{ margin: 0, fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: 8 }}><BadgePercent size={18} /> Promotions et fidélité</h1>
-          <p style={{ ...muted, margin: '2px 0 0', fontSize: '0.8125rem' }}>Remises automatiques en caisse, sur les commandes et les devis ; points de fidélité gagnés et utilisés par les clients.</p>
-        </div>
-        {tab === 'promotions' && isDirection && (
-          <button className="odoo-btn-primary" onClick={() => setCreating(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle promotion</button>
-        )}
-      </div>
+    <SalesPageShell icon={BadgePercent} title="Promotions et fidélité" actions={tab === 'promotions' && isDirection ? (
+      <button className="odoo-btn-primary" onClick={() => setCreating(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle promotion</button>
+    ) : undefined}>
+      <p style={{ ...muted, margin: 0, fontSize: '0.8125rem' }}>Remises automatiques en caisse, sur les commandes et les devis ; points de fidélité gagnés et utilisés par les clients.</p>
       <div className="odoo-view-switcher" role="tablist" aria-label="Rubrique" style={{ justifySelf: 'start' }}>
         {TABS.filter(t => !t.direction || isDirection).map(t => {
           const Icon = t.icon; const on = tab === t.key;
@@ -85,7 +80,7 @@ export default function PromotionsPage() {
       {tab === 'promotions' && <PromotionsTab canEdit={isDirection} creating={creating} onCreated={() => setCreating(false)} />}
       {tab === 'loyalty' && isDirection && <LoyaltyTab />}
       {tab === 'history' && isDirection && <HistoryTab />}
-    </div>
+    </SalesPageShell>
   );
 }
 

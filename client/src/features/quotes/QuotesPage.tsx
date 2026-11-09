@@ -18,6 +18,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { crmApi, type Opportunity } from '../../api/crm.api';
 import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import SalesPageShell from '../sales/SalesPageShell';
 
 /**
  * Devis clients (mig 365) : offre chiffrée pour un client ou un prospect, envoyée,
@@ -79,11 +80,9 @@ export default function QuotesPage() {
   );
 
   return (
-    <div className="odoo-scope" style={{ display: 'grid', gap: 12, padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <h1 style={{ margin: 0, fontSize: '1.25rem', flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}><FileSignature size={18} /> Devis</h1>
-        <button className="odoo-btn-primary" onClick={() => setEditing('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau devis</button>
-      </div>
+    <SalesPageShell icon={FileSignature} title="Devis" actions={
+      <button className="odoo-btn-primary" onClick={() => setEditing('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau devis</button>
+    }>
 
       {ov && (
         <div className="odoo-stat-grid">
@@ -149,7 +148,7 @@ export default function QuotesPage() {
         onClose={closeForm}
         onSaved={q => { qc.invalidateQueries({ queryKey: ['quotes'] }); qc.invalidateQueries({ queryKey: ['crm'] }); closeForm(); setOpenId(q.id); }} />}
       {openId && !editing && <QuoteDetailModal id={openId} onClose={() => setOpenId(null)} onEdit={q => setEditing(q)} onOpen={setOpenId} />}
-    </div>
+    </SalesPageShell>
   );
 }
 
