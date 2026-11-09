@@ -141,13 +141,41 @@ Principes :
 - **Réutiliser le générique déjà là** : Contrôle & Qualité, Projets, SAV, Maintenance,
   tout le cycle O2C/P2P et la compta CGNC n'ont rien à changer.
 
+### 4 bis. Exigence produit : le secteur se choisit dans les Paramètres
+
+Exigence posée le 2026-11-09 : **l'administrateur désigne le secteur d'activité dans les
+Paramètres, et les interfaces s'adaptent à ce choix.** Le pack secteur n'est donc pas un
+réglage technique d'installation : c'est un paramètre visible (Paramètres › Société ›
+« Secteur d'activité »), modifiable, qui pilote six choses.
+
+| Ce que le secteur pilote | Exemple boulangerie | Exemple négoce | Brique à utiliser |
+|---|---|---|---|
+| Modules visibles | Production, Recettes, Pesage, Invendus | ni Production ni Recettes | `tenant_modules` (L2) |
+| Menus et rubriques de chaque module | « Journée boutique », « Invendus » | « Expéditions », « Transferts » | entrées `hidden` de `ModuleShell` lues depuis le pack |
+| Vocabulaire | recette, fiche technique, vitrine | nomenclature, fiche article, rayon | libellés par clé neutre (L5) |
+| Champs et formulaires | DLC, poids cuit, allergènes | référence fournisseur, garantie, n° de série | types d'article (L3) + champs personnalisés (mig 369) |
+| Référentiels par défaut | rôles boulanger/pâtissier, unités g/kg/pièce | rôles magasinier/commercial, unités carton/palette | tables `roles`, unités, catégories (L1, L3, L6) |
+| Tableaux de bord et rapports | rendement, pertes, invendus | rotation de stock, taux de service | rapports enregistrés par pack (mig 394) |
+
+Règles de conception :
+- **Changer de secteur ne détruit rien.** Le choix masque ou affiche ; les données déjà
+  saisies restent en base et réapparaissent si l'on revient en arrière.
+- **Le pack est un point de départ.** Après le choix, chaque module, libellé ou référentiel
+  reste ajustable un par un (un traiteur peut activer Production sans prendre tout le pack
+  boulangerie).
+- **Un secteur « Générique »** existe par défaut : tous les modules transverses, aucun
+  vocabulaire métier.
+- **Le code ne teste jamais le secteur.** Il lit des capacités (« ce tenant a-t-il le module
+  Production ? », « cet article est-il fabriqué ? »), que le pack a positionnées. Un
+  `if (secteur === 'boulangerie')` dans un écran recréerait le couplage que cet audit retire.
+
 ---
 
 ## 5. Plan par lots
 
 | Lot | Contenu | Risque | Dépend de |
 |---|---|---|---|
-| **L0 — Socle secteur** | Table `sector_packs` + `tenant.sector_pack_id` ; pack « boulangerie » = miroir de l'existant. Non destructif, additif. | faible | — |
+| **L0 — Socle secteur** | Table `sector_packs` + `tenant.sector_pack_id` ; choix du secteur dans Paramètres › Société (§ 4 bis) ; packs « boulangerie » (miroir de l'existant) et « générique ». Non destructif, additif. | faible | — |
 | **L1 — Rôles configurables** | `users.role` (enum CHECK) → table `roles` référentielle (par tenant/pack) ; retirer les rôles métier de `shared/constants/roles.ts` ; libellés en base. Touche auth/permissions → tests serrés. | **élevé** | L0 |
 | **L2 — Modules par abonnement** | Table `tenant_modules` ; `hasModule` = `tenant_modules ∩ role_modules` ; `DEFAULT_ROLE_MODULES` devient défaut **du pack**, plus une constante. | moyen | L0, L1 |
 | **L3 — Catalogue générique** | `product.type` (bien/service/matière/abonnement) ; UoM en référentiel (fin des enums `g/kg/person`) ; BOM générique (recette = cas particulier). Le plus lourd. | **élevé** | L0 |

@@ -181,6 +181,13 @@ D7-21 et D7-42 redescendent en P1 si la cible reste francophone et orientée cai
 V1 est le pivot : il conditionne la fiscalité, la tarification, la logistique et la caisse,
 et recoupe le lot L3 de `docs/AUDIT_COUPLAGE_SECTORIEL.md`.
 
+**Secteur d'activité paramétrable.** Exigence du 2026-11-09 : le secteur se choisit dans
+les Paramètres et les interfaces s'y adaptent (modules, menus, vocabulaire, champs,
+référentiels, rapports). Elle est décrite au § 4 bis de `docs/AUDIT_COUPLAGE_SECTORIEL.md`.
+Conséquence pour cette feuille de route : chaque lot Ventes livre des **capacités
+activables** (type d'article, unité, statut de BL, mode de caisse) et jamais un
+comportement lié en dur à un métier, pour que le pack secteur n'ait qu'à les activer.
+
 ---
 
 ## 6. Rapports de domaine
