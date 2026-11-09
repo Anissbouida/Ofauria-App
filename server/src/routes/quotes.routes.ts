@@ -76,7 +76,7 @@ quotesRouter.get('/:id', authenticate, authorize(...DIRECTION), asyncHandler(asy
 quotesRouter.post('/', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = body.safeParse(req.body);
   if (!b.success) { bad(res, b.error.issues[0]?.message); return; }
-  const r = await quoteRepository.create(b.data, { userId: req.user!.userId, storeId: req.user!.storeId ?? null, validityDays: await validityDays() });
+  const r = await quoteRepository.create(b.data, { userId: req.user!.userId, storeId: req.user!.storeId ?? null, validityDays: await validityDays(), role: req.user!.role });
   if ('error' in r) { bad(res, r.error); return; }
   res.status(201).json({ success: true, data: r.data });
 }));
@@ -84,7 +84,7 @@ quotesRouter.post('/', authenticate, authorize(...DIRECTION), asyncHandler(async
 quotesRouter.put('/:id', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = body.safeParse(req.body);
   if (!b.success) { bad(res, b.error.issues[0]?.message); return; }
-  const r = await quoteRepository.update(req.params.id, b.data, req.user!.userId);
+  const r = await quoteRepository.update(req.params.id, b.data, req.user!.userId, req.user!.role);
   if ('error' in r) { r.error === 'not_found' ? bad(res, 'Devis introuvable', 404) : bad(res, r.error, 409); return; }
   res.json({ success: true, data: r.data });
 }));

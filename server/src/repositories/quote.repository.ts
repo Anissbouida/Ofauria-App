@@ -4,6 +4,7 @@ import { orderRepository } from './order.repository.js';
 import { crmRepository } from './crm.repository.js';
 import { loadCustomer, isProCustomer, priceLines, taxAfterDiscount, creditWarning, creditGate, notifyProductionChefs, documentDiscount } from '../controllers/order.controller.js';
 import { recordApplied } from '../services/promotions.js';
+import { getParameter, type PricingRules } from '../services/module-parameters.service.js';
 
 /**
  * Devis clients (mig 365).
@@ -55,7 +56,7 @@ async function addEvent(runner: Runner, quoteId: string, p: { type: string; from
 }
 
 /** Lignes chiffrées et totaux, selon le client (professionnel = HT + TVA). */
-async function compute(input: QuoteInput, storeId: string | null = null) {
+async function compute(input: QuoteInput, storeId: string | null = null, role?: string) {
   const customer = await loadCustomer(input.customerId ?? null);
   if (input.customerId && !customer) return { error: 'Client introuvable' } as const;
   const pro = isProCustomer(customer) ? customer : null;
@@ -74,6 +75,13 @@ async function compute(input: QuoteInput, storeId: string | null = null) {
   }));
   const subtotal = priced.subtotal;
   const pct = round2(Math.min(100, Math.max(0, Number(input.discountPct ?? 0) || 0)));
+  // Plafond de remise par rôle (même règle que les commandes, O2C L3) : un devis
+  // ne doit pas contourner le contrôle. Admin : libre ; rôle absent : pas de contrôle.
+  if (role && role !== 'admin' && pct > 0) {
+    const rules = await getParameter<PricingRules>('sales.pricing');
+    const max = role === 'manager' ? rules.max_discount_pct_manager : rules.max_discount_pct_sales;
+    if (pct > max + 0.001) return { error: `Remise de ${pct} % au-delà de votre plafond (${max} %) : demandez à la direction` } as const;
+  }
   // Promotions en vigueur (mig 372), puis la remise manuelle sur le reste.
   const promo = await documentDiscount(lines, priced.products as Record<string, any>[], subtotal, pct, { channel: 'quotes', storeId, customerId: input.customerId ?? null });
   const discount = promo.discount;
@@ -149,8 +157,8 @@ export const quoteRepository = {
     return { ...q, items: items.rows, events: events.rows };
   },
 
-  async create(input: QuoteInput, ctx: { userId: string; storeId: string | null; validityDays: number }) {
-    const c = await compute(input, ctx.storeId);
+  async create(input: QuoteInput, ctx: { userId: string; storeId: string | null; validityDays: number; role?: string }) {
+    const c = await compute(input, ctx.storeId, ctx.role);
     if ('error' in c) return { error: c.error };
     const quoteDate = input.quoteDate ?? today();
     const validUntil = input.validUntil ?? plusDays(quoteDate, ctx.validityDays);
@@ -198,11 +206,11 @@ export const quoteRepository = {
     }
   },
 
-  async update(id: string, input: QuoteInput, userId: string) {
+  async update(id: string, input: QuoteInput, userId: string, role?: string) {
     const cur = await this.findById(id);
     if (!cur) return { error: 'not_found' as const };
     if (!EDITABLE.includes(cur.status)) return { error: `Un devis ${cur.status === 'converted' ? 'converti' : 'clos'} ne se modifie plus : dupliquez-le` };
-    const c = await compute(input, cur.store_id ?? null);
+    const c = await compute(input, cur.store_id ?? null, role);
     if ('error' in c) return { error: c.error };
     const quoteDate = input.quoteDate ?? String(cur.quote_date instanceof Date ? cur.quote_date.toISOString().slice(0, 10) : cur.quote_date).slice(0, 10);
     const validUntil = input.validUntil ?? String(cur.valid_until instanceof Date ? cur.valid_until.toISOString().slice(0, 10) : cur.valid_until).slice(0, 10);
