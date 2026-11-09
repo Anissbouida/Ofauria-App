@@ -337,7 +337,7 @@ export const productController = {
       res.json({ success: true, data: null });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
-      if (msg.includes('foreign key') || msg.includes('violates')) {
+      if (msg.includes('foreign key') || msg.includes('violates') || msg.includes('archiv')) {
         res.status(409).json({ success: false, error: { message: 'Ce produit est utilise dans des commandes, ventes ou plans de production. Desactivez-le plutot.' } });
       } else {
         throw err;
@@ -362,7 +362,7 @@ export const productController = {
           id,
           reason: msg.includes('introuvable')
             ? 'Produit introuvable'
-            : (msg.includes('foreign key') || msg.includes('violates'))
+            : (msg.includes('foreign key') || msg.includes('violates') || msg.includes('archiv'))
               ? 'Utilise dans des commandes, ventes ou plans — desactivez-le plutot'
               : 'Erreur lors de la suppression',
         });

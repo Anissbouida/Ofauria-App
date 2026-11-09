@@ -86,7 +86,10 @@ async function printerReachable(printer: ThermalPrinter, config: PrinterConfigRo
 }
 async function send(printer: ThermalPrinter, config: PrinterConfigRow): Promise<void> {
   if (config.interface === 'cups') { await cupsSendRaw(config.connection_string, printer.getBuffer()); printer.clear(); return; }
-  await send(printer, config);
+  // tcp / usb / serial : la librairie ouvre l'interface configurée (buildPrinter) et
+  // écrit le tampon ESC/POS ; execute() lève si l'imprimante est injoignable.
+  await printer.execute();
+  printer.clear();
 }
 
 /**

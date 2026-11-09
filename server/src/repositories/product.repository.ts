@@ -251,29 +251,40 @@ export const productRepository = {
   },
 
   async delete(id: string) {
-    // Clean up all related records before hard delete
-    await db.query('DELETE FROM sale_return_items WHERE sale_item_id IN (SELECT id FROM sale_items WHERE product_id = $1)', [id]);
-    // sale_return_items porte aussi une FK directe product_id (lignes sans sale_item_id)
-    await db.query('DELETE FROM sale_return_items WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM sale_items WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM order_items WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM daily_inventory_check_items WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM product_display_tracking WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM product_losses WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM production_ingredient_needs WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM production_plan_items WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM production_transfer_items WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM replenishment_request_items WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM stock_deliveries WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM unsold_decisions WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM product_pipeline WHERE product_id = $1', [id]);
-    await db.query('DELETE FROM stock_semifini_frigo WHERE product_id = $1', [id]);
-    // Les lignes de facture sont des pieces comptables : on delie sans supprimer
-    // (product_id nullable), la facture reste intacte.
-    await db.query('UPDATE invoice_items SET product_id = NULL WHERE product_id = $1', [id]);
-    await db.query('UPDATE recipes SET product_id = NULL WHERE product_id = $1', [id]);
-    const result = await db.query('DELETE FROM products WHERE id = $1 RETURNING id', [id]);
-    if (!result.rows[0]) throw new Error('Produit introuvable');
+    // Historique commercial : une vente, une commande ou une facture référençant ce
+    // produit interdit la suppression — sinon on efface des pièces de vente et de
+    // comptabilité. L'utilisateur archive le produit (Rendre indisponible) à la place.
+    const used = await db.query(
+      `SELECT 1 WHERE EXISTS (SELECT 1 FROM sale_items WHERE product_id = $1)
+                   OR EXISTS (SELECT 1 FROM order_items WHERE product_id = $1)
+                   OR EXISTS (SELECT 1 FROM invoice_items WHERE product_id = $1)`, [id]);
+    if (used.rows[0]) {
+      throw new Error('Produit vendu, commandé ou facturé : archivez-le (Rendre indisponible) au lieu de le supprimer');
+    }
+
+    // Jamais vendu : le nettoyage des enregistrements de planification/exploitation
+    // se fait en une transaction (tout ou rien), pas en requêtes séparées.
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      for (const table of [
+        'daily_inventory_check_items', 'product_display_tracking', 'product_losses',
+        'production_ingredient_needs', 'production_plan_items', 'production_transfer_items',
+        'replenishment_request_items', 'stock_deliveries', 'unsold_decisions',
+        'product_pipeline', 'stock_semifini_frigo',
+      ]) {
+        await client.query(`DELETE FROM ${table} WHERE product_id = $1`, [id]);
+      }
+      await client.query('UPDATE recipes SET product_id = NULL WHERE product_id = $1', [id]);
+      const result = await client.query('DELETE FROM products WHERE id = $1 RETURNING id', [id]);
+      if (!result.rows[0]) throw new Error('Produit introuvable');
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   async toggleAvailability(id: string) {

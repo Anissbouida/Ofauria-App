@@ -96,6 +96,14 @@ export const returnController = {
     const returnedQtys = await returnRepository.getReturnedQuantities(originalSaleId);
     const saleItems = (sale.items || []) as Record<string, unknown>[];
 
+    // Remise/promotion/points s'appliquent au ticket entier, pas ligne par ligne :
+    // le remboursement d'une ligne est son prix catalogue au prorata de ce que le
+    // client a réellement payé (total payé / sous-total avant remises). Sans remise,
+    // ratio = 1 et le montant est inchangé.
+    const saleSubtotal = parseFloat(String((sale as Record<string, unknown>).subtotal)) || 0;
+    const salePaid = parseFloat(String((sale as Record<string, unknown>).total)) || 0;
+    const refundRatio = saleSubtotal > 0 ? Math.min(1, Math.max(0, salePaid / saleSubtotal)) : 1;
+
     const resolvedItems: {
       saleItemId: string; productId: string; quantity: number;
       unitPrice: number; subtotal: number;
@@ -117,10 +125,10 @@ export const returnController = {
         });
         return;
       }
-      // Prix pris depuis sale_items uniquement — le remboursement equivaut au
-      // prorata du prix effectivement paye pour cette ligne.
+      // Prix pris depuis sale_items uniquement (jamais le montant du client), au
+      // prorata de la remise du ticket (refundRatio).
       const unitPrice = parseFloat(String(saleItem.unit_price)) || 0;
-      const subtotal = Math.round(unitPrice * item.quantity * 100) / 100;
+      const subtotal = Math.round(unitPrice * item.quantity * refundRatio * 100) / 100;
       resolvedItems.push({
         saleItemId: item.saleItemId,
         productId: saleItem.product_id as string,
