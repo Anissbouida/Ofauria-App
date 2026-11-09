@@ -45,7 +45,7 @@ export async function requiresLots(c: PoolClient, productId: string) {
   return Boolean(r.rows[0]?.req);
 }
 
-export type ShipResult = { allocations: Allocation[]; requiresLots: boolean; missing: number };
+export type ShipResult = { allocations: Allocation[]; requiresLots: boolean; missing: number; shortfall?: number };
 
 /**
  * Sort `quantity` d'un produit du magasin. `strict` : refuse un produit suivi
@@ -85,18 +85,30 @@ export async function shipProduct(c: PoolClient, p: {
   }
   // Produit sans suivi par lots (ou reliquat toléré) : la sortie porte sur la réserve.
   if (plan.missing > 0) fromBackroom = r3(fromBackroom + plan.missing);
-  const stock = (await c.query(
-    `INSERT INTO product_store_stock (product_id, store_id, stock_quantity, vitrine_quantity)
+  // On capture le stock AVANT décrément pour repérer un dépassement : le GREATEST(…,0)
+  // borne le stock à zéro, mais on ne veut plus que ce manque passe en silence
+  // (signalé, non bloquant — décision produit 2026-11-09).
+  const row = (await c.query(
+    `WITH cur AS (SELECT stock_quantity, vitrine_quantity FROM product_store_stock WHERE product_id = $1 AND store_id = $2)
+     INSERT INTO product_store_stock (product_id, store_id, stock_quantity, vitrine_quantity)
      VALUES ($1, $2, 0, 0)
      ON CONFLICT (product_id, store_id) DO UPDATE
        SET stock_quantity = GREATEST(product_store_stock.stock_quantity - $3, 0),
            vitrine_quantity = GREATEST(product_store_stock.vitrine_quantity - $4, 0), updated_at = now()
-     RETURNING stock_quantity::float8 AS s`, [p.productId, p.storeId, fromBackroom, fromVitrine])).rows[0].s;
+     RETURNING stock_quantity::float8 AS s,
+               COALESCE((SELECT stock_quantity FROM cur), 0)::float8 AS old_backroom,
+               COALESCE((SELECT vitrine_quantity FROM cur), 0)::float8 AS old_vitrine`,
+    [p.productId, p.storeId, fromBackroom, fromVitrine])).rows[0];
+  const stock = row.s;
+  const shortfall = r3(Math.max(0, fromBackroom - row.old_backroom) + Math.max(0, fromVitrine - row.old_vitrine));
+  if (shortfall > 0) {
+    console.warn(`[product-shipment] Sortie supérieure au stock — produit ${p.productId}, magasin ${p.storeId}, manque ${shortfall} (réf ${p.ref.type}:${p.ref.id}). Stock borné à 0.`);
+  }
   await c.query(
     `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
      VALUES ($1, 'delivery', $2, $3, $4, $5, $6, $7)`,
-    [p.productId, -qty, stock, p.label, p.ref.id, p.userId, p.storeId]);
-  return { allocations: plan.steps, requiresLots: req, missing: plan.missing };
+    [p.productId, -qty, stock, shortfall > 0 ? `${p.label} (sortie > stock : manque ${shortfall}, borné à 0)` : p.label, p.ref.id, p.userId, p.storeId]);
+  return { allocations: plan.steps, requiresLots: req, missing: plan.missing, shortfall };
 }
 
 /** Remet des affectations dans leurs lots et le stock du magasin (annulation d'expédition). */

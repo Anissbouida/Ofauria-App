@@ -44,6 +44,29 @@ async function migrate() {
     .filter(f => f.endsWith('.sql'))
     .sort();
 
+  // Garde : deux migrations ne doivent pas partager le même numéro. Les doublons
+  // déjà tous appliqués (hérités) sont seulement signalés ; un doublon impliquant
+  // une migration NON encore appliquée arrête le run — on refuse d'en appliquer une
+  // de plus sur un numéro en conflit (sinon l'ordre d'exécution devient ambigu).
+  const byPrefix = new Map<string, string[]>();
+  for (const f of files) {
+    const prefix = f.split('_')[0];
+    const arr = byPrefix.get(prefix);
+    if (arr) arr.push(f); else byPrefix.set(prefix, [f]);
+  }
+  const dupes = [...byPrefix.entries()].filter(([, group]) => group.length > 1);
+  if (dupes.length) {
+    for (const [prefix, group] of dupes) {
+      console.warn(`⚠ Numéro de migration en double : ${prefix} → ${group.join(', ')}`);
+    }
+    const withUnapplied = dupes.filter(([, group]) => group.some(f => !executed.has(f)));
+    if (withUnapplied.length) {
+      console.error(`❌ Doublon de numéro impliquant une migration non appliquée : ${withUnapplied.map(([p]) => p).join(', ')}. Renumérotez avant de migrer.`);
+      await db.pool.end();
+      process.exit(3);
+    }
+  }
+
   let tampered = 0;
 
   for (const file of files) {
