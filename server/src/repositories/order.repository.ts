@@ -214,6 +214,31 @@ export const orderRepository = {
         return null;
       }
 
+      const orderStoreId = (orderResult.rows[0] as { store_id?: string | null }).store_id ?? null;
+      // Réserve `want` unités pour une ligne, borné au disponible (stock − déjà réservé,
+      // en entiers) comme à la création (sourcing.helper) : étend la réservation existante
+      // ou en crée une, et incrémente reserved_quantity du magasin.
+      const reserveMore = async (orderItemId: string, productId: string, want: number) => {
+        if (!orderStoreId || want <= 0) return;
+        const availRow = (await client.query(
+          `SELECT GREATEST(FLOOR(COALESCE(stock_quantity, 0) - COALESCE(reserved_quantity, 0)), 0)::float8 AS a
+             FROM product_store_stock WHERE product_id = $1 AND store_id = $2`, [productId, orderStoreId])).rows[0];
+        const add = Math.min(want, Number(availRow?.a ?? 0));
+        if (add <= 0) return;
+        const existing = (await client.query(
+          `SELECT id FROM order_stock_reservations WHERE order_item_id = $1 AND status = 'reserved' LIMIT 1`, [orderItemId])).rows[0];
+        if (existing) {
+          await client.query(`UPDATE order_stock_reservations SET quantity = quantity + $2 WHERE id = $1`, [existing.id, add]);
+        } else {
+          await client.query(
+            `INSERT INTO order_stock_reservations (order_id, order_item_id, product_id, store_id, quantity)
+             VALUES ($1, $2, $3, $4, $5)`, [id, orderItemId, productId, orderStoreId, add]);
+        }
+        await client.query(
+          `UPDATE product_store_stock SET reserved_quantity = reserved_quantity + $3, updated_at = now()
+            WHERE product_id = $1 AND store_id = $2`, [productId, orderStoreId, add]);
+      };
+
       // O2C L2 (G-OM-06) : lignes stables. Une ligne existante du même produit est mise à jour
       // (elle garde son identifiant, son sourcing et ses liens de BL ou de réservation) ; seules
       // les lignes retirées disparaissent, leur réservation de stock relâchée.
@@ -233,24 +258,32 @@ export const orderRepository = {
                     list_price = $7, price_override_by = $8, price_override_reason = $9 WHERE id = $1`,
             [line.id, item.quantity, item.unitPrice, item.subtotal, item.notes || null, item.tvaRate ?? null,
              item.listPrice ?? null, item.overrideBy ?? null, item.overrideReason ?? null]);
-          // Quantité réduite sous la réservation : l'excédent de stock réservé est relâché.
-          const over = (await client.query(
-            `SELECT COALESCE(SUM(quantity), 0)::float8 - $2::float8 AS over, MIN(product_id::text) AS product_id, MIN(store_id::text) AS store_id
-               FROM order_stock_reservations WHERE order_item_id = $1 AND status = 'reserved'`, [line.id, item.quantity])).rows[0];
-          if (Number(over.over) > 0) {
+          // Réservation ajustée à la nouvelle quantité (O2C 0.5c) : réduction → on relâche
+          // l'excédent ; augmentation → on réserve le delta dans la limite du disponible,
+          // comme à la création.
+          const resv = (await client.query(
+            `SELECT COALESCE(SUM(quantity), 0)::float8 AS reserved, MIN(product_id::text) AS product_id, MIN(store_id::text) AS store_id
+               FROM order_stock_reservations WHERE order_item_id = $1 AND status = 'reserved'`, [line.id])).rows[0];
+          const reserved = Number(resv.reserved);
+          if (reserved > item.quantity) {
+            const over = reserved - item.quantity;
             await client.query(
               `UPDATE order_stock_reservations SET quantity = GREATEST(quantity - $2, 0) WHERE order_item_id = $1 AND status = 'reserved'`,
-              [line.id, over.over]);
+              [line.id, over]);
             await client.query(
               `UPDATE product_store_stock SET reserved_quantity = GREATEST(reserved_quantity - $3, 0) WHERE product_id = $1 AND store_id = $2`,
-              [over.product_id, over.store_id, over.over]);
+              [resv.product_id, resv.store_id, over]);
+          } else if (reserved < item.quantity) {
+            await reserveMore(line.id, item.productId, item.quantity - reserved);
           }
         } else {
-          await client.query(
+          const ins = (await client.query(
             `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal, notes, tva_rate, list_price, price_override_by, price_override_reason)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
             [id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.notes || null, item.tvaRate ?? null,
-             item.listPrice ?? null, item.overrideBy ?? null, item.overrideReason ?? null]);
+             item.listPrice ?? null, item.overrideBy ?? null, item.overrideReason ?? null])).rows[0];
+          // Ligne ajoutée à l'édition : on réserve le stock disponible (O2C 0.5c).
+          await reserveMore(ins.id as string, item.productId, item.quantity);
         }
       }
       for (const gone of pool) {
