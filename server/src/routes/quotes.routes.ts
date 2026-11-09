@@ -67,6 +67,9 @@ quotesRouter.get('/overview', authenticate, authorize(...DIRECTION), asyncHandle
 quotesRouter.get('/:id', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
   const q = await quoteRepository.findById(req.params.id);
   if (!q) { bad(res, 'Devis introuvable', 404); return; }
+  // Cloisonnement : un non-admin ne lit pas le devis d'un autre magasin.
+  const qStore = (q as { store_id?: string | null }).store_id;
+  if (req.user!.role !== 'admin' && qStore && qStore !== req.user!.storeId) { bad(res, 'Devis introuvable', 404); return; }
   res.json({ success: true, data: q });
 }));
 

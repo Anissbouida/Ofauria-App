@@ -64,6 +64,22 @@ export const subscriptionRepository = {
   },
 
   async setStatus(id: string, status: 'active' | 'paused' | 'ended') {
+    // Reprise après pause : on ne facture pas les échéances écoulées pendant la pause.
+    // next_invoice_date est avancé par pas entiers jusqu'à aujourd'hui ou après, ce qui
+    // préserve le jour de facturation sans rattraper les périodes de pause.
+    if (status === 'active') {
+      const s = (await db.query(
+        `SELECT status, frequency, next_invoice_date FROM subscriptions WHERE id = $1`, [id])).rows[0];
+      if (s && s.status === 'paused') {
+        const step = stepOf(s.frequency);
+        const today = new Date().toISOString().slice(0, 10);
+        let cursor = isoDate(s.next_invoice_date);
+        let guard = 0;
+        while (cursor < today && guard < 600) { cursor = addMonths(cursor, step); guard++; }
+        await db.query(`UPDATE subscriptions SET status = 'active', next_invoice_date = $2 WHERE id = $1`, [id, cursor]);
+        return this.getById(id);
+      }
+    }
     await db.query(`UPDATE subscriptions SET status = $2 WHERE id = $1`, [id, status]);
     return this.getById(id);
   },

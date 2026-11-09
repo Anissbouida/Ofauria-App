@@ -271,8 +271,12 @@ export const commissionRepository = {
     try {
       await client.query('BEGIN');
       for (const r of due) {
+        // Idempotence par CHEVAUCHEMENT (pas seulement période identique) : sinon deux
+        // relevés qui se recouvrent (1–31 jan puis 15 jan–15 fév) verseraient deux fois
+        // la commission des jours communs. Overlap = from existant ≤ to demandé ET
+        // to existant ≥ from demandé.
         const exists = (await client.query(
-          `SELECT 1 FROM commission_payouts WHERE employee_id = $1 AND period_from = $2 AND period_to = $3`,
+          `SELECT 1 FROM commission_payouts WHERE employee_id = $1 AND period_from <= $3 AND period_to >= $2`,
           [r.employee_id, p.from, p.to])).rows[0];
         if (exists) { skipped.push({ employee_id: r.employee_id, employee_name: r.employee_name }); continue; }
         const item = (await client.query(

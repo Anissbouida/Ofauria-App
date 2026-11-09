@@ -58,6 +58,10 @@ crmRouter.get('/opportunities', authenticate, authorizeModule('crm'), asyncHandl
 crmRouter.get('/opportunities/:id', authenticate, authorizeModule('crm'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const o = await crmRepository.findById(req.params.id);
   if (!o) { bad(res, 'Opportunité introuvable', 404); return; }
+  // Cloisonnement : un non-admin ne lit pas l'opportunité d'un autre magasin
+  // (404 plutôt que 403 pour ne pas révéler son existence).
+  const oStore = (o as { store_id?: string | null }).store_id;
+  if (req.user!.role !== 'admin' && oStore && oStore !== req.user!.storeId) { bad(res, 'Opportunité introuvable', 404); return; }
   res.json({ success: true, data: o });
 }));
 
