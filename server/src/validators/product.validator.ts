@@ -52,6 +52,8 @@ const commonProductFields = {
   saleUnit: z.enum(['unit', 'weight', 'person']).optional(),
   pricePerKg: z.coerce.number().finite().min(0).max(999999.99).optional().nullable(),
   pricePerPerson: z.coerce.number().finite().min(0).max(999999.99).optional().nullable(),
+  // Nature de l'article (mig 469) : pilote la fiche et l'approvisionnement.
+  itemKind: z.enum(['manufactured', 'resale', 'service', 'subscription']).optional(),
 };
 
 // Applique les règles croisées de cycle de vie.
@@ -173,6 +175,7 @@ export const updateProductSchema = z.object({
   stockMinThreshold: commonProductFields.stockMinThreshold,
   minProductionQuantity: commonProductFields.minProductionQuantity,
   saleUnit: commonProductFields.saleUnit,
+  itemKind: commonProductFields.itemKind,
   pricePerKg: commonProductFields.pricePerKg,
   pricePerPerson: commonProductFields.pricePerPerson,
   stockQuantity: z.coerce.number().min(0).max(1_000_000).optional().nullable(),

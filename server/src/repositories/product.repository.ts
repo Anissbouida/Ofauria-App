@@ -223,6 +223,7 @@ export const productRepository = {
       recycleIngredientId: 'recycle_ingredient_id',
       maxReexpositions: 'max_reexpositions',
       saleType: 'sale_type',
+      itemKind: 'item_kind',
       saleUnit: 'sale_unit',
       pricePerKg: 'price_per_kg',
       pricePerPerson: 'price_per_person',
