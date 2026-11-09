@@ -48,7 +48,9 @@ export default function SalesLayout() {
     { key: 'customers', label: 'Clients', icon: Users, section: 'setup', href: '/customers', hidden: !hasModule('customers') },
     { key: 'promotions', label: 'Promotions et fidélité', icon: BadgePercent, section: 'setup', href: '/promotions', hidden: !hasModule('sales') },
     { key: 'products', label: 'Produits', icon: ShoppingBag, section: 'setup', href: '/products', hidden: !hasModule('products') },
-    { key: 'channels', label: 'Canaux de vente', icon: Radio, section: 'setup', href: '/settings?page=channels', external: true, hidden: !hasModule('settings') },
+    // Canaux de vente : écran intégré au module Ventes (route /sales-channels sous SalesLayout),
+    // plus de renvoi vers Paramètres. Configuration réservée à la direction.
+    { key: 'channels', label: 'Canaux de vente', icon: Radio, section: 'setup', href: '/sales-channels', hidden: !hasModule('sales') || !isDirection },
   ];
   const tab = params.get('tab');
   const currentKey = pathname === '/sales'
@@ -57,7 +59,9 @@ export default function SalesLayout() {
       ? `reports:${tab === 'menu' || tab === 'margins' || tab === 'builder' ? tab : 'overview'}`
       : pathname === '/orders'
         ? (tab === 'pro' ? 'orders:deliveries' : 'orders')
-        : pathname.slice(1);
+        : pathname === '/sales-channels'
+          ? 'channels'
+          : pathname.slice(1);
   const current = views.find(v => v.key === currentKey);
 
   return (
