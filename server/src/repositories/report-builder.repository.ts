@@ -266,16 +266,21 @@ export const reportBuilderRepository = {
     return { id: rows[0].id };
   },
 
-  async update(id: string, input: { name: string; sourceKey: string; config: Record<string, unknown> }) {
+  async update(id: string, input: { name: string; sourceKey: string; config: Record<string, unknown> }, storeId: string | null) {
     if (!SOURCES[input.sourceKey]) return { error: 'Source inconnue' };
+    // Cloisonnement : seul un rapport de son magasin (ou global) est modifiable ;
+    // storeId null = admin, aucune restriction. Même garde que la liste.
     const { rows } = await db.query(
-      `UPDATE report_definitions SET name = $2, source_key = $3, config = $4, updated_at = now() WHERE id = $1 RETURNING id`,
-      [id, input.name.trim(), input.sourceKey, JSON.stringify(input.config ?? {})]);
+      `UPDATE report_definitions SET name = $2, source_key = $3, config = $4, updated_at = now()
+        WHERE id = $1 AND ($5::uuid IS NULL OR store_id IS NULL OR store_id = $5) RETURNING id`,
+      [id, input.name.trim(), input.sourceKey, JSON.stringify(input.config ?? {}), storeId]);
     return rows[0] ? { id } : { error: 'Rapport introuvable' };
   },
 
-  async remove(id: string) {
-    await db.query(`DELETE FROM report_definitions WHERE id = $1`, [id]);
+  async remove(id: string, storeId: string | null) {
+    await db.query(
+      `DELETE FROM report_definitions WHERE id = $1 AND ($2::uuid IS NULL OR store_id IS NULL OR store_id = $2)`,
+      [id, storeId]);
   },
 
   /* ─── Tableaux de bord (mig 395) ──────────────────────────────────────── */
@@ -302,14 +307,17 @@ export const reportBuilderRepository = {
     return { id: rows[0].id };
   },
 
-  async updateDashboard(id: string, input: { name: string; tiles: unknown[] }) {
+  async updateDashboard(id: string, input: { name: string; tiles: unknown[] }, storeId: string | null) {
     const { rows } = await db.query(
-      `UPDATE report_dashboards SET name = $2, tiles = $3, updated_at = now() WHERE id = $1 RETURNING id`,
-      [id, input.name.trim(), JSON.stringify(input.tiles ?? [])]);
+      `UPDATE report_dashboards SET name = $2, tiles = $3, updated_at = now()
+        WHERE id = $1 AND ($4::uuid IS NULL OR store_id IS NULL OR store_id = $4) RETURNING id`,
+      [id, input.name.trim(), JSON.stringify(input.tiles ?? []), storeId]);
     return rows[0] ? { id } : { error: 'Tableau de bord introuvable' };
   },
 
-  async removeDashboard(id: string) {
-    await db.query(`DELETE FROM report_dashboards WHERE id = $1`, [id]);
+  async removeDashboard(id: string, storeId: string | null) {
+    await db.query(
+      `DELETE FROM report_dashboards WHERE id = $1 AND ($2::uuid IS NULL OR store_id IS NULL OR store_id = $2)`,
+      [id, storeId]);
   },
 };

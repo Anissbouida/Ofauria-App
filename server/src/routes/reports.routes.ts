@@ -53,13 +53,13 @@ router.post('/custom/definitions', ...AM, asyncHandler(async (req: AuthRequest, 
 router.put('/custom/definitions/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
   const { name, sourceKey, config } = req.body ?? {};
   if (typeof name !== 'string' || !name.trim() || typeof sourceKey !== 'string' || !sourceKey) { bad(res, 'Nom et source requis'); return; }
-  const out = await rb.update(req.params.id, { name, sourceKey, config: config ?? {} });
+  const out = await rb.update(req.params.id, { name, sourceKey, config: config ?? {} }, storeOf(req));
   if ('error' in out) { res.status(out.error === 'Rapport introuvable' ? 404 : 400).json({ success: false, error: { message: out.error } }); return; }
   res.json({ success: true, data: out });
 }));
 
 router.delete('/custom/definitions/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
-  await rb.remove(req.params.id);
+  await rb.remove(req.params.id, storeOf(req));
   res.json({ success: true, data: null });
 }));
 
@@ -83,13 +83,13 @@ router.post('/custom/dashboards', ...AM, asyncHandler(async (req: AuthRequest, r
 router.put('/custom/dashboards/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
   const { name, tiles } = req.body ?? {};
   if (typeof name !== 'string' || !name.trim()) { bad(res, 'Nom requis'); return; }
-  const out = await rb.updateDashboard(req.params.id, { name, tiles: Array.isArray(tiles) ? tiles : [] });
+  const out = await rb.updateDashboard(req.params.id, { name, tiles: Array.isArray(tiles) ? tiles : [] }, storeOf(req));
   if ('error' in out) { res.status(404).json({ success: false, error: { message: out.error } }); return; }
   res.json({ success: true, data: out });
 }));
 
 router.delete('/custom/dashboards/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
-  await rb.removeDashboard(req.params.id);
+  await rb.removeDashboard(req.params.id, storeOf(req));
   res.json({ success: true, data: null });
 }));
 

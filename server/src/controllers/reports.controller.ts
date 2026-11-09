@@ -160,7 +160,13 @@ export const reportsController = {
 
   async sales(req: AuthRequest, res: Response) {
     const { startDate, endDate } = req.query as Record<string, string>;
+    const storeId = req.user!.storeId;
     const tz = getUserTimezone();
+    // Cloisonnement : un utilisateur rattaché à un magasin ne voit que ses ventes
+    // (même convention que costSummary). Sans magasin (admin global) : tous.
+    const storeFilter = storeId ? ' AND store_id = $3' : '';
+    const params: (string | undefined)[] = [startDate || '2024-01-01', endDate || 'now'];
+    if (storeId) params.push(storeId);
     const result = await db.query(`
       SELECT s.date, s.sales_count, s.revenue - COALESCE(r.refunds, 0) as revenue
       FROM (
@@ -168,22 +174,30 @@ export const reportsController = {
         FROM sales
         WHERE payment_status IS DISTINCT FROM 'unpaid'
           AND (COALESCE(paid_at, created_at) AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
+          ${storeFilter}
         GROUP BY (COALESCE(paid_at, created_at) AT TIME ZONE '${tz}')::date
       ) s
       LEFT JOIN (
         SELECT (created_at AT TIME ZONE '${tz}')::date as date, SUM(refund_amount) as refunds
         FROM sale_returns WHERE type = 'return' AND (created_at AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
+          ${storeFilter}
         GROUP BY (created_at AT TIME ZONE '${tz}')::date
       ) r ON r.date = s.date
       ORDER BY s.date
-    `, [startDate || '2024-01-01', endDate || 'now']);
+    `, params);
 
     res.json({ success: true, data: result.rows });
   },
 
   async productPerformance(req: AuthRequest, res: Response) {
     const { startDate, endDate } = req.query as Record<string, string>;
+    const storeId = req.user!.storeId;
     const tz = getUserTimezone();
+    // Cloisonnement par magasin (cf. sales / costSummary) : sur les ventes et sur les retours.
+    const salesFilter = storeId ? ' AND s.store_id = $3' : '';
+    const returnFilter = storeId ? ' AND sr.store_id = $3' : '';
+    const params: (string | undefined)[] = [startDate || '2024-01-01', endDate || 'now'];
+    if (storeId) params.push(storeId);
     const result = await db.query(`
       SELECT p.id, p.name, c.name as category,
              SUM(si.quantity) - COALESCE((
@@ -191,12 +205,14 @@ export const reportsController = {
                JOIN sale_returns sr ON sr.id = sri.return_id
                WHERE sri.product_id = p.id AND sr.type = 'return'
                AND (sr.created_at AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
+               ${returnFilter}
              ), 0) as total_sold,
              SUM(si.subtotal) - COALESCE((
                SELECT SUM(sri.subtotal) FROM sale_return_items sri
                JOIN sale_returns sr ON sr.id = sri.return_id
                WHERE sri.product_id = p.id AND sr.type = 'return'
                AND (sr.created_at AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
+               ${returnFilter}
              ), 0) as total_revenue
       FROM sale_items si
       JOIN products p ON p.id = si.product_id
@@ -204,8 +220,9 @@ export const reportsController = {
       JOIN sales s ON s.id = si.sale_id
       WHERE s.payment_status IS DISTINCT FROM 'unpaid'
         AND (COALESCE(s.paid_at, s.created_at) AT TIME ZONE '${tz}')::date BETWEEN $1 AND $2
+        ${salesFilter}
       GROUP BY p.id, p.name, c.name ORDER BY total_sold DESC
-    `, [startDate || '2024-01-01', endDate || 'now']);
+    `, params);
 
     res.json({ success: true, data: result.rows });
   },
