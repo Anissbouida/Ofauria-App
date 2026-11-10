@@ -13,6 +13,8 @@ import { cashRegisterRepository } from '../repositories/cash-register.repository
 import { getVitrineStock } from '../repositories/product-stock.helper.js';
 import { attendanceRepository } from '../repositories/employee.repository.js';
 import { dunningRepository } from '../repositories/dunning.repository.js';
+import { taxCodeRepository } from '../repositories/tax-code.repository.js';
+import { netFromGross, round2 } from '../utils/tva.js';
 
 export const saleController = {
   async list(req: AuthRequest, res: Response) {
@@ -88,7 +90,7 @@ export const saleController = {
 
     // Caisse : produits sans stock vendables selon le paramètre (mig 374).
     const sellWithoutStock = await posAllowsNegativeStock();
-    const saleItems: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit: 'unit' | 'g' | 'person'; displayUnit: 'g' | 'kg' | null; promoDiscount: number }[] = [];
+    const saleItems: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit: 'unit' | 'g' | 'person'; displayUnit: 'g' | 'kg' | null; promoDiscount: number; taxCode: string | null; taxRate: number; taxAmount: number }[] = [];
     const promoLines: PromoLine[] = [];
     let subtotal = 0;
     for (const item of items) {
@@ -136,11 +138,29 @@ export const saleController = {
       // les ventes au poids. NULL pour les produits unitaires.
       const lineDisplayUnit: 'g' | 'kg' | null = lineUnit === 'g' ? (item.displayUnit === 'kg' ? 'kg' : 'g') : null;
       subtotal += itemSubtotal;
-      saleItems.push({ productId: item.productId, quantity: item.quantity, unitPrice, subtotal: itemSubtotal, unit: lineUnit, displayUnit: lineDisplayUnit, promoDiscount: 0 });
+      saleItems.push({ productId: item.productId, quantity: item.quantity, unitPrice, subtotal: itemSubtotal, unit: lineUnit, displayUnit: lineDisplayUnit, promoDiscount: 0, taxCode: product.tax_code ?? null, taxRate: 0, taxAmount: 0 });
       promoLines.push({ productId: item.productId, categoryId: product.category_id ?? null, quantity: item.quantity, unit: lineUnit, unitPrice, subtotal: itemSubtotal });
     }
 
-    const taxAmount = 0;
+    // Phase 5.2 (mig 480) — TVA au comptoir par article. Le prix de caisse est le
+    // prix payé (TTC) ; la TVA y est *incluse*, elle ne s'ajoute pas. Pour chaque
+    // ligne, on dérive la TVA contenue au taux du code TVA de l'article (mig 473) :
+    // TVA = TTC - TTC/(1+taux). Article sans code TVA (cas Ofauria) → taux 0 →
+    // TVA 0 : le total encaissé est strictement inchangé.
+    const rateCache = new Map<string, number>();
+    let taxAmount = 0;
+    for (const li of saleItems) {
+      if (!li.taxCode) continue;
+      let rate = rateCache.get(li.taxCode);
+      if (rate === undefined) {
+        rate = (await taxCodeRepository.rateFor(li.taxCode)) ?? 0;
+        rateCache.set(li.taxCode, rate);
+      }
+      if (rate <= 0) continue;
+      li.taxRate = rate;
+      li.taxAmount = round2(li.subtotal - netFromGross(li.subtotal, rate));
+      taxAmount = round2(taxAmount + li.taxAmount);
+    }
 
     // Promotions (mig 372) : recalculées ici, l'aperçu de la caisse n'est qu'indicatif.
     const promo = await evaluatePromotions(promoLines, { channel: 'pos', storeId: req.user!.storeId, customerId: customerId || null, couponCode: couponCode || null });
@@ -171,7 +191,9 @@ export const saleController = {
       loyaltyAmount = r.amount;
     }
 
-    const total = Math.round((subtotal - promotionAmount - discountAmount - loyaltyAmount + taxAmount) * 100) / 100;
+    // taxAmount n'entre pas dans le total : c'est la TVA *incluse* dans le prix TTC
+    // encaissé (ventilation, phase 5.2), pas un montant ajouté.
+    const total = Math.round((subtotal - promotionAmount - discountAmount - loyaltyAmount) * 100) / 100;
 
     // Vente à crédit (mig 366) : refusée pour un client bloqué, ou au-delà du plafond si le contrôle est bloquant.
     if (paymentStatus === 'unpaid' && customerId) {

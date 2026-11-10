@@ -585,9 +585,11 @@ export async function fromSale(
   if (s.sold_on_credit) {
     const lines: GeneratedLine[] = [
       { account_code: '3421', auxiliary_customer_id: s.customer_id, debit: round2(total), credit: 0, label: `Ticket à crédit ${s.sale_number}` },
-      { account_code: '7111', debit: 0, credit: round2(subtotal), label: 'Vente à crédit' },
+      // 7111 porte le HT : subtotal est TTC, la TVA incluse (mig 480) est isolée
+      // sur le compte de TVA collectée. Sans code TVA (Ofauria) tax=0 → HT=TTC.
+      { account_code: '7111', debit: 0, credit: round2(subtotal - tax), label: 'Vente à crédit' },
     ];
-    if (tax > 0) lines.push({ account_code: tvaAccountForRate(computeTvaRate(subtotal, tax), 'collected'), debit: 0, credit: round2(tax), label: 'TVA facturee' });
+    if (tax > 0) lines.push({ account_code: tvaAccountForRate(computeTvaRate(subtotal - tax, tax), 'collected'), debit: 0, credit: round2(tax), label: 'TVA facturee' });
     if (discount > 0) lines.push({ account_code: '7129', debit: round2(discount), credit: 0, label: 'Remise accordee' });
     return {
       journal_code: 'VE',
@@ -650,10 +652,12 @@ export async function fromSale(
 
   const lines: GeneratedLine[] = await saleTreasuryLines(client, s, total);
   if (advance) lines.push({ account_code: advance.code, debit: advance.amount, credit: 0, label: 'Avance reprise à la remise' });
-  lines.push({ account_code: '7111', debit: 0, credit: round2(subtotal + (advance?.amount ?? 0)), label: 'Vente du jour' });
+  // 7111 porte le HT : subtotal est TTC, la TVA incluse (mig 480) est isolée sur
+  // le compte de TVA collectée. Sans code TVA (Ofauria) tax=0 → HT=TTC inchangé.
+  lines.push({ account_code: '7111', debit: 0, credit: round2(subtotal - tax + (advance?.amount ?? 0)), label: 'Vente du jour' });
 
   if (tax > 0) {
-    const tvaCode = tvaAccountForRate(computeTvaRate(subtotal, tax), 'collected');
+    const tvaCode = tvaAccountForRate(computeTvaRate(subtotal - tax, tax), 'collected');
     lines.push({ account_code: tvaCode, debit: 0, credit: round2(tax), label: 'TVA facturee' });
   }
   if (discount > 0) {

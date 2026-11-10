@@ -119,6 +119,7 @@ export const printerController = {
         total: parseFloat(sale.total),
         subtotal: parseFloat(sale.subtotal),
         discount_amount: parseFloat(sale.discount_amount || '0'),
+        tax_amount: parseFloat(sale.tax_amount || '0'),
         payment_method: sale.payment_method,
         cashier_name: sale.cashier_first_name
           ? `${sale.cashier_first_name} ${sale.cashier_last_name || ''}`.trim()
@@ -133,6 +134,8 @@ export const printerController = {
           subtotal: parseFloat(String(it.subtotal)),
           unit: (it.unit === 'g' ? 'g' : it.unit === 'person' ? 'person' : 'unit') as 'unit' | 'g' | 'person',
           display_unit: (it.display_unit === 'kg' ? 'kg' : it.display_unit === 'g' ? 'g' : null) as 'g' | 'kg' | null,
+          tax_rate: it.tax_rate != null ? parseFloat(String(it.tax_rate)) : 0,
+          tax_amount: it.tax_amount != null ? parseFloat(String(it.tax_amount)) : 0,
         })),
         cash_given: cashGiven,
         change_amount: changeAmount,

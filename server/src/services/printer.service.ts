@@ -306,10 +306,12 @@ export const printerService = {
       total: number;
       subtotal: number;
       discount_amount: number;
+      // TVA incluse dans le total TTC (mig 480) — ventilation, pas un ajout.
+      tax_amount?: number;
       payment_method: string;
       cashier_name?: string;
       customer_name?: string;
-      items: Array<{ name: string; quantity: number; unit_price: number; subtotal: number; unit?: 'unit' | 'g' | 'person'; display_unit?: 'g' | 'kg' | null }>;
+      items: Array<{ name: string; quantity: number; unit_price: number; subtotal: number; unit?: 'unit' | 'g' | 'person'; display_unit?: 'g' | 'kg' | null; tax_rate?: number; tax_amount?: number }>;
       cash_given?: number;
       change_amount?: number;
       // Ventilation d'un paiement mixte (mig 250)
@@ -406,6 +408,16 @@ export const printerService = {
         printer.leftRight('Sous-total', `${params.sale.subtotal.toFixed(2)} DH`);
         if (params.sale.discount_amount > 0) {
           printer.leftRight('Remise', `-${params.sale.discount_amount.toFixed(2)} DH`);
+        }
+        // Ventilation de la TVA incluse (mig 480), regroupée par taux. Rien n'est
+        // imprimé sans code TVA (cas Ofauria) : le ticket reste identique.
+        const vatByRate = new Map<number, number>();
+        for (const it of params.sale.items) {
+          const t = Number(it.tax_amount ?? 0);
+          if (t > 0) vatByRate.set(Number(it.tax_rate ?? 0), (vatByRate.get(Number(it.tax_rate ?? 0)) ?? 0) + t);
+        }
+        for (const [rate, amount] of [...vatByRate.entries()].sort((a, b) => a[0] - b[0])) {
+          printer.leftRight(`dont TVA ${rate.toFixed(0)}%`, `${amount.toFixed(2)} DH`);
         }
         printer.bold(true);
         printer.setTextDoubleHeight();

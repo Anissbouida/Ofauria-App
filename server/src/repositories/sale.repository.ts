@@ -178,7 +178,7 @@ export const saleRepository = {
     couponCode?: string | null;
     loyaltyPointsUsed?: number;
     loyaltyAmount?: number;
-    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g' | 'person'; displayUnit?: 'g' | 'kg' | null; promoDiscount?: number }[];
+    items: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g' | 'person'; displayUnit?: 'g' | 'kg' | null; promoDiscount?: number; taxRate?: number; taxAmount?: number }[];
   }, outer?: PoolClient) {
     // `outer` : transaction de l'appelant (avance prise avec la commande, O2C L3 G-OM-07).
     const client = outer ?? await db.getClient();
@@ -221,9 +221,9 @@ export const saleRepository = {
 
       for (const item of data.items) {
         const saleItemResult = await client.query(
-          `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal, unit, display_unit, promo_discount)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-          [saleResult.rows[0].id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.unit || 'unit', item.displayUnit || null, item.promoDiscount ?? 0]
+          `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal, unit, display_unit, promo_discount, tax_rate, tax_amount)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+          [saleResult.rows[0].id, item.productId, item.quantity, item.unitPrice, item.subtotal, item.unit || 'unit', item.displayUnit || null, item.promoDiscount ?? 0, item.taxRate ?? 0, item.taxAmount ?? 0]
         );
         const saleItemId = saleItemResult.rows[0].id as string;
 

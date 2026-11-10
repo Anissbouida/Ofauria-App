@@ -7,6 +7,22 @@ export const taxCodeRepository = {
     return (await db.query(`SELECT to_regclass('public.tax_codes') IS NOT NULL AS ok`)).rows[0].ok as boolean;
   },
 
+  /**
+   * Taux courant d'un code TVA, résolu au pays de la société et à la date du jour
+   * (mig 473 / 480). Null si le code est inconnu ou sans période ouverte.
+   * Même prédicat daté que delivery-note.repository.lineDefaults.
+   */
+  async rateFor(code: string | null | undefined): Promise<number | null> {
+    if (!code) return null;
+    const r = await db.query(
+      `SELECT tc.rate FROM tax_codes tc
+        WHERE tc.code = $1
+          AND tc.country_code = COALESCE((SELECT value->>'code' FROM module_parameters WHERE key = 'company.country_code'), 'MA')
+          AND tc.valid_from <= CURRENT_DATE AND (tc.valid_to IS NULL OR tc.valid_to >= CURRENT_DATE)
+        ORDER BY tc.valid_from DESC LIMIT 1`, [code]);
+    return r.rows[0] ? Number(r.rows[0].rate) : null;
+  },
+
   async list(country: string) {
     const r = await db.query(
       `SELECT t.*,
