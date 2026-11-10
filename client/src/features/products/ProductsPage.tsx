@@ -8,7 +8,7 @@ import { serverUrl } from '../../api/client';
 import { categoriesApi } from '../../api/categories.api';
 import { usersApi } from '../../api/users.api';
 import { recipesApi } from '../../api/recipes.api';
-import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays, Coins, Target, ChevronDown, ChevronRight, Recycle, type LucideIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays, Coins, Target, ChevronDown, ChevronRight, Recycle, Wrench, Repeat, type LucideIcon } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import { notify } from '../../components/ui/InlineNotification';
@@ -781,8 +781,25 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     saleType: (product?.sale_type as string) || 'jour',
     saleUnit: (product?.sale_unit as string) || 'unit',
     pricePerPerson: product?.price_per_person != null ? String(parseFloat(String(product.price_per_person))) : '',
+    // Nature de l'article (mig 469) : pilote la fiche (recette, stock, prix).
+    itemKind: (product?.item_kind as string) || 'manufactured',
     recipeId: '',
   });
+
+  // Nature de l'article — deux dérivés pilotent l'affichage de la fiche.
+  // Ce n'est PAS un test de secteur : item_kind est un attribut propre au
+  // produit (comme product.type dans Odoo), toujours présent.
+  const isManufactured = form.itemKind === 'manufactured';   // fabriqué : recette + prix auto
+  const isIntangible = form.itemKind === 'service' || form.itemKind === 'subscription'; // pas de stock
+
+  // Changer de nature purge la recette quand on quitte « fabriqué » : un
+  // service/une revente ne doit jamais rester lié à une recette fantôme.
+  const setItemKind = (nextKind: string) => {
+    setForm(prev => {
+      if (nextKind === prev.itemKind) return prev;
+      return { ...prev, itemKind: nextKind, ...(nextKind !== 'manufactured' ? { recipeId: '' } : {}) };
+    });
+  };
 
   // Audit P1.1 : change de type = purge les champs incoherents cote UI.
   // 'commande' n'a jamais de stock vitrine : on annule DLV/DDE/reexpose/recycle
@@ -806,6 +823,12 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
       return { ...prev, saleType: nextType };
     });
   };
+
+  // L'onglet Cycle de vie disparaît pour un service/abonnement : si on y était,
+  // on revient au Général pour ne pas afficher un onglet actif sans bouton.
+  useEffect(() => {
+    if (isIntangible && activeTab === 'lifecycle') setActiveTab('general');
+  }, [isIntangible, activeTab]);
 
   // Fetch all recipes
   const { data: allRecipes = [] } = useQuery({ queryKey: ['recipes'], queryFn: recipesApi.list });
@@ -1003,8 +1026,9 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Recipe is mandatory for new products
-    if (!product && !form.recipeId) {
+    // Recette obligatoire à la création — uniquement pour un article fabriqué.
+    // Un article de revente / une prestation / un abonnement se crée sans recette.
+    if (!product && isManufactured && !form.recipeId) {
       notify.error('Veuillez sélectionner une recette. Créez d\'abord la recette dans le module Recettes.');
       return;
     }
@@ -1051,7 +1075,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   const tabs: { key: FormTab; label: string; icon: React.ReactNode }[] = [
     { key: 'general', label: 'General', icon: <ShoppingBag size={16} /> },
     { key: 'pricing', label: 'Tarifs', icon: <Coins size={16} /> },
-    { key: 'lifecycle', label: 'Production & cycle de vie', icon: <Clock size={16} /> },
+    // Production & cycle de vie n'a de sens que pour un bien stockable.
+    ...(isIntangible ? [] : [{ key: 'lifecycle' as FormTab, label: 'Production & cycle de vie', icon: <Clock size={16} /> }]),
   ];
 
   return (
@@ -1159,7 +1184,37 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="Ex: Croissant au beurre" />
                 </div>
 
-                {/* Recipe smart search — mandatory */}
+                {/* Nature de l'article (mig 469) — pilote le reste de la fiche */}
+                <div>
+                  <label style={fieldLabel}>Nature de l'article</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                    {([
+                      { v: 'manufactured', label: 'Fabriqué', desc: 'Produit par recette', icon: Factory },
+                      { v: 'resale', label: 'Revente', desc: 'Négoce, acheté-revendu', icon: Package },
+                      { v: 'service', label: 'Prestation', desc: 'Service, sans stock', icon: Wrench },
+                      { v: 'subscription', label: 'Abonnement', desc: 'Récurrent, sans stock', icon: Repeat },
+                    ] as const).map(opt => {
+                      const active = form.itemKind === opt.v;
+                      const OptIcon = opt.icon;
+                      return (
+                        <button key={opt.v} type="button" onClick={() => setItemKind(opt.v)}
+                          style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '10px 6px', textAlign: 'center', cursor: 'pointer',
+                            border: `1px solid ${active ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4,
+                            background: active ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)',
+                            boxShadow: active ? 'inset 0 0 0 1px var(--odoo-purple)' : 'none',
+                          }}>
+                          <OptIcon size={18} style={{ color: active ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)' }} />
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--odoo-text)' }}>{opt.label}</span>
+                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', lineHeight: 1.2 }}>{opt.desc}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Recipe smart search — mandatory (fabriqué uniquement) */}
+                {isManufactured && (
                 <div ref={recipeDropdownRef} className="relative">
                   <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <BookOpen size={14} style={{ color: 'var(--theme-accent)' }} /> Recette <span className="text-red-500">*</span>
@@ -1285,6 +1340,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     </>
                   )}
                 </div>
+                )}
 
                 {/* Catégorie + Responsable */}
                 <div className="grid grid-cols-2 gap-4">
@@ -1350,14 +1406,36 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label style={fieldLabel}>Prix de vente (DH)</label>
-                    <input type="number" step="0.01" readOnly tabIndex={-1} style={{ ...fieldInputRO, fontWeight: 700 }} value={form.price} placeholder="0.00" />
-                    <p className="text-xs text-gray-400 mt-1">Calculé automatiquement depuis la recette (coût × marge).</p>
+                    {isManufactured ? (
+                      <>
+                        <input type="number" step="0.01" readOnly tabIndex={-1} style={{ ...fieldInputRO, fontWeight: 700 }} value={form.price} placeholder="0.00" />
+                        <p className="text-xs text-gray-400 mt-1">Calculé automatiquement depuis la recette (coût × marge).</p>
+                      </>
+                    ) : (
+                      <>
+                        <input type="number" step="0.01" min={0} style={{ ...fieldInput, fontWeight: 700 }}
+                          value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="0.00" />
+                        <p className="text-xs text-gray-400 mt-1">Prix de vente saisi librement.</p>
+                      </>
+                    )}
                   </div>
+                  {!isIntangible && (
                   <div>
-                    <label style={fieldLabel}>Prix de revient (DH)</label>
-                    <input type="number" step="0.01" readOnly tabIndex={-1} style={fieldInputRO} value={form.costPrice} placeholder="Auto" />
-                    <p className="text-xs text-gray-400 mt-1">Somme du coût des ingrédients de la recette.</p>
+                    <label style={fieldLabel}>{isManufactured ? 'Prix de revient (DH)' : "Prix d'achat (DH)"}</label>
+                    {isManufactured ? (
+                      <>
+                        <input type="number" step="0.01" readOnly tabIndex={-1} style={fieldInputRO} value={form.costPrice} placeholder="Auto" />
+                        <p className="text-xs text-gray-400 mt-1">Somme du coût des ingrédients de la recette.</p>
+                      </>
+                    ) : (
+                      <>
+                        <input type="number" step="0.01" min={0} style={fieldInput}
+                          value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} placeholder="0.00" />
+                        <p className="text-xs text-gray-400 mt-1">Coût d'achat unitaire (négoce).</p>
+                      </>
+                    )}
                   </div>
+                  )}
                 </div>
 
                 <div>
