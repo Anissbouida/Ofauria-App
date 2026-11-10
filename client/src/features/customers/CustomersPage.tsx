@@ -735,6 +735,10 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
   );
   const isMoralEntity = isMoral(customerType);
   const title = editing ? displayName(editing).primary : 'Nouveau';
+  // Partenaires possibles (entité mère / payeur) : autres clients B2B (phase 4.2).
+  const { data: partnersResp } = useQuery({ queryKey: ['customers', 'partners'], queryFn: () => customersApi.list({ limit: '1000' }) });
+  const partnerOptions = (((partnersResp?.data as Customer[]) || []).filter(c => isMoral(c.customer_type) && c.id !== editing?.id));
+  const ed = editing as Record<string, any> | null;
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -840,6 +844,21 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
                       <input name="president" defaultValue={editing?.president} className={inputCls} placeholder="Nom du président" /></div>
                   </div>
                 )}
+                {/* Rôles partenaires (phase 4.2) : entité mère + payeur */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label style={fieldLabel}>Entité mère</label>
+                    <select name="parentCustomerId" defaultValue={ed?.parent_customer_id || ''} className={inputCls}>
+                      <option value="">— Aucune</option>
+                      {partnerOptions.map(c => <option key={c.id as string} value={c.id as string}>{displayName(c).primary}</option>)}
+                    </select></div>
+                  <div><label style={fieldLabel}>Payeur (si différent)</label>
+                    <select name="payerCustomerId" defaultValue={ed?.payer_customer_id || ''} className={inputCls}>
+                      <option value="">— Le client paie lui-même</option>
+                      {partnerOptions.map(c => <option key={c.id as string} value={c.id as string}>{displayName(c).primary}</option>)}
+                    </select>
+                    <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 2 }}>La facture part au payeur ; le BL reste au nom du client.</p>
+                  </div>
+                </div>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', cursor: 'pointer' }}>
                   <input type="checkbox" checked={tvaExonere} disabled={!direction} onChange={(e) => setTvaExonere(e.target.checked)} />
                   Client exonéré de TVA

@@ -71,14 +71,16 @@ export const customerRepository = {
         preferred_contact, allergies,
         ice, if_fiscal, rc, rc_ville, tp, cnss, forme_juridique,
         association_recepisse, president, contact_role,
-        credit_limit, remise_pct, delai_paiement_jours, tva_exonere, billing_frequency
+        credit_limit, remise_pct, delai_paiement_jours, tva_exonere, billing_frequency,
+        parent_customer_id, payer_customer_id
       ) VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8, $9, $10,
         $11, $12,
         $13, $14, $15, $16, $17, $18, $19,
         $20, $21, $22,
-        $23, $24, $25, $26, $27
+        $23, $24, $25, $26, $27,
+        $28, $29
       ) RETURNING *`,
       [
         data.firstName || null, data.lastName || null, data.email || null, data.phone || null, data.notes || null,
@@ -89,6 +91,7 @@ export const customerRepository = {
         data.associationRecepisse || null, data.president || null, data.contactRole || null,
         num(data.creditLimit), num(data.remisePct), num(data.delaiPaiementJours), bool(data.tvaExonere),
         data.billingFrequency === 'per_delivery' ? 'per_delivery' : 'monthly',
+        num(data.parentCustomerId), num(data.payerCustomerId),
       ]
     );
     return result.rows[0];
@@ -104,6 +107,7 @@ export const customerRepository = {
       associationRecepisse: 'association_recepisse', president: 'president', contactRole: 'contact_role',
       creditLimit: 'credit_limit', remisePct: 'remise_pct', delaiPaiementJours: 'delai_paiement_jours',
       tvaExonere: 'tva_exonere', billingFrequency: 'billing_frequency',
+      parentCustomerId: 'parent_customer_id', payerCustomerId: 'payer_customer_id',
     };
     const nullable = new Set([
       'firstName', 'lastName',
@@ -111,6 +115,7 @@ export const customerRepository = {
       'ice', 'ifFiscal', 'rc', 'rcVille', 'tp', 'cnss', 'formeJuridique',
       'associationRecepisse', 'president', 'contactRole',
       'creditLimit', 'remisePct', 'delaiPaiementJours',
+      'parentCustomerId', 'payerCustomerId',
     ]);
     const boolKeys = new Set(['tvaExonere']);
     const fields: string[] = [];
@@ -134,6 +139,21 @@ export const customerRepository = {
       values
     );
     return result.rows[0];
+  },
+
+  /** Partenaire payeur effectif (phase 4.2) : suit payer_customer_id en chaîne
+   *  (une filiale peut pointer vers le siège) jusqu'au client qui paie, avec
+   *  garde anti-cycle. Rend le client lui-même s'il n'a pas de payeur distinct. */
+  async resolvePayer(client: Pick<import('pg').PoolClient, 'query'>, customerId: string): Promise<string> {
+    let current = customerId;
+    const seen = new Set<string>([current]);
+    for (let hop = 0; hop < 10; hop++) {
+      const next = (await client.query(`SELECT payer_customer_id FROM customers WHERE id = $1`, [current])).rows[0]?.payer_customer_id as string | null | undefined;
+      if (!next || seen.has(next)) break; // pas de payeur distinct, ou cycle détecté
+      seen.add(next);
+      current = next;
+    }
+    return current;
   },
 
   async stats(id: string) {

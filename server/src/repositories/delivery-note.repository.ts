@@ -6,6 +6,7 @@ import { shipProduct, reverseAllocations } from '../services/product-shipment.js
 import { recordDelivered, closeRemainder, reverseDelivered } from '../services/order-fulfilment.js';
 import { checkCredit } from '../services/credit-control.js';
 import { customerAddressRepository } from './customer-address.repository.js';
+import { customerRepository } from './customer.repository.js';
 
 /**
  * Ventes aux professionnels (mig 352) : bon de livraison client → facture.
@@ -436,8 +437,11 @@ export const deliveryNoteRepository = {
       const amount = round2(items.reduce((s, i) => s + i.subtotal, 0));
       const tax = round2(items.reduce((s, i) => s + (i.tvaRate != null ? Math.round(i.subtotal * i.tvaRate) / 100 : 0), 0));
       const numbers = notes.map(n => n.number).join(', ');
+      // Phase 4.2 : la facture part au PAYEUR (siège), pas forcément au client
+      // livré (filiale). Le BL garde son customer_id ; la créance suit le payeur.
+      const payerId = await customerRepository.resolvePayer(client, notes[0].customer_id);
       const invoice = await invoiceRepository.create({
-        invoiceType: 'emitted', customerId: notes[0].customer_id, invoiceDate: isoDate, dueDate: due,
+        invoiceType: 'emitted', customerId: payerId, invoiceDate: isoDate, dueDate: due,
         amount, taxAmount: tax, totalAmount: round2(amount + tax),
         notes: `Facture des bons de livraison ${numbers}`, createdBy: data.createdBy,
         storeId: notes[0].store_id ?? data.storeId ?? undefined, items,
