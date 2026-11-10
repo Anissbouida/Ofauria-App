@@ -26,8 +26,14 @@ export interface SourcingInputItem {
 export interface SourcingResultItem {
   itemId: string;
   productId: string;
-  sourceType: 'stock' | 'mixed' | 'production';
+  // Route d'appro du manque (mig 469 item_kind) :
+  //   stock/mixed      — couvert (partiellement) par le stock/frigo
+  //   production       — article fabriqué : plan de production créé
+  //   purchase         — article de revente : à acheter (pas de production)
+  //   service          — prestation/abonnement : intangible, rien à approvisionner
+  sourceType: 'stock' | 'mixed' | 'production' | 'purchase' | 'service';
   qtyFromStock: number;
+  /** Quantité non couverte par le stock : à produire (fabriqué) ou à acheter (revente). */
   qtyToProduce: number;
   productionPlanId: string | null;
 }
@@ -120,6 +126,16 @@ export async function computeSourcingAndCreatePlan(
     };
   }
 
+  // 3bis) Nature de l'article (mig 469) : route le manque. Un article fabriqué
+  //       part en production ; un article de revente part à l'achat (jamais en
+  //       production, il n'a pas de recette) ; un service/abonnement est
+  //       intangible et ne s'approvisionne pas.
+  const kindResult = await client.query(
+    `SELECT id, item_kind FROM products WHERE id = ANY($1)`, [productIds]
+  );
+  const kindMap: Record<string, string> = {};
+  for (const row of kindResult.rows) kindMap[row.id] = (row.item_kind as string) || 'manufactured';
+
   // 4) Calcul de sourcing par ligne
   const resultItems: SourcingResultItem[] = [];
   const productionNeeded: {
@@ -161,11 +177,24 @@ export async function computeSourcingAndCreatePlan(
     frigoRemaining[item.productId] = frigoAvailable - fromFrigo;
     remaining -= fromFrigo;
 
-    const toProduce = remaining;
-    const sourceType: 'stock' | 'mixed' | 'production' =
-      toProduce === 0
-        ? (fromFrigo > 0 ? 'mixed' : 'stock')
-        : (fromStock === 0 && fromFrigo === 0 ? 'production' : 'mixed');
+    // Nature de l'article → route du manque (mig 469).
+    const kind = kindMap[item.productId] || 'manufactured';
+    const intangible = kind === 'service' || kind === 'subscription';
+    // Un service/abonnement est toujours « fulfillable » : aucun manque à sourcer.
+    const toProduce = intangible ? 0 : remaining;
+
+    let sourceType: SourcingResultItem['sourceType'];
+    if (intangible) {
+      sourceType = 'service';
+    } else if (toProduce === 0) {
+      sourceType = fromFrigo > 0 ? 'mixed' : 'stock';
+    } else if (kind === 'resale') {
+      // Revente : le manque part à l'achat, jamais en production.
+      sourceType = (fromStock > 0 || fromFrigo > 0) ? 'mixed' : 'purchase';
+    } else {
+      // Fabriqué : le manque part en production.
+      sourceType = (fromStock === 0 && fromFrigo === 0) ? 'production' : 'mixed';
+    }
 
     resultItems.push({
       itemId: item.itemId,
@@ -176,7 +205,11 @@ export async function computeSourcingAndCreatePlan(
       productionPlanId: null,
     });
 
-    if (toProduce > 0) {
+    // Seuls les articles FABRIQUÉS alimentent le plan de production. La revente
+    // (sourceType 'purchase') est signalée sur la ligne sans créer de plan :
+    // l'auto-création d'une demande d'achat reste à faire (purchase_requests est
+    // aujourd'hui lié aux ingrédients, pas aux produits).
+    if (toProduce > 0 && kind === 'manufactured') {
       const profile = profileMap[item.productId];
       let effectiveQty = toProduce;
       let nbContenants: number | undefined;
