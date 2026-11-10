@@ -31,7 +31,8 @@ export const customerController = {
     const { search, customerType, page = '1', limit = '20' } = req.query as Record<string, string>;
     const p = parseInt(page); const l = parseInt(limit);
     const validType = ['particulier', 'professionnel', 'association', 'revendeur'].includes(customerType) ? customerType : undefined;
-    const result = await customerRepository.findAll({ search, customerType: validType, limit: l, offset: (p - 1) * l });
+    const archived = (req.query.archived as string) === 'true';
+    const result = await customerRepository.findAll({ search, customerType: validType, archived, limit: l, offset: (p - 1) * l });
     res.json({ success: true, data: result.rows, total: result.total, page: p, limit: l, totalPages: Math.ceil(result.total / l) });
   },
   async getById(req: AuthRequest, res: Response) {
@@ -63,6 +64,7 @@ export const customerController = {
     if (bad) { res.status(400).json({ success: false, error: { message: bad } }); return; }
     try {
       const customer = await customerRepository.create(req.body);
+      await customerRepository.logAudit(customer.id, 'create', req.user?.userId ?? null);
       res.status(201).json({ success: true, data: customer });
     } catch (err) { if (!handleIceDuplicate(err, res)) throw err; }
   },
@@ -80,8 +82,19 @@ export const customerController = {
     if (bad) { res.status(400).json({ success: false, error: { message: bad } }); return; }
     try {
       const customer = await customerRepository.update(req.params.id, req.body);
+      await customerRepository.logAudit(req.params.id, 'update', req.user?.userId ?? null, { fields: Object.keys(req.body) });
       res.json({ success: true, data: customer });
     } catch (err) { if (!handleIceDuplicate(err, res)) throw err; }
+  },
+  /** Restaure un client archivé (phase 4.4). */
+  async restore(req: AuthRequest, res: Response) {
+    const row = await customerRepository.restore(req.params.id, req.user?.userId ?? null);
+    if (!row) { res.status(404).json({ success: false, error: { message: 'Client introuvable' } }); return; }
+    res.json({ success: true, data: null });
+  },
+  /** Piste d'audit de la fiche (phase 4.4). */
+  async history(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await customerRepository.history(req.params.id) });
   },
   /** GET /customers/check?ice=…&name=…&excludeId=… : doublons probables (4.3). */
   async check(req: AuthRequest, res: Response) {
@@ -105,8 +118,10 @@ export const customerController = {
     if (!data) { res.status(404).json({ success: false, error: { message: 'Client introuvable' } }); return; }
     res.json({ success: true, data });
   },
+  /** Archive le client (phase 4.4) : plus de hard delete, l'historique reste. */
   async remove(req: AuthRequest, res: Response) {
-    await customerRepository.delete(req.params.id);
+    const row = await customerRepository.archive(req.params.id, req.user?.userId ?? null);
+    if (!row) { res.status(404).json({ success: false, error: { message: 'Client introuvable' } }); return; }
     res.json({ success: true, data: null });
   },
 

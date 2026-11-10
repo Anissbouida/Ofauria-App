@@ -1,10 +1,13 @@
 import { db } from '../config/database.js';
 
 export const customerRepository = {
-  async findAll(params: { search?: string; customerType?: string; limit: number; offset: number }) {
+  async findAll(params: { search?: string; customerType?: string; archived?: boolean; limit: number; offset: number }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
+
+    // Actifs par défaut ; archived=true pour la corbeille (phase 4.4).
+    conditions.push(params.archived ? 'c.is_active = false' : 'c.is_active = true');
 
     if (params.search) {
       conditions.push(`(c.first_name ILIKE $${i} OR c.last_name ILIKE $${i} OR c.email ILIKE $${i} OR c.phone ILIKE $${i} OR c.company_name ILIKE $${i} OR c.ice ILIKE $${i} OR c.city ILIKE $${i})`);
@@ -247,5 +250,46 @@ export const customerRepository = {
 
   async delete(id: string) {
     await db.query('DELETE FROM customers WHERE id = $1', [id]);
+  },
+
+  // ───── Archivage + audit (phase 4.4) ─────
+
+  /** Archive (soft-delete) : le client garde tout son historique. */
+  async archive(id: string, userId: string | null) {
+    const r = await db.query(
+      `UPDATE customers SET is_active = false, archived_at = NOW() WHERE id = $1 RETURNING id`, [id]);
+    if (r.rows[0]) await this.logAudit(id, 'archive', userId);
+    return r.rows[0] ?? null;
+  },
+
+  /** Restaure un client archivé. */
+  async restore(id: string, userId: string | null) {
+    const r = await db.query(
+      `UPDATE customers SET is_active = true, archived_at = NULL WHERE id = $1 RETURNING id`, [id]);
+    if (r.rows[0]) await this.logAudit(id, 'restore', userId);
+    return r.rows[0] ?? null;
+  },
+
+  /** Journalise une action sur la fiche (création, modification, archivage…). */
+  async logAudit(customerId: string, action: 'create' | 'update' | 'archive' | 'restore', userId: string | null, detail?: Record<string, unknown>) {
+    await db.query(
+      `INSERT INTO customer_audit (customer_id, action, changed_by, detail) VALUES ($1, $2, $3, $4)`,
+      [customerId, action, userId, JSON.stringify(detail ?? {})]
+    );
+  },
+
+  /** Historique des actions sur la fiche (piste d'audit). */
+  async history(customerId: string, limit = 50) {
+    const r = await db.query(
+      `SELECT a.id, a.action, a.changed_at, a.detail, a.changed_by,
+              COALESCE(u.first_name || ' ' || u.last_name, u.email) AS changed_by_name
+         FROM customer_audit a
+         LEFT JOIN users u ON u.id = a.changed_by
+        WHERE a.customer_id = $1
+        ORDER BY a.changed_at DESC, a.id DESC
+        LIMIT $2`,
+      [customerId, limit]
+    );
+    return r.rows;
   },
 };

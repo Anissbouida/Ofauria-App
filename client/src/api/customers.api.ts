@@ -15,6 +15,9 @@ export const customersApi = {
   create: (data: Record<string, any>) => api.post('/customers', data).then(r => r.data.data),
   update: (id: string, data: Record<string, any>) => api.put(`/customers/${id}`, data).then(r => r.data.data),
   remove: (id: string) => api.delete(`/customers/${id}`),
+  /** Archivage + audit (phase 4.4) */
+  restore: (id: string) => api.post(`/customers/${id}/restore`).then(r => r.data),
+  history: (id: string) => api.get(`/customers/${id}/history`).then(r => r.data.data as Array<{ id: string; action: string; changed_at: string; changed_by_name: string | null; detail: Record<string, any> }>),
   /** Doublons probables (phase 4.3) : même ICE ou même nom. */
   check: (params: { ice?: string; name?: string; excludeId?: string }) =>
     api.get('/customers/check', { params }).then(r => r.data.data as Array<{ id: string; name: string; reason: string }>),

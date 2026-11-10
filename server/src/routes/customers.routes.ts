@@ -43,5 +43,8 @@ router.delete('/:id/addresses/:addressId', authenticate, authorize(...ROLE_GROUP
 router.post('/', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.create));
 router.put('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.update));
 router.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), writeLimiter, asyncHandler(customerController.remove));
+// Archivage + audit (phase 4.4)
+router.get('/:id/history', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.history));
+router.post('/:id/restore', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), writeLimiter, asyncHandler(customerController.restore));
 
 export default router;

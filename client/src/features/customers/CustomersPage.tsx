@@ -4,10 +4,12 @@ import { customersApi } from '../../api/customers.api';
 import { loyaltyApi, tierOf, type LoyaltyTier } from '../../api/promotions.api';
 import CustomerLoyalty from '../promotions/CustomerLoyalty';
 import CustomerAddressesPanel from './CustomerAddressesPanel';
+import CustomerHistoryPanel from './CustomerHistoryPanel';
 import {
   Plus, Search, Pencil, Star, Trash2, Users, ShoppingCart, Receipt, X, Loader2, Phone, Mail,
   ArrowUpDown, ArrowUp, ArrowDown, Building2, MapPin, HeartHandshake, FileText, CreditCard, User,
   FileBadge2, UserPlus, CheckCircle2, Moon, AlertTriangle, Filter, Award, MessageSquare, Contact,
+  Archive, RotateCcw, History,
 } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -136,16 +138,17 @@ export default function CustomersPage() {
   const [sortKey, setSortKey] = useState<SortKey>('total_spent');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
+  const [archivedView, setArchivedView] = useState(false); // corbeille (phase 4.4)
 
   useEffect(() => {
     const t = setTimeout(() => setSearchTerm(searchInput.trim()), 300);
     return () => clearTimeout(t);
   }, [searchInput]);
-  useEffect(() => { setPage(1); }, [searchTerm, typeFilter, tierFilter, cityFilter, stage, sortKey, sortDir]);
+  useEffect(() => { setPage(1); }, [searchTerm, typeFilter, tierFilter, cityFilter, stage, sortKey, sortDir, archivedView]);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['customers', searchTerm],
-    queryFn: () => customersApi.list({ search: searchTerm, limit: '1000' }),
+    queryKey: ['customers', searchTerm, archivedView],
+    queryFn: () => customersApi.list({ search: searchTerm, limit: '1000', ...(archivedView ? { archived: 'true' } : {}) }),
     placeholderData: (prev) => prev,
   });
 
@@ -154,9 +157,18 @@ export default function CustomersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
       queryClient.invalidateQueries({ queryKey: ['customers-global-stats'] });
-      notify.success('Client supprimé');
+      notify.success('Client archivé');
     },
-    onError: (e) => notify.error(apiErrorMessage(e, 'Impossible de supprimer ce client (commandes ou ventes liées)')),
+    onError: (e) => notify.error(apiErrorMessage(e, 'Impossible d\'archiver ce client')),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: customersApi.restore,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      notify.success('Client restauré');
+    },
+    onError: (e) => notify.error(apiErrorMessage(e, 'Impossible de restaurer ce client')),
   });
 
   const cfColumns = useCustomListColumns('customer');
@@ -262,7 +274,8 @@ export default function CustomersPage() {
   const openEdit = (c: Customer) => { setSelectedId(null); setEditing(c); setShowForm(true); };
   const askDelete = async (c: Customer) => {
     const { primary } = displayName(c);
-    if (await confirm(`Supprimer le client « ${primary} » ? Impossible s'il a des commandes ou des ventes.`, { title: 'Supprimer un client', confirmLabel: 'Supprimer', danger: true })) {
+    // Archivage (phase 4.4) : le client garde son historique, il n'est pas effacé.
+    if (await confirm(`Archiver le client « ${primary} » ? Il garde tout son historique et pourra être restauré.`, { title: 'Archiver un client', confirmLabel: 'Archiver', danger: true })) {
       deleteMutation.mutate(c.id as string);
     }
   };
@@ -325,6 +338,10 @@ export default function CustomersPage() {
             style={{ flex: '1 1 220px', minWidth: 0 }} />
           {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={muted} />}
           <SelectFilter label="Type" icon={Filter} value={typeFilter} onChange={setTypeFilter} options={TYPE_OPTIONS} />
+          <button type="button" onClick={() => setArchivedView(v => !v)} className={archivedView ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
+            title="Clients archivés" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Archive size={13} /> {archivedView ? 'Archivés' : 'Actifs'}
+          </button>
           <SelectFilter label="Fidélité" icon={Award} value={tierFilter} onChange={setTierFilter} options={tierOptions(tiers)} />
           <SelectFilter label="Ville" icon={MapPin} value={cityFilter} onChange={setCityFilter} options={cityOptions} allLabel="Toutes" />
           {stage && (
@@ -441,7 +458,9 @@ export default function CustomersPage() {
                       <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'inline-flex', gap: 2 }}>
                           <button onClick={() => openEdit(c)} className="odoo-pager-btn" title="Modifier" aria-label="Modifier"><Pencil size={13} /></button>
-                          <button onClick={() => askDelete(c)} className="odoo-pager-btn" title="Supprimer" aria-label="Supprimer" style={{ color: '#dc3545' }}><Trash2 size={13} /></button>
+                          {archivedView
+                            ? <button onClick={() => restoreMutation.mutate(c.id as string)} className="odoo-pager-btn" title="Restaurer" aria-label="Restaurer" style={{ color: '#16a34a' }}><RotateCcw size={13} /></button>
+                            : <button onClick={() => askDelete(c)} className="odoo-pager-btn" title="Archiver" aria-label="Archiver" style={{ color: '#dc3545' }}><Archive size={13} /></button>}
                         </div>
                       </td>
                     </tr>
@@ -594,6 +613,8 @@ function CustomerDetailPanel({ customerId, onClose, onEdit }: {
                 ]} />
 
                 <CustomerAddressesPanel customerId={customer.id as string} />
+
+                <CustomerHistoryPanel customerId={customer.id as string} isActive={customer.is_active !== false} />
 
                 {isMoral(type) && (
                   <>
