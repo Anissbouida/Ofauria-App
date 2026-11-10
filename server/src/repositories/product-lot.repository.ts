@@ -161,6 +161,72 @@ export const productLotRepository = {
     return result.rows[0];
   },
 
+  /** Crée un lot pour une ENTRÉE DE STOCK NON ISSUE DE LA PRODUCTION
+   *  (article de revente acheté/reçu, stock d'ouverture). Même machinerie que
+   *  createFromProduction (DLC, FEFO, rappel, vitrine) mais sans plan de
+   *  production ni garde HACCP. La DLC vient de l'emballage (expiresAt) ; à
+   *  défaut, elle est dérivée de shelf_life_days (jamais de lot sans DLC). */
+  async createReceivedLot(
+    client: PoolClient,
+    data: {
+      productId: string;
+      storeId: string;
+      quantity: number;
+      /** DLC imprimée sur l'emballage (ISO 'YYYY-MM-DD'). Prioritaire. */
+      expiresAt?: string | null;
+      shelfLifeDays?: number | null;
+      lotNumber?: string | null;
+      unitCost?: number | null;
+      producedAt?: Date;
+      notes?: string | null;
+    }
+  ): Promise<ProductLot> {
+    const producedAt = data.producedAt ?? new Date();
+    const tz = getUserTimezone();
+    let expiresDate: string;
+    if (data.expiresAt) {
+      expiresDate = data.expiresAt;
+    } else {
+      const shelfDays = data.shelfLifeDays && data.shelfLifeDays > 0 ? data.shelfLifeDays : DEFAULT_SHELF_LIFE_DAYS;
+      expiresDate = localIsoDate(new Date(producedAt.getTime() + shelfDays * 86400000), tz);
+    }
+
+    // Numéro de lot : fourni (avec suffixe si déjà pris pour ce magasin) ou généré.
+    let lotNumber = data.lotNumber || null;
+    if (lotNumber) {
+      const taken = await client.query(
+        `SELECT COUNT(*)::int AS n FROM product_lots WHERE store_id = $1 AND (lot_number = $2 OR lot_number LIKE $2 || '-%')`,
+        [data.storeId, lotNumber]
+      );
+      if (taken.rows[0].n > 0) lotNumber = `${lotNumber}-${taken.rows[0].n + 1}`;
+    } else {
+      const seqResult = await client.query(`SELECT nextval('product_lot_number_seq') as n`);
+      const seq = parseInt(seqResult.rows[0].n);
+      const ymd = localIsoDate(producedAt, tz).replace(/-/g, '');
+      lotNumber = `LOT-${ymd}-${String(seq).padStart(5, '0')}`;
+    }
+
+    const result = await client.query(
+      `INSERT INTO product_lots
+         (product_id, production_plan_id, store_id, lot_number,
+          produced_at, expires_at, quantity_total, backroom_qty,
+          status, notes, unit_cost)
+       VALUES ($1, NULL, $2, $3, $4, $5, $6, $6, 'active', $7, $8)
+       RETURNING *`,
+      [
+        data.productId,
+        data.storeId,
+        lotNumber,
+        producedAt.toISOString(),
+        expiresDate,
+        data.quantity,
+        data.notes ?? null,
+        data.unitCost ?? null,
+      ]
+    );
+    return result.rows[0];
+  },
+
   /** FEFO : selectionne les lots backroom dans l'ordre de DLC croissant
    *  pour pouvoir ponctionner une qty totale donnee. Retourne les
    *  consommations a appliquer (lot_id, qty) sans modifier la base.

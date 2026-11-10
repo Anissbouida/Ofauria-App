@@ -477,7 +477,7 @@ export const productController = {
   },
 
   async adjustStock(req: AuthRequest, res: Response) {
-    const { quantity, type = 'adjustment', note } = req.body;
+    const { quantity, type = 'adjustment', note, lotNumber, expiresAt, unitCost } = req.body;
     if (quantity === undefined || quantity === null) {
       res.status(400).json({ success: false, error: { message: 'Quantite requise' } });
       return;
@@ -487,6 +487,16 @@ export const productController = {
     if (!product) { res.status(404).json({ success: false, error: { message: 'Produit non trouve' } }); return; }
 
     const change = parseFloat(quantity);
+    // Lot optionnel (phase 3.8) : une ENTRÉE de stock (change > 0) d'un article
+    // acheté/reçu peut porter un lot (n° + DLC). Impossible sur une sortie, ou
+    // sur un article intangible (service/abonnement, sans stock physique).
+    const wantsLot = change > 0 && (lotNumber || expiresAt) &&
+      product.item_kind !== 'service' && product.item_kind !== 'subscription';
+    if (wantsLot && !req.user!.storeId) {
+      res.status(400).json({ success: false, error: { message: 'Un magasin est requis pour enregistrer un lot.' } });
+      return;
+    }
+
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -497,6 +507,21 @@ export const productController = {
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [req.params.id, type, change, stockAfter, note || `Ajustement manuel`, req.user!.userId, req.user!.storeId || null]
       );
+
+      // Lot reçu : même machinerie DLC/FEFO/rappel que les lots de production.
+      if (wantsLot) {
+        await productLotRepository.createReceivedLot(client, {
+          productId: req.params.id,
+          storeId: req.user!.storeId as string,
+          quantity: change,
+          lotNumber: lotNumber ?? null,
+          expiresAt: expiresAt ?? null,
+          shelfLifeDays: (product.shelf_life_days as number | null) ?? null,
+          unitCost: unitCost != null && unitCost !== '' ? parseFloat(String(unitCost)) : null,
+          notes: note ?? null,
+        });
+      }
+
       await client.query('COMMIT');
 
       res.json({ success: true, data: { stockQuantity: stockAfter } });
