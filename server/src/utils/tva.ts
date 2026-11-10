@@ -10,6 +10,41 @@
 
 export const round2 = (n: number): number => Math.round(n * 100) / 100;
 
+/**
+ * Conversions de base de prix (phase 5.1, mig 479). `tvaRate` en pourcentage ;
+ * un taux nul, négatif ou non fini se comporte comme 0 (HT == TTC).
+ */
+
+/** HT à partir d'un prix TTC : TTC / (1 + taux). */
+export function netFromGross(gross: number, tvaRate: number | null | undefined): number {
+  const r = Number(tvaRate);
+  if (!Number.isFinite(r) || r <= 0) return round2(gross);
+  return round2(gross / (1 + r / 100));
+}
+
+/** TTC à partir d'un prix HT : HT * (1 + taux). */
+export function grossFromNet(net: number, tvaRate: number | null | undefined): number {
+  const r = Number(tvaRate);
+  if (!Number.isFinite(r) || r <= 0) return round2(net);
+  return round2(net * (1 + r / 100));
+}
+
+/**
+ * Prix HT d'un article selon sa base déclarée. Si le prix est stocké TTC
+ * (price_includes_tax), on en déduit le HT au taux donné ; sinon il est déjà HT.
+ */
+export function netPriceOf(price: number, priceIncludesTax: boolean, tvaRate: number | null | undefined): number {
+  return priceIncludesTax ? netFromGross(price, tvaRate) : round2(price);
+}
+
+/**
+ * Prix TTC d'un article selon sa base déclarée. Si le prix est stocké HT, on en
+ * déduit le TTC au taux donné ; sinon il est déjà TTC.
+ */
+export function grossPriceOf(price: number, priceIncludesTax: boolean, tvaRate: number | null | undefined): number {
+  return priceIncludesTax ? round2(price) : grossFromNet(price, tvaRate);
+}
+
 /** Montant TVA d'une ligne. NULL si pas de taux explicite. */
 export function lineTvaAmount(subtotal: number, tvaRate: number | null | undefined): number | null {
   if (tvaRate === null || tvaRate === undefined || !Number.isFinite(tvaRate)) return null;

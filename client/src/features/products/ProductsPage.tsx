@@ -786,6 +786,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     itemKind: (product?.item_kind as string) || 'manufactured',
     barcode: (product?.barcode as string) || '',
     taxCode: (product?.tax_code as string) || '',
+    // Base du prix catalogue (mig 479) : true = TTC (défaut), false = HT.
+    priceIncludesTax: product?.price_includes_tax !== false,
     recipeId: '',
   });
 
@@ -1465,6 +1467,32 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     ))}
                   </select>
                   <p className="text-xs text-gray-400 mt-1">Appliqué par défaut aux lignes de commande et de bon de livraison ; modifiable ligne par ligne.</p>
+                </div>
+
+                {/* Base du prix catalogue (mig 479) : le prix saisi est-il TTC
+                    (prix payé en boutique) ou HT ? Le HT/TTC manquant se dérive
+                    du code TVA ci-dessus. Par défaut TTC (réalité boutique). */}
+                <div>
+                  <label style={fieldLabel}>Base du prix catalogue</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                    {([
+                      { v: true, label: 'TTC', desc: 'Toutes taxes comprises (prix boutique)' },
+                      { v: false, label: 'HT', desc: 'Hors taxe (TVA ajoutée)' },
+                    ] as const).map(opt => {
+                      const active = form.priceIncludesTax === opt.v;
+                      return (
+                        <button key={String(opt.v)} type="button" onClick={() => setForm({ ...form, priceIncludesTax: opt.v })}
+                          style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, padding: '8px 6px', textAlign: 'center', cursor: 'pointer',
+                            border: `1px solid ${active ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`, borderRadius: 4,
+                            background: active ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)',
+                          }}>
+                          <span style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{opt.label}</span>
+                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{opt.desc}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div>

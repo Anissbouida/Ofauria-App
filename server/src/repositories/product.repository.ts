@@ -70,6 +70,7 @@ export const productRepository = {
               p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
               p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
               p.sale_unit, p.price_per_kg, p.price_per_person, p.sku, p.barcode,
+              p.tax_code, p.price_includes_tax,
               p.created_at, p.updated_at,
               ${stockColumns}
               ${lotMetricsCols}
@@ -146,6 +147,7 @@ export const productRepository = {
               p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
               p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
               p.sale_unit, p.price_per_kg, p.price_per_person, p.sku, p.barcode,
+              p.tax_code, p.price_includes_tax,
               ${stockColumns}
               ${lotMetricsCols}
               c.name as category_name,
@@ -228,6 +230,7 @@ export const productRepository = {
       itemKind: 'item_kind',
       barcode: 'barcode',
       taxCode: 'tax_code',
+      priceIncludesTax: 'price_includes_tax',
       saleUnit: 'sale_unit',
       pricePerKg: 'price_per_kg',
       pricePerPerson: 'price_per_person',

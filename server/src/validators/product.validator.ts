@@ -58,6 +58,8 @@ const commonProductFields = {
   barcode: z.string().trim().max(64, 'Code-barres trop long (max 64)').optional().nullable(),
   // Code TVA par défaut de l'article (mig 473) : réf. au référentiel tax_codes.
   taxCode: z.string().trim().max(20, 'Code TVA invalide').optional().nullable(),
+  // Base du prix catalogue (mig 479) : true = TTC (défaut), false = HT.
+  priceIncludesTax: z.coerce.boolean().optional(),
 };
 
 // Applique les règles croisées de cycle de vie.
@@ -182,6 +184,7 @@ export const updateProductSchema = z.object({
   itemKind: commonProductFields.itemKind,
   barcode: commonProductFields.barcode,
   taxCode: commonProductFields.taxCode,
+  priceIncludesTax: commonProductFields.priceIncludesTax,
   pricePerKg: commonProductFields.pricePerKg,
   pricePerPerson: commonProductFields.pricePerPerson,
   stockQuantity: z.coerce.number().min(0).max(1_000_000).optional().nullable(),

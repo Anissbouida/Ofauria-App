@@ -208,10 +208,11 @@ export const productController = {
            is_available, is_custom_orderable, preparation_time_min,
            responsible_user_id, sale_unit, price_per_kg, price_per_person,
            sale_type, shelf_life_days, display_life_hours,
-           is_reexposable, is_recyclable, max_reexpositions, item_kind, barcode, tax_code
+           is_reexposable, is_recyclable, max_reexpositions, item_kind, barcode, tax_code,
+           price_includes_tax
          )
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                 $14, $15, $16, $17, $18, $19, $20, $21, $22)
+                 $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
          RETURNING *`,
         [
           data.name, data.slug, data.categoryId, data.description || null,
@@ -223,6 +224,7 @@ export const productController = {
           isReexposable, isRecyclable, maxReexpositions, data.itemKind || 'manufactured',
           (data.barcode as string)?.trim() || null,
           (data.taxCode as string)?.trim() || null,
+          data.priceIncludesTax ?? true,
         ]
       );
       const product = productResult.rows[0];

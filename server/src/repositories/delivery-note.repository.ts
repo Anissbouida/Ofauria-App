@@ -7,6 +7,7 @@ import { recordDelivered, closeRemainder, reverseDelivered } from '../services/o
 import { checkCredit } from '../services/credit-control.js';
 import { customerAddressRepository } from './customer-address.repository.js';
 import { customerRepository } from './customer.repository.js';
+import { netPriceOf } from '../utils/tva.js';
 
 /**
  * Ventes aux professionnels (mig 352) : bon de livraison client → facture.
@@ -101,7 +102,7 @@ export const deliveryNoteRepository = {
     const c = customerId ? (await db.query(`SELECT remise_pct, tva_exonere FROM customers WHERE id = $1`, [customerId])).rows[0] : null;
     const remise = Number(c?.remise_pct ?? 0);
     const rows = (await db.query(
-      `SELECT p.id, p.price,
+      `SELECT p.id, p.price, p.price_includes_tax,
               -- Taux du code TVA porté par l'article (mig 473), résolu au taux
               -- courant du pays de la société. Source prioritaire du défaut.
               (SELECT tc.rate FROM tax_codes tc
@@ -114,7 +115,12 @@ export const deliveryNoteRepository = {
          FROM products p WHERE p.id = ANY($1::uuid[])`, [productIds])).rows;
     const out: Record<string, { unitPrice: number; tvaRate: number | null }> = {};
     for (const r of rows) {
-      const price = Number(r.price ?? 0) * (1 - remise / 100);
+      // Le défaut d'une ligne professionnelle est un prix HT (phase 5.1, mig 479).
+      // Si l'article déclare un prix TTC, on en déduit le HT au taux intrinsèque
+      // de l'article (code TVA), indépendamment de l'exonération du client ;
+      // sinon le prix est déjà HT. Ofauria (TTC, sans code TVA) : HT = TTC.
+      const net = netPriceOf(Number(r.price ?? 0), r.price_includes_tax !== false, r.code_rate != null ? Number(r.code_rate) : 0);
+      const price = net * (1 - remise / 100);
       // Priorité : client exonéré → 0 ; sinon code TVA de l'article ; sinon
       // repli sur le dernier taux utilisé (comportement antérieur).
       const tvaRate = c?.tva_exonere ? 0
