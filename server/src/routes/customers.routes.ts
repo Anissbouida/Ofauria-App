@@ -46,5 +46,9 @@ router.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), wri
 // Archivage + audit (phase 4.4)
 router.get('/:id/history', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.history));
 router.post('/:id/restore', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), writeLimiter, asyncHandler(customerController.restore));
+// Protection des données — loi 09-08 (phase 4.6)
+router.put('/:id/consent', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.consent));
+router.get('/:id/export', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(customerController.exportData));
+router.post('/:id/anonymize', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), writeLimiter, asyncHandler(customerController.anonymize));
 
 export default router;

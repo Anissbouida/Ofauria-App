@@ -5,6 +5,7 @@ import { loyaltyApi, tierOf, type LoyaltyTier } from '../../api/promotions.api';
 import CustomerLoyalty from '../promotions/CustomerLoyalty';
 import CustomerAddressesPanel from './CustomerAddressesPanel';
 import CustomerHistoryPanel from './CustomerHistoryPanel';
+import CustomerDataProtectionPanel from './CustomerDataProtectionPanel';
 import { usersApi } from '../../api/users.api';
 import {
   Plus, Search, Pencil, Star, Trash2, Users, ShoppingCart, Receipt, X, Loader2, Phone, Mail,
@@ -616,6 +617,10 @@ function CustomerDetailPanel({ customerId, onClose, onEdit }: {
                 <CustomerAddressesPanel customerId={customer.id as string} />
 
                 <CustomerHistoryPanel customerId={customer.id as string} isActive={customer.is_active !== false} />
+
+                <CustomerDataProtectionPanel customerId={customer.id as string}
+                  marketingConsent={customer.marketing_consent === true}
+                  anonymizedAt={(customer.anonymized_at as string | null) ?? null} />
 
                 {isMoral(type) && (
                   <>

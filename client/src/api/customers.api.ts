@@ -17,6 +17,10 @@ export const customersApi = {
   remove: (id: string) => api.delete(`/customers/${id}`),
   /** Archivage + audit (phase 4.4) */
   restore: (id: string) => api.post(`/customers/${id}/restore`).then(r => r.data),
+  /** Protection des données — loi 09-08 (phase 4.6) */
+  setConsent: (id: string, marketingConsent: boolean) => api.put(`/customers/${id}/consent`, { marketingConsent }).then(r => r.data),
+  exportData: (id: string) => api.get(`/customers/${id}/export`).then(r => r.data.data),
+  anonymize: (id: string) => api.post(`/customers/${id}/anonymize`).then(r => r.data),
   history: (id: string) => api.get(`/customers/${id}/history`).then(r => r.data.data as Array<{ id: string; action: string; changed_at: string; changed_by_name: string | null; detail: Record<string, any> }>),
   /** Doublons probables (phase 4.3) : même ICE ou même nom. */
   check: (params: { ice?: string; name?: string; excludeId?: string }) =>

@@ -293,4 +293,67 @@ export const customerRepository = {
     );
     return r.rows;
   },
+
+  // ───── Protection des données — loi 09-08 (phase 4.6) ─────
+
+  /** Enregistre (ou retire) le consentement marketing ; date la dernière prise. */
+  async setConsent(id: string, consent: boolean, userId: string | null) {
+    const r = await db.query(
+      `UPDATE customers SET marketing_consent = $2,
+              consent_at = CASE WHEN $2 THEN NOW() ELSE consent_at END
+        WHERE id = $1 RETURNING id`,
+      [id, consent]
+    );
+    if (r.rows[0]) await this.logAudit(id, 'update', userId, { consent });
+    return r.rows[0] ?? null;
+  },
+
+  /** Export des données personnelles d'un client (droit d'accès / portabilité). */
+  async exportData(id: string) {
+    const customer = await this.findById(id);
+    if (!customer) return null;
+    const addresses = (await db.query(`SELECT * FROM customer_addresses WHERE customer_id = $1`, [id])).rows;
+    const history = await this.history(id, 500);
+    return { exportedAt: new Date().toISOString(), customer, addresses, history };
+  },
+
+  /** Anonymisation (droit à l'effacement 09-08) : scrub les données PERSONNELLES
+   *  mais conserve la ligne, son id et ses liens comptables (factures, créances,
+   *  écritures) — une demande d'effacement ne casse pas la comptabilité.
+   *  Irréversible : marque anonymized_at et désactive la fiche. */
+  async anonymize(id: string, userId: string | null) {
+    const c = await db.getClient();
+    try {
+      await c.query('BEGIN');
+      const r = await c.query(
+        `UPDATE customers SET
+           first_name = 'Client', last_name = 'anonymisé', company_name = NULL,
+           email = NULL, phone = NULL, address = NULL, city = NULL, birthday = NULL,
+           allergies = NULL, notes = NULL, contact_role = NULL, president = NULL,
+           preferred_contact = 'phone',
+           ice = NULL, if_fiscal = NULL, rc = NULL, rc_ville = NULL, tp = NULL, cnss = NULL,
+           association_recepisse = NULL, custom_fields = '{}'::jsonb,
+           marketing_consent = false, consent_at = NULL,
+           is_active = false, archived_at = COALESCE(archived_at, NOW()), anonymized_at = NOW()
+         WHERE id = $1 AND anonymized_at IS NULL
+         RETURNING id`,
+        [id]
+      );
+      if (!r.rows[0]) { await c.query('ROLLBACK'); return null; }
+      // Les adresses contiennent des données personnelles : on les supprime.
+      // Les pièces (BL/facture) ont déjà figé l'adresse en texte à l'émission.
+      await c.query(`DELETE FROM customer_addresses WHERE customer_id = $1`, [id]);
+      await c.query(
+        `INSERT INTO customer_audit (customer_id, action, changed_by, detail) VALUES ($1, 'anonymize', $2, '{}')`,
+        [id, userId]
+      );
+      await c.query('COMMIT');
+      return r.rows[0];
+    } catch (err) {
+      await c.query('ROLLBACK');
+      throw err;
+    } finally {
+      c.release();
+    }
+  },
 };

@@ -96,6 +96,26 @@ export const customerController = {
   async history(req: AuthRequest, res: Response) {
     res.json({ success: true, data: await customerRepository.history(req.params.id) });
   },
+  // ───── Protection des données — loi 09-08 (phase 4.6) ─────
+  /** Enregistre le consentement marketing. */
+  async consent(req: AuthRequest, res: Response) {
+    const v = req.body?.marketingConsent === true || req.body?.marketingConsent === 'true';
+    const row = await customerRepository.setConsent(req.params.id, v, req.user?.userId ?? null);
+    if (!row) { res.status(404).json({ success: false, error: { message: 'Client introuvable' } }); return; }
+    res.json({ success: true, data: null });
+  },
+  /** Export des données personnelles (droit d'accès / portabilité). */
+  async exportData(req: AuthRequest, res: Response) {
+    const data = await customerRepository.exportData(req.params.id);
+    if (!data) { res.status(404).json({ success: false, error: { message: 'Client introuvable' } }); return; }
+    res.json({ success: true, data });
+  },
+  /** Anonymisation (droit à l'effacement) : conserve la comptabilité. */
+  async anonymize(req: AuthRequest, res: Response) {
+    const row = await customerRepository.anonymize(req.params.id, req.user?.userId ?? null);
+    if (!row) { res.status(409).json({ success: false, error: { message: 'Client introuvable ou déjà anonymisé' } }); return; }
+    res.json({ success: true, data: null });
+  },
   /** GET /customers/check?ice=…&name=…&excludeId=… : doublons probables (4.3). */
   async check(req: AuthRequest, res: Response) {
     const q = req.query as Record<string, string | undefined>;
