@@ -219,7 +219,7 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
         prospectPhone: mode === 'prospect' ? prospect.phone || null : null, prospectEmail: mode === 'prospect' ? prospect.email || null : null,
         title: head.title || null, opportunityId: quote ? undefined : o?.id ?? null, quoteDate: head.quoteDate, validUntil: head.validUntil, withTax: mode === 'prospect' ? head.withTax : undefined,
         discountPct: pct, deliveryTerms: head.deliveryTerms || null, notes: head.notes || null, internalNotes: head.internalNotes || null,
-        items: valid.map(l => ({ productId: l.productId, quantity: Math.round(Number(l.quantity)), unitPrice: l.unitPrice === '' ? null : Number(l.unitPrice),
+        items: valid.map(l => ({ productId: l.productId, quantity: Number(l.quantity), unitPrice: l.unitPrice === '' ? null : Number(l.unitPrice),
           tvaRate: withTax && l.tvaRate !== '' ? Number(l.tvaRate) : null, description: l.description || null })),
       };
       return quote ? quotesApi.update(quote.id, payload) : quotesApi.create(payload);
@@ -278,7 +278,7 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
               <tr key={i}>
                 <td style={{ minWidth: 220 }}><SearchSelect options={productOptions} value={l.productId} onChange={id => pickProduct(i, id)} placeholder="Choisir un article…" width="100%" size="md" /></td>
                 <td><input style={field} maxLength={300} value={l.description} onChange={e => setLine(i, { description: e.target.value })} placeholder="Parfum, inscription, format…" /></td>
-                <td><input style={field} type="number" min={1} step={1} value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} /></td>
+                <td><input style={field} type="number" min={0.001} step="0.001" value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} /></td>
                 <td><input style={field} type="number" min={0} step="0.01" value={l.unitPrice} onChange={e => setLine(i, { unitPrice: e.target.value })} /></td>
                 {withTax && <td><select style={field} value={l.tvaRate} onChange={e => setLine(i, { tvaRate: e.target.value })}>{TVA_RATES.map(r => <option key={r} value={r}>{r === '' ? '—' : `${r} %`}</option>)}</select></td>}
                 <td style={{ textAlign: 'right' }}>{l.productId ? n2(Math.round(Number(l.quantity) * (Number(l.unitPrice) || 0) * 100) / 100) : ''}</td>

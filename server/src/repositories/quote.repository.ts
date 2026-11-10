@@ -63,7 +63,9 @@ async function compute(input: QuoteInput, storeId: string | null = null, role?: 
   const withTax = pro ? true : customer ? false : !!input.withTax;
   if (!input.items?.length) return { error: 'Ajoutez au moins un article' } as const;
   for (const it of input.items) {
-    if (!Number.isInteger(Number(it.quantity)) || Number(it.quantity) <= 0) return { error: 'Les quantités sont des nombres entiers positifs' } as const;
+    // Quantités décimales autorisées (phase 3.4) : fini et strictement positif.
+    const q = Number(it.quantity);
+    if (!Number.isFinite(q) || q <= 0) return { error: 'Les quantités doivent être des nombres strictement positifs' } as const;
   }
   const priced = await priceLines(input.items.map(i => ({ productId: i.productId, quantity: Number(i.quantity), unitPrice: i.unitPrice ?? null, tvaRate: i.tvaRate ?? null })), pro);
   if ('error' in priced) return { error: priced.error as string } as const;
