@@ -227,6 +227,7 @@ export const productRepository = {
       saleType: 'sale_type',
       itemKind: 'item_kind',
       barcode: 'barcode',
+      taxCode: 'tax_code',
       saleUnit: 'sale_unit',
       pricePerKg: 'price_per_kg',
       pricePerPerson: 'price_per_person',

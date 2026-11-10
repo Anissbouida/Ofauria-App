@@ -56,6 +56,8 @@ const commonProductFields = {
   itemKind: z.enum(['manufactured', 'resale', 'service', 'subscription']).optional(),
   // Code-barres physique scanné en caisse (mig 472), distinct du SKU.
   barcode: z.string().trim().max(64, 'Code-barres trop long (max 64)').optional().nullable(),
+  // Code TVA par défaut de l'article (mig 473) : réf. au référentiel tax_codes.
+  taxCode: z.string().trim().max(20, 'Code TVA invalide').optional().nullable(),
 };
 
 // Applique les règles croisées de cycle de vie.
@@ -179,6 +181,7 @@ export const updateProductSchema = z.object({
   saleUnit: commonProductFields.saleUnit,
   itemKind: commonProductFields.itemKind,
   barcode: commonProductFields.barcode,
+  taxCode: commonProductFields.taxCode,
   pricePerKg: commonProductFields.pricePerKg,
   pricePerPerson: commonProductFields.pricePerPerson,
   stockQuantity: z.coerce.number().min(0).max(1_000_000).optional().nullable(),

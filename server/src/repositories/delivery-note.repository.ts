@@ -100,13 +100,25 @@ export const deliveryNoteRepository = {
     const remise = Number(c?.remise_pct ?? 0);
     const rows = (await db.query(
       `SELECT p.id, p.price,
+              -- Taux du code TVA porté par l'article (mig 473), résolu au taux
+              -- courant du pays de la société. Source prioritaire du défaut.
+              (SELECT tc.rate FROM tax_codes tc
+                WHERE tc.code = p.tax_code
+                  AND tc.country_code = COALESCE((SELECT value->>'code' FROM module_parameters WHERE key = 'company.country_code'), 'MA')
+                  AND tc.valid_from <= CURRENT_DATE AND (tc.valid_to IS NULL OR tc.valid_to >= CURRENT_DATE)
+                ORDER BY tc.valid_from DESC LIMIT 1) AS code_rate,
               (SELECT i.tva_rate FROM delivery_note_items i JOIN delivery_notes d ON d.id = i.delivery_note_id
                 WHERE i.product_id = p.id AND i.tva_rate IS NOT NULL ORDER BY d.created_at DESC LIMIT 1) AS last_tva
          FROM products p WHERE p.id = ANY($1::uuid[])`, [productIds])).rows;
     const out: Record<string, { unitPrice: number; tvaRate: number | null }> = {};
     for (const r of rows) {
       const price = Number(r.price ?? 0) * (1 - remise / 100);
-      out[r.id] = { unitPrice: round2(price), tvaRate: c?.tva_exonere ? 0 : (r.last_tva != null ? Number(r.last_tva) : null) };
+      // Priorité : client exonéré → 0 ; sinon code TVA de l'article ; sinon
+      // repli sur le dernier taux utilisé (comportement antérieur).
+      const tvaRate = c?.tva_exonere ? 0
+        : (r.code_rate != null ? Number(r.code_rate)
+        : (r.last_tva != null ? Number(r.last_tva) : null));
+      out[r.id] = { unitPrice: round2(price), tvaRate };
     }
     return out;
   },

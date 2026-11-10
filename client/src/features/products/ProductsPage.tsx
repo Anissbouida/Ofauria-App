@@ -8,6 +8,7 @@ import { serverUrl } from '../../api/client';
 import { categoriesApi } from '../../api/categories.api';
 import { usersApi } from '../../api/users.api';
 import { recipesApi } from '../../api/recipes.api';
+import { invoicesApi } from '../../api/accounting.api';
 import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays, Coins, Target, ChevronDown, ChevronRight, Recycle, Wrench, Repeat, type LucideIcon } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
@@ -784,6 +785,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     // Nature de l'article (mig 469) : pilote la fiche (recette, stock, prix).
     itemKind: (product?.item_kind as string) || 'manufactured',
     barcode: (product?.barcode as string) || '',
+    taxCode: (product?.tax_code as string) || '',
     recipeId: '',
   });
 
@@ -941,6 +943,9 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   useEffect(() => { setRecipeHighlight(0); }, [recipeSearch]);
 
   const { data: allUsers = [] } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
+  // Codes TVA du référentiel (mig 473) : défaut de TVA par article.
+  const { data: taxCodes = [] } = useQuery({ queryKey: ['tax-codes'], queryFn: () => invoicesApi.taxCodes() });
+  const taxCodesList = taxCodes as Record<string, any>[];
   const chefRoles = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
   const chefUsers = allUsers.filter((u: Record<string, any>) => chefRoles.includes(u.role as string) && u.isActive !== false);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -1445,6 +1450,21 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                     )}
                   </div>
                   )}
+                </div>
+
+                {/* Code TVA par défaut de l'article (mig 473) : la TVA des lignes
+                    de vente (commande pro, BL) en découle. */}
+                <div>
+                  <label style={fieldLabel}>Code TVA par défaut</label>
+                  <select style={fieldInput} value={form.taxCode} onChange={(e) => setForm({ ...form, taxCode: e.target.value })}>
+                    <option value="">Aucun — TVA saisie à la ligne</option>
+                    {taxCodesList.map(t => (
+                      <option key={t.code as string} value={t.code as string}>
+                        {t.label as string} ({Number(t.rate)} %)
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">Appliqué par défaut aux lignes de commande et de bon de livraison ; modifiable ligne par ligne.</p>
                 </div>
 
                 <div>

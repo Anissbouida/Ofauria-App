@@ -208,10 +208,10 @@ export const productController = {
            is_available, is_custom_orderable, preparation_time_min,
            responsible_user_id, sale_unit, price_per_kg, price_per_person,
            sale_type, shelf_life_days, display_life_hours,
-           is_reexposable, is_recyclable, max_reexpositions, item_kind, barcode
+           is_reexposable, is_recyclable, max_reexpositions, item_kind, barcode, tax_code
          )
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                 $14, $15, $16, $17, $18, $19, $20, $21)
+                 $14, $15, $16, $17, $18, $19, $20, $21, $22)
          RETURNING *`,
         [
           data.name, data.slug, data.categoryId, data.description || null,
@@ -222,6 +222,7 @@ export const productController = {
           saleType, shelfLifeDays, displayLifeHours,
           isReexposable, isRecyclable, maxReexpositions, data.itemKind || 'manufactured',
           (data.barcode as string)?.trim() || null,
+          (data.taxCode as string)?.trim() || null,
         ]
       );
       const product = productResult.rows[0];
@@ -254,6 +255,8 @@ export const productController = {
     if (data.name) data.slug = slugify(data.name as string);
     // Code-barres vide = pas de code (null), pour rester hors de l'index unique.
     if (typeof data.barcode === 'string') data.barcode = data.barcode.trim() || null;
+    // Code TVA vide = pas de code (null) : la ligne retombe sur le comportement par défaut.
+    if (typeof data.taxCode === 'string') data.taxCode = data.taxCode.trim() || null;
 
     // Cycle de vie (audit P1.1) : purge cote serveur quand saleType='commande'.
     // Le formulaire client le fait deja, mais on redouble : rien ne doit sortir
