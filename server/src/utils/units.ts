@@ -194,3 +194,73 @@ export function requiresPieceWeight(yieldUnit: string, sellingUnit: SellingUnit)
   if (sellingUnit === 'weight') return norm === 'unit';
   return norm === 'kg' || norm === 'g';
 }
+
+// ─── Conversions pilotées par le référentiel (phase 3.3, mig 470) ───────────
+//
+// Généralisation multi-secteur de la table FACTORS codée en dur ci-dessus : les
+// facteurs ne vivent plus dans le code mais dans le référentiel des unités
+// (ref_entries table_id='units', metadata { category, to_base, is_base }).
+// Un admin peut donc ajouter une unité (ex. « sachet », « boîte ») avec sa
+// famille et son facteur, sans toucher au code.
+//
+// Base par famille : to_base exprime 1 unité dans l'unité de base de sa famille
+// (g pour mass, ml pour volume, unit pour count). Conversion A→B même famille :
+//   valeur_B = valeur_A × (to_base_A / to_base_B).
+// Les passages inter-familles (poids↔volume) restent du ressort de la densité
+// par ingrédient (convertQuantity ci-dessus) : ici on les signale `uncertain`.
+
+export interface UnitRegistryEntry {
+  /** Famille de mesure : 'mass' | 'volume' | 'count' (ou toute famille future). */
+  category: string;
+  /** Facteur pour exprimer 1 unité dans l'unité de base de la famille. */
+  toBase: number;
+}
+
+export type UnitRegistry = Map<string, UnitRegistryEntry>;
+
+/** Forme minimale d'une entrée de référentiel `units` consommée ici. */
+interface RawUnitEntry {
+  code?: string | null;
+  metadata?: { category?: unknown; to_base?: unknown; is_base?: unknown } | null;
+}
+
+/**
+ * Construit le registre de conversion depuis les entrées du référentiel `units`.
+ * Ignore les entrées sans code, sans famille ou sans facteur positif (une unité
+ * « comptable » laissée sans metadata n'est simplement pas convertible).
+ */
+export function buildUnitRegistry(entries: RawUnitEntry[]): UnitRegistry {
+  const reg: UnitRegistry = new Map();
+  for (const e of entries || []) {
+    const code = (e.code || '').toString().trim().toLowerCase();
+    const md = e.metadata || {};
+    const category = typeof md.category === 'string' ? md.category : '';
+    const toBase = Number(md.to_base);
+    if (!code || !category || !Number.isFinite(toBase) || toBase <= 0) continue;
+    reg.set(code, { category, toBase });
+  }
+  return reg;
+}
+
+/**
+ * Convertit une quantité d'une unité vers une autre à l'aide du registre.
+ * `uncertain=true` quand la conversion n'est pas déterministe à partir du seul
+ * référentiel : unité inconnue, ou familles différentes (densité requise).
+ * Dans ce cas la valeur est renvoyée AS-IS et l'appelant doit avertir/fallback.
+ */
+export function convertByRegistry(
+  value: number,
+  fromUnit: string | null,
+  toUnit: string | null,
+  registry: UnitRegistry,
+): { value: number; uncertain: boolean } {
+  if (!fromUnit || !toUnit) return { value, uncertain: false };
+  const from = fromUnit.trim().toLowerCase();
+  const to = toUnit.trim().toLowerCase();
+  if (from === to) return { value, uncertain: false };
+  const a = registry.get(from);
+  const b = registry.get(to);
+  if (!a || !b) return { value, uncertain: true };
+  if (a.category !== b.category) return { value, uncertain: true };
+  return { value: value * (a.toBase / b.toBase), uncertain: false };
+}

@@ -35,6 +35,14 @@ const ACTIONS: Record<string, { cls: string; label: string }> = {
   reactivate: { cls: 'odoo-tag odoo-tag-orange', label: 'Réactivation' },
 };
 const LEVEL_LABELS = ['Catégorie', 'Sous-catégorie', 'Type'];
+// Familles de mesure pour le référentiel « units » (conversions, mig 470).
+// L'unité de base de chaque famille a un facteur 1 (g, ml, unité).
+const UNIT_CATEGORIES: { v: string; label: string }[] = [
+  { v: 'mass', label: 'Masse (base : g)' },
+  { v: 'volume', label: 'Volume (base : ml)' },
+  { v: 'count', label: 'Décompte (base : unité)' },
+];
+const unitCatLabel = (v: unknown) => UNIT_CATEGORIES.find(c => c.v === v)?.label.split(' (')[0] ?? '';
 const fmt = (d: unknown, f: string) => (d ? format(new Date(String(d)), f, { locale: fr }) : '');
 const who = (l: Row) => (l.first_name ? `${String(l.first_name)} ${String(l.last_name || '')}`.trim() : 'Système');
 
@@ -345,6 +353,13 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
                     <td>
                       <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
                         {Boolean(e._requires_po) && <span className="odoo-tag odoo-tag-purple">BC requis</span>}
+                        {tableId === 'units' && (e.metadata as Row)?.category != null && (
+                          <span className="odoo-tag odoo-tag-blue">
+                            {unitCatLabel((e.metadata as Row).category)}
+                            {Number((e.metadata as Row).to_base) > 1 && ` · ×${Number((e.metadata as Row).to_base)}`}
+                            {Boolean((e.metadata as Row).is_base) && ' · base'}
+                          </span>
+                        )}
                         {inactive && <span className="odoo-tag odoo-tag-grey">Inactive</span>}
                       </span>
                     </td>
@@ -425,6 +440,34 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
                     onChange={e => setForm({ ...form, metadata: { ...form.metadata, requires_po: e.target.checked } })} />
                   Bon de commande requis pour les dépenses de cette catégorie
                 </label>
+              )}
+              {tableId === 'units' && (
+                <>
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <label style={{ ...lab, flex: '2 1 200px' }}>Famille de mesure
+                      <select id="ref-form-category" style={field} value={String(form.metadata.category || '')}
+                        onChange={e => setForm({ ...form, metadata: { ...form.metadata, category: e.target.value || undefined } })}>
+                        <option value="">— (non convertible)</option>
+                        {UNIT_CATEGORIES.map(c => <option key={c.v} value={c.v}>{c.label}</option>)}
+                      </select>
+                    </label>
+                    <label style={{ ...lab, flex: '1 1 140px' }}>Facteur vers la base
+                      <input id="ref-form-tobase" type="number" min="0" step="any" style={field}
+                        value={form.metadata.to_base != null ? String(form.metadata.to_base) : ''}
+                        disabled={Boolean(form.metadata.is_base)}
+                        onChange={e => setForm({ ...form, metadata: { ...form.metadata, to_base: e.target.value === '' ? undefined : Number(e.target.value) } })}
+                        placeholder="1000" />
+                    </label>
+                  </div>
+                  <label htmlFor="ref-form-isbase" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
+                    <input id="ref-form-isbase" type="checkbox" checked={Boolean(form.metadata.is_base)}
+                      onChange={e => setForm({ ...form, metadata: { ...form.metadata, is_base: e.target.checked, ...(e.target.checked ? { to_base: 1 } : {}) } })} />
+                    Unité de base de sa famille (facteur 1)
+                  </label>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', margin: 0 }}>
+                    Le facteur exprime 1 unité dans l'unité de base (ex. 1 kg = 1000 g → facteur 1000). La conversion n'opère qu'entre unités d'une même famille.
+                  </p>
+                </>
               )}
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', padding: '12px 16px', borderTop: '1px solid var(--odoo-border)' }}>
