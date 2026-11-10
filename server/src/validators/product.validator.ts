@@ -54,6 +54,8 @@ const commonProductFields = {
   pricePerPerson: z.coerce.number().finite().min(0).max(999999.99).optional().nullable(),
   // Nature de l'article (mig 469) : pilote la fiche et l'approvisionnement.
   itemKind: z.enum(['manufactured', 'resale', 'service', 'subscription']).optional(),
+  // Code-barres physique scanné en caisse (mig 472), distinct du SKU.
+  barcode: z.string().trim().max(64, 'Code-barres trop long (max 64)').optional().nullable(),
 };
 
 // Applique les règles croisées de cycle de vie.
@@ -176,6 +178,7 @@ export const updateProductSchema = z.object({
   minProductionQuantity: commonProductFields.minProductionQuantity,
   saleUnit: commonProductFields.saleUnit,
   itemKind: commonProductFields.itemKind,
+  barcode: commonProductFields.barcode,
   pricePerKg: commonProductFields.pricePerKg,
   pricePerPerson: commonProductFields.pricePerPerson,
   stockQuantity: z.coerce.number().min(0).max(1_000_000).optional().nullable(),

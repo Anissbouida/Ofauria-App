@@ -208,10 +208,10 @@ export const productController = {
            is_available, is_custom_orderable, preparation_time_min,
            responsible_user_id, sale_unit, price_per_kg, price_per_person,
            sale_type, shelf_life_days, display_life_hours,
-           is_reexposable, is_recyclable, max_reexpositions, item_kind
+           is_reexposable, is_recyclable, max_reexpositions, item_kind, barcode
          )
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                 $14, $15, $16, $17, $18, $19, $20)
+                 $14, $15, $16, $17, $18, $19, $20, $21)
          RETURNING *`,
         [
           data.name, data.slug, data.categoryId, data.description || null,
@@ -221,6 +221,7 @@ export const productController = {
           data.saleUnit || 'unit', data.pricePerKg ?? null, data.pricePerPerson ?? null,
           saleType, shelfLifeDays, displayLifeHours,
           isReexposable, isRecyclable, maxReexpositions, data.itemKind || 'manufactured',
+          (data.barcode as string)?.trim() || null,
         ]
       );
       const product = productResult.rows[0];
@@ -235,6 +236,10 @@ export const productController = {
       res.status(201).json({ success: true, data: product });
     } catch (err) {
       await client.query('ROLLBACK');
+      if ((err as { code?: string }).code === '23505' && String((err as { constraint?: string }).constraint || '').includes('barcode')) {
+        res.status(409).json({ success: false, error: { message: 'Ce code-barres est déjà attribué à un autre article.' } });
+        return;
+      }
       throw err;
     } finally {
       client.release();
@@ -247,6 +252,8 @@ export const productController = {
     const { recipeId, ...rest } = req.body;
     const data: Record<string, unknown> = { ...rest };
     if (data.name) data.slug = slugify(data.name as string);
+    // Code-barres vide = pas de code (null), pour rester hors de l'index unique.
+    if (typeof data.barcode === 'string') data.barcode = data.barcode.trim() || null;
 
     // Cycle de vie (audit P1.1) : purge cote serveur quand saleType='commande'.
     // Le formulaire client le fait deja, mais on redouble : rien ne doit sortir
@@ -311,7 +318,16 @@ export const productController = {
       }
     }
 
-    const product = await productRepository.update(productId, data);
+    let product;
+    try {
+      product = await productRepository.update(productId, data);
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505' && String((err as { constraint?: string }).constraint || '').includes('barcode')) {
+        res.status(409).json({ success: false, error: { message: 'Ce code-barres est déjà attribué à un autre article.' } });
+        return;
+      }
+      throw err;
+    }
 
     // Store-scoped (bug "seuil produit non enregistre") : des que l'utilisateur
     // a un store, la liste et la fiche LISENT pss.stock_min_threshold

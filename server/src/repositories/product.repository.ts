@@ -10,7 +10,9 @@ export const productRepository = {
     // Famille de catégories (mig 375) : la caisse demande toutes les catégories d'une famille.
     if (params.categoryIds?.length) { conditions.push(`p.category_id = ANY($${i++}::int[])`); values.push(params.categoryIds); }
     if (params.isAvailable !== undefined) { conditions.push(`p.is_available = $${i++}`); values.push(params.isAvailable); }
-    if (params.search) { conditions.push(`p.name ILIKE $${i++}`); values.push(`%${params.search}%`); }
+    // Recherche sur le nom, la référence (SKU) et le code-barres (mig 472) :
+    // un code tapé/scanné (le scanner USB saisit le code + Entrée) retrouve l'article.
+    if (params.search) { conditions.push(`(p.name ILIKE $${i} OR COALESCE(p.sku, '') ILIKE $${i} OR COALESCE(p.barcode, '') ILIKE $${i})`); i++; values.push(`%${params.search}%`); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -67,7 +69,7 @@ export const productRepository = {
               p.responsible_user_id, p.min_production_quantity,
               p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
               p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
-              p.sale_unit, p.price_per_kg, p.price_per_person, p.sku,
+              p.sale_unit, p.price_per_kg, p.price_per_person, p.sku, p.barcode,
               p.created_at, p.updated_at,
               ${stockColumns}
               ${lotMetricsCols}
@@ -143,7 +145,7 @@ export const productRepository = {
               p.responsible_user_id, p.min_production_quantity,
               p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
               p.recycle_ingredient_id, p.max_reexpositions, p.sale_type,
-              p.sale_unit, p.price_per_kg, p.price_per_person, p.sku,
+              p.sale_unit, p.price_per_kg, p.price_per_person, p.sku, p.barcode,
               ${stockColumns}
               ${lotMetricsCols}
               c.name as category_name,
@@ -224,6 +226,7 @@ export const productRepository = {
       maxReexpositions: 'max_reexpositions',
       saleType: 'sale_type',
       itemKind: 'item_kind',
+      barcode: 'barcode',
       saleUnit: 'sale_unit',
       pricePerKg: 'price_per_kg',
       pricePerPerson: 'price_per_person',

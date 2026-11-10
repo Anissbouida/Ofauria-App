@@ -783,6 +783,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     pricePerPerson: product?.price_per_person != null ? String(parseFloat(String(product.price_per_person))) : '',
     // Nature de l'article (mig 469) : pilote la fiche (recette, stock, prix).
     itemKind: (product?.item_kind as string) || 'manufactured',
+    barcode: (product?.barcode as string) || '',
     recipeId: '',
   });
 
@@ -1363,6 +1364,14 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       ))}
                     </select>
                   </div>
+                </div>
+
+                {/* Code-barres (mig 472) : code physique scanné en caisse */}
+                <div>
+                  <label style={fieldLabel}>Code-barres</label>
+                  <input style={{ ...fieldInput, fontFamily: 'ui-monospace, monospace' }}
+                    value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+                    placeholder="EAN / UPC — scanné en caisse (optionnel)" maxLength={64} />
                 </div>
 
                 {/* Description */}

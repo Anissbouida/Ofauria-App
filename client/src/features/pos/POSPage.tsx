@@ -1372,7 +1372,12 @@ export default function POSPage() {
   // Retourne le nom du produit (feedback du modal) ou null si code inconnu.
   const handleScanDetect = (code: string): string | null => {
     const catalog = (scanCatalog?.data || []) as Record<string, any>[];
-    const scanned = catalog.find(p => typeof p.sku === 'string' && p.sku.trim() !== '' && p.sku.trim() === code.trim());
+    const c = code.trim();
+    // Code-barres dédié d'abord (mig 472), puis repli sur le SKU (référence
+    // de gestion détournée en code scannable avant l'ajout de la colonne barcode).
+    const matchField = (p: Record<string, any>, field: string) =>
+      typeof p[field] === 'string' && p[field].trim() !== '' && p[field].trim() === c;
+    const scanned = catalog.find(p => matchField(p, 'barcode')) || catalog.find(p => matchField(p, 'sku'));
     if (!scanned) {
       playPosSound('error');
       return null;
