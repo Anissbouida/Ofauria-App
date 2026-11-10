@@ -15,7 +15,26 @@ export const customersApi = {
   create: (data: Record<string, any>) => api.post('/customers', data).then(r => r.data.data),
   update: (id: string, data: Record<string, any>) => api.put(`/customers/${id}`, data).then(r => r.data.data),
   remove: (id: string) => api.delete(`/customers/${id}`),
+  // Adresses multiples (phase 4.1)
+  listAddresses: (id: string) => api.get(`/customers/${id}/addresses`).then(r => r.data.data as CustomerAddress[]),
+  createAddress: (id: string, data: Record<string, any>) => api.post(`/customers/${id}/addresses`, data).then(r => r.data.data as CustomerAddress),
+  updateAddress: (id: string, addressId: string, data: Record<string, any>) => api.put(`/customers/${id}/addresses/${addressId}`, data).then(r => r.data.data as CustomerAddress),
+  removeAddress: (id: string, addressId: string) => api.delete(`/customers/${id}/addresses/${addressId}`),
 };
+
+export interface CustomerAddress {
+  id: string;
+  customer_id: string;
+  label: string | null;
+  kind: 'delivery' | 'billing' | 'both';
+  address_line: string;
+  postal_code: string | null;
+  city: string | null;
+  country_code: string;
+  is_default_delivery: boolean;
+  is_default_billing: boolean;
+  is_active: boolean;
+}
 
 export interface StatementEntry {
   date: string; kind: 'invoice' | 'payment'; label: string; number: string;

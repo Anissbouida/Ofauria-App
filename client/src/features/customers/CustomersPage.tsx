@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customersApi } from '../../api/customers.api';
 import { loyaltyApi, tierOf, type LoyaltyTier } from '../../api/promotions.api';
 import CustomerLoyalty from '../promotions/CustomerLoyalty';
+import CustomerAddressesPanel from './CustomerAddressesPanel';
 import {
   Plus, Search, Pencil, Star, Trash2, Users, ShoppingCart, Receipt, X, Loader2, Phone, Mail,
   ArrowUpDown, ArrowUp, ArrowDown, Building2, MapPin, HeartHandshake, FileText, CreditCard, User,
@@ -591,6 +592,8 @@ function CustomerDetailPanel({ customerId, onClose, onEdit }: {
                   ] : []),
                   ['Client depuis', format(new Date(customer.created_at), 'MMMM yyyy', { locale: fr })],
                 ]} />
+
+                <CustomerAddressesPanel customerId={customer.id as string} />
 
                 {isMoral(type) && (
                   <>

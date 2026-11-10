@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import { receivablesRepository } from '../repositories/receivables.repository.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { customerRepository } from '../repositories/customer.repository.js';
+import { customerAddressRepository, type CustomerAddressInput } from '../repositories/customer-address.repository.js';
 
 /** Champs de conditions commerciales du client (O2C L0, G-CR-04) et leur colonne. */
 const COMMERCIAL_FIELDS = ['creditLimit', 'remisePct', 'delaiPaiementJours', 'tvaExonere', 'billingFrequency'] as const;
@@ -95,4 +96,47 @@ export const customerController = {
     await customerRepository.delete(req.params.id);
     res.json({ success: true, data: null });
   },
+
+  // ───── Adresses multiples (phase 4.1) ─────
+  async listAddresses(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await customerAddressRepository.list(req.params.id) });
+  },
+  async createAddress(req: AuthRequest, res: Response) {
+    const data = parseAddress(req.body);
+    if (!data) { res.status(400).json({ success: false, error: { message: 'Adresse (ligne) requise' } }); return; }
+    res.status(201).json({ success: true, data: await customerAddressRepository.create(req.params.id, data) });
+  },
+  async updateAddress(req: AuthRequest, res: Response) {
+    const data = parseAddress(req.body, true);
+    if (!data) { res.status(400).json({ success: false, error: { message: 'Adresse invalide' } }); return; }
+    const row = await customerAddressRepository.update(req.params.addressId, req.params.id, data);
+    if (!row) { res.status(404).json({ success: false, error: { message: 'Adresse introuvable' } }); return; }
+    res.json({ success: true, data: row });
+  },
+  async removeAddress(req: AuthRequest, res: Response) {
+    const row = await customerAddressRepository.remove(req.params.addressId, req.params.id);
+    if (!row) { res.status(404).json({ success: false, error: { message: 'Adresse introuvable' } }); return; }
+    res.json({ success: true, data: null });
+  },
 };
+
+/** Normalise le corps d'une adresse. En création, address_line est requis ;
+ *  en mise à jour (partial=true), il peut être absent (autres champs modifiés). */
+function parseAddress(body: Record<string, unknown>, partial = false): CustomerAddressInput | null {
+  const addressLine = typeof body.addressLine === 'string' ? body.addressLine.trim() : '';
+  if (!partial && !addressLine) return null;
+  const kind = body.kind === 'delivery' || body.kind === 'billing' || body.kind === 'both' ? body.kind : undefined;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const cc = typeof body.countryCode === 'string' && body.countryCode.trim() ? body.countryCode.trim().toUpperCase().slice(0, 2) : null;
+  return {
+    addressLine: addressLine || (partial ? (undefined as unknown as string) : addressLine),
+    label: str(body.label),
+    kind,
+    postalCode: str(body.postalCode),
+    city: str(body.city),
+    countryCode: cc,
+    // Ne toucher au défaut que si le champ est fourni (sinon on le préserve).
+    isDefaultDelivery: 'isDefaultDelivery' in body ? (body.isDefaultDelivery === true || body.isDefaultDelivery === 'true') : undefined,
+    isDefaultBilling: 'isDefaultBilling' in body ? (body.isDefaultBilling === true || body.isDefaultBilling === 'true') : undefined,
+  };
+}

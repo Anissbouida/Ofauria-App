@@ -33,6 +33,11 @@ router.get('/:id/situation', authenticate, authorize(...ROLE_GROUPS.SALES), asyn
 router.get('/:id/statement', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.statement));
 router.get('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.getById));
 router.get('/:id/stats', authenticate, authorize(...ROLE_GROUPS.SALES), statsLimiter, asyncHandler(customerController.stats));
+// Adresses multiples (phase 4.1)
+router.get('/:id/addresses', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.listAddresses));
+router.post('/:id/addresses', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.createAddress));
+router.put('/:id/addresses/:addressId', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.updateAddress));
+router.delete('/:id/addresses/:addressId', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.removeAddress));
 router.post('/', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.create));
 router.put('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.update));
 router.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), writeLimiter, asyncHandler(customerController.remove));

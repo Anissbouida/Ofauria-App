@@ -5,6 +5,7 @@ import { invoiceRepository } from './accounting.repository.js';
 import { shipProduct, reverseAllocations } from '../services/product-shipment.js';
 import { recordDelivered, closeRemainder, reverseDelivered } from '../services/order-fulfilment.js';
 import { checkCredit } from '../services/credit-control.js';
+import { customerAddressRepository } from './customer-address.repository.js';
 
 /**
  * Ventes aux professionnels (mig 352) : bon de livraison client → facture.
@@ -155,6 +156,8 @@ export const deliveryNoteRepository = {
     customerId: string; deliveryDate?: string | null; orderId?: string | null; notes?: string | null;
     items: DeliveryLineInput[]; createdBy: string; storeId?: string | null;
     receivedByName?: string | null;
+    /** Adresse d'expédition explicite (phase 4.1) ; sinon défaut du client. */
+    shipAddress?: string | null;
     /** Commande : solder le reliquat après ce BL (rien d'autre ne sera livré). */
     closeRemainder?: boolean;
     /** Dérogation de la direction au blocage de crédit à l'expédition (motif obligatoire). */
@@ -187,13 +190,17 @@ export const deliveryNoteRepository = {
         if (stores.length === 1) data = { ...data, storeId: stores[0].id };
       }
       const number = await nextDocumentNumber(client, 'delivery_note', date);
+      // Adresse d'expédition figée (phase 4.1) : adresse de livraison fournie,
+      // sinon l'adresse de livraison par défaut du client (repli legacy).
+      const shipAddress = (data.shipAddress?.trim())
+        || await customerAddressRepository.resolveText(client, data.customerId ?? null, 'delivery');
       const head = (await client.query(
         `INSERT INTO delivery_notes (number, customer_id, store_id, order_id, delivery_date, notes, created_by, received_by_name, received_at,
-                                     lots_tracked, shipped_at, shipped_by)
+                                     lots_tracked, shipped_at, shipped_by, ship_address)
          VALUES ($1, $2, $3, $4, COALESCE($5::date, CURRENT_DATE), $6, $7, $8::varchar, CASE WHEN $8::varchar IS NULL THEN NULL ELSE now() END,
-                 true, now(), $7) RETURNING *`,
+                 true, now(), $7, $9) RETURNING *`,
         [number, data.customerId, data.storeId ?? null, data.orderId ?? null, date ?? null, data.notes ?? null, data.createdBy,
-         data.receivedByName?.trim() || null])).rows[0];
+         data.receivedByName?.trim() || null, shipAddress ?? null])).rows[0];
       for (const it of data.items) {
         let description = it.description?.trim() || null;
         if (!description && it.productId) {
