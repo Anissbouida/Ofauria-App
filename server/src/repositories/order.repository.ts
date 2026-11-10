@@ -77,6 +77,8 @@ export const orderRepository = {
     sessionId?: string; storeId?: string; orderDate?: string;
     /** Canal de vente (O2C L3) : « gros » pour un professionnel, « commande » sinon, par défaut. */
     channelId?: string | null;
+    /** Commercial attitré explicite (phase 4.5) ; sinon repris du client. */
+    salespersonId?: string | null;
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate?: number | null; notes?: string;
       listPrice?: number; overrideBy?: string | null; overrideReason?: string | null }[];
   }, outer?: PoolClient) {
@@ -89,16 +91,18 @@ export const orderRepository = {
       // lieu de NOW()). Conserve l'heure exacte de saisie pour l'audit en
       // ajoutant le time courant a la date fournie.
       const orderResult = await client.query(
-        `INSERT INTO orders (order_number, customer_id, customer_name, customer_phone, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date, session_id, store_id, created_at, discount_pct, channel_id)
+        `INSERT INTO orders (order_number, customer_id, customer_name, customer_phone, user_id, type, subtotal, tax_amount, discount_amount, total, advance_amount, payment_method, notes, pickup_date, session_id, store_id, created_at, discount_pct, channel_id, salesperson_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, COALESCE($17::timestamp, NOW()), $18,
                  COALESCE($19::uuid, (SELECT id FROM sales_channels WHERE code = CASE
                    WHEN EXISTS (SELECT 1 FROM customers c WHERE c.id = $2::uuid AND COALESCE(c.customer_type, 'particulier') <> 'particulier')
-                   THEN 'gros' ELSE 'commande' END))) RETURNING *`,
+                   THEN 'gros' ELSE 'commande' END)),
+                 -- Commercial attitré repris du client (phase 4.5).
+                 COALESCE($20::uuid, (SELECT salesperson_id FROM customers WHERE id = $2::uuid))) RETURNING *`,
         [data.orderNumber, data.customerId || null, data.customerName || null, data.customerPhone || null,
          data.userId, data.type,
          data.subtotal, data.taxAmount, data.discountAmount, data.total,
          data.advanceAmount || 0, data.paymentMethod, data.notes || null, data.pickupDate || null, data.sessionId || null, data.storeId || null,
-         data.orderDate || null, data.discountPct ?? null, data.channelId ?? null]
+         data.orderDate || null, data.discountPct ?? null, data.channelId ?? null, data.salespersonId ?? null]
       );
 
       const orderId = orderResult.rows[0].id;

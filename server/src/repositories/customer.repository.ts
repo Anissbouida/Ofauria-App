@@ -75,7 +75,7 @@ export const customerRepository = {
         ice, if_fiscal, rc, rc_ville, tp, cnss, forme_juridique,
         association_recepisse, president, contact_role,
         credit_limit, remise_pct, delai_paiement_jours, tva_exonere, billing_frequency,
-        parent_customer_id, payer_customer_id
+        parent_customer_id, payer_customer_id, salesperson_id
       ) VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8, $9, $10,
@@ -83,7 +83,7 @@ export const customerRepository = {
         $13, $14, $15, $16, $17, $18, $19,
         $20, $21, $22,
         $23, $24, $25, $26, $27,
-        $28, $29
+        $28, $29, $30
       ) RETURNING *`,
       [
         data.firstName || null, data.lastName || null, data.email || null, data.phone || null, data.notes || null,
@@ -94,7 +94,7 @@ export const customerRepository = {
         data.associationRecepisse || null, data.president || null, data.contactRole || null,
         num(data.creditLimit), num(data.remisePct), num(data.delaiPaiementJours), bool(data.tvaExonere),
         data.billingFrequency === 'per_delivery' ? 'per_delivery' : 'monthly',
-        num(data.parentCustomerId), num(data.payerCustomerId),
+        num(data.parentCustomerId), num(data.payerCustomerId), num(data.salespersonId),
       ]
     );
     return result.rows[0];
@@ -111,6 +111,7 @@ export const customerRepository = {
       creditLimit: 'credit_limit', remisePct: 'remise_pct', delaiPaiementJours: 'delai_paiement_jours',
       tvaExonere: 'tva_exonere', billingFrequency: 'billing_frequency',
       parentCustomerId: 'parent_customer_id', payerCustomerId: 'payer_customer_id',
+      salespersonId: 'salesperson_id',
     };
     const nullable = new Set([
       'firstName', 'lastName',
@@ -118,7 +119,7 @@ export const customerRepository = {
       'ice', 'ifFiscal', 'rc', 'rcVille', 'tp', 'cnss', 'formeJuridique',
       'associationRecepisse', 'president', 'contactRole',
       'creditLimit', 'remisePct', 'delaiPaiementJours',
-      'parentCustomerId', 'payerCustomerId',
+      'parentCustomerId', 'payerCustomerId', 'salespersonId',
     ]);
     const boolKeys = new Set(['tvaExonere']);
     const fields: string[] = [];

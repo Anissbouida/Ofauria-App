@@ -5,6 +5,7 @@ import { loyaltyApi, tierOf, type LoyaltyTier } from '../../api/promotions.api';
 import CustomerLoyalty from '../promotions/CustomerLoyalty';
 import CustomerAddressesPanel from './CustomerAddressesPanel';
 import CustomerHistoryPanel from './CustomerHistoryPanel';
+import { usersApi } from '../../api/users.api';
 import {
   Plus, Search, Pencil, Star, Trash2, Users, ShoppingCart, Receipt, X, Loader2, Phone, Mail,
   ArrowUpDown, ArrowUp, ArrowDown, Building2, MapPin, HeartHandshake, FileText, CreditCard, User,
@@ -760,6 +761,9 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
   const { data: partnersResp } = useQuery({ queryKey: ['customers', 'partners'], queryFn: () => customersApi.list({ limit: '1000' }) });
   const partnerOptions = (((partnersResp?.data as Customer[]) || []).filter(c => isMoral(c.customer_type) && c.id !== editing?.id));
   const ed = editing as Record<string, any> | null;
+  // Commercial attitré (phase 4.5) : utilisateurs actifs.
+  const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: usersApi.list });
+  const salespeople = ((users as Record<string, any>[]) || []).filter(u => u.isActive !== false);
   // Doublon d'ICE signalé (phase 4.3) : vérifié au blur, bloque rien (signal).
   const [iceDup, setIceDup] = useState<string | null>(null);
   const checkIce = async (val: string) => {
@@ -892,6 +896,12 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
                     <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 2 }}>La facture part au payeur ; le BL reste au nom du client.</p>
                   </div>
                 </div>
+                {/* Commercial attitré (phase 4.5) : repris sur devis, commande, BL, facture */}
+                <div><label style={fieldLabel}>Commercial attitré</label>
+                  <select name="salespersonId" defaultValue={ed?.salesperson_id || ''} className={inputCls}>
+                    <option value="">— Aucun</option>
+                    {salespeople.map(u => <option key={u.id as string} value={u.id as string}>{u.firstName as string} {u.lastName as string}</option>)}
+                  </select></div>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', cursor: 'pointer' }}>
                   <input type="checkbox" checked={tvaExonere} disabled={!direction} onChange={(e) => setTvaExonere(e.target.checked)} />
                   Client exonéré de TVA

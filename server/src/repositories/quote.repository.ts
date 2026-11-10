@@ -172,12 +172,14 @@ export const quoteRepository = {
       const r = await client.query(
         `INSERT INTO quotes (number, store_id, customer_id, prospect_name, prospect_company, prospect_phone, prospect_email, title,
                              quote_date, valid_until, with_tax, discount_pct, subtotal, discount_amount, tax_amount, total,
-                             delivery_terms, notes, internal_notes, created_by, opportunity_id, channel_id)
+                             delivery_terms, notes, internal_notes, created_by, opportunity_id, channel_id, salesperson_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
                  -- Canal (O2C L3) : « gros » pour un client professionnel, « commande » sinon.
                  (SELECT id FROM sales_channels WHERE code = CASE
                     WHEN EXISTS (SELECT 1 FROM customers cu WHERE cu.id = $3::uuid AND COALESCE(cu.customer_type, 'particulier') <> 'particulier')
-                    THEN 'gros' ELSE 'commande' END)) RETURNING id`,
+                    THEN 'gros' ELSE 'commande' END),
+                 -- Commercial attitré repris du client (phase 4.5).
+                 (SELECT salesperson_id FROM customers WHERE id = $3::uuid)) RETURNING id`,
         [number, ctx.storeId, input.customerId ?? null,
          input.customerId ? null : input.prospectName?.trim() || null, input.customerId ? null : input.prospectCompany?.trim() || null,
          input.customerId ? null : input.prospectPhone?.trim() || null, input.customerId ? null : input.prospectEmail?.trim() || null,

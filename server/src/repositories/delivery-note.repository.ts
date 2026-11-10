@@ -197,9 +197,11 @@ export const deliveryNoteRepository = {
         || await customerAddressRepository.resolveText(client, data.customerId ?? null, 'delivery');
       const head = (await client.query(
         `INSERT INTO delivery_notes (number, customer_id, store_id, order_id, delivery_date, notes, created_by, received_by_name, received_at,
-                                     lots_tracked, shipped_at, shipped_by, ship_address)
+                                     lots_tracked, shipped_at, shipped_by, ship_address, salesperson_id)
          VALUES ($1, $2, $3, $4, COALESCE($5::date, CURRENT_DATE), $6, $7, $8::varchar, CASE WHEN $8::varchar IS NULL THEN NULL ELSE now() END,
-                 true, now(), $7, $9) RETURNING *`,
+                 true, now(), $7, $9,
+                 -- Commercial attitré repris du client (phase 4.5).
+                 (SELECT salesperson_id FROM customers WHERE id = $2)) RETURNING *`,
         [number, data.customerId, data.storeId ?? null, data.orderId ?? null, date ?? null, data.notes ?? null, data.createdBy,
          data.receivedByName?.trim() || null, shipAddress ?? null])).rows[0];
       for (const it of data.items) {
@@ -446,6 +448,11 @@ export const deliveryNoteRepository = {
         notes: `Facture des bons de livraison ${numbers}`, createdBy: data.createdBy,
         storeId: notes[0].store_id ?? data.storeId ?? undefined, items,
       }, client);
+      // Commercial attitré figé sur la facture (phase 4.5) : celui du client
+      // LIVRÉ (pas le payeur), pour lire le CA par commercial sur les pièces.
+      await client.query(
+        `UPDATE invoices SET salesperson_id = (SELECT salesperson_id FROM customers WHERE id = $1) WHERE id = $2`,
+        [notes[0].customer_id, invoice.id]);
       await client.query(
         `UPDATE delivery_notes SET status = 'invoiced', invoice_id = $2 WHERE id = ANY($1::uuid[])`,
         [data.deliveryNoteIds, invoice.id]);
