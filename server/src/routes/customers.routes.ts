@@ -29,6 +29,8 @@ const router = Router();
 
 router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.list));
 router.get('/global-stats', authenticate, authorize(...ROLE_GROUPS.SALES), statsLimiter, asyncHandler(customerController.globalStats));
+// Doublons probables (phase 4.3) — avant /:id pour ne pas être capturé comme id.
+router.get('/check', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.check));
 router.get('/:id/situation', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.situation));
 router.get('/:id/statement', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.statement));
 router.get('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.getById));

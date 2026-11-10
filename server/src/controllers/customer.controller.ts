@@ -59,8 +59,12 @@ export const customerController = {
         return;
       }
     }
-    const customer = await customerRepository.create(req.body);
-    res.status(201).json({ success: true, data: customer });
+    const bad = await validateLegalIds(req.body);
+    if (bad) { res.status(400).json({ success: false, error: { message: bad } }); return; }
+    try {
+      const customer = await customerRepository.create(req.body);
+      res.status(201).json({ success: true, data: customer });
+    } catch (err) { if (!handleIceDuplicate(err, res)) throw err; }
   },
   async update(req: AuthRequest, res: Response) {
     if (!isDirection(req)) {
@@ -72,8 +76,17 @@ export const customerController = {
         return;
       }
     }
-    const customer = await customerRepository.update(req.params.id, req.body);
-    res.json({ success: true, data: customer });
+    const bad = await validateLegalIds(req.body);
+    if (bad) { res.status(400).json({ success: false, error: { message: bad } }); return; }
+    try {
+      const customer = await customerRepository.update(req.params.id, req.body);
+      res.json({ success: true, data: customer });
+    } catch (err) { if (!handleIceDuplicate(err, res)) throw err; }
+  },
+  /** GET /customers/check?ice=…&name=…&excludeId=… : doublons probables (4.3). */
+  async check(req: AuthRequest, res: Response) {
+    const q = req.query as Record<string, string | undefined>;
+    res.json({ success: true, data: await customerRepository.findDuplicates({ name: q.name, ice: q.ice, excludeId: q.excludeId }) });
   },
   /** Situation du client : dû, échu, plafond de crédit, disponible (mig 351). */
   async situation(req: AuthRequest, res: Response) {
@@ -119,6 +132,32 @@ export const customerController = {
     res.json({ success: true, data: null });
   },
 };
+
+/** Contrôle le format des identifiants légaux (phase 4.3) contre le référentiel
+ *  pack pays (identifier_types.pattern). Rend un message d'erreur ou null. */
+async function validateLegalIds(body: Record<string, unknown>): Promise<string | null> {
+  const patterns = await customerRepository.identifierPatterns('MA');
+  const check = (code: string, raw: unknown, label: string, hint: string): string | null => {
+    const v = typeof raw === 'string' ? raw.trim() : '';
+    if (!v) return null;
+    const pat = patterns[code];
+    if (pat && !new RegExp(pat).test(v)) return `${label} invalide : ${hint}.`;
+    return null;
+  };
+  return check('MA_ICE', body.ice, 'ICE', '15 chiffres attendus')
+    || check('MA_IF', body.ifFiscal, 'IF', '1 à 8 chiffres attendus');
+}
+
+/** Transforme la violation de l'index unique ICE (23505) en 409 lisible au lieu
+ *  d'une erreur brute. Rend true si l'erreur a été gérée. */
+function handleIceDuplicate(err: unknown, res: Response): boolean {
+  const e = err as { code?: string; constraint?: string };
+  if (e.code === '23505' && String(e.constraint || '').includes('ice')) {
+    res.status(409).json({ success: false, error: { message: 'Cet ICE est déjà utilisé par un autre client.' } });
+    return true;
+  }
+  return false;
+}
 
 /** Normalise le corps d'une adresse. En création, address_line est requis ;
  *  en mise à jour (partial=true), il peut être absent (autres champs modifiés). */

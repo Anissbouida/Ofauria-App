@@ -156,6 +156,46 @@ export const customerRepository = {
     return current;
   },
 
+  /** Patterns de format des identifiants légaux du pays (pack pays,
+   *  identifier_types). Aligne la fiche client sur le référentiel fournisseurs :
+   *  { MA_ICE: '^[0-9]{15}$', MA_IF: '^[0-9]{1,8}$', ... }. */
+  async identifierPatterns(country = 'MA'): Promise<Record<string, string>> {
+    const r = await db.query(
+      `SELECT code, pattern FROM identifier_types WHERE country_code = $1 AND pattern IS NOT NULL AND is_active`,
+      [country]
+    );
+    const out: Record<string, string> = {};
+    for (const row of r.rows) out[row.code as string] = row.pattern as string;
+    return out;
+  },
+
+  /** Doublons probables (phase 4.3) : même ICE (exact) ou même nom/raison
+   *  sociale. Miroir de supplierRepository.findDuplicates — on SIGNALE au lieu
+   *  de laisser l'index unique produire une erreur brute. */
+  async findDuplicates(params: { name?: string; ice?: string; excludeId?: string }) {
+    const matches: Array<{ id: string; name: string; reason: string }> = [];
+    const label = (row: Record<string, unknown>) =>
+      (row.company_name as string) || `${row.first_name ?? ''} ${row.last_name ?? ''}`.trim() || '(client)';
+    if (params.ice && params.ice.trim()) {
+      const r = await db.query(
+        `SELECT id, company_name, first_name, last_name FROM customers
+          WHERE ice = $1 AND ($2::uuid IS NULL OR id <> $2)`,
+        [params.ice.trim(), params.excludeId ?? null]
+      );
+      for (const row of r.rows) matches.push({ id: row.id as string, name: label(row), reason: 'ICE' });
+    }
+    if (params.name && params.name.trim().length >= 2) {
+      const r = await db.query(
+        `SELECT id, company_name, first_name, last_name FROM customers
+          WHERE (lower(company_name) = lower($1) OR lower(trim(first_name || ' ' || last_name)) = lower($1))
+            AND ($2::uuid IS NULL OR id <> $2)`,
+        [params.name.trim(), params.excludeId ?? null]
+      );
+      for (const row of r.rows) if (!matches.some(m => m.id === row.id)) matches.push({ id: row.id as string, name: label(row), reason: 'nom' });
+    }
+    return matches;
+  },
+
   async stats(id: string) {
     const [ordersRes, salesRes] = await Promise.all([
       db.query(

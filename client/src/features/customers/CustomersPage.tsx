@@ -739,6 +739,16 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
   const { data: partnersResp } = useQuery({ queryKey: ['customers', 'partners'], queryFn: () => customersApi.list({ limit: '1000' }) });
   const partnerOptions = (((partnersResp?.data as Customer[]) || []).filter(c => isMoral(c.customer_type) && c.id !== editing?.id));
   const ed = editing as Record<string, any> | null;
+  // Doublon d'ICE signalé (phase 4.3) : vérifié au blur, bloque rien (signal).
+  const [iceDup, setIceDup] = useState<string | null>(null);
+  const checkIce = async (val: string) => {
+    const v = val.trim();
+    if (!v || !/^\d{15}$/.test(v)) { setIceDup(null); return; }
+    try {
+      const dups = await customersApi.check({ ice: v, excludeId: editing?.id as string | undefined });
+      setIceDup(dups.length ? `ICE déjà utilisé par « ${dups[0].name} »` : null);
+    } catch { setIceDup(null); }
+  };
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -824,9 +834,11 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
                   <div className="grid grid-cols-2 gap-3">
                     <div><label style={fieldLabel}>ICE{customerType === 'professionnel' || customerType === 'revendeur' ? ' (requis pour facturer)' : ''}</label>
                       <input name="ice" defaultValue={editing?.ice} className={inputCls} style={{ fontFamily: 'ui-monospace, monospace' }}
-                        maxLength={15} pattern="[0-9]{15}" title="15 chiffres" placeholder="000000000000000" /></div>
+                        maxLength={15} pattern="[0-9]{15}" title="15 chiffres" placeholder="000000000000000"
+                        onBlur={e => checkIce(e.target.value)} /></div>
                     <div><label style={fieldLabel}>IF (identifiant fiscal)</label>
                       <input name="ifFiscal" defaultValue={editing?.if_fiscal} className={inputCls} style={{ fontFamily: 'ui-monospace, monospace' }} placeholder="12345678" /></div>
+                    {iceDup && <div style={{ gridColumn: '1 / -1' }}><StatusBanner tone="warning" icon={AlertTriangle} title="Doublon d'ICE possible">{iceDup}</StatusBanner></div>}
                     <div><label style={fieldLabel}>RC (n°)</label>
                       <input name="rc" defaultValue={editing?.rc} className={inputCls} style={{ fontFamily: 'ui-monospace, monospace' }} placeholder="123456" /></div>
                     <div><label style={fieldLabel}>TP (taxe professionnelle)</label>
