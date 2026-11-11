@@ -53,7 +53,9 @@ export const deliveryNoteController = {
         quantity: Number(i.quantity), unitPrice: Number(i.unitPrice),
         tvaRate: i.tvaRate === null || i.tvaRate === undefined || i.tvaRate === '' ? null : Number(i.tvaRate),
       })) : [],
-      createdBy: req.user!.userId, storeId: req.user!.storeId ?? null, receivedByName: b.receivedByName ?? null,
+      // Site d'expédition au choix (phase 7.3) : la direction peut livrer depuis un dépôt
+      // au lieu du magasin de l'utilisateur ; sinon, le magasin de l'utilisateur.
+      createdBy: req.user!.userId, storeId: b.shippingStoreId || req.user!.storeId || null, receivedByName: b.receivedByName ?? null,
       creditOverride: creditOverrideOf(req, b.creditOverrideReason),
     });
     res.status(201).json({ success: true, data: note });
@@ -81,7 +83,8 @@ export const deliveryNoteController = {
         quantity: Number(i.quantity), unitPrice: Number(i.unitPrice),
         tvaRate: i.tvaRate === null || i.tvaRate === undefined || i.tvaRate === '' ? null : Number(i.tvaRate),
       })) : [],
-      createdBy: req.user!.userId, storeId: req.user!.storeId ?? null, shipAddress: b.shipAddress ?? null,
+      // Site d'expédition au choix (phase 7.3).
+      createdBy: req.user!.userId, storeId: b.shippingStoreId || req.user!.storeId || null, shipAddress: b.shipAddress ?? null,
     });
     res.status(201).json({ success: true, data: note });
   },

@@ -30,7 +30,7 @@ export const deliveryNotesApi = {
       qty_delivered: string; qty_cancelled: string; remaining: string }>),
   /** BL imprimable à faire signer (mig 354). */
   pdf: (id: string) => api.get(`/delivery-notes/${id}/pdf`, { responseType: 'blob' }).then(r => r.data as Blob),
-  create: (data: { customerId: string; deliveryDate?: string; orderId?: string | null; notes?: string; items: DeliveryLinePayload[]; creditOverrideReason?: string }) =>
+  create: (data: { customerId: string; deliveryDate?: string; orderId?: string | null; notes?: string; items: DeliveryLinePayload[]; creditOverrideReason?: string; shippingStoreId?: string }) =>
     api.post('/delivery-notes', data).then(r => r.data.data as DeliveryNote),
   /** Livrer une commande prête sur BL (module Commandes). */
   createFromOrder: (orderId: string, data?: { quantities?: Record<string, number>; receivedByName?: string; deliveryDate?: string; closeRemainder?: boolean; creditOverrideReason?: string }) =>
@@ -38,7 +38,7 @@ export const deliveryNotesApi = {
       .then(r => r.data.data as DeliveryNote & { invoice: { id: string; invoice_number: string } | null }),
   cancel: (id: string) => api.post(`/delivery-notes/${id}/cancel`).then(r => r.data.data),
   /** Cycle différé (phase 7.1). */
-  createPrepared: (data: { customerId: string; deliveryDate?: string; orderId?: string | null; notes?: string; items: DeliveryLinePayload[] }) =>
+  createPrepared: (data: { customerId: string; deliveryDate?: string; orderId?: string | null; notes?: string; items: DeliveryLinePayload[]; shippingStoreId?: string }) =>
     api.post('/delivery-notes/prepared', data).then(r => r.data.data as DeliveryNote),
   ship: (id: string, data?: { closeRemainder?: boolean; creditOverrideReason?: string }) => api.post(`/delivery-notes/${id}/ship`, data ?? {}).then(r => r.data.data as DeliveryNote),
   deliver: (id: string, receivedByName?: string) => api.post(`/delivery-notes/${id}/deliver`, { receivedByName }).then(r => r.data.data as DeliveryNote),
