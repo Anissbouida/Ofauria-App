@@ -13,6 +13,7 @@ import PortalPage from './features/portal/PortalPage';
 import HomePage from './features/dashboard/HomePage';
 import ProductsPage from './features/products/ProductsPage';
 import OrdersPage from './features/orders/OrdersPage';
+import SalesContractsPage from './features/sales/SalesContractsPage';
 import POSPage from './features/pos/POSPage';
 import CustomersPage from './features/customers/CustomersPage';
 import StockPage from './features/stock/StockPage';
@@ -88,6 +89,7 @@ export default function App() {
                 <Route path="/quotes" element={<QuotesPage />} />
                 <Route path="/dunning" element={<DunningPage />} />
                 <Route path="/orders" element={<OrdersPage />} />
+                <Route path="/sales-contracts" element={<SalesContractsPage />} />
                 <Route path="/sales" element={<SalesPage />} />
                 <Route path="/customers" element={<CustomersPage />} />
                 <Route path="/products" element={<ProductsPage />} />

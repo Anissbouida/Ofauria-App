@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
-import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent, FileSignature, BellRing, Target, BadgePercent, Repeat, Truck, BarChart3, PackageCheck, Tag, ArrowLeftRight, Undo2 } from 'lucide-react';
+import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent, FileSignature, BellRing, Target, BadgePercent, Repeat, Truck, BarChart3, PackageCheck, Tag, ArrowLeftRight, Undo2, Handshake } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
@@ -31,6 +31,8 @@ export default function SalesLayout() {
     { key: 'crm', label: 'Pipeline', icon: Target, section: 'operations', href: '/crm', hidden: !hasModule('crm') },
     { key: 'quotes', label: 'Devis', icon: FileSignature, section: 'operations', href: '/quotes', hidden: !hasModule('orders') || !isDirection },
     { key: 'orders', label: 'Commandes', icon: ClipboardList, section: 'operations', href: '/orders', hidden: !hasModule('orders') },
+    // Contrats-cadres / commandes ouvertes (phase 11, D3-37) : engagement B2B suivi par appels.
+    { key: 'sales-contracts', label: 'Contrats-cadres', icon: Handshake, section: 'operations', href: '/sales-contracts', hidden: !hasModule('orders') || !isDirection },
     // Bon de livraison = document O2C de premier rang (sortie de stock FEFO + lots, ancre du rappel) :
     // entrée dédiée comme dans la plupart des ERP ; ouvre la liste des BL (Commandes › Livraisons pros).
     { key: 'orders:deliveries', label: 'Bons de livraison', icon: PackageCheck, section: 'operations', href: '/orders?tab=pro', hidden: !hasModule('orders') || !isDirection },
