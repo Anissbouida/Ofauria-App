@@ -95,7 +95,7 @@ function NotesList({ status, onOpen }: { status: string; onOpen: (id: string) =>
           <tbody>
             {isLoading && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 20 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
             {!isLoading && notes.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--odoo-text-muted)' }}>Aucun bon de livraison. « Nouveau bon de livraison » pour livrer un client professionnel.</td></tr>
+              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--odoo-text-muted)' }}>Aucun bon de livraison. « Nouveau bon de livraison » pour livrer un client.</td></tr>
             )}
             {notes.map(n => (
               <tr key={n.id} onClick={() => onOpen(n.id)} style={{ cursor: 'pointer' }}>

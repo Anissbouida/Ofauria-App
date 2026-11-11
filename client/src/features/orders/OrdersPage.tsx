@@ -244,7 +244,7 @@ export default function OrdersPage() {
           <ClipboardList size={14} style={{ color: 'var(--theme-accent)' }} />
           <span>Commandes</span>
           <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">{tab === 'orders' ? 'Commandes clients' : 'Livraisons pros'}</span>
+          <span className="odoo-breadcrumb-current">{tab === 'orders' ? 'Commandes clients' : 'Bons de livraison'}</span>
         </div>
         <div style={{ flex: 1 }} />
         {tab === 'orders' && (
@@ -260,8 +260,8 @@ export default function OrdersPage() {
         </button>
         {isDirection && (
           <button type="button" onClick={() => setTab('pro')} className={`odoo-tab ${tab === 'pro' ? 'active' : ''}`}
-            title="Bons de livraison des clients professionnels et facturation groupée">
-            <Truck size={13} style={{ marginRight: 4 }} /> Livraisons pros
+            title="Bons de livraison et facturation groupée">
+            <Truck size={13} style={{ marginRight: 4 }} /> Bons de livraison
             {pendingNotes > 0 && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 6 }}>{pendingNotes} à facturer</span>}
           </button>
         )}
