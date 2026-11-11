@@ -95,6 +95,11 @@ export interface InvoiceDispute {
   resolution: string | null; credit_note_id: string | null; created_at: string; resolved_at: string | null;
 }
 
+export interface BadDebt {
+  id: string; invoice_id: string; status: 'doubtful' | 'written_off'; amount: string;
+  reason: string | null; journal_entry_id: string | null; classified_at: string; reverted_at: string | null;
+}
+
 export const invoicesApi = {
   list: (params?: Record<string, string>) => api.get('/invoices', { params }).then(r => r.data.data),
   /** Écran Factures reçues : page de la liste par étape (view=open) ou par période (view=history). */
@@ -176,6 +181,11 @@ export const invoicesApi = {
     api.put(`/invoices/disputes/${disputeId}/resolve`, { resolution, creditNoteId }).then(r => r.data.data),
   rejectDispute: (disputeId: string, resolution: string) =>
     api.put(`/invoices/disputes/${disputeId}/reject`, { resolution }).then(r => r.data.data),
+  // Créances douteuses / irrécouvrables (phase 11, D5-45).
+  listBadDebts: (id: string) => api.get(`/invoices/${id}/bad-debts`).then(r => r.data.data as BadDebt[]),
+  classifyBadDebt: (id: string, data: { status: 'doubtful' | 'written_off'; reason?: string; amount?: number }) =>
+    api.post(`/invoices/${id}/bad-debts`, data).then(r => r.data.data as BadDebt),
+  revertBadDebt: (badDebtId: string) => api.put(`/invoices/bad-debts/${badDebtId}/revert`).then(r => r.data.data),
   // Phase 10.1 — locale='ar' sort la facture en arabe (RTL, police Cairo).
   downloadDocx: (id: string, locale?: 'fr' | 'ar') =>
     api.get(`/invoices/${id}/download-pdf${locale === 'ar' ? '?locale=ar' : ''}`, { responseType: 'blob' }).then(r => r),

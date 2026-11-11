@@ -113,6 +113,11 @@ invoicesRouter.get('/:id/disputes', authenticate, authorize(...ROLE_GROUPS.ADMIN
 invoicesRouter.post('/:id/disputes', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.openDispute));
 invoicesRouter.put('/disputes/:disputeId/resolve', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('disputeId'), asyncHandler(invoiceController.resolveDispute));
 invoicesRouter.put('/disputes/:disputeId/reject', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('disputeId'), asyncHandler(invoiceController.rejectDispute));
+// Créances douteuses / irrécouvrables (phase 11, D5-45) : l'irrécouvrable sort des relances.
+invoicesRouter.get('/bad-debts/open', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.openBadDebts));
+invoicesRouter.get('/:id/bad-debts', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.listBadDebts));
+invoicesRouter.post('/:id/bad-debts', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.classifyBadDebt));
+invoicesRouter.put('/bad-debts/:badDebtId/revert', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('badDebtId'), asyncHandler(invoiceController.revertBadDebt));
 // PUT /:id : modification complete (admin + gerant) — montants, dates, fournisseur, etc.
 invoicesRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.update));
 invoicesRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.create));

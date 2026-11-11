@@ -6,6 +6,7 @@ import { caisseRepository, expenseCategoryRepository, revenueCategoryRepository,
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 import { invoicePdfById } from '../services/invoice-pdf-builder.service.js';
 import { invoiceDisputeRepository } from '../repositories/invoice-dispute.repository.js';
+import { badDebtRepository } from '../repositories/bad-debt.repository.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { db } from '../config/database.js';
 import { refEntryRepository } from '../repositories/referentiel.repository.js';
@@ -576,6 +577,29 @@ export const invoiceController = {
   async rejectDispute(req: AuthRequest, res: Response) {
     const { resolution } = (req.body ?? {}) as Record<string, unknown>;
     const r = await invoiceDisputeRepository.reject(req.params.disputeId, String(resolution ?? ''));
+    if ('error' in r) { res.status(400).json({ success: false, error: { message: r.error } }); return; }
+    res.json({ success: true, data: r.data });
+  },
+
+  // Créances douteuses / irrécouvrables (phase 11, D5-45).
+  async listBadDebts(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await badDebtRepository.forInvoice(req.params.id) });
+  },
+  async openBadDebts(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await badDebtRepository.listOpen() });
+  },
+  async classifyBadDebt(req: AuthRequest, res: Response) {
+    const { status, reason, amount } = (req.body ?? {}) as Record<string, unknown>;
+    if (status !== 'doubtful' && status !== 'written_off') { res.status(400).json({ success: false, error: { message: 'Statut requis (douteuse ou irrécouvrable)' } }); return; }
+    const r = await badDebtRepository.classify({
+      invoiceId: req.params.id, status, reason: (reason as string) ?? null,
+      amount: amount != null ? Number(amount) : null, createdBy: req.user?.userId ?? null,
+    });
+    if ('error' in r) { res.status(400).json({ success: false, error: { message: r.error } }); return; }
+    res.status(201).json({ success: true, data: r.data });
+  },
+  async revertBadDebt(req: AuthRequest, res: Response) {
+    const r = await badDebtRepository.revert(req.params.badDebtId);
     if ('error' in r) { res.status(400).json({ success: false, error: { message: r.error } }); return; }
     res.json({ success: true, data: r.data });
   },
