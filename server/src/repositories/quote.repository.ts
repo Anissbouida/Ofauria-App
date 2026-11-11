@@ -106,6 +106,9 @@ export const quoteRepository = {
     if (p.customerId) cond.push(`q.customer_id = ${add(p.customerId)}::uuid`);
     if (p.dateFrom) cond.push(`q.quote_date >= ${add(p.dateFrom)}::date`);
     if (p.dateTo) cond.push(`q.quote_date <= ${add(p.dateTo)}::date`);
+    // Versions (phase 11, D3-22) : seule la version courante apparaît ; les
+    // versions remplacées restent accessibles par la fiche (chaîne de versions).
+    cond.push(`q.superseded_by IS NULL`);
     if (p.search) {
       const s = add(`%${p.search}%`);
       cond.push(`(q.number ILIKE ${s} OR q.title ILIKE ${s} OR q.prospect_name ILIKE ${s} OR q.prospect_company ILIKE ${s}
@@ -295,6 +298,56 @@ export const quoteRepository = {
       await addEvent(db as unknown as Runner, r.data.id, { type: 'duplicated', from: cur.number, userId: ctx.userId });
     }
     return r;
+  },
+
+  /**
+   * Révision (phase 11, D3-22) : crée une nouvelle version en brouillon (copie
+   * des lignes), incrémente le numéro de version, et FIGE l'original en le
+   * marquant « remplacé par » la nouvelle version (instantané immuable). Toutes
+   * les versions partagent la même racine (revision_of = premier devis).
+   */
+  async revise(id: string, ctx: { userId: string; storeId: string | null; validityDays: number }) {
+    const cur = await this.findById(id);
+    if (!cur) return { error: 'not_found' as const };
+    if (cur.status === 'converted') return { error: 'Un devis converti ne se révise pas' };
+    if (cur.superseded_by) return { error: 'Une version plus récente de ce devis existe déjà' };
+    const root = (cur.revision_of as string) ?? (cur.id as string);
+    const nextVersion = Number((await db.query(
+      `SELECT COALESCE(MAX(version), 1) + 1 AS v FROM quotes WHERE id = $1 OR revision_of = $1`, [root])).rows[0].v);
+    const r = await this.create({
+      customerId: cur.customer_id, prospectName: cur.prospect_name, prospectCompany: cur.prospect_company,
+      prospectPhone: cur.prospect_phone, prospectEmail: cur.prospect_email, title: cur.title, withTax: cur.with_tax,
+      discountPct: Number(cur.discount_pct), deliveryTerms: cur.delivery_terms, notes: cur.notes, internalNotes: cur.internal_notes,
+      items: cur.items.map((i: Record<string, any>) => ({ productId: i.product_id, quantity: i.quantity, unitPrice: Number(i.unit_price),
+        tvaRate: i.tva_rate != null ? Number(i.tva_rate) : null, description: i.description })),
+    }, ctx);
+    if (!('data' in r) || !r.data) return r;
+    const newId = r.data.id as string;
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      await client.query(`UPDATE quotes SET revision_of = $2, version = $3 WHERE id = $1`, [newId, root, nextVersion]);
+      await client.query(`UPDATE quotes SET superseded_by = $2, superseded_at = now() WHERE id = $1`, [id, newId]);
+      await addEvent(client, newId, { type: 'revised', from: cur.number, note: `Version ${nextVersion}`, userId: ctx.userId });
+      await addEvent(client, id, { type: 'superseded', to: r.data.number, userId: ctx.userId });
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+    return { data: await this.findById(newId) };
+  },
+
+  /** Chaîne des versions d'un devis (racine + révisions), pour comparaison. */
+  async versions(id: string) {
+    const cur = (await db.query(`SELECT id, revision_of FROM quotes WHERE id = $1`, [id])).rows[0];
+    if (!cur) return [];
+    const root = cur.revision_of ?? cur.id;
+    return (await db.query(
+      `SELECT id, number, version, status, total, created_at, superseded_by, superseded_at
+         FROM quotes WHERE id = $1 OR revision_of = $1 ORDER BY version`, [root])).rows;
   },
 
   /** Numéro de proforma, attribué à la première édition. */

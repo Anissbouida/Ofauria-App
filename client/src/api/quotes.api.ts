@@ -38,6 +38,11 @@ export const QUOTE_STATUS_TAG: Record<QuoteStatus, string> = {
   draft: 'odoo-tag-grey', sent: 'odoo-tag-blue', accepted: 'odoo-tag-green', refused: 'odoo-tag-red', expired: 'odoo-tag-orange', converted: 'odoo-tag-purple', cancelled: 'odoo-tag-grey',
 };
 
+export interface QuoteVersion {
+  id: string; number: string; version: number; status: QuoteStatus;
+  total: string; created_at: string; superseded_by: string | null; superseded_at: string | null;
+}
+
 export const quotesApi = {
   list: (params: Record<string, string>): Promise<{ data: Quote[]; total: number }> => api.get('/quotes', { params }).then(r => ({ data: r.data.data, total: r.data.total })),
   overview: (): Promise<QuotesOverview> => api.get('/quotes/overview').then(r => r.data.data),
@@ -47,6 +52,9 @@ export const quotesApi = {
   action: (id: string, action: 'send' | 'accept' | 'refuse' | 'reopen' | 'cancel', data: { reasonCode?: string | null; note?: string | null } = {}): Promise<Quote> =>
     api.post(`/quotes/${id}/${action}`, data).then(r => r.data.data),
   duplicate: (id: string): Promise<Quote> => api.post(`/quotes/${id}/duplicate`).then(r => r.data.data),
+  // Versions (phase 11, D3-22) : réviser crée une nouvelle version et fige l'originale.
+  revise: (id: string): Promise<Quote> => api.post(`/quotes/${id}/revise`).then(r => r.data.data),
+  versions: (id: string): Promise<QuoteVersion[]> => api.get(`/quotes/${id}/versions`).then(r => r.data.data),
   convert: (id: string, data: { pickupDate: string; customerId?: string | null }):
     Promise<{ data: Quote; order: { id: string; orderNumber: string; total: number }; creditWarning: { message: string } | null }> =>
     api.post(`/quotes/${id}/convert`, data).then(r => r.data),

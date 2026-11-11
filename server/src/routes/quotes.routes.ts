@@ -95,6 +95,17 @@ quotesRouter.post('/:id/duplicate', authenticate, authorize(...DIRECTION), async
   res.status(201).json({ success: true, data: r.data });
 }));
 
+// Révision (phase 11, D3-22) : nouvelle version, l'originale est figée et remplacée.
+quotesRouter.post('/:id/revise', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = await quoteRepository.revise(req.params.id, { userId: req.user!.userId, storeId: req.user!.storeId ?? null, validityDays: await validityDays() });
+  if ('error' in r) { r.error === 'not_found' ? bad(res, 'Devis introuvable', 404) : bad(res, r.error, 409); return; }
+  res.status(201).json({ success: true, data: r.data });
+}));
+
+quotesRouter.get('/:id/versions', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await quoteRepository.versions(req.params.id) });
+}));
+
 quotesRouter.post('/:id/convert', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({ pickupDate: z.string().min(10).max(30), customerId: z.string().uuid().nullish() }).safeParse(req.body);
   if (!b.success) { bad(res, 'Indiquez la date de livraison ou de retrait'); return; }

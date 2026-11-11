@@ -344,6 +344,13 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
     onSuccess: n => { refresh(); notify.success(`Copie ${n.number} créée`); onOpen(n.id); },
     onError: e => notify.error(apiErrorMessage(e)),
   });
+  // Révision (phase 11, D3-22) : nouvelle version, l'originale est figée.
+  const rev = useMutation({
+    mutationFn: () => quotesApi.revise(id),
+    onSuccess: n => { refresh(); notify.success(`Nouvelle version ${n.number} créée`); onOpen(n.id); },
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
+  const { data: versions = [] } = useQuery({ queryKey: ['quote-versions', id], queryFn: () => quotesApi.versions(id), enabled: !!id });
   const convert = useMutation({
     mutationFn: () => quotesApi.convert(id, { pickupDate: converting!.pickupDate, customerId: converting!.customerId || null }),
     onSuccess: r => {
@@ -361,6 +368,9 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
           <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1, flexWrap: 'wrap', gap: 6 }}>
             <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">Devis {q.number}</span></div>
             <span className={`odoo-tag ${QUOTE_STATUS_TAG[q.status]}`}>{QUOTE_STATUS_LABELS[q.status]}</span>
+            {(q as { version?: number }).version && (q as { version?: number }).version! > 1 && (
+              <span className="odoo-tag odoo-tag-grey" title="Version du devis">v{(q as { version?: number }).version}</span>
+            )}
             <div style={{ flex: 1 }} />
             <button className="odoo-btn-secondary" onClick={() => openPdf(q.id, 'quote')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Printer size={13} /> Devis PDF</button>
             <button className="odoo-btn-secondary" onClick={() => openPdf(q.id, 'proforma')} title={q.proforma_number ? `Proforma ${q.proforma_number}` : 'Attribue un numéro de proforma à la première édition'}
@@ -368,6 +378,17 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
             <button type="button" onClick={onClose} className="odoo-btn-secondary" aria-label="Fermer"><X size={14} /></button>
           </div>
           <div style={{ padding: '16px 20px', display: 'grid', gap: 14 }}>
+            {/* Chaîne des versions (phase 11, D3-22) : versions figées accessibles. */}
+            {versions.length > 1 && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
+                <span style={{ opacity: 0.7 }}>Versions :</span>
+                {versions.map(v => (
+                  <button key={v.id} className={`odoo-tag ${v.id === id ? 'odoo-tag-blue' : 'odoo-tag-grey'}`}
+                    style={{ cursor: 'pointer', border: 0 }} title={`${v.number} · ${Number(v.total).toLocaleString('fr-FR')} DH`}
+                    onClick={() => v.id !== id && onOpen(v.id)}>v{v.version}{v.superseded_by ? '' : ' (actuelle)'}</button>
+                ))}
+              </div>
+            )}
             {/* Prochaine étape */}
             {q.status === 'draft' && <StatusBanner tone="info" icon={Send} title="Prochaine étape : envoyer le devis au client"
               actions={<>
@@ -469,6 +490,9 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
           <div style={{ padding: '12px 20px', borderTop: '1px solid var(--odoo-border)', display: 'flex', gap: 8, flexWrap: 'wrap', position: 'sticky', bottom: 0, background: 'var(--theme-bg-card)' }}>
             {(q.status === 'draft' || q.status === 'sent') && <button className="odoo-btn-secondary" onClick={() => onEdit(q)}>Modifier</button>}
             <button className="odoo-btn-secondary" disabled={dup.isPending} onClick={() => dup.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Copy size={13} /> Dupliquer</button>
+            {q.status !== 'converted' && (
+              <button className="odoo-btn-secondary" disabled={rev.isPending} onClick={() => rev.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} title="Crée une nouvelle version ; l'actuelle est figée"><FileSignature size={13} /> Réviser</button>
+            )}
             <div style={{ flex: 1 }} />
             {['draft', 'sent', 'accepted'].includes(q.status) && (
               <button className="odoo-btn-secondary" disabled={act.isPending} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
