@@ -141,7 +141,9 @@ export const deliveryNoteRepository = {
           AND COALESCE(c.customer_type, 'particulier') <> 'particulier'
           AND COALESCE(o.advance_amount, 0) = 0
           AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.order_id = o.id)
-          AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.order_id = o.id AND i.status <> 'cancelled')
+          -- Une facture d'acompte (kind='prepayment', mig 482) ne facture pas la commande :
+          -- la commande reste « à facturer » tant que sa facture finale n'existe pas.
+          AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.order_id = o.id AND i.status <> 'cancelled' AND i.kind <> 'prepayment')
           -- O2C L2 : plusieurs BL par commande, tant qu'il reste à livrer.
           AND EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.quantity - oi.qty_delivered - oi.qty_cancelled > 0)
         ORDER BY o.created_at DESC LIMIT 50`, [customerId]);
@@ -181,7 +183,8 @@ export const deliveryNoteRepository = {
           `SELECT 1 FROM orders o JOIN customers c ON c.id = o.customer_id
             WHERE o.id = $1 AND o.customer_id = $2 AND o.status IN ('ready', 'partially_delivered')
               AND COALESCE(c.customer_type, 'particulier') <> 'particulier'
-              AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.order_id = o.id AND i.status <> 'cancelled')
+              -- Une facture d'acompte (kind='prepayment', mig 482) ne facture pas la commande.
+              AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.order_id = o.id AND i.status <> 'cancelled' AND i.kind <> 'prepayment')
               AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.order_id = o.id)
             FOR UPDATE OF o`, [data.orderId, data.customerId])).rows[0];
         if (!ok) throw fail(409, 'Cette commande n\'est pas une commande de professionnel à livrer, ou elle est déjà livrée, réglée ou facturée');

@@ -619,4 +619,21 @@ export const orderController = {
     const orders = await orderRepository.findByPickupDate(date, req.user!.storeId);
     res.json({ success: true, data: orders });
   },
+
+  // Facture d'acompte (phase 5.4) — direction : émet une pièce d'acompte (série FA)
+  // sur la commande, reprise ensuite sur la facture finale.
+  async prepaymentInvoice(req: AuthRequest, res: Response) {
+    const { percent, amount } = req.body as { percent?: number; amount?: number };
+    if (percent == null && amount == null) { fail(res, 400, 'Indiquez un pourcentage ou un montant d\'acompte'); return; }
+    try {
+      const inv = await invoiceRepository.createOrderPrepayment(
+        req.params.id,
+        { percent: percent != null ? Number(percent) : undefined, amount: amount != null ? Number(amount) : undefined },
+        req.user!.userId
+      );
+      res.status(201).json({ success: true, data: inv });
+    } catch (e) {
+      fail(res, (e as { statusCode?: number }).statusCode ?? 400, (e as Error).message);
+    }
+  },
 };

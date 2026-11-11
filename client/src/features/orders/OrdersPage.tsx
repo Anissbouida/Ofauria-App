@@ -124,6 +124,7 @@ export default function OrdersPage() {
   const [editingOrder, setEditingOrder] = useState<OrderRow | null>(null);
   const [viewingOrder, setViewingOrder] = useState<OrderRow | null>(null);
   const [deliverOrder, setDeliverOrder] = useState<OrderRow | null>(null);
+  const [prepayOrder, setPrepayOrder] = useState<OrderRow | null>(null);
   // Livraisons aux professionnels (mig 352) : BL et facturation groupée, à côté des commandes.
   // Onglet piloté par l'URL (?tab=pro) : l'entrée de menu « Bons de livraison » y mène directement.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -458,6 +459,11 @@ export default function OrdersPage() {
                                   <Truck size={13} />
                                 </button>
                               )}
+                              {isPro(o) && isDirection && status !== 'cancelled' && status !== 'completed' && (
+                                <button onClick={() => setPrepayOrder(o)} title="Facture d'acompte" className="odoo-pager-btn" style={{ color: '#1e7e4f' }}>
+                                  <Banknote size={13} />
+                                </button>
+                              )}
                               {CAN_RESCHEDULE.has(status) && (
                                 <button onClick={() => setRescheduleOrder(o)} title="Reporter la date de retrait" className="odoo-pager-btn">
                                   <CalendarClock size={13} />
@@ -549,7 +555,62 @@ export default function OrdersPage() {
           onDone={() => { setRescheduleOrder(null); invalidate(); }}
         />
       )}
+      {prepayOrder && (
+        <PrepaymentModal
+          order={prepayOrder}
+          onClose={() => setPrepayOrder(null)}
+          onDone={() => { setPrepayOrder(null); invalidate(); }}
+        />
+      )}
     </div>
+  );
+}
+
+/* ═══════════════════════ Facture d'acompte (phase 5.4) ═══════════════════════ */
+
+function PrepaymentModal({ order, onClose, onDone }: { order: OrderRow; onClose: () => void; onDone: () => void }) {
+  const total = num(order.total);
+  const [percent, setPercent] = useState('30');
+  const pct = Math.max(0, Math.min(100, parseFloat(percent) || 0));
+  const amount = Math.round(total * pct) / 100;
+
+  const mutation = useMutation({
+    mutationFn: () => ordersApi.prepaymentInvoice(order.id as string, { percent: pct }),
+    onSuccess: (inv: Record<string, unknown>) => { notify.success(`Facture d'acompte ${inv?.invoice_number ?? ''} émise`); onDone(); },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Acompte impossible')),
+  });
+
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
+      <div className="odoo-scope w-full" style={{ ...modalPanelStyle, maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Banknote size={18} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Facture d'acompte</div>
+            <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · total {n(total)} DH</div>
+          </div>
+          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
+        </div>
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <StatusBanner tone="info" icon={FileText} title="Pièce numérotée (série FA)">
+            L'acompte est une vraie facture, avec TVA, déduite ensuite de la facture finale de la commande.
+          </StatusBanner>
+          <div>
+            <label style={labelStyle}>Pourcentage de l'acompte</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="number" min={1} max={100} value={percent} onChange={e => setPercent(e.target.value)} style={{ ...fieldStyle, width: 120 }} />
+              <span style={{ color: 'var(--theme-text-muted)' }}>% → <strong>{n(amount)} DH</strong> TTC</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
+          <button onClick={onClose} className="odoo-btn-secondary">Fermer</button>
+          <button onClick={() => mutation.mutate()} className="odoo-btn-primary" disabled={mutation.isPending || !(pct > 0)}>
+            {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Banknote size={13} />} Émettre l'acompte
+          </button>
+        </div>
+      </div>
+    </ModalBackdrop>
   );
 }
 

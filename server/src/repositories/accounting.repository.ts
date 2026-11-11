@@ -853,6 +853,19 @@ export const invoiceRepository = {
         }
       }
 
+      // Reprise d'acompte (phase 5.4) : une facture finale consomme les factures
+      // d'acompte encore disponibles de la commande ; fromInvoice lira ce lien pour
+      // ventiler la reprise (4421 D, créance réduite, TVA régularisée). Avant la
+      // comptabilisation pour que l'écriture voie les acomptes consommés.
+      if (invoiceType === 'emitted' && !isCreditNote && data.orderId) {
+        await client.query(
+          `UPDATE invoices SET prepayment_consumed_invoice_id = $1
+             WHERE order_id = $2 AND invoice_type = 'emitted' AND kind = 'prepayment'
+               AND status <> 'cancelled' AND prepayment_consumed_invoice_id IS NULL`,
+          [invResult.rows[0].id, data.orderId]
+        );
+      }
+
       // Generation auto de l'ecriture comptable (LEDGER_AUTOGEN)
       // SAVEPOINT pour isoler : si la generation echoue, la facture reste
       // creee, l'ecriture sera regeneree par le job de reconciliation.
@@ -872,6 +885,85 @@ export const invoiceRepository = {
       throw err;
     } finally {
       if (!outer) client.release();
+    }
+  },
+
+  /**
+   * Facture d'acompte client (phase 5.4) — ouvre l'acompte aux professionnels.
+   * Émet une pièce numérotée (série FA, kind='prepayment') liée à la commande, avec
+   * TVA au taux de la commande, et comptabilise 3421 D / 4421 C (+ TVA). La reprise
+   * sur la facture finale est automatique (prepayment_consumed_invoice_id + fromInvoice).
+   * `percent` (part du total TTC) ou `amount` (TTC) ; l'acompte ne peut dépasser le
+   * reste à acompter (total − acomptes déjà émis non annulés).
+   */
+  async createOrderPrepayment(
+    orderId: string,
+    input: { percent?: number; amount?: number },
+    userId: string
+  ) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const o = (await client.query(
+        `SELECT id, order_number, customer_id, subtotal, tax_amount, total, advance_amount, status, store_id
+           FROM orders WHERE id = $1 FOR UPDATE`, [orderId])).rows[0];
+      if (!o) throw Object.assign(new Error('Commande introuvable'), { statusCode: 404 });
+      if (!o.customer_id) throw Object.assign(new Error('Facture d\'acompte : la commande doit avoir un client'), { statusCode: 400 });
+      if (o.status === 'cancelled') throw Object.assign(new Error('Commande annulée : acompte impossible'), { statusCode: 400 });
+      if (round2(parseFloat(o.advance_amount) || 0) > 0) {
+        throw Object.assign(new Error('Cette commande a une avance encaissée en caisse (particulier) : pas de facture d\'acompte'), { statusCode: 400 });
+      }
+      const orderTotal = round2(parseFloat(o.total) || 0);
+      if (orderTotal <= 0) throw Object.assign(new Error('Commande sans montant : acompte impossible'), { statusCode: 400 });
+
+      // Déjà acompté (factures d'acompte non annulées de la commande).
+      const prior = round2(parseFloat((await client.query(
+        `SELECT COALESCE(SUM(total_amount), 0) AS t FROM invoices
+          WHERE order_id = $1 AND kind = 'prepayment' AND status <> 'cancelled'`, [orderId])).rows[0].t) || 0);
+      const remaining = round2(orderTotal - prior);
+
+      let ttc = input.amount != null ? round2(input.amount)
+        : round2(orderTotal * ((input.percent ?? 0) / 100));
+      if (!(ttc > 0)) throw Object.assign(new Error('Montant d\'acompte invalide'), { statusCode: 400 });
+      if (ttc > remaining + 0.005) {
+        throw Object.assign(new Error(`Acompte (${ttc.toFixed(2)} DH) supérieur au reste à acompter (${remaining.toFixed(2)} DH)`), { statusCode: 400 });
+      }
+
+      // TVA au taux moyen de la commande ; acompte réputé TTC (TVA incluse).
+      const oSub = round2(parseFloat(o.subtotal) || 0);
+      const oTax = round2(parseFloat(o.tax_amount) || 0);
+      const rate = oSub > 0 && oTax > 0 ? round2((oTax / oSub) * 100) : 0;
+      const ht = rate > 0 ? round2(ttc / (1 + rate / 100)) : ttc;
+      const tva = round2(ttc - ht);
+      const pct = Math.round((ttc / orderTotal) * 100);
+
+      const invoiceNumber = await nextDocumentNumber(client, 'prepayment_emitted');
+      const invResult = await client.query(
+        `INSERT INTO invoices (invoice_number, invoice_type, customer_id, order_id,
+           invoice_date, amount, tax_amount, total_amount, notes, created_by, store_id, kind)
+         VALUES ($1, 'emitted', $2, $3, CURRENT_DATE, $4, $5, $6, $7, $8, $9, 'prepayment') RETURNING *`,
+        [invoiceNumber, o.customer_id, orderId, ht, tva, ttc,
+         `Acompte ${pct}% sur commande ${o.order_number}`, userId, o.store_id || null]
+      );
+      const inv = invResult.rows[0];
+      await client.query(
+        `INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, subtotal, tva_rate, tva_amount)
+         VALUES ($1, $2, 1, $3, $3, $4, $5)`,
+        [inv.id, `Acompte ${pct}% sur commande ${o.order_number}`, ht, rate > 0 ? rate : null, tva]
+      );
+
+      await postOrQueue(client, { kind: 'invoice', id: inv.id }, async () => {
+        const entry = await fromInvoice(client, inv);
+        if (entry) await persistEntry(client, entry, { userId });
+      });
+
+      await client.query('COMMIT');
+      return inv;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
   },
 
@@ -1065,8 +1157,11 @@ export const invoiceRepository = {
    * Utilise pour resynchroniser la facture quand la commande est modifiee.
    */
   async findEmittedByOrderId(orderId: string) {
+    // Une facture d'acompte (kind='prepayment', mig 482) ne « facture » pas la commande :
+    // on ne renvoie que la facture finale (ou l'avoir), sinon l'acompte bloquerait
+    // l'édition de la commande et sa facturation.
     const result = await db.query(
-      `SELECT * FROM invoices WHERE order_id = $1 AND invoice_type = 'emitted' ORDER BY (status = 'cancelled'), created_at DESC LIMIT 1`,
+      `SELECT * FROM invoices WHERE order_id = $1 AND invoice_type = 'emitted' AND kind <> 'prepayment' ORDER BY (status = 'cancelled'), created_at DESC LIMIT 1`,
       [orderId]
     );
     return result.rows[0] || null;

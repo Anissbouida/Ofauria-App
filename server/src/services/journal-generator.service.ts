@@ -325,6 +325,29 @@ export async function fromInvoice(
     };
   }
 
+  if (inv.invoice_type === 'emitted' && inv.kind === 'prepayment') {
+    // Facture d'acompte (phase 5.4) : le client doit l'acompte (créance 3421),
+    // l'avance reçue est portée en 4421 (avances et acomptes reçus) et la TVA est
+    // collectée dès l'acompte. La facture finale reprendra cette avance (4421 D) et
+    // régularisera la TVA. Sans TVA (Ofauria) tax=0 → 4421 = TTC.
+    if (!inv.customer_id) return null;
+    const lines: GeneratedLine[] = [
+      { account_code: '3421', auxiliary_customer_id: inv.customer_id, debit: round2(total), credit: 0,
+        label: `Acompte — ${inv.invoice_number}`, lettrage_key: lettrageKey, invoice_id: inv.id },
+      { account_code: await postingAccount(client, 'customer_advance'), auxiliary_customer_id: null, debit: 0, credit: round2(amount), label: `Acompte sur commande ${inv.invoice_number}` },
+    ];
+    if (tax > 0) lines.push({ account_code: tvaAccountForRate(computeTvaRate(amount, tax), 'collected'), debit: 0, credit: round2(tax), label: 'TVA sur acompte' });
+    return {
+      journal_code: 'VE',
+      entry_date: toIsoDate(inv.invoice_date),
+      description: `Facture d'acompte ${inv.invoice_number}`,
+      source_kind: 'invoice',
+      source_id: inv.id,
+      store_id: inv.store_id,
+      lines,
+    };
+  }
+
   if (inv.invoice_type === 'emitted' && inv.kind === 'credit_note') {
     // Pattern B' : avoir client (O2C L4) — miroir de la facture : 7111 (annulation, retour)
     // ou 7129 RRR accordés (prix, geste) et TVA collectée au débit, 3421 au crédit, lettré
@@ -384,6 +407,19 @@ export async function fromInvoice(
     } else if (tax > 0) {
       const tvaCode = tvaAccountForRate(computeTvaRate(amount, tax), 'collected');
       lines.push({ account_code: tvaCode, debit: 0, credit: round2(tax), label: 'TVA facturee' });
+    }
+
+    // Reprise des acomptes (phase 5.4) : les factures d'acompte consommées par cette
+    // facture finale réduisent la créance client (3421) du TTC acompté et régularisent
+    // la TVA déjà collectée sur l'acompte (débit). Le CA (7xxx) reste au montant plein.
+    // Sans acompte, lines[0].debit reste `total` et aucune ligne n'est ajoutée.
+    const adv = await orderPrepaymentReprisal(client, inv.id);
+    if (adv.ht > 0) {
+      lines[0].debit = round2(total - adv.ttc);
+      lines.push({ account_code: await postingAccount(client, 'customer_advance'), auxiliary_customer_id: null, debit: round2(adv.ht), credit: 0, label: 'Acompte repris' });
+      if (adv.tva > 0) {
+        lines.push({ account_code: tvaAccountForRate(computeTvaRate(adv.ht, adv.tva), 'collected'), debit: round2(adv.tva), credit: 0, label: 'TVA sur acompte régularisée' });
+      }
     }
 
     return {
@@ -637,6 +673,25 @@ async function invoiceRevenueGroups(client: PoolClient | typeof db, invoiceId: s
     [invoiceId, DEFAULT_REVENUE_ACCOUNT]
   );
   return r.rows.map((x: { code: string; ht: string }) => ({ code: String(x.code), ht: parseFloat(x.ht) || 0 }));
+}
+
+/** Somme des factures d'acompte (phase 5.4) reprises par une facture finale. */
+async function orderPrepaymentReprisal(
+  client: PoolClient | typeof db,
+  finalInvoiceId: string
+): Promise<{ ht: number; tva: number; ttc: number }> {
+  const r = await client.query(
+    `SELECT COALESCE(SUM(amount), 0) AS ht, COALESCE(SUM(tax_amount), 0) AS tva, COALESCE(SUM(total_amount), 0) AS ttc
+       FROM invoices
+      WHERE prepayment_consumed_invoice_id = $1 AND kind = 'prepayment' AND status <> 'cancelled'`,
+    [finalInvoiceId]
+  );
+  const row = r.rows[0] ?? {};
+  return {
+    ht: round2(parseFloat(row.ht) || 0),
+    tva: round2(parseFloat(row.tva) || 0),
+    ttc: round2(parseFloat(row.ttc) || 0),
+  };
 }
 
 export async function fromSale(

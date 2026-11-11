@@ -17,6 +17,8 @@ router.put('/:id', authenticate, authorize(...ORDER_ROLES), asyncHandler(orderCo
 router.put('/:id/status', authenticate, authorize(...ORDER_ROLES), asyncHandler(orderController.updateStatus));
 router.post('/:id/reschedule', authenticate, authorize(...ORDER_ROLES), asyncHandler(orderController.reschedule));
 router.post('/:id/deliver', authenticate, authorize(...ORDER_ROLES), asyncHandler(orderController.deliver));
+// Facture d'acompte (phase 5.4) : réservée à la direction (admin/gérant).
+router.post('/:id/prepayment-invoice', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(orderController.prepaymentInvoice));
 router.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(orderController.remove));
 
 export default router;
