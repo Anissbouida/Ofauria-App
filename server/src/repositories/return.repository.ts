@@ -7,6 +7,7 @@ import { reverseForSale } from '../services/loyalty.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { fromSale, fromSaleReturn, persistEntry } from '../services/journal-generator.service.js';
 import { postOrQueue } from '../services/ledger-posting.service.js';
+import { returnRules } from '../services/module-parameters.service.js';
 
 export const returnRepository = {
   async findAll(params: { dateFrom?: string; dateTo?: string; storeId?: string; limit?: number; offset?: number }) {
@@ -108,10 +109,27 @@ export const returnRepository = {
     items: { saleItemId: string; productId: string; quantity: number; unitPrice: number; subtotal: number }[];
     exchangeProducts?: { saleItemId: string; newProductId: string; quantity: number }[];
     exchangePaymentMethod?: 'cash' | 'card' | 'mobile';
+    /** Approbation d'un responsable pour dépasser le seuil de remboursement (phase 8.1). */
+    approvedBy?: string | null;
   }) {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+
+      // Seuil + délai (phase 8.1) : encadre les retours quand la règle est activée.
+      const rules = await returnRules();
+      if (rules.enabled) {
+        const os = (await client.query(`SELECT created_at FROM sales WHERE id = $1`, [data.originalSaleId])).rows[0];
+        if (os) {
+          const ageDays = (Date.now() - new Date(os.created_at).getTime()) / 86_400_000;
+          if (rules.max_days > 0 && ageDays > rules.max_days) {
+            throw Object.assign(new Error(`Retour hors délai : au-delà de ${rules.max_days} jours après la vente.`), { statusCode: 409 });
+          }
+          if (rules.max_amount_without_approval > 0 && Number(data.refundAmount) > rules.max_amount_without_approval && !data.approvedBy) {
+            throw Object.assign(new Error(`Remboursement de ${Number(data.refundAmount).toFixed(2)} DH au-delà du seuil (${rules.max_amount_without_approval} DH) : approbation d'un responsable requise.`), { statusCode: 409 });
+          }
+        }
+      }
 
       const returnNumber = await generateReturnNumber(client);
 

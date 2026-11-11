@@ -6,6 +6,7 @@ import { cashRegisterApi } from '../../api/cash-register.api';
 import { manualShiftEntriesApi } from '../../api/manual-shift-entries.api';
 import { returnsApi } from '../../api/returns.api';
 import { customersApi } from '../../api/customers.api';
+import { useAuth } from '../../context/AuthContext';
 import { format, addDays, differenceInDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
@@ -138,6 +139,11 @@ export default function SalesPage() {
   // Facture depuis un ticket (phase 5.5).
   const [invoiceTarget, setInvoiceTarget] = useState<Record<string, any> | null>(null);
   const [invoiceCustomerId, setInvoiceCustomerId] = useState<string>('');
+  // Annulation de ticket (phase 8.1).
+  const { user } = useAuth();
+  const isDirection = user?.role === 'admin' || user?.role === 'manager';
+  const [cancelTarget, setCancelTarget] = useState<Record<string, any> | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
   const [payPaymentMethod, setPayPaymentMethod] = useState<'cash' | 'card'>('cash');
   // Date d'encaissement choisie dans le modal de reglement (onglet Impayes).
   const [payDate, setPayDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -216,6 +222,17 @@ export default function SalesPage() {
     },
     onError: (e: unknown) => notify.error(getApiErrorMessage(e, "Erreur lors de l'émission de la facture")),
   });
+  const cancelMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => salesApi.cancel(id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      notify.success('Ticket annulé');
+      setCancelTarget(null); setCancelReason('');
+    },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, "Échec de l'annulation")),
+  });
+
   // Clients (chargés seulement pour un ticket anonyme à facturer).
   const { data: invoiceCustomers } = useQuery({
     queryKey: ['customers', 'for-invoice'],
@@ -717,6 +734,12 @@ export default function SalesPage() {
                               <button onClick={() => { setInvoiceCustomerId((s.customer_id as string) || ''); setInvoiceTarget(s); }}
                                 className="odoo-pager-btn" title="Établir la facture">
                                 <FileText size={13} />
+                              </button>
+                            )}
+                            {!isUnpaid && isDirection && (s.sale_type === 'standard' || !s.sale_type) && (
+                              <button onClick={() => { setCancelReason(''); setCancelTarget(s); }}
+                                className="odoo-pager-btn" title="Annuler le ticket" style={{ color: 'var(--odoo-danger, #c0392b)' }}>
+                                <XCircle size={13} />
                               </button>
                             )}
                             <button onClick={() => openReceipt(s.id as string)}
@@ -1231,6 +1254,33 @@ export default function SalesPage() {
                 disabled={paySaleMutation.isPending}
                 className="btn-primary flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-40">
                 {paySaleMutation.isPending ? 'En cours...' : 'Encaisser'}
+              </button>
+            </div>
+          </div>
+        </ModalBackdrop>
+      )}
+
+      {/* ── Annulation de ticket (phase 8.1) ── */}
+      {cancelTarget && (
+        <ModalBackdrop onClose={() => setCancelTarget(null)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-4">
+              <XCircle size={18} className="text-red-600" />
+              <div>
+                <h2 className="text-lg font-bold">Annuler le ticket</h2>
+                <p className="text-xs text-gray-500 font-mono">{cancelTarget.sale_number as string}</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 mb-3">L'écriture comptable est extournée et le stock vitrine restitué. Interdit si la caisse est clôturée.</p>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Motif (obligatoire)</label>
+            <textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} rows={2}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:border-primary-400" placeholder="Erreur de caisse, double ticket…" />
+            <div className="flex gap-3">
+              <button onClick={() => setCancelTarget(null)} className="btn-secondary flex-1">Fermer</button>
+              <button onClick={() => cancelMutation.mutate({ id: cancelTarget.id as string, reason: cancelReason })}
+                disabled={cancelReason.trim().length < 3 || cancelMutation.isPending}
+                className="btn-primary flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-40">
+                {cancelMutation.isPending ? 'En cours...' : 'Annuler le ticket'}
               </button>
             </div>
           </div>

@@ -421,6 +421,22 @@ export const saleController = {
   },
 
   /**
+   * Annulation d'un ticket (phase 8.1) : réservée à la direction (route), motif obligatoire ;
+   * l'approbateur est le responsable qui réalise l'annulation. Extourne l'écriture et
+   * restitue le stock. Refusée si la caisse est clôturée.
+   */
+  async cancel(req: AuthRequest, res: Response) {
+    const { reason } = req.body as { reason?: string };
+    try {
+      const sale = await saleRepository.cancel(req.params.id, {
+        userId: req.user!.userId, approverId: req.user!.userId, reason: reason ?? '' });
+      res.json({ success: true, data: sale });
+    } catch (e) {
+      res.status((e as { statusCode?: number }).statusCode ?? 400).json({ success: false, error: { message: (e as Error).message } });
+    }
+  },
+
+  /**
    * Facture depuis un ticket de caisse (phase 5.5) : un client demande sa facture
    * après l'achat au comptoir. La vente est déjà comptabilisée ; on émet la pièce
    * légale (série continue) sans recompter. `customerId` facultatif si le ticket

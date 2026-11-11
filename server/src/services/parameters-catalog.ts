@@ -128,6 +128,18 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'sales.returns', domain: 'sales', section: 'business',
+    label: 'Retours en caisse',
+    help: 'Encadre les retours : au-delà du délai (jours depuis la vente) le retour est refusé ; au-delà du seuil de remboursement, l\'approbation d\'un responsable est requise. Désactivé par défaut (phase 8.1).',
+    fields: [
+      { name: 'enabled', label: 'Encadrer les retours', type: 'boolean' },
+      { name: 'max_days', label: 'Délai maximal', type: 'integer', unit: 'jours', min: 0, max: 365 },
+      { name: 'max_amount_without_approval', label: 'Seuil sans approbation', type: 'number', unit: 'DH', min: 0, max: 1_000_000 },
+    ],
+    defaults: { enabled: false, max_days: 14, max_amount_without_approval: 500 },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'sales.vat_regime', domain: 'sales', section: 'business',
     label: 'Régime de TVA',
     help: 'Débit : la TVA est exigible dès la facture. Encaissement : exigible au paiement. Réglage informatif en attente des règles de déclaration (phase 5.7, expert-comptable).',

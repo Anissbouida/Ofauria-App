@@ -166,7 +166,7 @@ function SettingsShell() {
         <RfqCriteriaCard />
       </div>
     ),
-    salesRules: <ParametersPanel keys={['sales.quotes', 'sales.dunning', 'sales.legal_mentions', 'sales.vat_regime', 'sales.stamp_duty']} />,
+    salesRules: <ParametersPanel keys={['sales.quotes', 'sales.dunning', 'sales.legal_mentions', 'sales.vat_regime', 'sales.stamp_duty', 'sales.returns']} />,
     posRules: <ParametersPanel keys={['sales.pos_stock', 'sales.person_sizes']} />,
     productCategories: <ProductCategoriesTab />,
     tax: <TaxCodesTab />,

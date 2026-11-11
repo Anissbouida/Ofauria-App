@@ -17,6 +17,7 @@ const DEFAULTS: Record<string, unknown> = {
   'sales.person_sizes': { sizes: [4, 6, 8, 10, 12, 16] },
   'sales.pricing': { max_discount_pct_sales: 10, max_discount_pct_manager: 30, max_price_override_pct: 30 } satisfies PricingRules,
   'sales.legal_mentions': { enforce_customer_ice: false } satisfies LegalMentionsRules,
+  'sales.returns': { enabled: false, max_days: 14, max_amount_without_approval: 500 } satisfies ReturnRules,
   'sales.vat_regime': { mode: 'debit' },
   'sales.stamp_duty': { enabled: false, rate_pct: 0.25, min_dh: 1, cash_only: true } satisfies StampDutyRules,
 };
@@ -59,6 +60,23 @@ export async function stampDutyRules(): Promise<StampDutyRules> {
     rate_pct: Number(v?.rate_pct) || 0,
     min_dh: Number(v?.min_dh) || 0,
     cash_only: v?.cash_only !== false,
+  };
+}
+
+/**
+ * Retours en caisse (phase 8.1) : un retour au-delà du délai (max_days) ou du seuil de
+ * remboursement sans approbation (max_amount_without_approval) est encadré. Désactivé par
+ * défaut — additif, rien ne change tant qu'un admin ne l'active pas.
+ */
+export type ReturnRules = { enabled: boolean; max_days: number; max_amount_without_approval: number };
+export async function returnRules(): Promise<ReturnRules> {
+  const v = await getParameter<Partial<ReturnRules>>('sales.returns');
+  // Forçage par l'environnement (tests, par processus) ; jamais la production.
+  const forced = ['on', '1', 'true', 'yes'].includes((process.env.ENFORCE_RETURN_RULES ?? '').toLowerCase());
+  return {
+    enabled: forced || v?.enabled === true,
+    max_days: Number(v?.max_days) || 0,
+    max_amount_without_approval: Number(v?.max_amount_without_approval) || 0,
   };
 }
 

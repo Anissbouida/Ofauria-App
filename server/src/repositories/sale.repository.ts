@@ -32,6 +32,8 @@ export const saleRepository = {
     const isUnpaidView = params.paymentStatus === 'unpaid';
     const dateCol = isUnpaidView ? 's.created_at' : 'COALESCE(s.paid_at, s.created_at)';
 
+    // Les tickets annulés (phase 8.1) sont exclus de la liste normale des ventes.
+    conditions.push(`s.cancelled_at IS NULL`);
     if (params.storeId) { conditions.push(`s.store_id = $${i++}`); values.push(params.storeId); }
     // Filtrer les dates dans le fuseau de l'utilisateur (sinon une vente Montreal le 22 avril a 21h46
     // = 01h46 UTC le 23 avril tombe a tort dans le filtre "23 avril").
@@ -779,6 +781,50 @@ export const saleRepository = {
         unmatchedItems,
         total,
       };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Annulation d'un ticket (phase 8.1) : extourne l'écriture comptable, restitue le stock
+   * vitrine et laisse une trace (motif + approbateur). Interdite si la caisse est clôturée
+   * (établir un avoir alors). Réservée à la direction (contrôlée dans le contrôleur).
+   */
+  async cancel(saleId: string, opts: { userId: string; approverId: string | null; reason: string }) {
+    const fail = (code: number, msg: string) => Object.assign(new Error(msg), { statusCode: code });
+    if (!opts.approverId) throw fail(400, 'Annulation : un approbateur est requis');
+    if (!opts.reason || opts.reason.trim().length < 3) throw fail(400, 'Motif d\'annulation requis');
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const s = (await client.query(
+        `SELECT s.id, s.store_id, s.cancelled_at, cs.status AS session_status, cs.closed_at
+           FROM sales s LEFT JOIN cash_register_sessions cs ON cs.id = s.session_id
+          WHERE s.id = $1 FOR UPDATE OF s`, [saleId])).rows[0];
+      if (!s) throw fail(404, 'Ticket introuvable');
+      if (s.cancelled_at) throw fail(409, 'Ticket déjà annulé');
+      if (s.session_status === 'closed' || s.closed_at) throw fail(409, 'Caisse clôturée : annulation impossible, établissez un avoir');
+      // Extourne de l'écriture comptable.
+      await reverseEntriesForSource(client, { sourceId: saleId, sourceKinds: ['sale', 'backfill'] });
+      // Restitution du stock vitrine vendu.
+      const items = (await client.query(`SELECT product_id, quantity FROM sale_items WHERE sale_id = $1`, [saleId])).rows;
+      for (const it of items) {
+        if (!s.store_id) continue;
+        const after = await adjustVitrineStock(client, it.product_id, s.store_id, Number(it.quantity));
+        await client.query(
+          `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
+           VALUES ($1,'return',$2,$3,'Annulation ticket',$4,$5,$6)`,
+          [it.product_id, Number(it.quantity), after, saleId, opts.userId, s.store_id]);
+      }
+      const row = (await client.query(
+        `UPDATE sales SET cancelled_at = now(), cancelled_by = $2, cancel_reason = $3, cancel_approved_by = $4
+          WHERE id = $1 RETURNING *`, [saleId, opts.userId, opts.reason.trim().slice(0, 300), opts.approverId])).rows[0];
+      await client.query('COMMIT');
+      return row;
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
