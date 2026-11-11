@@ -168,7 +168,7 @@ export interface SetupOverview {
 }
 
 export interface SectorInfo {
-  current: { code: string; label: string; modules: string[] };
+  current: { code: string; label: string; modules: string[]; home_route?: string | null; report_keys?: string[] };
   // Libellés par secteur (phase 9.1) : clé neutre → mot affiché.
   labels?: Record<string, string>;
   available: { code: string; label: string }[];

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { settingsApi } from '../../api/settings.api';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import { reportsApi } from '../../api/reports.api';
@@ -22,6 +23,14 @@ export default function HomePage() {
   const { hasModule } = usePermissions();
   const navigate = useNavigate();
   const [fabOpen, setFabOpen] = useState(false);
+
+  // Accueil par secteur (phase 9.2) : un secteur qui définit sa page d'accueil ouvre
+  // dessus (ex. « Générique » ouvre sur les ventes) ; la boulangerie reste sur ce tableau.
+  const { data: sector } = useQuery({ queryKey: ['sector'], queryFn: settingsApi.sector });
+  useEffect(() => {
+    const home = sector?.current?.home_route;
+    if (home && home !== '/') navigate(home, { replace: true });
+  }, [sector, navigate]);
 
   const canSeeDashboard = hasModule('dashboard') || hasModule('reports');
 
