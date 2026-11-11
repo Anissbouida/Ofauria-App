@@ -45,6 +45,8 @@ export default function SalesLayout() {
     { key: 'sales:routes', label: 'Tournées', icon: Truck, section: 'operations', href: '/sales?tab=routes', hidden: !hasModule('sales') },
     { key: 'dunning', label: 'Relances', icon: BellRing, section: 'operations', href: '/dunning', hidden: !hasModule('sales') || !isDirection },
     { key: 'reports:menu', label: 'Menu Engineering', icon: Sparkles, section: 'reports', href: '/reports?tab=menu', hidden: !hasModule('reports') },
+    // Objectifs par commercial (phase 11, D3-13) : objectif vs réalisé par vendeur.
+    { key: 'sales-targets', label: 'Objectifs', icon: BarChart3, section: 'reports', href: '/sales-targets', hidden: !hasModule('sales') },
     { key: 'reports:margins', label: 'Marges', icon: Percent, section: 'reports', href: '/reports?tab=margins', hidden: !hasModule('reports') },
     { key: 'reports:builder', label: 'Rapports personnalisés', icon: BarChart3, section: 'reports', href: '/reports?tab=builder', hidden: !hasModule('reports') },
     { key: 'customers', label: 'Clients', icon: Users, section: 'setup', href: '/customers', hidden: !hasModule('customers') },
