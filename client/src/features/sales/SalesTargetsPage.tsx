@@ -6,6 +6,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import SalesPageShell from './SalesPageShell';
 
 /**
  * Ventes › Objectifs (phase 11, D3-13). Objectif de CA par commercial et par
@@ -42,8 +43,7 @@ export default function SalesTargetsPage() {
   });
 
   return (
-    <div style={{ padding: 24, maxWidth: 1000, margin: '0 auto' }}>
-      <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Target size={20} /> Objectifs commerciaux</h1>
+    <SalesPageShell icon={Target} title="Objectifs commerciaux" parent="Ventes">
       <p style={{ opacity: 0.7, marginTop: 0 }}>Objectif de chiffre d'affaires par vendeur ; réalisé = factures émises attribuées au vendeur, net des avoirs.</p>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
@@ -94,6 +94,6 @@ export default function SalesTargetsPage() {
           </tbody>
         </table>
       )}
-    </div>
+    </SalesPageShell>
   );
 }

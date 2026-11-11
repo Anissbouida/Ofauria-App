@@ -6,6 +6,7 @@ import { customersApi } from '../../api/customers.api';
 import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import SalesPageShell from './SalesPageShell';
 
 /**
  * Ventes › Contrats-cadres (phase 11, D3-37). Engagement de volume (quantité
@@ -47,11 +48,8 @@ export default function SalesContractsPage() {
   const custName = (c: SalesContract) => c.company_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || '—';
 
   return (
-    <div style={{ padding: 24, maxWidth: 1100, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
-        <h1 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}><Handshake size={20} /> Contrats-cadres</h1>
-        <button className="odoo-btn-primary" onClick={() => setForm(v => !v)}><Plus size={14} /> Nouveau contrat</button>
-      </div>
+    <SalesPageShell icon={Handshake} title="Contrats-cadres" parent="Ventes"
+      actions={<button className="odoo-btn-primary" onClick={() => setForm(v => !v)}><Plus size={14} /> Nouveau contrat</button>}>
       <p style={{ opacity: 0.7, marginTop: 0 }}>Engagement de volume ou de valeur, consommé par les commandes rattachées (appels).</p>
 
       {form && (
@@ -132,6 +130,6 @@ export default function SalesContractsPage() {
           </tbody>
         </table>
       )}
-    </div>
+    </SalesPageShell>
   );
 }

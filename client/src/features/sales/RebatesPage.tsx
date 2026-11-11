@@ -7,6 +7,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import SalesPageShell from './SalesPageShell';
 
 /**
  * Ventes › Ristournes de fin d'année (phase 11, D5-12). Un accord par client et
@@ -44,11 +45,8 @@ export default function RebatesPage() {
   const custName = (r: RebateAgreement) => r.company_name || `${r.first_name || ''} ${r.last_name || ''}`.trim() || '—';
 
   return (
-    <div style={{ padding: 24, maxWidth: 1050, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-        <h1 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}><BadgePercent size={20} /> Ristournes de fin d'année</h1>
-        <label>Année <input className="odoo-input" type="number" value={year} onChange={e => setYear(Number(e.target.value))} style={{ width: 100 }} /></label>
-      </div>
+    <SalesPageShell icon={BadgePercent} title="Ristournes de fin d'année" parent="Ventes"
+      actions={<label>Année <input className="odoo-input" type="number" value={year} onChange={e => setYear(Number(e.target.value))} style={{ width: 100 }} /></label>}>
       <p style={{ opacity: 0.7, marginTop: 4 }}>Taux sur le CA annuel (net des avoirs) au-delà d'un seuil. La ristourne est figée à la clôture, puis émise en avoir.</p>
 
       {isDirection && (
@@ -89,6 +87,6 @@ export default function RebatesPage() {
           </tbody>
         </table>
       )}
-    </div>
+    </SalesPageShell>
   );
 }
