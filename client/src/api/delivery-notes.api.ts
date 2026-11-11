@@ -41,7 +41,8 @@ export const deliveryNotesApi = {
   createPrepared: (data: { customerId: string; deliveryDate?: string; orderId?: string | null; notes?: string; items: DeliveryLinePayload[]; shippingStoreId?: string }) =>
     api.post('/delivery-notes/prepared', data).then(r => r.data.data as DeliveryNote),
   ship: (id: string, data?: { closeRemainder?: boolean; creditOverrideReason?: string }) => api.post(`/delivery-notes/${id}/ship`, data ?? {}).then(r => r.data.data as DeliveryNote),
-  deliver: (id: string, receivedByName?: string) => api.post(`/delivery-notes/${id}/deliver`, { receivedByName }).then(r => r.data.data as DeliveryNote),
+  deliver: (id: string, data?: { receivedByName?: string; signature?: string; reserves?: string; deliveredAt?: string }) =>
+    api.post(`/delivery-notes/${id}/deliver`, data ?? {}).then(r => r.data.data as DeliveryNote),
   /** Bon de préparation agrégé (phase 7.2) sur plusieurs BL préparés. */
   pickingList: (ids: string[]) => api.get('/delivery-notes/picking-list', { params: { ids: ids.join(',') } })
     .then(r => r.data.data as { notes: Array<{ id: string; number: string; customer_name: string; delivery_date: string; status: string }>;

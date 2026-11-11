@@ -399,11 +399,19 @@ export const deliveryNoteRepository = {
     return { notes, lines };
   },
 
-  /** Réception client (phase 7.1) : un BL expédié devient « livré ». */
-  async markDelivered(id: string, receivedByName?: string | null) {
+  /**
+   * Réception client (phase 7.1) : un BL expédié devient « livré ». Phase 7.6 : preuve de
+   * livraison — signature, heure réelle, réserves (un litige se rattache alors au BL).
+   */
+  async markDelivered(id: string, pod: { receivedByName?: string | null; signature?: string | null; reserves?: string | null; deliveredAt?: string | null } = {}) {
     return (await db.query(
-      `UPDATE delivery_notes SET status = 'delivered', received_at = now(), received_by_name = COALESCE($2, received_by_name)
-        WHERE id = $1 AND status = 'shipped' RETURNING *`, [id, receivedByName?.trim() || null])).rows[0] ?? null;
+      `UPDATE delivery_notes SET status = 'delivered', received_at = now(),
+         received_by_name = COALESCE($2, received_by_name),
+         pod_signature = COALESCE($3, pod_signature),
+         pod_reserves = COALESCE($4, pod_reserves),
+         delivered_at = COALESCE($5::timestamptz, now())
+        WHERE id = $1 AND status = 'shipped' RETURNING *`,
+      [id, pod.receivedByName?.trim() || null, pod.signature || null, pod.reserves?.trim() || null, pod.deliveredAt || null])).rows[0] ?? null;
   },
 
   /**

@@ -96,7 +96,9 @@ export const deliveryNoteController = {
     res.json({ success: true, data: note });
   },
   async markDelivered(req: AuthRequest, res: Response) {
-    const note = await deliveryNoteRepository.markDelivered(req.params.id, (req.body as { receivedByName?: string })?.receivedByName ?? null);
+    const b = (req.body ?? {}) as { receivedByName?: string; signature?: string; reserves?: string; deliveredAt?: string };
+    const note = await deliveryNoteRepository.markDelivered(req.params.id, {
+      receivedByName: b.receivedByName ?? null, signature: b.signature ?? null, reserves: b.reserves ?? null, deliveredAt: b.deliveredAt ?? null });
     if (!note) { res.status(409).json({ success: false, error: { message: 'Bon introuvable ou non expédié' } }); return; }
     res.json({ success: true, data: note });
   },

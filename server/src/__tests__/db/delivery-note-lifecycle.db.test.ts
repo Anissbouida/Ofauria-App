@@ -75,8 +75,13 @@ describe.skipIf(!hasTestDb)('BL — cycle de vie préparé/expédié/livré', ()
     expect(lots.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('markDelivered passe livré', async () => {
-    const dn = await deliveryNoteRepository.markDelivered(dnId, 'Réceptionnaire');
+  it('markDelivered passe livré avec preuve de livraison (phase 7.6)', async () => {
+    const dn = await deliveryNoteRepository.markDelivered(dnId, {
+      receivedByName: 'Réceptionnaire', signature: 'data:image/png;base64,AAAA', reserves: '2 cartons abîmés',
+    });
     expect(dn.status).toBe('delivered');
+    expect(dn.pod_signature).toBe('data:image/png;base64,AAAA');
+    expect(dn.pod_reserves).toBe('2 cartons abîmés'); // le litige se rattache au BL
+    expect(dn.delivered_at).toBeTruthy();
   });
 });
