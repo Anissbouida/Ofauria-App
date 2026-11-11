@@ -161,7 +161,9 @@ export const invoicesApi = {
     api.put(`/invoices/${id}/payment-terms`, data).then(r => r.data.data),
   updateStatus: (id: string, status: string) =>
     api.put(`/invoices/${id}/status`, { status }).then(r => r.data.data),
-  downloadDocx: (id: string) => api.get(`/invoices/${id}/download-pdf`, { responseType: 'blob' }).then(r => r),
+  // Phase 10.1 — locale='ar' sort la facture en arabe (RTL, police Cairo).
+  downloadDocx: (id: string, locale?: 'fr' | 'ar') =>
+    api.get(`/invoices/${id}/download-pdf${locale === 'ar' ? '?locale=ar' : ''}`, { responseType: 'blob' }).then(r => r),
   uploadAttachment: (id: string, file: File) => {
     const fd = new FormData();
     fd.append('attachment', file);

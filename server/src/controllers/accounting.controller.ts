@@ -733,6 +733,9 @@ export const invoiceController = {
         companyCNSS: '',
         companyBankAccount: '',
         logoPath,
+        // Phase 10.1 — ?locale=ar sort la facture en arabe (libellés + montant
+        // en lettres, police Cairo, tracé RTL) ; défaut français, inchangé.
+        locale: req.query.locale === 'ar' ? 'ar' : 'fr',
       });
 
       const filename = `${inv.invoice_number || 'facture'}.pdf`.replace(/[/\\]/g, '-');

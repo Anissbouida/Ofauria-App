@@ -2,6 +2,7 @@ import PDFDocument from 'pdfkit';
 import { existsSync, readFileSync } from 'fs';
 import { resolve, join } from 'path';
 import { loadDocumentTemplate, legalFooterLines, formatRib } from '../utils/document-template.js';
+import { arabicFontPath, containsArabic, drawArabicLineRight, numberToWordsAR } from '../utils/arabic-pdf.js';
 
 // Resolve logo — try multiple possible locations
 function findDefaultLogo(): string {
@@ -86,7 +87,46 @@ interface InvoiceData {
   pricesInclTax?: boolean;
   /** Facture en devise (mig 431) : montants déjà convertis dans la devise, taux et contre-valeur en DH. */
   currency?: { code: string; rate: number; totalDh: number };
+  /** Phase 10.1 — langue du document. Défaut : français (chemin inchangé).
+   *  'ar' : libellés et montant en toutes lettres en arabe, police Cairo, tracé droite-à-gauche. */
+  locale?: 'fr' | 'ar';
 }
+
+/**
+ * Phase 10.1 — libellés fixes de la facture en arabe. Les valeurs (nom du
+ * client, montants, numéros) restent telles quelles. Seuls les libellés
+ * structurants sont traduits ; la géométrie (totaux à droite, tableau LTR) est
+ * conservée. Limite connue : la mise en miroir complète de la page reste à
+ * faire. Une entrée vide signifie « garder le libellé latin ».
+ */
+const KIND_TEXT_AR: Record<keyof typeof KIND_TEXT, { title: string; number: string; due: string; to: string; words: string }> = {
+  invoice:     { title: 'فاتورة',        number: 'رقم الفاتورة',       due: 'تاريخ الاستحقاق', to: 'فوترة إلى', words: 'نُحرّر هذه الفاتورة بمبلغ :' },
+  quote:       { title: 'عرض سعر',        number: 'رقم العرض',          due: 'صالح حتى',        to: 'العميل',    words: 'نُحرّر هذا العرض بمبلغ :' },
+  proforma:    { title: 'فاتورة أولية',   number: 'رقم الفاتورة الأولية', due: 'صالح حتى',        to: 'العميل',    words: 'نُحرّر هذه الفاتورة الأولية بمبلغ :' },
+  credit_note: { title: 'إشعار دائن',     number: 'رقم الإشعار',        due: 'الفاتورة الأصلية', to: 'العميل',    words: 'نُحرّر هذا الإشعار بمبلغ :' },
+};
+
+/** Libellés communs (hors titre) traduits quand la facture est en arabe. */
+const LABELS_AR: Record<string, string> = {
+  dateIssued: 'تاريخ الإصدار',
+  paymentMode: 'طريقة الدفع',
+  designation: 'البيان',
+  qty: 'الكمية',
+  unitPrice: 'سعر الوحدة',
+  amount: 'المبلغ',
+  notes: 'ملاحظات وشروط',
+  bankInfo: 'المعلومات البنكية',
+  bank: 'البنك',
+  rib: 'رقم الحساب',
+  subtotalHT: 'المجموع دون ضريبة',
+  subtotalTTC: 'المجموع بالضريبة',
+  discount: 'الخصم',
+  tva: 'الضريبة',
+  tvaIncluded: 'ضريبة مُدرجة',
+  totalTTC: 'المجموع الإجمالي',
+  signature: 'التوقيع والختم',
+  quoteAccord: 'موافقة : التاريخ والتوقيع وختم العميل',
+};
 
 /** Unité et sous-unité en toutes lettres des devises courantes ; à défaut, le code ISO. */
 const CURRENCY_WORDS: Record<string, [string, string]> = {
@@ -185,6 +225,12 @@ function txt(doc: PDFKit.PDFDocument, text: string, x: number, y: number, opts: 
 export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   // Mentions communes reglees dans Parametres > Documents (mig 332) et fiche societe.
   const K = KIND_TEXT[data.kind ?? 'invoice'];
+  // Phase 10.1 — document en arabe : libellés traduits, police Cairo, tracé RTL.
+  // `arFont` null (police absente) => on retombe sur le latin, jamais de charabia.
+  const AR = data.locale === 'ar';
+  const arFont = AR ? arabicFontPath() : null;
+  const Kar = AR ? KIND_TEXT_AR[data.kind ?? 'invoice'] : null;
+  const L = (key: keyof typeof LABELS_AR, fr: string) => (AR && arFont ? (LABELS_AR[key] ?? fr) : fr);
   const tpl = await loadDocumentTemplate(data.kind === 'quote' || data.kind === 'proforma' ? 'quote' : 'invoice');
   if (!tpl.showBank) {
     data = { ...data, companyBankName: undefined, companyBankAccount: undefined };
@@ -208,8 +254,23 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     },
   });
 
+  if (arFont) doc.registerFont('AR', arFont);
+
   const chunks: Buffer[] = [];
   doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+
+  // Phase 10.1 — pose un libellé fixe. En arabe, si le texte contient de
+  // l'arabe : police Cairo + tracé droite-à-gauche ancré au bord droit de la
+  // cellule (x + w). Sinon : tracé latin strictement identique au chemin FR,
+  // la police restant celle choisie par l'appelant (gras, oblique…).
+  function putLabel(text: string, lx: number, ly: number, lw: number, align: 'left' | 'center' | 'right' = 'left') {
+    if (arFont && containsArabic(text)) {
+      doc.font('AR');
+      drawArabicLineRight(doc, text, lx + lw, ly);
+    } else {
+      txt(doc, text, lx, ly, { width: lw, align });
+    }
+  }
 
   // ════════════════════════════════════════════════════════════
   // HEADER — Logo or company name
@@ -242,9 +303,15 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   // ════════════════════════════════════════════════════════════
   // TITLE — "FACTURE" right-aligned
   // ════════════════════════════════════════════════════════════
-  doc.font('Helvetica-BoldOblique').fontSize(28).fillColor(BROWN);
-  txt(doc, K.title, M, y, { align: 'right', width: CW });
-  const titleWidth = doc.widthOfString(K.title);
+  const titleText = AR && Kar ? Kar.title : K.title;
+  if (AR && arFont) {
+    doc.font('AR').fontSize(26).fillColor(BROWN);
+    drawArabicLineRight(doc, titleText, PW - M, y);
+  } else {
+    doc.font('Helvetica-BoldOblique').fontSize(28).fillColor(BROWN);
+    txt(doc, titleText, M, y, { align: 'right', width: CW });
+  }
+  const titleWidth = doc.widthOfString(titleText);
   doc.moveTo(PW - M - titleWidth, y + 30).lineTo(PW - M, y + 30).lineWidth(1.5).stroke(BROWN);
   y += 42;
 
@@ -258,24 +325,24 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     if (isLabel) {
       drawRect(doc, x, yy, w, infoH, BEIGE);
       doc.font('Helvetica-Bold').fontSize(7).fillColor(BROWN);
-      txt(doc, label, x + 5, yy + 7, { width: w - 10 });
+      putLabel(label, x + 5, yy + 7, w - 10);
     } else {
       drawBorderedRect(doc, x, yy, w, infoH);
       doc.font('Helvetica-Bold').fontSize(9).fillColor(TEXT_DARK);
-      txt(doc, value, x + 5, yy + 7, { width: w - 10 });
+      putLabel(value, x + 5, yy + 7, w - 10);
     }
     doc.rect(x, yy, w, infoH).lineWidth(0.5).stroke(BORDER);
   }
 
-  drawInfoCell(M, y, infoColW, K.number, '', true);
+  drawInfoCell(M, y, infoColW, AR && Kar ? Kar.number : K.number, '', true);
   drawInfoCell(M + infoColW, y, infoColW, '', data.invoiceNumber, false);
-  drawInfoCell(M + infoColW * 2, y, infoColW, 'DATE D\u2019\u00C9MISSION', '', true);
+  drawInfoCell(M + infoColW * 2, y, infoColW, L('dateIssued', 'DATE D\u2019\u00C9MISSION'), '', true);
   drawInfoCell(M + infoColW * 3, y, infoColW, '', data.invoiceDate, false);
   y += infoH;
 
-  drawInfoCell(M, y, infoColW, 'MODE PAIEMENT', '', true);
+  drawInfoCell(M, y, infoColW, L('paymentMode', 'MODE PAIEMENT'), '', true);
   drawInfoCell(M + infoColW, y, infoColW, '', data.paymentMethod || '', false);
-  drawInfoCell(M + infoColW * 2, y, infoColW, K.due, '', true);
+  drawInfoCell(M + infoColW * 2, y, infoColW, AR && Kar ? Kar.due : K.due, '', true);
   drawInfoCell(M + infoColW * 3, y, infoColW, '', data.dueDate || '', false);
   y += infoH + 10;
 
@@ -295,7 +362,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
   drawRect(doc, clientBoxX, y, clientBoxW, clientHeaderH, BROWN);
   doc.font('Helvetica-Bold').fontSize(7.5).fillColor(WHITE);
-  txt(doc, K.to, clientBoxX + 8, y + 6, { width: clientBoxW - 16 });
+  putLabel(AR && Kar ? Kar.to : K.to, clientBoxX + 8, y + 6, clientBoxW - 16);
   y += clientHeaderH;
 
   drawRect(doc, clientBoxX, y, clientBoxW, clientContentH, BROWN);
@@ -305,7 +372,9 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     doc.font(isFirst ? 'Helvetica-Bold' : 'Helvetica')
        .fontSize(isFirst ? 10 : 8)
        .fillColor(WHITE);
-    txt(doc, clientLines[i], clientBoxX + 8, clientY, { width: clientBoxW - 16 });
+    // En arabe, un nom de client arabe est tracé RTL ; une ligne latine (tél,
+    // e-mail) retombe sur le tracé latin gauche-à-droite inchangé.
+    putLabel(clientLines[i], clientBoxX + 8, clientY, clientBoxW - 16);
     clientY += isFirst ? 14 : 12;
   }
   y += clientContentH + 10;
@@ -315,7 +384,9 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   // ════════════════════════════════════════════════════════════
   const colWidths = [CW * 0.45, CW * 0.12, CW * 0.20, CW * 0.23];
   const CUR = data.currency?.code ?? 'DH';
-  const colHeaders = ['DESIGNATION', 'QTE', `PRIX U. (${CUR})`, `MONTANT (${CUR})`];
+  const colHeaders = AR && arFont
+    ? [LABELS_AR.designation, LABELS_AR.qty, `${LABELS_AR.unitPrice} (${CUR})`, `${LABELS_AR.amount} (${CUR})`]
+    : ['DESIGNATION', 'QTE', `PRIX U. (${CUR})`, `MONTANT (${CUR})`];
   const rowH = 22;
   const headerH = 26;
 
@@ -325,7 +396,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     doc.rect(x, y, colWidths[i], headerH).lineWidth(0.3).stroke(BROWN);
     doc.font('Helvetica-Bold').fontSize(7.5).fillColor(WHITE);
     const align = i >= 2 ? 'right' : i >= 1 ? 'center' : 'left';
-    txt(doc, colHeaders[i], x + 5, y + 8, { width: colWidths[i] - 10, align });
+    putLabel(colHeaders[i], x + 5, y + 8, colWidths[i] - 10, align);
     x += colWidths[i];
   }
   y += headerH;
@@ -372,7 +443,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
       }
 
       doc.font(font).fontSize(fontSize).fillColor(color);
-      txt(doc, text, x + 5, y + 6, { width: colWidths[col] - 10, align });
+      putLabel(text, x + 5, y + 6, colWidths[col] - 10, align);
       x += colWidths[col];
     }
     y += rowH;
@@ -391,12 +462,14 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
   // ── Notes box ──
   const amountWords = data.amountInWords
-    || numberToWordsFR(data.totalTTC, data.currency ? CURRENCY_WORDS[data.currency.code] ?? [data.currency.code, 'centièmes'] : CURRENCY_WORDS.MAD);
+    || (AR && arFont
+      ? numberToWordsAR(data.totalTTC)
+      : numberToWordsFR(data.totalTTC, data.currency ? CURRENCY_WORDS[data.currency.code] ?? [data.currency.code, 'centièmes'] : CURRENCY_WORDS.MAD));
 
   drawRect(doc, M, y, notesW, 18, BEIGE);
   doc.rect(M, y, notesW, 18).lineWidth(0.3).stroke(BORDER);
   doc.font('Helvetica-Bold').fontSize(6.5).fillColor(BROWN);
-  txt(doc, 'NOTES & CONDITIONS', M + 6, y + 5, { width: notesW - 12 });
+  putLabel(L('notes', 'NOTES & CONDITIONS'), M + 6, y + 5, notesW - 12);
 
   const notesContentY = y + 18;
   const notesContentH = totalRowH * 4 - 18;
@@ -405,16 +478,18 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
   let ny = notesContentY + 6;
   doc.font('Helvetica-Bold').fontSize(7).fillColor(TEXT_DARK);
-  txt(doc, K.words, M + 6, ny, { width: notesW - 12 });
+  putLabel(AR && Kar ? Kar.words : K.words, M + 6, ny, notesW - 12);
   ny += 12;
   doc.font('Helvetica-Oblique').fontSize(7.5).fillColor(GOLD);
-  txt(doc, amountWords, M + 6, ny, { width: notesW - 12 });
+  putLabel(amountWords, M + 6, ny, notesW - 12);
   ny += 14;
 
   if (data.companyBankName || data.companyBankAccount) {
     doc.font('Helvetica-Bold').fontSize(7).fillColor(TEXT_DARK);
-    txt(doc, 'Information bancaire :', M + 6, ny, { width: notesW - 12 });
+    putLabel(L('bankInfo', 'Information bancaire :'), M + 6, ny, notesW - 12);
     ny += 10;
+    // Identifiants bancaires : valeur latine (RIB, nom de banque) laissée en
+    // tracé latin gauche-à-droite — le tracé RTL inverserait les groupes du RIB.
     doc.font('Helvetica').fontSize(7).fillColor(TEXT_MUTED);
     if (data.companyBankName) {
       txt(doc, `BANQUE : ${data.companyBankName}`, M + 6, ny, { width: notesW - 12 });
@@ -436,32 +511,32 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     drawRect(doc, totalsX, ty, totalsW * 0.55, h, bg);
     doc.rect(totalsX, ty, totalsW * 0.55, h).lineWidth(0.3).stroke(BORDER);
     doc.font(opts.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5).fillColor(tc);
-    txt(doc, label, totalsX + 6, ty + 6, { width: totalsW * 0.55 - 12 });
+    putLabel(label, totalsX + 6, ty + 6, totalsW * 0.55 - 12);
 
     drawRect(doc, totalsX + totalsW * 0.55, ty, totalsW * 0.45, h, bg);
     doc.rect(totalsX + totalsW * 0.55, ty, totalsW * 0.45, h).lineWidth(0.3).stroke(BORDER);
     doc.font(opts.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(opts.bold ? 10 : 9).fillColor(tc);
-    txt(doc, value, totalsX + totalsW * 0.55 + 4, ty + (opts.bold ? 5 : 6), { width: totalsW * 0.45 - 10, align: 'right' });
+    putLabel(value, totalsX + totalsW * 0.55 + 4, ty + (opts.bold ? 5 : 6), totalsW * 0.45 - 10, 'right');
 
     ty += h;
   }
 
-  drawTotalRow(data.pricesInclTax ? 'SOUS-TOTAL TTC' : 'SOUS-TOTAL HT', `${n(data.totalHT)} ${CUR}`, { bold: true });
-  drawTotalRow('REMISE', data.discountLabel ?? '0 %');
+  drawTotalRow(data.pricesInclTax ? L('subtotalTTC', 'SOUS-TOTAL TTC') : L('subtotalHT', 'SOUS-TOTAL HT'), `${n(data.totalHT)} ${CUR}`, { bold: true });
+  drawTotalRow(L('discount', 'REMISE'), data.discountLabel ?? '0 %');
   if (data.pricesInclTax) {
-    drawTotalRow('TVA', 'incluse');
+    drawTotalRow(L('tva', 'TVA'), L('tvaIncluded', 'incluse'));
   } else {
   // TVA : une ligne par taux si la facture est multi-taux, sinon ligne unique.
   const breakdown = (data.tvaBreakdown || []).filter(b => b.amount !== 0);
   if (breakdown.length > 1) {
     for (const b of breakdown) {
-      drawTotalRow(`TVA (${b.rate} %)`, `${n(b.amount)} ${CUR}`);
+      drawTotalRow(`${L('tva', 'TVA')} (${b.rate} %)`, `${n(b.amount)} ${CUR}`);
     }
   } else {
-    drawTotalRow(`TVA (${data.tvaRate} %)`, `${n(data.totalTVA)} ${CUR}`);
+    drawTotalRow(`${L('tva', 'TVA')} (${data.tvaRate} %)`, `${n(data.totalTVA)} ${CUR}`);
   }
   }
-  drawTotalRow('TOTAL TTC', `${n(data.totalTTC)} ${CUR}`, { bg: BROWN, textColor: WHITE, bold: true, height: 28 });
+  drawTotalRow(L('totalTTC', 'TOTAL TTC'), `${n(data.totalTTC)} ${CUR}`, { bg: BROWN, textColor: WHITE, bold: true, height: 28 });
 
   y = Math.max(y + notesContentH + 18, ty + 8);
 
@@ -491,7 +566,10 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     txt(doc, '_________________________', M, y, { align: 'right', width: CW });
     y += 12;
     doc.font('Helvetica-Oblique').fontSize(7.5).fillColor(TEXT_MUTED);
-    txt(doc, data.kind === 'quote' ? 'Bon pour accord : date, signature et cachet du client' : 'Signature & Cachet', M, y, { align: 'right', width: CW });
+    const sig = data.kind === 'quote'
+      ? L('quoteAccord', 'Bon pour accord : date, signature et cachet du client')
+      : L('signature', 'Signature & Cachet');
+    putLabel(sig, M, y, CW, 'right');
   }
 
   // ════════════════════════════════════════════════════════════

@@ -353,9 +353,9 @@ export default function EmittedInvoicesTab() {
   const filteredRemaining = filteredInvoices.filter(inv => inv.status !== 'cancelled' && !isCredit(inv)).reduce((s, inv) => s + remainingOf(inv), 0);
   const hasFilters = !!(statusFilter || lateOnly || searchQuery);
 
-  const handleDownloadPdf = async (inv: Record<string, any>) => {
+  const handleDownloadPdf = async (inv: Record<string, any>, locale?: 'fr' | 'ar') => {
     try {
-      const response = await invoicesApi.downloadDocx(inv.id as string);
+      const response = await invoicesApi.downloadDocx(inv.id as string, locale);
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
@@ -862,7 +862,7 @@ export default function EmittedInvoicesTab() {
 function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay, onCancel }: {
   invoice: Record<string, any>; late: boolean;
   onClose: () => void;
-  onPdf: (inv: Record<string, any>) => void;
+  onPdf: (inv: Record<string, any>, locale?: 'fr' | 'ar') => void;
   onEdit: (inv: Record<string, any>) => void;
   onPay: (inv: Record<string, any>) => void;
   onCancel: (inv: Record<string, any>) => void;
@@ -1086,6 +1086,8 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
           )}
           <button onClick={onClose} className="odoo-btn-secondary">Fermer</button>
           <button onClick={() => onPdf(inv)} className="odoo-btn-secondary"><Download size={13} /> PDF</button>
+          {/* Phase 10.1 — même facture en arabe (RTL, police Cairo). */}
+          <button onClick={() => onPdf(inv, 'ar')} className="odoo-btn-secondary" title="Facture en arabe"><Download size={13} /> PDF ‎عربي</button>
           {status !== 'cancelled' && inv.validation_status !== 'validated' && (
             <button onClick={() => onEdit(inv)} className="odoo-btn-secondary"><Pencil size={13} /> Modifier</button>
           )}
