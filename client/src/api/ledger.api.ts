@@ -34,6 +34,21 @@ export interface AccountUsage {
   references: { what: string; n: number }[]; history: number;
 }
 
+/* ═══ Comptes de produits par famille (mig 481, phase 5.3) ═══ */
+export interface RevenueFamily {
+  family: string;
+  account_code: string | null;
+  account_name: string | null;
+  category_count: number;
+}
+export const revenueFamiliesApi = {
+  list: (): Promise<RevenueFamily[]> => api.get('/ledger/revenue-families').then(r => r.data.data),
+  set: (family: string, accountCode: string): Promise<RevenueFamily> =>
+    api.put(`/ledger/revenue-families/${encodeURIComponent(family)}`, { accountCode }).then(r => r.data.data),
+  clear: (family: string): Promise<void> =>
+    api.delete(`/ledger/revenue-families/${encodeURIComponent(family)}`).then(() => undefined),
+};
+
 /* ═══ Tiers auxiliaires ═══ */
 export const accountAuxiliariesApi = {
   list: (kind?: 'supplier' | 'customer'): Promise<AccountAuxiliary[]> =>

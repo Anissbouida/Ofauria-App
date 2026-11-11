@@ -360,8 +360,6 @@ export async function fromInvoice(
     // Pattern B : Facture client
     if (!inv.customer_id) return null;
 
-    const revCode = '7111';
-
     const lines: GeneratedLine[] = [
       {
         account_code: '3421',
@@ -372,7 +370,10 @@ export async function fromInvoice(
         lettrage_key: lettrageKey,
         invoice_id: inv.id,
       },
-      { account_code: revCode, debit: 0, credit: round2(amount), label: `Vente ${inv.invoice_number}` },
+      // CA (HT) ventilé par compte de produit selon la famille (mig 481). amount =
+      // HT (invoice_items.subtotal) ; lignes B2B sans produit → compte par défaut
+      // 7111. Sans mapping, une seule ligne 7111 au HT, comme avant.
+      ...revenueLinesFromGroups(await invoiceRevenueGroups(client, inv.id), round2(amount), `Vente ${inv.invoice_number}`),
     ];
     // TVA collectee : une ligne par taux si detail par ligne, sinon ligne unique.
     const tvaGroups = await tvaGroupsForInvoice(client, inv.id, 'collected');
@@ -570,6 +571,74 @@ export async function fromSaleSettlement(client: PoolClient | typeof db, s: Sale
   };
 }
 
+/* ═══ Ventilation du CA par compte de produit (mig 481, phase 5.3) ═══ */
+
+/** Compte de produit par défaut quand la famille n'a pas de compte dédié. */
+const DEFAULT_REVENUE_ACCOUNT = '7111';
+
+/**
+ * Transforme une ventilation {compte → HT} en lignes de crédit. Le résidu
+ * (arrondis, avance reprise, lignes sans produit/famille) retombe sur le compte
+ * par défaut pour que la somme crédite EXACTEMENT `totalHt` : l'écriture reste
+ * équilibrée au centime. Sans mapping (table vide), une seule ligne 7111,
+ * identique à l'ancien comportement — aucune régression.
+ */
+function revenueLinesFromGroups(
+  groups: { code: string; ht: number }[],
+  totalHt: number,
+  label: string
+): GeneratedLine[] {
+  const byCode = new Map<string, number>();
+  for (const g of groups) {
+    const v = round2(g.ht);
+    if (v === 0) continue;
+    byCode.set(g.code, round2((byCode.get(g.code) ?? 0) + v));
+  }
+  const sum = round2([...byCode.values()].reduce((acc, v) => acc + v, 0));
+  const residual = round2(totalHt - sum);
+  if (residual !== 0 || byCode.size === 0) {
+    byCode.set(DEFAULT_REVENUE_ACCOUNT, round2((byCode.get(DEFAULT_REVENUE_ACCOUNT) ?? 0) + residual));
+  }
+  // Compte par défaut d'abord, puis par code croissant : écriture stable et lisible.
+  const codes = [...byCode.keys()].sort((a, b) =>
+    a === DEFAULT_REVENUE_ACCOUNT ? -1 : b === DEFAULT_REVENUE_ACCOUNT ? 1 : a.localeCompare(b));
+  return codes
+    .filter((c) => round2(byCode.get(c)!) !== 0)
+    .map((c) => ({ account_code: c, debit: 0, credit: round2(byCode.get(c)!), label }));
+}
+
+/** CA HT d'un ticket POS ventilé par famille (ligne TTC − TVA incluse mig 480). */
+async function saleRevenueGroups(client: PoolClient | typeof db, saleId: string): Promise<{ code: string; ht: number }[]> {
+  const r = await client.query(
+    `SELECT COALESCE(fra.account_code, $2) AS code,
+            ROUND(SUM(si.subtotal - COALESCE(si.tax_amount, 0))::numeric, 2) AS ht
+       FROM sale_items si
+       JOIN products p ON p.id = si.product_id
+       LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN family_revenue_accounts fra ON fra.family = c.family
+      WHERE si.sale_id = $1
+      GROUP BY COALESCE(fra.account_code, $2)`,
+    [saleId, DEFAULT_REVENUE_ACCOUNT]
+  );
+  return r.rows.map((x: { code: string; ht: string }) => ({ code: String(x.code), ht: parseFloat(x.ht) || 0 }));
+}
+
+/** CA HT d'une facture client ventilé par famille (invoice_items.subtotal = HT). */
+async function invoiceRevenueGroups(client: PoolClient | typeof db, invoiceId: string): Promise<{ code: string; ht: number }[]> {
+  const r = await client.query(
+    `SELECT COALESCE(fra.account_code, $2) AS code,
+            ROUND(SUM(ii.subtotal)::numeric, 2) AS ht
+       FROM invoice_items ii
+       LEFT JOIN products p ON p.id = ii.product_id
+       LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN family_revenue_accounts fra ON fra.family = c.family
+      WHERE ii.invoice_id = $1
+      GROUP BY COALESCE(fra.account_code, $2)`,
+    [invoiceId, DEFAULT_REVENUE_ACCOUNT]
+  );
+  return r.rows.map((x: { code: string; ht: string }) => ({ code: String(x.code), ht: parseFloat(x.ht) || 0 }));
+}
+
 export async function fromSale(
   client: PoolClient | typeof db,
   s: SaleRow
@@ -585,9 +654,10 @@ export async function fromSale(
   if (s.sold_on_credit) {
     const lines: GeneratedLine[] = [
       { account_code: '3421', auxiliary_customer_id: s.customer_id, debit: round2(total), credit: 0, label: `Ticket à crédit ${s.sale_number}` },
-      // 7111 porte le HT : subtotal est TTC, la TVA incluse (mig 480) est isolée
-      // sur le compte de TVA collectée. Sans code TVA (Ofauria) tax=0 → HT=TTC.
-      { account_code: '7111', debit: 0, credit: round2(subtotal - tax), label: 'Vente à crédit' },
+      // Le CA (HT) est ventilé par compte de produit selon la famille (mig 481).
+      // subtotal est TTC, la TVA incluse (mig 480) est isolée sur le compte de TVA
+      // collectée ; sans mapping (Ofauria), une seule ligne 7111 au HT (tax=0 → HT=TTC).
+      ...revenueLinesFromGroups(await saleRevenueGroups(client, s.id), round2(subtotal - tax), 'Vente à crédit'),
     ];
     if (tax > 0) lines.push({ account_code: tvaAccountForRate(computeTvaRate(subtotal - tax, tax), 'collected'), debit: 0, credit: round2(tax), label: 'TVA facturee' });
     if (discount > 0) lines.push({ account_code: '7129', debit: round2(discount), credit: 0, label: 'Remise accordee' });
@@ -652,9 +722,11 @@ export async function fromSale(
 
   const lines: GeneratedLine[] = await saleTreasuryLines(client, s, total);
   if (advance) lines.push({ account_code: advance.code, debit: advance.amount, credit: 0, label: 'Avance reprise à la remise' });
-  // 7111 porte le HT : subtotal est TTC, la TVA incluse (mig 480) est isolée sur
-  // le compte de TVA collectée. Sans code TVA (Ofauria) tax=0 → HT=TTC inchangé.
-  lines.push({ account_code: '7111', debit: 0, credit: round2(subtotal - tax + (advance?.amount ?? 0)), label: 'Vente du jour' });
+  // Le CA (HT) est ventilé par compte de produit selon la famille (mig 481). subtotal
+  // est TTC, la TVA incluse (mig 480) est isolée sur le compte de TVA collectée.
+  // L'avance reprise retombe sur le compte par défaut. Sans mapping (Ofauria), une
+  // seule ligne 7111 au HT (tax=0 → HT=TTC inchangé).
+  lines.push(...revenueLinesFromGroups(await saleRevenueGroups(client, s.id), round2(subtotal - tax + (advance?.amount ?? 0)), 'Vente du jour'));
 
   if (tax > 0) {
     const tvaCode = tvaAccountForRate(computeTvaRate(subtotal - tax, tax), 'collected');

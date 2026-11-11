@@ -31,6 +31,7 @@ import DataTab from './DataTab';
 import ApprovalsTab from './ApprovalsTab';
 import RfqCriteriaCard from './RfqCriteriaCard';
 import ReceptionQcCategoriesCard from './ReceptionQcCategoriesCard';
+import RevenueFamiliesCard from './RevenueFamiliesCard';
 import ReferentielTab from './ReferentielTab';
 import SettingsSearch from './SettingsSearch';
 import SetupHome from './SetupHome';
@@ -172,7 +173,12 @@ function SettingsShell() {
     currencies: <CurrenciesTab />,
     numbering: <NumberingTab />,
     documents: <DocumentsTab />,
-    ledger: <ParametersPanel keys={['ledger.posting_mode', 'accounting.card_commission']} />,
+    ledger: (
+      <div style={{ display: 'grid', gap: 16 }}>
+        <ParametersPanel keys={['ledger.posting_mode', 'accounting.card_commission']} />
+        <RevenueFamiliesCard />
+      </div>
+    ),
     referentiel: <ReferentielTab />,
     data: <DataTab />,
     notifications: <NotificationsTab />,

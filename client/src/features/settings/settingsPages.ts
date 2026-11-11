@@ -95,7 +95,9 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
   { key: 'documents', group: 'Comptabilité', section: 'documents', label: 'Documents', icon: FileText,
     description: 'Mentions des factures et bons de commande', keywords: 'modele facture pdf conditions paiement penalites pied de page' },
   { key: 'ledger', group: 'Comptabilité', section: 'business', label: 'Règles comptables', icon: BookOpen,
-    description: 'Passation des écritures, commission carte', keywords: 'ecriture comptabilisation journal grand livre commission carte tpe banque' },
+    description: 'Passation des écritures, commission carte, comptes de produits',
+    keywords: 'ecriture comptabilisation journal grand livre commission carte tpe banque compte produit famille ventilation chiffre affaires 7111 7112',
+    fields: ['Comptes de produits par famille'] },
 
   { key: 'productCategories', group: 'Données de base', section: 'referentiel', label: 'Catégories de vente', icon: Layers,
     description: 'Familles et ordre des catégories en caisse', keywords: 'categorie famille caisse pos classement boulangerie patisserie',

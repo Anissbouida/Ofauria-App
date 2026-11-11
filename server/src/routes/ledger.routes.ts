@@ -18,6 +18,7 @@ import {
 import { liasseRepository } from '../repositories/liasse.repository.js';
 import { billPortfolioRepository } from '../repositories/bill-portfolio.repository.js';
 import { consolidationRepository } from '../repositories/consolidation.repository.js';
+import { familyRevenueAccountRepository } from '../repositories/accounting.repository.js';
 import { buildVatDeductionEdi, buildIr9421Edi, buildLiasseIsEdi, zipOne } from '../services/dgi-edi.service.js';
 import {
   planComptableController,
@@ -355,6 +356,21 @@ ledgerRouter.post('/outbox/:id/replay', authenticate, authorize(ROLES.ADMIN), va
 ledgerRouter.get('/grir/open-items', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseLedgerController.grirOpenItems));
 ledgerRouter.get('/vat-deduction-statement', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseLedgerController.vatStatement));
 ledgerRouter.get('/posting-profiles', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(purchaseLedgerController.postingProfiles));
+
+// Comptes de produits par famille (mig 481, phase 5.3) : ventilation du CA.
+ledgerRouter.get('/revenue-families', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(async (_req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await familyRevenueAccountRepository.list() });
+}));
+ledgerRouter.put('/revenue-families/:family', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), requireVerb('accounting', 'validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const body = z.object({ accountCode: z.string().trim().min(1).max(10) }).parse(req.body);
+  const family = String(req.params.family).trim();
+  if (!family) { res.status(400).json({ success: false, error: { message: 'Famille requise' } }); return; }
+  res.json({ success: true, data: await familyRevenueAccountRepository.upsert(family, body.accountCode) });
+}));
+ledgerRouter.delete('/revenue-families/:family', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), requireVerb('accounting', 'validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  await familyRevenueAccountRepository.remove(String(req.params.family).trim());
+  res.json({ success: true, data: null });
+}));
 
 // Ecritures comptables
 ledgerRouter.get('/entries',          authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), journalEntryController.list);

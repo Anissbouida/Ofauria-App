@@ -114,7 +114,7 @@ describe.skipIf(!hasTestDb)('TVA au comptoir — persistance et écriture', () =
     expect(debit).toBe(120);                                     // TTC
     const revenue = lines.find((l) => l.account_code === '7111');
     expect(revenue?.credit).toBe(100);                           // HT = 120 - 20
-    const tva = lines.find((l) => /TVA/i.test(l.label));
+    const tva = lines.find((l) => /TVA/i.test(l.label ?? ''));
     expect(round2(tva?.credit ?? 0)).toBe(20);                   // TVA collectée
   });
 });

@@ -492,6 +492,51 @@ export const revenueCategoryRepository = {
   },
 };
 
+/* ═══ Comptes de produits par famille (mig 481, phase 5.3) ═══ */
+/**
+ * Associe un compte de produit (classe 71) à une famille de catégorie de vente
+ * (categories.family, mig 375). Le générateur d'écritures ventile le CA par ce
+ * compte ; une famille sans mapping retombe sur 7111.
+ */
+export const familyRevenueAccountRepository = {
+  /** Toutes les familles connues (catalogue + mappings) avec leur compte, trié. */
+  async list(): Promise<{ family: string; account_code: string | null; account_name: string | null; category_count: number }[]> {
+    const result = await db.query(
+      `WITH families AS (
+         SELECT family FROM categories WHERE family IS NOT NULL AND family <> ''
+         UNION
+         SELECT family FROM family_revenue_accounts
+       )
+       SELECT f.family,
+              fra.account_code,
+              a.label AS account_name,
+              (SELECT COUNT(*) FROM categories c WHERE c.family = f.family)::int AS category_count
+         FROM families f
+         LEFT JOIN family_revenue_accounts fra ON fra.family = f.family
+         LEFT JOIN accounts a ON a.code = fra.account_code
+        ORDER BY f.family`
+    );
+    return result.rows;
+  },
+  /** Fixe (ou remplace) le compte d'une famille. Le compte doit exister au plan comptable. */
+  async upsert(family: string, accountCode: string) {
+    const acc = await db.query('SELECT label FROM accounts WHERE code = $1', [accountCode]);
+    if (!acc.rows[0]) throw new Error(`Compte « ${accountCode} » inconnu au plan comptable`);
+    const result = await db.query(
+      `INSERT INTO family_revenue_accounts (family, account_code, label)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (family) DO UPDATE SET account_code = EXCLUDED.account_code, label = EXCLUDED.label, updated_at = NOW()
+       RETURNING *`,
+      [family, accountCode, acc.rows[0].label ?? null]
+    );
+    return result.rows[0];
+  },
+  /** Retire le mapping d'une famille → retour au compte par défaut 7111. */
+  async remove(family: string) {
+    await db.query('DELETE FROM family_revenue_accounts WHERE family = $1', [family]);
+  },
+};
+
 /* ═══ Invoices ═══ */
 export const invoiceRepository = {
   async findAll(params: { supplierId?: string; customerId?: string; status?: string; dateFrom?: string; dateTo?: string; storeId?: string; invoiceType?: string }) {
