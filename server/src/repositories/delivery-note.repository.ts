@@ -270,6 +270,117 @@ export const deliveryNoteRepository = {
   },
 
   /**
+   * Cycle différé (phase 7.1) — crée un BL « préparé » SANS mouvement de stock : la
+   * marchandise n'est pas encore sortie. La sortie (FEFO, lots, coût figé, contrôle de
+   * crédit) a lieu à l'expédition (ship). Utile pour préparer la veille et expédier le
+   * lendemain. Le flux immédiat (create) reste inchangé.
+   */
+  async createPrepared(data: {
+    customerId: string; deliveryDate?: string | null; orderId?: string | null; notes?: string | null;
+    items: DeliveryLineInput[]; createdBy: string; storeId?: string | null; shipAddress?: string | null;
+  }) {
+    if (!data.items.length) throw fail(400, 'Ajoutez au moins une ligne');
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const cust = (await client.query(`SELECT id FROM customers WHERE id = $1`, [data.customerId])).rows[0];
+      if (!cust) throw fail(400, 'Client introuvable');
+      if (data.orderId && data.items.some(i => i.productId && !i.orderItemId)) {
+        throw fail(400, 'BL de commande : chaque produit livré doit correspondre à une ligne de la commande');
+      }
+      let storeId = data.storeId ?? null;
+      if (!storeId) {
+        const stores = (await client.query(`SELECT id FROM stores WHERE is_active ORDER BY created_at LIMIT 2`)).rows;
+        if (stores.length === 1) storeId = stores[0].id;
+      }
+      const date = data.deliveryDate || undefined;
+      const number = await nextDocumentNumber(client, 'delivery_note', date);
+      const shipAddress = (data.shipAddress?.trim())
+        || await customerAddressRepository.resolveText(client, data.customerId ?? null, 'delivery');
+      const head = (await client.query(
+        `INSERT INTO delivery_notes (number, customer_id, store_id, order_id, delivery_date, notes, created_by,
+           lots_tracked, status, prepared_at, prepared_by, ship_address, salesperson_id)
+         VALUES ($1,$2,$3,$4, COALESCE($5::date, CURRENT_DATE), $6,$7, true, 'prepared', now(), $7, $8,
+                 (SELECT salesperson_id FROM customers WHERE id = $2)) RETURNING *`,
+        [number, data.customerId, storeId, data.orderId ?? null, date ?? null, data.notes ?? null, data.createdBy, shipAddress ?? null])).rows[0];
+      for (const it of data.items) {
+        let description = it.description?.trim() || null;
+        if (!description && it.productId) description = (await client.query(`SELECT name FROM products WHERE id = $1`, [it.productId])).rows[0]?.name ?? null;
+        if (!description) throw fail(400, 'Chaque ligne doit avoir un produit ou une désignation');
+        if (!(it.quantity > 0) || !(it.unitPrice >= 0)) throw fail(400, 'Quantité et prix doivent être positifs');
+        await client.query(
+          `INSERT INTO delivery_note_items (delivery_note_id, product_id, description, quantity, unit_price, tva_rate, subtotal, order_item_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [head.id, it.productId ?? null, description, it.quantity, it.unitPrice, it.tvaRate ?? null, round2(it.quantity * it.unitPrice), it.orderItemId ?? null]);
+      }
+      await client.query('COMMIT');
+      return head;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
+   * Expédition d'un BL préparé (phase 7.1) : le stock sort maintenant (FEFO réserve
+   * puis vitrine, lots par ligne), le livré de la commande est enregistré, le coût est
+   * figé et le crédit contrôlé (bloquant). Statut → « expédié ».
+   */
+  async ship(id: string, userId: string, opts: { closeRemainder?: boolean; creditOverride?: { userId: string; reason: string } | null } = {}) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const dn = (await client.query(`SELECT * FROM delivery_notes WHERE id = $1 AND status = 'prepared' FOR UPDATE`, [id])).rows[0];
+      if (!dn) throw fail(409, 'Bon de livraison introuvable ou déjà expédié');
+      if (!dn.store_id) throw fail(400, 'Magasin expéditeur requis : les produits sortent du stock d\'un magasin');
+      const items = (await client.query(`SELECT * FROM delivery_note_items WHERE delivery_note_id = $1`, [id])).rows;
+      for (const line of items) {
+        if (!line.product_id) continue;
+        const shipped = await shipProduct(client, {
+          productId: line.product_id, storeId: dn.store_id, quantity: Number(line.quantity), strict: true,
+          ref: { type: 'delivery_note', id: dn.id }, label: `BL ${dn.number}`, userId,
+        });
+        if (shipped.requiresLots) await client.query(`UPDATE delivery_note_items SET requires_lots = true WHERE id = $1`, [line.id]);
+        for (const a of shipped.allocations) {
+          await client.query(
+            `INSERT INTO delivery_note_item_lots (delivery_note_item_id, product_lot_id, quantity, source, dlc_snapshot)
+             VALUES ($1,$2,$3,$4,$5::timestamptz)`, [line.id, a.lotId, a.qty, a.source, a.dlc]);
+        }
+      }
+      if (dn.order_id) {
+        const tol = Number((await client.query(`SELECT over_delivery_tolerance_pct FROM customers WHERE id = $1`, [dn.customer_id])).rows[0]?.over_delivery_tolerance_pct ?? 0);
+        const perLine = new Map<string, number>();
+        for (const it of items) if (it.order_item_id) perLine.set(it.order_item_id, (perLine.get(it.order_item_id) ?? 0) + Number(it.quantity));
+        await recordDelivered(client, dn.order_id, [...perLine].map(([orderItemId, qty]) => ({ orderItemId, qty })), tol);
+        if (opts.closeRemainder) await closeRemainder(client, dn.order_id);
+      }
+      await client.query(`SELECT fn_freeze_dn_costs($1)`, [id]);
+      const credit = await checkCredit(client, {
+        customerId: dn.customer_id, amount: 0, checkpoint: 'ship', documentType: 'delivery_note', documentId: id,
+        override: opts.creditOverride ?? null,
+      });
+      if (credit.decision === 'block') throw Object.assign(new Error(`${credit.message} Expédition bloquée : la direction peut déroger en motivant.`), { statusCode: 409, code: 'CREDIT_BLOCKED' });
+      const head = (await client.query(`UPDATE delivery_notes SET status = 'shipped', shipped_at = now(), shipped_by = $2 WHERE id = $1 RETURNING *`, [id, userId])).rows[0];
+      await client.query('COMMIT');
+      return head;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /** Réception client (phase 7.1) : un BL expédié devient « livré ». */
+  async markDelivered(id: string, receivedByName?: string | null) {
+    return (await db.query(
+      `UPDATE delivery_notes SET status = 'delivered', received_at = now(), received_by_name = COALESCE($2, received_by_name)
+        WHERE id = $1 AND status = 'shipped' RETURNING *`, [id, receivedByName?.trim() || null])).rows[0] ?? null;
+  },
+
+  /**
    * Livrer une commande de professionnel sur bon de livraison (module Commandes,
    * direction) : lignes de la commande (prix HT et TVA de la commande, sinon
    * dernier taux utilisé), quantités livrées éventuellement corrigées, nom du

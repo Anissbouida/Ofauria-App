@@ -71,6 +71,32 @@ export const deliveryNoteController = {
   async cancel(req: AuthRequest, res: Response) {
     res.json({ success: true, data: await deliveryNoteRepository.cancel(req.params.id, req.user!.userId) });
   },
+  // Cycle différé (phase 7.1) : préparer → expédier → livrer.
+  async createPrepared(req: AuthRequest, res: Response) {
+    const b = req.body as Record<string, any>;
+    const note = await deliveryNoteRepository.createPrepared({
+      customerId: b.customerId, deliveryDate: b.deliveryDate ?? null, orderId: b.orderId ?? null, notes: b.notes ?? null,
+      items: Array.isArray(b.items) ? b.items.map((i: Record<string, any>) => ({
+        productId: i.productId ?? null, description: i.description ?? null, orderItemId: i.orderItemId ?? null,
+        quantity: Number(i.quantity), unitPrice: Number(i.unitPrice),
+        tvaRate: i.tvaRate === null || i.tvaRate === undefined || i.tvaRate === '' ? null : Number(i.tvaRate),
+      })) : [],
+      createdBy: req.user!.userId, storeId: req.user!.storeId ?? null, shipAddress: b.shipAddress ?? null,
+    });
+    res.status(201).json({ success: true, data: note });
+  },
+  async ship(req: AuthRequest, res: Response) {
+    const b = (req.body ?? {}) as { closeRemainder?: boolean; creditOverrideReason?: string };
+    const note = await deliveryNoteRepository.ship(req.params.id, req.user!.userId, {
+      closeRemainder: b.closeRemainder === true, creditOverride: creditOverrideOf(req, b.creditOverrideReason),
+    });
+    res.json({ success: true, data: note });
+  },
+  async markDelivered(req: AuthRequest, res: Response) {
+    const note = await deliveryNoteRepository.markDelivered(req.params.id, (req.body as { receivedByName?: string })?.receivedByName ?? null);
+    if (!note) { res.status(409).json({ success: false, error: { message: 'Bon introuvable ou non expédié' } }); return; }
+    res.json({ success: true, data: note });
+  },
   async toInvoice(req: AuthRequest, res: Response) {
     res.json({ success: true, data: await deliveryNoteRepository.toInvoice({ storeId: req.user!.storeId, until: (req.query.until as string) || undefined }) });
   },
