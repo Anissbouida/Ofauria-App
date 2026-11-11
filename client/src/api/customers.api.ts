@@ -34,6 +34,10 @@ export const customersApi = {
   listExemptions: (id: string) => api.get(`/customers/${id}/tax-exemptions`).then(r => r.data.data as CustomerTaxExemption[]),
   createExemption: (id: string, data: Record<string, any>) => api.post(`/customers/${id}/tax-exemptions`, data).then(r => r.data.data as CustomerTaxExemption),
   removeExemption: (id: string, exemptionId: string) => api.delete(`/customers/${id}/tax-exemptions/${exemptionId}`),
+  // Portail client (phase 10.3) : jeton d'accès (le jeton en clair n'est renvoyé qu'à l'émission).
+  portalStatus: (id: string) => api.get(`/customers/${id}/portal-token`).then(r => r.data.data as { id: string; token_prefix: string; last_login_at: string | null; created_at: string } | null),
+  issuePortalToken: (id: string) => api.post(`/customers/${id}/portal-token`).then(r => r.data.data as { token: string; id: string }),
+  revokePortalToken: (id: string) => api.delete(`/customers/${id}/portal-token`),
 };
 
 export interface CustomerTaxExemption {

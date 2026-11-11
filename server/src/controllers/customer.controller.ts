@@ -4,6 +4,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { customerRepository } from '../repositories/customer.repository.js';
 import { customerAddressRepository, type CustomerAddressInput } from '../repositories/customer-address.repository.js';
 import { customerTaxExemptionRepository } from '../repositories/customer-tax-exemption.repository.js';
+import { customerPortalRepository } from '../repositories/customer-portal.repository.js';
 
 /** Champs de conditions commerciales du client (O2C L0, G-CR-04) et leur colonne. */
 const COMMERCIAL_FIELDS = ['creditLimit', 'remisePct', 'delaiPaiementJours', 'tvaExonere', 'billingFrequency'] as const;
@@ -189,6 +190,21 @@ export const customerController = {
   async removeExemption(req: AuthRequest, res: Response) {
     const row = await customerTaxExemptionRepository.remove(req.params.exemptionId, req.params.id);
     if (!row) { res.status(404).json({ success: false, error: { message: 'Attestation introuvable' } }); return; }
+    res.json({ success: true, data: null });
+  },
+
+  // Portail client (phase 10.3) : jeton d'accès rattaché au client.
+  async portalStatus(req: AuthRequest, res: Response) {
+    const status = await customerPortalRepository.statusFor(req.params.id);
+    res.json({ success: true, data: status });
+  },
+  async issuePortalToken(req: AuthRequest, res: Response) {
+    const r = await customerPortalRepository.issue(req.params.id, req.user?.userId ?? null);
+    // `token` : le jeton en clair, renvoyé une seule fois.
+    res.status(201).json({ success: true, data: r });
+  },
+  async revokePortalToken(req: AuthRequest, res: Response) {
+    await customerPortalRepository.revoke(req.params.id);
     res.json({ success: true, data: null });
   },
 };

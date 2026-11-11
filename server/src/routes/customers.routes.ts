@@ -44,6 +44,10 @@ router.delete('/:id/addresses/:addressId', authenticate, authorize(...ROLE_GROUP
 router.get('/:id/tax-exemptions', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.listExemptions));
 router.post('/:id/tax-exemptions', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.createExemption));
 router.delete('/:id/tax-exemptions/:exemptionId', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.removeExemption));
+// Portail client (phase 10.3) : émettre / consulter / révoquer le jeton d'accès.
+router.get('/:id/portal-token', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.portalStatus));
+router.post('/:id/portal-token', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.issuePortalToken));
+router.delete('/:id/portal-token', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.revokePortalToken));
 router.post('/', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.create));
 router.put('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.update));
 router.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), writeLimiter, asyncHandler(customerController.remove));

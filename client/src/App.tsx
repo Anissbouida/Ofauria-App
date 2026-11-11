@@ -9,6 +9,7 @@ import { ProductionTimerProvider } from './context/ProductionTimerContext';
 import ProductionTimerWidget from './components/ui/ProductionTimerWidget';
 import AppLayout from './components/layout/AppLayout';
 import LoginPage from './features/auth/LoginPage';
+import PortalPage from './features/portal/PortalPage';
 import HomePage from './features/dashboard/HomePage';
 import ProductsPage from './features/products/ProductsPage';
 import OrdersPage from './features/orders/OrdersPage';
@@ -75,6 +76,8 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            {/* Portail client (phase 10.3) : page publique, hors app interne, jeton Bearer. */}
+            <Route path="/portail" element={<PortalPage />} />
             <Route element={<AppLayout />}>
               <Route path="/" element={<HomePage />} />
               <Route path="/pos" element={<POSPage />} />
