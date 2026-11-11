@@ -47,6 +47,9 @@ router.put('/parameters/:key', authenticate, jsonParser, asyncHandler(parameters
 // hors secteur côté client) ; PUT réservé à la direction (droit « Société »).
 router.get('/sector', authenticate, asyncHandler(companyController.sector));
 router.put('/sector', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.setSector));
+// Données de départ par secteur (phase 9.3) : aperçu + chargement à la demande (direction).
+router.get('/sector/starter', authenticate, asyncHandler(companyController.sectorStarter));
+router.post('/sector/starter', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.loadSectorStarter));
 router.get('/bank-accounts', authenticate, authorizeSettings('company'), asyncHandler(companyController.bankAccounts));
 router.post('/bank-accounts', authenticate, jsonParser, authorizeSettings('company', 'create'), asyncHandler(companyController.saveBankAccount));
 router.put('/bank-accounts/:id', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.saveBankAccount));

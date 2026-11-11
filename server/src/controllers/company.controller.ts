@@ -5,6 +5,7 @@ import { taxCodeRepository } from '../repositories/tax-code.repository.js';
 import { ribKeyValid } from '../services/salary-transfer.js';
 import { db } from '../config/database.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
+import { loadSectorStarter, sectorStarterPreview } from '../services/sector-starter.service.js';
 
 const bad = (res: Response, message: string, status = 400) => res.status(status).json({ success: false, error: { message } });
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -48,6 +49,17 @@ export const companyController = {
     const [current, available] = await Promise.all([sectorRepository.current(), sectorRepository.list()]);
     const labels = await sectorRepository.labels(current.code);
     res.json({ success: true, data: { current, labels, available: available.map(s => ({ code: s.code, label: s.label })) } });
+  },
+
+  /** Données de départ du secteur courant (phase 9.3) : aperçu, et chargement à la demande. */
+  async sectorStarter(_req: AuthRequest, res: Response) {
+    const current = await sectorRepository.current();
+    res.json({ success: true, data: { sector: current.code, preview: sectorStarterPreview(current.code) } });
+  },
+  async loadSectorStarter(req: AuthRequest, res: Response) {
+    const current = await sectorRepository.current();
+    const result = await loadSectorStarter(current.code, req.user!.userId);
+    res.json({ success: true, data: result });
   },
 
   /** Change le secteur de la société (réservé à la direction via la route). */
