@@ -3,6 +3,11 @@
    réglage, barre d'enregistrement et recherche ⌘K. Toujours sous .odoo-scope.
    ═══════════════════════════════════════════════════════════════════════ */
 
+/* Coquille pleine largeur, alignée sur les modules (ModuleShell) : plus de
+   centrage max-w ni de gouttières vides, juste une marge interne modérée. */
+.odoo-settings-shell { padding: 1rem 1.25rem; }
+@media (max-width: 760px) { .odoo-settings-shell { padding: 0.75rem 0.875rem; } }
+
 .odoo-settings { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 1.25rem; align-items: start; }
 @media (max-width: 900px) { .odoo-settings { grid-template-columns: minmax(0, 1fr); } }
 

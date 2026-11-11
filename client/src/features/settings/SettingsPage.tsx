@@ -193,7 +193,7 @@ function SettingsShell() {
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
 
   return (
-    <div className="odoo-scope max-w-7xl mx-auto" style={{ minHeight: 0, background: 'transparent' }}>
+    <div className="odoo-scope odoo-settings-shell" style={{ minHeight: 0, background: 'transparent' }}>
       <h1 className="odoo-settings-title" style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Paramètres</h1>
 
       <div className="odoo-settings">
