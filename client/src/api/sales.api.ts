@@ -5,7 +5,7 @@ export const salesApi = {
   getById: (id: string) => api.get(`/sales/${id}`).then(r => r.data.data),
   checkout: (data: Record<string, any>) => api.post('/sales/checkout', data).then(r => r.data.data),
   /** Règles de caisse (mig 374). */
-  posRules: (): Promise<{ sellWithoutStock: boolean; personSizes: number[] }> => api.get('/sales/pos-rules').then(r => r.data.data),
+  posRules: (): Promise<{ sellWithoutStock: boolean; personSizes: number[]; requireUnsoldInventory?: boolean }> => api.get('/sales/pos-rules').then(r => r.data.data),
   pay: (id: string, data: { paymentMethod: string; paidAt?: string }) => api.post(`/sales/${id}/pay`, data).then(r => r.data.data),
   /** Facture depuis un ticket (phase 5.5) : pièce légale pour une vente déjà encaissée. */
   invoice: (id: string, customerId?: string) => api.post(`/sales/${id}/invoice`, customerId ? { customerId } : {}).then(r => r.data.data),

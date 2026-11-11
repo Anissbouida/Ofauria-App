@@ -7,6 +7,7 @@ import { ROLE_GROUPS } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
 import { reconciliationApi, type ReconDaySummary } from '../../api/reconciliation.api';
 import { unsoldDecisionApi } from '../../api/unsold-decision.api';
+import { salesApi } from '../../api/sales.api';
 import {
   FicheBesoinsView, DayView, CatalogView, ReportView, CarryOverSettingsView, SlotsSettingsView, DarijaSettingsView,
 } from '../reconciliation/ReconciliationPage';
@@ -64,6 +65,9 @@ export default function JourneeBoutiquePage() {
   });
   const reconDay = reconDays[0];
   const decisions: number = unsoldToday?.total ?? 0;
+  // Contrôle des invendus optionnel (phase 8.2) : un secteur sans vitrine ferme sans inventaire.
+  const { data: posRules } = useQuery({ queryKey: ['pos-rules'], queryFn: salesApi.posRules });
+  const showUnsold = posRules?.requireUnsoldInventory !== false;
 
   const steps: Step[] = [];
   if (canCount) {
@@ -74,15 +78,17 @@ export default function JourneeBoutiquePage() {
     const lines = Number(reconDay?.line_count ?? 0);
     steps.push({ key: 'ventes', label: 'Appro & ventes', detail: reconDay ? `${lines} produit${lines > 1 ? 's' : ''} suivis` : 'Journée à ouvrir', done: !!reconDay && lines > 0, tab: 'ventes' });
   }
-  steps.push({ key: 'invendus', label: 'Invendus', detail: decisions > 0 ? `${decisions} décision${decisions > 1 ? 's' : ''}` : 'À décider le soir', done: decisions > 0, tab: 'invendus' });
+  if (showUnsold) steps.push({ key: 'invendus', label: 'Invendus', detail: decisions > 0 ? `${decisions} décision${decisions > 1 ? 's' : ''}` : 'À décider le soir', done: decisions > 0, tab: 'invendus' });
   if (isManager) {
     steps.push({ key: 'cloture', label: 'Clôture', detail: reconDay?.status === 'closed' ? 'Journée clôturée' : 'Journée ouverte', done: reconDay?.status === 'closed', tab: 'ventes' });
   }
   const currentIdx = steps.findIndex(s => !s.done);
 
   // ── Écran : URL, sinon l'étape en cours ──
-  const views: ModuleView[] = VIEWS.map(({ tab: _t, vue: _v, manager, ...v }) => ({ ...v, hidden: manager && !isManager }));
-  const visible = VIEWS.filter(v => !v.manager || isManager);
+  // Phase 8.2 : masquer les écrans d'invendus quand le contrôle est désactivé.
+  const vrows = VIEWS.filter(v => showUnsold || !v.key.includes('invendus'));
+  const views: ModuleView[] = vrows.map(({ tab: _t, vue: _v, manager, ...v }) => ({ ...v, hidden: manager && !isManager }));
+  const visible = vrows.filter(v => !v.manager || isManager);
   const [searchParams, setSearchParams] = useSearchParams();
   const fromUrl = searchParams.get('tab') as Tab | null;
   const fallback = steps[currentIdx]?.tab ?? 'invendus';

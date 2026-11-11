@@ -18,6 +18,7 @@ const DEFAULTS: Record<string, unknown> = {
   'sales.pricing': { max_discount_pct_sales: 10, max_discount_pct_manager: 30, max_price_override_pct: 30 } satisfies PricingRules,
   'sales.legal_mentions': { enforce_customer_ice: false } satisfies LegalMentionsRules,
   'sales.returns': { enabled: false, max_days: 14, max_amount_without_approval: 500 } satisfies ReturnRules,
+  'sales.closure': { require_unsold_inventory: true },
   'sales.vat_regime': { mode: 'debit' },
   'sales.stamp_duty': { enabled: false, rate_pct: 0.25, min_dh: 1, cash_only: true } satisfies StampDutyRules,
 };
@@ -91,6 +92,16 @@ export async function vatRegime(): Promise<VatRegime> {
 export async function posAllowsNegativeStock(): Promise<boolean> {
   if (FLAGS.POS_ALLOW_NEGATIVE_STOCK) return true;
   return (await getParameter<PosStockRule>('sales.pos_stock')).mode === 'allow';
+}
+
+/**
+ * Clôture de caisse (phase 8.2) : le contrôle des invendus (inventaire de vitrine) devient
+ * une option. true (défaut, Boulangerie) = l'inventaire des invendus est demandé à la
+ * fermeture ; false (ex. secteur « Générique ») = la caisse se ferme sans inventaire de vitrine.
+ */
+export async function requiresUnsoldInventory(): Promise<boolean> {
+  const v = await getParameter<{ require_unsold_inventory?: boolean }>('sales.closure');
+  return v?.require_unsold_inventory !== false;
 }
 
 /** Entremets par personne (mig 377) : tailles standard proposées en caisse. */

@@ -140,6 +140,14 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'sales.closure', domain: 'sales', section: 'business',
+    label: 'Clôture de caisse',
+    help: 'Contrôle des invendus à la fermeture : activé (boulangerie), la journée boutique demande l\'inventaire de vitrine ; désactivé (ex. secteur générique), la caisse se ferme sans inventaire (phase 8.2).',
+    fields: [{ name: 'require_unsold_inventory', label: 'Inventaire des invendus à la fermeture', type: 'boolean' }],
+    defaults: { require_unsold_inventory: true },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'sales.vat_regime', domain: 'sales', section: 'business',
     label: 'Régime de TVA',
     help: 'Débit : la TVA est exigible dès la facture. Encaissement : exigible au paiement. Réglage informatif en attente des règles de déclaration (phase 5.7, expert-comptable).',

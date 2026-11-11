@@ -7,7 +7,7 @@ import { validate } from '../middleware/validate.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { checkoutSchema, paySaleSchema } from '../validators/sale.validator.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
-import { posAllowsNegativeStock, getPersonSizes } from '../services/module-parameters.service.js';
+import { posAllowsNegativeStock, getPersonSizes, requiresUnsoldInventory } from '../services/module-parameters.service.js';
 
 const router = Router();
 
@@ -17,7 +17,7 @@ const router = Router();
 // asyncHandler route le rejet vers le middleware d'erreur -> reponse propre.
 // Règles de caisse (mig 374) lues par le POS : vente sans stock vitrine autorisée ou non.
 router.get('/pos-rules', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(async (_req, res) => {
-  res.json({ success: true, data: { sellWithoutStock: await posAllowsNegativeStock(), personSizes: await getPersonSizes() } });
+  res.json({ success: true, data: { sellWithoutStock: await posAllowsNegativeStock(), personSizes: await getPersonSizes(), requireUnsoldInventory: await requiresUnsoldInventory() } });
 }));
 router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(saleController.list));
 router.get('/today', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(saleController.todayStats));

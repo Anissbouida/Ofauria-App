@@ -167,7 +167,7 @@ function SettingsShell() {
       </div>
     ),
     salesRules: <ParametersPanel keys={['sales.quotes', 'sales.dunning', 'sales.legal_mentions', 'sales.vat_regime', 'sales.stamp_duty', 'sales.returns']} />,
-    posRules: <ParametersPanel keys={['sales.pos_stock', 'sales.person_sizes']} />,
+    posRules: <ParametersPanel keys={['sales.pos_stock', 'sales.person_sizes', 'sales.closure']} />,
     productCategories: <ProductCategoriesTab />,
     tax: <TaxCodesTab />,
     currencies: <CurrenciesTab />,
