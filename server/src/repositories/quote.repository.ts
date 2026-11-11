@@ -18,7 +18,13 @@ import { getParameter, type PricingRules } from '../services/module-parameters.s
  */
 
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'refused' | 'expired' | 'converted' | 'cancelled';
-export type QuoteLineInput = { productId: string; quantity: number; unitPrice?: number | null; tvaRate?: number | null; description?: string | null };
+// Lignes libres/sections (phase 11, D3-24) : lineType 'free' = texte + prix saisi
+// sans article ; 'section' = titre de lot (sans montant). 'product' par défaut.
+export type QuoteLineInput = {
+  productId?: string | null; quantity?: number | null; unitPrice?: number | null;
+  tvaRate?: number | null; description?: string | null;
+  lineType?: 'product' | 'free' | 'section';
+};
 export type QuoteInput = {
   customerId?: string | null; prospectName?: string | null; prospectCompany?: string | null; prospectPhone?: string | null; prospectEmail?: string | null;
   title?: string | null; quoteDate?: string; validUntil?: string; withTax?: boolean; discountPct?: number;
@@ -61,21 +67,59 @@ async function compute(input: QuoteInput, storeId: string | null = null, role?: 
   if (input.customerId && !customer) return { error: 'Client introuvable' } as const;
   const pro = isProCustomer(customer) ? customer : null;
   const withTax = pro ? true : customer ? false : !!input.withTax;
-  if (!input.items?.length) return { error: 'Ajoutez au moins un article' } as const;
-  for (const it of input.items) {
+  const rawItems = input.items ?? [];
+  if (!rawItems.length) return { error: 'Ajoutez au moins une ligne' } as const;
+  // Partition (phase 11, D3-24) : lignes article (prix résolu par le catalogue),
+  // lignes libres (texte + prix saisi, sans article) et sections (titre de lot).
+  const productItems: QuoteLineInput[] = [];
+  for (const it of rawItems) {
+    const lt = it.lineType ?? 'product';
+    if (lt === 'section') {
+      if (!it.description?.trim()) return { error: 'Une section doit avoir un intitulé' } as const;
+      continue;
+    }
     // Quantités décimales autorisées (phase 3.4) : fini et strictement positif.
     const q = Number(it.quantity);
     if (!Number.isFinite(q) || q <= 0) return { error: 'Les quantités doivent être des nombres strictement positifs' } as const;
+    if (lt === 'free') {
+      const up = it.unitPrice != null ? Number(it.unitPrice) : NaN;
+      if (!Number.isFinite(up) || up < 0) return { error: 'Une ligne libre demande un prix unitaire' } as const;
+      if (!it.description?.trim()) return { error: 'Une ligne libre demande une désignation' } as const;
+    } else {
+      if (!it.productId) return { error: 'Ligne sans article : choisissez un article, ou passez-la en ligne libre' } as const;
+      productItems.push(it);
+    }
   }
-  const priced = await priceLines(input.items.map(i => ({ productId: i.productId, quantity: Number(i.quantity), unitPrice: i.unitPrice ?? null, tvaRate: i.tvaRate ?? null })), pro);
+  const hasFree = rawItems.some(i => (i.lineType ?? 'product') === 'free');
+  if (!productItems.length && !hasFree) return { error: 'Ajoutez au moins un article ou une ligne libre chiffrée' } as const;
+
+  const priced = await priceLines(productItems.map(i => ({ productId: i.productId!, quantity: Number(i.quantity), unitPrice: i.unitPrice ?? null, tvaRate: i.tvaRate ?? null })), pro);
   if ('error' in priced) return { error: priced.error as string } as const;
-  const lines = priced.lines.map((l, i) => ({
-    ...l,
-    // Prospect en HT : TVA saisie sur la ligne (pas d'historique de facturation).
-    tvaRate: withTax ? (pro ? l.tvaRate : (input.items[i].tvaRate != null ? Number(input.items[i].tvaRate) : null)) : null,
-    description: input.items[i].description?.trim() || null,
-  }));
-  const subtotal = priced.subtotal;
+
+  // Reconstruire les lignes dans l'ordre d'origine, avec leur type.
+  let pi = 0;
+  let freeSubtotal = 0;
+  const lines = rawItems.map((it) => {
+    const lt = it.lineType ?? 'product';
+    if (lt === 'section') {
+      return { lineType: 'section' as const, productId: null, description: it.description!.trim(), quantity: 0, unitPrice: 0, subtotal: 0, tvaRate: null };
+    }
+    if (lt === 'free') {
+      const qty = Number(it.quantity); const up = Number(it.unitPrice); const sub = round2(up * qty);
+      freeSubtotal += sub;
+      // Ligne libre : TVA saisie sur la ligne (particulier en TTC => pas de TVA).
+      return { lineType: 'free' as const, productId: null, description: it.description!.trim(), quantity: qty, unitPrice: up, subtotal: sub,
+        tvaRate: withTax ? (it.tvaRate != null ? Number(it.tvaRate) : null) : null };
+    }
+    const l = priced.lines[pi++];
+    return {
+      ...l, lineType: 'product' as const,
+      // Prospect en HT : TVA saisie sur la ligne (pas d'historique de facturation).
+      tvaRate: withTax ? (pro ? l.tvaRate : (it.tvaRate != null ? Number(it.tvaRate) : null)) : null,
+      description: it.description?.trim() || null,
+    };
+  });
+  const subtotal = round2(priced.subtotal + freeSubtotal);
   const pct = round2(Math.min(100, Math.max(0, Number(input.discountPct ?? 0) || 0)));
   // Plafond de remise par rôle (même règle que les commandes, O2C L3) : un devis
   // ne doit pas contourner le contrôle. Admin : libre ; rôle absent : pas de contrôle.
@@ -84,10 +128,13 @@ async function compute(input: QuoteInput, storeId: string | null = null, role?: 
     const max = role === 'manager' ? rules.max_discount_pct_manager : rules.max_discount_pct_sales;
     if (pct > max + 0.001) return { error: `Remise de ${pct} % au-delà de votre plafond (${max} %) : demandez à la direction` } as const;
   }
-  // Promotions en vigueur (mig 372), puis la remise manuelle sur le reste.
-  const promo = await documentDiscount(lines, priced.products as Record<string, any>[], subtotal, pct, { channel: 'quotes', storeId, customerId: input.customerId ?? null });
+  // Promotions en vigueur (mig 372) sur les lignes ARTICLE seulement (le moteur
+  // cible le catalogue) ; la remise manuelle en % s'applique au sous-total complet.
+  const promo = await documentDiscount(priced.lines, priced.products as Record<string, any>[], subtotal, pct, { channel: 'quotes', storeId, customerId: input.customerId ?? null });
   const discount = promo.discount;
-  const tax = withTax ? taxAfterDiscount(lines, subtotal, discount) : 0;
+  // TVA sur les lignes article ET libres (chacune à son taux) ; sections = 0.
+  const taxLines = lines.filter(l => l.lineType !== 'section');
+  const tax = withTax ? taxAfterDiscount(taxLines as Parameters<typeof taxAfterDiscount>[0], subtotal, discount) : 0;
   return { customer, pro, withTax, lines, products: priced.products, subtotal, pct, discount, promotionAmount: promo.promotionAmount, applied: promo.applied, tax, total: round2(subtotal - discount + tax) };
 }
 
@@ -155,7 +202,7 @@ export const quoteRepository = {
     const q = r.rows[0];
     if (!q) return null;
     const [items, events] = await Promise.all([
-      db.query(`SELECT qi.*, p.name AS product_name, p.price AS catalog_price FROM quote_items qi JOIN products p ON p.id = qi.product_id
+      db.query(`SELECT qi.*, p.name AS product_name, p.price AS catalog_price FROM quote_items qi LEFT JOIN products p ON p.id = qi.product_id
                  WHERE qi.quote_id = $1 ORDER BY qi.display_order`, [id]),
       db.query(`SELECT e.*, ${NAME('u')} AS by_name FROM quote_events e LEFT JOIN users u ON u.id = e.created_by WHERE e.quote_id = $1 ORDER BY e.created_at`, [id]),
     ]);
@@ -203,13 +250,13 @@ export const quoteRepository = {
     }
   },
 
-  async _writeLines(client: Runner, quoteId: string, lines: { productId: string; quantity: number; unitPrice: number; subtotal: number; tvaRate: number | null; description: string | null }[]) {
+  async _writeLines(client: Runner, quoteId: string, lines: { productId: string | null; quantity: number; unitPrice: number; subtotal: number; tvaRate: number | null; description: string | null; lineType?: 'product' | 'free' | 'section' }[]) {
     await client.query(`DELETE FROM quote_items WHERE quote_id = $1`, [quoteId]);
     let i = 0;
     for (const l of lines) {
       await client.query(
-        `INSERT INTO quote_items (quote_id, product_id, description, quantity, unit_price, tva_rate, subtotal, display_order) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [quoteId, l.productId, l.description, l.quantity, l.unitPrice, l.tvaRate, l.subtotal, i++]);
+        `INSERT INTO quote_items (quote_id, product_id, description, quantity, unit_price, tva_rate, subtotal, display_order, line_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [quoteId, l.productId ?? null, l.description, l.quantity, l.unitPrice, l.tvaRate, l.subtotal, i++, l.lineType ?? 'product']);
     }
   },
 
@@ -291,7 +338,7 @@ export const quoteRepository = {
       prospectPhone: cur.prospect_phone, prospectEmail: cur.prospect_email, title: cur.title, withTax: cur.with_tax,
       discountPct: Number(cur.discount_pct), deliveryTerms: cur.delivery_terms, notes: cur.notes, internalNotes: cur.internal_notes,
       items: cur.items.map((i: Record<string, any>) => ({ productId: i.product_id, quantity: i.quantity, unitPrice: Number(i.unit_price),
-        tvaRate: i.tva_rate != null ? Number(i.tva_rate) : null, description: i.description })),
+        tvaRate: i.tva_rate != null ? Number(i.tva_rate) : null, description: i.description, lineType: i.line_type ?? 'product' })),
     }, ctx);
     if ('data' in r && r.data) {
       await db.query(`UPDATE quotes SET revision_of = $2 WHERE id = $1`, [r.data.id, id]);
@@ -319,7 +366,7 @@ export const quoteRepository = {
       prospectPhone: cur.prospect_phone, prospectEmail: cur.prospect_email, title: cur.title, withTax: cur.with_tax,
       discountPct: Number(cur.discount_pct), deliveryTerms: cur.delivery_terms, notes: cur.notes, internalNotes: cur.internal_notes,
       items: cur.items.map((i: Record<string, any>) => ({ productId: i.product_id, quantity: i.quantity, unitPrice: Number(i.unit_price),
-        tvaRate: i.tva_rate != null ? Number(i.tva_rate) : null, description: i.description })),
+        tvaRate: i.tva_rate != null ? Number(i.tva_rate) : null, description: i.description, lineType: i.line_type ?? 'product' })),
     }, ctx);
     if (!('data' in r) || !r.data) return r;
     const newId = r.data.id as string;
@@ -389,9 +436,16 @@ export const quoteRepository = {
     if (customerId && !customer) return { error: 'Client introuvable' };
     const pro = isProCustomer(customer) ? customer : null;
     if (pro && !q.with_tax) return { error: 'Ce devis est en TTC : un client professionnel est facturé en HT. Dupliquez le devis pour ce client.' };
+    // Lignes libres/sections (phase 11, D3-24) : la commande exige un article du
+    // catalogue. On ignore les sections et on refuse si une ligne libre subsiste.
+    if ((q.items as Record<string, any>[]).some(i => (i.line_type ?? 'product') === 'free')) {
+      return { error: 'Ce devis contient des lignes libres sans article : remplacez-les par des articles du catalogue avant de convertir en commande.' };
+    }
+    const productLines = (q.items as Record<string, any>[]).filter(i => (i.line_type ?? 'product') === 'product');
+    if (!productLines.length) return { error: 'Aucune ligne article à convertir' };
     // Devis HT vers un particulier : prix ramenés en TTC ligne à ligne.
     const toTtc = !pro && q.with_tax;
-    const items = q.items.map((i: Record<string, any>) => {
+    const items = productLines.map((i: Record<string, any>) => {
       const ht = Number(i.unit_price); const t = i.tva_rate != null ? Number(i.tva_rate) : 0;
       return { productId: i.product_id, quantity: Number(i.quantity), unitPrice: toTtc ? round2(ht * (1 + t / 100)) : ht,
         tvaRate: pro ? (i.tva_rate != null ? Number(i.tva_rate) : null) : null,

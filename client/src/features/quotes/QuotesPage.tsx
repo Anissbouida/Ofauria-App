@@ -153,8 +153,13 @@ export default function QuotesPage() {
 }
 
 /* ─── Saisie ──────────────────────────────────────────────────────────────── */
-type Line = { productId: string; quantity: string; unitPrice: string; tvaRate: string; description: string };
-const emptyLine = (): Line => ({ productId: '', quantity: '1', unitPrice: '', tvaRate: '', description: '' });
+// Lignes libres/sections (phase 11, D3-24) : lineType 'free' = texte + prix sans
+// article ; 'section' = titre de lot (sans montant) ; 'product' par défaut.
+type LineType = 'product' | 'free' | 'section';
+type Line = { lineType: LineType; productId: string; quantity: string; unitPrice: string; tvaRate: string; description: string };
+const emptyLine = (): Line => ({ lineType: 'product', productId: '', quantity: '1', unitPrice: '', tvaRate: '', description: '' });
+const freeLine = (): Line => ({ lineType: 'free', productId: '', quantity: '1', unitPrice: '', tvaRate: '', description: '' });
+const sectionLine = (): Line => ({ lineType: 'section', productId: '', quantity: '', unitPrice: '', tvaRate: '', description: '' });
 const today = () => format(new Date(), 'yyyy-MM-dd');
 const addDays = (iso: string, n: number) => { const d = new Date(`${iso}T00:00:00`); d.setDate(d.getDate() + n); return format(d, 'yyyy-MM-dd'); };
 
@@ -172,7 +177,7 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
     withTax: quote?.with_tax ?? false,
   });
   const [lines, setLines] = useState<Line[]>(() => quote?.items?.length
-    ? quote.items.map(i => ({ productId: i.product_id, quantity: String(i.quantity), unitPrice: String(Number(i.unit_price)), tvaRate: i.tva_rate != null ? String(Number(i.tva_rate)) : '', description: i.description ?? '' }))
+    ? quote.items.map(i => ({ lineType: (i.line_type ?? 'product') as LineType, productId: i.product_id ?? '', quantity: i.quantity != null ? String(i.quantity) : '', unitPrice: i.unit_price != null ? String(Number(i.unit_price)) : '', tvaRate: i.tva_rate != null ? String(Number(i.tva_rate)) : '', description: i.description ?? '' }))
     : [emptyLine()]);
 
   const { data: customersResp } = useQuery({ queryKey: ['customers', 'all-for-quotes'], queryFn: () => customersApi.list({ limit: '500' }) });
@@ -203,12 +208,18 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
     setLine(i, { productId, unitPrice, tvaRate });
   };
 
-  const valid = lines.filter(l => l.productId && Number(l.quantity) > 0);
-  const subtotal = valid.reduce((s, l) => s + Math.round(Number(l.quantity) * (Number(l.unitPrice) || 0) * 100) / 100, 0);
+  // Lignes valides : article (avec article + qté), libre (désignation + qté + prix),
+  // section (intitulé). Le sous-total somme article + libre ; la section vaut 0.
+  const valid = lines.filter(l =>
+    (l.lineType === 'section' && l.description.trim())
+    || (l.lineType === 'free' && l.description.trim() && Number(l.quantity) > 0 && l.unitPrice !== '')
+    || (l.lineType === 'product' && l.productId && Number(l.quantity) > 0));
+  const amountLines = valid.filter(l => l.lineType !== 'section');
+  const subtotal = amountLines.reduce((s, l) => s + Math.round(Number(l.quantity) * (Number(l.unitPrice) || 0) * 100) / 100, 0);
   const pct = Math.min(100, Math.max(0, Number(head.discountPct) || 0));
   const discount = Math.round(subtotal * pct) / 100;
   const ratio = subtotal > 0 ? 1 - discount / subtotal : 1;
-  const tax = withTax ? valid.reduce((s, l) => s + (Number(l.tvaRate) ? Math.round(Number(l.quantity) * (Number(l.unitPrice) || 0) * ratio * Number(l.tvaRate)) / 100 : 0), 0) : 0;
+  const tax = withTax ? amountLines.reduce((s, l) => s + (Number(l.tvaRate) ? Math.round(Number(l.quantity) * (Number(l.unitPrice) || 0) * ratio * Number(l.tvaRate)) / 100 : 0), 0) : 0;
   const total = subtotal - discount + tax;
 
   const save = useMutation({
@@ -219,8 +230,13 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
         prospectPhone: mode === 'prospect' ? prospect.phone || null : null, prospectEmail: mode === 'prospect' ? prospect.email || null : null,
         title: head.title || null, opportunityId: quote ? undefined : o?.id ?? null, quoteDate: head.quoteDate, validUntil: head.validUntil, withTax: mode === 'prospect' ? head.withTax : undefined,
         discountPct: pct, deliveryTerms: head.deliveryTerms || null, notes: head.notes || null, internalNotes: head.internalNotes || null,
-        items: valid.map(l => ({ productId: l.productId, quantity: Number(l.quantity), unitPrice: l.unitPrice === '' ? null : Number(l.unitPrice),
-          tvaRate: withTax && l.tvaRate !== '' ? Number(l.tvaRate) : null, description: l.description || null })),
+        items: valid.map(l => l.lineType === 'section'
+          ? { lineType: 'section' as const, description: l.description }
+          : {
+            lineType: l.lineType, productId: l.lineType === 'product' ? l.productId : undefined,
+            quantity: Number(l.quantity), unitPrice: l.unitPrice === '' ? null : Number(l.unitPrice),
+            tvaRate: withTax && l.tvaRate !== '' ? Number(l.tvaRate) : null, description: l.description || null,
+          }),
       };
       return quote ? quotesApi.update(quote.id, payload) : quotesApi.create(payload);
     },
@@ -274,21 +290,47 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
           <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table" style={{ minWidth: 720 }}>
             <thead><tr><th>Article</th><th>Précision</th><th style={{ width: 90 }}>Qté</th><th style={{ width: 130 }}>Prix unit. {withTax ? 'HT' : 'TTC'}</th>{withTax && <th style={{ width: 90 }}>TVA %</th>}<th style={{ textAlign: 'right', width: 120 }}>Montant</th><th style={{ width: 36 }}></th></tr></thead>
-            <tbody>{lines.map((l, i) => (
-              <tr key={i}>
-                <td style={{ minWidth: 220 }}><SearchSelect options={productOptions} value={l.productId} onChange={id => pickProduct(i, id)} placeholder="Choisir un article…" width="100%" size="md" /></td>
-                <td><input style={field} maxLength={300} value={l.description} onChange={e => setLine(i, { description: e.target.value })} placeholder="Parfum, inscription, format…" /></td>
-                <td><input style={field} type="number" min={0.001} step="0.001" value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} /></td>
-                <td><input style={field} type="number" min={0} step="0.01" value={l.unitPrice} onChange={e => setLine(i, { unitPrice: e.target.value })} /></td>
-                {withTax && <td><select style={field} value={l.tvaRate} onChange={e => setLine(i, { tvaRate: e.target.value })}>{TVA_RATES.map(r => <option key={r} value={r}>{r === '' ? '—' : `${r} %`}</option>)}</select></td>}
-                <td style={{ textAlign: 'right' }}>{l.productId ? n2(Math.round(Number(l.quantity) * (Number(l.unitPrice) || 0) * 100) / 100) : ''}</td>
-                <td><button type="button" className="odoo-pager-btn" aria-label="Retirer la ligne" onClick={() => setLines(lines.length > 1 ? lines.filter((_, k) => k !== i) : [emptyLine()])}><Trash2 size={13} /></button></td>
-              </tr>
-            ))}</tbody>
+            <tbody>{lines.map((l, i) => {
+              const del = <td><button type="button" className="odoo-pager-btn" aria-label="Retirer la ligne" onClick={() => setLines(lines.length > 1 ? lines.filter((_, k) => k !== i) : [emptyLine()])}><Trash2 size={13} /></button></td>;
+              // Section (phase 11, D3-24) : intitulé de lot sur toute la largeur.
+              if (l.lineType === 'section') return (
+                <tr key={i} style={{ background: 'var(--odoo-bg-alt)' }}>
+                  <td colSpan={withTax ? 6 : 5}><input style={{ ...field, fontWeight: 600 }} maxLength={300} value={l.description} onChange={e => setLine(i, { description: e.target.value })} placeholder="Titre de section (ex. : Lot 1 — Prestations)" /></td>
+                  {del}
+                </tr>
+              );
+              const amount = n2(Math.round(Number(l.quantity) * (Number(l.unitPrice) || 0) * 100) / 100);
+              // Ligne libre : désignation saisie à la place de l'article.
+              if (l.lineType === 'free') return (
+                <tr key={i}>
+                  <td style={{ minWidth: 220 }}><input style={field} maxLength={300} value={l.description} onChange={e => setLine(i, { description: e.target.value })} placeholder="Désignation libre (sans article)…" /></td>
+                  <td style={{ opacity: 0.6, fontSize: 12 }}>ligne libre</td>
+                  <td><input style={field} type="number" min={0.001} step="0.001" value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} /></td>
+                  <td><input style={field} type="number" min={0} step="0.01" value={l.unitPrice} onChange={e => setLine(i, { unitPrice: e.target.value })} /></td>
+                  {withTax && <td><select style={field} value={l.tvaRate} onChange={e => setLine(i, { tvaRate: e.target.value })}>{TVA_RATES.map(r => <option key={r} value={r}>{r === '' ? '—' : `${r} %`}</option>)}</select></td>}
+                  <td style={{ textAlign: 'right' }}>{l.description && l.unitPrice !== '' ? amount : ''}</td>
+                  {del}
+                </tr>
+              );
+              return (
+                <tr key={i}>
+                  <td style={{ minWidth: 220 }}><SearchSelect options={productOptions} value={l.productId} onChange={id => pickProduct(i, id)} placeholder="Choisir un article…" width="100%" size="md" /></td>
+                  <td><input style={field} maxLength={300} value={l.description} onChange={e => setLine(i, { description: e.target.value })} placeholder="Parfum, inscription, format…" /></td>
+                  <td><input style={field} type="number" min={0.001} step="0.001" value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} /></td>
+                  <td><input style={field} type="number" min={0} step="0.01" value={l.unitPrice} onChange={e => setLine(i, { unitPrice: e.target.value })} /></td>
+                  {withTax && <td><select style={field} value={l.tvaRate} onChange={e => setLine(i, { tvaRate: e.target.value })}>{TVA_RATES.map(r => <option key={r} value={r}>{r === '' ? '—' : `${r} %`}</option>)}</select></td>}
+                  <td style={{ textAlign: 'right' }}>{l.productId ? amount : ''}</td>
+                  {del}
+                </tr>
+              );
+            })}</tbody>
           </table>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
             <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, emptyLine()])} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Ajouter une ligne</button>
+            {/* Lignes libres / sections (phase 11, D3-24). */}
+            <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, freeLine()])} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Ligne libre</button>
+            <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, sectionLine()])} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Section</button>
             <table style={{ fontSize: '0.875rem', minWidth: 280 }}>
               <tbody>
                 <tr><td>Sous-total {withTax ? 'HT' : 'TTC'}</td><td style={{ textAlign: 'right' }}>{n2(subtotal)} DH</td></tr>
@@ -450,15 +492,23 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
 
             <table className="odoo-table">
               <thead><tr><th>Article</th><th style={{ textAlign: 'right' }}>Qté</th><th style={{ textAlign: 'right' }}>Prix unit. {q.with_tax ? 'HT' : 'TTC'}</th>{q.with_tax && <th style={{ textAlign: 'right' }}>TVA</th>}<th style={{ textAlign: 'right' }}>Montant</th></tr></thead>
-              <tbody>{(q.items ?? []).map(i => (
-                <tr key={i.id}>
-                  <td>{i.product_name}{i.description && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{i.description}</div>}</td>
-                  <td style={{ textAlign: 'right' }}>{i.quantity}</td>
-                  <td style={{ textAlign: 'right' }}>{n2(i.unit_price)}</td>
-                  {q.with_tax && <td style={{ textAlign: 'right' }}>{i.tva_rate != null ? `${Number(i.tva_rate)} %` : '—'}</td>}
-                  <td style={{ textAlign: 'right' }}>{n2(i.subtotal)}</td>
-                </tr>
-              ))}</tbody>
+              <tbody>{(q.items ?? []).map(i => {
+                // Section (phase 11, D3-24) : intitulé de lot sur toute la largeur.
+                if ((i.line_type ?? 'product') === 'section') return (
+                  <tr key={i.id} style={{ background: 'var(--odoo-bg-alt)' }}>
+                    <td colSpan={q.with_tax ? 5 : 4} style={{ fontWeight: 600 }}>{i.description}</td>
+                  </tr>
+                );
+                return (
+                  <tr key={i.id}>
+                    <td>{i.product_name || i.description}{i.product_name && i.description && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{i.description}</div>}</td>
+                    <td style={{ textAlign: 'right' }}>{i.quantity}</td>
+                    <td style={{ textAlign: 'right' }}>{i.unit_price != null ? n2(i.unit_price) : '—'}</td>
+                    {q.with_tax && <td style={{ textAlign: 'right' }}>{i.tva_rate != null ? `${Number(i.tva_rate)} %` : '—'}</td>}
+                    <td style={{ textAlign: 'right' }}>{n2(i.subtotal)}</td>
+                  </tr>
+                );
+              })}</tbody>
               <tfoot>
                 <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Sous-total {q.with_tax ? 'HT' : 'TTC'}</td><td style={{ textAlign: 'right' }}>{n2(q.subtotal)}</td></tr>
                 {Number(q.promotion_amount) > 0 && <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Promotions</td><td style={{ textAlign: 'right' }}>−{n2(q.promotion_amount)}</td></tr>}

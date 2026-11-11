@@ -3,8 +3,10 @@ import api from './client';
 /** Devis clients et proforma (mig 365). */
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'refused' | 'expired' | 'converted' | 'cancelled';
 export type QuoteItem = {
-  id: string; product_id: string; product_name: string; description: string | null; quantity: number; unit_price: string;
-  tva_rate: string | null; subtotal: string; catalog_price: string;
+  id: string; product_id: string | null; product_name: string | null; description: string | null; quantity: number | null; unit_price: string | null;
+  tva_rate: string | null; subtotal: string; catalog_price: string | null;
+  // Lignes libres/sections (phase 11, D3-24).
+  line_type?: 'product' | 'free' | 'section';
 };
 export type QuoteEvent = { id: string; event_type: string; from_value: string | null; to_value: string | null; note: string | null; by_name: string | null; created_at: string };
 export type Quote = {
@@ -22,7 +24,9 @@ export type QuoteInput = {
   customerId?: string | null; prospectName?: string | null; prospectCompany?: string | null; prospectPhone?: string | null; prospectEmail?: string | null;
   title?: string | null; opportunityId?: string | null; quoteDate?: string; validUntil?: string; withTax?: boolean; discountPct?: number;
   deliveryTerms?: string | null; notes?: string | null; internalNotes?: string | null;
-  items: { productId: string; quantity: number; unitPrice?: number | null; tvaRate?: number | null; description?: string | null }[];
+  // Lignes libres/sections (phase 11, D3-24) : 'free' = désignation + prix sans
+  // article ; 'section' = intitulé sans montant ; 'product' (défaut) = article.
+  items: { lineType?: 'product' | 'free' | 'section'; productId?: string; quantity?: number; unitPrice?: number | null; tvaRate?: number | null; description?: string | null }[];
 };
 export type QuotesOverview = {
   byStatus: Record<string, { count: number; amount: number; overdue: number; expiring: number }>;

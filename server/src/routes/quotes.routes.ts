@@ -18,13 +18,21 @@ export const quotesRouter = Router();
 const DIRECTION = ROLE_GROUPS.ADMIN_MANAGER;
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+// Lignes libres/sections (phase 11, D3-24) : une ligne article a productId +
+// quantité ; une ligne libre a désignation + prix ; une section a un intitulé.
 const line = z.object({
-  productId: z.string().uuid(),
-  quantity: z.coerce.number().int().positive().max(1_000_000),
+  lineType: z.enum(['product', 'free', 'section']).optional(),
+  productId: z.string().uuid().nullish(),
+  quantity: z.coerce.number().positive().max(1_000_000).nullish(),
   unitPrice: z.coerce.number().min(0).max(10_000_000).nullish(),
   tvaRate: z.coerce.number().min(0).max(100).nullish(),
   description: z.string().trim().max(300).nullish(),
-});
+}).refine((l) => {
+  const lt = l.lineType ?? 'product';
+  if (lt === 'section') return !!l.description;
+  if (lt === 'free') return !!l.description && l.unitPrice != null && l.quantity != null;
+  return !!l.productId && l.quantity != null;
+}, { message: 'Ligne invalide : article + quantité, ou ligne libre (désignation + prix), ou section (intitulé)' });
 const body = z.object({
   customerId: z.string().uuid().nullish(),
   prospectName: z.string().trim().max(160).nullish(),
@@ -152,9 +160,15 @@ quotesRouter.get('/:id/pdf', authenticate, authorize(...DIRECTION), asyncHandler
     customerPhone: q.customer_phone ?? q.prospect_phone ?? undefined,
     customerEmail: q.customer_email ?? q.prospect_email ?? undefined,
     customerICE: q.customer_ice ?? undefined,
+    // Lignes libres/sections (phase 11, D3-24) : pas d'article → désignation
+    // libre ; une section (sans montant) sort en ligne de titre, qté/prix vides.
     items: items.map(it => ({
-      description: it.description ? `${it.product_name} — ${it.description}` : it.product_name,
-      quantity: Number(it.quantity), unit_price: Number(it.unit_price), subtotal: Number(it.subtotal),
+      description: it.product_name
+        ? (it.description ? `${it.product_name} — ${it.description}` : it.product_name)
+        : (it.description || ''),
+      quantity: it.quantity != null ? Number(it.quantity) : 0,
+      unit_price: it.unit_price != null ? Number(it.unit_price) : 0,
+      subtotal: it.subtotal != null ? Number(it.subtotal) : 0,
     })),
     totalHT: Number(q.subtotal),
     discountLabel: pct > 0 ? `${pct} % (-${n2(Number(q.discount_amount))} DH)` : '0 %',
