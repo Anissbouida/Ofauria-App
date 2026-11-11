@@ -8,6 +8,7 @@ import { expireDue as loyaltyExpireDue } from './loyalty.js';
 import { deliveryNoteRepository } from '../repositories/delivery-note.repository.js';
 import { toOrderRepository } from '../repositories/to-order.repository.js';
 import { purchaseRequestRepository } from '../repositories/purchase-request.repository.js';
+import { webhookRepository } from '../repositories/webhook.repository.js';
 
 /**
  * Tâches planifiées (mig 364).
@@ -236,8 +237,14 @@ async function purchaseSuggestions(): Promise<JobResult> {
   return { items: created, message: created ? `${created} demande(s) d'achat proposée(s)` : 'Aucune nouvelle proposition (besoins couverts)' };
 }
 
+async function webhookOutbox(): Promise<JobResult> {
+  const r = await webhookRepository.deliverPending();
+  return { items: r.sent, message: `${r.sent} envoyé(s)${r.failed ? ` · ${r.failed} échec(s)` : ''}` };
+}
+
 export const JOBS: Record<string, Handler> = {
   email_outbox: emailOutbox,
+  webhook_outbox: webhookOutbox,
   purchase_suggestions: purchaseSuggestions,
   complaints_overdue: complaintsOverdue,
   project_tasks_overdue: projectTasksOverdue,

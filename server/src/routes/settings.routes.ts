@@ -9,6 +9,7 @@ import { documentsNotificationsController as docs } from '../controllers/documen
 import { dataController } from '../controllers/data.controller.js';
 import { approvalRulesController } from '../controllers/approval-rules.controller.js';
 import { setupController } from '../controllers/setup.controller.js';
+import { apiSettingsController } from '../controllers/api-settings.controller.js';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorizeSettings, authorizeSettingsUpdate } from '../middleware/settings-access.middleware.js';
@@ -70,6 +71,16 @@ router.get('/approval-rules', authenticate, authorizeSettings('approvals'), asyn
 router.post('/approval-rules', authenticate, jsonParser, authorizeSettings('approvals', 'create'), asyncHandler(approvalRulesController.create));
 router.put('/approval-rules/:code', authenticate, jsonParser, authorizeSettings('approvals', 'edit'), asyncHandler(approvalRulesController.update));
 router.delete('/approval-rules/:code', authenticate, authorizeSettings('approvals', 'delete'), asyncHandler(approvalRulesController.remove));
+
+// API publique et webhooks (phase 10.2) : section « Entreprise » (direction).
+// La clé / le secret ne sont renvoyés en clair qu'à la création.
+router.get('/api-keys', authenticate, authorizeSettings('company'), asyncHandler(apiSettingsController.listKeys));
+router.post('/api-keys', authenticate, jsonParser, authorizeSettings('company', 'create'), asyncHandler(apiSettingsController.createKey));
+router.delete('/api-keys/:id', authenticate, authorizeSettings('company', 'delete'), asyncHandler(apiSettingsController.revokeKey));
+router.get('/webhooks', authenticate, authorizeSettings('company'), asyncHandler(apiSettingsController.listWebhooks));
+router.post('/webhooks', authenticate, jsonParser, authorizeSettings('company', 'create'), asyncHandler(apiSettingsController.createWebhook));
+router.put('/webhooks/:id', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(apiSettingsController.setWebhookActive));
+router.delete('/webhooks/:id', authenticate, authorizeSettings('company', 'delete'), asyncHandler(apiSettingsController.removeWebhook));
 
 router.get('/data/status', authenticate, authorizeSettings('data'), asyncHandler(dataController.status));
 router.get('/data/import/:entity/template', authenticate, authorizeSettings('data'), asyncHandler(dataController.template));

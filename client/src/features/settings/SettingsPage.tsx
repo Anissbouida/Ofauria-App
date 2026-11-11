@@ -29,6 +29,7 @@ import DocumentsTab from './DocumentsTab';
 import NotificationsTab from './NotificationsTab';
 import DataTab from './DataTab';
 import ApprovalsTab from './ApprovalsTab';
+import IntegrationsTab from './IntegrationsTab';
 import RfqCriteriaCard from './RfqCriteriaCard';
 import ReceptionQcCategoriesCard from './ReceptionQcCategoriesCard';
 import RevenueFamiliesCard from './RevenueFamiliesCard';
@@ -186,6 +187,7 @@ function SettingsShell() {
     customFields: <CustomFieldsTab />,
     jobs: <JobsTab />,
     approvals: <ApprovalsTab />,
+    integrations: <IntegrationsTab />,
     audit: <AuditLogTab />,
   };
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);

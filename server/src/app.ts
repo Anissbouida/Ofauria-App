@@ -7,6 +7,7 @@ import pinoHttp from 'pino-http';
 import { fileURLToPath } from 'url';
 import { env } from './config/env.js';
 import routes from './routes/index.js';
+import publicApiRoutes from './routes/public.routes.js';
 import { cronTick } from './routes/automation.routes.js';
 import { errorHandler } from './middleware/error.middleware.js';
 import { originCheck } from './middleware/csrf.middleware.js';
@@ -117,6 +118,10 @@ app.use(cookieParser());
 // Déclencheur des tâches planifiées (Cloud Scheduler) : authentifié par secret, sans cookie ni
 // Origin, donc monté avant le contrôle anti-CSRF (mig 364).
 app.post('/api/v1/cron/tick', cronTick);
+
+// API publique (phase 10.2) : clé Bearer, ni cookie ni Origin — montée avant le
+// contrôle anti-CSRF, comme /cron/tick. Son routeur porte son propre parser JSON.
+app.use('/api/v1/public', publicApiRoutes);
 
 app.use('/api/v1', originCheck(allowedOrigins));
 

@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Store, Paintbrush, Printer, Radio, ShoppingBag, Factory, Truck, Percent, Hash, FileText,
-  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal, Layers } from 'lucide-react';
+  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal, Layers, Webhook } from 'lucide-react';
 import type { SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingAnchor } from './SettingsPrimitives';
 
@@ -13,7 +13,7 @@ import { settingAnchor } from './SettingsPrimitives';
 
 export type SettingsPageKey =
   | 'home'
-  | 'company' | 'sector' | 'stores' | 'appearance'
+  | 'company' | 'sector' | 'stores' | 'appearance' | 'integrations'
   | 'print' | 'channels' | 'sachets' | 'salesRules' | 'posRules' | 'productCategories'
   | 'production' | 'purchasing'
   | 'tax' | 'currencies' | 'numbering' | 'documents' | 'ledger'
@@ -58,6 +58,8 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
     keywords: 'secteur activite metier pack boulangerie generique negoce modules industrie services' },
   { key: 'stores', group: 'Entreprise', section: 'stores', label: 'Établissements', icon: Store,
     description: 'Boutiques, laboratoire, entrepôt, siège', keywords: 'boutique magasin point de vente laboratoire entrepot siege adresse' },
+  { key: 'integrations', group: 'Entreprise', section: 'company', label: 'Intégrations', icon: Webhook,
+    description: 'API publique : clés d\'accès et webhooks', keywords: 'api cle key webhook integration site marchand bearer notification sortante' },
   { key: 'appearance', group: 'Entreprise', section: 'appearance', label: 'Apparence', icon: Paintbrush,
     description: 'Thème, couleurs et affichage', keywords: 'theme couleur design',
     fields: ['Thèmes prédéfinis', 'Surfaces', 'Texte', 'Accents', 'Bouton principal', 'Aperçu en direct'] },
