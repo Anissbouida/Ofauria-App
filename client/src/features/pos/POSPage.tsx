@@ -21,7 +21,7 @@ import api, { serverUrl } from '../../api/client';
 import { ORDER_STATUS_LABELS, ROLE_LABELS } from '@ofauria/shared';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, Check, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock, Settings, ScanLine, ChevronRight, MessageSquareWarning, BadgePercent, Star, MoreHorizontal, PauseCircle, Play, Percent, Wifi, WifiOff, Keyboard, ChevronDown } from 'lucide-react';
+import { Minus, Plus, Trash2, Search, User, Lock, Unlock, AlertTriangle, AlertCircle, Check, CheckCircle, XCircle, ShoppingCart, ClipboardList, ClipboardCheck, Phone, Package, Factory, LogOut, RotateCcw, ArrowLeftRight, Lightbulb, Truck, Printer, Banknote, CreditCard, Coins, Layers, Clock, Settings, ScanLine, ChevronRight, MessageSquareWarning, BadgePercent, Star, MoreHorizontal, PauseCircle, Play, Percent, Wifi, WifiOff, Keyboard, ChevronDown, FileText, Smartphone } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -144,7 +144,7 @@ export default function POSPage() {
   // 'mixed' (mig 250) : reglement partage especes + carte. Jamais restaure
   // depuis localStorage (une ventilation figee n'a pas de sens d'une vente a
   // l'autre) — on ne persiste que cash/card.
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mixed'>(() => {
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mixed' | 'check' | 'mobile'>(() => {
     try {
       const saved = localStorage.getItem('pos-last-payment-method');
       if (saved === 'cash' || saved === 'card') return saved;
@@ -4604,6 +4604,8 @@ export default function POSPage() {
                   { key: 'cash' as const, label: 'Espèces', Icon: Banknote, accent: 'green' },
                   { key: 'card' as const, label: 'Carte', Icon: CreditCard, accent: 'blue' },
                   { key: 'mixed' as const, label: 'Mixte', Icon: Coins, accent: 'sky' },
+                  { key: 'check' as const, label: 'Chèque', Icon: FileText, accent: 'blue' },
+                  { key: 'mobile' as const, label: 'Mobile', Icon: Smartphone, accent: 'sky' },
                 ]).map(({ key, label, Icon, accent }) => {
                   const active = paymentMethod === key;
                   const activeCls = accent === 'green'

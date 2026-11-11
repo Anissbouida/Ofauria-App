@@ -585,7 +585,10 @@ async function saleTreasuryLines(client: PoolClient | typeof db, s: SaleRow, tot
   } else if (s.payment_method === 'card') {
     lines.push(...cardLines(total, await cardCommissionPct(client), `Vente ${s.sale_number}`));
   } else {
-    lines.push({ account_code: s.payment_method === 'cash' ? '5161' : '5141', debit: round2(total), credit: 0, label: `Vente ${s.sale_number}` });
+    // Trésorerie selon le moyen (phase 8.3) : espèces 5161, chèque 5111 (à encaisser),
+    // mobile/virement 5141 (banque).
+    const code = s.payment_method === 'cash' ? '5161' : s.payment_method === 'check' ? '5111' : '5141';
+    lines.push({ account_code: code, debit: round2(total), credit: 0, label: `Vente ${s.sale_number}` });
   }
   return lines;
 }
