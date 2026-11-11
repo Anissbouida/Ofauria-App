@@ -84,4 +84,18 @@ describe.skipIf(!hasTestDb)('BL — cycle de vie préparé/expédié/livré', ()
     expect(dn.pod_reserves).toBe('2 cartons abîmés'); // le litige se rattache au BL
     expect(dn.delivered_at).toBeTruthy();
   });
+
+  it('refuse un BL « saisie libre » pour un client particulier', async () => {
+    // Le flux BL → facture est réservé aux professionnels ; un particulier se règle
+    // en caisse. Le chemin sans commande n'était pas gardé (traces de commandes client).
+    const partId = (await p().query(`INSERT INTO customers (first_name, last_name, customer_type) VALUES ('Part','Dn ${RUN}','particulier') RETURNING id`)).rows[0].id;
+    try {
+      await expect(deliveryNoteRepository.create({
+        customerId: partId, storeId, createdBy: userId,
+        items: [{ productId, description: null, orderItemId: null, quantity: 1, unitPrice: 20, tvaRate: null }],
+      })).rejects.toThrow(/particulier/i);
+    } finally {
+      await p().query(`DELETE FROM customers WHERE id = $1`, [partId]).catch(() => undefined);
+    }
+  });
 });

@@ -210,9 +210,12 @@ function NewNoteModal({ onClose }: { onClose: () => void }) {
 
   const { data: customersResp } = useQuery({ queryKey: ['customers', 'all-for-bl'], queryFn: () => customersApi.list({ limit: '500' }) });
   const customers = ((customersResp as { data?: Record<string, any>[] } | undefined)?.data ?? []) as Record<string, any>[];
+  // Le bon de livraison est réservé aux professionnels (les particuliers se règlent
+  // en caisse, mig 354) : on écarte les fiches « particulier » du sélecteur.
   const customerOptions = useMemo(() => customers
-    .map(c => ({ id: String(c.id), label: (c.company_name as string) || [c.first_name, c.last_name].filter(Boolean).join(' '), sublabel: c.customer_type === 'professionnel' ? 'Professionnel' : 'Particulier' }))
-    .sort((a, b) => Number(b.sublabel === 'Professionnel') - Number(a.sublabel === 'Professionnel') || a.label.localeCompare(b.label)), [customers]);
+    .filter(c => (c.customer_type ?? 'particulier') !== 'particulier')
+    .map(c => ({ id: String(c.id), label: (c.company_name as string) || [c.first_name, c.last_name].filter(Boolean).join(' '), sublabel: 'Professionnel' }))
+    .sort((a, b) => a.label.localeCompare(b.label)), [customers]);
   const { data: productsResp } = useQuery({ queryKey: ['products-bl'], queryFn: () => productsApi.list({ limit: '1000' }) });
   const products = ((productsResp as { data?: Record<string, any>[] } | undefined)?.data ?? []) as Record<string, any>[];
   const productOptions = useMemo(() => products.map(p => ({ id: String(p.id), label: String(p.name), detail: p.price ? money(p.price) : undefined })), [products]);

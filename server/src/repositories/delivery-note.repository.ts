@@ -176,8 +176,14 @@ export const deliveryNoteRepository = {
     const client = outer ?? await db.getClient();
     try {
       if (!outer) await client.query('BEGIN');
-      const cust = (await client.query(`SELECT id FROM customers WHERE id = $1`, [data.customerId])).rows[0];
+      const cust = (await client.query(`SELECT id, customer_type FROM customers WHERE id = $1`, [data.customerId])).rows[0];
       if (!cust) throw fail(400, 'Client introuvable');
+      // Le bon de livraison est réservé aux professionnels : un particulier se règle
+      // en caisse contre le solde (mig 354). Garde aussi le chemin « saisie libre »
+      // (sans commande), que le contrôle par commande ci-dessous ne couvre pas.
+      if ((cust.customer_type ?? 'particulier') === 'particulier') {
+        throw fail(400, 'Client particulier : la vente se règle en caisse, sans bon de livraison');
+      }
       if (data.orderId) {
         const ok = (await client.query(
           `SELECT 1 FROM orders o JOIN customers c ON c.id = o.customer_id
