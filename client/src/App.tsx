@@ -35,6 +35,7 @@ import ProductionSettingsPage from './features/production/ProductionSettingsPage
 import SalesLayout from './features/sales/SalesLayout';
 import PriceListsPage from './features/pricing/PriceListsPage';
 import ProductTransfersPage from './features/logistics/ProductTransfersPage';
+import ProReturnsPage from './features/logistics/ProReturnsPage';
 import SalesChannelsPage from './features/sales/SalesChannelsPage';
 import QuotesPage from './features/quotes/QuotesPage';
 import CrmPage from './features/crm/CrmPage';
@@ -90,6 +91,7 @@ export default function App() {
                 <Route path="/sales-channels" element={<SalesChannelsPage />} />
                 <Route path="/price-lists" element={<PriceListsPage />} />
                 <Route path="/product-transfers" element={<ProductTransfersPage />} />
+                <Route path="/pro-returns" element={<ProReturnsPage />} />
                 <Route path="/reports" element={<ReportsPage />} />
               </Route>
               {/* Module Stock = ex-Économat (/inventory) + ex-Pesage (/warehouse), fusion du

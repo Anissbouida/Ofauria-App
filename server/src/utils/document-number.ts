@@ -3,7 +3,7 @@ import { getLocalISODate } from './timezone.js';
 /** Séries de numéros paramétrables (table document_sequences, mig 329). */
 export type DocumentType =
   | 'purchase_order' | 'reception_voucher' | 'invoice_received' | 'invoice_emitted'
-  | 'customer_order' | 'sale' | 'sale_return' | 'cash_closure' | 'bon_sortie' | 'delivery_note' | 'complaint' | 'project' | 'maintenance' | 'rfq' | 'landed_cost' | 'quote' | 'proforma' | 'dunning' | 'stock_count' | 'opportunity' | 'credit_note_emitted' | 'prepayment_emitted' | 'product_transfer';
+  | 'customer_order' | 'sale' | 'sale_return' | 'cash_closure' | 'bon_sortie' | 'delivery_note' | 'complaint' | 'project' | 'maintenance' | 'rfq' | 'landed_cost' | 'quote' | 'proforma' | 'dunning' | 'stock_count' | 'opportunity' | 'credit_note_emitted' | 'prepayment_emitted' | 'product_transfer' | 'pro_return';
 
 type Runner = { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> };
 
