@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Handshake, Loader2, Plus, Lock } from 'lucide-react';
 import { salesContractsApi, type SalesContract, type CreateContractInput } from '../../api/sales-contracts.api';
@@ -7,6 +7,7 @@ import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import SalesPageShell from './SalesPageShell';
+import { StagePipeline, type StageDef, type StageStat } from '../../components/purchasing/ProcessBoard';
 
 /**
  * Ventes › Contrats-cadres (phase 11, D3-37). Engagement de volume (quantité
@@ -22,6 +23,18 @@ function arr<T>(resp: unknown): T[] {
 
 const money = (v: number | string) => `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 const num = (v: number | string) => Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 3 });
+
+// Étapes du cycle d'un contrat-cadre pour la bande « Suivi » (gabarit page Commandes).
+const CONTRACT_STAGES: StageDef[] = [
+  { key: 'active', label: 'Actifs', hint: 'en cours', icon: Handshake },
+  { key: 'closed', label: 'Clôturés', hint: 'terminés', icon: Lock },
+];
+const chipStyle = (active: boolean): React.CSSProperties => ({
+  display: 'inline-flex', alignItems: 'center', gap: 4,
+  backgroundColor: active ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
+  color: active ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
+  fontWeight: active ? 600 : 400,
+});
 
 export default function SalesContractsPage() {
   const qc = useQueryClient();
@@ -46,6 +59,14 @@ export default function SalesContractsPage() {
   });
 
   const custName = (c: SalesContract) => c.company_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() || '—';
+
+  const [view, setView] = useState<'' | SalesContract['status']>('');
+  const stats = useMemo<Record<string, StageStat>>(() => {
+    const acc: Record<string, number> = { active: 0, closed: 0 };
+    for (const c of contracts) if (acc[c.status] !== undefined) acc[c.status] += 1;
+    return { active: { count: acc.active, sub: '' }, closed: { count: acc.closed, sub: '' } };
+  }, [contracts]);
+  const filtered = view ? contracts.filter(c => c.status === view) : contracts;
 
   return (
     <SalesPageShell icon={Handshake} title="Contrats-cadres" parent="Ventes"
@@ -99,11 +120,28 @@ export default function SalesContractsPage() {
         </div>
       )}
 
+      <StagePipeline
+        title="Suivi des contrats-cadres"
+        summary={`${contracts.length} contrat${contracts.length > 1 ? 's' : ''}`}
+        stages={CONTRACT_STAGES}
+        stats={stats}
+        isActive={(k) => view === k}
+        onPick={(k) => setView(view === k ? '' : (k as SalesContract['status']))}
+      />
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap' }}>
+        {([['active', 'Actifs', Handshake], ['closed', 'Clôturés', Lock], ['', 'Tous', Handshake]] as const).map(([k, label, Icon]) => (
+          <button key={k} type="button" onClick={() => setView(k)} className="odoo-filter-dropdown" style={chipStyle(view === k)}>
+            <Icon size={11} /> {label}
+            {k && stats[k].count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{stats[k].count}</span>}
+          </button>
+        ))}
+      </div>
+
       {isLoading ? <Loader2 className="spin" /> : (
         <table className="odoo-table">
           <thead><tr><th>Numéro</th><th>Client</th><th>Base</th><th>Engagé</th><th>Consommé</th><th>Restant</th><th>État</th><th /></tr></thead>
           <tbody>
-            {contracts.map(c => {
+            {filtered.map(c => {
               const pct = c.committed > 0 ? Math.min(100, Math.round((c.consumed / c.committed) * 100)) : 0;
               const fmt = c.basis === 'value' ? money : num;
               return (
@@ -126,7 +164,7 @@ export default function SalesContractsPage() {
                 </tr>
               );
             })}
-            {!contracts.length && <tr><td colSpan={8} style={{ textAlign: 'center', opacity: 0.6 }}>Aucun contrat-cadre.</td></tr>}
+            {!filtered.length && <tr><td colSpan={8} style={{ textAlign: 'center', opacity: 0.6 }}>Aucun contrat-cadre.</td></tr>}
           </tbody>
         </table>
       )}

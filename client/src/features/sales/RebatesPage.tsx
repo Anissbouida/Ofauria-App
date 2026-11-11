@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BadgePercent, Loader2, Plus, Lock, X } from 'lucide-react';
 import { rebatesApi, type RebateAgreement } from '../../api/rebates.api';
@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import SalesPageShell from './SalesPageShell';
+import { StagePipeline, type StageDef, type StageStat } from '../../components/purchasing/ProcessBoard';
 
 /**
  * Ventes › Ristournes de fin d'année (phase 11, D5-12). Un accord par client et
@@ -21,6 +22,19 @@ function arr<T>(resp: unknown): T[] {
 }
 const money = (v: number | string) => `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 
+// Étapes du cycle d'une ristourne pour la bande « Suivi » (gabarit page Commandes).
+const REBATE_STAGES: StageDef[] = [
+  { key: 'active', label: 'Actifs', hint: 'en cours', icon: BadgePercent },
+  { key: 'settled', label: 'Clôturés', hint: 'figés', icon: Lock },
+  { key: 'cancelled', label: 'Annulés', hint: 'annulés', icon: X },
+];
+const chipStyle = (active: boolean): React.CSSProperties => ({
+  display: 'inline-flex', alignItems: 'center', gap: 4,
+  backgroundColor: active ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
+  color: active ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
+  fontWeight: active ? 600 : 400,
+});
+
 export default function RebatesPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -32,7 +46,21 @@ export default function RebatesPage() {
   const customers = arr<{ id: string; company_name: string | null; first_name: string | null; last_name: string | null }>(customersRaw);
 
   const [form, setForm] = useState({ customerId: '', ratePercent: '', minTurnover: '' });
+  const [view, setView] = useState<'' | RebateAgreement['status']>('');
   const refresh = () => qc.invalidateQueries({ queryKey: ['rebates', year] });
+
+  const stats = useMemo<Record<string, StageStat>>(() => {
+    const acc: Record<string, { count: number; total: number }> = {
+      active: { count: 0, total: 0 }, settled: { count: 0, total: 0 }, cancelled: { count: 0, total: 0 },
+    };
+    for (const r of list) { const a = acc[r.status]; if (a) { a.count += 1; a.total += Number(r.current_amount) || 0; } }
+    return {
+      active: { count: acc.active.count, sub: money(acc.active.total) },
+      settled: { count: acc.settled.count, sub: money(acc.settled.total) },
+      cancelled: { count: acc.cancelled.count, sub: money(acc.cancelled.total) },
+    };
+  }, [list]);
+  const filtered = view ? list.filter(r => r.status === view) : list;
 
   const create = useMutation({
     mutationFn: () => rebatesApi.create({ customerId: form.customerId, year, ratePercent: Number(form.ratePercent), minTurnover: Number(form.minTurnover) || 0 }),
@@ -63,11 +91,28 @@ export default function RebatesPage() {
         </div>
       )}
 
+      <StagePipeline
+        title="Suivi des ristournes"
+        summary={`${list.length} accord${list.length > 1 ? 's' : ''} · ${year}`}
+        stages={REBATE_STAGES}
+        stats={stats}
+        isActive={(k) => view === k}
+        onPick={(k) => setView(view === k ? '' : (k as RebateAgreement['status']))}
+      />
+      <div className="odoo-search-panel" style={{ flexWrap: 'wrap' }}>
+        {([['active', 'Actifs', BadgePercent], ['settled', 'Clôturés', Lock], ['cancelled', 'Annulés', X], ['', 'Tous', BadgePercent]] as const).map(([k, label, Icon]) => (
+          <button key={k} type="button" onClick={() => setView(k)} className="odoo-filter-dropdown" style={chipStyle(view === k)}>
+            <Icon size={11} /> {label}
+            {k && stats[k].count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{stats[k].count}</span>}
+          </button>
+        ))}
+      </div>
+
       {isLoading ? <Loader2 className="spin" /> : (
         <table className="odoo-table">
           <thead><tr><th>Client</th><th>Taux</th><th>Seuil</th><th>CA</th><th>Ristourne</th><th>État</th><th /></tr></thead>
           <tbody>
-            {list.map(r => (
+            {filtered.map(r => (
               <tr key={r.id}>
                 <td>{custName(r)}</td>
                 <td>{Number(r.rate_percent)} %</td>
@@ -83,7 +128,7 @@ export default function RebatesPage() {
                 )}</td>
               </tr>
             ))}
-            {!list.length && <tr><td colSpan={7} style={{ textAlign: 'center', opacity: 0.6 }}>Aucun accord pour {year}.</td></tr>}
+            {!filtered.length && <tr><td colSpan={7} style={{ textAlign: 'center', opacity: 0.6 }}>Aucun accord pour {year}.</td></tr>}
           </tbody>
         </table>
       )}
