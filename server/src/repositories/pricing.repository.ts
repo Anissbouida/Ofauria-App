@@ -1,7 +1,9 @@
+import crypto from 'crypto';
 import { db } from '../config/database.js';
 
 // Listes de prix (phase 6.1–6.3) : CRUD des listes et de leurs lignes (paliers). La
 // résolution du prix applicable est dans services/pricing.service.ts.
+// Mise à jour en masse + historique des prix : phase 6.5.
 
 export interface PriceListInput {
   name: string;
@@ -86,5 +88,53 @@ export const priceListRepository = {
     return (await db.query(
       `DELETE FROM price_list_items WHERE id = $1 AND price_list_id = $2 RETURNING id`, [itemId, listId]
     )).rows[0] ?? null;
+  },
+
+  /**
+   * Mise à jour en masse du prix catalogue (phase 6.5) : hausse en % ou valeur fixe sur
+   * une famille, une catégorie ou une liste d'articles. Le trigger journalise chaque
+   * ligne (motif/lot/auteur posés en variables de session). Renvoie le nombre modifié
+   * et l'identifiant du lot.
+   */
+  async bulkUpdatePrices(
+    input: { categoryId?: number; family?: string; productIds?: string[]; mode: 'increase_pct' | 'set'; value: number; reason: string },
+    userId: string,
+  ): Promise<{ count: number; batchId: string }> {
+    const client = await db.getClient();
+    const batchId = crypto.randomUUID();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.price_change_reason', $1, true)`, [input.reason || '']);
+      await client.query(`SELECT set_config('app.price_change_batch', $1, true)`, [batchId]);
+      await client.query(`SELECT set_config('app.price_change_user', $1, true)`, [userId || '']);
+      const conds: string[] = ['price IS NOT NULL', 'price > 0'];
+      const params: unknown[] = [];
+      if (input.productIds?.length) { params.push(input.productIds); conds.push(`id = ANY($${params.length})`); }
+      if (input.categoryId != null) { params.push(input.categoryId); conds.push(`category_id = $${params.length}`); }
+      if (input.family) { params.push(input.family); conds.push(`category_id IN (SELECT id FROM categories WHERE family = $${params.length})`); }
+      let expr: string;
+      if (input.mode === 'set') { params.push(input.value); expr = `$${params.length}`; }
+      else { params.push(input.value); expr = `ROUND(price * (1 + $${params.length}::numeric / 100), 2)`; }
+      const res = await client.query(`UPDATE products SET price = ${expr} WHERE ${conds.join(' AND ')} RETURNING id`, params);
+      await client.query('COMMIT');
+      return { count: res.rowCount ?? 0, batchId };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  },
+
+  async priceHistory(productId?: string) {
+    const where = productId ? 'WHERE l.product_id = $1' : '';
+    const params = productId ? [productId] : [];
+    return (await db.query(
+      `SELECT l.*, p.name AS product_name, u.first_name, u.last_name
+         FROM price_change_log l
+         JOIN products p ON p.id = l.product_id
+         LEFT JOIN users u ON u.id = l.changed_by
+        ${where}
+        ORDER BY l.changed_at DESC LIMIT 200`, params)).rows;
   },
 };

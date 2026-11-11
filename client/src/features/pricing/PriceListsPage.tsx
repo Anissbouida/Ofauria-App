@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Tag, Plus, Trash2, Check } from 'lucide-react';
+import { Tag, Plus, Trash2, Check, TrendingUp, History } from 'lucide-react';
 import { pricingApi, type PriceList } from '../../api/pricing.api';
 import { salesChannelsApi } from '../../api/sales-channels.api';
 import { productsApi } from '../../api/products.api';
@@ -50,6 +50,16 @@ export default function PriceListsPage() {
 
   const [itemForm, setItemForm] = useState({ productId: '', minQuantity: '0', unitPrice: '' });
 
+  // Mise à jour en masse + historique (phase 6.5).
+  const [bulk, setBulk] = useState<{ family: string; mode: 'increase_pct' | 'set'; value: string; reason: string } | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const { data: history = [] } = useQuery({ queryKey: ['price-history'], queryFn: () => pricingApi.history(), enabled: showHistory });
+  const bulkMut = useMutation({
+    mutationFn: () => pricingApi.bulkUpdate({ mode: bulk!.mode, value: Number(bulk!.value), reason: bulk!.reason, family: bulk!.family }),
+    onSuccess: (r) => { setBulk(null); qc.invalidateQueries({ queryKey: ['price-history'] }); notify.success(`${r.count} article(s) mis à jour`); },
+    onError: (e) => notify.error(getApiErrorMessage(e, 'Échec de la mise à jour')),
+  });
+
   const field: React.CSSProperties = { padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, fontSize: '0.8125rem', background: 'var(--odoo-bg)', width: '100%' };
   const lab: React.CSSProperties = { fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', display: 'block', marginBottom: 2 };
 
@@ -60,6 +70,24 @@ export default function PriceListsPage() {
           <h2 style={{ fontSize: '1rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Tag size={16} /> Listes de prix</h2>
           <button className="odoo-btn-primary" onClick={() => createList.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Nouvelle</button>
         </div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          <button className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem' }}
+            onClick={() => setBulk({ family: '', mode: 'increase_pct', value: '5', reason: '' })}><TrendingUp size={12} /> Màj en masse</button>
+          <button className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem' }}
+            onClick={() => setShowHistory(v => !v)}><History size={12} /> Historique</button>
+        </div>
+        {showHistory && (
+          <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 8, marginBottom: 10, maxHeight: 220, overflow: 'auto', fontSize: '0.72rem' }}>
+            {history.length === 0 && <div style={{ color: 'var(--odoo-text-muted)' }}>Aucun changement.</div>}
+            {history.map(h => (
+              <div key={h.id} style={{ padding: '3px 0', borderBottom: '1px solid var(--odoo-border)' }}>
+                <strong>{h.product_name}</strong> {Number(h.old_price ?? 0).toFixed(2)} → {Number(h.new_price ?? 0).toFixed(2)}
+                {h.pct != null && <span> ({Number(h.pct) > 0 ? '+' : ''}{Number(h.pct).toFixed(1)} %)</span>}
+                <div style={{ color: 'var(--odoo-text-muted)' }}>{new Date(h.changed_at).toLocaleString('fr-FR')}{h.reason ? ` · ${h.reason}` : ''}</div>
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {lists.map((l: PriceList) => (
             <button key={l.id} onClick={() => setSelectedId(l.id)}
@@ -151,6 +179,32 @@ export default function PriceListsPage() {
         </div>
       ) : (
         <div style={{ color: 'var(--odoo-text-muted)', padding: 24 }}>Sélectionnez une liste ou créez-en une.</div>
+      )}
+
+      {bulk && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setBulk(null)}>
+          <div style={{ background: 'var(--odoo-bg)', borderRadius: 8, padding: 20, width: 420 }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ fontWeight: 700, marginBottom: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}><TrendingUp size={16} /> Mise à jour en masse des prix</h3>
+            <label><span style={lab}>Famille d'articles</span>
+              <input style={field} value={bulk.family} onChange={(e) => setBulk({ ...bulk, family: e.target.value })} placeholder="Nom exact de la famille (categories.family)" /></label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+              <label><span style={lab}>Opération</span>
+                <select style={field} value={bulk.mode} onChange={(e) => setBulk({ ...bulk, mode: e.target.value as 'increase_pct' | 'set' })}>
+                  <option value="increase_pct">Variation en %</option>
+                  <option value="set">Fixer le prix</option>
+                </select></label>
+              <label><span style={lab}>{bulk.mode === 'increase_pct' ? 'Pourcentage (+/−)' : 'Nouveau prix'}</span>
+                <input type="number" step="0.01" style={field} value={bulk.value} onChange={(e) => setBulk({ ...bulk, value: e.target.value })} /></label>
+            </div>
+            <label style={{ display: 'block', marginTop: 8 }}><span style={lab}>Motif (tracé)</span>
+              <input style={field} value={bulk.reason} onChange={(e) => setBulk({ ...bulk, reason: e.target.value })} placeholder="Hausse tarifaire 2026…" /></label>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button className="odoo-btn-secondary" onClick={() => setBulk(null)}>Annuler</button>
+              <button className="odoo-btn-primary" disabled={!bulk.family.trim() || bulk.value === '' || bulkMut.isPending}
+                onClick={() => bulkMut.mutate()}>{bulkMut.isPending ? '…' : 'Appliquer'}</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

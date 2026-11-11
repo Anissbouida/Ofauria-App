@@ -41,6 +41,26 @@ export const pricingController = {
     res.json({ success: true, data: null });
   },
 
+  /** Mise à jour en masse du prix catalogue (phase 6.5), tracée. */
+  async bulkUpdate(req: AuthRequest, res: Response) {
+    const { mode, value, reason, categoryId, family, productIds } = req.body as Record<string, any>;
+    if (mode !== 'increase_pct' && mode !== 'set') { res.status(400).json({ success: false, error: { message: 'Mode invalide' } }); return; }
+    if (value == null || !Number.isFinite(Number(value))) { res.status(400).json({ success: false, error: { message: 'Valeur requise' } }); return; }
+    if (categoryId == null && !family && !(Array.isArray(productIds) && productIds.length)) {
+      res.status(400).json({ success: false, error: { message: 'Choisissez une famille, une catégorie ou des articles' } }); return;
+    }
+    const result = await priceListRepository.bulkUpdatePrices(
+      { categoryId: categoryId != null ? Number(categoryId) : undefined, family: family || undefined,
+        productIds: Array.isArray(productIds) ? productIds : undefined, mode, value: Number(value), reason: reason || '' },
+      req.user!.userId);
+    res.json({ success: true, data: result });
+  },
+
+  /** Historique des changements de prix (phase 6.5). */
+  async history(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await priceListRepository.priceHistory((req.query.productId as string) || undefined) });
+  },
+
   /** Prix applicable pour un article dans un contexte (caisse, devis, commande, BL). */
   async resolve(req: AuthRequest, res: Response) {
     const { productId, quantity, channelId, customerId } = req.query as Record<string, string>;

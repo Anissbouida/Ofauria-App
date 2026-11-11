@@ -43,4 +43,14 @@ export const pricingApi = {
   /** Prix applicable (caisse, devis, commande, BL) ; null si aucune liste. */
   resolve: (params: { productId: string; quantity?: number; channelId?: string; customerId?: string }) =>
     api.get('/pricing/resolve', { params }).then(r => r.data.data as ResolvedPrice | null),
+  /** Mise à jour en masse du prix catalogue (phase 6.5). */
+  bulkUpdate: (data: { mode: 'increase_pct' | 'set'; value: number; reason: string; categoryId?: number; family?: string; productIds?: string[] }) =>
+    api.post('/pricing/bulk-update', data).then(r => r.data.data as { count: number; batchId: string }),
+  history: (productId?: string) => api.get('/pricing/history', { params: productId ? { productId } : {} }).then(r => r.data.data as PriceChange[]),
 };
+
+export interface PriceChange {
+  id: string; product_id: string; product_name?: string;
+  old_price: string | number | null; new_price: string | number | null; pct: string | number | null;
+  reason: string | null; batch_id: string | null; first_name?: string | null; last_name?: string | null; changed_at: string;
+}

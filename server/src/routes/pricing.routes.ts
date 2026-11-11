@@ -10,6 +10,8 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 const router = Router();
 
 router.get('/resolve', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(pricingController.resolve));
+router.get('/history', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(pricingController.history));
+router.post('/bulk-update', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(pricingController.bulkUpdate));
 router.get('/lists', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(pricingController.list));
 router.get('/lists/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(pricingController.get));
 router.post('/lists', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(pricingController.create));
