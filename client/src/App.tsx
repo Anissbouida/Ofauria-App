@@ -13,6 +13,7 @@ import PortalPage from './features/portal/PortalPage';
 import HomePage from './features/dashboard/HomePage';
 import ProductsPage from './features/products/ProductsPage';
 import OrdersPage from './features/orders/OrdersPage';
+import DeliveryNotesPage from './features/sales/DeliveryNotesPage';
 import SalesContractsPage from './features/sales/SalesContractsPage';
 import SalesTargetsPage from './features/sales/SalesTargetsPage';
 import RebatesPage from './features/sales/RebatesPage';
@@ -91,6 +92,7 @@ export default function App() {
                 <Route path="/quotes" element={<QuotesPage />} />
                 <Route path="/dunning" element={<DunningPage />} />
                 <Route path="/orders" element={<OrdersPage />} />
+                <Route path="/delivery-notes" element={<DeliveryNotesPage />} />
                 <Route path="/sales-contracts" element={<SalesContractsPage />} />
                 <Route path="/sales-targets" element={<SalesTargetsPage />} />
                 <Route path="/rebates" element={<RebatesPage />} />

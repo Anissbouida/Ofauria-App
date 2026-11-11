@@ -1,5 +1,4 @@
 import { useState, useMemo, type CSSProperties } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ordersApi } from '../../api/orders.api';
 import { ORDER_STATUS_LABELS } from '@ofauria/shared';
@@ -19,7 +18,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import OrderFormModal from '../../components/orders/OrderFormModal';
-import ProSalesTab from '../sales/ProSalesTab';
 import { deliveryNotesApi } from '../../api/delivery-notes.api';
 
 /* ═══════════════════════ Référentiel d'affichage ═══════════════════════ */
@@ -125,17 +123,8 @@ export default function OrdersPage() {
   const [viewingOrder, setViewingOrder] = useState<OrderRow | null>(null);
   const [deliverOrder, setDeliverOrder] = useState<OrderRow | null>(null);
   const [prepayOrder, setPrepayOrder] = useState<OrderRow | null>(null);
-  // Livraisons aux professionnels (mig 352) : BL et facturation groupée, à côté des commandes.
-  // Onglet piloté par l'URL (?tab=pro) : l'entrée de menu « Bons de livraison » y mène directement.
-  const [searchParams, setSearchParams] = useSearchParams();
-  const tab: 'orders' | 'pro' = searchParams.get('tab') === 'pro' && isDirection ? 'pro' : 'orders';
-  const setTab = (next: 'orders' | 'pro') => setSearchParams(prev => {
-    const p = new URLSearchParams(prev);
-    if (next === 'pro') p.set('tab', 'pro'); else p.delete('tab');
-    return p;
-  }, { replace: true });
-  const { data: toInvoice = [] } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice(), enabled: isDirection });
-  const pendingNotes = toInvoice.reduce((c, g) => c + g.notes.length, 0);
+  // Les bons de livraison ont leur propre écran (/delivery-notes), séparé des commandes
+  // comme dans les ERP standards : cette page ne gère plus que les commandes clients.
 
   // Une seule lecture : les compteurs du pipeline et la liste partagent la même source,
   // le filtrage par statut se fait côté client (le serveur pagine à 20 par défaut).
@@ -244,32 +233,14 @@ export default function OrdersPage() {
           <ClipboardList size={14} style={{ color: 'var(--theme-accent)' }} />
           <span>Commandes</span>
           <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">{tab === 'orders' ? 'Commandes clients' : 'Bons de livraison'}</span>
+          <span className="odoo-breadcrumb-current">Commandes clients</span>
         </div>
         <div style={{ flex: 1 }} />
-        {tab === 'orders' && (
-          <button onClick={() => setShowForm(true)} className="odoo-btn-primary">
-            <Plus size={13} /> Nouvelle commande
-          </button>
-        )}
-      </div>
-
-      <div className="odoo-tabs">
-        <button type="button" onClick={() => setTab('orders')} className={`odoo-tab ${tab === 'orders' ? 'active' : ''}`}>
-          <ClipboardList size={13} style={{ marginRight: 4 }} /> Commandes clients
+        <button onClick={() => setShowForm(true)} className="odoo-btn-primary">
+          <Plus size={13} /> Nouvelle commande
         </button>
-        {isDirection && (
-          <button type="button" onClick={() => setTab('pro')} className={`odoo-tab ${tab === 'pro' ? 'active' : ''}`}
-            title="Bons de livraison et facturation groupée">
-            <Truck size={13} style={{ marginRight: 4 }} /> Bons de livraison
-            {pendingNotes > 0 && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 6 }}>{pendingNotes} à facturer</span>}
-          </button>
-        )}
       </div>
 
-      {tab === 'pro' && <div style={{ padding: '16px 20px' }}><ProSalesTab /></div>}
-
-      {tab === 'orders' && (
       <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* Alerte retards */}
         {lateOrders.length > 0 && (
@@ -503,7 +474,6 @@ export default function OrdersPage() {
           )}
         </div>
       </div>
-      )}
 
       {/* Formulaire création / édition */}
       {showForm && (
