@@ -16,6 +16,7 @@ const DEFAULTS: Record<string, unknown> = {
   'sales.pos_stock': { mode: 'block' } satisfies PosStockRule,
   'sales.person_sizes': { sizes: [4, 6, 8, 10, 12, 16] },
   'sales.pricing': { max_discount_pct_sales: 10, max_discount_pct_manager: 30, max_price_override_pct: 30 } satisfies PricingRules,
+  'sales.legal_mentions': { enforce_customer_ice: false } satisfies LegalMentionsRules,
 };
 
 /**
@@ -27,6 +28,22 @@ export type PricingRules = { max_discount_pct_sales: number; max_discount_pct_ma
 
 /** Caisse (mig 374) : 'block' = stock vitrine respecté, 'allow' = tout produit vendable même sans stock. */
 export type PosStockRule = { mode: 'block' | 'allow' };
+
+/**
+ * Mentions légales des factures émises (phase 5.6, mig 484) : contrôles obligatoires
+ * à l'émission. `enforce_customer_ice` = une facture à un client professionnel sans
+ * ICE est refusée (loi marocaine). Défaut activé ; désactivable dans Paramètres.
+ */
+export type LegalMentionsRules = { enforce_customer_ice: boolean };
+
+export async function legalMentionsRules(): Promise<LegalMentionsRules> {
+  // Forçage explicite par l'environnement (tests, par processus) : ne touche jamais la
+  // production, qui laisse la variable vide et lit le paramètre (défaut désactivé).
+  const forced = (process.env.ENFORCE_CUSTOMER_ICE ?? '').toLowerCase();
+  if (['on', '1', 'true', 'yes'].includes(forced)) return { enforce_customer_ice: true };
+  const v = await getParameter<Partial<LegalMentionsRules>>('sales.legal_mentions');
+  return { enforce_customer_ice: v?.enforce_customer_ice === true };
+}
 
 /** Vente sans stock autorisée : par le paramètre, ou par le drapeau d'environnement de test. */
 export async function posAllowsNegativeStock(): Promise<boolean> {

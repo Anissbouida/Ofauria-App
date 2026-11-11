@@ -120,6 +120,14 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'sales.legal_mentions', domain: 'sales', section: 'business',
+    label: 'Mentions légales des factures',
+    help: 'Contrôles obligatoires à l\'émission d\'une facture client. ICE exigé : une facture à un client professionnel (ou revendeur) sans ICE est refusée — complétez sa fiche. La numérotation suit la date de la facture : pas d\'antidate (phase 5.6).',
+    fields: [{ name: 'enforce_customer_ice', label: 'Exiger l\'ICE d\'un client professionnel', type: 'boolean' }],
+    defaults: { enforce_customer_ice: false },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'sales.pricing', domain: 'sales', section: 'business',
     label: 'Prix et remises sur commandes',
     help: 'Remise manuelle maximale accordée par une vendeuse ou une caissière, puis par un gérant (l\'administrateur n\'est pas limité ; la remise personnel suit le paramètre de la société). Un prix différent du prix grille est une dérogation réservée à la direction, motivée et tracée ; au-delà de l\'écart indiqué, seul l\'administrateur peut la faire (O2C L3).',

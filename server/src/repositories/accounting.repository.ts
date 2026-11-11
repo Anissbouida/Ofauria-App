@@ -1,11 +1,12 @@
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
-import { getUserTimezone } from '../utils/timezone.js';
+import { getUserTimezone, getLocalISODate } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { postOrQueue, postGoodsReceiptsForPo } from '../services/ledger-posting.service.js';
 import { fromInvoice, fromPaymentEmission, fromSale, persistEntry, autoLettrer, reverseEntriesForSource, regenerateInvoiceEntry, regeneratePaymentEntries, fromGoodsReceipt, cardCommissionPct as readCardCommissionPct } from '../services/journal-generator.service.js';
 import { round2, lineTvaAmount, headerTotalsFromLines } from '../utils/tva.js';
+import { legalMentionsRules } from '../services/module-parameters.service.js';
 import { withActor, assertReasonCode, recordAction } from '../services/document-actions.service.js';
 
 /**
@@ -15,6 +16,33 @@ import { withActor, assertReasonCode, recordAction } from '../services/document-
  * (`financial`) ; seuls l'échéance, les notes et le mode de règlement attendu se modifient.
  * La correction passe par l'annulation, qui vaut avoir. La base porte le même verrou.
  */
+/**
+ * Mentions légales à l'émission d'une facture client (phase 5.6) : ICE obligatoire pour
+ * un client professionnel/revendeur quand le contrôle est activé (paramètre
+ * sales.legal_mentions, défaut désactivé — additif). Sinon la facture est refusée
+ * (mention légale marocaine). La numérotation « selon la date » est portée par le jeton
+ * {YYYY} du numéro, aligné sur invoice_date (voir generateInvoiceNumber) ; on n'impose
+ * pas de monotonie stricte des dates, qui casserait les flux de facturation hors ordre.
+ */
+async function assertEmittedLegalMentions(
+  client: PoolClient,
+  opts: { customerId: string | null; invoiceDate: string; kind: string }
+): Promise<void> {
+  if (!opts.customerId) return;
+  const rules = await legalMentionsRules();
+  if (!rules.enforce_customer_ice) return;
+  const c = (await client.query(
+    `SELECT customer_type, ice, first_name, last_name, company_name FROM customers WHERE id = $1`,
+    [opts.customerId])).rows[0];
+  const isBusiness = c && (c.customer_type === 'professionnel' || c.customer_type === 'revendeur');
+  if (isBusiness && !String(c.ice ?? '').trim()) {
+    const who = c.company_name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'client';
+    throw Object.assign(
+      new Error(`Facture refusée : le client professionnel « ${who} » n'a pas d'ICE. Renseignez-le dans sa fiche (mention légale obligatoire).`),
+      { statusCode: 400 });
+  }
+}
+
 function assertInvoiceEditable(row: { invoice_type: string; validation_status: string }, paidAmount: number, financial = true) {
   const fail = (m: string) => { const e = new Error(m) as Error & { statusCode: number; code: string }; e.statusCode = 409; e.code = 'INVOICE_LOCKED'; throw e; };
   if (row.invoice_type === 'emitted') {
@@ -753,12 +781,14 @@ export const invoiceRepository = {
     return { ...result.rows[0], items: itemsResult.rows, payments: paymentsResult.rows };
   },
 
-  async generateInvoiceNumber(type: 'received' | 'emitted', client?: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> }): Promise<string> {
+  async generateInvoiceNumber(type: 'received' | 'emitted', client?: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> }, date?: string): Promise<string> {
     // Series « invoice_received » / « invoice_emitted » (mig 329). L'ancien
     // COUNT(*)+1 reattribuait un numero existant apres une suppression et comptait
     // les numeros fournisseurs saisis. Le client transactionnel est requis pour
     // une numerotation continue des factures emises (ROLLBACK = numero rendu).
-    return nextDocumentNumber(client ?? db, type === 'received' ? 'invoice_received' : 'invoice_emitted');
+    // Phase 5.6 : la facture émise prend son numéro sur sa propre date (jeton {YYYY}),
+    // pas sur le jour d'enregistrement.
+    return nextDocumentNumber(client ?? db, type === 'received' ? 'invoice_received' : 'invoice_emitted', date);
   },
 
   async create(data: {
@@ -793,11 +823,22 @@ export const invoiceRepository = {
       if (invoiceType === 'emitted' && !isCreditNote && data.items?.some(i => i.productId && !i.deliveryNoteItemId)) {
         throw Object.assign(new Error('Facture de marchandises : elle se fait depuis le bon de livraison (Ventes pro › À facturer). Une facture directe ne porte que des prestations.'), { statusCode: 400 });
       }
+      // Phase 5.6 : mentions légales (ICE pro) + continuité chronologique avant d'allouer
+      // le numéro, pour une facture client.
+      if (invoiceType === 'emitted') {
+        await assertEmittedLegalMentions(client, {
+          customerId: data.customerId || null,
+          invoiceDate: data.invoiceDate,
+          kind: isCreditNote ? 'credit_note' : 'invoice',
+        });
+      }
+
       // Facture client : numéro toujours pris dans la série continue (O2C L0, G-IV-05),
-      // jamais fourni par l'appelant ; un avoir a sa propre série continue (AV).
+      // jamais fourni par l'appelant ; un avoir a sa propre série continue (AV). Le
+      // numéro émis suit la date de la facture (phase 5.6).
       const invoiceNumber = isCreditNote
         ? await nextDocumentNumber(client, 'credit_note_emitted', data.invoiceDate)
-        : (invoiceType !== 'emitted' && data.invoiceNumber) || await this.generateInvoiceNumber(invoiceType as 'received' | 'emitted', client);
+        : (invoiceType !== 'emitted' && data.invoiceNumber) || await this.generateInvoiceNumber(invoiceType as 'received' | 'emitted', client, invoiceType === 'emitted' ? data.invoiceDate : undefined);
 
       // Si des lignes portent un taux de TVA explicite, elles font foi :
       // HT/TVA/TTC d'en-tete sont derives de la somme des lignes (sinon on
@@ -937,6 +978,9 @@ export const invoiceRepository = {
       const tva = round2(ttc - ht);
       const pct = Math.round((ttc / orderTotal) * 100);
 
+      // Phase 5.6 : mentions légales (ICE si le client est un professionnel).
+      await assertEmittedLegalMentions(client, { customerId: o.customer_id, invoiceDate: getLocalISODate(), kind: 'prepayment' });
+
       const invoiceNumber = await nextDocumentNumber(client, 'prepayment_emitted');
       const invResult = await client.query(
         `INSERT INTO invoices (invoice_number, invoice_type, customer_id, order_id,
@@ -998,6 +1042,9 @@ export const invoiceRepository = {
         `SELECT invoice_number FROM invoices WHERE source_sale_id = $1 AND status <> 'cancelled' LIMIT 1`, [saleId])).rows[0];
       if (existing) throw Object.assign(new Error(`Ce ticket a déjà la facture ${existing.invoice_number}`), { statusCode: 409 });
 
+      // Phase 5.6 : mentions légales (ICE si le client est un professionnel).
+      await assertEmittedLegalMentions(client, { customerId: custId, invoiceDate: getLocalISODate(), kind: 'invoice' });
+
       const items = (await client.query(
         `SELECT si.product_id, si.quantity, si.subtotal, si.tax_rate, si.tax_amount, p.name
            FROM sale_items si JOIN products p ON p.id = si.product_id
@@ -1009,7 +1056,7 @@ export const invoiceRepository = {
       const headerHt = round2(items.reduce((t, it) => t + (parseFloat(it.subtotal) - (parseFloat(it.tax_amount) || 0)), 0));
       const headerTax = round2(items.reduce((t, it) => t + (parseFloat(it.tax_amount) || 0), 0));
 
-      const invoiceNumber = await this.generateInvoiceNumber('emitted', client);
+      const invoiceNumber = await this.generateInvoiceNumber('emitted', client, getLocalISODate());
       const invResult = await client.query(
         `INSERT INTO invoices (invoice_number, invoice_type, customer_id, source_sale_id,
            invoice_date, amount, tax_amount, total_amount, paid_amount, status, payment_status,
