@@ -30,6 +30,14 @@ export const sectorRepository = {
     return def[0] ? { code: def[0].code, label: def[0].label, modules: def[0].modules ?? [], is_default: def[0].is_default } : { code: 'boulangerie', label: 'Boulangerie / Pâtisserie', modules: [], is_default: true };
   },
 
+  /** Libellés d'un secteur (phase 9.1) : clé neutre → valeur affichée. */
+  async labels(code: string): Promise<Record<string, string>> {
+    const { rows } = await db.query(`SELECT label_key, label_value FROM sector_labels WHERE sector_pack = $1`, [code]);
+    const map: Record<string, string> = {};
+    for (const r of rows) map[r.label_key] = r.label_value;
+    return map;
+  },
+
   /** Change le secteur de la société. Renvoie null si le code n'existe pas. */
   async setSector(code: string): Promise<SectorPack | null> {
     const exists = (await db.query(`SELECT 1 FROM sector_packs WHERE code = $1`, [code])).rows[0];

@@ -13,6 +13,8 @@ interface PermissionsContextType {
   canEdit: (module: AppModule) => boolean;
   canDelete: (module: AppModule) => boolean;
   getModuleConfig: (module: AppModule) => Record<string, any>;
+  /** Libellé d'une clé neutre selon le secteur (phase 9.1) ; `fallback` si non défini. */
+  sectorLabel: (key: string, fallback: string) => string;
   isLoading: boolean;
   reload: () => void;
 }
@@ -26,6 +28,8 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
   const [reloadKey, setReloadKey] = useState(0);
   // Modules activés par le secteur de la société (mig 468) ; null tant que non chargé.
   const [sectorModules, setSectorModules] = useState<Set<string> | null>(null);
+  // Libellés par secteur (phase 9.1) : clé neutre → mot affiché.
+  const [sectorLabels, setSectorLabels] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!user) {
@@ -60,7 +64,7 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
     if (!user) { setSectorModules(null); return; }
     let cancelled = false;
     settingsApi.sector()
-      .then(s => { if (!cancelled) setSectorModules(new Set(s.current.modules)); })
+      .then(s => { if (!cancelled) { setSectorModules(new Set(s.current.modules)); setSectorLabels(s.labels ?? {}); } })
       .catch(() => { if (!cancelled) setSectorModules(null); });
     return () => { cancelled = true; };
   }, [user, reloadKey]);
@@ -134,7 +138,9 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
 
   return (
     <PermissionsContext.Provider value={{
-      permissions, hasModule, canView, canCreate, canEdit, canDelete, getModuleConfig, isLoading, reload,
+      permissions, hasModule, canView, canCreate, canEdit, canDelete, getModuleConfig,
+      sectorLabel: (key: string, fallback: string) => sectorLabels[key] ?? fallback,
+      isLoading, reload,
     }}>
       {children}
     </PermissionsContext.Provider>

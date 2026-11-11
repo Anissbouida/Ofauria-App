@@ -16,7 +16,7 @@ type ProductionView = 'dashboard' | 'plans' | 'atelier' | 'forecast' | 'mrp' | '
  */
 export default function ProductionLayout() {
   const { user } = useAuth();
-  const { hasModule } = usePermissions();
+  const { hasModule, sectorLabel } = usePermissions();
   const { pathname } = useLocation();
   // Prévisions et HACCP : droit Production ET rôle chef/gérant/admin, même règle que le
   // lanceur (navigation.ts) et que les routes serveur.
@@ -39,7 +39,7 @@ export default function ProductionLayout() {
   const current = views.find(v => !v.external && v.href === pathname);
 
   return (
-    <ModuleShell title="Production" views={views} current={current} onSelect={() => {}} bar={false} flush>
+    <ModuleShell title={sectorLabel('production', 'Production')} views={views} current={current} onSelect={() => {}} bar={false} flush>
       <Outlet />
     </ModuleShell>
   );

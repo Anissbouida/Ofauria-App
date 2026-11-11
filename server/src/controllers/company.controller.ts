@@ -46,7 +46,8 @@ export const companyController = {
    *  utilisateur authentifié : le client s'en sert pour masquer les modules hors secteur. */
   async sector(_req: AuthRequest, res: Response) {
     const [current, available] = await Promise.all([sectorRepository.current(), sectorRepository.list()]);
-    res.json({ success: true, data: { current, available: available.map(s => ({ code: s.code, label: s.label })) } });
+    const labels = await sectorRepository.labels(current.code);
+    res.json({ success: true, data: { current, labels, available: available.map(s => ({ code: s.code, label: s.label })) } });
   },
 
   /** Change le secteur de la société (réservé à la direction via la route). */

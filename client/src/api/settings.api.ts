@@ -169,6 +169,8 @@ export interface SetupOverview {
 
 export interface SectorInfo {
   current: { code: string; label: string; modules: string[] };
+  // Libellés par secteur (phase 9.1) : clé neutre → mot affiché.
+  labels?: Record<string, string>;
   available: { code: string; label: string }[];
 }
 
