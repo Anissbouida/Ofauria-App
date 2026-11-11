@@ -7,6 +7,8 @@ export const salesApi = {
   /** Règles de caisse (mig 374). */
   posRules: (): Promise<{ sellWithoutStock: boolean; personSizes: number[] }> => api.get('/sales/pos-rules').then(r => r.data.data),
   pay: (id: string, data: { paymentMethod: string; paidAt?: string }) => api.post(`/sales/${id}/pay`, data).then(r => r.data.data),
+  /** Facture depuis un ticket (phase 5.5) : pièce légale pour une vente déjà encaissée. */
+  invoice: (id: string, customerId?: string) => api.post(`/sales/${id}/invoice`, customerId ? { customerId } : {}).then(r => r.data.data),
   deferred: () => api.get('/sales/deferred').then(r => r.data.data),
   /** Créances clients (mig 351) : balance âgée, tickets impayés + factures clients ouvertes. */
   receivables: () => api.get('/sales/receivables').then(r => r.data.data as ReceivablesReport),

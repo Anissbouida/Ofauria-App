@@ -14,6 +14,7 @@ import { getVitrineStock } from '../repositories/product-stock.helper.js';
 import { attendanceRepository } from '../repositories/employee.repository.js';
 import { dunningRepository } from '../repositories/dunning.repository.js';
 import { taxCodeRepository } from '../repositories/tax-code.repository.js';
+import { invoiceRepository } from '../repositories/accounting.repository.js';
 import { netFromGross, round2 } from '../utils/tva.js';
 
 export const saleController = {
@@ -417,5 +418,31 @@ export const saleController = {
     }
 
     res.json({ success: true, data: results });
+  },
+
+  /**
+   * Facture depuis un ticket de caisse (phase 5.5) : un client demande sa facture
+   * après l'achat au comptoir. La vente est déjà comptabilisée ; on émet la pièce
+   * légale (série continue) sans recompter. `customerId` facultatif si le ticket
+   * est anonyme.
+   */
+  async invoice(req: AuthRequest, res: Response) {
+    const sale = await saleRepository.findById(req.params.id);
+    if (!sale) { res.status(404).json({ success: false, error: { message: 'Vente non trouvee' } }); return; }
+    const userStoreId = req.user!.storeId;
+    if (!userStoreId && req.user!.role !== 'admin') {
+      res.status(403).json({ success: false, error: { message: 'Utilisateur non rattache a un magasin' } }); return;
+    }
+    if (userStoreId && sale.store_id && sale.store_id !== userStoreId) {
+      res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
+    }
+    const { customerId } = req.body as { customerId?: string };
+    try {
+      const inv = await invoiceRepository.createFromSale(
+        req.params.id, customerId || undefined, req.user!.userId);
+      res.status(201).json({ success: true, data: inv });
+    } catch (e) {
+      res.status((e as { statusCode?: number }).statusCode ?? 400).json({ success: false, error: { message: (e as Error).message } });
+    }
   },
 };

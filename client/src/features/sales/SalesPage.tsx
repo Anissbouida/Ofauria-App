@@ -5,6 +5,7 @@ import { salesApi } from '../../api/sales.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
 import { manualShiftEntriesApi } from '../../api/manual-shift-entries.api';
 import { returnsApi } from '../../api/returns.api';
+import { customersApi } from '../../api/customers.api';
 import { format, addDays, differenceInDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
@@ -134,6 +135,9 @@ export default function SalesPage() {
   const [importResults, setImportResults] = useState<Record<string, any>[] | null>(null);
   const [importing, setImporting] = useState(false);
   const [paySaleTarget, setPaySaleTarget] = useState<Record<string, any> | null>(null);
+  // Facture depuis un ticket (phase 5.5).
+  const [invoiceTarget, setInvoiceTarget] = useState<Record<string, any> | null>(null);
+  const [invoiceCustomerId, setInvoiceCustomerId] = useState<string>('');
   const [payPaymentMethod, setPayPaymentMethod] = useState<'cash' | 'card'>('cash');
   // Date d'encaissement choisie dans le modal de reglement (onglet Impayes).
   const [payDate, setPayDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -199,6 +203,24 @@ export default function SalesPage() {
       setPaySaleTarget(null);
     },
     onError: (e: unknown) => notify.error(getApiErrorMessage(e, "Erreur lors de l'encaissement")),
+  });
+
+  // Facture depuis un ticket (phase 5.5) : émet la pièce légale d'une vente déjà encaissée.
+  const invoiceMutation = useMutation({
+    mutationFn: ({ id, customerId }: { id: string; customerId?: string }) => salesApi.invoice(id, customerId),
+    onSuccess: (inv: Record<string, any>) => {
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['emitted-invoices'] });
+      notify.success(`Facture ${inv.invoice_number} émise`);
+      setInvoiceTarget(null);
+    },
+    onError: (e: unknown) => notify.error(getApiErrorMessage(e, "Erreur lors de l'émission de la facture")),
+  });
+  // Clients (chargés seulement pour un ticket anonyme à facturer).
+  const { data: invoiceCustomers } = useQuery({
+    queryKey: ['customers', 'for-invoice'],
+    queryFn: () => customersApi.list({ limit: '500' }),
+    enabled: !!invoiceTarget && !invoiceTarget.customer_id,
   });
 
   // Summary query (grouped views)
@@ -689,6 +711,12 @@ export default function SalesPage() {
                                 className="odoo-btn-primary"
                                 style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: '0.6875rem' }}>
                                 <Banknote size={11} /> Encaisser
+                              </button>
+                            )}
+                            {!isUnpaid && (s.sale_type === 'standard' || !s.sale_type) && (
+                              <button onClick={() => { setInvoiceCustomerId((s.customer_id as string) || ''); setInvoiceTarget(s); }}
+                                className="odoo-pager-btn" title="Établir la facture">
+                                <FileText size={13} />
                               </button>
                             )}
                             <button onClick={() => openReceipt(s.id as string)}
@@ -1203,6 +1231,53 @@ export default function SalesPage() {
                 disabled={paySaleMutation.isPending}
                 className="btn-primary flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-40">
                 {paySaleMutation.isPending ? 'En cours...' : 'Encaisser'}
+              </button>
+            </div>
+          </div>
+        </ModalBackdrop>
+      )}
+
+      {/* ── Facture depuis un ticket (phase 5.5) ── */}
+      {invoiceTarget && (
+        <ModalBackdrop onClose={() => setInvoiceTarget(null)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-4">
+              <FileText size={18} className="text-primary-600" />
+              <div>
+                <h2 className="text-lg font-bold">Établir la facture</h2>
+                <p className="text-xs text-gray-500 font-mono">{invoiceTarget.sale_number as string}</p>
+              </div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-3 mb-4 flex justify-between items-center">
+              <span className="text-sm text-gray-600">Montant TTC</span>
+              <span className="text-xl font-bold text-primary-700">{formatCurrency(parseFloat(invoiceTarget.total as string))}</span>
+            </div>
+            {invoiceTarget.customer_id ? (
+              <p className="text-sm text-gray-600 mb-5">
+                Client : <strong>{invoiceTarget.customer_first_name} {invoiceTarget.customer_last_name}</strong>.
+                La vente est déjà encaissée ; la facture reprend ses lignes sans nouvelle écriture comptable.
+              </p>
+            ) : (
+              <div className="mb-5">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Client (ticket anonyme)</label>
+                <select value={invoiceCustomerId} onChange={(e) => setInvoiceCustomerId(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-400">
+                  <option value="">— Choisir un client —</option>
+                  {((invoiceCustomers?.data ?? invoiceCustomers ?? []) as Record<string, any>[]).map((c) => (
+                    <option key={c.id as string} value={c.id as string}>
+                      {c.first_name} {c.last_name}{c.company_name ? ` (${c.company_name})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button onClick={() => setInvoiceTarget(null)} className="btn-secondary flex-1">Annuler</button>
+              <button
+                onClick={() => invoiceMutation.mutate({ id: invoiceTarget.id as string, customerId: invoiceTarget.customer_id ? undefined : invoiceCustomerId || undefined })}
+                disabled={invoiceMutation.isPending || (!invoiceTarget.customer_id && !invoiceCustomerId)}
+                className="btn-primary flex-1 disabled:opacity-40">
+                {invoiceMutation.isPending ? 'En cours...' : 'Émettre la facture'}
               </button>
             </div>
           </div>

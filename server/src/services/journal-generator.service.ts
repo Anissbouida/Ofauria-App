@@ -232,6 +232,8 @@ export interface InvoiceRow {
   kind?: string | null;
   credit_reason?: string | null;
   credited_invoice_id?: string | null;
+  /** Ticket de caisse d'origine (phase 5.5, mig 483) : écriture déjà portée par la vente. */
+  source_sale_id?: string | null;
 }
 
 export async function fromInvoice(
@@ -246,6 +248,11 @@ export async function fromInvoice(
   if (total <= 0) return null;
 
   const lettrageKey = `inv-${inv.id}`;
+
+  // Facture depuis un ticket de caisse (phase 5.5, mig 483) : la vente POS a déjà
+  // écrit l'encaissement et le produit (fromSale). Cette facture n'est qu'une pièce
+  // légale — aucune écriture, sinon le CA et la TVA compteraient deux fois.
+  if (inv.invoice_type === 'emitted' && inv.source_sale_id) return null;
 
   if (inv.invoice_type === 'received') {
     // Pattern A : Facture fournisseur

@@ -47,5 +47,7 @@ router.post(
 );
 router.post('/import', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(saleController.importCSV));
 router.post('/:id/print', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(printerController.printSale));
+// Facture depuis un ticket (phase 5.5) : pièce légale émise pour une vente déjà encaissée.
+router.post('/:id/invoice', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(saleController.invoice));
 
 export default router;

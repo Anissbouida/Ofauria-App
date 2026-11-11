@@ -968,6 +968,81 @@ export const invoiceRepository = {
   },
 
   /**
+   * Facture depuis un ticket de caisse (phase 5.5) — un client demande sa facture
+   * après l'achat au comptoir. La vente POS porte DÉJÀ l'écriture (fromSale :
+   * trésorerie → 7111 + TVA) ; cette facture reprend les lignes du ticket (HT/TVA
+   * par article) à titre de pièce légale et NE recomptabilise rien — source_sale_id
+   * fait renvoyer null à fromInvoice. Elle naît payée, le ticket étant encaissé.
+   * `customerId` ne sert que si le ticket est anonyme ; un ticket d'avance ou de
+   * commande ne se facture pas par ce chemin.
+   */
+  async createFromSale(saleId: string, customerId: string | undefined, userId: string) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const s = (await client.query(
+        `SELECT id, sale_number, customer_id, subtotal, tax_amount, total, sale_type, store_id
+           FROM sales WHERE id = $1 FOR UPDATE`, [saleId])).rows[0];
+      if (!s) throw Object.assign(new Error('Ticket introuvable'), { statusCode: 404 });
+      if (s.sale_type && s.sale_type !== 'standard') {
+        throw Object.assign(new Error('Ce ticket (avance ou commande) ne se facture pas depuis la caisse'), { statusCode: 400 });
+      }
+      const total = round2(parseFloat(s.total) || 0);
+      if (total <= 0) throw Object.assign(new Error('Ticket sans montant : facture impossible'), { statusCode: 400 });
+
+      const custId = s.customer_id || customerId || null;
+      if (!custId) throw Object.assign(new Error('Facture depuis ticket : choisissez le client'), { statusCode: 400 });
+
+      // Déjà facturé ? L'index unique partiel garantit l'unicité ; message clair avant.
+      const existing = (await client.query(
+        `SELECT invoice_number FROM invoices WHERE source_sale_id = $1 AND status <> 'cancelled' LIMIT 1`, [saleId])).rows[0];
+      if (existing) throw Object.assign(new Error(`Ce ticket a déjà la facture ${existing.invoice_number}`), { statusCode: 409 });
+
+      const items = (await client.query(
+        `SELECT si.product_id, si.quantity, si.subtotal, si.tax_rate, si.tax_amount, p.name
+           FROM sale_items si JOIN products p ON p.id = si.product_id
+          WHERE si.sale_id = $1 ORDER BY si.id`, [saleId])).rows as
+        { product_id: string; quantity: string; subtotal: string; tax_rate: string; tax_amount: string; name: string }[];
+      if (items.length === 0) throw Object.assign(new Error('Ticket sans ligne'), { statusCode: 400 });
+
+      // HT par ligne = TTC (subtotal) − TVA incluse (mig 480) ; en-tête = somme des lignes.
+      const headerHt = round2(items.reduce((t, it) => t + (parseFloat(it.subtotal) - (parseFloat(it.tax_amount) || 0)), 0));
+      const headerTax = round2(items.reduce((t, it) => t + (parseFloat(it.tax_amount) || 0), 0));
+
+      const invoiceNumber = await this.generateInvoiceNumber('emitted', client);
+      const invResult = await client.query(
+        `INSERT INTO invoices (invoice_number, invoice_type, customer_id, source_sale_id,
+           invoice_date, amount, tax_amount, total_amount, paid_amount, status, payment_status,
+           validation_status, notes, created_by, store_id, kind)
+         VALUES ($1, 'emitted', $2, $3, CURRENT_DATE, $4, $5, $6, $6, 'paid', 'paid',
+           'validated', $7, $8, $9, 'invoice') RETURNING *`,
+        [invoiceNumber, custId, saleId, headerHt, headerTax, total,
+         `Facture du ticket ${s.sale_number}`, userId, s.store_id || null]
+      );
+      const inv = invResult.rows[0];
+      for (const it of items) {
+        const qty = parseFloat(it.quantity) || 0;
+        const ht = round2(parseFloat(it.subtotal) - (parseFloat(it.tax_amount) || 0));
+        const rate = parseFloat(it.tax_rate) || 0;
+        await client.query(
+          `INSERT INTO invoice_items (invoice_id, product_id, description, quantity, unit_price, subtotal, tva_rate, tva_amount)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [inv.id, it.product_id, it.name, qty, qty > 0 ? round2(ht / qty) : ht, ht,
+           rate > 0 ? rate : null, round2(parseFloat(it.tax_amount) || 0)]
+        );
+      }
+      // Pas de postOrQueue : la vente POS a déjà écrit l'encaissement et le produit.
+      await client.query('COMMIT');
+      return inv;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  /**
    * Fusionne les factures fournisseurs des BCs passes en parametre en une seule
    * facture. Regle metier classique : un fournisseur peut livrer plusieurs BCs
    * en une fois avec une seule facture (un seul N° facture). Apres reception
