@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useSearchParams } from 'react-router-dom';
-import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent, FileSignature, BellRing, Target, BadgePercent, Repeat, Truck, BarChart3, PackageCheck, Tag } from 'lucide-react';
+import { Monitor, ClipboardList, Receipt, RotateCcw, Lock, FileText, Clock, Users, ShoppingBag, Radio, LayoutDashboard, Sparkles, Percent, FileSignature, BellRing, Target, BadgePercent, Repeat, Truck, BarChart3, PackageCheck, Tag, ArrowLeftRight } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
@@ -52,6 +52,7 @@ export default function SalesLayout() {
     // plus de renvoi vers Paramètres. Configuration réservée à la direction.
     { key: 'channels', label: 'Canaux de vente', icon: Radio, section: 'setup', href: '/sales-channels', hidden: !hasModule('sales') || !isDirection },
     { key: 'price-lists', label: 'Listes de prix', icon: Tag, section: 'setup', href: '/price-lists', hidden: !hasModule('sales') || !isDirection },
+    { key: 'product-transfers', label: 'Transferts', icon: ArrowLeftRight, section: 'operations', href: '/product-transfers', hidden: !hasModule('sales') || !isDirection },
   ];
   const tab = params.get('tab');
   const currentKey = pathname === '/sales'
