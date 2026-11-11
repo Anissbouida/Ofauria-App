@@ -788,6 +788,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     taxCode: (product?.tax_code as string) || '',
     // Base du prix catalogue (mig 479) : true = TTC (défaut), false = HT.
     priceIncludesTax: product?.price_includes_tax !== false,
+    // Prix plancher (mig 487) : sous ce prix, approbation direction requise.
+    floorPrice: product?.floor_price != null ? String(parseFloat(String(product.floor_price))) : '',
     recipeId: '',
   });
 
@@ -1063,6 +1065,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
         price: rest.saleUnit === 'person' ? (parseFloat(rest.pricePerPerson) || 0) : parseFloat(rest.price),
         pricePerPerson: rest.saleUnit === 'person' && rest.pricePerPerson !== '' ? parseFloat(rest.pricePerPerson) : null,
         costPrice: rest.costPrice ? parseFloat(rest.costPrice) : undefined,
+        floorPrice: rest.floorPrice !== '' ? parseFloat(rest.floorPrice) : null,
         responsibleUserId: rest.responsibleUserId || null,
         stockMinThreshold: parseFloat(rest.stockMinThreshold) || 0,
         minProductionQuantity: parseInt(rest.minProductionQuantity) || 0,
@@ -1450,6 +1453,10 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                         <p className="text-xs text-gray-400 mt-1">Coût d'achat unitaire (négoce).</p>
                       </>
                     )}
+                    <label style={{ ...fieldLabel, marginTop: 10 }}>Prix plancher (DH)</label>
+                    <input type="number" step="0.01" min={0} style={fieldInput}
+                      value={form.floorPrice} onChange={(e) => setForm({ ...form, floorPrice: e.target.value })} placeholder="—" />
+                    <p className="text-xs text-gray-400 mt-1">En dessous, une vente ou un devis exige l'approbation de la direction (phase 6.4). Vide = pas de plancher.</p>
                   </div>
                   )}
                 </div>

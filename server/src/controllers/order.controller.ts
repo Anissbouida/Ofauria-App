@@ -154,6 +154,12 @@ export async function priceLines(items: InItem[], pro: Record<string, unknown> |
       }
       overrideBy = ctx.userId; overrideReason = ctx.overrideReason.trim().slice(0, 300);
     }
+    // Prix plancher (phase 6.4) : sous le plancher, réservé à la direction (admin).
+    // S'applique à tout rôle non-admin ; sans rôle (devis), traité comme non privilégié.
+    const floor = product.floor_price != null ? parseFloat(String(product.floor_price)) : null;
+    if (floor != null && Number.isFinite(floor) && unitPrice < floor - 0.005 && ctx?.role !== 'admin') {
+      return { error: `Prix de « ${product.name} » (${unitPrice.toFixed(2)}) sous le prix plancher (${floor.toFixed(2)}) : approbation de la direction requise` };
+    }
     let tvaRate: number | null = null;
     if (pro) {
       const t = item.tvaRate != null && item.tvaRate !== '' ? Number(item.tvaRate) : defaults[item.productId]?.tvaRate ?? null;

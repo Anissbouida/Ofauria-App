@@ -234,6 +234,7 @@ export const productRepository = {
       saleUnit: 'sale_unit',
       pricePerKg: 'price_per_kg',
       pricePerPerson: 'price_per_person',
+      floorPrice: 'floor_price',
     };
 
     const fields: string[] = [];
