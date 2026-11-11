@@ -35,6 +35,8 @@ export const checkoutSchema = z.object({
   // Paiement reporte : la vente est enregistree mais non encaissee.
   // Le client part avec la marchandise (stock decremente normalement).
   paymentStatus: z.enum(['paid', 'unpaid']).optional().default('paid'),
+  // Clé d'idempotence (phase 8.4) : rejeu hors-ligne sans doublon.
+  idempotencyKey: z.string().trim().max(64).optional(),
   // Nom libre du beneficiaire quand customerId n'est pas fourni (ex: personnel).
   unpaidCustomerName: z.string().trim().min(1).max(120).optional(),
   // Employe qui realise la vente (selecteur explicite au POS). Si absent, le

@@ -65,6 +65,7 @@ export const saleController = {
       channelId: explicitChannelId,
       cashAmount, cardAmount,
       couponCode, loyaltyPoints = 0,
+      idempotencyKey,
     } = req.body;
 
     // Paiement reporte = creance d'un client identifie (mig 351, « Compte client ») :
@@ -281,6 +282,7 @@ export const saleController = {
       channelId,
       cashAmount: isMixed ? Math.round(cashAmount * 100) / 100 : undefined,
       cardAmount: isMixed ? Math.round(cardAmount * 100) / 100 : undefined,
+      idempotencyKey: idempotencyKey || undefined,
     });
 
     res.status(201).json({ success: true, data: sale });

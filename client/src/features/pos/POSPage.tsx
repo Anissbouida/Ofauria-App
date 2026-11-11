@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
 import { salesApi } from '../../api/sales.api';
+import { enqueueCheckout, flushQueue, pendingCount, isNetworkError } from './offlineQueue';
 import { sachetConfigApi } from '../../api/sachet-config.api';
 import { customersApi } from '../../api/customers.api';
 import UnpaidCustomerPicker from './UnpaidCustomerPicker';
@@ -119,6 +120,8 @@ export default function POSPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  // File hors-ligne (phase 8.4) : ventes en attente de synchronisation.
+  const [offlinePending, setOfflinePending] = useState(() => pendingCount());
   const [posTab, setPosTab] = useState<PosTab>('sell');
   // Onglet Impayes : vente a plus tard en cours d'encaissement.
   const [unpaidPayTarget, setUnpaidPayTarget] = useState<Record<string, any> | null>(null);
@@ -810,11 +813,39 @@ export default function POSPage() {
       playPosSound('success');
       notify.success(isUnpaid ? 'Vente sauvegardée — paiement reporté' : 'Vente enregistree !');
     },
-    onError: (e: unknown) => {
+    onError: (e: unknown, variables: Record<string, any>) => {
+      // Coupure réseau (phase 8.4) : la vente est mise en file locale et rejouée à la
+      // reconnexion. La clé d'idempotence garantit l'absence de doublon.
+      if (isNetworkError(e)) {
+        enqueueCheckout(variables);
+        setOfflinePending(pendingCount());
+        setCart([]); setCustomerId(''); setCustomerSearch(''); setCashGiven(null);
+        setDiscountInput(''); setMixedCashInput(''); setMixedCardInput('');
+        playPosSound('success');
+        notify.success('Hors-ligne : vente en file, elle partira à la reconnexion');
+        return;
+      }
       playPosSound('error');
       notify.error(getApiErrorMessage(e, 'Erreur lors de la vente'));
     },
   });
+
+  // Synchronisation hors-ligne (phase 8.4) : rejoue la file à la reconnexion.
+  useEffect(() => {
+    const flush = async () => {
+      if (pendingCount() === 0) return;
+      const done = await flushQueue((p) => salesApi.checkout(p as Record<string, any>));
+      setOfflinePending(pendingCount());
+      if (done > 0) {
+        notify.success(`${done} vente${done > 1 ? 's' : ''} synchronisée${done > 1 ? 's' : ''}`);
+        queryClient.invalidateQueries({ queryKey: ['sales'] });
+        queryClient.invalidateQueries({ queryKey: ['pos-products'] });
+      }
+    };
+    window.addEventListener('online', flush);
+    flush();
+    return () => window.removeEventListener('online', flush);
+  }, [queryClient]);
 
   // Suggestion de sachets calculee cote serveur a partir du contenu du panier.
   // On utilise une cle stable (productId|quantity tries) pour eviter les fetchs
@@ -1337,6 +1368,7 @@ export default function POSPage() {
       sachetsSuggested: suggestedSachets,
       sachetReason: sachetReason.trim() || undefined,
       channelId: channelId || undefined,
+      idempotencyKey: crypto.randomUUID(),
     });
     setShowPaymentModal(false);
   };
@@ -1363,6 +1395,7 @@ export default function POSPage() {
       sachetsSuggested: suggestedSachets,
       sachetReason: sachetReason.trim() || undefined,
       channelId: channelId || undefined,
+      idempotencyKey: crypto.randomUUID(),
     });
     setShowUnpaidModal(false);
   };
@@ -2767,8 +2800,13 @@ export default function POSPage() {
         <span className="flex items-center gap-1"><Unlock size={12} className="text-green-600" /> Caisse ouverte{(activeSession as Record<string, any>)?.opened_at ? ` à ${format(new Date((activeSession as Record<string, any>).opened_at as string), 'HH:mm')}` : ''}</span>
         <span className="flex items-center gap-1"><User size={12} /> {user?.firstName} {user?.lastName}</span>
         <span className={`flex items-center gap-1 ${online ? '' : 'text-red-600 font-semibold'}`}>
-          {online ? <Wifi size={12} className="text-green-600" /> : <WifiOff size={12} />} {online ? 'En ligne' : 'Hors ligne — les encaissements échoueront'}
+          {online ? <Wifi size={12} className="text-green-600" /> : <WifiOff size={12} />} {online ? 'En ligne' : 'Hors ligne — les ventes sont mises en file'}
         </span>
+        {offlinePending > 0 && (
+          <span className="flex items-center gap-1 text-amber-600 font-semibold">
+            <Clock size={12} /> {offlinePending} vente{offlinePending > 1 ? 's' : ''} en attente de synchronisation
+          </span>
+        )}
         <span className="flex items-center gap-1"><Printer size={12} /> {terminalPrefs.printerId ? 'Imprimante du poste' : 'Imprimante par défaut du magasin'}</span>
         {lastReceipt && (
           <button onClick={() => setReceiptData({ ...lastReceipt })} className="flex items-center gap-1 text-primary-600 hover:underline">

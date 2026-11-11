@@ -181,11 +181,19 @@ export const saleRepository = {
     loyaltyPointsUsed?: number;
     loyaltyAmount?: number;
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g' | 'person'; displayUnit?: 'g' | 'kg' | null; promoDiscount?: number; taxRate?: number; taxAmount?: number }[];
+    /** Clé d'idempotence (phase 8.4) : un rejeu hors-ligne ne crée pas de doublon. */
+    idempotencyKey?: string | null;
   }, outer?: PoolClient) {
     // `outer` : transaction de l'appelant (avance prise avec la commande, O2C L3 G-OM-07).
     const client = outer ?? await db.getClient();
     try {
       if (!outer) await client.query('BEGIN');
+      // Idempotence (phase 8.4) : si une vente porte déjà cette clé, on la renvoie telle
+      // quelle (pas de double encaissement ni de double sortie de stock).
+      if (data.idempotencyKey) {
+        const existing = (await client.query(`SELECT * FROM sales WHERE idempotency_key = $1`, [data.idempotencyKey])).rows[0];
+        if (existing) { if (!outer) await client.query('COMMIT'); return existing; }
+      }
       if (data.completeOrder && data.orderId) {
         const o = (await client.query(`SELECT status, order_number FROM orders WHERE id = $1 FOR UPDATE`, [data.orderId])).rows[0];
         if (!o) throw Object.assign(new Error('Commande non trouvee'), { statusCode: 404 });
@@ -214,10 +222,12 @@ export const saleRepository = {
         data.promotionAmount ?? 0, data.loyaltyPointsUsed ?? 0, data.loyaltyAmount ?? 0, data.couponCode || null,
       ];
       if (data.createdAt) insertValues.push(data.createdAt);
+      insertValues.push(data.idempotencyKey || null);
+      const idemIdx = insertValues.length;
 
       const saleResult = await client.query(
-        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type, payment_status, paid_at, unpaid_customer_name, employee_id, sachets_given, sachets_suggested, sachet_reason, channel_id, cash_amount, card_amount, promotion_amount, loyalty_points_used, loyalty_amount, coupon_code, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ${paidAtExpr}, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, ${createdAtExpr}) RETURNING *`,
+        `INSERT INTO sales (sale_number, customer_id, user_id, subtotal, tax_amount, discount_amount, total, payment_method, notes, session_id, store_id, advance_amount, advance_date, order_id, sale_type, payment_status, paid_at, unpaid_customer_name, employee_id, sachets_given, sachets_suggested, sachet_reason, channel_id, cash_amount, card_amount, promotion_amount, loyalty_points_used, loyalty_amount, coupon_code, created_at, idempotency_key)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ${paidAtExpr}, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, ${createdAtExpr}, $${idemIdx}) RETURNING *`,
         insertValues
       );
 
