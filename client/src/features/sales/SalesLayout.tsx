@@ -44,6 +44,8 @@ export default function SalesLayout() {
     { key: 'sales:subscriptions', label: 'Abonnements', icon: Repeat, section: 'operations', href: '/sales?tab=subscriptions', hidden: !hasModule('sales') || !isDirection },
     { key: 'sales:routes', label: 'Tournées', icon: Truck, section: 'operations', href: '/sales?tab=routes', hidden: !hasModule('sales') },
     { key: 'dunning', label: 'Relances', icon: BellRing, section: 'operations', href: '/dunning', hidden: !hasModule('sales') || !isDirection },
+    // Ristournes de fin d'année (phase 11, D5-12) : taux sur le CA annuel, direction.
+    { key: 'rebates', label: 'Ristournes', icon: BadgePercent, section: 'operations', href: '/rebates', hidden: !hasModule('sales') || !isDirection },
     { key: 'reports:menu', label: 'Menu Engineering', icon: Sparkles, section: 'reports', href: '/reports?tab=menu', hidden: !hasModule('reports') },
     // Objectifs par commercial (phase 11, D3-13) : objectif vs réalisé par vendeur.
     { key: 'sales-targets', label: 'Objectifs', icon: BarChart3, section: 'reports', href: '/sales-targets', hidden: !hasModule('sales') },
