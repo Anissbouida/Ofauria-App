@@ -130,8 +130,8 @@ export const saleController = {
         return;
       }
 
-      // Prix du canal, palier au poids ou prix catalogue (services/pos-pricing.ts).
-      const priced = await posLinePrice(product, item.quantity, channelId);
+      // Liste de prix (phase 6), prix du canal, palier au poids ou catalogue (services/pos-pricing.ts).
+      const priced = await posLinePrice(product, item.quantity, channelId, customerId || null);
       const unitPrice = priced.unitPrice;
       const itemSubtotal = priced.subtotal;
       const lineUnit = priced.unit;
