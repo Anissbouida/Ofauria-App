@@ -11,6 +11,7 @@ import { apiErrorMessage } from '../../api/errors';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import SalesPageShell from './SalesPageShell';
+import { StagePipeline, type StageDef, type StageStat } from '../../components/purchasing/ProcessBoard';
 
 /** BL imprimable (mig 354) : remis avec la marchandise, signé par le client. */
 async function printNote(id: string) {
@@ -38,6 +39,13 @@ const STATUS: Record<DeliveryNote['status'], { label: string; cls: string }> = {
   cancelled: { label: 'Annulé', cls: 'odoo-tag-grey' },
 };
 
+// Étapes du cycle du BL pour la bande « SUIVI », au style de la page Commandes.
+const BL_STAGES: StageDef[] = [
+  { key: 'delivered', label: 'À facturer', hint: 'livrés non facturés', icon: FileText },
+  { key: 'invoiced', label: 'Facturés', hint: 'clôturés', icon: CheckSquare },
+  { key: 'cancelled', label: 'Annulés', hint: 'annulés', icon: Ban },
+];
+
 export default function ProSalesTab() {
   // Une seule rangée de filtres : « À facturer » = BL livrés regroupés par client
   // avec l'action de facturation ; les autres filtrent la liste des BL.
@@ -47,6 +55,19 @@ export default function ProSalesTab() {
   const { data: toInvoice = [], isSuccess } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice() });
   const pending = toInvoice.reduce((n, g) => n + g.notes.length, 0);
   const current = view ?? (isSuccess && pending > 0 ? 'delivered' : '');
+  // Agrégat pour la bande SUIVI : compte et montant TTC par statut.
+  const { data: allNotes = [] } = useQuery({ queryKey: ['delivery-notes', 'list', 'all'], queryFn: () => deliveryNotesApi.list() });
+  const stats = useMemo<Record<string, StageStat>>(() => {
+    const acc: Record<string, { count: number; total: number }> = {
+      delivered: { count: 0, total: 0 }, invoiced: { count: 0, total: 0 }, cancelled: { count: 0, total: 0 },
+    };
+    for (const n of allNotes) { const a = acc[n.status]; if (a) { a.count += 1; a.total += Number(n.total_ttc) || 0; } }
+    return {
+      delivered: { count: acc.delivered.count, sub: money(acc.delivered.total) },
+      invoiced: { count: acc.invoiced.count, sub: money(acc.invoiced.total) },
+      cancelled: { count: acc.cancelled.count, sub: money(acc.cancelled.total) },
+    };
+  }, [allNotes]);
   const filters = [
     ['delivered', 'À facturer', FileText],
     ['invoiced', 'Facturés', CheckSquare],
@@ -65,6 +86,14 @@ export default function ProSalesTab() {
   return (
     <SalesPageShell icon={Truck} title="Bons de livraison" parent="Ventes"
       actions={<button type="button" onClick={() => setShowNew(true)} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau bon de livraison</button>}>
+      <StagePipeline
+        title="Suivi des bons de livraison"
+        summary={`${allNotes.length} BL · ${stats.delivered.count} à facturer`}
+        stages={BL_STAGES}
+        stats={stats}
+        isActive={(k) => current === k}
+        onPick={(k) => setView(current === k ? '' : (k as '' | 'delivered' | 'invoiced' | 'cancelled'))}
+      />
       <div className="odoo-search-panel" style={{ flexWrap: 'wrap' }}>
         {filters.map(([k, label, Icon]) => (
           <button key={k} type="button" onClick={() => setView(k)} className="odoo-filter-dropdown" style={chipStyle(current === k)}>
