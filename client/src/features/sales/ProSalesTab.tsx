@@ -10,6 +10,8 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import SalesPageShell from './SalesPageShell';
 
 /** BL imprimable (mig 354) : remis avec la marchandise, signé par le client. */
 async function printNote(id: string) {
@@ -54,25 +56,24 @@ export default function ProSalesTab() {
   ] as const;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div className="flex items-center gap-2">
-        {filters.map(([k, label, Icon]) => (
-          <button key={k} type="button" onClick={() => setView(k)} className={current === k ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ whiteSpace: 'nowrap' }}>
-            <Icon size={13} /> {label}
-            {k === 'delivered' && pending > 0 && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 4 }}>{pending}</span>}
-          </button>
-        ))}
-        <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', marginLeft: 8 }}>
-          Commande → bon de livraison → facture : le chiffre d'affaires et la créance naissent à la facture.
-        </span>
-        <button type="button" onClick={() => setShowNew(true)} className="odoo-btn-primary" style={{ marginLeft: 'auto', whiteSpace: 'nowrap' }}>
-          <Plus size={13} /> Nouveau bon de livraison
+    <SalesPageShell icon={Truck} title="Bons de livraison" parent="Ventes" actions={<>
+      {filters.map(([k, label, Icon]) => (
+        <button key={k} type="button" onClick={() => setView(k)} className={current === k ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ whiteSpace: 'nowrap' }}>
+          <Icon size={13} /> {label}
+          {k === 'delivered' && pending > 0 && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 4 }}>{pending}</span>}
         </button>
-      </div>
+      ))}
+      <button type="button" onClick={() => setShowNew(true)} className="odoo-btn-primary" style={{ whiteSpace: 'nowrap' }}>
+        <Plus size={13} /> Nouveau bon de livraison
+      </button>
+    </>}>
+      <StatusBanner tone="info" icon={Truck} title="Commande → bon de livraison → facture">
+        Le chiffre d'affaires et la créance naissent à la facture (le BL ne passe aucune écriture).
+      </StatusBanner>
       {current === 'delivered' ? <ToInvoice groups={toInvoice} onOpen={setDetailId} /> : <NotesList status={current} onOpen={setDetailId} />}
       {showNew && <NewNoteModal onClose={() => setShowNew(false)} />}
       {detailId && <NoteDetail id={detailId} onClose={() => setDetailId(null)} />}
-    </div>
+    </SalesPageShell>
   );
 }
 

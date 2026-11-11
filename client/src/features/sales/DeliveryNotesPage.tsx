@@ -1,16 +1,10 @@
-import { Truck } from 'lucide-react';
-import SalesPageShell from './SalesPageShell';
 import ProSalesTab from './ProSalesTab';
 
 /**
  * Écran autonome des bons de livraison, séparé des commandes — comme dans les ERP
- * standards (Odoo « Livraisons », SAP « Outbound Delivery »), où la commande et le
- * BL sont deux documents distincts de la chaîne O2C.
+ * standards (Odoo « Livraisons », SAP « Outbound Delivery »). ProSalesTab porte sa
+ * propre coquille (SalesPageShell), alignée sur les autres onglets du module Ventes.
  */
 export default function DeliveryNotesPage() {
-  return (
-    <SalesPageShell icon={Truck} title="Bons de livraison" parent="Ventes">
-      <ProSalesTab />
-    </SalesPageShell>
-  );
+  return <ProSalesTab />;
 }
