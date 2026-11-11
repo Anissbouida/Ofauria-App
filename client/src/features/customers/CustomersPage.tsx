@@ -4,6 +4,7 @@ import { customersApi } from '../../api/customers.api';
 import { loyaltyApi, tierOf, type LoyaltyTier } from '../../api/promotions.api';
 import CustomerLoyalty from '../promotions/CustomerLoyalty';
 import CustomerAddressesPanel from './CustomerAddressesPanel';
+import CustomerTaxExemptionsPanel from './CustomerTaxExemptionsPanel';
 import CustomerHistoryPanel from './CustomerHistoryPanel';
 import CustomerDataProtectionPanel from './CustomerDataProtectionPanel';
 import { usersApi } from '../../api/users.api';
@@ -615,6 +616,8 @@ function CustomerDetailPanel({ customerId, onClose, onEdit }: {
                 ]} />
 
                 <CustomerAddressesPanel customerId={customer.id as string} />
+
+                <CustomerTaxExemptionsPanel customerId={customer.id as string} />
 
                 <CustomerHistoryPanel customerId={customer.id as string} isActive={customer.is_active !== false} />
 

@@ -17,6 +17,8 @@ const DEFAULTS: Record<string, unknown> = {
   'sales.person_sizes': { sizes: [4, 6, 8, 10, 12, 16] },
   'sales.pricing': { max_discount_pct_sales: 10, max_discount_pct_manager: 30, max_price_override_pct: 30 } satisfies PricingRules,
   'sales.legal_mentions': { enforce_customer_ice: false } satisfies LegalMentionsRules,
+  'sales.vat_regime': { mode: 'debit' },
+  'sales.stamp_duty': { enabled: false, rate_pct: 0.25, min_dh: 1, cash_only: true } satisfies StampDutyRules,
 };
 
 /**
@@ -43,6 +45,28 @@ export async function legalMentionsRules(): Promise<LegalMentionsRules> {
   if (['on', '1', 'true', 'yes'].includes(forced)) return { enforce_customer_ice: true };
   const v = await getParameter<Partial<LegalMentionsRules>>('sales.legal_mentions');
   return { enforce_customer_ice: v?.enforce_customer_ice === true };
+}
+
+/**
+ * Droit de timbre (phase 5.7, mig 485) : taux et minimum, sur les règlements espèces.
+ * Désactivé par défaut — en attente des réponses de l'expert-comptable.
+ */
+export type StampDutyRules = { enabled: boolean; rate_pct: number; min_dh: number; cash_only: boolean };
+export async function stampDutyRules(): Promise<StampDutyRules> {
+  const v = await getParameter<Partial<StampDutyRules>>('sales.stamp_duty');
+  return {
+    enabled: v?.enabled === true,
+    rate_pct: Number(v?.rate_pct) || 0,
+    min_dh: Number(v?.min_dh) || 0,
+    cash_only: v?.cash_only !== false,
+  };
+}
+
+/** Régime de TVA (phase 5.7) : débit (exigible à la facture) ou encaissement. Informatif. */
+export type VatRegime = 'debit' | 'encaissement';
+export async function vatRegime(): Promise<VatRegime> {
+  const v = await getParameter<{ mode?: string }>('sales.vat_regime');
+  return v?.mode === 'encaissement' ? 'encaissement' : 'debit';
 }
 
 /** Vente sans stock autorisée : par le paramètre, ou par le drapeau d'environnement de test. */

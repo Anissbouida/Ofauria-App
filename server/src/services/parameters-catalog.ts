@@ -128,6 +128,27 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'sales.vat_regime', domain: 'sales', section: 'business',
+    label: 'Régime de TVA',
+    help: 'Débit : la TVA est exigible dès la facture. Encaissement : exigible au paiement. Réglage informatif en attente des règles de déclaration (phase 5.7, expert-comptable).',
+    fields: [{ name: 'mode', label: 'Régime', type: 'enum', options: [{ value: 'debit', label: 'Débit (à la facture)' }, { value: 'encaissement', label: 'Encaissement (au paiement)' }] }],
+    defaults: { mode: 'debit' },
+    storage: { kind: 'module_parameters' },
+  },
+  {
+    key: 'sales.stamp_duty', domain: 'sales', section: 'business',
+    label: 'Droit de timbre',
+    help: 'Timbre sur les règlements en espèces : pourcentage du montant, borné à un minimum. Désactivé par défaut, en attente des règles fiscales (phase 5.7, expert-comptable).',
+    fields: [
+      { name: 'enabled', label: 'Appliquer le droit de timbre', type: 'boolean' },
+      { name: 'rate_pct', label: 'Taux', type: 'percent', min: 0, max: 100 },
+      { name: 'min_dh', label: 'Minimum', type: 'number', unit: 'DH', min: 0, max: 1000 },
+      { name: 'cash_only', label: 'Espèces uniquement', type: 'boolean' },
+    ],
+    defaults: { enabled: false, rate_pct: 0.25, min_dh: 1, cash_only: true },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'sales.pricing', domain: 'sales', section: 'business',
     label: 'Prix et remises sur commandes',
     help: 'Remise manuelle maximale accordée par une vendeuse ou une caissière, puis par un gérant (l\'administrateur n\'est pas limité ; la remise personnel suit le paramètre de la société). Un prix différent du prix grille est une dérogation réservée à la direction, motivée et tracée ; au-delà de l\'écart indiqué, seul l\'administrateur peut la faire (O2C L3).',

@@ -3,6 +3,7 @@ import { receivablesRepository } from '../repositories/receivables.repository.js
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { customerRepository } from '../repositories/customer.repository.js';
 import { customerAddressRepository, type CustomerAddressInput } from '../repositories/customer-address.repository.js';
+import { customerTaxExemptionRepository } from '../repositories/customer-tax-exemption.repository.js';
 
 /** Champs de conditions commerciales du client (O2C L0, G-CR-04) et leur colonne. */
 const COMMERCIAL_FIELDS = ['creditLimit', 'remisePct', 'delaiPaiementJours', 'tvaExonere', 'billingFrequency'] as const;
@@ -164,6 +165,30 @@ export const customerController = {
   async removeAddress(req: AuthRequest, res: Response) {
     const row = await customerAddressRepository.remove(req.params.addressId, req.params.id);
     if (!row) { res.status(404).json({ success: false, error: { message: 'Adresse introuvable' } }); return; }
+    res.json({ success: true, data: null });
+  },
+
+  // ───── Attestations d'exonération de TVA (phase 5.7) ─────
+  async listExemptions(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await customerTaxExemptionRepository.list(req.params.id) });
+  },
+  async createExemption(req: AuthRequest, res: Response) {
+    const { certificateNumber, reason, validFrom, validTo, notes } = req.body as Record<string, string>;
+    if (!certificateNumber || !String(certificateNumber).trim() || !validFrom) {
+      res.status(400).json({ success: false, error: { message: 'Numéro d\'attestation et date de début requis' } }); return;
+    }
+    if (validTo && validTo < validFrom) {
+      res.status(400).json({ success: false, error: { message: 'La fin de validité précède le début' } }); return;
+    }
+    const row = await customerTaxExemptionRepository.create(req.params.id, {
+      certificateNumber: String(certificateNumber).trim(), reason: reason ?? null,
+      validFrom, validTo: validTo || null, notes: notes ?? null,
+    }, req.user!.userId);
+    res.status(201).json({ success: true, data: row });
+  },
+  async removeExemption(req: AuthRequest, res: Response) {
+    const row = await customerTaxExemptionRepository.remove(req.params.exemptionId, req.params.id);
+    if (!row) { res.status(404).json({ success: false, error: { message: 'Attestation introuvable' } }); return; }
     res.json({ success: true, data: null });
   },
 };

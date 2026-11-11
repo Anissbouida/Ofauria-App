@@ -30,7 +30,22 @@ export const customersApi = {
   createAddress: (id: string, data: Record<string, any>) => api.post(`/customers/${id}/addresses`, data).then(r => r.data.data as CustomerAddress),
   updateAddress: (id: string, addressId: string, data: Record<string, any>) => api.put(`/customers/${id}/addresses/${addressId}`, data).then(r => r.data.data as CustomerAddress),
   removeAddress: (id: string, addressId: string) => api.delete(`/customers/${id}/addresses/${addressId}`),
+  // Attestations d'exonération de TVA (phase 5.7)
+  listExemptions: (id: string) => api.get(`/customers/${id}/tax-exemptions`).then(r => r.data.data as CustomerTaxExemption[]),
+  createExemption: (id: string, data: Record<string, any>) => api.post(`/customers/${id}/tax-exemptions`, data).then(r => r.data.data as CustomerTaxExemption),
+  removeExemption: (id: string, exemptionId: string) => api.delete(`/customers/${id}/tax-exemptions/${exemptionId}`),
 };
+
+export interface CustomerTaxExemption {
+  id: string;
+  customer_id: string;
+  certificate_number: string;
+  reason: string | null;
+  valid_from: string;
+  valid_to: string | null;
+  notes: string | null;
+  is_active: boolean;
+}
 
 export interface CustomerAddress {
   id: string;

@@ -40,6 +40,10 @@ router.get('/:id/addresses', authenticate, authorize(...ROLE_GROUPS.SALES), asyn
 router.post('/:id/addresses', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.createAddress));
 router.put('/:id/addresses/:addressId', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.updateAddress));
 router.delete('/:id/addresses/:addressId', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.removeAddress));
+// Attestations d'exonération de TVA (phase 5.7).
+router.get('/:id/tax-exemptions', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.listExemptions));
+router.post('/:id/tax-exemptions', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.createExemption));
+router.delete('/:id/tax-exemptions/:exemptionId', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.removeExemption));
 router.post('/', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.create));
 router.put('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.update));
 router.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), writeLimiter, asyncHandler(customerController.remove));

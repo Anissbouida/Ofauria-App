@@ -68,3 +68,21 @@ export function headerTotalsFromLines(
     : null;
   return { amount, hasPerLineTva, taxAmount };
 }
+
+/**
+ * Droit de timbre (phase 5.7) — pur et INERTE par défaut. Renvoie 0 tant que la règle
+ * n'est pas activée. Sur règlement espèces (si cash_only), c'est rate_pct % du montant,
+ * borné à un minimum. Les décisions fiscales (taux, assiette) restent à confirmer par
+ * l'expert-comptable ; cette fonction n'applique que ce que le paramètre déclare.
+ */
+export function stampDutyAmount(
+  rules: { enabled: boolean; rate_pct: number; min_dh: number; cash_only: boolean },
+  amount: number,
+  paymentMethod: string,
+): number {
+  if (!rules.enabled || !(amount > 0)) return 0;
+  if (rules.cash_only && paymentMethod !== 'cash') return 0;
+  const duty = round2(amount * (rules.rate_pct || 0) / 100);
+  if (duty <= 0) return 0;
+  return round2(Math.max(duty, rules.min_dh || 0));
+}
