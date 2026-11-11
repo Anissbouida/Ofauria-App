@@ -6,6 +6,7 @@ import { storesApi } from '../../api/stores.api';
 import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../utils/api-error';
+import SalesPageShell from '../sales/SalesPageShell';
 
 // Transferts de produits finis entre sites (phase 7.4) : une pièce, deux mouvements.
 export default function ProductTransfersPage() {
@@ -31,11 +32,8 @@ export default function ProductTransfersPage() {
   const newForm = () => setForm({ fromStoreId: '', toStoreId: '', notes: '', lines: [{ productId: '', quantity: '' }] });
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 8 }}><ArrowLeftRight size={18} /> Transferts de produits</h2>
-        {!form && <button className="odoo-btn-primary" onClick={newForm} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau transfert</button>}
-      </div>
+    <SalesPageShell icon={ArrowLeftRight} title="Transferts de produits" parent="Ventes"
+      actions={!form && <button className="odoo-btn-primary" onClick={newForm} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau transfert</button>}>
 
       {form && (
         <div style={{ border: '1px solid var(--odoo-purple)', borderRadius: 6, padding: 14, marginBottom: 16, display: 'grid', gap: 10 }}>
@@ -89,6 +87,6 @@ export default function ProductTransfersPage() {
           {transfers.length === 0 && <tr><td colSpan={5} style={{ color: 'var(--odoo-text-muted)' }}>Aucun transfert.</td></tr>}
         </tbody>
       </table>
-    </div>
+    </SalesPageShell>
   );
 }

@@ -6,6 +6,7 @@ import { customersApi } from '../../api/customers.api';
 import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../utils/api-error';
+import SalesPageShell from '../sales/SalesPageShell';
 
 // Retours clients professionnels (phase 7.5) : décision remise en stock / rebut par ligne.
 export default function ProReturnsPage() {
@@ -32,11 +33,8 @@ export default function ProReturnsPage() {
   const newForm = () => setForm({ customerId: '', notes: '', lines: [{ productId: '', quantity: '', unitPrice: '', decision: 'restock' }] });
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 8 }}><Undo2 size={18} /> Retours clients</h2>
-        {!form && <button className="odoo-btn-primary" onClick={newForm} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau retour</button>}
-      </div>
+    <SalesPageShell icon={Undo2} title="Retours clients" parent="Ventes"
+      actions={!form && <button className="odoo-btn-primary" onClick={newForm} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau retour</button>}>
 
       {form && (
         <div style={{ border: '1px solid var(--odoo-purple)', borderRadius: 6, padding: 14, marginBottom: 16, display: 'grid', gap: 10 }}>
@@ -90,6 +88,6 @@ export default function ProReturnsPage() {
           {returns.length === 0 && <tr><td colSpan={5} style={{ color: 'var(--odoo-text-muted)' }}>Aucun retour.</td></tr>}
         </tbody>
       </table>
-    </div>
+    </SalesPageShell>
   );
 }
