@@ -136,9 +136,8 @@ export const deliveryNoteRepository = {
     const r = await db.query(
       `SELECT o.id, o.order_number, o.pickup_date, o.total, o.status
          FROM orders o
-         JOIN customers c ON c.id = o.customer_id
         WHERE o.customer_id = $1 AND o.status IN ('ready', 'partially_delivered')
-          AND COALESCE(c.customer_type, 'particulier') <> 'particulier'
+          -- BL ouvert à tout client ; une commande avec acompte se solde en caisse (hors flux BL).
           AND COALESCE(o.advance_amount, 0) = 0
           AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.order_id = o.id)
           -- Une facture d'acompte (kind='prepayment', mig 482) ne facture pas la commande :
@@ -176,24 +175,21 @@ export const deliveryNoteRepository = {
     const client = outer ?? await db.getClient();
     try {
       if (!outer) await client.query('BEGIN');
-      const cust = (await client.query(`SELECT id, customer_type FROM customers WHERE id = $1`, [data.customerId])).rows[0];
+      const cust = (await client.query(`SELECT id FROM customers WHERE id = $1`, [data.customerId])).rows[0];
       if (!cust) throw fail(400, 'Client introuvable');
-      // Le bon de livraison est réservé aux professionnels : un particulier se règle
-      // en caisse contre le solde (mig 354). Garde aussi le chemin « saisie libre »
-      // (sans commande), que le contrôle par commande ci-dessous ne couvre pas.
-      if ((cust.customer_type ?? 'particulier') === 'particulier') {
-        throw fail(400, 'Client particulier : la vente se règle en caisse, sans bon de livraison');
-      }
+      // Le bon de livraison est un document logistique indépendant du type de client
+      // (pro ou particulier) : ce qui diffère en aval, c'est le mode de règlement, pas
+      // la possibilité de livrer. Les garde-fous de flux ci-dessous (commande réglée en
+      // caisse, acompte, déjà facturée) suffisent à éviter un double traitement.
       if (data.orderId) {
         const ok = (await client.query(
-          `SELECT 1 FROM orders o JOIN customers c ON c.id = o.customer_id
+          `SELECT 1 FROM orders o
             WHERE o.id = $1 AND o.customer_id = $2 AND o.status IN ('ready', 'partially_delivered')
-              AND COALESCE(c.customer_type, 'particulier') <> 'particulier'
               -- Une facture d'acompte (kind='prepayment', mig 482) ne facture pas la commande.
               AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.order_id = o.id AND i.status <> 'cancelled' AND i.kind <> 'prepayment')
               AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.order_id = o.id)
             FOR UPDATE OF o`, [data.orderId, data.customerId])).rows[0];
-        if (!ok) throw fail(409, 'Cette commande n\'est pas une commande de professionnel à livrer, ou elle est déjà livrée, réglée ou facturée');
+        if (!ok) throw fail(409, 'Cette commande n\'est pas livrable (déjà livrée, réglée en caisse ou facturée)');
         // O2C L2 (G-GI-07) : sur un BL de commande, chaque produit livré vient d'une ligne de la commande.
         if (data.items.some(i => i.productId && !i.orderItemId)) {
           throw fail(400, 'BL de commande : chaque produit livré doit correspondre à une ligne de la commande');
@@ -436,9 +432,8 @@ export const deliveryNoteRepository = {
          FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`, [orderId])).rows[0];
     if (!order) throw fail(404, 'Commande introuvable');
     if (!order.customer_id) throw fail(400, 'La commande n\'a pas de fiche client : elle se remet en caisse');
-    if ((order.customer_type ?? 'particulier') === 'particulier') {
-      throw fail(400, 'Commande de particulier : elle se remet en caisse contre le solde, sans bon de livraison');
-    }
+    // Le BL est ouvert à tout client ; seule la facturation automatique en aval reste
+    // réservée au rythme « à chaque livraison » (per_delivery), typiquement un pro.
     if (order.status !== 'ready' && order.status !== 'partially_delivered') throw fail(409, 'La commande doit être prête pour être livrée');
     const lines = await this.orderLines(orderId);
     if (!lines.length) throw fail(400, 'La commande n\'a aucune ligne');

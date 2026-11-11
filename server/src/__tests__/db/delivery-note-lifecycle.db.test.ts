@@ -85,17 +85,33 @@ describe.skipIf(!hasTestDb)('BL — cycle de vie préparé/expédié/livré', ()
     expect(dn.delivered_at).toBeTruthy();
   });
 
-  it('refuse un BL « saisie libre » pour un client particulier', async () => {
-    // Le flux BL → facture est réservé aux professionnels ; un particulier se règle
-    // en caisse. Le chemin sans commande n'était pas gardé (traces de commandes client).
+  it('autorise un BL « saisie libre » pour un particulier (document logistique indépendant du type client)', async () => {
+    // Le BL est ouvert à tout client ; seul le règlement diffère en aval. On vérifie
+    // qu'un particulier (sans commande) obtient bien un BL.
     const partId = (await p().query(`INSERT INTO customers (first_name, last_name, customer_type) VALUES ('Part','Dn ${RUN}','particulier') RETURNING id`)).rows[0].id;
+    let noteId: string | undefined;
     try {
-      await expect(deliveryNoteRepository.create({
+      const note = await deliveryNoteRepository.create({
         customerId: partId, storeId, createdBy: userId,
         items: [{ productId, description: null, orderItemId: null, quantity: 1, unitPrice: 20, tvaRate: null }],
-      })).rejects.toThrow(/particulier/i);
+      });
+      noteId = note.id;
+      expect(note.id).toBeTruthy();
+      expect(note.customer_id).toBe(partId);
     } finally {
-      await p().query(`DELETE FROM customers WHERE id = $1`, [partId]).catch(() => undefined);
+      const cc = await p().connect();
+      try {
+        await cc.query(`SET session_replication_role = 'replica'`);
+        if (noteId) {
+          await cc.query(`DELETE FROM delivery_note_item_lots WHERE delivery_note_item_id IN (SELECT id FROM delivery_note_items WHERE delivery_note_id = $1)`, [noteId]).catch(() => undefined);
+          await cc.query(`DELETE FROM delivery_note_items WHERE delivery_note_id = $1`, [noteId]).catch(() => undefined);
+          await cc.query(`DELETE FROM delivery_notes WHERE id = $1`, [noteId]).catch(() => undefined);
+        }
+        await cc.query(`DELETE FROM customers WHERE id = $1`, [partId]).catch(() => undefined);
+      } finally {
+        await cc.query(`SET session_replication_role = 'origin'`).catch(() => undefined);
+        cc.release();
+      }
     }
   });
 });
