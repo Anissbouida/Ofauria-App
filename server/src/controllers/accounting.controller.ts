@@ -5,6 +5,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { caisseRepository, expenseCategoryRepository, revenueCategoryRepository, invoiceRepository, paymentRepository } from '../repositories/accounting.repository.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 import { invoicePdfById } from '../services/invoice-pdf-builder.service.js';
+import { invoiceDisputeRepository } from '../repositories/invoice-dispute.repository.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { db } from '../config/database.js';
 import { refEntryRepository } from '../repositories/referentiel.repository.js';
@@ -546,6 +547,37 @@ export const invoiceController = {
       return;
     }
     res.status(400).json({ success: false, error: { message: 'Statut invalide' } });
+  },
+
+  // Litiges sur facture (phase 11, D5-59) : le montant contesté sort des relances.
+  async listDisputes(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await invoiceDisputeRepository.listForInvoice(req.params.id) });
+  },
+  async openDisputes(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await invoiceDisputeRepository.listOpen() });
+  },
+  async openDispute(req: AuthRequest, res: Response) {
+    const { reason, disputedAmount, responsibleUserId, targetDate } = (req.body ?? {}) as Record<string, unknown>;
+    if (!reason) { res.status(400).json({ success: false, error: { message: 'Motif requis' } }); return; }
+    const r = await invoiceDisputeRepository.open({
+      invoiceId: req.params.id, reason: String(reason), disputedAmount: Number(disputedAmount),
+      responsibleUserId: (responsibleUserId as string) ?? null, targetDate: (targetDate as string) ?? null,
+      createdBy: req.user?.userId ?? null,
+    });
+    if ('error' in r) { res.status(400).json({ success: false, error: { message: r.error } }); return; }
+    res.status(201).json({ success: true, data: r.data });
+  },
+  async resolveDispute(req: AuthRequest, res: Response) {
+    const { resolution, creditNoteId } = (req.body ?? {}) as Record<string, unknown>;
+    const r = await invoiceDisputeRepository.resolve(req.params.disputeId, String(resolution ?? ''), (creditNoteId as string) ?? null);
+    if ('error' in r) { res.status(400).json({ success: false, error: { message: r.error } }); return; }
+    res.json({ success: true, data: r.data });
+  },
+  async rejectDispute(req: AuthRequest, res: Response) {
+    const { resolution } = (req.body ?? {}) as Record<string, unknown>;
+    const r = await invoiceDisputeRepository.reject(req.params.disputeId, String(resolution ?? ''));
+    if ('error' in r) { res.status(400).json({ success: false, error: { message: r.error } }); return; }
+    res.json({ success: true, data: r.data });
   },
   async uploadAttachment(req: AuthRequest, res: Response) {
     if (!req.file) {

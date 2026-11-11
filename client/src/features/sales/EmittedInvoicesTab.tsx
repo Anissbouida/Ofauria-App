@@ -2,6 +2,7 @@ import { useState, useMemo, type CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoicesApi, paymentsApi } from '../../api/accounting.api';
 import { customersApi } from '../../api/customers.api';
+import InvoiceDisputePanel from './InvoiceDisputePanel';
 import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
 import { format, startOfDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -1076,6 +1077,13 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
             </div>
           </div>
         </div>
+
+        {/* Litiges (phase 11, D5-59) : montant contesté exclu des relances. */}
+        {!credit && status !== 'cancelled' && (
+          <div style={{ padding: '0 1rem 0.75rem' }}>
+            <InvoiceDisputePanel invoiceId={inv.id as string} remaining={remaining} editable={status !== 'cancelled'} />
+          </div>
+        )}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)', flexWrap: 'wrap' }}>
           {canCancel(inv) && (

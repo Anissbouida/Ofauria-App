@@ -83,7 +83,7 @@ export async function openDocuments(params: { storeId?: string; customerId?: str
        SELECT 'ticket'::text AS kind, s.id, s.sale_number AS number, s.customer_id, s.unpaid_customer_name AS legacy_name,
               (s.created_at AT TIME ZONE 'Africa/Casablanca')::date AS doc_date,
               COALESCE(s.due_date, (s.created_at AT TIME ZONE 'Africa/Casablanca')::date) AS due_date,
-              s.total::numeric AS amount, 0::numeric AS paid,
+              s.total::numeric AS amount, 0::numeric AS paid, 0::numeric AS disputed,
               -- ticket comptabilisé à la vente (lot L5) : au compte clients 3421 ; sinon à l'encaissement.
               COALESCE(s.sold_on_credit, false) AS ledger_posted
          FROM sales s
@@ -93,14 +93,19 @@ export async function openDocuments(params: { storeId?: string; customerId?: str
               i.invoice_date,
               COALESCE(i.due_date, i.invoice_date + COALESCE(c.delai_paiement_jours, 0)),
               i.total_amount::numeric, COALESCE(i.paid_amount, 0)::numeric,
+              -- Litige ouvert (phase 11, D5-59) : le montant contesté sort du reste à recouvrer.
+              COALESCE((SELECT SUM(d.disputed_amount) FROM invoice_disputes d WHERE d.invoice_id = i.id AND d.status = 'open'), 0)::numeric,
               true   -- une facture émise est toujours au grand livre
          FROM invoices i
          LEFT JOIN customers c ON c.id = i.customer_id
         WHERE i.invoice_type = 'emitted' AND i.kind <> 'credit_note' AND i.status NOT IN ('paid', 'cancelled')
           AND i.total_amount - COALESCE(i.paid_amount, 0) > 0.005${invStore}${invCust}
      )
-     SELECT *, ((now() AT TIME ZONE 'Africa/Casablanca')::date - due_date) AS days_late, amount - paid AS remaining
-       FROM docs ORDER BY due_date, number`,
+     SELECT *, ((now() AT TIME ZONE 'Africa/Casablanca')::date - due_date) AS days_late,
+            amount - paid - disputed AS remaining
+       FROM docs
+      WHERE amount - paid - disputed > 0.005
+      ORDER BY due_date, number`,
     values);
   return r.rows.map((row: Record<string, unknown>) => {
     const daysLate = Number(row.days_late);

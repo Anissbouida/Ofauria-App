@@ -107,6 +107,12 @@ invoicesRouter.put('/:id/category', authenticate, authorize(...ROLE_GROUPS.ADMIN
 invoicesRouter.put('/:id/items', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.replaceItems));
 invoicesRouter.put('/:id/payment-terms', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.updatePaymentTerms));
 invoicesRouter.put('/:id/status', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.updateStatusManual));
+// Litiges (phase 11, D5-59) : montant contesté exclu des relances.
+invoicesRouter.get('/disputes/open', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.openDisputes));
+invoicesRouter.get('/:id/disputes', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.listDisputes));
+invoicesRouter.post('/:id/disputes', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.openDispute));
+invoicesRouter.put('/disputes/:disputeId/resolve', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('disputeId'), asyncHandler(invoiceController.resolveDispute));
+invoicesRouter.put('/disputes/:disputeId/reject', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('disputeId'), asyncHandler(invoiceController.rejectDispute));
 // PUT /:id : modification complete (admin + gerant) — montants, dates, fournisseur, etc.
 invoicesRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.update));
 invoicesRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.create));

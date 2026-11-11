@@ -88,6 +88,13 @@ export const revenueCategoriesApi = {
   remove: (id: string) => api.delete(`/revenue-categories/${id}`),
 };
 
+export interface InvoiceDispute {
+  id: string; invoice_id: string; reason: string; disputed_amount: string;
+  responsible_user_id: string | null; responsible_name: string | null;
+  target_date: string | null; status: 'open' | 'resolved' | 'rejected';
+  resolution: string | null; credit_note_id: string | null; created_at: string; resolved_at: string | null;
+}
+
 export const invoicesApi = {
   list: (params?: Record<string, string>) => api.get('/invoices', { params }).then(r => r.data.data),
   /** Écran Factures reçues : page de la liste par étape (view=open) ou par période (view=history). */
@@ -161,6 +168,14 @@ export const invoicesApi = {
     api.put(`/invoices/${id}/payment-terms`, data).then(r => r.data.data),
   updateStatus: (id: string, status: string) =>
     api.put(`/invoices/${id}/status`, { status }).then(r => r.data.data),
+  // Litiges facture (phase 11, D5-59) : le montant contesté sort des relances.
+  listDisputes: (id: string) => api.get(`/invoices/${id}/disputes`).then(r => r.data.data as InvoiceDispute[]),
+  openDispute: (id: string, data: { reason: string; disputedAmount: number; targetDate?: string | null }) =>
+    api.post(`/invoices/${id}/disputes`, data).then(r => r.data.data as InvoiceDispute),
+  resolveDispute: (disputeId: string, resolution: string, creditNoteId?: string | null) =>
+    api.put(`/invoices/disputes/${disputeId}/resolve`, { resolution, creditNoteId }).then(r => r.data.data),
+  rejectDispute: (disputeId: string, resolution: string) =>
+    api.put(`/invoices/disputes/${disputeId}/reject`, { resolution }).then(r => r.data.data),
   // Phase 10.1 — locale='ar' sort la facture en arabe (RTL, police Cairo).
   downloadDocx: (id: string, locale?: 'fr' | 'ar') =>
     api.get(`/invoices/${id}/download-pdf${locale === 'ar' ? '?locale=ar' : ''}`, { responseType: 'blob' }).then(r => r),
