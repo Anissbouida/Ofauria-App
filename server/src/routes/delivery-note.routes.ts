@@ -19,6 +19,7 @@ router.get('/:id/pdf', ...staff, asyncHandler(c.pdf));
 router.get('/:id', ...staff, asyncHandler(c.getById));
 router.post('/', ...staff, asyncHandler(c.create));
 // Cycle différé (phase 7.1) : préparer → expédier → livrer.
+router.get('/picking-list', ...staff, asyncHandler(c.pickingList));
 router.post('/prepared', ...staff, asyncHandler(c.createPrepared));
 router.post('/:id/ship', ...staff, asyncHandler(c.ship));
 router.post('/:id/deliver', ...staff, asyncHandler(c.markDelivered));

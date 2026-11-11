@@ -373,6 +373,32 @@ export const deliveryNoteRepository = {
     }
   },
 
+  /**
+   * Bon de préparation (phase 7.2) : regroupe plusieurs BL préparés (donc plusieurs
+   * commandes) en une liste de prélèvement agrégée par article — total à préparer et
+   * détail par BL. Liste imprimable pour le préparateur.
+   */
+  async pickingList(ids: string[]) {
+    if (!ids.length) return { notes: [], lines: [] };
+    const notes = (await db.query(
+      `SELECT dn.id, dn.number, dn.delivery_date, dn.status,
+              COALESCE(c.company_name, c.first_name || ' ' || c.last_name) AS customer_name
+         FROM delivery_notes dn LEFT JOIN customers c ON c.id = dn.customer_id
+        WHERE dn.id = ANY($1) AND dn.status IN ('draft','prepared')
+        ORDER BY dn.number`, [ids])).rows;
+    const lines = (await db.query(
+      `SELECT di.product_id, COALESCE(p.name, di.description) AS name,
+              SUM(di.quantity)::float8 AS total,
+              json_agg(json_build_object('number', dn.number, 'qty', di.quantity) ORDER BY dn.number) AS breakdown
+         FROM delivery_note_items di
+         JOIN delivery_notes dn ON dn.id = di.delivery_note_id AND dn.status IN ('draft','prepared')
+         LEFT JOIN products p ON p.id = di.product_id
+        WHERE di.delivery_note_id = ANY($1)
+        GROUP BY di.product_id, COALESCE(p.name, di.description)
+        ORDER BY name`, [ids])).rows;
+    return { notes, lines };
+  },
+
   /** Réception client (phase 7.1) : un BL expédié devient « livré ». */
   async markDelivered(id: string, receivedByName?: string | null) {
     return (await db.query(

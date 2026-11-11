@@ -97,6 +97,11 @@ export const deliveryNoteController = {
     if (!note) { res.status(409).json({ success: false, error: { message: 'Bon introuvable ou non expédié' } }); return; }
     res.json({ success: true, data: note });
   },
+  // Bon de préparation (phase 7.2) : liste de prélèvement agrégée sur plusieurs BL préparés.
+  async pickingList(req: AuthRequest, res: Response) {
+    const ids = String(req.query.ids ?? '').split(',').map(s => s.trim()).filter(Boolean);
+    res.json({ success: true, data: await deliveryNoteRepository.pickingList(ids) });
+  },
   async toInvoice(req: AuthRequest, res: Response) {
     res.json({ success: true, data: await deliveryNoteRepository.toInvoice({ storeId: req.user!.storeId, until: (req.query.until as string) || undefined }) });
   },

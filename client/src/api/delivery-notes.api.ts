@@ -37,6 +37,15 @@ export const deliveryNotesApi = {
     api.post(`/delivery-notes/from-order/${orderId}`, data ?? {})
       .then(r => r.data.data as DeliveryNote & { invoice: { id: string; invoice_number: string } | null }),
   cancel: (id: string) => api.post(`/delivery-notes/${id}/cancel`).then(r => r.data.data),
+  /** Cycle différé (phase 7.1). */
+  createPrepared: (data: { customerId: string; deliveryDate?: string; orderId?: string | null; notes?: string; items: DeliveryLinePayload[] }) =>
+    api.post('/delivery-notes/prepared', data).then(r => r.data.data as DeliveryNote),
+  ship: (id: string, data?: { closeRemainder?: boolean; creditOverrideReason?: string }) => api.post(`/delivery-notes/${id}/ship`, data ?? {}).then(r => r.data.data as DeliveryNote),
+  deliver: (id: string, receivedByName?: string) => api.post(`/delivery-notes/${id}/deliver`, { receivedByName }).then(r => r.data.data as DeliveryNote),
+  /** Bon de préparation agrégé (phase 7.2) sur plusieurs BL préparés. */
+  pickingList: (ids: string[]) => api.get('/delivery-notes/picking-list', { params: { ids: ids.join(',') } })
+    .then(r => r.data.data as { notes: Array<{ id: string; number: string; customer_name: string; delivery_date: string; status: string }>;
+      lines: Array<{ product_id: string | null; name: string; total: number; breakdown: Array<{ number: string; qty: number }> }> }),
   toInvoice: (until?: string) => api.get('/delivery-notes/to-invoice', { params: until ? { until } : {} }).then(r => r.data.data as ToInvoiceGroup[]),
   invoice: (deliveryNoteIds: string[], invoiceDate?: string) =>
     api.post('/delivery-notes/invoice', { deliveryNoteIds, invoiceDate }).then(r => r.data.data as { id: string; invoice_number: string; total_amount: string }),
