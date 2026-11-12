@@ -67,8 +67,9 @@ export function canonicalModule(module: AppModule): AppModule {
  * Choix de vocabulaire volontaires :
  *  - 'Fiches techniques' plutot que 'Recettes' : en comptabilite « recettes » =
  *    encaissements, et le module Comptabilite est juste a cote.
- *  - 'Besoins' plutot que 'Approvisionnement' : dans les ERP du marche
- *    « approvisionnement » designe l'achat, or ici c'est le calcul des besoins.
+ *  - 'Demandes boutique' (ex-'Besoins') : le module porte les demandes de
+ *    reassort boutique -> labo. « Besoins » se confondait avec les besoins
+ *    matiere (Plan directeur, Achats) ; « approvisionnement » designe l'achat.
  */
 export const MODULE_LABELS: Record<AppModule, string> = {
   dashboard: 'Tableau de bord',
@@ -88,7 +89,7 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   users: 'Utilisateurs',
   reports: 'Rapports',
   settings: 'Paramètres',
-  replenishment: 'Besoins',
+  replenishment: 'Demandes boutique',
   unsold: 'Invendus',
   pesage: 'Stock',     // alias
   warehouse: 'Stock',  // alias

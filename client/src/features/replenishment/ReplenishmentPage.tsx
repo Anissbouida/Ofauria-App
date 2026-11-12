@@ -124,9 +124,9 @@ export default function ReplenishmentPage() {
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
           <ShoppingBag size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Besoins</span>
+          <span>Production</span>
           <span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current">Demandes</span>
+          <span className="odoo-breadcrumb-current">Demandes boutique</span>
         </div>
         {(isStoreStaff || isAdmin) && (
           <button onClick={() => setShowForm(true)} className="odoo-btn-primary">
@@ -513,7 +513,7 @@ function CreateRequestModal({ onClose, onCreated }: { onClose: () => void; onCre
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
             <Package size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Besoins</span>
+            <span>Demandes boutique</span>
             <span className="odoo-breadcrumb-separator">›</span>
             <span className="odoo-breadcrumb-current">Nouvelle demande</span>
           </div>

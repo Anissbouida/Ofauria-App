@@ -9,7 +9,7 @@ type ProductionView = 'dashboard' | 'plans' | 'atelier' | 'forecast' | 'mrp' | '
 
 /**
  * Module Production : ses écrans sont des pages distinctes (plans, tableau de bord,
- * prévisions, relevés HACCP, besoins, fiches techniques), regroupées ici sous les
+ * prévisions, relevés HACCP, demandes boutique, fiches techniques), regroupées ici sous les
  * rubriques standard. Chaque page garde son propre fil d'Ariane et ses boutons ;
  * l'entrée active suit l'URL. Les pages de détail (plan, nomenclature, demande)
  * restent pleine largeur, hors coquille. Chaque entrée suit son propre droit.
@@ -29,8 +29,8 @@ export default function ProductionLayout() {
     { key: 'forecast', label: 'Prévisions', icon: TrendingUp, section: 'operations', href: '/forecast', hidden: !isProductionRole },
     { key: 'mrp', label: 'Plan directeur', icon: ClipboardList, section: 'operations', href: '/production/mrp', hidden: !isProductionRole },
     { key: 'haccp', label: 'Relevés HACCP', icon: Thermometer, section: 'operations', href: '/haccp', hidden: !isProductionRole },
-    // Libellés du menu principal (MODULE_LABELS) : Besoins, Fiches techniques.
-    { key: 'replenishment', label: 'Besoins', icon: Package, section: 'operations', href: '/replenishment', hidden: !hasModule('replenishment') },
+    // Demandes de réassort boutique -> labo (ex-tuile « Besoins » du menu principal).
+    { key: 'replenishment', label: 'Demandes boutique', icon: Package, section: 'operations', href: '/replenishment', hidden: !hasModule('replenishment') },
     { key: 'costs', label: 'Coûts', icon: Wallet, section: 'reports', href: '/production/costs', hidden: !hasModule('reports') },
     { key: 'recipes', label: 'Fiches techniques', icon: ChefHat, section: 'setup', href: '/recipes', hidden: !hasModule('recipes') },
     { key: 'workcenters', label: 'Postes & gammes', icon: Cog, section: 'setup', href: '/production/work-centers', hidden: !hasModule('production') },

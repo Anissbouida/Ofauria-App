@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Monitor, Receipt, ClipboardList, ShoppingBag,
   Users, Warehouse, Factory, UserCog, Lock, BarChart3, Settings, Calculator,
-  Package, Store, FolderKanban, Wrench, ShieldCheck, ClipboardCheck,
+  Store, FolderKanban, Wrench, ShieldCheck, ClipboardCheck,
 } from 'lucide-react';
 import { MODULE_LABELS, MODULE_ALIASES } from '@ofauria/shared';
 import type { AppModule } from '@ofauria/shared';
@@ -45,6 +45,12 @@ export interface NavItem {
   roles?: string[];
   /** Compteur affiché en pastille sur la tuile (ex. pièces à approuver). */
   counter?: 'approvals';
+  /**
+   * Module hébergé dans celui de la tuile : sans le module principal mais avec
+   * celui-ci, la tuile reste visible et ouvre directement `href` (ex. le magasinier,
+   * qui n'a que les Demandes boutique, entre dans Production sur cet onglet).
+   */
+  fallback?: { module: AppModule; href: string };
 }
 
 export interface NavGroup {
@@ -102,10 +108,10 @@ export const NAV_GROUPS: NavGroup[] = [
       // lanceur : ce sont des onglets du module Production (/recipes, /forecast,
       // /haccp rendus sous ProductionLayout). On garde la tuile « Production » comme
       // porte d'entrée unique du domaine fabrication.
+      // Demandes boutique (ex-« Besoins ») : onglet du module Production, plus une tuile.
       { module: 'production', href: '/production', icon: Factory, color: 'bg-indigo-500',
-        description: 'Planification, fiches techniques, prévisions et relevés HACCP' },
-      { module: 'replenishment', href: '/replenishment', icon: Package, color: 'bg-rose-500',
-        description: 'Demandes et transferts de stock' },
+        description: 'Plans, demandes boutique, fiches techniques, prévisions et HACCP',
+        fallback: { module: 'replenishment', href: '/replenishment' } },
     ],
   },
   {
@@ -161,13 +167,22 @@ export function navLabel(item: NavItem): string {
  */
 export function isNavItemVisible(item: NavItem, hasModule: (m: AppModule) => boolean, role?: string): boolean {
   if (item.roles && !(role && item.roles.includes(role))) return false;
-  return hasModule(item.module) || (item.aliases?.some(hasModule) ?? false);
+  return hasModule(item.module) || (item.aliases?.some(hasModule) ?? false)
+    || (!!item.fallback && hasModule(item.fallback.module));
+}
+
+/** Cible de la tuile : `fallback.href` quand seul le module hébergé est accordé. */
+function resolveNavHref(item: NavItem, hasModule: (m: AppModule) => boolean): NavItem {
+  if (!item.fallback || hasModule(item.module) || (item.aliases?.some(hasModule) ?? false)) return item;
+  return { ...item, href: item.fallback.href };
 }
 
 /** Groupes filtres sur les droits, groupes vides ecartes (pas de titre orphelin). */
 export function visibleNavGroups(hasModule: (m: AppModule) => boolean, role?: string): NavGroup[] {
   return NAV_GROUPS
-    .map(group => ({ ...group, items: group.items.filter(item => isNavItemVisible(item, hasModule, role)) }))
+    .map(group => ({ ...group, items: group.items
+      .filter(item => isNavItemVisible(item, hasModule, role))
+      .map(item => resolveNavHref(item, hasModule)) }))
     .filter(group => group.items.length > 0);
 }
 
