@@ -554,6 +554,7 @@ export default function ProductionLaunchModal({
                     <input
                       type="number"
                       min={0}
+                      step="any"
                       className="w-20 border border-gray-200 rounded-xl px-3 py-1.5 text-sm text-center focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                       placeholder="Qte"
                       value={baseActuals[sr.subRecipeId] ?? sr.totalNeeded}
@@ -668,6 +669,7 @@ export default function ProductionLaunchModal({
               <input
                 type="number"
                 min={0}
+                step="any"
                 className="w-16 border border-gray-200 rounded-lg px-2 py-1 text-sm text-center focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 disabled:bg-gray-100"
                 value={actuals[id] ?? planned}
                 disabled={disabled || !isSelected}
@@ -1562,7 +1564,8 @@ export default function ProductionLaunchModal({
     const total = totalOf(lines);
     const apply = (next: CutLine[]) => {
       setCutLines((prev) => ({ ...prev, [id]: next }));
-      setActuals((prev) => ({ ...prev, [id]: Math.round(totalOf(next)) }));
+      // Quantités décimales (mig 512) : même arrondi au millième que le serveur.
+      setActuals((prev) => ({ ...prev, [id]: Math.round(totalOf(next) * 1000) / 1000 }));
     };
     const edit = (key: string, patch: Partial<CutLine>) => apply(lines.map((l) => (l.key === key ? { ...l, ...patch } : l)));
     const toggle = (on: boolean) => {
@@ -2110,7 +2113,7 @@ export default function ProductionLaunchModal({
                       </div>
                       <div className="w-28">
                         <label className="block text-xs font-medium text-gray-500 mb-1">Quantite produite</label>
-                        <input type="number" min={0}
+                        <input type="number" min={0} step="any" inputMode="decimal"
                           className="w-full border border-emerald-300 rounded-xl px-3 py-2 text-sm text-center font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-emerald-50"
                           value={actual} disabled={!!cutMode[id]} title={cutMode[id] ? 'Calculée depuis la coupe' : undefined}
                           onChange={(e) => setActuals((prev) => ({ ...prev, [id]: Number(e.target.value) }))} />
@@ -2234,7 +2237,7 @@ export default function ProductionLaunchModal({
                       </div>
                       <div className="w-28">
                         <label className="block text-xs font-medium text-gray-500 mb-1">Quantite produite</label>
-                        <input type="number" min={0}
+                        <input type="number" min={0} step="any" inputMode="decimal"
                           className="w-full border border-emerald-300 rounded-xl px-3 py-2 text-sm text-center font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-emerald-50"
                           value={actual} disabled={!!cutMode[id]} title={cutMode[id] ? 'Calculée depuis la coupe' : undefined}
                           onChange={(e) => setActuals((prev) => ({ ...prev, [id]: Number(e.target.value) }))} />

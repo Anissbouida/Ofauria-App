@@ -949,8 +949,8 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                                   className="w-7 h-7 flex items-center justify-center text-base font-bold text-amber-600 active:bg-amber-50 rounded">
                                   −
                                 </button>
-                                <input type="number" min={0} value={fq}
-                                  onChange={(e) => setFormatQty(pid, f.id, parseInt(e.target.value) || 0)}
+                                <input type="number" min={0} step="any" inputMode="decimal" value={fq}
+                                  onChange={(e) => setFormatQty(pid, f.id, parseFloat(e.target.value) || 0)}
                                   className="w-10 text-center text-sm font-bold border border-amber-200 rounded h-7 focus:outline-none" />
                                 <button type="button" onClick={() => setFormatQty(pid, f.id, fq + 1)}
                                   className="w-7 h-7 flex items-center justify-center text-base font-bold text-amber-600 active:bg-amber-50 rounded">
@@ -979,8 +979,8 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                             disabled={qty <= fromOrders && fromOrders > 0}>
                             {qty === 1 && fromOrders === 0 ? <Trash2 size={16} className="text-red-400" /> : '−'}
                           </button>
-                          <input type="number" min={fromOrders || 1} value={qty}
-                            onChange={(e) => setQty(pid, parseInt(e.target.value) || 0)}
+                          <input type="number" min={fromOrders || 0} step="any" inputMode="decimal" value={qty}
+                            onChange={(e) => setQty(pid, parseFloat(e.target.value) || 0)}
                             className="w-14 text-center text-lg font-bold border-x border-amber-300 h-11 focus:outline-none" />
                           <button type="button" onClick={() => setQty(pid, qty + 1)}
                             className="w-12 h-11 flex items-center justify-center text-xl font-bold text-amber-600 active:bg-amber-50 transition-colors">

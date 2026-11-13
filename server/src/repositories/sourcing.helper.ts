@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import { productionRepository } from './production.repository.js';
+import { roundQty } from '../utils/quantity.js';
 
 /**
  * Helper de sourcing partage entre approvisionnement (DRA) et commande client.
@@ -82,7 +83,8 @@ export async function computeSourcingAndCreatePlan(
   );
   const stockMap: Record<string, number> = {};
   for (const row of stockResult.rows) {
-    stockMap[row.product_id] = Math.floor(parseFloat(row.stock_quantity));
+    // Quantités décimales (mig 512) : 3,2 kg en stock comptent 3,2, plus 3.
+    stockMap[row.product_id] = roundQty(parseFloat(row.stock_quantity));
   }
 
   // 2) Stock frigo (semi-finis disponibles, non expires)
@@ -97,7 +99,7 @@ export async function computeSourcingAndCreatePlan(
   );
   const frigoMap: Record<string, number> = {};
   for (const row of frigoResult.rows) {
-    frigoMap[row.product_id] = Math.floor(parseFloat(row.frigo_quantity));
+    frigoMap[row.product_id] = roundQty(parseFloat(row.frigo_quantity));
   }
 
   // 3) Profil contenant (calcul inverse)
@@ -165,8 +167,8 @@ export async function computeSourcingAndCreatePlan(
     const available = Math.max(stockRemaining[item.productId] || 0, 0);
     const requested = item.requestedQuantity;
     const fromStock = Math.min(available, requested);
-    stockRemaining[item.productId] = available - fromStock;
-    let remaining = requested - fromStock;
+    stockRemaining[item.productId] = roundQty(available - fromStock);
+    let remaining = roundQty(requested - fromStock);
 
     if (linkColumn === 'order_id' && fromStock > 0) {
       reservations.push({ itemId: item.itemId, productId: item.productId, quantity: fromStock });
@@ -174,8 +176,8 @@ export async function computeSourcingAndCreatePlan(
 
     const frigoAvailable = Math.max(frigoRemaining[item.productId] || 0, 0);
     const fromFrigo = Math.min(frigoAvailable, remaining);
-    frigoRemaining[item.productId] = frigoAvailable - fromFrigo;
-    remaining -= fromFrigo;
+    frigoRemaining[item.productId] = roundQty(frigoAvailable - fromFrigo);
+    remaining = roundQty(remaining - fromFrigo);
 
     // Nature de l'article → route du manque (mig 469).
     const kind = kindMap[item.productId] || 'manufactured';
@@ -222,7 +224,7 @@ export async function computeSourcingAndCreatePlan(
         quantiteNetteCible = profile.quantiteNetteCible;
         effectiveQty = nbContenants * profile.quantiteNetteCible;
         quantiteBrute = nbContenants * profile.quantiteTheorique;
-        surplusFrigo = effectiveQty - toProduce;
+        surplusFrigo = roundQty(effectiveQty - toProduce);
       }
 
       productionNeeded.push({

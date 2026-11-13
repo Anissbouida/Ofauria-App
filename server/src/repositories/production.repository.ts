@@ -11,6 +11,7 @@ import { productLotRepository } from './product-lot.repository.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
 import { setActor, setReason, transitionPlan, transitionBon, withActor } from '../services/production-state.js';
 import { collectIngredientNeedsForUnits, getCompositionForNeeds } from './recipe-composition.helper.js';
+import { roundQty } from '../utils/quantity.js';
 
 export const productionRepository = {
   async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRoles?: string[]; storeId?: string; limit: number; offset: number }) {
@@ -435,7 +436,7 @@ export const productionRepository = {
         if (item.contenant_id) continue; // Already enriched (from acknowledge)
         const profile = profileMap[item.product_id as string];
         if (profile && profile.qnc > 0) {
-          const plannedQty = parseInt(item.planned_quantity);
+          const plannedQty = Number(item.planned_quantity);
           const nbContenants = Math.ceil(plannedQty / profile.qnc);
           const effectiveQty = nbContenants * profile.qnc;
           const surplus = effectiveQty - plannedQty;
@@ -489,7 +490,7 @@ export const productionRepository = {
         }
         const productId = item.product_id as string;
         await collectIngredientNeedsForUnits(
-          client, recipeResult.rows[0].id, parseInt(item.planned_quantity),
+          client, recipeResult.rows[0].id, Number(item.planned_quantity),
           (ingredientId, qty) => {
             const key = `${ingredientId}::${productId}`;
             const existing = needsMap.get(key);
@@ -1425,7 +1426,7 @@ export const productionRepository = {
           const resolved = await resolveCutOutputs(client, item.planItemId, item.outputs);
           if (resolved.length > 0) {
             cutByItem.set(item.planItemId, resolved);
-            item.actualQuantity = Math.round(resolved.reduce((sum, o) => sum + o.quantity * o.equiv, 0));
+            item.actualQuantity = roundQty(resolved.reduce((sum, o) => sum + o.quantity * o.equiv, 0));
           }
         }
         if (item.actualQuantity <= 0) continue;
@@ -2334,7 +2335,7 @@ export const productionRepository = {
 
       const comp = await getCompositionForNeeds(db, item.recipe_id, item.format_id ?? null);
       if (!comp) continue;
-      const batches = parseInt(item.planned_quantity) / comp.batchDivisor;
+      const batches = Number(item.planned_quantity) / comp.batchDivisor;
 
       for (const sub of comp.subRecipes) {
         // Besoin NET : ce qu'il faut d'utilisable (le stock semi-finis est deja net de perte).
@@ -2450,7 +2451,7 @@ export const productionRepository = {
 
         const comp = await getCompositionForNeeds(client, item.recipe_id, item.format_id ?? null);
         if (!comp) continue;
-        const batches = parseInt(item.planned_quantity) / comp.batchDivisor;
+        const batches = Number(item.planned_quantity) / comp.batchDivisor;
 
         for (const sub of comp.subRecipes) {
           if (!sub.isBase) continue;

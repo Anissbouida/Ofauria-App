@@ -8,7 +8,9 @@ import { db } from '../config/database.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { posAllowsNegativeStock } from '../services/module-parameters.service.js';
 
-/** Decrement (or increment) stock and return the new value */
+/** Decrement (or increment) stock and return the new value.
+ *  $N::numeric : sans le cast, GREATEST(0 + $N, 0) fait inférer un entier à Postgres
+ *  et une quantité décimale (12,25 kg) est refusée. */
 export async function adjustProductStock(
   client: PoolClient,
   productId: string,
@@ -19,9 +21,9 @@ export async function adjustProductStock(
     // Upsert into product_store_stock (handles the case where the row doesn't exist yet)
     const result = await client.query(
       `INSERT INTO product_store_stock (product_id, store_id, stock_quantity)
-       VALUES ($1, $2, GREATEST(0 + $3, 0))
+       VALUES ($1, $2, GREATEST(0 + $3::numeric, 0))
        ON CONFLICT (product_id, store_id)
-       DO UPDATE SET stock_quantity = GREATEST(product_store_stock.stock_quantity + $3, 0), updated_at = NOW()
+       DO UPDATE SET stock_quantity = GREATEST(product_store_stock.stock_quantity + $3::numeric, 0), updated_at = NOW()
        RETURNING stock_quantity`,
       [productId, storeId, change],
     );
@@ -30,7 +32,7 @@ export async function adjustProductStock(
 
   // Fallback: global stock on products table
   const result = await client.query(
-    `UPDATE products SET stock_quantity = GREATEST(stock_quantity + $1, 0), updated_at = NOW()
+    `UPDATE products SET stock_quantity = GREATEST(stock_quantity + $1::numeric, 0), updated_at = NOW()
      WHERE id = $2 RETURNING stock_quantity`,
     [change, productId],
   );
@@ -104,10 +106,10 @@ export async function adjustVitrineStock(
   // Si allowNegative, on retire le GREATEST(..., 0) pour laisser passer le
   // stock en negatif. Sinon on garde le clamp historique (double garde-fou
   // avec le check ci-dessus).
-  const clampedInsert = allowNegative ? '0 + $3' : 'GREATEST(0 + $3, 0)';
+  const clampedInsert = allowNegative ? '0 + $3::numeric' : 'GREATEST(0 + $3::numeric, 0)';
   const clampedUpdate = allowNegative
-    ? 'product_store_stock.vitrine_quantity + $3'
-    : 'GREATEST(product_store_stock.vitrine_quantity + $3, 0)';
+    ? 'product_store_stock.vitrine_quantity + $3::numeric'
+    : 'GREATEST(product_store_stock.vitrine_quantity + $3::numeric, 0)';
   const result = await client.query(
     `INSERT INTO product_store_stock (product_id, store_id, stock_quantity, vitrine_quantity)
      VALUES ($1, $2, 0, ${clampedInsert})
