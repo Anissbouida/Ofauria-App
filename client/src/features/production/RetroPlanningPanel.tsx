@@ -6,20 +6,14 @@ import { Clock, AlertTriangle, CalendarClock } from 'lucide-react';
 import { productionEtapesApi } from '../../api/production-etapes.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { useProcessRefs } from '../../api/production.api';
 
 // Rétro-planning par temps de procédé (mig 432, épic labo L6).
 // À partir de l'heure de mise en vitrine, le serveur remonte étape par étape ;
 // ce panneau affiche la frise (Gantt) des créneaux calculés par article et
 // signale les conflits de capacité (chevauchement sur un même poste).
 
-const TYPE_LABELS: Record<string, string> = {
-  petrissage: 'Pétrissage', pointage: 'Pointage', faconnage: 'Façonnage', tourage: 'Tourage', appret: 'Apprêt',
-  cuisson: 'Cuisson', refroidissement: 'Refroidissement', montage: 'Montage', finition: 'Finition', autre: 'Autre',
-};
-const TYPE_COLORS: Record<string, string> = {
-  petrissage: '#8b5cf6', pointage: '#06b6d4', faconnage: '#f59e0b', tourage: '#6366f1', appret: '#10b981',
-  cuisson: '#ef4444', refroidissement: '#3b82f6', montage: '#ec4899', finition: '#14b8a6', autre: '#9ca3af',
-};
+// Libellés et couleurs des types d'étape : référentiel éditable (mig 513), via useProcessRefs.
 
 interface Etape {
   id: string;
@@ -50,6 +44,7 @@ const hhmm = (iso: string) => format(new Date(iso), 'HH:mm', { locale: fr });
 
 export default function RetroPlanningPanel({ planId, planStatus, isChef }: Props) {
   const queryClient = useQueryClient();
+  const refs = useProcessRefs();
   const [heureVitrine, setHeureVitrine] = useState('07:00');
   const [lastResult, setLastResult] = useState<{ earliest_start: string | null; conflicts: Conflict[] } | null>(null);
 
@@ -186,7 +181,7 @@ export default function RetroPlanningPanel({ planId, planStatus, isChef }: Props
                         const en = new Date(e.planned_end!).getTime();
                         const left = ((s - minMs) / spanMs) * 100;
                         const width = Math.max(((en - s) / spanMs) * 100, 1.5);
-                        const color = TYPE_COLORS[e.type_etape || 'autre'] || TYPE_COLORS.autre;
+                        const color = refs.stepColor(e.type_etape || 'autre');
                         return (
                           <div
                             key={e.id}
@@ -208,8 +203,8 @@ export default function RetroPlanningPanel({ planId, planStatus, isChef }: Props
             <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1">
               {[...new Set(etapes.map(e => e.type_etape || 'autre'))].map((t) => (
                 <span key={t} className="flex items-center gap-1 text-[10px] text-gray-500">
-                  <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: TYPE_COLORS[t] || TYPE_COLORS.autre }} />
-                  {TYPE_LABELS[t] || t}
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: refs.stepColor(t) }} />
+                  {refs.stepLabel(t)}
                 </span>
               ))}
             </div>

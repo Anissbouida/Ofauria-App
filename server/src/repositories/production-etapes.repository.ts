@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { readingParamMeta } from '../services/process-referentials.js';
 
 // Relevés de procédé (mig 422) agrégés par étape : évite un appel par étape sur
 // l'écran d'atelier. Fragment SQL corrélé réutilisé par findByPlan/findByPlanItem.
@@ -20,19 +21,8 @@ type ReadingInput = {
   note?: string | null;
 };
 
-// Types d'étape considérés comme points critiques (CCP) : une telle étape ne se
-// clôture pas sans au moins un relevé (mig 422/423, épic labo L2).
-export const CCP_STEP_TYPES = ['cuisson', 'refroidissement'];
-
-// Libellés + unité des paramètres mesurés, pour le texte de l'action corrective.
-const PARAM_META: Record<string, { label: string; unit: string }> = {
-  temp_pate: { label: 'Température pâte', unit: '°C' },
-  temp_four: { label: 'Température four', unit: '°C' },
-  duree_cuisson: { label: 'Durée cuisson', unit: 'min' },
-  temp_coeur: { label: 'Température à cœur', unit: '°C' },
-  humidite: { label: 'Humidité', unit: '%' },
-  poids: { label: 'Poids', unit: 'kg' },
-};
+// Types d'étape « CCP » et libellés / unités des paramètres mesurés : référentiels
+// éditables (mig 513, services/process-referentials) — plus de listes en dur ici.
 
 export const productionEtapesRepository = {
 
@@ -64,7 +54,7 @@ export const productionEtapesRepository = {
           WHERE pie.id = $1`,
         [etapeId]
       );
-      const meta = PARAM_META[data.parametre] || { label: data.parametre, unit: '' };
+      const meta = await readingParamMeta(data.parametre);
       const problem = `Relevé de procédé hors tolérance — étape « ${ctx.rows[0]?.etape_nom ?? '?'} » : `
         + `${meta.label} mesuré ${data.mesure} ${meta.unit}, cible ${consigne} ± ${tolerance} ${meta.unit}.`;
       await db.query(

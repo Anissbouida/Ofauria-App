@@ -10,6 +10,10 @@ import { validate } from '../middleware/validate.middleware.js';
 import { createRecipeSchema, updateRecipeSchema, bulkDeleteRecipesSchema, saveEtapesSchema, identitySchema } from '../validators/recipe.validator.js';
 import { replaceComponentsSchema, financeSchema, createFormatSchema, duplicateFormatSchema, updateFormatSchema } from '../validators/recipe-component.validator.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
+import { requireStepTypes } from '../services/process-referentials.js';
+
+// Types d'étape : codes du référentiel production_step_types (mig 513).
+const stepTypesOf = requireStepTypes((body: { etapes?: { type?: string | null }[] }) => (body.etapes ?? []).map(e => e.type));
 
 const router = Router();
 
@@ -50,7 +54,7 @@ router.get('/component-roles', authenticate, recipeComponentController.listRoles
 router.get('/component-sources', authenticate, recipeComponentController.listSources);
 router.patch('/:recipeId/finance', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(financeSchema), recipeComponentController.saveFinance);
 router.patch('/:recipeId/identity', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(identitySchema), recipeComponentController.saveIdentity);
-router.put('/:recipeId/etapes', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(saveEtapesSchema), recipeComponentController.saveEtapes);
+router.put('/:recipeId/etapes', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(saveEtapesSchema), stepTypesOf, recipeComponentController.saveEtapes);
 router.get('/:recipeId/children', authenticate, recipeComponentController.children);
 // Explosion à plat (mig 400) — roadmap lot 5
 router.get('/:id/explosion', authenticate, recipeController.getExplosion);
@@ -74,8 +78,8 @@ router.post('/:id/versions/:versionNumber/restore', authenticate, authorize(...R
 // Fiche technique imprimable (PDF) — lecture seule, ouverte a tout utilisateur
 // authentifie : c'est le document que le labo pose sur le plan de travail.
 router.get('/:id/fiche-technique', authenticate, recipeController.downloadFiche);
-router.post('/', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(createRecipeSchema), recipeController.create);
-router.put('/:id', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(updateRecipeSchema), recipeController.update);
+router.post('/', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(createRecipeSchema), stepTypesOf, recipeController.create);
+router.put('/:id', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(updateRecipeSchema), stepTypesOf, recipeController.update);
 // Archivage (mig 275 wip + 346) : DELETE archive, plus de suppression physique ;
 // bulk-archive / bulk-restore plus bas, restauration unitaire ici.
 router.post('/:id/restore', authenticate, authorize(ROLES.ADMIN), recipeController.restore);

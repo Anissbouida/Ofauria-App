@@ -4,7 +4,7 @@ import { productionEtapesRepository } from '../repositories/production-etapes.re
 import { productionRendementRepository } from '../repositories/production-rendement.repository.js';
 import { stockFrigoRepository } from '../repositories/stock-frigo.repository.js';
 import { updateEtapeStatusSchema, completeRepetitionSchema, recordRendementSchema, addReadingSchema, retroPlanningSchema } from '../validators/production-etapes.validator.js';
-import { CCP_STEP_TYPES } from '../repositories/production-etapes.repository.js';
+import { ccpStepTypes, unknownCodes, unknownCodeMessage } from '../services/process-referentials.js';
 
 export const productionEtapesController = {
 
@@ -37,7 +37,8 @@ export const productionEtapesController = {
     // sans au moins un relevé de procédé (preuve de maîtrise).
     if (parsed.data.status === 'completed') {
       const gate = await productionEtapesRepository.ccpGate(req.params.etapeId as string);
-      if (gate && gate.type_etape && CCP_STEP_TYPES.includes(gate.type_etape) && gate.readings === 0) {
+      // Types « CCP » : référentiel production_step_types, metadata.ccp (mig 513).
+      if (gate && gate.type_etape && (await ccpStepTypes()).has(gate.type_etape) && gate.readings === 0) {
         res.status(400).json({ success: false, error: { message: 'Étape critique (CCP) : enregistrez au moins un relevé de procédé avant de la clôturer.' } });
         return;
       }
@@ -60,6 +61,8 @@ export const productionEtapesController = {
       res.status(400).json({ success: false, error: { message: parsed.error.issues.map(i => i.message).join(', ') } });
       return;
     }
+    const badParam = await unknownCodes('process_reading_params', [parsed.data.parametre]);
+    if (badParam.length) { res.status(400).json({ success: false, error: { message: unknownCodeMessage('Paramètre de relevé', badParam) } }); return; }
     const reading = await productionEtapesRepository.addReading(req.params.etapeId as string, parsed.data, req.user!.userId);
     res.status(201).json({ success: true, data: reading });
   },

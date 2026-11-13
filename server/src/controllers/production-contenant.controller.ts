@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productionContenantRepository } from '../repositories/production-contenant.repository.js';
 import { bulkIdsSchema, createContenantSchema, updateContenantSchema, upsertProfileSchema } from '../validators/production-contenant.validator.js';
+import { unknownCodes, unknownCodeMessage } from '../services/process-referentials.js';
 
 export const productionContenantController = {
   // ───────── CONTENANTS ─────────
@@ -29,6 +30,8 @@ export const productionContenantController = {
       res.status(400).json({ success: false, error: { message: parsed.error.errors[0].message } });
       return;
     }
+    const badCreate = await unknownCodes('production_step_types', (parsed.data.etapes_defaut ?? []).map(e => e.type));
+    if (badCreate.length) { res.status(400).json({ success: false, error: { message: unknownCodeMessage("Type d'étape", badCreate) } }); return; }
     const contenant = await productionContenantRepository.createContenant(parsed.data);
     res.status(201).json({ success: true, data: contenant });
   },
@@ -39,6 +42,8 @@ export const productionContenantController = {
       res.status(400).json({ success: false, error: { message: parsed.error.errors[0].message } });
       return;
     }
+    const badUpdate = await unknownCodes('production_step_types', (parsed.data.etapes_defaut ?? []).map(e => e.type));
+    if (badUpdate.length) { res.status(400).json({ success: false, error: { message: unknownCodeMessage("Type d'étape", badUpdate) } }); return; }
     const contenant = await productionContenantRepository.updateContenant(req.params.id, parsed.data);
     if (!contenant) {
       res.status(404).json({ success: false, error: { message: 'Contenant introuvable' } });
@@ -132,6 +137,8 @@ export const productionContenantController = {
       res.status(400).json({ success: false, error: { message: parsed.error.errors[0].message } });
       return;
     }
+    const badProfile = await unknownCodes('production_step_types', (parsed.data.etapes_surcharges ?? []).map(e => e.type));
+    if (badProfile.length) { res.status(400).json({ success: false, error: { message: unknownCodeMessage("Type d'étape", badProfile) } }); return; }
     // Verify contenant exists
     const contenant = await productionContenantRepository.findContenantById(parsed.data.contenant_id);
     if (!contenant) {

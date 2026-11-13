@@ -11,6 +11,7 @@ import { settingsRepository } from '../repositories/settings.repository.js';
 import { isTransitionError, listPlanEvents } from '../services/production-state.js';
 import { db } from '../config/database.js';
 import { workshopsOf, workshopForCategorySlug, workshopLabel, listWorkshops, saveWorkshop } from '../services/workshops.js';
+import { processRefs } from '../services/process-referentials.js';
 
 /** Charge le plan et vérifie qu'il appartient au magasin de l'utilisateur
  *  (admin sans magasin = accès global). Répond 404 / 403 et renvoie null sinon. */
@@ -38,6 +39,14 @@ export const productionController = {
   async workshops(req: AuthRequest, res: Response) {
     const [list, mine] = await Promise.all([listWorkshops(), workshopsOf(req.user!)]);
     res.json({ success: true, data: { workshops: list, mine } });
+  },
+
+  /** Référentiels du procédé (mig 513), lisibles par tous les écrans de production. */
+  async processReferentials(_req: AuthRequest, res: Response) {
+    const [stepTypes, equipmentTypes, readingParams] = await Promise.all([
+      processRefs('production_step_types'), processRefs('production_equipment_types'), processRefs('process_reading_params'),
+    ]);
+    res.json({ success: true, data: { stepTypes, equipmentTypes, readingParams } });
   },
 
   /** Crée ou modifie un atelier : libellé, catégories fabriquées, membres (rôles / utilisateurs). */

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionEtapesApi } from '../../api/production-etapes.api';
+import { useProcessRefs } from '../../api/production.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { useProductionTimers } from '../../context/ProductionTimerContext';
@@ -9,12 +10,6 @@ import {
   ChevronDown, ChevronRight, RotateCcw, AlertTriangle, Loader2, Save, Lock, Thermometer, Droplets, Scale,
   Plus, Trash2, ShieldCheck
 } from 'lucide-react';
-
-/** Libelles des types d'etape (mig 342). */
-const ETAPE_TYPE_LABELS: Record<string, string> = {
-  petrissage: 'Pétrissage', pointage: 'Pointage', faconnage: 'Façonnage', tourage: 'Tourage', appret: 'Apprêt',
-  cuisson: 'Cuisson', refroidissement: 'Refroidissement', montage: 'Montage', finition: 'Finition', autre: 'Autre',
-};
 
 /** Relevé de procédé mesuré sur une étape (mig 422, épic labo L2). */
 interface Reading {
@@ -30,17 +25,8 @@ interface Reading {
   mesure_par_name: string | null;
 }
 
-/** Paramètres mesurables et leur unité (mig 422). */
-const PARAM_LABELS: Record<string, { label: string; unit: string }> = {
-  temp_pate: { label: 'Température pâte', unit: '°C' },
-  temp_four: { label: 'Température four', unit: '°C' },
-  duree_cuisson: { label: 'Durée cuisson', unit: 'min' },
-  temp_coeur: { label: 'Température à cœur', unit: '°C' },
-  humidite: { label: 'Humidité', unit: '%' },
-  poids: { label: 'Poids', unit: 'kg' },
-};
-/** Types d'étape considérés comme CCP (points critiques) par défaut. */
-const CCP_TYPES = new Set(['cuisson', 'refroidissement']);
+// Paramètres mesurables (libellé, unité) et types d'étape CCP : référentiels éditables
+// (mig 513, Paramètres › Référentiels), lus via useProcessRefs.
 
 interface EtapesPanelProps {
   planId: string;
@@ -99,6 +85,7 @@ const statusColors = {
 
 export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit }: EtapesPanelProps) {
   const queryClient = useQueryClient();
+  const refs = useProcessRefs();
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [checklistState, setChecklistState] = useState<Record<string, { label: string; ok: boolean }[]>>({});
   const currentEtapeRef = useRef<HTMLDivElement | null>(null);
@@ -189,7 +176,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
         consigne: consigne !== null && Number.isFinite(consigne) ? consigne : null,
         tolerance: tolerance !== null && Number.isFinite(tolerance) ? tolerance : null,
         mesure,
-        est_ccp: etape.type_etape ? CCP_TYPES.has(etape.type_etape) : false,
+        est_ccp: refs.isCcp(etape.type_etape),
       },
     });
   };
@@ -199,7 +186,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
   const draftFor = (etape: Etape) => {
     if (readingDraft[etape.id]) return readingDraft[etape.id];
     const t = etape.type_etape;
-    const parametre: string = t === 'cuisson' ? 'temp_four' : t === 'refroidissement' ? 'temp_coeur' : 'temp_pate';
+    const parametre: string = refs.defaultParam(t);
     const consigne = (parametre === 'temp_pate' && etape.temperature_c != null) ? String(parseFloat(String(etape.temperature_c)))
       : (parametre === 'humidite' && etape.humidite_pct != null) ? String(parseFloat(String(etape.humidite_pct))) : '';
     return { parametre, consigne, tolerance: '', mesure: '' };
@@ -411,7 +398,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                               <span className={`font-medium text-sm ${etape.status === 'completed' ? 'text-emerald-800 line-through' : 'text-gray-900'}`}>{etape.nom}</span>
                               {etape.est_bloquante && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 font-bold uppercase">Bloquante</span>}
                               {etape.timer_auto && etape.duree_estimee_min && <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-600 font-bold"><Timer size={9} className="inline mr-0.5" />{etape.duree_estimee_min}min</span>}
-                              {etape.type_etape && etape.type_etape !== 'autre' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-bold uppercase">{ETAPE_TYPE_LABELS[etape.type_etape] || etape.type_etape}</span>}
+                              {etape.type_etape && etape.type_etape !== 'autre' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-bold uppercase">{refs.stepLabel(etape.type_etape)}</span>}
                               {etape.temperature_c != null && <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 font-bold"><Thermometer size={9} className="inline mr-0.5" />{parseFloat(String(etape.temperature_c))} °C</span>}
                               {etape.humidite_pct != null && <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-bold"><Droplets size={9} className="inline mr-0.5" />{parseFloat(String(etape.humidite_pct))} % HR</span>}
                               {etape.est_repetable && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 font-bold"><RotateCcw size={9} className="inline mr-0.5" />{etape.nb_repetitions_actuelle}/{etape.nb_repetitions_cible}</span>}
@@ -537,7 +524,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                             {etape.readings && etape.readings.length > 0 && (
                               <div className="space-y-1 mb-1.5">
                                 {etape.readings.map((rd) => {
-                                  const meta = PARAM_LABELS[rd.parametre] || { label: rd.parametre, unit: '' };
+                                  const meta = refs.paramMeta(rd.parametre);
                                   return (
                                     <div key={rd.id} className="flex items-center gap-2 text-[11px]">
                                       {rd.est_ccp && <span className="text-[8px] px-1 py-0.5 rounded bg-violet-100 text-violet-700 font-bold uppercase">CCP</span>}
@@ -560,13 +547,13 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                             )}
                             {isChef && planStatus === 'in_progress' && (() => {
                               const d = draftFor(etape);
-                              const meta = PARAM_LABELS[d.parametre] || { label: d.parametre, unit: '' };
+                              const meta = refs.paramMeta(d.parametre);
                               const set = (patch: Partial<typeof d>) => setReadingDraft(s => ({ ...s, [etape.id]: { ...d, ...patch } }));
                               return (
                                 <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
                                   <select value={d.parametre} onChange={e => set({ parametre: e.target.value })}
                                     className="border border-gray-200 rounded px-1 py-0.5 text-[11px] bg-white">
-                                    {Object.entries(PARAM_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                                    {refs.readingParams.map(p => <option key={p.code} value={p.code}>{p.label}</option>)}
                                   </select>
                                   <input value={d.consigne} onChange={e => set({ consigne: e.target.value })} placeholder="cible"
                                     inputMode="decimal" className="w-14 border border-gray-200 rounded px-1 py-0.5 text-[11px]" />

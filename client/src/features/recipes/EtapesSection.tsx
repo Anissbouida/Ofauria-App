@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ListChecks, Timer, ShieldCheck, Repeat, Languages, Pencil, Plus, Trash2, ArrowUp, ArrowDown, Save, X, Thermometer, Droplets } from 'lucide-react';
 import { recipesApi } from '../../api/recipes.api';
+import { useProcessRefs } from '../../api/production.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 
@@ -19,12 +20,7 @@ import { apiErrorMessage } from '../../api/errors';
  * le PDF, lui, ne sait pas faire (police Helvetica, encodage Latin-1).
  */
 
-// Types d'etape (mig 342) — meme liste que le CHECK en base et le validateur serveur.
-const ETAPE_TYPES = ['petrissage', 'pointage', 'faconnage', 'tourage', 'appret', 'cuisson', 'refroidissement', 'montage', 'finition', 'autre'] as const;
-const ETAPE_TYPE_LABELS: Record<string, string> = {
-  petrissage: 'Pétrissage', pointage: 'Pointage', faconnage: 'Façonnage', tourage: 'Tourage', appret: 'Apprêt',
-  cuisson: 'Cuisson', refroidissement: 'Refroidissement', montage: 'Montage', finition: 'Finition', autre: 'Autre',
-};
+// Types d'étape : référentiel éditable (mig 513, Paramètres › Référentiels), via useProcessRefs.
 
 export interface Etape {
   ordre: number;
@@ -73,6 +69,7 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
   // permet de n'afficher que le français quand la darija encombre.
   const [bilingue, setBilingue] = useState(true);
   const qc = useQueryClient();
+  const refs = useProcessRefs();
   const [drafts, setDrafts] = useState<Draft[] | null>(null);
 
   // Enregistrer les étapes recharge la fiche : la page hôte peut bloquer l'entrée
@@ -159,7 +156,7 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
                 {/* Conduite de l'étape (mig 342) : type, température, hygrométrie. */}
                 <select className={`${inp} min-w-[150px]`} value={d.type} onChange={(e) => patch(d.k, { type: e.target.value })} title="Type d'étape">
                   <option value="">Type d'étape…</option>
-                  {ETAPE_TYPES.map((t) => <option key={t} value={t}>{ETAPE_TYPE_LABELS[t]}</option>)}
+                  {refs.stepTypes.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
                 </select>
                 <span className="inline-flex items-center gap-1" title="Température (four, étuve, ambiante…)">
                   <Thermometer size={13} className="text-gray-400" />
@@ -293,7 +290,7 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold" style={{ color: 'var(--theme-text-strong)' }}>{e.nom}</span>
                     {e.type && (
-                      <span className="odoo-tag odoo-tag-grey">{ETAPE_TYPE_LABELS[e.type] || e.type}</span>
+                      <span className="odoo-tag odoo-tag-grey">{refs.stepLabel(e.type)}</span>
                     )}
                     {e.duree_estimee_min ? (
                       <span className="odoo-tag odoo-tag-grey"><Timer size={9} /> {e.duree_estimee_min} min</span>

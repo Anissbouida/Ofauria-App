@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 export const createEquipementSchema = z.object({
   nom: z.string().min(1).max(200),
-  type: z.enum(['four', 'batteur', 'petrin', 'laminoir', 'surgele', 'frigo', 'vitrine', 'autre']),
+  // Code du référentiel production_equipment_types (mig 513), vérifié par le contrôleur.
+  type: z.string().min(1).max(60),
   cout_horaire: z.number().min(0).default(0),
   puissance_kw: z.number().min(0).optional(),
   cout_kwh: z.number().min(0).default(1.50),

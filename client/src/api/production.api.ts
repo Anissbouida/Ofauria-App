@@ -18,6 +18,9 @@ export interface Workshop {
 
 export type WorkshopInput = Omit<Workshop, 'code' | 'categorySlugs'>;
 
+/** Entrée d'un référentiel du procédé (mig 513) : types d'étape, d'équipement, paramètres. */
+export interface ProcessRefEntry { code: string; label: string; color: string | null; isActive: boolean; metadata: Record<string, unknown> }
+
 export type MrpRow = {
   product_id: string; product_name: string; category_id: number | null; category_name: string | null;
   forecast_qty: number; order_qty: number; demand: number; on_hand: number; planned_qty: number; net_to_produce: number;
@@ -59,6 +62,9 @@ export const productionApi = {
     api.get('/production/workshops').then(r => r.data.data),
   saveWorkshop: (code: string, data: WorkshopInput): Promise<{ workshops: Workshop[] }> =>
     api.put(`/production/workshops/${code}`, data).then(r => r.data.data),
+  /** Référentiels du procédé (mig 513), éditables dans Paramètres › Référentiels. */
+  processReferentials: (): Promise<{ stepTypes: ProcessRefEntry[]; equipmentTypes: ProcessRefEntry[]; readingParams: ProcessRefEntry[] }> =>
+    api.get('/production/process-referentials').then(r => r.data.data),
   list: (params?: Record<string, string>) => api.get('/production', { params }).then(r => r.data),
   /** MRP — besoins nets de production du jour (plan directeur). */
   mrp: (date: string, store?: string): Promise<MrpResult> =>
@@ -136,5 +142,33 @@ export function useWorkshops() {
     isLoading,
     label: (code?: string | null) => (code ? all.find(w => w.code === code)?.label ?? code : ''),
     slugsOf: (code?: string | null) => (code ? all.find(w => w.code === code)?.categorySlugs ?? null : null),
+  };
+}
+
+/**
+ * Référentiels du procédé (mig 513) : remplacent les listes de types d'étape, de
+ * paramètres de relevé et de types CCP codées en dur dans les écrans.
+ */
+export function useProcessRefs() {
+  const { data } = useQuery({ queryKey: ['process-referentials'], queryFn: productionApi.processReferentials, staleTime: 60_000 });
+  const steps = data?.stepTypes ?? [];
+  const params = data?.readingParams ?? [];
+  const step = (code?: string | null) => steps.find(s => s.code === code);
+  return {
+    stepTypes: steps.filter(s => s.isActive),
+    readingParams: params.filter(p => p.isActive),
+    equipmentTypes: (data?.equipmentTypes ?? []).filter(e => e.isActive),
+    stepLabel: (code?: string | null) => (code ? step(code)?.label ?? code : ''),
+    stepColor: (code?: string | null) => step(code)?.color ?? step('autre')?.color ?? '#9ca3af',
+    isCcp: (code?: string | null) => step(code)?.metadata.ccp === true,
+    /** Paramètre proposé pour un relevé sur ce type d'étape (sinon le premier actif). */
+    defaultParam: (code?: string | null) => {
+      const p = step(code)?.metadata.default_param;
+      return typeof p === 'string' ? p : (params.find(x => x.isActive)?.code ?? '');
+    },
+    paramMeta: (code: string) => {
+      const p = params.find(x => x.code === code);
+      return { label: p?.label ?? code, unit: typeof p?.metadata.unit === 'string' ? p.metadata.unit : '' };
+    },
   };
 }

@@ -1,16 +1,15 @@
 import { z } from 'zod';
 
-/** Types d'etape de fabrication (mig 342). Meme liste que le CHECK de production_item_etapes.type_etape. */
-export const ETAPE_TYPES = [
-  'petrissage', 'pointage', 'faconnage', 'tourage', 'appret',
-  'cuisson', 'refroidissement', 'montage', 'finition', 'autre',
-] as const;
+/** Type d'étape : code du référentiel production_step_types (mig 513, éditable dans
+ *  Paramètres › Référentiels). La forme est vérifiée ici, l'existence du code par
+ *  requireStepTypes (services/process-referentials). */
+export const stepTypeCode = z.string().max(60);
 
 const etapeSchema = z.object({
   ordre: z.number().int().min(1),
   nom: z.string().min(1, 'Le nom de l\'étape est requis').max(200),
   // Parametres structures (mig 342) : type d'etape, T° (four/etuve/ambiante), hygrometrie.
-  type: z.enum(ETAPE_TYPES).nullable().optional(),
+  type: stepTypeCode.nullable().optional(),
   temperature_c: z.number().min(-40, 'Température trop basse').max(400, 'Température trop haute').nullable().optional(),
   humidite_pct: z.number().min(0).max(100, 'L\'humidité est un pourcentage (0-100)').nullable().optional(),
   duree_estimee_min: z.number().positive().nullable().optional(),

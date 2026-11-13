@@ -20,6 +20,8 @@ router.get('/', authenticate, validateQuery(listQuerySchema), asyncHandler(produ
 // création / modification par le paramétrage Production. Avant /:id.
 router.get('/workshops', authenticate, asyncHandler(productionController.workshops));
 router.put('/workshops/:code', authenticate, authorizeSettings('production', 'edit'), asyncHandler(productionController.saveWorkshop));
+// Référentiels du procédé (types d'étape, d'équipement, paramètres de relevé — mig 513).
+router.get('/process-referentials', authenticate, asyncHandler(productionController.processReferentials));
 // Static routes BEFORE /:id to avoid capture
 router.get('/transfers/pending', authenticate, asyncHandler(productionController.pendingProductionTransfers));
 

@@ -17,7 +17,8 @@ export const completeRepetitionSchema = z.object({
 
 // Relevé de procédé mesuré sur une étape (mig 422).
 export const addReadingSchema = z.object({
-  parametre: z.enum(['temp_pate', 'temp_four', 'duree_cuisson', 'temp_coeur', 'humidite', 'poids']),
+  // Code du référentiel process_reading_params (mig 513), vérifié par le contrôleur.
+  parametre: z.string().min(1).max(60),
   consigne: z.number().nullable().optional(),
   tolerance: z.number().min(0).nullable().optional(),
   mesure: z.number(),

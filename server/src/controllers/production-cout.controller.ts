@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productionCoutRepository } from '../repositories/production-cout.repository.js';
 import { createEquipementSchema, updateEquipementSchema, recordTempsTravailSchema, recordEquipementUsageSchema } from '../validators/production-cout.validator.js';
+import { unknownCodes, unknownCodeMessage } from '../services/process-referentials.js';
 
 export const productionCoutController = {
 
@@ -25,6 +26,8 @@ export const productionCoutController = {
       res.status(400).json({ success: false, error: { message: parsed.error.issues.map(i => i.message).join(', ') } });
       return;
     }
+    const badType = await unknownCodes('production_equipment_types', [parsed.data.type]);
+    if (badType.length) { res.status(400).json({ success: false, error: { message: unknownCodeMessage("Type d'équipement", badType) } }); return; }
     const data = await productionCoutRepository.createEquipement(parsed.data);
     res.status(201).json({ success: true, data });
   },
@@ -35,6 +38,8 @@ export const productionCoutController = {
       res.status(400).json({ success: false, error: { message: parsed.error.issues.map(i => i.message).join(', ') } });
       return;
     }
+    const badType = await unknownCodes('production_equipment_types', [parsed.data.type]);
+    if (badType.length) { res.status(400).json({ success: false, error: { message: unknownCodeMessage("Type d'équipement", badType) } }); return; }
     const data = await productionCoutRepository.updateEquipement(req.params.id as string, parsed.data);
     if (!data) { res.status(404).json({ success: false, error: { message: 'Equipement non trouve' } }); return; }
     res.json({ success: true, data });
