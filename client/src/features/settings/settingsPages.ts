@@ -160,7 +160,7 @@ export const normalizeSearch = (s: string) => s.normalize('NFD').replace(/[̀-ͯ
 
 export interface SearchEntry {
   id: string;
-  kind: 'page' | 'field' | 'parameter' | 'table' | 'series' | 'rule';
+  kind: 'page' | 'field' | 'parameter' | 'table' | 'series' | 'rule' | 'action' | 'recent';
   label: string;
   page: SettingsPageKey;
   anchor?: string;

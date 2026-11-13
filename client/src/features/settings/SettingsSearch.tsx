@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, FileText, SlidersHorizontal, Database, Hash, Bell, CornerDownLeft, Loader2 } from 'lucide-react';
+import { Search, FileText, SlidersHorizontal, Database, Hash, Bell, CornerDownLeft, Loader2, Zap, Clock } from 'lucide-react';
+import { ACTIVATABLE_MODULES, CORE_MODULES, MODULE_LABELS } from '@ofauria/shared';
 import { settingsApi } from '../../api/settings.api';
 import { referentielApi } from '../../api/referentiel.api';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { settingAnchor } from './SettingsPrimitives';
 import {
   normalizeSearch, pageOfParameter, staticSearchEntries,
   type SearchEntry, type SettingsPageDef, type SettingsPageKey,
@@ -14,14 +16,49 @@ import {
  * plus, chargés à l'ouverture, les paramètres métier, les tables du référentiel,
  * les séries de numérotation et les règles de notification. Seules les pages
  * permises par le droit « Paramètres » sont proposées.
+ * Lot S5 : actions courantes (elles ouvrent l'endroit où agir, sans rien exécuter) et
+ * dernières recherches ouvertes (retenues par navigateur).
  */
 
-const KIND_ICON = { page: FileText, field: SlidersHorizontal, parameter: SlidersHorizontal, table: Database, series: Hash, rule: Bell };
+const KIND_ICON = { page: FileText, field: SlidersHorizontal, parameter: SlidersHorizontal, table: Database, series: Hash, rule: Bell, action: Zap, recent: Clock };
 const KIND_GROUP: Record<SearchEntry['kind'], string> = {
-  page: 'Pages', field: 'Réglages', parameter: 'Paramètres métier', table: 'Tables du référentiel',
+  recent: 'Récents', action: 'Actions', page: 'Pages', field: 'Réglages', parameter: 'Paramètres métier', table: 'Tables du référentiel',
   series: 'Séries de numérotation', rule: 'Règles de notification',
 };
 const MAX_RESULTS = 40;
+const RECENT_KEY = 'kalum.settings.recent';
+const MAX_RECENT = 5;
+
+/** Actions courantes : chacune ouvre la page (et le bloc) où l'on agit. */
+function actionEntries(): SearchEntry[] {
+  const a = (id: string, label: string, page: SettingsPageKey, words: string, anchor?: string): SearchEntry =>
+    ({ id: `action:${id}`, kind: 'action', label, page, anchor, haystack: normalizeSearch(`${label} ${words}`) });
+  return [
+    a('sector', 'Changer de secteur d\'activité', 'sector', 'metier preregler pack', settingAnchor("Secteur d'activité")),
+    a('describe', 'Décrire mon activité (assistant)', 'sector', 'ia claude proposer configuration', settingAnchor('Modèles de configuration')),
+    a('export', 'Exporter ou importer la configuration', 'sector', 'modele json fichier', settingAnchor('Modèles de configuration')),
+    ...ACTIVATABLE_MODULES.filter(m => !CORE_MODULES.has(m)).map(m =>
+      a(`module-${m}`, `Activer ou désactiver « ${MODULE_LABELS[m]} »`, 'sector', 'module allumer eteindre masquer', settingAnchor(MODULE_LABELS[m]))),
+    a('store', 'Ajouter un établissement', 'stores', 'boutique magasin laboratoire nouveau creer'),
+    a('bank', 'Ajouter un compte bancaire', 'company', 'rib banque nouveau', settingAnchor('Comptes bancaires')),
+    a('tax', 'Ajouter un taux de TVA', 'tax', 'taxe nouveau creer'),
+    a('series', 'Créer une série de numérotation', 'numbering', 'numero piece compteur nouveau'),
+    a('approval', 'Créer un circuit d\'approbation', 'approvals', 'validation seuil regle nouveau'),
+    a('import', 'Importer des données', 'data', 'csv excel fichier'),
+    a('audit', 'Voir le journal des modifications', 'audit', 'historique trace qui a modifie'),
+  ];
+}
+
+function readRecent(): SearchEntry[] {
+  try { return (JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as SearchEntry[]).slice(0, MAX_RECENT); } catch { return []; }
+}
+function rememberRecent(e: SearchEntry) {
+  try {
+    const entry = { ...e, kind: e.kind === 'recent' ? (e as SearchEntry & { from?: SearchEntry['kind'] }).from ?? 'page' : e.kind };
+    const list = [entry, ...readRecent().filter(r => r.id !== entry.id)].slice(0, MAX_RECENT);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+  } catch { /* stockage indisponible : pas de récents */ }
+}
 
 export default function SettingsSearch({ open, onClose, pages, onSelect }: {
   open: boolean;
@@ -47,7 +84,7 @@ export default function SettingsSearch({ open, onClose, pages, onSelect }: {
   const loading = [params, ref, series, rules].some(r => r.isFetching && !r.data);
 
   const index = useMemo<SearchEntry[]>(() => {
-    const out = staticSearchEntries(pages);
+    const out = [...actionEntries(), ...staticSearchEntries(pages)];
     for (const p of params.data ?? []) {
       out.push({ id: `param:${p.key}`, kind: 'parameter', label: p.label, page: pageOfParameter(p.key), anchor: `param-${p.key}`,
         haystack: normalizeSearch(`${p.label} ${p.help} ${p.domainLabel} ${p.fields.map(f => f.label).join(' ')}`) });
@@ -69,7 +106,12 @@ export default function SettingsSearch({ open, onClose, pages, onSelect }: {
 
   const results = useMemo(() => {
     const tokens = normalizeSearch(q.trim()).split(/\s+/).filter(Boolean);
-    if (!tokens.length) return index.filter(e => e.kind === 'page');
+    if (!tokens.length) {
+      // Sans saisie : dernières recherches ouvertes (encore permises), puis les pages.
+      const recent = readRecent().filter(r => allowed.has(r.page))
+        .map(r => ({ ...r, id: `recent:${r.id}`, kind: 'recent' as const, from: r.kind }));
+      return [...recent, ...index.filter(e => e.kind === 'page')];
+    }
     const scored = index
       .filter(e => tokens.every(t => e.haystack.includes(t)))
       .map(e => {
@@ -79,7 +121,7 @@ export default function SettingsSearch({ open, onClose, pages, onSelect }: {
         // une correspondance dans la seule description vient en dernier.
         const score = (label === phrase ? 0 : label.includes(phrase) ? 1 : label.startsWith(tokens[0]) ? 2 : 3)
           - tokens.filter(t => label.includes(t)).length / (tokens.length + 1)
-          + (e.kind === 'page' ? 0 : 0.1);
+          + (e.kind === 'page' ? 0 : e.kind === 'action' ? 0.05 : 0.1);
         return { e, score };
       })
       .sort((a, b) => a.score - b.score);
@@ -98,7 +140,13 @@ export default function SettingsSearch({ open, onClose, pages, onSelect }: {
 
   if (!open) return null;
 
-  const choose = (e: SearchEntry | undefined) => { if (e) { onClose(); onSelect(e); } };
+  const choose = (e: SearchEntry | undefined) => {
+    if (!e) return;
+    const original = e.kind === 'recent' ? { ...e, id: e.id.replace(/^recent:/, '') } : e;
+    rememberRecent(original);
+    onClose();
+    onSelect(original);
+  };
   const onKeyDown = (ev: React.KeyboardEvent) => {
     if (ev.key === 'ArrowDown') { ev.preventDefault(); setActive(a => Math.min(a + 1, sorted.length - 1)); }
     else if (ev.key === 'ArrowUp') { ev.preventDefault(); setActive(a => Math.max(a - 1, 0)); }

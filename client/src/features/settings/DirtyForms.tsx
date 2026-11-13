@@ -154,6 +154,16 @@ export function useDraft<T extends Record<string, unknown>>(saved: T) {
 export function SaveBar({ readOnly }: { readOnly?: boolean }) {
   const ctx = useDirtyForms();
   const [saving, setSaving] = useState(false);
+  // Ctrl+S / ⌘S (lot S5) : enregistre les brouillons de la page, comme le bouton.
+  const shortcut = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 's') { e.preventDefault(); shortcut.current(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  shortcut.current = () => undefined;
   if (!ctx) return null;
   const dirty = ctx.entries();
   if (!dirty.length) return null;
@@ -164,12 +174,14 @@ export function SaveBar({ readOnly }: { readOnly?: boolean }) {
     setSaving(true);
     try { await ctx.saveAll(); } finally { setSaving(false); }
   };
+  shortcut.current = () => { if (!saving && !invalid && !readOnly) void save(); };
 
   return (
     <div className="odoo-savebar" role="region" aria-label="Modifications non enregistrées">
       <span className="odoo-savebar-text">
         {count} modification{count > 1 ? 's' : ''} non enregistrée{count > 1 ? 's' : ''}
       </span>
+      <kbd className="odoo-settings-kbd" style={{ marginLeft: 0 }} title="Raccourci pour enregistrer">{/mac/i.test(navigator.platform) ? '⌘S' : 'Ctrl+S'}</kbd>
       {invalid && <span className="odoo-savebar-note">{invalid}</span>}
       {readOnly && <span className="odoo-savebar-note">Consultation seule : l'enregistrement sera refusé.</span>}
       <div className="odoo-savebar-actions">

@@ -6,7 +6,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { allowedSettingsSections } from '@ofauria/shared';
 import { settingsApi } from '../../api/settings.api';
 import SalesChannelsManager from '../sales/SalesChannelsManager';
-import { Upload, Image, Eye, Check, Search, Lock, Users, ExternalLink, Printer, ChevronDown, ChevronRight, EyeOff, History } from 'lucide-react';
+import { Upload, Image, Eye, Check, Search, Lock, Users, ExternalLink, Printer, ChevronDown, ChevronRight, EyeOff, History, Menu } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import PrinterSettingsCard from './PrinterSettingsCard';
@@ -72,6 +72,8 @@ function SettingsShell() {
   const confirm = useConfirm();
   const dirtyForms = useDirtyForms();
   const [searchOpen, setSearchOpen] = useState(false);
+  // Écran étroit (lot S5) : le menu est un tiroir replié sous un bouton « page courante ».
+  const [navOpen, setNavOpen] = useState(false);
   const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
 
   const allowedSections = allowedSettingsSections(getModuleConfig('settings'));
@@ -137,6 +139,7 @@ function SettingsShell() {
     if (page !== current?.key && !(await confirmLeave())) return;
     const next = new URLSearchParams({ page, ...(opts.extra ?? {}) });
     if (next.toString() !== params.toString()) setParams(next);
+    setNavOpen(false);
     if (opts.anchor) setPendingAnchor(opts.anchor);
   }, [current?.key, confirmLeave, params, setParams]);
 
@@ -249,11 +252,18 @@ function SettingsShell() {
       <h1 className="odoo-settings-title" style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>Paramètres</h1>
 
       <div className="odoo-settings">
-        <aside className="odoo-settings-nav" aria-label="Pages des paramètres">
+        <aside className={`odoo-settings-nav${navOpen ? ' open' : ''}`} aria-label="Pages des paramètres">
+          <button type="button" className="odoo-settings-nav-toggle" aria-expanded={navOpen} aria-controls="settings-nav-body"
+            onClick={() => setNavOpen(o => !o)}>
+            <Menu size={15} aria-hidden="true" />
+            <span>{isHome ? HOME_PAGE.label : `${current.group} › ${current.label}`}</span>
+            {navOpen ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+          </button>
           <button type="button" className="odoo-settings-nav-search" onClick={() => setSearchOpen(true)}>
             <Search size={14} /> Rechercher…
             <kbd>{isMac ? '⌘K' : 'Ctrl K'}</kbd>
           </button>
+          <div id="settings-nav-body" className="odoo-settings-nav-body">
           <div className="odoo-settings-nav-group" style={{ borderTop: 'none', paddingTop: 0 }}>
             <button type="button" className={`odoo-settings-nav-item${isHome ? ' active' : ''}`}
               aria-current={isHome ? 'page' : undefined} onClick={() => void goTo('home')}>
@@ -307,6 +317,7 @@ function SettingsShell() {
               </span>
             </div>
           )}
+          </div>
         </aside>
 
         <div className="odoo-settings-main">
