@@ -52,6 +52,10 @@ router.put('/sector', authenticate, jsonParser, authorizeSettings('company', 'ed
 router.get('/modules', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.modules));
 router.put('/modules', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.saveModules));
 router.post('/modules/reset', authenticate, authorizeSettings('company', 'edit'), asyncHandler(companyController.resetModules));
+// Aperçu d'impact et configuration versionnée (mig 508, lot P0b).
+router.post('/modules/preview', authenticate, jsonParser, authorizeSettings('company', 'view'), asyncHandler(companyController.previewModules));
+router.get('/modules/versions', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.moduleVersions));
+router.post('/modules/versions/:id/restore', authenticate, authorizeSettings('company', 'edit'), asyncHandler(companyController.restoreModuleVersion));
 // Données de départ par secteur (phase 9.3) : aperçu + chargement à la demande (direction).
 router.get('/sector/starter', authenticate, asyncHandler(companyController.sectorStarter));
 router.post('/sector/starter', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.loadSectorStarter));

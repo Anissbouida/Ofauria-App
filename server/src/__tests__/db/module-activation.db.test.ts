@@ -16,6 +16,7 @@ describe.skipIf(!hasTestDb)('Activation des modules et options', () => {
   const clearAdjustments = async () => {
     await testPool().query(`DELETE FROM company_module_settings`);
     await testPool().query(`DELETE FROM company_feature_settings`);
+    await testPool().query(`DELETE FROM config_versions`);
     sectors.invalidate();
   };
 
@@ -33,8 +34,8 @@ describe.skipIf(!hasTestDb)('Activation des modules et options', () => {
   });
 
   beforeEach(async () => {
-    await clearAdjustments();
     await sectors.setSector('generique', { keepAdjustments: false });
+    await clearAdjustments(); // après : le changement de secteur crée lui-même des versions
   });
 
   afterAll(async () => {
@@ -118,6 +119,50 @@ describe.skipIf(!hasTestDb)('Activation des modules et options', () => {
     await sectors.applyAdjustments({ modules: { production: true, recipes: true } });
     expect(await callGuard('GET', '/production/plans')).toBe(200);
     expect(await callGuard('POST', '/recipes')).toBe(200);
+  });
+
+  it('changement de secteur en gardant les ajustements : les écarts redondants disparaissent', async () => {
+    await sectors.applyAdjustments({ modules: { production: true, recipes: true } });
+    await sectors.setSector('boulangerie', { keepAdjustments: true });
+    // Boulangerie contient déjà Production et Fiches techniques : plus d'écart stocké.
+    expect((await testPool().query(`SELECT 1 FROM company_module_settings`)).rowCount).toBe(0);
+    expect((await sectors.activation()).modules.has('production')).toBe(true);
+  });
+
+  it('aperçu : calcule le changement sans rien écrire', async () => {
+    const plan = await sectors.planAdjustments({ modules: { production: true, recipes: true, crm: false } });
+    expect('error' in plan).toBe(false);
+    if ('error' in plan) return;
+    expect(plan.diff.modulesOn.sort()).toEqual(['production', 'recipes']);
+    expect(plan.diff.modulesOff).toEqual(['crm']);
+    expect((await testPool().query(`SELECT 1 FROM company_module_settings`)).rowCount).toBe(0);
+    expect((await testPool().query(`SELECT 1 FROM config_versions`)).rowCount).toBe(0);
+  });
+
+  it("versions : la configuration initiale puis chaque changement, et la restauration s'annule", async () => {
+    await sectors.applyAdjustments({ modules: { crm: false } });
+    await sectors.applyAdjustments({ modules: { production: true, recipes: true } });
+    let versions = await sectors.versions();
+    // Initiale (générique sans ajustement), CRM désactivé, Production activée — plus récente en tête.
+    expect(versions.map(v => v.label)).toHaveLength(3);
+    expect(versions[2].label).toBe('Configuration initiale');
+    expect(versions[0].label).toMatch(/Production activé/);
+
+    // Restaurer la version « CRM désactivé » : Production repart, le CRM reste éteint.
+    const r = await sectors.restoreVersion(versions[1].id);
+    expect('error' in r).toBe(false);
+    let act = await sectors.activation();
+    expect(act.modules.has('production')).toBe(false);
+    expect(act.modules.has('crm')).toBe(false);
+
+    // La restauration est une version : la restaurer à son tour ramène l'état précédent.
+    versions = await sectors.versions();
+    expect(versions).toHaveLength(4);
+    expect(versions[0].label).toMatch(/^Restauration/);
+    await sectors.restoreVersion(versions[1].id);
+    act = await sectors.activation();
+    expect(act.modules.has('production')).toBe(true);
+    expect(await sectors.restoreVersion(999999)).toEqual({ error: 'Version introuvable' });
   });
 
   it("une option éteinte ferme ses routes (HACCP)", async () => {

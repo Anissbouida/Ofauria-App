@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Check, Layers, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Check, History, Layers, RotateCcw } from 'lucide-react';
 import {
   CORE_MODULES, MODULE_DESCRIPTIONS, MODULE_GROUPS, MODULE_LABELS, dependentModules, effectiveModules,
   missingDependencies, requiredModules, type AppModule,
@@ -50,9 +50,12 @@ export default function SectorTab() {
   const { data: sector, isLoading: loadingSector } = useQuery({ queryKey: ['sector'], queryFn: settingsApi.sector });
   const { data: act, isLoading: loadingAct } = useQuery({ queryKey: ['module-activation'], queryFn: settingsApi.modules });
 
+  const { data: versions = [] } = useQuery({ queryKey: ['module-versions'], queryFn: settingsApi.moduleVersions });
+
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['sector'] });
     qc.invalidateQueries({ queryKey: ['module-activation'] });
+    qc.invalidateQueries({ queryKey: ['module-versions'] });
     reload();
   };
 
@@ -71,6 +74,16 @@ export default function SectorTab() {
     },
     onError: () => notify.error('Retour au préréglage impossible'),
   });
+  const restoreMut = useMutation({
+    mutationFn: settingsApi.restoreModuleVersion,
+    onSuccess: (data: ModuleActivation) => {
+      qc.setQueryData(['module-activation'], data);
+      setDraft(EMPTY);
+      refresh();
+      notify.success('Configuration restaurée');
+    },
+    onError: (e: unknown) => notify.error((e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Restauration impossible'),
+  });
 
   // État affiché = enregistré + brouillon.
   const view = useMemo(() => {
@@ -84,7 +97,15 @@ export default function SectorTab() {
 
   const dirtyCount = Object.keys(draft.modules).length + Object.keys(draft.features).length;
   const savedAdjustments = act ? Object.keys(act.moduleOverrides).length + Object.keys(act.featureOverrides).length : 0;
-  const busy = resetMut.isPending || sectorMut.isPending;
+  const busy = resetMut.isPending || sectorMut.isPending || restoreMut.isPending;
+
+  // Aperçu d'impact du brouillon (P0b) : calculé par le serveur, rien n'est écrit.
+  const { data: impact } = useQuery({
+    queryKey: ['module-preview', draft],
+    queryFn: () => settingsApi.previewModules(draft),
+    enabled: dirtyCount > 0 && !!view && view.missing.length === 0,
+    staleTime: 10_000,
+  });
 
   // Barre « N modifications non enregistrées · Annuler · Enregistrer » commune aux
   // Paramètres : fixe en bas de l'écran, et alerte avant de quitter avec un brouillon.
@@ -138,6 +159,14 @@ export default function SectorTab() {
     if (ok) sectorMut.mutate({ code, keep: keepAdjustments });
   };
 
+  const restore = async (id: number, when: string) => {
+    if (dirtyCount) { notify.warning('Enregistrez ou annulez vos changements avant de restaurer une version'); return; }
+    const ok = await confirm(
+      `La configuration du ${when} (secteur, modules et options) redevient la configuration courante. Aucune donnée n'est supprimée, et cette restauration pourra elle-même être annulée.`,
+      { title: 'Restaurer cette version ?', confirmLabel: 'Restaurer' });
+    if (ok) restoreMut.mutate(id);
+  };
+
   const resetAll = async () => {
     const ok = await confirm(
       `Les ${savedAdjustments} ajustement(s) sont effacés et chaque module reprend le réglage du secteur « ${act?.sector.label} ». Aucune donnée n'est supprimée.`,
@@ -150,6 +179,9 @@ export default function SectorTab() {
   }
 
   const featuresOf = (m: AppModule) => act.catalog.filter(f => f.module_key === m);
+  const featureLabel = (k: string) => act.catalog.find(f => f.key === k)?.label ?? k;
+  const moduleLabel = (k: string) => MODULE_LABELS[k as AppModule] ?? k;
+  const fmtDate = (d: string) => new Date(d).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
@@ -254,6 +286,69 @@ export default function SectorTab() {
           })}
         </SettingsSection>
       ))}
+
+      <SettingsSection
+        title="Historique des configurations"
+        description="Chaque enregistrement crée une version. Restaurer une version la rend de nouveau courante, sans rien supprimer ; la restauration elle-même peut être annulée."
+        columns={1}
+      >
+        {versions.length === 0 ? (
+          <p className="odoo-setting-help">Aucune version pour l'instant : la première sera créée au prochain enregistrement.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="odoo-table">
+              <thead><tr><th style={{ width: 130 }}>Date</th><th style={{ width: 160 }}>Par</th><th>Changement</th><th style={{ width: 110 }}></th></tr></thead>
+              <tbody>
+                {versions.map((v, i) => (
+                  <tr key={v.id}>
+                    <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(v.created_at)}</td>
+                    <td>{v.created_by_name ?? '—'}</td>
+                    <td>{v.label} {i === 0 && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>Actuelle</span>}</td>
+                    <td>
+                      {i > 0 && (
+                        <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          disabled={busy} onClick={() => restore(v.id, fmtDate(v.created_at))}>
+                          <History size={13} /> Restaurer
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SettingsSection>
+
+      {/* Aperçu d'impact : fixé juste au-dessus de la barre d'enregistrement commune,
+          visible au moment de valider (le conteneur neutralise position: sticky). */}
+      {dirtyCount > 0 && impact && (
+        <div role="region" aria-label="Impact de vos changements"
+          style={{ position: 'fixed', left: '50%', transform: 'translateX(-50%)', bottom: '4.75rem', zIndex: 59,
+            width: 'min(760px, calc(100vw - 2rem))', maxHeight: '40vh', overflowY: 'auto',
+            padding: '0.6rem 0.75rem', border: '1px solid var(--odoo-border)', borderRadius: 6,
+            background: 'var(--odoo-bg)', boxShadow: '0 6px 20px rgba(0,0,0,0.12)', fontSize: '0.8125rem', display: 'grid', gap: 4 }}>
+          <div className="odoo-setting-label">Impact de vos changements</div>
+          {(impact.modulesOn.length > 0 || impact.featuresOn.length > 0) && (
+            <div><strong style={{ color: '#1e7e34' }}>Apparaît :</strong> {[...impact.modulesOn.map(moduleLabel), ...impact.featuresOn.map(featureLabel)].join(', ')}</div>
+          )}
+          {(impact.modulesOff.length > 0 || impact.featuresOff.length > 0) && (
+            <div><strong style={{ color: '#c0392b' }}>Disparaît :</strong> {[...impact.modulesOff.map(moduleLabel), ...impact.featuresOff.map(featureLabel)].join(', ')}</div>
+          )}
+          {impact.roles.length > 0 && (
+            <div><strong>Rôles touchés :</strong> {impact.roles.map(r => {
+              const bits = [r.gained.length ? `gagne ${r.gained.map(moduleLabel).join(', ')}` : '', r.lost.length ? `perd ${r.lost.map(moduleLabel).join(', ')}` : ''].filter(Boolean);
+              return `${r.label} (${bits.join(' ; ')})`;
+            }).join(' · ')}</div>
+          )}
+          {impact.hidden.length > 0 && (
+            <div><strong>Données masquées, pas supprimées :</strong> {impact.hidden.map(h => `${h.count.toLocaleString('fr-FR')} ${h.label}`).join(', ')}</div>
+          )}
+          {!impact.modulesOn.length && !impact.modulesOff.length && !impact.featuresOn.length && !impact.featuresOff.length && (
+            <div className="odoo-setting-help">Aucun changement visible : la configuration reste identique.</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -4,7 +4,8 @@ import { companyBankRepository, type BankAccountInput } from '../repositories/co
 import { taxCodeRepository } from '../repositories/tax-code.repository.js';
 import { ribKeyValid } from '../services/salary-transfer.js';
 import { db } from '../config/database.js';
-import { sectorRepository, type Activation } from '../repositories/sector.repository.js';
+import { sectorRepository, type Activation, type AdjustmentChanges } from '../repositories/sector.repository.js';
+import { impactPreview } from '../services/module-impact.js';
 import { loadSectorStarter, sectorStarterPreview } from '../services/sector-starter.service.js';
 
 const bad = (res: Response, message: string, status = 400) => res.status(status).json({ success: false, error: { message } });
@@ -41,6 +42,26 @@ function readBank(body: Record<string, unknown>, creating: boolean): BankAccount
   return out;
 }
 
+/** Corps { modules: { clé: true|false|null }, features: { … } } validé. */
+function readAdjustments(body: unknown): AdjustmentChanges | string {
+  const b = (body ?? {}) as { modules?: unknown; features?: unknown };
+  const readMap = (v: unknown): Record<string, boolean | null> | string => {
+    if (v === undefined) return {};
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return 'Format invalide';
+    const out: Record<string, boolean | null> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (val !== true && val !== false && val !== null) return `Valeur invalide pour ${k}`;
+      out[k] = val;
+    }
+    return out;
+  };
+  const modules = readMap(b.modules);
+  if (typeof modules === 'string') return modules;
+  const features = readMap(b.features);
+  if (typeof features === 'string') return features;
+  return { modules, features };
+}
+
 const activationView = (a: Activation) => ({
   sector: { code: a.sector.code, label: a.sector.label },
   packModules: a.packModules,
@@ -74,23 +95,34 @@ export const companyController = {
 
   /** Ajuste des modules / options : { modules: { clé: true|false|null }, features: { … } }. */
   async saveModules(req: AuthRequest, res: Response) {
-    const body = (req.body ?? {}) as { modules?: unknown; features?: unknown };
-    const readMap = (v: unknown): Record<string, boolean | null> | string => {
-      if (v === undefined) return {};
-      if (!v || typeof v !== 'object' || Array.isArray(v)) return 'Format invalide';
-      const out: Record<string, boolean | null> = {};
-      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-        if (val !== true && val !== false && val !== null) return `Valeur invalide pour ${k}`;
-        out[k] = val;
-      }
-      return out;
-    };
-    const modules = readMap(body.modules);
-    const features = readMap(body.features);
-    if (typeof modules === 'string') { bad(res, modules); return; }
-    if (typeof features === 'string') { bad(res, features); return; }
-    const result = await sectorRepository.applyAdjustments({ modules, features }, req.user?.userId);
+    const changes = readAdjustments(req.body);
+    if (typeof changes === 'string') { bad(res, changes); return; }
+    const result = await sectorRepository.applyAdjustments(changes, req.user?.userId);
     if ('error' in result) { bad(res, result.error); return; }
+    res.json({ success: true, data: activationView(result.activation) });
+  },
+
+  /** Aperçu d'impact (P0b, sans rien écrire) : modules / options qui apparaissent ou
+   *  disparaissent, rôles touchés, données masquées. Même corps que PUT /modules. */
+  async previewModules(req: AuthRequest, res: Response) {
+    const changes = readAdjustments(req.body);
+    if (typeof changes === 'string') { bad(res, changes); return; }
+    const plan = await sectorRepository.planAdjustments(changes);
+    if ('error' in plan) { bad(res, plan.error); return; }
+    res.json({ success: true, data: await impactPreview(plan.diff, sectorRepository.featureLabel(plan.current)) });
+  },
+
+  /** Historique des configurations (mig 508). */
+  async moduleVersions(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await sectorRepository.versions() });
+  },
+
+  /** Restaure une version : elle redevient la configuration courante. */
+  async restoreModuleVersion(req: AuthRequest, res: Response) {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) { bad(res, 'Version invalide'); return; }
+    const result = await sectorRepository.restoreVersion(id, req.user?.userId);
+    if ('error' in result) { bad(res, result.error, 404); return; }
     res.json({ success: true, data: activationView(result.activation) });
   },
 

@@ -177,6 +177,24 @@ export interface SectorInfo {
   available: { code: string; label: string }[];
 }
 
+/** Aperçu d'impact d'un brouillon de modules / options (mig 508, lot P0b). */
+export interface ModuleImpact {
+  modulesOn: string[];
+  modulesOff: string[];
+  featuresOn: string[];
+  featuresOff: string[];
+  roles: { code: string; label: string; gained: string[]; lost: string[] }[];
+  hidden: { scope: string; label: string; count: number }[];
+}
+
+/** Version de la configuration des modules (mig 508). */
+export interface ConfigVersion {
+  id: number;
+  created_at: string;
+  created_by_name: string | null;
+  label: string;
+}
+
 /** Écran « Secteur et modules » (mig 507) : préréglage, écarts et listes effectives. */
 export interface ModuleActivation {
   sector: { code: string; label: string };
@@ -216,6 +234,11 @@ export const settingsApi = {
   saveModules: (changes: { modules?: Record<string, boolean | null>; features?: Record<string, boolean | null> }) =>
     api.put('/settings/modules', changes).then(r => r.data.data) as Promise<ModuleActivation>,
   resetModules: () => api.post('/settings/modules/reset').then(r => r.data.data) as Promise<ModuleActivation>,
+  previewModules: (changes: { modules?: Record<string, boolean | null>; features?: Record<string, boolean | null> }) =>
+    api.post('/settings/modules/preview', changes).then(r => r.data.data) as Promise<ModuleImpact>,
+  moduleVersions: () => api.get('/settings/modules/versions').then(r => r.data.data) as Promise<ConfigVersion[]>,
+  restoreModuleVersion: (id: number) =>
+    api.post(`/settings/modules/versions/${id}/restore`).then(r => r.data.data) as Promise<ModuleActivation>,
   taxCodes: () => api.get('/settings/tax-codes').then(r => r.data.data) as Promise<TaxCode[]>,
   addTaxRate: (data: Record<string, unknown>) => api.post('/settings/tax-codes', data).then(r => r.data.data) as Promise<TaxCode>,
   updateTaxCode: (id: string, data: Record<string, unknown>) => api.put(`/settings/tax-codes/${id}`, data).then(r => r.data.data) as Promise<TaxCode>,

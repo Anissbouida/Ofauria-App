@@ -1,9 +1,11 @@
+import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
 import {
   ACTIVATABLE_MODULES, CORE_MODULES, MODULE_LABELS, canonicalModule, effectiveModules, missingDependencies,
   type AppModule, type ModuleOverrides,
 } from '@ofauria/shared';
+import { describeDiff, diffActivation, type ActivationState, type ImpactDiff } from '../services/module-impact.js';
 
 /**
  * Secteur d'activité (packs secteur, mig 468). Le secteur de la société est dans
@@ -14,6 +16,9 @@ import {
  * Activation (mig 507) : le secteur est un préréglage, ajusté module par module et
  * option par option (company_module_settings / company_feature_settings, écarts
  * seulement). Les modules et options EFFECTIFS se calculent ici et nulle part ailleurs.
+ *
+ * Versions (mig 508) : chaque changement enregistre l'état complet qui en résulte
+ * (config_versions) ; on peut restaurer n'importe quelle version.
  */
 export type SectorPack = { code: string; label: string; modules: string[]; is_default: boolean; home_route?: string | null; report_keys?: string[]; features?: string[] };
 
@@ -34,6 +39,12 @@ export type Activation = {
 
 export type AdjustmentChanges = { modules?: Record<string, boolean | null>; features?: Record<string, boolean | null> };
 
+export type ConfigSnapshot = { sector: string; modules: ModuleOverrides; features: ModuleOverrides };
+
+export type ConfigVersion = { id: number; created_at: string; created_by_name: string | null; label: string; snapshot: ConfigSnapshot };
+
+type Target = { sector: SectorPack; modules: ModuleOverrides; features: ModuleOverrides };
+
 const mapPack = (r: Record<string, any>): SectorPack => ({
   code: r.code, label: r.label, modules: r.modules ?? [], is_default: r.is_default,
   home_route: r.home_route ?? null, report_keys: r.report_keys ?? [], features: r.features ?? [],
@@ -45,6 +56,8 @@ const PACK_COLUMNS = `sp.code, sp.label, sp.enabled_modules AS modules, sp.is_de
 // vidé à chaque changement. Plusieurs instances serveur : le délai borne l'écart.
 const CACHE_MS = 30_000;
 let cache: { at: number; value: Activation } | null = null;
+
+const canonicalPack = (pack: SectorPack): AppModule[] => [...new Set(pack.modules.map(m => canonicalModule(m as AppModule)))];
 
 function computeFeatures(packFeatures: string[], overrides: ModuleOverrides, catalog: FeatureDef[], modules: Set<AppModule>): Set<string> {
   const set = new Set(packFeatures);
@@ -59,6 +72,30 @@ function computeFeatures(packFeatures: string[], overrides: ModuleOverrides, cat
   }));
 }
 
+/** Modules et options effectifs d'un état cible (secteur + écarts). */
+function stateOf(target: Target, catalog: FeatureDef[]): ActivationState {
+  const modules = effectiveModules(target.sector.modules, target.modules);
+  return { modules, features: computeFeatures(target.sector.features ?? [], target.features, catalog, modules) };
+}
+
+/** Retire les écarts égaux au préréglage : les tables ne gardent que les vrais écarts. */
+function normalize(target: Target): Target {
+  const pack = canonicalPack(target.sector);
+  const packFeatures = target.sector.features ?? [];
+  const modules: ModuleOverrides = {};
+  for (const [k, on] of Object.entries(target.modules)) {
+    if (on !== undefined && on !== pack.includes(canonicalModule(k as AppModule))) modules[k] = on;
+  }
+  const features: ModuleOverrides = {};
+  for (const [k, on] of Object.entries(target.features)) {
+    if (on !== undefined && on !== packFeatures.includes(k)) features[k] = on;
+  }
+  return { sector: target.sector, modules, features };
+}
+
+const snapshotOf = (t: { sector: SectorPack; modules: ModuleOverrides; features: ModuleOverrides }): ConfigSnapshot =>
+  ({ sector: t.sector.code, modules: t.modules, features: t.features });
+
 async function loadOverrides(table: 'company_module_settings' | 'company_feature_settings', key: string): Promise<ModuleOverrides> {
   const { rows } = await db.query(`SELECT ${key} AS k, enabled FROM ${table}`);
   const out: ModuleOverrides = {};
@@ -66,11 +103,29 @@ async function loadOverrides(table: 'company_module_settings' | 'company_feature
   return out;
 }
 
+async function syncOverrides(client: PoolClient, table: string, key: string, before: ModuleOverrides, after: ModuleOverrides, userId?: string | null) {
+  for (const k of Object.keys(before)) {
+    if (after[k] === undefined) await client.query(`DELETE FROM ${table} WHERE ${key} = $1`, [k]);
+  }
+  for (const [k, on] of Object.entries(after)) {
+    if (on === undefined || before[k] === on) continue;
+    await client.query(
+      `INSERT INTO ${table} (${key}, enabled, updated_by, updated_at) VALUES ($1, $2, $3, now())
+       ON CONFLICT (${key}) DO UPDATE SET enabled = EXCLUDED.enabled, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+      [k, on, userId ?? null]);
+  }
+}
+
 export const sectorRepository = {
   /** Tous les secteurs disponibles. */
   async list(): Promise<SectorPack[]> {
     const { rows } = await db.query(`SELECT ${PACK_COLUMNS} FROM sector_packs sp ORDER BY sp.is_default DESC, sp.label`);
     return rows.map(mapPack);
+  },
+
+  async pack(code: string): Promise<SectorPack | null> {
+    const { rows } = await db.query(`SELECT ${PACK_COLUMNS} FROM sector_packs sp WHERE sp.code = $1`, [code]);
+    return rows[0] ? mapPack(rows[0]) : null;
   },
 
   /** Secteur courant de la société (préréglage, sans les ajustements). Repli sur le
@@ -104,12 +159,10 @@ export const sectorRepository = {
       db.query(`SELECT key, module_key, label, description, sort_order FROM app_features ORDER BY module_key, sort_order, label`),
     ]);
     const catalog = catalogRes.rows as FeatureDef[];
-    const packModules = [...new Set(sector.modules.map(m => canonicalModule(m as AppModule)))];
-    const modules = effectiveModules(sector.modules, moduleOverrides);
-    const packFeatures = sector.features ?? [];
+    const state = stateOf({ sector, modules: moduleOverrides, features: featureOverrides }, catalog);
     const value: Activation = {
-      sector, packModules, packFeatures, moduleOverrides, featureOverrides, catalog,
-      modules, features: computeFeatures(packFeatures, featureOverrides, catalog, modules),
+      sector, packModules: canonicalPack(sector), packFeatures: sector.features ?? [],
+      moduleOverrides, featureOverrides, catalog, modules: state.modules, features: state.features,
     };
     cache = { at: Date.now(), value };
     return value;
@@ -117,69 +170,101 @@ export const sectorRepository = {
 
   invalidate() { cache = null; },
 
+  featureLabel(act: Activation) {
+    const byKey = new Map(act.catalog.map(f => [f.key, f.label]));
+    return (key: string) => byKey.get(key) ?? key;
+  },
+
   /**
-   * Applique des ajustements : true = activer, false = désactiver, null = revenir au
-   * préréglage. Refuse un module inconnu, un module socle désactivé, une option
-   * inconnue, et toute configuration où un module actif perd une dépendance (le
-   * client propose les dépendances avant d'envoyer). Un ajustement égal au
-   * préréglage n'est pas stocké : les tables ne gardent que les écarts.
+   * Calcule l'état visé par des ajustements, sans rien écrire : true = activer,
+   * false = désactiver, null = revenir au préréglage. Refuse un module inconnu, un
+   * module socle désactivé, une option inconnue, et toute configuration où un module
+   * actif perd une dépendance (le client propose les dépendances avant d'envoyer).
    */
-  async applyAdjustments(changes: AdjustmentChanges, userId?: string | null): Promise<{ error: string } | { activation: Activation }> {
+  async planAdjustments(changes: AdjustmentChanges): Promise<{ error: string } | { current: Activation; target: Target; diff: ImpactDiff }> {
     const current = await this.activation();
-    const nextModules: ModuleOverrides = { ...current.moduleOverrides };
-    const nextFeatures: ModuleOverrides = { ...current.featureOverrides };
+    const modules: ModuleOverrides = { ...current.moduleOverrides };
+    const features: ModuleOverrides = { ...current.featureOverrides };
 
     for (const [rawKey, value] of Object.entries(changes.modules ?? {})) {
       const key = canonicalModule(rawKey as AppModule);
       if (!ACTIVATABLE_MODULES.includes(key)) return { error: `Module inconnu : ${rawKey}` };
       if (value === false && CORE_MODULES.has(key)) return { error: `Le module « ${MODULE_LABELS[key]} » ne peut pas être désactivé` };
-      if (value === null || value === current.packModules.includes(key)) delete nextModules[key];
-      else nextModules[key] = value;
+      if (value === null) delete modules[key]; else modules[key] = value;
     }
     const known = new Set(current.catalog.map(f => f.key));
     for (const [key, value] of Object.entries(changes.features ?? {})) {
       if (!known.has(key)) return { error: `Option inconnue : ${key}` };
-      if (value === null || value === current.packFeatures.includes(key)) delete nextFeatures[key];
-      else nextFeatures[key] = value;
+      if (value === null) delete features[key]; else features[key] = value;
     }
 
-    const missing = missingDependencies(effectiveModules(current.sector.modules, nextModules));
+    const target = normalize({ sector: current.sector, modules, features });
+    const after = stateOf(target, current.catalog);
+    const missing = missingDependencies(after.modules);
     if (missing.length) {
       const m = missing[0];
       return { error: `« ${MODULE_LABELS[m.module]} » a besoin de : ${m.missing.map(d => `« ${MODULE_LABELS[d]} »`).join(', ')}` };
     }
+    return { current, target, diff: diffActivation(current, after) };
+  },
 
-    await this.writeOverrides(nextModules, nextFeatures, current, userId);
+  async applyAdjustments(changes: AdjustmentChanges, userId?: string | null): Promise<{ error: string } | { activation: Activation }> {
+    const plan = await this.planAdjustments(changes);
+    if ('error' in plan) return plan;
+    await this.commit(plan.current, plan.target, userId);
     return { activation: await this.activation() };
   },
 
   /** Revient au préréglage du secteur : supprime tous les ajustements. */
   async resetAdjustments(userId?: string | null): Promise<Activation> {
-    await this.writeOverrides({}, {}, await this.activation(), userId);
+    const current = await this.activation();
+    await this.commit(current, { sector: current.sector, modules: {}, features: {} }, userId, 'Retour au préréglage du secteur');
     return this.activation();
   },
 
-  /** Réécrit les écarts dans une transaction, en ne touchant que les lignes qui
-   *  changent (le journal du paramétrage ne garde que les vrais changements). */
-  async writeOverrides(nextModules: ModuleOverrides, nextFeatures: ModuleOverrides, current: Activation, userId?: string | null) {
+  /** Change le secteur de la société. Renvoie null si le code n'existe pas.
+   *  keepAdjustments = false : repart du préréglage du nouveau secteur. Avec true, les
+   *  écarts devenus égaux au nouveau préréglage sont retirés (plus de faux « Ajusté »). */
+  async setSector(code: string, opts: { keepAdjustments?: boolean; userId?: string | null } = {}): Promise<SectorPack | null> {
+    const pack = await this.pack(code);
+    if (!pack) return null;
+    const current = await this.activation();
+    const keep = opts.keepAdjustments !== false;
+    const target = normalize({
+      sector: pack,
+      modules: keep ? current.moduleOverrides : {},
+      features: keep ? current.featureOverrides : {},
+    });
+    await this.commit(current, target, opts.userId, `Secteur : ${pack.label}${keep ? '' : ' (préréglage)'}`);
+    return this.current();
+  },
+
+  /**
+   * Écrit un état cible dans une transaction : secteur, écarts (seules les lignes qui
+   * changent, pour un journal du paramétrage lisible), puis une version. Si
+   * l'historique est vide, l'état de départ est d'abord enregistré comme
+   * « Configuration initiale » : le tout premier changement reste annulable.
+   */
+  async commit(current: Activation, target: Target, userId?: string | null, label?: string) {
+    const before = { sector: current.sector, modules: current.moduleOverrides, features: current.featureOverrides };
+    const after = stateOf(target, current.catalog);
+    const summary = describeDiff(diffActivation(current, after), this.featureLabel(current));
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
       await setAuditUser(client, userId);
-      const sync = async (table: string, key: string, before: ModuleOverrides, after: ModuleOverrides) => {
-        for (const k of Object.keys(before)) {
-          if (after[k] === undefined) await client.query(`DELETE FROM ${table} WHERE ${key} = $1`, [k]);
-        }
-        for (const [k, on] of Object.entries(after)) {
-          if (on === undefined || before[k] === on) continue;
-          await client.query(
-            `INSERT INTO ${table} (${key}, enabled, updated_by, updated_at) VALUES ($1, $2, $3, now())
-             ON CONFLICT (${key}) DO UPDATE SET enabled = EXCLUDED.enabled, updated_by = EXCLUDED.updated_by, updated_at = now()`,
-            [k, on, userId ?? null]);
-        }
-      };
-      await sync('company_module_settings', 'module_key', current.moduleOverrides, nextModules);
-      await sync('company_feature_settings', 'feature_key', current.featureOverrides, nextFeatures);
+      const { rows: existing } = await client.query(`SELECT 1 FROM config_versions LIMIT 1`);
+      if (!existing.length) {
+        await client.query(`INSERT INTO config_versions (created_by, label, snapshot) VALUES (NULL, $1, $2)`,
+          ['Configuration initiale', JSON.stringify(snapshotOf(before))]);
+      }
+      if (target.sector.code !== current.sector.code) {
+        await client.query(`UPDATE company_settings SET sector_pack = $1, updated_at = now() WHERE id = 1`, [target.sector.code]);
+      }
+      await syncOverrides(client, 'company_module_settings', 'module_key', current.moduleOverrides, target.modules, userId);
+      await syncOverrides(client, 'company_feature_settings', 'feature_key', current.featureOverrides, target.features, userId);
+      await client.query(`INSERT INTO config_versions (created_by, label, snapshot) VALUES ($1, $2, $3)`,
+        [userId ?? null, label ? `${label} — ${summary}` : summary, JSON.stringify(snapshotOf(target))]);
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK').catch(() => undefined);
@@ -190,28 +275,39 @@ export const sectorRepository = {
     }
   },
 
-  /** Change le secteur de la société. Renvoie null si le code n'existe pas.
-   *  keepAdjustments = false : repart du préréglage du nouveau secteur. */
-  async setSector(code: string, opts: { keepAdjustments?: boolean; userId?: string | null } = {}): Promise<SectorPack | null> {
-    const exists = (await db.query(`SELECT 1 FROM sector_packs WHERE code = $1`, [code])).rows[0];
-    if (!exists) return null;
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
-      await setAuditUser(client, opts.userId);
-      await client.query(`UPDATE company_settings SET sector_pack = $1, updated_at = now() WHERE id = 1`, [code]);
-      if (opts.keepAdjustments === false) {
-        await client.query(`DELETE FROM company_module_settings`);
-        await client.query(`DELETE FROM company_feature_settings`);
-      }
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK').catch(() => undefined);
-      throw err;
-    } finally {
-      client.release();
-      this.invalidate();
+  /** Historique des configurations, de la plus récente à la plus ancienne. */
+  async versions(limit = 50): Promise<ConfigVersion[]> {
+    const { rows } = await db.query(
+      `SELECT v.id::int AS id, v.created_at, v.label, v.snapshot,
+              NULLIF(trim(concat_ws(' ', u.first_name, u.last_name)), '') AS created_by_name
+         FROM config_versions v
+         LEFT JOIN users u ON u.id = v.created_by
+        ORDER BY v.created_at DESC, v.id DESC
+        LIMIT $1`, [limit]);
+    return rows as ConfigVersion[];
+  },
+
+  /** Restaure une version : son secteur et ses écarts redeviennent la configuration
+   *  courante (la restauration crée elle-même une nouvelle version). */
+  async restoreVersion(id: number, userId?: string | null): Promise<{ error: string } | { activation: Activation }> {
+    const { rows } = await db.query(`SELECT id, created_at, snapshot FROM config_versions WHERE id = $1`, [id]);
+    if (!rows[0]) return { error: 'Version introuvable' };
+    const snap = rows[0].snapshot as ConfigSnapshot;
+    const pack = await this.pack(snap.sector);
+    if (!pack) return { error: `Le secteur « ${snap.sector} » de cette version n'existe plus` };
+    const current = await this.activation();
+    const known = new Set(current.catalog.map(f => f.key));
+    // Clés disparues depuis (module retiré, option supprimée) : ignorées.
+    const modules: ModuleOverrides = {};
+    for (const [k, on] of Object.entries(snap.modules ?? {})) {
+      const key = canonicalModule(k as AppModule);
+      if (ACTIVATABLE_MODULES.includes(key) && !(on === false && CORE_MODULES.has(key))) modules[key] = on;
     }
-    return this.current();
+    const features: ModuleOverrides = {};
+    for (const [k, on] of Object.entries(snap.features ?? {})) if (known.has(k)) features[k] = on;
+    const target = normalize({ sector: pack, modules, features });
+    const date = new Date(rows[0].created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Africa/Casablanca' });
+    await this.commit(current, target, userId, `Restauration de la version du ${date}`);
+    return { activation: await this.activation() };
   },
 };
