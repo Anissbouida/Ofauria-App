@@ -5,6 +5,8 @@ import { productionApi } from '../../api/production.api';
 import { replenishmentApi } from '../../api/replenishment.api';
 import { ingredientLotsApi } from '../../api/inventory.api';
 import { bonSortieApi } from '../../api/bon-sortie.api';
+import { productionEtapesApi } from '../../api/production-etapes.api';
+import { productionCoutApi } from '../../api/production-cout.api';
 import { BonSortiePanel } from './BonSortiePanel';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
@@ -15,7 +17,7 @@ import {
   User, Calendar, Box, Clock, RotateCcw, XCircle, ChefHat,
   Hash, FileText, Loader2, PackageOpen, Layers, Beaker, TrendingUp, Flame,
   Truck, Eye, Lock, RefreshCw, AlertCircle, BookOpen, Scale,
-  MessageSquare, Send, Info, Trash2
+  MessageSquare, Send, Info, Trash2, ChevronDown, LayoutDashboard, Coins
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -46,6 +48,8 @@ const statusIcon: Record<string, React.ReactNode> = {
   in_progress: <Play size={14} />,
   completed: <CheckCircle size={14} />,
 };
+
+type PlanTab = 'synthese' | 'ingredients' | 'production' | 'couts';
 
 const roleLabel: Record<string, string> = {
   baker: 'Boulanger', pastry_chef: 'Pâtissier', viennoiserie: 'Viennoiserie', beldi_sale: 'Beldi & Salé',
@@ -149,13 +153,15 @@ export default function PlanDetailPage() {
   const [showLossModal, setShowLossModal] = useState(false);
   const [restockNeed, setRestockNeed] = useState<Record<string, any> | null>(null);
 
-  // Onglets de la page : 'preparation' (BSI + ingredients) | 'production' (items + execution).
-  // L'onglet Production n'apparait qu'une fois le BSI cloture (ou inutile, ou deja en cours).
-  const [activePlanTab, setActivePlanTab] = useState<'preparation' | 'production'>('preparation');
-  // Sous-onglets dans Preparation :
-  //   - 'needs'  : Besoins en ingredients (en haut) + Apercu FEFO (en bas) — info read-only
-  //   - 'bsi'    : Gestion inline du bon de sortie (prelevement/validation)
-  const [prepSubTab, setPrepSubTab] = useState<'needs' | 'bsi'>('needs');
+  // Onglets de la fiche, par sujet (un seul niveau) :
+  //   synthese    : ce qui reste a faire + resume de chaque phase
+  //   ingredients : besoins, bon de sortie et tracabilite des lots
+  //   production  : semi-finis, articles, liste d'attente, procede, rendement
+  //   couts       : cout de revient (une fois la production demarree)
+  // L'onglet Production n'apparait qu'une fois le BSI cloture (ou deja en cours).
+  const [planTab, setPlanTab] = useState<PlanTab>('synthese');
+  // Menu « Plus » de l'en-tete (impressions, relance, brouillon, perte).
+  const [moreOpen, setMoreOpen] = useState(false);
   // Fin de l'etape Preparation : UNIQUEMENT quand le bon de sortie est cloture
   // (ingredients transferes et reception confirmee), ou si la production est deja
   // demarree / terminee. Un plan sans besoin calcule (produit sans recette) n'est
@@ -167,25 +173,29 @@ export default function PlanDetailPage() {
   const preparationDone = !!plan && (
     plan.status === 'in_progress' || plan.status === 'completed' || bsiCloture
   );
-  // Auto-bascule sur 'production' des que la preparation est terminee (ouverture d'un plan
-  // deja demarre, cloture du BSI par le magasinier, plan sans ingredient a prelever).
+  // Onglet ouvert par defaut selon l'etat : la ou se trouve le travail du moment.
+  // Recalcule a chaque changement de statut seulement (le polling ne ramene pas
+  // l'utilisateur sur un onglet qu'il a quitte).
   useEffect(() => {
-    if (plan && plan.status !== 'draft' && preparationDone) {
-      setActivePlanTab('production');
-    }
-  }, [plan?.status, preparationDone]);
-  // Auto-bascule sur le sous-onglet "Bon de sortie" quand un BSI est genere
-  // (l'operateur vient de cliquer "Preparer le bon de sortie", on l'emmene directement
-  // sur l'interface de prelevement sans changer de page).
-  // Une seule fois par bon (a son apparition) : avant, chaque changement de statut
-  // remonte par le polling ramenait l'utilisateur sur ce sous-onglet pendant qu'il
-  // lisait les besoins.
-  useEffect(() => {
-    if (activeBon && activeBon.status !== 'cloture' && activeBon.status !== 'annule') {
-      setPrepSubTab('bsi');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeBon?.id]);
+    if (!plan) return;
+    setPlanTab(plan.status === 'in_progress' ? 'production'
+      : ['confirmed', 'awaiting_ingredients'].includes(plan.status as string) ? 'ingredients'
+      : 'synthese');
+  }, [plan?.status]);
+
+  // Rendement et cout reel : alimentent les indicateurs et la synthese. Memes cles
+  // que RendementPanel / CoutReelPanel, la requete n'est donc faite qu'une fois.
+  const hasResults = plan?.status === 'in_progress' || plan?.status === 'completed';
+  const { data: rendements = [] } = useQuery<Record<string, any>[]>({
+    queryKey: ['production-rendement', id],
+    queryFn: () => productionEtapesApi.planRendement(id!),
+    enabled: !!id && hasResults,
+  });
+  const { data: coutReel } = useQuery<Record<string, any> | null>({
+    queryKey: ['production-cout', id],
+    queryFn: () => productionCoutApi.getCost(id!).catch(() => null),
+    enabled: !!id && hasResults,
+  });
 
   const prepareBonMutation = useMutation({
     mutationFn: () => bonSortieApi.generate(id!, plan!.store_id as string),
@@ -542,17 +552,18 @@ export default function PlanDetailPage() {
   // Gating des onglets :
   //   - Plan semi-fini : tout est affiche (UI dediee, pas de tabs)
   //   - Plan en 'draft' : tout est affiche (pas encore de workflow BSI/production)
-  //   - Sinon : sections filtrees par activePlanTab
-  //   - L'onglet Production n'existe que si preparationDone : on force l'onglet actif a
-  //     'preparation' tant que ce n'est pas le cas (securite si l'etat change, ex. relance).
+  //   - Sinon : sections filtrees par planTab
+  //   - Production n'existe que si preparationDone, Couts qu'une fois la production
+  //     demarree : un onglet devenu invisible (ex. relance) retombe sur la synthese.
   const hasTabs = !isSemiFini && plan.status !== 'draft';
   const productionTabVisible = hasTabs && preparationDone;
-  const effectiveTab: 'preparation' | 'production' = productionTabVisible ? activePlanTab : 'preparation';
-  const showPrep = !hasTabs || effectiveTab === 'preparation';
+  const costsTabVisible = hasTabs && hasResults;
+  const effectiveTab: PlanTab = (planTab === 'production' && !productionTabVisible) || (planTab === 'couts' && !costsTabVisible)
+    ? 'synthese' : planTab;
+  const showSynth = hasTabs && effectiveTab === 'synthese';
+  const showIngr = !hasTabs || effectiveTab === 'ingredients';
   const showProd = !hasTabs || effectiveTab === 'production';
-  // Sous-gating onglet Preparation :
-  const showPrepNeeds = showPrep && (!hasTabs || prepSubTab === 'needs');
-  const showPrepBsi = showPrep && (!hasTabs || prepSubTab === 'bsi');
+  const showCosts = !hasTabs || effectiveTab === 'couts';
   // Aucun BSI generable : aucun besoin ingredient (produits sans recette) ou generate()
   // a repondu "rien a prelever". Ne debloque PAS la production : la preparation reste
   // bloquee tant que les besoins ne sont pas recalcules (recette + relance du plan).
@@ -563,7 +574,11 @@ export default function PlanDetailPage() {
   // Option B : visible des deux cotes, mais le chef voit UNIQUEMENT la liste des
   // ingredients + qty necessaire (pas de DISPO, pas de "insuffisant", pas de
   // "Demander au stock" / "Restaurer & relancer"). La gestion stock est au magasinier.
-  const ingredientNeedsBlock = (showPrepNeeds && plan.status !== 'draft' && needs.length > 0) ? (
+  // Une fois le bon de sortie genere, c'est lui la liste des ingredients (demande,
+  // pese, ecart, lot) : la table des besoins ne reste que pour le magasinier quand
+  // il manque du stock (bouton « Demander »).
+  const ingredientNeedsBlock = (showIngr && plan.status !== 'draft' && needs.length > 0
+    && (!activeBon || (isMagasinier && insufficientNeeds.length > 0))) ? (
     <div className="odoo-section">
       <div className="odoo-section-header">
         <Beaker size={12} /> {isMagasinier ? 'Besoins en ingrédients' : 'Ingrédients nécessaires'}
@@ -918,98 +933,186 @@ export default function PlanDetailPage() {
     </div>
   ) : null;
 
-  // Actions de cycle de vie du plan, rendues dans l'en-tete (independantes de l'onglet) :
-  //   confirmer (brouillon) / repasser en brouillon / relancer. Chef uniquement.
-  const planActions = isChef ? (
+  // ══ Actions de la fiche, rendues dans l'en-tete ══
+  // Une seule action principale visible (l'etape suivante du plan), plus les gestes
+  // de production frequents ; tout le reste (impressions, relance, brouillon, perte)
+  // est range dans le menu « Plus ». Chef uniquement.
+  const deps = (plan.dependencies || []) as Record<string, any>[];
+  const hasPendingDeps = deps.some(d => d.status !== 'fulfilled' && d.status !== 'cancelled');
+  const pendingItems = items.filter((it: Record<string, any>) => it.status === 'pending' && it.waiting_status !== 'waiting');
+  const inProgressItems = items.filter((it: Record<string, any>) => it.status === 'in_progress');
+  const allProduced = pendingItems.length === 0 && inProgressItems.length === 0
+    && items.some((it: Record<string, any>) => ['produced', 'transferred', 'received'].includes(it.status as string));
+  // Articles produits dont le rendement n'est pas encore saisi.
+  const recordedItemIds = new Set((rendements as Record<string, any>[]).map(r => r.plan_item_id as string));
+  const rendementsMissing = items.filter((it: Record<string, any>) =>
+    ['produced', 'transferred', 'received'].includes(it.status as string) && !recordedItemIds.has(it.id as string));
+
+  const goToRendement = () => {
+    setPlanTab('production');
+    setTimeout(() => document.getElementById('plan-rendement')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  };
+
+  const launchAll = async () => {
+    const ids = pendingItems.map((it: Record<string, any>) => it.id as string);
+    try {
+      await productionApi.startItems(id!, ids);
+      await queryClient.invalidateQueries({ queryKey: ['production', id] });
+      notify.success(`${ids.length} production(s) lancee(s)`);
+    } catch (e: any) { notify.error(apiErrorMessage(e, 'Erreur')); }
+  };
+
+  const closePartial = async () => {
+    if (await confirmDialog(`${waitingCount} article(s) en attente seront annulés.`, { title: 'Clôture partielle', confirmLabel: 'Clôturer', danger: true })) {
+      productionApi.complete(id!, [], 'partial').then(() => {
+        queryClient.invalidateQueries({ queryKey: ['production', id] });
+        notify.success('Plan cloture partiellement');
+      }).catch((err: any) => notify.error(apiErrorMessage(err, 'Erreur')));
+    }
+  };
+
+  // Demarrage : bloque tant que les semi-finis sont en attente ou que le BSI n'est
+  // pas cloture (les plans semi-finis sont exemptes : leur BSI est celui du parent).
+  const canShowStart = ['confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(plan.status)
+    && (isSemiFini || bsiCloture);
+
+  const primaryActions = isChef ? (
     <>
-      {plan.status === 'draft' && isChef && (
-        <button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending}
-          className="odoo-btn-primary">
+      {plan.status === 'draft' && (
+        <button onClick={() => confirmMutation.mutate()} disabled={confirmMutation.isPending} className="odoo-btn-primary">
           {confirmMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle size={13} />}
           {confirmMutation.isPending ? 'Confirmation...' : 'Confirmer le plan'}
         </button>
       )}
-      {/* Repasse en brouillon : visible quand confirme/awaiting/ready ET avant tout demarrage.
-          Le backend verifie aussi qu'aucun item n'a commence ni le BSI preleve. */}
-      {['confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(plan.status) && isChef && (() => {
-        const items = (plan.items || []) as Record<string, any>[];
-        const anyStarted = items.some((it) => it.status === 'in_progress' || it.status === 'produced');
-        const bsiActive = activeBon && ['prelevement', 'verifie', 'cloture'].includes(activeBon.status as string);
-        const blocked = anyStarted || bsiActive;
-        const tooltip = anyStarted
-          ? 'Au moins un produit a deja demarre — annulez d\'abord les items en cours'
-          : bsiActive
-            ? 'Le bon de sortie a deja ete preleve — annulez d\'abord le BSI'
-            : 'Repasser en brouillon pour modifier le plan';
-        return (
-          <button
-            type="button"
-            onClick={async () => {
-              if (await confirmDialog('Le bon de sortie sera annulé et les besoins en ingrédients recalculés à la prochaine confirmation.', { title: 'Repasser le plan en brouillon ?', confirmLabel: 'Repasser en brouillon' })) {
-                revertMutation.mutate();
-              }
-            }}
-            disabled={revertMutation.isPending || blocked}
-            title={tooltip}
-            className="odoo-btn-secondary"
-          >
-            {revertMutation.isPending
-              ? <Loader2 size={13} className="animate-spin" />
-              : <ArrowLeft size={13} />}
-            {revertMutation.isPending ? 'Repasse...' : 'Modifier (revenir en brouillon)'}
-          </button>
-        );
-      })()}
-      {/* Relancer le plan : disponible sur TOUT plan non brouillon. Ne cree pas de
-          nouveau plan — deux blocages traites :
-            - articles annules / en attente -> ils repassent en 'pending'
-            - plan confirme sur un referentiel incomplet (produit sans recette a
-              l'epoque) -> besoins et BSI recalcules depuis les recettes actuelles
-          Le recalcul n'est possible que tant que la preparation n'est pas engagee
-          (rien de demarre, BSI non preleve) : sinon on retoucherait un prelevement
-          deja fait, et le bouton n'a plus rien a faire s'il n'y a aucun article a
-          reactiver. */}
-      {plan.status !== 'draft' && isChef && (() => {
-        const total = cancelledCount + waitingCount;
-        const anyStarted = items.some((it: Record<string, any>) =>
-          ['in_progress', 'produced', 'transferred', 'received'].includes(it.status as string));
-        const bsiEngaged = !!activeBon && ['prelevement', 'verifie', 'cloture'].includes(activeBon.status as string);
-        const canRecompute = !anyStarted && !bsiEngaged;
-        const nothingToDo = total === 0 && !canRecompute;
-
-        const detail = [
-          cancelledCount > 0 ? `${cancelledCount} annule(s)` : null,
-          waitingCount > 0 ? `${waitingCount} en attente` : null,
-        ].filter(Boolean).join(' + ');
-        const lignes = [
-          total > 0 ? `• ${total} article(s) (${detail}) repassent en production` : null,
-          canRecompute ? '• besoins en ingredients et bon de sortie recalcules depuis les recettes actuelles' : null,
-        ].filter(Boolean).join('\n');
-
-        return (
-          <button
-            type="button"
-            onClick={async () => {
-              if (await confirmDialog(`${lignes}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer le plan ?', confirmLabel: 'Relancer' })) {
-                relaunchMutation.mutate();
-              }
-            }}
-            disabled={relaunchMutation.isPending || nothingToDo}
-            title={nothingToDo
-              ? 'Rien a relancer : aucun article annule ou en attente, et la preparation est deja engagee'
-              : 'Debloquer ce plan : reactiver les articles annules et recalculer besoins + bon de sortie'}
-            className="odoo-btn-secondary"
-          >
-            {relaunchMutation.isPending
-              ? <Loader2 size={13} className="animate-spin" />
-              : <RotateCcw size={13} />}
-            {relaunchMutation.isPending
-              ? 'Relance...'
-              : total > 0 ? `Relancer le plan (${total})` : 'Relancer le plan'}
-          </button>
-        );
-      })()}
+      {canShowStart && (
+        <button onClick={() => startMutation.mutate()} disabled={startMutation.isPending || hasPendingDeps}
+          title={hasPendingDeps ? 'Semi-finis en attente — production impossible' : undefined} className="odoo-btn-primary">
+          {hasPendingDeps ? <Lock size={13} /> : startMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+          {hasPendingDeps ? 'Semi-finis en attente' : startMutation.isPending ? 'Demarrage...' : 'Demarrer la production'}
+        </button>
+      )}
+      {plan.status === 'in_progress' && (
+        <>
+          {waitingCount > 0 && allProduced && (
+            <button onClick={closePartial} className="odoo-btn-secondary">
+              <CheckCircle size={13} /> Cloture partielle
+            </button>
+          )}
+          {pendingItems.length > 0 && (
+            <button onClick={launchAll} className={inProgressItems.length > 0 ? 'odoo-btn-secondary' : 'odoo-btn-primary'}>
+              <Play size={13} /> Lancer tout ({pendingItems.length})
+            </button>
+          )}
+          {inProgressItems.length > 0 && (
+            <button onClick={() => { setLaunchTargetItemId(null); setShowProductionLaunch(true); }} className="odoo-btn-primary">
+              <Factory size={13} /> Enregistrer tout ({inProgressItems.length})
+            </button>
+          )}
+          {/* Le rendement ne se saisit que pendant la production (RendementPanel) :
+              apres cloture, la saisie pousserait du stock au frigo a posteriori. */}
+          {rendementsMissing.length > 0 && !isSemiFini && (
+            <button onClick={goToRendement} className={pendingItems.length + inProgressItems.length > 0 ? 'odoo-btn-secondary' : 'odoo-btn-primary'}>
+              <Scale size={13} /> Saisir le rendement{rendementsMissing.length > 1 ? ` (${rendementsMissing.length})` : ''}
+            </button>
+          )}
+        </>
+      )}
+      {plan.status === 'completed' && (
+        <button onClick={() => printFicheProduction()} className="odoo-btn-secondary">
+          <Printer size={13} /> Fiche de production
+        </button>
+      )}
     </>
+  ) : null;
+
+  // Menu « Plus » : chaque entree garde ses gardes (disabled + motif en infobulle).
+  type MenuItem = { key: string; label: string; icon: React.ReactNode; onClick: () => void; disabled?: boolean; title?: string; danger?: boolean; sep?: boolean };
+  const menuItems: MenuItem[] = [];
+  if (['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && !isSemiFini) {
+    menuItems.push({ key: 'bsi', label: 'Bon de sortie ingrédients', icon: <Printer size={13} />, onClick: () => printBonSortieIngredients() });
+  }
+  // Repasse en brouillon : avant tout demarrage. Le backend verifie aussi qu'aucun item
+  // n'a commence ni le BSI preleve.
+  if (isChef && ['confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(plan.status)) {
+    const anyStarted = items.some((it: Record<string, any>) => it.status === 'in_progress' || it.status === 'produced');
+    const bsiActive = !!activeBon && ['prelevement', 'verifie', 'cloture'].includes(activeBon.status as string);
+    menuItems.push({
+      key: 'revert', sep: menuItems.length > 0,
+      label: revertMutation.isPending ? 'Repasse...' : 'Modifier (revenir en brouillon)',
+      icon: <ArrowLeft size={13} />,
+      disabled: revertMutation.isPending || anyStarted || bsiActive,
+      title: anyStarted
+        ? 'Au moins un produit a deja demarre — annulez d\'abord les items en cours'
+        : bsiActive ? 'Le bon de sortie a deja ete preleve — annulez d\'abord le BSI' : 'Repasser en brouillon pour modifier le plan',
+      onClick: async () => {
+        if (await confirmDialog('Le bon de sortie sera annulé et les besoins en ingrédients recalculés à la prochaine confirmation.', { title: 'Repasser le plan en brouillon ?', confirmLabel: 'Repasser en brouillon' })) {
+          revertMutation.mutate();
+        }
+      },
+    });
+  }
+  // Relancer le plan : tout plan non brouillon, sans creer de nouveau plan.
+  //   - articles annules / en attente -> ils repassent en 'pending'
+  //   - plan confirme sur un referentiel incomplet -> besoins et BSI recalcules
+  // Le recalcul n'est possible que tant que la preparation n'est pas engagee.
+  if (isChef && plan.status !== 'draft') {
+    const total = cancelledCount + waitingCount;
+    const anyStarted = items.some((it: Record<string, any>) =>
+      ['in_progress', 'produced', 'transferred', 'received'].includes(it.status as string));
+    const bsiEngaged = !!activeBon && ['prelevement', 'verifie', 'cloture'].includes(activeBon.status as string);
+    const canRecompute = !anyStarted && !bsiEngaged;
+    const nothingToDo = total === 0 && !canRecompute;
+    const detail = [
+      cancelledCount > 0 ? `${cancelledCount} annule(s)` : null,
+      waitingCount > 0 ? `${waitingCount} en attente` : null,
+    ].filter(Boolean).join(' + ');
+    const lignes = [
+      total > 0 ? `• ${total} article(s) (${detail}) repassent en production` : null,
+      canRecompute ? '• besoins en ingredients et bon de sortie recalcules depuis les recettes actuelles' : null,
+    ].filter(Boolean).join('\n');
+    menuItems.push({
+      key: 'relaunch', sep: menuItems.length > 0 && !menuItems.some(m => m.key === 'revert'),
+      label: relaunchMutation.isPending ? 'Relance...' : total > 0 ? `Relancer le plan (${total})` : 'Relancer le plan',
+      icon: <RotateCcw size={13} />,
+      disabled: relaunchMutation.isPending || nothingToDo,
+      title: nothingToDo
+        ? 'Rien a relancer : aucun article annule ou en attente, et la preparation est deja engagee'
+        : 'Debloquer ce plan : reactiver les articles annules et recalculer besoins + bon de sortie',
+      onClick: async () => {
+        if (await confirmDialog(`${lignes}\n\nAucun nouveau plan n'est créé.`, { title: 'Relancer le plan ?', confirmLabel: 'Relancer' })) {
+          relaunchMutation.mutate();
+        }
+      },
+    });
+  }
+  // Perte de production (brule, rate, panne, matiere defectueuse) : tracee par productionPlanId.
+  if (isChef && ['in_progress', 'completed'].includes(plan.status) && !isSemiFini) {
+    menuItems.push({ key: 'loss', sep: menuItems.length > 0, danger: true, label: 'Déclarer une perte', icon: <Trash2 size={13} />, onClick: () => setShowLossModal(true) });
+  }
+
+  const moreMenu = menuItems.length > 0 ? (
+    <div className="plan-more">
+      <button type="button" className="odoo-btn-secondary" onClick={() => setMoreOpen(o => !o)} aria-expanded={moreOpen}>
+        Plus <ChevronDown size={13} />
+      </button>
+      {moreOpen && (
+        <>
+          <div className="plan-more-backdrop" onClick={() => setMoreOpen(false)} />
+          <div className="plan-more-menu" role="menu">
+            {menuItems.map(m => (
+              <div key={m.key}>
+                {m.sep && <div className="plan-more-sep" />}
+                <button type="button" role="menuitem" disabled={m.disabled} title={m.title}
+                  className={`plan-more-item${m.danger ? ' danger' : ''}`}
+                  onClick={() => { setMoreOpen(false); m.onClick(); }}>
+                  {m.icon} {m.label}
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   ) : null;
 
   const planStatusBadge = plan.status === 'completed' && plan.completion_type === 'partial'
@@ -1018,6 +1121,110 @@ export default function PlanDetailPage() {
     ? 'Terminé (complet)'
     : PRODUCTION_STATUS_LABELS[plan.status as keyof typeof PRODUCTION_STATUS_LABELS];
   const statusTagClass = planStatusTag(plan.status).cls;
+
+  // ══ Indicateurs de l'en-tete, choisis selon l'etat du plan ══
+  //   avant production : quoi produire et ou en est la preparation
+  //   en production    : avancement
+  //   termine          : resultat (quantite, rendement, cout, pertes)
+  const num = (v: unknown) => { const x = typeof v === 'number' ? v : parseFloat(String(v ?? '')); return Number.isFinite(x) ? x : 0; };
+  const fmtDh = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
+  const activeItems = items.filter((it: Record<string, any>) => it.status !== 'cancelled');
+  const qtyPlanned = activeItems.reduce((s: number, it: Record<string, any>) => s + num(it.planned_quantity), 0);
+  const qtyDone = activeItems.reduce((s: number, it: Record<string, any>) => s + num(it.actual_quantity), 0);
+  const bsiTag = activeBon ? bonStatusTag(activeBon.status as string) : null;
+  const depsFulfilled = deps.filter(d => d.status === 'fulfilled').length;
+  const rendementList = rendements as Record<string, any>[];
+  const avgRendement = rendementList.length > 0
+    ? rendementList.reduce((s, r) => s + num(r.rendement_reel), 0) / rendementList.length : null;
+  const minSeuil = rendementList.length > 0 ? Math.min(...rendementList.map(r => num(r.seuil_rendement) || 85)) : 85;
+  const pertesTotal = rendementList.reduce((s, r) => s + num(r.pertes_total), 0);
+  const coutTotal = coutReel ? num(coutReel.cout_total) : null;
+  const ecartPct = coutReel?.ecart_pct != null ? num(coutReel.ecart_pct) : null;
+  const ecartLabel = ecartPct != null
+    ? `${ecartPct > 0 ? '+' : ''}${ecartPct.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} % vs prévu` : null;
+  type Kpi = { label: string; icon: React.ReactNode; value: string; sub?: string; tone?: 'ok' | 'warn' | 'bad'; bar?: number };
+  const kpis: Kpi[] = plan.status === 'in_progress' ? [
+    { label: 'Avancement', icon: <TrendingUp size={11} />, value: `${producedCount} / ${totalActive}`, sub: `${progressPct} % des articles`, tone: progressPct >= 100 ? 'ok' : undefined, bar: progressPct },
+    { label: 'Pièces produites', icon: <CheckCircle2 size={11} />, value: String(qtyDone), sub: `sur ${qtyPlanned} prévue${qtyPlanned > 1 ? 's' : ''}` },
+    { label: 'Liste d\'attente', icon: <Clock size={11} />, value: String(waitingCount), sub: waitingCount > 0 ? 'ingrédients insuffisants' : 'aucun article', tone: waitingCount > 0 ? 'warn' : undefined },
+    { label: 'Ingrédients', icon: <Layers size={11} />, value: bsiTag?.label || '—', sub: activeBon ? (activeBon.numero as string) : undefined, tone: bsiCloture ? 'ok' : undefined },
+  ] : plan.status === 'completed' ? (() => {
+    const pct = qtyPlanned > 0 ? Math.round((qtyDone / qtyPlanned) * 100) : 0;
+    return [
+      { label: 'Produit', icon: <CheckCircle2 size={11} />, value: `${qtyDone} / ${qtyPlanned}`, sub: `${pct} % du prévu`, tone: pct >= 100 ? 'ok' : 'warn' },
+      avgRendement != null
+        ? { label: 'Rendement', icon: <Scale size={11} />, value: `${avgRendement.toFixed(1)} %`,
+            sub: rendementsMissing.length > 0 ? `${rendementsMissing.length} article(s) non saisi(s)` : `seuil ${minSeuil} %`,
+            tone: rendementsMissing.length > 0 || avgRendement < minSeuil ? 'warn' : 'ok' }
+        : { label: 'Rendement', icon: <Scale size={11} />, value: isSemiFini ? '—' : 'Non saisi', sub: isSemiFini ? undefined : 'pas saisi pendant la production', tone: isSemiFini ? undefined : 'warn' },
+      coutTotal != null
+        ? { label: 'Coût réel', icon: <Coins size={11} />, value: fmtDh(coutTotal),
+            sub: [qtyDone > 0 ? `${fmtDh(coutTotal / qtyDone)} / pièce` : null, ecartLabel].filter(Boolean).join(' · '),
+            tone: ecartPct != null && ecartPct > 5 ? 'warn' : undefined }
+        : { label: 'Coût réel', icon: <Coins size={11} />, value: 'Non calculé', sub: 'voir l\'onglet Coûts' },
+      { label: 'Pertes', icon: <Trash2 size={11} />, value: rendementList.length > 0 ? String(pertesTotal) : '—',
+        sub: rendementList.length > 0 ? 'relevées au rendement' : 'rendement non saisi', tone: pertesTotal > 0 ? 'warn' : rendementList.length > 0 ? 'ok' : undefined },
+    ] as Kpi[];
+  })() : [
+    { label: 'Quantité prévue', icon: <Package size={11} />, value: String(qtyPlanned), sub: `${items.length} article${items.length > 1 ? 's' : ''}` },
+    { label: 'Ingrédients', icon: <Layers size={11} />, value: String(needs.length),
+      sub: isMagasinier && insufficientNeeds.length > 0 ? `${insufficientNeeds.length} insuffisant(s)` : 'à prélever',
+      tone: isMagasinier && insufficientNeeds.length > 0 ? 'bad' : undefined },
+    { label: 'Bon de sortie', icon: <Truck size={11} />,
+      value: bsiTag?.label || (plan.status === 'draft' ? 'À la confirmation' : bonNotNeeded ? 'Aucun besoin' : 'En génération'),
+      sub: activeBon ? (activeBon.numero as string) : undefined, tone: bsiCloture ? 'ok' : bonNotNeeded ? 'bad' : undefined },
+    { label: 'Semi-finis', icon: <Beaker size={11} />, value: deps.length > 0 ? `${depsFulfilled} / ${deps.length}` : 'Aucun',
+      sub: deps.length > 0 ? (hasPendingDeps ? 'en attente' : 'disponibles') : 'requis', tone: deps.length > 0 ? (hasPendingDeps ? 'warn' : 'ok') : undefined },
+  ];
+  const kpiColor = { ok: '#155724', warn: '#946300', bad: '#a71d2a' };
+
+  // ══ Synthese : ce qui reste a faire (dans l'ordre du processus) ══
+  // Le bandeau de reception des ingredients (BSI « pret ») est global et n'est pas repete ici.
+  type Todo = { tone: 'info' | 'warning' | 'success' | 'danger'; icon: typeof CheckCircle; title: string; text?: string; action?: React.ReactNode };
+  const todos: Todo[] = [];
+  if (bonNotNeeded || (plan.status !== 'draft' && !isSemiFini && needs.length === 0)) {
+    todos.push({ tone: 'danger', icon: AlertTriangle, title: 'Préparation bloquée : aucun besoin en ingrédients calculé',
+      text: 'Ajoutez une recette aux produits concernés, puis « Relancer le plan » (menu Plus) pour recalculer les besoins.' });
+  } else if (['confirmed', 'awaiting_ingredients'].includes(plan.status) && activeBon && !['pret', 'cloture'].includes(activeBon.status as string)) {
+    todos.push({ tone: 'info', icon: Truck, title: `Préparation des ingrédients par le magasinier — ${bsiTag?.label}`,
+      text: `Bon de sortie ${activeBon.numero as string}. Vous serez notifié quand les ingrédients seront prêts.`,
+      action: <button className="odoo-btn-secondary" onClick={() => setPlanTab('ingredients')}><Eye size={13} /> Voir le bon</button> });
+  }
+  if (canShowStart && hasPendingDeps) {
+    todos.push({ tone: 'warning', icon: Lock, title: `Semi-finis en attente (${depsFulfilled} / ${deps.length})`,
+      text: 'La production ne peut pas démarrer tant que les semi-finis ne sont pas disponibles.' });
+  } else if (canShowStart && isChef) {
+    todos.push({ tone: 'success', icon: Play, title: 'Ingrédients livrés — la production peut démarrer',
+      action: <button className="odoo-btn-primary" onClick={() => startMutation.mutate()} disabled={startMutation.isPending}><Play size={13} /> Démarrer la production</button> });
+  }
+  if (plan.status === 'in_progress' && !isSemiFini && rendementsMissing.length > 0) {
+    todos.push({ tone: 'warning', icon: Scale, title: `Rendement à saisir pour ${rendementsMissing.length} article(s) produit(s)`,
+      text: 'À saisir avant la clôture du plan : il n\'est plus modifiable ensuite.',
+      action: isChef ? <button className="odoo-btn-primary" onClick={goToRendement}><Scale size={13} /> Saisir le rendement</button> : undefined });
+  }
+  if (plan.status === 'in_progress') {
+    const left = totalActive - producedCount;
+    todos.push({ tone: 'info', icon: Factory, title: left > 0 ? `${left} article(s) restent à produire` : 'Tous les articles sont produits',
+      text: waitingCount > 0 ? `${waitingCount} article(s) en liste d'attente (ingrédients insuffisants).` : undefined,
+      action: <button className="odoo-btn-secondary" onClick={() => setPlanTab('production')}><Factory size={13} /> Ouvrir la production</button> });
+  }
+  if (plan.status === 'completed' && !isSemiFini && rendementsMissing.length > 0) {
+    todos.push({ tone: 'info', icon: Scale, title: `Rendement non saisi pour ${rendementsMissing.length} article(s)`,
+      text: `${rendementsMissing.map((it: Record<string, any>) => it.product_name as string).join(', ')} : le rendement n'a pas été saisi pendant la production, les pertes de ce plan ne sont pas connues.` });
+  }
+  if (plan.status === 'completed' && coutTotal == null) {
+    todos.push({ tone: 'warning', icon: Coins, title: 'Coût réel non calculé',
+      action: <button className="odoo-btn-secondary" onClick={() => setPlanTab('couts')}><Coins size={13} /> Ouvrir les coûts</button> });
+  }
+  if (plan.status === 'completed' && !todos.some(t => t.tone === 'warning' || t.tone === 'danger')) {
+    todos.push({ tone: 'success', icon: CheckCircle, title: 'Plan clôturé — rien à faire',
+      text: plan.completion_type === 'partial' ? 'Clôture partielle : les articles en attente ont été annulés.' : undefined });
+  }
+  const lotUsage = productionLotUsage as Record<string, any>[];
+  const nearestDlc = lotUsage
+    .map(u => (u.expiration_date ? new Date(u.expiration_date as string) : null))
+    .filter((d): d is Date => !!d)
+    .sort((a, b) => a.getTime() - b.getTime())[0];
 
   return (
     <div className="odoo-scope">
@@ -1079,10 +1286,9 @@ export default function PlanDetailPage() {
           ) : null}
         </div>
         </div>
-        {/* Actions sur le plan (cycle de vie) : confirmer / repasser en brouillon / relancer.
-            Elles ne dependent pas de l'onglet, donc elles vivent dans l'en-tete ;
-            les actions d'etape (BSI, demarrage, cloture) restent sous les onglets. */}
-        {planActions && <div className="plan-header-actions">{planActions}</div>}
+        {/* Action principale (etape suivante) + menu « Plus » : toutes les actions de
+            la fiche vivent ici, quel que soit l'onglet ouvert. */}
+        {(primaryActions || moreMenu) && <div className="plan-header-actions">{primaryActions}{moreMenu}</div>}
       </div>
 
       {/* Processus du plan : une etape par statut, la courante en surbrillance.
@@ -1123,35 +1329,20 @@ export default function PlanDetailPage() {
         );
       })()}
 
-      {/* ══════════════ INDICATEURS ══════════════ */}
+      {/* ══════════════ INDICATEURS (selon l'etat du plan) ══════════════ */}
       <div className="odoo-stat-grid">
-        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-          <div className="odoo-stat-card-label"><Package size={11} style={{ display: 'inline', marginRight: 4 }} />Articles</div>
-          <div className="odoo-stat-card-value">{items.length}</div>
-        </div>
-        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-          <div className="odoo-stat-card-label"><CheckCircle2 size={11} style={{ display: 'inline', marginRight: 4 }} />Produits</div>
-          <div className="odoo-stat-card-value" style={{ color: producedCount > 0 ? '#155724' : undefined }}>{producedCount}</div>
-        </div>
-        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-          <div className="odoo-stat-card-label"><Layers size={11} style={{ display: 'inline', marginRight: 4 }} />Ingrédients</div>
-          <div className="odoo-stat-card-value">{needs.length}</div>
-        </div>
-        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-          <div className="odoo-stat-card-label">Progression</div>
-          <div className="odoo-stat-card-value" style={{ color: progressPct >= 100 ? '#155724' : undefined }}>
-            {progressPct}%
+        {kpis.map(k => (
+          <div key={k.label} className="odoo-stat-card" style={{ cursor: 'default' }}>
+            <div className="odoo-stat-card-label">{k.icon} <span style={{ marginLeft: 2 }}>{k.label}</span></div>
+            <div className="odoo-stat-card-value" style={{ color: k.tone ? kpiColor[k.tone] : undefined }}>{k.value}</div>
+            {k.sub && <div className="plan-kpi-sub">{k.sub}</div>}
+            {k.bar != null && (
+              <div style={{ height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden', marginTop: 6 }}>
+                <div style={{ height: '100%', width: `${k.bar}%`, backgroundColor: k.bar >= 100 ? '#155724' : 'var(--theme-accent)', transition: 'width 0.3s' }} />
+              </div>
+            )}
           </div>
-          {(plan.status === 'in_progress' || plan.status === 'completed') && totalActive > 0 && (
-            <div style={{ height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden', marginTop: 6 }}>
-              <div style={{
-                height: '100%', width: `${progressPct}%`,
-                backgroundColor: progressPct >= 100 ? '#155724' : 'var(--theme-accent)',
-                transition: 'width 0.3s',
-              }} />
-            </div>
-          )}
-        </div>
+        ))}
       </div>
 
       {/* ══════════════ RECEPTION DES INGREDIENTS (chef) ══════════════
@@ -1342,36 +1533,44 @@ export default function PlanDetailPage() {
         );
       })()}
 
-      {/* ══════════════ TABS (Preparation / Production) ══════════════ */}
-      {/* Les onglets ne s'affichent pas :
-            - en 'draft' (rien a montrer encore)
-            - pour un plan semi-fini (UI dediee au-dessus)
-          L'onglet Production n'apparait qu'une fois la preparation terminee (BSI cloture,
-          aucun ingredient a prelever, ou production deja demarree/terminee). Avant cela,
-          seul "1. Preparation" existe, avec un rappel de l'etape suivante a droite. */}
+      {/* ══════════════ ONGLETS (un seul niveau, par sujet) ══════════════ */}
+      {/* Pas d'onglets en 'draft' ni pour un plan semi-fini (tout est affiche).
+          Production n'apparait qu'une fois la preparation terminee (BSI cloture ou
+          production deja demarree) ; Couts qu'une fois la production demarree. */}
       {hasTabs && (() => {
-        const prepBadgeTag = preparationDone ? 'odoo-tag-green' : 'odoo-tag-yellow';
-        const prepBadgeLabel = preparationDone ? '✓ Terminée' : 'En cours';
         const nextStepHint = bonNotNeeded
           ? 'Production bloquée : aucun besoin en ingrédients calculé (recette manquante)'
           : !activeBon
-          ? 'Étape suivante : Production — après la génération et la clôture du bon de sortie'
+          ? 'Production : après la génération et la clôture du bon de sortie'
           : activeBon.status === 'pret'
-            ? 'Étape suivante : Production — après confirmation de la réception des ingrédients'
-            : 'Étape suivante : Production — après la clôture du bon de sortie par le magasinier';
+            ? 'Production : après confirmation de la réception des ingrédients'
+            : 'Production : après la clôture du bon de sortie par le magasinier';
+        const ingrBadge = bsiCloture
+          ? <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>&#10003;</span>
+          : activeBon
+            ? <span className={`odoo-tag ${bsiTag?.cls || 'odoo-tag-yellow'}`} style={{ marginLeft: 4 }}>{bsiTag?.label}</span>
+            : bonNotNeeded ? <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 4 }}>Bloqué</span> : null;
         return (
           <div className="odoo-tabs plan-tabs">
-            <button type="button" onClick={() => setActivePlanTab('preparation')}
-              className={`odoo-tab ${effectiveTab === 'preparation' ? 'active' : ''}`}>
+            <button type="button" onClick={() => setPlanTab('synthese')}
+              className={`odoo-tab ${effectiveTab === 'synthese' ? 'active' : ''}`}>
+              <LayoutDashboard size={13} />
+              <span>Synthèse</span>
+              {todos.some(t => t.tone === 'warning' || t.tone === 'danger') && (
+                <span className="odoo-tag odoo-tag-yellow" style={{ marginLeft: 4 }}>À faire</span>
+              )}
+            </button>
+            <button type="button" onClick={() => setPlanTab('ingredients')}
+              className={`odoo-tab ${effectiveTab === 'ingredients' ? 'active' : ''}`}>
               <Truck size={13} />
-              <span>1. Préparation</span>
-              <span className={`odoo-tag ${prepBadgeTag}`} style={{ marginLeft: 4 }}>{prepBadgeLabel}</span>
+              <span>Ingrédients</span>
+              {ingrBadge}
             </button>
             {productionTabVisible ? (
-              <button type="button" onClick={() => setActivePlanTab('production')}
+              <button type="button" onClick={() => setPlanTab('production')}
                 className={`odoo-tab ${effectiveTab === 'production' ? 'active' : ''}`}>
                 <Factory size={13} />
-                <span>2. Production</span>
+                <span>Production</span>
                 {plan.status === 'in_progress' && (
                   <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 4 }}>{producedCount} / {totalActive}</span>
                 )}
@@ -1379,7 +1578,15 @@ export default function PlanDetailPage() {
                   <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>&#10003;</span>
                 )}
               </button>
-            ) : (
+            ) : null}
+            {costsTabVisible && (
+              <button type="button" onClick={() => setPlanTab('couts')}
+                className={`odoo-tab ${effectiveTab === 'couts' ? 'active' : ''}`}>
+                <Coins size={13} />
+                <span>Coûts</span>
+              </button>
+            )}
+            {!productionTabVisible && (
               <span className="plan-tabs-hint" title={nextStepHint}>
                 <Lock size={12} /> {nextStepHint}
               </span>
@@ -1388,132 +1595,85 @@ export default function PlanDetailPage() {
         );
       })()}
 
-      {/* ══════════════ SOUS-ONGLETS de l'onglet Preparation ══════════════ */}
-      {hasTabs && effectiveTab === 'preparation' && (
-        <div className="odoo-tabs plan-subtabs">
-          <button type="button" onClick={() => setPrepSubTab('needs')}
-            className={`odoo-tab ${prepSubTab === 'needs' ? 'active' : ''}`}>
-            <Beaker size={13} />
-            <span>Besoins en ingrédients</span>
-          </button>
-          <button type="button" onClick={() => setPrepSubTab('bsi')}
-            className={`odoo-tab ${prepSubTab === 'bsi' ? 'active' : ''}`}>
-            <Truck size={13} />
-            <span>Gestion du bon de sortie</span>
-            {activeBon && activeBon.status !== 'cloture' && activeBon.status !== 'annule' && (
-              <span className="odoo-tag odoo-tag-yellow" style={{ marginLeft: 4 }}>En cours</span>
+      {/* ══════════════ CORPS : contenu de l'onglet + volet notes/journal ══════════════ */}
+      <div className="plan-body">
+      <div className="plan-main">
+
+      {/* ══════════════ SYNTHESE ══════════════ */}
+      {showSynth && (
+        <div className="plan-synth">
+          {todos.map((t, i) => (
+            <StatusBanner key={i} tone={t.tone} icon={t.icon} title={t.title} actions={t.action}>
+              {t.text}
+            </StatusBanner>
+          ))}
+          <div className="plan-synth-grid">
+            <div className="odoo-section plan-phase">
+              <div className="odoo-section-header">
+                <Truck size={12} /> Ingrédients
+                {bsiTag && <span className={`odoo-tag ${bsiCloture ? 'odoo-tag-green' : bsiTag.cls}`} style={{ marginLeft: 'auto' }}>{bsiTag.label}</span>}
+              </div>
+              <ul className="plan-phase-list">
+                <li>{needs.length} ingrédient{needs.length > 1 ? 's' : ''} à prélever</li>
+                {activeBon && <li>Bon de sortie {activeBon.numero as string}</li>}
+                {lotUsage.length > 0 && <li>{lotUsage.length} lot{lotUsage.length > 1 ? 's' : ''} utilisé{lotUsage.length > 1 ? 's' : ''}{nearestDlc ? `, DLC la plus proche le ${format(nearestDlc, 'dd/MM/yyyy')}` : ''}</li>}
+                {isMagasinier && insufficientNeeds.length > 0 && <li style={{ color: '#a71d2a' }}>{insufficientNeeds.length} ingrédient(s) insuffisant(s)</li>}
+              </ul>
+              <button type="button" className="plan-phase-link" onClick={() => setPlanTab('ingredients')}>Voir les ingrédients →</button>
+            </div>
+            <div className="odoo-section plan-phase">
+              <div className="odoo-section-header">
+                <Factory size={12} /> Production
+                {hasResults && <span className={`odoo-tag ${progressPct >= 100 ? 'odoo-tag-green' : 'odoo-tag-blue'}`} style={{ marginLeft: 'auto' }}>{producedCount} / {totalActive}</span>}
+              </div>
+              <ul className="plan-phase-list">
+                <li>{hasResults ? `${qtyDone} pièce(s) produite(s) sur ${qtyPlanned}` : `${qtyPlanned} pièce(s) prévue(s), ${items.length} article(s)`}</li>
+                {deps.length > 0 && <li>Semi-finis : {depsFulfilled} / {deps.length} disponible(s)</li>}
+                {waitingCount > 0 && <li style={{ color: '#946300' }}>{waitingCount} article(s) en liste d'attente</li>}
+                {plan.status === 'completed' && !isSemiFini && (
+                  <li>Rendement : {avgRendement != null ? `${avgRendement.toFixed(1)} %` : <strong style={{ color: '#946300' }}>non saisi</strong>}{rendementList.length > 0 ? ` · pertes ${pertesTotal}` : ''}</li>
+                )}
+              </ul>
+              {productionTabVisible
+                ? <button type="button" className="plan-phase-link" onClick={() => setPlanTab('production')}>Voir la production →</button>
+                : <span className="plan-phase-hint"><Lock size={11} /> Ouvert après la livraison des ingrédients</span>}
+            </div>
+            {costsTabVisible && (
+              <div className="odoo-section plan-phase">
+                <div className="odoo-section-header">
+                  <Coins size={12} /> Coûts
+                  <span className={`odoo-tag ${coutTotal == null ? 'odoo-tag-grey' : 'odoo-tag-green'}`} style={{ marginLeft: 'auto' }}>
+                    {coutTotal == null ? 'Non calculé' : 'Calculé'}
+                  </span>
+                </div>
+                <ul className="plan-phase-list">
+                  {coutTotal != null ? (
+                    <>
+                      <li>Coût réel : {fmtDh(coutTotal)}{qtyDone > 0 ? `, soit ${fmtDh(coutTotal / qtyDone)} par pièce` : ''}</li>
+                      {coutReel?.cout_prevu != null && <li>Prévu : {fmtDh(num(coutReel.cout_prevu))}{ecartLabel ? ` (${ecartLabel})` : ''}</li>}
+                    </>
+                  ) : <li>Le coût de revient n'a pas encore été calculé.</li>}
+                </ul>
+                <button type="button" className="plan-phase-link" onClick={() => setPlanTab('couts')}>Voir les coûts →</button>
+              </div>
             )}
-            {activeBon && activeBon.status === 'cloture' && (
-              <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>&#10003;</span>
-            )}
-          </button>
+            <div className="odoo-section plan-phase">
+              <div className="odoo-section-header">
+                <Info size={12} /> Origine
+              </div>
+              <ul className="plan-phase-list">
+                <li>Créé par {(plan.created_by_name as string) || '—'}{plan.created_at ? ` le ${format(new Date(plan.created_at as string), 'dd/MM à HH:mm')}` : ''}</li>
+                {linkedReplenishment && <li>Demande boutique {linkedReplenishment.request_number as string}</li>}
+                {plan.order_number && <li>Commande {plan.order_number as string}</li>}
+                {plan.notes ? <li>{plan.notes as string}</li> : null}
+              </ul>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* ══════════════ BARRE D'ACTIONS DE L'ETAPE ══════════════
-          Actions propres a l'onglet actif : primaire = action principale de l'etape,
-          secondaire = impression, danger = perte. Les actions de cycle de vie du plan
-          (confirmer / brouillon / relancer) sont dans l'en-tete (planActions). */}
-      <div className="plan-toolbar">
-        {showPrepBsi && ['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && !isSemiFini && (
-          <button onClick={() => printBonSortieIngredients()} className="odoo-btn-secondary">
-            <Printer size={13} /> Bon de sortie ingredients
-          </button>
-        )}
-        {showProd && ['confirmed', 'awaiting_ingredients', 'ready_to_produce'].includes(plan.status) && (() => {
-          const deps = (plan.dependencies || []) as Record<string, any>[];
-          const hasPendingDeps = deps.some(d => d.status !== 'fulfilled' && d.status !== 'cancelled');
-          // Wizard etape 3 : production bloquee tant que le BSI n'est pas cloture.
-          // Les plans semi-finis sont exemptes (leur BSI est celui du plan parent).
-          // Pas de raccourci "plan sans besoin" : la production exige un BSI cloture.
-          const bsiBlocked = !isSemiFini && (!activeBon || activeBon.status !== 'cloture');
-          const bsiBlockReason = !activeBon
-            ? 'Preparez d\'abord le bon de sortie'
-            : activeBon.status !== 'cloture'
-              ? 'Cloturer le bon de sortie (livraison des ingredients) avant de demarrer'
-              : '';
-          const disabled = startMutation.isPending || hasPendingDeps || bsiBlocked;
-          const blockLabel = hasPendingDeps
-            ? 'Semi-finis en attente'
-            : bsiBlocked
-              ? 'BSI non cloture'
-              : startMutation.isPending ? 'Demarrage...' : 'Demarrer la production';
-          const tooltip = hasPendingDeps
-            ? 'Semi-finis en attente — production impossible'
-            : bsiBlocked ? bsiBlockReason : undefined;
-          return (
-            <>
-              {isChef && (
-                <button onClick={() => startMutation.mutate()}
-                  disabled={disabled}
-                  title={tooltip}
-                  className="odoo-btn-primary">
-                  {(hasPendingDeps || bsiBlocked) ? <Lock size={13} /> : startMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
-                  {blockLabel}
-                </button>
-              )}
-            </>
-          );
-        })()}
-        {showProd && plan.status === 'in_progress' && isChef && (() => {
-          const pendingItems = items.filter((it: Record<string, any>) => it.status === 'pending' && (it.waiting_status !== 'waiting'));
-          const inProgressItems = items.filter((it: Record<string, any>) => it.status === 'in_progress');
-          const allProduced = pendingItems.length === 0 && inProgressItems.length === 0 && items.some((it: Record<string, any>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received');
-          return (
-            <>
-              {pendingItems.length > 0 && (
-                <button onClick={async () => {
-                  const ids = pendingItems.map((it: Record<string, any>) => it.id as string);
-                  try {
-                    await productionApi.startItems(id!, ids);
-                    await queryClient.invalidateQueries({ queryKey: ['production', id] });
-                    notify.success(`${ids.length} production(s) lancee(s)`);
-                  } catch (e: any) { notify.error(apiErrorMessage(e, 'Erreur')); }
-                }} className="odoo-btn-primary">
-                  <Play size={13} /> Lancer tout ({pendingItems.length})
-                </button>
-              )}
-              {inProgressItems.length > 0 && (
-                <button onClick={() => { setLaunchTargetItemId(null); setShowProductionLaunch(true); }} className="odoo-btn-primary">
-                  <Factory size={13} /> Enregistrer tout ({inProgressItems.length})
-                </button>
-              )}
-              {waitingCount > 0 && allProduced && (
-                <button
-                  onClick={async () => {
-                    if (await confirmDialog(`${waitingCount} article(s) en attente seront annulés.`, { title: 'Clôture partielle', confirmLabel: 'Clôturer', danger: true })) {
-                      productionApi.complete(id!, [], 'partial').then(() => {
-                        queryClient.invalidateQueries({ queryKey: ['production', id] });
-                        notify.success('Plan cloture partiellement');
-                      }).catch((err: any) => {
-                        notify.error(apiErrorMessage(err, 'Erreur'));
-                      });
-                    }
-                  }}
-                  className="odoo-btn-secondary"
-                >
-                  <CheckCircle size={13} /> Cloture partielle
-                </button>
-              )}
-            </>
-          );
-        })()}
-        {showProd && plan.status === 'completed' && isChef && (
-          <button onClick={() => printFicheProduction()} className="odoo-btn-secondary">
-            <Printer size={13} /> Fiche de production
-          </button>
-        )}
-        {/* Declarer une perte de production : visible pendant la production et a la cloture
-            (cas brule, rate, panne machine, matiere defectueuse). Tracabilite via productionPlanId. */}
-        {showProd && ['in_progress', 'completed'].includes(plan.status) && isChef && !isSemiFini && (
-          <button onClick={() => setShowLossModal(true)} className="odoo-btn-danger">
-            <Trash2 size={13} /> Declarer une perte
-          </button>
-        )}
-      </div>
-
-      {/* ══════════════ ETAPE 2 : BON DE SORTIE (sous-onglet Gestion BSI) ══════════════ */}
-      {showPrepBsi && bonNotNeeded && ['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && (
+      {/* ══════════════ INGREDIENTS : bon de sortie ══════════════ */}
+      {showIngr && bonNotNeeded && ['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && (
         <div style={{ margin: '1rem' }}>
           <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun bon de sortie à préparer — préparation bloquée">
             {bonNotNeededReason || 'Aucun ingrédient à prélever pour ce plan (produits sans recette ou sans composition).'}
@@ -1528,7 +1688,7 @@ export default function PlanDetailPage() {
       {/* Le BSI est genere automatiquement a la confirmation du plan (notification au
           magasinier). Ce bandeau sert de filet de securite si l'auto-generation a echoue
           ou si la query n'a pas encore ramene le BSI. */}
-      {showPrepBsi && !isSemiFini && !activeBon && !bonNotNeeded && ['confirmed', 'in_progress'].includes(plan.status) && (
+      {showIngr && !isSemiFini && !activeBon && !bonNotNeeded && ['confirmed', 'in_progress'].includes(plan.status) && (
         <div style={{ margin: '1rem' }}>
           <StatusBanner tone="info" icon={RefreshCw} title="Bon de sortie en cours de génération…"
             actions={isChef ? (
@@ -1546,18 +1706,18 @@ export default function PlanDetailPage() {
 
       {/* Panneau de prelevement inline : il porte lui-meme son en-tete (numero) et
           ses bandeaux de statut. */}
-      {showPrepBsi && !isSemiFini && activeBon && (
+      {showIngr && !isSemiFini && activeBon && (
         <div style={{ margin: '1rem' }}>
           <BonSortiePanel planId={id!} isChef={isChef} isMagasinier={isMagasinier} variant="inline" />
         </div>
       )}
 
-      {plan.order_number && <PlanLinkedOrder plan={plan} />}
+      {(showSynth || !hasTabs) && plan.order_number && <PlanLinkedOrder plan={plan} />}
 
       {/* ══════════════ ALERTES (onglet Preparation) ══════════════
           Visibles uniquement par le magasinier : elles concernent la dispo des
           ingredients (mise en liste d'attente faute de stock), hors champ du chef. */}
-      {showPrep && isMagasinier && plan.warnings && (plan.warnings as string[]).length > 0 && (
+      {showIngr && isMagasinier && plan.warnings && (plan.warnings as string[]).length > 0 && (
         <div style={{ margin: '1rem' }}>
           <StatusBanner tone="warning" icon={AlertTriangle} title={`Alertes (${(plan.warnings as string[]).length})`}>
             <ul className="status-banner-list">
@@ -1571,7 +1731,7 @@ export default function PlanDetailPage() {
           la selection des lots est maintenant geree dans le workflow de
           transfert Economat -> Pesage (cf module Warehouse / BSI), pas ici. */}
       {ingredientNeedsBlock}
-      {showPrepNeeds && hasTabs && needs.length === 0 && (
+      {showIngr && hasTabs && needs.length === 0 && !bonNotNeeded && (
         <div style={{ margin: '1rem' }}>
           <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun besoin en ingrédients calculé — préparation bloquée">
             Les produits de ce plan n'ont pas de recette (ou leur composition est vide) : aucun bon de sortie
@@ -1712,23 +1872,32 @@ export default function PlanDetailPage() {
         );
       })()}
 
-      {showPrep && (plan.status === 'completed' || plan.status === 'in_progress') && (
+      {showIngr && (plan.status === 'completed' || plan.status === 'in_progress') && (
         <PlanLotTraceability usage={productionLotUsage as Record<string, any>[]} />
       )}
 
-      {/* ══════════════ ÉTAPES + RENDEMENT + COUT REEL ══════════════ */}
-      {showProd && plan && ['in_progress', 'completed'].includes(plan.status) && (
+      {/* ══════════════ PROCEDE + RENDEMENT (onglet Production) ══════════════
+          Le retro-planning sert a caler le demarrage : inutile une fois le plan termine. */}
+      {showProd && hasResults && (
         <>
-          <RetroPlanningPanel planId={id!} planStatus={plan.status} isChef={isChef} />
+          {plan.status === 'in_progress' && <RetroPlanningPanel planId={id!} planStatus={plan.status} isChef={isChef} />}
           <EtapesPanel planId={id!} planStatus={plan.status} isChef={isChef} />
-          <RendementPanel planId={id!} planStatus={plan.status} items={items} isChef={isChef} />
-          <CoutReelPanel planId={id!} planStatus={plan.status} isChef={isChef}
-            totalQuantity={items.reduce((s: number, it: any) => s + ((it.actual_quantity as number) || (it.planned_quantity as number) || 0), 0)} />
+          <div id="plan-rendement">
+            <RendementPanel planId={id!} planStatus={plan.status} items={items} isChef={isChef} />
+          </div>
         </>
       )}
 
-      {/* ══════════════ NOTES + JOURNAL (chatter, commun aux deux onglets) ══════════════
-          Toujours en pied de fiche, apres le contenu de l'onglet actif. */}
+      {/* ══════════════ COUT DE REVIENT (onglet Couts) ══════════════ */}
+      {showCosts && hasResults && (
+        <CoutReelPanel planId={id!} planStatus={plan.status} isChef={isChef}
+          totalQuantity={items.reduce((s: number, it: any) => s + ((it.actual_quantity as number) || (it.planned_quantity as number) || 0), 0)} />
+      )}
+
+      </div>{/* /plan-main */}
+
+      {/* ══════════════ NOTES + JOURNAL (volet lateral, visible sur tous les onglets) ══════════════ */}
+      <aside className="plan-side">
       <div className="odoo-section">
         <div className="odoo-section-header">
           <MessageSquare size={12} /> Notes de production
@@ -1784,6 +1953,8 @@ export default function PlanDetailPage() {
       </div>
 
       <PlanJournal events={planEvents} />
+      </aside>
+      </div>{/* /plan-body */}
 
       {/* ══════════════ PRODUCTION LAUNCH MODAL (4-step) ══════════════ */}
       {showProductionLaunch && (

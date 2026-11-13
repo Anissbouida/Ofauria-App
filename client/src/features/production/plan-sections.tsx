@@ -14,7 +14,7 @@ export function PlanJournal({ events }: { events: ProductionPlanEvent[] }) {
   const planEvents = events;
   if (planEvents.length === 0) return null;
   return (
-    <details className="odoo-section" style={{ margin: '1rem' }}>
+    <details className="odoo-section">
       <summary className="odoo-section-header" style={{ cursor: 'pointer', listStyle: 'none' }}>
         <History size={12} /> Journal du plan
         <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
@@ -73,7 +73,8 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
             <tr>
               <th style={{ width: 24 }}></th>
               <th>Ingrédient</th>
-              <th>Lot</th>
+              <th>Lot interne</th>
+              <th>Lot fournisseur</th>
               <th>Fournisseur</th>
               <th>Reçu le</th>
               <th>DLC</th>
@@ -88,7 +89,10 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
                 <tr key={idx} style={{ cursor: 'default' }}>
                   <td><span className={`odoo-status-dot ${isExpired ? 'danger' : 'ok'}`} /></td>
                   <td style={{ fontWeight: 500 }}>{usage.ingredient_name as string}</td>
-                  <td style={{ fontFamily: 'ui-monospace, monospace' }}>{(usage.supplier_lot_number as string) || <span style={{ color: 'var(--theme-text-muted)' }}>sans réf.</span>}</td>
+                  {/* Lot interne = celui affiche sur le bon de sortie ; le lot fournisseur
+                      (etiquette du sac) n'est pas toujours saisi a la reception. */}
+                  <td style={{ fontFamily: 'ui-monospace, monospace' }}>{(usage.lot_number as string) || '—'}</td>
+                  <td style={{ fontFamily: 'ui-monospace, monospace' }}>{(usage.supplier_lot_number as string) || <span style={{ color: 'var(--theme-text-muted)', fontFamily: 'inherit' }}>non renseigné</span>}</td>
                   <td style={{ color: 'var(--theme-text-muted)' }}>{usage.supplier_name ? String(usage.supplier_name) : '—'}</td>
                   <td style={{ color: 'var(--theme-text-muted)' }}>{usage.received_at ? format(new Date(usage.received_at as string), 'dd/MM/yyyy') : '—'}</td>
                   <td>

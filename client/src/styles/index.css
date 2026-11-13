@@ -958,15 +958,6 @@
   .status-banner-actions { width: 100%; justify-content: stretch; }
 }
 
-/* ── Fiche plan de production : barre d'actions ── */
-.plan-toolbar {
-  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--odoo-border);
-  background: var(--odoo-bg);
-}
-.plan-toolbar:empty { display: none; }
-
 /* En-tete de fiche plan : titre/meta a gauche, actions de cycle de vie a droite */
 .plan-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 .plan-header-main { min-width: 0; flex: 1 1 auto; }
@@ -980,13 +971,52 @@
   font-size: 0.75rem; color: var(--odoo-text-muted); padding: 0.5rem 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;
 }
-.plan-subtabs { padding-left: 2.5rem; background: var(--odoo-bg-hover, var(--odoo-bg)); }
 @media (max-width: 768px) {
   .plan-header-actions { width: 100%; }
   .plan-tabs { flex-wrap: wrap; }
   .plan-tabs-hint { margin-left: 0; max-width: 100%; white-space: normal; padding: 0.25rem 0 0.5rem; }
-  .plan-subtabs { padding-left: 1rem; }
 }
+
+/* Fiche plan : menu « Plus » de l'en-tete */
+.plan-more { position: relative; }
+.plan-more-backdrop { position: fixed; inset: 0; z-index: 40; }
+.plan-more-menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 41; min-width: 240px;
+  background: var(--odoo-bg); border: 1px solid var(--odoo-border); border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12); padding: 4px;
+}
+.plan-more-item {
+  display: flex; align-items: center; gap: 0.5rem; width: 100%; text-align: left;
+  padding: 0.4375rem 0.625rem; border-radius: 3px; font-size: 0.8125rem;
+  color: var(--odoo-text); background: none; border: 0; cursor: pointer;
+}
+.plan-more-item:hover:not(:disabled) { background: var(--odoo-bg-hover); }
+.plan-more-item:disabled { opacity: 0.45; cursor: not-allowed; }
+.plan-more-item.danger { color: #a71d2a; }
+.plan-more-sep { height: 1px; background: var(--odoo-border); margin: 4px 0; }
+
+/* Fiche plan : sous-titre des indicateurs */
+.plan-kpi-sub { font-size: 0.6875rem; color: var(--odoo-text-muted); margin-top: 2px; }
+
+/* Fiche plan : contenu de l'onglet a gauche, notes + journal a droite */
+.plan-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+.plan-main { min-width: 0; }
+.plan-side { position: sticky; top: 0; }
+.plan-side .odoo-section { margin-left: 0; }
+@media (max-width: 1100px) {
+  .plan-body { grid-template-columns: minmax(0, 1fr); }
+  .plan-side { position: static; }
+  .plan-side .odoo-section { margin-left: 1rem; }
+}
+
+/* Fiche plan : onglet Synthese */
+.plan-synth { padding: 1rem 1rem 0; display: flex; flex-direction: column; gap: 0.75rem; }
+.plan-synth-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+.plan-synth-grid .plan-phase { margin: 0; display: flex; flex-direction: column; }
+.plan-phase-list { margin: 0; padding: 0.625rem 1rem 0.25rem 2rem; list-style: disc; font-size: 0.8125rem; color: var(--odoo-text); display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.plan-phase-link { align-self: flex-start; margin: 0.25rem 1rem 0.75rem; padding: 0; border: 0; background: none; color: var(--theme-accent); font-size: 0.75rem; cursor: pointer; }
+.plan-phase-link:hover { text-decoration: underline; }
+.plan-phase-hint { display: inline-flex; align-items: center; gap: 4px; margin: 0.25rem 1rem 0.75rem; font-size: 0.75rem; color: var(--odoo-text-muted); }
 
 /* ── Bon de sortie : actions en ligne (lot, contenants) et cibles tactiles ── */
 .bsi-lot-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 4px; }
