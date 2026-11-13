@@ -1,5 +1,5 @@
 import { db } from '../config/database.js';
-import { getCategoryRole } from '@ofauria/shared';
+import { workshopForCategorySlug } from '../services/workshops.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { transferBackroomToVitrine } from './product-stock.helper.js';
 import { productLotRepository } from './product-lot.repository.js';
@@ -32,7 +32,8 @@ export const replenishmentRepository = {
     storeId?: string;
     dateFrom?: string;
     dateTo?: string;
-    userRole?: string;
+    /** Ateliers de l'utilisateur (mig 511) : il ne voit que leurs demandes. */
+    workshopCodes?: string[];
     limit?: number;
     offset?: number;
   }) {
@@ -45,12 +46,10 @@ export const replenishmentRepository = {
     if (params.dateFrom) { conditions.push(`r.created_at >= $${i++}`); values.push(params.dateFrom); }
     if (params.dateTo) { conditions.push(`r.created_at <= $${i++}`); values.push(params.dateTo + ' 23:59:59'); }
 
-    // Role-based filtering
-    const chefRoles = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
-    if (params.userRole && chefRoles.includes(params.userRole)) {
-      // Chefs see only their own requests
-      conditions.push(`r.assigned_role = $${i++}`);
-      values.push(params.userRole);
+    // Un membre d'atelier ne voit que les demandes de ses ateliers (assigned_role = code atelier).
+    if (params.workshopCodes?.length) {
+      conditions.push(`r.assigned_role = ANY($${i++}::text[])`);
+      values.push(params.workshopCodes);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -193,7 +192,8 @@ export const replenishmentRepository = {
       const roleGroups: Record<string, typeof data.items> = {};
       for (const item of data.items) {
         const slug = productCategoryMap[item.productId] || 'unknown';
-        const role = getCategoryRole(slug);
+        // Atelier qui fabrique la catégorie (mig 511) ; 'general' = traité par le gérant.
+        const role = (await workshopForCategorySlug(slug)) ?? 'general';
         if (!roleGroups[role]) roleGroups[role] = [];
         roleGroups[role].push(item);
       }

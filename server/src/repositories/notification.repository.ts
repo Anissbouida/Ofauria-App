@@ -1,8 +1,12 @@
 import { db } from '../config/database.js';
 
+const toArray = (role: string | string[]) => [...new Set(Array.isArray(role) ? role : [role])];
+
 export const notificationRepository = {
+  /** role : le rôle de l'utilisateur, ou ce rôle + ses codes d'atelier (mig 511) —
+   *  une notification adressée à un atelier va à ses membres. */
   async findForUser(params: {
-    role: string;
+    role: string | string[];
     userId: string;
     storeId?: string;
     unreadOnly?: boolean;
@@ -11,10 +15,10 @@ export const notificationRepository = {
   }) {
     const { role, userId, storeId, unreadOnly = false, limit = 30, offset = 0 } = params;
     const conditions = [
-      `(n.target_role = $1 OR n.target_role = 'all')`,
+      `(n.target_role = ANY($1::text[]) OR n.target_role = 'all')`,
       `(n.target_user_id IS NULL OR n.target_user_id = $2)`,
     ];
-    const values: unknown[] = [role, userId];
+    const values: unknown[] = [toArray(role), userId];
     let i = 3;
 
     if (storeId) {
@@ -51,14 +55,14 @@ export const notificationRepository = {
     return { rows: result.rows, total: parseInt(countResult.rows[0].count) };
   },
 
-  async countUnread(role: string, userId: string, storeId?: string) {
+  async countUnread(role: string | string[], userId: string, storeId?: string) {
     const conditions = [
-      `(target_role = $1 OR target_role = 'all')`,
+      `(target_role = ANY($1::text[]) OR target_role = 'all')`,
       `(target_user_id IS NULL OR target_user_id = $2)`,
       `NOT ($2 = ANY(read_by))`,
       `created_at > NOW() - INTERVAL '30 days'`,
     ];
-    const values: unknown[] = [role, userId];
+    const values: unknown[] = [toArray(role), userId];
     let i = 3;
 
     if (storeId) {
@@ -81,13 +85,13 @@ export const notificationRepository = {
     );
   },
 
-  async markAllAsRead(role: string, userId: string, storeId?: string) {
+  async markAllAsRead(role: string | string[], userId: string, storeId?: string) {
     const conditions = [
-      `(target_role = $1 OR target_role = 'all')`,
+      `(target_role = ANY($1::text[]) OR target_role = 'all')`,
       `(target_user_id IS NULL OR target_user_id = $2)`,
       `NOT ($2 = ANY(read_by))`,
     ];
-    const values: unknown[] = [role, userId];
+    const values: unknown[] = [toArray(role), userId];
     let i = 3;
 
     if (storeId) {

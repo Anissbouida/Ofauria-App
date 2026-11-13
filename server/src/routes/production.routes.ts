@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { productionController } from '../controllers/production.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
+import { authorizeSettings } from '../middleware/settings-access.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
 import { validate, validateQuery, validateUuidParams } from '../middleware/validate.middleware.js';
@@ -15,6 +16,10 @@ const id = validateUuidParams('id');
 const router = Router();
 
 router.get('/', authenticate, validateQuery(listQuerySchema), asyncHandler(productionController.list));
+// Ateliers (mig 511) : lecture pour tout utilisateur connecté (libellés des plans, caisse),
+// création / modification par le paramétrage Production. Avant /:id.
+router.get('/workshops', authenticate, asyncHandler(productionController.workshops));
+router.put('/workshops/:code', authenticate, authorizeSettings('production', 'edit'), asyncHandler(productionController.saveWorkshop));
 // Static routes BEFORE /:id to avoid capture
 router.get('/transfers/pending', authenticate, asyncHandler(productionController.pendingProductionTransfers));
 

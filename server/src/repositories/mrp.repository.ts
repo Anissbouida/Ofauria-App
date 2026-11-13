@@ -3,9 +3,7 @@ import { forecastRepository } from './forecast.repository.js';
 import { productionRepository } from './production.repository.js';
 import { purchaseRequestRepository } from './purchase-request.repository.js';
 import { getCompositionForNeeds } from './recipe-composition.helper.js';
-import { getCategoryRole, ASSIGNED_ROLE_LABELS } from '@ofauria/shared';
-
-const CHEF_ROLES = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
+import { workshopForCategorySlug, workshopLabel, workshopsOf } from '../services/workshops.js';
 
 const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 function datesBetween(from: string, to: string, cap = 14): string[] {
@@ -139,7 +137,7 @@ export const mrpRepository = {
    * « déjà planifié », régénérer après coup ne propose plus rien (auto-idempotent).
    * Un chef ne génère que le plan de son propre atelier.
    */
-  async generatePlans(storeId: string, date: string, ctx: { userId: string; userRole: string }) {
+  async generatePlans(storeId: string, date: string, ctx: { userId: string; userRole: string; baseRoles?: string[] }) {
     const { rows } = await this.netRequirements(storeId, date);
     const toProduce = rows.filter(r => r.net_to_produce > 0);
     if (!toProduce.length) return { plans: [], nothingToProduce: true };
@@ -162,16 +160,17 @@ export const mrpRepository = {
     const slugByCat = new Map<number, string>(slugRes.rows.map((r: { id: number; slug: string }) => [r.id, r.slug]));
     const formatByProduct = new Map<string, string>(fmtRes.rows.map((r: { product_id: string; format_id: string }) => [r.product_id, r.format_id]));
 
-    const isChef = CHEF_ROLES.includes(ctx.userRole);
-    // Regroupe les items par atelier (rôle chef, ou null = général).
+    // Ateliers de l'utilisateur (mig 511) : un chef ne génère que les siens.
+    const mine = await workshopsOf({ userId: ctx.userId, role: ctx.userRole, baseRoles: ctx.baseRoles });
+    const isChef = mine.length > 0;
+    // Regroupe les items par atelier (code atelier, ou null = général).
     type Item = { productId: string; plannedQuantity: number; formats?: { formatId: string; plannedQuantity: number }[] };
     const groups = new Map<string, Item[]>(); // clé 'null' pour le général
     for (const r of toProduce) {
       const slug = r.category_id != null ? (slugByCat.get(r.category_id) ?? '') : '';
-      const catRole = getCategoryRole(slug);
-      const atelier = CHEF_ROLES.includes(catRole) ? catRole : null;
-      // Un chef ne génère que son propre atelier.
-      if (isChef && atelier !== ctx.userRole) continue;
+      const atelier = await workshopForCategorySlug(slug);
+      // Un chef ne génère que ses propres ateliers.
+      if (isChef && (!atelier || !mine.includes(atelier))) continue;
       const key = atelier ?? 'null';
       const fmt = formatByProduct.get(r.product_id);
       const item: Item = fmt
@@ -189,7 +188,7 @@ export const mrpRepository = {
       });
       plans.push({
         plan_id: plan.id, target_role: targetRole,
-        atelier_label: targetRole ? (ASSIGNED_ROLE_LABELS[targetRole] ?? targetRole) : 'Général',
+        atelier_label: await workshopLabel(targetRole),
         item_count: items.length,
       });
     }

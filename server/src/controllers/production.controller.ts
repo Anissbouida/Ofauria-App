@@ -10,7 +10,7 @@ import { productionCoutRepository } from '../repositories/production-cout.reposi
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { isTransitionError, listPlanEvents } from '../services/production-state.js';
 import { db } from '../config/database.js';
-import { getCategoryRole, ASSIGNED_ROLE_LABELS } from '@ofauria/shared';
+import { workshopsOf, workshopForCategorySlug, workshopLabel, listWorkshops, saveWorkshop } from '../services/workshops.js';
 
 /** Charge le plan et vérifie qu'il appartient au magasin de l'utilisateur
  *  (admin sans magasin = accès global). Répond 404 / 403 et renvoie null sinon. */
@@ -33,20 +33,56 @@ function conflictOrThrow(res: Response, err: unknown, fallback: string) {
   res.status(409).json({ success: false, error: { message } });
 }
 
-const CHEF_ROLES = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
-
 export const productionController = {
+  /** Ateliers (mig 511) + ceux de l'utilisateur. */
+  async workshops(req: AuthRequest, res: Response) {
+    const [list, mine] = await Promise.all([listWorkshops(), workshopsOf(req.user!)]);
+    res.json({ success: true, data: { workshops: list, mine } });
+  },
+
+  /** Crée ou modifie un atelier : libellé, catégories fabriquées, membres (rôles / utilisateurs). */
+  async saveWorkshop(req: AuthRequest, res: Response) {
+    const code = String(req.params.code ?? '');
+    const bad = (message: string) => res.status(400).json({ success: false, error: { message } });
+    if (!/^[a-z][a-z0-9_]{1,29}$/.test(code)) { bad('Code atelier invalide (minuscules, chiffres, _)'); return; }
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const label = typeof b.label === 'string' ? b.label.trim() : '';
+    if (!label || label.length > 80) { bad('Libellé requis (80 caractères maximum)'); return; }
+    const ints = (v: unknown) => Array.isArray(v) && v.every(x => Number.isInteger(x)) ? v as number[] : null;
+    const strs = (v: unknown) => Array.isArray(v) && v.every(x => typeof x === 'string') ? v as string[] : null;
+    const categoryIds = ints(b.categoryIds ?? []);
+    const memberRoles = strs(b.memberRoles ?? []);
+    const memberUsers = strs(b.memberUsers ?? []);
+    if (!categoryIds || !memberRoles || !memberUsers) { bad('Catégories ou membres invalides'); return; }
+    const workCenterId = typeof b.workCenterId === 'string' && b.workCenterId ? b.workCenterId : null;
+    try {
+      await saveWorkshop(code, {
+        label, workCenterId, categoryIds, memberRoles, memberUsers,
+        isDefault: b.isDefault === true, isActive: b.isActive !== false,
+        sortOrder: Number.isInteger(b.sortOrder) ? b.sortOrder as number : 100,
+      }, req.user?.userId);
+    } catch (err) {
+      // Rôle, utilisateur, catégorie ou poste inconnus (clés étrangères).
+      if ((err as { code?: string }).code === '23503' || (err as { code?: string }).code === '22P02') { bad('Rôle, utilisateur, catégorie ou poste inconnu'); return; }
+      throw err;
+    }
+    res.json({ success: true, data: { workshops: await listWorkshops() } });
+  },
+
   async list(req: AuthRequest, res: Response) {
     const q = ((req as any).validatedQuery || req.query) as Record<string, any>;
     const { status, type, dateFrom, dateTo, targetRole } = q;
     const p = Number(q.page) || 1; const l = Number(q.limit) || 20;
-    const userRole = req.user!.role;
 
-    // Chefs only see plans targeting their role
-    const effectiveTargetRole = CHEF_ROLES.includes(userRole) ? userRole : targetRole;
+    // Un membre d'atelier (mig 511) ne voit que les plans de SES ateliers ; il peut
+    // en choisir un s'il en a plusieurs. Les autres filtrent librement.
+    const mine = await workshopsOf(req.user!);
+    const targetRoles = mine.length
+      ? (targetRole && mine.includes(targetRole) ? [targetRole] : mine)
+      : (targetRole ? [targetRole] : undefined);
 
     const result = await productionRepository.findAll({
-      status, type, dateFrom, dateTo, targetRole: effectiveTargetRole, storeId: req.user!.storeId,
+      status, type, dateFrom, dateTo, targetRoles, storeId: req.user!.storeId,
       limit: l, offset: (p - 1) * l,
     });
     res.json({ success: true, data: result.rows, total: result.total, page: p, limit: l, totalPages: Math.ceil(result.total / l) });
@@ -69,7 +105,7 @@ export const productionController = {
     const requested = typeof req.body?.store === 'string' ? req.body.store : undefined;
     const storeId = await forecastRepository.resolveStore(req.user!.storeId, requested);
     if (!storeId) { res.status(400).json({ success: false, error: { message: 'Plusieurs magasins : précisez lequel' } }); return; }
-    res.json({ success: true, data: await mrpRepository.generatePlans(storeId, date, { userId: req.user!.userId, userRole: req.user!.role }) });
+    res.json({ success: true, data: await mrpRepository.generatePlans(storeId, date, { userId: req.user!.userId, userRole: req.user!.role, baseRoles: req.user!.baseRoles }) });
   },
 
   /** MRP — besoins nets par jour sur un horizon (plan directeur, vue semaine). */
@@ -146,13 +182,15 @@ export const productionController = {
       res.status(400).json({ success: false, error: { message: 'Date et articles requis' } });
       return;
     }
-    const userRole = req.user!.role;
+    // Ateliers de l'utilisateur (mig 511) : un membre d'atelier crée pour SON atelier.
+    const mine = await workshopsOf(req.user!);
+    const isChef = mine.length > 0;
 
-    // F-015 — Garde role <-> categorie : un chef ne peut pas creer un plan pour
-    // un produit relevant d'un AUTRE atelier (ex. le patissier pour une baguette).
-    // On rejette seulement si la categorie du produit est rattachee a un role
-    // chef different ; les produits sans categorie / 'general' restent permis.
-    if (CHEF_ROLES.includes(userRole)) {
+    // F-015 — Garde atelier <-> catégorie : un chef ne peut pas créer un plan pour
+    // un produit relevant d'un AUTRE atelier (ex. le pâtissier pour une baguette).
+    // On rejette seulement si la catégorie du produit est rattachée à un atelier dont
+    // il n'est pas membre ; les produits sans atelier restent permis.
+    if (isChef) {
       const ids = [...new Set((items as { productId?: string }[]).map((i) => i.productId).filter(Boolean))] as string[];
       if (ids.length > 0) {
         const cats = await db.query(
@@ -161,26 +199,28 @@ export const productionController = {
             WHERE p.id = ANY($1::uuid[])`,
           [ids]
         );
-        const foreign = cats.rows.find((r) => {
-          const catRole = getCategoryRole(r.slug || '');
-          return CHEF_ROLES.includes(catRole) && catRole !== userRole;
-        });
-        if (foreign) {
-          const catRole = getCategoryRole(foreign.slug || '');
-          res.status(403).json({
-            success: false,
-            error: {
-              code: 'ROLE_CATEGORY_MISMATCH',
-              message: `« ${foreign.name} » releve de l'atelier ${ASSIGNED_ROLE_LABELS[catRole] || catRole} : vous ne pouvez pas creer de plan pour ce produit.`,
-            },
-          });
-          return;
+        for (const r of cats.rows) {
+          const ws = await workshopForCategorySlug(r.slug);
+          if (ws && !mine.includes(ws)) {
+            res.status(403).json({
+              success: false,
+              error: {
+                code: 'ROLE_CATEGORY_MISMATCH',
+                message: `« ${r.name} » relève de l'atelier ${await workshopLabel(ws)} : vous ne pouvez pas créer de plan pour ce produit.`,
+              },
+            });
+            return;
+          }
         }
       }
     }
 
-    // If chef creates plan, auto-assign their role; otherwise use provided targetRole
-    const effectiveTargetRole = CHEF_ROLES.includes(userRole) ? userRole : (targetRole || null);
+    // Un chef crée pour son atelier (celui demandé s'il en a plusieurs) ; sinon
+    // l'atelier fourni, s'il existe.
+    const known = new Set((await listWorkshops()).map(w => w.code));
+    const effectiveTargetRole = isChef
+      ? (targetRole && mine.includes(targetRole) ? targetRole : mine[0])
+      : (targetRole && known.has(targetRole) ? targetRole : null);
 
     const plan = await productionRepository.create({
       planDate, type: type || 'daily', notes, createdBy: req.user!.userId,
@@ -188,7 +228,7 @@ export const productionController = {
     });
 
     // Notify the target chef role about new production plan
-    if (effectiveTargetRole && !CHEF_ROLES.includes(userRole)) {
+    if (effectiveTargetRole && !isChef) {
       await createNotification({
         targetRole: effectiveTargetRole,
         storeId: req.user!.storeId,

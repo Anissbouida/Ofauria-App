@@ -2,11 +2,13 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { replenishmentRepository } from '../repositories/replenishment.repository.js';
 import { createNotification } from '../utils/notify.js';
-import { ROLE_CATEGORY_SLUGS, ASSIGNED_ROLE_LABELS } from '@ofauria/shared';
 import { db } from '../config/database.js';
+import { listWorkshops, workshopLabel, workshopsOf } from '../services/workshops.js';
 
 const STORE_ROLES = ['cashier', 'saleswoman'];
-const CHEF_ROLES = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
+
+/** Code d'un atelier existant (mig 511) : les demandes 'general' n'en ont pas. */
+const isWorkshop = async (code: string) => (await listWorkshops()).some(w => w.code === code);
 
 export const replenishmentController = {
   // List replenishment requests
@@ -23,7 +25,7 @@ export const replenishmentController = {
       storeId,
       dateFrom,
       dateTo,
-      userRole,
+      workshopCodes: await workshopsOf(req.user!),
       limit: l,
       offset: (p - 1) * l,
     });
@@ -121,8 +123,8 @@ export const replenishmentController = {
     const requestIds = (result as Record<string, unknown>)?._requestIds as Record<string, string> | undefined;
     if (requestIds) {
       for (const [role, reqId] of Object.entries(requestIds)) {
-        if (CHEF_ROLES.includes(role)) {
-          const roleLabel = ASSIGNED_ROLE_LABELS[role] || role;
+        if (await isWorkshop(role)) {
+          const roleLabel = await workshopLabel(role);
           await createNotification({
             targetRole: role,
             type: 'replenishment_request',
@@ -154,13 +156,14 @@ export const replenishmentController = {
   // ═══ STEP 2: Acknowledge request (responsable) ═══
   async acknowledge(req: AuthRequest, res: Response) {
     try {
-      // Authorization: chef can only acknowledge their own sub-request
-      if (CHEF_ROLES.includes(req.user!.role)) {
+      // Un membre d'atelier ne prend en charge que les demandes de ses ateliers.
+      const mine = await workshopsOf(req.user!);
+      if (mine.length) {
         const check = await db.query(
           `SELECT assigned_role FROM replenishment_requests WHERE id = $1`,
           [req.params.id]
         );
-        if (check.rows[0]?.assigned_role !== req.user!.role) {
+        if (!mine.includes(check.rows[0]?.assigned_role)) {
           res.status(403).json({ success: false, error: { message: 'Vous ne pouvez pas prendre en charge cette demande' } });
           return;
         }
@@ -172,8 +175,8 @@ export const replenishmentController = {
       const productionPlanId = (result as Record<string, unknown>)?._productionPlanId as string | undefined;
       if (productionPlanId && result) {
         const role = (result as Record<string, unknown>).assigned_role as string;
-        if (CHEF_ROLES.includes(role)) {
-          const roleLabel = ASSIGNED_ROLE_LABELS[role] || role;
+        if (await isWorkshop(role)) {
+          const roleLabel = await workshopLabel(role);
           await createNotification({
             targetRole: role,
             storeId: req.user!.storeId,
@@ -223,7 +226,7 @@ export const replenishmentController = {
         storeId: result!.store_id,
         type: 'replenishment_transferred',
         title: 'Transfert pret a recevoir',
-        message: `${ASSIGNED_ROLE_LABELS[result!.assigned_role as string] || 'Section'}: demande ${result!.request_number} transferee. Confirmez la reception.`,
+        message: `${result!.assigned_role && result!.assigned_role !== 'general' ? await workshopLabel(result!.assigned_role as string) : 'Section'}: demande ${result!.request_number} transferee. Confirmez la reception.`,
         referenceType: 'replenishment_request',
         referenceId: req.params.id,
         createdBy: req.user!.userId,

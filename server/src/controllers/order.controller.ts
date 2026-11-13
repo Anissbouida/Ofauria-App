@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { defaultWorkshop, workshopForCategorySlug } from '../services/workshops.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { orderRepository } from '../repositories/order.repository.js';
 import { productRepository } from '../repositories/product.repository.js';
@@ -16,21 +17,11 @@ import { evaluate as evaluatePromotions, recordApplied } from '../services/promo
 import { checkCredit, customerExposure } from '../services/credit-control.js';
 import { getParameter, type PricingRules } from '../services/module-parameters.service.js';
 
-/** Category slug → chef role mapping */
-const CATEGORY_ROLE_MAP: Record<string, string> = {
-  'baguette': 'baker', 'baguette-tradition': 'baker', 'beldi': 'baker',
-  'pain-rond': 'baker', 'pain-sandwich': 'baker',
-  'viennoiseries': 'viennoiserie',
-  'patisserie-classique': 'pastry_chef', 'patisserie-premium': 'pastry_chef',
-  'gateaux-cookies': 'pastry_chef', 'les-boites': 'pastry_chef',
-  'macaron': 'pastry_chef', 'pieces-portions': 'pastry_chef',
-  'plateau-sale-sucre': 'pastry_chef', 'sachet-mini': 'pastry_chef',
-};
-
-/** Determine which chef role is responsible for a product based on its category slug */
-function getRoleForCategorySlug(slug: string | null): string {
-  if (!slug) return 'baker';
-  return CATEGORY_ROLE_MAP[slug] || 'baker';
+/** Atelier qui fabrique une catégorie (mig 511), sinon l'atelier par défaut. Remplace
+ *  l'ancienne table catégorie → rôle recopiée ici (qui divergeait de celle des plans :
+ *  beldi au boulanger, entremets absents). */
+async function workshopForCategory(slug: string | null): Promise<string | null> {
+  return (await workshopForCategorySlug(slug)) ?? (await defaultWorkshop());
 }
 
 
@@ -193,7 +184,8 @@ export async function notifyProductionChefs(p: {
 }) {
   const rolesToNotify = new Set<string>();
   for (const product of p.products) {
-    rolesToNotify.add((product.responsible_role as string) || getRoleForCategorySlug(product.category_slug as string | null));
+    const ws = (product.responsible_role as string) || (await workshopForCategory(product.category_slug as string | null));
+    if (ws) rolesToNotify.add(ws);
   }
   for (const role of rolesToNotify) {
     await createNotification({

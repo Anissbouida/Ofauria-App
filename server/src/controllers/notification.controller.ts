@@ -1,6 +1,10 @@
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { notificationRepository } from '../repositories/notification.repository.js';
+import { workshopsOf } from '../services/workshops.js';
+
+/** Rôle de l'utilisateur + ses ateliers (mig 511) : destinataires de ses notifications. */
+const audiences = async (req: AuthRequest) => [...new Set([req.user!.role, ...(await workshopsOf(req.user!))])];
 
 export const notificationController = {
   async list(req: AuthRequest, res: Response) {
@@ -9,7 +13,7 @@ export const notificationController = {
     const l = parseInt(limit);
 
     const result = await notificationRepository.findForUser({
-      role: req.user!.role,
+      role: await audiences(req),
       userId: req.user!.userId,
       storeId: req.user!.storeId,
       unreadOnly: unreadOnly === 'true',
@@ -30,10 +34,11 @@ export const notificationController = {
   async unreadCount(req: AuthRequest, res: Response) {
     // Sync: generate missing notifications for active production plans
     // This runs on each poll but is fast (single indexed query, no-ops if up to date)
-    await notificationRepository.syncProductionNotifications(req.user!.role, req.user!.storeId);
+    const roles = await audiences(req);
+    for (const r of roles) await notificationRepository.syncProductionNotifications(r, req.user!.storeId);
 
     const count = await notificationRepository.countUnread(
-      req.user!.role,
+      roles,
       req.user!.userId,
       req.user!.storeId,
     );
@@ -47,7 +52,7 @@ export const notificationController = {
 
   async markAllAsRead(req: AuthRequest, res: Response) {
     await notificationRepository.markAllAsRead(
-      req.user!.role,
+      await audiences(req),
       req.user!.userId,
       req.user!.storeId,
     );

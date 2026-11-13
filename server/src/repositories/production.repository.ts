@@ -13,7 +13,7 @@ import { setActor, setReason, transitionPlan, transitionBon, withActor } from '.
 import { collectIngredientNeedsForUnits, getCompositionForNeeds } from './recipe-composition.helper.js';
 
 export const productionRepository = {
-  async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRole?: string; storeId?: string; limit: number; offset: number }) {
+  async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRoles?: string[]; storeId?: string; limit: number; offset: number }) {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let i = 1;
@@ -23,7 +23,8 @@ export const productionRepository = {
     if (params.type) { conditions.push(`pp.type = $${i++}`); values.push(params.type); }
     if (params.dateFrom) { conditions.push(`pp.plan_date >= $${i++}`); values.push(params.dateFrom); }
     if (params.dateTo) { conditions.push(`pp.plan_date <= $${i++}`); values.push(params.dateTo); }
-    if (params.targetRole) { conditions.push(`pp.target_role = $${i++}`); values.push(params.targetRole); }
+    // Ateliers (mig 511) : target_role porte le code de l'atelier du plan.
+    if (params.targetRoles?.length) { conditions.push(`pp.target_role = ANY($${i++}::text[])`); values.push(params.targetRoles); }
 
     // Exclude semi-finished plans from the main list – they are accessed via their parent plan
     conditions.push(`COALESCE(pp.is_semi_finished_plan, false) = false`);
@@ -42,11 +43,13 @@ export const productionRepository = {
               (SELECT COUNT(*) FROM production_plan_items
                 WHERE plan_id = pp.id AND (status = 'cancelled' OR waiting_status = 'waiting')) as relaunchable_count,
               (SELECT COUNT(*) FROM production_plan_dependencies WHERE parent_plan_id = pp.id) as dep_total,
-              (SELECT COUNT(*) FROM production_plan_dependencies WHERE parent_plan_id = pp.id AND status = 'fulfilled') as dep_fulfilled
+              (SELECT COUNT(*) FROM production_plan_dependencies WHERE parent_plan_id = pp.id AND status = 'fulfilled') as dep_fulfilled,
+              pw.label AS target_role_label
        FROM production_plans pp
        JOIN users u ON u.id = pp.created_by
        LEFT JOIN orders o ON o.id = pp.order_id
        LEFT JOIN customers oc ON oc.id = o.customer_id
+       LEFT JOIN production_workshops pw ON pw.code = pp.target_role
        ${where}
        ORDER BY pp.plan_date DESC, pp.created_at DESC
        LIMIT $${i++} OFFSET $${i}`,
@@ -62,11 +65,13 @@ export const productionRepository = {
               o.order_number, o.status as order_status,
               oc.first_name as order_customer_first_name, oc.last_name as order_customer_last_name,
               oc.phone as order_customer_phone,
-              o.pickup_date as order_pickup_date, o.total as order_total, o.advance_amount as order_advance_amount
+              o.pickup_date as order_pickup_date, o.total as order_total, o.advance_amount as order_advance_amount,
+              pw.label AS target_role_label
        FROM production_plans pp
        JOIN users u ON u.id = pp.created_by
        LEFT JOIN orders o ON o.id = pp.order_id
        LEFT JOIN customers oc ON oc.id = o.customer_id
+       LEFT JOIN production_workshops pw ON pw.code = pp.target_role
        WHERE pp.id = $1`,
       [id]
     );
