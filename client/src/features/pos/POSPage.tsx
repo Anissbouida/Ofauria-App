@@ -48,6 +48,7 @@ import OrderFormModal from '../../components/orders/OrderFormModal';
 import LossDeclarationModal from './LossDeclarationModal';
 import ComplaintFormModal from '../../components/sav/ComplaintFormModal';
 import { useAuth } from '../../context/AuthContext';
+import { usePermissions } from '../../context/PermissionsContext';
 import { getApiErrorMessage } from '../../utils/api-error';
 
 // Vente sans stock vitrine : règle métier décidée par l'admin (Paramètres › Règles de caisse,
@@ -120,6 +121,7 @@ export default function POSPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { hasModule } = usePermissions();
   // File hors-ligne (phase 8.4) : ventes en attente de synchronisation.
   const [offlinePending, setOfflinePending] = useState(() => pendingCount());
   const [posTab, setPosTab] = useState<PosTab>('sell');
@@ -542,7 +544,8 @@ export default function POSPage() {
   const { data: pendingProductionTransfers = [] } = useQuery({
     queryKey: ['pending-production-transfers'],
     queryFn: productionApi.pendingTransfers,
-    enabled: !!activeSession,
+    // Transferts labo → boutique : sans module Production (secteur négoce…), rien à recevoir.
+    enabled: !!activeSession && hasModule('production'),
     refetchInterval: 30000,
   });
 

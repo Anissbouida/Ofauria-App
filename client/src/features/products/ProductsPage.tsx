@@ -8,6 +8,7 @@ import { serverUrl } from '../../api/client';
 import { categoriesApi } from '../../api/categories.api';
 import { usersApi } from '../../api/users.api';
 import { recipesApi } from '../../api/recipes.api';
+import { usePermissions } from '../../context/PermissionsContext';
 import { invoicesApi } from '../../api/accounting.api';
 import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays, Coins, Target, ChevronDown, ChevronRight, Recycle, Wrench, Repeat, type LucideIcon } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
@@ -837,8 +838,9 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     if (isIntangible && activeTab === 'lifecycle') setActiveTab('general');
   }, [isIntangible, activeTab]);
 
-  // Fetch all recipes
-  const { data: allRecipes = [] } = useQuery({ queryKey: ['recipes'], queryFn: recipesApi.list });
+  // Fetch all recipes (pas de fiches techniques sans le module, ex. secteur négoce)
+  const { hasModule } = usePermissions();
+  const { data: allRecipes = [] } = useQuery({ queryKey: ['recipes'], queryFn: recipesApi.list, enabled: hasModule('recipes') });
   const allRecipesList = allRecipes as Record<string, any>[];
   // Available = no product linked OR linked to the current product being edited
   const availableRecipes = allRecipesList.filter(r => {

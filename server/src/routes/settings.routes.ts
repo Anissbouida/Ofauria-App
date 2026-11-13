@@ -48,6 +48,10 @@ router.put('/parameters/:key', authenticate, jsonParser, asyncHandler(parameters
 // hors secteur côté client) ; PUT réservé à la direction (droit « Société »).
 router.get('/sector', authenticate, asyncHandler(companyController.sector));
 router.put('/sector', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.setSector));
+// Activation des modules et options (mig 507) : secteur = préréglage + ajustements.
+router.get('/modules', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.modules));
+router.put('/modules', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.saveModules));
+router.post('/modules/reset', authenticate, authorizeSettings('company', 'edit'), asyncHandler(companyController.resetModules));
 // Données de départ par secteur (phase 9.3) : aperçu + chargement à la demande (direction).
 router.get('/sector/starter', authenticate, asyncHandler(companyController.sectorStarter));
 router.post('/sector/starter', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.loadSectorStarter));

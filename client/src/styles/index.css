@@ -258,6 +258,14 @@
   gap: 0.375rem;
 }
 .odoo-btn-danger:hover:not(:disabled) { background-color: #fdf2f0; }
+/* Bouton discret en forme de lien (action secondaire dans une ligne). */
+.odoo-btn-link {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  padding: 0; border: 0; background: none;
+  font-size: 0.75rem; font-weight: 500; color: var(--odoo-purple); cursor: pointer;
+}
+.odoo-btn-link:hover:not(:disabled) { text-decoration: underline; }
+.odoo-btn-link:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* ── Pagination + view switcher ── */
 .odoo-pager {

@@ -4,7 +4,7 @@ import { companyBankRepository, type BankAccountInput } from '../repositories/co
 import { taxCodeRepository } from '../repositories/tax-code.repository.js';
 import { ribKeyValid } from '../services/salary-transfer.js';
 import { db } from '../config/database.js';
-import { sectorRepository } from '../repositories/sector.repository.js';
+import { sectorRepository, type Activation } from '../repositories/sector.repository.js';
 import { loadSectorStarter, sectorStarterPreview } from '../services/sector-starter.service.js';
 
 const bad = (res: Response, message: string, status = 400) => res.status(status).json({ success: false, error: { message } });
@@ -41,14 +41,62 @@ function readBank(body: Record<string, unknown>, creating: boolean): BankAccount
   return out;
 }
 
+const activationView = (a: Activation) => ({
+  sector: { code: a.sector.code, label: a.sector.label },
+  packModules: a.packModules,
+  packFeatures: a.packFeatures,
+  moduleOverrides: a.moduleOverrides,
+  featureOverrides: a.featureOverrides,
+  catalog: a.catalog,
+  modules: [...a.modules],
+  features: [...a.features],
+});
+
 /** Fiche société : comptes bancaires et TVA (Paramètres, lot 5, mig 331). */
 export const companyController = {
   /** Secteur d'activité courant + liste des secteurs (mig 468). Lisible par tout
    *  utilisateur authentifié : le client s'en sert pour masquer les modules hors secteur. */
   async sector(_req: AuthRequest, res: Response) {
-    const [current, available] = await Promise.all([sectorRepository.current(), sectorRepository.list()]);
-    const labels = await sectorRepository.labels(current.code);
-    res.json({ success: true, data: { current, labels, available: available.map(s => ({ code: s.code, label: s.label })) } });
+    const [act, available] = await Promise.all([sectorRepository.activation(), sectorRepository.list()]);
+    const labels = await sectorRepository.labels(act.sector.code);
+    // `modules` / `features` = listes EFFECTIVES (préréglage + ajustements, mig 507) :
+    // c'est ce que le client applique aux menus.
+    const current = { ...act.sector, modules: [...act.modules], features: [...act.features] };
+    const adjusted = Object.keys(act.moduleOverrides).length + Object.keys(act.featureOverrides).length;
+    res.json({ success: true, data: { current, labels, adjusted, available: available.map(s => ({ code: s.code, label: s.label })) } });
+  },
+
+  /** Écran « Secteur et modules » (mig 507) : préréglage, écarts, catalogue des
+   *  options et listes effectives. Le client compose l'écran avec le registre partagé. */
+  async modules(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: activationView(await sectorRepository.activation()) });
+  },
+
+  /** Ajuste des modules / options : { modules: { clé: true|false|null }, features: { … } }. */
+  async saveModules(req: AuthRequest, res: Response) {
+    const body = (req.body ?? {}) as { modules?: unknown; features?: unknown };
+    const readMap = (v: unknown): Record<string, boolean | null> | string => {
+      if (v === undefined) return {};
+      if (!v || typeof v !== 'object' || Array.isArray(v)) return 'Format invalide';
+      const out: Record<string, boolean | null> = {};
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+        if (val !== true && val !== false && val !== null) return `Valeur invalide pour ${k}`;
+        out[k] = val;
+      }
+      return out;
+    };
+    const modules = readMap(body.modules);
+    const features = readMap(body.features);
+    if (typeof modules === 'string') { bad(res, modules); return; }
+    if (typeof features === 'string') { bad(res, features); return; }
+    const result = await sectorRepository.applyAdjustments({ modules, features }, req.user?.userId);
+    if ('error' in result) { bad(res, result.error); return; }
+    res.json({ success: true, data: activationView(result.activation) });
+  },
+
+  /** Revient au préréglage du secteur (supprime tous les ajustements). */
+  async resetModules(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: activationView(await sectorRepository.resetAdjustments(req.user?.userId)) });
   },
 
   /** Données de départ du secteur courant (phase 9.3) : aperçu, et chargement à la demande. */
@@ -64,9 +112,11 @@ export const companyController = {
 
   /** Change le secteur de la société (réservé à la direction via la route). */
   async setSector(req: AuthRequest, res: Response) {
-    const code = String((req.body as { code?: unknown })?.code ?? '').trim();
+    const body = (req.body ?? {}) as { code?: unknown; keepAdjustments?: unknown };
+    const code = String(body.code ?? '').trim();
     if (!code) { bad(res, 'Secteur requis'); return; }
-    const updated = await sectorRepository.setSector(code);
+    // Par défaut on garde les ajustements (rien ne disparaît sans le demander).
+    const updated = await sectorRepository.setSector(code, { keepAdjustments: body.keepAdjustments !== false, userId: req.user?.userId });
     if (!updated) { bad(res, 'Secteur inconnu', 404); return; }
     res.json({ success: true, data: updated });
   },

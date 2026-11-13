@@ -20,7 +20,7 @@ import { authEventRepository } from '../repositories/auth-event.repository.js';
  * (Journal › Connexions, « Accès hors droits »), « enforce » répond 403.
  */
 
-interface Rule {
+export interface GuardRule {
   prefix: string;
   modules: string[];
   /** GET ouvert à tout utilisateur connecté (listes de référence). */
@@ -32,7 +32,7 @@ interface Rule {
 // Les préfixes non listés ne passent pas par la garde : authentification, comptes
 // (administrateur), Personnel (déjà contrôlé par module), Paramètres et listes de
 // paramétrage (droit « Paramètres »), notifications, téléversements.
-const RULES: Rule[] = [
+const RULES: GuardRule[] = [
   { prefix: '/categories', modules: ['products'], readOpen: true },
   { prefix: '/products', modules: ['products'], readOpen: true },
   { prefix: '/product-pipeline', modules: ['products'], readOpen: true },
@@ -88,8 +88,8 @@ const RULES: Rule[] = [
 ];
 
 /** Règle du préfixe le plus long correspondant au chemin (relatif à /api/v1). */
-export function ruleFor(path: string): Rule | undefined {
-  let best: Rule | undefined;
+export function ruleFor(path: string): GuardRule | undefined {
+  let best: GuardRule | undefined;
   for (const r of RULES) {
     if ((path === r.prefix || path.startsWith(r.prefix + '/')) && (!best || r.prefix.length > best.prefix.length)) best = r;
   }

@@ -168,10 +168,25 @@ export interface SetupOverview {
 }
 
 export interface SectorInfo {
-  current: { code: string; label: string; modules: string[]; home_route?: string | null; report_keys?: string[] };
+  // modules / features = listes EFFECTIVES (secteur + ajustements, mig 507).
+  current: { code: string; label: string; modules: string[]; features?: string[]; home_route?: string | null; report_keys?: string[] };
   // Libellés par secteur (phase 9.1) : clé neutre → mot affiché.
   labels?: Record<string, string>;
+  /** Nombre d'ajustements (modules + options) par rapport au préréglage. */
+  adjusted?: number;
   available: { code: string; label: string }[];
+}
+
+/** Écran « Secteur et modules » (mig 507) : préréglage, écarts et listes effectives. */
+export interface ModuleActivation {
+  sector: { code: string; label: string };
+  packModules: string[];
+  packFeatures: string[];
+  moduleOverrides: Record<string, boolean>;
+  featureOverrides: Record<string, boolean>;
+  catalog: { key: string; module_key: string; label: string; description: string | null; sort_order: number }[];
+  modules: string[];
+  features: string[];
 }
 
 export const settingsApi = {
@@ -195,7 +210,12 @@ export const settingsApi = {
   saveBankAccount: (id: string | null, data: Record<string, unknown>) =>
     (id ? api.put(`/settings/bank-accounts/${id}`, data) : api.post('/settings/bank-accounts', data)).then(r => r.data.data) as Promise<CompanyBankAccount>,
   sector: () => api.get('/settings/sector').then(r => r.data.data) as Promise<SectorInfo>,
-  setSector: (code: string) => api.put('/settings/sector', { code }).then(r => r.data.data) as Promise<{ code: string; label: string; modules: string[] }>,
+  setSector: (code: string, keepAdjustments = true) =>
+    api.put('/settings/sector', { code, keepAdjustments }).then(r => r.data.data) as Promise<{ code: string; label: string; modules: string[] }>,
+  modules: () => api.get('/settings/modules').then(r => r.data.data) as Promise<ModuleActivation>,
+  saveModules: (changes: { modules?: Record<string, boolean | null>; features?: Record<string, boolean | null> }) =>
+    api.put('/settings/modules', changes).then(r => r.data.data) as Promise<ModuleActivation>,
+  resetModules: () => api.post('/settings/modules/reset').then(r => r.data.data) as Promise<ModuleActivation>,
   taxCodes: () => api.get('/settings/tax-codes').then(r => r.data.data) as Promise<TaxCode[]>,
   addTaxRate: (data: Record<string, unknown>) => api.post('/settings/tax-codes', data).then(r => r.data.data) as Promise<TaxCode>,
   updateTaxCode: (id: string, data: Record<string, unknown>) => api.put(`/settings/tax-codes/${id}`, data).then(r => r.data.data) as Promise<TaxCode>,

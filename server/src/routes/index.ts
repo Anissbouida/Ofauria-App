@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { moduleGuard } from '../middleware/module-guard.middleware.js';
+import { moduleActivationGuard } from '../middleware/module-activation.middleware.js';
 import { purchasingReportsRouter } from './purchasing-reports.routes.js';
 import { controleRouter } from './controle.routes.js';
 import { forecastRouter } from './forecast.routes.js';
@@ -95,7 +96,9 @@ import { posParkedRouter } from './pos-parked.routes.js';
 
 const router = Router();
 
-// Droits par module sur toutes les routes metier (mig 330, voir module-guard.middleware.ts).
+// Modules désactivés pour la société (secteur + ajustements, mig 507) : API fermée,
+// administrateur compris. Puis droits par module (mig 330, voir module-guard.middleware.ts).
+router.use(moduleActivationGuard);
 router.use(moduleGuard);
 
 router.use('/auth', authRoutes);
