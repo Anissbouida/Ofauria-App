@@ -142,6 +142,7 @@ export async function buildAssistantRequest(description: string) {
     '',
     'Règles :',
     '- Active le minimum utile : un module que la description ne justifie pas reste éteint. Les options propres à l\'alimentaire (DLC, cuisson, vitrine, froid) restent éteintes hors alimentaire.',
+    '- Exception : accounting (Comptabilité) et employees (Personnel) restent actifs par défaut, car presque toute PME tient sa comptabilité et emploie du personnel ; ne les retire que si la description l\'exclut clairement (ex. « je travaille seul », « mon comptable est externe »).',
     '- Les dépendances entre modules sont complétées automatiquement : inutile de les deviner.',
     '- step_types et equipment_types : seulement si la société fabrique ; 3 à 6 entrées concrètes pour son métier, sinon listes vides.',
     '- labels : uniquement les libellés qui changent vraiment pour ce métier.',
