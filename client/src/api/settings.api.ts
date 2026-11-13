@@ -201,6 +201,16 @@ export interface HealthRecommendation {
 }
 export interface HealthReport { recommendations: HealthRecommendation[]; dismissed: number }
 
+/** Mise en route guidée (P9) : tâches par module, cochées d'après les données. */
+export interface ModuleOnboarding {
+  module: string;
+  label: string;
+  done: number;
+  total: number;
+  tasks: { key: string; label: string; done: boolean; to: string }[];
+}
+export interface OnboardingReport { modules: ModuleOnboarding[]; hidden: number }
+
 export interface ConfigVersion {
   id: number;
   created_at: string;
@@ -255,6 +265,9 @@ export const settingsApi = {
     api.post('/settings/modules/preview', changes).then(r => r.data.data) as Promise<ModuleImpact>,
   saveModuleRollout: (key: string, change: { pilot: { roles: string[]; users: string[] } | null; disabledStores: string[] }) =>
     api.put(`/settings/modules/${key}/rollout`, change).then(r => r.data.data) as Promise<ModuleActivation>,
+  moduleOnboarding: () => api.get('/settings/modules/onboarding').then(r => r.data.data) as Promise<OnboardingReport>,
+  hideOnboarding: (module: string) => api.post(`/settings/modules/onboarding/${encodeURIComponent(module)}/hide`).then(r => r.data.data) as Promise<OnboardingReport>,
+  showOnboarding: () => api.post('/settings/modules/onboarding/show').then(r => r.data.data) as Promise<OnboardingReport>,
   moduleHealth: () => api.get('/settings/modules/health').then(r => r.data.data) as Promise<HealthReport>,
   dismissHealth: (key: string) => api.post(`/settings/modules/health/${encodeURIComponent(key)}/dismiss`).then(r => r.data.data) as Promise<HealthReport>,
   restoreHealth: () => api.post('/settings/modules/health/restore').then(r => r.data.data) as Promise<HealthReport>,

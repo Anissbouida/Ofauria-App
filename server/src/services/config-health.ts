@@ -232,5 +232,6 @@ export async function dismissRecommendation(key: string, userId?: string | null)
 
 /** Réafficher toutes les propositions écartées. */
 export async function restoreDismissed(): Promise<void> {
-  await db.query(`UPDATE config_health_dismissals SET dismissed_until = now() WHERE dismissed_until > now()`);
+  // Les listes de mise en route masquées (clés onboarding.*, P9) ne sont pas concernées.
+  await db.query(`UPDATE config_health_dismissals SET dismissed_until = now() WHERE dismissed_until > now() AND check_key NOT LIKE 'onboarding.%'`);
 }

@@ -199,3 +199,8 @@ export function sectorStarterPreview(sectorCode: string): { categories: string[]
   if (pack.demo) items.push(`Nomenclature de démonstration : ${pack.demo.productName}, ${pack.demo.materials.length} matières`);
   return { categories: pack.categories.map(c => c.name), items };
 }
+
+/** Le pack du secteur contient-il une nomenclature de démonstration ? (mise en route P9) */
+export function sectorStarterDemoSlug(sectorCode: string): string | null {
+  return STARTER[sectorCode]?.demo?.productSlug ?? null;
+}

@@ -8,6 +8,7 @@ import { sectorRepository, type Activation, type AdjustmentChanges } from '../re
 import { impactPreview } from '../services/module-impact.js';
 import { loadSectorStarter, sectorStarterPreview } from '../services/sector-starter.service.js';
 import { healthReport, dismissRecommendation, restoreDismissed } from '../services/config-health.js';
+import { onboardingReport, hideOnboarding, showAllOnboarding } from '../services/module-onboarding.js';
 
 const bad = (res: Response, message: string, status = 400) => res.status(status).json({ success: false, error: { message } });
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -131,6 +132,18 @@ export const companyController = {
   async dismissHealth(req: AuthRequest, res: Response) {
     if (!(await dismissRecommendation(String(req.params.key ?? ''), req.user?.userId))) { bad(res, 'Recommandation inconnue'); return; }
     res.json({ success: true, data: await healthReport() });
+  },
+  /** Mise en route guidée (P9) : tâches par module, cochées d'après les données. */
+  async moduleOnboarding(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await onboardingReport() });
+  },
+  async hideOnboarding(req: AuthRequest, res: Response) {
+    if (!(await hideOnboarding(String(req.params.module ?? ''), req.user?.userId))) { bad(res, 'Module inconnu'); return; }
+    res.json({ success: true, data: await onboardingReport() });
+  },
+  async showOnboarding(_req: AuthRequest, res: Response) {
+    await showAllOnboarding();
+    res.json({ success: true, data: await onboardingReport() });
   },
   async restoreHealth(_req: AuthRequest, res: Response) {
     await restoreDismissed();

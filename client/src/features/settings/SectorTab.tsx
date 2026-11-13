@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Check, Download, History, Layers, Lightbulb, RotateCcw, Users } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Circle, Download, History, Layers, Lightbulb, RotateCcw, Users } from 'lucide-react';
 import {
   CORE_MODULES, MODULE_DESCRIPTIONS, MODULE_GROUPS, MODULE_LABELS, dependentModules, effectiveModules,
   missingDependencies, requiredModules, type AppModule,
 } from '@ofauria/shared';
-import { settingsApi, type HealthRecommendation, type HealthReport, type ModuleActivation } from '../../api/settings.api';
+import { settingsApi, type HealthRecommendation, type HealthReport, type ModuleActivation, type OnboardingReport } from '../../api/settings.api';
 import { OdooToggle, SettingItem, SettingsSection } from './SettingsPrimitives';
 import { useDirtyForm } from './DirtyForms';
 import RolloutDialog from './RolloutDialog';
@@ -53,6 +53,7 @@ export default function SectorTab() {
   const { data: versions = [] } = useQuery({ queryKey: ['module-versions'], queryFn: settingsApi.moduleVersions });
   const { data: starter } = useQuery({ queryKey: ['sector-starter'], queryFn: settingsApi.sectorStarter });
   const { data: health } = useQuery({ queryKey: ['module-health'], queryFn: settingsApi.moduleHealth });
+  const { data: onboarding } = useQuery({ queryKey: ['module-onboarding'], queryFn: settingsApi.moduleOnboarding });
   const navigate = useNavigate();
 
   const refresh = () => {
@@ -61,6 +62,7 @@ export default function SectorTab() {
     qc.invalidateQueries({ queryKey: ['module-versions'] });
     qc.invalidateQueries({ queryKey: ['sector-starter'] });
     qc.invalidateQueries({ queryKey: ['module-health'] });
+    qc.invalidateQueries({ queryKey: ['module-onboarding'] });
     reload();
   };
 
@@ -160,6 +162,13 @@ export default function SectorTab() {
     mutationFn: ({ key, restore }: { key?: string; restore?: boolean }) =>
       restore ? settingsApi.restoreHealth() : settingsApi.dismissHealth(key!),
     onSuccess: (data: HealthReport) => qc.setQueryData(['module-health'], data),
+    onError: () => notify.error('Action impossible'),
+  });
+  // Mise en route (P9) : masquer la liste d'un module, ou tout réafficher.
+  const onboardingMut = useMutation({
+    mutationFn: ({ module }: { module?: string }) =>
+      module ? settingsApi.hideOnboarding(module) : settingsApi.showOnboarding(),
+    onSuccess: (data: OnboardingReport) => qc.setQueryData(['module-onboarding'], data),
     onError: () => notify.error('Action impossible'),
   });
   const inDraft = (r: HealthRecommendation) => r.action.kind === 'adjust' && [
@@ -293,6 +302,53 @@ export default function SectorTab() {
               </button>
             </div>
           </div>
+        </SettingsSection>
+      )}
+
+      {onboarding && (onboarding.modules.length > 0 || onboarding.hidden > 0) && (
+        <SettingsSection
+          title="Mise en route"
+          description="Les premières étapes de chaque module actif. Elles se cochent toutes seules dès que la donnée existe ; une liste terminée disparaît."
+          columns={1}
+        >
+          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+            {onboarding.modules.map(m => (
+              <div key={m.module} style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.7rem 0.9rem', background: 'var(--odoo-bg)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontWeight: 600 }}>{m.label}</span>
+                  <span className="odoo-setting-help" style={{ margin: 0 }}>{m.done} / {m.total}</span>
+                </div>
+                <div role="progressbar" aria-valuemin={0} aria-valuemax={m.total} aria-valuenow={m.done}
+                  style={{ height: 4, borderRadius: 2, background: 'var(--odoo-border)', margin: '6px 0 8px', overflow: 'hidden' }}>
+                  <div style={{ width: `${(m.done / m.total) * 100}%`, height: '100%', background: 'var(--odoo-purple)' }} />
+                </div>
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
+                  {m.tasks.map(t => (
+                    <li key={t.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      {t.done
+                        ? <CheckCircle2 size={15} style={{ color: 'var(--odoo-success, #28a745)', flexShrink: 0, marginTop: 2 }} />
+                        : <Circle size={15} style={{ color: 'var(--odoo-text-muted, #999)', flexShrink: 0, marginTop: 2 }} />}
+                      <span style={{ flex: 1, textDecoration: t.done ? 'line-through' : 'none', opacity: t.done ? 0.6 : 1 }}>{t.label}</span>
+                      {!t.done && (t.to === 'starter'
+                        ? <button type="button" className="odoo-btn-link" disabled={busy || starterMut.isPending} onClick={loadStarter}>Charger</button>
+                        : <button type="button" className="odoo-btn-link" onClick={() => navigate(t.to)}>Ouvrir</button>)}
+                    </li>
+                  ))}
+                </ul>
+                <div style={{ textAlign: 'right', marginTop: 6 }}>
+                  <button type="button" className="odoo-btn-link" disabled={onboardingMut.isPending}
+                    onClick={() => onboardingMut.mutate({ module: m.module })}>Masquer</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          {onboarding.hidden > 0 && (
+            <div>
+              <button type="button" className="odoo-btn-link" disabled={onboardingMut.isPending} onClick={() => onboardingMut.mutate({})}>
+                Réafficher {onboarding.hidden} liste(s) masquée(s)
+              </button>
+            </div>
+          )}
         </SettingsSection>
       )}
 
