@@ -52,7 +52,7 @@ export default function CompanyBankAccounts() {
   const set = (k: keyof Draft, v: string | boolean) => setEditing(e => e && { ...e, draft: { ...e.draft, [k]: v } });
 
   return (
-    <div id={settingAnchor('Comptes bancaires')} className="odoo-scope" style={{ display: 'grid', gap: 10, scrollMarginTop: '1rem' }}>
+    <div id={settingAnchor('Comptes bancaires')} data-toc="Comptes bancaires" className="odoo-scope" style={{ display: 'grid', gap: 10, scrollMarginTop: '1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
         <div>
           <div style={{ fontWeight: 600 }}>Comptes bancaires</div>
