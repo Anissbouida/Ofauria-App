@@ -174,7 +174,7 @@ export interface SectorInfo {
   labels?: Record<string, string>;
   /** Nombre d'ajustements (modules + options) par rapport au préréglage. */
   adjusted?: number;
-  available: { code: string; label: string }[];
+  available: { code: string; label: string; isCustom?: boolean }[];
 }
 
 /** Aperçu d'impact d'un brouillon de modules / options (mig 508, lot P0b). */
@@ -210,6 +210,18 @@ export interface ModuleOnboarding {
   tasks: { key: string; label: string; done: boolean; to: string }[];
 }
 export interface OnboardingReport { modules: ModuleOnboarding[]; hidden: number }
+
+/** Modèle de configuration (P10) : aperçu avant d'en faire un secteur. */
+export interface ConfigModelPreview {
+  name: string;
+  warnings: string[];
+  modules: number;
+  addedModules: string[];
+  removedModules: string[];
+  features: number;
+  labels: number;
+  starter: { units: number; stepTypes: number; equipmentTypes: number };
+}
 
 export interface ConfigVersion {
   id: number;
@@ -265,6 +277,11 @@ export const settingsApi = {
     api.post('/settings/modules/preview', changes).then(r => r.data.data) as Promise<ModuleImpact>,
   saveModuleRollout: (key: string, change: { pilot: { roles: string[]; users: string[] } | null; disabledStores: string[] }) =>
     api.put(`/settings/modules/${key}/rollout`, change).then(r => r.data.data) as Promise<ModuleActivation>,
+  exportConfig: () => api.get('/settings/modules/export').then(r => r.data.data) as Promise<Record<string, unknown> & { base_sector: string }>,
+  previewConfigModel: (model: unknown) => api.post('/settings/modules/import/preview', { model }).then(r => r.data.data) as Promise<ConfigModelPreview>,
+  createSector: (data: { model?: unknown; name?: string }) =>
+    api.post('/settings/sectors', data).then(r => r.data.data) as Promise<{ code: string; label: string; warnings: string[] }>,
+  deleteSector: (code: string) => api.delete(`/settings/sectors/${encodeURIComponent(code)}`).then(r => r.data.data),
   moduleOnboarding: () => api.get('/settings/modules/onboarding').then(r => r.data.data) as Promise<OnboardingReport>,
   hideOnboarding: (module: string) => api.post(`/settings/modules/onboarding/${encodeURIComponent(module)}/hide`).then(r => r.data.data) as Promise<OnboardingReport>,
   showOnboarding: () => api.post('/settings/modules/onboarding/show').then(r => r.data.data) as Promise<OnboardingReport>,

@@ -58,6 +58,12 @@ router.get('/modules/versions', authenticate, authorizeSettings('company', 'view
 // Bilan de santé (P8) : propositions calculées sur les données ; écarter = 90 jours (mig 516).
 router.get('/modules/health', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.moduleHealth));
 router.post('/modules/health/restore', authenticate, authorizeSettings('company', 'edit'), asyncHandler(companyController.restoreHealth));
+// Modèles de configuration (P10, mig 517) : export JSON, aperçu d'un modèle importé,
+// enregistrement comme secteur personnalisé, suppression d'un secteur personnalisé.
+router.get('/modules/export', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.exportConfig));
+router.post('/modules/import/preview', authenticate, jsonParser, authorizeSettings('company', 'view'), asyncHandler(companyController.previewConfigModel));
+router.post('/sectors', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.createSector));
+router.delete('/sectors/:code', authenticate, authorizeSettings('company', 'edit'), asyncHandler(companyController.deleteSector));
 // Mise en route guidée (P9) : listes de tâches par module ; masquer = jusqu'à « Réafficher ».
 router.get('/modules/onboarding', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.moduleOnboarding));
 router.post('/modules/onboarding/show', authenticate, authorizeSettings('company', 'edit'), asyncHandler(companyController.showOnboarding));

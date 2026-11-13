@@ -22,6 +22,7 @@ type StarterMaterial = { name: string; unit: string; unitCost: number; quantity:
 
 type StarterPack = {
   categories: StarterCategory[];
+  units?: StarterRef[];
   stepTypes?: StarterRef[];
   equipmentTypes?: StarterRef[];
   /** Atelier créé seulement si aucun atelier actif n'existe ; rattaché à la catégorie. */
@@ -85,6 +86,7 @@ const STARTER: Record<string, StarterPack> = {
 
 export type StarterResult = {
   categories: number;
+  units: number;
   stepTypes: number;
   equipmentTypes: number;
   workshops: number;
@@ -157,9 +159,20 @@ async function loadDemo(client: Client, d: NonNullable<StarterPack['demo']>): Pr
   return 1;
 }
 
+/**
+ * Pack d'un secteur : en code pour les secteurs livrés, en base (sector_packs.starter,
+ * mig 517) pour un secteur personnalisé issu d'un modèle de configuration (P10).
+ */
+export async function starterPackFor(sectorCode: string): Promise<StarterPack> {
+  if (STARTER[sectorCode]) return STARTER[sectorCode];
+  const { rows } = await db.query(`SELECT starter FROM sector_packs WHERE code = $1 AND is_custom`, [sectorCode]);
+  const st = (rows[0]?.starter ?? {}) as { units?: StarterRef[]; stepTypes?: StarterRef[]; equipmentTypes?: StarterRef[] };
+  return { categories: [], units: st.units ?? [], stepTypes: st.stepTypes ?? [], equipmentTypes: st.equipmentTypes ?? [] };
+}
+
 export async function loadSectorStarter(sectorCode: string, userId?: string): Promise<StarterResult> {
-  const pack = STARTER[sectorCode] ?? { categories: [] };
-  const result: StarterResult = { categories: 0, stepTypes: 0, equipmentTypes: 0, workshops: 0, demo: 0 };
+  const pack = await starterPackFor(sectorCode);
+  const result: StarterResult = { categories: 0, units: 0, stepTypes: 0, equipmentTypes: 0, workshops: 0, demo: 0 };
   const client = await db.getClient();
   try {
     await client.query('BEGIN');
@@ -170,6 +183,7 @@ export async function loadSectorStarter(sectorCode: string, userId?: string): Pr
         [c.name, c.slug]);
       if (r.rows[0]) result.categories++;
     }
+    result.units = await insertRefs(client, 'units', pack.units);
     result.stepTypes = await insertRefs(client, 'production_step_types', pack.stepTypes);
     result.equipmentTypes = await insertRefs(client, 'production_equipment_types', pack.equipmentTypes);
     if (pack.workshop) result.workshops = await loadWorkshop(client, pack.workshop);
@@ -187,12 +201,12 @@ export async function loadSectorStarter(sectorCode: string, userId?: string): Pr
 }
 
 /** Aperçu de ce qui serait chargé (sans écrire) : catégories, puis une ligne par famille. */
-export function sectorStarterPreview(sectorCode: string): { categories: string[]; items: string[] } {
-  const pack = STARTER[sectorCode];
-  if (!pack) return { categories: [], items: [] };
+export async function sectorStarterPreview(sectorCode: string): Promise<{ categories: string[]; items: string[] }> {
+  const pack = await starterPackFor(sectorCode);
   const names = (refs?: StarterRef[]) => (refs ?? []).map(r => r.label).join(', ');
   const items: string[] = [];
   if (pack.categories.length) items.push(`Catégories : ${pack.categories.map(c => c.name).join(', ')}`);
+  if (pack.units?.length) items.push(`Unités : ${names(pack.units)}`);
   if (pack.stepTypes?.length) items.push(`Types d'étape : ${names(pack.stepTypes)}`);
   if (pack.equipmentTypes?.length) items.push(`Types d'équipement : ${names(pack.equipmentTypes)}`);
   if (pack.workshop) items.push(`Atelier : ${pack.workshop.label} (seulement si aucun atelier n'existe)`);

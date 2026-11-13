@@ -9,6 +9,7 @@ import { impactPreview } from '../services/module-impact.js';
 import { loadSectorStarter, sectorStarterPreview } from '../services/sector-starter.service.js';
 import { healthReport, dismissRecommendation, restoreDismissed } from '../services/config-health.js';
 import { onboardingReport, hideOnboarding, showAllOnboarding } from '../services/module-onboarding.js';
+import { exportCurrentConfig, previewConfigModel, saveModelAsSector, deleteCustomSector } from '../services/config-templates.js';
 
 const bad = (res: Response, message: string, status = 400) => res.status(status).json({ success: false, error: { message } });
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -92,7 +93,7 @@ export const companyController = {
     // applique aux menus.
     const current = { ...act.sector, modules: [...mine.modules], features: [...mine.features] };
     const adjusted = Object.keys(act.moduleOverrides).length + Object.keys(act.featureOverrides).length;
-    res.json({ success: true, data: { current, labels, adjusted, available: available.map(s => ({ code: s.code, label: s.label })) } });
+    res.json({ success: true, data: { current, labels, adjusted, available: available.map(s => ({ code: s.code, label: s.label, isCustom: !!s.is_custom })) } });
   },
 
   /** Écran « Secteur et modules » (mig 507) : préréglage, écarts, catalogue des
@@ -133,6 +134,30 @@ export const companyController = {
     if (!(await dismissRecommendation(String(req.params.key ?? ''), req.user?.userId))) { bad(res, 'Recommandation inconnue'); return; }
     res.json({ success: true, data: await healthReport() });
   },
+  /** Modèles de configuration (P10) : export de la configuration courante. */
+  async exportConfig(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await exportCurrentConfig(typeof req.query.name === 'string' ? req.query.name : undefined) });
+  },
+  /** Aperçu d'un modèle importé (rien n'est écrit). */
+  async previewConfigModel(req: AuthRequest, res: Response) {
+    const r = await previewConfigModel((req.body ?? {}).model);
+    if ('error' in r) { bad(res, r.error); return; }
+    res.json({ success: true, data: r });
+  },
+  /** Enregistre comme secteur personnalisé : un modèle importé, ou la configuration courante sous un nom. */
+  async createSector(req: AuthRequest, res: Response) {
+    const body = (req.body ?? {}) as { model?: unknown; name?: unknown };
+    const model = body.model ?? await exportCurrentConfig(typeof body.name === 'string' ? body.name : undefined);
+    const r = await saveModelAsSector(model, req.user?.userId);
+    if ('error' in r) { bad(res, r.error); return; }
+    res.status(201).json({ success: true, data: r });
+  },
+  async deleteSector(req: AuthRequest, res: Response) {
+    const r = await deleteCustomSector(String(req.params.code ?? ''));
+    if ('error' in r) { bad(res, r.error); return; }
+    res.json({ success: true, data: r });
+  },
+
   /** Mise en route guidée (P9) : tâches par module, cochées d'après les données. */
   async moduleOnboarding(_req: AuthRequest, res: Response) {
     res.json({ success: true, data: await onboardingReport() });
@@ -185,7 +210,7 @@ export const companyController = {
   /** Données de départ du secteur courant (phase 9.3) : aperçu, et chargement à la demande. */
   async sectorStarter(_req: AuthRequest, res: Response) {
     const current = await sectorRepository.current();
-    res.json({ success: true, data: { sector: current.code, preview: sectorStarterPreview(current.code) } });
+    res.json({ success: true, data: { sector: current.code, preview: await sectorStarterPreview(current.code) } });
   },
   async loadSectorStarter(req: AuthRequest, res: Response) {
     const current = await sectorRepository.current();

@@ -1,12 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Check, CheckCircle2, Circle, Download, History, Layers, Lightbulb, RotateCcw, Users } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Circle, Download, FileDown, FileUp, History, Layers, Lightbulb, RotateCcw, Save, Trash2, Users } from 'lucide-react';
 import {
   CORE_MODULES, MODULE_DESCRIPTIONS, MODULE_GROUPS, MODULE_LABELS, dependentModules, effectiveModules,
   missingDependencies, requiredModules, type AppModule,
 } from '@ofauria/shared';
-import { settingsApi, type HealthRecommendation, type HealthReport, type ModuleActivation, type OnboardingReport } from '../../api/settings.api';
+import { settingsApi, type HealthRecommendation, type HealthReport, type ConfigModelPreview, type ModuleActivation, type OnboardingReport } from '../../api/settings.api';
 import { OdooToggle, SettingItem, SettingsSection } from './SettingsPrimitives';
 import { useDirtyForm } from './DirtyForms';
 import RolloutDialog from './RolloutDialog';
@@ -171,6 +171,54 @@ export default function SectorTab() {
     onSuccess: (data: OnboardingReport) => qc.setQueryData(['module-onboarding'], data),
     onError: () => notify.error('Action impossible'),
   });
+  // Modèles de configuration (P10) : exporter, enregistrer comme secteur, importer.
+  const [saveName, setSaveName] = useState<string | null>(null);
+  const [imported, setImported] = useState<{ model: unknown; preview: ConfigModelPreview } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const errMsg = (e: unknown, fallback: string) =>
+    (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? fallback;
+  const exportConfig = async () => {
+    try {
+      const model = await settingsApi.exportConfig();
+      const blob = new Blob([JSON.stringify(model, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `kalum-configuration-${model.base_sector}-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) { notify.error(errMsg(e, 'Export impossible')); }
+  };
+  const sectorCreateMut = useMutation({
+    mutationFn: settingsApi.createSector,
+    onSuccess: (r: { label: string; warnings: string[] }) => {
+      setSaveName(null);
+      setImported(null);
+      refresh();
+      notify.success(`Secteur « ${r.label} » ajouté à la liste${r.warnings.length ? ` (${r.warnings.length} remarque(s))` : ''}`);
+    },
+    onError: (e: unknown) => notify.error(errMsg(e, 'Enregistrement impossible')),
+  });
+  const sectorDeleteMut = useMutation({
+    mutationFn: settingsApi.deleteSector,
+    onSuccess: () => { refresh(); notify.success('Secteur supprimé'); },
+    onError: (e: unknown) => notify.error(errMsg(e, 'Suppression impossible')),
+  });
+  const onImportFile = async (file: File | undefined) => {
+    if (fileRef.current) fileRef.current.value = '';
+    if (!file) return;
+    try {
+      const model = JSON.parse(await file.text());
+      setImported({ model, preview: await settingsApi.previewConfigModel(model) });
+    } catch (e) {
+      notify.error(e instanceof SyntaxError ? "Ce fichier n'est pas un JSON valide" : errMsg(e, 'Modèle illisible'));
+    }
+  };
+  const deleteSector = async (code: string, label: string) => {
+    const ok = await confirm(`Le secteur « ${label} » disparaîtra de la liste. Aucune donnée n'est supprimée.`,
+      { title: 'Supprimer ce secteur personnalisé ?', confirmLabel: 'Supprimer' });
+    if (ok) sectorDeleteMut.mutate(code);
+  };
+
   const inDraft = (r: HealthRecommendation) => r.action.kind === 'adjust' && [
     ...Object.entries(r.action.changes.modules ?? {}).map(([k, v]) => draft.modules[k] === v),
     ...Object.entries(r.action.changes.features ?? {}).map(([k, v]) => draft.features[k] === v),
@@ -264,16 +312,25 @@ export default function SectorTab() {
           {sector?.available.map(s => {
             const on = s.code === sector.current.code;
             return (
-              <button key={s.code} type="button" onClick={() => chooseSector(s.code, s.label)} disabled={busy}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0.7rem 0.9rem',
+              <div key={s.code} style={{ display: 'flex', alignItems: 'stretch', gap: 6 }}>
+              <button type="button" onClick={() => chooseSector(s.code, s.label)} disabled={busy}
+                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0.7rem 0.9rem',
                   borderRadius: 6, textAlign: 'left', cursor: on ? 'default' : 'pointer',
                   border: `1px solid ${on ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`,
                   background: on ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: on ? 600 : 400 }}>
                   <Layers size={15} /> {s.label}
+                  {s.isCustom && <span className="odoo-tag" style={{ fontWeight: 400 }}>Personnalisé</span>}
                 </span>
                 {on && <span className="odoo-tag odoo-tag-green" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Check size={12} /> Actuel</span>}
               </button>
+              {s.isCustom && !on && (
+                <button type="button" className="odoo-btn-secondary" title="Supprimer ce secteur personnalisé" aria-label={`Supprimer ${s.label}`}
+                  disabled={busy || sectorDeleteMut.isPending} onClick={() => deleteSector(s.code, s.label)} style={{ padding: '0 10px' }}>
+                  <Trash2 size={14} />
+                </button>
+              )}
+              </div>
             );
           })}
           {savedAdjustments > 0 && (
@@ -281,6 +338,60 @@ export default function SectorTab() {
               <input type="checkbox" checked={keepAdjustments} onChange={e => setKeepAdjustments(e.target.checked)} />
               Garder mes {savedAdjustments} ajustement(s) en changeant de secteur
             </label>
+          )}
+
+          {/* Modèles de configuration (P10) : la configuration courante devient un secteur
+              réutilisable ; un modèle venu d'ailleurs s'ajoute à la liste après aperçu. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+            <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              disabled={busy} onClick={() => setSaveName(saveName === null ? `${sector?.current.label ?? ''} (personnalisé)` : null)}>
+              <Save size={14} /> Enregistrer comme secteur
+            </button>
+            <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              disabled={busy} onClick={exportConfig}>
+              <FileDown size={14} /> Exporter la configuration
+            </button>
+            <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              disabled={busy} onClick={() => fileRef.current?.click()}>
+              <FileUp size={14} /> Importer un modèle
+            </button>
+            <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={e => onImportFile(e.target.files?.[0])} />
+          </div>
+          {saveName !== null && (
+            <div style={{ display: 'grid', gap: 6 }}>
+              <p className="odoo-setting-help" style={{ margin: 0 }}>
+                Modules, options, vocabulaire et données de départ actuels deviennent un secteur proposé dans la liste. Les pilotes et établissements ne sont pas repris.
+              </p>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input className="input" value={saveName} maxLength={120} aria-label="Nom du nouveau secteur"
+                  onChange={e => setSaveName(e.target.value)} style={{ flex: 1 }} />
+                <button type="button" className="odoo-btn-primary" disabled={!saveName.trim() || sectorCreateMut.isPending}
+                  onClick={() => sectorCreateMut.mutate({ name: saveName.trim() })}>Enregistrer</button>
+                <button type="button" className="odoo-btn-secondary" onClick={() => setSaveName(null)}>Annuler</button>
+              </div>
+            </div>
+          )}
+          {imported && (
+            <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.7rem 0.9rem', display: 'grid', gap: 6 }}>
+              <div style={{ fontWeight: 600 }}>Modèle « {imported.preview.name} »</div>
+              <p className="odoo-setting-help" style={{ margin: 0 }}>
+                {imported.preview.modules} module(s), {imported.preview.features} option(s), {imported.preview.labels} libellé(s),
+                {' '}{imported.preview.starter.stepTypes} type(s) d'étape, {imported.preview.starter.equipmentTypes} type(s) d'équipement, {imported.preview.starter.units} unité(s).
+              </p>
+              {imported.preview.addedModules.length > 0 && <p className="odoo-setting-help" style={{ margin: 0 }}>Par rapport à aujourd'hui, en plus : {imported.preview.addedModules.join(', ')}</p>}
+              {imported.preview.removedModules.length > 0 && <p className="odoo-setting-help" style={{ margin: 0 }}>En moins : {imported.preview.removedModules.join(', ')}</p>}
+              {imported.preview.warnings.map(w => (
+                <p key={w} className="odoo-setting-help" style={{ margin: 0, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                  <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 2 }} /> {w}
+                </p>
+              ))}
+              <p className="odoo-setting-help" style={{ margin: 0 }}>Le secteur est ajouté à la liste sans être appliqué : vous le choisirez ensuite.</p>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button type="button" className="odoo-btn-primary" disabled={sectorCreateMut.isPending}
+                  onClick={() => sectorCreateMut.mutate({ model: imported.model })}>Ajouter ce secteur</button>
+                <button type="button" className="odoo-btn-secondary" onClick={() => setImported(null)}>Annuler</button>
+              </div>
+            </div>
           )}
         </div>
       </SettingsSection>

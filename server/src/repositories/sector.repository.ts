@@ -24,7 +24,7 @@ import { NO_VISIBLE_CHANGE, describeDiff, diffActivation, type ActivationState, 
  * rôles / utilisateurs) ou fermé pour certains établissements. Les modules visibles
  * d'un utilisateur = forUser(user) ; la société garde le module actif.
  */
-export type SectorPack = { code: string; label: string; modules: string[]; is_default: boolean; home_route?: string | null; report_keys?: string[]; features?: string[] };
+export type SectorPack = { code: string; label: string; modules: string[]; is_default: boolean; home_route?: string | null; report_keys?: string[]; features?: string[]; is_custom?: boolean };
 
 export type FeatureDef = { key: string; module_key: string; label: string; description: string | null; sort_order: number };
 
@@ -57,10 +57,10 @@ const EMPTY_ROLLOUT: ModuleRollout = { pilots: {}, storeDisabled: {} };
 
 const mapPack = (r: Record<string, any>): SectorPack => ({
   code: r.code, label: r.label, modules: r.modules ?? [], is_default: r.is_default,
-  home_route: r.home_route ?? null, report_keys: r.report_keys ?? [], features: r.features ?? [],
+  home_route: r.home_route ?? null, report_keys: r.report_keys ?? [], features: r.features ?? [], is_custom: r.is_custom ?? false,
 });
 
-const PACK_COLUMNS = `sp.code, sp.label, sp.enabled_modules AS modules, sp.is_default, sp.home_route, sp.report_keys, sp.features`;
+const PACK_COLUMNS = `sp.code, sp.label, sp.enabled_modules AS modules, sp.is_default, sp.home_route, sp.report_keys, sp.features, sp.is_custom`;
 
 // Les modules effectifs sont lus à chaque requête par la garde serveur : cache court,
 // vidé à chaque changement. Plusieurs instances serveur : le délai borne l'écart.
