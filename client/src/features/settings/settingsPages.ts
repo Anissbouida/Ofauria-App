@@ -84,8 +84,8 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
     fields: ['Devis clients', 'Relances clients et contrôle du crédit'] },
 
   { key: 'production', group: 'Achats et production', section: 'production', label: 'Production', icon: Factory,
-    description: 'Charges fixes, étapes, arrondi des prix et majoration', keywords: 'cout charges loyer energie arrondi prix majoration approvisionnement',
-    fields: ['Majoration globale', 'Majoration par catégorie'] },
+    description: 'Ateliers, charges fixes, étapes, arrondi des prix et majoration', keywords: 'atelier ateliers chef boulanger patissier membres categories cout charges loyer energie arrondi prix majoration approvisionnement',
+    fields: ['Ateliers', 'Majoration globale', 'Majoration par catégorie'] },
   { key: 'purchasing', group: 'Achats et production', section: 'business', label: 'Achats et réception', icon: Truck,
     description: 'Règles des bons de commande, réceptions et factures fournisseurs', keywords: 'achat bc fournisseur reception tolerance dlc lot facture caisse' },
 

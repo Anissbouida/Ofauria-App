@@ -14,7 +14,7 @@ import { cashRegisterApi } from '../../api/cash-register.api';
 import { openingInventoryCheckApi } from '../../api/opening-inventory-check.api';
 import { replenishmentApi } from '../../api/replenishment.api';
 import { unsoldDecisionApi } from '../../api/unsold-decision.api';
-import { productionApi } from '../../api/production.api';
+import { productionApi, useWorkshops } from '../../api/production.api';
 import { returnsApi } from '../../api/returns.api';
 import { promotionsApi } from '../../api/promotions.api';
 import { posParkedApi, type ParkedTicket } from '../../api/pos-parked.api';
@@ -122,6 +122,7 @@ export default function POSPage() {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { hasModule } = usePermissions();
+  const ws = useWorkshops(); // libellés des ateliers (mig 511)
   // File hors-ligne (phase 8.4) : ventes en attente de synchronisation.
   const [offlinePending, setOfflinePending] = useState(() => pendingCount());
   const [posTab, setPosTab] = useState<PosTab>('sell');
@@ -4226,7 +4227,6 @@ export default function POSPage() {
                 const items = allItems.filter(i => i.status === 'ready');
                 const isConfirming = confirmingTransferId === tId;
                 const roleSuffix = (transfer.assigned_role as string) || '';
-                const ROLE_LABELS_MAP: Record<string, string> = { baker: 'Boulanger', pastry_chef: 'Patissier', viennoiserie: 'Viennoiserie', beldi_sale: 'Beldi & Sale', general: 'General' };
                 const ROLE_COLORS_MAP: Record<string, string> = { baker: 'border-amber-300 bg-amber-50', pastry_chef: 'border-pink-300 bg-pink-50', viennoiserie: 'border-orange-300 bg-orange-50', beldi_sale: 'border-green-300 bg-green-50', general: 'border-gray-300 bg-gray-50' };
 
                 return (
@@ -4235,7 +4235,7 @@ export default function POSPage() {
                     <div className="px-4 py-3 flex items-center justify-between">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-gray-800">{ROLE_LABELS_MAP[roleSuffix] || roleSuffix}</span>
+                          <span className="font-bold text-sm text-gray-800">{roleSuffix === 'general' ? 'Général' : ws.label(roleSuffix)}</span>
                           <span className="text-xs text-gray-400">#{transfer.request_number as string}</span>
                         </div>
                         <p className="text-xs text-gray-500 mt-0.5">
@@ -4368,7 +4368,6 @@ export default function POSPage() {
                 const transferId = transfer.id as string;
                 const prodItems = (transfer.items || []) as Record<string, any>[];
                 const isConfirming = confirmingTransferId === tId;
-                const ROLE_LABELS_MAP: Record<string, string> = { baker: 'Boulanger', pastry_chef: 'Patissier', viennoiserie: 'Viennoiserie', beldi_sale: 'Beldi & Sale' };
                 const ROLE_COLORS_MAP: Record<string, string> = { baker: 'border-amber-300 bg-amber-50', pastry_chef: 'border-pink-300 bg-pink-50', viennoiserie: 'border-orange-300 bg-orange-50', beldi_sale: 'border-green-300 bg-green-50' };
                 const targetRole = (transfer.target_role as string) || '';
 
@@ -4378,7 +4377,7 @@ export default function POSPage() {
                       <div>
                         <div className="flex items-center gap-2">
                           <Factory size={14} className="text-blue-600" />
-                          <span className="font-bold text-sm text-gray-800">Production — {ROLE_LABELS_MAP[targetRole] || targetRole || 'General'}</span>
+                          <span className="font-bold text-sm text-gray-800">Production — {ws.label(targetRole) || 'Général'}</span>
                         </div>
                         <p className="text-xs text-gray-500 mt-0.5">
                           Transfere par {transfer.transferred_by_name as string || '—'}

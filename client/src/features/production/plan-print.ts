@@ -80,7 +80,7 @@ body { font-family: Arial, sans-serif; padding: 15px; color: #333; font-size: 12
 </div>
 <div class="row">
   <span class="label">Role</span>
-  <span class="value">${plan.target_role === 'baker' ? 'Boulanger' : plan.target_role === 'pastry_chef' ? 'Patissier' : plan.target_role === 'viennoiserie' ? 'Viennoiserie' : plan.target_role === 'beldi_sale' ? 'Beldi & Sale' : '—'}</span>
+  <span class="value">${plan.target_role_label || plan.target_role || '—'}</span>
 </div>
 
 <div class="cycle ${saleType === 'dlv' ? 'dlv' : saleType === 'commande' ? 'recyclable' : 'vdj'}">
@@ -143,7 +143,8 @@ export function buildBsiHtml(plan: Record<string, any>, needs: Record<string, an
   // Generate BSI number
   const bsiNumber = `BSI-${bsiDateStr}-${String(1).padStart(3, '0')}`;
 
-  const roleLabel = plan.target_role === 'baker' ? 'Boulanger' : plan.target_role === 'pastry_chef' ? 'Patissier' : plan.target_role === 'viennoiserie' ? 'Viennoiserie' : plan.target_role === 'beldi_sale' ? 'Beldi & Sale' : (plan.created_by_name || '—');
+  // Atelier du plan (libellé joint par le serveur, mig 511).
+  const roleLabel = plan.target_role_label || plan.target_role || plan.created_by_name || '—';
 
   return (`<!DOCTYPE html><html><head><title>BSI - ${dateStr}</title>
 <style>

@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { productionApi } from '../../api/production.api';
+import { productionApi, useWorkshops } from '../../api/production.api';
 import { planStatusTag, PLAN_STATUS_ORDER } from './status';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage } from '../../api/errors';
@@ -10,9 +10,8 @@ import { productsApi } from '../../api/products.api';
 import { ordersApi } from '../../api/orders.api';
 import { recipesApi } from '../../api/recipes.api';
 import { forecastApi, type ForecastCell } from '../../api/forecast.api';
-import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
-import { PRODUCTION_STATUS_LABELS, PRODUCTION_TYPE_LABELS, getRoleCategorySlugs } from '@ofauria/shared';
+import { PRODUCTION_STATUS_LABELS, PRODUCTION_TYPE_LABELS } from '@ofauria/shared';
 import {
   Plus, Trash2, Factory, Calendar, ShoppingBag, Package, Search,
   Clock, CheckCircle2, Play, Flag, Eye, AlertCircle,
@@ -24,13 +23,6 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 
-const CHEF_ROLES = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
-const ROLE_LABELS: Record<string, string> = {
-  baker: 'Boulanger',
-  pastry_chef: 'Pâtissier',
-  viennoiserie: 'Viennoiserie',
-  beldi_sale: 'Beldi & Salé',
-};
 
 const roleConfig: Record<string, { color: string; bg: string; gradient: string }> = {
   baker:        { color: 'text-amber-700',  bg: 'bg-amber-50',  gradient: 'from-amber-500 to-amber-600' },
@@ -92,10 +84,12 @@ function ProductionPlansView() {
     else { setSortKey(key); setSortDir(key === 'plan_date' ? 'desc' : 'asc'); }
   };
 
-  const isChef = CHEF_ROLES.includes(user?.role || '');
+  // Ateliers (mig 511) : un membre d'atelier ne voit que ses ateliers (le serveur filtre).
+  const ws = useWorkshops();
+  const isChef = ws.mine.length > 0;
   const isAdmin = ['admin', 'manager'].includes(user?.role || '');
 
-  const effectiveRole = isChef ? (user?.role || '') : roleFilter;
+  const effectiveRole = roleFilter;
   const { data, isLoading } = useQuery({
     queryKey: ['production', { status: statusFilter, targetRole: effectiveRole }],
     queryFn: () => productionApi.list({
@@ -148,7 +142,7 @@ function ProductionPlansView() {
       (p.order_number as string)?.toLowerCase().includes(q) ||
       (p.order_customer_name as string)?.toLowerCase().includes(q) ||
       (p.created_by_name as string)?.toLowerCase().includes(q) ||
-      (ROLE_LABELS[p.target_role as string] || '').toLowerCase().includes(q) ||
+      (ws.label(p.target_role as string) || '').toLowerCase().includes(q) ||
       format(new Date(p.plan_date as string), 'dd MMM yyyy', { locale: fr }).toLowerCase().includes(q)
     );
   }, [plans, searchQuery]);
@@ -267,16 +261,16 @@ function ProductionPlansView() {
         )}
         {roleFilter && (
           <span className="odoo-filter-chip">
-            {ROLE_LABELS[roleFilter]}
+            {ws.label(roleFilter)}
             <span className="odoo-filter-chip-remove" onClick={() => setRoleFilter('')}>×</span>
           </span>
         )}
-        {isAdmin && (
+        {(isAdmin || ws.mine.length > 1) && (
           <SearchSelect
-            options={CHEF_ROLES.map(role => ({ id: role, label: ROLE_LABELS[role] }))}
+            options={ws.workshops.filter(w => isAdmin || ws.mine.includes(w.code)).map(w => ({ id: w.code, label: w.label }))}
             value={roleFilter}
             onChange={setRoleFilter}
-            placeholder="Chef"
+            placeholder="Atelier"
           />
         )}
       </div>
@@ -380,7 +374,7 @@ function ProductionPlansView() {
                           {p.target_role ? (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                               <User size={11} style={{ color: 'var(--theme-accent)' }} />
-                              <span style={{ fontWeight: 500 }}>{ROLE_LABELS[p.target_role as string]}</span>
+                              <span style={{ fontWeight: 500 }}>{(p.target_role_label as string) || ws.label(p.target_role as string)}</span>
                             </span>
                           ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                         </td>
@@ -515,7 +509,7 @@ function ProductionPlansView() {
                                 <Factory size={16} className="text-white" />
                               </div>
                               <div>
-                                <p className="font-semibold text-gray-800 text-sm">{ROLE_LABELS[role] || role}</p>
+                                <p className="font-semibold text-gray-800 text-sm">{ws.label(role) || 'Général'}</p>
                                 <p className="text-xs text-gray-400">{plan.item_count as number} produit{(plan.item_count as number) > 1 ? 's' : ''}</p>
                               </div>
                             </div>
@@ -548,7 +542,7 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
 }) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const { getModuleConfig } = usePermissions();
+  const ws = useWorkshops();
   const [planDate, setPlanDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [type, setType] = useState<'daily' | 'weekly'>('daily');
   const [notes, setNotes] = useState('');
@@ -559,15 +553,16 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
   // selected[productId] reste la qty totale (= Σ formatQtys[productId][*]).
   const [formatQtys, setFormatQtys] = useState<Record<string, Record<string, number>>>({});
   const [orderQtys, setOrderQtys] = useState<Record<string, number>>({});
-  const [selectedRole, setSelectedRole] = useState<string>(
-    prefillRole || (CHEF_ROLES.includes(user?.role || '') ? user!.role : '')
-  );
+  const [selectedRole, setSelectedRole] = useState<string>(prefillRole || '');
+  // Membre d'un atelier : son atelier par défaut, dès que la liste est chargée.
+  useEffect(() => {
+    if (!selectedRole && ws.mine.length) setSelectedRole(ws.mine[0]);
+  }, [ws.mine, selectedRole]);
 
   const isAdminUser = ['admin', 'manager'].includes(user?.role || '');
 
-  const allowedSlugs = selectedRole
-    ? getRoleCategorySlugs(selectedRole)
-    : (getModuleConfig('production').category_slugs as string[] | undefined) || null;
+  // Produits de l'atelier choisi (catégories rattachées, mig 511) ; sans atelier : tous.
+  const allowedSlugs = selectedRole ? ws.slugsOf(selectedRole) : null;
 
   const { data: productsData } = useQuery({
     queryKey: ['products-all'],
@@ -788,14 +783,14 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
         {/* Settings bar */}
         <div className="px-5 py-3 border-b bg-gray-50 shrink-0">
           <div className="flex flex-wrap gap-3 items-end">
-            {isAdminUser && (
+            {(isAdminUser || ws.mine.length > 1) && (
               <div className="w-48">
-                <label className="block text-xs font-medium text-gray-500 mb-1">Chef responsable *</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Atelier responsable *</label>
                 <select value={selectedRole} onChange={(e) => { setSelectedRole(e.target.value); setSelected({}); setActiveCategory(''); }}
                   className="input text-base py-2.5">
-                  <option value="">-- Choisir un chef --</option>
-                  {CHEF_ROLES.map(r => (
-                    <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                  <option value="">-- Choisir un atelier --</option>
+                  {ws.workshops.filter(w => isAdminUser || ws.mine.includes(w.code)).map(w => (
+                    <option key={w.code} value={w.code}>{w.label}</option>
                   ))}
                 </select>
               </div>

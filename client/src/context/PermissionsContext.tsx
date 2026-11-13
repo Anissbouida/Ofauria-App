@@ -3,7 +3,7 @@ import { useAuth } from './AuthContext';
 import { usersApi } from '../api/users.api';
 import { settingsApi } from '../api/settings.api';
 import type { AppModule, UserPermission } from '@ofauria/shared';
-import { DEFAULT_ROLE_MODULES, getRoleCategorySlugs, resolveModuleKeys } from '@ofauria/shared';
+import { DEFAULT_ROLE_MODULES, resolveModuleKeys } from '@ofauria/shared';
 
 interface PermissionsContextType {
   permissions: UserPermission[];
@@ -130,11 +130,7 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
       const perm = findPerm(module);
       if (perm?.config && Object.keys(perm.config).length > 0) return perm.config;
     }
-    // Fallback: for production module, use role-based category slugs
-    if (module === 'production' && user?.role) {
-      const slugs = getRoleCategorySlugs(user.role);
-      if (slugs) return { category_slugs: slugs };
-    }
+    // Les catégories d'un atelier viennent désormais des ateliers (mig 511, useWorkshops).
     return {};
   };
 

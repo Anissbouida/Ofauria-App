@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
+import { useWorkshops } from '../../api/production.api';
 import { useAuth } from '../../context/AuthContext';
 import { ArrowLeft } from 'lucide-react';
 import { BonSortiePanel } from './BonSortiePanel';
@@ -11,7 +12,8 @@ export default function BonSortiePrelevementPage() {
   const { id: planId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isChef = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
+  const { mine } = useWorkshops(); // membre d'un atelier (mig 511) ou direction
+  const isChef = ['admin', 'manager'].includes(user?.role || '') || mine.length > 0;
   // Admin et manager ont aussi le privilege magasinier (peuvent prendre en charge la preparation)
   const isMagasinier = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
 

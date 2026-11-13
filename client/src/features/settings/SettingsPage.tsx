@@ -12,6 +12,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import PrinterSettingsCard from './PrinterSettingsCard';
 import SachetsTab from './SachetsTab';
 import SectorTab from './SectorTab';
+import WorkshopsCard from './WorkshopsCard';
 import ProductionMarkupTab from './ProductionMarkupTab';
 import AuditLogTab from './AuditLogTab';
 import NumberingTab from './NumberingTab';
@@ -155,6 +156,7 @@ function SettingsShell() {
     sachets: <SachetsTab />,
     production: (
       <>
+        <WorkshopsCard />
         <ParametersPanel keys={['production.fixed_charges', 'production.steps_blocking', 'pricing.rounding']} />
         <ProductionMarkupTab />
       </>

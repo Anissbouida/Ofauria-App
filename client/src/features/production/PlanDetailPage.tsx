@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { productionApi } from '../../api/production.api';
+import { productionApi, useWorkshops } from '../../api/production.api';
 import { replenishmentApi } from '../../api/replenishment.api';
 import { ingredientLotsApi } from '../../api/inventory.api';
 import { bonSortieApi } from '../../api/bon-sortie.api';
@@ -10,8 +10,7 @@ import { productionCoutApi } from '../../api/production-cout.api';
 import { BonSortiePanel } from './BonSortiePanel';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
-import { PRODUCTION_STATUS_LABELS, getRoleCategorySlugs, type ProductionPlanEvent } from '@ofauria/shared';
-import { usePermissions } from '../../context/PermissionsContext';
+import { PRODUCTION_STATUS_LABELS, type ProductionPlanEvent } from '@ofauria/shared';
 import {
   ArrowLeft, CheckCircle, CheckCircle2, Play, AlertTriangle, Factory, Printer, Package,
   User, Calendar, Box, Clock, RotateCcw, XCircle, ChefHat,
@@ -51,10 +50,6 @@ const statusIcon: Record<string, React.ReactNode> = {
 
 type PlanTab = 'synthese' | 'ingredients' | 'production' | 'couts';
 
-const roleLabel: Record<string, string> = {
-  baker: 'Boulanger', pastry_chef: 'Pâtissier', viennoiserie: 'Viennoiserie', beldi_sale: 'Beldi & Salé',
-};
-
 export default function PlanDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -68,7 +63,9 @@ export default function PlanDetailPage() {
   const confirmDialog = useConfirm();
   const [printChoiceItem, setPrintChoiceItem] = useState<Record<string, any> | null>(null);
   const { settings } = useSettings();
-  const isChef = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
+  // Membre d'un atelier (mig 511) ou direction.
+  const ws = useWorkshops();
+  const isChef = ['admin', 'manager'].includes(user?.role || '') || ws.mine.length > 0;
   // Admin/manager ont aussi le privilege magasinier (peuvent prendre en charge la preparation BSI).
   const isMagasinier = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
 
@@ -464,19 +461,10 @@ export default function PlanDetailPage() {
 
   // ═══ Bon de sortie mutations ═══
   // Start item: pending → in_progress
-  const { getModuleConfig } = usePermissions();
-  const prodConfig = getModuleConfig('production');
-  const userRole = user?.role || '';
-  const isChefRole = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(userRole);
-  const allowedSlugs = plan?.is_semi_finished_plan
+  // Produits de l'atelier du plan (catégories rattachées, mig 511).
+  const allowedSlugs = plan?.is_semi_finished_plan || plan?.order_id
     ? null
-    : plan?.order_id
-      ? null
-      : isChefRole
-        ? getRoleCategorySlugs(userRole)
-        : plan?.target_role
-          ? getRoleCategorySlugs(plan.target_role as string)
-          : (prodConfig.category_slugs as string[] | undefined) || null;
+    : ws.slugsOf(plan?.target_role as string | null);
 
   // Auto-open modal from timer notification URL params (?launchItem=xxx&step=yyy)
   const planItems = (plan?.items || []) as Record<string, any>[];
@@ -540,7 +528,7 @@ export default function PlanDetailPage() {
   const insufficientNeeds = needs.filter((n) => parseFloat(n.available_quantity as string) < parseFloat(n.needed_quantity as string));
 
   const planIcon = statusIcon[plan.status] || statusIcon.draft;
-  const rc = roleLabel[plan.target_role as string] ? { label: roleLabel[plan.target_role as string] } : null;
+  const rc = plan.target_role ? { label: (plan.target_role_label as string) || ws.label(plan.target_role as string) } : null;
 
   // Progress stats
   const producedCount = items.filter((it: Record<string, any>) => it.status === 'produced' || it.status === 'transferred' || it.status === 'received').length;
@@ -1748,7 +1736,7 @@ export default function PlanDetailPage() {
       {/* ══════════════ ARTICLES (onglet Production) ══════════════ */}
       {showProd && linkedReplenishment && (() => {
         const repItems = (linkedReplenishment.items || []) as Record<string, any>[];
-        const planRoleSlugs = plan?.target_role ? getRoleCategorySlugs(plan.target_role as string) : null;
+        const planRoleSlugs = ws.slugsOf(plan?.target_role as string | null);
         const effectiveSlugs = allowedSlugs || planRoleSlugs;
         const filteredRepItems = effectiveSlugs
           ? repItems.filter((ri) => effectiveSlugs.includes(ri.category_slug as string))

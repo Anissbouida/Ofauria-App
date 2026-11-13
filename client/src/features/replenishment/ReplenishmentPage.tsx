@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { replenishmentApi } from '../../api/replenishment.api';
+import { useWorkshops } from '../../api/production.api';
 import { productsApi } from '../../api/products.api';
 import { useAuth } from '../../context/AuthContext';
 import { format } from 'date-fns';
@@ -12,10 +13,8 @@ import {
   Send, ShoppingBag, Trash2, Calendar, Search, X, Lightbulb, Truck,
   Loader2, PackageOpen, ChevronRight, Hash, User, Layers, PackageCheck,
 } from 'lucide-react';
-import { ASSIGNED_ROLE_LABELS } from '@ofauria/shared';
 
 const STORE_ROLES = ['cashier', 'saleswoman'];
-const CHEF_ROLES = ['baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'];
 
 const STATUS_LABELS: Record<string, string> = {
   submitted: 'Envoyée',
@@ -63,6 +62,7 @@ const ROLE_CONFIG: Record<string, { bg: string; text: string }> = {
 };
 
 export default function ReplenishmentPage() {
+  const ws = useWorkshops(); // libellés des ateliers (mig 511)
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -276,7 +276,7 @@ export default function ReplenishmentPage() {
                     <td>
                       {r.assigned_role ? (
                         <span className="odoo-tag odoo-tag-purple">
-                          {ASSIGNED_ROLE_LABELS[r.assigned_role as string] || r.assigned_role}
+                          {r.assigned_role === 'general' ? 'Général' : ws.label(r.assigned_role as string)}
                         </span>
                       ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                     </td>

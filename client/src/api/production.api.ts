@@ -1,5 +1,22 @@
+import { useQuery } from '@tanstack/react-query';
 import api from './client';
 import type { ProductionPlanEvent } from '@ofauria/shared';
+
+/** Atelier de production (mig 511) : son code est le target_role des plans. */
+export interface Workshop {
+  code: string;
+  label: string;
+  workCenterId: string | null;
+  isDefault: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  categoryIds: number[];
+  categorySlugs: string[];
+  memberRoles: string[];
+  memberUsers: string[];
+}
+
+export type WorkshopInput = Omit<Workshop, 'code' | 'categorySlugs'>;
 
 export type MrpRow = {
   product_id: string; product_name: string; category_id: number | null; category_name: string | null;
@@ -37,6 +54,11 @@ export interface ProductionSettingsInput {
 }
 
 export const productionApi = {
+  /** Ateliers (mig 511) et ceux de l'utilisateur connecté. */
+  workshops: (): Promise<{ workshops: Workshop[]; mine: string[] }> =>
+    api.get('/production/workshops').then(r => r.data.data),
+  saveWorkshop: (code: string, data: WorkshopInput): Promise<{ workshops: Workshop[] }> =>
+    api.put(`/production/workshops/${code}`, data).then(r => r.data.data),
   list: (params?: Record<string, string>) => api.get('/production', { params }).then(r => r.data),
   /** MRP — besoins nets de production du jour (plan directeur). */
   mrp: (date: string, store?: string): Promise<MrpResult> =>
@@ -98,3 +120,21 @@ export const productionApi = {
   getActivities: (id: string) => api.get(`/production/${id}/activities`).then(r => r.data.data),
   addActivity: (id: string, message: string) => api.post(`/production/${id}/activities`, { message }).then(r => r.data.data),
 };
+
+/**
+ * Ateliers de production (mig 511) : remplace les listes de rôles chefs codées en dur.
+ * `mine` = ateliers de l'utilisateur ; label(code) / slugsOf(code) pour l'affichage et
+ * le filtrage des produits d'un atelier.
+ */
+export function useWorkshops() {
+  const { data, isLoading } = useQuery({ queryKey: ['production-workshops'], queryFn: productionApi.workshops, staleTime: 60_000 });
+  const all = data?.workshops ?? [];
+  return {
+    all,
+    workshops: all.filter(w => w.isActive),
+    mine: data?.mine ?? [],
+    isLoading,
+    label: (code?: string | null) => (code ? all.find(w => w.code === code)?.label ?? code : ''),
+    slugsOf: (code?: string | null) => (code ? all.find(w => w.code === code)?.categorySlugs ?? null : null),
+  };
+}

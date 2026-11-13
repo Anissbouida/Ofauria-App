@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { replenishmentApi } from '../../api/replenishment.api';
 import { useAuth } from '../../context/AuthContext';
-import { ASSIGNED_ROLE_LABELS } from '@ofauria/shared';
+import { useWorkshops } from '../../api/production.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
@@ -94,7 +94,9 @@ export default function RequestDetailPage() {
   const { user } = useAuth();
 
   const isAdmin = ['admin', 'manager'].includes(user?.role || '');
-  const isResponsable = ['admin', 'manager', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale'].includes(user?.role || '');
+  // Direction ou membre d'un atelier (mig 511).
+  const ws = useWorkshops();
+  const isResponsable = ['admin', 'manager'].includes(user?.role || '') || ws.mine.length > 0;
   const isStoreStaff = ['admin', 'manager', 'cashier', 'saleswoman'].includes(user?.role || '');
 
   const [prepItems, setPrepItems] = useState<Record<string, { qtyToStore: number; qtyToStock: number; source: string }>>({});
@@ -230,6 +232,7 @@ function SubRequestDetailView({
   receptionItems: Record<string, { qtyReceived: number; notes: string }>;
   setReceptionItems: React.Dispatch<React.SetStateAction<Record<string, { qtyReceived: number; notes: string }>>>;
 }) {
+  const ws = useWorkshops(); // libellé de l'atelier (mig 511)
   const items = (request.items || []) as Record<string, any>[];
   const displayStatus = (request.display_status as string) || (request.status as string);
   const currentStep = stepIndex(displayStatus);
@@ -390,7 +393,7 @@ function SubRequestDetailView({
         )}
         {rc && (
           <span className="odoo-tag odoo-tag-purple">
-            <ChefHat size={10} /> {ASSIGNED_ROLE_LABELS[assignedRole]}
+            <ChefHat size={10} /> {assignedRole === 'general' ? 'Général' : ws.label(assignedRole)}
           </span>
         )}
         {isPartialTransfer && (
