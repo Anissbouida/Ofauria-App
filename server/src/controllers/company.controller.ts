@@ -10,6 +10,7 @@ import { loadSectorStarter, sectorStarterPreview } from '../services/sector-star
 import { healthReport, dismissRecommendation, restoreDismissed } from '../services/config-health.js';
 import { onboardingReport, hideOnboarding, showAllOnboarding } from '../services/module-onboarding.js';
 import { exportCurrentConfig, previewConfigModel, saveModelAsSector, deleteCustomSector } from '../services/config-templates.js';
+import { assistantConfigured, suggestConfig, AssistantUnavailable } from '../services/config-assistant.js';
 
 const bad = (res: Response, message: string, status = 400) => res.status(status).json({ success: false, error: { message } });
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -143,6 +144,22 @@ export const companyController = {
     const r = await previewConfigModel((req.body ?? {}).model);
     if ('error' in r) { bad(res, r.error); return; }
     res.json({ success: true, data: r });
+  },
+  /** Configuration en langage naturel (P11) : proposition de l'IA, rien n'est écrit. */
+  async assistantStatus(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: { available: assistantConfigured() } });
+  },
+  async suggestConfig(req: AuthRequest, res: Response) {
+    const description = (req.body ?? {}).description;
+    if (typeof description !== 'string') { bad(res, 'Description manquante'); return; }
+    try {
+      const r = await suggestConfig(description);
+      if ('error' in r) { bad(res, r.error); return; }
+      res.json({ success: true, data: r });
+    } catch (err) {
+      if (err instanceof AssistantUnavailable) { bad(res, err.message, 503); return; }
+      throw err;
+    }
   },
   /** Enregistre comme secteur personnalisé : un modèle importé, ou la configuration courante sous un nom. */
   async createSector(req: AuthRequest, res: Response) {

@@ -223,6 +223,15 @@ export interface ConfigModelPreview {
   starter: { units: number; stepTypes: number; equipmentTypes: number };
 }
 
+/** Proposition de l'assistant de configuration (P11) : modèle filtré + écarts pour le brouillon. */
+export interface ConfigSuggestion {
+  model: { name: string; labels: Record<string, string>; starter: { stepTypes: { label: string }[]; equipmentTypes: { label: string }[] } } & Record<string, unknown>;
+  preview: ConfigModelPreview;
+  changes: { modules: Record<string, boolean>; features: Record<string, boolean> };
+  rationale: string;
+  questions: string[];
+}
+
 export interface ConfigVersion {
   id: number;
   created_at: string;
@@ -279,6 +288,8 @@ export const settingsApi = {
     api.put(`/settings/modules/${key}/rollout`, change).then(r => r.data.data) as Promise<ModuleActivation>,
   exportConfig: () => api.get('/settings/modules/export').then(r => r.data.data) as Promise<Record<string, unknown> & { base_sector: string }>,
   previewConfigModel: (model: unknown) => api.post('/settings/modules/import/preview', { model }).then(r => r.data.data) as Promise<ConfigModelPreview>,
+  assistantStatus: () => api.get('/settings/modules/assistant').then(r => r.data.data) as Promise<{ available: boolean }>,
+  suggestConfig: (description: string) => api.post('/settings/modules/assistant', { description }).then(r => r.data.data) as Promise<ConfigSuggestion>,
   createSector: (data: { model?: unknown; name?: string }) =>
     api.post('/settings/sectors', data).then(r => r.data.data) as Promise<{ code: string; label: string; warnings: string[] }>,
   deleteSector: (code: string) => api.delete(`/settings/sectors/${encodeURIComponent(code)}`).then(r => r.data.data),

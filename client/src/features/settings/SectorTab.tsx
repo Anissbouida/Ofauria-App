@@ -1,12 +1,12 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Check, CheckCircle2, Circle, Download, FileDown, FileUp, History, Layers, Lightbulb, RotateCcw, Save, Trash2, Users } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Circle, Download, FileDown, FileUp, History, Layers, Lightbulb, RotateCcw, Save, Sparkles, Trash2, Users } from 'lucide-react';
 import {
   CORE_MODULES, MODULE_DESCRIPTIONS, MODULE_GROUPS, MODULE_LABELS, dependentModules, effectiveModules,
   missingDependencies, requiredModules, type AppModule,
 } from '@ofauria/shared';
-import { settingsApi, type HealthRecommendation, type HealthReport, type ConfigModelPreview, type ModuleActivation, type OnboardingReport } from '../../api/settings.api';
+import { settingsApi, type HealthRecommendation, type HealthReport, type ConfigModelPreview, type ConfigSuggestion, type ModuleActivation, type OnboardingReport } from '../../api/settings.api';
 import { OdooToggle, SettingItem, SettingsSection } from './SettingsPrimitives';
 import { useDirtyForm } from './DirtyForms';
 import RolloutDialog from './RolloutDialog';
@@ -193,6 +193,8 @@ export default function SectorTab() {
     onSuccess: (r: { label: string; warnings: string[] }) => {
       setSaveName(null);
       setImported(null);
+      setSuggestion(null);
+      setDescribe(null);
       refresh();
       notify.success(`Secteur « ${r.label} » ajouté à la liste${r.warnings.length ? ` (${r.warnings.length} remarque(s))` : ''}`);
     },
@@ -212,6 +214,21 @@ export default function SectorTab() {
     } catch (e) {
       notify.error(e instanceof SyntaxError ? "Ce fichier n'est pas un JSON valide" : errMsg(e, 'Modèle illisible'));
     }
+  };
+  // Configuration en langage naturel (P11) : l'IA propose, l'administrateur valide.
+  const { data: assistant } = useQuery({ queryKey: ['config-assistant'], queryFn: settingsApi.assistantStatus });
+  const [describe, setDescribe] = useState<string | null>(null);
+  const [suggestion, setSuggestion] = useState<ConfigSuggestion | null>(null);
+  const suggestMut = useMutation({
+    mutationFn: settingsApi.suggestConfig,
+    onSuccess: (r: ConfigSuggestion) => setSuggestion(r),
+    onError: (e: unknown) => notify.error(errMsg(e, 'Proposition impossible')),
+  });
+  const suggestionToDraft = (r: ConfigSuggestion) => {
+    setDraft(d => ({ modules: { ...d.modules, ...r.changes.modules }, features: { ...d.features, ...r.changes.features } }));
+    setSuggestion(null);
+    setDescribe(null);
+    notify.success("Ajouté au brouillon : vérifiez l'impact, puis enregistrez");
   };
   const deleteSector = async (code: string, label: string) => {
     const ok = await confirm(`Le secteur « ${label} » disparaîtra de la liste. Aucune donnée n'est supprimée.`,
@@ -356,6 +373,10 @@ export default function SectorTab() {
               <FileUp size={14} /> Importer un modèle
             </button>
             <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={e => onImportFile(e.target.files?.[0])} />
+            <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              disabled={busy} onClick={() => { setDescribe(describe === null ? '' : null); setSuggestion(null); }}>
+              <Sparkles size={14} /> Décrire mon activité
+            </button>
           </div>
           {saveName !== null && (
             <div style={{ display: 'grid', gap: 6 }}>
@@ -368,6 +389,69 @@ export default function SectorTab() {
                 <button type="button" className="odoo-btn-primary" disabled={!saveName.trim() || sectorCreateMut.isPending}
                   onClick={() => sectorCreateMut.mutate({ name: saveName.trim() })}>Enregistrer</button>
                 <button type="button" className="odoo-btn-secondary" onClick={() => setSaveName(null)}>Annuler</button>
+              </div>
+            </div>
+          )}
+          {describe !== null && !suggestion && (
+            <div style={{ display: 'grid', gap: 6 }}>
+              {assistant && !assistant.available ? (
+                <StatusBanner tone="warning" icon={AlertTriangle} title="Assistant indisponible">
+                  La clé ANTHROPIC_API_KEY n'est pas configurée sur le serveur.
+                </StatusBanner>
+              ) : (
+                <>
+                  <p className="odoo-setting-help" style={{ margin: 0 }}>
+                    Décrivez votre activité en quelques phrases : ce que vous vendez, fabriquez ou achetez, et comment. L'assistant propose secteur, modules, options et vocabulaire ; rien n'est appliqué sans vous.
+                  </p>
+                  <textarea className="input" rows={3} maxLength={2000} value={describe} aria-label="Description de l'activité"
+                    placeholder="Ex. : Je fabrique des meubles sur commande et je vends en showroom, avec livraison et pose."
+                    onChange={e => setDescribe(e.target.value)} />
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button type="button" className="odoo-btn-primary" disabled={describe.trim().length < 10 || suggestMut.isPending}
+                      onClick={() => suggestMut.mutate(describe.trim())}>{suggestMut.isPending ? 'Analyse en cours…' : 'Proposer une configuration'}</button>
+                    <button type="button" className="odoo-btn-secondary" onClick={() => setDescribe(null)}>Annuler</button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {suggestion && (
+            <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.7rem 0.9rem', display: 'grid', gap: 6 }}>
+              <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Sparkles size={14} /> Proposition « {suggestion.preview.name} »</div>
+              {suggestion.rationale && <p style={{ margin: 0 }}>{suggestion.rationale}</p>}
+              {suggestion.preview.addedModules.length > 0 && <p className="odoo-setting-help" style={{ margin: 0 }}>Modules en plus : {suggestion.preview.addedModules.join(', ')}</p>}
+              {suggestion.preview.removedModules.length > 0 && <p className="odoo-setting-help" style={{ margin: 0 }}>Modules en moins : {suggestion.preview.removedModules.join(', ')}</p>}
+              {Object.keys(suggestion.model.labels).length > 0 && (
+                <p className="odoo-setting-help" style={{ margin: 0 }}>
+                  Vocabulaire : {Object.values(suggestion.model.labels).join(', ')}
+                </p>
+              )}
+              {suggestion.model.starter.stepTypes.length + suggestion.model.starter.equipmentTypes.length > 0 && (
+                <p className="odoo-setting-help" style={{ margin: 0 }}>
+                  Étapes : {suggestion.model.starter.stepTypes.map(s => s.label).join(', ') || '—'} · Équipements : {suggestion.model.starter.equipmentTypes.map(s => s.label).join(', ') || '—'}
+                </p>
+              )}
+              {suggestion.preview.warnings.map(w => (
+                <p key={w} className="odoo-setting-help" style={{ margin: 0, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                  <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 2 }} /> {w}
+                </p>
+              ))}
+              {suggestion.questions.length > 0 && (
+                <div className="odoo-setting-help">
+                  À préciser pour affiner :
+                  <ul style={{ margin: '2px 0 0 18px' }}>{suggestion.questions.map(q => <li key={q}>{q}</li>)}</ul>
+                </div>
+              )}
+              <p className="odoo-setting-help" style={{ margin: 0 }}>
+                « Mettre dans le brouillon » ajuste les modules et options ici, avec l'aperçu d'impact avant d'enregistrer. « Ajouter ce secteur » l'enregistre dans la liste avec son vocabulaire et ses données de départ, sans l'appliquer.
+              </p>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button type="button" className="odoo-btn-primary"
+                  disabled={!Object.keys(suggestion.changes.modules).length && !Object.keys(suggestion.changes.features).length}
+                  onClick={() => suggestionToDraft(suggestion)}>Mettre dans le brouillon</button>
+                <button type="button" className="odoo-btn-secondary" disabled={sectorCreateMut.isPending}
+                  onClick={() => sectorCreateMut.mutate({ model: suggestion.model })}>Ajouter ce secteur</button>
+                <button type="button" className="odoo-btn-secondary" onClick={() => setSuggestion(null)}>Modifier la description</button>
               </div>
             </div>
           )}

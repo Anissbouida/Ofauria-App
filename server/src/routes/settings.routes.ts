@@ -62,6 +62,9 @@ router.post('/modules/health/restore', authenticate, authorizeSettings('company'
 // enregistrement comme secteur personnalisé, suppression d'un secteur personnalisé.
 router.get('/modules/export', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.exportConfig));
 router.post('/modules/import/preview', authenticate, jsonParser, authorizeSettings('company', 'view'), asyncHandler(companyController.previewConfigModel));
+// Configuration en langage naturel (P11) : l'IA propose un modèle, revu avant tout enregistrement.
+router.get('/modules/assistant', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.assistantStatus));
+router.post('/modules/assistant', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.suggestConfig));
 router.post('/sectors', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.createSector));
 router.delete('/sectors/:code', authenticate, authorizeSettings('company', 'edit'), asyncHandler(companyController.deleteSector));
 // Mise en route guidée (P9) : listes de tâches par module ; masquer = jusqu'à « Réafficher ».
