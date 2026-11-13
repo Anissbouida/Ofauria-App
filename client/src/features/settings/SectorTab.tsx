@@ -329,7 +329,7 @@ export default function SectorTab() {
           <>
       <SettingsSection
         title="Secteur d'activité"
-        description="Le secteur est un préréglage : il choisit les modules et options de départ. Vous ajustez ensuite chaque module ci-dessous. Changer de secteur ne supprime aucune donnée."
+        description="Le secteur est un préréglage : il choisit les modules et options de départ. Vous ajustez ensuite chaque module dans l'onglet « Modules et options ». Changer de secteur ne supprime aucune donnée."
         columns={1}
       >
         <div style={{ display: 'grid', gap: 8, maxWidth: 560 }}>
