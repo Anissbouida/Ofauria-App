@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Check, History, Layers, RotateCcw, Users } from 'lucide-react';
+import { AlertTriangle, Check, Download, History, Layers, RotateCcw, Users } from 'lucide-react';
 import {
   CORE_MODULES, MODULE_DESCRIPTIONS, MODULE_GROUPS, MODULE_LABELS, dependentModules, effectiveModules,
   missingDependencies, requiredModules, type AppModule,
@@ -50,11 +50,13 @@ export default function SectorTab() {
   const { data: act, isLoading: loadingAct } = useQuery({ queryKey: ['module-activation'], queryFn: settingsApi.modules });
 
   const { data: versions = [] } = useQuery({ queryKey: ['module-versions'], queryFn: settingsApi.moduleVersions });
+  const { data: starter } = useQuery({ queryKey: ['sector-starter'], queryFn: settingsApi.sectorStarter });
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['sector'] });
     qc.invalidateQueries({ queryKey: ['module-activation'] });
     qc.invalidateQueries({ queryKey: ['module-versions'] });
+    qc.invalidateQueries({ queryKey: ['sector-starter'] });
     reload();
   };
 
@@ -72,6 +74,16 @@ export default function SectorTab() {
       notify.success('Préréglage du secteur rétabli');
     },
     onError: () => notify.error('Retour au préréglage impossible'),
+  });
+  // Données de départ (P7) : idempotent, ne crée que ce qui manque.
+  const starterMut = useMutation({
+    mutationFn: settingsApi.loadSectorStarter,
+    onSuccess: (r: Record<string, number>) => {
+      const created = Object.values(r).reduce((a, b) => a + b, 0);
+      qc.invalidateQueries();
+      notify.success(created ? `${created} élément(s) créé(s)` : 'Tout était déjà en place : rien de nouveau');
+    },
+    onError: () => notify.error('Chargement des données de départ impossible'),
   });
   const restoreMut = useMutation({
     mutationFn: settingsApi.restoreModuleVersion,
@@ -170,6 +182,13 @@ export default function SectorTab() {
     if (ok) sectorMut.mutate({ code, keep: keepAdjustments });
   };
 
+  const loadStarter = async () => {
+    const ok = await confirm(
+      `Seuls les éléments absents sont créés ; rien d'existant n'est modifié. L'article de démonstration peut ensuite être modifié ou supprimé.`,
+      { title: 'Charger les données de départ ?', confirmLabel: 'Charger' });
+    if (ok) starterMut.mutate();
+  };
+
   const restore = async (id: number, when: string) => {
     if (dirtyCount) { notify.warning('Enregistrez ou annulez vos changements avant de restaurer une version'); return; }
     const ok = await confirm(
@@ -233,6 +252,26 @@ export default function SectorTab() {
           )}
         </div>
       </SettingsSection>
+
+      {!!starter?.preview.items.length && (
+        <SettingsSection
+          title="Données de départ"
+          description={`De quoi démarrer en « ${sector?.current.label ?? starter.sector} » sans tout saisir. Vous pouvez relancer le chargement : ce qui existe déjà est conservé.`}
+          columns={1}
+        >
+          <div style={{ display: 'grid', gap: 10, maxWidth: 640 }}>
+            <ul style={{ margin: 0, paddingLeft: '1.1rem', display: 'grid', gap: 4 }}>
+              {starter.preview.items.map(it => <li key={it} className="odoo-setting-help" style={{ margin: 0 }}>{it}</li>)}
+            </ul>
+            <div>
+              <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                disabled={busy || starterMut.isPending} onClick={loadStarter}>
+                <Download size={14} /> {starterMut.isPending ? 'Chargement…' : 'Charger les données de départ'}
+              </button>
+            </div>
+          </div>
+        </SettingsSection>
+      )}
 
       {view.missing.length > 0 && (
         <StatusBanner tone="warning" icon={AlertTriangle} title="Configuration incomplète">
