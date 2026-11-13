@@ -65,6 +65,12 @@ const claudeCompleter: Completer = async ({ system, prompt, schema }) => {
     if (err instanceof Anthropic.AuthenticationError) throw new AssistantUnavailable('Clé ANTHROPIC_API_KEY refusée');
     if (err instanceof Anthropic.RateLimitError) throw new AssistantUnavailable('Assistant saturé : réessayez dans une minute');
     if (err instanceof Anthropic.APIConnectionError) throw new AssistantUnavailable('Assistant injoignable');
+    if (err instanceof Anthropic.APIError) {
+      // Le message brut de l'API (anglais, request_id) ne remonte pas à l'écran.
+      if (/credit balance/i.test(err.message)) throw new AssistantUnavailable('Crédit Anthropic épuisé : rechargez le compte (Plans & Billing) pour utiliser l\'assistant');
+      if (err instanceof Anthropic.PermissionDeniedError) throw new AssistantUnavailable('Clé ANTHROPIC_API_KEY sans accès à ce modèle');
+      throw new AssistantUnavailable(`Assistant indisponible (erreur ${err.status ?? 'inconnue'}) : réessayez plus tard`);
+    }
     throw err;
   }
   if (response.stop_reason === 'refusal') throw new AssistantUnavailable("L'assistant n'a pas pu traiter cette description");
