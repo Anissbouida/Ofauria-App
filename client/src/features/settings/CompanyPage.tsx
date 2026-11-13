@@ -4,7 +4,7 @@ import { Building2, MapPin, IdCard, CheckCircle2, AlertTriangle, Eye, HelpCircle
 import { useSettings } from '../../context/SettingsContext';
 import { settingsApi } from '../../api/settings.api';
 import { serverUrl } from '../../api/client';
-import CompanyBankAccounts from './CompanyBankAccounts';
+import CompanyBankAccounts, { formatRib } from './CompanyBankAccounts';
 import ParametersPanel from './ParametersPanel';
 import { settingAnchor } from './SettingsPrimitives';
 import { useDirtyForm, useDraft } from './DirtyForms';
@@ -249,7 +249,7 @@ export default function CompanyPage({ onOpen, onLeave }: {
             {d.legalPatente && <div>Patente {d.legalPatente}</div>}
             <hr />
             {bank
-              ? <><div>{bank.bank_name}</div><div className="mono">RIB {bank.rib}</div></>
+              ? <><div>{bank.bank_name}</div><div className="mono">RIB {formatRib(bank.rib)}</div></>
               : <span className="miss">Aucun compte bancaire sur les factures</span>}
           </div>
           <p className="odoo-company-preview-note">

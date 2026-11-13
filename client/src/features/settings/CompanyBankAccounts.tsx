@@ -20,7 +20,7 @@ function errorMessage(err: unknown, fallback: string) {
 }
 
 /** RIB par blocs : banque (3), localité (3), compte (16), clé (2). */
-const formatRib = (rib: string) => `${rib.slice(0, 3)} ${rib.slice(3, 6)} ${rib.slice(6, 22)} ${rib.slice(22)}`;
+export const formatRib = (rib: string) => `${rib.slice(0, 3)} ${rib.slice(3, 6)} ${rib.slice(6, 22)} ${rib.slice(22)}`;
 
 type Draft = { label: string; bankName: string; rib: string; swift: string; ledgerAccount: string; storeId: string; isDefault: boolean; showOnInvoices: boolean; isActive: boolean };
 const EMPTY: Draft = { label: '', bankName: '', rib: '', swift: '', ledgerAccount: '5141', storeId: '', isDefault: false, showOnInvoices: true, isActive: true };
