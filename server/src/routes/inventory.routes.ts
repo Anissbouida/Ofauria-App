@@ -6,6 +6,7 @@ import { ingredientImportController } from '../controllers/ingredient-import.con
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
+import { requireUnits, requireStockUnitChange } from '../services/unit-referential.js';
 
 const router = Router();
 
@@ -65,8 +66,10 @@ ingredientsRouter.post(
 
 ingredientsRouter.get('/', authenticate, ingredientController.list);
 ingredientsRouter.get('/:id', authenticate, ingredientController.getById);
-ingredientsRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientController.create);
-ingredientsRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientController.update);
+// Unité de stock : code du référentiel `units` (mig 515).
+const stockUnitOf = requireUnits((body: { unit?: string | null }) => [{ unit: body.unit }]);
+ingredientsRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), stockUnitOf, ingredientController.create);
+ingredientsRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), stockUnitOf, requireStockUnitChange(), ingredientController.update);
 // Convertit un ingredient mal range en consommable (packaging_items)
 ingredientsRouter.post('/:id/convert-to-consumable', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), ingredientController.convertToConsumable);
 // Suppression : admin + gerant (cf demande utilisateur — flexibilite mise en place)

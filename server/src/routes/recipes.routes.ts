@@ -11,9 +11,21 @@ import { createRecipeSchema, updateRecipeSchema, bulkDeleteRecipesSchema, saveEt
 import { replaceComponentsSchema, financeSchema, createFormatSchema, duplicateFormatSchema, updateFormatSchema } from '../validators/recipe-component.validator.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 import { requireStepTypes } from '../services/process-referentials.js';
+import { requireUnits } from '../services/unit-referential.js';
 
 // Types d'étape : codes du référentiel production_step_types (mig 513).
 const stepTypesOf = requireStepTypes((body: { etapes?: { type?: string | null }[] }) => (body.etapes ?? []).map(e => e.type));
+// Unités : codes du référentiel `units` (mig 515), et conversion possible vers l'unité de stock.
+type UnitBody = {
+  yieldUnit?: string | null;
+  ingredients?: { ingredientId?: string; unit?: string | null }[];
+  components?: { sourceIngredientId?: string | null; unite?: string | null }[];
+};
+const unitsOf = requireUnits((body: UnitBody) => [
+  { unit: body.yieldUnit },
+  ...(body.ingredients ?? []).map(i => ({ unit: i.unit, ingredientId: i.ingredientId })),
+  ...(body.components ?? []).map(c => ({ unit: c.unite, ingredientId: c.sourceIngredientId })),
+]);
 
 const router = Router();
 
@@ -69,6 +81,7 @@ router.put(
   authenticate,
   authorize(...ROLE_GROUPS.PRODUCTION),
   validate(replaceComponentsSchema),
+  unitsOf,
   recipeComponentController.replace
 );
 router.get('/by-product/:productId', authenticate, recipeController.getByProductId);
@@ -78,8 +91,8 @@ router.post('/:id/versions/:versionNumber/restore', authenticate, authorize(...R
 // Fiche technique imprimable (PDF) — lecture seule, ouverte a tout utilisateur
 // authentifie : c'est le document que le labo pose sur le plan de travail.
 router.get('/:id/fiche-technique', authenticate, recipeController.downloadFiche);
-router.post('/', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(createRecipeSchema), stepTypesOf, recipeController.create);
-router.put('/:id', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(updateRecipeSchema), stepTypesOf, recipeController.update);
+router.post('/', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(createRecipeSchema), stepTypesOf, unitsOf, recipeController.create);
+router.put('/:id', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(updateRecipeSchema), stepTypesOf, unitsOf, recipeController.update);
 // Archivage (mig 275 wip + 346) : DELETE archive, plus de suppression physique ;
 // bulk-archive / bulk-restore plus bas, restauration unitaire ici.
 router.post('/:id/restore', authenticate, authorize(ROLES.ADMIN), recipeController.restore);

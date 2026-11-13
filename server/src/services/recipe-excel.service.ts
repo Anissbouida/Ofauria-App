@@ -22,13 +22,14 @@ import * as XLSX from 'xlsx';
  * editables uniquement via l'interface RecipesPage.
  */
 
-export type RecipeUnit = 'kg' | 'g' | 'l' | 'cl' | 'ml' | 'unit';
+// Unités historiques + codes du référentiel `units` passés par l'appelant (mig 515).
+export type RecipeUnit = string;
 const ALLOWED_UNITS: ReadonlySet<string> = new Set(['kg', 'g', 'l', 'cl', 'ml', 'unit']);
 
-function normalizeUnit(raw: unknown): RecipeUnit | null {
+function normalizeUnit(raw: unknown, extraUnits: ReadonlySet<string>): RecipeUnit | null {
   if (raw === null || raw === undefined) return null;
   const s = String(raw).trim().toLowerCase();
-  if (ALLOWED_UNITS.has(s)) return s as RecipeUnit;
+  if (ALLOWED_UNITS.has(s) || extraUnits.has(s)) return s;
   if (s === 'kilogramme' || s === 'kilo' || s === 'kilos') return 'kg';
   if (s === 'gramme' || s === 'grammes') return 'g';
   if (s === 'litre' || s === 'litres') return 'l';
@@ -131,7 +132,7 @@ function findSheet(wb: XLSX.WorkBook, targetName: string): XLSX.WorkSheet | null
  * Premiere ligne de chaque feuille = en-tete (ignoree).
  * Lignes vides ignorees. Lookup par nom (case-insensitive).
  */
-export function parseRecipeWorkbook(buffer: Buffer): ParsedRecipesWorkbook {
+export function parseRecipeWorkbook(buffer: Buffer, extraUnits: ReadonlySet<string> = new Set()): ParsedRecipesWorkbook {
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   if (wb.SheetNames.length === 0) {
     throw new Error('Aucune feuille trouvee dans le fichier');
@@ -211,7 +212,7 @@ export function parseRecipeWorkbook(buffer: Buffer): ParsedRecipesWorkbook {
       errors.push({ sheet: SHEET_RECIPES, sourceRow, message: `Unite de rendement manquante (colonne E)` });
       continue;
     }
-    const yieldUnitNormalized = normalizeUnit(yieldUnitRaw);
+    const yieldUnitNormalized = normalizeUnit(yieldUnitRaw, extraUnits);
     if (yieldUnitNormalized) {
       yieldUnit = yieldUnitNormalized;
     } else {
@@ -255,7 +256,7 @@ export function parseRecipeWorkbook(buffer: Buffer): ParsedRecipesWorkbook {
       const recipeName = toCleanString(row[0]);
       const ingredientName = toCleanString(row[1]);
       const quantity = toNumber(row[2]);
-      const unit = normalizeUnit(row[3]);
+      const unit = normalizeUnit(row[3], extraUnits);
 
       if (!recipeName) {
         errors.push({ sheet: SHEET_INGREDIENTS, sourceRow, message: 'Nom de recette manquant (colonne A)' });
@@ -270,7 +271,7 @@ export function parseRecipeWorkbook(buffer: Buffer): ParsedRecipesWorkbook {
         continue;
       }
       if (!unit) {
-        errors.push({ sheet: SHEET_INGREDIENTS, sourceRow, message: `Unite invalide (colonne D) : "${row[3] ?? ''}". Valeurs : kg, g, l, cl, ml, unit` });
+        errors.push({ sheet: SHEET_INGREDIENTS, sourceRow, message: `Unite invalide (colonne D) : "${row[3] ?? ''}". Valeurs : ${[...new Set([...ALLOWED_UNITS, ...extraUnits])].join(', ')}` });
         continue;
       }
       ingredients.push({ sourceRow, recipeName, ingredientName, quantity, unit });

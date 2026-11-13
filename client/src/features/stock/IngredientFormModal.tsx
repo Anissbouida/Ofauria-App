@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Package, Edit3, X, Save, Tag, Boxes, ShieldAlert, Info } from 'lucide-react';
 import { suppliersApi } from '../../api/accounting.api';
 import { referentielApi } from '../../api/referentiel.api';
+import { useExtraUnits } from '../../hooks/useReferentiel';
 import { AllergenSelector } from '../../components/ui/AllergenSelector';
 import SearchSelect, { type SearchSelectOption } from '../../components/ui/SearchSelect';
 import { useStockCategories, STOCKABLE_ROOT_IDS } from './useStockCategories';
@@ -55,6 +56,7 @@ interface Props {
 
 export default function IngredientFormModal({ mode, ingredient, threshold, onClose, onSave, isLoading, title, initialName, initialSupplier, rootIds = STOCKABLE_ROOT_IDS, isConsumable }: Props) {
   const ing = ingredient || {};
+  const extraUnits = useExtraUnits(UNITS.map(u => u.value));
   const [form, setForm] = useState({
     name: (ing.name as string) || initialName || '',
     unit: (ing.unit as string) || 'kg',
@@ -197,6 +199,15 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                       );
                     })}
                   </div>
+                  {/* Unités ajoutées au référentiel (mètre, m²…, mig 515). */}
+                  {extraUnits.length > 0 && (
+                    <select className="input" style={{ marginTop: 6 }} aria-label="Autre unité de stock"
+                      value={UNITS.some(u => u.value === form.unit) ? '' : form.unit}
+                      onChange={e => e.target.value && set('unit', e.target.value)}>
+                      <option value="">Autre unité…</option>
+                      {extraUnits.map(u => <option key={u.code} value={u.code}>{u.label} ({u.code})</option>)}
+                    </select>
+                  )}
                 </Field>
                 <Field label="Coût unitaire">
                   <Suffixed suffix={`DH / ${u}`}>

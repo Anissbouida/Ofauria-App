@@ -1,3 +1,4 @@
+import { knownUnitCodes } from '../services/unit-referential.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { db } from '../config/database.js';
@@ -617,7 +618,7 @@ export const recipeImportController = {
       return;
     }
     try {
-      const parsed = parseRecipeWorkbook(req.file.buffer);
+      const parsed = parseRecipeWorkbook(req.file.buffer, await knownUnitCodes());
       const plan = await buildPlan(parsed);
 
       // Combine erreurs de parsing + erreurs de lookup
@@ -687,7 +688,7 @@ export const recipeImportController = {
     }
     let parsed: ParsedRecipesWorkbook;
     try {
-      parsed = parseRecipeWorkbook(req.file.buffer);
+      parsed = parseRecipeWorkbook(req.file.buffer, await knownUnitCodes());
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur de parsing';
       res.status(400).json({ success: false, error: { message: msg } });

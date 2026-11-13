@@ -9,6 +9,10 @@ export const referentielApi = {
   tables: () =>
     api.get('/params/tables').then(r => r.data.data),
 
+  /** Unités de mesure actives (mig 515), lisibles par tout utilisateur connecté. */
+  activeUnits: () =>
+    api.get('/params/units/active').then(r => r.data.data) as Promise<{ code: string; label: string; category: string | null }[]>,
+
   /** List entries for a specific table */
   entries: (tableName: string, includeInactive = false) =>
     api.get(`/params/${tableName}`, { params: includeInactive ? { includeInactive: 'true' } : {} }).then(r => r.data.data),

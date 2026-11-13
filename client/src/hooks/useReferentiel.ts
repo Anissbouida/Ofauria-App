@@ -35,3 +35,12 @@ export function useReferentiel(tableId: string, enabled = true) {
 
   return { entries, map, getLabel, getColor, isLoading };
 }
+
+/**
+ * Unités ajoutées au référentiel `units` (mig 515) en plus de `fixed`, la liste
+ * historique de l'écran. Lecture ouverte (GET /params/units/active).
+ */
+export function useExtraUnits(fixed: readonly string[]) {
+  const { data = [] } = useQuery({ queryKey: ['units-active'], queryFn: referentielApi.activeUnits, staleTime: 5 * 60 * 1000 });
+  return data.filter(u => !fixed.includes(u.code));
+}

@@ -5,6 +5,7 @@ import { authorize } from '../middleware/role.middleware.js';
 import { authorizeSettings } from '../middleware/settings-access.middleware.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { activeUnits } from '../services/unit-referential.js';
 
 const router = Router();
 
@@ -13,6 +14,12 @@ router.get('/dashboard', authenticate, authorizeSettings('referentiel'), asyncHa
 
 // List all registered reference tables
 router.get('/tables', authenticate, authorizeSettings('referentiel'), asyncHandler(refTableController.list));
+
+// Unités de mesure actives (mig 515) : lues par la fiche matière, la nomenclature et la
+// production, donc ouvertes à tout utilisateur connecté (liste non sensible).
+router.get('/units/active', authenticate, asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: await activeUnits() });
+}));
 
 // CRUD on entries of a specific table
 // Lecture ouverte au groupe WAREHOUSE (inclut le magasinier) : les référentiels sont des

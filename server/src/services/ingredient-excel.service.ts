@@ -19,7 +19,8 @@ import { ALLERGEN_CODES, normalizeAllergens } from '../validators/allergens.js';
  *   K  DLC plus proche
  */
 
-export type IngredientUnit = 'kg' | 'g' | 'l' | 'ml' | 'unit';
+// Unités historiques + codes du référentiel `units` passés par l'appelant (mig 515).
+export type IngredientUnit = string;
 const ALLOWED_UNITS: ReadonlySet<string> = new Set(['kg', 'g', 'l', 'ml', 'unit']);
 
 export const INGREDIENT_CATEGORIES: Array<{ value: string; label: string }> = [
@@ -78,10 +79,10 @@ export interface ParsedIngredientsWorkbook {
   warnings: string[];
 }
 
-function normalizeUnit(raw: unknown): IngredientUnit | null {
+function normalizeUnit(raw: unknown, extraUnits: ReadonlySet<string>): IngredientUnit | null {
   if (raw === null || raw === undefined) return null;
   const s = String(raw).trim().toLowerCase();
-  if (ALLOWED_UNITS.has(s)) return s as IngredientUnit;
+  if (ALLOWED_UNITS.has(s) || extraUnits.has(s)) return s;
   // Tolerance : libelle FR usuel
   if (s === 'kilogramme' || s === 'kilo' || s === 'kilos') return 'kg';
   if (s === 'gramme' || s === 'grammes') return 'g';
@@ -134,7 +135,7 @@ function parseAllergens(v: unknown): { codes: string[]; unknown: string[] } {
  * Parse un workbook xlsx d'ingredients. Premiere feuille utilisee.
  * Premiere ligne = en-tete (ignoree). Lignes vides ignorees.
  */
-export function parseIngredientWorkbook(buffer: Buffer): ParsedIngredientsWorkbook {
+export function parseIngredientWorkbook(buffer: Buffer, extraUnits: ReadonlySet<string> = new Set()): ParsedIngredientsWorkbook {
   const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   const sheetName = wb.SheetNames[0];
   if (!sheetName) {
@@ -203,9 +204,9 @@ export function parseIngredientWorkbook(buffer: Buffer): ParsedIngredientsWorkbo
       continue;
     }
 
-    const unit = normalizeUnit(rawUnit);
+    const unit = normalizeUnit(rawUnit, extraUnits);
     if (!unit) {
-      errors.push({ sourceRow, message: `Unite invalide (colonne C) : "${rawUnit ?? ''}". Valeurs : kg, g, l, ml, unit` });
+      errors.push({ sourceRow, message: `Unite invalide (colonne C) : "${rawUnit ?? ''}". Valeurs : ${[...new Set([...ALLOWED_UNITS, ...extraUnits])].join(', ')}` });
       continue;
     }
 

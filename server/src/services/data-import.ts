@@ -1,3 +1,4 @@
+import { knownUnitCodes } from './unit-referential.js';
 import * as XLSX from 'xlsx';
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
@@ -88,7 +89,7 @@ export const IMPORT_ENTITIES: EntityDef[] = [
     note: 'Le stock ne s\'importe pas ici : il se saisit à la réception ou par un inventaire.',
     columns: [
       { header: 'Nom', field: 'name', type: 'text', required: true, max: 200, example: 'Farine T55' },
-      { header: 'Unité', field: 'unit', type: 'enum', required: true, options: UNITS, example: 'kg', help: 'kg, g, l, ml, unit ou piece' },
+      { header: 'Unité', field: 'unit', type: 'enum', required: true, options: UNITS.filter(u => u !== 'piece'), example: 'kg' },
       { header: 'Coût unitaire', field: 'unit_cost', type: 'number', example: '6.50', help: 'En DH par unité' },
       { header: 'Catégorie', field: 'category_id', type: 'expense_category', example: 'Farines', help: 'Nom d\'une catégorie du référentiel' },
       { header: 'Fournisseur habituel', field: 'supplier', type: 'text', max: 150, example: 'Moulins du Maghreb' },
@@ -129,7 +130,10 @@ export const entityByKey = (k: string) => IMPORT_ENTITIES.find(e => e.key === k)
 async function columnsFor(def: EntityDef): Promise<Column[]> {
   const r = await db.query(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1`, [def.table]);
   const cols = new Set(r.rows.map((x: { column_name: string }) => x.column_name));
-  const base = def.columns.filter(c => cols.has(c.field));
+  // Unités : liste figée complétée par le référentiel `units` (mig 515).
+  const known = def.columns.some(c => c.field === 'unit' && c.type === 'enum') ? [...await knownUnitCodes()] : [];
+  const base = def.columns.filter(c => cols.has(c.field))
+    .map(c => (c.field === 'unit' && c.type === 'enum' ? { ...c, options: [...new Set([...(c.options ?? []), ...known])] } : c));
   if (!cols.has('custom_fields')) return base;
   const defs = await listDefs(def.cfEntity);
   return [...base, ...defs.map(d => ({
@@ -206,7 +210,8 @@ function convert(c: Column, raw: unknown, lk: Lookups): { value?: unknown; error
     case 'enum': {
       const v = s.toLowerCase().replace(/[\s-]+/g, '_');
       const alias: Record<string, string> = { pieces: 'piece', 'pièce': 'piece', unite: 'unit', 'unité': 'unit', u: 'unit', litre: 'l', litres: 'l', kilo: 'kg', kilos: 'kg', gramme: 'g', grammes: 'g' };
-      const val = c.options!.includes(v) ? v : alias[v];
+      let val = c.options!.includes(v) ? v : alias[v];
+      if (val === 'piece' && !c.options!.includes('piece')) val = 'unit';
       return val && c.options!.includes(val) ? { value: val } : { error: `valeur attendue : ${c.options!.join(', ')}` };
     }
     case 'integer': case 'number': {

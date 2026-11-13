@@ -7,7 +7,8 @@ const componentSchema = z
     sourceRecipeId: z.string().uuid().nullable().optional(),
     sourceIngredientId: z.string().uuid().nullable().optional(),
     quantite: z.number().positive('La quantité doit être > 0'),
-    unite: z.enum(['g', 'kg', 'ml', 'l', 'cl', 'unit']).default('g'),
+    // Code du référentiel `units` (mig 515), vérifié par la route (requireUnits).
+    unite: z.string().trim().min(1).max(20).default('g'),
     ordre: z.number().int().nonnegative().default(0),
     // Mig 265 (audit A5) : perte % par ligne, defaut 0. Majore la matiere brute
     // (qty_brute = qty / (1 - pertePct/100)) cote cout et cote besoins.

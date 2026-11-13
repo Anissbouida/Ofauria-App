@@ -10,6 +10,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage as extractErr } from '../../api/errors';
 import { usePermissions } from '../../context/PermissionsContext';
+import { useExtraUnits } from '../../hooks/useReferentiel';
 
 interface SourceOpt { type: 'recipe' | 'ingredient'; id: string; name: string; unit: string; cost: number; yieldQty?: number; }
 interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient'; sourceId: string; quantite: string; unite: string; pertePct?: string }
@@ -179,6 +180,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
   // Cru / cuit : option « Contenants cru / cuit » (mig 507). Éteinte, la perte reste
   // saisissable (perte de fabrication) mais le poids cuit disparaît.
   const { hasFeature } = usePermissions();
+  const extraUnits = useExtraUnits(UNITES);
   const cruCuit = hasFeature('contenants_cru_cuit');
   const [formatId, setFormatId] = useState<string | null>(null);
   // Id d'un format tout juste créé/dupliqué : protège sa sélection tant que la
@@ -635,6 +637,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           <select className="h-8 px-1.5 bg-white border border-gray-200 rounded-md text-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
             value={r.unite} onChange={(e) => setRow(r.key, { unite: e.target.value })} aria-label="Unité de la quantité">
             {UNITES.map((u) => <option key={u} value={u}>{u}</option>)}
+            {extraUnits.map((u) => <option key={u.code} value={u.code} title={u.label}>{u.code}</option>)}
+            {![...UNITES, ...extraUnits.map(u => u.code)].includes(r.unite) && <option value={r.unite}>{r.unite}</option>}
           </select>
           <div>
             <input type="number" step="any" min="0" max="99"

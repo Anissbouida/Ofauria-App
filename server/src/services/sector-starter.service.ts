@@ -67,8 +67,7 @@ const STARTER: Record<string, StarterPack> = {
       { code: 'outillage',    label: 'Outillage' },
     ],
     workshop: { code: 'atelier_principal', label: 'Atelier principal', categorySlug: 'starter-produits-finis' },
-    // Matières dans les unités de stock existantes (kg, l, pièce) : la contrainte
-    // ingredients_unit_check n'en accepte pas d'autres.
+    // Le tube se stocke au mètre (unité ajoutée au référentiel par la mig 515).
     demo: {
       productName: 'Étagère métallique (démo)',
       productSlug: 'starter-demo-etagere',
@@ -76,7 +75,7 @@ const STARTER: Record<string, StarterPack> = {
       price: 450,
       materials: [
         { name: 'Tôle acier (démo)', unit: 'kg',   unitCost: 14,  quantity: 6.5 },
-        { name: 'Tube carré 1 m (démo)', unit: 'unit', unitCost: 22, quantity: 4 },
+        { name: 'Tube carré (démo)', unit: 'm',    unitCost: 22,  quantity: 4 },
         { name: 'Vis M6 (démo)',     unit: 'unit', unitCost: 0.3, quantity: 24 },
         { name: 'Peinture (démo)',   unit: 'l',    unitCost: 90,  quantity: 0.4 },
       ],
