@@ -27,6 +27,14 @@ const STARTER: Record<string, { categories: StarterCategory[] }> = {
       { name: 'Accessoires', slug: 'starter-accessoires' },
     ],
   },
+  // Industrie / Fabrication (mig 510) : produits fabriqués, revente et prestations.
+  fabrication: {
+    categories: [
+      { name: 'Produits finis', slug: 'starter-produits-finis' },
+      { name: 'Marchandises', slug: 'starter-marchandises' },
+      { name: 'Services', slug: 'starter-services' },
+    ],
+  },
 };
 
 export async function loadSectorStarter(sectorCode: string, _userId?: string): Promise<{ categories: number }> {

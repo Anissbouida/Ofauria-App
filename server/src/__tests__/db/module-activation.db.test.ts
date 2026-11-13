@@ -212,6 +212,21 @@ describe.skipIf(!hasTestDb)('Activation des modules et options', () => {
     expect(act.rollout.storeDisabled[store]).toEqual(['pos']);
   });
 
+  it('secteur Industrie / Fabrication : socle de fabrication sans la couche boulangerie (P1)', async () => {
+    await sectors.setSector('fabrication', { keepAdjustments: false });
+    const act = await sectors.activation();
+    for (const m of ['production', 'recipes', 'stock', 'purchasing', 'sales'] as const) expect(act.modules.has(m)).toBe(true);
+    for (const m of ['replenishment', 'unsold', 'reconciliation'] as const) expect(act.modules.has(m)).toBe(false);
+    expect(act.features.size).toBe(0); // aucune option boulangerie (HACCP, DLC du jour…)
+    expect(await callGuard('GET', '/production/plans')).toBe(200);
+    expect(await callGuard('GET', '/haccp/logs')).toBe(403);
+    expect(await callGuard('GET', '/unsold-decisions')).toBe(200); // préfixe partagé avec la caisse
+    expect(await sectors.labels('fabrication')).toMatchObject({ recipe: 'Nomenclature', production: 'Fabrication' });
+    // Une option se rallume à la carte.
+    await sectors.applyAdjustments({ features: { haccp: true } });
+    expect(await callGuard('GET', '/haccp/logs')).toBe(200);
+  });
+
   it("une option éteinte ferme ses routes (HACCP)", async () => {
     await sectors.setSector('boulangerie', { keepAdjustments: false });
     expect(await callGuard('GET', '/haccp/logs')).toBe(200);
