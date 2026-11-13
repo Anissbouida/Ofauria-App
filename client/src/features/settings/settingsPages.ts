@@ -63,8 +63,9 @@ export const GROUP_ICONS: Record<SettingsGroup, LucideIcon> = {
 export const USERS_GROUP = 'Utilisateurs et sécurité';
 
 const LEGAL = [
-  'Identité légale', 'Forme juridique', 'Capital social', 'Raison sociale', 'Siège social', 'Ville', 'Téléphone', 'Email',
-  'Registre de commerce (RC)', 'Identifiant fiscal (IF)', 'ICE', 'Patente / Taxe professionnelle', 'Site web', "N° d'affiliation CNSS",
+  'Identité légale', 'Raison sociale', 'Nom commercial', 'Forme juridique', 'Capital social', 'Sous-titre',
+  'Coordonnées', 'Siège social', 'Ville', 'Téléphone', 'E-mail', 'Site web',
+  'Identifiants fiscaux et sociaux', 'ICE', 'Identifiant fiscal (IF)', 'Registre de commerce (RC)', 'Patente', 'Code commune DGI', 'N° CNSS',
 ];
 
 /** Accueil (lot B) : hors des groupes, visible de tout utilisateur ayant le droit « Paramètres ». */
@@ -75,9 +76,9 @@ export const HOME_PAGE: SettingsPageDef = {
 
 export const SETTINGS_PAGES: SettingsPageDef[] = [
   { key: 'company', group: 'Mon entreprise', auditTable: 'company_settings', section: 'company', label: 'Société', icon: Building2,
-    description: 'Identité légale, comptes bancaires et remise du personnel',
-    keywords: 'entreprise rib banque iban remise personnel pays',
-    fields: ["Informations de l'entreprise", "Nom de l'entreprise", 'Sous-titre', ...LEGAL] },
+    description: 'Identité légale, coordonnées, identifiants et comptes bancaires',
+    keywords: 'entreprise rib banque iban pays raison sociale ice if rc patente cnss',
+    fields: [...LEGAL, 'Comptes bancaires'] },
   { key: 'sector', group: 'Activité et modules', section: 'company', label: 'Secteur et modules', icon: Layers,
     description: 'Choisir le métier, puis activer ou désactiver chaque module et ses options',
     keywords: 'secteur activite metier pack boulangerie generique negoce modules industrie services activer desactiver options fonctionnalites',
@@ -98,8 +99,8 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
     description: 'Boutique, commande, événement, gros, livraison', keywords: 'canal vente prix par canal' },
   { key: 'posRules', group: 'Ventes et caisse', auditTable: 'module_parameters', modules: ['pos'], section: 'business', label: 'Règles de caisse', icon: ShoppingCart,
     alsoSections: ['sachets'],
-    description: 'Vente sans stock vitrine, fermeture de caisse et contrôle des sachets',
-    keywords: 'caisse rupture stock negatif vente sans stock vitrine sachet emballage ratio vendeuse fermeture',
+    description: 'Vente sans stock vitrine, fermeture de caisse, remise du personnel et sachets',
+    keywords: 'caisse rupture stock negatif vente sans stock vitrine sachet emballage ratio vendeuse fermeture remise personnel',
     fields: ['Caisse : produits sans stock vitrine', 'Réglage global', 'Ratio par catégorie'] },
   { key: 'salesRules', group: 'Ventes et caisse', auditTable: 'module_parameters', modules: ['sales', 'orders', 'customers'], section: 'business', label: 'Devis et crédit clients', icon: BellRing,
     description: 'Validité des devis, relances et plafond de crédit', keywords: 'devis proforma validite relance recouvrement impaye plafond credit blocage',
@@ -152,7 +153,9 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
 export function pageOfParameter(key: string): SettingsPageKey {
   if (key.startsWith('purchasing.')) return 'purchasing';
   if (key.startsWith('ledger.') || key.startsWith('accounting.')) return 'ledger';
-  if (key.startsWith('sales.') || key.startsWith('company.')) return 'company';
+  if (key.startsWith('company.')) return 'company';
+  if (['sales.pos_stock', 'sales.person_sizes', 'sales.closure', 'sales.staff_discount'].includes(key)) return 'posRules';
+  if (key.startsWith('sales.')) return 'salesRules';
   return 'production';
 }
 

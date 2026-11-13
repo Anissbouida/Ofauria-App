@@ -19,7 +19,7 @@ import NumberingTab from './NumberingTab';
 import ParametersPanel from './ParametersPanel';
 import SodMonitor from './SodMonitor';
 import ProductCategoriesTab from './ProductCategoriesTab';
-import CompanyBankAccounts from './CompanyBankAccounts';
+import CompanyPage from './CompanyPage';
 import StoresPanel from './StoresPanel';
 import TaxCodesTab from './TaxCodesTab';
 import CurrenciesTab from './CurrenciesTab';
@@ -193,7 +193,7 @@ function SettingsShell() {
 
   const pageContent: Record<SettingsPageKey, React.ReactNode> = {
     home: <SetupHome pages={pages} onOpen={(page, anchor) => void goTo(page, { anchor })} onOpenUsers={() => void leaveTo('/users')} />,
-    company: <CompanyPage />,
+    company: <CompanyPage onOpen={(page, anchor) => void goTo(page, { anchor })} onLeave={href => void leaveTo(href)} />,
     sector: <SectorTab />,
     stores: <StoresPanel />,
     appearance: <AppearanceTab />,
@@ -220,7 +220,7 @@ function SettingsShell() {
     // suit sa section du droit « Paramètres ».
     posRules: (
       <>
-        {canSection('business') && <ParametersPanel keys={['sales.pos_stock', 'sales.person_sizes', 'sales.closure']} />}
+        {canSection('business') && <ParametersPanel keys={['sales.pos_stock', 'sales.person_sizes', 'sales.closure', 'sales.staff_discount']} />}
         {canSection('sachets') && <SachetsTab />}
       </>
     ),
@@ -413,111 +413,6 @@ function PageToc() {
       <span className="odoo-settings-toc-title">Sur cette page</span>
       {items.map(it => <button key={it.id} type="button" onClick={() => go(it.id)}>{it.label}</button>)}
     </nav>
-  );
-}
-
-/* ============ SOCIETE ============ */
-
-function CompanyPage() {
-  return (
-    <>
-      <CompanyInfoSection />
-      <LegalIdentitySection />
-      <CompanyBankAccounts />
-      <ParametersPanel keys={['sales.staff_discount', 'company.country_code']} />
-    </>
-  );
-}
-
-function CompanyInfoSection() {
-  const { settings, updateSettings } = useSettings();
-  const { draft, set, mark, changes, reset, adopt } = useDraft({ companyName: settings.companyName, subtitle: settings.subtitle });
-  useDirtyForm('company-info', {
-    dirty: changes > 0, changes, reset,
-    save: async () => { await updateSettings(draft); adopt(); },
-  });
-
-  return (
-    <SettingsSection title="Informations de l'entreprise">
-      <SettingItem {...mark('companyName')} title="Nom de l'entreprise" description="Affiché dans l'application et sur les tickets">
-        <input id="company-name" type="text" value={draft.companyName} onChange={(e) => set('companyName', e.target.value)}
-          className="odoo-input" placeholder="Nom de votre entreprise" />
-      </SettingItem>
-      <SettingItem {...mark('subtitle')} title="Sous-titre" description="Texte affiché sous le logo">
-        <input id="company-subtitle" type="text" value={draft.subtitle} onChange={(e) => set('subtitle', e.target.value)}
-          className="odoo-input" placeholder="Boulangerie & Pâtisserie" />
-      </SettingItem>
-    </SettingsSection>
-  );
-}
-
-/* ─── Identite legale (mig 326) ─── */
-const LEGAL_FIELDS: Array<{ key: 'legalName' | 'legalAddress' | 'legalCity' | 'legalPhone' | 'legalEmail' | 'legalRc' | 'legalIf' | 'legalIce' | 'legalPatente' | 'legalCommuneCode'; title: string; description: string; placeholder?: string }> = [
-  { key: 'legalName', title: 'Raison sociale', description: 'Nom légal (ex. « SARL ») sur les factures, bons de commande, bulletins et attestations' },
-  { key: 'legalAddress', title: 'Siège social', description: 'Adresse légale complète' },
-  { key: 'legalCity', title: 'Ville', description: 'Utilisée dans « Fait à … » des attestations et pièces RH' },
-  { key: 'legalPhone', title: 'Téléphone', description: 'Pied de page des factures et bons de commande' },
-  { key: 'legalEmail', title: 'Email', description: 'Pied de page des factures et bons de commande' },
-  { key: 'legalRc', title: 'Registre de commerce (RC)', description: 'Numéro RC' },
-  { key: 'legalIf', title: 'Identifiant fiscal (IF)', description: 'Numéro IF' },
-  { key: 'legalIce', title: 'ICE', description: 'Identifiant commun de l\'entreprise : 15 chiffres', placeholder: '000000000000000' },
-  { key: 'legalPatente', title: 'Patente / Taxe professionnelle', description: 'Numéro de patente du siège (chaque établissement peut avoir la sienne)' },
-  { key: 'legalCommuneCode', title: 'Code commune DGI', description: 'Commune du siège selon le référentiel de la DGI (état 9421, Simpl-IR)', placeholder: '111.01.01' },
-];
-
-// Fiche societe (mig 331) : saisis avec l'identite legale, types propres.
-const LEGAL_FORMS: [string, string][] = [
-  ['', '—'], ['SARL', 'SARL'], ['SARL AU', 'SARL à associé unique'], ['SA', 'SA'], ['SAS', 'SAS'], ['SNC', 'SNC'],
-  ['SCS', 'SCS'], ['EI', 'Entreprise individuelle'], ['AUTO_ENTREPRENEUR', 'Auto-entrepreneur'], ['COOPERATIVE', 'Coopérative'], ['AUTRE', 'Autre'],
-];
-
-function LegalIdentitySection() {
-  const { settings, updateSettings } = useSettings();
-  const { draft: form, set, mark, changes, reset, adopt } = useDraft<Record<string, string>>({
-    ...Object.fromEntries(LEGAL_FIELDS.map(f => [f.key, settings[f.key] ?? ''])),
-    legalForm: settings.legalForm ?? '',
-    legalCapital: settings.legalCapital === null || settings.legalCapital === undefined ? '' : String(settings.legalCapital),
-    legalWebsite: settings.legalWebsite ?? '',
-  });
-  const capitalInvalid = form.legalCapital !== '' && !(Number(form.legalCapital) >= 0);
-  const iceInvalid = !!form.legalIce && !/^\d{15}$/.test(form.legalIce.replace(/\s/g, ''));
-
-  useDirtyForm('company-legal', {
-    dirty: changes > 0, changes, reset,
-    invalid: iceInvalid ? 'L\'ICE doit compter 15 chiffres.' : capitalInvalid ? 'Le capital social doit être un montant positif.' : null,
-    save: async () => {
-      await updateSettings({ ...form, legalCapital: form.legalCapital === '' ? null : Number(form.legalCapital) } as Partial<typeof settings>);
-      adopt();
-    },
-  });
-
-  return (
-    <SettingsSection title="Identité légale">
-      <SettingItem {...mark('legalForm')} title="Forme juridique" description="Mentionnée sur les factures avec le capital">
-        <select id="legal-form" value={form.legalForm ?? ''} onChange={(e) => set('legalForm', e.target.value)} className="odoo-input">
-          {LEGAL_FORMS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
-      </SettingItem>
-      <SettingItem {...mark('legalCapital')} title="Capital social" description="En dirhams">
-        <input id="legal-capital" type="number" min="0" step="1000" value={form.legalCapital ?? ''}
-          onChange={(e) => set('legalCapital', e.target.value)}
-          className={`odoo-input${capitalInvalid ? ' invalid' : ''}`} />
-      </SettingItem>
-      {LEGAL_FIELDS.map(f => (
-        <SettingItem key={f.key} {...mark(f.key)} title={f.title} description={f.description}>
-          <input id={`legal-${f.key}`} type="text" value={form[f.key] ?? ''} placeholder={f.placeholder}
-            onChange={(e) => set(f.key, e.target.value)}
-            className={`odoo-input${f.key === 'legalIce' && iceInvalid ? ' invalid' : ''}`} />
-        </SettingItem>
-      ))}
-      <SettingItem {...mark('legalWebsite')} title="Site web" description="Pied de page des documents">
-        <input id="legal-website" type="text" value={form.legalWebsite ?? ''} placeholder="www.exemple.ma"
-          onChange={(e) => set('legalWebsite', e.target.value)} className="odoo-input" />
-      </SettingItem>
-      <SettingItem title="N° d'affiliation CNSS" description="Tenu dans Personnel › Paie › Paramètres de paie (déclarations sociales)">
-        <span style={{ fontSize: '0.875rem' }}>{settings.employerCnssNumber || <span style={{ color: 'var(--odoo-text-muted)' }}>Non renseigné</span>}</span>
-      </SettingItem>
-    </SettingsSection>
   );
 }
 
