@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Check, Layers, RotateCcw } from 'lucide-react';
 import {
@@ -7,6 +7,7 @@ import {
 } from '@ofauria/shared';
 import { settingsApi, type ModuleActivation } from '../../api/settings.api';
 import { OdooToggle, SettingItem, SettingsSection } from './SettingsPrimitives';
+import { useDirtyForm } from './DirtyForms';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -17,7 +18,8 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
  *
  * Le secteur est un PRÉRÉGLAGE : il fixe les modules et options de départ. Chaque
  * module, puis chaque option, s'ajuste ensuite ici. Les changements restent en
- * brouillon jusqu'à « Enregistrer » ; les dépendances sont proposées avant l'envoi.
+ * brouillon jusqu'à « Enregistrer » (barre commune des Paramètres, DirtyForms) ;
+ * les dépendances sont proposées avant l'envoi.
  * Désactiver ne supprime aucune donnée : le module est masqué et son API fermée.
  */
 
@@ -59,16 +61,6 @@ export default function SectorTab() {
     onSuccess: () => { refresh(); notify.success('Secteur mis à jour'); },
     onError: () => notify.error('Changement de secteur impossible'),
   });
-  const saveMut = useMutation({
-    mutationFn: settingsApi.saveModules,
-    onSuccess: (data: ModuleActivation) => {
-      qc.setQueryData(['module-activation'], data);
-      setDraft(EMPTY);
-      refresh();
-      notify.success('Modules mis à jour');
-    },
-    onError: (e: unknown) => notify.error((e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Enregistrement impossible'),
-  });
   const resetMut = useMutation({
     mutationFn: settingsApi.resetModules,
     onSuccess: (data: ModuleActivation) => {
@@ -92,15 +84,24 @@ export default function SectorTab() {
 
   const dirtyCount = Object.keys(draft.modules).length + Object.keys(draft.features).length;
   const savedAdjustments = act ? Object.keys(act.moduleOverrides).length + Object.keys(act.featureOverrides).length : 0;
-  const busy = saveMut.isPending || resetMut.isPending || sectorMut.isPending;
+  const busy = resetMut.isPending || sectorMut.isPending;
 
-  // Brouillon non enregistré : prévenir avant de quitter ou recharger la page.
-  useEffect(() => {
-    if (!dirtyCount) return;
-    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirtyCount]);
+  // Barre « N modifications non enregistrées · Annuler · Enregistrer » commune aux
+  // Paramètres : fixe en bas de l'écran, et alerte avant de quitter avec un brouillon.
+  useDirtyForm('sector-modules', {
+    dirty: dirtyCount > 0,
+    changes: dirtyCount,
+    invalid: view?.missing.length
+      ? `« ${MODULE_LABELS[view.missing[0].module]} » a besoin de « ${MODULE_LABELS[view.missing[0].missing[0]]} »`
+      : null,
+    save: async () => {
+      const data: ModuleActivation = await settingsApi.saveModules(draft);
+      qc.setQueryData(['module-activation'], data);
+      setDraft(EMPTY);
+      refresh();
+    },
+    reset: () => setDraft(EMPTY),
+  });
 
   const setModules = (changes: Record<string, boolean | null>) =>
     setDraft(d => ({ ...d, modules: { ...d.modules, ...changes } }));
@@ -253,19 +254,6 @@ export default function SectorTab() {
           })}
         </SettingsSection>
       ))}
-
-      {/* Barre d'enregistrement collée en bas de l'écran tant qu'il reste un brouillon :
-          les options se règlent loin du haut de la page. */}
-      {dirtyCount > 0 && (
-        <div style={{ position: 'sticky', bottom: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-          padding: '0.75rem 1rem', background: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)', borderRadius: 6,
-          boxShadow: '0 -4px 12px rgba(0,0,0,0.08)' }}>
-          <span className="odoo-setting-label" style={{ marginRight: 'auto' }}>{dirtyCount} changement(s) non enregistré(s)</span>
-          <button type="button" className="odoo-btn-secondary" onClick={() => setDraft(EMPTY)} disabled={busy}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={busy || view.missing.length > 0}
-            onClick={() => saveMut.mutate(draft)}>Enregistrer</button>
-        </div>
-      )}
     </div>
   );
 }
