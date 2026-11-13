@@ -5,12 +5,13 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { settingsApi, type SetupCheck } from '../../api/settings.api';
 import { tableLabel } from './AuditLogTab';
-import { SETTINGS_GROUPS, SETTINGS_PAGES, USERS_GROUP, type SettingsPageKey } from './settingsPages';
+import { GROUP_ICONS, SETTINGS_GROUPS, SETTINGS_PAGES, USERS_GROUP, type SettingsPageDef, type SettingsPageKey } from './settingsPages';
 
 /**
  * Accueil des paramètres (refonte lot B) : avancement global, liste de contrôle
  * par domaine (à la Odoo « Configuration » / Dynamics BC « Configuration
  * assistée ») et dernières modifications. Chaque point mène au réglage concerné.
+ * Lot S2 : une tuile par groupe du menu (icône, état, points ouverts, pages du groupe).
  */
 
 type Filter = 'all' | 'open' | 'done';
@@ -41,7 +42,9 @@ function ProgressRing({ value }: { value: number }) {
   );
 }
 
-export default function SetupHome({ onOpen, onOpenUsers }: {
+export default function SetupHome({ pages, onOpen, onOpenUsers }: {
+  /** Pages visibles du menu (droits, modules actifs, vocabulaire). */
+  pages: SettingsPageDef[];
   onOpen: (page: SettingsPageKey, anchor?: string) => void;
   onOpenUsers: () => void;
 }) {
@@ -77,8 +80,12 @@ export default function SetupHome({ onOpen, onOpenUsers }: {
   const groups = SETTINGS_GROUPS.map(g => {
     const items = checks.filter(c => groupOf(c.page) === g).sort((a, b) => ORDER[a.status] - ORDER[b.status]);
     const req = items.filter(c => c.required);
-    return { name: g, items, shown: items.filter(visible), reqDone: req.filter(isDone).length, reqTotal: req.length };
-  }).filter(g => g.items.length > 0);
+    return {
+      name: g, icon: GROUP_ICONS[g], items, shown: items.filter(visible), links: pages.filter(p => p.group === g),
+      reqDone: req.filter(isDone).length, reqTotal: req.length,
+      todo: items.filter(c => c.status === 'todo').length, warn: items.filter(c => c.status === 'warn').length,
+    };
+  }).filter(g => g.items.length > 0 || g.links.length > 0);
 
   return (
     <div className="odoo-setup">
@@ -118,12 +125,12 @@ export default function SetupHome({ onOpen, onOpenUsers }: {
           {/* ── Liste de contrôle par domaine ── */}
           <div className="odoo-setup-grid">
             {groups.map(g => (
-              <section key={g.name} className="odoo-setup-card" aria-label={g.name}>
+              <section key={g.name} className="odoo-setup-card odoo-setup-tile" aria-label={g.name}>
                 <header className="odoo-setup-card-head">
-                  <span className="odoo-setup-card-title">{g.name}</span>
-                  {g.reqTotal > 0 ? (
-                    <span className={`odoo-tag ${g.reqDone === g.reqTotal ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{g.reqDone}/{g.reqTotal}</span>
-                  ) : <span className="odoo-tag odoo-tag-grey">facultatif</span>}
+                  <span className="odoo-setup-tile-title"><g.icon size={17} aria-hidden="true" /> {g.name}</span>
+                  {g.todo > 0 ? <span className="odoo-tag odoo-tag-red">{g.todo} à faire</span>
+                    : g.warn > 0 ? <span className="odoo-tag odoo-tag-orange">{g.warn} conseil{g.warn > 1 ? 's' : ''}</span>
+                    : <span className="odoo-tag odoo-tag-green">OK</span>}
                 </header>
                 {g.reqTotal > 0 && (
                   <div className="odoo-setup-bar" aria-hidden><span style={{ width: `${(g.reqDone / g.reqTotal) * 100}%` }} /></div>
@@ -152,6 +159,14 @@ export default function SetupHome({ onOpen, onOpenUsers }: {
                       );
                     })}
                   </ul>
+                )}
+                {g.links.length > 0 && (
+                  <nav className="odoo-setup-tile-links" aria-label={`Pages : ${g.name}`}>
+                    {g.links.map(p => (
+                      <button key={p.key} type="button" onClick={() => onOpen(p.key)}>{p.label}</button>
+                    ))}
+                    {g.name === USERS_GROUP && <button type="button" onClick={onOpenUsers}>Utilisateurs et droits</button>}
+                  </nav>
                 )}
               </section>
             ))}

@@ -86,6 +86,17 @@ function SettingsShell() {
   const pages = permitted.filter(isActive)
     .map(p => (p.labelKey ? { ...p, label: sectorLabel(p.labelKey, p.label) } : p));
   const hiddenCount = permitted.length - pages.length;
+
+  // Pastilles du menu (lot S2) : points « à faire » du bilan de paramétrage, par page.
+  const { data: setup } = useQuery({ queryKey: ['settings', 'setup'], queryFn: settingsApi.setup, staleTime: 60_000 });
+  const todoByPage = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const c of setup?.checks ?? []) if (c.status === 'todo') m.set(c.page, (m.get(c.page) ?? 0) + 1);
+    return m;
+  }, [setup]);
+  const todoBadge = (n: number, what: string) => (n > 0
+    ? <span className="odoo-settings-nav-badge" title={`${n} point${n > 1 ? 's' : ''} à faire ${what}`}>{n}</span>
+    : null);
   const canOpenSector = pages.some(p => p.key === 'sector');
 
   // Groupes repliables : celui de la page ouverte reste déplié ; l'état est retenu par
@@ -165,7 +176,7 @@ function SettingsShell() {
   }
 
   const pageContent: Record<SettingsPageKey, React.ReactNode> = {
-    home: <SetupHome onOpen={(page, anchor) => void goTo(page, { anchor })} onOpenUsers={() => void leaveTo('/users')} />,
+    home: <SetupHome pages={pages} onOpen={(page, anchor) => void goTo(page, { anchor })} onOpenUsers={() => void leaveTo('/users')} />,
     company: <CompanyPage />,
     sector: <SectorTab />,
     stores: <StoresPanel />,
@@ -235,10 +246,15 @@ function SettingsShell() {
             if (!items.length && !usersLink) return null;
             const open = !collapsed.has(group) || items.some(p => p.key === current.key);
             const GroupIcon = open ? ChevronDown : ChevronRight;
+            const groupTodo = items.reduce((n, p) => n + (todoByPage.get(p.key) ?? 0), 0) + (usersLink ? todoByPage.get('users') ?? 0 : 0);
             return (
               <nav key={group} className="odoo-settings-nav-group" aria-label={group}>
                 <button type="button" className="odoo-settings-nav-group-title" aria-expanded={open} onClick={() => toggleGroup(group)}>
-                  {group} <GroupIcon size={13} aria-hidden="true" />
+                  {group}
+                  <span className="odoo-settings-nav-group-end">
+                    {!open && todoBadge(groupTodo, 'dans ce groupe')}
+                    <GroupIcon size={13} aria-hidden="true" />
+                  </span>
                 </button>
                 {open && items.map(p => {
                   const Icon = p.icon;
@@ -247,13 +263,16 @@ function SettingsShell() {
                     <button key={p.key} type="button" className={`odoo-settings-nav-item${active ? ' active' : ''}`}
                       aria-current={active ? 'page' : undefined} onClick={() => void goTo(p.key)}>
                       <Icon size={15} /> {p.label}
-                      {active && dirtyForms?.hasChanges() && <span className="odoo-settings-nav-dot" title="Modifications non enregistrées" />}
+                      {active && dirtyForms?.hasChanges()
+                        ? <span className="odoo-settings-nav-dot" title="Modifications non enregistrées" />
+                        : todoBadge(todoByPage.get(p.key) ?? 0, 'sur cette page')}
                     </button>
                   );
                 })}
                 {open && usersLink && (
                   <button type="button" className="odoo-settings-nav-item" onClick={() => void leaveTo('/users')}>
-                    <Users size={15} /> Utilisateurs et droits <ExternalLink size={12} style={{ marginLeft: 'auto' }} />
+                    <Users size={15} /> Utilisateurs et droits
+                    <span className="odoo-settings-nav-group-end">{todoBadge(todoByPage.get('users') ?? 0, 'sur cet écran')}<ExternalLink size={12} /></span>
                   </button>
                 )}
               </nav>

@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Store, Paintbrush, Printer, Radio, ShoppingBag, Factory, Truck, Percent, Hash, FileText,
-  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal, Layers, Webhook, ShoppingCart } from 'lucide-react';
+  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal, Layers, Webhook, ShoppingCart, Landmark, Bot } from 'lucide-react';
 import type { AppModule, SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingAnchor } from './SettingsPrimitives';
 
@@ -42,6 +42,15 @@ export const SETTINGS_GROUPS = [
   'Mon entreprise', 'Activité et modules', 'Ventes et caisse', 'Achats, stock et production', 'Finance', 'Données',
   'Utilisateurs et sécurité', 'Automatisation',
 ] as const;
+
+export type SettingsGroup = (typeof SETTINGS_GROUPS)[number];
+
+/** Icône de chaque groupe (tuiles de l'accueil, lot S2). */
+export const GROUP_ICONS: Record<SettingsGroup, LucideIcon> = {
+  'Mon entreprise': Building2, 'Activité et modules': Layers, 'Ventes et caisse': ShoppingCart,
+  'Achats, stock et production': Factory, Finance: Landmark, Données: Database,
+  'Utilisateurs et sécurité': ShieldCheck, Automatisation: Bot,
+};
 
 /** Groupe qui accueille le lien « Utilisateurs et droits » (écran hors des Paramètres). */
 export const USERS_GROUP = 'Utilisateurs et sécurité';
