@@ -1,14 +1,15 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Store, Paintbrush, Printer, Radio, ShoppingBag, Factory, Truck, Percent, Hash, FileText,
-  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal, Layers, Webhook } from 'lucide-react';
-import type { SettingsSection as SettingsSectionKey } from '@ofauria/shared';
+  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal, Layers, Webhook, ShoppingCart } from 'lucide-react';
+import type { AppModule, SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingAnchor } from './SettingsPrimitives';
 
 /**
  * Plan des écrans Paramètres (refonte lot A) : pages regroupées par domaine,
  * une URL par page (?page=…), et l'index statique de la recherche ⌘K.
- * Une page est visible si l'utilisateur a sa section (droit « Paramètres »).
+ * Une page est visible si l'utilisateur a sa section (droit « Paramètres ») et, quand
+ * elle règle un module, si ce module est activé pour la société (lot S1).
  */
 
 export type SettingsPageKey =
@@ -31,11 +32,19 @@ export interface SettingsPageDef {
   keywords?: string;
   /** Réglages de la page indexés par la recherche (titre de bloc ou de réglage → ancre). */
   fields?: string[];
+  /** Modules réglés par la page : masquée si aucun n'est activé (absent = toujours visible). */
+  modules?: AppModule[];
+  /** Clé de vocabulaire du secteur pour le libellé (mig 514), ex. « production ». */
+  labelKey?: string;
 }
 
 export const SETTINGS_GROUPS = [
-  'Entreprise', 'Ventes et caisse', 'Achats et production', 'Comptabilité', 'Données de base', 'Sécurité et contrôle',
+  'Mon entreprise', 'Activité et modules', 'Ventes et caisse', 'Achats, stock et production', 'Finance', 'Données',
+  'Utilisateurs et sécurité', 'Automatisation',
 ] as const;
+
+/** Groupe qui accueille le lien « Utilisateurs et droits » (écran hors des Paramètres). */
+export const USERS_GROUP = 'Utilisateurs et sécurité';
 
 const LEGAL = [
   'Identité légale', 'Forme juridique', 'Capital social', 'Raison sociale', 'Siège social', 'Ville', 'Téléphone', 'Email',
@@ -49,78 +58,78 @@ export const HOME_PAGE: SettingsPageDef = {
 };
 
 export const SETTINGS_PAGES: SettingsPageDef[] = [
-  { key: 'company', group: 'Entreprise', section: 'company', label: 'Société', icon: Building2,
+  { key: 'company', group: 'Mon entreprise', section: 'company', label: 'Société', icon: Building2,
     description: 'Identité légale, comptes bancaires et remise du personnel',
     keywords: 'entreprise rib banque iban remise personnel pays',
     fields: ["Informations de l'entreprise", "Nom de l'entreprise", 'Sous-titre', ...LEGAL] },
-  { key: 'sector', group: 'Entreprise', section: 'company', label: 'Secteur et modules', icon: Layers,
+  { key: 'sector', group: 'Activité et modules', section: 'company', label: 'Secteur et modules', icon: Layers,
     description: 'Choisir le métier, puis activer ou désactiver chaque module et ses options',
     keywords: 'secteur activite metier pack boulangerie generique negoce modules industrie services activer desactiver options fonctionnalites',
     fields: ["Secteur d'activité", 'Ventes et caisse', 'Catalogue, achats et stock', 'Production', 'Gestion', 'Socle'] },
-  { key: 'stores', group: 'Entreprise', section: 'stores', label: 'Établissements', icon: Store,
+  { key: 'stores', group: 'Mon entreprise', section: 'stores', label: 'Établissements', icon: Store,
     description: 'Boutiques, laboratoire, entrepôt, siège', keywords: 'boutique magasin point de vente laboratoire entrepot siege adresse' },
-  { key: 'integrations', group: 'Entreprise', section: 'company', label: 'Intégrations', icon: Webhook,
-    description: 'API publique : clés d\'accès et webhooks', keywords: 'api cle key webhook integration site marchand bearer notification sortante' },
-  { key: 'appearance', group: 'Entreprise', section: 'appearance', label: 'Apparence', icon: Paintbrush,
+  { key: 'appearance', group: 'Mon entreprise', section: 'appearance', label: 'Apparence', icon: Paintbrush,
     description: 'Thème, couleurs et affichage', keywords: 'theme couleur design',
     fields: ['Thèmes prédéfinis', 'Surfaces', 'Texte', 'Accents', 'Bouton principal', 'Aperçu en direct'] },
 
-  { key: 'print', group: 'Ventes et caisse', section: 'print', label: 'Caisse et tickets', icon: Printer,
+  { key: 'print', group: 'Ventes et caisse', modules: ['pos'], section: 'print', label: 'Caisse et tickets', icon: Printer,
     description: 'Contenu du ticket, imprimantes et tiroir-caisse', keywords: 'impression recu ticket imprimante thermique escpos',
     fields: ['Logo', 'Afficher le logo sur le reçu', 'Contenu du reçu', 'En-tête supplémentaire', 'Message de pied de page',
       'Lignes supplémentaires', "Options d'affichage", 'Nom du caissier', 'Date et heure', 'Détail du paiement',
       'Imprimante thermique', 'Impression automatique', 'Ouvrir le tiroir-caisse', 'Nombre de copies',
       "Format d'impression", 'Taille de police', 'Largeur du papier'] },
-  { key: 'channels', group: 'Ventes et caisse', section: 'production', label: 'Canaux de vente', icon: Radio,
+  { key: 'channels', group: 'Ventes et caisse', modules: ['pos', 'sales', 'orders'], section: 'production', label: 'Canaux de vente', icon: Radio,
     description: 'Boutique, commande, événement, gros, livraison', keywords: 'canal vente prix par canal' },
-  { key: 'sachets', group: 'Ventes et caisse', section: 'sachets', label: 'Sachets', icon: ShoppingBag,
+  { key: 'sachets', group: 'Ventes et caisse', modules: ['pos'], section: 'sachets', label: 'Sachets', icon: ShoppingBag,
     description: 'Contrôle des sachets de caisse', keywords: 'sachet emballage ratio vendeuse',
     fields: ['Réglage global', 'Ratio par catégorie'] },
-  { key: 'posRules', group: 'Ventes et caisse', section: 'business', label: 'Règles de caisse', icon: ShoppingBag,
+  { key: 'posRules', group: 'Ventes et caisse', modules: ['pos'], section: 'business', label: 'Règles de caisse', icon: ShoppingCart,
     description: 'Vente des produits sans stock vitrine', keywords: 'caisse rupture stock negatif vente sans stock vitrine',
     fields: ['Caisse : produits sans stock vitrine'] },
-  { key: 'salesRules', group: 'Ventes et caisse', section: 'business', label: 'Devis et crédit clients', icon: BellRing,
+  { key: 'salesRules', group: 'Ventes et caisse', modules: ['sales', 'orders', 'customers'], section: 'business', label: 'Devis et crédit clients', icon: BellRing,
     description: 'Validité des devis, relances et plafond de crédit', keywords: 'devis proforma validite relance recouvrement impaye plafond credit blocage',
     fields: ['Devis clients', 'Relances clients et contrôle du crédit'] },
 
-  { key: 'production', group: 'Achats et production', section: 'production', label: 'Production', icon: Factory,
+  { key: 'production', group: 'Achats, stock et production', modules: ['production'], labelKey: 'production', section: 'production', label: 'Production', icon: Factory,
     description: 'Ateliers, charges fixes, étapes, arrondi des prix et majoration', keywords: 'atelier ateliers chef boulanger patissier membres categories cout charges loyer energie arrondi prix majoration approvisionnement',
     fields: ['Ateliers', 'Majoration globale', 'Majoration par catégorie'] },
-  { key: 'purchasing', group: 'Achats et production', section: 'business', label: 'Achats et réception', icon: Truck,
+  { key: 'purchasing', group: 'Achats, stock et production', modules: ['purchasing'], section: 'business', label: 'Achats et réception', icon: Truck,
     description: 'Règles des bons de commande, réceptions et factures fournisseurs', keywords: 'achat bc fournisseur reception tolerance dlc lot facture caisse' },
 
-  { key: 'tax', group: 'Comptabilité', section: 'tax', label: 'TVA', icon: Percent,
+  { key: 'tax', group: 'Finance', section: 'tax', label: 'TVA', icon: Percent,
     description: 'Taux de TVA datés', keywords: 'taxe taux tva' },
-  { key: 'currencies', group: 'Comptabilité', section: 'currencies', label: 'Devises', icon: Coins,
+  { key: 'currencies', group: 'Finance', modules: ['purchasing', 'accounting'], section: 'currencies', label: 'Devises', icon: Coins,
     description: 'Devises d\'achat et taux de change datés', keywords: 'devise monnaie euro dollar taux change import' },
-  { key: 'numbering', group: 'Comptabilité', section: 'numbering', label: 'Numérotation', icon: Hash,
+  { key: 'numbering', group: 'Finance', section: 'numbering', label: 'Numérotation', icon: Hash,
     description: 'Séries de numéros des pièces', keywords: 'serie numero compteur piece' },
-  { key: 'documents', group: 'Comptabilité', section: 'documents', label: 'Documents', icon: FileText,
+  { key: 'documents', group: 'Finance', section: 'documents', label: 'Documents', icon: FileText,
     description: 'Mentions des factures et bons de commande', keywords: 'modele facture pdf conditions paiement penalites pied de page' },
-  { key: 'ledger', group: 'Comptabilité', section: 'business', label: 'Règles comptables', icon: BookOpen,
+  { key: 'ledger', group: 'Finance', modules: ['accounting'], section: 'business', label: 'Règles comptables', icon: BookOpen,
     description: 'Passation des écritures, commission carte, comptes de produits',
     keywords: 'ecriture comptabilisation journal grand livre commission carte tpe banque compte produit famille ventilation chiffre affaires 7111 7112',
     fields: ['Comptes de produits par famille'] },
 
-  { key: 'productCategories', group: 'Données de base', section: 'referentiel', label: 'Catégories de vente', icon: Layers,
+  { key: 'productCategories', group: 'Ventes et caisse', modules: ['products', 'pos'], section: 'referentiel', label: 'Catégories de vente', icon: Layers,
     description: 'Familles et ordre des catégories en caisse', keywords: 'categorie famille caisse pos classement boulangerie patisserie',
     fields: ['Catégories et familles'] },
-  { key: 'referentiel', group: 'Données de base', section: 'referentiel', label: 'Référentiel', icon: Database,
+  { key: 'referentiel', group: 'Données', section: 'referentiel', label: 'Référentiel', icon: Database,
     description: 'Tables de paramétrage', keywords: 'table categorie unite motif' },
-  { key: 'customFields', group: 'Données de base', section: 'custom_fields', label: 'Champs personnalisés', icon: SlidersHorizontal,
+  { key: 'customFields', group: 'Données', section: 'custom_fields', label: 'Champs personnalisés', icon: SlidersHorizontal,
     description: 'Informations propres à votre métier sur les fiches', keywords: 'champ personnalise attribut specifique fiche formulaire colonne' },
-  { key: 'data', group: 'Données de base', section: 'data', label: 'Import et export', icon: HardDrive,
+  { key: 'data', group: 'Données', section: 'data', label: 'Import et export', icon: HardDrive,
     description: 'Import, export et état de la base', keywords: 'donnees csv excel sauvegarde import export' },
 
-  { key: 'notifications', group: 'Sécurité et contrôle', section: 'notifications', label: 'Notifications', icon: Bell,
+  { key: 'notifications', group: 'Automatisation', section: 'notifications', label: 'Notifications', icon: Bell,
     description: 'Qui est prévenu, et de quoi', keywords: 'alerte notification destinataire' },
-  { key: 'mail', group: 'Sécurité et contrôle', section: 'notifications', label: 'E-mails', icon: Mail,
+  { key: 'mail', group: 'Automatisation', section: 'notifications', label: 'E-mails', icon: Mail,
     description: 'Serveur d\'envoi, expéditeur et file des e-mails', keywords: 'email mail smtp envoi expediteur courriel' },
-  { key: 'jobs', group: 'Sécurité et contrôle', section: 'notifications', label: 'Tâches planifiées', icon: Timer,
+  { key: 'jobs', group: 'Automatisation', section: 'notifications', label: 'Tâches planifiées', icon: Timer,
     description: 'Ce que l\'application fait seule et quand', keywords: 'cron planification automatique relance retard echeance tache' },
-  { key: 'approvals', group: 'Sécurité et contrôle', section: 'approvals', label: "Circuits d'approbation", icon: ClipboardCheck,
+  { key: 'integrations', group: 'Automatisation', section: 'company', label: 'Intégrations', icon: Webhook,
+    description: 'API publique : clés d\'accès et webhooks', keywords: 'api cle key webhook integration site marchand bearer notification sortante' },
+  { key: 'approvals', group: 'Utilisateurs et sécurité', section: 'approvals', label: "Circuits d'approbation", icon: ClipboardCheck,
     description: 'Règles qui soumettent une pièce à l\'accord d\'un approbateur', keywords: 'approbation validation seuil bon de commande avoir ecart delegation escalade' },
-  { key: 'audit', group: 'Sécurité et contrôle', section: 'audit', label: 'Journal', icon: ShieldCheck,
+  { key: 'audit', group: 'Utilisateurs et sécurité', section: 'audit', label: 'Journal', icon: ShieldCheck,
     description: 'Modifications du paramétrage et connexions', keywords: 'audit historique connexion trace' },
 ];
 

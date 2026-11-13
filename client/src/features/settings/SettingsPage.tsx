@@ -6,7 +6,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { allowedSettingsSections } from '@ofauria/shared';
 import { settingsApi } from '../../api/settings.api';
 import SalesChannelsManager from '../sales/SalesChannelsManager';
-import { Upload, Image, Eye, Check, Search, Lock, Users, ExternalLink, Printer } from 'lucide-react';
+import { Upload, Image, Eye, Check, Search, Lock, Users, ExternalLink, Printer, ChevronDown, ChevronRight, EyeOff } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import PrinterSettingsCard from './PrinterSettingsCard';
@@ -40,7 +40,7 @@ import SetupHome from './SetupHome';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { SettingsSection, SettingItem } from './SettingsPrimitives';
 import { DirtyFormsProvider, SaveBar, useDirtyForm, useDirtyForms, useDraft } from './DirtyForms';
-import { HOME_PAGE, SETTINGS_GROUPS, SETTINGS_PAGES, type SearchEntry, type SettingsPageKey } from './settingsPages';
+import { HOME_PAGE, SETTINGS_GROUPS, SETTINGS_PAGES, USERS_GROUP, type SearchEntry, type SettingsPageKey } from './settingsPages';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -65,7 +65,7 @@ export default function SettingsPage() {
 /* ============ COQUILLE : navigation groupee, fil d'Ariane, ⌘K ============ */
 
 function SettingsShell() {
-  const { hasModule, canEdit, getModuleConfig } = usePermissions();
+  const { hasModule, canEdit, getModuleConfig, moduleActive, sectorLabel } = usePermissions();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const confirm = useConfirm();
@@ -75,11 +75,30 @@ function SettingsShell() {
 
   const allowedSections = allowedSettingsSections(getModuleConfig('settings'));
   const readOnly = !canEdit('settings');
-  const pages = useMemo(
+  // Pages permises par le droit « Paramètres », puis masquage de celles dont aucun module
+  // n'est activé pour la société (lot S1) ; libellés selon le vocabulaire du secteur.
+  const permitted = useMemo(
     () => (allowedSections ? SETTINGS_PAGES.filter(p => allowedSections.includes(p.section)) : SETTINGS_PAGES),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [JSON.stringify(allowedSections)],
   );
+  const isActive = (p: (typeof SETTINGS_PAGES)[number]) => !p.modules || p.modules.some(m => moduleActive(m));
+  const pages = permitted.filter(isActive)
+    .map(p => (p.labelKey ? { ...p, label: sectorLabel(p.labelKey, p.label) } : p));
+  const hiddenCount = permitted.length - pages.length;
+  const canOpenSector = pages.some(p => p.key === 'sector');
+
+  // Groupes repliables : celui de la page ouverte reste déplié ; l'état est retenu par
+  // navigateur (commodité seulement, l'écran marche sans stockage).
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('kalum.settings.collapsed') ?? '[]') as string[]); } catch { return new Set(); }
+  });
+  const toggleGroup = (group: string) => setCollapsed(prev => {
+    const next = new Set(prev);
+    if (next.has(group)) next.delete(group); else next.add(group);
+    try { localStorage.setItem('kalum.settings.collapsed', JSON.stringify([...next])); } catch { /* stockage indisponible */ }
+    return next;
+  });
   const requested = params.get('page') as SettingsPageKey | null;
   // Page absente, inconnue ou non permise : accueil de la configuration (lot B).
   const current = pages.find(p => p.key === requested) ?? HOME_PAGE;
@@ -212,12 +231,16 @@ function SettingsShell() {
           </div>
           {SETTINGS_GROUPS.map(group => {
             const items = pages.filter(p => p.group === group);
-            const usersLink = group === 'Sécurité et contrôle' && hasModule('users');
+            const usersLink = group === USERS_GROUP && hasModule('users');
             if (!items.length && !usersLink) return null;
+            const open = !collapsed.has(group) || items.some(p => p.key === current.key);
+            const GroupIcon = open ? ChevronDown : ChevronRight;
             return (
               <nav key={group} className="odoo-settings-nav-group" aria-label={group}>
-                <div className="odoo-settings-nav-group-title">{group}</div>
-                {items.map(p => {
+                <button type="button" className="odoo-settings-nav-group-title" aria-expanded={open} onClick={() => toggleGroup(group)}>
+                  {group} <GroupIcon size={13} aria-hidden="true" />
+                </button>
+                {open && items.map(p => {
                   const Icon = p.icon;
                   const active = p.key === current.key;
                   return (
@@ -228,7 +251,7 @@ function SettingsShell() {
                     </button>
                   );
                 })}
-                {usersLink && (
+                {open && usersLink && (
                   <button type="button" className="odoo-settings-nav-item" onClick={() => void leaveTo('/users')}>
                     <Users size={15} /> Utilisateurs et droits <ExternalLink size={12} style={{ marginLeft: 'auto' }} />
                   </button>
@@ -236,6 +259,15 @@ function SettingsShell() {
               </nav>
             );
           })}
+          {hiddenCount > 0 && (
+            <div className="odoo-settings-nav-hidden">
+              <EyeOff size={13} aria-hidden="true" />
+              <span>
+                {hiddenCount} page{hiddenCount > 1 ? 's' : ''} masquée{hiddenCount > 1 ? 's' : ''} (modules inactifs)
+                {canOpenSector && <> · <button type="button" onClick={() => void goTo('sector')}>Gérer</button></>}
+              </span>
+            </div>
+          )}
         </aside>
 
         <div className="odoo-settings-main">

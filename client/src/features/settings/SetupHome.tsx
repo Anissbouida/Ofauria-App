@@ -5,7 +5,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { settingsApi, type SetupCheck } from '../../api/settings.api';
 import { tableLabel } from './AuditLogTab';
-import { SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPageKey } from './settingsPages';
+import { SETTINGS_GROUPS, SETTINGS_PAGES, USERS_GROUP, type SettingsPageKey } from './settingsPages';
 
 /**
  * Accueil des paramètres (refonte lot B) : avancement global, liste de contrôle
@@ -26,7 +26,7 @@ const OPERATIONS: Record<string, string> = { INSERT: 'Création', UPDATE: 'Modif
 
 const isDone = (c: SetupCheck) => c.status !== 'todo';
 const groupOf = (page: string) =>
-  page === 'users' ? 'Sécurité et contrôle' : SETTINGS_PAGES.find(p => p.key === page)?.group ?? 'Entreprise';
+  page === 'users' ? USERS_GROUP : SETTINGS_PAGES.find(p => p.key === page)?.group ?? SETTINGS_GROUPS[0];
 
 function ProgressRing({ value }: { value: number }) {
   const r = 34, c = 2 * Math.PI * r;

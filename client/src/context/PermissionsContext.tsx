@@ -17,6 +17,8 @@ interface PermissionsContextType {
   sectorLabel: (key: string, fallback: string) => string;
   /** Option active pour la société (mig 507, Paramètres › Secteur et modules). */
   hasFeature: (key: string) => boolean;
+  /** Module activé pour la société (secteur), indépendamment des droits de l'utilisateur. */
+  moduleActive: (module: AppModule) => boolean;
   isLoading: boolean;
   reload: () => void;
 }
@@ -141,6 +143,7 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
       permissions, hasModule, canView, canCreate, canEdit, canDelete, getModuleConfig,
       sectorLabel: (key: string, fallback: string) => sectorLabels[key] ?? fallback,
       hasFeature: (key: string) => !sectorFeatures || sectorFeatures.has(key),
+      moduleActive: inSector,
       isLoading, reload,
     }}>
       {children}
