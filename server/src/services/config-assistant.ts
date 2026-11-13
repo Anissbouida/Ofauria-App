@@ -21,6 +21,8 @@ import { parseConfigModel, previewConfigModel, type ConfigModel } from './config
 const MODEL = 'claude-opus-5-5';
 export const MAX_DESCRIPTION = 2000;
 /** Repli si sector_labels est vide : clés lues par les écrans (mig 514). */
+/** Toujours proposés, quelle que soit la description (choix de l'éditeur). */
+const ALWAYS_MODULES: AppModule[] = ['accounting', 'employees'];
 const DEFAULT_LABEL_KEYS = ['product', 'products', 'recipe', 'recipes', 'production', 'production_plan', 'production_plans', 'new_plan'];
 
 type Ref = { code: string; label: string };
@@ -142,7 +144,7 @@ export async function buildAssistantRequest(description: string) {
     '',
     'Règles :',
     '- Active le minimum utile : un module que la description ne justifie pas reste éteint. Les options propres à l\'alimentaire (DLC, cuisson, vitrine, froid) restent éteintes hors alimentaire.',
-    '- Exception : accounting (Comptabilité) et employees (Personnel) restent actifs par défaut, car presque toute PME tient sa comptabilité et emploie du personnel ; ne les retire que si la description l\'exclut clairement (ex. « je travaille seul », « mon comptable est externe »).',
+    '- accounting (Comptabilité) et employees (Personnel) sont toujours actifs, quelle que soit la description : garde-les dans modules et ne pose pas de question à leur sujet.',
     '- Les dépendances entre modules sont complétées automatiquement : inutile de les deviner.',
     '- step_types et equipment_types : seulement si la société fabrique ; 3 à 6 entrées concrètes pour son métier, sinon listes vides.',
     '- labels : uniquement les libellés qui changent vraiment pour ce métier.',
@@ -158,7 +160,7 @@ export function answerToRawModel(a: AssistantAnswer): Record<string, unknown> {
   return {
     format: 'kalum.config', version: 1,
     name: a.name, base_sector: a.base_sector,
-    modules: a.modules, features: a.features,
+    modules: [...new Set([...(Array.isArray(a.modules) ? a.modules : []), ...ALWAYS_MODULES])], features: a.features,
     labels: Object.fromEntries((Array.isArray(a.labels) ? a.labels : []).map(l => [l?.key, l?.value])),
     home_route: null, report_keys: [],
     starter: { units: [], stepTypes: a.step_types ?? [], equipmentTypes: a.equipment_types ?? [] },

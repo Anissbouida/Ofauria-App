@@ -56,6 +56,8 @@ describe.skipIf(!hasTestDb)('Assistant de configuration', () => {
     // Module inconnu écarté, dépendances complétées, vocabulaire et étapes nettoyés.
     expect(r.model.modules).toEqual(expect.arrayContaining(['production', 'recipes', 'stock', 'orders']));
     expect(r.model.modules).not.toContain('pirate');
+    // Comptabilité et Personnel sont toujours proposés, même absents de la réponse.
+    expect(r.model.modules).toEqual(expect.arrayContaining(['accounting', 'employees']));
     expect(r.model.labels).toEqual({ recipe: 'Nomenclature' });
     expect(r.model.starter.stepTypes).toEqual([{ code: 'debit', label: 'Débit', metadata: {} }]);
     expect(r.preview.warnings.join(' ')).toMatch(/Modules inconnus ignorés : pirate/);
