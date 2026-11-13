@@ -27,9 +27,6 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 type Draft = { modules: Record<string, boolean | null>; features: Record<string, boolean | null> };
 const EMPTY: Draft = { modules: {}, features: {} };
 
-// Options déjà appliquées par le code. Les autres sont réglables dès maintenant mais
-// n'agiront qu'au lot P5 (plan Production générique) : l'écran le dit.
-const WIRED_FEATURES: ReadonlySet<string> = new Set(['haccp']);
 
 /** Écarts au préréglage une fois le brouillon appliqué (null = retour au préréglage). */
 function mergeOverrides(base: Record<string, boolean>, changes: Record<string, boolean | null>, pack: readonly string[]) {
@@ -308,9 +305,7 @@ export default function SectorTab() {
                               )}
                             </div>
                             {f.description && <p className="odoo-setting-help">{f.description}</p>}
-                            {!WIRED_FEATURES.has(f.key) && (
-                              <p className="odoo-setting-help" style={{ fontStyle: 'italic' }}>Réglage enregistré ; son effet arrivera dans une prochaine version.</p>
-                            )}
+
                           </div>
                         </div>
                       );
