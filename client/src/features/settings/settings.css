@@ -70,7 +70,7 @@
 
 .odoo-setting-block { display: flex; gap: 0.75rem; scroll-margin-top: 1rem; border-radius: 4px; }
 .odoo-setting-block-toggle { padding-top: 0.125rem; }
-.odoo-setting-block-body { min-width: 0; flex: 1; display: grid; gap: 0.25rem; }
+.odoo-setting-block-body { min-width: 0; flex: 1; display: grid; gap: 0.25rem; align-content: start; }
 .odoo-setting-label { font-size: 0.875rem; font-weight: 600; color: var(--odoo-text); }
 .odoo-setting-help { margin: 0; font-size: 0.75rem; line-height: 1.35; color: var(--odoo-text-muted); }
 .odoo-setting-control { margin-top: 0.375rem; }

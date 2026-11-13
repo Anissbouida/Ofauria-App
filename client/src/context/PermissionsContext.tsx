@@ -32,8 +32,8 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
   const [sectorModules, setSectorModules] = useState<Set<string> | null>(null);
   // Libellés par secteur (phase 9.1) : clé neutre → mot affiché.
   const [sectorLabels, setSectorLabels] = useState<Record<string, string>>({});
-  // Options effectives (mig 507) ; vide tant que non chargé.
-  const [sectorFeatures, setSectorFeatures] = useState<Set<string>>(new Set());
+  // Options effectives (mig 507) ; null tant que non chargé (aucun masquage, comme les modules).
+  const [sectorFeatures, setSectorFeatures] = useState<Set<string> | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -144,7 +144,7 @@ export function PermissionsProvider({ children }: { children: ReactNode }) {
     <PermissionsContext.Provider value={{
       permissions, hasModule, canView, canCreate, canEdit, canDelete, getModuleConfig,
       sectorLabel: (key: string, fallback: string) => sectorLabels[key] ?? fallback,
-      hasFeature: (key: string) => sectorFeatures.has(key),
+      hasFeature: (key: string) => !sectorFeatures || sectorFeatures.has(key),
       isLoading, reload,
     }}>
       {children}

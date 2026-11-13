@@ -29,6 +29,11 @@ const EXTRA_RULES: GuardRule[] = [
   { prefix: '/lot-thermal', modules: ['production', 'stock'] },
 ];
 
+// Routes propres à une OPTION de module : fermées quand l'option est éteinte.
+const FEATURE_RULES: { prefix: string; feature: string }[] = [
+  { prefix: '/haccp', feature: 'haccp' },
+];
+
 function extraRuleFor(path: string): GuardRule | undefined {
   return EXTRA_RULES.find(r => path === r.prefix || path.startsWith(r.prefix + '/'));
 }
@@ -37,14 +42,24 @@ export async function moduleActivationGuard(req: Request, res: Response, next: N
   try {
     if (req.method === 'OPTIONS') { next(); return; }
     const rule = ruleFor(req.path) ?? extraRuleFor(req.path);
-    if (!rule) { next(); return; }
-    const { modules: active } = await sectorRepository.activation();
-    const open = rule.modules.some(m => resolveModuleKeys(m).some(k => active.has(k as never)));
-    if (open) { next(); return; }
-    res.status(403).json({
-      success: false,
-      error: { code: 'MODULE_DISABLED', message: 'Ce module est désactivé pour la société (Paramètres › Secteur et modules)' },
-    });
+    const featureRule = FEATURE_RULES.find(r => req.path === r.prefix || req.path.startsWith(r.prefix + '/'));
+    if (!rule && !featureRule) { next(); return; }
+    const { modules: active, features } = await sectorRepository.activation();
+    if (rule && !rule.modules.some(m => resolveModuleKeys(m).some(k => active.has(k as never)))) {
+      res.status(403).json({
+        success: false,
+        error: { code: 'MODULE_DISABLED', message: 'Ce module est désactivé pour la société (Paramètres › Secteur et modules)' },
+      });
+      return;
+    }
+    if (featureRule && !features.has(featureRule.feature)) {
+      res.status(403).json({
+        success: false,
+        error: { code: 'FEATURE_DISABLED', message: 'Cette option est désactivée pour la société (Paramètres › Secteur et modules)' },
+      });
+      return;
+    }
+    next();
   } catch (err) {
     next(err);
   }

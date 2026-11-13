@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Check, Layers, RotateCcw } from 'lucide-react';
 import {
@@ -23,6 +23,10 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 
 type Draft = { modules: Record<string, boolean | null>; features: Record<string, boolean | null> };
 const EMPTY: Draft = { modules: {}, features: {} };
+
+// Options déjà appliquées par le code. Les autres sont réglables dès maintenant mais
+// n'agiront qu'au lot P5 (plan Production générique) : l'écran le dit.
+const WIRED_FEATURES: ReadonlySet<string> = new Set(['haccp']);
 
 /** Écarts au préréglage une fois le brouillon appliqué (null = retour au préréglage). */
 function mergeOverrides(base: Record<string, boolean>, changes: Record<string, boolean | null>, pack: readonly string[]) {
@@ -89,6 +93,14 @@ export default function SectorTab() {
   const dirtyCount = Object.keys(draft.modules).length + Object.keys(draft.features).length;
   const savedAdjustments = act ? Object.keys(act.moduleOverrides).length + Object.keys(act.featureOverrides).length : 0;
   const busy = saveMut.isPending || resetMut.isPending || sectorMut.isPending;
+
+  // Brouillon non enregistré : prévenir avant de quitter ou recharger la page.
+  useEffect(() => {
+    if (!dirtyCount) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirtyCount]);
 
   const setModules = (changes: Record<string, boolean | null>) =>
     setDraft(d => ({ ...d, modules: { ...d.modules, ...changes } }));
@@ -176,21 +188,12 @@ export default function SectorTab() {
         </StatusBanner>
       )}
 
-      {(dirtyCount > 0 || savedAdjustments > 0) && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {dirtyCount > 0 ? (
-            <>
-              <span className="odoo-setting-help" style={{ marginRight: 'auto' }}>{dirtyCount} changement(s) non enregistré(s)</span>
-              <button type="button" className="odoo-btn-secondary" onClick={() => setDraft(EMPTY)} disabled={busy}>Annuler</button>
-              <button type="button" className="odoo-btn-primary" disabled={busy || view.missing.length > 0}
-                onClick={() => saveMut.mutate(draft)}>Enregistrer</button>
-            </>
-          ) : (
-            <button type="button" className="odoo-btn-secondary" onClick={resetAll} disabled={busy}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <RotateCcw size={14} /> Revenir au préréglage du secteur ({savedAdjustments})
-            </button>
-          )}
+      {savedAdjustments > 0 && dirtyCount === 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button type="button" className="odoo-btn-secondary" onClick={resetAll} disabled={busy}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <RotateCcw size={14} /> Revenir au préréglage du secteur ({savedAdjustments})
+          </button>
         </div>
       )}
 
@@ -236,6 +239,9 @@ export default function SectorTab() {
                               )}
                             </div>
                             {f.description && <p className="odoo-setting-help">{f.description}</p>}
+                            {!WIRED_FEATURES.has(f.key) && (
+                              <p className="odoo-setting-help" style={{ fontStyle: 'italic' }}>Réglage enregistré ; son effet arrivera dans une prochaine version.</p>
+                            )}
                           </div>
                         </div>
                       );
@@ -247,6 +253,19 @@ export default function SectorTab() {
           })}
         </SettingsSection>
       ))}
+
+      {/* Barre d'enregistrement collée en bas de l'écran tant qu'il reste un brouillon :
+          les options se règlent loin du haut de la page. */}
+      {dirtyCount > 0 && (
+        <div style={{ position: 'sticky', bottom: 0, zIndex: 5, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          padding: '0.75rem 1rem', background: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)', borderRadius: 6,
+          boxShadow: '0 -4px 12px rgba(0,0,0,0.08)' }}>
+          <span className="odoo-setting-label" style={{ marginRight: 'auto' }}>{dirtyCount} changement(s) non enregistré(s)</span>
+          <button type="button" className="odoo-btn-secondary" onClick={() => setDraft(EMPTY)} disabled={busy}>Annuler</button>
+          <button type="button" className="odoo-btn-primary" disabled={busy || view.missing.length > 0}
+            onClick={() => saveMut.mutate(draft)}>Enregistrer</button>
+        </div>
+      )}
     </div>
   );
 }

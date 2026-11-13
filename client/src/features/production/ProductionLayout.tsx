@@ -16,7 +16,7 @@ type ProductionView = 'dashboard' | 'plans' | 'atelier' | 'forecast' | 'mrp' | '
  */
 export default function ProductionLayout() {
   const { user } = useAuth();
-  const { hasModule, sectorLabel } = usePermissions();
+  const { hasModule, hasFeature, sectorLabel } = usePermissions();
   const { pathname } = useLocation();
   // Prévisions et HACCP : droit Production ET rôle chef/gérant/admin, même règle que le
   // lanceur (navigation.ts) et que les routes serveur.
@@ -28,7 +28,8 @@ export default function ProductionLayout() {
     { key: 'atelier', label: 'Atelier', icon: Hammer, section: 'operations', href: '/production/atelier', hidden: !isProductionRole },
     { key: 'forecast', label: 'Prévisions', icon: TrendingUp, section: 'operations', href: '/forecast', hidden: !isProductionRole },
     { key: 'mrp', label: 'Plan directeur', icon: ClipboardList, section: 'operations', href: '/production/mrp', hidden: !isProductionRole },
-    { key: 'haccp', label: 'Relevés HACCP', icon: Thermometer, section: 'operations', href: '/haccp', hidden: !isProductionRole },
+    // Option « HACCP » du module (Paramètres › Secteur et modules, mig 507).
+    { key: 'haccp', label: 'Relevés HACCP', icon: Thermometer, section: 'operations', href: '/haccp', hidden: !isProductionRole || !hasFeature('haccp') },
     // Demandes de réassort boutique -> labo (ex-tuile « Besoins » du menu principal).
     { key: 'replenishment', label: 'Demandes boutique', icon: Package, section: 'operations', href: '/replenishment', hidden: !hasModule('replenishment') },
     { key: 'costs', label: 'Coûts', icon: Wallet, section: 'reports', href: '/production/costs', hidden: !hasModule('reports') },

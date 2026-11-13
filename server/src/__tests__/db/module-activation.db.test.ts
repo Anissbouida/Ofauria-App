@@ -119,4 +119,12 @@ describe.skipIf(!hasTestDb)('Activation des modules et options', () => {
     expect(await callGuard('GET', '/production/plans')).toBe(200);
     expect(await callGuard('POST', '/recipes')).toBe(200);
   });
+
+  it("une option éteinte ferme ses routes (HACCP)", async () => {
+    await sectors.setSector('boulangerie', { keepAdjustments: false });
+    expect(await callGuard('GET', '/haccp/logs')).toBe(200);
+    await sectors.applyAdjustments({ features: { haccp: false } });
+    expect(await callGuard('GET', '/haccp/logs')).toBe(403);
+    expect(await callGuard('GET', '/production/plans')).toBe(200);
+  });
 });
