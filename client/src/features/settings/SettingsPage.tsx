@@ -6,7 +6,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { allowedSettingsSections } from '@ofauria/shared';
 import { settingsApi } from '../../api/settings.api';
 import SalesChannelsManager from '../sales/SalesChannelsManager';
-import { Upload, Image, Eye, Check, Search, Lock, Users, ExternalLink, Printer, ChevronDown, ChevronRight, EyeOff } from 'lucide-react';
+import { Upload, Image, Eye, Check, Search, Lock, Users, ExternalLink, Printer, ChevronDown, ChevronRight, EyeOff, History } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import PrinterSettingsCard from './PrinterSettingsCard';
@@ -37,6 +37,7 @@ import RevenueFamiliesCard from './RevenueFamiliesCard';
 import ReferentielTab from './ReferentielTab';
 import SettingsSearch from './SettingsSearch';
 import SetupHome from './SetupHome';
+import { tableLabel } from './AuditLogTab';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { SettingsSection, SettingItem, SettingsTabs, SETTINGS_REVEAL_EVENT } from './SettingsPrimitives';
 import { DirtyFormsProvider, SaveBar, useDirtyForm, useDirtyForms, useDraft } from './DirtyForms';
@@ -316,8 +317,16 @@ function SettingsShell() {
               {!isHome && <><span>{current.group}</span><span className="odoo-breadcrumb-separator">›</span></>}
               <span className="odoo-breadcrumb-current">{current.label}</span>
             </div>
-            <h2 className="odoo-settings-title">{current.label}</h2>
-            <p className="odoo-settings-subtitle">{current.description}</p>
+            <div className="odoo-settings-head-row">
+              <div style={{ minWidth: 0 }}>
+                <h2 className="odoo-settings-title">{current.label}</h2>
+                <p className="odoo-settings-subtitle">{current.description}</p>
+              </div>
+              {current.auditTable && (
+                <PageHistory table={current.auditTable}
+                  onOpen={pages.some(p => p.key === 'audit') ? () => void goTo('audit', { extra: { table: current.auditTable! } }) : undefined} />
+              )}
+            </div>
           </div>
           <div className="odoo-settings-body">
             {readOnly && !isHome && current.key !== 'audit' && (
@@ -326,6 +335,7 @@ function SettingsShell() {
                 Un administrateur peut l'étendre depuis Utilisateurs.
               </StatusBanner>
             )}
+            {!isHome && <PageToc key={`toc-${current.key}`} />}
             <div key={current.key} style={{ display: 'grid', gap: '1.5rem', minWidth: 0 }}>
               {pageContent[current.key]}
             </div>
@@ -337,6 +347,61 @@ function SettingsShell() {
       {/* Monte a l'ouverture seulement : chaque recherche repart d'une saisie vide. */}
       {searchOpen && <SettingsSearch open onClose={() => setSearchOpen(false)} pages={pages} onSelect={onSearchSelect} />}
     </div>
+  );
+}
+
+/* ============ EN-TÊTE DE PAGE : historique et sommaire (lot S4) ============ */
+
+/** Dernière modification de l'objet suivi par la page, et lien vers son historique. */
+function PageHistory({ table, onOpen }: { table: string; onOpen?: () => void }) {
+  const { data } = useQuery({
+    queryKey: ['audit-log', 'last', table],
+    queryFn: () => settingsApi.auditLog({ table, limit: 1 }),
+    staleTime: 30_000, retry: 0,
+  });
+  const last = data?.rows[0];
+  return (
+    <div className="odoo-settings-history" title={`Objet suivi par le journal : ${tableLabel(table)}`}>
+      {last && (
+        <span>
+          Modifié le {format(new Date(last.changed_at), 'd MMM yyyy à HH:mm', { locale: fr })}
+          {last.changed_by_name ? ` par ${last.changed_by_name}` : ''}
+        </span>
+      )}
+      {onOpen && (
+        <button type="button" onClick={onOpen}><History size={13} aria-hidden="true" /> Historique de cette page</button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * « Sur cette page » : raccourcis vers les blocs de la page (titres marqués data-toc),
+ * affichés à partir de 3 blocs ; suit l'onglet ouvert et le chargement des données.
+ */
+function PageToc() {
+  const ref = useRef<HTMLElement>(null);
+  const [items, setItems] = useState<{ id: string; label: string }[]>([]);
+  useEffect(() => {
+    const body = ref.current?.parentElement;
+    if (!body) return;
+    const scan = () => {
+      const found = [...body.querySelectorAll<HTMLElement>('[data-toc]')]
+        .filter(el => el.id && !el.closest('[hidden]') && !el.parentElement?.closest('[data-toc]'))
+        .map(el => ({ id: el.id, label: el.dataset.toc ?? '' }));
+      setItems(prev => (JSON.stringify(prev) === JSON.stringify(found) ? prev : found));
+    };
+    scan();
+    const obs = new MutationObserver(scan);
+    obs.observe(body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+    return () => obs.disconnect();
+  }, []);
+  const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  return (
+    <nav ref={ref} className="odoo-settings-toc" aria-label="Sur cette page" hidden={items.length < 3}>
+      <span className="odoo-settings-toc-title">Sur cette page</span>
+      {items.map(it => <button key={it.id} type="button" onClick={() => go(it.id)}>{it.label}</button>)}
+    </nav>
   );
 }
 
@@ -355,7 +420,7 @@ function CompanyPage() {
 
 function CompanyInfoSection() {
   const { settings, updateSettings } = useSettings();
-  const { draft, set, changes, reset, adopt } = useDraft({ companyName: settings.companyName, subtitle: settings.subtitle });
+  const { draft, set, mark, changes, reset, adopt } = useDraft({ companyName: settings.companyName, subtitle: settings.subtitle });
   useDirtyForm('company-info', {
     dirty: changes > 0, changes, reset,
     save: async () => { await updateSettings(draft); adopt(); },
@@ -363,11 +428,11 @@ function CompanyInfoSection() {
 
   return (
     <SettingsSection title="Informations de l'entreprise">
-      <SettingItem title="Nom de l'entreprise" description="Affiché dans l'application et sur les tickets">
+      <SettingItem {...mark('companyName')} title="Nom de l'entreprise" description="Affiché dans l'application et sur les tickets">
         <input id="company-name" type="text" value={draft.companyName} onChange={(e) => set('companyName', e.target.value)}
           className="odoo-input" placeholder="Nom de votre entreprise" />
       </SettingItem>
-      <SettingItem title="Sous-titre" description="Texte affiché sous le logo">
+      <SettingItem {...mark('subtitle')} title="Sous-titre" description="Texte affiché sous le logo">
         <input id="company-subtitle" type="text" value={draft.subtitle} onChange={(e) => set('subtitle', e.target.value)}
           className="odoo-input" placeholder="Boulangerie & Pâtisserie" />
       </SettingItem>
@@ -397,7 +462,7 @@ const LEGAL_FORMS: [string, string][] = [
 
 function LegalIdentitySection() {
   const { settings, updateSettings } = useSettings();
-  const { draft: form, set, changes, reset, adopt } = useDraft<Record<string, string>>({
+  const { draft: form, set, mark, changes, reset, adopt } = useDraft<Record<string, string>>({
     ...Object.fromEntries(LEGAL_FIELDS.map(f => [f.key, settings[f.key] ?? ''])),
     legalForm: settings.legalForm ?? '',
     legalCapital: settings.legalCapital === null || settings.legalCapital === undefined ? '' : String(settings.legalCapital),
@@ -417,24 +482,24 @@ function LegalIdentitySection() {
 
   return (
     <SettingsSection title="Identité légale">
-      <SettingItem title="Forme juridique" description="Mentionnée sur les factures avec le capital">
+      <SettingItem {...mark('legalForm')} title="Forme juridique" description="Mentionnée sur les factures avec le capital">
         <select id="legal-form" value={form.legalForm ?? ''} onChange={(e) => set('legalForm', e.target.value)} className="odoo-input">
           {LEGAL_FORMS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
       </SettingItem>
-      <SettingItem title="Capital social" description="En dirhams">
+      <SettingItem {...mark('legalCapital')} title="Capital social" description="En dirhams">
         <input id="legal-capital" type="number" min="0" step="1000" value={form.legalCapital ?? ''}
           onChange={(e) => set('legalCapital', e.target.value)}
           className={`odoo-input${capitalInvalid ? ' invalid' : ''}`} />
       </SettingItem>
       {LEGAL_FIELDS.map(f => (
-        <SettingItem key={f.key} title={f.title} description={f.description}>
+        <SettingItem key={f.key} {...mark(f.key)} title={f.title} description={f.description}>
           <input id={`legal-${f.key}`} type="text" value={form[f.key] ?? ''} placeholder={f.placeholder}
             onChange={(e) => set(f.key, e.target.value)}
             className={`odoo-input${f.key === 'legalIce' && iceInvalid ? ' invalid' : ''}`} />
         </SettingItem>
       ))}
-      <SettingItem title="Site web" description="Pied de page des documents">
+      <SettingItem {...mark('legalWebsite')} title="Site web" description="Pied de page des documents">
         <input id="legal-website" type="text" value={form.legalWebsite ?? ''} placeholder="www.exemple.ma"
           onChange={(e) => set('legalWebsite', e.target.value)} className="odoo-input" />
       </SettingItem>
@@ -513,7 +578,7 @@ const THEME_FIELDS: { key: ThemeKey; label: string; group: string }[] = [
 
 function AppearanceTab() {
   const { settings, updateSettings } = useSettings();
-  const { draft: theme, setDraft: setTheme, set: setColor, changes, reset, adopt } = useDraft<Record<ThemeKey, string>>(
+  const { draft: theme, setDraft: setTheme, set: setColor, mark, changes, reset, adopt } = useDraft<Record<ThemeKey, string>>(
     Object.fromEntries(THEME_FIELDS.map(f => [f.key, (settings as unknown as Record<string, string>)[f.key]])) as Record<ThemeKey, string>,
   );
   const invalidColor = THEME_FIELDS.find(f => !/^#[0-9a-fA-F]{6}$/.test(theme[f.key] ?? ''));
@@ -576,7 +641,7 @@ function AppearanceTab() {
       {groups.map(group => (
         <SettingsSection key={group} title={group}>
           {THEME_FIELDS.filter(f => f.group === group).map(field => (
-            <SettingItem key={field.key} title={field.label}>
+            <SettingItem key={field.key} {...mark(field.key)} title={field.label}>
               <div className="flex gap-2">
                 <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(theme[field.key]) ? theme[field.key] : '#000000'}
                   onChange={e => setColor(field.key, e.target.value)} aria-label={`${field.label} : couleur`}
@@ -681,7 +746,7 @@ function PrintTab() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
-  const { draft, set, changes, reset, adopt } = useDraft<PrintDraft>(
+  const { draft, set, mark, changes, reset, adopt } = useDraft<PrintDraft>(
     Object.fromEntries(PRINT_KEYS.map(k => [k, settings[k]])) as PrintDraft,
   );
   useDirtyForm('print', {
@@ -770,7 +835,7 @@ function PrintTab() {
             </div>
           </div>
           <SettingItem
-            title="Afficher le logo sur le reçu"
+            {...mark('receiptShowLogo')} title="Afficher le logo sur le reçu"
             description="Le logo apparaît en haut du ticket imprimé"
             toggle={{ checked: receiptShowLogo, onChange: setReceiptShowLogo }}
           >
@@ -785,15 +850,15 @@ function PrintTab() {
         </SettingsSection>
 
         <SettingsSection title="Contenu du reçu" columns={1}>
-          <SettingItem title="En-tête supplémentaire" description="Affiché sous le sous-titre (adresse, téléphone, ICE…)">
+          <SettingItem {...mark('receiptHeader')} title="En-tête supplémentaire" description="Affiché sous le sous-titre (adresse, téléphone, ICE…)">
             <input id="receipt-header" type="text" value={receiptHeader} onChange={(e) => setReceiptHeader(e.target.value)}
               className="odoo-input" style={{ maxWidth: 448 }} placeholder="Ex. : adresse, téléphone, ICE…" />
           </SettingItem>
-          <SettingItem title="Message de pied de page" description="Texte de remerciement en bas du ticket">
+          <SettingItem {...mark('receiptFooter')} title="Message de pied de page" description="Texte de remerciement en bas du ticket">
             <input id="receipt-footer" type="text" value={receiptFooter} onChange={(e) => setReceiptFooter(e.target.value)}
               className="odoo-input" style={{ maxWidth: 448 }} placeholder="Merci pour votre visite !" />
           </SettingItem>
-          <SettingItem title="Lignes supplémentaires" description="Chaque ligne sera affichée en bas du reçu">
+          <SettingItem {...mark('receiptExtraLines')} title="Lignes supplémentaires" description="Chaque ligne sera affichée en bas du reçu">
             <textarea id="receipt-extra" value={receiptExtraLines} onChange={(e) => setReceiptExtraLines(e.target.value)}
               className="odoo-input" style={{ maxWidth: 448 }} rows={3}
               placeholder="Ex. : horaires d'ouverture, conditions de retour…" />
@@ -801,26 +866,26 @@ function PrintTab() {
         </SettingsSection>
 
         <SettingsSection title="Options d'affichage">
-          <SettingItem title="Nom du caissier" description="Affiche le caissier sur le ticket"
+          <SettingItem {...mark('receiptShowCashier')} title="Nom du caissier" description="Affiche le caissier sur le ticket"
             toggle={{ checked: receiptShowCashier, onChange: setReceiptShowCashier }} />
-          <SettingItem title="Date et heure" description="Affiche la date de la vente"
+          <SettingItem {...mark('receiptShowDate')} title="Date et heure" description="Affiche la date de la vente"
             toggle={{ checked: receiptShowDate, onChange: setReceiptShowDate }} />
-          <SettingItem title="Détail du paiement" description="Espèces reçues et monnaie rendue"
+          <SettingItem {...mark('receiptShowPaymentDetail')} title="Détail du paiement" description="Espèces reçues et monnaie rendue"
             toggle={{ checked: receiptShowPaymentDetail, onChange: setReceiptShowPaymentDetail }} />
         </SettingsSection>
 
         <SettingsSection title="Imprimante thermique">
           <SettingItem
-            title="Impression automatique"
+            {...mark('receiptAutoPrint')} title="Impression automatique"
             description="Le reçu s'imprime après chaque encaissement sans cliquer sur Imprimer"
             toggle={{ checked: receiptAutoPrint, onChange: setReceiptAutoPrint }}
           />
           <SettingItem
-            title="Ouvrir le tiroir-caisse"
+            {...mark('receiptOpenDrawer')} title="Ouvrir le tiroir-caisse"
             description="Le tiroir s'ouvre à chaque impression (tiroir connecté à l'imprimante)"
             toggle={{ checked: receiptOpenDrawer, onChange: setReceiptOpenDrawer }}
           />
-          <SettingItem title="Nombre de copies" description="Nombre de reçus imprimés à chaque vente">
+          <SettingItem {...mark('receiptNumCopies')} title="Nombre de copies" description="Nombre de reçus imprimés à chaque vente">
             <select id="receipt-copies" value={receiptNumCopies} onChange={(e) => setReceiptNumCopies(parseInt(e.target.value))}
               className="odoo-input" style={{ width: 160 }}>
               <option value={1}>1 copie</option>
@@ -837,12 +902,12 @@ function PrintTab() {
         </SettingsSection>
 
         <SettingsSection title="Format d'impression">
-          <SettingItem title="Taille de police" description={`Texte du ticket : ${receiptFontSize} px`}>
+          <SettingItem {...mark('receiptFontSize')} title="Taille de police" description={`Texte du ticket : ${receiptFontSize} px`}>
             <input id="receipt-font" type="range" min="9" max="16" value={receiptFontSize}
               onChange={(e) => setReceiptFontSize(parseInt(e.target.value))}
               style={{ width: '100%', maxWidth: 320, accentColor: 'var(--odoo-purple)' }} />
           </SettingItem>
-          <SettingItem title="Largeur du papier" description="Format du rouleau thermique">
+          <SettingItem {...mark('receiptPaperWidth')} title="Largeur du papier" description="Format du rouleau thermique">
             <select id="receipt-width" value={receiptPaperWidth} onChange={(e) => setReceiptPaperWidth(parseInt(e.target.value))}
               className="odoo-input" style={{ width: 176 }}>
               <option value={58}>58 mm (petit)</option>

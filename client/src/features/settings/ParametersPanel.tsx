@@ -103,7 +103,7 @@ function ParameterCard({ param }: { param: BusinessParameter }) {
   const hint = hintFor(param.key, draft);
 
   return (
-    <div id={`param-${param.key}`} style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '12px 16px', display: 'grid', gap: 10, background: 'var(--odoo-bg)', opacity: param.available ? 1 : 0.6, scrollMarginTop: '1rem' }}>
+    <div id={`param-${param.key}`} data-toc={param.label} style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '12px 16px', display: 'grid', gap: 10, background: 'var(--odoo-bg)', opacity: param.available ? 1 : 0.6, scrollMarginTop: '1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ minWidth: 0, flex: '1 1 320px' }}>
           <div style={{ fontWeight: 600 }}>{param.label}</div>

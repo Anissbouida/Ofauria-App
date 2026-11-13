@@ -144,7 +144,8 @@ export default function AuditLogTab() {
 }
 
 function ChangesView({ users }: { users: Record<string, any>[] }) {
-  const [table, setTable] = useState('');
+  // « Historique de cette page » (lot S4) ouvre le journal filtré par ?table=.
+  const [table, setTable] = useState(() => new URLSearchParams(window.location.search).get('table') ?? '');
   const [changedBy, setChangedBy] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');

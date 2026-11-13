@@ -25,7 +25,7 @@ export function SettingsSection({ title, description, columns = 2, children }: {
   title: string; description?: string; columns?: 1 | 2; children: ReactNode;
 }) {
   return (
-    <section id={settingAnchor(title)} className="odoo-setting-section">
+    <section id={settingAnchor(title)} className="odoo-setting-section" data-toc={title}>
       <div className="odoo-setting-section-head">
         <h3 className="odoo-setting-section-title">{title}</h3>
         {description && <p className="odoo-setting-section-help">{description}</p>}
@@ -39,22 +39,32 @@ export function SettingsSection({ title, description, columns = 2, children }: {
 
 // Reglage unique facon Odoo : interrupteur optionnel a gauche, puis
 // libelle + aide + controle.
-export function SettingItem({ title, description, toggle, children, fullWidth }: {
+export function SettingItem({ title, description, toggle, children, fullWidth, changed, onRevert }: {
   title: string;
   description?: string;
   toggle?: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean };
   children?: ReactNode;
   fullWidth?: boolean;
+  /** Valeur modifiée et non enregistrée (lot S4, voir useDraft().mark). */
+  changed?: boolean;
+  /** Remet la valeur enregistrée de ce seul réglage. */
+  onRevert?: () => void;
 }) {
   return (
-    <div id={settingAnchor(title)} className={`odoo-setting-block${fullWidth ? ' odoo-setting-wide' : ''}`}>
+    <div id={settingAnchor(title)} className={`odoo-setting-block${fullWidth ? ' odoo-setting-wide' : ''}${changed ? ' changed' : ''}`}>
       {toggle && (
         <div className="odoo-setting-block-toggle">
           <OdooToggle checked={toggle.checked} onChange={toggle.onChange} disabled={toggle.disabled} />
         </div>
       )}
       <div className="odoo-setting-block-body">
-        <div className="odoo-setting-label">{title}</div>
+        <div className="odoo-setting-label">
+          {title}
+          {changed && <span className="odoo-setting-changed">Modifié</span>}
+          {changed && onRevert && (
+            <button type="button" className="odoo-setting-revert" onClick={onRevert} title="Remettre la valeur enregistrée">Rétablir</button>
+          )}
+        </div>
         {description && <p className="odoo-setting-help">{description}</p>}
         {children && <div className="odoo-setting-control">{children}</div>}
       </div>

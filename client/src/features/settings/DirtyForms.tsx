@@ -138,8 +138,13 @@ export function useDraft<T extends Record<string, unknown>>(saved: T) {
   }, [savedKey]);
   const changedKeys = (Object.keys(saved) as (keyof T)[]).filter(k => !same(draft[k], saved[k]));
   const set = <K extends keyof T>(key: K, value: T[K]) => setDraft(d => ({ ...d, [key]: value }));
+  /** Lot S4 : état « modifié » d'un champ et retour à sa valeur enregistrée, pour SettingItem. */
+  const mark = (key: keyof T) => ({
+    changed: changedKeys.includes(key),
+    onRevert: () => setDraft(d => ({ ...d, [key]: base.current[key] })),
+  });
   return {
-    draft, setDraft, set,
+    draft, setDraft, set, mark,
     changes: changedKeys.length,
     reset: () => setDraft(base.current),
     adopt: () => { adoptNext.current = true; },

@@ -38,6 +38,8 @@ export interface SettingsPageDef {
   labelKey?: string;
   /** Sections supplémentaires qui ouvrent aussi la page (page fusionnée, lot S3). */
   alsoSections?: SettingsSectionKey[];
+  /** Table suivie par le journal pour « Historique de cette page » (lot S4). */
+  auditTable?: string;
 }
 
 /** Anciennes pages fusionnées (lot S3) : leurs adresses et points mènent à la nouvelle. */
@@ -72,7 +74,7 @@ export const HOME_PAGE: SettingsPageDef = {
 };
 
 export const SETTINGS_PAGES: SettingsPageDef[] = [
-  { key: 'company', group: 'Mon entreprise', section: 'company', label: 'Société', icon: Building2,
+  { key: 'company', group: 'Mon entreprise', auditTable: 'company_settings', section: 'company', label: 'Société', icon: Building2,
     description: 'Identité légale, comptes bancaires et remise du personnel',
     keywords: 'entreprise rib banque iban remise personnel pays',
     fields: ["Informations de l'entreprise", "Nom de l'entreprise", 'Sous-titre', ...LEGAL] },
@@ -80,44 +82,44 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
     description: 'Choisir le métier, puis activer ou désactiver chaque module et ses options',
     keywords: 'secteur activite metier pack boulangerie generique negoce modules industrie services activer desactiver options fonctionnalites',
     fields: ["Secteur d'activité", 'Ventes et caisse', 'Catalogue, achats et stock', 'Production', 'Gestion', 'Socle'] },
-  { key: 'stores', group: 'Mon entreprise', section: 'stores', label: 'Établissements', icon: Store,
+  { key: 'stores', group: 'Mon entreprise', auditTable: 'stores', section: 'stores', label: 'Établissements', icon: Store,
     description: 'Boutiques, laboratoire, entrepôt, siège', keywords: 'boutique magasin point de vente laboratoire entrepot siege adresse' },
-  { key: 'appearance', group: 'Mon entreprise', section: 'appearance', label: 'Apparence', icon: Paintbrush,
+  { key: 'appearance', group: 'Mon entreprise', auditTable: 'company_settings', section: 'appearance', label: 'Apparence', icon: Paintbrush,
     description: 'Thème, couleurs et affichage', keywords: 'theme couleur design',
     fields: ['Thèmes prédéfinis', 'Surfaces', 'Texte', 'Accents', 'Bouton principal', 'Aperçu en direct'] },
 
-  { key: 'print', group: 'Ventes et caisse', modules: ['pos'], section: 'print', label: 'Caisse et tickets', icon: Printer,
+  { key: 'print', group: 'Ventes et caisse', auditTable: 'company_settings', modules: ['pos'], section: 'print', label: 'Caisse et tickets', icon: Printer,
     description: 'Contenu du ticket, imprimantes et tiroir-caisse', keywords: 'impression recu ticket imprimante thermique escpos',
     fields: ['Logo', 'Afficher le logo sur le reçu', 'Contenu du reçu', 'En-tête supplémentaire', 'Message de pied de page',
       'Lignes supplémentaires', "Options d'affichage", 'Nom du caissier', 'Date et heure', 'Détail du paiement',
       'Imprimante thermique', 'Impression automatique', 'Ouvrir le tiroir-caisse', 'Nombre de copies',
       "Format d'impression", 'Taille de police', 'Largeur du papier'] },
-  { key: 'channels', group: 'Ventes et caisse', modules: ['pos', 'sales', 'orders'], section: 'production', label: 'Canaux de vente', icon: Radio,
+  { key: 'channels', group: 'Ventes et caisse', auditTable: 'sales_channels', modules: ['pos', 'sales', 'orders'], section: 'production', label: 'Canaux de vente', icon: Radio,
     description: 'Boutique, commande, événement, gros, livraison', keywords: 'canal vente prix par canal' },
-  { key: 'posRules', group: 'Ventes et caisse', modules: ['pos'], section: 'business', label: 'Règles de caisse', icon: ShoppingCart,
+  { key: 'posRules', group: 'Ventes et caisse', auditTable: 'module_parameters', modules: ['pos'], section: 'business', label: 'Règles de caisse', icon: ShoppingCart,
     alsoSections: ['sachets'],
     description: 'Vente sans stock vitrine, fermeture de caisse et contrôle des sachets',
     keywords: 'caisse rupture stock negatif vente sans stock vitrine sachet emballage ratio vendeuse fermeture',
     fields: ['Caisse : produits sans stock vitrine', 'Réglage global', 'Ratio par catégorie'] },
-  { key: 'salesRules', group: 'Ventes et caisse', modules: ['sales', 'orders', 'customers'], section: 'business', label: 'Devis et crédit clients', icon: BellRing,
+  { key: 'salesRules', group: 'Ventes et caisse', auditTable: 'module_parameters', modules: ['sales', 'orders', 'customers'], section: 'business', label: 'Devis et crédit clients', icon: BellRing,
     description: 'Validité des devis, relances et plafond de crédit', keywords: 'devis proforma validite relance recouvrement impaye plafond credit blocage',
     fields: ['Devis clients', 'Relances clients et contrôle du crédit'] },
 
-  { key: 'production', group: 'Achats, stock et production', modules: ['production'], labelKey: 'production', section: 'production', label: 'Production', icon: Factory,
+  { key: 'production', group: 'Achats, stock et production', auditTable: 'module_parameters', modules: ['production'], labelKey: 'production', section: 'production', label: 'Production', icon: Factory,
     description: 'Ateliers, charges fixes, étapes, arrondi des prix et majoration', keywords: 'atelier ateliers chef boulanger patissier membres categories cout charges loyer energie arrondi prix majoration approvisionnement',
     fields: ['Ateliers', 'Majoration globale', 'Majoration par catégorie'] },
-  { key: 'purchasing', group: 'Achats, stock et production', modules: ['purchasing'], section: 'business', label: 'Achats et réception', icon: Truck,
+  { key: 'purchasing', group: 'Achats, stock et production', auditTable: 'module_parameters', modules: ['purchasing'], section: 'business', label: 'Achats et réception', icon: Truck,
     description: 'Règles des bons de commande, réceptions et factures fournisseurs', keywords: 'achat bc fournisseur reception tolerance dlc lot facture caisse' },
 
-  { key: 'tax', group: 'Finance', section: 'tax', label: 'TVA', icon: Percent,
+  { key: 'tax', group: 'Finance', auditTable: 'tax_codes', section: 'tax', label: 'TVA', icon: Percent,
     description: 'Taux de TVA datés', keywords: 'taxe taux tva' },
   { key: 'currencies', group: 'Finance', modules: ['purchasing', 'accounting'], section: 'currencies', label: 'Devises', icon: Coins,
     description: 'Devises d\'achat et taux de change datés', keywords: 'devise monnaie euro dollar taux change import' },
-  { key: 'numbering', group: 'Finance', section: 'numbering', label: 'Numérotation', icon: Hash,
+  { key: 'numbering', group: 'Finance', auditTable: 'document_sequences', section: 'numbering', label: 'Numérotation', icon: Hash,
     description: 'Séries de numéros des pièces', keywords: 'serie numero compteur piece' },
-  { key: 'documents', group: 'Finance', section: 'documents', label: 'Documents', icon: FileText,
+  { key: 'documents', group: 'Finance', auditTable: 'document_templates', section: 'documents', label: 'Documents', icon: FileText,
     description: 'Mentions des factures et bons de commande', keywords: 'modele facture pdf conditions paiement penalites pied de page' },
-  { key: 'ledger', group: 'Finance', modules: ['accounting'], section: 'business', label: 'Règles comptables', icon: BookOpen,
+  { key: 'ledger', group: 'Finance', auditTable: 'module_parameters', modules: ['accounting'], section: 'business', label: 'Règles comptables', icon: BookOpen,
     description: 'Passation des écritures, commission carte, comptes de produits',
     keywords: 'ecriture comptabilisation journal grand livre commission carte tpe banque compte produit famille ventilation chiffre affaires 7111 7112',
     fields: ['Comptes de produits par famille'] },
@@ -132,7 +134,7 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
   { key: 'data', group: 'Données', section: 'data', label: 'Import et export', icon: HardDrive,
     description: 'Import, export et état de la base', keywords: 'donnees csv excel sauvegarde import export' },
 
-  { key: 'notifications', group: 'Automatisation', section: 'notifications', label: 'Notifications', icon: Bell,
+  { key: 'notifications', group: 'Automatisation', auditTable: 'notification_rules', section: 'notifications', label: 'Notifications', icon: Bell,
     description: 'Qui est prévenu, et de quoi', keywords: 'alerte notification destinataire' },
   { key: 'mail', group: 'Automatisation', section: 'notifications', label: 'E-mails', icon: Mail,
     description: 'Serveur d\'envoi, expéditeur et file des e-mails', keywords: 'email mail smtp envoi expediteur courriel' },
