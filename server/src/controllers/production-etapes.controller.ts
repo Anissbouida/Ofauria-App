@@ -5,6 +5,7 @@ import { productionRendementRepository } from '../repositories/production-rendem
 import { stockFrigoRepository } from '../repositories/stock-frigo.repository.js';
 import { updateEtapeStatusSchema, completeRepetitionSchema, recordRendementSchema, addReadingSchema, retroPlanningSchema } from '../validators/production-etapes.validator.js';
 import { ccpStepTypes, unknownCodes, unknownCodeMessage } from '../services/process-referentials.js';
+import { sectorRepository } from '../repositories/sector.repository.js';
 
 export const productionEtapesController = {
 
@@ -37,8 +38,10 @@ export const productionEtapesController = {
     // sans au moins un relevé de procédé (preuve de maîtrise).
     if (parsed.data.status === 'completed') {
       const gate = await productionEtapesRepository.ccpGate(req.params.etapeId as string);
-      // Types « CCP » : référentiel production_step_types, metadata.ccp (mig 513).
-      if (gate && gate.type_etape && (await ccpStepTypes()).has(gate.type_etape) && gate.readings === 0) {
+      // Types « CCP » : référentiel production_step_types, metadata.ccp (mig 513) ;
+      // garde active seulement avec l'option « Points critiques de cuisson » (mig 507).
+      if (gate && gate.type_etape && (await ccpStepTypes()).has(gate.type_etape) && gate.readings === 0
+          && await sectorRepository.featureOn('ccp_cuisson')) {
         res.status(400).json({ success: false, error: { message: 'Étape critique (CCP) : enregistrez au moins un relevé de procédé avant de la clôturer.' } });
         return;
       }

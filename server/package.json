@@ -11,7 +11,7 @@
     "seed": "tsx src/config/seed.ts",
     "test": "vitest",
     "test:db:setup": "scripts/test-db-setup.sh",
-    "test:db": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://localhost:5432/kalum_test} vitest run src/__tests__/db",
+    "test:db": "TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgres://localhost:5432/kalum_test} DATABASE_URL=${TEST_DATABASE_URL:-postgres://localhost:5432/kalum_test} vitest run src/__tests__/db --no-file-parallelism",
     "e2e:paie": "tsx scripts/e2e-paie.ts",
     "e2e:audit-parametres": "tsx scripts/e2e-audit-parametres.ts",
     "e2e:numerotation": "tsx scripts/e2e-numerotation.ts",

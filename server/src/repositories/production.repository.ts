@@ -12,6 +12,7 @@ import { packagingItemRepository } from './packaging-item.repository.js';
 import { setActor, setReason, transitionPlan, transitionBon, withActor } from '../services/production-state.js';
 import { collectIngredientNeedsForUnits, getCompositionForNeeds } from './recipe-composition.helper.js';
 import { roundQty } from '../utils/quantity.js';
+import { sectorRepository } from './sector.repository.js';
 
 export const productionRepository = {
   async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRoles?: string[]; storeId?: string; limit: number; offset: number }) {
@@ -1207,7 +1208,8 @@ export const productionRepository = {
           );
           const shelfLifeRaw = productLifecycle.rows[0]?.shelf_life_days;
           const shelfDays: number | null = shelfLifeRaw ? parseInt(shelfLifeRaw) : null;
-          if (shelfDays) {
+          // Suivi vitrine : option « Suivi vitrine » (mig 507).
+          if (shelfDays && await sectorRepository.featureOn('vitrine')) {
             const { display_life_hours } = productLifecycle.rows[0];
             const displayHours = display_life_hours ? parseInt(display_life_hours) : null;
             await client.query(
@@ -1772,8 +1774,9 @@ export const productionRepository = {
               );
               const shelfLifeRaw = productLifecycle.rows[0]?.shelf_life_days;
               const shelfDays: number | null = shelfLifeRaw ? parseInt(shelfLifeRaw) : null;
-              // Suivi legacy product_display_tracking : seulement pour les produits a DLV parametree.
-              if (shelfDays) {
+              // Suivi legacy product_display_tracking : produits a DLV parametree, option
+              // « Suivi vitrine » active (mig 507).
+              if (shelfDays && await sectorRepository.featureOn('vitrine')) {
                 const { display_life_hours } = productLifecycle.rows[0];
                 const displayHours = display_life_hours ? parseInt(display_life_hours) : null;
                 const baseTime = producedAt ? `$3::timestamptz` : 'NOW()';

@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionEtapesApi } from '../../api/production-etapes.api';
@@ -86,6 +87,9 @@ const statusColors = {
 export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit }: EtapesPanelProps) {
   const queryClient = useQueryClient();
   const refs = useProcessRefs();
+  // Points critiques : seulement avec l'option « Points critiques de cuisson » (mig 507).
+  const { hasFeature } = usePermissions();
+  const ccpOn = hasFeature('ccp_cuisson');
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [checklistState, setChecklistState] = useState<Record<string, { label: string; ok: boolean }[]>>({});
   const currentEtapeRef = useRef<HTMLDivElement | null>(null);
@@ -176,7 +180,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
         consigne: consigne !== null && Number.isFinite(consigne) ? consigne : null,
         tolerance: tolerance !== null && Number.isFinite(tolerance) ? tolerance : null,
         mesure,
-        est_ccp: refs.isCcp(etape.type_etape),
+        est_ccp: ccpOn && refs.isCcp(etape.type_etape),
       },
     });
   };

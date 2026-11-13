@@ -35,6 +35,7 @@ const EXTRA_RULES: GuardRule[] = [
 // Routes propres à une OPTION de module : fermées quand l'option est éteinte.
 const FEATURE_RULES: { prefix: string; feature: string }[] = [
   { prefix: '/haccp', feature: 'haccp' },
+  { prefix: '/lot-thermal', feature: 'lot_thermal' },
 ];
 
 function extraRuleFor(path: string): GuardRule | undefined {

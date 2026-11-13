@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { productMaterialsUnitCost } from './product-cost.helper.js';
+import { sectorRepository } from './sector.repository.js';
 
 /**
  * Date civile (YYYY-MM-DD) d'un instant, dans le fuseau du magasin.
@@ -118,10 +119,12 @@ export const productLotRepository = {
     }
     const producedAt = data.producedAt ?? new Date();
     const tz = getUserTimezone();
-    // Toute fournee a une DLC : shelf_life_days du produit, sinon jour meme
-    // (audit cycle de vie P2.7 — plus de lot sans DLC, plus de stock orphelin).
-    const shelfDays = data.shelfLifeDays && data.shelfLifeDays > 0 ? data.shelfLifeDays : DEFAULT_SHELF_LIFE_DAYS;
-    const expiresAt = new Date(producedAt.getTime() + shelfDays * 86400000);
+    // DLC : shelf_life_days du produit ; sans lui, jour même si l'option « DLC du jour »
+    // est active (boulangerie, audit cycle de vie P2.7), sinon lot sans date limite
+    // (fabrication non périssable, option éteinte — mig 507).
+    const ownShelf = data.shelfLifeDays && data.shelfLifeDays > 0 ? data.shelfLifeDays : null;
+    const shelfDays = ownShelf ?? ((await sectorRepository.featureOn('dlc_jour')) ? DEFAULT_SHELF_LIFE_DAYS : null);
+    const expiresAt = shelfDays !== null ? new Date(producedAt.getTime() + shelfDays * 86400000) : null;
 
     let lotNumber = data.lotNumber || null;
     if (lotNumber) {
@@ -152,7 +155,7 @@ export const productLotRepository = {
         data.storeId,
         lotNumber,
         producedAt.toISOString(),
-        localIsoDate(expiresAt, tz),
+        expiresAt ? localIsoDate(expiresAt, tz) : null,
         data.quantityProduced,
         data.notes ?? null,
         data.planItemId ?? null,
@@ -183,12 +186,15 @@ export const productLotRepository = {
   ): Promise<ProductLot> {
     const producedAt = data.producedAt ?? new Date();
     const tz = getUserTimezone();
-    let expiresDate: string;
+    // Même règle que la production : sans DLC fournie ni shelf_life_days, jour même
+    // seulement si l'option « DLC du jour » est active (mig 507), sinon sans date limite.
+    let expiresDate: string | null;
     if (data.expiresAt) {
       expiresDate = data.expiresAt;
     } else {
-      const shelfDays = data.shelfLifeDays && data.shelfLifeDays > 0 ? data.shelfLifeDays : DEFAULT_SHELF_LIFE_DAYS;
-      expiresDate = localIsoDate(new Date(producedAt.getTime() + shelfDays * 86400000), tz);
+      const ownShelf = data.shelfLifeDays && data.shelfLifeDays > 0 ? data.shelfLifeDays : null;
+      const shelfDays = ownShelf ?? ((await sectorRepository.featureOn('dlc_jour')) ? DEFAULT_SHELF_LIFE_DAYS : null);
+      expiresDate = shelfDays !== null ? localIsoDate(new Date(producedAt.getTime() + shelfDays * 86400000), tz) : null;
     }
 
     // Numéro de lot : fourni (avec suffixe si déjà pris pour ce magasin) ou généré.

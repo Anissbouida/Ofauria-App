@@ -220,6 +220,11 @@ export const sectorRepository = {
 
   invalidate() { cache = null; },
 
+  /** Option active pour la société (mig 507) : le code lit l'option, jamais le secteur. */
+  async featureOn(key: string): Promise<boolean> {
+    return (await this.activation()).features.has(key);
+  },
+
   /** Modules et options visibles par un utilisateur (pilotes et établissement compris). */
   async forUser(user: { userId: string; role: string; baseRoles?: string[]; storeId?: string | null }) {
     const act = await this.activation();

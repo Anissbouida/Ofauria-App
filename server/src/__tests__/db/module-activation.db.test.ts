@@ -227,6 +227,32 @@ describe.skipIf(!hasTestDb)('Activation des modules et options', () => {
     expect(await callGuard('GET', '/haccp/logs')).toBe(200);
   });
 
+  it('options câblées (P5) : DLC du jour et gel / dégel suivent l\'option', async () => {
+    const { productLotRepository } = await import('../../repositories/product-lot.repository.js');
+    const p = testPool();
+    const store = (await p.query(`SELECT id FROM stores LIMIT 1`)).rows[0].id as string;
+    const product = (await p.query(
+      `INSERT INTO products (name, slug, price) VALUES ('Lot option P5', 'lot-option-p5-' || floor(random() * 1e9)::text, 1) RETURNING id`)).rows[0].id as string;
+    const client = await p.connect();
+    try {
+      // Fabrication : aucune option boulangerie → lot sans date limite, gel/dégel fermé.
+      await sectors.setSector('fabrication', { keepAdjustments: false });
+      const sans = await productLotRepository.createFromProduction(client as never, { productId: product, storeId: store, quantityProduced: 2 });
+      expect(sans.expires_at).toBeNull();
+      expect(await callGuard('GET', '/lot-thermal/lots')).toBe(403);
+
+      // Boulangerie : DLC du jour par défaut, gel/dégel ouvert.
+      await sectors.setSector('boulangerie', { keepAdjustments: false });
+      const avec = await productLotRepository.createFromProduction(client as never, { productId: product, storeId: store, quantityProduced: 2 });
+      expect(avec.expires_at).not.toBeNull();
+      expect(await callGuard('GET', '/lot-thermal/lots')).toBe(200);
+    } finally {
+      await client.query(`DELETE FROM product_lots WHERE product_id = $1`, [product]).catch(() => undefined);
+      await client.query(`DELETE FROM products WHERE id = $1`, [product]).catch(() => undefined);
+      client.release();
+    }
+  });
+
   it("une option éteinte ferme ses routes (HACCP)", async () => {
     await sectors.setSector('boulangerie', { keepAdjustments: false });
     expect(await callGuard('GET', '/haccp/logs')).toBe(200);

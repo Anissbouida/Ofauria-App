@@ -96,7 +96,7 @@ export default function StockPage() {
   const navigate = useNavigate();
   const { settings } = useSettings();
   const { user } = useAuth();
-  const { hasModule } = usePermissions();
+  const { hasModule, hasFeature } = usePermissions();
   const isWarehouseUser = ['admin', 'manager', 'magasinier'].includes(user?.role || '');
   // Admin/gerant uniquement : actions de gestion en masse (import/export ingredients).
   const canManageIngredients = ['admin', 'manager'].includes(user?.role || '');
@@ -351,7 +351,8 @@ export default function StockPage() {
     // Mig 367 : inventaire physique (le magasin compte, la direction valide).
     { key: 'inventaires', label: 'Inventaires', icon: ClipboardCheck, section: 'operations', hidden: !isWarehouseUser },
     // État thermique des lots (épic labo L4, mig 426) : surgélation / décongélation.
-    { key: 'surgeles', label: 'Lots surgelables', icon: Snowflake, section: 'operations', hidden: !isWarehouseUser },
+    // Option « Congélation / décongélation » (mig 507).
+    { key: 'surgeles', label: 'Lots surgelables', icon: Snowflake, section: 'operations', hidden: !isWarehouseUser || !hasFeature('lot_thermal') },
     // Mig 312 (D9) : registre des entrées (traçabilité ONSSA), magasinier compris.
     { key: 'registre', label: 'Registre des entrées', icon: Archive, section: 'reports', hidden: !isWarehouseUser },
     // Analyse : les endpoints consommation/achats sont reserves admin/gerant cote serveur.

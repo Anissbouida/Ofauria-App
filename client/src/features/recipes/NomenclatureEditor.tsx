@@ -9,6 +9,7 @@ import { Tag, Link2 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage as extractErr } from '../../api/errors';
+import { usePermissions } from '../../context/PermissionsContext';
 
 interface SourceOpt { type: 'recipe' | 'ingredient'; id: string; name: string; unit: string; cost: number; yieldQty?: number; }
 interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient'; sourceId: string; quantite: string; unite: string; pertePct?: string }
@@ -175,6 +176,10 @@ export interface FormatKpi {
 export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCancel }: { recipeId: string; onSaved?: () => void; onFinance?: (k: FormatKpi | null) => void; onCancel?: () => void }) {
   const qc = useQueryClient();
   const confirm = useConfirm();
+  // Cru / cuit : option « Contenants cru / cuit » (mig 507). Éteinte, la perte reste
+  // saisissable (perte de fabrication) mais le poids cuit disparaît.
+  const { hasFeature } = usePermissions();
+  const cruCuit = hasFeature('contenants_cru_cuit');
   const [formatId, setFormatId] = useState<string | null>(null);
   // Id d'un format tout juste créé/dupliqué : protège sa sélection tant que la
   // liste des formats ne l'a pas encore intégré (sinon l'effet ci-dessous le voit
@@ -780,7 +785,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                   </div>
                 )}
                 <div>
-                  <label className={lbl} htmlFor="fmt-perte">Perte cuisson</label>
+                  <label className={lbl} htmlFor="fmt-perte">{cruCuit ? 'Perte cuisson' : 'Perte de fabrication'}</label>
                   <span className={box}>
                     <input id="fmt-perte" type="number" min="0" max="99" step="any" className={`${inp} text-amber-700`} value={perte} onChange={(e) => setPerte(e.target.value)} placeholder="0" />
                     <span className={sfx}>%</span>
@@ -790,10 +795,12 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                   <span className={lbl}>Poids brut</span>
                   <div className={read}><span className="font-medium">{bv}</span><span className="text-gray-400">{bu}</span></div>
                 </div>
-                <div>
-                  <span className={lbl}>Poids cuit</span>
-                  <div className={read}><span className="font-medium">{cv}</span><span className="text-gray-400">{cu}</span></div>
-                </div>
+                {cruCuit && (
+                  <div>
+                    <span className={lbl}>Poids cuit</span>
+                    <div className={read}><span className="font-medium">{cv}</span><span className="text-gray-400">{cu}</span></div>
+                  </div>
+                )}
 
                 {/* Mode de saisie en LECTURE SEULE : décidé à la création (corrigeable
                     via ✎ Identité), plus modifié pendant la composition. */}

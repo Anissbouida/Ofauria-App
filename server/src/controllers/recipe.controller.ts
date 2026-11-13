@@ -9,6 +9,7 @@ import { restoreRecipeVersion, RecipeRestoreError } from '../repositories/recipe
 import { recipeFicheRepository } from '../repositories/recipe-fiche.repository.js';
 import { generateRecipeFichePdf, type FicheFormat } from '../services/recipe-fiche-pdf.service.js';
 import { db } from '../config/database.js';
+import { sectorRepository } from '../repositories/sector.repository.js';
 
 const num = (v: unknown): number => (v === null || v === undefined ? 0 : parseFloat(String(v)) || 0);
 const numOrNull = (v: unknown): number | null =>
@@ -246,6 +247,8 @@ export const recipeController = {
       });
 
       const etapesRaw = Array.isArray(r.etapes) ? (r.etapes as Record<string, unknown>[]) : [];
+      // Darija imprimée seulement avec l'option « Fiche technique bilingue » (mig 507).
+      const bilingue = await sectorRepository.featureOn('fiche_masterclass');
 
       const buffer = await generateRecipeFichePdf({
         name: r.name as string,
@@ -317,8 +320,8 @@ export const recipeController = {
           checklist: Array.isArray(e.checklist_items) ? (e.checklist_items as string[]) : [],
           // Darija : la fiche Masterclass est bilingue, le labo lit souvent la
           // colonne arabe. Absente sur les fiches non traduites, d'ou le null.
-          nomAr: (e.nom_ar as string) || null,
-          checklistAr: Array.isArray(e.checklist_items_ar) ? (e.checklist_items_ar as string[]) : [],
+          nomAr: bilingue ? (e.nom_ar as string) || null : null,
+          checklistAr: bilingue && Array.isArray(e.checklist_items_ar) ? (e.checklist_items_ar as string[]) : [],
         })),
         editedAt: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
         logoPath: await resolveLogo(),

@@ -5,6 +5,7 @@ import { recipesApi } from '../../api/recipes.api';
 import { useProcessRefs } from '../../api/production.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { usePermissions } from '../../context/PermissionsContext';
 
 /**
  * Étapes de production d'une recette — section partagée par la page produit fini
@@ -68,6 +69,10 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
   // Par défaut les deux langues : c'est le sens d'une fiche bilingue. Le bouton
   // permet de n'afficher que le français quand la darija encombre.
   const [bilingue, setBilingue] = useState(true);
+  // Darija : option « Fiche technique bilingue » (mig 507). Éteinte, les champs
+  // arabes ne s'affichent que s'ils contiennent déjà une traduction.
+  const { hasFeature } = usePermissions();
+  const darijaOn = hasFeature('fiche_masterclass');
   const qc = useQueryClient();
   const refs = useProcessRefs();
   const [drafts, setDrafts] = useState<Draft[] | null>(null);
@@ -138,8 +143,10 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
                 }}>{i + 1}</span>
                 <input className={`${inp} flex-1 min-w-[180px] font-medium`} value={d.nom} placeholder="Nom de l'étape"
                   onChange={(e) => patch(d.k, { nom: e.target.value })} maxLength={200} />
-                <input dir="rtl" lang="ar" className={`${inp} flex-1 min-w-[180px]`} style={ar} value={d.nomAr} placeholder="الاسم بالعربية"
-                  onChange={(e) => patch(d.k, { nomAr: e.target.value })} maxLength={300} />
+                {(darijaOn || d.nomAr) && (
+                  <input dir="rtl" lang="ar" className={`${inp} flex-1 min-w-[180px]`} style={ar} value={d.nomAr} placeholder="الاسم بالعربية"
+                    onChange={(e) => patch(d.k, { nomAr: e.target.value })} maxLength={300} />
+                )}
                 <span className="inline-flex items-center gap-1">
                   <input type="number" min="0" step="any" className={`${inp} w-20 text-right tabular-nums`} value={d.duree} placeholder="0"
                     onChange={(e) => patch(d.k, { duree: e.target.value })} title="Durée estimée" />
@@ -197,11 +204,13 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
                   <textarea className={area} rows={Math.max(3, d.pts.split('\n').length)} value={d.pts}
                     onChange={(e) => patch(d.k, { pts: e.target.value })} />
                 </label>
-                <label className="block">
-                  <span className="text-[11px] text-gray-400">Darija — une ligne par point</span>
-                  <textarea dir="rtl" lang="ar" className={area} style={ar} rows={Math.max(3, d.ptsAr.split('\n').length)} value={d.ptsAr}
-                    onChange={(e) => patch(d.k, { ptsAr: e.target.value })} />
-                </label>
+                {(darijaOn || d.ptsAr) && (
+                  <label className="block">
+                    <span className="text-[11px] text-gray-400">Darija — une ligne par point</span>
+                    <textarea dir="rtl" lang="ar" className={area} style={ar} rows={Math.max(3, d.ptsAr.split('\n').length)} value={d.ptsAr}
+                      onChange={(e) => patch(d.k, { ptsAr: e.target.value })} />
+                  </label>
+                )}
               </div>
             </div>
           ))}
@@ -257,7 +266,7 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
             </span>
           )}
           <span className="text-gray-500">{nbPoints} points de contrôle</span>
-          {darijaDispo && (
+          {darijaDispo && darijaOn && (
             <button type="button" onClick={() => setBilingue(!bilingue)}
               title={bilingue ? 'Masquer la darija' : 'Afficher la darija'}
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] ${
