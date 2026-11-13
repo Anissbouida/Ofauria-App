@@ -2,10 +2,10 @@ import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
 import {
-  ACTIVATABLE_MODULES, CORE_MODULES, MODULE_LABELS, canonicalModule, effectiveModules, missingDependencies,
-  type AppModule, type ModuleOverrides,
+  ACTIVATABLE_MODULES, CORE_MODULES, MODULE_LABELS, STORE_SCOPED_MODULES, canonicalModule, effectiveModules,
+  missingDependencies, modulesForUser, type AppModule, type ModuleOverrides, type ModulePilot, type ModuleRollout,
 } from '@ofauria/shared';
-import { describeDiff, diffActivation, type ActivationState, type ImpactDiff } from '../services/module-impact.js';
+import { NO_VISIBLE_CHANGE, describeDiff, diffActivation, type ActivationState, type ImpactDiff } from '../services/module-impact.js';
 
 /**
  * Secteur d'activité (packs secteur, mig 468). Le secteur de la société est dans
@@ -19,6 +19,10 @@ import { describeDiff, diffActivation, type ActivationState, type ImpactDiff } f
  *
  * Versions (mig 508) : chaque changement enregistre l'état complet qui en résulte
  * (config_versions) ; on peut restaurer n'importe quelle version.
+ *
+ * Diffusion (mig 509) : un module actif peut être en PILOTE (visible de quelques
+ * rôles / utilisateurs) ou fermé pour certains établissements. Les modules visibles
+ * d'un utilisateur = forUser(user) ; la société garde le module actif.
  */
 export type SectorPack = { code: string; label: string; modules: string[]; is_default: boolean; home_route?: string | null; report_keys?: string[]; features?: string[] };
 
@@ -35,15 +39,21 @@ export type Activation = {
   modules: Set<AppModule>;
   /** Une option n'est effective que si son module l'est. */
   features: Set<string>;
+  rollout: ModuleRollout;
 };
 
 export type AdjustmentChanges = { modules?: Record<string, boolean | null>; features?: Record<string, boolean | null> };
 
-export type ConfigSnapshot = { sector: string; modules: ModuleOverrides; features: ModuleOverrides };
+export type ConfigSnapshot = { sector: string; modules: ModuleOverrides; features: ModuleOverrides; rollout?: ModuleRollout };
+
+/** Diffusion d'un module : pilote (null = ouvert à tous) et établissements fermés. */
+export type RolloutChange = { pilot: ModulePilot | null; disabledStores: string[] };
 
 export type ConfigVersion = { id: number; created_at: string; created_by_name: string | null; label: string; snapshot: ConfigSnapshot };
 
-type Target = { sector: SectorPack; modules: ModuleOverrides; features: ModuleOverrides };
+type Target = { sector: SectorPack; modules: ModuleOverrides; features: ModuleOverrides; rollout: ModuleRollout };
+
+const EMPTY_ROLLOUT: ModuleRollout = { pilots: {}, storeDisabled: {} };
 
 const mapPack = (r: Record<string, any>): SectorPack => ({
   code: r.code, label: r.label, modules: r.modules ?? [], is_default: r.is_default,
@@ -90,11 +100,50 @@ function normalize(target: Target): Target {
   for (const [k, on] of Object.entries(target.features)) {
     if (on !== undefined && on !== packFeatures.includes(k)) features[k] = on;
   }
-  return { sector: target.sector, modules, features };
+  return { sector: target.sector, modules, features, rollout: target.rollout };
 }
 
-const snapshotOf = (t: { sector: SectorPack; modules: ModuleOverrides; features: ModuleOverrides }): ConfigSnapshot =>
-  ({ sector: t.sector.code, modules: t.modules, features: t.features });
+const snapshotOf = (t: Target): ConfigSnapshot =>
+  ({ sector: t.sector.code, modules: t.modules, features: t.features, rollout: t.rollout });
+
+async function loadRollout(): Promise<ModuleRollout> {
+  const [pilots, members, stores] = await Promise.all([
+    db.query(`SELECT module_key FROM company_module_pilots`),
+    db.query(`SELECT module_key, role_code, user_id FROM module_pilot_members`),
+    db.query(`SELECT store_id, module_key FROM store_module_settings`),
+  ]);
+  const out: ModuleRollout = { pilots: {}, storeDisabled: {} };
+  for (const r of pilots.rows) out.pilots[r.module_key] = { roles: [], users: [] };
+  for (const r of members.rows) {
+    const p = out.pilots[r.module_key];
+    if (!p) continue;
+    if (r.role_code) p.roles.push(r.role_code); else if (r.user_id) p.users.push(r.user_id);
+  }
+  for (const r of stores.rows) (out.storeDisabled[r.store_id] ??= []).push(r.module_key);
+  return out;
+}
+
+/** Réécrit la diffusion en ne touchant que les lignes qui changent. */
+async function syncRollout(client: PoolClient, before: ModuleRollout, after: ModuleRollout, userId?: string | null) {
+  for (const m of Object.keys(before.pilots)) {
+    if (!after.pilots[m]) await client.query(`DELETE FROM company_module_pilots WHERE module_key = $1`, [m]);
+  }
+  for (const [m, pilot] of Object.entries(after.pilots)) {
+    if (!pilot) continue;
+    const prev = before.pilots[m];
+    if (!prev) {
+      await client.query(`INSERT INTO company_module_pilots (module_key, updated_by) VALUES ($1, $2)`, [m, userId ?? null]);
+    }
+    for (const r of prev?.roles ?? []) if (!pilot.roles.includes(r)) await client.query(`DELETE FROM module_pilot_members WHERE module_key = $1 AND role_code = $2`, [m, r]);
+    for (const u of prev?.users ?? []) if (!pilot.users.includes(u)) await client.query(`DELETE FROM module_pilot_members WHERE module_key = $1 AND user_id = $2`, [m, u]);
+    for (const r of pilot.roles) if (!prev?.roles.includes(r)) await client.query(`INSERT INTO module_pilot_members (module_key, role_code) VALUES ($1, $2)`, [m, r]);
+    for (const u of pilot.users) if (!prev?.users.includes(u)) await client.query(`INSERT INTO module_pilot_members (module_key, user_id) VALUES ($1, $2)`, [m, u]);
+  }
+  const pairs = (r: ModuleRollout) => new Set(Object.entries(r.storeDisabled).flatMap(([st, mods]) => (mods ?? []).map(m => `${st}|${m}`)));
+  const b = pairs(before), a = pairs(after);
+  for (const k of b) if (!a.has(k)) { const [st, m] = k.split('|'); await client.query(`DELETE FROM store_module_settings WHERE store_id = $1 AND module_key = $2`, [st, m]); }
+  for (const k of a) if (!b.has(k)) { const [st, m] = k.split('|'); await client.query(`INSERT INTO store_module_settings (store_id, module_key, updated_by) VALUES ($1, $2, $3)`, [st, m, userId ?? null]); }
+}
 
 async function loadOverrides(table: 'company_module_settings' | 'company_feature_settings', key: string): Promise<ModuleOverrides> {
   const { rows } = await db.query(`SELECT ${key} AS k, enabled FROM ${table}`);
@@ -152,23 +201,33 @@ export const sectorRepository = {
   /** Préréglage + ajustements → modules et options effectifs (mis en cache). */
   async activation(): Promise<Activation> {
     if (cache && Date.now() - cache.at < CACHE_MS) return cache.value;
-    const [sector, moduleOverrides, featureOverrides, catalogRes] = await Promise.all([
+    const [sector, moduleOverrides, featureOverrides, catalogRes, rollout] = await Promise.all([
       this.current(),
       loadOverrides('company_module_settings', 'module_key'),
       loadOverrides('company_feature_settings', 'feature_key'),
       db.query(`SELECT key, module_key, label, description, sort_order FROM app_features ORDER BY module_key, sort_order, label`),
+      loadRollout(),
     ]);
     const catalog = catalogRes.rows as FeatureDef[];
-    const state = stateOf({ sector, modules: moduleOverrides, features: featureOverrides }, catalog);
+    const state = stateOf({ sector, modules: moduleOverrides, features: featureOverrides, rollout }, catalog);
     const value: Activation = {
       sector, packModules: canonicalPack(sector), packFeatures: sector.features ?? [],
-      moduleOverrides, featureOverrides, catalog, modules: state.modules, features: state.features,
+      moduleOverrides, featureOverrides, catalog, modules: state.modules, features: state.features, rollout,
     };
     cache = { at: Date.now(), value };
     return value;
   },
 
   invalidate() { cache = null; },
+
+  /** Modules et options visibles par un utilisateur (pilotes et établissement compris). */
+  async forUser(user: { userId: string; role: string; baseRoles?: string[]; storeId?: string | null }) {
+    const act = await this.activation();
+    const modules = modulesForUser(act.modules, act.rollout, { userId: user.userId, role: user.role, roles: user.baseRoles, storeId: user.storeId });
+    const moduleOf = new Map(act.catalog.map(f => [f.key, f.module_key]));
+    const features = new Set([...act.features].filter(f => modules.has(canonicalModule(moduleOf.get(f) as AppModule))));
+    return { act, modules, features };
+  },
 
   featureLabel(act: Activation) {
     const byKey = new Map(act.catalog.map(f => [f.key, f.label]));
@@ -198,7 +257,7 @@ export const sectorRepository = {
       if (value === null) delete features[key]; else features[key] = value;
     }
 
-    const target = normalize({ sector: current.sector, modules, features });
+    const target = normalize({ sector: current.sector, modules, features, rollout: current.rollout });
     const after = stateOf(target, current.catalog);
     const missing = missingDependencies(after.modules);
     if (missing.length) {
@@ -218,7 +277,8 @@ export const sectorRepository = {
   /** Revient au préréglage du secteur : supprime tous les ajustements. */
   async resetAdjustments(userId?: string | null): Promise<Activation> {
     const current = await this.activation();
-    await this.commit(current, { sector: current.sector, modules: {}, features: {} }, userId, 'Retour au préréglage du secteur');
+    // Préréglage = tous les modules du secteur, pour tous, dans tous les établissements.
+    await this.commit(current, { sector: current.sector, modules: {}, features: {}, rollout: EMPTY_ROLLOUT }, userId, 'Retour au préréglage du secteur');
     return this.activation();
   },
 
@@ -234,6 +294,7 @@ export const sectorRepository = {
       sector: pack,
       modules: keep ? current.moduleOverrides : {},
       features: keep ? current.featureOverrides : {},
+      rollout: keep ? current.rollout : EMPTY_ROLLOUT,
     });
     await this.commit(current, target, opts.userId, `Secteur : ${pack.label}${keep ? '' : ' (préréglage)'}`);
     return this.current();
@@ -246,7 +307,7 @@ export const sectorRepository = {
    * « Configuration initiale » : le tout premier changement reste annulable.
    */
   async commit(current: Activation, target: Target, userId?: string | null, label?: string) {
-    const before = { sector: current.sector, modules: current.moduleOverrides, features: current.featureOverrides };
+    const before: Target = { sector: current.sector, modules: current.moduleOverrides, features: current.featureOverrides, rollout: current.rollout };
     const after = stateOf(target, current.catalog);
     const summary = describeDiff(diffActivation(current, after), this.featureLabel(current));
     const client = await db.getClient();
@@ -263,8 +324,9 @@ export const sectorRepository = {
       }
       await syncOverrides(client, 'company_module_settings', 'module_key', current.moduleOverrides, target.modules, userId);
       await syncOverrides(client, 'company_feature_settings', 'feature_key', current.featureOverrides, target.features, userId);
+      await syncRollout(client, current.rollout, target.rollout, userId);
       await client.query(`INSERT INTO config_versions (created_by, label, snapshot) VALUES ($1, $2, $3)`,
-        [userId ?? null, label ? `${label} — ${summary}` : summary, JSON.stringify(snapshotOf(target))]);
+        [userId ?? null, label ? (summary === NO_VISIBLE_CHANGE ? label : `${label} — ${summary}`) : summary, JSON.stringify(snapshotOf(target))]);
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK').catch(() => undefined);
@@ -273,6 +335,67 @@ export const sectorRepository = {
       client.release();
       this.invalidate();
     }
+  },
+
+  /** Retire d'une diffusion les rôles, utilisateurs et établissements disparus. */
+  async cleanRollout(r: ModuleRollout): Promise<ModuleRollout> {
+    const [roles, users, stores] = await Promise.all([
+      db.query(`SELECT code FROM roles`), db.query(`SELECT id::text AS id FROM users`), db.query(`SELECT id::text AS id FROM stores`),
+    ]);
+    const roleSet = new Set(roles.rows.map(x => x.code));
+    const userSet = new Set(users.rows.map(x => x.id));
+    const storeSet = new Set(stores.rows.map(x => x.id));
+    const out: ModuleRollout = { pilots: {}, storeDisabled: {} };
+    for (const [m, p] of Object.entries(r.pilots ?? {})) {
+      if (p) out.pilots[m] = { roles: p.roles.filter(x => roleSet.has(x)), users: p.users.filter(x => userSet.has(x)) };
+    }
+    for (const [st, mods] of Object.entries(r.storeDisabled ?? {})) {
+      const kept = (mods ?? []).filter(m => STORE_SCOPED_MODULES.has(m as AppModule));
+      if (storeSet.has(st) && kept.length) out.storeDisabled[st] = kept;
+    }
+    return out;
+  },
+
+  /**
+   * Diffusion d'un module (P0c) : pilote (rôles / utilisateurs) ou ouvert à tous, et
+   * établissements où il est fermé. Le module doit être actif pour la société ; seuls
+   * les modules « par établissement » se ferment par établissement.
+   */
+  async applyRollout(rawKey: string, change: RolloutChange, userId?: string | null): Promise<{ error: string } | { activation: Activation }> {
+    const key = canonicalModule(rawKey as AppModule);
+    if (!ACTIVATABLE_MODULES.includes(key)) return { error: `Module inconnu : ${rawKey}` };
+    if (CORE_MODULES.has(key)) return { error: `Le module « ${MODULE_LABELS[key]} » est ouvert à tous` };
+    const current = await this.activation();
+    if (!current.modules.has(key)) return { error: `Activez d'abord « ${MODULE_LABELS[key]} » pour la société` };
+    const wantedStores = [...new Set(change.disabledStores)];
+    if (wantedStores.length && !STORE_SCOPED_MODULES.has(key)) {
+      return { error: `« ${MODULE_LABELS[key]} » ne se règle pas par établissement` };
+    }
+    if (change.pilot && !change.pilot.roles.length && !change.pilot.users.length) {
+      return { error: 'Choisissez au moins un rôle ou un utilisateur pour le pilote' };
+    }
+    const requested: ModuleRollout = { pilots: { ...current.rollout.pilots }, storeDisabled: {} };
+    delete requested.pilots[key];
+    const wantedPilot = change.pilot ? { roles: [...new Set(change.pilot.roles)], users: [...new Set(change.pilot.users)] } : null;
+    if (wantedPilot) requested.pilots[key] = wantedPilot;
+    for (const [st, mods] of Object.entries(current.rollout.storeDisabled)) {
+      const kept = (mods ?? []).filter(m => m !== key);
+      if (kept.length) requested.storeDisabled[st] = kept;
+    }
+    for (const st of wantedStores) (requested.storeDisabled[st] ??= []).push(key);
+    const cleaned = await this.cleanRollout(requested);
+    const pilot = cleaned.pilots[key];
+    if (wantedPilot && (!pilot || pilot.roles.length + pilot.users.length !== wantedPilot.roles.length + wantedPilot.users.length)) {
+      return { error: 'Rôle ou utilisateur inconnu' };
+    }
+    const closed = Object.values(cleaned.storeDisabled).filter(m => m?.includes(key)).length;
+    if (closed !== wantedStores.length) return { error: 'Établissement inconnu' };
+
+    const parts = [pilot ? `pilote (${pilot.roles.length} rôle(s), ${pilot.users.length} utilisateur(s))` : 'ouvert à tous'];
+    if (closed) parts.push(`fermé dans ${closed} établissement(s)`);
+    const target: Target = { sector: current.sector, modules: current.moduleOverrides, features: current.featureOverrides, rollout: cleaned };
+    await this.commit(current, target, userId, `${MODULE_LABELS[key]} : ${parts.join(', ')}`);
+    return { activation: await this.activation() };
   },
 
   /** Historique des configurations, de la plus récente à la plus ancienne. */
@@ -305,7 +428,7 @@ export const sectorRepository = {
     }
     const features: ModuleOverrides = {};
     for (const [k, on] of Object.entries(snap.features ?? {})) if (known.has(k)) features[k] = on;
-    const target = normalize({ sector: pack, modules, features });
+    const target = normalize({ sector: pack, modules, features, rollout: await this.cleanRollout(snap.rollout ?? EMPTY_ROLLOUT) });
     const date = new Date(rows[0].created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Africa/Casablanca' });
     await this.commit(current, target, userId, `Restauration de la version du ${date}`);
     return { activation: await this.activation() };

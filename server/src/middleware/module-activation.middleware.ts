@@ -1,4 +1,5 @@
-import type { Request, Response, NextFunction } from 'express';
+import type { Response, NextFunction } from 'express';
+import { resolveRequestUser, type AuthRequest } from './auth.middleware.js';
 import { resolveModuleKeys } from '@ofauria/shared';
 import { ruleFor, type GuardRule } from './module-guard.middleware.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
@@ -9,7 +10,9 @@ import { sectorRepository } from '../repositories/sector.repository.js';
  * Un module désactivé (par le secteur ou par un ajustement dans Paramètres ›
  * Secteur et modules) est fermé côté API, plus seulement masqué dans les menus.
  * La règle vaut pour TOUS les utilisateurs, administrateur compris : c'est la
- * configuration de la société, pas un droit personnel.
+ * configuration de la société, pas un droit personnel. Pilotes et établissements
+ * (mig 509) : on lit les modules visibles par l'utilisateur de la requête ; sans
+ * jeton valide, ceux de la société (l'authentification de la route répondra 401).
  *
  * Elle réutilise la table préfixe → modules de la garde des droits : l'appel passe
  * si l'un des modules du préfixe est actif. Les modules « alsoRead » n'en font pas
@@ -38,13 +41,19 @@ function extraRuleFor(path: string): GuardRule | undefined {
   return EXTRA_RULES.find(r => path === r.prefix || path.startsWith(r.prefix + '/'));
 }
 
-export async function moduleActivationGuard(req: Request, res: Response, next: NextFunction) {
+export async function moduleActivationGuard(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     if (req.method === 'OPTIONS') { next(); return; }
     const rule = ruleFor(req.path) ?? extraRuleFor(req.path);
     const featureRule = FEATURE_RULES.find(r => req.path === r.prefix || req.path.startsWith(r.prefix + '/'));
     if (!rule && !featureRule) { next(); return; }
-    const { modules: active, features } = await sectorRepository.activation();
+    if (!req.user) {
+      const r = await resolveRequestUser(req);
+      if (!('error' in r)) req.user = r.user;
+    }
+    const { modules: active, features } = req.user
+      ? await sectorRepository.forUser(req.user)
+      : await sectorRepository.activation();
     if (rule && !rule.modules.some(m => resolveModuleKeys(m).some(k => active.has(k as never)))) {
       res.status(403).json({
         success: false,

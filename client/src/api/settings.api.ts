@@ -205,6 +205,8 @@ export interface ModuleActivation {
   catalog: { key: string; module_key: string; label: string; description: string | null; sort_order: number }[];
   modules: string[];
   features: string[];
+  /** Diffusion (mig 509) : modules en pilote et modules fermés par établissement. */
+  rollout: { pilots: Record<string, { roles: string[]; users: string[] }>; storeDisabled: Record<string, string[]> };
 }
 
 export const settingsApi = {
@@ -236,6 +238,8 @@ export const settingsApi = {
   resetModules: () => api.post('/settings/modules/reset').then(r => r.data.data) as Promise<ModuleActivation>,
   previewModules: (changes: { modules?: Record<string, boolean | null>; features?: Record<string, boolean | null> }) =>
     api.post('/settings/modules/preview', changes).then(r => r.data.data) as Promise<ModuleImpact>,
+  saveModuleRollout: (key: string, change: { pilot: { roles: string[]; users: string[] } | null; disabledStores: string[] }) =>
+    api.put(`/settings/modules/${key}/rollout`, change).then(r => r.data.data) as Promise<ModuleActivation>,
   moduleVersions: () => api.get('/settings/modules/versions').then(r => r.data.data) as Promise<ConfigVersion[]>,
   restoreModuleVersion: (id: number) =>
     api.post(`/settings/modules/versions/${id}/restore`).then(r => r.data.data) as Promise<ModuleActivation>,

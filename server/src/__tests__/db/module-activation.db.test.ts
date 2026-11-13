@@ -17,13 +17,15 @@ describe.skipIf(!hasTestDb)('Activation des modules et options', () => {
     await testPool().query(`DELETE FROM company_module_settings`);
     await testPool().query(`DELETE FROM company_feature_settings`);
     await testPool().query(`DELETE FROM config_versions`);
+    await testPool().query(`DELETE FROM company_module_pilots`);
+    await testPool().query(`DELETE FROM store_module_settings`);
     sectors.invalidate();
   };
 
   /** Passe une requête dans la garde ; renvoie le statut (200 = laissée passer). */
   const callGuard = (method: string, path: string) => new Promise<number>((resolve, reject) => {
     const res = { status: (code: number) => ({ json: () => resolve(code) }) };
-    guard({ method, path } as never, res as never, (err?: unknown) => (err ? reject(err) : resolve(200)));
+    guard({ method, path, headers: {}, cookies: {} } as never, res as never, (err?: unknown) => (err ? reject(err) : resolve(200)));
   });
 
   beforeAll(async () => {
@@ -163,6 +165,51 @@ describe.skipIf(!hasTestDb)('Activation des modules et options', () => {
     act = await sectors.activation();
     expect(act.modules.has('production')).toBe(true);
     expect(await sectors.restoreVersion(999999)).toEqual({ error: 'Version introuvable' });
+  });
+
+  it("pilote : le module ne se voit que des membres (et de l'administrateur)", async () => {
+    await sectors.applyAdjustments({ modules: { production: true, recipes: true } });
+    const r = await sectors.applyRollout('production', { pilot: { roles: ['manager'], users: [] }, disabledStores: [] });
+    expect('error' in r).toBe(false);
+    const cashier = await sectors.forUser({ userId: '00000000-0000-0000-0000-0000000000aa', role: 'cashier' });
+    const manager = await sectors.forUser({ userId: '00000000-0000-0000-0000-0000000000bb', role: 'manager' });
+    const admin = await sectors.forUser({ userId: '00000000-0000-0000-0000-0000000000cc', role: 'admin' });
+    expect(cashier.modules.has('production')).toBe(false);
+    expect(manager.modules.has('production')).toBe(true);
+    expect(admin.modules.has('production')).toBe(true);
+    // La société garde le module actif : rien n'est désactivé.
+    expect((await sectors.activation()).modules.has('production')).toBe(true);
+    // Ouvrir à tous retire le pilote.
+    await sectors.applyRollout('production', { pilot: null, disabledStores: [] });
+    expect((await sectors.forUser({ userId: '00000000-0000-0000-0000-0000000000aa', role: 'cashier' })).modules.has('production')).toBe(true);
+  });
+
+  it('par établissement : un module se ferme pour un établissement seulement', async () => {
+    const store = (await testPool().query(`SELECT id FROM stores LIMIT 1`)).rows[0].id as string;
+    const r = await sectors.applyRollout('pos', { pilot: null, disabledStores: [store] });
+    expect('error' in r).toBe(false);
+    const here = await sectors.forUser({ userId: '00000000-0000-0000-0000-0000000000aa', role: 'cashier', storeId: store });
+    const elsewhere = await sectors.forUser({ userId: '00000000-0000-0000-0000-0000000000aa', role: 'cashier', storeId: null });
+    expect(here.modules.has('pos')).toBe(false);
+    expect(elsewhere.modules.has('pos')).toBe(true);
+    // Un module central ne se ferme pas par établissement ; un module inactif n'a pas de diffusion.
+    expect(await sectors.applyRollout('accounting', { pilot: null, disabledStores: [store] })).toEqual({ error: '« Comptabilité » ne se règle pas par établissement' });
+    expect('error' in (await sectors.applyRollout('production', { pilot: null, disabledStores: [] }))).toBe(true);
+    // Le préréglage rouvre tout.
+    await sectors.resetAdjustments();
+    expect((await sectors.forUser({ userId: '00000000-0000-0000-0000-0000000000aa', role: 'cashier', storeId: store })).modules.has('pos')).toBe(true);
+  });
+
+  it('la restauration rétablit aussi pilotes et établissements', async () => {
+    const store = (await testPool().query(`SELECT id FROM stores LIMIT 1`)).rows[0].id as string;
+    await sectors.applyRollout('pos', { pilot: { roles: ['manager'], users: [] }, disabledStores: [store] });
+    await sectors.applyRollout('pos', { pilot: null, disabledStores: [] });
+    const versions = await sectors.versions();
+    expect(versions[1].label).toMatch(/pilote/);
+    await sectors.restoreVersion(versions[1].id);
+    const act = await sectors.activation();
+    expect(act.rollout.pilots.pos?.roles).toEqual(['manager']);
+    expect(act.rollout.storeDisabled[store]).toEqual(['pos']);
   });
 
   it("une option éteinte ferme ses routes (HACCP)", async () => {

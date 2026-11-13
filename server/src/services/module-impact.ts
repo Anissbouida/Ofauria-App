@@ -55,6 +55,8 @@ export function diffActivation(before: ActivationState, after: ActivationState):
   };
 }
 
+export const NO_VISIBLE_CHANGE = 'Aucun changement visible';
+
 /** Libellé court d'une version : « Production activé · HACCP désactivée ». */
 export function describeDiff(diff: ImpactDiff, featureLabel: (key: string) => string): string {
   const parts = [
@@ -63,7 +65,7 @@ export function describeDiff(diff: ImpactDiff, featureLabel: (key: string) => st
     ...diff.featuresOn.map(f => `${featureLabel(f)} activée`),
     ...diff.featuresOff.map(f => `${featureLabel(f)} désactivée`),
   ];
-  if (!parts.length) return 'Aucun changement visible';
+  if (!parts.length) return NO_VISIBLE_CHANGE;
   return parts.length > 4 ? `${parts.slice(0, 4).join(' · ')} · +${parts.length - 4}` : parts.join(' · ');
 }
 

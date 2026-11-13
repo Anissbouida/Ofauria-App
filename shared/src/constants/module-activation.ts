@@ -115,3 +115,46 @@ export function missingDependencies(active: ReadonlySet<AppModule>): { module: A
   }
   return out;
 }
+
+/**
+ * Diffusion (lot P0c, mig 509). Modules qu'on peut fermer pour un établissement
+ * précis : ceux dont l'usage dépend du lieu (caisse, labo, vitrine). Les modules
+ * centraux (compta, achats, paramètres…) restent au niveau de la société.
+ */
+export const STORE_SCOPED_MODULES: ReadonlySet<AppModule> = new Set<AppModule>([
+  'pos', 'production', 'replenishment', 'unsold', 'reconciliation',
+]);
+
+/** Pilote d'un module : seuls ces rôles et utilisateurs le voient. */
+export type ModulePilot = { roles: string[]; users: string[] };
+
+export type ModuleRollout = {
+  /** Modules en pilote, avec leurs membres. */
+  pilots: Partial<Record<string, ModulePilot>>;
+  /** Modules fermés par établissement (store_id → modules). */
+  storeDisabled: Partial<Record<string, string[]>>;
+};
+
+/**
+ * Modules visibles par un utilisateur : modules effectifs de la société, moins les
+ * modules en pilote dont il n'est pas membre (l'administrateur est toujours membre),
+ * moins les modules fermés pour son établissement.
+ */
+export function modulesForUser(
+  companyModules: ReadonlySet<AppModule>,
+  rollout: ModuleRollout,
+  user: { userId: string; role: string; roles?: string[]; storeId?: string | null },
+): Set<AppModule> {
+  const roles = new Set([user.role, ...(user.roles ?? [])]);
+  const closed = new Set(user.storeId ? rollout.storeDisabled[user.storeId] ?? [] : []);
+  const out = new Set<AppModule>();
+  for (const m of companyModules) {
+    if (!CORE_MODULES.has(m)) {
+      const pilot = rollout.pilots[m];
+      if (pilot && !roles.has('admin') && !pilot.users.includes(user.userId) && !pilot.roles.some(r => roles.has(r))) continue;
+      if (closed.has(m)) continue;
+    }
+    out.add(m);
+  }
+  return out;
+}

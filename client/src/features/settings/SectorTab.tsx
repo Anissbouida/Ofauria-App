@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Check, History, Layers, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Check, History, Layers, RotateCcw, Users } from 'lucide-react';
 import {
   CORE_MODULES, MODULE_DESCRIPTIONS, MODULE_GROUPS, MODULE_LABELS, dependentModules, effectiveModules,
   missingDependencies, requiredModules, type AppModule,
@@ -8,6 +8,7 @@ import {
 import { settingsApi, type ModuleActivation } from '../../api/settings.api';
 import { OdooToggle, SettingItem, SettingsSection } from './SettingsPrimitives';
 import { useDirtyForm } from './DirtyForms';
+import RolloutDialog from './RolloutDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -46,6 +47,7 @@ export default function SectorTab() {
   const { reload } = usePermissions();
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [keepAdjustments, setKeepAdjustments] = useState(true);
+  const [rolloutFor, setRolloutFor] = useState<AppModule | null>(null);
 
   const { data: sector, isLoading: loadingSector } = useQuery({ queryKey: ['sector'], queryFn: settingsApi.sector });
   const { data: act, isLoading: loadingAct } = useQuery({ queryKey: ['module-activation'], queryFn: settingsApi.modules });
@@ -97,7 +99,19 @@ export default function SectorTab() {
 
   const dirtyCount = Object.keys(draft.modules).length + Object.keys(draft.features).length;
   const savedAdjustments = act ? Object.keys(act.moduleOverrides).length + Object.keys(act.featureOverrides).length : 0;
-  const busy = resetMut.isPending || sectorMut.isPending || restoreMut.isPending;
+  const rolloutMut = useMutation({
+    mutationFn: ({ key, change }: { key: string; change: { pilot: { roles: string[]; users: string[] } | null; disabledStores: string[] } }) =>
+      settingsApi.saveModuleRollout(key, change),
+    onSuccess: (data: ModuleActivation) => {
+      qc.setQueryData(['module-activation'], data);
+      setRolloutFor(null);
+      refresh();
+      notify.success('Diffusion enregistrée');
+    },
+    onError: (e: unknown) => notify.error((e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? 'Enregistrement impossible'),
+  });
+
+  const busy = resetMut.isPending || sectorMut.isPending || restoreMut.isPending || rolloutMut.isPending;
 
   // Aperçu d'impact du brouillon (P0b) : calculé par le serveur, rien n'est écrit.
   const { data: impact } = useQuery({
@@ -182,6 +196,14 @@ export default function SectorTab() {
   const featureLabel = (k: string) => act.catalog.find(f => f.key === k)?.label ?? k;
   const moduleLabel = (k: string) => MODULE_LABELS[k as AppModule] ?? k;
   const fmtDate = (d: string) => new Date(d).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  const closedStoresOf = (m: string) => Object.entries(act.rollout.storeDisabled).filter(([, mods]) => mods.includes(m)).map(([st]) => st);
+  const rolloutSummary = (m: string) => {
+    const pilot = act.rollout.pilots[m];
+    const closed = closedStoresOf(m).length;
+    const parts = [pilot ? `Pilote : ${pilot.roles.length} rôle(s), ${pilot.users.length} utilisateur(s)` : 'Pour tous'];
+    if (closed) parts.push(`fermé dans ${closed} établissement(s)`);
+    return { text: parts.join(' · '), special: !!pilot || closed > 0 };
+  };
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
@@ -253,6 +275,20 @@ export default function SectorTab() {
                       onClick={() => setModules({ [m]: null })}>Revenir au préréglage</button>
                   )}
                 </div>
+                {/* Diffusion (P0c) : seulement pour un module actif et enregistré comme tel. */}
+                {!core && on && act.modules.includes(m) && (() => {
+                  const r = rolloutSummary(m);
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                      <span className={`odoo-tag ${r.special ? 'odoo-tag-purple' : 'odoo-tag-grey'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Users size={11} /> {r.text}
+                      </span>
+                      <button type="button" className="odoo-btn-link" disabled={busy || dirtyCount > 0}
+                        title={dirtyCount > 0 ? "Enregistrez d'abord vos changements" : undefined}
+                        onClick={() => setRolloutFor(m)}>Diffusion…</button>
+                    </div>
+                  );
+                })()}
                 {features.length > 0 && (
                   <div style={{ display: 'grid', gap: 6, marginTop: 10, paddingLeft: 10, borderLeft: '2px solid var(--odoo-border)' }}>
                     {features.map(f => {
@@ -319,6 +355,17 @@ export default function SectorTab() {
           </div>
         )}
       </SettingsSection>
+
+      {rolloutFor && (
+        <RolloutDialog
+          module={rolloutFor}
+          pilot={act.rollout.pilots[rolloutFor] ?? null}
+          disabledStores={closedStoresOf(rolloutFor)}
+          busy={rolloutMut.isPending}
+          onClose={() => setRolloutFor(null)}
+          onSave={change => rolloutMut.mutate({ key: rolloutFor, change })}
+        />
+      )}
 
       {/* Aperçu d'impact : fixé juste au-dessus de la barre d'enregistrement commune,
           visible au moment de valider (le conteneur neutralise position: sticky). */}

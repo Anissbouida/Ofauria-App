@@ -56,6 +56,8 @@ router.post('/modules/reset', authenticate, authorizeSettings('company', 'edit')
 router.post('/modules/preview', authenticate, jsonParser, authorizeSettings('company', 'view'), asyncHandler(companyController.previewModules));
 router.get('/modules/versions', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.moduleVersions));
 router.post('/modules/versions/:id/restore', authenticate, authorizeSettings('company', 'edit'), asyncHandler(companyController.restoreModuleVersion));
+// Diffusion d'un module : pilote et établissements (mig 509, lot P0c).
+router.put('/modules/:key/rollout', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.saveModuleRollout));
 // Données de départ par secteur (phase 9.3) : aperçu + chargement à la demande (direction).
 router.get('/sector/starter', authenticate, asyncHandler(companyController.sectorStarter));
 router.post('/sector/starter', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.loadSectorStarter));

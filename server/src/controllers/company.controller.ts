@@ -71,18 +71,24 @@ const activationView = (a: Activation) => ({
   catalog: a.catalog,
   modules: [...a.modules],
   features: [...a.features],
+  rollout: a.rollout,
 });
 
 /** Fiche société : comptes bancaires et TVA (Paramètres, lot 5, mig 331). */
 export const companyController = {
   /** Secteur d'activité courant + liste des secteurs (mig 468). Lisible par tout
    *  utilisateur authentifié : le client s'en sert pour masquer les modules hors secteur. */
-  async sector(_req: AuthRequest, res: Response) {
-    const [act, available] = await Promise.all([sectorRepository.activation(), sectorRepository.list()]);
+  async sector(req: AuthRequest, res: Response) {
+    const [mine, available] = await Promise.all([
+      req.user ? sectorRepository.forUser(req.user) : sectorRepository.activation().then(act => ({ act, modules: act.modules, features: act.features })),
+      sectorRepository.list(),
+    ]);
+    const act = mine.act;
     const labels = await sectorRepository.labels(act.sector.code);
-    // `modules` / `features` = listes EFFECTIVES (préréglage + ajustements, mig 507) :
-    // c'est ce que le client applique aux menus.
-    const current = { ...act.sector, modules: [...act.modules], features: [...act.features] };
+    // `modules` / `features` = listes EFFECTIVES pour CET utilisateur (préréglage +
+    // ajustements, mig 507 ; pilotes et établissement, mig 509) : le client les
+    // applique aux menus.
+    const current = { ...act.sector, modules: [...mine.modules], features: [...mine.features] };
     const adjusted = Object.keys(act.moduleOverrides).length + Object.keys(act.featureOverrides).length;
     res.json({ success: true, data: { current, labels, adjusted, available: available.map(s => ({ code: s.code, label: s.label })) } });
   },
@@ -123,6 +129,24 @@ export const companyController = {
     if (!Number.isInteger(id) || id <= 0) { bad(res, 'Version invalide'); return; }
     const result = await sectorRepository.restoreVersion(id, req.user?.userId);
     if ('error' in result) { bad(res, result.error, 404); return; }
+    res.json({ success: true, data: activationView(result.activation) });
+  },
+
+  /** Diffusion d'un module (mig 509) : { pilot: { roles, users } | null, disabledStores: [] }. */
+  async saveModuleRollout(req: AuthRequest, res: Response) {
+    const b = (req.body ?? {}) as { pilot?: unknown; disabledStores?: unknown };
+    const strings = (v: unknown) => Array.isArray(v) && v.every(x => typeof x === 'string') ? v as string[] : null;
+    const disabledStores = b.disabledStores === undefined ? [] : strings(b.disabledStores);
+    if (!disabledStores) { bad(res, 'Établissements invalides'); return; }
+    let pilot: { roles: string[]; users: string[] } | null = null;
+    if (b.pilot !== null && b.pilot !== undefined) {
+      const p = b.pilot as { roles?: unknown; users?: unknown };
+      const roles = strings(p.roles ?? []); const users = strings(p.users ?? []);
+      if (!roles || !users) { bad(res, 'Pilote invalide'); return; }
+      pilot = { roles, users };
+    }
+    const result = await sectorRepository.applyRollout(String(req.params.key), { pilot, disabledStores }, req.user?.userId);
+    if ('error' in result) { bad(res, result.error); return; }
     res.json({ success: true, data: activationView(result.activation) });
   },
 
