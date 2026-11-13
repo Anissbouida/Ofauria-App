@@ -476,12 +476,12 @@ export default function SectorTab() {
         >
           <div style={{ display: 'grid', gap: 8 }}>
             {health.recommendations.map(r => (
-              <div key={r.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '0.7rem 0.9rem', borderRadius: 6,
+              <div key={r.key} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12, padding: '0.7rem 0.9rem', borderRadius: 6,
                 border: `1px solid ${r.tone === 'warning' ? 'var(--odoo-warning, #f0ad4e)' : 'var(--odoo-border)'}`, background: 'var(--odoo-bg)' }}>
                 {r.tone === 'warning'
                   ? <AlertTriangle size={16} style={{ color: 'var(--odoo-warning, #f0ad4e)', flexShrink: 0, marginTop: 2 }} />
                   : <Lightbulb size={16} style={{ color: 'var(--odoo-purple)', flexShrink: 0, marginTop: 2 }} />}
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ flex: '1 1 220px', minWidth: 0 }}>
                   <div style={{ fontWeight: 600 }}>{r.title}</div>
                   <p className="odoo-setting-help" style={{ margin: '2px 0 0' }}>{r.detail}</p>
                 </div>
