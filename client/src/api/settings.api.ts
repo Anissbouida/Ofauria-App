@@ -188,6 +188,19 @@ export interface ModuleImpact {
 }
 
 /** Version de la configuration des modules (mig 508). */
+/** Bilan de santé de la configuration (P8) : propositions calculées sur les données. */
+export interface HealthRecommendation {
+  key: string;
+  tone: 'suggestion' | 'warning';
+  module: string;
+  title: string;
+  detail: string;
+  action:
+    | { kind: 'adjust'; label: string; changes: { modules?: Record<string, boolean>; features?: Record<string, boolean> } }
+    | { kind: 'link'; label: string; to: string };
+}
+export interface HealthReport { recommendations: HealthRecommendation[]; dismissed: number }
+
 export interface ConfigVersion {
   id: number;
   created_at: string;
@@ -242,6 +255,9 @@ export const settingsApi = {
     api.post('/settings/modules/preview', changes).then(r => r.data.data) as Promise<ModuleImpact>,
   saveModuleRollout: (key: string, change: { pilot: { roles: string[]; users: string[] } | null; disabledStores: string[] }) =>
     api.put(`/settings/modules/${key}/rollout`, change).then(r => r.data.data) as Promise<ModuleActivation>,
+  moduleHealth: () => api.get('/settings/modules/health').then(r => r.data.data) as Promise<HealthReport>,
+  dismissHealth: (key: string) => api.post(`/settings/modules/health/${encodeURIComponent(key)}/dismiss`).then(r => r.data.data) as Promise<HealthReport>,
+  restoreHealth: () => api.post('/settings/modules/health/restore').then(r => r.data.data) as Promise<HealthReport>,
   moduleVersions: () => api.get('/settings/modules/versions').then(r => r.data.data) as Promise<ConfigVersion[]>,
   restoreModuleVersion: (id: number) =>
     api.post(`/settings/modules/versions/${id}/restore`).then(r => r.data.data) as Promise<ModuleActivation>,

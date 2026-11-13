@@ -7,6 +7,7 @@ import { db } from '../config/database.js';
 import { sectorRepository, type Activation, type AdjustmentChanges } from '../repositories/sector.repository.js';
 import { impactPreview } from '../services/module-impact.js';
 import { loadSectorStarter, sectorStarterPreview } from '../services/sector-starter.service.js';
+import { healthReport, dismissRecommendation, restoreDismissed } from '../services/config-health.js';
 
 const bad = (res: Response, message: string, status = 400) => res.status(status).json({ success: false, error: { message } });
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -121,6 +122,19 @@ export const companyController = {
   /** Historique des configurations (mig 508). */
   async moduleVersions(_req: AuthRequest, res: Response) {
     res.json({ success: true, data: await sectorRepository.versions() });
+  },
+
+  /** Bilan de santé de la configuration (P8) : recommandations calculées, rien n'est appliqué. */
+  async moduleHealth(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await healthReport() });
+  },
+  async dismissHealth(req: AuthRequest, res: Response) {
+    if (!(await dismissRecommendation(String(req.params.key ?? ''), req.user?.userId))) { bad(res, 'Recommandation inconnue'); return; }
+    res.json({ success: true, data: await healthReport() });
+  },
+  async restoreHealth(_req: AuthRequest, res: Response) {
+    await restoreDismissed();
+    res.json({ success: true, data: await healthReport() });
   },
 
   /** Restaure une version : elle redevient la configuration courante. */

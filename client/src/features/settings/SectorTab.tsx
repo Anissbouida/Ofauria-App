@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Check, Download, History, Layers, RotateCcw, Users } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { AlertTriangle, Check, Download, History, Layers, Lightbulb, RotateCcw, Users } from 'lucide-react';
 import {
   CORE_MODULES, MODULE_DESCRIPTIONS, MODULE_GROUPS, MODULE_LABELS, dependentModules, effectiveModules,
   missingDependencies, requiredModules, type AppModule,
 } from '@ofauria/shared';
-import { settingsApi, type ModuleActivation } from '../../api/settings.api';
+import { settingsApi, type HealthRecommendation, type HealthReport, type ModuleActivation } from '../../api/settings.api';
 import { OdooToggle, SettingItem, SettingsSection } from './SettingsPrimitives';
 import { useDirtyForm } from './DirtyForms';
 import RolloutDialog from './RolloutDialog';
@@ -51,12 +52,15 @@ export default function SectorTab() {
 
   const { data: versions = [] } = useQuery({ queryKey: ['module-versions'], queryFn: settingsApi.moduleVersions });
   const { data: starter } = useQuery({ queryKey: ['sector-starter'], queryFn: settingsApi.sectorStarter });
+  const { data: health } = useQuery({ queryKey: ['module-health'], queryFn: settingsApi.moduleHealth });
+  const navigate = useNavigate();
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['sector'] });
     qc.invalidateQueries({ queryKey: ['module-activation'] });
     qc.invalidateQueries({ queryKey: ['module-versions'] });
     qc.invalidateQueries({ queryKey: ['sector-starter'] });
+    qc.invalidateQueries({ queryKey: ['module-health'] });
     reload();
   };
 
@@ -149,6 +153,25 @@ export default function SectorTab() {
 
   const setModules = (changes: Record<string, boolean | null>) =>
     setDraft(d => ({ ...d, modules: { ...d.modules, ...changes } }));
+
+  // Bilan de santé (P8) : une proposition ne s'applique jamais directement, elle
+  // remplit le brouillon (aperçu d'impact, puis « Enregistrer », puis version).
+  const healthMut = useMutation({
+    mutationFn: ({ key, restore }: { key?: string; restore?: boolean }) =>
+      restore ? settingsApi.restoreHealth() : settingsApi.dismissHealth(key!),
+    onSuccess: (data: HealthReport) => qc.setQueryData(['module-health'], data),
+    onError: () => notify.error('Action impossible'),
+  });
+  const inDraft = (r: HealthRecommendation) => r.action.kind === 'adjust' && [
+    ...Object.entries(r.action.changes.modules ?? {}).map(([k, v]) => draft.modules[k] === v),
+    ...Object.entries(r.action.changes.features ?? {}).map(([k, v]) => draft.features[k] === v),
+  ].every(Boolean);
+  const applyRecommendation = (r: HealthRecommendation) => {
+    if (r.action.kind === 'link') { navigate(r.action.to); return; }
+    const { modules = {}, features = {} } = r.action.changes;
+    setDraft(d => ({ modules: { ...d.modules, ...modules }, features: { ...d.features, ...features } }));
+    notify.success("Ajouté au brouillon : vérifiez l'impact, puis enregistrez");
+  };
 
   const toggleModule = async (m: AppModule, on: boolean) => {
     if (!view) return;
@@ -269,6 +292,48 @@ export default function SectorTab() {
                 <Download size={14} /> {starterMut.isPending ? 'Chargement…' : 'Charger les données de départ'}
               </button>
             </div>
+          </div>
+        </SettingsSection>
+      )}
+
+      {health && (health.recommendations.length > 0 || health.dismissed > 0) && (
+        <SettingsSection
+          title="Bilan de santé"
+          description="Propositions tirées de l'utilisation réelle de l'application. Rien n'est appliqué sans vous : une proposition remplit le brouillon, que vous vérifiez puis enregistrez."
+          columns={1}
+        >
+          <div style={{ display: 'grid', gap: 8 }}>
+            {health.recommendations.map(r => (
+              <div key={r.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '0.7rem 0.9rem', borderRadius: 6,
+                border: `1px solid ${r.tone === 'warning' ? 'var(--odoo-warning, #f0ad4e)' : 'var(--odoo-border)'}`, background: 'var(--odoo-bg)' }}>
+                {r.tone === 'warning'
+                  ? <AlertTriangle size={16} style={{ color: 'var(--odoo-warning, #f0ad4e)', flexShrink: 0, marginTop: 2 }} />
+                  : <Lightbulb size={16} style={{ color: 'var(--odoo-purple)', flexShrink: 0, marginTop: 2 }} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600 }}>{r.title}</div>
+                  <p className="odoo-setting-help" style={{ margin: '2px 0 0' }}>{r.detail}</p>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  {inDraft(r)
+                    ? <span className="odoo-tag odoo-tag-green" style={{ alignSelf: 'center' }}>Dans le brouillon</span>
+                    : <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 10px' }} disabled={busy}
+                        onClick={() => applyRecommendation(r)}>{r.action.label}</button>}
+                  <button type="button" className="odoo-btn-link" disabled={healthMut.isPending}
+                    title="Ne plus proposer pendant 90 jours" onClick={() => healthMut.mutate({ key: r.key })}>Ignorer</button>
+                </div>
+              </div>
+            ))}
+            {health.recommendations.length === 0 && (
+              <p className="odoo-setting-help" style={{ margin: 0 }}>Aucune proposition en cours.</p>
+            )}
+            {health.dismissed > 0 && (
+              <div>
+                <button type="button" className="odoo-btn-link" disabled={healthMut.isPending}
+                  onClick={() => healthMut.mutate({ restore: true })}>
+                  Réafficher {health.dismissed} proposition(s) ignorée(s)
+                </button>
+              </div>
+            )}
           </div>
         </SettingsSection>
       )}

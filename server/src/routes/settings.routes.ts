@@ -55,6 +55,10 @@ router.post('/modules/reset', authenticate, authorizeSettings('company', 'edit')
 // Aperçu d'impact et configuration versionnée (mig 508, lot P0b).
 router.post('/modules/preview', authenticate, jsonParser, authorizeSettings('company', 'view'), asyncHandler(companyController.previewModules));
 router.get('/modules/versions', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.moduleVersions));
+// Bilan de santé (P8) : propositions calculées sur les données ; écarter = 90 jours (mig 516).
+router.get('/modules/health', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.moduleHealth));
+router.post('/modules/health/restore', authenticate, authorizeSettings('company', 'edit'), asyncHandler(companyController.restoreHealth));
+router.post('/modules/health/:key/dismiss', authenticate, authorizeSettings('company', 'edit'), asyncHandler(companyController.dismissHealth));
 router.post('/modules/versions/:id/restore', authenticate, authorizeSettings('company', 'edit'), asyncHandler(companyController.restoreModuleVersion));
 // Diffusion d'un module : pilote et établissements (mig 509, lot P0c).
 router.put('/modules/:key/rollout', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.saveModuleRollout));
