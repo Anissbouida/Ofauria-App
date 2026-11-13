@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { LayoutGrid, LogOut, ChevronDown, User, UserCircle } from 'lucide-react';
@@ -7,7 +8,7 @@ import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import NotificationBell from './NotificationBell';
 import GlobalSearch from './GlobalSearch';
-import { NAV_LABEL_BY_PATH } from '../../config/navigation';
+import { NAV_ITEM_BY_PATH, NAV_LABEL_BY_PATH, navLabel } from '../../config/navigation';
 
 export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
   const { user, logout } = useAuth();
@@ -25,8 +26,10 @@ export default function Header({ onToggleApps }: { onToggleApps: () => void }) {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const { sectorLabel } = usePermissions();
   const currentPath = '/' + location.pathname.split('/')[1];
-  const currentModule = NAV_LABEL_BY_PATH[currentPath] || '';
+  const navItem = NAV_ITEM_BY_PATH[currentPath];
+  const currentModule = navItem ? navLabel(navItem, sectorLabel) : (NAV_LABEL_BY_PATH[currentPath] || '');
 
   return (
     <header className="h-12 flex items-center px-4 shrink-0 z-40" style={{ backgroundColor: 'var(--theme-accent)', color: 'var(--theme-cta-text)' }}>

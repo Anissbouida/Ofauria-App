@@ -9,10 +9,10 @@ import { sectorRepository } from '../../repositories/sector.repository.js';
 describe.skipIf(!hasTestDb)('Libellés par secteur', () => {
   afterAll(async () => { await closeTestPool(); });
 
-  it('« recipe » = Recette en boulangerie, Nomenclature en générique', async () => {
+  it('« recipe » = Fiche technique en boulangerie (mig 514), Nomenclature en générique', async () => {
     const boul = await sectorRepository.labels('boulangerie');
     const gen = await sectorRepository.labels('generique');
-    expect(boul.recipe).toBe('Recette');
+    expect(boul.recipe).toBe('Fiche technique');
     expect(gen.recipe).toBe('Nomenclature');
     expect(boul.product).toBe('Produit');
     expect(gen.product).toBe('Article');

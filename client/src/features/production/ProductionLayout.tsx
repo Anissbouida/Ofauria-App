@@ -24,7 +24,7 @@ export default function ProductionLayout() {
 
   const views: ModuleView<ProductionView>[] = [
     { key: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard, section: 'dashboard', href: '/production/dashboard', hidden: !hasModule('production') },
-    { key: 'plans', label: 'Plans de production', icon: Factory, section: 'operations', href: '/production', hidden: !hasModule('production') },
+    { key: 'plans', label: sectorLabel('production_plans', 'Plans de production'), icon: Factory, section: 'operations', href: '/production', hidden: !hasModule('production') },
     { key: 'atelier', label: 'Atelier', icon: Hammer, section: 'operations', href: '/production/atelier', hidden: !isProductionRole },
     { key: 'forecast', label: 'Prévisions', icon: TrendingUp, section: 'operations', href: '/forecast', hidden: !isProductionRole },
     { key: 'mrp', label: 'Plan directeur', icon: ClipboardList, section: 'operations', href: '/production/mrp', hidden: !isProductionRole },
@@ -33,7 +33,7 @@ export default function ProductionLayout() {
     // Demandes de réassort boutique -> labo (ex-tuile « Besoins » du menu principal).
     { key: 'replenishment', label: 'Demandes boutique', icon: Package, section: 'operations', href: '/replenishment', hidden: !hasModule('replenishment') },
     { key: 'costs', label: 'Coûts', icon: Wallet, section: 'reports', href: '/production/costs', hidden: !hasModule('reports') },
-    { key: 'recipes', label: 'Fiches techniques', icon: ChefHat, section: 'setup', href: '/recipes', hidden: !hasModule('recipes') },
+    { key: 'recipes', label: sectorLabel('recipes', 'Fiches techniques'), icon: ChefHat, section: 'setup', href: '/recipes', hidden: !hasModule('recipes') },
     { key: 'workcenters', label: 'Postes & gammes', icon: Cog, section: 'setup', href: '/production/work-centers', hidden: !hasModule('production') },
     { key: 'settings', label: 'Paramétrage', icon: SlidersHorizontal, section: 'setup', href: '/production/settings', hidden: !isProductionRole },
   ];

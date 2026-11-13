@@ -11,6 +11,7 @@ import { useApprovalsCount } from '../../api/approvals.api';
 const CASHIER_ROLES = ['cashier', 'saleswoman'];
 
 function ModuleTile({ item, onSelect, count = 0 }: { item: NavItem; onSelect: () => void; count?: number }) {
+  const { sectorLabel } = usePermissions();
   return (
     <button onClick={onSelect}
       className="flex flex-col items-center gap-2 p-4 rounded-xl hover:bg-gray-50 transition-colors group">
@@ -18,7 +19,7 @@ function ModuleTile({ item, onSelect, count = 0 }: { item: NavItem; onSelect: ()
         <item.icon size={24} />
         {count > 0 && <CountBadge count={count} />}
       </div>
-      <span className="text-xs font-medium text-gray-700 text-center leading-tight">{navLabel(item)}</span>
+      <span className="text-xs font-medium text-gray-700 text-center leading-tight">{navLabel(item, sectorLabel)}</span>
     </button>
   );
 }

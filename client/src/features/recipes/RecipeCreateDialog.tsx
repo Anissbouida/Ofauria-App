@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -23,6 +24,7 @@ export interface RecipeIdentity { id: string; name: string; category_id?: string
 export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onClose }: { defaultIsBase?: boolean; recipe?: RecipeIdentity; onClose: () => void }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { sectorLabel } = usePermissions();
   const isEdit = !!recipe;
   const [isBase, setIsBase] = useState(recipe ? !!recipe.is_base : defaultIsBase);
   const [name, setName] = useState(recipe?.name ?? '');
@@ -90,7 +92,7 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
             {isBase ? <Layers size={14} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />}
-            <span>Fiches techniques</span>
+            <span>{sectorLabel('recipes', 'Fiches techniques')}</span>
             <span className="odoo-breadcrumb-separator">›</span>
             <span className="odoo-breadcrumb-current">{isEdit ? recipe!.name : isBase ? 'Nouvelle préparation' : 'Nouvelle recette'}</span>
           </div>

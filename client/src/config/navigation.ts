@@ -157,9 +157,18 @@ export const NAV_GROUPS: NavGroup[] = [
 ];
 
 /** Libelle affiche : MODULE_LABELS, sauf override explicite. */
-export function navLabel(item: NavItem): string {
-  return item.label ?? MODULE_LABELS[item.module];
+/** Modules dont le nom dépend du métier : clé de vocabulaire par secteur (mig 495/514). */
+const SECTOR_LABEL_KEYS: Partial<Record<AppModule, string>> = { production: 'production', recipes: 'recipes' };
+
+/** Libellé d'une entrée de menu ; `sectorLabel` (PermissionsContext) l'adapte au secteur. */
+export function navLabel(item: NavItem, sectorLabel?: (key: string, fallback: string) => string): string {
+  const base = item.label ?? MODULE_LABELS[item.module];
+  const key = SECTOR_LABEL_KEYS[item.module];
+  return key && sectorLabel ? sectorLabel(key, base) : base;
 }
+
+/** Entrée de menu par premier segment d'URL (fil d'ariane adapté au secteur). */
+export const NAV_ITEM_BY_PATH: Record<string, NavItem> = {};
 
 /**
  * Visible si le module principal OU l'une de ses cles historiques est accorde,
@@ -195,6 +204,6 @@ export const NAV_ITEMS: NavItem[] = [NAV_HOME, ...NAV_GROUPS.flatMap(g => g.item
  */
 export const NAV_LABEL_BY_PATH: Record<string, string> = NAV_ITEMS.reduce((acc, item) => {
   const segment = '/' + item.href.split('/')[1];
-  if (!acc[segment]) acc[segment] = navLabel(item);
+  if (!acc[segment]) { acc[segment] = navLabel(item); NAV_ITEM_BY_PATH[segment] = item; }
   return acc;
 }, {} as Record<string, string>);

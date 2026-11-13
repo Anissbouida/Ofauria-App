@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useMemo, useEffect } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -43,6 +44,7 @@ export default function RecipesPage() {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { sectorLabel } = usePermissions();
   const isAdmin = user?.role === 'admin';
   // Vue « Archivées » : fiches retirées des listes (retenues par l'historique de
   // production, ou mises de côté) — consultables et restaurables, jamais mélangées
@@ -323,7 +325,7 @@ export default function RecipesPage() {
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
           <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Fiches techniques</span>
+          <span>{sectorLabel('recipes', 'Fiches techniques')}</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">
             {activeTab === 'contenants' ? 'Formats de production'

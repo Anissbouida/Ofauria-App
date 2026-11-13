@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -16,6 +17,7 @@ export default function NomenclaturePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { sectorLabel } = usePermissions();
   const [kpi, setKpi] = useState<FormatKpi | null>(null);
   const [editIdentity, setEditIdentity] = useState(false);
 
@@ -44,7 +46,7 @@ export default function NomenclaturePage() {
         </button>
         <div className="odoo-breadcrumb" style={{ marginLeft: '0.75rem' }}>
           <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span style={{ cursor: 'pointer' }} onClick={() => navigate('/recipes?tab=product')}>Fiches techniques</span>
+          <span style={{ cursor: 'pointer' }} onClick={() => navigate('/recipes?tab=product')}>{sectorLabel('recipes', 'Fiches techniques')}</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">{recipe.name}</span>
         </div>

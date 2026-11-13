@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useMemo, useEffect } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -543,6 +544,7 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const ws = useWorkshops();
+  const { sectorLabel } = usePermissions();
   const [planDate, setPlanDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [type, setType] = useState<'daily' | 'weekly'>('daily');
   const [notes, setNotes] = useState('');
@@ -741,7 +743,7 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
       const used = (vars.items as Array<{ productId: string }>).map(i => i.productId).filter(pid => forecastByProduct[pid]);
       if (used.length) forecastApi.snapshot({ date: planDate, usedFor: 'plan', productIds: used }).catch(() => {});
       queryClient.invalidateQueries({ queryKey: ['production'] });
-      notify.success('Plan de production créé');
+      notify.success(`${sectorLabel('production_plan', 'Plan de production')} créé`);
       onCreated(plan.id as string);
     },
   });
@@ -772,9 +774,9 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
         <div className="odoo-control-bar">
           <div className="odoo-breadcrumb">
             <Factory size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Production</span>
+            <span>{sectorLabel('production', 'Production')}</span>
             <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current">Nouveau plan</span>
+            <span className="odoo-breadcrumb-current">{sectorLabel('new_plan', 'Nouveau plan')}</span>
           </div>
           <div style={{ flex: 1 }} />
           <button onClick={onClose} className="odoo-pager-btn" title="Fermer">&times;</button>

@@ -20,7 +20,7 @@ import { CountBadge } from '../../components/layout/AppLayout';
 
 export default function HomePage() {
   const { user } = useAuth();
-  const { hasModule } = usePermissions();
+  const { hasModule, sectorLabel } = usePermissions();
   const navigate = useNavigate();
   const location = useLocation();
   const [fabOpen, setFabOpen] = useState(false);
@@ -209,7 +209,7 @@ export default function HomePage() {
                   <mod.icon size={24} />
                   {mod.counter === 'approvals' && approvalsCount > 0 && <CountBadge count={approvalsCount} />}
                 </div>
-                <h3 className="font-semibold text-gray-800 text-sm">{navLabel(mod)}</h3>
+                <h3 className="font-semibold text-gray-800 text-sm">{navLabel(mod, sectorLabel)}</h3>
                 <p className="text-xs text-gray-400 mt-1 leading-relaxed">
                   {mod.counter === 'approvals' && approvalsCount > 0
                     ? <span className="text-red-600 font-medium">{approvalsCount} pièce{approvalsCount > 1 ? 's' : ''} attend{approvalsCount > 1 ? 'ent' : ''} votre décision</span>

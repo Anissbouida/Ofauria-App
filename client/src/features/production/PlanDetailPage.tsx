@@ -1,3 +1,4 @@
+import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -55,6 +56,7 @@ export default function PlanDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { sectorLabel } = usePermissions();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showProductionLaunch, setShowProductionLaunch] = useState(false);
   const [launchTargetItemId, setLaunchTargetItemId] = useState<string | null>(null);
@@ -715,7 +717,7 @@ export default function PlanDetailPage() {
                 <th style={{ textAlign: 'right' }}>En stock</th>
                 <th style={{ textAlign: 'right' }}>À produire</th>
                 <th>Avancement</th>
-                <th>Plan de production</th>
+                <th>{sectorLabel('production_plan', 'Plan de production')}</th>
                 <th>Statut</th>
                 <th style={{ width: 80 }}></th>
               </tr>
