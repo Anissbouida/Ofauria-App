@@ -38,9 +38,9 @@ import ReferentielTab from './ReferentielTab';
 import SettingsSearch from './SettingsSearch';
 import SetupHome from './SetupHome';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { SettingsSection, SettingItem } from './SettingsPrimitives';
+import { SettingsSection, SettingItem, SettingsTabs, SETTINGS_REVEAL_EVENT } from './SettingsPrimitives';
 import { DirtyFormsProvider, SaveBar, useDirtyForm, useDirtyForms, useDraft } from './DirtyForms';
-import { HOME_PAGE, SETTINGS_GROUPS, SETTINGS_PAGES, USERS_GROUP, type SearchEntry, type SettingsPageKey } from './settingsPages';
+import { HOME_PAGE, LEGACY_PAGES, SETTINGS_GROUPS, SETTINGS_PAGES, USERS_GROUP, type SearchEntry, type SettingsPageKey } from './settingsPages';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -78,10 +78,13 @@ function SettingsShell() {
   // Pages permises par le droit « Paramètres », puis masquage de celles dont aucun module
   // n'est activé pour la société (lot S1) ; libellés selon le vocabulaire du secteur.
   const permitted = useMemo(
-    () => (allowedSections ? SETTINGS_PAGES.filter(p => allowedSections.includes(p.section)) : SETTINGS_PAGES),
+    () => (allowedSections
+      ? SETTINGS_PAGES.filter(p => [p.section, ...(p.alsoSections ?? [])].some(s => allowedSections.includes(s)))
+      : SETTINGS_PAGES),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [JSON.stringify(allowedSections)],
   );
+  const canSection = (s: string) => !allowedSections || allowedSections.includes(s as (typeof allowedSections)[number]);
   const isActive = (p: (typeof SETTINGS_PAGES)[number]) => !p.modules || p.modules.some(m => moduleActive(m));
   const pages = permitted.filter(isActive)
     .map(p => (p.labelKey ? { ...p, label: sectorLabel(p.labelKey, p.label) } : p));
@@ -91,7 +94,10 @@ function SettingsShell() {
   const { data: setup } = useQuery({ queryKey: ['settings', 'setup'], queryFn: settingsApi.setup, staleTime: 60_000 });
   const todoByPage = useMemo(() => {
     const m = new Map<string, number>();
-    for (const c of setup?.checks ?? []) if (c.status === 'todo') m.set(c.page, (m.get(c.page) ?? 0) + 1);
+    for (const c of setup?.checks ?? []) {
+      const page = LEGACY_PAGES[c.page] ?? c.page;
+      if (c.status === 'todo') m.set(page, (m.get(page) ?? 0) + 1);
+    }
     return m;
   }, [setup]);
   const todoBadge = (n: number, what: string) => (n > 0
@@ -110,7 +116,8 @@ function SettingsShell() {
     try { localStorage.setItem('kalum.settings.collapsed', JSON.stringify([...next])); } catch { /* stockage indisponible */ }
     return next;
   });
-  const requested = params.get('page') as SettingsPageKey | null;
+  const rawPage = params.get('page');
+  const requested = (rawPage ? LEGACY_PAGES[rawPage] ?? rawPage : null) as SettingsPageKey | null;
   // Page absente, inconnue ou non permise : accueil de la configuration (lot B).
   const current = pages.find(p => p.key === requested) ?? HOME_PAGE;
   const isHome = current.key === 'home';
@@ -157,13 +164,18 @@ function SettingsShell() {
         window.clearInterval(timer);
         setPendingAnchor(null);
         if (!el) return;
-        const target = (el.closest('tr') as HTMLElement | null) ?? el;
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        target.classList.remove('odoo-setting-flash');
-        void target.offsetWidth;
-        target.classList.add('odoo-setting-flash');
-        window.setTimeout(() => target.classList.remove('odoo-setting-flash'), 2000);
-        target.querySelector<HTMLElement>('input, select, textarea')?.focus({ preventScroll: true });
+        // Réglage dans un onglet inactif (lot S3) : l'onglet s'ouvre, puis on défile.
+        const hidden = !!el.closest('[hidden]');
+        if (hidden) el.dispatchEvent(new CustomEvent(SETTINGS_REVEAL_EVENT, { bubbles: true }));
+        window.setTimeout(() => {
+          const target = (el.closest('tr') as HTMLElement | null) ?? el;
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          target.classList.remove('odoo-setting-flash');
+          void target.offsetWidth;
+          target.classList.add('odoo-setting-flash');
+          window.setTimeout(() => target.classList.remove('odoo-setting-flash'), 2000);
+          target.querySelector<HTMLElement>('input, select, textarea')?.focus({ preventScroll: true });
+        }, hidden ? 60 : 0);
       }
     }, 75);
     return () => window.clearInterval(timer);
@@ -183,13 +195,13 @@ function SettingsShell() {
     appearance: <AppearanceTab />,
     print: <PrintTab />,
     channels: <SalesChannelsTab />,
-    sachets: <SachetsTab />,
     production: (
-      <>
-        <WorkshopsCard />
-        <ParametersPanel keys={['production.fixed_charges', 'production.steps_blocking', 'pricing.rounding']} />
-        <ProductionMarkupTab />
-      </>
+      <SettingsTabs label="Réglages de production" tabs={[
+        { key: 'workshops', label: 'Ateliers', content: <WorkshopsCard /> },
+        { key: 'costs', label: 'Coûts et prix',
+          content: <ParametersPanel keys={['production.fixed_charges', 'production.steps_blocking', 'pricing.rounding']} /> },
+        { key: 'markup', label: 'Majoration', content: <ProductionMarkupTab /> },
+      ]} />
     ),
     purchasing: (
       <div style={{ display: 'grid', gap: 16 }}>
@@ -200,7 +212,14 @@ function SettingsShell() {
       </div>
     ),
     salesRules: <ParametersPanel keys={['sales.quotes', 'sales.dunning', 'sales.legal_mentions', 'sales.vat_regime', 'sales.stamp_duty', 'sales.returns']} />,
-    posRules: <ParametersPanel keys={['sales.pos_stock', 'sales.person_sizes', 'sales.closure']} />,
+    // Règles de caisse + contrôle des sachets (ex-page Sachets, lot S3) : chaque partie
+    // suit sa section du droit « Paramètres ».
+    posRules: (
+      <>
+        {canSection('business') && <ParametersPanel keys={['sales.pos_stock', 'sales.person_sizes', 'sales.closure']} />}
+        {canSection('sachets') && <SachetsTab />}
+      </>
+    ),
     productCategories: <ProductCategoriesTab />,
     tax: <TaxCodesTab />,
     currencies: <CurrenciesTab />,

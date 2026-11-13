@@ -7,7 +7,7 @@ import {
   missingDependencies, requiredModules, type AppModule,
 } from '@ofauria/shared';
 import { settingsApi, type HealthRecommendation, type HealthReport, type ConfigModelPreview, type ConfigSuggestion, type ModuleActivation, type OnboardingReport } from '../../api/settings.api';
-import { OdooToggle, SettingItem, SettingsSection } from './SettingsPrimitives';
+import { OdooToggle, SettingItem, SettingsSection, SettingsTabs } from './SettingsPrimitives';
 import { useDirtyForm } from './DirtyForms';
 import RolloutDialog from './RolloutDialog';
 import { notify } from '../../components/ui/InlineNotification';
@@ -46,6 +46,7 @@ export default function SectorTab() {
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [keepAdjustments, setKeepAdjustments] = useState(true);
   const [rolloutFor, setRolloutFor] = useState<AppModule | null>(null);
+  const [tab, setTab] = useState('sector');
 
   const { data: sector, isLoading: loadingSector } = useQuery({ queryKey: ['sector'], queryFn: settingsApi.sector });
   const { data: act, isLoading: loadingAct } = useQuery({ queryKey: ['module-activation'], queryFn: settingsApi.modules });
@@ -228,6 +229,7 @@ export default function SectorTab() {
     setDraft(d => ({ modules: { ...d.modules, ...r.changes.modules }, features: { ...d.features, ...r.changes.features } }));
     setSuggestion(null);
     setDescribe(null);
+    setTab('modules');
     notify.success("Ajouté au brouillon : vérifiez l'impact, puis enregistrez");
   };
   const deleteSector = async (code: string, label: string) => {
@@ -320,6 +322,11 @@ export default function SectorTab() {
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
+      {/* Lot S3 : trois onglets (secteur, modules, modèles) ; tous restent montés, le
+          brouillon des modules reste donc dans la barre d'enregistrement. */}
+      <SettingsTabs label="Secteur et modules" value={tab} onChange={setTab} tabs={[
+        { key: 'sector', label: 'Secteur', content: (
+          <>
       <SettingsSection
         title="Secteur d'activité"
         description="Le secteur est un préréglage : il choisit les modules et options de départ. Vous ajustez ensuite chaque module ci-dessous. Changer de secteur ne supprime aucune donnée."
@@ -356,9 +363,243 @@ export default function SectorTab() {
               Garder mes {savedAdjustments} ajustement(s) en changeant de secteur
             </label>
           )}
+        </div>
+      </SettingsSection>
+      {!!starter?.preview.items.length && (
+        <SettingsSection
+          title="Données de départ"
+          description={`De quoi démarrer en « ${sector?.current.label ?? starter.sector} » sans tout saisir. Vous pouvez relancer le chargement : ce qui existe déjà est conservé.`}
+          columns={1}
+        >
+          <div style={{ display: 'grid', gap: 10, maxWidth: 640 }}>
+            <ul style={{ margin: 0, paddingLeft: '1.1rem', display: 'grid', gap: 4 }}>
+              {starter.preview.items.map(it => <li key={it} className="odoo-setting-help" style={{ margin: 0 }}>{it}</li>)}
+            </ul>
+            <div>
+              <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                disabled={busy || starterMut.isPending} onClick={loadStarter}>
+                <Download size={14} /> {starterMut.isPending ? 'Chargement…' : 'Charger les données de départ'}
+              </button>
+            </div>
+          </div>
+        </SettingsSection>
+      )}
+      {onboarding && (onboarding.modules.length > 0 || onboarding.hidden > 0) && (
+        <SettingsSection
+          title="Mise en route"
+          description="Les premières étapes de chaque module actif. Elles se cochent toutes seules dès que la donnée existe ; une liste terminée disparaît."
+          columns={1}
+        >
+          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+            {onboarding.modules.map(m => (
+              <div key={m.module} style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.7rem 0.9rem', background: 'var(--odoo-bg)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontWeight: 600 }}>{m.label}</span>
+                  <span className="odoo-setting-help" style={{ margin: 0 }}>{m.done} / {m.total}</span>
+                </div>
+                <div role="progressbar" aria-valuemin={0} aria-valuemax={m.total} aria-valuenow={m.done}
+                  style={{ height: 4, borderRadius: 2, background: 'var(--odoo-border)', margin: '6px 0 8px', overflow: 'hidden' }}>
+                  <div style={{ width: `${(m.done / m.total) * 100}%`, height: '100%', background: 'var(--odoo-purple)' }} />
+                </div>
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
+                  {m.tasks.map(t => (
+                    <li key={t.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      {t.done
+                        ? <CheckCircle2 size={15} style={{ color: 'var(--odoo-success, #28a745)', flexShrink: 0, marginTop: 2 }} />
+                        : <Circle size={15} style={{ color: 'var(--odoo-text-muted, #999)', flexShrink: 0, marginTop: 2 }} />}
+                      <span style={{ flex: 1, textDecoration: t.done ? 'line-through' : 'none', opacity: t.done ? 0.6 : 1 }}>{t.label}</span>
+                      {!t.done && (t.to === 'starter'
+                        ? <button type="button" className="odoo-btn-link" disabled={busy || starterMut.isPending} onClick={loadStarter}>Charger</button>
+                        : <button type="button" className="odoo-btn-link" onClick={() => navigate(t.to)}>Ouvrir</button>)}
+                    </li>
+                  ))}
+                </ul>
+                <div style={{ textAlign: 'right', marginTop: 6 }}>
+                  <button type="button" className="odoo-btn-link" disabled={onboardingMut.isPending}
+                    onClick={() => onboardingMut.mutate({ module: m.module })}>Masquer</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          {onboarding.hidden > 0 && (
+            <div>
+              <button type="button" className="odoo-btn-link" disabled={onboardingMut.isPending} onClick={() => onboardingMut.mutate({})}>
+                Réafficher {onboarding.hidden} liste(s) masquée(s)
+              </button>
+            </div>
+          )}
+        </SettingsSection>
+      )}
+      <SettingsSection
+        title="Historique des configurations"
+        description="Chaque enregistrement crée une version. Restaurer une version la rend de nouveau courante, sans rien supprimer ; la restauration elle-même peut être annulée."
+        columns={1}
+      >
+        {versions.length === 0 ? (
+          <p className="odoo-setting-help">Aucune version pour l'instant : la première sera créée au prochain enregistrement.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="odoo-table">
+              <thead><tr><th style={{ width: 130 }}>Date</th><th style={{ width: 160 }}>Par</th><th>Changement</th><th style={{ width: 110 }}></th></tr></thead>
+              <tbody>
+                {versions.map((v, i) => (
+                  <tr key={v.id}>
+                    <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(v.created_at)}</td>
+                    <td>{v.created_by_name ?? '—'}</td>
+                    <td>{v.label} {i === 0 && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>Actuelle</span>}</td>
+                    <td>
+                      {i > 0 && (
+                        <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          disabled={busy} onClick={() => restore(v.id, fmtDate(v.created_at))}>
+                          <History size={13} /> Restaurer
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SettingsSection>
+          </>
+        ) },
+        { key: 'modules', label: 'Modules et options',
+          badge: dirtyCount > 0 ? <span className="odoo-tag odoo-tag-blue" title="Changements non enregistrés">{dirtyCount}</span> : undefined,
+          content: (
+          <>
+      {health && (health.recommendations.length > 0 || health.dismissed > 0) && (
+        <SettingsSection
+          title="Bilan de santé"
+          description="Propositions tirées de l'utilisation réelle de l'application. Rien n'est appliqué sans vous : une proposition remplit le brouillon, que vous vérifiez puis enregistrez."
+          columns={1}
+        >
+          <div style={{ display: 'grid', gap: 8 }}>
+            {health.recommendations.map(r => (
+              <div key={r.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '0.7rem 0.9rem', borderRadius: 6,
+                border: `1px solid ${r.tone === 'warning' ? 'var(--odoo-warning, #f0ad4e)' : 'var(--odoo-border)'}`, background: 'var(--odoo-bg)' }}>
+                {r.tone === 'warning'
+                  ? <AlertTriangle size={16} style={{ color: 'var(--odoo-warning, #f0ad4e)', flexShrink: 0, marginTop: 2 }} />
+                  : <Lightbulb size={16} style={{ color: 'var(--odoo-purple)', flexShrink: 0, marginTop: 2 }} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600 }}>{r.title}</div>
+                  <p className="odoo-setting-help" style={{ margin: '2px 0 0' }}>{r.detail}</p>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  {inDraft(r)
+                    ? <span className="odoo-tag odoo-tag-green" style={{ alignSelf: 'center' }}>Dans le brouillon</span>
+                    : <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 10px' }} disabled={busy}
+                        onClick={() => applyRecommendation(r)}>{r.action.label}</button>}
+                  <button type="button" className="odoo-btn-link" disabled={healthMut.isPending}
+                    title="Ne plus proposer pendant 90 jours" onClick={() => healthMut.mutate({ key: r.key })}>Ignorer</button>
+                </div>
+              </div>
+            ))}
+            {health.recommendations.length === 0 && (
+              <p className="odoo-setting-help" style={{ margin: 0 }}>Aucune proposition en cours.</p>
+            )}
+            {health.dismissed > 0 && (
+              <div>
+                <button type="button" className="odoo-btn-link" disabled={healthMut.isPending}
+                  onClick={() => healthMut.mutate({ restore: true })}>
+                  Réafficher {health.dismissed} proposition(s) ignorée(s)
+                </button>
+              </div>
+            )}
+          </div>
+        </SettingsSection>
+      )}
+      {view.missing.length > 0 && (
+        <StatusBanner tone="warning" icon={AlertTriangle} title="Configuration incomplète">
+          {view.missing.map(x => `« ${MODULE_LABELS[x.module]} » a besoin de ${x.missing.map(d => `« ${MODULE_LABELS[d]} »`).join(', ')}`).join(' ; ')}.
+        </StatusBanner>
+      )}
+      {savedAdjustments > 0 && dirtyCount === 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button type="button" className="odoo-btn-secondary" onClick={resetAll} disabled={busy}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <RotateCcw size={14} /> Revenir au préréglage du secteur ({savedAdjustments})
+          </button>
+        </div>
+      )}
+      {MODULE_GROUPS.map(g => (
+        <SettingsSection key={g.key} title={g.label}>
+          {g.modules.map(m => {
+            const core = CORE_MODULES.has(m);
+            const on = view.active.has(m);
+            const adjusted = view.moduleOverrides[m] !== undefined;
+            const pending = draft.modules[m] !== undefined;
+            const features = featuresOf(m);
+            return (
+              <SettingItem key={m} title={MODULE_LABELS[m]} description={MODULE_DESCRIPTIONS[m]}
+                toggle={{ checked: on, disabled: core || busy, onChange: v => toggleModule(m, v) }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  {core
+                    ? <span className="odoo-tag odoo-tag-grey">Socle</span>
+                    : adjusted
+                      ? <span className="odoo-tag odoo-tag-orange">Ajusté</span>
+                      : <span className="odoo-tag odoo-tag-grey">Préréglage</span>}
+                  {pending && <span className="odoo-tag odoo-tag-blue">Non enregistré</span>}
+                  {adjusted && !core && (
+                    <button type="button" className="odoo-btn-link" disabled={busy}
+                      onClick={() => setModules({ [m]: null })}>Revenir au préréglage</button>
+                  )}
+                </div>
+                {/* Diffusion (P0c) : seulement pour un module actif et enregistré comme tel. */}
+                {!core && on && act.modules.includes(m) && (() => {
+                  const r = rolloutSummary(m);
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                      <span className={`odoo-tag ${r.special ? 'odoo-tag-purple' : 'odoo-tag-grey'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Users size={11} /> {r.text}
+                      </span>
+                      <button type="button" className="odoo-btn-link" disabled={busy || dirtyCount > 0}
+                        title={dirtyCount > 0 ? "Enregistrez d'abord vos changements" : undefined}
+                        onClick={() => setRolloutFor(m)}>Diffusion…</button>
+                    </div>
+                  );
+                })()}
+                {features.length > 0 && (
+                  <div style={{ display: 'grid', gap: 6, marginTop: 10, paddingLeft: 10, borderLeft: '2px solid var(--odoo-border)' }}>
+                    {features.map(f => {
+                      const fOn = view.featureOn(f.key);
+                      const fAdjusted = view.featureOverrides[f.key] !== undefined;
+                      return (
+                        <div key={f.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, opacity: on ? 1 : 0.5 }}>
+                          <OdooToggle checked={fOn && on} disabled={!on || busy}
+                            onChange={v => setDraft(d => ({ ...d, features: { ...d.features, [f.key]: v } }))} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
+                              {f.label}{' '}
+                              {fAdjusted && <span className="odoo-tag odoo-tag-orange">Ajusté</span>}
+                              {fAdjusted && on && (
+                                <button type="button" className="odoo-btn-link" disabled={busy}
+                                  onClick={() => setDraft(d => ({ ...d, features: { ...d.features, [f.key]: null } }))}>Préréglage</button>
+                              )}
+                            </div>
+                            {f.description && <p className="odoo-setting-help">{f.description}</p>}
 
-          {/* Modèles de configuration (P10) : la configuration courante devient un secteur
-              réutilisable ; un modèle venu d'ailleurs s'ajoute à la liste après aperçu. */}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </SettingItem>
+            );
+          })}
+        </SettingsSection>
+      ))}
+          </>
+        ) },
+        { key: 'templates', label: 'Modèles et assistant', content: (
+          <>
+      <SettingsSection
+        title="Modèles de configuration"
+        description="Enregistrer la configuration actuelle comme secteur réutilisable, l'exporter ou importer celle d'une autre société, ou la faire proposer par l'assistant à partir d'une description de votre activité."
+        columns={1}
+      >
+        <div style={{ display: 'grid', gap: 8, maxWidth: 640 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
             <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               disabled={busy} onClick={() => setSaveName(saveName === null ? `${sector?.current.label ?? ''} (personnalisé)` : null)}>
@@ -479,232 +720,9 @@ export default function SectorTab() {
           )}
         </div>
       </SettingsSection>
-
-      {!!starter?.preview.items.length && (
-        <SettingsSection
-          title="Données de départ"
-          description={`De quoi démarrer en « ${sector?.current.label ?? starter.sector} » sans tout saisir. Vous pouvez relancer le chargement : ce qui existe déjà est conservé.`}
-          columns={1}
-        >
-          <div style={{ display: 'grid', gap: 10, maxWidth: 640 }}>
-            <ul style={{ margin: 0, paddingLeft: '1.1rem', display: 'grid', gap: 4 }}>
-              {starter.preview.items.map(it => <li key={it} className="odoo-setting-help" style={{ margin: 0 }}>{it}</li>)}
-            </ul>
-            <div>
-              <button type="button" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                disabled={busy || starterMut.isPending} onClick={loadStarter}>
-                <Download size={14} /> {starterMut.isPending ? 'Chargement…' : 'Charger les données de départ'}
-              </button>
-            </div>
-          </div>
-        </SettingsSection>
-      )}
-
-      {onboarding && (onboarding.modules.length > 0 || onboarding.hidden > 0) && (
-        <SettingsSection
-          title="Mise en route"
-          description="Les premières étapes de chaque module actif. Elles se cochent toutes seules dès que la donnée existe ; une liste terminée disparaît."
-          columns={1}
-        >
-          <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
-            {onboarding.modules.map(m => (
-              <div key={m.module} style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.7rem 0.9rem', background: 'var(--odoo-bg)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <span style={{ fontWeight: 600 }}>{m.label}</span>
-                  <span className="odoo-setting-help" style={{ margin: 0 }}>{m.done} / {m.total}</span>
-                </div>
-                <div role="progressbar" aria-valuemin={0} aria-valuemax={m.total} aria-valuenow={m.done}
-                  style={{ height: 4, borderRadius: 2, background: 'var(--odoo-border)', margin: '6px 0 8px', overflow: 'hidden' }}>
-                  <div style={{ width: `${(m.done / m.total) * 100}%`, height: '100%', background: 'var(--odoo-purple)' }} />
-                </div>
-                <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
-                  {m.tasks.map(t => (
-                    <li key={t.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                      {t.done
-                        ? <CheckCircle2 size={15} style={{ color: 'var(--odoo-success, #28a745)', flexShrink: 0, marginTop: 2 }} />
-                        : <Circle size={15} style={{ color: 'var(--odoo-text-muted, #999)', flexShrink: 0, marginTop: 2 }} />}
-                      <span style={{ flex: 1, textDecoration: t.done ? 'line-through' : 'none', opacity: t.done ? 0.6 : 1 }}>{t.label}</span>
-                      {!t.done && (t.to === 'starter'
-                        ? <button type="button" className="odoo-btn-link" disabled={busy || starterMut.isPending} onClick={loadStarter}>Charger</button>
-                        : <button type="button" className="odoo-btn-link" onClick={() => navigate(t.to)}>Ouvrir</button>)}
-                    </li>
-                  ))}
-                </ul>
-                <div style={{ textAlign: 'right', marginTop: 6 }}>
-                  <button type="button" className="odoo-btn-link" disabled={onboardingMut.isPending}
-                    onClick={() => onboardingMut.mutate({ module: m.module })}>Masquer</button>
-                </div>
-              </div>
-            ))}
-          </div>
-          {onboarding.hidden > 0 && (
-            <div>
-              <button type="button" className="odoo-btn-link" disabled={onboardingMut.isPending} onClick={() => onboardingMut.mutate({})}>
-                Réafficher {onboarding.hidden} liste(s) masquée(s)
-              </button>
-            </div>
-          )}
-        </SettingsSection>
-      )}
-
-      {health && (health.recommendations.length > 0 || health.dismissed > 0) && (
-        <SettingsSection
-          title="Bilan de santé"
-          description="Propositions tirées de l'utilisation réelle de l'application. Rien n'est appliqué sans vous : une proposition remplit le brouillon, que vous vérifiez puis enregistrez."
-          columns={1}
-        >
-          <div style={{ display: 'grid', gap: 8 }}>
-            {health.recommendations.map(r => (
-              <div key={r.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '0.7rem 0.9rem', borderRadius: 6,
-                border: `1px solid ${r.tone === 'warning' ? 'var(--odoo-warning, #f0ad4e)' : 'var(--odoo-border)'}`, background: 'var(--odoo-bg)' }}>
-                {r.tone === 'warning'
-                  ? <AlertTriangle size={16} style={{ color: 'var(--odoo-warning, #f0ad4e)', flexShrink: 0, marginTop: 2 }} />
-                  : <Lightbulb size={16} style={{ color: 'var(--odoo-purple)', flexShrink: 0, marginTop: 2 }} />}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600 }}>{r.title}</div>
-                  <p className="odoo-setting-help" style={{ margin: '2px 0 0' }}>{r.detail}</p>
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                  {inDraft(r)
-                    ? <span className="odoo-tag odoo-tag-green" style={{ alignSelf: 'center' }}>Dans le brouillon</span>
-                    : <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 10px' }} disabled={busy}
-                        onClick={() => applyRecommendation(r)}>{r.action.label}</button>}
-                  <button type="button" className="odoo-btn-link" disabled={healthMut.isPending}
-                    title="Ne plus proposer pendant 90 jours" onClick={() => healthMut.mutate({ key: r.key })}>Ignorer</button>
-                </div>
-              </div>
-            ))}
-            {health.recommendations.length === 0 && (
-              <p className="odoo-setting-help" style={{ margin: 0 }}>Aucune proposition en cours.</p>
-            )}
-            {health.dismissed > 0 && (
-              <div>
-                <button type="button" className="odoo-btn-link" disabled={healthMut.isPending}
-                  onClick={() => healthMut.mutate({ restore: true })}>
-                  Réafficher {health.dismissed} proposition(s) ignorée(s)
-                </button>
-              </div>
-            )}
-          </div>
-        </SettingsSection>
-      )}
-
-      {view.missing.length > 0 && (
-        <StatusBanner tone="warning" icon={AlertTriangle} title="Configuration incomplète">
-          {view.missing.map(x => `« ${MODULE_LABELS[x.module]} » a besoin de ${x.missing.map(d => `« ${MODULE_LABELS[d]} »`).join(', ')}`).join(' ; ')}.
-        </StatusBanner>
-      )}
-
-      {savedAdjustments > 0 && dirtyCount === 0 && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button type="button" className="odoo-btn-secondary" onClick={resetAll} disabled={busy}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <RotateCcw size={14} /> Revenir au préréglage du secteur ({savedAdjustments})
-          </button>
-        </div>
-      )}
-
-      {MODULE_GROUPS.map(g => (
-        <SettingsSection key={g.key} title={g.label}>
-          {g.modules.map(m => {
-            const core = CORE_MODULES.has(m);
-            const on = view.active.has(m);
-            const adjusted = view.moduleOverrides[m] !== undefined;
-            const pending = draft.modules[m] !== undefined;
-            const features = featuresOf(m);
-            return (
-              <SettingItem key={m} title={MODULE_LABELS[m]} description={MODULE_DESCRIPTIONS[m]}
-                toggle={{ checked: on, disabled: core || busy, onChange: v => toggleModule(m, v) }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  {core
-                    ? <span className="odoo-tag odoo-tag-grey">Socle</span>
-                    : adjusted
-                      ? <span className="odoo-tag odoo-tag-orange">Ajusté</span>
-                      : <span className="odoo-tag odoo-tag-grey">Préréglage</span>}
-                  {pending && <span className="odoo-tag odoo-tag-blue">Non enregistré</span>}
-                  {adjusted && !core && (
-                    <button type="button" className="odoo-btn-link" disabled={busy}
-                      onClick={() => setModules({ [m]: null })}>Revenir au préréglage</button>
-                  )}
-                </div>
-                {/* Diffusion (P0c) : seulement pour un module actif et enregistré comme tel. */}
-                {!core && on && act.modules.includes(m) && (() => {
-                  const r = rolloutSummary(m);
-                  return (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
-                      <span className={`odoo-tag ${r.special ? 'odoo-tag-purple' : 'odoo-tag-grey'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <Users size={11} /> {r.text}
-                      </span>
-                      <button type="button" className="odoo-btn-link" disabled={busy || dirtyCount > 0}
-                        title={dirtyCount > 0 ? "Enregistrez d'abord vos changements" : undefined}
-                        onClick={() => setRolloutFor(m)}>Diffusion…</button>
-                    </div>
-                  );
-                })()}
-                {features.length > 0 && (
-                  <div style={{ display: 'grid', gap: 6, marginTop: 10, paddingLeft: 10, borderLeft: '2px solid var(--odoo-border)' }}>
-                    {features.map(f => {
-                      const fOn = view.featureOn(f.key);
-                      const fAdjusted = view.featureOverrides[f.key] !== undefined;
-                      return (
-                        <div key={f.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, opacity: on ? 1 : 0.5 }}>
-                          <OdooToggle checked={fOn && on} disabled={!on || busy}
-                            onChange={v => setDraft(d => ({ ...d, features: { ...d.features, [f.key]: v } }))} />
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
-                              {f.label}{' '}
-                              {fAdjusted && <span className="odoo-tag odoo-tag-orange">Ajusté</span>}
-                              {fAdjusted && on && (
-                                <button type="button" className="odoo-btn-link" disabled={busy}
-                                  onClick={() => setDraft(d => ({ ...d, features: { ...d.features, [f.key]: null } }))}>Préréglage</button>
-                              )}
-                            </div>
-                            {f.description && <p className="odoo-setting-help">{f.description}</p>}
-
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </SettingItem>
-            );
-          })}
-        </SettingsSection>
-      ))}
-
-      <SettingsSection
-        title="Historique des configurations"
-        description="Chaque enregistrement crée une version. Restaurer une version la rend de nouveau courante, sans rien supprimer ; la restauration elle-même peut être annulée."
-        columns={1}
-      >
-        {versions.length === 0 ? (
-          <p className="odoo-setting-help">Aucune version pour l'instant : la première sera créée au prochain enregistrement.</p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="odoo-table">
-              <thead><tr><th style={{ width: 130 }}>Date</th><th style={{ width: 160 }}>Par</th><th>Changement</th><th style={{ width: 110 }}></th></tr></thead>
-              <tbody>
-                {versions.map((v, i) => (
-                  <tr key={v.id}>
-                    <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(v.created_at)}</td>
-                    <td>{v.created_by_name ?? '—'}</td>
-                    <td>{v.label} {i === 0 && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>Actuelle</span>}</td>
-                    <td>
-                      {i > 0 && (
-                        <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                          disabled={busy} onClick={() => restore(v.id, fmtDate(v.created_at))}>
-                          <History size={13} /> Restaurer
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </SettingsSection>
+          </>
+        ) },
+      ]} />
 
       {rolloutFor && (
         <RolloutDialog

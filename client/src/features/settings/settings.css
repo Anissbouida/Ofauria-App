@@ -117,6 +117,20 @@
 }
 @media (prefers-reduced-motion: reduce) { .odoo-setting-flash { animation: none; outline: 2px solid var(--odoo-purple); } }
 
+/* ── Onglets d'une page (lot S3) ── */
+.odoo-settings-tabs { display: grid; gap: 1rem; min-width: 0; }
+.odoo-settings-tablist { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--odoo-border); overflow-x: auto; }
+.odoo-settings-tablist button {
+  display: inline-flex; align-items: center; gap: 0.375rem; white-space: nowrap;
+  padding: 0.5rem 0.875rem; margin-bottom: -1px; border-bottom: 2px solid transparent;
+  font-size: 0.8125rem; color: var(--odoo-text-muted);
+}
+.odoo-settings-tablist button:hover { color: var(--odoo-text); }
+.odoo-settings-tablist button.active { color: var(--odoo-purple); border-bottom-color: var(--odoo-purple); font-weight: 600; }
+.odoo-settings-tablist button:focus-visible { outline: 2px solid var(--odoo-purple); outline-offset: -2px; }
+.odoo-settings-tabpanel { display: grid; gap: 1rem; min-width: 0; }
+.odoo-settings-tabpanel[hidden] { display: none; }
+
 /* ── Barre d'enregistrement ── */
 /* Fixe (et non sticky) : le conteneur <main> de l'application a overflow:auto sans
    défiler lui-même, ce qui neutralise position: sticky. */

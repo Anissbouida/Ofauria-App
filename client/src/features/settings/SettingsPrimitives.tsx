@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import './settings.css';
 
 /** Ancre stable d'un réglage, partagée par les blocs et l'index de recherche ⌘K. */
@@ -57,6 +57,69 @@ export function SettingItem({ title, description, toggle, children, fullWidth }:
         <div className="odoo-setting-label">{title}</div>
         {description && <p className="odoo-setting-help">{description}</p>}
         {children && <div className="odoo-setting-control">{children}</div>}
+      </div>
+    </div>
+  );
+}
+
+/** Événement envoyé par la recherche ⌘K sur un réglage caché dans un onglet inactif. */
+export const SETTINGS_REVEAL_EVENT = 'settings-reveal';
+
+export interface SettingsTabDef {
+  key: string;
+  label: string;
+  /** Pastille après le libellé (ex. nombre de changements non enregistrés). */
+  badge?: ReactNode;
+  content: ReactNode;
+}
+
+/**
+ * Onglets d'une page de réglages (lot S3). Tous les onglets restent montés (cachés par
+ * `hidden`) : les brouillons d'un onglet inactif restent dans la barre d'enregistrement,
+ * et un réglage trouvé par la recherche ouvre son onglet (SETTINGS_REVEAL_EVENT).
+ * Contrôlé par `value`/`onChange`, ou libre.
+ */
+export function SettingsTabs({ tabs, value, onChange, label }: {
+  tabs: SettingsTabDef[];
+  value?: string;
+  onChange?: (key: string) => void;
+  label: string;
+}) {
+  const [own, setOwn] = useState(tabs[0]?.key);
+  const active = value ?? own;
+  const select = (key: string) => { if (value === undefined) setOwn(key); onChange?.(key); };
+  const ref = useRef<HTMLDivElement>(null);
+  const selectRef = useRef(select);
+  selectRef.current = select;
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const onReveal = (e: Event) => {
+      const panel = (e.target as Element | null)?.closest<HTMLElement>('[data-settings-tab]');
+      if (panel && panel.parentElement === el && panel.dataset.settingsTab) selectRef.current(panel.dataset.settingsTab);
+    };
+    el.addEventListener(SETTINGS_REVEAL_EVENT, onReveal);
+    return () => el.removeEventListener(SETTINGS_REVEAL_EVENT, onReveal);
+  }, []);
+
+  return (
+    <div className="odoo-settings-tabs">
+      <div className="odoo-settings-tablist" role="tablist" aria-label={label}>
+        {tabs.map(t => (
+          <button key={t.key} type="button" role="tab" id={`tab-${t.key}`} aria-selected={t.key === active}
+            aria-controls={`tabpanel-${t.key}`} className={t.key === active ? 'active' : ''} onClick={() => select(t.key)}>
+            {t.label}{t.badge}
+          </button>
+        ))}
+      </div>
+      <div ref={ref}>
+        {tabs.map(t => (
+          <div key={t.key} role="tabpanel" id={`tabpanel-${t.key}`} aria-labelledby={`tab-${t.key}`} data-settings-tab={t.key}
+            hidden={t.key !== active} className="odoo-settings-tabpanel">
+            {t.content}
+          </div>
+        ))}
       </div>
     </div>
   );

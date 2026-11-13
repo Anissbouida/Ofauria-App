@@ -94,7 +94,7 @@ export async function setupStatus(): Promise<SetupCheck[]> {
       label: 'Canaux de vente', status: channels === 0 ? 'todo' : defCh === 0 ? 'warn' : 'ok',
       detail: channels === 0 ? 'Aucun canal actif' : defCh === 0 ? `${plural(channels, 'canal', 'canaux')}, aucun par défaut` : `${plural(channels, 'canal', 'canaux')} actif${channels > 1 ? 's' : ''}` });
   }
-  add({ key: 'sachets.ratio', page: 'sachets', section: 'sachets', required: false, anchor: anchor('Réglage global'),
+  add({ key: 'sachets.ratio', page: 'posRules', section: 'sachets', required: false, anchor: anchor('Réglage global'),
     label: 'Contrôle des sachets', status: Number(cs.default_articles_per_sachet) > 0 ? 'ok' : 'info',
     detail: Number(cs.default_articles_per_sachet) > 0 ? `${cs.default_articles_per_sachet} articles par sachet` : 'Ratio non défini' });
 

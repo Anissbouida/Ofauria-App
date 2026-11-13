@@ -15,7 +15,7 @@ import { settingAnchor } from './SettingsPrimitives';
 export type SettingsPageKey =
   | 'home'
   | 'company' | 'sector' | 'stores' | 'appearance' | 'integrations'
-  | 'print' | 'channels' | 'sachets' | 'salesRules' | 'posRules' | 'productCategories'
+  | 'print' | 'channels' | 'salesRules' | 'posRules' | 'productCategories'
   | 'production' | 'purchasing'
   | 'tax' | 'currencies' | 'numbering' | 'documents' | 'ledger'
   | 'referentiel' | 'customFields' | 'data'
@@ -36,7 +36,12 @@ export interface SettingsPageDef {
   modules?: AppModule[];
   /** Clé de vocabulaire du secteur pour le libellé (mig 514), ex. « production ». */
   labelKey?: string;
+  /** Sections supplémentaires qui ouvrent aussi la page (page fusionnée, lot S3). */
+  alsoSections?: SettingsSectionKey[];
 }
+
+/** Anciennes pages fusionnées (lot S3) : leurs adresses et points mènent à la nouvelle. */
+export const LEGACY_PAGES: Record<string, SettingsPageKey> = { sachets: 'posRules' };
 
 export const SETTINGS_GROUPS = [
   'Mon entreprise', 'Activité et modules', 'Ventes et caisse', 'Achats, stock et production', 'Finance', 'Données',
@@ -89,12 +94,11 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
       "Format d'impression", 'Taille de police', 'Largeur du papier'] },
   { key: 'channels', group: 'Ventes et caisse', modules: ['pos', 'sales', 'orders'], section: 'production', label: 'Canaux de vente', icon: Radio,
     description: 'Boutique, commande, événement, gros, livraison', keywords: 'canal vente prix par canal' },
-  { key: 'sachets', group: 'Ventes et caisse', modules: ['pos'], section: 'sachets', label: 'Sachets', icon: ShoppingBag,
-    description: 'Contrôle des sachets de caisse', keywords: 'sachet emballage ratio vendeuse',
-    fields: ['Réglage global', 'Ratio par catégorie'] },
   { key: 'posRules', group: 'Ventes et caisse', modules: ['pos'], section: 'business', label: 'Règles de caisse', icon: ShoppingCart,
-    description: 'Vente des produits sans stock vitrine', keywords: 'caisse rupture stock negatif vente sans stock vitrine',
-    fields: ['Caisse : produits sans stock vitrine'] },
+    alsoSections: ['sachets'],
+    description: 'Vente sans stock vitrine, fermeture de caisse et contrôle des sachets',
+    keywords: 'caisse rupture stock negatif vente sans stock vitrine sachet emballage ratio vendeuse fermeture',
+    fields: ['Caisse : produits sans stock vitrine', 'Réglage global', 'Ratio par catégorie'] },
   { key: 'salesRules', group: 'Ventes et caisse', modules: ['sales', 'orders', 'customers'], section: 'business', label: 'Devis et crédit clients', icon: BellRing,
     description: 'Validité des devis, relances et plafond de crédit', keywords: 'devis proforma validite relance recouvrement impaye plafond credit blocage',
     fields: ['Devis clients', 'Relances clients et contrôle du crédit'] },
