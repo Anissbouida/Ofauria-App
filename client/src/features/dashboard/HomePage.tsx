@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { settingsApi } from '../../api/settings.api';
 import { useAuth } from '../../context/AuthContext';
@@ -22,15 +22,18 @@ export default function HomePage() {
   const { user } = useAuth();
   const { hasModule } = usePermissions();
   const navigate = useNavigate();
+  const location = useLocation();
   const [fabOpen, setFabOpen] = useState(false);
 
   // Accueil par secteur (phase 9.2) : un secteur qui définit sa page d'accueil ouvre
   // dessus (ex. « Générique » ouvre sur les ventes) ; la boulangerie reste sur ce tableau.
+  // Le clic sur le nom de l'application (en-tête) demande le menu principal : pas de renvoi.
+  const fromLauncher = !!(location.state as { launcher?: boolean } | null)?.launcher;
   const { data: sector } = useQuery({ queryKey: ['sector'], queryFn: settingsApi.sector });
   useEffect(() => {
     const home = sector?.current?.home_route;
-    if (home && home !== '/') navigate(home, { replace: true });
-  }, [sector, navigate]);
+    if (home && home !== '/' && !fromLauncher) navigate(home, { replace: true });
+  }, [sector, navigate, fromLauncher]);
 
   const canSeeDashboard = hasModule('dashboard') || hasModule('reports');
 
