@@ -11,6 +11,9 @@ Les constats et leurs preuves restent dans ces deux documents ; ici ne figure qu
 des travaux. Les tailles (S, M, L) sont relatives ; aucune durée n'est promise, elle dépend
 du rythme de validation.
 
+Le pendant Production (socle fabrication générique + couche boulangerie, secteur
+« Industrie / Fabrication ») est dans [`PLAN_PRODUCTION_GENERIQUE.md`](PLAN_PRODUCTION_GENERIQUE.md).
+
 ---
 
 ## Règles valables pour toutes les étapes

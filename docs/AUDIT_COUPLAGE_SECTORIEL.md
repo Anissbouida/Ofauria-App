@@ -179,7 +179,7 @@ Règles de conception :
 | **L1 — Rôles configurables** | `users.role` (enum CHECK) → table `roles` référentielle (par tenant/pack) ; retirer les rôles métier de `shared/constants/roles.ts` ; libellés en base. Touche auth/permissions → tests serrés. | **élevé** | L0 |
 | **L2 — Modules par abonnement** | Table `tenant_modules` ; `hasModule` = `tenant_modules ∩ role_modules` ; `DEFAULT_ROLE_MODULES` devient défaut **du pack**, plus une constante. | moyen | L0, L1 |
 | **L3 — Catalogue générique** | `product.type` (bien/service/matière/abonnement) ; UoM en référentiel (fin des enums `g/kg/person`) ; BOM générique (recette = cas particulier). Le plus lourd. | **élevé** | L0 |
-| **L4 — Modules métier gatés** | Production/Recettes/HACCP/Pesage/Contrôle/Invendus activés par le pack ; généralisation des noms (HACCP→Qualité, recette→nomenclature). | moyen | L0, L2 |
+| **L4 — Modules métier gatés** | Production/Recettes/HACCP/Pesage/Contrôle/Invendus activés par le pack ; généralisation des noms (HACCP→Qualité, recette→nomenclature). Découpé en lots P0a-P11 dans [PLAN_PRODUCTION_GENERIQUE.md](PLAN_PRODUCTION_GENERIQUE.md). | moyen | L0, L2 |
 | **L5 — Terminologie par pack** | Libellés F&B → clés neutres + table de libellés par pack (Menu Engineering→Rentabilité produit, entremets→portion, fiche technique→gamme). | faible | L0 |
 | **L6 — Packs de données** | Sortir les seeds sectoriels des migrations vers des packs chargeables (catégories, recettes démo). | faible | L0 |
 
