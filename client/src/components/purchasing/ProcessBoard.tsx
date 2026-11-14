@@ -118,9 +118,9 @@ export function StagePipeline({ title, summary, stages, stats, isActive, onPick 
 }) {
   const last = stages[stages.length - 1]?.key;
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)' }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '10px 16px 0' }}>
-        <span style={{ fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--odoo-text-muted)' }}>
+    <div className="pb-pipeline" style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)' }}>
+      <div className="pb-pipeline-head" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '10px 16px 0' }}>
+        <span className="pb-pipeline-title" style={{ fontSize: '0.6875rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--odoo-text-muted)' }}>
           {title}
         </span>
         <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{summary}</span>
@@ -135,7 +135,7 @@ export function StagePipeline({ title, summary, stages, stats, isActive, onPick 
               className={`odoo-stat-card ${active ? 'active' : ''}`}
               style={s.key === last ? { opacity: active ? 1 : 0.8 } : undefined}>
               <div className="odoo-stat-card-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{
+                <span className="pb-stage-num" style={{
                   width: 18, height: 18, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '0.625rem', fontWeight: 700,
                   background: active ? 'var(--odoo-purple)' : 'var(--odoo-border)', color: active ? '#fff' : 'var(--odoo-text)',

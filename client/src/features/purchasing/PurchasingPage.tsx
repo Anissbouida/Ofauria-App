@@ -22,6 +22,8 @@ import PurchaseOrdersTab from '../accounting/PurchaseOrdersTab';
 import SuppliersTab from './SuppliersTab';
 import PurchasingPilotageTab from './PurchasingPilotageTab';
 import PurchasingWorkbench from './PurchasingWorkbench';
+import '../projects/projects.css';
+import './purchasing.css';
 import RfqTab from './RfqTab';
 import LandedCostTab from './LandedCostTab';
 import SupplierScoreTab from './SupplierScoreTab';
@@ -124,6 +126,8 @@ export default function PurchasingPage() {
 
   return (
     <ModuleShell title="Achats" views={views} current={current} onSelect={k => openTab(k as PurchasingTab)}>
+      {/* Refonte 2026-11 : toutes les rubriques partagent le style cartes/panneaux (purchasing.css, .pur-module). */}
+      <div className="pur-module">
       {tab === 'suppliers' && (
         <SuppliersTab
           onOpenOrders={id => openTab('purchase_orders', { supplierId: id })}
@@ -142,6 +146,7 @@ export default function PurchasingPage() {
       {tab === 'scores' && <SupplierScoreTab />}
       {tab === 'workbench' && <PurchasingWorkbench onOpenTab={k => openTab(k as PurchasingTab)} onOpenInvoice={f => openTab('invoices', f)} />}
       {tab === 'pilotage' && <PurchasingPilotageTab onOpenInvoice={(f) => openTab('invoices', f)} onOpenTab={(k) => openTab(k)} />}
+      </div>
     </ModuleShell>
   );
 }

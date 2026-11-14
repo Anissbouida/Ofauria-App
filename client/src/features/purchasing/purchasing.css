@@ -74,3 +74,34 @@
 
 /* Couleurs d'état (mêmes valeurs que .prj) pour les fiches ouvertes hors de .prj (modales). */
 .pur-scope { --prj-green: #1F7A4D; --prj-orange: #B45309; --prj-red: #B42318; --prj-track: var(--odoo-border); }
+
+/*
+ * Alignement de TOUTES les rubriques Achats sur la refonte (2026-11) : les briques communes
+ * (bandeau d'étapes ProcessBoard, barre de recherche, tableaux, tuiles, sélecteur de vue)
+ * prennent le style cartes/panneaux, sans toucher les autres modules qui les partagent.
+ * Les modales (.fixed) gardent leur présentation propre.
+ */
+.pur-module { --prj-green: #1F7A4D; --prj-orange: #B45309; --prj-red: #B42318; --prj-track: var(--odoo-border); display: flex; flex-direction: column; gap: 16px; }
+.pur-module > * { margin-top: 0; margin-bottom: 0; }
+
+.pur-module .pb-pipeline { border-radius: 10px !important; background: var(--theme-bg-card) !important; padding-bottom: 12px; }
+.pur-module .pb-pipeline-head { padding: 12px 14px 0 !important; }
+.pur-module .pb-pipeline-title { font-size: 0.9375rem !important; text-transform: none !important; letter-spacing: 0 !important; color: var(--odoo-text) !important; }
+.pur-module .pb-pipeline .odoo-stat-grid { padding: 10px 12px 0; }
+
+.pur-module .odoo-stat-grid:not(.fixed .odoo-stat-grid) { gap: 10px; border-bottom: 0; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.pur-module .odoo-stat-card:not(.fixed .odoo-stat-card) { border: 1px solid var(--odoo-border); border-radius: 8px; background: var(--theme-bg-card); padding: 12px 14px; }
+.pur-module .odoo-stat-card:not(.fixed .odoo-stat-card):last-child { border-right: 1px solid var(--odoo-border); }
+.pur-module .odoo-stat-card:not(.fixed .odoo-stat-card):hover { border-color: var(--odoo-purple); background: var(--theme-bg-card); }
+.pur-module .odoo-stat-card.active:not(.fixed .odoo-stat-card) { border-color: var(--odoo-purple); background: color-mix(in srgb, var(--odoo-purple) 8%, var(--theme-bg-card)); box-shadow: none; }
+.pur-module .odoo-stat-card-label { text-transform: none; letter-spacing: 0; font-size: 0.75rem; }
+.pur-module .pb-stage-num { background: var(--odoo-purple) !important; color: #fff !important; }
+
+.pur-module .odoo-search-panel:not(.fixed .odoo-search-panel) { background: var(--theme-bg-card); border: 1px solid var(--odoo-border); border-radius: 10px; padding: 8px 12px; flex-wrap: wrap; row-gap: 8px; }
+
+.pur-module .odoo-table:not(.fixed .odoo-table) { background: var(--theme-bg-card); border: 1px solid var(--odoo-border); border-radius: 10px; border-collapse: separate; border-spacing: 0; overflow: hidden; }
+.pur-module .odoo-table:not(.fixed .odoo-table) thead th { border-top: 0; }
+.pur-module .odoo-table:not(.fixed .odoo-table) tbody tr:last-child td { border-bottom: 0; }
+
+.pur-module .odoo-view-switcher:not(.fixed .odoo-view-switcher) { border-radius: 6px; overflow: hidden; background: var(--theme-bg-card); }
+.pur-module .odoo-section-header { font-size: 0.9375rem; text-transform: none; letter-spacing: 0; color: var(--odoo-text); }
