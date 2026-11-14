@@ -38,6 +38,46 @@ const BL_STATUS: Record<string, { label: string; tag: string }> = {
 };
 const STAGE_ORDER = ['pending', 'confirmed', 'in_production', 'ready', 'partially_delivered', 'completed'];
 
+/** Historique reconstitué d'une commande (création, devis, reports, livraisons, factures), du plus récent au plus ancien. */
+export function orderHistory(o: Row) {
+  const ev: Array<{ at: string; tone: string; text: string; sub: string }> = [];
+  ev.push({ at: o.created_at, tone: 'grey', text: 'Commande créée', sub: `${o.created_by_name || '—'} · ${fmtDate(o.created_at, 'dd/MM/yyyy HH:mm')}` });
+  if (o.links?.quote) ev.push({ at: o.links.quote.quote_date, tone: 'green', text: `Devis ${o.links.quote.number}`, sub: fmtDate(o.links.quote.quote_date) });
+  for (const r of (o.reschedules ?? []) as Row[]) ev.push({ at: r.created_at, tone: 'orange', text: `Retrait reporté au ${fmtDate(r.new_pickup_date, 'dd/MM')}`, sub: `${r.created_by_name || '—'}${r.reason ? ` · ${r.reason}` : ''}` });
+  for (const d of (o.links?.deliveryNotes ?? []) as Row[]) ev.push({ at: d.delivery_date, tone: d.status === 'cancelled' ? 'grey' : 'blue', text: `Livraison ${d.number}${d.status === 'cancelled' ? ' (annulée)' : ''}`, sub: `${d.created_by_name || '—'} · ${fmtDate(d.delivery_date)}` });
+  for (const i of (o.links?.invoices ?? []) as Row[]) ev.push({ at: i.invoice_date, tone: i.status === 'paid' ? 'green' : 'orange', text: `${i.kind === 'credit_note' ? 'Avoir' : 'Facture'} ${i.invoice_number}`, sub: `${INVOICE_STATUS[i.status]?.label ?? i.status} · ${fmtDate(i.invoice_date)}` });
+  return ev.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+}
+
+/** Frise de la chaîne d'une commande (devis → … → encaissement), chaque étape avec son état. */
+export function orderSteps(o: Row) {
+  const st = o.status as string;
+  const pro = isPro(o);
+  const late = isLate(o, startOfDay(new Date()));
+  const bls: Row[] = (o.links?.deliveryNotes ?? []).filter((d: Row) => d.status !== 'cancelled');
+  const invoices: Row[] = (o.links?.invoices ?? []).filter((i: Row) => i.kind !== 'credit_note');
+  const quote: Row | null = o.links?.quote ?? null;
+  const advance = num(o.advance_amount);
+  const invoicePaid = invoices.length > 0 && invoices.every(i => i.status === 'paid');
+  const credit = o.customer_credit as Row | null;
+  const idx = STAGE_ORDER.indexOf(st);
+  const reached = (k: string) => idx >= STAGE_ORDER.indexOf(k);
+  const steps: Array<{ label: string; sub: string; tone: StepTone; href?: string }> = [];
+  if (quote) steps.push({ label: 'Devis', sub: `${quote.number} · ${fmtDate(quote.quote_date, 'dd MMM')}`, tone: 'done', href: `/quotes?open=${quote.id}` });
+  steps.push({ label: 'Confirmée', sub: fmtDate(o.created_at, 'dd MMM'), tone: reached('confirmed') ? 'done' : 'current' });
+  steps.push({ label: 'Préparée', sub: reached('ready') ? 'prête' : st === 'in_production' ? 'en atelier' : 'à lancer', tone: reached('ready') ? 'done' : st === 'in_production' ? (late ? 'warn' : 'current') : '' });
+  const handedOver = st === 'completed' || st === 'partially_delivered';
+  steps.push(pro
+    ? { label: 'Livraison', sub: bls.length ? `${bls.map(b => b.number).join(', ')}${st === 'partially_delivered' ? ' · partielle' : ''}` : `prévue le ${fmtDate(o.pickup_date, 'dd MMM')}`, tone: st === 'completed' ? 'done' : st === 'partially_delivered' ? 'warn' : st === 'ready' ? (late ? 'warn' : 'current') : '', href: bls[0] ? `/delivery-notes?open=${bls[0].id}` : undefined }
+    : { label: 'Retrait', sub: handedOver ? 'remise au client' : `le ${fmtDate(o.pickup_date, 'dd MMM')}`, tone: handedOver ? 'done' : st === 'ready' ? (late ? 'warn' : 'current') : '' });
+  if (pro) steps.push({ label: 'Facture', sub: invoices.length ? invoices.map(i => i.invoice_number).join(', ') : 'à émettre', tone: invoices.length ? 'done' : '', href: invoices.length ? '/sales?tab=invoices' : undefined });
+  steps.push(pro
+    ? { label: 'Encaissement', sub: invoicePaid ? 'soldée' : invoices.length ? `échéance ${invoices[0].due_date ? fmtDate(invoices[0].due_date, 'dd MMM') : 'non fixée'}` : credit?.delai_paiement_jours ? `à ${credit.delai_paiement_jours} jours` : 'à la facture', tone: invoicePaid ? 'done' : invoices.some(i => i.status === 'partial') ? 'warn' : '' }
+    : { label: 'Encaissement', sub: st === 'completed' ? 'soldée' : advance > 0 ? `avance ${n(advance)} DH` : 'au retrait', tone: st === 'completed' ? 'done' : advance > 0 ? 'warn' : '' });
+
+  return steps;
+}
+
 export default function OrderRecordPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
@@ -64,16 +104,7 @@ export default function OrderRecordPage() {
     onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Impossible de supprimer la commande')),
   });
 
-  const history = useMemo(() => {
-    if (!o) return [];
-    const ev: Array<{ at: string; tone: string; text: string; sub: string }> = [];
-    ev.push({ at: o.created_at, tone: 'grey', text: 'Commande créée', sub: `${o.created_by_name || '—'} · ${fmtDate(o.created_at, 'dd/MM/yyyy HH:mm')}` });
-    if (o.links?.quote) ev.push({ at: o.links.quote.quote_date, tone: 'green', text: `Devis ${o.links.quote.number}`, sub: fmtDate(o.links.quote.quote_date) });
-    for (const r of (o.reschedules ?? []) as Row[]) ev.push({ at: r.created_at, tone: 'orange', text: `Retrait reporté au ${fmtDate(r.new_pickup_date, 'dd/MM')}`, sub: `${r.created_by_name || '—'}${r.reason ? ` · ${r.reason}` : ''}` });
-    for (const d of (o.links?.deliveryNotes ?? []) as Row[]) ev.push({ at: d.delivery_date, tone: d.status === 'cancelled' ? 'grey' : 'blue', text: `Livraison ${d.number}${d.status === 'cancelled' ? ' (annulée)' : ''}`, sub: `${d.created_by_name || '—'} · ${fmtDate(d.delivery_date)}` });
-    for (const i of (o.links?.invoices ?? []) as Row[]) ev.push({ at: i.invoice_date, tone: i.status === 'paid' ? 'green' : 'orange', text: `${i.kind === 'credit_note' ? 'Avoir' : 'Facture'} ${i.invoice_number}`, sub: `${INVOICE_STATUS[i.status]?.label ?? i.status} · ${fmtDate(i.invoice_date)}` });
-    return ev.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
-  }, [o]);
+  const history = useMemo(() => (o ? orderHistory(o) : []), [o]);
 
   if (isLoading) return <div className="prj sal-page"><div className="prj-panel sal-empty"><Loader2 className="animate-spin" size={20} /><span>Chargement de la commande…</span></div></div>;
   if (error || !o) {
@@ -106,21 +137,7 @@ export default function OrderRecordPage() {
   const limit = credit?.credit_limit != null ? num(credit.credit_limit) : null;
   const exposure = credit ? num(credit.exposure) : 0;
 
-  /* ── Frise : les pièces de la chaîne, chacune avec son état ── */
-  const idx = STAGE_ORDER.indexOf(st);
-  const reached = (k: string) => idx >= STAGE_ORDER.indexOf(k);
-  const steps: Array<{ label: string; sub: string; tone: StepTone; href?: string }> = [];
-  if (quote) steps.push({ label: 'Devis', sub: `${quote.number} · ${fmtDate(quote.quote_date, 'dd MMM')}`, tone: 'done', href: `/quotes?open=${quote.id}` });
-  steps.push({ label: 'Confirmée', sub: fmtDate(o.created_at, 'dd MMM'), tone: reached('confirmed') ? 'done' : 'current' });
-  steps.push({ label: 'Préparée', sub: reached('ready') ? 'prête' : st === 'in_production' ? 'en atelier' : 'à lancer', tone: reached('ready') ? 'done' : st === 'in_production' ? (late ? 'warn' : 'current') : '' });
-  const handedOver = st === 'completed' || st === 'partially_delivered';
-  steps.push(pro
-    ? { label: 'Livraison', sub: bls.length ? `${bls.map(b => b.number).join(', ')}${st === 'partially_delivered' ? ' · partielle' : ''}` : `prévue le ${fmtDate(o.pickup_date, 'dd MMM')}`, tone: st === 'completed' ? 'done' : st === 'partially_delivered' ? 'warn' : st === 'ready' ? (late ? 'warn' : 'current') : '', href: bls[0] ? `/delivery-notes?open=${bls[0].id}` : undefined }
-    : { label: 'Retrait', sub: handedOver ? 'remise au client' : `le ${fmtDate(o.pickup_date, 'dd MMM')}`, tone: handedOver ? 'done' : st === 'ready' ? (late ? 'warn' : 'current') : '' });
-  if (pro) steps.push({ label: 'Facture', sub: invoices.length ? invoices.map(i => i.invoice_number).join(', ') : 'à émettre', tone: invoices.length ? 'done' : '', href: invoices.length ? '/sales?tab=invoices' : undefined });
-  steps.push(pro
-    ? { label: 'Encaissement', sub: invoicePaid ? 'soldée' : invoices.length ? `échéance ${invoices[0].due_date ? fmtDate(invoices[0].due_date, 'dd MMM') : 'non fixée'}` : credit?.delai_paiement_jours ? `à ${credit.delai_paiement_jours} jours` : 'à la facture', tone: invoicePaid ? 'done' : invoices.some(i => i.status === 'partial') ? 'warn' : '' }
-    : { label: 'Encaissement', sub: st === 'completed' ? 'soldée' : advance > 0 ? `avance ${n(advance)} DH` : 'au retrait', tone: st === 'completed' ? 'done' : advance > 0 ? 'warn' : '' });
+  const steps = orderSteps(o);
 
   /* ── Actions ── */
   const step = NEXT_STEP[st];

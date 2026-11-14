@@ -15,7 +15,7 @@ import {
   ClipboardList, Plus, Pencil, Search, Eye, X,
   Clock, CheckCircle2, Factory, Truck, Ban, CalendarDays,
   Banknote, CreditCard, Package, PackageCheck, FileText,
-  AlertTriangle, Trash2, Loader2, Tag, Building2, CalendarClock, Printer, List, SquareKanban,
+  AlertTriangle, Trash2, Loader2, Tag, Building2, CalendarClock, Printer, List, SquareKanban, Columns3,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -24,6 +24,7 @@ import OrderFormModal from '../../components/orders/OrderFormModal';
 import { deliveryNotesApi } from '../../api/delivery-notes.api';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi } from '../sales/ListTemplate';
+import { OrderList, OrderPane, OrderPaneEmpty } from './OrderSplit';
 import '../projects/projects.css';
 import '../sales/sales.css';
 
@@ -144,7 +145,9 @@ export default function OrdersPage() {
   const [editingOrder, setEditingOrder] = useState<OrderRow | null>(null);
   const [deliverOrder, setDeliverOrder] = useState<OrderRow | null>(null);
   const [prepayOrder, setPrepayOrder] = useState<OrderRow | null>(null);
-  const [view, setView] = useState<'list' | 'kanban'>('list');
+  // Style Apple (2026-11) : trois colonnes (liste + fiche) par défaut sur grand écran.
+  const [view, setView] = useState<'split' | 'list' | 'kanban'>(() => (window.innerWidth >= 1100 ? 'split' : 'list'));
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dragOver, setDragOver] = useState<string | null>(null);
   // Les bons de livraison ont leur propre écran (/delivery-notes), séparé des commandes
@@ -334,12 +337,12 @@ export default function OrdersPage() {
     <SalesPageShell icon={ClipboardList} parent="Ventes" title="Commandes" list
       summary={`${openCount} en cours · ${n(openTotal)} DH`}
       actions={<button onClick={() => setShowForm(true)} className="odoo-btn-primary"><Plus size={13} /> Nouvelle commande</button>}>
-        <section className="prj-kpis" aria-label="Indicateurs">
+        {view !== 'split' && <section className="prj-kpis" aria-label="Indicateurs">
           <ListKpi label="Commandes en cours" value={String(openCount)} sub={`${n(openTotal)} DH`} />
           <ListKpi label="À retirer aujourd'hui" value={String(kpis.todayCount)} sub={`${kpis.weekCount} d'ici 7 jours`} />
           <ListKpi label="Reste à encaisser" value={`${n(kpis.toCollect)} DH`} sub={`avances reçues ${n(kpis.advances)} DH`} />
           <ListKpi label="Livrées à facturer" value={String(kpis.toInvoiceCount)} sub={`${n(kpis.toInvoice)} DH`} tone={kpis.toInvoiceCount ? 'orange' : undefined} />
-        </section>
+        </section>}
 
         <div className="prj-toolbar">
           <label className="prj-search">
@@ -351,6 +354,7 @@ export default function OrdersPage() {
             <SelectFilter label="Type" icon={Tag} value={typeFilter} onChange={setTypeFilter} options={typeOptions} allLabel="Tous les types" />
           )}
           <div className="prj-views" role="group" aria-label="Affichage">
+            <button type="button" className={view === 'split' ? 'active' : ''} aria-pressed={view === 'split'} onClick={() => setView('split')}><Columns3 size={14} /> Colonnes</button>
             <button type="button" className={view === 'list' ? 'active' : ''} aria-pressed={view === 'list'} onClick={() => setView('list')}><List size={14} /> Liste</button>
             <button type="button" className={view === 'kanban' ? 'active' : ''} aria-pressed={view === 'kanban'} onClick={() => setView('kanban')}><SquareKanban size={14} /> Kanban</button>
           </div>
@@ -377,7 +381,7 @@ export default function OrdersPage() {
           })}
         </div>
 
-        {selectedOrders.length > 0 && (
+        {view !== 'split' && selectedOrders.length > 0 && (
           <div className="sal-bulk" role="region" aria-label="Actions sur la sélection">
             <strong>
               {selectedOrders.length} commande{selectedOrders.length > 1 ? 's sélectionnées' : ' sélectionnée'} · {n(selectedOrders.reduce((s, o) => s + num(o.total), 0))} DH
@@ -403,6 +407,24 @@ export default function OrdersPage() {
             <Loader2 className="animate-spin" size={20} />
             <span>Chargement des commandes…</span>
           </div>
+        ) : view === 'split' ? (
+          filteredOrders.length === 0 ? (
+            <div className="prj-panel sal-empty">
+              <ClipboardList size={28} style={{ opacity: 0.4 }} />
+              <strong>{hasFilters ? 'Aucune commande pour ces filtres' : 'Aucune commande'}</strong>
+              {hasFilters
+                ? <button type="button" className="odoo-btn-secondary" onClick={() => { setStatusFilter(''); setTypeFilter(''); setLateOnly(false); setSearchQuery(''); }}>Effacer les filtres</button>
+                : <button type="button" onClick={() => setShowForm(true)} className="odoo-btn-primary"><Plus size={13} /> Créer une commande</button>}
+            </div>
+          ) : (() => {
+            const active = filteredOrders.find(o => o.id === activeId) ?? filteredOrders[0];
+            return (
+              <div className="ord-split">
+                <OrderList orders={filteredOrders} activeId={active?.id as string ?? null} onPick={setActiveId} />
+                {active ? <OrderPane key={active.id as string} row={active} next={nextAction(active)} menu={menuItems(active)} busy={busy} /> : <OrderPaneEmpty />}
+              </div>
+            );
+          })()
         ) : view === 'kanban' ? (
           <div className="prj-board">
             {kanbanStages.map(st => {
