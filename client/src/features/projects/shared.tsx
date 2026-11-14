@@ -10,6 +10,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import './projects.css';
 
 /** Petits formulaires du module Projets, partagés entre la liste et la fiche. */
 
@@ -17,6 +18,62 @@ export const n2 = (v: string | number | null | undefined) =>
   Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const h1 = (v: string | number | null | undefined) =>
   Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+/** Montant arrondi au dirham, pour les cartes et jauges (le détail garde n2). */
+export const n0 = (v: string | number | null | undefined) =>
+  Math.round(Number(v ?? 0)).toLocaleString('fr-FR');
+export const initials = (name?: string | null) =>
+  (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '?';
+
+export type Tone = 'green' | 'orange' | 'red' | 'blue' | 'grey';
+const DAY = 86_400_000;
+export const daysUntil = (d: string | null) => (d ? Math.round((new Date(d).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / DAY) : null);
+
+/** Recette attendue : forfait, ou temps facturable ; 0 si le projet n'est pas facturé. */
+export const projectRevenue = (p: Project) =>
+  p.billing_type === 'fixed' ? Number(p.budget_amount ?? 0) : p.billing_type === 'time' ? Number(p.billable_amount) : 0;
+/** Coûts engagés : main-d'œuvre (heures × coût) + factures fournisseurs rattachées. */
+export const projectCost = (p: Project) => Number(p.cost_spent) + Number(p.external_cost || 0);
+
+/**
+ * Jauge de consommation : coûts / forfait (projet au forfait), coûts / budget,
+ * sinon heures / heures prévues. null quand rien ne sert de référence.
+ */
+export function consumption(p: Project): { label: string; used: string; of: string; pct: number } | null {
+  const cost = projectCost(p);
+  if (p.billing_type === 'fixed' && Number(p.budget_amount) > 0) return { label: 'Coûts / forfait', used: n0(cost), of: `${n0(p.budget_amount)} DH`, pct: cost / Number(p.budget_amount) * 100 };
+  if (Number(p.budget_amount) > 0) return { label: 'Coûts / budget', used: n0(cost), of: `${n0(p.budget_amount)} DH`, pct: cost / Number(p.budget_amount) * 100 };
+  if (Number(p.estimated_hours) > 0) return { label: 'Heures / prévu', used: h1(p.hours_spent), of: `${h1(p.estimated_hours)} h`, pct: Number(p.hours_spent) / Number(p.estimated_hours) * 100 };
+  return null;
+}
+export const usageTone = (pct: number): Tone => (pct > 100 ? 'red' : pct > 85 ? 'orange' : 'green');
+
+/** Santé d'un projet en un mot, du plus grave au plus rassurant. */
+export function projectHealth(p: Project): { tone: Tone; label: string } {
+  if (p.status === 'completed') return { tone: 'green', label: 'Terminé' };
+  if (p.status === 'cancelled') return { tone: 'grey', label: 'Annulé' };
+  const late = daysUntil(p.due_date);
+  if (p.is_overdue && late !== null) return { tone: 'red', label: `En retard de ${-late} j` };
+  const c = consumption(p);
+  if (c && c.pct > 100) return { tone: 'red', label: `Dépassement de ${Math.round(c.pct - 100)} %` };
+  if (p.status === 'on_hold') return { tone: 'orange', label: 'En pause' };
+  if (p.task_late) return { tone: 'orange', label: `${p.task_late} tâche${p.task_late > 1 ? 's' : ''} en retard` };
+  if (p.status === 'draft') return { tone: 'blue', label: 'À lancer' };
+  if (c && c.pct > 85) return { tone: 'orange', label: 'Budget presque atteint' };
+  return { tone: 'green', label: 'Dans les temps' };
+}
+export const needsAttention = (p: Project) => ['red', 'orange'].includes(projectHealth(p).tone) && p.status !== 'on_hold';
+
+export function Meter({ label, value, pct, tone }: { label: string; value: string; pct: number; tone?: Tone }) {
+  return (
+    <div className="prj-meter">
+      <div className="prj-meter-head"><span>{label}</span><strong>{value}</strong></div>
+      <div className={`prj-bar ${tone ?? ''}`} role="progressbar" aria-label={label} aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
+        <span style={{ width: `${Math.min(Math.max(pct, 0), 100)}%` }} />
+      </div>
+    </div>
+  );
+}
+
 export const PRIORITY_TAG: Record<Priority, string> = { critical: 'odoo-tag-red', high: 'odoo-tag-orange', normal: 'odoo-tag-blue', low: 'odoo-tag-grey' };
 const label: React.CSSProperties = { fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4, display: 'block' };
 

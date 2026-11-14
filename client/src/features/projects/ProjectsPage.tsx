@@ -2,33 +2,38 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, FolderKanban, ListChecks, Timer, BarChart3, Database, Plus, Search, Loader2, CheckCircle2, AlertTriangle, Clock, PauseCircle, PlayCircle, FileText, Trash2,
+  LayoutDashboard, FolderKanban, ListChecks, Timer, BarChart3, Database, Plus, Search, Loader2, CheckCircle2, AlertTriangle, Clock, Trash2, LayoutGrid, List, GanttChartSquare,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  projectsApi, PROJECT_STATUS_LABELS, TASK_STATUS_LABELS, type Project, type ProjectStatus, type Task, type TaskStatus,
+  projectsApi, PROJECT_STATUS_LABELS, TASK_STATUS_LABELS, type Project, type ProjectStatus, type TaskStatus,
 } from '../../api/projects.api';
 import { apiErrorMessage } from '../../api/errors';
 import { usePermissions } from '../../context/PermissionsContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
-import { StagePipeline, PeriodFilter, Pager, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef } from '../../components/purchasing/ProcessBoard';
-import { ProjectFormModal, TimeEntryForm, n2, h1, PRIORITY_TAG } from './shared';
+import { PeriodFilter, Pager, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
+import { useAuth } from '../../context/AuthContext';
+import ProjectsPlanning from './ProjectsPlanning';
+import {
+  ProjectFormModal, TimeEntryForm, Meter, n2, n0, h1, initials, PRIORITY_TAG, projectHealth, consumption, usageTone, needsAttention, projectRevenue, projectCost,
+} from './shared';
 
 /**
  * Module Projets (mig 358), rubriques standard : tableau de bord, projets, tâches
  * ouvertes, temps passé ; rentabilité en rapport ; types d'activité en paramétrage.
  * Module générique : un projet est un événement, un chantier, une mission…
  */
-type View = 'overview' | 'projects' | 'tasks' | 'time' | 'profitability' | 'activities';
+type View = 'overview' | 'projects' | 'planning' | 'tasks' | 'time' | 'profitability' | 'activities';
 
 export default function ProjectsPage() {
   const { hasModule } = usePermissions();
   const views: ModuleView<View>[] = [
     { key: 'overview', label: 'Tableau de bord', icon: LayoutDashboard, section: 'dashboard' },
     { key: 'projects', label: 'Projets', icon: FolderKanban, section: 'operations' },
+    { key: 'planning', label: 'Planning', icon: GanttChartSquare, section: 'operations' },
     { key: 'tasks', label: 'Tâches ouvertes', icon: ListChecks, section: 'operations' },
     { key: 'time', label: 'Temps passé', icon: Timer, section: 'operations' },
     { key: 'profitability', label: 'Rentabilité', icon: BarChart3, section: 'reports' },
@@ -44,7 +49,8 @@ export default function ProjectsPage() {
         <button className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouveau projet</button>
       ) : undefined}>
       {current?.key === 'overview' && <Overview />}
-      {current?.key === 'projects' && <ProjectList />}
+      {current?.key === 'projects' && <ProjectList onPlanning={() => select('planning')} />}
+      {current?.key === 'planning' && <ProjectsPlanning />}
       {current?.key === 'tasks' && <OpenTasks />}
       {current?.key === 'time' && <TimeSheet />}
       {current?.key === 'profitability' && <Profitability />}
@@ -54,12 +60,6 @@ export default function ProjectsPage() {
 }
 
 const STATUS_TAG: Record<ProjectStatus, string> = { draft: 'odoo-tag-grey', active: 'odoo-tag-blue', on_hold: 'odoo-tag-orange', completed: 'odoo-tag-green', cancelled: 'odoo-tag-grey' };
-const STAGES: Array<StageDef & { key: ProjectStatus }> = [
-  { key: 'draft', label: 'Brouillons', hint: 'à lancer', icon: FileText },
-  { key: 'active', label: 'En cours', hint: 'travail en cours', icon: PlayCircle },
-  { key: 'on_hold', label: 'En pause', hint: 'en attente', icon: PauseCircle },
-  { key: 'completed', label: 'Terminés', hint: 'livrés', icon: CheckCircle2 },
-];
 
 function Progress({ p }: { p: Project }) {
   const pct = p.task_count ? Math.round((p.task_done / p.task_count) * 100) : 0;
@@ -75,60 +75,136 @@ function Progress({ p }: { p: Project }) {
 
 function ProjectRow({ p }: { p: Project }) {
   const navigate = useNavigate();
+  const health = projectHealth(p);
   return (
     <tr onClick={() => navigate(`/projects/${p.id}`)} style={{ cursor: 'pointer' }}>
       <td className="font-mono" style={{ whiteSpace: 'nowrap' }}>{p.number}</td>
-      <td><strong>{p.name}</strong>{p.is_overdue && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }}>en retard</span>}</td>
+      <td><strong>{p.name}</strong></td>
       <td>{p.customer_label || <span style={{ color: 'var(--theme-text-muted)' }}>interne</span>}</td>
       <td><span className={`odoo-tag ${STATUS_TAG[p.status]}`}>{PROJECT_STATUS_LABELS[p.status]}</span></td>
+      <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}><span className={`prj-dot ${health.tone}`} />{health.label}</span></td>
       <td style={{ whiteSpace: 'nowrap' }}>{p.due_date ? format(new Date(p.due_date), 'dd/MM/yyyy') : '—'}</td>
       <td><Progress p={p} /></td>
       <td style={{ textAlign: 'right' }}>{h1(p.hours_spent)} h</td>
-      <td style={{ textAlign: 'right' }}>{n2(p.cost_spent)}</td>
-      <td style={{ textAlign: 'right' }}>{p.billing_type === 'fixed' ? n2(p.budget_amount) : n2(p.billable_amount)}</td>
+      <td style={{ textAlign: 'right' }}>{n2(projectCost(p))}</td>
+      <td style={{ textAlign: 'right' }}>{projectRevenue(p) ? n2(projectRevenue(p)) : '—'}</td>
       <td>{p.manager_name || '—'}</td>
     </tr>
   );
 }
 
-function ProjectList() {
-  const [status, setStatus] = useState<ProjectStatus | ''>('');
+/** Carte d'un projet : avancement, consommation, santé, échéance, responsable. */
+function ProjectCard({ p }: { p: Project }) {
+  const navigate = useNavigate();
+  const pct = p.task_count ? (p.task_done / p.task_count) * 100 : 0;
+  const use = consumption(p);
+  const health = projectHealth(p);
+  return (
+    <button type="button" className="prj-card" onClick={() => navigate(`/projects/${p.id}`)}>
+      <div className="prj-card-head">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="prj-card-num">{p.number}</div>
+          <div className="prj-card-name">{p.name}</div>
+          <div className="prj-card-client">{p.customer_label || 'Interne'}{p.order_number ? ` · ${p.order_number}` : ''}</div>
+        </div>
+        <span className={`prj-pill ${p.status}`}>{PROJECT_STATUS_LABELS[p.status]}</span>
+      </div>
+      <Meter label="Tâches" value={p.task_count ? `${p.task_done} / ${p.task_count}` : 'aucune'} pct={pct} />
+      {use
+        ? <Meter label={use.label} value={`${use.used} / ${use.of}`} pct={use.pct} tone={usageTone(use.pct)} />
+        : <Meter label="Heures passées" value={`${h1(p.hours_spent)} h`} pct={0} />}
+      <div className="prj-card-foot">
+        <span className={`prj-dot ${health.tone}`} />
+        <span className="prj-health-label">{health.label}</span>
+        {p.due_date && <span className="prj-card-due">{format(new Date(p.due_date), 'd MMM', { locale: fr })}</span>}
+        {p.manager_name && <span className="prj-avatar" title={p.manager_name}>{initials(p.manager_name)}</span>}
+      </div>
+    </button>
+  );
+}
+
+type Chip = 'open' | 'attention' | 'mine' | 'completed' | 'all';
+type Layout = 'cards' | 'list';
+const LAYOUT_KEY = 'kalum.projects.layout';
+
+function ProjectList({ onPlanning }: { onPlanning: () => void }) {
+  const { user } = useAuth();
+  const [chip, setChip] = useState<Chip>('open');
+  const [layout, setLayoutState] = useState<Layout>(() => { try { return localStorage.getItem(LAYOUT_KEY) === 'list' ? 'list' : 'cards'; } catch { return 'cards'; } });
+  const setLayout = (l: Layout) => { setLayoutState(l); try { localStorage.setItem(LAYOUT_KEY, l); } catch { /* commodité seulement */ } };
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
   useEffect(() => { const t = setTimeout(() => setSearch(searchInput.trim()), 300); return () => clearTimeout(t); }, [searchInput]);
-  useEffect(() => { setPage(1); }, [status, search]);
-  const params: Record<string, string> = { page: String(page), pageSize: String(PAGE_SIZE) };
-  if (status) params.status = status;
+  const params: Record<string, string> = { pageSize: '100' };
   if (search) params.search = search;
   const { data, isLoading } = useQuery({ queryKey: ['projects', params], queryFn: () => projectsApi.list(params) });
-  const by = data?.byStatus ?? {};
+  const month = periodParams('month', '', '');
+  const { data: ov } = useQuery({ queryKey: ['projects', 'overview', month], queryFn: () => projectsApi.overview(month) });
+
+  const all = data?.rows ?? [];
+  const isOpen = (p: Project) => ['draft', 'active', 'on_hold'].includes(p.status);
+  const tests: Record<Chip, (p: Project) => boolean> = {
+    open: isOpen, attention: p => isOpen(p) && needsAttention(p), mine: p => !!user && p.manager_id === user.id && p.status !== 'cancelled',
+    completed: p => p.status === 'completed', all: () => true,
+  };
+  const rows = all.filter(tests[chip]);
+  const count = (c: Chip) => all.filter(tests[c]).length;
+  const running = all.filter(p => p.status === 'active' || p.status === 'on_hold').length;
+  const drafts = all.filter(p => p.status === 'draft').length;
+  const attention = all.filter(tests.attention);
+  const lateCount = attention.filter(p => p.is_overdue).length;
+  const done = all.filter(p => p.status === 'completed' && projectRevenue(p) > 0);
+  const doneRev = done.reduce((t, p) => t + projectRevenue(p), 0);
+  const doneMargin = doneRev ? Math.round((doneRev - done.reduce((t, p) => t + projectCost(p), 0)) / doneRev * 100) : null;
+  const CHIPS: Array<[Chip, string]> = [['open', 'Actifs'], ['attention', 'À surveiller'], ['mine', 'Mes projets'], ['completed', 'Terminés'], ['all', 'Tous']];
+
   return (
-    <>
-      <StagePipeline title="Où en sont mes projets" summary={`${(by.active?.count ?? 0) + (by.on_hold?.count ?? 0)} en cours · ${(by.active?.overdue ?? 0) + (by.on_hold?.overdue ?? 0)} en retard`}
-        stages={STAGES}
-        stats={Object.fromEntries(STAGES.map(s => [s.key, { count: by[s.key]?.count ?? 0, sub: '', late: by[s.key]?.overdue ?? 0, alertLabel: 'en retard' }]))}
-        isActive={k => status === k} onPick={k => setStatus(status === k ? '' : (k as ProjectStatus))} />
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)' }} />
-        <input className="odoo-search-input" value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, nom, client…" />
-        <select className="odoo-filter-dropdown" value={status} onChange={e => setStatus(e.target.value as ProjectStatus | '')}>
-          <option value="">Tous statuts</option>
-          {Object.entries(PROJECT_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
+    <div className="prj">
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <div className="prj-kpi"><div className="prj-kpi-head">En cours</div><div className="prj-kpi-value">{running}</div><div className="prj-kpi-sub">{drafts} brouillon{drafts > 1 ? 's' : ''} à lancer</div></div>
+        <div className="prj-kpi"><div className="prj-kpi-head">À surveiller</div><div className="prj-kpi-value" style={{ color: attention.length ? 'var(--prj-red)' : undefined }}>{attention.length}</div>
+          <div className="prj-kpi-sub">{attention.length ? `${lateCount} en retard · ${attention.length - lateCount} autre${attention.length - lateCount > 1 ? 's' : ''}` : 'rien à signaler'}</div></div>
+        <div className="prj-kpi"><div className="prj-kpi-head">Heures ce mois</div><div className="prj-kpi-value">{ov ? `${h1(ov.time.hours)} h` : '…'}</div><div className="prj-kpi-sub">{ov ? `coût ${n0(ov.time.cost)} DH` : ''}</div></div>
+        <div className="prj-kpi"><div className="prj-kpi-head">Marge des projets terminés</div>
+          <div className="prj-kpi-value" style={{ color: doneMargin === null ? undefined : doneMargin < 0 ? 'var(--prj-red)' : 'var(--prj-green)' }}>{doneMargin === null ? '—' : `${doneMargin} %`}</div>
+          <div className="prj-kpi-sub">{done.length} projet{done.length > 1 ? 's' : ''} facturé{done.length > 1 ? 's' : ''}</div></div>
+      </section>
+
+      <div className="prj-toolbar">
+        <label className="prj-search">
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
+          <input type="search" aria-label="Rechercher un projet" value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, nom, client…" />
+        </label>
+        <div className="prj-chips" role="group" aria-label="Filtrer">
+          {CHIPS.map(([k, l]) => (
+            <button key={k} type="button" className={`prj-chip${chip === k ? ' active' : ''}`} aria-pressed={chip === k} onClick={() => setChip(k)}>
+              {l} <small>{count(k)}</small>
+            </button>
+          ))}
+        </div>
+        <div className="prj-views" role="group" aria-label="Affichage">
+          <button type="button" className={layout === 'cards' ? 'active' : ''} aria-pressed={layout === 'cards'} onClick={() => setLayout('cards')}><LayoutGrid size={14} /> Cartes</button>
+          <button type="button" className={layout === 'list' ? 'active' : ''} aria-pressed={layout === 'list'} onClick={() => setLayout('list')}><List size={14} /> Liste</button>
+          <button type="button" onClick={onPlanning}><GanttChartSquare size={14} /> Planning</button>
+        </div>
       </div>
-      {isLoading ? <Loading /> : !data?.rows.length ? (
-        <StatusBanner tone="info" icon={FolderKanban} title="Aucun projet">Créez un projet : un événement, un chantier, une mission, une commande sur devis.</StatusBanner>
+
+      {isLoading ? <Loading /> : !rows.length ? (
+        <StatusBanner tone="info" icon={FolderKanban} title={all.length ? 'Aucun projet dans ce filtre' : 'Aucun projet'}>
+          {all.length ? 'Changez de filtre ou de recherche.' : 'Créez un projet : un événement, un chantier, une mission, une commande sur devis.'}
+        </StatusBanner>
+      ) : layout === 'cards' ? (
+        <div className="prj-cards">{rows.map(p => <ProjectCard key={p.id} p={p} />)}</div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table">
-            <thead><tr><th>N°</th><th>Projet</th><th>Client</th><th>Statut</th><th>Échéance</th><th>Avancement</th><th style={{ textAlign: 'right' }}>Heures</th><th style={{ textAlign: 'right' }}>Coût</th><th style={{ textAlign: 'right' }}>Facturable</th><th>Responsable</th></tr></thead>
-            <tbody>{data.rows.map(p => <ProjectRow key={p.id} p={p} />)}</tbody>
+            <thead><tr><th>N°</th><th>Projet</th><th>Client</th><th>Statut</th><th>Santé</th><th>Échéance</th><th>Avancement</th><th style={{ textAlign: 'right' }}>Heures</th><th style={{ textAlign: 'right' }}>Coûts</th><th style={{ textAlign: 'right' }}>Recette</th><th>Responsable</th></tr></thead>
+            <tbody>{rows.map(p => <ProjectRow key={p.id} p={p} />)}</tbody>
           </table>
-          <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} projet${data.total > 1 ? 's' : ''}`} />
         </div>
       )}
-    </>
+      {data && data.total > all.length && <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{all.length} projets affichés sur {data.total} : affinez la recherche.</p>}
+    </div>
   );
 }
 
