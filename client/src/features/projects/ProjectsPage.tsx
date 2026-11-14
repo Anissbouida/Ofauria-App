@@ -19,7 +19,7 @@ import { useAuth } from '../../context/AuthContext';
 import SearchSelect from '../../components/ui/SearchSelect';
 import ProjectsPlanning from './ProjectsPlanning';
 import {
-  ProjectFormModal, TimeEntryForm, TaskBoard, Kpi, Meter, n2, n0, h1, initials, projectHealth, consumption, usageTone, needsAttention, projectRevenue, projectCost,
+  ProjectFormModal, TimeEntryForm, TaskBoard, Kpi, Meter, usePeopleOptions, n2, n0, h1, initials, projectHealth, consumption, usageTone, needsAttention, projectRevenue, projectCost,
 } from './shared';
 
 /**
@@ -271,6 +271,7 @@ function OpenTasks() {
   const [layout, setLayoutState] = useState<'board' | 'list'>(() => { try { return localStorage.getItem(TASKS_LAYOUT_KEY) === 'list' ? 'list' : 'board'; } catch { return 'board'; } });
   const setLayout = (l: 'board' | 'list') => { setLayoutState(l); try { localStorage.setItem(TASKS_LAYOUT_KEY, l); } catch { /* commodité seulement */ } };
   const { data: people = [] } = useQuery({ queryKey: ['project-people'], queryFn: projectsApi.people });
+  const peopleOptions = usePeopleOptions(people);
   const { data: tasks = [], isLoading } = useQuery({ queryKey: ['project-tasks', 'open', assignee], queryFn: () => projectsApi.openTasks({ limit: '200', ...(assignee ? { assigneeId: assignee } : {}) }) });
   const setStatus = useMutation({
     mutationFn: (p: { id: string; status: TaskStatus }) => projectsApi.updateTask(p.id, { status: p.status }),
@@ -288,7 +289,7 @@ function OpenTasks() {
       </section>
       <div className="prj-toolbar">
         <SearchSelect size="md" width={240} ariaLabel="Affectée à" placeholder="Tout le monde" value={assignee} onChange={setAssignee}
-          options={people.map(p => ({ id: p.id, label: p.name, sublabel: p.role ?? undefined }))} />
+          options={peopleOptions} />
         <span className="prj-note" style={{ flex: 1 }}>Projets en brouillon ou en cours, retards d’abord.</span>
         <div className="prj-views" role="group" aria-label="Affichage">
           <button type="button" className={layout === 'board' ? 'active' : ''} aria-pressed={layout === 'board'} onClick={() => setLayout('board')}><Columns3 size={14} /> Kanban</button>
@@ -334,6 +335,7 @@ function TimeSheet() {
   const [page, setPage] = useState(1);
   const range = periodParams(period, from, to);
   const { data: people = [] } = useQuery({ queryKey: ['project-people'], queryFn: projectsApi.people });
+  const peopleOptions = usePeopleOptions(people);
   const params: Record<string, string> = { ...range, page: String(page), pageSize: '50' };
   if (employee) params.employeeId = employee;
   const { data, isLoading } = useQuery({ queryKey: ['project-time', params], queryFn: () => projectsApi.listTime(params) });
@@ -344,7 +346,7 @@ function TimeSheet() {
       <div className="prj-toolbar">
         <PeriodFilter label="Période" title="Dates de travail" period={period} onPeriod={setPeriod} from={from} onFrom={setFrom} to={to} onTo={setTo} />
         <SearchSelect size="md" width={240} ariaLabel="Personne" placeholder="Tout le monde" value={employee} onChange={setEmployee}
-          options={people.map(p => ({ id: p.id, label: p.name, sublabel: p.role ?? undefined }))} />
+          options={peopleOptions} />
       </div>
       <section className="prj-kpis" aria-label="Indicateurs">
         <Kpi label="Heures" value={data ? `${h1(data.hours)} h` : '…'} sub={data ? `${data.total} saisie${data.total > 1 ? 's' : ''}` : undefined} />

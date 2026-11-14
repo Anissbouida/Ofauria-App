@@ -4,7 +4,7 @@ import { Loader2, X } from 'lucide-react';
 import { fr } from 'date-fns/locale';
 import { format } from 'date-fns';
 import {
-  projectsApi, BILLING_LABELS, PRIORITY_LABELS, type BillingType, type Priority, type Project, type ProjectInput, type Task, type TaskInput, type TaskStatus,
+  projectsApi, BILLING_LABELS, PRIORITY_LABELS, type BillingType, type Priority, type Project, type ProjectInput, type Task, type TaskInput, type TaskStatus, type Person,
 } from '../../api/projects.api';
 import { customersApi } from '../../api/customers.api';
 import { apiErrorMessage } from '../../api/errors';
@@ -12,6 +12,8 @@ import { useReferentiel } from '../../hooks/useReferentiel';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
+import { ROLE_LABELS } from '@ofauria/shared';
+import { rolesApi } from '../../api/users.api';
 import './projects.css';
 
 /** Petits formulaires du module Projets, partagés entre la liste et la fiche. */
@@ -140,6 +142,20 @@ export function Kpi({ label, value, sub, tone, aside }: { label: string; value: 
       {sub && <div className="prj-kpi-sub">{sub}</div>}
     </div>
   );
+}
+
+/** Libellé d'un rôle (rôles éditables, repli sur les libellés fixes, sinon le texte tel quel). */
+export function useRoleLabel() {
+  const { data: roles = [] } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list, retry: false, staleTime: 300_000 });
+  return (code?: string | null) => {
+    if (!code) return undefined;
+    return roles.find(r => r.code === code)?.label ?? (ROLE_LABELS as Record<string, string>)[code] ?? code;
+  };
+}
+/** Options « personne » pour SearchSelect : nom, rôle en sous-titre. */
+export function usePeopleOptions(people: Person[]) {
+  const roleLabel = useRoleLabel();
+  return people.map(p => ({ id: p.id, label: p.name, sublabel: roleLabel(p.role) }));
 }
 
 export const PRIORITY_TAG: Record<Priority, string> = { critical: 'odoo-tag-red', high: 'odoo-tag-orange', normal: 'odoo-tag-blue', low: 'odoo-tag-grey' };
@@ -278,6 +294,7 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
 export function TaskFormModal({ projectId, task, onClose }: { projectId: string; task?: Task | null; onClose: () => void }) {
   const qc = useQueryClient();
   const { data: people = [] } = useQuery({ queryKey: ['project-people'], queryFn: projectsApi.people });
+  const peopleOptions = usePeopleOptions(people);
   const [f, setF] = useState<TaskInput>({
     title: task?.title ?? '', description: task?.description ?? '', priority: task?.priority ?? 'normal', assigneeId: task?.assignee_id ?? null,
     startDate: task?.start_date?.slice(0, 10) ?? null, dueDate: task?.due_date?.slice(0, 10) ?? null,
@@ -303,7 +320,7 @@ export function TaskFormModal({ projectId, task, onClose }: { projectId: string;
         <div>
           <span style={label}>Affectée à</span>
           <SearchSelect size="md" width="100%" ariaLabel="Affectée à" placeholder="Personne" value={f.assigneeId ?? ''} onChange={v => set('assigneeId', v || null)}
-            options={people.map(p => ({ id: p.id, label: p.name, sublabel: p.role ?? undefined }))} />
+            options={peopleOptions} />
         </div>
         <div>
           <span style={label}>Priorité</span>
@@ -326,6 +343,7 @@ export function TaskFormModal({ projectId, task, onClose }: { projectId: string;
 export function TimeEntryForm({ projectId, tasks, onSaved, compact, bare }: { projectId?: string; tasks?: Task[]; onSaved?: () => void; compact?: boolean; bare?: boolean }) {
   const qc = useQueryClient();
   const { data: people = [] } = useQuery({ queryKey: ['project-people'], queryFn: projectsApi.people });
+  const peopleOptions = usePeopleOptions(people);
   const { entries: activities } = useReferentiel('project_activity_types');
   const { data: projectsData } = useQuery({
     queryKey: ['projects', 'for-time'], queryFn: () => projectsApi.list({ status: 'active', pageSize: '100' }), enabled: !projectId,
@@ -364,7 +382,7 @@ export function TimeEntryForm({ projectId, tasks, onSaved, compact, bare }: { pr
       <div>
         <span style={label}>Qui</span>
         <SearchSelect size="md" width="100%" ariaLabel="Qui" placeholder="Rechercher une personne…" value={employeeId} onChange={setEmployeeId}
-          options={people.map(p => ({ id: p.id, label: p.name, sublabel: p.role ?? undefined }))} />
+          options={peopleOptions} />
       </div>
       {tasks && (
         <div>
