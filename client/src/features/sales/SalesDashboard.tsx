@@ -3,10 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { format, startOfDay, startOfMonth, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import {
   LayoutDashboard, AlertTriangle, Clock, FileSignature, PackageCheck, UserPlus, Lock, Plus, CheckCircle2,
-  TrendingUp, TrendingDown, type LucideIcon,
+  TrendingUp, TrendingDown, ChevronRight, Target, type LucideIcon,
 } from 'lucide-react';
 import { reportsApi } from '../../api/reports.api';
 import { ordersApi } from '../../api/orders.api';
@@ -16,15 +16,13 @@ import { salesApi } from '../../api/sales.api';
 import { customersApi } from '../../api/customers.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
 import SalesPageShell from './SalesPageShell';
-import '../purchasing/purchasing.css';
-import { ListKpi } from './ListTemplate';
 
 /**
- * Tableau de bord du module Ventes (maquette 2026-11-13, planche 1) : les chiffres de la
- * période, ce qui demande une action (« À traiter », chaque ligne ouvre la liste déjà
- * filtrée), la chaîne pro devis → encaissement, le CA par jour et par famille, les
- * meilleurs clients et les plus gros encours. Lecture seule, sans API dédiée : il
- * assemble les sources des écrans du module.
+ * Tableau de bord du module Ventes, style Apple (maquette 2026-11-14) : le CA de la période
+ * et sa courbe, trois anneaux d'objectifs, « Où est votre argent » (du devis à l'échu,
+ * chaque étape ouvre ses pièces), la liste groupée « À faire » (chaque ligne ouvre la liste
+ * déjà filtrée), les familles, les meilleurs clients et les plus gros encours. Lecture seule,
+ * sans API dédiée : il assemble les sources des écrans du module.
  */
 
 type Period = 'today' | '7d' | '30d' | 'month';
@@ -57,6 +55,28 @@ function Delta({ d }: { d: ReturnType<typeof delta> }) {
   if (!d) return null;
   return <span className={d.up ? 'sal-up' : 'sal-down'}>{d.up ? <TrendingUp size={12} /> : <TrendingDown size={12} />} {d.text}</span>;
 }
+
+/** Anneaux concentriques (0-100 %) : un par objectif, du plus grand au plus petit. */
+function Rings({ rings }: { rings: Array<{ pct: number | null; color: string }> }) {
+  const radii = [64, 49, 34];
+  return (
+    <svg viewBox="0 0 160 160" width={150} height={150} role="img" aria-hidden="true" style={{ flex: 'none' }}>
+      <g transform="rotate(-90 80 80)" fill="none" strokeWidth={13} strokeLinecap="round">
+        {rings.map((r, i) => {
+          const c = 2 * Math.PI * radii[i];
+          const v = Math.max(0, Math.min(100, r.pct ?? 0));
+          return (
+            <g key={i}>
+              <circle cx={80} cy={80} r={radii[i]} stroke="var(--kl-fill)" />
+              {v > 0 && <circle cx={80} cy={80} r={radii[i]} stroke={r.color} strokeDasharray={`${(v / 100) * c} ${c}`} />}
+            </g>
+          );
+        })}
+      </g>
+    </svg>
+  );
+}
+const pct1 = (v: number) => `${v.toFixed(1).replace('.', ',')} %`;
 
 export default function SalesDashboard() {
   const navigate = useNavigate();
@@ -110,19 +130,25 @@ export default function SalesDashboard() {
   if (noIce.length) todo.push({ tone: 'b', icon: UserPlus, title: `${noIce.length} client${noIce.length > 1 ? 's' : ''} professionnel${noIce.length > 1 ? 's' : ''} sans ICE`, sub: 'Leurs factures ne seraient pas conformes', action: 'Compléter', href: '/customers' });
   if (openSessions.length) todo.push({ tone: 'x', icon: Lock, title: `${openSessions.length} session${openSessions.length > 1 ? 's' : ''} de caisse ouverte${openSessions.length > 1 ? 's' : ''}`, sub: openSessions.map(s => `${s.first_name ?? ''} ${s.last_name ?? ''}`.trim() + (s.opened_at ? ` depuis ${format(new Date(s.opened_at), 'HH:mm')}` : '')).join(' · '), action: 'Voir', href: '/sales?tab=sessions' });
 
-  /* ── Circuit de vente pro, du devis à l'encaissement (même grammaire que le Poste de travail Achats) ── */
-  const circuit: Array<{ n: number; label: string; count: string; sub: string; tone?: 'orange' | 'red'; href: string }> = [
-    { n: 1, label: 'Devis', count: String(openQuotes.count), href: followQuotes ? '/quotes?status=follow' : '/quotes?status=open',
-      sub: followQuotes ? `${followQuotes} à relancer` : `${n0(openQuotes.amount)} DH ouverts`, tone: followQuotes ? 'orange' : undefined },
-    { n: 2, label: 'Commandes', count: String(openOrders.length), href: lateOrders.length ? '/orders?filter=late' : '/orders',
-      sub: lateOrders.length ? `${lateOrders.length} en retard` : `${n0(sum(openOrders, 'total'))} DH à livrer`, tone: lateOrders.length ? 'red' : undefined },
-    { n: 3, label: 'À facturer', count: String(blCount), href: '/delivery-notes',
-      sub: blCount ? `${n0(blAmount)} DH livrés` : 'rien en attente', tone: blCount ? 'orange' : undefined },
-    { n: 4, label: 'À encaisser', count: String(t?.documents ?? 0), href: '/sales?tab=unpaid', sub: `${n0(t?.total ?? 0)} DH` },
-    { n: 5, label: 'Échu', count: String(overdueCustomers.length), href: '/sales?tab=unpaid&filter=overdue',
-      sub: (t?.overdue ?? 0) > 0 ? `${n0(t!.overdue)} DH à relancer` : 'rien d\'échu', tone: (t?.overdue ?? 0) > 0 ? 'red' : undefined },
+  /* ── Où est votre argent : du devis signé à l'échu, une teinte de l'accent par étape, le retard en rouge ── */
+  const overdue = t?.overdue ?? 0;
+  const money: Array<{ label: string; amount: number; sub: string; color: string; href: string; red?: boolean }> = [
+    { label: 'Devis ouverts', amount: openQuotes.amount, sub: `${openQuotes.count} devis${followQuotes ? ` · ${followQuotes} à relancer` : ''}`,
+      color: 'color-mix(in srgb, var(--theme-accent) 28%, var(--theme-bg-card))', href: followQuotes ? '/quotes?status=follow' : '/quotes?status=open' },
+    { label: 'Commandes en cours', amount: sum(openOrders, 'total'), sub: `${openOrders.length} commande${openOrders.length > 1 ? 's' : ''}${lateOrders.length ? ` · ${lateOrders.length} en retard` : ''}`,
+      color: 'color-mix(in srgb, var(--theme-accent) 50%, var(--theme-bg-card))', href: lateOrders.length ? '/orders?filter=late' : '/orders' },
+    { label: 'Livré, à facturer', amount: blAmount, sub: `${blCount} bon${blCount > 1 ? 's' : ''} de livraison`,
+      color: 'color-mix(in srgb, var(--theme-accent) 78%, var(--theme-bg-card))', href: '/delivery-notes' },
+    { label: 'Facturé, à encaisser', amount: Math.max(0, (t?.total ?? 0) - overdue), sub: `${t?.documents ?? 0} pièce${(t?.documents ?? 0) > 1 ? 's' : ''}`,
+      color: 'var(--theme-accent-hover)', href: '/sales?tab=unpaid' },
+    { label: 'En retard', amount: overdue, sub: `${overdueCustomers.length} client${overdueCustomers.length > 1 ? 's' : ''}`,
+      color: 'var(--prj-red)', href: '/sales?tab=unpaid&filter=overdue', red: true },
   ];
-  const circuitTodo = circuit.filter(c => c.tone).length;
+  const moneyTotal = money.reduce((s, m) => s + m.amount, 0);
+
+  /* ── Objectifs (anneaux) : transformation des devis, marge brute, créances à jour ── */
+  const conv = qov?.conversion.rate ?? null;
+  const onTime = t && t.total > 0 ? (t.total - overdue) / t.total * 100 : null;
 
   const chart = useMemo(() => (sales as Row[]).map(x => ({ date: format(new Date(x.date), 'd MMM', { locale: fr }), revenue: num(x.revenue) })), [sales]);
   const byCategory = useMemo(() => {
@@ -144,142 +170,146 @@ export default function SalesDashboard() {
     })).filter(c => c.spent > 0), [customers, owedBy]);
   const topDebtors = (rec?.customers ?? []).slice().sort((a, b) => b.total - a.total).slice(0, 5);
 
+  const rings = [
+    { pct: conv, color: 'var(--theme-accent)', label: 'Transformation des devis', value: conv != null ? `${conv} %` : '—', small: qov ? `${qov.conversion.won} gagné(s) sur 90 j` : '' },
+    { pct: margin?.pct ?? null, color: 'var(--prj-green)', label: 'Marge brute', value: margin ? pct1(margin.pct) : '—', small: margin ? `coût matière ${pct1(margin.food)}` : 'coûts non disponibles' },
+    { pct: onTime, color: 'var(--prj-orange)', label: 'Créances à jour', value: onTime != null ? `${Math.round(onTime)} %` : '—', small: 'non échues' },
+  ];
+
   return (
     <SalesPageShell icon={LayoutDashboard} parent="Ventes" title="Tableau de bord" list
-      summary={format(new Date(), 'EEEE d MMMM yyyy', { locale: fr })}
-      actions={<button type="button" className="odoo-btn-primary" onClick={() => navigate('/orders')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle commande</button>}>
-
-      <section className="prj-panel" aria-label="Circuit de vente" style={{ padding: 14 }}>
-        <div className="prj-panel-head" style={{ padding: '0 0 10px', border: 0 }}>
-          Ventes pro, du devis à l'encaissement
-          <small>{circuitTodo ? `${circuitTodo} étape${circuitTodo > 1 ? 's' : ''} demande${circuitTodo > 1 ? 'nt' : ''} votre attention · ` : ''}cliquez une étape pour ouvrir ses pièces</small>
-        </div>
-        <ol className="pur-circuit">
-          {circuit.map(c => (
-            <li key={c.n}>
-              <button type="button" className={`pur-stage ${c.tone ?? ''}`} onClick={() => navigate(c.href)}>
-                <span className="pur-stage-head"><span className="pur-stage-num">{c.n}</span>{c.label}</span>
-                <span className="pur-stage-count">{c.count}</span>
-                <span className="pur-stage-sub">{c.sub}</span>
-              </button>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <div className="prj-toolbar">
+      summary={<>{format(new Date(), 'EEEE d MMMM', { locale: fr })}{todo.length ? <> · <b>{todo.length} point{todo.length > 1 ? 's' : ''}</b> à traiter</> : ' · rien à traiter'}</>}
+      actions={<>
         <div className="prj-views" role="group" aria-label="Période">
           {PERIODS.map(p => (
             <button key={p.key} type="button" className={period === p.key ? 'active' : ''} aria-pressed={period === p.key} onClick={() => setPeriod(p.key)}>{p.label}</button>
           ))}
         </div>
-        <span className="prj-note">Évolutions {r.label}</span>
-      </div>
+        <button type="button" className="odoo-btn-primary" onClick={() => navigate('/orders')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle commande</button>
+      </>}>
 
-      <section className="prj-kpis" aria-label="Indicateurs">
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Chiffre d'affaires</span><Delta d={delta(revenue, prevRevenue)} /></div>
-          <div className="prj-kpi-value">{n0(revenue)} DH</div>
-          <div className="prj-kpi-sub">période précédente {n0(prevRevenue)} DH</div>
-        </div>
-        <div className="prj-kpi">
-          <div className="prj-kpi-head"><span>Tickets</span><Delta d={delta(tickets, prevTickets)} /></div>
-          <div className="prj-kpi-value">{n0(tickets)}</div>
-          <div className="prj-kpi-sub">panier moyen {n2(basket)} DH <Delta d={delta(basket, prevBasket)} /></div>
-        </div>
-        <ListKpi label="Transformation des devis" value={qov?.conversion.rate != null ? `${qov.conversion.rate} %` : '—'}
-          sub={qov ? `90 j : ${qov.conversion.won} gagné(s), ${qov.conversion.lost} perdu(s)` : ''} />
-        <ListKpi label="Marge brute" value={margin ? `${margin.pct.toFixed(1).replace('.', ',')} %` : '—'}
-          sub={margin ? `${n0(margin.amount)} DH · coût matière ${margin.food.toFixed(1).replace('.', ',')} %` : 'coûts non disponibles'} />
-      </section>
-
-      <section className="prj-panel">
-        <div className="prj-panel-head">À traiter <small>{todo.length ? `${todo.length} point${todo.length > 1 ? 's' : ''} demande${todo.length > 1 ? 'nt' : ''} une action` : ''}</small></div>
-        {todo.length ? (
-          <ul className="sal-todo">
-            {todo.map(i => (
-              <li key={i.title}>
-                <span className={`sal-todo-ic ${i.tone}`}><i.icon size={16} /></span>
-                <div className="sal-todo-tx"><strong>{i.title}</strong><span className="sal-sub">{i.sub}</span></div>
-                {i.amount && <span className="sal-todo-amt">{i.amount}</span>}
-                <button type="button" className="sal-next" onClick={() => navigate(i.href)}>{i.action}</button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="sal-empty"><CheckCircle2 size={26} style={{ color: 'var(--prj-green)' }} /><strong>Rien à traiter</strong><span>Commandes, devis, livraisons et créances sont à jour.</span></div>
-        )}
-      </section>
-
-      <div className="sal-row">
-        <section className="prj-panel sal-grow">
-          <div className="prj-panel-head">Chiffre d'affaires par jour <small>{PERIODS.find(p => p.key === period)?.label}</small></div>
-          <div style={{ padding: '12px 12px 6px', height: 260 }}>
+      <section className="kl-hero" aria-label="Chiffres de la période">
+        <div className="kl-widget kl-wide">
+          <div className="kl-wlabel"><span className="kl-sq"><TrendingUp size={13} /></span>Chiffre d'affaires · {PERIODS.find(p => p.key === period)?.label.toLowerCase()}</div>
+          <div className="kl-big">{n0(revenue)}<small>DH</small></div>
+          <div className="kl-sub"><Delta d={delta(revenue, prevRevenue)} /> {r.label} · {n0(tickets)} tickets · panier moyen {n2(basket)} DH <Delta d={delta(basket, prevBasket)} /></div>
+          <div style={{ height: 190, marginTop: 14 }}>
             {chart.length ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chart} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--odoo-border)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--odoo-text-muted)' }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={18} />
-                  <YAxis tick={{ fontSize: 11, fill: 'var(--odoo-text-muted)' }} tickLine={false} axisLine={false} width={48} tickFormatter={(v: number) => n0(v)} />
-                  <Tooltip formatter={(v: number) => [`${n2(v)} DH`, "Chiffre d'affaires"]} cursor={{ fill: 'var(--odoo-border)', opacity: 0.4 }} />
-                  <Bar dataKey="revenue" fill="var(--odoo-purple)" radius={[3, 3, 0, 0]} maxBarSize={28} />
-                </BarChart>
+                <AreaChart data={chart} margin={{ top: 6, right: 4, left: 0, bottom: 0 }}>
+                  <CartesianGrid vertical={false} stroke="var(--kl-hair)" />
+                  <XAxis dataKey="date" tick={{ fontSize: 12, fill: 'var(--kl-muted)' }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={24} />
+                  <YAxis tick={{ fontSize: 12, fill: 'var(--kl-muted)' }} tickLine={false} axisLine={false} width={48} tickFormatter={(v: number) => n0(v)} />
+                  <Tooltip formatter={(v: number) => [`${n2(v)} DH`, "Chiffre d'affaires"]} />
+                  <Area type="monotone" dataKey="revenue" stroke="var(--theme-accent)" strokeWidth={2.5} fill="var(--theme-accent-light)" fillOpacity={0.7} />
+                </AreaChart>
               </ResponsiveContainer>
-            ) : <div className="sal-empty" style={{ height: '100%', alignContent: 'center' }}>Aucune vente sur la période.</div>}
+            ) : <div className="kl-empty" style={{ height: '100%', alignContent: 'center' }}>Aucune vente sur la période.</div>}
           </div>
-        </section>
-        <section className="prj-panel sal-side">
-          <div className="prj-panel-head">CA par famille <button type="button" className="sal-link" onClick={() => navigate('/reports?tab=margins')}>Marges</button></div>
-          {byCategory.length ? (
-            <ul className="sal-cat">
-              {byCategory.map(c => (
-                <li key={c.name}>
-                  <span className="sal-flow-h"><span>{c.name}</span><strong>{n0(c.value)} DH</strong></span>
-                  <span className="prj-bar"><span style={{ width: `${Math.max(2, c.pct)}%` }} /></span>
-                </li>
+        </div>
+        <div className="kl-widget">
+          <div className="kl-wlabel"><span className="kl-sq"><Target size={13} /></span>Objectifs</div>
+          <div className="kl-rings">
+            <Rings rings={rings} />
+            <dl>
+              {rings.map(x => (
+                <div key={x.label}>
+                  <dt><i style={{ background: x.color }} />{x.label}</dt>
+                  <dd>{x.value}<small>{x.small}</small></dd>
+                </div>
               ))}
-            </ul>
-          ) : <div className="sal-empty">Aucune vente sur la période.</div>}
-        </section>
-      </div>
+            </dl>
+          </div>
+        </div>
+      </section>
 
-      <div className="sal-row">
-        <section className="prj-panel sal-grow sal-panel">
-          <div className="prj-panel-head">Meilleurs clients <small>CA cumulé</small><button type="button" className="sal-link" onClick={() => navigate('/customers')}>Tous les clients</button></div>
-          <div className="prj-scroll">
-            <table className="odoo-table">
-              <thead><tr><th>Client</th><th style={{ textAlign: 'right' }}>Achats</th><th style={{ textAlign: 'right' }}>CA TTC</th><th style={{ textAlign: 'right' }}>Reste dû</th></tr></thead>
-              <tbody>
-                {topCustomers.map(c => (
-                  <tr key={c.id} onClick={() => navigate(`/customers/${c.id}`)}>
-                    <td><span style={{ fontWeight: 500 }}>{c.name}</span><span className="sal-sub">{c.pro ? 'Professionnel' : 'Particulier'}</span></td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{c.purchases}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}><strong>{n2(c.spent)}</strong></td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', color: c.owed > 0 ? 'var(--prj-orange)' : 'var(--odoo-text-muted)', fontWeight: c.owed > 0 ? 600 : 400 }}>{c.owed > 0 ? n2(c.owed) : '—'}</td>
-                  </tr>
-                ))}
-                {!topCustomers.length && <tr><td colSpan={4} style={{ textAlign: 'center', padding: 20, color: 'var(--odoo-text-muted)' }}>Aucun client avec des achats.</td></tr>}
-              </tbody>
-            </table>
+      <section aria-label="Où est votre argent">
+        <div className="kl-sec"><h2>Où est votre argent</h2><small><b style={{ color: 'var(--kl-ink)' }}>{n0(moneyTotal)} DH</b> en circulation</small></div>
+        <div className="kl-widget">
+          <div className="kl-store" aria-hidden="true">
+            {money.filter(m => m.amount > 0).map(m => <span key={m.label} style={{ width: `${moneyTotal ? m.amount / moneyTotal * 100 : 0}%`, background: m.color }} />)}
           </div>
-        </section>
-        <section className="prj-panel sal-side">
-          <div className="prj-panel-head">Plus gros encours <button type="button" className="sal-link" onClick={() => navigate('/sales?tab=unpaid')}>Créances</button></div>
-          {topDebtors.length ? (
-            <ul className="sal-cat">
-              {topDebtors.map(c => (
-                <li key={c.customerId ?? c.name}>
-                  <span className="sal-flow-h"><span>{c.name}</span><strong>{n0(c.total)} DH</strong></span>
-                  <span className="sal-sub" style={{ marginTop: 0, color: c.overdue > 0 ? 'var(--prj-red)' : undefined }}>
-                    {c.overdue > 0 ? `${n0(c.overdue)} DH échus · retard ${c.maxDaysLate} j` : 'rien d\'échu'}
-                    {c.creditLimit ? ` · plafond ${n0(c.creditLimit)} DH` : ''}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : <div className="sal-empty">Aucune créance ouverte.</div>}
-        </section>
+          <div className="kl-legend">
+            {money.map(m => (
+              <button key={m.label} type="button" className={m.red && m.amount > 0 ? 'red' : ''} onClick={() => navigate(m.href)}>
+                <span className="l"><i style={{ background: m.color }} />{m.label}</span>
+                <b>{n0(m.amount)}</b>
+                <small>{m.sub}</small>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <div className="kl-two">
+        <div className="a">
+          <section aria-label="À faire">
+            <div className="kl-sec"><h2>À faire</h2><small>{todo.length ? 'classé par urgence' : ''}</small></div>
+            {todo.length ? (
+              <div className="kl-group">
+                {todo.map(i => (
+                  <button key={i.title} type="button" className="kl-cell ico" onClick={() => navigate(i.href)}>
+                    <span className={`kl-ic ${i.tone}`}><i.icon size={16} /></span>
+                    <span className="tx"><span className="t1">{i.title}</span><span className="t2">{i.sub}</span></span>
+                    <span className="tr">{i.amount ?? i.action}</span>
+                    <ChevronRight size={15} className="chev" />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="kl-group kl-empty"><CheckCircle2 size={26} style={{ color: 'var(--prj-green)' }} /><strong>Rien à traiter</strong><span>Commandes, devis, livraisons et créances sont à jour.</span></div>
+            )}
+          </section>
+          <section aria-label="CA par famille">
+            <div className="kl-sec"><h2>CA par famille</h2><button type="button" className="sal-link" onClick={() => navigate('/reports?tab=margins')}>Marges</button></div>
+            <div className="kl-group">
+              {byCategory.length ? (
+                <ul className="kl-bars" style={{ paddingTop: 14 }}>
+                  {byCategory.map(c => (
+                    <li key={c.name}>
+                      <span className="h"><span>{c.name}</span><b>{n0(c.value)} DH</b></span>
+                      <span className="bar"><span style={{ width: `${Math.max(2, c.pct)}%` }} /></span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <div className="kl-empty">Aucune vente sur la période.</div>}
+            </div>
+          </section>
+        </div>
+
+        <div className="b">
+          <section aria-label="Meilleurs clients">
+            <div className="kl-sec"><h2>Meilleurs clients</h2><button type="button" className="sal-link" onClick={() => navigate('/customers')}>Tous</button></div>
+            <div className="kl-group">
+              {topCustomers.length ? topCustomers.map(c => (
+                <button key={c.id} type="button" className="kl-cell av" onClick={() => navigate(`/customers/${c.id}`)}>
+                  <span className="kl-mono">{initials(c.name)}</span>
+                  <span className="tx"><span className="t1">{c.name}</span><span className="t2">{c.purchases} achat{c.purchases > 1 ? 's' : ''}{c.owed > 0 ? ` · reste dû ${n0(c.owed)} DH` : ''}</span></span>
+                  <span className="tr">{n0(c.spent)}</span>
+                  <ChevronRight size={15} className="chev" />
+                </button>
+              )) : <div className="kl-empty">Aucun client avec des achats.</div>}
+            </div>
+          </section>
+          <section aria-label="Plus gros encours">
+            <div className="kl-sec"><h2>Plus gros encours</h2><button type="button" className="sal-link" onClick={() => navigate('/sales?tab=unpaid')}>Créances</button></div>
+            <div className="kl-group">
+              {topDebtors.length ? topDebtors.map(c => (
+                <button key={c.customerId ?? c.name} type="button" className="kl-cell" onClick={() => navigate(c.customerId ? `/customers/${c.customerId}` : '/sales?tab=unpaid')}>
+                  <span className="tx"><span className="t1">{c.name}</span>
+                    <span className="t2">{c.overdue > 0 ? `${n0(c.overdue)} DH échus · retard ${c.maxDaysLate} j` : 'rien d\'échu'}{c.creditLimit ? ` · plafond ${n0(c.creditLimit)} DH` : ''}</span></span>
+                  <span className={`tr${c.overdue > 0 ? ' red' : ''}`}>{n0(c.total)}</span>
+                  <ChevronRight size={15} className="chev" />
+                </button>
+              )) : <div className="kl-empty">Aucune créance ouverte.</div>}
+            </div>
+          </section>
+        </div>
       </div>
     </SalesPageShell>
   );
+}
+
+function initials(name: string) {
+  return name.split(/\s+/).filter(w => /[A-Za-zÀ-ÿ]/.test(w[0] ?? '')).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '·';
 }

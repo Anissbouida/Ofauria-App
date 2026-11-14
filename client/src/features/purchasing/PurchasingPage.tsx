@@ -130,7 +130,7 @@ export default function PurchasingPage() {
   const openTab = (next: PurchasingTab, f: TabFocus = {}) => { setFocus(f); select(next); };
 
   return (
-    <ModuleShell title="Achats" views={views} current={current} onSelect={k => openTab(k as PurchasingTab)} bar={false} flush>
+    <ModuleShell title="Achats" views={views} current={current} onSelect={k => openTab(k as PurchasingTab)} bar={false} flush look="apple">
       {/* En-tête « Achats / rubrique », même barre que les onglets Ventes (SalesPageShell). */}
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
@@ -147,6 +147,8 @@ export default function PurchasingPage() {
       <PurHeaderSlot.Provider value={headerSlot}>
       <ProcessBoardVariant.Provider value="chips">
       <div className="pur-module pur-head-body">
+      {/* Style Apple (2026-11) : grand titre de la rubrique ; le Poste de travail pose le sien. */}
+      {tab !== 'workbench' && <header className="kl-largetitle"><h1>{current?.label}</h1></header>}
       {tab === 'suppliers' && (
         <SuppliersTab
           onOpenOrders={id => openTab('purchase_orders', { supplierId: id })}

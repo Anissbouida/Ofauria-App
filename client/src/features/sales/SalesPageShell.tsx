@@ -21,6 +21,8 @@ export default function SalesPageShell({ icon: Icon, title, parent, summary, act
   list?: boolean;
   children: ReactNode;
 }) {
+  // Style Apple (2026-11) : grand titre en tête de page, le résumé passe dessous.
+  const largeTitle = <header className="kl-largetitle"><h1>{title}</h1>{summary && <p>{summary}</p>}</header>;
   return (
     <div className="odoo-scope" style={{ minHeight: '100%' }}>
       <div className="odoo-control-bar">
@@ -28,13 +30,14 @@ export default function SalesPageShell({ icon: Icon, title, parent, summary, act
           {Icon && <Icon size={14} style={{ color: 'var(--theme-accent)' }} />}
           {parent && <><span>{parent}</span><span className="odoo-breadcrumb-separator">/</span></>}
           <span className="odoo-breadcrumb-current">{title}</span>
-          {summary && <span style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>{summary}</span>}
+          {summary && <span className="spsh-summary" style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>{summary}</span>}
         </div>
         <div style={{ flex: 1 }} />
         {actions}
       </div>
-      {list ? <ListPage>{children}</ListPage> : (
-        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {list ? <ListPage>{largeTitle}{children}</ListPage> : (
+        <div className="sal-page" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {largeTitle}
           {children}
         </div>
       )}

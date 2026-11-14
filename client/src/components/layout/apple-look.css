@@ -1,0 +1,193 @@
+/*
+ * Style « Apple » des modules (maquette 2026-11-14, page « Style Apple ») : police système,
+ * grands titres, cartes blanches sans bordure à ombre douce, listes groupées, contrôles
+ * segmentés, boutons en pilule, barre d'outils translucide. Toutes les couleurs viennent du
+ * thème Kalum (Paramètres › Apparence, variables --theme-*) ; la couleur ne sert qu'au sens
+ * (accent = action/sélection, rouge = retard, orange = attention, vert = conforme).
+ *
+ * Portée : .kl-apple, posée par ModuleShell (look="apple") sur les modules qui l'activent.
+ * Les fenêtres modales (.fixed) gardent leur présentation.
+ */
+.kl-apple {
+  --kl-bg: var(--theme-bg-page);
+  --kl-card: var(--theme-bg-card);
+  --kl-ink: var(--theme-text-strong);
+  --kl-ink2: var(--theme-text-body);
+  --kl-muted: var(--theme-text-muted);
+  --kl-sep: var(--theme-bg-separator);
+  --kl-hair: color-mix(in srgb, var(--theme-bg-separator) 70%, transparent);
+  --kl-fill: color-mix(in srgb, var(--theme-text-muted) 13%, transparent);
+  --kl-accent: var(--theme-accent);
+  --kl-accent-ink: var(--theme-accent-hover);
+  --kl-accent-soft: var(--theme-accent-light);
+  --kl-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 6px 20px rgba(15, 23, 42, .05);
+  --prj-green: #15803D; --prj-orange: #B45309; --prj-red: #DC2626;
+  --kl-nav: color-mix(in srgb, var(--theme-bg-secondary) 45%, var(--theme-bg-page));
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  letter-spacing: -.011em;
+  -webkit-font-smoothing: antialiased;
+}
+.module-shell.kl-apple { background-color: var(--kl-bg) !important; }
+
+/* ── Barre latérale du module ── */
+/* La colonne garde la teinte de la barre jusqu'en bas de page (la barre elle-même est collante). */
+.kl-apple .module-shell-body { grid-template-columns: 236px minmax(0, 1fr); background: linear-gradient(to right, var(--kl-nav) 0 235px, var(--kl-sep) 235px 236px, var(--kl-bg) 236px); }
+.kl-apple .module-shell-nav { background: var(--kl-nav); border-right: 1px solid var(--kl-sep); padding: 12px 10px; }
+@media (max-width: 900px) { .kl-apple .module-shell-body { background: var(--kl-bg); } }
+.kl-apple .module-shell-group { padding: 0 0 6px; }
+.kl-apple .module-shell-group + .module-shell-group { border-top: 0; padding-top: 4px; }
+.kl-apple .module-shell-group-title { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; color: var(--kl-muted); padding: 10px 10px 4px; }
+.kl-apple .module-shell-subtitle { font-size: 11.5px; padding: 8px 10px 2px; }
+.kl-apple .module-shell-item { border-left: 0; border-radius: 8px; padding: 7px 10px; gap: 10px; font-size: 14px; color: var(--kl-ink); }
+.kl-apple .module-shell-item svg { color: var(--kl-accent); }
+.kl-apple .module-shell-item:hover { background: rgba(15, 23, 42, .05); }
+.kl-apple .module-shell-item.active { background: rgba(15, 23, 42, .08); font-weight: 600; }
+.kl-apple .module-shell-item.active svg { color: var(--kl-accent); }
+.kl-apple .module-shell-badge { background: transparent; color: var(--prj-red); min-width: 0; padding: 0; font-size: 12.5px; }
+.kl-apple .module-shell-main { background: var(--kl-bg); }
+
+/* Pages internes : le fond de page reste visible (cartes blanches posées dessus). */
+.kl-apple .module-shell-main .odoo-scope:not(.fixed > .odoo-scope) { background-color: transparent !important; }
+
+/* ── Barre d'outils translucide (fil d'Ariane + actions) ── */
+.kl-apple .odoo-control-bar:not(.fixed .odoo-control-bar) {
+  position: sticky; top: 0; z-index: 20; height: auto; min-height: 52px; padding: 8px 28px;
+  background: color-mix(in srgb, var(--kl-bg) 82%, transparent);
+  backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--kl-sep);
+}
+.kl-apple .odoo-breadcrumb { font-size: 14px; color: var(--kl-muted); }
+.kl-apple .odoo-breadcrumb-current { font-size: 15px; font-weight: 600; color: var(--kl-ink); }
+.kl-apple .odoo-breadcrumb .spsh-summary { display: none; }
+
+/* Grand titre en tête de page */
+.kl-largetitle { margin: 0 0 4px; }
+.kl-largetitle h1 { margin: 0; font-size: 30px; line-height: 1.12; font-weight: 700; letter-spacing: -.025em; color: var(--kl-ink, var(--theme-text-strong)); }
+.kl-largetitle p { margin: 6px 0 0; font-size: 15px; color: var(--kl-muted, var(--theme-text-muted)); }
+.kl-largetitle p b { color: var(--kl-ink, var(--theme-text-strong)); font-weight: 600; }
+
+/* Marges du contenu */
+.kl-apple .sal-page, .kl-apple .pur-head-body { padding: 24px 32px 56px; gap: 22px; }
+@media (max-width: 768px) { .kl-apple .sal-page, .kl-apple .pur-head-body { padding: 18px 16px 40px; } .kl-apple .odoo-control-bar:not(.fixed .odoo-control-bar) { padding: 8px 16px; } }
+
+/* ── Boutons en pilule ── */
+.kl-apple .odoo-btn-primary:not(.fixed *) { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; }
+.kl-apple .odoo-btn-secondary:not(.fixed *) { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; border-color: transparent; background: var(--kl-fill); color: var(--kl-accent-ink); }
+.kl-apple .odoo-btn-secondary:not(.fixed *):hover { background: color-mix(in srgb, var(--theme-text-muted) 20%, transparent); }
+.kl-apple .sal-next { border: 0; border-radius: 999px; background: var(--kl-fill); color: var(--kl-accent-ink); height: 30px; padding: 0 12px; }
+.kl-apple .sal-next:hover:not(:disabled) { background: color-mix(in srgb, var(--theme-text-muted) 20%, transparent); color: var(--kl-accent-ink); }
+
+/* ── Cartes ── */
+.kl-apple .prj-panel:not(.fixed .prj-panel),
+.kl-apple .prj-kpi:not(.fixed .prj-kpi),
+.kl-apple .prj-card:not(.fixed .prj-card) { border: 0; border-radius: 16px; background: var(--kl-card); box-shadow: var(--kl-shadow); }
+.kl-apple .prj-panel-head { padding: 16px 18px 12px; border-bottom: 1px solid var(--kl-hair); font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+.kl-apple .prj-panel-head small { letter-spacing: 0; }
+.kl-apple .prj-kpi { padding: 18px 20px; }
+.kl-apple .prj-kpi-head { font-weight: 600; }
+.kl-apple .prj-kpi-value { font-size: 26px; letter-spacing: -.025em; }
+.kl-apple .prj-note { font-size: 13px; }
+
+.kl-apple .odoo-stat-card:not(.fixed .odoo-stat-card) { border: 0 !important; border-radius: 14px; box-shadow: var(--kl-shadow); }
+.kl-apple .odoo-stat-card.active:not(.fixed .odoo-stat-card) { box-shadow: inset 0 0 0 2px var(--kl-accent), var(--kl-shadow); background: var(--kl-card); }
+.kl-apple .pb-pipeline:not(.fixed .pb-pipeline) { border: 0 !important; border-radius: 16px !important; box-shadow: var(--kl-shadow); }
+.kl-apple .status-banner:not(.fixed .status-banner) { border-radius: 14px; }
+
+/* ── Tableaux : carte blanche, séparateurs fins, en-têtes discrets ── */
+.kl-apple .odoo-table:not(.fixed .odoo-table):not(.prj-panel .odoo-table):not(.sal-bare .odoo-table) { border: 0; border-radius: 16px; box-shadow: var(--kl-shadow); }
+.kl-apple .odoo-table:not(.fixed .odoo-table) thead th { background: transparent; color: var(--kl-muted); font-weight: 500; font-size: 12px; text-transform: none; letter-spacing: 0; border-bottom: 1px solid var(--kl-sep); }
+.kl-apple .odoo-table:not(.fixed .odoo-table) tbody td { border-bottom: 1px solid var(--kl-hair); padding-top: 11px; padding-bottom: 11px; }
+.kl-apple .odoo-table:not(.fixed .odoo-table) tbody tr:hover td { background: color-mix(in srgb, var(--kl-accent) 4%, transparent); }
+
+/* ── Recherche, pastilles, contrôles segmentés ── */
+.kl-apple .prj-search { border: 0; border-radius: 10px; background: var(--kl-fill); height: 36px; }
+.kl-apple .odoo-search-panel:not(.fixed .odoo-search-panel):not(.prj-panel .odoo-search-panel) { border: 0; border-radius: 14px; box-shadow: var(--kl-shadow); }
+.kl-apple .prj-chip { height: 30px; border: 0; background: var(--kl-card); box-shadow: inset 0 0 0 1px var(--kl-sep); font-size: 13px; }
+.kl-apple .prj-chip.active { background: var(--kl-accent); color: #fff; box-shadow: none; }
+.kl-apple .prj-chip.active small { opacity: .9; }
+.kl-apple .prj-chip.sal-late.active { background: var(--prj-red); color: #fff; }
+.kl-apple .prj-chip.active .pb-chip-num { background: rgba(255, 255, 255, .25); color: #fff; }
+.kl-apple .prj-views, .kl-apple .odoo-view-switcher:not(.fixed .odoo-view-switcher) { border: 0; border-radius: 9px; padding: 2px; background: var(--kl-fill); overflow: visible; }
+.kl-apple .prj-views button { height: 28px; border: 0 !important; border-radius: 7px; padding: 0 12px; font-weight: 500; color: var(--kl-ink); }
+.kl-apple .prj-views button.active { background: var(--kl-card); color: var(--kl-ink); font-weight: 600; box-shadow: 0 3px 8px rgba(15, 23, 42, .08), 0 0 0 .5px rgba(15, 23, 42, .06); }
+
+/* ── Circuit numéroté (Ventes, Achats) ── */
+.kl-apple .pur-circuit { gap: 10px; }
+.kl-apple .pur-stage { border: 0; border-radius: 14px; padding: 13px 14px; background: color-mix(in srgb, var(--kl-bg) 85%, var(--kl-card)); }
+.kl-apple .pur-stage:hover, .kl-apple .pur-stage:focus-visible { background: color-mix(in srgb, var(--theme-bg-secondary) 70%, var(--kl-card)); }
+.kl-apple .pur-stage.orange, .kl-apple .pur-stage.red { border: 0; background: color-mix(in srgb, var(--kl-bg) 85%, var(--kl-card)); }
+.kl-apple .pur-stage-head { font-size: 13px; font-weight: 500; }
+.kl-apple .pur-stage-num { width: 22px; height: 22px; font-size: 12px; font-weight: 700; background: var(--kl-card); color: var(--kl-ink2); box-shadow: 0 0 0 .5px rgba(15, 23, 42, .12); }
+.kl-apple .pur-stage.orange .pur-stage-num, .kl-apple .pur-stage.red .pur-stage-num { background: var(--kl-accent); color: #fff; box-shadow: none; }
+.kl-apple .pur-stage-count { font-size: 26px; letter-spacing: -.025em; }
+.kl-apple .pur-stage-sub { font-size: 13px; }
+
+/* ── Listes groupées (À traiter) ── */
+.kl-apple .sal-todo li, .kl-apple .pur-inbox li { border-bottom: 0; position: relative; min-height: 62px; padding: 10px 18px; }
+.kl-apple .sal-todo li + li::before, .kl-apple .pur-inbox li + li::before { content: ""; position: absolute; top: 0; left: 64px; right: 0; height: 1px; background: var(--kl-hair); }
+.kl-apple .pur-inbox li + li::before { left: 18px; }
+.kl-apple .sal-todo-ic { width: 32px; height: 32px; border-radius: 9px; }
+.kl-apple .sal-todo-tx strong, .kl-apple .pur-inbox-title { font-size: 15px; font-weight: 500; }
+.kl-apple .pur-kind { background: var(--kl-fill) !important; color: var(--kl-ink2) !important; font-weight: 500; min-width: 0; }
+
+/* ── Briques des tableaux de bord « Aujourd'hui » ── */
+.kl-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+.kl-hero .kl-wide { grid-column: span 2; }
+@media (max-width: 900px) { .kl-hero .kl-wide { grid-column: auto; } }
+.kl-widget { background: var(--kl-card); border-radius: 18px; padding: 20px 22px; box-shadow: var(--kl-shadow); min-width: 0; }
+.kl-wlabel { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--kl-muted); }
+.kl-wlabel .kl-sq { width: 22px; height: 22px; border-radius: 6px; display: inline-grid; place-items: center; background: var(--kl-accent-soft); color: var(--kl-accent-ink); }
+.kl-big { font-size: 40px; line-height: 1.05; font-weight: 700; letter-spacing: -.03em; margin-top: 10px; font-variant-numeric: tabular-nums; color: var(--kl-ink); }
+.kl-big small { font-size: 18px; font-weight: 600; color: var(--kl-muted); margin-left: 4px; letter-spacing: -.01em; }
+.kl-sub { margin-top: 6px; font-size: 14px; color: var(--kl-muted); }
+.kl-sub .sal-up, .kl-sub .sal-down { font-size: 14px; }
+.kl-rings { display: flex; align-items: center; gap: 22px; margin-top: 14px; flex-wrap: wrap; }
+.kl-rings dl { margin: 0; display: grid; gap: 12px; flex: 1; min-width: 170px; }
+.kl-rings dt { font-size: 13px; color: var(--kl-muted); display: flex; align-items: center; gap: 6px; }
+.kl-rings dt i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.kl-rings dd { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.kl-rings dd small { font-size: 13px; font-weight: 500; color: var(--kl-muted); margin-left: 4px; letter-spacing: 0; }
+.kl-sec { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 4px 10px; }
+.kl-sec h2 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.02em; color: var(--kl-ink); }
+.kl-sec small, .kl-sec .sal-link { font-size: 14px; color: var(--kl-muted); }
+.kl-sec .sal-link { color: var(--kl-accent-ink); margin-left: 0; }
+.kl-store { display: flex; gap: 4px; height: 14px; margin: 4px 0 18px; }
+.kl-store span { display: block; height: 100%; border-radius: 5px; min-width: 6px; }
+.kl-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 6px; }
+.kl-legend button { display: block; text-align: left; border: 0; background: transparent; padding: 8px 10px; border-radius: 12px; font: inherit; color: inherit; cursor: pointer; }
+.kl-legend button:hover, .kl-legend button:focus-visible { background: color-mix(in srgb, var(--kl-bg) 80%, var(--kl-card)); outline: none; }
+.kl-legend .l { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--kl-muted); }
+.kl-legend .l i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.kl-legend b { display: block; font-size: 20px; font-weight: 700; letter-spacing: -.02em; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.kl-legend small { font-size: 13px; color: var(--kl-muted); }
+.kl-legend .red b { color: var(--prj-red); }
+.kl-two { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
+.kl-two > .a { flex: 3 1 520px; min-width: 0; display: grid; gap: 28px; }
+.kl-two > .b { flex: 2 1 340px; min-width: 0; display: grid; gap: 28px; }
+.kl-group { background: var(--kl-card); border-radius: 14px; overflow: hidden; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+.kl-cell { width: 100%; display: flex; align-items: center; gap: 14px; min-height: 58px; padding: 10px 16px; position: relative; border: 0; background: transparent; font: inherit; color: var(--kl-ink); text-align: left; cursor: pointer; }
+button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in srgb, var(--kl-bg) 70%, var(--kl-card)); outline: none; }
+.kl-cell + .kl-cell::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--kl-hair); }
+.kl-cell.ico + .kl-cell.ico::before, .kl-cell.av + .kl-cell.av::before { left: 62px; }
+.kl-cell .tx { flex: 1; min-width: 0; }
+.kl-cell .t1 { display: block; font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kl-cell .t2 { display: block; font-size: 13px; color: var(--kl-muted); margin-top: 1px; }
+.kl-cell .tr { font-size: 15px; font-weight: 500; color: var(--kl-ink2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kl-cell .tr.red { color: var(--prj-red); }
+.kl-cell .chev { color: color-mix(in srgb, var(--kl-muted) 60%, transparent); flex: none; }
+.kl-mono { width: 36px; height: 36px; border-radius: 50%; display: inline-grid; place-items: center; flex: none; font-size: 13px; font-weight: 600; background: var(--theme-bg-secondary); color: var(--kl-ink); }
+.kl-ic { width: 32px; height: 32px; border-radius: 9px; display: inline-grid; place-items: center; flex: none; }
+.kl-ic.r { background: color-mix(in srgb, var(--prj-red) 12%, transparent); color: var(--prj-red); }
+.kl-ic.o { background: color-mix(in srgb, var(--prj-orange) 13%, transparent); color: var(--prj-orange); }
+.kl-ic.b { background: var(--kl-accent-soft); color: var(--kl-accent-ink); }
+.kl-ic.x { background: var(--kl-fill); color: var(--kl-ink2); }
+.kl-ic.g { background: color-mix(in srgb, var(--prj-green) 12%, transparent); color: var(--prj-green); }
+.kl-bars { list-style: none; margin: 0; padding: 4px 16px 14px; display: grid; gap: 12px; }
+.kl-bars li { display: grid; gap: 6px; }
+.kl-bars .h { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+.kl-bars .h b { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kl-bars .bar { height: 6px; border-radius: 99px; background: var(--kl-fill); overflow: hidden; }
+.kl-bars .bar span { display: block; height: 100%; border-radius: 99px; background: var(--kl-accent); }
+.kl-empty { padding: 28px 16px; text-align: center; color: var(--kl-muted); font-size: 14px; display: grid; gap: 6px; justify-items: center; }
+.kl-empty strong { color: var(--kl-ink); }
+.kl-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }

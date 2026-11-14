@@ -82,7 +82,7 @@ export default function SalesLayout() {
   const current = views.find(v => v.key === currentKey);
 
   return (
-    <ModuleShell title="Ventes" views={views} current={current} onSelect={() => {}} bar={false} flush>
+    <ModuleShell title="Ventes" views={views} current={current} onSelect={() => {}} bar={false} flush look="apple">
       {/* Refonte 2026-11 : briques communes au style cartes/panneaux dans tout le module (sales.css, .sal-module). */}
       <div className="sal-module"><Outlet /></div>
     </ModuleShell>

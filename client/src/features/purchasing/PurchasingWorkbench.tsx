@@ -14,10 +14,11 @@ import { useAuth } from '../../context/AuthContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { PODetailModal } from '../accounting/PurchaseOrdersTab';
 import { Kpi } from '../projects/shared';
+import { PurHeaderActions } from './PurHeaderActions';
 import './purchasing.css';
 
 /**
- * Poste de travail des achats (refonte 2026-11) : le circuit d'achat en 8 étapes avec ce
+ * Poste de travail des achats (refonte 2026-11, style Apple) : le circuit d'achat en 8 étapes avec ce
  * qui coince à chacune, la liste des actions à mener (retards, devis à comparer,
  * approbations, factures bloquées ou échues, brouillons) et les montants à suivre.
  * Lecture seule : chaque action ouvre l'écran ou la fiche qui la traite.
@@ -116,48 +117,59 @@ export default function PurchasingWorkbench({ onOpenTab, onOpenInvoice }: {
 
   return (
     <div className="prj">
-      <div className="prj-toolbar">
-        <div style={{ flex: 1, minWidth: 240 }}>
-          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Bonjour {user?.firstName ?? ''}</h2>
-          <p className="prj-note" style={{ marginTop: 2 }}>{items.length ? `${items.length} action${items.length > 1 ? 's' : ''} vous attendent dans le circuit d’achat.` : 'Rien ne vous attend dans le circuit d’achat.'}</p>
-        </div>
+      <PurHeaderActions>
         <button type="button" className="odoo-btn-primary" onClick={() => onOpenTab('purchase_requests')}>Demande d’achat</button>
-      </div>
+      </PurHeaderActions>
+      <header className="kl-largetitle">
+        <h1>Aujourd’hui</h1>
+        <p>{format(new Date(), 'EEEE d MMMM', { locale: fr })} · {items.length
+          ? <><b>{items.length} action{items.length > 1 ? 's' : ''}</b> vous attend{items.length > 1 ? 'ent' : ''} dans le circuit d’achat{user?.firstName ? `, ${user.firstName}` : ''}.</>
+          : 'rien ne vous attend dans le circuit d’achat.'}</p>
+      </header>
 
-      <section className="prj-panel" aria-label="Circuit d’achat" style={{ padding: 14 }}>
-        <div className="prj-panel-head" style={{ padding: '0 0 10px', border: 0 }}>Circuit d’achat <small>cliquez une étape pour ouvrir ses pièces</small></div>
-        <ol className="pur-circuit">
-          {stages.map(s => (
-            <li key={s.n}>
-              <button type="button" className={`pur-stage ${s.tone ?? ''}`} onClick={s.go}>
-                <span className="pur-stage-head"><span className="pur-stage-num">{s.n}</span>{s.label}</span>
-                <span className="pur-stage-count">{s.count ?? '—'}</span>
-                <span className="pur-stage-sub">{s.sub}</span>
-              </button>
-            </li>
-          ))}
-        </ol>
+      <section aria-label="Circuit d’achat">
+        <div className="kl-sec"><h2>Le circuit</h2><small>cliquez une étape pour ouvrir ses pièces</small></div>
+        <div className="kl-widget">
+          <ol className="pur-circuit">
+            {stages.map(s => (
+              <li key={s.n}>
+                <button type="button" className={`pur-stage ${s.tone ?? ''}`} onClick={s.go}>
+                  <span className="pur-stage-head"><span className="pur-stage-num">{s.n}</span>{s.label}</span>
+                  <span className="pur-stage-count">{s.count ?? '—'}</span>
+                  <span className="pur-stage-sub">{s.sub}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </div>
       </section>
 
-      <div className="prj-columns">
-        <section className="prj-panel prj-main" aria-label="À traiter">
-          <div className="prj-panel-head" style={{ flexWrap: 'wrap' }}>
-            <span style={{ flex: 1 }}>À traiter</span>
-            <div className="prj-chips" role="group" aria-label="Filtrer">
-              {FILTERS.map(([k, l]) => (
-                <button key={k} type="button" className={`prj-chip${filter === k ? ' active' : ''}`} aria-pressed={filter === k} onClick={() => setFilter(k)}>
-                  {l} <small>{items.filter(tests[k]).length}</small>
-                </button>
-              ))}
-            </div>
+      <section className="kl-stats" aria-label="Montants à suivre">
+        <Kpi label="Engagements ouverts" value={sum ? dh(sum.open_commitments.amount) : '…'} sub={sum ? `${sum.open_commitments.pos} BC commandés, non reçus` : undefined} />
+        <Kpi label="Reçu, non facturé" value={sum ? dh(sum.received_not_invoiced.amount) : '…'}
+          sub={sum ? `${sum.received_not_invoiced.lines} ligne(s)${sum.received_not_invoiced.aged ? ` · ${sum.received_not_invoiced.aged} > 30 j` : ''}` : undefined} />
+        <Kpi label="À payer" value={invPipe ? dh(toPay) : '…'} sub={invPipe ? `${toPayCount} facture(s)${overdueInv ? ` · ${overdueInv} échue(s)` : ''}` : undefined} tone={overdueInv ? 'red' : undefined} />
+        <Kpi label="Facturé, non reçu" value={sum ? dh(sum.invoiced_not_received.amount) : '…'} sub={sum ? `${sum.invoiced_not_received.lines} ligne(s) à vérifier avant paiement` : undefined}
+          tone={sum && sum.invoiced_not_received.lines ? 'red' : undefined} />
+      </section>
+
+      <section aria-label="À traiter">
+        <div className="kl-sec" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
+          <h2>À traiter</h2>
+          <div className="prj-views" role="group" aria-label="Filtrer">
+            {FILTERS.map(([k, l]) => (
+              <button key={k} type="button" className={filter === k ? 'active' : ''} aria-pressed={filter === k} onClick={() => setFilter(k)}>
+                {l} <small>{items.filter(tests[k]).length}</small>
+              </button>
+            ))}
           </div>
-          {!shown.length ? (
-            <div className="prj-panel-body">
-              <StatusBanner tone="success" icon={CheckCircle2} title={items.length ? 'Rien dans ce filtre' : 'Tout est à jour'}>
-                {items.length ? 'Changez de filtre pour voir les autres actions.' : 'Aucun retard, aucun devis à comparer, aucune facture bloquée.'}
-              </StatusBanner>
-            </div>
-          ) : (
+        </div>
+        {!shown.length ? (
+          <StatusBanner tone="success" icon={CheckCircle2} title={items.length ? 'Rien dans ce filtre' : 'Tout est à jour'}>
+            {items.length ? 'Changez de filtre pour voir les autres actions.' : 'Aucun retard, aucun devis à comparer, aucune facture bloquée.'}
+          </StatusBanner>
+        ) : (
+          <div className="kl-group">
             <ul className="pur-inbox">
               {shown.map(i => (
                 <li key={i.key}>
@@ -172,21 +184,12 @@ export default function PurchasingWorkbench({ onOpenTab, onOpenInvoice }: {
                 </li>
               ))}
             </ul>
-          )}
-        </section>
-
-        <aside className="prj-aside">
-          <Kpi label="Engagements ouverts" value={sum ? dh(sum.open_commitments.amount) : '…'} sub={sum ? `${sum.open_commitments.pos} BC commandés, non reçus` : undefined} />
-          <Kpi label="Reçu, non facturé" value={sum ? dh(sum.received_not_invoiced.amount) : '…'}
-            sub={sum ? `${sum.received_not_invoiced.lines} ligne(s)${sum.received_not_invoiced.aged ? ` · ${sum.received_not_invoiced.aged} > 30 j` : ''}` : undefined} />
-          <Kpi label="À payer" value={invPipe ? dh(toPay) : '…'} sub={invPipe ? `${toPayCount} facture(s)${overdueInv ? ` · ${overdueInv} échue(s)` : ''}` : undefined} tone={overdueInv ? 'red' : undefined} />
-          <Kpi label="Facturé, non reçu" value={sum ? dh(sum.invoiced_not_received.amount) : '…'} sub={sum ? `${sum.invoiced_not_received.lines} ligne(s) à vérifier avant paiement` : undefined}
-            tone={sum && sum.invoiced_not_received.lines ? 'red' : undefined} />
-          <button type="button" className="odoo-btn-secondary" onClick={() => onOpenTab('pilotage')} style={{ justifySelf: 'start', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            Rapprochement détaillé <ArrowRight size={14} />
-          </button>
-        </aside>
-      </div>
+          </div>
+        )}
+        <button type="button" className="odoo-btn-secondary" onClick={() => onOpenTab('pilotage')} style={{ marginTop: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          Rapprochement détaillé <ArrowRight size={14} />
+        </button>
+      </section>
 
       {poDetail && <PODetailModal poId={poDetail} onClose={() => setPoDetail(null)} />}
     </div>

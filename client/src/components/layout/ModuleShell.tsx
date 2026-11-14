@@ -2,6 +2,7 @@ import { Fragment, useCallback, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ExternalLink, type LucideIcon } from 'lucide-react';
 import './module-shell.css';
+import './apple-look.css';
 
 /**
  * Coquille commune d'un module (discipline reprise d'ERPNext) : chaque module range
@@ -66,7 +67,7 @@ export function useModuleView<K extends string>(views: ModuleView<K>[]) {
   return { current, select, visible };
 }
 
-export function ModuleShell<K extends string>({ title, views, current, onSelect, actions, flush, bar = true, children }: {
+export function ModuleShell<K extends string>({ title, views, current, onSelect, actions, flush, bar = true, look, children }: {
   title: string;
   views: ModuleView<K>[];
   current: ModuleView<K> | undefined;
@@ -77,6 +78,8 @@ export function ModuleShell<K extends string>({ title, views, current, onSelect,
   flush?: boolean;
   /** false : pas de barre de fil d'Ariane, les pages du module affichent la leur. */
   bar?: boolean;
+  /** « apple » : style de la refonte 2026-11 (apple-look.css), aux couleurs du thème. */
+  look?: 'apple';
   children: ReactNode;
 }) {
   const navigate = useNavigate();
@@ -84,7 +87,7 @@ export function ModuleShell<K extends string>({ title, views, current, onSelect,
   const sectionLabel = MODULE_SECTIONS.find(s => s.key === current?.section)?.label;
 
   return (
-    <div className={`odoo-scope module-shell${bar ? '' : ' no-bar'}`}>
+    <div className={`odoo-scope module-shell${bar ? '' : ' no-bar'}${look === 'apple' ? ' kl-apple' : ''}`}>
       {bar && <div className="odoo-control-bar">
         <div className="odoo-breadcrumb" aria-label="Fil d'Ariane">
           <span>{title}</span>
