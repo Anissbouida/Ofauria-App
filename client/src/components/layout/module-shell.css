@@ -15,6 +15,7 @@
   padding: 0.25rem 0.625rem; font-size: 0.6875rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.05em; color: var(--odoo-text-muted);
 }
+.module-shell-subtitle { padding: 0.5rem 0.625rem 0.125rem; font-size: 0.75rem; font-weight: 600; color: var(--odoo-text-muted); }
 .module-shell-item {
   width: 100%; display: flex; align-items: center; gap: 0.5rem; text-align: left;
   padding: 0.4rem 0.625rem; border-radius: 4px; border-left: 3px solid transparent;
@@ -44,6 +45,7 @@
   .module-shell-group { display: flex; align-items: center; gap: 0.25rem; overflow-x: auto; padding: 0.25rem 0.5rem; }
   .module-shell-group + .module-shell-group { padding-top: 0.25rem; }
   .module-shell-group-title { flex-shrink: 0; min-width: 6.5rem; }
+  .module-shell-subtitle { flex-shrink: 0; padding: 0 0.25rem 0 0.75rem; white-space: nowrap; }
   .module-shell-item { width: auto; flex-shrink: 0; white-space: nowrap; border-left: none; border-bottom: 2px solid transparent; }
   .module-shell-item.active { border-bottom-color: var(--odoo-purple); }
   .module-shell-main:not(.flush) { padding: 12px 16px; }

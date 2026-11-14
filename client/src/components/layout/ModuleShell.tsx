@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from 'react';
+import { Fragment, useCallback, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ExternalLink, type LucideIcon } from 'lucide-react';
 import './module-shell.css';
@@ -40,6 +40,11 @@ export interface ModuleView<K extends string = string> {
   external?: boolean;
   /** Pastille de compteur (pieces a traiter). */
   badge?: number;
+  /**
+   * Sous-groupe dans la rubrique (Ventes : Caisse, Ventes pro, Livraison…) : un intertitre
+   * s'affiche quand il change d'une entree a la suivante, dans l'ordre du tableau `views`.
+   */
+  group?: string;
 }
 
 /**
@@ -100,17 +105,21 @@ export function ModuleShell<K extends string>({ title, views, current, onSelect,
             return (
               <nav key={section.key} className="module-shell-group" aria-label={section.label}>
                 {section.key !== 'dashboard' && <div className="module-shell-group-title">{section.label}</div>}
-                {items.map(v => {
+                {items.map((v, i) => {
                   const Icon = v.icon;
                   const active = v.key === current?.key;
+                  const groupTitle = v.group && v.group !== items[i - 1]?.group
+                    ? <div className="module-shell-subtitle">{v.group}</div> : null;
                   return (
-                    <button key={v.key} type="button" onClick={() => (v.href ? navigate(v.href) : onSelect(v.key))}
+                    <Fragment key={v.key}>{groupTitle}
+                    <button type="button" onClick={() => (v.href ? navigate(v.href) : onSelect(v.key))}
                       className={`module-shell-item${active ? ' active' : ''}`}
                       aria-current={active ? 'page' : undefined}>
                       <Icon size={15} /> {v.label}
                       {!!v.badge && <span className="module-shell-badge">{v.badge > 99 ? '99+' : v.badge}</span>}
                       {v.external && <ExternalLink size={12} className="module-shell-external" />}
                     </button>
+                    </Fragment>
                   );
                 })}
               </nav>

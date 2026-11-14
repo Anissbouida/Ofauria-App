@@ -111,12 +111,12 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 /** Écrans de la page Ventes, repris par la barre latérale du module (SalesLayout). */
 const MAIN_TAB_KEYS = ['sales', 'unpaid', 'returns', 'sessions', 'invoices', 'subscriptions', 'routes'] as const;
 export const SALES_MAIN_TABS: { key: typeof MAIN_TAB_KEYS[number]; label: string }[] = [
-  { key: 'sales', label: 'Ventes' },
+  { key: 'sales', label: 'Tickets' },
   // Créances clients : balance âgée (tickets sur compte client + factures ouvertes).
-  { key: 'unpaid', label: 'Créances clients' },
-  { key: 'returns', label: 'Retours & Échanges' },
-  { key: 'sessions', label: 'Périodes de travail' },
-  { key: 'invoices', label: 'Factures émises' },
+  { key: 'unpaid', label: 'Créances' },
+  { key: 'returns', label: 'Retours et échanges' },
+  { key: 'sessions', label: 'Sessions de caisse' },
+  { key: 'invoices', label: 'Factures' },
   { key: 'subscriptions', label: 'Abonnements' },
   { key: 'routes', label: 'Tournées' },
 ];

@@ -13,12 +13,12 @@ export type OrderStatus = (typeof ORDER_STATUS)[keyof typeof ORDER_STATUS];
 
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   pending: 'Brouillon',
-  confirmed: 'Confirmee',
+  confirmed: 'Confirmée',
   in_production: 'En production',
-  ready: 'Prete',
-  partially_delivered: 'Livree en partie',
-  completed: 'Terminee',
-  cancelled: 'Annulee',
+  ready: 'Prête',
+  partially_delivered: 'Livrée en partie',
+  completed: 'Terminée',
+  cancelled: 'Annulée',
 };
 
 export const ORDER_TYPES = {

@@ -1,0 +1,37 @@
+/*
+ * Module Ventes — refonte (maquette 2026-11-13), gabarit Liste : pastilles-filtres avec
+ * compteurs, sélection multiple + barre d'actions, bascule Liste / Kanban. Les briques
+ * communes (prj-toolbar, prj-chip, prj-views, prj-panel, prj-board…) viennent de projects.css.
+ */
+.sal-page { padding: 16px 20px 28px; }
+
+.prj-chip.sal-late { color: var(--prj-red); border-color: color-mix(in srgb, var(--prj-red) 35%, var(--odoo-border)); }
+.prj-chip.sal-late.active { background: color-mix(in srgb, var(--prj-red) 10%, transparent); border-color: var(--prj-red); color: var(--prj-red); }
+.prj-chip.empty { color: var(--odoo-text-muted); }
+
+.sal-bulk { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px 8px 14px; border-radius: 10px; background: var(--theme-text-strong, #0F172A); color: #fff; }
+.sal-bulk strong { margin-right: auto; font-size: 0.875rem; font-weight: 600; }
+.sal-bulk button { height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, .3); background: transparent; color: #fff; font: inherit; font-size: 0.8125rem; cursor: pointer; }
+.sal-bulk button:hover:not(:disabled) { background: rgba(255, 255, 255, .12); }
+.sal-bulk button:disabled { opacity: .55; cursor: default; }
+.sal-bulk button.danger { color: #FCA5A5; }
+
+.sal-panel { overflow: hidden; }
+.sal-panel .odoo-table { margin: 0; }
+.sal-panel .odoo-table tbody tr { cursor: pointer; }
+.sal-panel .odoo-table tbody tr.selected td { background: color-mix(in srgb, var(--odoo-purple) 7%, transparent); }
+.sal-check { width: 18px; height: 18px; accent-color: var(--odoo-purple); cursor: pointer; margin: 0; vertical-align: middle; }
+.sal-sub { display: block; font-size: 0.75rem; color: var(--odoo-text-muted); margin-top: 2px; }
+.sal-late-txt { display: block; font-size: 0.75rem; font-weight: 600; color: var(--prj-red); margin-top: 2px; }
+.sal-num { font-family: ui-monospace, Menlo, monospace; font-weight: 600; font-size: 0.8125rem; }
+.sal-next { height: 30px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--odoo-border); background: var(--theme-bg-card); color: var(--odoo-text); font: inherit; font-size: 0.8125rem; font-weight: 500; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.sal-next:hover:not(:disabled) { border-color: var(--odoo-purple); color: var(--odoo-purple); }
+.sal-next:disabled { opacity: .55; cursor: default; }
+.sal-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.sal-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 14px; font-size: 0.8125rem; color: var(--odoo-text-muted); border-top: 1px solid var(--odoo-border); }
+.sal-foot strong { color: var(--odoo-text); font-variant-numeric: tabular-nums; }
+.sal-empty { padding: 40px 16px; text-align: center; display: grid; gap: 8px; justify-items: center; color: var(--odoo-text-muted); font-size: 0.8125rem; }
+.sal-empty strong { color: var(--odoo-text); font-size: 0.875rem; }
+
+.sal-lane-sum { margin-left: auto; font-variant-numeric: tabular-nums; }
+.prj-task .sal-amount { font-weight: 600; color: var(--odoo-text); font-variant-numeric: tabular-nums; }

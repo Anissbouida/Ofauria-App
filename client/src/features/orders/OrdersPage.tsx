@@ -2,23 +2,27 @@ import { useState, useMemo, type CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ordersApi } from '../../api/orders.api';
 import { ORDER_STATUS_LABELS } from '@ofauria/shared';
-import { format, startOfDay } from 'date-fns';
+import { format, startOfDay, differenceInCalendarDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../utils/api-error';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { StagePipeline, StageProgress, SelectFilter, type StageDef, type StageStat } from '../../components/purchasing/ProcessBoard';
+import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
+import { StageProgress, SelectFilter, type StageDef } from '../../components/purchasing/ProcessBoard';
 import {
   ClipboardList, Plus, Phone, Pencil, Search, Eye, X,
   Clock, CheckCircle2, Factory, Truck, Ban, CalendarDays,
   Banknote, CreditCard, Package, PackageCheck, FileText,
-  AlertTriangle, Trash2, Loader2, Tag, User, Building2, CalendarClock, Printer,
+  AlertTriangle, Trash2, Loader2, Tag, User, Building2, CalendarClock, Printer, List, SquareKanban,
+  type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import OrderFormModal from '../../components/orders/OrderFormModal';
 import { deliveryNotesApi } from '../../api/delivery-notes.api';
+import '../projects/projects.css';
+import '../sales/sales.css';
 
 /* ═══════════════════════ Référentiel d'affichage ═══════════════════════ */
 
@@ -43,10 +47,6 @@ const STATUS_TAG: Record<string, string> = {
   partially_delivered: 'odoo-tag-orange',
   completed: 'odoo-tag-purple',
   cancelled: 'odoo-tag-red',
-};
-const STATUS_DOT: Record<string, string> = {
-  pending: 'neutral', confirmed: 'warning', in_production: 'warning',
-  ready: 'ok', partially_delivered: 'warning', completed: 'ok', cancelled: 'danger',
 };
 
 const TYPE_LABELS: Record<string, string> = { custom: 'Sur mesure', online: 'En ligne', event: 'Événement', staff: 'Personnel' };
@@ -90,6 +90,24 @@ function isLate(o: OrderRow, today: Date) {
   return startOfDay(new Date(o.pickup_date as string)) < today;
 }
 
+/** Jours de retard sur la date de retrait. */
+function daysLate(o: OrderRow, today: Date) {
+  return o.pickup_date ? differenceInCalendarDays(today, startOfDay(new Date(o.pickup_date as string))) : 0;
+}
+const CAN_CANCEL = new Set(['pending', 'confirmed', 'in_production']);
+/** Étape suivante sans saisie (la livraison, elle, ouvre sa fenêtre). */
+const NEXT_STEP: Record<string, { to: string; label: string; icon: LucideIcon }> = {
+  pending: { to: 'confirmed', label: 'Confirmer', icon: CheckCircle2 },
+  confirmed: { to: 'in_production', label: 'Lancer', icon: Factory },
+  in_production: { to: 'ready', label: 'Marquer prête', icon: PackageCheck },
+};
+const BULK_STEPS = [
+  { from: 'pending', to: 'confirmed', label: 'Confirmer' },
+  { from: 'confirmed', to: 'in_production', label: 'Lancer en production' },
+  { from: 'in_production', to: 'ready', label: 'Marquer prêtes' },
+];
+const LANE_TONE: Record<string, string> = { pending: 'grey', ready: 'green', partially_delivered: 'orange' };
+
 /* Styles partagés des fenêtres (mêmes valeurs que les modales Achats). */
 const modalPanelStyle: CSSProperties = {
   backgroundColor: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)',
@@ -123,6 +141,9 @@ export default function OrdersPage() {
   const [viewingOrder, setViewingOrder] = useState<OrderRow | null>(null);
   const [deliverOrder, setDeliverOrder] = useState<OrderRow | null>(null);
   const [prepayOrder, setPrepayOrder] = useState<OrderRow | null>(null);
+  const [view, setView] = useState<'list' | 'kanban'>('list');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [dragOver, setDragOver] = useState<string | null>(null);
   // Les bons de livraison ont leur propre écran (/delivery-notes), séparé des commandes
   // comme dans les ERP standards : cette page ne gère plus que les commandes clients.
 
@@ -154,22 +175,6 @@ export default function OrdersPage() {
   });
 
   const today = startOfDay(new Date());
-
-  /* ── Compteurs du pipeline ── */
-  const stageStats = useMemo(() => {
-    const stats: Record<string, StageStat> = {};
-    for (const key of STAGE_KEYS) stats[key] = { count: 0, sub: '', late: 0 };
-    const totals: Record<string, number> = {};
-    for (const o of orders) {
-      const s = o.status as string;
-      if (!stats[s]) continue;
-      stats[s].count += 1;
-      totals[s] = (totals[s] || 0) + num(o.total);
-      if (isLate(o, today)) stats[s].late = (stats[s].late || 0) + 1;
-    }
-    for (const key of STAGE_KEYS) stats[key].sub = `${n(totals[key] || 0)} DH`;
-    return stats;
-  }, [orders, today]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { '': orders.length };
@@ -218,12 +223,94 @@ export default function OrdersPage() {
     }
   };
 
-  const chipStyle = (active: boolean): CSSProperties => ({
-    display: 'inline-flex', alignItems: 'center', gap: 4,
-    backgroundColor: active ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
-    color: active ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
-    fontWeight: active ? 600 : 400,
+  /* ── Sélection multiple et actions groupées ── */
+  const selectedOrders = orders.filter(o => selected.has(o.id as string));
+  const toggleOne = (id: string) => setSelected(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
   });
+  const allShownSelected = filteredOrders.length > 0 && filteredOrders.every(o => selected.has(o.id as string));
+  const toggleAllShown = () => setSelected(prev => {
+    const next = new Set(prev);
+    for (const o of filteredOrders) { if (allShownSelected) next.delete(o.id as string); else next.add(o.id as string); }
+    return next;
+  });
+
+  const bulkMutation = useMutation({
+    mutationFn: async ({ ids, status }: { ids: string[]; status: string }) => {
+      const res = await Promise.allSettled(ids.map(id => ordersApi.updateStatus(id, status)));
+      return {
+        ok: res.filter(r => r.status === 'fulfilled') as PromiseFulfilledResult<unknown>[],
+        failed: res.filter(r => r.status === 'rejected') as PromiseRejectedResult[],
+      };
+    },
+    onSuccess: ({ ok, failed }) => {
+      invalidate(); setSelected(new Set());
+      if (ok.length) notify.success(`${ok.length} commande${ok.length > 1 ? 's' : ''} mise${ok.length > 1 ? 's' : ''} à jour`);
+      for (const r of ok) for (const w of (r.value as { plan_warnings?: string[] } | undefined)?.plan_warnings ?? []) notify.warning(w);
+      if (failed.length) notify.error(`${failed.length} commande${failed.length > 1 ? 's refusées' : ' refusée'} : ${getApiErrorMessage(failed[0].reason, 'erreur')}`);
+    },
+  });
+  const bulkCancel = async () => {
+    const targets = selectedOrders.filter(o => CAN_CANCEL.has(o.status as string));
+    const withAdvance = targets.filter(o => num(o.advance_amount) > 0).length;
+    const msg = `Annuler ${targets.length} commande${targets.length > 1 ? 's' : ''} ?`
+      + (withAdvance ? ` Les avances versées (${withAdvance} commande${withAdvance > 1 ? 's' : ''}) restent acquises : elles ne sont pas remboursées.` : '');
+    if (await confirm(msg, { title: 'Annuler les commandes', confirmLabel: 'Annuler les commandes', cancelLabel: 'Retour', danger: true })) {
+      bulkMutation.mutate({ ids: targets.map(o => o.id as string), status: 'cancelled' });
+    }
+  };
+
+  /* ── Actions d'une ligne : l'étape suivante en bouton, le reste dans « ⋯ » ── */
+  const busy = updateStatusMutation.isPending || deleteMutation.isPending || bulkMutation.isPending;
+  const nextAction = (o: OrderRow): { label: string; icon: LucideIcon; run: () => void } | null => {
+    const s = o.status as string;
+    const step = NEXT_STEP[s];
+    if (step) return { label: step.label, icon: step.icon, run: () => updateStatusMutation.mutate({ id: o.id as string, status: step.to }) };
+    if (s === 'ready') return { label: isPro(o) ? 'Livrer' : 'Remettre', icon: Truck, run: () => setDeliverOrder(o) };
+    if (s === 'partially_delivered' && isPro(o)) return { label: 'Livrer le reliquat', icon: Truck, run: () => setDeliverOrder(o) };
+    return null;
+  };
+  const menuItems = (o: OrderRow): RowMenuItem[] => {
+    const s = o.status as string;
+    const items: RowMenuItem[] = [{ label: 'Voir le détail', icon: Eye, onSelect: () => setViewingOrder(o) }];
+    if (s !== 'completed' && s !== 'cancelled' && s !== 'partially_delivered') items.push({ label: 'Modifier', icon: Pencil, onSelect: () => setEditingOrder(o) });
+    if (CAN_RESCHEDULE.has(s)) items.push({ label: 'Reporter le retrait', icon: CalendarClock, onSelect: () => setRescheduleOrder(o) });
+    if (isPro(o) && isDirection && s !== 'cancelled' && s !== 'completed') items.push({ label: "Facture d'acompte", icon: Banknote, onSelect: () => setPrepayOrder(o) });
+    if (CAN_CANCEL.has(s)) items.push({ label: 'Annuler la commande', icon: Ban, danger: true, disabled: busy, onSelect: () => cancelOrder(o) });
+    if (s === 'cancelled') items.push({ label: 'Supprimer définitivement', icon: Trash2, danger: true, disabled: busy, onSelect: () => removeOrder(o) });
+    return items;
+  };
+
+  /* ── Kanban : glisser vers l'étape suivante ; la livraison passe par sa fenêtre ── */
+  const dropOn = (stage: string, id: string) => {
+    const o = orders.find(x => x.id === id);
+    if (!o || o.status === stage) return;
+    const from = o.status as string;
+    if (NEXT_STEP[from]?.to === stage) { updateStatusMutation.mutate({ id, status: stage }); return; }
+    if (stage === 'partially_delivered' && (from === 'ready') && isPro(o)) { setDeliverOrder(o); return; }
+    const label = (k: string) => STAGES.find(st => st.key === k)?.label ?? k;
+    notify.warning(`« ${label(from)} » → « ${label(stage)} » : utilisez l'action de la commande (le passage se fait une étape à la fois).`);
+  };
+
+  const paymentCell = (o: OrderRow) => {
+    const status = o.status as string;
+    const totalAmt = num(o.total);
+    const advanceAmt = num(o.advance_amount);
+    const remaining = Math.max(0, totalAmt - advanceAmt);
+    if (isPro(o)) {
+      const b = proBilling(o);
+      return <><span className={`odoo-tag ${b.tag}`}>{b.label}</span>{b.doc && <span className="sal-sub" style={{ fontFamily: 'ui-monospace, monospace' }}>{b.doc}</span>}</>;
+    }
+    if (status === 'cancelled') return <span className="sal-sub">{advanceAmt > 0 ? `avance de ${n(advanceAmt)} DH conservée` : '—'}</span>;
+    if (status === 'completed') return <span className="odoo-tag odoo-tag-green">Soldée</span>;
+    if (advanceAmt > 0) return <><span className="odoo-tag odoo-tag-orange">Avance {n(advanceAmt)}</span><span className="sal-sub">reste {n(remaining)} DH</span></>;
+    return <span className="sal-sub">au retrait</span>;
+  };
+
+  const openTotal = orders.filter(o => OPEN_STATUSES.has(o.status as string)).reduce((s, o) => s + num(o.total), 0);
+  const kanbanStages = STAGES.filter(st => st.key !== 'completed');
 
   return (
     <div className="odoo-scope" style={{ minHeight: '100%' }}>
@@ -231,9 +318,12 @@ export default function OrdersPage() {
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
           <ClipboardList size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Commandes</span>
+          <span>Ventes</span>
           <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">Commandes clients</span>
+          <span className="odoo-breadcrumb-current">Commandes</span>
+          <span style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+            {openCount} en cours · {n(openTotal)} DH
+          </span>
         </div>
         <div style={{ flex: 1 }} />
         <button onClick={() => setShowForm(true)} className="odoo-btn-primary">
@@ -241,238 +331,197 @@ export default function OrdersPage() {
         </button>
       </div>
 
-      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Alerte retards */}
-        {lateOrders.length > 0 && (
-          <StatusBanner tone="danger" icon={AlertTriangle}
-            title={`${lateOrders.length} commande${lateOrders.length > 1 ? 's' : ''} en retard de retrait`}
-            actions={
-              <button type="button" className={lateOnly ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
-                onClick={() => { setLateOnly(v => !v); setStatusFilter(''); }}>
-                {lateOnly ? 'Voir toutes les commandes' : 'Voir les retards'}
+      <div className="prj sal-page">
+        <div className="prj-toolbar">
+          <label className="prj-search">
+            <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
+            <input type="search" aria-label="Rechercher une commande" placeholder="N° de commande, client ou téléphone…"
+              value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+          </label>
+          {typeOptions.length > 1 && (
+            <SelectFilter label="Type" icon={Tag} value={typeFilter} onChange={setTypeFilter} options={typeOptions} allLabel="Tous les types" />
+          )}
+          <div className="prj-views" role="group" aria-label="Affichage">
+            <button type="button" className={view === 'list' ? 'active' : ''} aria-pressed={view === 'list'} onClick={() => setView('list')}><List size={14} /> Liste</button>
+            <button type="button" className={view === 'kanban' ? 'active' : ''} aria-pressed={view === 'kanban'} onClick={() => setView('kanban')}><SquareKanban size={14} /> Kanban</button>
+          </div>
+        </div>
+
+        <div className="prj-chips" role="group" aria-label="Filtrer par étape">
+          {FILTER_CHIPS.flatMap((chip) => {
+            const active = statusFilter === chip.key && !lateOnly;
+            const count = counts[chip.key] || 0;
+            const btn = (
+              <button key={chip.key || 'all'} type="button" aria-pressed={active}
+                className={`prj-chip${active ? ' active' : ''}${count ? '' : ' empty'}`}
+                onClick={() => { setLateOnly(false); setStatusFilter(chip.key); }}>
+                {chip.label} <small>{count}</small>
               </button>
-            }>
-            Date de retrait dépassée sans livraison : à livrer, replanifier ou annuler.
-          </StatusBanner>
-        )}
+            );
+            if (chip.key !== '' || (!lateOrders.length && !lateOnly)) return [btn];
+            return [btn, (
+              <button key="late" type="button" aria-pressed={lateOnly} className={`prj-chip sal-late${lateOnly ? ' active' : ''}`}
+                onClick={() => { setLateOnly(v => !v); setStatusFilter(''); }}>
+                <AlertTriangle size={13} /> En retard <small>{lateOrders.length}</small>
+              </button>
+            )];
+          })}
+        </div>
 
-        {/* Pipeline */}
-        <StagePipeline
-          title="Suivi des commandes"
-          summary={`${openCount} en cours · ${counts.completed || 0} terminée${(counts.completed || 0) > 1 ? 's' : ''} · ${counts.cancelled || 0} annulée${(counts.cancelled || 0) > 1 ? 's' : ''}`}
-          stages={STAGES}
-          stats={stageStats}
-          isActive={(k) => statusFilter === k && !lateOnly}
-          onPick={(k) => { setLateOnly(false); setStatusFilter(statusFilter === k ? '' : k); }}
-        />
-
-        {/* Liste */}
-        <div style={sectionStyle}>
-          <div className="odoo-search-panel" style={{ flexWrap: 'wrap' }}>
-            {FILTER_CHIPS.map((chip) => {
-              const Icon = chip.icon;
-              const active = statusFilter === chip.key && !lateOnly;
-              const count = counts[chip.key] || 0;
+        {selectedOrders.length > 0 && (
+          <div className="sal-bulk" role="region" aria-label="Actions sur la sélection">
+            <strong>
+              {selectedOrders.length} commande{selectedOrders.length > 1 ? 's sélectionnées' : ' sélectionnée'} · {n(selectedOrders.reduce((s, o) => s + num(o.total), 0))} DH
+            </strong>
+            {BULK_STEPS.map(b => {
+              const eligible = selectedOrders.filter(o => o.status === b.from).map(o => o.id as string);
+              if (!eligible.length) return null;
               return (
-                <button key={chip.key} onClick={() => { setLateOnly(false); setStatusFilter(chip.key); }}
-                  className="odoo-filter-dropdown" style={chipStyle(active)}>
-                  <Icon size={11} /> {chip.label}
-                  {count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{count}</span>}
+                <button key={b.to} type="button" disabled={busy} onClick={() => bulkMutation.mutate({ ids: eligible, status: b.to })}>
+                  {b.label} ({eligible.length})
                 </button>
               );
             })}
-            {lateOnly && (
-              <span className="odoo-filter-chip">
-                En retard
-                <span className="odoo-filter-chip-remove" onClick={() => setLateOnly(false)} role="button" aria-label="Retirer le filtre">×</span>
-              </span>
+            {selectedOrders.some(o => CAN_CANCEL.has(o.status as string)) && (
+              <button type="button" className="danger" disabled={busy} onClick={bulkCancel}>Annuler</button>
             )}
+            <button type="button" onClick={() => setSelected(new Set())}>Désélectionner</button>
           </div>
+        )}
 
-          <div className="odoo-search-panel">
-            <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-            <input type="text" placeholder="Rechercher par n°, client ou téléphone..."
-              value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="odoo-search-input" />
-            {typeOptions.length > 1 && (
-              <SelectFilter label="Type" icon={Tag} value={typeFilter} onChange={setTypeFilter} options={typeOptions} allLabel="Tous les types" />
-            )}
+        {isLoading ? (
+          <div className="prj-panel sal-empty">
+            <Loader2 className="animate-spin" size={20} />
+            <span>Chargement des commandes…</span>
           </div>
-
-          {isLoading ? (
-            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-              <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
-              <p style={{ fontSize: '0.8125rem' }}>Chargement des commandes...</p>
-            </div>
-          ) : filteredOrders.length === 0 ? (
-            <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-              <ClipboardList size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-              <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Aucune commande</p>
-              <p style={{ fontSize: '0.6875rem', marginTop: 2 }}>
-                {hasFilters ? 'Aucun résultat pour ces filtres' : 'Créez votre première commande'}
-              </p>
-              {!hasFilters && (
-                <button onClick={() => setShowForm(true)} className="odoo-btn-primary" style={{ marginTop: 12 }}>
-                  <Plus size={13} /> Créer une commande
-                </button>
-              )}
-            </div>
-          ) : (
-            <>
-              <div style={{ overflowX: 'auto' }}>
-                <table className="odoo-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: 24 }}></th>
-                      <th>N° commande</th>
-                      <th>Client</th>
-                      <th>Type</th>
-                      <th>Statut</th>
-                      <th>Retrait</th>
-                      <th>Avancement</th>
-                      <th style={{ textAlign: 'right' }}>Total</th>
-                      <th style={{ textAlign: 'right' }}>Règlement</th>
-                      <th style={{ textAlign: 'right', width: 150 }}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredOrders.map((o) => {
-                      const status = o.status as string;
-                      const totalAmt = num(o.total);
-                      const advanceAmt = num(o.advance_amount);
-                      const remaining = Math.max(0, totalAmt - advanceAmt);
-                      const stageIdx = STAGE_KEYS.indexOf(status);
-                      const late = isLate(o, today);
-                      const busy = updateStatusMutation.isPending || deleteMutation.isPending;
-                      return (
-                        <tr key={o.id as string} onClick={() => setViewingOrder(o)} className={late ? 'row-danger' : undefined}>
-                          <td><span className={`odoo-status-dot ${STATUS_DOT[status] || 'neutral'}`} /></td>
-                          <td style={{ whiteSpace: 'nowrap' }}>
-                            <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{o.order_number as string}</span>
-                          </td>
-                          <td style={{ whiteSpace: 'nowrap' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+        ) : view === 'kanban' ? (
+          <div className="prj-board">
+            {kanbanStages.map(st => {
+              const cards = filteredOrders.filter(o => o.status === st.key);
+              const sum = cards.reduce((s, o) => s + num(o.total), 0);
+              return (
+                <section key={st.key} aria-label={st.label} className={`prj-lane${dragOver === st.key ? ' over' : ''}`}
+                  onDragOver={e => { e.preventDefault(); setDragOver(st.key); }}
+                  onDragLeave={() => setDragOver(d => (d === st.key ? null : d))}
+                  onDrop={e => { e.preventDefault(); setDragOver(null); dropOn(st.key, e.dataTransfer.getData('text/plain')); }}>
+                  <div className="prj-lane-head">
+                    <span className={`prj-dot ${LANE_TONE[st.key] ?? ''}`} /><strong>{st.label}</strong>
+                    <small className="sal-lane-sum">{cards.length} · {n(sum)} DH</small>
+                  </div>
+                  {!cards.length && <div className="prj-lane-empty">Aucune commande</div>}
+                  {cards.map(o => {
+                    const late = isLate(o, today);
+                    return (
+                      <button key={o.id as string} type="button" className="prj-task" draggable
+                        onDragStart={e => { e.dataTransfer.setData('text/plain', o.id as string); e.dataTransfer.effectAllowed = 'move'; }}
+                        onClick={() => setViewingOrder(o)} title="Cliquer pour ouvrir · glisser vers l'étape suivante">
+                        <span className="prj-card-num">{o.order_number as string}</span>
+                        <span className="prj-task-title">{customerName(o)}</span>
+                        <span className="prj-task-meta">
+                          <span style={{ flex: 1 }}>Retrait <span className={late ? 'late' : ''}>{fmtDate(o.pickup_date, 'd MMM')}</span>{late ? ` · ${daysLate(o, today)} j de retard` : ''}</span>
+                          <span className="sal-amount">{n(num(o.total))} DH</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </section>
+              );
+            })}
+          </div>
+        ) : (
+          <section className="prj-panel sal-panel">
+            {filteredOrders.length === 0 ? (
+              <div className="sal-empty">
+                <ClipboardList size={28} style={{ opacity: 0.4 }} />
+                <strong>{hasFilters ? 'Aucune commande pour ces filtres' : 'Aucune commande'}</strong>
+                <span>{hasFilters ? 'Changez d\'étape ou effacez la recherche.' : 'Créez votre première commande.'}</span>
+                {hasFilters ? (
+                  <button type="button" className="odoo-btn-secondary" onClick={() => { setStatusFilter(''); setTypeFilter(''); setLateOnly(false); setSearchQuery(''); }}>Effacer les filtres</button>
+                ) : (
+                  <button type="button" onClick={() => setShowForm(true)} className="odoo-btn-primary"><Plus size={13} /> Créer une commande</button>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="prj-scroll">
+                  <table className="odoo-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 36 }}>
+                          <input type="checkbox" className="sal-check" checked={allShownSelected} onChange={toggleAllShown} aria-label="Sélectionner toutes les commandes affichées" />
+                        </th>
+                        <th>N° commande</th>
+                        <th>Client</th>
+                        <th>Retrait</th>
+                        <th>Avancement</th>
+                        <th>Statut</th>
+                        <th style={{ textAlign: 'right' }}>Total TTC</th>
+                        <th>Règlement</th>
+                        <th style={{ textAlign: 'right' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredOrders.map((o) => {
+                        const id = o.id as string;
+                        const status = o.status as string;
+                        const late = isLate(o, today);
+                        const isSel = selected.has(id);
+                        const next = nextAction(o);
+                        return (
+                          <tr key={id} onClick={() => setViewingOrder(o)} className={isSel ? 'selected' : undefined}>
+                            <td onClick={e => e.stopPropagation()}>
+                              <input type="checkbox" className="sal-check" checked={isSel} onChange={() => toggleOne(id)} aria-label={`Sélectionner ${o.order_number as string}`} />
+                            </td>
+                            <td style={{ whiteSpace: 'nowrap' }}><span className="sal-num">{o.order_number as string}</span></td>
+                            <td>
                               <span style={{ fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                {isPro(o) && <Building2 size={11} style={{ color: '#1e7e4f' }} aria-label="Professionnel" />}
+                                {isPro(o) && <Building2 size={12} style={{ color: 'var(--theme-text-muted)' }} aria-label="Professionnel" />}
                                 {customerName(o)}
                               </span>
-                              {o.customer_phone && (
-                                <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                                  <Phone size={9} /> {o.customer_phone as string}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td><span className={`odoo-tag ${TYPE_TAG[o.type as string] || 'odoo-tag-grey'}`}>{TYPE_LABELS[o.type as string] || (o.type as string) || '—'}</span></td>
-                          <td><span className={`odoo-tag ${STATUS_TAG[status] || 'odoo-tag-grey'}`}>{ORDER_STATUS_LABELS[status as keyof typeof ORDER_STATUS_LABELS] || status}</span></td>
-                          <td style={{ color: late ? '#721c24' : 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              <CalendarDays size={11} /> {fmtDate(o.pickup_date)}
-                              {late && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 4 }}>En retard</span>}
-                            </span>
-                          </td>
-                          <td style={{ minWidth: 120 }}>
-                            {status === 'cancelled' ? (
-                              <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                <Ban size={11} /> {advanceAmt > 0 ? 'Annulée — avance conservée' : 'Annulée'}
+                              <span className="sal-sub">
+                                {isPro(o) ? 'Professionnel' : 'Particulier'}{o.type && TYPE_LABELS[o.type as string] ? ` · ${TYPE_LABELS[o.type as string]}` : ''}
+                                {o.customer_phone ? ` · ${o.customer_phone as string}` : ''}
                               </span>
-                            ) : (
-                              <StageProgress count={STAGES.length - 1} current={stageIdx} done={status === 'completed'} late={late} />
-                            )}
-                          </td>
-                          <td style={{ textAlign: 'right' }}>
-                            <span style={{ fontWeight: 700 }}>{n(totalAmt)}</span>
-                            <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
-                          </td>
-                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                            {isPro(o) ? (() => {
-                              const b = proBilling(o);
-                              return (
-                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                                  <span className={`odoo-tag ${b.tag}`}>{b.label}</span>
-                                  {b.doc && <span style={{ fontSize: '0.6875rem', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>{b.doc}</span>}
-                                </div>
-                              );
-                            })() : advanceAmt > 0 ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                                <span style={{ color: '#155724', fontWeight: 600 }}>{n(advanceAmt)} DH</span>
-                                <span style={{ fontSize: '0.6875rem', color: remaining > 0 && status !== 'completed' ? '#b85d1a' : 'var(--theme-text-muted)' }}>
-                                  {status === 'completed' ? 'soldée' : `reste ${n(remaining)} DH`}
-                                </span>
+                            </td>
+                            <td style={{ whiteSpace: 'nowrap' }}>
+                              {fmtDate(o.pickup_date, 'd MMM yyyy')}
+                              {late && <span className="sal-late-txt">en retard de {daysLate(o, today)} j</span>}
+                            </td>
+                            <td style={{ minWidth: 120 }}>
+                              {status === 'cancelled'
+                                ? <span className="sal-sub" style={{ margin: 0 }}>—</span>
+                                : <StageProgress count={STAGES.length - 1} current={STAGE_KEYS.indexOf(status)} done={status === 'completed'} late={late} />}
+                            </td>
+                            <td><span className={`odoo-tag ${STATUS_TAG[status] || 'odoo-tag-grey'}`}>{ORDER_STATUS_LABELS[status as keyof typeof ORDER_STATUS_LABELS] || status}</span></td>
+                            <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                              <strong>{n(num(o.total))}</strong>
+                              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginLeft: 3 }}>DH</span>
+                            </td>
+                            <td style={{ whiteSpace: 'nowrap' }}>{paymentCell(o)}</td>
+                            <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                              <div className="sal-actions">
+                                {next && (
+                                  <button type="button" className="sal-next" disabled={busy} onClick={next.run}>
+                                    <next.icon size={13} /> {next.label}
+                                  </button>
+                                )}
+                                <RowMenu items={menuItems(o)} />
                               </div>
-                            ) : (
-                              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>
-                                {status === 'completed' ? 'soldée' : 'aucune avance'}
-                              </span>
-                            )}
-                          </td>
-                          <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                            <div style={{ display: 'inline-flex', gap: 2 }}>
-                              {status === 'pending' && (
-                                <button onClick={() => updateStatusMutation.mutate({ id: o.id as string, status: 'confirmed' })} disabled={busy}
-                                  title="Confirmer la commande" className="odoo-pager-btn" style={{ color: '#1f6391' }}>
-                                  <CheckCircle2 size={13} />
-                                </button>
-                              )}
-                              {status === 'confirmed' && (
-                                <button onClick={() => updateStatusMutation.mutate({ id: o.id as string, status: 'in_production' })} disabled={busy}
-                                  title="Envoyer en production" className="odoo-pager-btn" style={{ color: '#b85d1a' }}>
-                                  <Factory size={13} />
-                                </button>
-                              )}
-                              {status === 'in_production' && (
-                                <button onClick={() => updateStatusMutation.mutate({ id: o.id as string, status: 'ready' })} disabled={busy}
-                                  title="Marquer prête pour le retrait" className="odoo-pager-btn" style={{ color: '#28a745' }}>
-                                  <PackageCheck size={13} />
-                                </button>
-                              )}
-                              {(status === 'ready' || (status === 'partially_delivered' && isPro(o))) && (
-                                <button onClick={() => setDeliverOrder(o)} title={isPro(o) ? 'Livrer sur bon de livraison' : 'Remettre contre le solde'} className="odoo-pager-btn" style={{ color: '#28a745' }}>
-                                  <Truck size={13} />
-                                </button>
-                              )}
-                              {isPro(o) && isDirection && status !== 'cancelled' && status !== 'completed' && (
-                                <button onClick={() => setPrepayOrder(o)} title="Facture d'acompte" className="odoo-pager-btn" style={{ color: '#1e7e4f' }}>
-                                  <Banknote size={13} />
-                                </button>
-                              )}
-                              {CAN_RESCHEDULE.has(status) && (
-                                <button onClick={() => setRescheduleOrder(o)} title="Reporter la date de retrait" className="odoo-pager-btn">
-                                  <CalendarClock size={13} />
-                                </button>
-                              )}
-                              <button onClick={() => setViewingOrder(o)} title="Voir le détail" className="odoo-pager-btn">
-                                <Eye size={13} />
-                              </button>
-                              {status !== 'completed' && status !== 'cancelled' && status !== 'partially_delivered' && (
-                                <button onClick={() => setEditingOrder(o)} title="Modifier" className="odoo-pager-btn">
-                                  <Pencil size={13} />
-                                </button>
-                              )}
-                              {(status === 'pending' || status === 'confirmed' || status === 'in_production') && (
-                                <button onClick={() => cancelOrder(o)} disabled={busy} title="Annuler la commande" className="odoo-pager-btn" style={{ color: '#dc3545' }}>
-                                  <Ban size={13} />
-                                </button>
-                              )}
-                              {status === 'cancelled' && (
-                                <button onClick={() => removeOrder(o)} disabled={busy} title="Supprimer définitivement" className="odoo-pager-btn" style={{ color: '#dc3545' }}>
-                                  <Trash2 size={13} />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', fontSize: '0.75rem', color: 'var(--theme-text-muted)', borderTop: '1px solid var(--odoo-border)' }}>
-                <span>{filteredOrders.length} commande{filteredOrders.length > 1 ? 's' : ''}{hasFilters ? ' (filtrées)' : ''}</span>
-                <span>Total <strong style={{ color: 'var(--theme-text-strong)' }}>{n(filteredTotal)} DH</strong></span>
-              </div>
-            </>
-          )}
-        </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="sal-foot">
+                  <span>{filteredOrders.length} commande{filteredOrders.length > 1 ? 's' : ''}{hasFilters ? ' (filtrées)' : ''}</span>
+                  <span>Total affiché <strong>{n(filteredTotal)} DH TTC</strong></span>
+                </div>
+              </>
+            )}
+          </section>
+        )}
       </div>
 
       {/* Formulaire création / édition */}

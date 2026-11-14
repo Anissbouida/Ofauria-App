@@ -1,0 +1,10 @@
+/* Menu « ⋯ » des lignes de liste (RowMenu). */
+.row-menu { position: relative; display: inline-flex; }
+.row-menu-trigger { width: 32px; height: 32px; border-radius: 6px; border: 1px solid transparent; background: transparent; color: var(--odoo-text-muted); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.row-menu-trigger:hover, .row-menu-trigger[aria-expanded="true"] { border-color: var(--odoo-border); background: var(--theme-bg-card); color: var(--odoo-text); }
+.row-menu-list { position: fixed; z-index: 60; min-width: 210px; padding: 4px; border: 1px solid var(--odoo-border); border-radius: 8px; background: var(--theme-bg-card); box-shadow: 0 8px 24px rgba(16, 24, 40, .12); display: grid; }
+.row-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; font: inherit; font-size: 0.8125rem; color: var(--odoo-text); text-align: left; cursor: pointer; white-space: nowrap; }
+.row-menu-item svg { color: var(--odoo-text-muted); flex: none; }
+.row-menu-item:hover:not(:disabled) { background: var(--odoo-bg-hover, color-mix(in srgb, var(--odoo-text-muted) 8%, transparent)); }
+.row-menu-item.danger, .row-menu-item.danger svg { color: #B42318; }
+.row-menu-item:disabled { opacity: .5; cursor: default; }
