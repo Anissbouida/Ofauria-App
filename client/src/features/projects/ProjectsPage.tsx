@@ -358,7 +358,7 @@ function TimeSheet() {
       {canEdit('projects') && (
         <section className="prj-panel">
           <div className="prj-panel-head">Saisir du temps</div>
-          <div className="prj-panel-body"><TimeEntryForm /></div>
+          <div className="prj-panel-body"><TimeEntryForm bare /></div>
         </section>
       )}
       {isLoading ? <Loading /> : !data?.rows.length ? (

@@ -324,7 +324,7 @@ export function TaskFormModal({ projectId, task, onClose }: { projectId: string;
 }
 
 /* ═══════════════════ Temps passé ═══════════════════ */
-export function TimeEntryForm({ projectId, tasks, onSaved, compact }: { projectId?: string; tasks?: Task[]; onSaved?: () => void; compact?: boolean }) {
+export function TimeEntryForm({ projectId, tasks, onSaved, compact, bare }: { projectId?: string; tasks?: Task[]; onSaved?: () => void; compact?: boolean; bare?: boolean }) {
   const qc = useQueryClient();
   const { data: people = [] } = useQuery({ queryKey: ['project-people'], queryFn: projectsApi.people });
   const { entries: activities } = useReferentiel('project_activity_types');
@@ -354,7 +354,7 @@ export function TimeEntryForm({ projectId, tasks, onSaved, compact }: { projectI
   const cols = compact ? '1fr 1fr 110px 90px 1fr auto' : '1.2fr 1fr 1fr 120px 90px 1fr auto';
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 8, alignItems: 'end', padding: 12, border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg-alt)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 8, alignItems: 'end', ...(bare ? {} : { padding: 12, border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg-alt)' }) }}>
       {!projectId && (
         <div>
           <span style={label}>Projet</span>
