@@ -12,13 +12,14 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { StageProgress, SelectFilter, type StageDef } from '../../components/purchasing/ProcessBoard';
 import {
-  ClipboardList, Plus, Phone, Pencil, Search, Eye, X,
+  ClipboardList, Plus, Pencil, Search, Eye, X,
   Clock, CheckCircle2, Factory, Truck, Ban, CalendarDays,
   Banknote, CreditCard, Package, PackageCheck, FileText,
-  AlertTriangle, Trash2, Loader2, Tag, User, Building2, CalendarClock, Printer, List, SquareKanban,
+  AlertTriangle, Trash2, Loader2, Tag, Building2, CalendarClock, Printer, List, SquareKanban,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import OrderFormModal from '../../components/orders/OrderFormModal';
 import { deliveryNotesApi } from '../../api/delivery-notes.api';
 import '../projects/projects.css';
@@ -39,7 +40,7 @@ const STAGES: StageDef[] = [
 ];
 const STAGE_KEYS = STAGES.map(s => s.key);
 
-const STATUS_TAG: Record<string, string> = {
+export const STATUS_TAG: Record<string, string> = {
   pending: 'odoo-tag-grey',
   confirmed: 'odoo-tag-blue',
   in_production: 'odoo-tag-yellow',
@@ -49,8 +50,7 @@ const STATUS_TAG: Record<string, string> = {
   cancelled: 'odoo-tag-red',
 };
 
-const TYPE_LABELS: Record<string, string> = { custom: 'Sur mesure', online: 'En ligne', event: 'Événement', staff: 'Personnel' };
-const TYPE_TAG: Record<string, string> = { custom: 'odoo-tag-purple', online: 'odoo-tag-blue', event: 'odoo-tag-orange', staff: 'odoo-tag-grey' };
+export const TYPE_LABELS: Record<string, string> = { custom: 'Sur mesure', online: 'En ligne', event: 'Événement', staff: 'Personnel' };
 
 const FILTER_CHIPS: Array<{ key: string; label: string; icon: typeof Clock }> = [
   { key: '', label: 'Toutes', icon: ClipboardList },
@@ -65,11 +65,11 @@ const FILTER_CHIPS: Array<{ key: string; label: string; icon: typeof Clock }> = 
 
 const OPEN_STATUSES = new Set(['pending', 'confirmed', 'in_production', 'ready', 'partially_delivered']);
 
-function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function num(v: unknown) { const x = parseFloat(String(v ?? '0')); return Number.isFinite(x) ? x : 0; }
+export function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+export function num(v: unknown) { const x = parseFloat(String(v ?? '0')); return Number.isFinite(x) ? x : 0; }
 /** Client professionnel (fiche non « particulier ») : processus direction, BL et facture (mig 354). */
-function isPro(o: OrderRow) { return !!o.customer_type && o.customer_type !== 'particulier'; }
-function customerName(o: OrderRow) {
+export function isPro(o: OrderRow) { return !!o.customer_type && o.customer_type !== 'particulier'; }
+export function customerName(o: OrderRow) {
   if (isPro(o) && o.company_name) return o.company_name as string;
   return o.customer_first_name ? `${o.customer_first_name} ${o.customer_last_name || ''}`.trim() : '—';
 }
@@ -80,23 +80,23 @@ function proBilling(o: OrderRow): { label: string; tag: string; doc?: string } {
   if (o.delivery_note_number) return { label: 'Livrée · à facturer', tag: 'odoo-tag-orange', doc: o.delivery_note_number as string };
   return { label: 'Sur facture', tag: 'odoo-tag-grey' };
 }
-const CAN_RESCHEDULE = new Set(['pending', 'confirmed', 'in_production', 'ready']);
-function fmtDate(d: unknown, pattern = 'dd MMM yyyy') {
+export const CAN_RESCHEDULE = new Set(['pending', 'confirmed', 'in_production', 'ready']);
+export function fmtDate(d: unknown, pattern = 'dd MMM yyyy') {
   return d ? format(new Date(String(d)), pattern, { locale: fr }) : '—';
 }
 /** Commande en cours dont la date de retrait est dépassée. */
-function isLate(o: OrderRow, today: Date) {
+export function isLate(o: OrderRow, today: Date) {
   if (!OPEN_STATUSES.has(o.status as string) || !o.pickup_date) return false;
   return startOfDay(new Date(o.pickup_date as string)) < today;
 }
 
 /** Jours de retard sur la date de retrait. */
-function daysLate(o: OrderRow, today: Date) {
+export function daysLate(o: OrderRow, today: Date) {
   return o.pickup_date ? differenceInCalendarDays(today, startOfDay(new Date(o.pickup_date as string))) : 0;
 }
-const CAN_CANCEL = new Set(['pending', 'confirmed', 'in_production']);
+export const CAN_CANCEL = new Set(['pending', 'confirmed', 'in_production']);
 /** Étape suivante sans saisie (la livraison, elle, ouvre sa fenêtre). */
-const NEXT_STEP: Record<string, { to: string; label: string; icon: LucideIcon }> = {
+export const NEXT_STEP: Record<string, { to: string; label: string; icon: LucideIcon }> = {
   pending: { to: 'confirmed', label: 'Confirmer', icon: CheckCircle2 },
   confirmed: { to: 'in_production', label: 'Lancer', icon: Factory },
   in_production: { to: 'ready', label: 'Marquer prête', icon: PackageCheck },
@@ -129,6 +129,7 @@ const sectionStyle: CSSProperties = { border: '1px solid var(--odoo-border)', bo
 export default function OrdersPage() {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isDirection = user?.role === 'admin' || user?.role === 'manager';
   const [rescheduleOrder, setRescheduleOrder] = useState<OrderRow | null>(null);
@@ -139,7 +140,6 @@ export default function OrdersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState<OrderRow | null>(null);
-  const [viewingOrder, setViewingOrder] = useState<OrderRow | null>(null);
   const [deliverOrder, setDeliverOrder] = useState<OrderRow | null>(null);
   const [prepayOrder, setPrepayOrder] = useState<OrderRow | null>(null);
   const [view, setView] = useState<'list' | 'kanban'>('list');
@@ -275,7 +275,7 @@ export default function OrdersPage() {
   };
   const menuItems = (o: OrderRow): RowMenuItem[] => {
     const s = o.status as string;
-    const items: RowMenuItem[] = [{ label: 'Voir le détail', icon: Eye, onSelect: () => setViewingOrder(o) }];
+    const items: RowMenuItem[] = [{ label: 'Voir le détail', icon: Eye, onSelect: () => navigate(`/orders/${o.id as string}`) }];
     if (s !== 'completed' && s !== 'cancelled' && s !== 'partially_delivered') items.push({ label: 'Modifier', icon: Pencil, onSelect: () => setEditingOrder(o) });
     if (CAN_RESCHEDULE.has(s)) items.push({ label: 'Reporter le retrait', icon: CalendarClock, onSelect: () => setRescheduleOrder(o) });
     if (isPro(o) && isDirection && s !== 'cancelled' && s !== 'completed') items.push({ label: "Facture d'acompte", icon: Banknote, onSelect: () => setPrepayOrder(o) });
@@ -415,7 +415,7 @@ export default function OrdersPage() {
                     return (
                       <button key={o.id as string} type="button" className="prj-task" draggable
                         onDragStart={e => { e.dataTransfer.setData('text/plain', o.id as string); e.dataTransfer.effectAllowed = 'move'; }}
-                        onClick={() => setViewingOrder(o)} title="Cliquer pour ouvrir · glisser vers l'étape suivante">
+                        onClick={() => navigate(`/orders/${o.id as string}`)} title="Cliquer pour ouvrir · glisser vers l'étape suivante">
                         <span className="prj-card-num">{o.order_number as string}</span>
                         <span className="prj-task-title">{customerName(o)}</span>
                         <span className="prj-task-meta">
@@ -469,7 +469,7 @@ export default function OrdersPage() {
                         const isSel = selected.has(id);
                         const next = nextAction(o);
                         return (
-                          <tr key={id} onClick={() => setViewingOrder(o)} className={isSel ? 'selected' : undefined}>
+                          <tr key={id} onClick={() => navigate(`/orders/${o.id as string}`)} className={isSel ? 'selected' : undefined}>
                             <td onClick={e => e.stopPropagation()}>
                               <input type="checkbox" className="sal-check" checked={isSel} onChange={() => toggleOne(id)} aria-label={`Sélectionner ${o.order_number as string}`} />
                             </td>
@@ -540,18 +540,6 @@ export default function OrdersPage() {
         />
       )}
 
-      {viewingOrder && (
-        <OrderDetailModal
-          order={viewingOrder}
-          late={isLate(viewingOrder, today)}
-          onClose={() => setViewingOrder(null)}
-          onEdit={(o) => { setViewingOrder(null); setEditingOrder(o); }}
-          onStatus={(o, status) => { setViewingOrder(null); updateStatusMutation.mutate({ id: o.id as string, status }); }}
-          onDeliver={(o) => { setViewingOrder(null); setDeliverOrder(o); }}
-          onCancel={(o) => { setViewingOrder(null); cancelOrder(o); }}
-          onReschedule={(o) => { setViewingOrder(null); setRescheduleOrder(o); }}
-        />
-      )}
 
       {deliverOrder && (isPro(deliverOrder) ? (
         <ProDeliverModal
@@ -588,7 +576,7 @@ export default function OrdersPage() {
 
 /* ═══════════════════════ Facture d'acompte (phase 5.4) ═══════════════════════ */
 
-function PrepaymentModal({ order, onClose, onDone }: { order: OrderRow; onClose: () => void; onDone: () => void }) {
+export function PrepaymentModal({ order, onClose, onDone }: { order: OrderRow; onClose: () => void; onDone: () => void }) {
   const total = num(order.total);
   const [percent, setPercent] = useState('30');
   const pct = Math.max(0, Math.min(100, parseFloat(percent) || 0));
@@ -634,254 +622,7 @@ function PrepaymentModal({ order, onClose, onDone }: { order: OrderRow; onClose:
   );
 }
 
-/* ═══════════════════════ Fiche commande ═══════════════════════ */
-
-function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver, onCancel, onReschedule }: {
-  order: OrderRow; late: boolean;
-  onClose: () => void;
-  onEdit: (o: OrderRow) => void;
-  onStatus: (o: OrderRow, status: string) => void;
-  onDeliver: (o: OrderRow) => void;
-  onCancel: (o: OrderRow) => void;
-  onReschedule: (o: OrderRow) => void;
-}) {
-  const { data: detail } = useQuery({
-    queryKey: ['order-detail', o.id],
-    queryFn: () => ordersApi.getById(o.id as string),
-  });
-  const status = o.status as string;
-  const totalAmt = num(o.total);
-  const advanceAmt = num(o.advance_amount);
-  const discountAmt = num(o.discount_amount);
-  const taxAmt = num(o.tax_amount);
-  const remaining = Math.max(0, totalAmt - advanceAmt);
-  const stageIdx = STAGE_KEYS.indexOf(status);
-  const items: OrderRow[] = detail?.items || [];
-  const reschedules: OrderRow[] = detail?.reschedules || [];
-  const pro = isPro(o);
-  const billing = pro ? proBilling(o) : null;
-
-  return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
-      <div className="odoo-scope w-full flex flex-col" style={{ ...modalPanelStyle, maxWidth: 720 }} onClick={(e) => e.stopPropagation()}>
-        {/* En-tête */}
-        <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: '1rem' }}>{o.order_number as string}</span>
-              <span className={`odoo-tag ${STATUS_TAG[status] || 'odoo-tag-grey'}`}>{ORDER_STATUS_LABELS[status as keyof typeof ORDER_STATUS_LABELS] || status}</span>
-              <span className={`odoo-tag ${TYPE_TAG[o.type as string] || 'odoo-tag-grey'}`}>{TYPE_LABELS[o.type as string] || (o.type as string)}</span>
-              {late && <span className="odoo-tag odoo-tag-red">En retard</span>}
-            </div>
-            <div style={{ fontSize: '0.75rem', opacity: 0.85, marginTop: 2 }}>
-              Créée le {fmtDate(o.created_at, 'dd/MM/yyyy HH:mm')} · Retrait le {fmtDate(o.pickup_date)}
-            </div>
-          </div>
-          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
-        </div>
-
-        {/* Frise d'avancement */}
-        <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
-          {status === 'cancelled' ? (
-            <span style={{ fontSize: '0.75rem', color: '#721c24', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Ban size={12} /> Commande annulée</span>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STAGES.length}, 1fr)`, gap: 6 }}>
-              {STAGES.map((s, i) => {
-                const reached = i <= stageIdx;
-                const current = i === stageIdx;
-                const Icon = s.icon;
-                return (
-                  <div key={s.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ height: 5, borderRadius: 3, background: reached ? (current && late ? '#dc3545' : 'var(--odoo-purple)') : 'var(--odoo-border)', opacity: current && !late ? 0.6 : 1 }} />
-                    <span style={{ fontSize: '0.6875rem', fontWeight: current ? 700 : 500, color: reached ? 'var(--odoo-text)' : 'var(--odoo-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                      <Icon size={10} /> {s.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Corps */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={sectionStyle}>
-              <div className="odoo-section-header"><User size={11} /> Client</div>
-              <div style={{ padding: '10px 12px', fontSize: '0.8125rem' }}>
-                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {customerName(o)}
-                  <span className={`odoo-tag ${pro ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{pro ? 'Professionnel' : o.customer_id ? 'Particulier' : 'Passager'}</span>
-                </div>
-                {o.customer_phone && (
-                  <div style={{ color: 'var(--odoo-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                    <Phone size={10} /> {o.customer_phone as string}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div style={sectionStyle}>
-              <div className="odoo-section-header"><CalendarDays size={11} /> Retrait</div>
-              <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--odoo-text-muted)' }}>Date</span>
-                  <span style={{ fontWeight: 600, color: late ? '#721c24' : undefined }}>{fmtDate(o.pickup_date)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--odoo-text-muted)' }}>Créée le</span>
-                  <span>{fmtDate(o.created_at, 'dd/MM/yyyy HH:mm')}</span>
-                </div>
-                {reschedules.map((r) => (
-                  <div key={r.id as string} style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
-                    Reportée du {fmtDate(r.old_pickup_date, 'dd/MM')} au {fmtDate(r.new_pickup_date, 'dd/MM')} par {(r.created_by_name as string) || '—'}
-                    {r.forced ? ' (forcé, moins de 24 h)' : ''}{r.reason ? ` — ${r.reason as string}` : ''}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div style={sectionStyle}>
-            <div className="odoo-section-header"><Package size={11} /> Articles commandés</div>
-            {!detail ? (
-              <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>
-                <Loader2 className="animate-spin" size={16} style={{ margin: '0 auto 6px' }} /> Chargement des articles...
-              </div>
-            ) : items.length === 0 ? (
-              <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Aucun article</div>
-            ) : (
-              <table className="odoo-table" style={{ margin: 0 }}>
-                <thead>
-                  <tr>
-                    <th>Produit</th>
-                    <th style={{ textAlign: 'right' }}>Qté</th>
-                    <th style={{ textAlign: 'right' }}>P.U.{pro ? ' HT' : ''}</th>
-                    {pro && <th style={{ textAlign: 'right' }}>TVA</th>}
-                    <th style={{ textAlign: 'right' }}>Montant{pro ? ' HT' : ''}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item, idx) => {
-                    const qty = num(item.quantity);
-                    const pu = num(item.unit_price);
-                    return (
-                      <tr key={idx} style={{ cursor: 'default' }}>
-                        <td>
-                          <div style={{ fontWeight: 500 }}>{(item.product_name as string) || (item.product_id as string)}</div>
-                          {item.notes && <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{item.notes as string}</div>}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>{qty}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{n(pu)}</td>
-                        {pro && <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{item.tva_rate != null ? `${num(item.tva_rate)} %` : '—'}</td>}
-                        <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(qty * pu)} DH</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: o.notes ? '1fr 1fr' : '1fr', gap: 12 }}>
-            <div style={sectionStyle}>
-              <div className="odoo-section-header"><Banknote size={11} /> Règlement</div>
-              <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--odoo-text-muted)' }}>Sous-total{pro ? ' HT' : ''}</span><span>{n(totalAmt + discountAmt - taxAmt)} DH</span>
-                </div>
-                {num(o.promotion_amount) > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#0f5132' }}>
-                    <span>Promotions</span><span>-{n(num(o.promotion_amount))} DH</span>
-                  </div>
-                )}
-                {discountAmt - num(o.promotion_amount) > 0.004 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#721c24' }}>
-                    <span>Remise{o.discount_pct != null ? ` (${num(o.discount_pct)} %)` : ''}</span><span>-{n(discountAmt - num(o.promotion_amount))} DH</span>
-                  </div>
-                )}
-                {pro && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--odoo-text-muted)' }}>TVA</span><span>{n(taxAmt)} DH</span>
-                  </div>
-                )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4, marginTop: 2 }}>
-                  <span>Total{pro ? ' TTC' : ''}</span><span>{n(totalAmt)} DH</span>
-                </div>
-                {pro && billing ? (<>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--odoo-text-muted)' }}>Suivi</span><span className={`odoo-tag ${billing.tag}`}>{billing.label}</span>
-                  </div>
-                  {o.delivery_note_number && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--odoo-text-muted)' }}>Bon de livraison</span>
-                      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                        <span style={{ fontFamily: 'ui-monospace, monospace' }}>{o.delivery_note_number as string}</span>
-                        {o.delivery_note_id && (
-                          <button type="button" onClick={() => openDeliveryNotePdf(o.delivery_note_id as string)} title="Imprimer le BL" className="odoo-pager-btn"><Printer size={12} /></button>
-                        )}
-                      </span>
-                    </div>
-                  )}
-                  {o.invoice_number && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--odoo-text-muted)' }}>Facture</span>
-                      <span style={{ fontFamily: 'ui-monospace, monospace' }}>{o.invoice_number as string}{o.invoice_due_date ? ` · échéance ${fmtDate(o.invoice_due_date, 'dd/MM/yyyy')}` : ''}</span>
-                    </div>
-                  )}
-                  <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
-                    Facturation {o.billing_frequency === 'per_delivery' ? 'à chaque livraison' : 'mensuelle'} · règlement saisi par la direction.
-                  </div>
-                </>) : (<>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}>
-                    <span>Avance versée (non remboursable)</span><span style={{ fontWeight: 600 }}>{n(advanceAmt)} DH</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-                    <span>Reste à payer au retrait</span>
-                    <span style={{ color: remaining > 0 && status !== 'completed' ? '#b85d1a' : undefined }}>
-                      {status === 'completed' ? 'Soldée' : status === 'cancelled' ? (advanceAmt > 0 ? 'Annulée — avance conservée' : 'Annulée') : `${n(remaining)} DH`}
-                    </span>
-                  </div>
-                </>)}
-              </div>
-            </div>
-            {o.notes && (
-              <div style={sectionStyle}>
-                <div className="odoo-section-header"><FileText size={11} /> Notes</div>
-                <div style={{ padding: '10px 12px', fontSize: '0.8125rem', whiteSpace: 'pre-line' }}>{o.notes as string}</div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Pied */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)', flexWrap: 'wrap' }}>
-          {(status === 'pending' || status === 'confirmed' || status === 'in_production') && (
-            <button onClick={() => onCancel(o)} className="odoo-btn-danger" style={{ marginRight: 'auto' }}><Ban size={13} /> Annuler la commande</button>
-          )}
-          <button onClick={onClose} className="odoo-btn-secondary">Fermer</button>
-          {CAN_RESCHEDULE.has(status) && (
-            <button onClick={() => onReschedule(o)} className="odoo-btn-secondary"><CalendarClock size={13} /> Reporter</button>
-          )}
-          {status !== 'completed' && status !== 'cancelled' && (
-            <button onClick={() => onEdit(o)} className="odoo-btn-secondary"><Pencil size={13} /> Modifier</button>
-          )}
-          {status === 'pending' && (
-            <button onClick={() => onStatus(o, 'confirmed')} className="odoo-btn-primary"><CheckCircle2 size={13} /> Confirmer</button>
-          )}
-          {status === 'confirmed' && (
-            <button onClick={() => onStatus(o, 'in_production')} className="odoo-btn-primary"><Factory size={13} /> Envoyer en production</button>
-          )}
-          {status === 'in_production' && (
-            <button onClick={() => onStatus(o, 'ready')} className="odoo-btn-primary"><PackageCheck size={13} /> Marquer prête</button>
-          )}
-          {(status === 'ready' || (status === 'partially_delivered' && pro)) && (
-            <button onClick={() => onDeliver(o)} className="odoo-btn-primary"><Truck size={13} /> {pro ? (status === 'partially_delivered' ? 'Livrer le reliquat' : 'Livrer sur BL') : 'Remettre au client'}</button>
-          )}
-        </div>
-      </div>
-    </ModalBackdrop>
-  );
-}
+/* La fiche commande est une page : OrderRecordPage.tsx (route /orders/:id). */
 
 /* ═══════════════════════ Remise d'une commande de particulier ═══════════════════════ */
 
@@ -890,7 +631,7 @@ function OrderDetailModal({ order: o, late, onClose, onEdit, onStatus, onDeliver
  * (total − avance), réglé en totalité — pas de reliquat. Le montant est compté
  * dans la session de la caissière qui remet la commande.
  */
-function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onClose: () => void; onDelivered: () => void }) {
+export function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onClose: () => void; onDelivered: () => void }) {
   const totalAmt = num(order.total);
   const advanceAmt = num(order.advance_amount);
   const remaining = Math.max(0, Math.round((totalAmt - advanceAmt) * 100) / 100);
@@ -988,7 +729,7 @@ async function openDeliveryNotePdf(id: string) {
  * avec les quantités réellement livrées et le nom du réceptionnaire, à imprimer
  * et faire signer. Client facturé à chaque livraison → la facture suit aussitôt.
  */
-function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onClose: () => void; onDelivered: () => void }) {
+export function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onClose: () => void; onDelivered: () => void }) {
   const { data: lines = [], isLoading } = useQuery({
     queryKey: ['delivery-notes', 'order-lines', order.id],
     queryFn: () => deliveryNotesApi.orderLines(order.id as string),
@@ -1146,7 +887,7 @@ function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderRow; onC
  * Le client prévient au moins 24 h avant le retrait : report libre. À moins de
  * 24 h, seule la direction peut forcer le report, avec un motif.
  */
-function RescheduleModal({ order, isDirection, onClose, onDone }: { order: OrderRow; isDirection: boolean; onClose: () => void; onDone: () => void }) {
+export function RescheduleModal({ order, isDirection, onClose, onDone }: { order: OrderRow; isDirection: boolean; onClose: () => void; onDone: () => void }) {
   const current = order.pickup_date ? new Date(order.pickup_date as string) : null;
   const hoursLeft = current ? (current.getTime() - Date.now()) / 3_600_000 : Infinity;
   const late = hoursLeft < 24;

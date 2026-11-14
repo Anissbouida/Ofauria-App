@@ -70,7 +70,7 @@ export default function SalesLayout() {
     ? `sales:${SALES_MAIN_TABS.some(t => t.key === tab) ? tab : 'sales'}`
     : pathname === '/reports'
       ? `reports:${tab === 'menu' || tab === 'margins' || tab === 'builder' ? tab : 'overview'}`
-      : pathname === '/orders'
+      : pathname === '/orders' || pathname.startsWith('/orders/')
         ? (tab === 'pro' ? 'orders:deliveries' : 'orders')
         : pathname === '/sales-channels'
           ? 'channels'

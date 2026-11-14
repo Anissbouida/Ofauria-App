@@ -238,7 +238,38 @@ export const orderController = {
     const reschedules = (await db.query(
       `SELECT r.*, concat_ws(' ', u.first_name, u.last_name) AS created_by_name FROM order_reschedules r
          LEFT JOIN users u ON u.id = r.created_by WHERE r.order_id = $1 ORDER BY r.created_at`, [order.id])).rows;
-    res.json({ success: true, data: { ...order, reschedules } });
+    // Fiche commande (refonte Ventes, planche 3) : pièces de la chaîne devis → BL → facture
+    // et encours du client, en lecture seule.
+    const [quote, deliveryNotes, invoices, creator] = await Promise.all([
+      db.query(`SELECT id, number, status, quote_date, total FROM quotes WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1`, [order.id]),
+      db.query(
+        `SELECT dn.id, dn.number, dn.status, dn.delivery_date, inv.invoice_number,
+                concat_ws(' ', u.first_name, u.last_name) AS created_by_name,
+                COALESCE(t.ht, 0) AS total_ht, COALESCE(t.ht, 0) + COALESCE(t.tva, 0) AS total_ttc
+           FROM delivery_notes dn
+           LEFT JOIN invoices inv ON inv.id = dn.invoice_id
+           LEFT JOIN users u ON u.id = dn.created_by
+           LEFT JOIN LATERAL (SELECT SUM(subtotal) AS ht, SUM(ROUND(subtotal * COALESCE(tva_rate, 0) / 100, 2)) AS tva
+                                FROM delivery_note_items WHERE delivery_note_id = dn.id) t ON true
+          WHERE dn.order_id = $1 ORDER BY dn.created_at`, [order.id]),
+      db.query(
+        `SELECT i.id, i.invoice_number, i.status, i.kind, i.invoice_date, i.due_date, i.total_amount, i.paid_amount
+           FROM invoices i
+          WHERE i.invoice_type = 'emitted' AND i.status <> 'cancelled'
+            AND (i.order_id = $1 OR i.id IN (SELECT invoice_id FROM delivery_notes WHERE order_id = $1 AND invoice_id IS NOT NULL))
+          ORDER BY i.created_at`, [order.id]),
+      db.query(`SELECT concat_ws(' ', first_name, last_name) AS name FROM users WHERE id = $1`, [order.user_id]),
+    ]);
+    let customerCredit = null;
+    if (order.customer_id) {
+      const c = (await db.query(
+        `SELECT credit_limit, delai_paiement_jours, ice, email, credit_hold FROM customers WHERE id = $1`, [order.customer_id])).rows[0];
+      if (c) customerCredit = { ...c, exposure: await customerExposure(db, order.customer_id) };
+    }
+    res.json({ success: true, data: {
+      ...order, reschedules, created_by_name: creator.rows[0]?.name ?? null, customer_credit: customerCredit,
+      links: { quote: quote.rows[0] ?? null, deliveryNotes: deliveryNotes.rows, invoices: invoices.rows },
+    } });
   },
 
   async create(req: AuthRequest, res: Response) {

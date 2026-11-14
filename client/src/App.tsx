@@ -39,6 +39,7 @@ import AtelierPage from './features/production/AtelierPage';
 import ProductionSettingsPage from './features/production/ProductionSettingsPage';
 import SalesLayout from './features/sales/SalesLayout';
 import SalesDashboard from './features/sales/SalesDashboard';
+import OrderRecordPage from './features/orders/OrderRecordPage';
 import PriceListsPage from './features/pricing/PriceListsPage';
 import ProductTransfersPage from './features/logistics/ProductTransfersPage';
 import ProReturnsPage from './features/logistics/ProReturnsPage';
@@ -94,6 +95,7 @@ export default function App() {
                 <Route path="/quotes" element={<QuotesPage />} />
                 <Route path="/dunning" element={<DunningPage />} />
                 <Route path="/orders" element={<OrdersPage />} />
+                <Route path="/orders/:id" element={<OrderRecordPage />} />
                 <Route path="/delivery-notes" element={<DeliveryNotesPage />} />
                 <Route path="/sales-contracts" element={<SalesContractsPage />} />
                 <Route path="/sales-targets" element={<SalesTargetsPage />} />

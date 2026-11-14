@@ -64,3 +64,24 @@
 .sal-flow-h strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sal-cat { list-style: none; margin: 0; padding: 12px 16px 16px; display: grid; gap: 12px; }
 .sal-cat li { display: grid; gap: 5px; }
+
+/* Fiche document (planche 3) : frise de la chaîne, totaux, pièces liées. */
+.sal-steps { list-style: none; margin: 0; padding: 14px 0 0; border-top: 1px solid var(--odoo-border); display: flex; flex-wrap: wrap; row-gap: 12px; }
+.sal-step { flex: 1 1 140px; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; align-items: center; padding-right: 10px; min-width: 0; }
+.sal-step-mark { width: 24px; height: 24px; border-radius: 50%; box-sizing: border-box; border: 2px solid var(--odoo-border); background: var(--theme-bg-card); display: inline-flex; align-items: center; justify-content: center; color: #fff; grid-row: span 2; }
+.sal-step b { font-size: 0.8125rem; font-weight: 600; color: var(--odoo-text-muted); }
+.sal-step small { font-size: 0.75rem; color: var(--odoo-text-muted); grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sal-step.done .sal-step-mark { background: var(--prj-green); border-color: var(--prj-green); }
+.sal-step.done b { color: var(--prj-green); }
+.sal-step.current .sal-step-mark { background: var(--odoo-purple); border-color: var(--odoo-purple); box-shadow: 0 0 0 4px color-mix(in srgb, var(--odoo-purple) 18%, transparent); }
+.sal-step.current b { color: var(--odoo-purple); }
+.sal-step.warn .sal-step-mark { background: var(--prj-orange); border-color: var(--prj-orange); box-shadow: 0 0 0 4px color-mix(in srgb, var(--prj-orange) 18%, transparent); }
+.sal-step.warn b { color: var(--prj-orange); }
+.sal-totals { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 8px 24px; font-size: 0.8125rem; min-width: 260px; }
+.sal-totals dt { color: var(--odoo-text-muted); }
+.sal-totals dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.sal-totals .big { font-size: 0.9375rem; font-weight: 700; color: var(--odoo-text); padding-top: 8px; border-top: 1px solid var(--odoo-border); }
+.sal-docs { list-style: none; margin: 0; padding: 0; display: grid; }
+.sal-docs li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--odoo-border); font-size: 0.8125rem; }
+.sal-docs li:last-child { border-bottom: 0; }
+.sal-doc-main { flex: 1; min-width: 0; text-align: left; font-family: ui-monospace, Menlo, monospace; font-size: 0.8125rem; }

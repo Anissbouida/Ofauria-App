@@ -50,7 +50,8 @@ export default function QuotesPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<Quote | 'new' | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  // ?open=<id> : pièce liée ouverte depuis la fiche commande.
+  const [openId, setOpenId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('open'));
   // « Créer un devis » depuis une opportunité du CRM : /quotes?opportunity=<id> ouvre la saisie préremplie.
   const [urlParams, setUrlParams] = useSearchParams();
   const opportunityId = urlParams.get('opportunity');

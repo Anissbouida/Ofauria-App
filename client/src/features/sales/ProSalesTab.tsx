@@ -47,7 +47,8 @@ export default function ProSalesTab() {
   const [view, setView] = useState<'' | 'delivered' | 'invoiced' | 'cancelled' | null>(null);
   const [search, setSearch] = useState('');
   const [showNew, setShowNew] = useState(false);
-  const [detailId, setDetailId] = useState<string | null>(null);
+  // ?open=<id> : bon ouvert depuis la fiche commande.
+  const [detailId, setDetailId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('open'));
   const { data: toInvoice = [], isSuccess } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice() });
   const pending = toInvoice.reduce((n, g) => n + g.notes.length, 0);
   const current = view ?? (isSuccess && pending > 0 ? 'delivered' : '');
