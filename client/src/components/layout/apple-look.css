@@ -240,3 +240,11 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-sheet-panel .odoo-table { border: 0; }
 .kl-sheet-panel .odoo-table thead th { background: transparent; color: var(--kl-muted); font-weight: 500; font-size: 12px; text-transform: none; letter-spacing: 0; }
 .odoo-scope.kl-sheet { background-color: var(--theme-bg-page) !important; }
+/* En-tête de la feuille dans la couleur du thème (accent), texte blanc — demande utilisateur 2026-11-14. */
+.kl-sheet-head { background: var(--theme-accent); color: #fff; border-bottom: 0; }
+.kl-sheet-head .ord-mono { background: rgba(255, 255, 255, .2); color: #fff; }
+.kl-sheet-head .ord-who h2, .kl-sheet-head .ord-amt b { color: #fff; }
+.kl-sheet-head .ord-who p, .kl-sheet-head .ord-amt small { color: rgba(255, 255, 255, .85); }
+.kl-sheet-head .kl-pill { background: #fff; }
+.kl-sheet-head .kl-sheet-close { background: rgba(255, 255, 255, .2); color: #fff; }
+.kl-sheet-head .kl-sheet-close:hover { background: rgba(255, 255, 255, .3); }
