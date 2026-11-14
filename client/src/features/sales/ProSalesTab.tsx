@@ -13,7 +13,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import SalesPageShell from './SalesPageShell';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
-import { ListToolbar, FilterChips, ListPanel, ListEmpty, NextStep } from './ListTemplate';
+import { ListToolbar, FilterChips, ListPanel, ListEmpty, NextStep, ListKpi } from './ListTemplate';
 
 /** BL imprimable (mig 354) : remis avec la marchandise, signé par le client. */
 async function printNote(id: string) {
@@ -61,6 +61,19 @@ export default function ProSalesTab() {
     for (const n of allNotes) { const a = acc[n.status]; if (a) { a.count += 1; a.total += Number(n.total_ttc) || 0; } }
     return acc;
   }, [allNotes]);
+  // Tuiles : ancienneté du non-facturé et activité du mois (les pastilles donnent déjà les nombres).
+  const kpis = useMemo(() => {
+    const month = new Date().toISOString().slice(0, 7);
+    const k = { oldest: null as string | null, monthCount: 0, monthTotal: 0, invoicedMonth: 0 };
+    for (const n of allNotes) {
+      const d = String(n.delivery_date).slice(0, 10);
+      if (n.status === 'delivered' && (!k.oldest || d < k.oldest)) k.oldest = d;
+      if (n.status !== 'cancelled' && d.slice(0, 7) === month) { k.monthCount++; k.monthTotal += Number(n.total_ttc) || 0; }
+      if (n.status === 'invoiced' && d.slice(0, 7) === month) k.invoicedMonth += Number(n.total_ttc) || 0;
+    }
+    return k;
+  }, [allNotes]);
+  const oldestDays = kpis.oldest ? Math.max(0, Math.round((Date.now() - new Date(`${kpis.oldest}T00:00:00`).getTime()) / 86_400_000)) : null;
   const q = search.trim().toLowerCase();
   const groups = q ? toInvoice.filter(g => g.name.toLowerCase().includes(q) || g.notes.some(n => n.number.toLowerCase().includes(q))) : toInvoice;
 
@@ -68,6 +81,12 @@ export default function ProSalesTab() {
     <SalesPageShell icon={Truck} title="Bons de livraison" parent="Ventes" list
       summary={`${stats.delivered.count} à facturer · ${money(stats.delivered.total)}`}
       actions={<button type="button" onClick={() => setShowNew(true)} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau bon de livraison</button>}>
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="À facturer" value={money(stats.delivered.total)} sub={`${toInvoice.length} client${toInvoice.length > 1 ? 's' : ''}`} tone={stats.delivered.count ? 'orange' : undefined} />
+        <ListKpi label="Plus ancien non facturé" value={oldestDays == null ? '—' : `${oldestDays} j`} sub={kpis.oldest ? `livré le ${format(new Date(`${kpis.oldest}T00:00:00`), 'dd/MM/yyyy', { locale: fr })}` : 'rien en attente'} tone={oldestDays != null && oldestDays > 30 ? 'red' : undefined} />
+        <ListKpi label="Livré ce mois" value={money(kpis.monthTotal)} sub={`${kpis.monthCount} bon${kpis.monthCount > 1 ? 's' : ''}`} />
+        <ListKpi label="Facturé ce mois" value={money(kpis.invoicedMonth)} sub="BL du mois déjà facturés" />
+      </section>
       <ListToolbar search={search} onSearch={setSearch} placeholder="N° de BL, client, commande…" />
       <FilterChips label="Filtrer les bons de livraison" value={current} onChange={k => setView(k as '' | 'delivered' | 'invoiced' | 'cancelled')} chips={[
         { key: 'delivered', label: 'À facturer', count: stats.delivered.count, icon: FileText },

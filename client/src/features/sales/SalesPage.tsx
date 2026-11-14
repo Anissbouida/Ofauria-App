@@ -23,6 +23,7 @@ import ReceiptModal from '../pos/ReceiptModal';
 import EmittedInvoicesTab from './EmittedInvoicesTab';
 import SubscriptionsTab from './SubscriptionsTab';
 import RoutesTab from './RoutesTab';
+import { ListKpi } from './ListTemplate';
 import ReceivablesTab from './ReceivablesTab';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -284,6 +285,21 @@ export default function SalesPage() {
   const summary = summaryData || [];
   const sessions = sessionsData?.data || [];
   const returns = returnsData?.data || [];
+  // Tuiles de l'onglet Sessions : CA encaissé, écart cumulé (espèces + carte), caisses justes.
+  const sessionKpis = useMemo(() => {
+    const k = { open: 0, closed: 0, revenue: 0, diff: 0, exact: 0, worst: 0 };
+    for (const s of sessions as Record<string, any>[]) {
+      k.revenue += parseFloat(s.total_revenue as string) || 0;
+      if (s.status !== 'closed') { k.open++; continue; }
+      k.closed++;
+      if (s.difference == null && s.card_difference == null) continue;
+      const d = (parseFloat(s.difference as string) || 0) + (parseFloat(s.card_difference as string) || 0);
+      k.diff += d;
+      if (d === 0) k.exact++;
+      if (d < k.worst) k.worst = d;
+    }
+    return k;
+  }, [sessions]);
 
   // Returns for sales period (to subtract from totals)
   const { data: salesReturnsData } = useQuery({
@@ -1058,7 +1074,13 @@ export default function SalesPage() {
       {/* ═══════════ SESSIONS TAB ═══════════ */}
       {mainTab === 'sessions' && (
         sessionsLoading ? <LoadingState /> : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="prj" style={{ gap: 12 }}>
+            <section className="prj-kpis" aria-label="Indicateurs">
+              <ListKpi label="Sessions" value={String(sessions.length)} sub={sessionKpis.open ? `${sessionKpis.open} encore ouverte${sessionKpis.open > 1 ? 's' : ''}` : 'toutes clôturées'} tone={sessionKpis.open ? 'orange' : undefined} />
+              <ListKpi label="CA encaissé" value={formatCurrency(sessionKpis.revenue)} sub="sur la période" />
+              <ListKpi label="Écart cumulé" value={`${sessionKpis.diff > 0 ? '+' : ''}${formatCurrency(sessionKpis.diff)}`} sub={sessionKpis.worst < 0 ? `plus gros manque ${formatCurrency(sessionKpis.worst)}` : 'espèces + carte'} tone={sessionKpis.diff < 0 ? 'red' : undefined} />
+              <ListKpi label="Caisses justes" value={`${sessionKpis.exact} / ${sessionKpis.closed}`} sub="sessions clôturées sans écart" tone={sessionKpis.closed && sessionKpis.exact === sessionKpis.closed ? 'green' : undefined} />
+            </section>
             {sessions.map((s: Record<string, any>) => {
               const diff = s.difference !== null ? parseFloat(s.difference as string) : null;
               // Mig 467 — l'écart affiché cumule espèces + carte (TPE). Avant, le

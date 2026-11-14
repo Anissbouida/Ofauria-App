@@ -8,7 +8,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import SalesPageShell from './SalesPageShell';
 import { RowMenu } from '../../components/ui/RowMenu';
-import { ListPanel, ListEmpty } from './ListTemplate';
+import { ListPanel, ListEmpty, ListKpi } from './ListTemplate';
 
 /**
  * Ventes › Objectifs (phase 11, D3-13). Objectif de CA par commercial et par
@@ -46,9 +46,17 @@ export default function SalesTargetsPage() {
 
   const totalTarget = rows.reduce((s, r) => s + (r.target || 0), 0);
   const totalRealized = rows.reduce((s, r) => s + (r.realized || 0), 0);
+  const withTarget = rows.filter(r => r.target > 0);
   return (
     <SalesPageShell icon={Target} title="Objectifs" parent="Ventes" list
       summary={totalTarget > 0 ? `${money(totalRealized)} réalisés sur ${money(totalTarget)}` : undefined}>
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="Objectif de la période" value={money(totalTarget)} sub={`${withTarget.length} vendeur${withTarget.length > 1 ? 's' : ''} avec objectif`} />
+        <ListKpi label="Réalisé" value={money(totalRealized)} sub={totalTarget > 0 ? `${Math.round((totalRealized / totalTarget) * 100)} % de l'objectif` : 'factures émises nettes'} tone={totalTarget > 0 && totalRealized >= totalTarget ? 'green' : undefined} />
+        <ListKpi label="Reste à réaliser" value={money(Math.max(0, totalTarget - totalRealized))} sub="pour atteindre l'objectif global" />
+        <ListKpi label="Objectifs atteints" value={`${withTarget.filter(r => r.realized >= r.target).length} / ${withTarget.length}`} sub="vendeurs à 100 % ou plus" />
+      </section>
+
       <div className="prj-toolbar">
         <label className="prj-chip" style={{ cursor: 'default' }}>Du <input className="odoo-input" type="date" value={start} onChange={e => setStart(e.target.value)} style={{ border: 0, background: 'transparent' }} /></label>
         <label className="prj-chip" style={{ cursor: 'default' }}>au <input className="odoo-input" type="date" value={end} onChange={e => setEnd(e.target.value)} style={{ border: 0, background: 'transparent' }} /></label>

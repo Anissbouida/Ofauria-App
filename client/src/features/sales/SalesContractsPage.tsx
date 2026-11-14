@@ -8,7 +8,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import SalesPageShell from './SalesPageShell';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { FilterChips, ListPanel, ListEmpty, NextStep } from './ListTemplate';
+import { FilterChips, ListPanel, ListEmpty, NextStep, ListKpi } from './ListTemplate';
 
 /**
  * Ventes › Contrats-cadres (phase 11, D3-37). Engagement de volume (quantité
@@ -57,11 +57,28 @@ export default function SalesContractsPage() {
     return acc;
   }, [contracts]);
   const filtered = view ? contracts.filter(c => c.status === view) : contracts;
+  const kpis = useMemo(() => {
+    const soon = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+    const k = { committed: 0, consumed: 0, ending: 0, nearlyUsed: 0 };
+    for (const c of contracts) {
+      if (c.status !== 'active') continue;
+      if (c.basis === 'value') { k.committed += c.committed; k.consumed += c.consumed; }
+      if (c.end_date && c.end_date.slice(0, 10) <= soon) k.ending++;
+      if (c.committed > 0 && c.consumed / c.committed >= 0.85) k.nearlyUsed++;
+    }
+    return k;
+  }, [contracts]);
 
   return (
     <SalesPageShell icon={Handshake} title="Contrats-cadres" parent="Ventes" list
       summary={`${stats.active} actif${stats.active > 1 ? 's' : ''}`}
       actions={<button className="odoo-btn-primary" onClick={() => setForm(v => !v)}><Plus size={14} /> Nouveau contrat</button>}>
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="Engagé (valeur)" value={money(kpis.committed)} sub="contrats actifs en montant" />
+        <ListKpi label="Consommé" value={money(kpis.consumed)} sub={kpis.committed > 0 ? `${Math.round((kpis.consumed / kpis.committed) * 100)} % de l'engagé` : '—'} />
+        <ListKpi label="Presque épuisés" value={String(kpis.nearlyUsed)} sub="consommés à 85 % ou plus" tone={kpis.nearlyUsed ? 'orange' : undefined} />
+        <ListKpi label="Échéance sous 30 j" value={String(kpis.ending)} sub="à renouveler ou clôturer" tone={kpis.ending ? 'orange' : undefined} />
+      </section>
       <p className="prj-note">Engagement de volume ou de valeur sur une période, consommé par les commandes rattachées (appels).</p>
 
       {form && (

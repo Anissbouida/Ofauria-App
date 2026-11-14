@@ -7,6 +7,7 @@ import { deliveryRoutesApi, type DeliveryRoute, type RouteStatus, type RouteStop
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { ListKpi, ListPanel, ListEmpty } from './ListTemplate';
 
 const day = (d: string) => format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr });
 const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', width: '100%', font: 'inherit' };
@@ -19,30 +20,44 @@ export default function RoutesTab() {
   const { data: rows = [], isLoading } = useQuery({ queryKey: ['delivery-routes'], queryFn: () => deliveryRoutesApi.list() });
   const [showForm, setShowForm] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const today = new Date().toISOString().slice(0, 10);
+  const todayRoutes = rows.filter(r => r.route_date.slice(0, 10) === today);
+  const open = rows.filter(r => r.status !== 'done');
+  const stops = open.reduce((n, r) => n + r.stops, 0);
+  const delivered = open.reduce((n, r) => n + r.delivered, 0);
   return (
     <div className="odoo-scope prj" style={{ padding: '16px 20px' }}>
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="Tournées du jour" value={String(todayRoutes.length)} sub={`${todayRoutes.reduce((n, r) => n + r.stops, 0)} arrêt(s)`} />
+        <ListKpi label="Planifiées" value={String(rows.filter(r => r.status === 'planned').length)} sub="à partir" />
+        <ListKpi label="En cours" value={String(rows.filter(r => r.status === 'in_progress').length)} sub="sur la route" tone={rows.some(r => r.status === 'in_progress') ? 'orange' : undefined} />
+        <ListKpi label="Arrêts livrés" value={`${delivered} / ${stops}`} sub="tournées non terminées" />
+      </section>
       <div className="prj-toolbar">
         <p className="prj-note" style={{ flex: 1, minWidth: 260 }}>Regroupez les bons de livraison en tournées datées, ordonnez les arrêts et pointez chaque arrêt livré.</p>
         <button className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={14} /> Nouvelle tournée</button>
       </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table className="odoo-table">
-          <thead><tr><th>Date</th><th>Tournée</th><th>Chauffeur</th><th style={{ textAlign: 'center' }}>Arrêts</th><th>Statut</th></tr></thead>
-          <tbody>
-            {isLoading && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
-            {!isLoading && rows.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucune tournée.</td></tr>}
-            {rows.map(r => (
-              <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setOpenId(r.id)}>
-                <td style={{ whiteSpace: 'nowrap' }}>{day(r.route_date)}</td>
-                <td style={{ fontWeight: 500 }}>{r.label}</td>
-                <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.85rem' }}>{r.driver_name || '—'}</td>
-                <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{r.delivered}/{r.stops}</td>
-                <td><span className={`odoo-tag ${STATUS[r.status].tag}`}>{STATUS[r.status].label}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {!isLoading && rows.length === 0 ? (
+        <ListEmpty icon={Truck} title="Aucune tournée" text="Créez une tournée puis ajoutez-y les bons de livraison à remettre." />
+      ) : (
+        <ListPanel footer={<div className="sal-foot"><span>{rows.length} tournée{rows.length > 1 ? 's' : ''}</span></div>}>
+          <table className="odoo-table">
+            <thead><tr><th>Date</th><th>Tournée</th><th>Chauffeur</th><th style={{ textAlign: 'center' }}>Arrêts</th><th>Statut</th></tr></thead>
+            <tbody>
+              {isLoading && <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
+              {rows.map(r => (
+                <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setOpenId(r.id)}>
+                  <td style={{ whiteSpace: 'nowrap' }}>{day(r.route_date)}</td>
+                  <td style={{ fontWeight: 500 }}>{r.label}</td>
+                  <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.85rem' }}>{r.driver_name || '—'}</td>
+                  <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{r.delivered}/{r.stops}</td>
+                  <td><span className={`odoo-tag ${STATUS[r.status].tag}`}>{STATUS[r.status].label}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ListPanel>
+      )}
       {showForm && <RouteForm onClose={() => setShowForm(false)} onSaved={r => { qc.invalidateQueries({ queryKey: ['delivery-routes'] }); setShowForm(false); setOpenId(r.id); }} />}
       {openId && <RouteDetail id={openId} onClose={() => { setOpenId(null); qc.invalidateQueries({ queryKey: ['delivery-routes'] }); }} />}
     </div>

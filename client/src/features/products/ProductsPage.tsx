@@ -40,9 +40,10 @@ export default function ProductsPage() {
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
           <ShoppingBag size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Produits</span>
-          <span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current">{tabLabel}</span>
+          <span>Ventes</span>
+          <span className="odoo-breadcrumb-separator">/</span>
+          <span className="odoo-breadcrumb-current">Produits</span>
+          <span style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>{tabLabel}</span>
         </div>
       </div>
 

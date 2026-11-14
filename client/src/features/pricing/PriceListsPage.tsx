@@ -7,6 +7,7 @@ import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../utils/api-error';
 import SalesPageShell from '../sales/SalesPageShell';
+import { ListKpi } from '../sales/ListTemplate';
 
 // Listes de prix (phase 6.1–6.3) : par canal, type/groupe de clients ou client précis,
 // avec validité et devise ; lignes à paliers de quantité. Le prix applicable est résolu
@@ -61,6 +62,14 @@ export default function PriceListsPage() {
     onError: (e) => notify.error(getApiErrorMessage(e, 'Échec de la mise à jour')),
   });
 
+  const today = new Date().toISOString().slice(0, 10);
+  const soon = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+  const listKpis = {
+    active: lists.filter((l: PriceList) => l.is_active).length,
+    items: lists.reduce((n: number, l: PriceList) => n + (Number(l.item_count) || 0), 0),
+    targeted: lists.filter((l: PriceList) => l.channel_id || l.customer_type || l.price_group || l.customer_id).length,
+    ending: lists.filter((l: PriceList) => l.is_active && l.valid_to && l.valid_to.slice(0, 10) >= today && l.valid_to.slice(0, 10) <= soon).length,
+  };
   const field: React.CSSProperties = { padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, fontSize: '0.8125rem', background: 'var(--odoo-bg)', width: '100%' };
   const lab: React.CSSProperties = { fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', display: 'block', marginBottom: 2 };
 
@@ -74,6 +83,12 @@ export default function PriceListsPage() {
           onClick={() => setShowHistory(v => !v)}><History size={13} /> Historique</button>
         <button className="odoo-btn-primary" onClick={() => createList.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Nouvelle liste</button>
       </>}>
+    <section className="prj prj-kpis" aria-label="Indicateurs">
+      <ListKpi label="Listes actives" value={`${listKpis.active} / ${lists.length}`} sub="appliquées en caisse et en commande" />
+      <ListKpi label="Prix spécifiques" value={String(listKpis.items)} sub="lignes d'articles, toutes listes" />
+      <ListKpi label="Ciblées" value={String(listKpis.targeted)} sub="par canal, type ou client" />
+      <ListKpi label="Expirent sous 30 j" value={String(listKpis.ending)} sub="fin de validité proche" tone={listKpis.ending ? 'orange' : undefined} />
+    </section>
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
       <div style={{ flex: '1 1 260px', maxWidth: 340, minWidth: 0 }}>
         {showHistory && (

@@ -297,9 +297,12 @@ export default function CustomersPage() {
       <div className="odoo-control-bar">
         <div className="odoo-breadcrumb">
           <Users size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Clients</span>
+          <span>Ventes</span>
           <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">Fichier clients</span>
+          <span className="odoo-breadcrumb-current">Clients</span>
+          <span style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+            {base.length} client{base.length > 1 ? 's' : ''} · {n(totalCa)} DH de CA
+          </span>
         </div>
         <div style={{ flex: 1 }} />
         <button onClick={openNew} className="odoo-btn-primary">

@@ -10,7 +10,7 @@ import { apiErrorMessage } from '../../api/errors';
 import SalesPageShell from './SalesPageShell';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { RowMenu } from '../../components/ui/RowMenu';
-import { FilterChips, ListPanel, ListEmpty, NextStep } from './ListTemplate';
+import { FilterChips, ListPanel, ListEmpty, NextStep, ListKpi } from './ListTemplate';
 
 /**
  * Ventes › Ristournes de fin d'année (phase 11, D5-12). Un accord par client et
@@ -47,6 +47,14 @@ export default function RebatesPage() {
     return acc;
   }, [list]);
   const filtered = view ? list.filter(r => r.status === view) : list;
+  const kpis = useMemo(() => {
+    const k = { turnover: 0, eligible: 0, settled: 0 };
+    for (const r of list) {
+      if (r.status === 'active') { k.turnover += Number(r.current_turnover) || 0; if (r.eligible) k.eligible++; }
+      if (r.status === 'settled') k.settled += Number(r.computed_amount) || 0;
+    }
+    return k;
+  }, [list]);
 
   const create = useMutation({
     mutationFn: () => rebatesApi.create({ customerId: form.customerId, year, ratePercent: Number(form.ratePercent), minTurnover: Number(form.minTurnover) || 0 }),
@@ -66,6 +74,12 @@ export default function RebatesPage() {
           <input className="odoo-input" type="number" value={year} onChange={e => setYear(Number(e.target.value))} style={{ width: 90 }} />
         </label>
       }>
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label={`CA ${year} des accords`} value={money(kpis.turnover)} sub="net des avoirs, accords actifs" />
+        <ListKpi label="Ristourne à ce jour" value={money(stats.active.total)} sub="si l'année s'arrêtait aujourd'hui" tone={stats.active.total > 0 ? 'orange' : undefined} />
+        <ListKpi label="Seuil atteint" value={`${kpis.eligible} / ${stats.active.count}`} sub="accords actifs éligibles" />
+        <ListKpi label="Ristournes clôturées" value={money(kpis.settled)} sub={`${stats.settled.count} accord${stats.settled.count > 1 ? 's' : ''} figé${stats.settled.count > 1 ? 's' : ''}`} />
+      </section>
       <p className="prj-note">Taux sur le CA annuel (net des avoirs) au-delà d'un seuil ; la ristourne est figée à la clôture, puis émise en avoir.</p>
 
       {isDirection && (

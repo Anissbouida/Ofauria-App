@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Undo2, Plus, Trash2, Check } from 'lucide-react';
 import { proReturnsApi, type ProReturn } from '../../api/pro-returns.api';
@@ -7,6 +7,7 @@ import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../utils/api-error';
 import SalesPageShell from '../sales/SalesPageShell';
+import { ListKpi, ListPanel, ListEmpty, ListToolbar, FilterChips } from '../sales/ListTemplate';
 
 // Retours clients professionnels (phase 7.5) : décision remise en stock / rebut par ligne.
 export default function ProReturnsPage() {
@@ -16,6 +17,20 @@ export default function ProReturnsPage() {
   const customers: Record<string, any>[] = customersResp?.data ?? customersResp ?? [];
   const { data: productsResp } = useQuery({ queryKey: ['products', 'all'], queryFn: () => productsApi.list({ limit: '1000' }) });
   const products: Record<string, any>[] = productsResp?.data ?? productsResp ?? [];
+
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<'' | 'credited' | 'open'>('');
+  const month = new Date().toISOString().slice(0, 7);
+  const kpis = useMemo(() => ({
+    month: returns.filter(r => String(r.return_date).slice(0, 7) === month).length,
+    credited: returns.filter(r => r.credit_note_id).length,
+    open: returns.filter(r => !r.credit_note_id).length,
+    customers: new Set(returns.map(r => r.customer_id)).size,
+    lines: returns.reduce((n, r) => n + (Number(r.item_count) || 0), 0),
+  }), [returns, month]);
+  const q = search.trim().toLowerCase();
+  const shown = returns.filter(r => (!view || (view === 'credited' ? !!r.credit_note_id : !r.credit_note_id))
+    && (!q || r.number.toLowerCase().includes(q) || (r.customer_name ?? '').toLowerCase().includes(q)));
 
   const [form, setForm] = useState<{ customerId: string; notes: string; lines: { productId: string; quantity: string; unitPrice: string; decision: 'restock' | 'scrap' }[] } | null>(null);
 
@@ -33,11 +48,19 @@ export default function ProReturnsPage() {
   const newForm = () => setForm({ customerId: '', notes: '', lines: [{ productId: '', quantity: '', unitPrice: '', decision: 'restock' }] });
 
   return (
-    <SalesPageShell icon={Undo2} title="Retours clients" parent="Ventes"
+    <SalesPageShell icon={Undo2} title="Retours clients" parent="Ventes" list
+      summary={`${kpis.open} sans avoir`}
       actions={!form && <button className="odoo-btn-primary" onClick={newForm} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau retour</button>}>
 
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="Retours ce mois" value={String(kpis.month)} sub={`${returns.length} au total`} />
+        <ListKpi label="Sans avoir" value={String(kpis.open)} sub="avoir à émettre" tone={kpis.open ? 'orange' : undefined} />
+        <ListKpi label="Clients concernés" value={String(kpis.customers)} sub="au moins un retour" />
+        <ListKpi label="Lignes retournées" value={String(kpis.lines)} sub="remises en stock ou rebutées" />
+      </section>
+
       {form && (
-        <div style={{ border: '1px solid var(--odoo-purple)', borderRadius: 6, padding: 14, marginBottom: 16, display: 'grid', gap: 10 }}>
+        <section className="prj-panel" style={{ padding: 14, display: 'grid', gap: 10 }}>
           <label><span style={lab}>Client</span>
             <select style={field} value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}>
               <option value="">— Choisir —</option>
@@ -70,24 +93,36 @@ export default function ProReturnsPage() {
               disabled={!form.customerId || !form.lines.some(l => l.productId && Number(l.quantity) > 0) || create.isPending}
               onClick={() => create.mutate()}><Check size={13} /> Enregistrer le retour</button>
           </div>
-        </div>
+        </section>
       )}
 
-      <table className="odoo-table" style={{ width: '100%' }}>
-        <thead><tr><th>N°</th><th>Date</th><th>Client</th><th>Lignes</th><th>Avoir</th></tr></thead>
-        <tbody>
-          {returns.map((r: ProReturn) => (
-            <tr key={r.id}>
-              <td style={{ fontFamily: 'ui-monospace, monospace' }}>{r.number}</td>
-              <td>{r.return_date}</td>
-              <td>{r.customer_name}</td>
-              <td>{r.item_count}</td>
-              <td>{r.credit_note_id ? 'oui' : '—'}</td>
-            </tr>
-          ))}
-          {returns.length === 0 && <tr><td colSpan={5} style={{ color: 'var(--odoo-text-muted)' }}>Aucun retour.</td></tr>}
-        </tbody>
-      </table>
+      <ListToolbar search={search} onSearch={setSearch} placeholder="N° de retour, client…" />
+      <FilterChips label="Filtrer les retours" value={view} onChange={k => setView(k as '' | 'credited' | 'open')} chips={[
+        { key: '', label: 'Tous', count: returns.length },
+        { key: 'open', label: 'Sans avoir', count: kpis.open },
+        { key: 'credited', label: 'Avoir émis', count: kpis.credited },
+      ]} />
+      {!shown.length ? (
+        <ListEmpty icon={Undo2} title={returns.length ? 'Aucun retour pour ce filtre' : 'Aucun retour client'}
+          text={returns.length ? undefined : '« Nouveau retour » pour enregistrer une marchandise reprise à un client pro.'} />
+      ) : (
+        <ListPanel footer={<div className="sal-foot"><span>{shown.length} retour{shown.length > 1 ? 's' : ''}</span></div>}>
+          <table className="odoo-table">
+            <thead><tr><th>N°</th><th>Date</th><th>Client</th><th style={{ textAlign: 'right' }}>Lignes</th><th>Avoir</th></tr></thead>
+            <tbody>
+              {shown.map((r: ProReturn) => (
+                <tr key={r.id} style={{ cursor: 'default' }}>
+                  <td><span className="sal-num">{r.number}</span></td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{String(r.return_date).slice(0, 10).split('-').reverse().join('/')}</td>
+                  <td style={{ fontWeight: 500 }}>{r.customer_name}</td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.item_count}</td>
+                  <td>{r.credit_note_id ? <span className="odoo-tag odoo-tag-green">Émis</span> : <span className="odoo-tag odoo-tag-orange">À émettre</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ListPanel>
+      )}
     </SalesPageShell>
   );
 }

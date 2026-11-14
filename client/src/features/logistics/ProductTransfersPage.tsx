@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeftRight, Plus, Trash2, Check } from 'lucide-react';
 import { productTransfersApi, type ProductTransfer } from '../../api/product-transfers.api';
@@ -7,6 +7,7 @@ import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../utils/api-error';
 import SalesPageShell from '../sales/SalesPageShell';
+import { ListKpi, ListPanel, ListEmpty, ListToolbar } from '../sales/ListTemplate';
 
 // Transferts de produits finis entre sites (phase 7.4) : une pièce, deux mouvements.
 export default function ProductTransfersPage() {
@@ -15,6 +16,18 @@ export default function ProductTransfersPage() {
   const { data: stores = [] } = useQuery({ queryKey: ['stores'], queryFn: storesApi.list });
   const { data: productsResp } = useQuery({ queryKey: ['products', 'all'], queryFn: () => productsApi.list({ limit: '1000' }) });
   const products: Record<string, any>[] = productsResp?.data ?? productsResp ?? [];
+
+  const [search, setSearch] = useState('');
+  const month = new Date().toISOString().slice(0, 7);
+  const kpis = useMemo(() => {
+    const ofMonth = transfers.filter(t => String(t.transfer_date).slice(0, 7) === month);
+    const routes = new Map<string, number>();
+    for (const t of ofMonth) { const k = `${t.from_store_name} → ${t.to_store_name}`; routes.set(k, (routes.get(k) || 0) + 1); }
+    const top = [...routes.entries()].sort((x, y) => y[1] - x[1])[0];
+    return { month: ofMonth.length, lines: ofMonth.reduce((n, t) => n + (Number(t.item_count) || 0), 0), top, last: transfers[0]?.transfer_date };
+  }, [transfers, month]);
+  const q = search.trim().toLowerCase();
+  const shown = q ? transfers.filter(t => [t.number, t.from_store_name, t.to_store_name].some(v => (v ?? '').toLowerCase().includes(q))) : transfers;
 
   const [form, setForm] = useState<{ fromStoreId: string; toStoreId: string; notes: string; lines: { productId: string; quantity: string }[] } | null>(null);
 
@@ -32,11 +45,19 @@ export default function ProductTransfersPage() {
   const newForm = () => setForm({ fromStoreId: '', toStoreId: '', notes: '', lines: [{ productId: '', quantity: '' }] });
 
   return (
-    <SalesPageShell icon={ArrowLeftRight} title="Transferts de produits" parent="Ventes"
+    <SalesPageShell icon={ArrowLeftRight} title="Transferts de produits" parent="Ventes" list
+      summary={`${kpis.month} ce mois`}
       actions={!form && <button className="odoo-btn-primary" onClick={newForm} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau transfert</button>}>
 
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="Transferts ce mois" value={String(kpis.month)} sub={`${transfers.length} au total`} />
+        <ListKpi label="Lignes transférées" value={String(kpis.lines)} sub="articles déplacés ce mois" />
+        <ListKpi label="Trajet le plus fréquent" value={kpis.top ? String(kpis.top[1]) : '—'} sub={kpis.top ? kpis.top[0] : 'aucun ce mois'} />
+        <ListKpi label="Dernier transfert" value={kpis.last ? String(kpis.last).slice(0, 10).split('-').reverse().join('/') : '—'} sub="date de la pièce" />
+      </section>
+
       {form && (
-        <div style={{ border: '1px solid var(--odoo-purple)', borderRadius: 6, padding: 14, marginBottom: 16, display: 'grid', gap: 10 }}>
+        <section className="prj-panel" style={{ padding: 14, display: 'grid', gap: 10 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <label><span style={lab}>Site source</span>
               <select style={field} value={form.fromStoreId} onChange={(e) => setForm({ ...form, fromStoreId: e.target.value })}>
@@ -69,24 +90,31 @@ export default function ProductTransfersPage() {
               disabled={!form.fromStoreId || !form.toStoreId || form.fromStoreId === form.toStoreId || !form.lines.some(l => l.productId && Number(l.quantity) > 0) || create.isPending}
               onClick={() => create.mutate()}><Check size={13} /> Valider le transfert</button>
           </div>
-        </div>
+        </section>
       )}
 
-      <table className="odoo-table" style={{ width: '100%' }}>
-        <thead><tr><th>N°</th><th>Date</th><th>Source</th><th>Destination</th><th>Articles</th></tr></thead>
-        <tbody>
-          {transfers.map((t: ProductTransfer) => (
-            <tr key={t.id}>
-              <td style={{ fontFamily: 'ui-monospace, monospace' }}>{t.number}</td>
-              <td>{t.transfer_date}</td>
-              <td>{t.from_store_name}</td>
-              <td>{t.to_store_name}</td>
-              <td>{t.item_count}</td>
-            </tr>
-          ))}
-          {transfers.length === 0 && <tr><td colSpan={5} style={{ color: 'var(--odoo-text-muted)' }}>Aucun transfert.</td></tr>}
-        </tbody>
-      </table>
+      <ListToolbar search={search} onSearch={setSearch} placeholder="N° de transfert, site…" />
+      {!shown.length ? (
+        <ListEmpty icon={ArrowLeftRight} title={transfers.length ? 'Aucun transfert trouvé' : 'Aucun transfert'}
+          text={transfers.length ? undefined : '« Nouveau transfert » pour déplacer des produits finis d\'un site à un autre.'} />
+      ) : (
+        <ListPanel footer={<div className="sal-foot"><span>{shown.length} transfert{shown.length > 1 ? 's' : ''}</span></div>}>
+          <table className="odoo-table">
+            <thead><tr><th>N°</th><th>Date</th><th>Source</th><th>Destination</th><th style={{ textAlign: 'right' }}>Articles</th></tr></thead>
+            <tbody>
+              {shown.map((t: ProductTransfer) => (
+                <tr key={t.id} style={{ cursor: 'default' }}>
+                  <td><span className="sal-num">{t.number}</span></td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{String(t.transfer_date).slice(0, 10).split('-').reverse().join('/')}</td>
+                  <td>{t.from_store_name}</td>
+                  <td>{t.to_store_name}</td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{t.item_count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ListPanel>
+      )}
     </SalesPageShell>
   );
 }

@@ -23,6 +23,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { SelectFilter } from '../../components/purchasing/ProcessBoard';
 import { OdooToggle } from '../settings/SettingsPrimitives';
 import SalesPageShell from '../sales/SalesPageShell';
+import { ListKpi, ListToolbar, FilterChips } from '../sales/ListTemplate';
 
 /**
  * Promotions et fidélité (mig 372). Les promotions s'appliquent seules en caisse (et, si
@@ -62,20 +63,21 @@ export default function PromotionsPage() {
   const setTab = (t: Tab) => { params.set('tab', t); setParams(params, { replace: true }); };
   const [creating, setCreating] = useState(false);
   return (
-    <SalesPageShell icon={BadgePercent} title="Promotions et fidélité" actions={tab === 'promotions' && isDirection ? (
+    <SalesPageShell icon={BadgePercent} parent="Ventes" title="Promotions et fidélité" list actions={tab === 'promotions' && isDirection ? (
       <button className="odoo-btn-primary" onClick={() => setCreating(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle promotion</button>
     ) : undefined}>
-      <p style={{ ...muted, margin: 0, fontSize: '0.8125rem' }}>Remises automatiques en caisse, sur les commandes et les devis ; points de fidélité gagnés et utilisés par les clients.</p>
-      <div className="odoo-view-switcher" role="tablist" aria-label="Rubrique" style={{ justifySelf: 'start' }}>
-        {TABS.filter(t => !t.direction || isDirection).map(t => {
-          const Icon = t.icon; const on = tab === t.key;
-          return (
-            <button key={t.key} type="button" role="tab" aria-selected={on} onClick={() => setTab(t.key)}
-              style={{ padding: '0.4rem 0.9rem', fontSize: '0.8125rem', gap: 6, background: on ? 'var(--odoo-purple-light)' : undefined, color: on ? 'var(--odoo-purple)' : undefined, fontWeight: on ? 600 : 400 }}>
-              <Icon size={13} /> {t.label}
-            </button>
-          );
-        })}
+      <div className="prj-toolbar">
+        <p className="prj-note" style={{ flex: 1, minWidth: 260 }}>Remises automatiques en caisse, sur les commandes et les devis ; points de fidélité gagnés et utilisés par les clients.</p>
+        <div className="prj-views" role="tablist" aria-label="Rubrique">
+          {TABS.filter(t => !t.direction || isDirection).map(t => {
+            const Icon = t.icon; const on = tab === t.key;
+            return (
+              <button key={t.key} type="button" role="tab" aria-selected={on} className={on ? 'active' : ''} onClick={() => setTab(t.key)}>
+                <Icon size={14} /> {t.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
       {tab === 'promotions' && <PromotionsTab canEdit={isDirection} creating={creating} onCreated={() => setCreating(false)} />}
       {tab === 'loyalty' && isDirection && <LoyaltyTab />}
@@ -148,25 +150,22 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
 
   return (
     <>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-        {FILTERS.map(f => {
-          const n = f.key === 'all' ? data.length : count(f.key); const on = filter === f.key;
-          if (f.key === 'ending' && n === 0 && !on) return null;
-          return (
-            <button key={f.key} type="button" onClick={() => setFilter(f.key)} style={{ ...chip(on), display: 'inline-flex', alignItems: 'center', gap: 6, ...(f.key === 'ending' && !on ? { borderColor: '#d9822b', color: '#b85d1a' } : {}) }}>
-              {f.key === 'ending' && <Hourglass size={11} />}{f.label}<span style={{ fontWeight: 600 }}>{n}</span>
-            </button>
-          );
-        })}
-        <span style={{ ...muted, marginLeft: 'auto' }}>{n2(granted30)} DH de remises accordées sur 30 jours</span>
-      </div>
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="En cours" value={String(count('running'))} sub={`dont ${data.filter(p => p.state === 'running' && p.coupon_code).length} avec code promo`} />
+        <ListKpi label="Se terminent sous 7 j" value={String(count('ending'))} sub="à prolonger ou laisser finir" tone={count('ending') ? 'orange' : undefined} />
+        <ListKpi label="Remises accordées (30 j)" value={`${n2(granted30)} DH`} sub="toutes promotions confondues" />
+        <ListKpi label="Remises accordées (total)" value={`${n2(data.reduce((a, p) => a + Number(p.granted_amount ?? 0), 0))} DH`} sub={`${n0(data.reduce((a, p) => a + Number(p.uses_count ?? 0), 0))} utilisation(s)`} />
+      </section>
 
-      <div className="odoo-search-panel" style={{ margin: 0, flexWrap: 'wrap' }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)' }} />
-        <input className="odoo-search-input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Nom ou code promo…" style={{ flex: '1 1 200px' }} />
+      <ListToolbar search={search} onSearch={setSearch} placeholder="Nom ou code promo…">
         <SelectFilter label="Canal" icon={Filter} value={channel} onChange={setChannel} allLabel="Tous"
           options={[{ key: 'pos', label: 'Caisse' }, { key: 'orders', label: 'Commandes' }, { key: 'quotes', label: 'Devis' }]} />
-      </div>
+      </ListToolbar>
+      <FilterChips label="Filtrer les promotions" value={filter} onChange={k => setFilter(k as ListFilter)}
+        chips={FILTERS.filter(f => f.key !== 'ending' || count('ending') > 0 || filter === 'ending').map(f => ({
+          key: f.key, label: f.label, count: f.key === 'all' ? data.length : count(f.key),
+          tone: f.key === 'ending' ? 'late' as const : undefined, icon: f.key === 'ending' ? Hourglass : undefined,
+        }))} />
 
       {isLoading ? <Loader2 className="animate-spin" size={18} /> : rows.length === 0 ? (
         <StatusBanner tone="info" icon={BadgePercent} title={data.length ? 'Aucune promotion ici' : 'Aucune promotion'}
