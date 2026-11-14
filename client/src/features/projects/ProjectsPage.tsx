@@ -16,6 +16,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
 import { PeriodFilter, Pager, periodParams, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import { useAuth } from '../../context/AuthContext';
+import SearchSelect from '../../components/ui/SearchSelect';
 import ProjectsPlanning from './ProjectsPlanning';
 import {
   ProjectFormModal, TimeEntryForm, TaskBoard, Kpi, Meter, n2, n0, h1, initials, projectHealth, consumption, usageTone, needsAttention, projectRevenue, projectCost,
@@ -286,10 +287,8 @@ function OpenTasks() {
         <Kpi label="Sans responsable" value={String(unassigned)} sub="à affecter" />
       </section>
       <div className="prj-toolbar">
-        <select className="odoo-filter-dropdown" aria-label="Affectée à" value={assignee} onChange={e => setAssignee(e.target.value)} style={{ height: 38 }}>
-          <option value="">Tout le monde</option>
-          {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+        <SearchSelect size="md" width={240} ariaLabel="Affectée à" placeholder="Tout le monde" value={assignee} onChange={setAssignee}
+          options={people.map(p => ({ id: p.id, label: p.name, sublabel: p.role ?? undefined }))} />
         <span className="prj-note" style={{ flex: 1 }}>Projets en brouillon ou en cours, retards d’abord.</span>
         <div className="prj-views" role="group" aria-label="Affichage">
           <button type="button" className={layout === 'board' ? 'active' : ''} aria-pressed={layout === 'board'} onClick={() => setLayout('board')}><Columns3 size={14} /> Kanban</button>
@@ -344,10 +343,8 @@ function TimeSheet() {
     <div className="prj">
       <div className="prj-toolbar">
         <PeriodFilter label="Période" title="Dates de travail" period={period} onPeriod={setPeriod} from={from} onFrom={setFrom} to={to} onTo={setTo} />
-        <select className="odoo-filter-dropdown" aria-label="Personne" value={employee} onChange={e => setEmployee(e.target.value)} style={{ height: 38 }}>
-          <option value="">Tout le monde</option>
-          {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+        <SearchSelect size="md" width={240} ariaLabel="Personne" placeholder="Tout le monde" value={employee} onChange={setEmployee}
+          options={people.map(p => ({ id: p.id, label: p.name, sublabel: p.role ?? undefined }))} />
       </div>
       <section className="prj-kpis" aria-label="Indicateurs">
         <Kpi label="Heures" value={data ? `${h1(data.hours)} h` : '…'} sub={data ? `${data.total} saisie${data.total > 1 ? 's' : ''}` : undefined} />

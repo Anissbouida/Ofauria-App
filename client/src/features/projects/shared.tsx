@@ -11,6 +11,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import SearchSelect from '../../components/ui/SearchSelect';
 import './projects.css';
 
 /** Petits formulaires du module Projets, partagés entre la liste et la fiche. */
@@ -301,10 +302,8 @@ export function TaskFormModal({ projectId, task, onClose }: { projectId: string;
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div>
           <span style={label}>Affectée à</span>
-          <select className="input" style={{ width: '100%' }} value={f.assigneeId ?? ''} onChange={e => set('assigneeId', e.target.value || null)}>
-            <option value="">Personne</option>
-            {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          <SearchSelect size="md" width="100%" ariaLabel="Affectée à" placeholder="Personne" value={f.assigneeId ?? ''} onChange={v => set('assigneeId', v || null)}
+            options={people.map(p => ({ id: p.id, label: p.name, sublabel: p.role ?? undefined }))} />
         </div>
         <div>
           <span style={label}>Priorité</span>
@@ -358,35 +357,27 @@ export function TimeEntryForm({ projectId, tasks, onSaved, compact, bare }: { pr
       {!projectId && (
         <div>
           <span style={label}>Projet</span>
-          <select className="input" style={{ width: '100%' }} value={pid} onChange={e => { setPid(e.target.value); setTaskId(''); }}>
-            <option value="">Choisir…</option>
-            {(projectsData?.rows ?? []).map(p => <option key={p.id} value={p.id}>{p.number} · {p.name}</option>)}
-          </select>
+          <SearchSelect size="md" width="100%" ariaLabel="Projet" placeholder="Rechercher un projet…" value={pid} onChange={v => { setPid(v); setTaskId(''); }}
+            options={(projectsData?.rows ?? []).map(p => ({ id: p.id, label: p.name, sublabel: `${p.number}${p.customer_label ? ` · ${p.customer_label}` : ''}` }))} />
         </div>
       )}
       <div>
         <span style={label}>Qui</span>
-        <select className="input" style={{ width: '100%' }} value={employeeId} onChange={e => setEmployeeId(e.target.value)}>
-          <option value="">Choisir…</option>
-          {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+        <SearchSelect size="md" width="100%" ariaLabel="Qui" placeholder="Rechercher une personne…" value={employeeId} onChange={setEmployeeId}
+          options={people.map(p => ({ id: p.id, label: p.name, sublabel: p.role ?? undefined }))} />
       </div>
       {tasks && (
         <div>
           <span style={label}>Tâche</span>
-          <select className="input" style={{ width: '100%' }} value={taskId} onChange={e => setTaskId(e.target.value)}>
-            <option value="">Sans tâche</option>
-            {tasks.filter(t => t.status !== 'cancelled').map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
-          </select>
+          <SearchSelect size="md" width="100%" ariaLabel="Tâche" placeholder="Sans tâche" value={taskId} onChange={setTaskId}
+            options={tasks.filter(t => t.status !== 'cancelled').map(t => ({ id: t.id, label: t.title, sublabel: t.assignee_name ?? undefined }))} />
         </div>
       )}
       {!tasks && !compact && (
         <div>
           <span style={label}>Activité</span>
-          <select className="input" style={{ width: '100%' }} value={activityCode} onChange={e => setActivityCode(e.target.value)}>
-            <option value="">—</option>
-            {activities.map(a => <option key={a.code} value={a.code}>{a.label}</option>)}
-          </select>
+          <SearchSelect size="md" width="100%" ariaLabel="Activité" placeholder="Aucune" value={activityCode} onChange={setActivityCode}
+            options={activities.map(a => ({ id: a.code, label: a.label }))} />
         </div>
       )}
       <div><span style={label}>Date</span><input className="input" type="date" style={{ width: '100%' }} value={workDate} onChange={e => setWorkDate(e.target.value)} /></div>

@@ -23,11 +23,13 @@ interface SearchSelectProps {
   width?: number | string;
   /** 'md' : même hauteur que les champs de formulaire (filtres compacts par défaut). */
   size?: 'sm' | 'md';
+  /** Libellé accessible quand aucun <label> visible n'est associé. */
+  ariaLabel?: string;
 }
 
 const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-export default function SearchSelect({ options, value, onChange, placeholder, width = 220, size = 'sm' }: SearchSelectProps) {
+export default function SearchSelect({ options, value, onChange, placeholder, width = 220, size = 'sm', ariaLabel }: SearchSelectProps) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
@@ -88,6 +90,7 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
       <input
         ref={inputRef}
         type="text"
+        aria-label={ariaLabel ?? placeholder}
         value={open ? query : (selected?.label || '')}
         placeholder={selected ? selected.label : placeholder}
         onFocus={() => setOpen(true)}
