@@ -22,6 +22,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import OrderFormModal from '../../components/orders/OrderFormModal';
 import { deliveryNotesApi } from '../../api/delivery-notes.api';
+import SalesPageShell from '../sales/SalesPageShell';
+import { ListKpi } from '../sales/ListTemplate';
 import '../projects/projects.css';
 import '../sales/sales.css';
 
@@ -312,27 +314,33 @@ export default function OrdersPage() {
 
   const openTotal = orders.filter(o => OPEN_STATUSES.has(o.status as string)).reduce((s, o) => s + num(o.total), 0);
   const kanbanStages = STAGES.filter(st => st.key !== 'completed');
+  // Tuiles : chiffres que les pastilles ne donnent pas (retrait du jour, argent à encaisser, à facturer).
+  const kpis = useMemo(() => {
+    const k = { todayCount: 0, weekCount: 0, toCollect: 0, advances: 0, toInvoiceCount: 0, toInvoice: 0 };
+    for (const o of orders) {
+      const st = o.status as string;
+      if (OPEN_STATUSES.has(st)) {
+        const d = o.pickup_date ? differenceInCalendarDays(startOfDay(new Date(o.pickup_date as string)), today) : null;
+        if (d === 0) k.todayCount++;
+        if (d != null && d >= 0 && d <= 7) k.weekCount++;
+        if (!isPro(o)) { k.toCollect += Math.max(0, num(o.total) - num(o.advance_amount)); k.advances += num(o.advance_amount); }
+      }
+      if (isPro(o) && st !== 'cancelled' && proBilling(o).label === 'Livrée · à facturer') { k.toInvoiceCount++; k.toInvoice += num(o.total); }
+    }
+    return k;
+  }, [orders, today]);
 
   return (
-    <div className="odoo-scope" style={{ minHeight: '100%' }}>
-      {/* Control bar */}
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <ClipboardList size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Ventes</span>
-          <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">Commandes</span>
-          <span style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
-            {openCount} en cours · {n(openTotal)} DH
-          </span>
-        </div>
-        <div style={{ flex: 1 }} />
-        <button onClick={() => setShowForm(true)} className="odoo-btn-primary">
-          <Plus size={13} /> Nouvelle commande
-        </button>
-      </div>
+    <SalesPageShell icon={ClipboardList} parent="Ventes" title="Commandes" list
+      summary={`${openCount} en cours · ${n(openTotal)} DH`}
+      actions={<button onClick={() => setShowForm(true)} className="odoo-btn-primary"><Plus size={13} /> Nouvelle commande</button>}>
+        <section className="prj-kpis" aria-label="Indicateurs">
+          <ListKpi label="Commandes en cours" value={String(openCount)} sub={`${n(openTotal)} DH`} />
+          <ListKpi label="À retirer aujourd'hui" value={String(kpis.todayCount)} sub={`${kpis.weekCount} d'ici 7 jours`} />
+          <ListKpi label="Reste à encaisser" value={`${n(kpis.toCollect)} DH`} sub={`avances reçues ${n(kpis.advances)} DH`} />
+          <ListKpi label="Livrées à facturer" value={String(kpis.toInvoiceCount)} sub={`${n(kpis.toInvoice)} DH`} tone={kpis.toInvoiceCount ? 'orange' : undefined} />
+        </section>
 
-      <div className="prj sal-page">
         <div className="prj-toolbar">
           <label className="prj-search">
             <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
@@ -523,7 +531,6 @@ export default function OrdersPage() {
             )}
           </section>
         )}
-      </div>
 
       {/* Formulaire création / édition */}
       {showForm && (
@@ -570,7 +577,7 @@ export default function OrdersPage() {
           onDone={() => { setPrepayOrder(null); invalidate(); }}
         />
       )}
-    </div>
+    </SalesPageShell>
   );
 }
 

@@ -167,6 +167,16 @@ export function navLabel(item: NavItem, sectorLabel?: (key: string, fallback: st
   return key && sectorLabel ? sectorLabel(key, base) : base;
 }
 
+/**
+ * Premiers segments d'URL rendus sous SalesLayout (App.tsx) : la barre du haut y affiche
+ * « Ventes » quel que soit l'onglet, comme le fil d'Ariane de chaque page du module.
+ */
+export const SALES_SHELL_PATHS = new Set([
+  '/sales-dashboard', '/crm', '/promotions', '/quotes', '/dunning', '/orders', '/delivery-notes',
+  '/sales-contracts', '/sales-targets', '/rebates', '/sales', '/customers', '/products',
+  '/sales-channels', '/price-lists', '/product-transfers', '/pro-returns', '/reports',
+]);
+
 /** Entrée de menu par premier segment d'URL (fil d'ariane adapté au secteur). */
 export const NAV_ITEM_BY_PATH: Record<string, NavItem> = {};
 
