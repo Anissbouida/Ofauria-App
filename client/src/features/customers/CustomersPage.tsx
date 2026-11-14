@@ -300,7 +300,7 @@ export default function CustomersPage() {
           <span>Ventes</span>
           <span className="odoo-breadcrumb-separator">/</span>
           <span className="odoo-breadcrumb-current">Clients</span>
-          <span style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
+          <span className="spsh-summary" style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
             {base.length} client{base.length > 1 ? 's' : ''} · {n(totalCa)} DH de CA
           </span>
         </div>
@@ -310,7 +310,9 @@ export default function CustomersPage() {
         </button>
       </div>
 
-      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="sal-page" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Style Apple (2026-11) : grand titre, résumé dessous. */}
+        <header className="kl-largetitle"><h1>Clients</h1><p>{base.length} client{base.length > 1 ? 's' : ''} · {n(totalCa)} DH de CA</p></header>
         {noIceCount > 0 && (
           <StatusBanner tone="warning" icon={AlertTriangle}
             title={`${noIceCount} client${noIceCount > 1 ? 's' : ''} professionnel${noIceCount > 1 ? 's' : ''} sans ICE`}

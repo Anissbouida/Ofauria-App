@@ -248,3 +248,54 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-sheet-head .kl-pill { background: #fff; }
 .kl-sheet-head .kl-sheet-close { background: rgba(255, 255, 255, .2); color: #fff; }
 .kl-sheet-head .kl-sheet-close:hover { background: rgba(255, 255, 255, .3); }
+
+/* ── Fenêtres des modules Ventes / Achats (rendues dans .kl-apple) : même grammaire que la
+   feuille .kl-sheet sans réécrire chaque fenêtre — coins arrondis, en-tête du thème conservé,
+   boutons en pilule, champs et tableaux adoucis. ── */
+.kl-apple .fixed.inset-0:has(> .odoo-scope) { background-color: rgba(15, 23, 42, .32) !important; }
+.kl-apple .fixed.inset-0 > .odoo-scope:not(.kl-sheet) { border-radius: 18px !important; border: 0 !important; overflow: hidden;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, .22), 0 0 0 .5px rgba(15, 23, 42, .08) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; letter-spacing: -.011em; }
+.kl-apple .fixed .odoo-btn-primary, .kl-apple .fixed .odoo-btn-secondary, .kl-apple .fixed .odoo-btn-danger { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; }
+.kl-apple .fixed .odoo-btn-secondary { border-color: transparent; background: color-mix(in srgb, var(--theme-text-muted) 13%, transparent); color: var(--theme-accent-hover); }
+.kl-apple .fixed .odoo-btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--theme-text-muted) 20%, transparent); }
+.kl-apple .fixed .odoo-btn-danger { border: 0; background: color-mix(in srgb, #DC2626 10%, transparent); color: #DC2626; }
+.kl-apple .fixed .odoo-section-header { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; background: transparent; }
+.kl-apple .fixed .odoo-table thead th { background: transparent; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.kl-apple .fixed input:not([type=checkbox]):not([type=radio]):not([type=range]), .kl-apple .fixed select, .kl-apple .fixed textarea { border-radius: 8px; }
+
+/* Barres d'actions internes à une page (sous le grand titre) : simples rangées d'outils,
+   ni collantes ni translucides — seule la barre du haut de page l'est. */
+.kl-apple .sal-page .odoo-control-bar:not(.fixed .odoo-control-bar),
+.kl-apple .pur-head-body .odoo-control-bar:not(.fixed .odoo-control-bar) {
+  position: static; min-height: 0; padding: 0; background: transparent; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none; flex-wrap: wrap;
+}
+/* Onglets restants (odoo-tabs) : soulignement fin à l'accent, sans fond. */
+.kl-apple .odoo-tabs:not(.fixed .odoo-tabs) { background: transparent; border-bottom: 1px solid var(--kl-sep); }
+.kl-apple .odoo-tab:not(.fixed .odoo-tab) { font-size: 14px; }
+
+/* ── Rapports (Analyse des ventes, Marges, Menu Engineering, Rapports personnalisés) ──
+   Styles propres (.exo-*) et utilitaires Tailwind ramenés à la grammaire Apple dans .kl-apple. */
+.kl-apple .exo-card { border: 0; border-radius: 16px; box-shadow: var(--kl-shadow); background: var(--kl-card); }
+.kl-apple .exo-kpi { border-left: 0; padding: 18px 20px; }
+.kl-apple .exo-ttl, .kl-apple .exo-kpi-lbl, .kl-apple .exo-th { text-transform: none; letter-spacing: 0; }
+.kl-apple .exo-ttl { font-size: 15px; font-weight: 700; color: var(--kl-ink); }
+.kl-apple .exo-kpi-lbl { font-size: 13px; color: var(--kl-muted); }
+.kl-apple .exo-kpi-val { font-size: 26px; letter-spacing: -.025em; }
+.kl-apple .exo-th { font-size: 12px; font-weight: 500; color: var(--kl-muted); }
+.kl-apple .module-shell-main .uppercase:not(.fixed *) { text-transform: none; letter-spacing: 0; }
+.kl-apple .module-shell-main .rounded-xl.border:not(.fixed *), .kl-apple .module-shell-main .rounded-2xl.border:not(.fixed *),
+.kl-apple .module-shell-main .bg-white.rounded-xl:not(.fixed *), .kl-apple .module-shell-main .bg-white.rounded-lg:not(.fixed *) {
+  border-color: transparent !important; border-radius: 16px; background-color: var(--kl-card); box-shadow: var(--kl-shadow);
+}
+/* Cartes teintées (bg-*-50) : fond blanc, la couleur reste sur la pastille et le libellé. */
+.kl-apple .module-shell-main [class*="bg-"][class*="-50"].rounded-xl:not(.fixed *) { background-color: var(--kl-card) !important; }
+.kl-apple .module-shell-main .ring-2.ring-blue-400 { --tw-ring-color: var(--kl-accent); }
+/* En-tête des fenêtres bâties sur une barre .odoo-control-bar : couleur du thème, texte blanc
+   (comme les en-têtes modalHeaderStyle et la feuille .kl-sheet). */
+.kl-apple .fixed .odoo-control-bar { background: var(--theme-accent) !important; color: #fff; border-bottom: 0; min-height: 52px; height: auto; padding: 10px 16px; }
+.kl-apple .fixed .odoo-control-bar .odoo-breadcrumb, .kl-apple .fixed .odoo-control-bar .odoo-breadcrumb-current,
+.kl-apple .fixed .odoo-control-bar .odoo-breadcrumb svg { color: #fff !important; }
+.kl-apple .fixed .odoo-control-bar .odoo-breadcrumb-current { font-size: 15px; font-weight: 600; }
+.kl-apple .fixed .odoo-control-bar .odoo-btn-secondary, .kl-apple .fixed .odoo-control-bar .odoo-pager-btn { background: rgba(255, 255, 255, .2) !important; color: #fff !important; border-color: transparent !important; }
+.kl-apple .fixed .odoo-control-bar .odoo-pager-btn { border-radius: 50%; width: 30px; height: 30px; display: inline-grid; place-items: center; }

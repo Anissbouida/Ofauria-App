@@ -613,7 +613,9 @@ export default function SalesPage() {
         </ModalBackdrop>
       )}
 
-      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="sal-page" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Style Apple (2026-11) : grand titre de l'onglet, comme les autres rubriques du module. */}
+      <header className="kl-largetitle"><h1>{currentMainTab?.label}</h1></header>
 
       {/* View sub-tabs (only for sales) */}
       {mainTab === 'sales' && (

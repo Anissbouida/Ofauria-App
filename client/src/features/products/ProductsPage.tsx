@@ -43,24 +43,25 @@ export default function ProductsPage() {
           <span>Ventes</span>
           <span className="odoo-breadcrumb-separator">/</span>
           <span className="odoo-breadcrumb-current">Produits</span>
-          <span style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>{tabLabel}</span>
+          <span className="spsh-summary" style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>{tabLabel}</span>
         </div>
       </div>
 
-      {/* ══════ TABS Odoo ══════ */}
-      <div className="odoo-tabs">
-        <button onClick={() => setActiveTab('pipeline')}
-          className={`odoo-tab ${activeTab === 'pipeline' ? 'active' : ''}`}>
-          <GitBranch size={13} /> Pipeline
-        </button>
-        <button onClick={() => setActiveTab('semi-finis')}
-          className={`odoo-tab ${activeTab === 'semi-finis' ? 'active' : ''}`}>
-          <Layers size={13} /> Produits de base
-        </button>
-        <button onClick={() => setActiveTab('catalogue')}
-          className={`odoo-tab ${activeTab === 'catalogue' ? 'active' : ''}`}>
-          <ShoppingBag size={13} /> Catalogue
-        </button>
+      {/* Style Apple (2026-11) : grand titre et onglets en sélecteur segmenté. */}
+      <div className="sal-page" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <header className="kl-largetitle"><h1>Produits</h1><p>{tabLabel}</p></header>
+        <div className="prj-views" role="tablist" aria-label="Rubriques produits">
+          <button type="button" role="tab" aria-selected={activeTab === 'pipeline'} onClick={() => setActiveTab('pipeline')} className={activeTab === 'pipeline' ? 'active' : ''}>
+            <GitBranch size={13} /> Pipeline
+          </button>
+          <button type="button" role="tab" aria-selected={activeTab === 'semi-finis'} onClick={() => setActiveTab('semi-finis')} className={activeTab === 'semi-finis' ? 'active' : ''}>
+            <Layers size={13} /> Produits de base
+          </button>
+          <button type="button" role="tab" aria-selected={activeTab === 'catalogue'} onClick={() => setActiveTab('catalogue')} className={activeTab === 'catalogue' ? 'active' : ''}>
+            <ShoppingBag size={13} /> Catalogue
+          </button>
+        </div>
       </div>
 
       {activeTab === 'catalogue' ? (
@@ -72,8 +73,9 @@ export default function ProductsPage() {
       ) : activeTab === 'semi-finis' ? (
         <SemiFinisTab />
       ) : (
-        <div style={{ padding: '1rem' }}><ProductPipelineTab /></div>
+        <ProductPipelineTab />
       )}
+      </div>
     </div>
   );
 }
