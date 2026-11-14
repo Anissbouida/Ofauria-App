@@ -532,4 +532,5 @@
 }
 
 /* Note d'une ligne + « ? » (PageNote) */
-.odoo-page-note { display: flex; align-items: center; gap: 0.375rem; margin: 0; font-size: 0.8125rem; color: var(--odoo-text-muted); }
+.odoo-page-note { margin: 0; font-size: 0.8125rem; color: var(--odoo-text-muted); }
+.odoo-page-note .odoo-params-q { margin-left: 0.375rem; vertical-align: -2px; }

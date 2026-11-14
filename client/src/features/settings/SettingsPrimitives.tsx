@@ -16,7 +16,7 @@ export function settingAnchor(title: string) {
 export function PageNote({ children, help }: { children: ReactNode; help?: string }) {
   return (
     <p className="odoo-page-note">
-      <span>{children}</span>
+      {children}
       {help && <span className="odoo-params-q" tabIndex={0} title={help} aria-label={help}><HelpCircle size={13} /></span>}
     </p>
   );
