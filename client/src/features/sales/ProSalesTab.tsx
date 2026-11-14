@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Truck, FileText, Plus, X, Trash2, Loader2, Ban, Eye, CheckSquare, Square, ClipboardList, Printer } from 'lucide-react';
+import { Truck, FileText, Plus, X, Trash2, Loader2, Ban, Eye, CheckSquare, ClipboardList, Printer } from 'lucide-react';
 import { deliveryNotesApi, type DeliveryNote, type ToInvoiceGroup } from '../../api/delivery-notes.api';
 import { customersApi } from '../../api/customers.api';
 import { productsApi } from '../../api/products.api';
@@ -11,7 +11,9 @@ import { apiErrorMessage } from '../../api/errors';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import SalesPageShell from './SalesPageShell';
-import { StagePipeline, type StageDef, type StageStat } from '../../components/purchasing/ProcessBoard';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
+import { ListToolbar, FilterChips, ListPanel, ListEmpty, NextStep } from './ListTemplate';
 
 /** BL imprimable (mig 354) : remis avec la marchandise, signé par le client. */
 async function printNote(id: string) {
@@ -39,134 +41,118 @@ const STATUS: Record<DeliveryNote['status'], { label: string; cls: string }> = {
   cancelled: { label: 'Annulé', cls: 'odoo-tag-grey' },
 };
 
-// Étapes du cycle du BL pour la bande « SUIVI », au style de la page Commandes.
-const BL_STAGES: StageDef[] = [
-  { key: 'delivered', label: 'À facturer', hint: 'livrés non facturés', icon: FileText },
-  { key: 'invoiced', label: 'Facturés', hint: 'clôturés', icon: CheckSquare },
-  { key: 'cancelled', label: 'Annulés', hint: 'annulés', icon: Ban },
-];
-
 export default function ProSalesTab() {
   // Une seule rangée de filtres : « À facturer » = BL livrés regroupés par client
   // avec l'action de facturation ; les autres filtrent la liste des BL.
   const [view, setView] = useState<'' | 'delivered' | 'invoiced' | 'cancelled' | null>(null);
+  const [search, setSearch] = useState('');
   const [showNew, setShowNew] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const { data: toInvoice = [], isSuccess } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice() });
   const pending = toInvoice.reduce((n, g) => n + g.notes.length, 0);
   const current = view ?? (isSuccess && pending > 0 ? 'delivered' : '');
-  // Agrégat pour la bande SUIVI : compte et montant TTC par statut.
+  // Compteurs des pastilles : nombre et montant TTC par statut.
   const { data: allNotes = [] } = useQuery({ queryKey: ['delivery-notes', 'list', 'all'], queryFn: () => deliveryNotesApi.list() });
-  const stats = useMemo<Record<string, StageStat>>(() => {
+  const stats = useMemo(() => {
     const acc: Record<string, { count: number; total: number }> = {
       delivered: { count: 0, total: 0 }, invoiced: { count: 0, total: 0 }, cancelled: { count: 0, total: 0 },
     };
     for (const n of allNotes) { const a = acc[n.status]; if (a) { a.count += 1; a.total += Number(n.total_ttc) || 0; } }
-    return {
-      delivered: { count: acc.delivered.count, sub: money(acc.delivered.total) },
-      invoiced: { count: acc.invoiced.count, sub: money(acc.invoiced.total) },
-      cancelled: { count: acc.cancelled.count, sub: money(acc.cancelled.total) },
-    };
+    return acc;
   }, [allNotes]);
-  const filters = [
-    ['delivered', 'À facturer', FileText],
-    ['invoiced', 'Facturés', CheckSquare],
-    ['cancelled', 'Annulés', Ban],
-    ['', 'Tous', Truck],
-  ] as const;
-
-  // Chips de filtre au style du module (cf. Commandes) : fond accentué + compteur.
-  const chipStyle = (active: boolean): React.CSSProperties => ({
-    display: 'inline-flex', alignItems: 'center', gap: 4,
-    backgroundColor: active ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
-    color: active ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
-    fontWeight: active ? 600 : 400,
-  });
+  const q = search.trim().toLowerCase();
+  const groups = q ? toInvoice.filter(g => g.name.toLowerCase().includes(q) || g.notes.some(n => n.number.toLowerCase().includes(q))) : toInvoice;
 
   return (
-    <SalesPageShell icon={Truck} title="Bons de livraison" parent="Ventes"
+    <SalesPageShell icon={Truck} title="Bons de livraison" parent="Ventes" list
+      summary={`${stats.delivered.count} à facturer · ${money(stats.delivered.total)}`}
       actions={<button type="button" onClick={() => setShowNew(true)} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau bon de livraison</button>}>
-      <StagePipeline
-        title="Suivi des bons de livraison"
-        summary={`${allNotes.length} BL · ${stats.delivered.count} à facturer`}
-        stages={BL_STAGES}
-        stats={stats}
-        isActive={(k) => current === k}
-        onPick={(k) => setView(current === k ? '' : (k as '' | 'delivered' | 'invoiced' | 'cancelled'))}
-      />
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap' }}>
-        {filters.map(([k, label, Icon]) => (
-          <button key={k} type="button" onClick={() => setView(k)} className="odoo-filter-dropdown" style={chipStyle(current === k)}>
-            <Icon size={11} /> {label}
-            {k === 'delivered' && pending > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{pending}</span>}
-          </button>
-        ))}
-        <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
-          Commande → bon de livraison → facture : le CA et la créance naissent à la facture.
-        </span>
-      </div>
-      {current === 'delivered' ? <ToInvoice groups={toInvoice} onOpen={setDetailId} /> : <NotesList status={current} onOpen={setDetailId} />}
+      <ListToolbar search={search} onSearch={setSearch} placeholder="N° de BL, client, commande…" />
+      <FilterChips label="Filtrer les bons de livraison" value={current} onChange={k => setView(k as '' | 'delivered' | 'invoiced' | 'cancelled')} chips={[
+        { key: 'delivered', label: 'À facturer', count: stats.delivered.count, icon: FileText },
+        { key: 'invoiced', label: 'Facturés', count: stats.invoiced.count },
+        { key: 'cancelled', label: 'Annulés', count: stats.cancelled.count },
+        { key: '', label: 'Tous', count: allNotes.length },
+      ]} />
+      <p className="prj-note">Commande → bon de livraison → facture : le chiffre d'affaires et la créance naissent à la facture.</p>
+      {current === 'delivered'
+        ? <ToInvoice groups={groups} filtered={!!q} onOpen={setDetailId} />
+        : <NotesList status={current} search={q} onOpen={setDetailId} onToInvoice={() => setView('delivered')} />}
       {showNew && <NewNoteModal onClose={() => setShowNew(false)} />}
       {detailId && <NoteDetail id={detailId} onClose={() => setDetailId(null)} />}
     </SalesPageShell>
   );
 }
 
-function NotesList({ status, onOpen }: { status: string; onOpen: (id: string) => void }) {
+function NotesList({ status, search, onOpen, onToInvoice }: { status: string; search: string; onOpen: (id: string) => void; onToInvoice: () => void }) {
   const queryClient = useQueryClient();
-  const { data: notes = [], isLoading } = useQuery({
+  const confirm = useConfirm();
+  const { data: all = [], isLoading } = useQuery({
     queryKey: ['delivery-notes', 'list', status],
     queryFn: () => deliveryNotesApi.list(status ? { status } : undefined),
   });
+  const notes = search
+    ? all.filter(n => `${n.number} ${n.customer_name} ${n.order_number ?? ''}`.toLowerCase().includes(search))
+    : all;
   const cancel = useMutation({
     mutationFn: (id: string) => deliveryNotesApi.cancel(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['delivery-notes'] }); notify.success('Bon de livraison annulé'); },
     onError: (e) => notify.error(apiErrorMessage(e, 'Annulation impossible')),
   });
+  const menu = (n: DeliveryNote): RowMenuItem[] => {
+    const items: RowMenuItem[] = [
+      { label: 'Voir le détail', icon: Eye, onSelect: () => onOpen(n.id) },
+      { label: 'Imprimer le BL à faire signer', icon: Printer, onSelect: () => printNote(n.id) },
+    ];
+    if (n.status === 'delivered') items.push({
+      label: 'Annuler le BL', icon: Ban, danger: true, disabled: cancel.isPending,
+      onSelect: async () => { if (await confirm(`Annuler le bon ${n.number} ?`, { title: 'Annuler le bon de livraison', confirmLabel: 'Annuler le BL', cancelLabel: 'Retour', danger: true })) cancel.mutate(n.id); },
+    });
+    return items;
+  };
+  if (isLoading) return <ListEmpty icon={Loader2} title="Chargement des bons de livraison…" />;
+  if (!notes.length) {
+    return <ListEmpty icon={Truck} title={search ? 'Aucun bon de livraison pour cette recherche' : 'Aucun bon de livraison'}
+      text={search ? 'Effacez la recherche ou changez de filtre.' : '« Nouveau bon de livraison » pour livrer un client.'} />;
+  }
+  const ttc = notes.reduce((s, n) => s + Number(n.total_ttc), 0);
   return (
-    <>
-      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflowX: 'auto' }}>
-        <table className="odoo-table">
-          <thead><tr><th>N° BL</th><th>Date</th><th>Client</th><th>Commande</th><th style={{ textAlign: 'right' }}>HT</th><th style={{ textAlign: 'right' }}>TTC</th><th>Statut</th><th /></tr></thead>
-          <tbody>
-            {isLoading && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 20 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
-            {!isLoading && notes.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--odoo-text-muted)' }}>Aucun bon de livraison. « Nouveau bon de livraison » pour livrer un client.</td></tr>
-            )}
-            {notes.map(n => (
-              <tr key={n.id} onClick={() => onOpen(n.id)} style={{ cursor: 'pointer' }}>
-                <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n.number}</td>
-                <td>{day(n.delivery_date)}</td>
-                <td>{n.customer_name}</td>
-                <td style={{ color: 'var(--odoo-text-muted)' }}>{n.order_number ?? '—'}</td>
-                <td style={{ textAlign: 'right' }}>{money(n.total_ht)}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(n.total_ttc)}</td>
-                <td>
-                  <span className={`odoo-tag ${STATUS[n.status].cls}`}>{STATUS[n.status].label}</span>
-                  {n.invoice_number && <span style={{ marginLeft: 6, fontSize: '0.75rem', fontFamily: 'ui-monospace, monospace' }}>{n.invoice_number}</span>}
-                </td>
-                <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                  <button type="button" className="odoo-pager-btn" title="Voir" onClick={() => onOpen(n.id)}><Eye size={13} /></button>
-                  <button type="button" className="odoo-pager-btn" title="Imprimer le BL à faire signer" onClick={() => printNote(n.id)}><Printer size={13} /></button>
-                  {n.status === 'delivered' && (
-                    <button type="button" className="odoo-pager-btn" title="Annuler le BL"
-                      onClick={() => { if (window.confirm(`Annuler le bon ${n.number} ?`)) cancel.mutate(n.id); }}><Ban size={13} /></button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
+    <ListPanel footer={<div className="sal-foot"><span>{notes.length} bon{notes.length > 1 ? 's' : ''} de livraison</span><span>Total <strong>{money(ttc)} TTC</strong></span></div>}>
+      <table className="odoo-table">
+        <thead><tr><th>N° BL</th><th>Date</th><th>Client</th><th>Commande</th><th style={{ textAlign: 'right' }}>HT</th><th style={{ textAlign: 'right' }}>TTC</th><th>Statut</th><th style={{ textAlign: 'right' }}>Action</th></tr></thead>
+        <tbody>
+          {notes.map(n => (
+            <tr key={n.id} onClick={() => onOpen(n.id)}>
+              <td style={{ whiteSpace: 'nowrap' }}><span className="sal-num">{n.number}</span></td>
+              <td style={{ whiteSpace: 'nowrap' }}>{day(n.delivery_date)}</td>
+              <td style={{ fontWeight: 500 }}>{n.customer_name}</td>
+              <td><span className="sal-mono">{n.order_number ?? '—'}</span></td>
+              <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{money(n.total_ht)}</td>
+              <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(n.total_ttc)}</td>
+              <td>
+                <span className={`odoo-tag ${STATUS[n.status].cls}`}>{STATUS[n.status].label}</span>
+                {n.invoice_number && <span className="sal-sub sal-mono">{n.invoice_number}</span>}
+              </td>
+              <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                <div className="sal-actions">
+                  {n.status === 'delivered' && <NextStep icon={FileText} label="Facturer" onClick={onToInvoice} />}
+                  <RowMenu items={menu(n)} />
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </ListPanel>
   );
 }
 
-function ToInvoice({ groups, onOpen }: { groups: ToInvoiceGroup[]; onOpen: (id: string) => void }) {
+function ToInvoice({ groups, filtered, onOpen }: { groups: ToInvoiceGroup[]; filtered: boolean; onOpen: (id: string) => void }) {
   if (groups.length === 0) {
-    return <div style={{ padding: 24, textAlign: 'center', color: 'var(--odoo-text-muted)', border: '1px dashed var(--odoo-border)', borderRadius: 6 }}>Rien à facturer : tous les bons de livraison sont facturés.</div>;
+    return <ListEmpty icon={CheckSquare} title={filtered ? 'Aucun client à facturer pour cette recherche' : 'Rien à facturer'}
+      text={filtered ? undefined : 'Tous les bons de livraison sont facturés.'} />;
   }
-  return <div style={{ display: 'grid', gap: 12 }}>{groups.map(g => <InvoiceGroup key={g.customerId} g={g} onOpen={onOpen} />)}</div>;
+  return <div style={{ display: 'grid', gap: 14 }}>{groups.map(g => <InvoiceGroup key={g.customerId} g={g} onOpen={onOpen} />)}</div>;
 }
 
 function InvoiceGroup({ g, onOpen }: { g: ToInvoiceGroup; onOpen: (id: string) => void }) {
@@ -180,53 +166,55 @@ function InvoiceGroup({ g, onOpen }: { g: ToInvoiceGroup; onOpen: (id: string) =
     mutationFn: () => deliveryNotesApi.invoice(chosen.map(n => n.id), date),
     onSuccess: (inv) => {
       ['delivery-notes', 'invoices', 'receivables'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
-      notify.success(`Facture ${inv.invoice_number} créée (${money(inv.total_amount)}) : elle apparaît dans Factures émises et Créances clients.`);
+      notify.success(`Facture ${inv.invoice_number} créée (${money(inv.total_amount)}) : elle apparaît dans Factures et Créances.`);
     },
     onError: (e) => notify.error(apiErrorMessage(e, 'Facturation impossible')),
   });
-  const toggle = (id: string) => setSelected(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  const toggle = (id: string) => setSelected(prev => { const s = new Set(prev); if (s.has(id)) s.delete(id); else s.add(id); return s; });
+  const allChosen = chosen.length === g.notes.length;
   return (
-    <article style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, display: 'grid', gap: 8 }}>
-      <header className="flex items-center gap-3 flex-wrap">
-        <div>
-          <div style={{ fontWeight: 700 }}>{g.name}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
-            {g.notes.length} bon{g.notes.length > 1 ? 's' : ''} du {day(g.firstDate)} au {day(g.lastDate)} · {money(g.totalTtc)} TTC
-          </div>
+    <section className="prj-panel sal-panel">
+      <div className="prj-panel-head" style={{ flexWrap: 'wrap' }}>
+        <div style={{ display: 'grid', gap: 2 }}>
+          <span>{g.name}</span>
+          <small>{g.notes.length} bon{g.notes.length > 1 ? 's' : ''} du {day(g.firstDate)} au {day(g.lastDate)} · {money(g.totalTtc)} TTC</small>
         </div>
-        <div className="flex items-center gap-2" style={{ marginLeft: 'auto' }}>
-          <label style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Date de facture
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ marginLeft: 6, padding: '0.2rem 0.4rem', border: '1px solid var(--odoo-border)', borderRadius: 4 }} />
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <label style={{ fontSize: '0.8125rem', fontWeight: 400, color: 'var(--odoo-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>Date de facture
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ height: 32, padding: '0 8px', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--theme-bg-card)', color: 'var(--odoo-text)' }} />
           </label>
           <button type="button" className="odoo-btn-primary" disabled={chosen.length === 0 || mutation.isPending} onClick={() => mutation.mutate()}>
             {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
             Facturer {chosen.length} BL · {money(ttc)}
           </button>
         </div>
-      </header>
-      <table style={{ width: '100%', fontSize: '0.8125rem', borderCollapse: 'collapse' }}>
-        <tbody>
-          {g.notes.map(n => (
-            <tr key={n.id} style={{ borderTop: '1px solid var(--odoo-border)' }}>
-              <td style={{ padding: 4, width: 28 }}>
-                <button type="button" onClick={() => toggle(n.id)} style={{ display: 'flex' }}>
-                  {selected.has(n.id) ? <CheckSquare size={15} style={{ color: 'var(--theme-accent)' }} /> : <Square size={15} />}
-                </button>
-              </td>
-              <td style={{ padding: 4, fontFamily: 'ui-monospace, monospace' }}>{n.number}</td>
-              <td style={{ padding: 4 }}>{day(n.delivery_date)}</td>
-              <td style={{ padding: 4, color: 'var(--odoo-text-muted)' }}>{n.order_number ?? ''}</td>
-              <td style={{ padding: 4, textAlign: 'right' }}>{money(n.total_ht)} HT</td>
-              <td style={{ padding: 4, textAlign: 'right', fontWeight: 600 }}>{money(n.total_ttc)}</td>
-              <td style={{ padding: 4, textAlign: 'right' }}><button type="button" className="odoo-pager-btn" onClick={() => onOpen(n.id)}><Eye size={13} /></button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', textAlign: 'right' }}>
-        Sélection : {money(ht)} HT · {money(ttc)} TTC — une seule facture, échéance selon le délai de paiement du client.
       </div>
-    </article>
+      <div className="prj-scroll">
+        <table className="odoo-table">
+          <thead><tr>
+            <th style={{ width: 36 }}><input type="checkbox" className="sal-check" checked={allChosen} aria-label={`Tout sélectionner pour ${g.name}`}
+              onChange={() => setSelected(allChosen ? new Set() : new Set(g.notes.map(n => n.id)))} /></th>
+            <th>N° BL</th><th>Date</th><th>Commande</th><th style={{ textAlign: 'right' }}>HT</th><th style={{ textAlign: 'right' }}>TTC</th><th style={{ width: 48 }} />
+          </tr></thead>
+          <tbody>
+            {g.notes.map(n => (
+              <tr key={n.id} className={selected.has(n.id) ? 'selected' : undefined} onClick={() => toggle(n.id)}>
+                <td onClick={e => e.stopPropagation()}><input type="checkbox" className="sal-check" checked={selected.has(n.id)} onChange={() => toggle(n.id)} aria-label={`Inclure ${n.number}`} /></td>
+                <td><span className="sal-num">{n.number}</span></td>
+                <td style={{ whiteSpace: 'nowrap' }}>{day(n.delivery_date)}</td>
+                <td><span className="sal-mono">{n.order_number ?? ''}</span></td>
+                <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{money(n.total_ht)}</td>
+                <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(n.total_ttc)}</td>
+                <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                  <button type="button" className="sal-next" aria-label={`Voir ${n.number}`} onClick={() => onOpen(n.id)}><Eye size={13} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="sal-foot"><span>Sélection : {money(ht)} HT · {money(ttc)} TTC</span><span>Une seule facture, échéance selon le délai de paiement du client.</span></div>
+    </section>
   );
 }
 

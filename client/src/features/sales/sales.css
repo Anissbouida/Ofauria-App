@@ -23,7 +23,8 @@
 .sal-check { width: 18px; height: 18px; accent-color: var(--odoo-purple); cursor: pointer; margin: 0; vertical-align: middle; }
 .sal-sub { display: block; font-size: 0.75rem; color: var(--odoo-text-muted); margin-top: 2px; }
 .sal-late-txt { display: block; font-size: 0.75rem; font-weight: 600; color: var(--prj-red); margin-top: 2px; }
-.sal-num { font-family: ui-monospace, Menlo, monospace; font-weight: 600; font-size: 0.8125rem; }
+.sal-mono { font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem; color: var(--odoo-text-muted); white-space: nowrap; }
+.sal-num { font-family: ui-monospace, Menlo, monospace; font-weight: 600; font-size: 0.8125rem; white-space: nowrap; }
 .sal-next { height: 30px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--odoo-border); background: var(--theme-bg-card); color: var(--odoo-text); font: inherit; font-size: 0.8125rem; font-weight: 500; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
 .sal-next:hover:not(:disabled) { border-color: var(--odoo-purple); color: var(--odoo-purple); }
 .sal-next:disabled { opacity: .55; cursor: default; }

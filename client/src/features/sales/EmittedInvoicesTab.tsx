@@ -5,7 +5,7 @@ import { customersApi } from '../../api/customers.api';
 import InvoiceDisputePanel from './InvoiceDisputePanel';
 import InvoiceBadDebtPanel from './InvoiceBadDebtPanel';
 import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
-import { format, startOfDay } from 'date-fns';
+import { format, startOfDay, differenceInCalendarDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   Plus, Pencil, X, Check, Download, Receipt, Loader2, Search, Banknote, Eye, Ban, Trash2,
@@ -16,7 +16,8 @@ import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
-import { StagePipeline, type StageDef, type StageStat } from '../../components/purchasing/ProcessBoard';
+import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
+import { ListToolbar, FilterChips, ListKpi, ListPanel, ListEmpty, NextStep } from './ListTemplate';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
 function n(val: number): string {
@@ -27,8 +28,8 @@ function n(val: number): string {
 
 type Inv = Record<string, any>;
 
-/** Étapes d'une facture client : émise → partiellement encaissée → soldée. */
-const STAGES: StageDef[] = [
+/** Étapes d'une facture client : émise → partiellement encaissée → soldée (frise de la fiche). */
+const STAGES = [
   { key: 'pending', label: 'À encaisser', hint: 'reste dû', icon: Clock },
   { key: 'partial', label: 'Partielles', hint: 'reste dû', icon: Coins },
   { key: 'paid', label: 'Soldées', hint: 'encaissé', icon: CheckCircle2 },
@@ -312,22 +313,6 @@ export default function EmittedInvoicesTab() {
   const invoicesOnly = useMemo(() => allInvoices.filter(inv => !isCredit(inv)), [allInvoices]);
   const today = startOfDay(new Date());
 
-  /* ── Compteurs du pipeline (même grammaire que Commandes et Achats) ── */
-  const stageStats = useMemo(() => {
-    const stats: Record<string, StageStat> = {};
-    const amounts: Record<string, number> = {};
-    for (const s of STAGES) { stats[s.key] = { count: 0, sub: '', late: 0 }; amounts[s.key] = 0; }
-    for (const inv of invoicesOnly) {
-      const key = stageOf(inv);
-      if (!stats[key]) continue;
-      stats[key].count += 1;
-      amounts[key] += key === 'paid' ? num(inv.total_amount) : remainingOf(inv);
-      if (isOverdue(inv, today)) stats[key].late = (stats[key].late || 0) + 1;
-    }
-    for (const s of STAGES) stats[s.key].sub = `${n(amounts[s.key])} DH`;
-    return stats;
-  }, [invoicesOnly, today]);
-
   const counts = useMemo(() => {
     const c: Record<string, number> = { '': allInvoices.length };
     for (const inv of allInvoices) { const k = stageOf(inv); c[k] = (c[k] || 0) + 1; }
@@ -379,197 +364,139 @@ export default function EmittedInvoicesTab() {
   };
   const openCreate = () => { resetManualForm(); setShowCreateModal(true); };
 
-  const chipStyle = (active: boolean): CSSProperties => ({
-    display: 'inline-flex', alignItems: 'center', gap: 4,
-    backgroundColor: active ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
-    color: active ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
-    fontWeight: active ? 600 : 400,
-  });
+  const openInvoices = invoicesOnly.filter(inv => ['pending', 'partial'].includes(stageOf(inv)));
+  const toCollect = openInvoices.reduce((s, inv) => s + remainingOf(inv), 0);
+  const menuItems = (inv: Inv): RowMenuItem[] => {
+    const status = stageOf(inv);
+    const items: RowMenuItem[] = [
+      { label: 'Voir le détail', icon: Eye, onSelect: () => setViewing(inv) },
+      { label: 'Télécharger le PDF', icon: Download, onSelect: () => handleDownloadPdf(inv) },
+    ];
+    // Facture validée : figée (O2C L0), la correction passe par un avoir (L4).
+    if (status !== 'cancelled' && !isCredit(inv) && inv.validation_status !== 'validated') items.push({ label: 'Modifier (date, TVA, articles)', icon: Pencil, onSelect: () => openEdit(inv) });
+    if (canCancel(inv)) items.push({ label: "Annuler (avoir d'annulation)", icon: Ban, danger: true, onSelect: () => cancelInvoice(inv) });
+    return items;
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Alerte échéances dépassées */}
-      {overdue.length > 0 && (
-        <StatusBanner tone="danger" icon={AlertTriangle}
-          title={`${overdue.length} facture${overdue.length > 1 ? 's' : ''} en retard de paiement · ${n(overdueAmount)} DH`}
-          actions={
-            <button type="button" className={lateOnly ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
-              onClick={() => { setLateOnly(v => !v); setStatusFilter(''); }}>
-              {lateOnly ? 'Voir toutes les factures' : 'Voir les retards'}
-            </button>
-          }>
-          Échéance dépassée sans règlement complet : à relancer ou à encaisser.
-        </StatusBanner>
-      )}
+    <div className="prj">
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="À encaisser" value={`${n(toCollect)} DH`} sub={`${openInvoices.length} facture${openInvoices.length > 1 ? 's' : ''}${overdue.length ? ` · ${n(overdueAmount)} DH échus` : ''}`} tone={overdue.length ? 'orange' : undefined} />
+        <ListKpi label="Facturé" value={`${n(totalBilled)} DH`} sub={`${billed.length} facture${billed.length > 1 ? 's' : ''} hors annulées`} />
+        <ListKpi label="Taux d'encaissement" value={`${rate} %`} sub={`${n(totalPaid)} DH encaissés`} tone={rate >= 100 ? 'green' : undefined} />
+      </section>
 
-      {/* Pipeline */}
-      <StagePipeline
-        title="Suivi des factures"
-        summary={`${(counts.pending || 0) + (counts.partial || 0)} à encaisser · ${counts.paid || 0} soldée${(counts.paid || 0) > 1 ? 's' : ''} · ${counts.cancelled || 0} annulée${(counts.cancelled || 0) > 1 ? 's' : ''} · ${rate} % encaissé`}
-        stages={STAGES}
-        stats={stageStats}
-        isActive={(k) => statusFilter === k && !lateOnly}
-        onPick={(k) => { setLateOnly(false); setStatusFilter(statusFilter === k ? '' : k); }}
-      />
+      <ListToolbar search={searchQuery} onSearch={setSearchQuery} placeholder="N° de facture, client, commande ou bon de livraison…">
+        <button type="button" onClick={openCreate} className="odoo-btn-primary"><Plus size={13} /> Nouvelle facture</button>
+      </ListToolbar>
+      <FilterChips label="Filtrer les factures" value={lateOnly ? 'late' : statusFilter}
+        onChange={k => { if (k === 'late') { setLateOnly(true); setStatusFilter(''); } else { setLateOnly(false); setStatusFilter(k); } }}
+        chips={[
+          { key: '', label: 'Toutes', count: counts[''] || 0 },
+          ...(overdue.length ? [{ key: 'late', label: 'En retard', count: overdue.length, tone: 'late' as const, icon: AlertTriangle }] : []),
+          ...FILTER_CHIPS.filter(c => c.key).map(c => ({ key: c.key, label: c.label, count: counts[c.key] || 0 })),
+        ]} />
 
-      {/* Liste */}
-      <div style={sectionStyle}>
-        <div className="odoo-search-panel" style={{ flexWrap: 'wrap' }}>
-          {FILTER_CHIPS.map((chip) => {
-            const Icon = chip.icon;
-            const active = statusFilter === chip.key && !lateOnly;
-            const count = counts[chip.key] || 0;
-            return (
-              <button key={chip.key} onClick={() => { setLateOnly(false); setStatusFilter(chip.key); }}
-                className="odoo-filter-dropdown" style={chipStyle(active)}>
-                <Icon size={11} /> {chip.label}
-                {count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{count}</span>}
-              </button>
-            );
-          })}
-          {lateOnly && (
-            <span className="odoo-filter-chip">
-              En retard
-              <span className="odoo-filter-chip-remove" onClick={() => setLateOnly(false)} role="button" aria-label="Retirer le filtre">×</span>
-            </span>
-          )}
-          <button onClick={openCreate} className="odoo-btn-primary" style={{ marginLeft: 'auto' }}>
-            <Plus size={13} /> Nouvelle facture
-          </button>
-        </div>
-        <div className="odoo-search-panel" style={{ borderTop: '1px solid var(--odoo-border)' }}>
-          <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-          <input type="text" placeholder="Rechercher par n°, client, commande ou bon de livraison..." value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)} className="odoo-search-input" />
-        </div>
-
-        {isLoading ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-            <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
-            <p style={{ fontSize: '0.8125rem' }}>Chargement des factures...</p>
+      {isLoading ? <ListEmpty icon={Loader2} title="Chargement des factures…" /> : filteredInvoices.length === 0 ? (
+        <ListEmpty icon={Receipt} title={hasFilters ? 'Aucune facture pour ces filtres' : 'Aucune facture'}
+          text={hasFilters ? 'Changez de filtre ou effacez la recherche.' : 'Les factures naissent des bons de livraison ou d\'une saisie manuelle.'}
+          action={hasFilters ? <button type="button" className="odoo-btn-secondary" onClick={() => { setStatusFilter(''); setLateOnly(false); setSearchQuery(''); }}>Effacer les filtres</button> : undefined} />
+      ) : (
+        <ListPanel footer={
+          <div className="sal-foot">
+            <span>{filteredInvoices.length} facture{filteredInvoices.length > 1 ? 's' : ''}{hasFilters ? ' (filtrées)' : ''}</span>
+            <span>Total <strong>{n(filteredTotal)} DH</strong> · reste à encaisser <strong style={{ color: 'var(--prj-orange)' }}>{n(filteredRemaining)} DH</strong></span>
           </div>
-        ) : filteredInvoices.length === 0 ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-            <Receipt size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-            <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Aucune facture</p>
-            <p style={{ fontSize: '0.6875rem', marginTop: 2 }}>{hasFilters ? 'Aucun résultat pour ces filtres' : 'Les factures naissent des bons de livraison ou d\'une saisie manuelle'}</p>
-          </div>
-        ) : (
-          <>
-            <div style={{ overflowX: 'auto' }}>
-              <table className="odoo-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: 24 }}></th>
-                    <th>N° facture</th>
-                    <th>Client</th>
-                    <th>Origine</th>
-                    <th>Statut</th>
-                    <th>Date</th>
-                    <th>Échéance</th>
-                    <th>Encaissement</th>
-                    <th style={{ textAlign: 'right' }}>Total TTC</th>
-                    <th style={{ textAlign: 'right' }}>Reste</th>
-                    <th style={{ textAlign: 'right', width: 150 }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredInvoices.map(inv => {
-                    const status = stageOf(inv);
-                    const total = num(inv.total_amount);
-                    const paid = num(inv.paid_amount);
-                    const remaining = remainingOf(inv);
-                    const late = isOverdue(inv, today);
-                    const open = status === 'pending' || status === 'partial';
-                    const pct = total > 0 ? Math.min(100, paid / total * 100) : 0;
-                    return (
-                      <tr key={inv.id as string} onClick={() => setViewing(inv)} className={late ? 'row-danger' : undefined}>
-                        <td><span className={`odoo-status-dot ${late ? 'danger' : STATUS_DOT[status] || 'neutral'}`} /></td>
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{inv.invoice_number as string}</span>
-                          {isCredit(inv) && inv.credited_invoice_number && (
-                            <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>sur {inv.credited_invoice_number as string}</div>
-                          )}
-                          {!isCredit(inv) && inv.cancelled_by_credit && (
-                            <div style={{ fontSize: '0.6875rem', color: '#721c24' }}>annulée par avoir</div>
-                          )}
-                        </td>
-                        <td style={{ whiteSpace: 'nowrap' }}>
-                          <span style={{ fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            {isPro(inv) && <Building2 size={11} style={{ color: '#1e7e4f' }} aria-label="Professionnel" />}
-                            {customerLabel(inv)}
-                          </span>
-                        </td>
-                        <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', fontFamily: 'ui-monospace, monospace' }}>
-                          {isCredit(inv) ? <span style={{ fontFamily: 'inherit' }}>{CREDIT_REASON_LABEL[inv.credit_reason as string] ?? 'Avoir'}</span>
-                            : inv.delivery_note_numbers || inv.order_number_ref || <span style={{ fontFamily: 'inherit' }}>Saisie manuelle</span>}
-                        </td>
-                        <td><span className={`odoo-tag ${STATUS_TAG[status] || 'odoo-tag-grey'}`}>{STATUS_LABEL[status] || status}</span></td>
-                        <td style={{ color: 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>{fmtDate(inv.invoice_date)}</td>
-                        <td style={{ color: late ? '#721c24' : 'var(--theme-text-muted)', whiteSpace: 'nowrap' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            <CalendarDays size={11} /> {inv.due_date ? fmtDate(inv.due_date) : '—'}
-                            {late && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 4 }}>En retard</span>}
-                          </span>
-                        </td>
-                        <td style={{ minWidth: 110 }}>
-                          {status === 'cancelled' ? (
-                            <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Ban size={11} /> Annulée</span>
-                          ) : isCredit(inv) ? (
-                            <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{remaining > 0.004 ? 'à imputer' : 'imputé'}</span>
-                          ) : (
-                            <div title={`${Math.round(pct)} % encaissé`}>
-                              <span style={{ display: 'block', height: 5, borderRadius: 3, background: 'var(--odoo-border)', overflow: 'hidden', maxWidth: 120 }}>
-                                <span style={{ display: 'block', height: '100%', width: `${pct}%`, background: pct >= 100 ? '#28a745' : late ? '#dc3545' : 'var(--odoo-purple)' }} />
-                              </span>
-                              <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{Math.round(pct)} %</span>
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <span style={{ fontWeight: 700, color: isCredit(inv) ? '#6f42c1' : undefined }}>{isCredit(inv) ? '−' : ''}{n(total)}</span>
-                          <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
-                          {inv.foreign_total_amount != null && String(inv.currency_code).trim() !== BASE_CURRENCY && (
-                            <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{n(num(inv.foreign_total_amount))} {String(inv.currency_code).trim()}</div>
-                          )}
-                        </td>
-                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          {status === 'cancelled' ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span>
-                            : isCredit(inv) ? (remaining > 0.004
-                              ? <span style={{ color: '#6f42c1', fontWeight: 600 }} title="Crédit du client, à imputer sur une facture">{n(remaining)} DH</span>
-                              : <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>imputé</span>)
-                            : remaining > 0.004 ? <span style={{ color: '#b85d1a', fontWeight: 600 }}>{n(remaining)} DH</span>
-                            : <span style={{ color: '#155724', fontSize: '0.75rem' }}>soldée</span>}
-                        </td>
-                        <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                          <div style={{ display: 'inline-flex', gap: 2 }}>
-                            {open && !isCredit(inv) && remaining > 0.004 && (
-                              <button onClick={() => openPay(inv)} title="Encaisser" className="odoo-pager-btn" style={{ color: '#28a745' }}><Banknote size={13} /></button>
-                            )}
-                            <button onClick={() => setViewing(inv)} title="Voir le détail" className="odoo-pager-btn"><Eye size={13} /></button>
-                            <button onClick={() => handleDownloadPdf(inv)} title="Télécharger le PDF" className="odoo-pager-btn"><Download size={13} /></button>
-                            {/* Facture validée : figée (O2C L0), la correction passe par un avoir (L4). */}
-                            {status !== 'cancelled' && !isCredit(inv) && inv.validation_status !== 'validated' && (
-                              <button onClick={() => openEdit(inv)} title="Modifier (date, TVA, articles)" className="odoo-pager-btn"><Pencil size={13} /></button>
-                            )}
-                            {canCancel(inv) && (
-                              <button onClick={() => cancelInvoice(inv)} title="Annuler la facture (avoir d'annulation)" className="odoo-pager-btn" style={{ color: '#dc3545' }}><Ban size={13} /></button>
-                            )}
+        }>
+          <table className="odoo-table">
+            <thead>
+              <tr>
+                <th>N° facture</th>
+                <th>Client</th>
+                <th>Origine</th>
+                <th>Date</th>
+                <th>Échéance</th>
+                <th>Statut</th>
+                <th>Encaissement</th>
+                <th style={{ textAlign: 'right' }}>Total TTC</th>
+                <th style={{ textAlign: 'right' }}>Reste</th>
+                <th style={{ textAlign: 'right' }}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredInvoices.map(inv => {
+                const status = stageOf(inv);
+                const total = num(inv.total_amount);
+                const paid = num(inv.paid_amount);
+                const remaining = remainingOf(inv);
+                const late = isOverdue(inv, today);
+                const open = status === 'pending' || status === 'partial';
+                const pct = total > 0 ? Math.min(100, paid / total * 100) : 0;
+                const lateDays = late && inv.due_date ? differenceInCalendarDays(today, startOfDay(new Date(String(inv.due_date)))) : 0;
+                return (
+                  <tr key={inv.id as string} onClick={() => setViewing(inv)}>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <span className="sal-num">{inv.invoice_number as string}</span>
+                      {isCredit(inv) && inv.credited_invoice_number && <span className="sal-sub" style={{ whiteSpace: 'nowrap' }}>sur {inv.credited_invoice_number as string}</span>}
+                      {!isCredit(inv) && inv.cancelled_by_credit && <span className="sal-late-txt">annulée par avoir</span>}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <span style={{ fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        {isPro(inv) && <Building2 size={12} style={{ color: 'var(--theme-text-muted)' }} aria-label="Professionnel" />}
+                        {customerLabel(inv)}
+                      </span>
+                      <span className="sal-sub">{isPro(inv) ? 'Professionnel' : 'Particulier'}</span>
+                    </td>
+                    <td style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+                      {isCredit(inv) ? (CREDIT_REASON_LABEL[inv.credit_reason as string] ?? 'Avoir')
+                        : (inv.delivery_note_numbers || inv.order_number_ref)
+                          ? <span className="sal-mono">{(inv.delivery_note_numbers || inv.order_number_ref) as string}</span>
+                          : 'Saisie manuelle'}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(inv.invoice_date)}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {inv.due_date ? fmtDate(inv.due_date) : '—'}
+                      {late && <span className="sal-late-txt">échue depuis {lateDays} j</span>}
+                    </td>
+                    <td><span className={`odoo-tag ${STATUS_TAG[status] || 'odoo-tag-grey'}`}>{STATUS_LABEL[status] || status}</span></td>
+                    <td style={{ minWidth: 110 }}>
+                      {status === 'cancelled' ? <span className="sal-sub" style={{ margin: 0 }}>—</span>
+                        : isCredit(inv) ? <span className="sal-sub" style={{ margin: 0 }}>{remaining > 0.004 ? 'à imputer' : 'imputé'}</span>
+                        : (
+                          <div title={`${Math.round(pct)} % encaissé`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span className={`prj-bar ${pct >= 100 ? 'green' : late ? 'red' : ''}`} style={{ flex: 1, maxWidth: 90 }}><span style={{ width: `${pct}%` }} /></span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', fontVariantNumeric: 'tabular-nums' }}>{Math.round(pct)} %</span>
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', fontSize: '0.75rem', color: 'var(--theme-text-muted)', borderTop: '1px solid var(--odoo-border)' }}>
-              <span>{filteredInvoices.length} facture{filteredInvoices.length > 1 ? 's' : ''}{hasFilters ? ' (filtrées)' : ''}</span>
-              <span>Total <strong style={{ color: 'var(--theme-text-strong)' }}>{n(filteredTotal)} DH</strong> · reste à encaisser <strong style={{ color: '#b85d1a' }}>{n(filteredRemaining)} DH</strong></span>
-            </div>
-          </>
-        )}
-      </div>
+                        )}
+                    </td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                      <strong style={{ color: isCredit(inv) ? '#5B3A9E' : undefined }}>{isCredit(inv) ? '−' : ''}{n(total)}</strong>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginLeft: 3 }}>DH</span>
+                      {inv.foreign_total_amount != null && String(inv.currency_code).trim() !== BASE_CURRENCY && (
+                        <span className="sal-sub">{n(num(inv.foreign_total_amount))} {String(inv.currency_code).trim()}</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                      {status === 'cancelled' ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span>
+                        : isCredit(inv) ? (remaining > 0.004
+                          ? <span style={{ color: '#5B3A9E', fontWeight: 600 }} title="Crédit du client, à imputer sur une facture">{n(remaining)} DH</span>
+                          : <span className="sal-sub" style={{ margin: 0 }}>imputé</span>)
+                        : remaining > 0.004 ? <span style={{ color: late ? 'var(--prj-red)' : 'var(--prj-orange)', fontWeight: 600 }}>{n(remaining)} DH</span>
+                        : <span style={{ color: 'var(--prj-green)', fontSize: '0.8125rem' }}>soldée</span>}
+                    </td>
+                    <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                      <div className="sal-actions">
+                        {open && !isCredit(inv) && remaining > 0.004 && <NextStep icon={Banknote} label="Encaisser" onClick={() => openPay(inv)} />}
+                        <RowMenu items={menuItems(inv)} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </ListPanel>
+      )}
 
       {viewing && (
         <InvoiceDetailModal

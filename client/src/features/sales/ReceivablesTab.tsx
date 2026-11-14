@@ -9,6 +9,8 @@ import { paymentsApi } from '../../api/accounting.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { ListToolbar, FilterChips, ListKpi, ListPanel, NextStep } from './ListTemplate';
 
 /**
  * Créances clients (mig 351) — remplace l'onglet « Impayés ».
@@ -49,6 +51,12 @@ export default function ReceivablesTab() {
     });
   }, [data, filter, search]);
 
+  const all = data?.customers ?? [];
+  const counts = {
+    all: all.length,
+    overdue: all.filter(c => c.overdue > 0).length,
+    over60: all.filter(c => c.buckets.d90 + c.buckets.over90 > 0).length,
+  };
   const toggle = (key: string) => setOpen(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const t = data?.totals;
   const rec = data?.reconciliation;
@@ -57,18 +65,17 @@ export default function ReceivablesTab() {
   const reconciled = rec ? Math.abs(rec.gap - rec.legacyTickets - rec.unassigned) < 1 : true;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Indicateurs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi icon={Wallet} label="Total dû par les clients" value={t ? money(t.total) : '—'} sub={t ? `${t.documents} document${t.documents > 1 ? 's' : ''} ouverts` : ''} />
-        <Kpi icon={AlertTriangle} label="Échu (en retard)" value={t ? money(t.overdue) : '—'} sub="à relancer" tone={t && t.overdue > 0 ? '#dc2626' : undefined} />
-        <Kpi icon={AlertTriangle} label="Plus de 60 jours" value={t ? money(t.buckets.d90 + t.buckets.over90) : '—'} sub="risque d'impayé" tone={t && t.buckets.d90 + t.buckets.over90 > 0 ? '#991b1b' : undefined} />
-        <Kpi icon={Users} label="Clients concernés" value={t ? String(t.customers) : '—'} sub="" />
-      </div>
+    <div className="prj">
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="Total dû par les clients" value={t ? money(t.total) : '—'} sub={t ? `${t.documents} document${t.documents > 1 ? 's' : ''} ouverts` : ''} />
+        <ListKpi label="Échu (en retard)" value={t ? money(t.overdue) : '—'} sub="à relancer" tone={t && t.overdue > 0 ? 'red' : undefined} />
+        <ListKpi label="Plus de 60 jours" value={t ? money(t.buckets.d90 + t.buckets.over90) : '—'} sub="risque d'impayé" tone={t && t.buckets.d90 + t.buckets.over90 > 0 ? 'red' : undefined} />
+        <ListKpi label="Clients concernés" value={t ? String(t.customers) : '—'} />
+      </section>
 
       {/* Rapprochement avec le compte clients 3421 (G-CA-05) : une seule vue des créances */}
       {rec && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '10px 14px',
+        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 10, padding: '10px 14px',
           background: reconciled ? 'rgba(46,125,50,0.06)' : 'rgba(199,119,0,0.08)',
           display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16, fontSize: '0.8125rem' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
@@ -88,32 +95,28 @@ export default function ReceivablesTab() {
         </div>
       )}
 
-      {/* Filtres */}
-      <div className="flex flex-wrap items-center gap-2">
-        {([['all', 'Tous'], ['overdue', 'En retard'], ['over60', '+ 60 jours']] as const).map(([k, label]) => (
-          <button key={k} type="button" onClick={() => setFilter(k)}
-            className={filter === k ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '0.3rem 0.75rem', fontSize: '0.8125rem' }}>
-            {label}
-          </button>
-        ))}
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Client, téléphone ou n° de pièce…"
-          style={{ marginLeft: 'auto', minWidth: 260, padding: '0.35rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, fontSize: '0.8125rem' }} />
-      </div>
+      <ListToolbar search={search} onSearch={setSearch} placeholder="Client, téléphone ou n° de pièce…" />
+      <FilterChips label="Filtrer les créances" value={filter} onChange={k => setFilter(k as Filter)} chips={[
+        { key: 'all', label: 'Tous', count: counts.all },
+        { key: 'overdue', label: 'En retard', count: counts.overdue, tone: counts.overdue ? 'late' : undefined, icon: counts.overdue ? AlertTriangle : undefined },
+        { key: 'over60', label: '+ 60 jours', count: counts.over60 },
+      ]} />
 
       {/* Balance âgée */}
-      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, overflowX: 'auto' }}>
-        <table className="odoo-table" style={{ minWidth: 900 }}>
+      <ListPanel>
+        <table className="odoo-table" style={{ minWidth: 960 }}>
           <thead>
             <tr>
               <th>Client</th>
               {BUCKETS.map(b => <th key={b.key} style={{ textAlign: 'right' }}>{b.label}</th>)}
               <th style={{ textAlign: 'right' }}>Total dû</th>
+              <th style={{ textAlign: 'right' }}>Action</th>
             </tr>
           </thead>
           <tbody>
-            {isLoading && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
+            {isLoading && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
             {!isLoading && rows.length === 0 && (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--odoo-text-muted)' }}>
+              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--odoo-text-muted)' }}>
                 {data?.customers.length ? 'Aucun client pour ce filtre' : 'Aucune créance : tous les clients sont à jour.'}
               </td></tr>
             )}
@@ -134,25 +137,16 @@ export default function ReceivablesTab() {
                 <td>Total</td>
                 {BUCKETS.map(b => <td key={b.key} style={{ textAlign: 'right' }}>{t.buckets[b.key] > 0 ? money(t.buckets[b.key]) : '—'}</td>)}
                 <td style={{ textAlign: 'right' }}>{money(t.total)}</td>
+                <td />
               </tr>
             </tfoot>
           )}
         </table>
-      </div>
+      </ListPanel>
 
       {paying && <PayDialog doc={paying.doc} customer={paying.customer} onClose={() => setPaying(null)} />}
       {statement && <StatementDialog customerId={statement.id} name={statement.name} onClose={() => setStatement(null)} />}
       {receipt && <ReceiptDialog c={receipt} onClose={() => setReceipt(null)} />}
-    </div>
-  );
-}
-
-function Kpi({ icon: Icon, label, value, sub, tone }: { icon: typeof Wallet; label: string; value: string; sub: string; tone?: string }) {
-  return (
-    <div className="odoo-stat-card">
-      <div className="odoo-stat-card-label"><Icon size={11} style={{ display: 'inline', marginRight: 4 }} />{label}</div>
-      <div className="odoo-stat-card-value" style={tone ? { color: tone } : undefined}>{value}</div>
-      {sub && <div className="odoo-stat-card-sub">{sub}</div>}
     </div>
   );
 }
@@ -181,10 +175,22 @@ function CustomerRows({ c, isOpen, onToggle, onPay, onStatement, onReceipt }: { 
           </td>
         ))}
         <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{money(c.total)}</td>
+        <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+          <div className="sal-actions">
+            {c.docs.length === 1
+              ? <NextStep icon={Banknote} label="Encaisser" onClick={() => onPay(c.docs[0])} />
+              : <NextStep icon={isOpen ? ChevronDown : ChevronRight} label={`${c.docs.length} pièces`} onClick={onToggle} />}
+            <RowMenu items={[
+              { label: isOpen ? 'Masquer les pièces' : 'Voir les pièces', icon: FileText, onSelect: onToggle },
+              ...(c.customerId && c.docs.some(d => d.kind === 'invoice') ? [{ label: 'Règlement sur plusieurs factures', icon: Layers, onSelect: onReceipt }] : []),
+              ...(c.customerId ? [{ label: 'Relevé de compte', icon: ScrollText, onSelect: onStatement }] : []),
+            ]} />
+          </div>
+        </td>
       </tr>
       {isOpen && (
         <tr>
-          <td colSpan={7} style={{ background: 'var(--odoo-bg-alt, #f8f9fa)', padding: '8px 12px 12px 32px' }}>
+          <td colSpan={8} style={{ background: 'var(--odoo-bg-alt, #f8f9fa)', padding: '8px 12px 12px 32px' }}>
             {c.customerId && (
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginBottom: 6 }}>
                 {c.docs.some(d => d.kind === 'invoice') && (
@@ -233,10 +239,7 @@ function CustomerRows({ c, isOpen, onToggle, onPay, onStatement, onReceipt }: { 
                     <td style={{ padding: 4, textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{d.paid > 0 ? money(d.paid) : '—'}</td>
                     <td style={{ padding: 4, textAlign: 'right', fontWeight: 600 }}>{money(d.remaining)}</td>
                     <td style={{ padding: 4, textAlign: 'right' }}>
-                      <button type="button" className="odoo-btn-primary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem' }}
-                        onClick={e => { e.stopPropagation(); onPay(d); }}>
-                        <Banknote size={12} /> Encaisser
-                      </button>
+                      <NextStep icon={Banknote} label="Encaisser" onClick={() => onPay(d)} />
                     </td>
                   </tr>
                 ))}

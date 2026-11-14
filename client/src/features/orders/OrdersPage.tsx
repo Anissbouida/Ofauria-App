@@ -301,7 +301,7 @@ export default function OrdersPage() {
     const remaining = Math.max(0, totalAmt - advanceAmt);
     if (isPro(o)) {
       const b = proBilling(o);
-      return <><span className={`odoo-tag ${b.tag}`}>{b.label}</span>{b.doc && <span className="sal-sub" style={{ fontFamily: 'ui-monospace, monospace' }}>{b.doc}</span>}</>;
+      return <><span className={`odoo-tag ${b.tag}`}>{b.label}</span>{b.doc && <span className="sal-sub sal-mono">{b.doc}</span>}</>;
     }
     if (status === 'cancelled') return <span className="sal-sub">{advanceAmt > 0 ? `avance de ${n(advanceAmt)} DH conservée` : '—'}</span>;
     if (status === 'completed') return <span className="odoo-tag odoo-tag-green">Soldée</span>;

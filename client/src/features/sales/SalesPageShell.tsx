@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
+import { ListPage } from './ListTemplate';
 
 /**
  * En-tête standard d'un onglet du module Ventes : barre de contrôle (fil d'Ariane + actions)
@@ -7,13 +8,17 @@ import type { LucideIcon } from 'lucide-react';
  * pour que la position de l'en-tête et du contenu ne saute pas d'un onglet à l'autre
  * (SalesLayout rend la coquille en bar={false} flush : chaque page pose sa propre barre).
  */
-export default function SalesPageShell({ icon: Icon, title, parent, actions, children }: {
+export default function SalesPageShell({ icon: Icon, title, parent, summary, actions, list, children }: {
   icon?: LucideIcon;
   title: string;
   /** Segment parent du fil d'Ariane (ex. « Rapports ») ; omis, seul le titre s'affiche. */
   parent?: string;
+  /** Résumé court après le titre (ex. « 8 en cours · 4 047 DH »). */
+  summary?: ReactNode;
   /** Boutons de l'écran (Nouveau…, bascules) à droite de la barre. */
   actions?: ReactNode;
+  /** Corps au gabarit Liste de la refonte (ListPage : pastilles, tuiles, panneau). */
+  list?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -23,13 +28,16 @@ export default function SalesPageShell({ icon: Icon, title, parent, actions, chi
           {Icon && <Icon size={14} style={{ color: 'var(--theme-accent)' }} />}
           {parent && <><span>{parent}</span><span className="odoo-breadcrumb-separator">/</span></>}
           <span className="odoo-breadcrumb-current">{title}</span>
+          {summary && <span style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>{summary}</span>}
         </div>
         <div style={{ flex: 1 }} />
         {actions}
       </div>
-      <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {children}
-      </div>
+      {list ? <ListPage>{children}</ListPage> : (
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {children}
+        </div>
+      )}
     </div>
   );
 }

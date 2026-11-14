@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  FileSignature, FileText, Send, CheckCircle2, XCircle, ShoppingCart, Plus, Search, Loader2, X, Copy, RotateCcw, Ban, Trash2, Printer, Clock,
+  FileSignature, FileText, Send, CheckCircle2, XCircle, ShoppingCart, Plus, Loader2, X, Copy, RotateCcw, Ban, Trash2, Printer, Clock, Pencil,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { quotesApi, QUOTE_STATUS_LABELS, QUOTE_STATUS_TAG, type Quote, type QuoteStatus, type QuoteInput } from '../../api/quotes.api';
@@ -17,7 +17,9 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { crmApi, type Opportunity } from '../../api/crm.api';
-import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
+import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
+import { ListToolbar, FilterChips, ListKpi, ListPanel, ListEmpty, NextStep } from '../sales/ListTemplate';
 import SalesPageShell from '../sales/SalesPageShell';
 
 /**
@@ -32,13 +34,6 @@ const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', b
 const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
 const TVA_RATES = ['', '0', '7', '10', '14', '20'];
 
-const STAGES: Array<StageDef & { key: string }> = [
-  { key: 'draft', label: 'Brouillons', hint: 'à finaliser', icon: FileText },
-  { key: 'sent', label: 'Envoyés', hint: 'en attente du client', icon: Send },
-  { key: 'accepted', label: 'Acceptés', hint: 'à transformer en commande', icon: CheckCircle2 },
-  { key: 'converted', label: 'Commandés', hint: 'commande créée', icon: ShoppingCart },
-  { key: 'lost', label: 'Perdus / expirés', hint: 'motif renseigné', icon: XCircle },
-];
 
 async function openPdf(id: string, kind: 'quote' | 'proforma') {
   try {
@@ -71,76 +66,107 @@ export default function QuotesPage() {
   const by = ov?.byStatus ?? {};
   const lost = { count: (by.refused?.count ?? 0) + (by.expired?.count ?? 0), amount: (by.refused?.amount ?? 0) + (by.expired?.amount ?? 0) };
   const open = { count: (by.draft?.count ?? 0) + (by.sent?.count ?? 0), amount: (by.draft?.amount ?? 0) + (by.sent?.amount ?? 0) };
-  const kpi = (label: string, value: string, sub?: string, danger?: boolean) => (
-    <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-      <div className="odoo-stat-card-label">{label}</div>
-      <div className="odoo-stat-card-value" style={{ color: danger ? '#dc3545' : undefined }}>{value}</div>
-      {sub && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{sub}</div>}
-    </div>
-  );
+  const follow = (by.sent?.expiring ?? 0) + (by.sent?.overdue ?? 0);
+  const allCount = Object.values(by).reduce((s, x) => s + x.count, 0);
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['quotes'] }); qc.invalidateQueries({ queryKey: ['crm'] }); };
+  const quickAct = useMutation({
+    mutationFn: (p: { id: string; action: 'send' | 'accept' }) => quotesApi.action(p.id, p.action),
+    onSuccess: (q, p) => { refresh(); notify.success(p.action === 'send' ? `Devis ${q.number} marqué envoyé` : `Devis ${q.number} accepté`); },
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
+  const duplicate = useMutation({
+    mutationFn: (id: string) => quotesApi.duplicate(id),
+    onSuccess: q => { refresh(); notify.success(`Copie ${q.number} créée`); setOpenId(q.id); },
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
+  // La ligne de liste n'a pas les articles : la saisie repart de la fiche complète.
+  const editQuote = async (id: string) => {
+    try { setEditing(await quotesApi.get(id)); } catch (e) { notify.error(apiErrorMessage(e)); }
+  };
+  const nextStep = (q: Quote) => {
+    if (q.status === 'draft') return <NextStep icon={Send} label="Marquer envoyé" disabled={quickAct.isPending} onClick={() => quickAct.mutate({ id: q.id, action: 'send' })} />;
+    if (q.status === 'sent') return <NextStep icon={CheckCircle2} label="Accepté" disabled={quickAct.isPending} onClick={() => quickAct.mutate({ id: q.id, action: 'accept' })} />;
+    if (q.status === 'accepted') return <NextStep icon={ShoppingCart} label="Créer la commande" onClick={() => setOpenId(q.id)} />;
+    return null;
+  };
+  const menuItems = (q: Quote): RowMenuItem[] => {
+    const items: RowMenuItem[] = [{ label: 'Voir le détail', icon: FileText, onSelect: () => setOpenId(q.id) }];
+    if (q.status === 'draft' || q.status === 'sent') items.push({ label: 'Modifier', icon: Pencil, onSelect: () => editQuote(q.id) });
+    items.push({ label: 'Devis PDF', icon: Printer, onSelect: () => openPdf(q.id, 'quote') });
+    items.push({ label: 'Proforma', icon: FileText, onSelect: () => openPdf(q.id, 'proforma') });
+    items.push({ label: 'Dupliquer', icon: Copy, disabled: duplicate.isPending, onSelect: () => duplicate.mutate(q.id) });
+    if (q.status === 'sent') items.push({ label: 'Classer perdu…', icon: XCircle, onSelect: () => setOpenId(q.id) });
+    return items;
+  };
 
   return (
-    <SalesPageShell icon={FileSignature} title="Devis" actions={
-      <button className="odoo-btn-primary" onClick={() => setEditing('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau devis</button>
-    }>
+    <SalesPageShell icon={FileSignature} parent="Ventes" title="Devis" list
+      summary={ov ? `${open.count} en cours · ${n2(open.amount)} DH` : undefined}
+      actions={
+        <button className="odoo-btn-primary" onClick={() => setEditing('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau devis</button>
+      }>
 
       {ov && (
-        <div className="odoo-stat-grid">
-          {kpi('Devis en cours', String(open.count), `${n2(open.amount)} DH`)}
-          {kpi('À relancer', String((by.sent?.expiring ?? 0) + (by.sent?.overdue ?? 0)), 'validité proche ou dépassée', (by.sent?.overdue ?? 0) > 0)}
-          {kpi('Acceptés à commander', String(by.accepted?.count ?? 0), `${n2(by.accepted?.amount)} DH`)}
-          {kpi('Taux de transformation', ov.conversion.rate != null ? `${ov.conversion.rate} %` : '—', `90 j : ${ov.conversion.won} gagné(s), ${ov.conversion.lost} perdu(s)`)}
-          {kpi('Montant perdu (90 j)', `${n2(ov.conversion.lostAmount)} DH`, ov.lostByReason[0] ? `1er motif : ${ov.lostByReason[0].label}` : undefined)}
-        </div>
+        <section className="prj-kpis" aria-label="Indicateurs">
+          <ListKpi label="Devis en cours" value={String(open.count)} sub={`${n2(open.amount)} DH`} />
+          <ListKpi label="Acceptés à commander" value={String(by.accepted?.count ?? 0)} sub={`${n2(by.accepted?.amount)} DH`} />
+          <ListKpi label="Taux de transformation" value={ov.conversion.rate != null ? `${ov.conversion.rate} %` : '—'} sub={`90 j : ${ov.conversion.won} gagné(s), ${ov.conversion.lost} perdu(s)`} />
+          <ListKpi label="Montant perdu (90 j)" value={`${n2(ov.conversion.lostAmount)} DH`} sub={ov.lostByReason[0] ? `1er motif : ${ov.lostByReason[0].label}` : undefined} />
+        </section>
       )}
 
-      <StagePipeline title="Où en sont mes devis" summary={`${open.count} en cours · ${lost.count} perdu(s) ou expiré(s)`}
-        stages={STAGES}
-        stats={{
-          draft: { count: by.draft?.count ?? 0, sub: `${n2(by.draft?.amount)} DH` },
-          sent: { count: by.sent?.count ?? 0, sub: `${n2(by.sent?.amount)} DH`, late: by.sent?.overdue ?? 0, alertLabel: 'validité dépassée' },
-          accepted: { count: by.accepted?.count ?? 0, sub: `${n2(by.accepted?.amount)} DH` },
-          converted: { count: by.converted?.count ?? 0, sub: `${n2(by.converted?.amount)} DH` },
-          lost: { count: lost.count, sub: `${n2(lost.amount)} DH` },
-        }}
-        isActive={k => status === k} onPick={k => setStatus(status === k ? '' : k)} />
+      <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="N°, objet, client, prospect…" />
+      <FilterChips label="Filtrer par étape" value={status} onChange={setStatus} chips={[
+        { key: '', label: 'Tous', count: allCount },
+        ...(follow ? [{ key: 'follow', label: 'À relancer', count: follow, tone: 'late' as const, icon: Clock }] : []),
+        { key: 'draft', label: 'Brouillons', count: by.draft?.count ?? 0 },
+        { key: 'sent', label: 'Envoyés', count: by.sent?.count ?? 0 },
+        { key: 'accepted', label: 'Acceptés', count: by.accepted?.count ?? 0 },
+        { key: 'converted', label: 'Commandés', count: by.converted?.count ?? 0 },
+        { key: 'lost', label: 'Perdus ou expirés', count: lost.count },
+        { key: 'cancelled', label: 'Annulés', count: by.cancelled?.count ?? 0 },
+      ]} />
 
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)' }} />
-        <input className="odoo-search-input" value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, objet, client, prospect…" />
-        <select className="odoo-filter-dropdown" value={status} onChange={e => setStatus(e.target.value)}>
-          <option value="">Tous statuts</option>
-          <option value="open">En cours (brouillon ou envoyé)</option>
-          {(Object.keys(QUOTE_STATUS_LABELS) as QuoteStatus[]).map(k => <option key={k} value={k}>{QUOTE_STATUS_LABELS[k]}</option>)}
-        </select>
-      </div>
-
-      {isLoading ? <Loader2 className="animate-spin" size={18} /> : !data?.data.length ? (
-        <StatusBanner tone="info" icon={FileSignature} title="Aucun devis">
-          Un devis chiffre une offre pour un client ou un prospect. Une fois accepté, il devient une commande en un clic.
-        </StatusBanner>
+      {isLoading ? <ListEmpty icon={Loader2} title="Chargement des devis…" /> : !data?.data.length ? (
+        <ListEmpty icon={FileSignature} title={status || search ? 'Aucun devis pour ces filtres' : 'Aucun devis'}
+          text={status || search ? 'Changez d\'étape ou effacez la recherche.' : 'Un devis chiffre une offre pour un client ou un prospect. Une fois accepté, il devient une commande en un clic.'}
+          action={status || search
+            ? <button type="button" className="odoo-btn-secondary" onClick={() => { setStatus(''); setSearchInput(''); }}>Effacer les filtres</button>
+            : <button type="button" className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={13} /> Nouveau devis</button>} />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <ListPanel footer={<div style={{ borderTop: '1px solid var(--odoo-border)' }}><Pager page={page} total={data.total} onPage={setPage} note={`${data.total} devis`} /></div>}>
           <table className="odoo-table">
-            <thead><tr><th>N°</th><th>Client</th><th>Objet</th><th>Date</th><th>Valable jusqu'au</th><th>Statut</th><th style={{ textAlign: 'right' }}>Total</th><th>Commande</th></tr></thead>
+            <thead><tr><th>N°</th><th>Client</th><th>Objet</th><th>Date</th><th>Valable jusqu'au</th><th>Statut</th><th style={{ textAlign: 'right' }}>Total</th><th style={{ textAlign: 'right' }}>Action</th></tr></thead>
             <tbody>{data.data.map(q => (
-              <tr key={q.id} onClick={() => setOpenId(q.id)} style={{ cursor: 'pointer' }}>
-                <td className="font-mono" style={{ whiteSpace: 'nowrap' }}>{q.number}</td>
-                <td>{q.client_label}{!q.customer_id && <span className="odoo-tag odoo-tag-yellow" style={{ marginLeft: 6 }}>prospect</span>}</td>
+              <tr key={q.id} onClick={() => setOpenId(q.id)}>
+                <td style={{ whiteSpace: 'nowrap' }}><span className="sal-num">{q.number}</span></td>
+                <td>
+                  <span style={{ fontWeight: 500 }}>{q.client_label}</span>
+                  <span className="sal-sub">{q.customer_id ? (q.with_tax ? 'Professionnel' : 'Client') : 'Prospect'}</span>
+                </td>
                 <td>{q.title || <span style={{ color: 'var(--theme-text-muted)' }}>{q.item_count} article(s)</span>}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>{fr(q.quote_date)}</td>
-                <td style={{ whiteSpace: 'nowrap', color: q.is_overdue ? '#dc3545' : q.expires_soon ? '#b85d1a' : undefined }}>
-                  {fr(q.valid_until)}{q.is_overdue && ' · dépassée'}
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  {fr(q.valid_until)}
+                  {q.is_overdue && <span className="sal-late-txt">validité dépassée</span>}
+                  {!q.is_overdue && q.expires_soon && <span className="sal-sub" style={{ color: 'var(--prj-orange)', fontWeight: 600 }}>expire bientôt</span>}
                 </td>
-                <td><span className={`odoo-tag ${QUOTE_STATUS_TAG[q.status]}`}>{QUOTE_STATUS_LABELS[q.status]}</span>
-                  {q.lost_reason_label && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{q.lost_reason_label}</div>}</td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{n2(q.total)} DH<div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{q.with_tax ? 'TTC (HT + TVA)' : 'TTC'}</div></td>
-                <td className="font-mono">{q.order_number ?? ''}</td>
+                <td>
+                  <span className={`odoo-tag ${QUOTE_STATUS_TAG[q.status]}`}>{QUOTE_STATUS_LABELS[q.status]}</span>
+                  {q.lost_reason_label && <span className="sal-sub">{q.lost_reason_label}</span>}
+                  {q.order_number && <span className="sal-sub sal-mono">{q.order_number}</span>}
+                </td>
+                <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                  <strong>{n2(q.total)}</strong> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>DH</span>
+                  <span className="sal-sub">{q.with_tax ? 'TTC (HT + TVA)' : 'TTC'}</span>
+                </td>
+                <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                  <div className="sal-actions">{nextStep(q)}<RowMenu items={menuItems(q)} /></div>
+                </td>
               </tr>
             ))}</tbody>
           </table>
-          <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} devis`} />
-        </div>
+        </ListPanel>
       )}
 
       {editing && <QuoteFormModal quote={editing === 'new' ? null : editing} validityDays={ov?.validityDays ?? 30}

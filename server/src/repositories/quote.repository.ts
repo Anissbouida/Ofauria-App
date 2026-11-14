@@ -149,6 +149,8 @@ export const quoteRepository = {
     if (p.storeId) cond.push(`(q.store_id IS NULL OR q.store_id = ${add(p.storeId)}::uuid)`);
     if (p.status === 'open') cond.push(`q.status IN ('draft', 'sent')`);
     else if (p.status === 'lost') cond.push(`q.status IN ('refused', 'expired')`);
+    // À relancer : envoyés dont la validité est dépassée ou expire sous 3 jours (mêmes règles que l'overview).
+    else if (p.status === 'follow') cond.push(`q.status = 'sent' AND q.valid_until <= CURRENT_DATE + 3`);
     else if (p.status) cond.push(`q.status = ${add(p.status)}`);
     if (p.customerId) cond.push(`q.customer_id = ${add(p.customerId)}::uuid`);
     if (p.dateFrom) cond.push(`q.quote_date >= ${add(p.dateFrom)}::date`);
