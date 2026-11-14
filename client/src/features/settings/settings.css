@@ -422,7 +422,6 @@
 .odoo-params-label { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.875rem; font-weight: 600; color: var(--odoo-text); }
 .odoo-params-custom { width: 7px; height: 7px; border-radius: 50%; background: var(--odoo-purple); flex-shrink: 0; }
 .odoo-params-help { margin: 0; font-size: 0.75rem; line-height: 1.4; color: var(--odoo-text-muted); }
-.odoo-params-help { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .odoo-params-q { display: inline-flex; color: var(--odoo-text-muted); cursor: help; }
 .odoo-params-q:hover, .odoo-params-q:focus-visible { color: var(--odoo-purple); outline: none; }
 .odoo-params-icon { display: inline-flex; padding: 0.125rem; border-radius: 4px; color: var(--odoo-text-muted); }
