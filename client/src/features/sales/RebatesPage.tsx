@@ -8,7 +8,9 @@ import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import SalesPageShell from './SalesPageShell';
-import { StagePipeline, type StageDef, type StageStat } from '../../components/purchasing/ProcessBoard';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { FilterChips, ListPanel, ListEmpty, NextStep } from './ListTemplate';
 
 /**
  * Ventes › Ristournes de fin d'année (phase 11, D5-12). Un accord par client et
@@ -22,21 +24,9 @@ function arr<T>(resp: unknown): T[] {
 }
 const money = (v: number | string) => `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 
-// Étapes du cycle d'une ristourne pour la bande « Suivi » (gabarit page Commandes).
-const REBATE_STAGES: StageDef[] = [
-  { key: 'active', label: 'Actifs', hint: 'en cours', icon: BadgePercent },
-  { key: 'settled', label: 'Clôturés', hint: 'figés', icon: Lock },
-  { key: 'cancelled', label: 'Annulés', hint: 'annulés', icon: X },
-];
-const chipStyle = (active: boolean): React.CSSProperties => ({
-  display: 'inline-flex', alignItems: 'center', gap: 4,
-  backgroundColor: active ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
-  color: active ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
-  fontWeight: active ? 600 : 400,
-});
-
 export default function RebatesPage() {
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const { user } = useAuth();
   const { hasModule } = usePermissions();
   const isDirection = user?.role === 'admin' || user?.role === 'manager';
@@ -49,16 +39,12 @@ export default function RebatesPage() {
   const [view, setView] = useState<'' | RebateAgreement['status']>('');
   const refresh = () => qc.invalidateQueries({ queryKey: ['rebates', year] });
 
-  const stats = useMemo<Record<string, StageStat>>(() => {
+  const stats = useMemo(() => {
     const acc: Record<string, { count: number; total: number }> = {
       active: { count: 0, total: 0 }, settled: { count: 0, total: 0 }, cancelled: { count: 0, total: 0 },
     };
     for (const r of list) { const a = acc[r.status]; if (a) { a.count += 1; a.total += Number(r.current_amount) || 0; } }
-    return {
-      active: { count: acc.active.count, sub: money(acc.active.total) },
-      settled: { count: acc.settled.count, sub: money(acc.settled.total) },
-      cancelled: { count: acc.cancelled.count, sub: money(acc.cancelled.total) },
-    };
+    return acc;
   }, [list]);
   const filtered = view ? list.filter(r => r.status === view) : list;
 
@@ -73,64 +59,74 @@ export default function RebatesPage() {
   const custName = (r: RebateAgreement) => r.company_name || `${r.first_name || ''} ${r.last_name || ''}`.trim() || '—';
 
   return (
-    <SalesPageShell icon={BadgePercent} title="Ristournes de fin d'année" parent="Ventes"
-      actions={<label>Année <input className="odoo-input" type="number" value={year} onChange={e => setYear(Number(e.target.value))} style={{ width: 100 }} /></label>}>
-      <p style={{ opacity: 0.7, marginTop: 4 }}>Taux sur le CA annuel (net des avoirs) au-delà d'un seuil. La ristourne est figée à la clôture, puis émise en avoir.</p>
+    <SalesPageShell icon={BadgePercent} title="Ristournes de fin d'année" parent="Ventes" list
+      summary={`${stats.active.count} accord${stats.active.count > 1 ? 's' : ''} actif${stats.active.count > 1 ? 's' : ''} · ${money(stats.active.total)} à ce jour`}
+      actions={
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Année
+          <input className="odoo-input" type="number" value={year} onChange={e => setYear(Number(e.target.value))} style={{ width: 90 }} />
+        </label>
+      }>
+      <p className="prj-note">Taux sur le CA annuel (net des avoirs) au-delà d'un seuil ; la ristourne est figée à la clôture, puis émise en avoir.</p>
 
       {isDirection && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '12px 0' }}>
-          <select className="odoo-input" value={form.customerId} onChange={e => setForm({ ...form, customerId: e.target.value })}>
+        <section className="prj-panel" style={{ padding: '12px 14px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <strong style={{ fontSize: '0.875rem', marginRight: 4 }}>Nouvel accord {year}</strong>
+          <select className="odoo-input" aria-label="Client" value={form.customerId} onChange={e => setForm({ ...form, customerId: e.target.value })} style={{ minWidth: 220 }}>
             <option value="">Client…</option>
             {customers.map(c => <option key={c.id} value={c.id}>{c.company_name || `${c.first_name || ''} ${c.last_name || ''}`.trim()}</option>)}
           </select>
-          <input className="odoo-input" type="number" step="0.1" placeholder="Taux %" value={form.ratePercent} onChange={e => setForm({ ...form, ratePercent: e.target.value })} style={{ width: 90 }} />
-          <input className="odoo-input" type="number" placeholder="Seuil CA (DH)" value={form.minTurnover} onChange={e => setForm({ ...form, minTurnover: e.target.value })} style={{ width: 130 }} />
+          <input className="odoo-input" aria-label="Taux en %" type="number" step="0.1" placeholder="Taux %" value={form.ratePercent} onChange={e => setForm({ ...form, ratePercent: e.target.value })} style={{ width: 90 }} />
+          <input className="odoo-input" aria-label="Seuil de CA en DH" type="number" placeholder="Seuil CA (DH)" value={form.minTurnover} onChange={e => setForm({ ...form, minTurnover: e.target.value })} style={{ width: 130 }} />
           <button className="odoo-btn-primary" disabled={!form.customerId || !(Number(form.ratePercent) >= 0) || create.isPending} onClick={() => create.mutate()}>
-            {create.isPending ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} Accord {year}
+            {create.isPending ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} Créer l'accord
           </button>
-        </div>
+        </section>
       )}
 
-      <StagePipeline
-        title="Suivi des ristournes"
-        summary={`${list.length} accord${list.length > 1 ? 's' : ''} · ${year}`}
-        stages={REBATE_STAGES}
-        stats={stats}
-        isActive={(k) => view === k}
-        onPick={(k) => setView(view === k ? '' : (k as RebateAgreement['status']))}
-      />
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap' }}>
-        {([['active', 'Actifs', BadgePercent], ['settled', 'Clôturés', Lock], ['cancelled', 'Annulés', X], ['', 'Tous', BadgePercent]] as const).map(([k, label, Icon]) => (
-          <button key={k} type="button" onClick={() => setView(k)} className="odoo-filter-dropdown" style={chipStyle(view === k)}>
-            <Icon size={11} /> {label}
-            {k && stats[k].count > 0 && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 2 }}>{stats[k].count}</span>}
-          </button>
-        ))}
-      </div>
+      <FilterChips label="Filtrer les accords" value={view} onChange={k => setView(k as '' | RebateAgreement['status'])} chips={[
+        { key: 'active', label: 'Actifs', count: stats.active.count },
+        { key: 'settled', label: 'Clôturés', count: stats.settled.count },
+        { key: 'cancelled', label: 'Annulés', count: stats.cancelled.count },
+        { key: '', label: 'Tous', count: list.length },
+      ]} />
 
-      {isLoading ? <Loader2 className="spin" /> : (
-        <table className="odoo-table">
-          <thead><tr><th>Client</th><th>Taux</th><th>Seuil</th><th>CA</th><th>Ristourne</th><th>État</th><th /></tr></thead>
-          <tbody>
-            {filtered.map(r => (
-              <tr key={r.id}>
-                <td>{custName(r)}</td>
-                <td>{Number(r.rate_percent)} %</td>
-                <td>{money(r.min_turnover)}</td>
-                <td>{money(r.current_turnover)}</td>
-                <td style={{ fontWeight: 600 }}>{r.current_amount > 0 ? money(r.current_amount) : '—'}</td>
-                <td>{r.status === 'active' ? 'Actif' : r.status === 'settled' ? `Clôturé${r.settled_credit_note_id ? ' · avoir émis' : ''}` : 'Annulé'}</td>
-                <td>{isDirection && r.status === 'active' && (
-                  <span style={{ display: 'inline-flex', gap: 4 }}>
-                    <button className="odoo-pager-btn" title="Clôturer (figer la ristourne)" onClick={() => settle.mutate(r.id)}><Lock size={13} /></button>
-                    <button className="odoo-pager-btn" title="Annuler" onClick={() => cancel.mutate(r.id)}><X size={13} /></button>
-                  </span>
-                )}</td>
-              </tr>
-            ))}
-            {!filtered.length && <tr><td colSpan={7} style={{ textAlign: 'center', opacity: 0.6 }}>Aucun accord pour {year}.</td></tr>}
-          </tbody>
-        </table>
+      {isLoading ? <ListEmpty icon={Loader2} title="Chargement des accords…" /> : !filtered.length ? (
+        <ListEmpty icon={BadgePercent} title={list.length ? 'Aucun accord pour ce filtre' : `Aucun accord pour ${year}`} />
+      ) : (
+        <ListPanel>
+          <table className="odoo-table">
+            <thead><tr><th>Client</th><th style={{ textAlign: 'right' }}>Taux</th><th style={{ textAlign: 'right' }}>Seuil</th><th>CA de l'année</th><th style={{ textAlign: 'right' }}>Ristourne</th><th>État</th><th style={{ textAlign: 'right' }}>Action</th></tr></thead>
+            <tbody>
+              {filtered.map(r => {
+                const reached = Number(r.min_turnover) > 0 ? Math.min(100, Number(r.current_turnover) / Number(r.min_turnover) * 100) : 100;
+                return (
+                  <tr key={r.id} style={{ cursor: 'default' }}>
+                    <td style={{ fontWeight: 500 }}>{custName(r)}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Number(r.rate_percent)} %</td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{money(r.min_turnover)}</td>
+                    <td style={{ minWidth: 160 }}>
+                      <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(r.current_turnover)}</span>
+                      <span className={`prj-bar ${reached >= 100 ? 'green' : ''}`} style={{ marginTop: 4 }} title={`${Math.round(reached)} % du seuil`}><span style={{ width: `${reached}%` }} /></span>
+                    </td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{r.current_amount > 0 ? money(r.current_amount) : '—'}</td>
+                    <td><span className={`odoo-tag ${r.status === 'active' ? 'odoo-tag-green' : r.status === 'settled' ? 'odoo-tag-blue' : 'odoo-tag-grey'}`}>{r.status === 'active' ? 'Actif' : r.status === 'settled' ? 'Clôturé' : 'Annulé'}</span>
+                      {r.status === 'settled' && r.settled_credit_note_id && <span className="sal-sub">avoir émis</span>}</td>
+                    <td style={{ textAlign: 'right' }}>{isDirection && r.status === 'active' && (
+                      <div className="sal-actions">
+                        <NextStep icon={Lock} label="Clôturer" disabled={settle.isPending} onClick={async () => {
+                          if (await confirm(`Clôturer l'accord de ${custName(r)} ? La ristourne est figée à ${r.current_amount > 0 ? money(r.current_amount) : '0 DH'}.`, { title: 'Clôturer la ristourne', confirmLabel: 'Clôturer' })) settle.mutate(r.id);
+                        }} />
+                        <RowMenu items={[{ label: "Annuler l'accord", icon: X, danger: true, onSelect: async () => {
+                          if (await confirm(`Annuler l'accord de ristourne de ${custName(r)} ?`, { title: "Annuler l'accord", confirmLabel: 'Annuler l\'accord', cancelLabel: 'Retour', danger: true })) cancel.mutate(r.id);
+                        } }]} />
+                      </div>
+                    )}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </ListPanel>
       )}
     </SalesPageShell>
   );

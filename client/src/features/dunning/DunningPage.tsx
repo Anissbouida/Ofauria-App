@@ -9,6 +9,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
 import SalesPageShell from '../sales/SalesPageShell';
+import { ListKpi } from '../sales/ListTemplate';
 
 /**
  * Relances clients (mig 366) : clients à relancer selon les niveaux, lettres (e-mail ou
@@ -27,10 +28,12 @@ async function openPdf(id: string) {
 export default function DunningPage() {
   const [tab, setTab] = useState<'letters' | 'levels'>('letters');
   return (
-    <SalesPageShell icon={BellRing} title="Relances clients" actions={<>
-      <button className={tab === 'letters' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setTab('letters')}>Relances</button>
-      <button className={tab === 'levels' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setTab('levels')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Settings2 size={13} /> Niveaux</button>
-    </>}>
+    <SalesPageShell icon={BellRing} parent="Ventes" title="Relances" list actions={
+      <div className="prj-views" role="group" aria-label="Rubrique">
+        <button type="button" className={tab === 'letters' ? 'active' : ''} aria-pressed={tab === 'letters'} onClick={() => setTab('letters')}><BellRing size={14} /> Relances</button>
+        <button type="button" className={tab === 'levels' ? 'active' : ''} aria-pressed={tab === 'levels'} onClick={() => setTab('levels')}><Settings2 size={14} /> Niveaux</button>
+      </div>
+    }>
       {tab === 'letters' ? <Letters /> : <Levels />}
     </SalesPageShell>
   );
@@ -70,23 +73,15 @@ function Letters() {
   if (isLoading || !ov) return <Loader2 className="animate-spin" size={18} />;
   const toRemind = ov.proposals.reduce((s, p) => s + p.overdue, 0);
   const held = ov.blocked.filter(b => b.credit_hold_at);
-  const kpi = (label: string, value: string, sub?: string, danger?: boolean) => (
-    <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-      <div className="odoo-stat-card-label">{label}</div>
-      <div className="odoo-stat-card-value" style={{ color: danger ? '#dc3545' : undefined }}>{value}</div>
-      {sub && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{sub}</div>}
-    </div>
-  );
-
   return (
     <>
       {!ov.settings.enabled && <StatusBanner tone="warning" icon={BellRing} title="Relances désactivées">Activez-les dans Paramètres › Ventes › Relances clients.</StatusBanner>}
-      <div className="odoo-stat-grid">
-        {kpi('Clients à relancer', String(ov.proposals.length), `${n2(toRemind)} DH échus`, ov.proposals.length > 0)}
-        {kpi('Lettres à envoyer', String(ov.drafts.count), `${n2(ov.drafts.amount)} DH`)}
-        {kpi('Clients bloqués', String(held.length), 'achats à crédit suspendus', held.length > 0)}
-        {kpi('Contrôle du plafond', ov.settings.credit_control === 'block' ? 'Bloquant' : 'Alerte', ov.settings.auto_send ? 'e-mails envoyés automatiquement' : 'e-mails validés à la main')}
-      </div>
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="Clients à relancer" value={String(ov.proposals.length)} sub={`${n2(toRemind)} DH échus`} tone={ov.proposals.length > 0 ? 'red' : undefined} />
+        <ListKpi label="Lettres à envoyer" value={String(ov.drafts.count)} sub={`${n2(ov.drafts.amount)} DH`} />
+        <ListKpi label="Clients bloqués" value={String(held.length)} sub="achats à crédit suspendus" tone={held.length > 0 ? 'red' : undefined} />
+        <ListKpi label="Contrôle du plafond" value={ov.settings.credit_control === 'block' ? 'Bloquant' : 'Alerte'} sub={ov.settings.auto_send ? 'e-mails envoyés automatiquement' : 'e-mails validés à la main'} />
+      </section>
 
       <section style={{ display: 'grid', gap: 8 }}>
         <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>À relancer maintenant</div>

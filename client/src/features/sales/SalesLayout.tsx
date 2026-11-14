@@ -4,6 +4,8 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
 import { SALES_MAIN_TABS } from './SalesPage';
+import '../projects/projects.css';
+import './sales.css';
 
 /**
  * Module Ventes : commandes, ventes (et leurs écrans ?tab=), clients, produits et
@@ -81,7 +83,8 @@ export default function SalesLayout() {
 
   return (
     <ModuleShell title="Ventes" views={views} current={current} onSelect={() => {}} bar={false} flush>
-      <Outlet />
+      {/* Refonte 2026-11 : briques communes au style cartes/panneaux dans tout le module (sales.css, .sal-module). */}
+      <div className="sal-module"><Outlet /></div>
     </ModuleShell>
   );
 }

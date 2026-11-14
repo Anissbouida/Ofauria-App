@@ -7,7 +7,6 @@ import { subscriptionsApi, type Subscription, type SubscriptionDetail, type SubF
 import { customersApi } from '../../api/customers.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
-import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -42,28 +41,19 @@ export default function SubscriptionsTab() {
   };
 
   return (
-    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <StatusBanner tone="info" icon={Repeat} title="Abonnements / facturation récurrente">
-        Chaque abonnement génère une facture client à échéance régulière. « Générer les factures dues » crée et comptabilise les factures des échéances passées, en rattrapant les retards.
-      </StatusBanner>
-
-      <div className="odoo-stat-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Abonnements actifs</div>
-          <div className="odoo-stat-card-value">{active.length}</div>
-        </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">Total déjà facturé</div>
-          <div className="odoo-stat-card-value">{money(rows.reduce((s, r) => s + Number(r.invoiced_total || 0), 0))}</div>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <button type="button" className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={14} /> Nouvel abonnement</button>
+    <div className="prj" style={{ padding: '16px 20px' }}>
+      <div className="prj-toolbar">
+        <p className="prj-note" style={{ flex: 1, minWidth: 260 }}>Chaque abonnement génère une facture client à échéance régulière ; « Générer les factures dues » rattrape les échéances passées.</p>
         <button type="button" className="odoo-btn-secondary" disabled={generate.isPending} onClick={onGenerate}>
           {generate.isPending ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Générer les factures dues
         </button>
+        <button type="button" className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={14} /> Nouvel abonnement</button>
       </div>
+
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <div className="prj-kpi"><div className="prj-kpi-head"><span>Abonnements actifs</span></div><div className="prj-kpi-value">{active.length}</div></div>
+        <div className="prj-kpi"><div className="prj-kpi-head"><span>Total déjà facturé</span></div><div className="prj-kpi-value">{money(rows.reduce((s, r) => s + Number(r.invoiced_total || 0), 0))}</div></div>
+      </section>
 
       <div style={{ overflowX: 'auto' }}>
         <table className="odoo-table">

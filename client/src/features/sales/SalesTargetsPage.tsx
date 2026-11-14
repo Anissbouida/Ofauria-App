@@ -7,6 +7,8 @@ import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import SalesPageShell from './SalesPageShell';
+import { RowMenu } from '../../components/ui/RowMenu';
+import { ListPanel, ListEmpty } from './ListTemplate';
 
 /**
  * Ventes › Objectifs (phase 11, D3-13). Objectif de CA par commercial et par
@@ -42,57 +44,63 @@ export default function SalesTargetsPage() {
     onError: (e) => notify.error(apiErrorMessage(e)),
   });
 
+  const totalTarget = rows.reduce((s, r) => s + (r.target || 0), 0);
+  const totalRealized = rows.reduce((s, r) => s + (r.realized || 0), 0);
   return (
-    <SalesPageShell icon={Target} title="Objectifs commerciaux" parent="Ventes">
-      <p style={{ opacity: 0.7, marginTop: 0 }}>Objectif de chiffre d'affaires par vendeur ; réalisé = factures émises attribuées au vendeur, net des avoirs.</p>
-
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        <label>Du <input className="odoo-input" type="date" value={start} onChange={e => setStart(e.target.value)} /></label>
-        <label>au <input className="odoo-input" type="date" value={end} onChange={e => setEnd(e.target.value)} /></label>
+    <SalesPageShell icon={Target} title="Objectifs" parent="Ventes" list
+      summary={totalTarget > 0 ? `${money(totalRealized)} réalisés sur ${money(totalTarget)}` : undefined}>
+      <div className="prj-toolbar">
+        <label className="prj-chip" style={{ cursor: 'default' }}>Du <input className="odoo-input" type="date" value={start} onChange={e => setStart(e.target.value)} style={{ border: 0, background: 'transparent' }} /></label>
+        <label className="prj-chip" style={{ cursor: 'default' }}>au <input className="odoo-input" type="date" value={end} onChange={e => setEnd(e.target.value)} style={{ border: 0, background: 'transparent' }} /></label>
+        <p className="prj-note" style={{ flex: 1, minWidth: 240 }}>Réalisé = factures émises attribuées au vendeur, net des avoirs.</p>
       </div>
 
       {isDirection && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
-          <select className="odoo-input" value={sellerId} onChange={e => setSellerId(e.target.value)}>
+        <section className="prj-panel" style={{ padding: '12px 14px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <strong style={{ fontSize: '0.875rem', marginRight: 4 }}>Fixer un objectif</strong>
+          <select className="odoo-input" aria-label="Vendeur" value={sellerId} onChange={e => setSellerId(e.target.value)} style={{ minWidth: 200 }}>
             <option value="">Vendeur…</option>
             {sellers.map(s => <option key={s.id} value={s.id}>{`${s.first_name || ''} ${s.last_name || ''}`.trim()}</option>)}
           </select>
-          <input className="odoo-input" type="number" placeholder="Objectif (DH)" value={amount} onChange={e => setAmount(e.target.value)} style={{ width: 150 }} />
+          <input className="odoo-input" aria-label="Objectif en DH" type="number" placeholder="Objectif (DH)" value={amount} onChange={e => setAmount(e.target.value)} style={{ width: 150 }} />
           <button className="odoo-btn-primary" disabled={!sellerId || !(Number(amount) >= 0) || save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Fixer l'objectif
+            {save.isPending ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Enregistrer
           </button>
-        </div>
+        </section>
       )}
 
-      {isLoading ? <Loader2 className="spin" /> : (
-        <table className="odoo-table">
-          <thead><tr><th>Vendeur</th><th>Objectif</th><th>Réalisé</th><th>Écart</th><th>Atteinte</th><th /></tr></thead>
-          <tbody>
-            {rows.map(r => {
-              const pct = r.pct ?? (r.target > 0 ? Math.round((r.realized / r.target) * 100) : null);
-              return (
-                <tr key={r.salespersonId}>
-                  <td>{r.name}</td>
-                  <td>{r.target > 0 ? money(r.target) : '—'}</td>
-                  <td>{money(r.realized)}</td>
-                  <td style={{ color: r.gap >= 0 ? '#1a7f37' : '#b00020' }}>{money(r.gap)}</td>
-                  <td style={{ minWidth: 140 }}>
-                    {pct != null ? `${pct} %` : '—'}
-                    {pct != null && (
-                      <div style={{ height: 4, background: 'var(--odoo-border, #eee)', borderRadius: 2, marginTop: 2 }}>
-                        <div style={{ height: 4, width: `${Math.min(100, pct)}%`, background: pct >= 100 ? '#1a7f37' : '#8E4A1F', borderRadius: 2 }} />
-                      </div>
-                    )}
-                  </td>
-                  <td>{isDirection && r.targetId && (
-                    <button className="odoo-pager-btn" title="Retirer l'objectif" onClick={() => remove.mutate(r.targetId!)}><Trash2 size={13} /></button>
-                  )}</td>
-                </tr>
-              );
-            })}
-            {!rows.length && <tr><td colSpan={6} style={{ textAlign: 'center', opacity: 0.6 }}>Aucun objectif ni réalisé sur la période.</td></tr>}
-          </tbody>
-        </table>
+      {isLoading ? <ListEmpty icon={Loader2} title="Chargement des objectifs…" /> : !rows.length ? (
+        <ListEmpty icon={Target} title="Aucun objectif ni réalisé sur la période" text={isDirection ? 'Fixez un objectif par vendeur ci-dessus.' : undefined} />
+      ) : (
+        <ListPanel>
+          <table className="odoo-table">
+            <thead><tr><th>Vendeur</th><th style={{ textAlign: 'right' }}>Objectif</th><th style={{ textAlign: 'right' }}>Réalisé</th><th style={{ textAlign: 'right' }}>Écart</th><th>Atteinte</th><th style={{ width: 48 }} /></tr></thead>
+            <tbody>
+              {rows.map(r => {
+                const pct = r.pct ?? (r.target > 0 ? Math.round((r.realized / r.target) * 100) : null);
+                return (
+                  <tr key={r.salespersonId} style={{ cursor: 'default' }}>
+                    <td style={{ fontWeight: 500 }}>{r.name}</td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{r.target > 0 ? money(r.target) : '—'}</td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(r.realized)}</td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: r.gap >= 0 ? 'var(--prj-green)' : 'var(--prj-red)' }}>{money(r.gap)}</td>
+                    <td style={{ minWidth: 160 }}>
+                      {pct != null ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span className={`prj-bar ${pct >= 100 ? 'green' : pct < 50 ? 'orange' : ''}`} style={{ flex: 1 }}><span style={{ width: `${Math.min(100, pct)}%` }} /></span>
+                          <span style={{ fontSize: '0.75rem', fontVariantNumeric: 'tabular-nums' }}>{pct} %</span>
+                        </div>
+                      ) : '—'}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>{isDirection && r.targetId && (
+                      <RowMenu items={[{ label: "Retirer l'objectif", icon: Trash2, danger: true, disabled: remove.isPending, onSelect: () => remove.mutate(r.targetId!) }]} />
+                    )}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </ListPanel>
       )}
     </SalesPageShell>
   );

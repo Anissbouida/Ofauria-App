@@ -6,7 +6,6 @@ import { Truck, Plus, X, Loader2, ChevronUp, ChevronDown, Trash2, MapPin, Phone,
 import { deliveryRoutesApi, type DeliveryRoute, type RouteStatus, type RouteStop } from '../../api/delivery-routes.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
-import { StatusBanner } from '../../components/ui/StatusBanner';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
 const day = (d: string) => format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr });
@@ -21,11 +20,11 @@ export default function RoutesTab() {
   const [showForm, setShowForm] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   return (
-    <div className="odoo-scope" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <StatusBanner tone="info" icon={Truck} title="Tournées de livraison">
-        Regroupez vos bons de livraison en tournées datées, définissez l'ordre de passage, et pointez chaque arrêt comme livré.
-      </StatusBanner>
-      <div><button className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={14} /> Nouvelle tournée</button></div>
+    <div className="odoo-scope prj" style={{ padding: '16px 20px' }}>
+      <div className="prj-toolbar">
+        <p className="prj-note" style={{ flex: 1, minWidth: 260 }}>Regroupez les bons de livraison en tournées datées, ordonnez les arrêts et pointez chaque arrêt livré.</p>
+        <button className="odoo-btn-primary" onClick={() => setShowForm(true)}><Plus size={14} /> Nouvelle tournée</button>
+      </div>
       <div style={{ overflowX: 'auto' }}>
         <table className="odoo-table">
           <thead><tr><th>Date</th><th>Tournée</th><th>Chauffeur</th><th style={{ textAlign: 'center' }}>Arrêts</th><th>Statut</th></tr></thead>

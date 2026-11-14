@@ -17,6 +17,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import SalesPageShell from '../sales/SalesPageShell';
+import { ListToolbar, ListKpi, ListEmpty } from '../sales/ListTemplate';
 
 /**
  * CRM (mig 371) : opportunités suivies avant le devis, du premier contact à la commande.
@@ -63,13 +64,6 @@ export default function CrmPage() {
   const openAmount = OPEN_STAGES.reduce((s, k) => s + (by[k]?.amount ?? 0), 0);
   const weighted = OPEN_STAGES.reduce((s, k) => s + (by[k]?.weighted ?? 0), 0);
   const openCount = OPEN_STAGES.reduce((s, k) => s + (by[k]?.count ?? 0), 0);
-  const kpi = (label: string, value: string, sub?: string, danger?: boolean) => (
-    <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-      <div className="odoo-stat-card-label">{label}</div>
-      <div className="odoo-stat-card-value" style={{ color: danger ? '#dc3545' : undefined }}>{value}</div>
-      {sub && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{sub}</div>}
-    </div>
-  );
   const drop = (o: Opportunity, stage: Stage) => {
     if (o.stage === stage) return;
     if (stage === 'lost') { setLosing(o); return; }
@@ -77,36 +71,38 @@ export default function CrmPage() {
   };
 
   return (
-    <SalesPageShell icon={Target} title="Pipeline commercial" actions={<>
-      {(['pipeline', 'list', 'activities'] as const).map(v => (
-        <button key={v} className={view === v ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView(v)}>
-          {{ pipeline: 'Pipeline', list: 'Liste', activities: 'Activités' }[v]}
-          {v === 'activities' && (ov?.overdueActivities ?? 0) > 0 && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }}>{ov!.overdueActivities}</span>}
-        </button>
-      ))}
-      <button className="odoo-btn-secondary" onClick={() => setShowCampaigns(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Megaphone size={14} /> Campagnes</button>
-      <button className="odoo-btn-primary" onClick={() => setEditing('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle opportunité</button>
-    </>}>
+    <SalesPageShell icon={Target} parent="Ventes" title="Pipeline" list
+      summary={ov ? `${openCount} affaire${openCount > 1 ? 's' : ''} en cours · ${n0(openAmount)} DH` : undefined}
+      actions={<>
+        <button className="odoo-btn-secondary" onClick={() => setShowCampaigns(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Megaphone size={14} /> Campagnes</button>
+        <button className="odoo-btn-primary" onClick={() => setEditing('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle opportunité</button>
+      </>}>
 
       {ov && (
-        <div className="odoo-stat-grid">
-          {kpi('Affaires en cours', String(openCount), `${n0(openAmount)} DH espérés`)}
-          {kpi('Prévision pondérée', `${n0(weighted)} DH`, 'montant × probabilité')}
-          {kpi('Gagné ce mois', `${n0(ov.month.wonAmount)} DH`, `${ov.month.won} affaire(s) · ${ov.month.lost} perdue(s)`)}
-          {kpi('Taux de transformation', ov.conversion.rate != null ? `${ov.conversion.rate} %` : '—', `90 j : ${ov.conversion.won} gagnée(s), ${ov.conversion.lost} perdue(s)`)}
-          {kpi('Activités en retard', String(ov.overdueActivities), 'appels, rendez-vous, tâches', ov.overdueActivities > 0)}
-        </div>
+        <section className="prj-kpis" aria-label="Indicateurs">
+          <ListKpi label="Affaires en cours" value={String(openCount)} sub={`${n0(openAmount)} DH espérés`} />
+          <ListKpi label="Prévision pondérée" value={`${n0(weighted)} DH`} sub="montant × probabilité" />
+          <ListKpi label="Gagné ce mois" value={`${n0(ov.month.wonAmount)} DH`} sub={`${ov.month.won} affaire(s) · ${ov.month.lost} perdue(s)`} tone={ov.month.wonAmount > 0 ? 'green' : undefined} />
+          <ListKpi label="Taux de transformation" value={ov.conversion.rate != null ? `${ov.conversion.rate} %` : '—'} sub={`90 j : ${ov.conversion.won} gagnée(s), ${ov.conversion.lost} perdue(s)`} />
+          <ListKpi label="Activités en retard" value={String(ov.overdueActivities)} sub="appels, rendez-vous, tâches" tone={ov.overdueActivities > 0 ? 'red' : undefined} />
+        </section>
       )}
 
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)' }} />
-        <input className="odoo-search-input" value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, affaire, client, prospect…" />
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
-          <input type="checkbox" checked={mine} onChange={e => setMine(e.target.checked)} /> Mes affaires
+      <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="N°, affaire, client, prospect…">
+        <label className="prj-chip" style={{ cursor: 'pointer' }}>
+          <input type="checkbox" checked={mine} onChange={e => setMine(e.target.checked)} style={{ accentColor: 'var(--odoo-purple)' }} /> Mes affaires
         </label>
-      </div>
+        <div className="prj-views" role="group" aria-label="Affichage">
+          {(['pipeline', 'list', 'activities'] as const).map(v => (
+            <button key={v} type="button" className={view === v ? 'active' : ''} aria-pressed={view === v} onClick={() => setView(v)}>
+              {{ pipeline: 'Pipeline', list: 'Liste', activities: 'Activités' }[v]}
+              {v === 'activities' && (ov?.overdueActivities ?? 0) > 0 && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 2 }}>{ov!.overdueActivities}</span>}
+            </button>
+          ))}
+        </div>
+      </ListToolbar>
 
-      {isLoading ? <Loader2 className="animate-spin" size={18} /> : view === 'activities' ? <ActivitiesView mine={mine} onOpen={setOpenId} /> : view === 'list' ? (
+      {isLoading ? <ListEmpty icon={Loader2} title="Chargement du pipeline…" /> : view === 'activities' ? <ActivitiesView mine={mine} onOpen={setOpenId} /> : view === 'list' ? (
         opps.length === 0 ? <Empty onNew={() => setEditing('new')} /> : (
           <div style={{ overflowX: 'auto' }}>
             <table className="odoo-table">
@@ -129,22 +125,24 @@ export default function CrmPage() {
         )
       ) : (
         opps.length === 0 ? <Empty onNew={() => setEditing('new')} /> : (
-          <div style={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: 'minmax(220px, 1fr)', gap: 10, overflowX: 'auto', paddingBottom: 6 }}>
+          <div style={{ display: 'grid', gridAutoFlow: 'column', gridAutoColumns: 'minmax(220px, 1fr)', gap: 12, overflowX: 'auto', paddingBottom: 6 }}>
             {STAGES.map(s => {
               const cards = opps.filter(o => o.stage === s.key && recentClosed(o));
               const total = cards.reduce((a, o) => a + Number(o.expected_amount ?? 0), 0);
               return (
                 <div key={s.key} onDragOver={e => e.preventDefault()}
                   onDrop={e => { const id = e.dataTransfer.getData('text/plain'); const o = opps.find(x => x.id === id); if (o) drop(o, s.key); }}
-                  style={{ background: 'var(--odoo-bg-alt, #f8f9fa)', borderRadius: 6, padding: 8, display: 'flex', flexDirection: 'column', gap: 8, minHeight: 200, borderTop: `3px solid ${STAGE_COLOR[s.key]}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: '0.8125rem' }}>
+                  className="prj-lane" style={{ minHeight: 200 }}>
+                  <div className="prj-lane-head">
+                    <span className="prj-dot" style={{ background: STAGE_COLOR[s.key] }} />
                     <strong>{s.label}{s.key === 'won' || s.key === 'lost' ? ' (30 j)' : ''}</strong>
-                    <span style={{ color: 'var(--theme-text-muted)' }}>{cards.length} · {n0(total)} DH</span>
+                    <small className="sal-lane-sum">{cards.length} · {n0(total)} DH</small>
                   </div>
+                  {!cards.length && <div className="prj-lane-empty">Aucune affaire</div>}
                   {cards.map(o => (
-                    <div key={o.id} draggable onDragStart={e => e.dataTransfer.setData('text/plain', o.id)} onClick={() => setOpenId(o.id)}
-                      style={{ background: 'var(--odoo-bg, #fff)', border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 8, cursor: 'pointer', display: 'grid', gap: 3, fontSize: '0.8125rem' }}>
-                      <strong style={{ fontSize: '0.8125rem' }}>{o.title}</strong>
+                    <button type="button" key={o.id} className="prj-task" draggable onDragStart={e => e.dataTransfer.setData('text/plain', o.id)} onClick={() => setOpenId(o.id)}
+                      style={{ gap: 3, fontSize: '0.8125rem' }}>
+                      <span className="prj-task-title">{o.title}</span>
                       <span style={{ color: 'var(--theme-text-muted)' }}>{o.client_label}{!o.customer_id ? ' · prospect' : ''}</span>
                       <span>{o.expected_amount ? `${n0(o.expected_amount)} DH` : 'montant à estimer'}{o.expected_close_date ? ` · ${fr(o.expected_close_date)}` : ''}</span>
                       {o.next_activity_subject && (
@@ -152,8 +150,8 @@ export default function CrmPage() {
                           {o.activity_overdue && <AlertTriangle size={11} />}{ACTIVITY_LABEL[o.next_activity_kind!]} {frt(o.next_activity_due)} : {o.next_activity_subject}
                         </span>
                       )}
-                      {o.owner_name && <span style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{o.owner_name}</span>}
-                    </div>
+                      {o.owner_name && <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{o.owner_name}</span>}
+                    </button>
                   ))}
                 </div>
               );
@@ -172,9 +170,9 @@ export default function CrmPage() {
 
 function Empty({ onNew }: { onNew: () => void }) {
   return (
-    <StatusBanner tone="info" icon={Target} title="Aucune opportunité" actions={<button className="odoo-btn-primary" onClick={onNew}><Plus size={13} /> Nouvelle opportunité</button>}>
-      Notez chaque affaire dès le premier contact : demande d'un client, visite d'un prospect, recommandation. Vous suivez ensuite les relances jusqu'au devis puis à la commande.
-    </StatusBanner>
+    <ListEmpty icon={Target} title="Aucune opportunité"
+      text="Notez chaque affaire dès le premier contact, puis suivez les relances jusqu'au devis et à la commande."
+      action={<button className="odoo-btn-primary" onClick={onNew}><Plus size={13} /> Nouvelle opportunité</button>} />
   );
 }
 

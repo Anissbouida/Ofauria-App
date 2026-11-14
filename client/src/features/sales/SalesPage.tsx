@@ -110,6 +110,9 @@ function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align 
 
 /** Écrans de la page Ventes, repris par la barre latérale du module (SalesLayout). */
 const MAIN_TAB_KEYS = ['sales', 'unpaid', 'returns', 'sessions', 'invoices', 'subscriptions', 'routes'] as const;
+/** Onglets qui suivent la période de la barre (et l'export CSV). */
+const DATED_TABS = new Set<string>(['sales', 'returns', 'sessions']);
+
 export const SALES_MAIN_TABS: { key: typeof MAIN_TAB_KEYS[number]; label: string }[] = [
   { key: 'sales', label: 'Tickets' },
   // Créances clients : balance âgée (tickets sur compte client + factures ouvertes).
@@ -507,6 +510,9 @@ export default function SalesPage() {
           <span className="odoo-breadcrumb-current">{currentMainTab?.label}</span>
         </div>
         <div style={{ flex: 1 }} />
+        {/* Période et export : seulement pour les onglets datés (tickets, retours, sessions) ;
+            factures, créances, abonnements et tournées ont leurs propres filtres. */}
+        {DATED_TABS.has(mainTab) && (<>
         <button onClick={() => {
             const from = parseISO(dateFrom);
             const to = parseISO(dateTo);
@@ -538,12 +544,15 @@ export default function SalesPage() {
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Download size={13} /> Exporter
         </button>
+        </>)}
+        {mainTab === 'sales' && (<>
         <input ref={fileInputRef} type="file" accept=".csv" multiple onChange={handleImportCSV} className="hidden" />
         <button onClick={() => fileInputRef.current?.click()} disabled={importing}
           className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Upload size={13} /> {importing ? 'Import...' : 'Importer CSV'}
         </button>
+        </>)}
       </div>
 
       {/* Import results modal */}
@@ -1173,7 +1182,7 @@ export default function SalesPage() {
             {sessions.length === 0 && (
               <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
                 <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-                <p style={{ fontSize: '0.8125rem' }}>Aucune période de travail pour cette période</p>
+                <p style={{ fontSize: '0.8125rem' }}>Aucune session de caisse sur cette période</p>
               </div>
             )}
           </div>

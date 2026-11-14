@@ -13,11 +13,7 @@ import {
   BarChart, Bar, AreaChart, Area,
   ScatterChart, Scatter, ZAxis, ReferenceLine,
 } from 'recharts';
-import {
-  TrendingUp, ShoppingCart, Banknote, Package, ClipboardList,
-  AlertTriangle, Calendar, ArrowUpRight, ArrowDownRight, Crown, BarChart3,
-  ChevronRight, Search, X,
-} from 'lucide-react';
+import { TrendingUp, ShoppingCart, Banknote, Package, ClipboardList, AlertTriangle, ArrowUpRight, ArrowDownRight, Crown, BarChart3, ChevronRight, Search, X } from 'lucide-react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import SalesPageShell from '../sales/SalesPageShell';
 
@@ -30,7 +26,7 @@ type Tab = 'overview' | 'menu' | 'cost' | 'margins' | 'builder';
  * (/reports?tab=…), Coûts = rapport de Production (/production/costs).
  */
 const tabs: { key: Tab; label: string; subtitle: string }[] = [
-  { key: 'overview', label: "Vue d'ensemble", subtitle: "Chiffre d'affaires, ventes et produits phares" },
+  { key: 'overview', label: 'Analyse des ventes', subtitle: "Chiffre d'affaires, ventes et produits phares" },
   { key: 'menu', label: 'Menu Engineering', subtitle: 'Popularité et marge de chaque produit' },
   { key: 'cost', label: 'Coûts', subtitle: "Coût matière, main-d'œuvre et prime cost" },
   { key: 'margins', label: 'Marges', subtitle: 'Marge par produit sur la période' },
@@ -222,13 +218,8 @@ export default function ReportsPage({ fixedTab }: { fixedTab?: Tab } = {}) {
   const current = tabs.find(t => t.key === activeTab)!;
 
   return (
-    <SalesPageShell title={current.label} actions={
-      <span className="flex items-center gap-2 text-sm text-gray-500">
-        <Calendar size={16} />{format(new Date(), "EEEE d MMMM yyyy", { locale: fr })}
-      </span>
-    }>
+    <SalesPageShell parent="Ventes" title={current.label} summary={current.subtitle}>
       <div className="space-y-6 max-w-7xl mx-auto">
-        <p className="text-sm text-gray-500" style={{ marginTop: -4 }}>{current.subtitle}</p>
 
       {/* ============ Tab: Vue d'ensemble ============ */}
       {activeTab === 'overview' && (

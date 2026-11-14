@@ -6,6 +6,7 @@ import { salesChannelsApi } from '../../api/sales-channels.api';
 import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../utils/api-error';
+import SalesPageShell from '../sales/SalesPageShell';
 
 // Listes de prix (phase 6.1–6.3) : par canal, type/groupe de clients ou client précis,
 // avec validité et devise ; lignes à paliers de quantité. Le prix applicable est résolu
@@ -64,20 +65,19 @@ export default function PriceListsPage() {
   const lab: React.CSSProperties = { fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', display: 'block', marginBottom: 2 };
 
   return (
-    <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '280px 1fr', gap: 16, height: '100%' }}>
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <h2 style={{ fontSize: '1rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}><Tag size={16} /> Listes de prix</h2>
-          <button className="odoo-btn-primary" onClick={() => createList.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Nouvelle</button>
-        </div>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-          <button className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem' }}
-            onClick={() => setBulk({ family: '', mode: 'increase_pct', value: '5', reason: '' })}><TrendingUp size={12} /> Màj en masse</button>
-          <button className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.75rem' }}
-            onClick={() => setShowHistory(v => !v)}><History size={12} /> Historique</button>
-        </div>
+    <SalesPageShell icon={Tag} parent="Ventes" title="Listes de prix"
+      summary={`${lists.length} liste${lists.length > 1 ? 's' : ''}`}
+      actions={<>
+        <button className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+          onClick={() => setBulk({ family: '', mode: 'increase_pct', value: '5', reason: '' })}><TrendingUp size={13} /> Mise à jour</button>
+        <button className={showHistory ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+          onClick={() => setShowHistory(v => !v)}><History size={13} /> Historique</button>
+        <button className="odoo-btn-primary" onClick={() => createList.mutate()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Nouvelle liste</button>
+      </>}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+      <div style={{ flex: '1 1 260px', maxWidth: 340, minWidth: 0 }}>
         {showHistory && (
-          <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 8, marginBottom: 10, maxHeight: 220, overflow: 'auto', fontSize: '0.72rem' }}>
+          <div className="prj-panel" style={{ padding: 10, marginBottom: 10, maxHeight: 240, overflow: 'auto', fontSize: '0.75rem' }}>
             {history.length === 0 && <div style={{ color: 'var(--odoo-text-muted)' }}>Aucun changement.</div>}
             {history.map(h => (
               <div key={h.id} style={{ padding: '3px 0', borderBottom: '1px solid var(--odoo-border)' }}>
@@ -91,20 +91,20 @@ export default function PriceListsPage() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {lists.map((l: PriceList) => (
             <button key={l.id} onClick={() => setSelectedId(l.id)}
-              style={{ textAlign: 'left', padding: '8px 10px', borderRadius: 4, border: '1px solid var(--odoo-border)',
-                background: l.id === selectedId ? 'var(--odoo-accent-soft, #eef)' : 'var(--odoo-bg)', cursor: 'pointer' }}>
+              style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 8, border: `1px solid ${l.id === selectedId ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`,
+                background: l.id === selectedId ? 'color-mix(in srgb, var(--odoo-purple) 8%, var(--theme-bg-card))' : 'var(--theme-bg-card)', cursor: 'pointer' }}>
               <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{l.name} {!l.is_active && <span className="odoo-tag">inactive</span>}</div>
               <div style={{ fontSize: '0.7rem', color: 'var(--odoo-text-muted)' }}>
                 {[l.channel_name, l.customer_type, l.price_group, l.customer_id ? 'client précis' : null].filter(Boolean).join(' · ') || 'Générale'} · {l.currency} · {l.item_count ?? 0} art.
               </div>
             </button>
           ))}
-          {lists.length === 0 && <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Aucune liste. Sans liste, le prix catalogue s'applique.</div>}
+          {lists.length === 0 && <p className="prj-note">Aucune liste : le prix catalogue s'applique partout.</p>}
         </div>
       </div>
 
       {detail ? (
-        <div style={{ minWidth: 0 }}>
+        <div style={{ flex: '999 1 480px', minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <input style={{ ...field, width: 280, fontWeight: 600 }} defaultValue={detail.name} key={detail.id}
               onBlur={(e) => e.target.value !== detail.name && updateList.mutate({ name: e.target.value })} />
@@ -178,9 +178,10 @@ export default function PriceListsPage() {
           </table>
         </div>
       ) : (
-        <div style={{ color: 'var(--odoo-text-muted)', padding: 24 }}>Sélectionnez une liste ou créez-en une.</div>
+        <div className="prj-panel sal-empty" style={{ flex: '999 1 480px' }}><Tag size={26} style={{ opacity: 0.4 }} /><strong>Aucune liste sélectionnée</strong><span>Choisissez une liste à gauche ou créez-en une.</span></div>
       )}
 
+    </div>
       {bulk && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setBulk(null)}>
           <div style={{ background: 'var(--odoo-bg)', borderRadius: 8, padding: 20, width: 420 }} onClick={(e) => e.stopPropagation()}>
@@ -206,6 +207,6 @@ export default function PriceListsPage() {
           </div>
         </div>
       )}
-    </div>
+    </SalesPageShell>
   );
 }

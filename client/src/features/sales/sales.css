@@ -102,3 +102,36 @@
 .sal-legend dt { display: flex; align-items: center; gap: 8px; }
 .sal-legend dt i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
 .sal-legend dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/*
+ * Toutes les rubriques Ventes au style de la refonte (2026-11) : les briques communes
+ * (tuiles odoo-stat, bandeau d'étapes ProcessBoard, barre de recherche, tableaux, sélecteur
+ * de vue) prennent le style cartes/panneaux dans le module Ventes seulement (portée
+ * .sal-module posée par SalesLayout). Les fenêtres (.fixed) et les panneaux de la refonte
+ * (.prj-panel) gardent leur présentation.
+ */
+.sal-module { --prj-green: #1F7A4D; --prj-orange: #B45309; --prj-red: #B42318; --prj-track: var(--odoo-border); min-height: 100%; }
+.sal-module .pb-pipeline:not(.fixed .pb-pipeline) { border-radius: 10px !important; background: var(--theme-bg-card) !important; padding-bottom: 12px; }
+.sal-module .pb-pipeline-head { padding: 12px 14px 0 !important; }
+.sal-module .pb-pipeline-title { font-size: 0.9375rem !important; text-transform: none !important; letter-spacing: 0 !important; color: var(--odoo-text) !important; }
+.sal-module .pb-pipeline .odoo-stat-grid { padding: 10px 12px 0; }
+.sal-module .pb-stage-num { background: var(--odoo-purple) !important; color: #fff !important; }
+
+.sal-module .odoo-stat-grid:not(.fixed .odoo-stat-grid) { gap: 10px; border-bottom: 0; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.sal-module .odoo-stat-card:not(.fixed .odoo-stat-card) { border: 1px solid var(--odoo-border); border-radius: 8px; background: var(--theme-bg-card); padding: 12px 14px; }
+.sal-module .odoo-stat-card:not(.fixed .odoo-stat-card):last-child { border-right: 1px solid var(--odoo-border); }
+.sal-module .odoo-stat-card:not(.fixed .odoo-stat-card):hover { border-color: var(--odoo-purple); background: var(--theme-bg-card); }
+.sal-module .odoo-stat-card.active:not(.fixed .odoo-stat-card) { border-color: var(--odoo-purple); background: color-mix(in srgb, var(--odoo-purple) 8%, var(--theme-bg-card)); box-shadow: none; }
+.sal-module .odoo-stat-card-label { text-transform: none; letter-spacing: 0; font-size: 0.8125rem; }
+.sal-module .odoo-stat-card-value { font-weight: 700; }
+
+.sal-module .odoo-search-panel:not(.fixed .odoo-search-panel):not(.prj-panel .odoo-search-panel) { background: var(--theme-bg-card); border: 1px solid var(--odoo-border); border-radius: 10px; padding: 8px 12px; flex-wrap: wrap; row-gap: 8px; }
+.sal-module .odoo-search-input { font-size: 0.875rem; }
+
+.sal-module .odoo-table:not(.fixed .odoo-table):not(.prj-panel .odoo-table):not(.sal-bare .odoo-table) { background: var(--theme-bg-card); border: 1px solid var(--odoo-border); border-radius: 10px; border-collapse: separate; border-spacing: 0; overflow: hidden; }
+.sal-module .odoo-table:not(.fixed .odoo-table) thead th { border-top: 0; text-transform: none; letter-spacing: 0; font-size: 0.75rem; }
+.sal-module .odoo-table:not(.fixed .odoo-table) tbody tr:last-child td { border-bottom: 0; }
+
+.sal-module .odoo-view-switcher:not(.fixed .odoo-view-switcher) { border-radius: 6px; overflow: hidden; background: var(--theme-bg-card); }
+.sal-module .odoo-section-header:not(.fixed .odoo-section-header) { font-size: 0.9375rem; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--odoo-text); background: none; border: 0; padding-left: 0; padding-right: 0; }
+.sal-module .status-banner:not(.fixed .status-banner) { border-radius: 10px; }
