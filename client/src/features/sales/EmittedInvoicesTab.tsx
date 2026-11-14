@@ -10,7 +10,7 @@ import { fr } from 'date-fns/locale';
 import {
   Plus, Pencil, X, Check, Download, Receipt, Loader2, Search, Banknote, Eye, Ban, Trash2,
   AlertTriangle, CalendarDays, Building2, CheckCircle2, Clock, Coins, ClipboardList, Package,
-  User, FileText, CreditCard, Truck, Undo2, Columns3, List, SquareKanban, Maximize2,
+  FileText, Truck, Undo2, Columns3, List, SquareKanban, Maximize2,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -28,12 +28,6 @@ function n(val: number): string {
 
 type Inv = Record<string, any>;
 
-/** Étapes d'une facture client : émise → partiellement encaissée → soldée (frise de la fiche). */
-const STAGES = [
-  { key: 'pending', label: 'À encaisser', hint: 'reste dû', icon: Clock },
-  { key: 'partial', label: 'Partielles', hint: 'reste dû', icon: Coins },
-  { key: 'paid', label: 'Soldées', hint: 'encaissé', icon: CheckCircle2 },
-];
 const STATUS_LABEL: Record<string, string> = { pending: 'À encaisser', partial: 'Partielle', paid: 'Soldée', cancelled: 'Annulée', credit: 'Avoir' };
 const STATUS_TAG: Record<string, string> = { pending: 'odoo-tag-yellow', partial: 'odoo-tag-blue', paid: 'odoo-tag-green', cancelled: 'odoo-tag-red', credit: 'odoo-tag-purple' };
 const STATUS_DOT: Record<string, string> = { pending: 'warning', partial: 'warning', paid: 'ok', cancelled: 'neutral', credit: 'neutral' };
@@ -860,202 +854,146 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
   const paid = num(inv.paid_amount);
   const remaining = remainingOf(inv);
   const open = status === 'pending' || status === 'partial';
-  const stageIdx = STAGES.findIndex(s => s.key === status);
   const items: Record<string, any>[] = detail?.items || [];
   const payments: Record<string, any>[] = detail?.payments || [];
+  const pct = total > 0 ? Math.min(100, paid / total * 100) : 0;
+  const lateDays = late && inv.due_date ? differenceInCalendarDays(startOfDay(new Date()), startOfDay(new Date(String(inv.due_date).slice(0, 10) + 'T00:00:00'))) : 0;
+  const pill = status === 'paid' ? 'g' : status === 'partial' ? 'b' : status === 'cancelled' ? 'r' : status === 'credit' ? 'x' : late ? 'r' : 'o';
+  const steps = [
+    { label: 'Émise', sub: fmtDate(inv.invoice_date, 'd MMM yyyy'), tone: 'done' },
+    { label: 'Échéance', sub: inv.due_date ? fmtDate(inv.due_date, 'd MMM yyyy') + (late ? ` · ${lateDays} j de retard` : '') : 'non fixée', tone: status === 'paid' ? 'done' : late ? 'warn' : 'current' },
+    { label: 'Encaissée', sub: status === 'paid' ? 'soldée' : paid > 0.004 ? `${n(paid)} DH reçus` : 'rien reçu', tone: status === 'paid' ? 'done' : '' },
+  ];
+  const name = customerLabel(inv);
+  const initials = name.split(/\s+/).filter(w => /[A-Za-zÀ-ÿ]/.test(w[0] ?? '')).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '·';
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)' }}>
-      <div className="odoo-scope w-full flex flex-col" style={{ ...modalPanelStyle, maxWidth: 760, maxHeight: '92vh' }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ ...modalHeaderStyle, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700, fontSize: '1rem' }}>{inv.invoice_number as string}</span>
-              <span className={`odoo-tag ${STATUS_TAG[status] || 'odoo-tag-grey'}`}>{STATUS_LABEL[status] || status}</span>
-              {late && <span className="odoo-tag odoo-tag-red">En retard</span>}
-              {inv.cancelled_by_credit && <span className="odoo-tag odoo-tag-red">Annulée par avoir</span>}
-            </div>
-            <div style={{ fontSize: '0.75rem', opacity: 0.85, marginTop: 2 }}>
-              {credit
-                ? `Avoir du ${fmtDate(inv.invoice_date, 'dd/MM/yyyy')} sur la facture ${inv.credited_invoice_number ?? ''} · ${CREDIT_REASON_LABEL[inv.credit_reason as string] ?? ''}`
-                : <>Émise le {fmtDate(inv.invoice_date, 'dd/MM/yyyy')}{inv.due_date ? ` · échéance le ${fmtDate(inv.due_date, 'dd/MM/yyyy')}` : ''}</>}
-            </div>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.32)' }}>
+      {/* Style Apple (2026-11) : feuille claire, suivi en barre, listes groupées, boutons en pilule (apple-look.css, .kl-sheet). */}
+      <div className="odoo-scope kl-sheet w-full" style={{ maxWidth: 780, maxHeight: '92vh' }} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={`Facture ${inv.invoice_number as string}`}>
+        <header className="kl-sheet-head">
+          <span className="ord-mono" aria-hidden="true">{initials}</span>
+          <div className="ord-who">
+            <h2><span className="sal-num" style={{ fontSize: 'inherit' }}>{inv.invoice_number as string}</span> <span className={`kl-pill ${pill}`}>{late && (status === 'pending' || status === 'partial') ? 'En retard' : STATUS_LABEL[status] || status}</span></h2>
+            <p>{name} · {isPro(inv) ? 'Professionnel' : 'Particulier'} · {credit
+              ? `avoir du ${fmtDate(inv.invoice_date, 'dd/MM/yyyy')} sur ${inv.credited_invoice_number ?? '—'} (${CREDIT_REASON_LABEL[inv.credit_reason as string] ?? 'avoir'})`
+              : `émise le ${fmtDate(inv.invoice_date, 'dd/MM/yyyy')}`}</p>
           </div>
-          <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
-        </div>
+          <div className="ord-amt">
+            <b>{credit ? '−' : ''}{n(total)} DH</b>
+            <small>{status === 'cancelled' ? 'annulée' : credit ? (remaining > 0.004 ? `${n(remaining)} DH à imputer` : 'imputé') : remaining > 0.004 ? `reste ${n(remaining)} DH` : 'soldée'}</small>
+          </div>
+          <button type="button" className="kl-sheet-close" onClick={onClose} aria-label="Fermer"><X size={16} /></button>
+        </header>
 
-        {/* Frise d'avancement */}
-        <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)' }}>
+        <div className="kl-sheet-body">
           {status === 'cancelled' ? (
-            <span style={{ fontSize: '0.75rem', color: '#721c24', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Ban size={12} /> Facture annulée</span>
+            <div className="kl-widget"><div className="ord-state">Facture annulée</div><div className="ord-state-sub">{inv.cancelled_by_credit ? 'Annulée par avoir : ses bons de livraison sont redevenus « à facturer ».' : 'Facture annulée.'}</div></div>
           ) : credit ? (
-            <span style={{ fontSize: '0.75rem', color: '#6f42c1', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Undo2 size={12} /> {remaining > 0.004 ? `${n(remaining)} DH au crédit du client, à imputer sur une facture` : 'Avoir entièrement imputé'}
-            </span>
+            <div className="kl-widget"><div className="ord-state">Avoir</div><div className="ord-state-sub">{remaining > 0.004 ? `${n(remaining)} DH au crédit du client, à imputer sur une facture.` : 'Avoir entièrement imputé.'}</div></div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STAGES.length}, 1fr)`, gap: 6 }}>
-              {STAGES.map((s, i) => {
-                const reached = i <= stageIdx;
-                const current = i === stageIdx;
-                const Icon = s.icon;
-                return (
-                  <div key={s.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ height: 5, borderRadius: 3, background: reached ? (current && late ? '#dc3545' : 'var(--odoo-purple)') : 'var(--odoo-border)', opacity: current && !late && s.key !== 'paid' ? 0.6 : 1 }} />
-                    <span style={{ fontSize: '0.6875rem', fontWeight: current ? 700 : 500, color: reached ? 'var(--odoo-text)' : 'var(--odoo-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                      <Icon size={10} /> {s.label}
-                    </span>
-                  </div>
-                );
-              })}
+            <div className="kl-widget">
+              <div className="ord-state">{late ? 'En retard' : STATUS_LABEL[status]}</div>
+              <div className="ord-state-sub">{Math.round(pct)} % encaissé{late ? ` · échue depuis ${lateDays} j` : inv.due_date && status !== 'paid' ? ` · échéance le ${fmtDate(inv.due_date, 'd MMMM')}` : ''}</div>
+              <div className={`ord-track${late ? ' late' : ''}`} aria-hidden="true"><span style={{ width: `${status === 'paid' ? 100 : Math.max(pct, 4)}%` }} /></div>
+              <ol className="ord-steps" aria-label="Avancement">
+                {steps.map(st => <li key={st.label} className={st.tone || undefined}><b>{st.label}</b><span>{st.sub}</span></li>)}
+              </ol>
             </div>
           )}
-        </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={sectionStyle}>
-              <div className="odoo-section-header"><User size={11} /> Client</div>
-              <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {customerLabel(inv)}
-                  <span className={`odoo-tag ${isPro(inv) ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{isPro(inv) ? 'Professionnel' : 'Particulier'}</span>
-                </div>
-                {detail?.customer_ice && <div style={{ color: 'var(--odoo-text-muted)' }}>ICE {detail.customer_ice as string}</div>}
-                {(detail?.customer_address || detail?.customer_city) && (
-                  <div style={{ color: 'var(--odoo-text-muted)' }}>{[detail?.customer_address, detail?.customer_city].filter(Boolean).join(', ')}</div>
-                )}
+          <div className="kl-sheet-cols">
+            <section>
+              <div className="kl-sec"><h2>Client</h2></div>
+              <div className="kl-group">
+                <div className="ord-kv"><span>Nom</span><b>{name}</b></div>
+                <div className="ord-kv"><span>ICE</span><b>{(detail?.customer_ice as string) || '—'}</b></div>
+                {(detail?.customer_address || detail?.customer_city) && <div className="ord-kv"><span>Adresse</span><b style={{ textAlign: 'right' }}>{[detail?.customer_address, detail?.customer_city].filter(Boolean).join(', ')}</b></div>}
               </div>
-            </div>
-            <div style={sectionStyle}>
-              <div className="odoo-section-header"><FileText size={11} /> Origine</div>
-              <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <span style={{ color: 'var(--odoo-text-muted)' }}>Bons de livraison</span>
-                  <span style={{ fontFamily: 'ui-monospace, monospace', textAlign: 'right' }}>{(inv.delivery_note_numbers as string) || '—'}</span>
-                </div>
-                {inv.order_number_ref && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--odoo-text-muted)' }}>Commande</span>
-                    <span style={{ fontFamily: 'ui-monospace, monospace' }}>{inv.order_number_ref as string}</span>
+            </section>
+            <section>
+              <div className="kl-sec"><h2>Origine</h2></div>
+              <div className="kl-group">
+                <div className="ord-kv"><span>Bons de livraison</span><b className="sal-num">{(inv.delivery_note_numbers as string) || '—'}</b></div>
+                {inv.order_number_ref && <div className="ord-kv"><span>Commande</span><b className="sal-num">{inv.order_number_ref as string}</b></div>}
+                {inv.notes && <div className="ord-kv"><span>Notes</span><b style={{ textAlign: 'right', whiteSpace: 'pre-line' }}>{inv.notes as string}</b></div>}
+              </div>
+            </section>
+          </div>
+
+          <section>
+            <div className="kl-sec"><h2>Articles</h2><small>{items.length ? `${items.length} ligne${items.length > 1 ? 's' : ''}` : ''}</small></div>
+            <div className="kl-group">
+              {!detail ? <div className="kl-empty"><Loader2 className="animate-spin" size={16} /> Chargement…</div>
+                : items.length === 0 ? <div className="kl-empty">Aucun article</div>
+                : items.map((it, idx) => (
+                  <div key={idx} className="ord-line">
+                    <span className="ord-qty">{num(it.quantity)} ×</span>
+                    <span className="ord-pn">{(it.description as string) || (it.product_name as string)}<small>{n(num(it.unit_price))} HT{it.tva_rate != null ? ` · TVA ${num(it.tva_rate)} %` : ''}</small></span>
+                    <span className="ord-pv">{n(num(it.subtotal))}</span>
                   </div>
-                )}
-                {inv.notes && <div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>{inv.notes as string}</div>}
-              </div>
+                ))}
+              <div className="ord-kv"><span>Total HT</span><b>{n(ht)} DH</b></div>
+              <div className="ord-kv"><span>TVA</span><b>{n(tva)} DH</b></div>
+              <div className="ord-line tot"><span className="ord-pn">Total TTC</span><span className="ord-pv">{n(total)} DH</span></div>
+              <div className="ord-kv"><span>{credit ? 'Imputé' : 'Encaissé'}</span><b style={{ color: 'var(--prj-green, #15803D)' }}>{n(paid)} DH</b></div>
+              <div className="ord-kv"><span>{credit ? 'À imputer' : 'Reste à encaisser'}</span>
+                <b style={{ fontWeight: 700, color: remaining > 0.004 && status !== 'cancelled' ? 'var(--prj-orange, #B45309)' : undefined }}>
+                  {status === 'cancelled' ? 'Annulée' : remaining > 0.004 ? `${n(remaining)} DH` : credit ? 'Imputé' : 'Soldée'}</b></div>
             </div>
-          </div>
-
-          <div style={sectionStyle}>
-            <div className="odoo-section-header"><Package size={11} /> Articles facturés</div>
-            {!detail ? (
-              <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>
-                <Loader2 className="animate-spin" size={16} style={{ margin: '0 auto 6px' }} /> Chargement des articles...
-              </div>
-            ) : items.length === 0 ? (
-              <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Aucun article</div>
-            ) : (
-              <table className="odoo-table" style={{ margin: 0 }}>
-                <thead>
-                  <tr>
-                    <th>Désignation</th>
-                    <th style={{ textAlign: 'right' }}>Qté</th>
-                    <th style={{ textAlign: 'right' }}>P.U. HT</th>
-                    <th style={{ textAlign: 'right' }}>TVA</th>
-                    <th style={{ textAlign: 'right' }}>Montant HT</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((it, idx) => (
-                    <tr key={idx} style={{ cursor: 'default' }}>
-                      <td style={{ fontWeight: 500 }}>{(it.description as string) || (it.product_name as string)}</td>
-                      <td style={{ textAlign: 'right' }}>{num(it.quantity)}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{n(num(it.unit_price))}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{it.tva_rate != null ? `${num(it.tva_rate)} %` : '—'}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(num(it.subtotal))} DH</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          </section>
 
           {!credit && ((credits?.creditNotes.length ?? 0) > 0 || (open && (credits?.openCredits.length ?? 0) > 0)) && (
-            <div style={sectionStyle}>
-              <div className="odoo-section-header"><Undo2 size={11} /> Avoirs</div>
-              <div style={{ padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <section>
+              <div className="kl-sec"><h2>Avoirs</h2></div>
+              <div className="kl-group">
                 {credits?.creditNotes.map(c => (
-                  <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <span><span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{c.invoice_number}</span>
-                      <span style={{ color: 'var(--odoo-text-muted)' }}> · {fmtDate(c.invoice_date, 'dd/MM/yyyy')} · {CREDIT_REASON_LABEL[c.credit_reason] ?? c.credit_reason}</span></span>
-                    <span style={{ fontWeight: 600, color: '#6f42c1' }}>−{n(c.total_amount)} DH</span>
-                  </div>
+                  <div key={c.id} className="ord-kv"><span><span className="sal-num">{c.invoice_number}</span> · {fmtDate(c.invoice_date, 'dd/MM/yyyy')} · {CREDIT_REASON_LABEL[c.credit_reason] ?? c.credit_reason}</span><b>−{n(c.total_amount)} DH</b></div>
                 ))}
                 {open && credits?.openCredits.map(c => (
-                  <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderTop: '1px dashed var(--odoo-border)', paddingTop: 6 }}>
-                    <span style={{ color: 'var(--odoo-text-muted)' }}>Crédit du client : avoir <span style={{ fontFamily: 'ui-monospace, monospace' }}>{c.invoice_number}</span>, {n(c.unapplied)} DH à imputer</span>
-                    <button className="odoo-btn-secondary" disabled={applyMutation.isPending} onClick={() => applyMutation.mutate(c.id)}>Imputer sur cette facture</button>
+                  <div key={c.id} className="ord-kv"><span>Crédit du client : avoir <span className="sal-num">{c.invoice_number}</span>, {n(c.unapplied)} DH à imputer</span>
+                    <button className="odoo-btn-secondary" disabled={applyMutation.isPending} onClick={() => applyMutation.mutate(c.id)}>Imputer</button></div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {!credit && (
+            <section>
+              <div className="kl-sec"><h2>Encaissements</h2><small>{payments.length ? `${n(paid)} DH reçus` : ''}</small></div>
+              <div className="kl-group">
+                {payments.length === 0 ? <div className="kl-empty">Aucun encaissement</div> : payments.map(p => (
+                  <div key={p.id as string} className="ord-kv" style={{ opacity: p.voided_at ? 0.5 : 1 }}>
+                    <span>{fmtDate(p.payment_date, 'dd/MM/yyyy')} · {payLabel(getPaymentLabel, (p.payment_method as string) || '')}{p.reference ? ` · ${p.reference as string}` : ''}</span>
+                    {/* Règlement réparti sur plusieurs factures (O2C L5) : la part de cette facture. */}
+                    <b style={{ textDecoration: p.voided_at ? 'line-through' : undefined }}
+                      title={p.allocated_amount != null && num(p.allocated_amount) !== num(p.amount) ? `Règlement de ${n(num(p.amount))} DH réparti sur plusieurs factures` : undefined}>
+                      {n(num(p.allocated_amount ?? p.amount))} DH</b>
                   </div>
                 ))}
               </div>
-            </div>
+            </section>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={sectionStyle}>
-              <div className="odoo-section-header"><Banknote size={11} /> Règlement</div>
-              <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total HT</span><span>{n(ht)} DH</span></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>TVA</span><span>{n(tva)} DH</span></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4, marginTop: 2 }}>
-                  <span>Total TTC</span><span>{n(total)} DH</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}><span>{credit ? 'Imputé' : 'Encaissé'}</span><span style={{ fontWeight: 600 }}>{n(paid)} DH</span></div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
-                  <span>{credit ? 'À imputer' : 'Reste à encaisser'}</span>
-                  <span style={{ color: remaining > 0.004 && status !== 'cancelled' ? '#b85d1a' : undefined }}>
-                    {status === 'cancelled' ? 'Annulée' : remaining > 0.004 ? `${n(remaining)} DH` : credit ? 'Imputé' : 'Soldée'}
-                  </span>
-                </div>
+          {/* Litiges (phase 11, D5-59) : montant contesté exclu des relances ; créance douteuse / irrécouvrable. */}
+          {!credit && status !== 'cancelled' && (
+            <section>
+              <div className="kl-sec"><h2>Recouvrement</h2></div>
+              <div className="kl-group kl-sheet-panel">
+                <InvoiceDisputePanel invoiceId={inv.id as string} remaining={remaining} editable={status !== 'cancelled'} />
+                <InvoiceBadDebtPanel invoiceId={inv.id as string} remaining={remaining} editable={status !== 'cancelled'} />
               </div>
-            </div>
-            <div style={sectionStyle}>
-              <div className="odoo-section-header"><CreditCard size={11} /> Encaissements</div>
-              {payments.length === 0 ? (
-                <div style={{ padding: '10px 12px', fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Aucun encaissement</div>
-              ) : (
-                <div style={{ padding: '6px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {payments.map(p => (
-                    <div key={p.id as string} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, opacity: p.voided_at ? 0.5 : 1 }}>
-                      <span style={{ color: 'var(--odoo-text-muted)' }}>
-                        {fmtDate(p.payment_date, 'dd/MM/yyyy')} · {payLabel(getPaymentLabel, (p.payment_method as string) || '')}{p.reference ? ` · ${p.reference as string}` : ''}
-                      </span>
-                      {/* Règlement réparti sur plusieurs factures (O2C L5) : la part de cette facture. */}
-                      <span style={{ fontWeight: 600, textDecoration: p.voided_at ? 'line-through' : undefined }}
-                        title={p.allocated_amount != null && num(p.allocated_amount) !== num(p.amount) ? `Règlement de ${n(num(p.amount))} DH réparti sur plusieurs factures` : undefined}>
-                        {n(num(p.allocated_amount ?? p.amount))} DH</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+            </section>
+          )}
         </div>
 
-        {/* Litiges (phase 11, D5-59) : montant contesté exclu des relances. */}
-        {!credit && status !== 'cancelled' && (
-          <div style={{ padding: '0 1rem 0.75rem' }}>
-            <InvoiceDisputePanel invoiceId={inv.id as string} remaining={remaining} editable={status !== 'cancelled'} />
-            <InvoiceBadDebtPanel invoiceId={inv.id as string} remaining={remaining} editable={status !== 'cancelled'} />
-          </div>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0.75rem 1rem', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)', flexWrap: 'wrap' }}>
+        <footer className="kl-sheet-foot">
           {canCancel(inv) && (
             <button onClick={() => onCancel(inv)} className="odoo-btn-danger" style={{ marginRight: 'auto' }}><Ban size={13} /> Annuler la facture</button>
           )}
           {!credit && status !== 'cancelled' && !inv.cancelled_by_credit && (
             <button onClick={() => setCreditOpen(true)} className="odoo-btn-secondary" disabled={!detail}><Undo2 size={13} /> Émettre un avoir</button>
           )}
-          <button onClick={onClose} className="odoo-btn-secondary">Fermer</button>
           <button onClick={() => onPdf(inv)} className="odoo-btn-secondary"><Download size={13} /> PDF</button>
           {/* Phase 10.1 — même facture en arabe (RTL, police Cairo). */}
           <button onClick={() => onPdf(inv, 'ar')} className="odoo-btn-secondary" title="Facture en arabe"><Download size={13} /> PDF ‎عربي</button>
@@ -1065,7 +1003,7 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
           {open && !credit && remaining > 0.004 && (
             <button onClick={() => onPay(inv)} className="odoo-btn-primary"><Banknote size={13} /> Encaisser</button>
           )}
-        </div>
+        </footer>
       </div>
       {creditOpen && detail && (
         <CreditNoteModal invoice={detail} onClose={() => setCreditOpen(false)} onDone={() => { setCreditOpen(false); onClose(); }} />

@@ -191,3 +191,52 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-empty { padding: 28px 16px; text-align: center; color: var(--kl-muted); font-size: 14px; display: grid; gap: 6px; justify-items: center; }
 .kl-empty strong { color: var(--kl-ink); }
 .kl-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+
+/* ── Feuille (fenêtre de détail) au style Apple : réutilisable par toute fenêtre (.kl-sheet) ──
+   Indépendante de .kl-apple : les modales s'ouvrent aussi hors des modules qui l'activent. */
+.kl-sheet {
+  --kl-bg: var(--theme-bg-page); --kl-card: var(--theme-bg-card); --kl-ink: var(--theme-text-strong); --kl-ink2: var(--theme-text-body);
+  --kl-muted: var(--theme-text-muted); --kl-sep: var(--theme-bg-separator); --kl-hair: color-mix(in srgb, var(--theme-bg-separator) 70%, transparent);
+  --kl-fill: color-mix(in srgb, var(--theme-text-muted) 13%, transparent); --kl-accent: var(--theme-accent); --kl-accent-ink: var(--theme-accent-hover);
+  --kl-accent-soft: var(--theme-accent-light); --kl-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 6px 20px rgba(15, 23, 42, .05);
+  --prj-green: #15803D; --prj-orange: #B45309; --prj-red: #DC2626;
+  display: flex; flex-direction: column; overflow: hidden; border-radius: 20px;
+  background-color: var(--kl-bg) !important; color: var(--kl-ink);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, .22), 0 0 0 .5px rgba(15, 23, 42, .08);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; letter-spacing: -.011em; -webkit-font-smoothing: antialiased;
+}
+.kl-sheet-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 20px 22px 16px; border-bottom: 1px solid var(--kl-sep); background: var(--kl-card); }
+.kl-sheet-head .ord-who h2 { font-size: 21px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.kl-sheet-head .ord-amt b { font-size: 21px; }
+.kl-sheet-close { width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--kl-fill); color: var(--kl-ink2); display: grid; place-items: center; cursor: pointer; align-self: flex-start; }
+.kl-sheet-close:hover { background: color-mix(in srgb, var(--theme-text-muted) 22%, transparent); }
+.kl-sheet-body { flex: 1; overflow-y: auto; padding: 20px 22px 24px; display: grid; gap: 20px; align-content: start; }
+.kl-sheet-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+.kl-sheet-foot { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 20px; border-top: 1px solid var(--kl-sep); background: color-mix(in srgb, var(--kl-card) 85%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.kl-sheet .odoo-btn-primary, .kl-sheet .odoo-btn-secondary, .kl-sheet .odoo-btn-danger { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+.kl-sheet .odoo-btn-secondary { border-color: transparent; background: var(--kl-fill); color: var(--kl-accent-ink); }
+.kl-sheet .odoo-btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--theme-text-muted) 20%, transparent); }
+.kl-sheet .odoo-btn-danger { border: 0; background: color-mix(in srgb, var(--prj-red) 10%, transparent); color: var(--prj-red); }
+.kl-sheet .odoo-btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--prj-red) 16%, transparent); }
+.kl-sheet .kl-widget { background: var(--kl-card); border-radius: 18px; padding: 18px 20px; box-shadow: var(--kl-shadow); }
+.kl-sheet .kl-group { background: var(--kl-card); border-radius: 14px; overflow: hidden; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+.kl-sheet .kl-sec { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 4px 8px; }
+.kl-sheet .kl-sec h2 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+.kl-sheet .kl-sec small { font-size: 13px; color: var(--kl-muted); }
+.kl-sheet .kl-empty { padding: 18px 16px; text-align: center; color: var(--kl-muted); font-size: 14px; display: flex; justify-content: center; align-items: center; gap: 8px; }
+.kl-pill { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: 0; font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; }
+.kl-pill.o { background: color-mix(in srgb, #B45309 13%, transparent); color: #B45309; }
+.kl-pill.r { background: color-mix(in srgb, #DC2626 12%, transparent); color: #DC2626; }
+.kl-pill.g { background: color-mix(in srgb, #15803D 12%, transparent); color: #15803D; }
+.kl-pill.b { background: var(--theme-accent-light); color: var(--theme-accent-hover); }
+.kl-pill.x { background: color-mix(in srgb, var(--theme-text-muted) 14%, transparent); color: var(--theme-text-body); }
+/* Panneaux internes (litiges, créance douteuse) : titres, champs et tableaux au même style. */
+.kl-sheet-panel { padding: 4px 16px 16px; display: grid; gap: 4px; }
+.kl-sheet-panel > section { margin: 0 !important; padding-top: 12px; }
+.kl-sheet-panel > section + section { border-top: 1px solid var(--kl-hair); }
+.kl-sheet-panel h4 { font-size: 15px !important; font-weight: 600; margin: 0 0 10px !important; color: var(--kl-ink); }
+.kl-sheet-panel .odoo-input { height: 36px; border: 0; border-radius: 10px; background: var(--kl-fill); padding: 0 12px; font-size: 14px; color: var(--kl-ink); }
+.kl-sheet-panel .odoo-input:focus { outline: 2px solid color-mix(in srgb, var(--kl-accent) 45%, transparent); outline-offset: 0; }
+.kl-sheet-panel .odoo-table { border: 0; }
+.kl-sheet-panel .odoo-table thead th { background: transparent; color: var(--kl-muted); font-weight: 500; font-size: 12px; text-transform: none; letter-spacing: 0; }
+.odoo-scope.kl-sheet { background-color: var(--theme-bg-page) !important; }
