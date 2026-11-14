@@ -74,7 +74,30 @@ function hintFor(key: string, v: Record<string, unknown>): string | null {
 
 const themeOf = (p: BusinessParameter) => THEME_OF.get(p.key) ?? p.domainLabel;
 
-/** Aide courte affichée sous une règle (une ligne, comme Odoo) ; le texte complet passe dans le « ? ». */
+/** Aide courte rédigée pour l'écran (une ligne, comme Odoo) ; l'aide complète du catalogue passe dans le « ? ». */
+const SHORT_HELP: Record<string, string> = {
+  'purchasing.expense_requires_po': 'Dépenses « BC requis » rattachées à un bon de commande au-delà du seuil',
+  'purchasing.supplier_score': 'Poids des critères, période et seuils des classes A, B et C',
+  'purchasing.over_receipt_tolerance_pct': 'Écart accepté par ligne ; au-delà, la réception est refusée',
+  'purchasing.sod_mode': 'Qui fait une étape ne peut pas faire celle qui la contrôle',
+  'purchasing.receipt_correction_window_hours': 'Le gérant peut corriger une réception pendant ce délai',
+  'purchasing.lot_dlc_enforcement': 'Si le lot ou la DLC exigés ne sont pas saisis',
+  'purchasing.off_contract_enforcement': 'Prix des lignes comparé au tarif contractuel à l\'envoi du BC',
+  'purchasing.po_requires_request': 'Un bon de commande doit référencer une demande d\'achat',
+  'purchasing.invoice_holds_enforcement': 'Un écart de prix, de quantité ou un doublon bloque le paiement',
+  'purchasing.cash_limit_enforcement': 'Au-delà du plafond légal, le paiement en espèces n\'est pas déductible',
+  'accounting.card_commission': 'Retenue du terminal sur chaque vente par carte (compte 6147)',
+  'ledger.posting_mode': 'Que faire si l\'écriture comptable d\'une pièce échoue',
+  'sales.dunning': 'Relances des impayés et contrôle du plafond de crédit',
+  'sales.pricing': 'Remises maximales et écart au prix grille autorisés',
+  'sales.stamp_duty': 'Droit de timbre sur les règlements en espèces',
+  'sales.closure': 'Inventaire des invendus demandé à la fermeture de caisse',
+  'sales.pos_stock': 'Vendre ou non un produit dont la vitrine est à zéro',
+  'sales.person_sizes': 'Nombres de parts proposés pour les entremets vendus à la part',
+  'sales.returns': 'Délai et montant des retours acceptés sans approbation',
+  'production.fixed_charges': 'Charges mensuelles réparties sur les plans pour le coût de revient',
+  'pricing.rounding': 'Arrondi des prix de vente calculés',
+};
 const HELP_MAX = 95;
 function shortHelp(help: string): string {
   const first = help.split(/(?<=\.)\s|\s:\s|\s;\s/)[0].replace(/\.$/, '');
@@ -194,7 +217,7 @@ function ParameterRow({ param }: { param: BusinessParameter }) {
   const custom = param.key === 'purchasing.supplier_score';
   const inline = !custom && numbers.length <= 2 ? numbers : [];
   const rest = custom ? [] : param.fields.filter(f => f !== primary && !inline.includes(f));
-  const helpShort = shortHelp(param.help);
+  const helpShort = SHORT_HELP[param.key] ?? shortHelp(param.help);
   const last = param.history[0];
 
   return (
