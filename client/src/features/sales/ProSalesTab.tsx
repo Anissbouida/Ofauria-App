@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Truck, FileText, Plus, X, Trash2, Loader2, Ban, Eye, CheckSquare, ClipboardList, Printer } from 'lucide-react';
+import { Truck, FileText, Plus, X, Trash2, Loader2, Ban, Eye, CheckSquare, ClipboardList, Printer, Columns3, List, SquareKanban, Send, PackageCheck, ExternalLink, type LucideIcon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { deliveryNotesApi, type DeliveryNote, type ToInvoiceGroup } from '../../api/delivery-notes.api';
 import { customersApi } from '../../api/customers.api';
 import { productsApi } from '../../api/products.api';
@@ -35,7 +36,12 @@ async function printNote(id: string) {
 const money = (v: number | string) => `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 const day = (d: string) => format(new Date(String(d).slice(0, 10) + 'T00:00:00'), 'dd MMM yyyy', { locale: fr });
 const TVA_RATES = [0, 7, 10, 14, 20];
+/** Cycle différé (mig 489) : brouillon, préparé, expédié — avant la livraison. */
+const IN_PROGRESS = new Set<DeliveryNote['status']>(['draft', 'prepared', 'shipped']);
 const STATUS: Record<DeliveryNote['status'], { label: string; cls: string }> = {
+  draft: { label: 'Brouillon', cls: 'odoo-tag-grey' },
+  prepared: { label: 'Préparé', cls: 'odoo-tag-blue' },
+  shipped: { label: 'Expédié', cls: 'odoo-tag-yellow' },
   delivered: { label: 'À facturer', cls: 'odoo-tag-orange' },
   invoiced: { label: 'Facturé', cls: 'odoo-tag-green' },
   cancelled: { label: 'Annulé', cls: 'odoo-tag-grey' },
@@ -44,7 +50,9 @@ const STATUS: Record<DeliveryNote['status'], { label: string; cls: string }> = {
 export default function ProSalesTab() {
   // Une seule rangée de filtres : « À facturer » = BL livrés regroupés par client
   // avec l'action de facturation ; les autres filtrent la liste des BL.
-  const [view, setView] = useState<'' | 'delivered' | 'invoiced' | 'cancelled' | null>(null);
+  const [view, setView] = useState<'' | 'inprogress' | 'delivered' | 'invoiced' | 'cancelled' | null>(null);
+  // Style Apple (2026-11) : Colonnes (liste + fiche) par défaut sur grand écran, Liste, Kanban.
+  const [layout, setLayout] = useState<'split' | 'list' | 'kanban'>(() => (window.innerWidth >= 1100 ? 'split' : 'list'));
   const [search, setSearch] = useState('');
   const [showNew, setShowNew] = useState(false);
   // ?open=<id> : bon ouvert depuis la fiche commande.
@@ -56,9 +64,9 @@ export default function ProSalesTab() {
   const { data: allNotes = [] } = useQuery({ queryKey: ['delivery-notes', 'list', 'all'], queryFn: () => deliveryNotesApi.list() });
   const stats = useMemo(() => {
     const acc: Record<string, { count: number; total: number }> = {
-      delivered: { count: 0, total: 0 }, invoiced: { count: 0, total: 0 }, cancelled: { count: 0, total: 0 },
+      delivered: { count: 0, total: 0 }, invoiced: { count: 0, total: 0 }, cancelled: { count: 0, total: 0 }, inprogress: { count: 0, total: 0 },
     };
-    for (const n of allNotes) { const a = acc[n.status]; if (a) { a.count += 1; a.total += Number(n.total_ttc) || 0; } }
+    for (const n of allNotes) { const a = acc[IN_PROGRESS.has(n.status) ? 'inprogress' : n.status]; if (a) { a.count += 1; a.total += Number(n.total_ttc) || 0; } }
     return acc;
   }, [allNotes]);
   // Tuiles : ancienneté du non-facturé et activité du mois (les pastilles donnent déjà les nombres).
@@ -75,29 +83,41 @@ export default function ProSalesTab() {
   }, [allNotes]);
   const oldestDays = kpis.oldest ? Math.max(0, Math.round((Date.now() - new Date(`${kpis.oldest}T00:00:00`).getTime()) / 86_400_000)) : null;
   const q = search.trim().toLowerCase();
+  // Colonnes et Kanban lisent la liste complète, filtrée par pastille et recherche.
+  const shownNotes = allNotes.filter(n => (!current || (current === 'inprogress' ? IN_PROGRESS.has(n.status) : n.status === current))
+    && (!q || `${n.number} ${n.customer_name} ${n.order_number ?? ''}`.toLowerCase().includes(q)));
   const groups = q ? toInvoice.filter(g => g.name.toLowerCase().includes(q) || g.notes.some(n => n.number.toLowerCase().includes(q))) : toInvoice;
 
   return (
     <SalesPageShell icon={Truck} title="Bons de livraison" parent="Ventes" list
       summary={`${stats.delivered.count} à facturer · ${money(stats.delivered.total)}`}
       actions={<button type="button" onClick={() => setShowNew(true)} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau bon de livraison</button>}>
-      <section className="prj-kpis" aria-label="Indicateurs">
+      {layout !== 'split' && <section className="prj-kpis" aria-label="Indicateurs">
         <ListKpi label="À facturer" value={money(stats.delivered.total)} sub={`${toInvoice.length} client${toInvoice.length > 1 ? 's' : ''}`} tone={stats.delivered.count ? 'orange' : undefined} />
         <ListKpi label="Plus ancien non facturé" value={oldestDays == null ? '—' : `${oldestDays} j`} sub={kpis.oldest ? `livré le ${format(new Date(`${kpis.oldest}T00:00:00`), 'dd/MM/yyyy', { locale: fr })}` : 'rien en attente'} tone={oldestDays != null && oldestDays > 30 ? 'red' : undefined} />
         <ListKpi label="Livré ce mois" value={money(kpis.monthTotal)} sub={`${kpis.monthCount} bon${kpis.monthCount > 1 ? 's' : ''}`} />
         <ListKpi label="Facturé ce mois" value={money(kpis.invoicedMonth)} sub="BL du mois déjà facturés" />
-      </section>
-      <ListToolbar search={search} onSearch={setSearch} placeholder="N° de BL, client, commande…" />
-      <FilterChips label="Filtrer les bons de livraison" value={current} onChange={k => setView(k as '' | 'delivered' | 'invoiced' | 'cancelled')} chips={[
+      </section>}
+      <ListToolbar search={search} onSearch={setSearch} placeholder="N° de BL, client, commande…">
+        <div className="prj-views" role="group" aria-label="Affichage">
+          <button type="button" className={layout === 'split' ? 'active' : ''} aria-pressed={layout === 'split'} onClick={() => setLayout('split')}><Columns3 size={14} /> Colonnes</button>
+          <button type="button" className={layout === 'list' ? 'active' : ''} aria-pressed={layout === 'list'} onClick={() => setLayout('list')}><List size={14} /> Liste</button>
+          <button type="button" className={layout === 'kanban' ? 'active' : ''} aria-pressed={layout === 'kanban'} onClick={() => setLayout('kanban')}><SquareKanban size={14} /> Kanban</button>
+        </div>
+      </ListToolbar>
+      <FilterChips label="Filtrer les bons de livraison" value={current} onChange={k => setView(k as '' | 'inprogress' | 'delivered' | 'invoiced' | 'cancelled')} chips={[
+        ...(stats.inprogress.count ? [{ key: 'inprogress', label: 'En préparation', count: stats.inprogress.count, icon: PackageCheck }] : []),
         { key: 'delivered', label: 'À facturer', count: stats.delivered.count, icon: FileText },
         { key: 'invoiced', label: 'Facturés', count: stats.invoiced.count },
         { key: 'cancelled', label: 'Annulés', count: stats.cancelled.count },
         { key: '', label: 'Tous', count: allNotes.length },
       ]} />
-      <p className="prj-note">Commande → bon de livraison → facture : le chiffre d'affaires et la créance naissent à la facture.</p>
-      {current === 'delivered'
+      {layout !== 'split' && <p className="prj-note">Commande → bon de livraison → facture : le chiffre d'affaires et la créance naissent à la facture.</p>}
+      {layout === 'split' ? <NotesSplit notes={shownNotes} search={!!q} onToInvoice={() => { setLayout('list'); setView('delivered'); }} />
+        : layout === 'kanban' ? <NotesKanban notes={allNotes.filter(n => !q || `${n.number} ${n.customer_name} ${n.order_number ?? ''}`.toLowerCase().includes(q))} onOpen={setDetailId} />
+        : current === 'delivered'
         ? <ToInvoice groups={groups} filtered={!!q} onOpen={setDetailId} />
-        : <NotesList status={current} search={q} onOpen={setDetailId} onToInvoice={() => setView('delivered')} />}
+        : <NotesList status={current === 'inprogress' ? '' : current} search={q} onOpen={setDetailId} onToInvoice={() => setView('delivered')} />}
       {showNew && <NewNoteModal onClose={() => setShowNew(false)} />}
       {detailId && <NoteDetail id={detailId} onClose={() => setDetailId(null)} />}
     </SalesPageShell>
@@ -440,5 +460,168 @@ function NoteDetail({ id, onClose }: { id: string; onClose: () => void }) {
         )}
       </div>
     </ModalBackdrop>
+  );
+}
+
+/* ═══════════════ Colonnes (liste + fiche) et Kanban — style Apple, 2026-11 ═══════════════ */
+
+const initials = (name: string) => name.split(/\s+/).filter(w => /[A-Za-zÀ-ÿ]/.test(w[0] ?? '')).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '·';
+
+/** Étape suivante d'un BL : expédier un BL préparé, constater la livraison, puis facturer. */
+function useNoteActions(onToInvoice: () => void) {
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const done = (msg: string) => { queryClient.invalidateQueries({ queryKey: ['delivery-notes'] }); queryClient.invalidateQueries({ queryKey: ['orders'] }); notify.success(msg); };
+  const ship = useMutation({ mutationFn: (id: string) => deliveryNotesApi.ship(id), onSuccess: () => done('Bon de livraison expédié : le stock est sorti'), onError: (e) => notify.error(apiErrorMessage(e, 'Expédition impossible')) });
+  const deliver = useMutation({ mutationFn: (id: string) => deliveryNotesApi.deliver(id), onSuccess: () => done('Livraison constatée : le BL passe « à facturer »'), onError: (e) => notify.error(apiErrorMessage(e, 'Livraison impossible')) });
+  const cancel = useMutation({ mutationFn: (id: string) => deliveryNotesApi.cancel(id), onSuccess: () => done('Bon de livraison annulé'), onError: (e) => notify.error(apiErrorMessage(e, 'Annulation impossible')) });
+  const busy = ship.isPending || deliver.isPending || cancel.isPending;
+  const next = (n: DeliveryNote): { label: string; icon: LucideIcon; run: () => void } | null => {
+    if (n.status === 'draft' || n.status === 'prepared') return { label: 'Expédier', icon: Send, run: () => ship.mutate(n.id) };
+    if (n.status === 'shipped') return { label: 'Marquer livré', icon: PackageCheck, run: () => deliver.mutate(n.id) };
+    if (n.status === 'delivered') return { label: 'Facturer', icon: FileText, run: onToInvoice };
+    return null;
+  };
+  const menu = (n: DeliveryNote): RowMenuItem[] => {
+    const items: RowMenuItem[] = [{ label: 'Imprimer le BL à faire signer', icon: Printer, onSelect: () => printNote(n.id) }];
+    if (n.status === 'delivered' || IN_PROGRESS.has(n.status)) items.push({
+      label: 'Annuler le BL', icon: Ban, danger: true, disabled: busy,
+      onSelect: async () => { if (await confirm(`Annuler le bon ${n.number} ?`, { title: 'Annuler le bon de livraison', confirmLabel: 'Annuler le BL', cancelLabel: 'Retour', danger: true })) cancel.mutate(n.id); },
+    });
+    return items;
+  };
+  return { next, menu, busy };
+}
+
+function NotesSplit({ notes, search, onToInvoice }: { notes: DeliveryNote[]; search: boolean; onToInvoice: () => void }) {
+  const [activeId, setActiveId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('open'));
+  const actions = useNoteActions(onToInvoice);
+  if (!notes.length) {
+    return <ListEmpty icon={Truck} title={search ? 'Aucun bon de livraison pour cette recherche' : 'Aucun bon de livraison'}
+      text={search ? 'Effacez la recherche ou changez de filtre.' : '« Nouveau bon de livraison » pour livrer un client.'} />;
+  }
+  const active = notes.find(n => n.id === activeId) ?? notes[0];
+  return (
+    <div className="ord-split">
+      <nav className="ord-list" aria-label="Bons de livraison">
+        {notes.map(n => (
+          <button key={n.id} type="button" className={`ord-row${n.id === active.id ? ' sel' : ''}`} aria-current={n.id === active.id ? 'true' : undefined} onClick={() => setActiveId(n.id)}>
+            <span className={`ord-dot${n.status === 'delivered' ? ' today' : ''}`} aria-hidden="true" />
+            <span className="ord-l1"><span className="ord-nm">{n.customer_name}</span><span className="ord-when">{day(n.delivery_date)}</span></span>
+            <span className="ord-l2"><span className="sal-num">{n.number}</span> · {money(n.total_ttc)}</span>
+            <span className="ord-l3">{STATUS[n.status].label}{n.invoice_number ? ` · ${n.invoice_number}` : n.order_number ? ` · ${n.order_number}` : ''}</span>
+          </button>
+        ))}
+      </nav>
+      <NotePane key={active.id} note={active} next={actions.next(active)} menu={actions.menu(active)} busy={actions.busy} />
+    </div>
+  );
+}
+
+function NotePane({ note, next, menu, busy }: { note: DeliveryNote; next: { label: string; icon: LucideIcon; run: () => void } | null; menu: RowMenuItem[]; busy: boolean }) {
+  const navigate = useNavigate();
+  const { data: n0, isLoading } = useQuery({ queryKey: ['delivery-notes', 'detail', note.id], queryFn: () => deliveryNotesApi.getById(note.id) });
+  const n = n0 ?? note;
+  const st = n.status;
+  const order = ['prepared', 'shipped', 'delivered', 'invoiced'];
+  const idx = st === 'draft' ? -1 : order.indexOf(st);
+  const steps = [
+    { label: 'Préparé', sub: n.prepared_at ? day(n.prepared_at) : idx >= 0 ? 'fait' : 'à préparer' },
+    { label: 'Expédié', sub: n.shipped_at ? day(n.shipped_at) : idx >= 1 ? 'stock sorti' : 'à expédier' },
+    { label: 'Livré', sub: idx >= 2 ? `${day(n.delivery_date)}${n.received_by_name ? ` · reçu par ${n.received_by_name}` : ''}` : `prévu le ${day(n.delivery_date)}` },
+    { label: 'Facturé', sub: n.invoice_number ?? (idx >= 2 ? 'à facturer' : '—') },
+  ].map((s, i) => ({ ...s, tone: i <= idx ? 'done' : i === idx + 1 ? (i === 3 ? 'warn' : 'current') : '' }));
+  const pct = st === 'invoiced' ? 100 : Math.round(((idx + 1) + 0.5) / steps.length * 100);
+  const items = n.items ?? [];
+
+  return (
+    <section className="ord-pane" aria-label={`Bon de livraison ${n.number}`}>
+      <header className="ord-head">
+        <span className="ord-mono" aria-hidden="true">{initials(n.customer_name)}</span>
+        <div className="ord-who">
+          <h2>{n.customer_name}</h2>
+          <p><span className="sal-num">{n.number}</span>{n.order_number ? <> · commande <span className="sal-num">{n.order_number}</span></> : ' · saisie libre'}</p>
+        </div>
+        <div className="ord-amt"><b>{money(n.total_ttc)}</b><small>{money(n.total_ht)} HT · {money(n.total_tva)} TVA</small></div>
+      </header>
+
+      <div className="ord-actions">
+        {next && <button type="button" className="odoo-btn-primary" disabled={busy} onClick={next.run} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><next.icon size={14} /> {next.label}</button>}
+        <button type="button" className="odoo-btn-secondary" onClick={() => printNote(n.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Printer size={13} /> Imprimer</button>
+        {n.order_id && <button type="button" className="odoo-btn-secondary" onClick={() => navigate(`/orders/${n.order_id}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ExternalLink size={13} /> Commande</button>}
+        <RowMenu items={menu} label="Autres actions" />
+      </div>
+
+      {st === 'cancelled' ? (
+        <div className="kl-widget"><div className="ord-state">Bon de livraison annulé</div><div className="ord-state-sub">Le stock sorti a été réintégré.</div></div>
+      ) : (
+        <div className="kl-widget">
+          <div className="ord-state">{STATUS[st].label}</div>
+          <div className="ord-state-sub">{st === 'delivered' ? 'Livré, en attente de facture : le chiffre d\'affaires naît à la facture.' : st === 'invoiced' ? `Facturé${n.invoice_number ? ` sur ${n.invoice_number}` : ''}.` : `Livraison prévue le ${day(n.delivery_date)}.`}</div>
+          <div className="ord-track" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
+          <ol className="ord-steps" aria-label="Avancement">
+            {steps.map(s => <li key={s.label} className={s.tone || undefined}><b>{s.label}</b><span>{s.sub}</span></li>)}
+          </ol>
+        </div>
+      )}
+
+      <section>
+        <div className="kl-sec"><h2>Articles</h2><small>{items.length ? `${items.length} ligne${items.length > 1 ? 's' : ''}` : ''}</small></div>
+        <div className="kl-group">
+          {items.length ? items.map(i => (
+            <div key={i.id} className="ord-line">
+              <span className="ord-qty">{Number(i.quantity).toLocaleString('fr-FR')} ×</span>
+              <span className="ord-pn">{i.description}
+                {(i.lots ?? []).length > 0 && <small>{(i.lots ?? []).map(l => `Lot ${l.lot_number}${l.dlc ? ` · DLC ${l.dlc.slice(0, 10).split('-').reverse().join('/')}` : ''}`).join(' — ')}</small>}
+              </span>
+              <span className="ord-pv">{money(i.subtotal)}</span>
+            </div>
+          )) : <div className="kl-empty">{isLoading ? 'Chargement…' : 'Aucune ligne.'}</div>}
+          {items.length > 0 && <div className="ord-line tot"><span className="ord-pn">Total TTC</span><span className="ord-pv">{money(n.total_ttc)}</span></div>}
+        </div>
+      </section>
+
+      <section>
+        <div className="kl-sec"><h2>Livraison</h2></div>
+        <div className="kl-group">
+          <div className="ord-kv"><span>Date</span><b>{day(n.delivery_date)}</b></div>
+          {n.received_by_name && <div className="ord-kv"><span>Reçu par</span><b>{n.received_by_name}</b></div>}
+          <div className="ord-kv"><span>Établi par</span><b>{n.created_by_name || '—'}</b></div>
+          {n.notes && <div className="ord-kv"><span>Notes</span><b style={{ whiteSpace: 'pre-line', textAlign: 'right' }}>{n.notes}</b></div>}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+/** Kanban : une colonne par étape du cycle (les annulés n'y figurent pas) ; une carte ouvre le détail. */
+function NotesKanban({ notes, onOpen }: { notes: DeliveryNote[]; onOpen: (id: string) => void }) {
+  const lanes: Array<{ key: string; label: string; tone: string; match: (n: DeliveryNote) => boolean }> = [
+    { key: 'prep', label: 'En préparation', tone: 'grey', match: n => n.status === 'draft' || n.status === 'prepared' },
+    { key: 'shipped', label: 'Expédiés', tone: '', match: n => n.status === 'shipped' },
+    { key: 'delivered', label: 'Livrés · à facturer', tone: 'orange', match: n => n.status === 'delivered' },
+    { key: 'invoiced', label: 'Facturés', tone: 'green', match: n => n.status === 'invoiced' },
+  ];
+  return (
+    <div className="prj-board">
+      {lanes.map(l => {
+        const cards = notes.filter(l.match);
+        const sum = cards.reduce((s, n) => s + Number(n.total_ttc), 0);
+        return (
+          <section key={l.key} aria-label={l.label} className="prj-lane">
+            <div className="prj-lane-head"><span className={`prj-dot ${l.tone}`} /><strong>{l.label}</strong><small className="sal-lane-sum">{cards.length} · {money(sum)}</small></div>
+            {!cards.length && <div className="prj-lane-empty">Aucun bon</div>}
+            {cards.slice(0, 60).map(n => (
+              <button key={n.id} type="button" className="prj-task" onClick={() => onOpen(n.id)} style={{ cursor: 'pointer' }}>
+                <span className="prj-card-num">{n.number}</span>
+                <span className="prj-task-title">{n.customer_name}</span>
+                <span className="prj-task-meta"><span style={{ flex: 1 }}>{day(n.delivery_date)}{n.invoice_number ? ` · ${n.invoice_number}` : ''}</span><span className="sal-amount">{money(n.total_ttc)}</span></span>
+              </button>
+            ))}
+            {cards.length > 60 && <div className="prj-lane-empty">+ {cards.length - 60} autres — filtrez ou passez en liste</div>}
+          </section>
+        );
+      })}
+    </div>
   );
 }

@@ -4,7 +4,9 @@ import api from './client';
 export interface DeliveryNote {
   id: string; number: string; customer_id: string; customer_name: string; customer_type: string | null;
   order_id: string | null; order_number: string | null; delivery_date: string;
-  status: 'delivered' | 'invoiced' | 'cancelled'; invoice_id: string | null; invoice_number: string | null;
+  /** Cycle différé (mig 489) : draft → prepared → shipped → delivered ; le flux immédiat crée directement « delivered ». */
+  status: 'draft' | 'prepared' | 'shipped' | 'delivered' | 'invoiced' | 'cancelled'; invoice_id: string | null; invoice_number: string | null;
+  prepared_at?: string | null; shipped_at?: string | null;
   notes: string | null; created_by_name: string | null; created_at: string;
   received_by_name?: string | null; received_at?: string | null; billing_frequency?: string;
   total_ht: string; total_tva: string; total_ttc: string; line_count: string;
