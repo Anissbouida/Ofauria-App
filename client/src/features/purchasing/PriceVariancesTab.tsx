@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { ShieldAlert, Scale, Info, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
+import { Scale, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
+import PageNote from '../../components/ui/PageNote';
 import { receptionVouchersApi } from '../../api/purchase-orders.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
@@ -95,10 +96,9 @@ export default function PriceVariancesTab() {
 
   return (
     <div className="space-y-6">
-      <StatusBanner tone="info" icon={ShieldAlert} title="Contrôle des prix d'achat">
-        Le magasinier reçoit, le gérant décide. Un écart entre le prix saisi à la réception et le prix
-        du bon de commande est signalé ici ; l'approbation ou le rejet est tracé.
-      </StatusBanner>
+      <PageNote help="Un écart entre le prix saisi à la réception et le prix du bon de commande est signalé ici ; l'approbation ou le rejet est tracé.">
+        Le magasinier reçoit, le gérant décide des écarts de prix.
+      </PageNote>
 
       {/* ─── 1. Écarts de prix à la réception (prix saisi vs prix BC) ─── */}
       <section>
@@ -170,12 +170,9 @@ export default function PriceVariancesTab() {
         <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>
           Réévaluation sur écart de prix — simulation
         </div>
-        <StatusBanner tone="warning" icon={Info} title="Lecture seule — aucune écriture n'est passée">
-          Quand la facture arrive à un prix différent du coût du lot, l'écart se partage : la part
-          encore en stock réévaluerait le lot (et le CMUP), la part déjà consommée partirait en compte
-          d'écart (IPV). La réévaluation effective est un geste séparé : elle exige un compte
-          « price_variance » dans les profils de posting et un dry-run de validation.
-        </StatusBanner>
+        <PageNote help="La part encore en stock réévaluerait le lot (et le CMUP), la part déjà consommée partirait en compte d'écart (IPV). La réévaluation effective est un geste séparé : elle exige un compte « price_variance » dans les profils de posting et un dry-run de validation.">
+          Simulation en lecture seule : aucune écriture n'est passée.
+        </PageNote>
         {loadingCand ? (
           <p className="text-sm text-gray-400">Chargement…</p>
         ) : candidates.length === 0 ? (

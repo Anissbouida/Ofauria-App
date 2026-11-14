@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Award, Camera, Loader2, X, TrendingUp, TrendingDown, Minus, Info } from 'lucide-react';
+import { Award, Camera, Loader2, X, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import PageNote from '../../components/ui/PageNote';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { supplierScoreApi, CRITERIA, STANDING_LABELS, STANDING_TAG, type ScoreRow, type Standing } from '../../api/supplier-score.api';
@@ -60,9 +61,9 @@ export default function SupplierScoreTab() {
   const w = data?.weights;
   return (
     <>
-      <StatusBanner tone="info" icon={Info} title="Une note calculée, pas une opinion">
-        Délais tenus, livraisons complètes, conformité à réception, prix stables, absence de litige : chaque critère est un taux lu dans les BC, réceptions et factures de la période. {w ? `Poids : délais ${w.on_time}, complétude ${w.fill_rate}, conformité ${w.quality}, prix ${w.price}, litiges ${w.disputes} ; un fournisseur est noté à partir de ${w.min_orders} BC.` : ''} Les poids se règlent dans Paramètres › Achats.
-      </StatusBanner>
+      <PageNote help={`Chaque critère est un taux lu dans les BC, réceptions et factures de la période.${w ? ` Poids : délais ${w.on_time}, complétude ${w.fill_rate}, conformité ${w.quality}, prix ${w.price}, litiges ${w.disputes} ; un fournisseur est noté à partir de ${w.min_orders} BC.` : ''} Les poids se règlent dans Paramètres › Achats.`}>
+        Note calculée sur les délais, la complétude, la conformité, les prix et les litiges.
+      </PageNote>
       <div className="odoo-search-panel" style={{ margin: 0, flexWrap: 'wrap', rowGap: 8 }}>
         <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Période</span>
         <input className="input" type="date" value={from} onChange={e => setFrom(e.target.value)} />

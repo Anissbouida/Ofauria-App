@@ -145,7 +145,7 @@ export default function PurchasingPage() {
       {tab === 'landed' && <LandedCostTab />}
       {tab === 'scores' && <SupplierScoreTab />}
       {tab === 'workbench' && <PurchasingWorkbench onOpenTab={k => openTab(k as PurchasingTab)} onOpenInvoice={f => openTab('invoices', f)} />}
-      {tab === 'pilotage' && <PurchasingPilotageTab onOpenInvoice={(f) => openTab('invoices', f)} onOpenTab={(k) => openTab(k)} />}
+      {tab === 'pilotage' && <PurchasingPilotageTab onOpenInvoice={(f) => openTab('invoices', f)} />}
       </div>
     </ModuleShell>
   );

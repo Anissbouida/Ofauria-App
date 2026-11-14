@@ -105,3 +105,4 @@
 
 .pur-module .odoo-view-switcher:not(.fixed .odoo-view-switcher) { border-radius: 6px; overflow: hidden; background: var(--theme-bg-card); }
 .pur-module .odoo-section-header { font-size: 0.9375rem; text-transform: none; letter-spacing: 0; color: var(--odoo-text); }
+.pur-module .odoo-search-panel:not(.fixed .odoo-search-panel) .input { width: auto; flex: 0 0 auto; }

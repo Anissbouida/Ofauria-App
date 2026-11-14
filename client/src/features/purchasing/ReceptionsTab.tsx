@@ -1,10 +1,10 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, PackageCheck, Search, Truck, X, PackageSearch } from 'lucide-react';
+import PageNote from '../../components/ui/PageNote';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { receptionVouchersApi, purchaseOrdersApi } from '../../api/purchase-orders.api';
-import { StatusBanner } from '../../components/ui/StatusBanner';
 import { PODetailModal, DeliveryModal } from '../accounting/PurchaseOrdersTab';
 import { ViewSwitch, PeriodFilter, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 
@@ -115,11 +115,9 @@ export default function ReceptionsTab() {
 
   return (
     <>
-      <StatusBanner tone="neutral" icon={PackageCheck} title="Réception des marchandises">
-        Réceptionnez ici les bons de commande envoyés au fournisseur : dans « À réceptionner », sélectionnez-en un
-        et saisissez les quantités reçues. Chaque réception crée un bon de réception, classé dans l'« Historique ».
-        L'écart de prix et le rapprochement facture se suivent dans le Pilotage.
-      </StatusBanner>
+      <PageNote help="Chaque réception crée un bon de réception, classé dans l'Historique. L'écart de prix et le rapprochement facture se suivent dans Écarts de prix et Rapprochement.">
+        Choisissez un bon de commande envoyé et saisissez les quantités reçues.
+      </PageNote>
 
       {/* Bascule À réceptionner / Historique */}
       <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>

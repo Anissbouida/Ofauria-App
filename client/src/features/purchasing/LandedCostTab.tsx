@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Truck, Plus, Search, Loader2, CheckCircle2, XCircle, X, Trash2, Ship, FilePenLine, Info, AlertTriangle } from 'lucide-react';
+import { Truck, Plus, Search, Loader2, CheckCircle2, XCircle, X, Trash2, Ship, FilePenLine, AlertTriangle } from 'lucide-react';
+import PageNote from '../../components/ui/PageNote';
 import { format } from 'date-fns';
 import {
   landedCostApi, LANDED_STATUS_LABELS, METHOD_LABELS, type AllocationMethod, type ChargeInput, type LandedCostStatus,
@@ -36,9 +37,9 @@ export default function LandedCostTab() {
   const { data, isLoading } = useQuery({ queryKey: ['landed-costs', params], queryFn: () => landedCostApi.list(params) });
   return (
     <>
-      <StatusBanner tone="info" icon={Info} title="Le coût matière rendu, pas le prix facturé">
-        Transport, douane, assurance, manutention : répartis sur les lignes d'une réception et ajoutés au coût du lot reçu et au coût standard de l'article. La comptabilité n'est pas modifiée : la facture du transporteur reste une charge.
-      </StatusBanner>
+      <PageNote help="Répartis sur les lignes d'une réception et ajoutés au coût du lot reçu et au coût standard de l'article. La comptabilité n'est pas modifiée : la facture du transporteur reste une charge.">
+        Transport, douane, assurance et manutention ajoutés au coût des articles reçus.
+      </PageNote>
       <div className="odoo-search-panel" style={{ margin: 0 }}>
         <Search size={14} style={{ color: 'var(--theme-text-muted)' }} />
         <input className="odoo-search-input" value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, réception, BC, fournisseur…" />
