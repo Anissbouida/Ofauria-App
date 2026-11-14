@@ -10,7 +10,7 @@ import { fr } from 'date-fns/locale';
 import {
   Plus, Pencil, X, Check, Download, Receipt, Loader2, Search, Banknote, Eye, Ban, Trash2,
   AlertTriangle, CalendarDays, Building2, CheckCircle2, Clock, Coins, ClipboardList, Package,
-  User, FileText, CreditCard, Truck, Undo2,
+  User, FileText, CreditCard, Truck, Undo2, Columns3, List, SquareKanban, Maximize2,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -109,6 +109,9 @@ export default function EmittedInvoicesTab() {
   const [lateOnly, setLateOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewing, setViewing] = useState<Inv | null>(null);
+  // Style Apple (2026-11) : Colonnes (liste + fiche) par défaut sur grand écran, Liste, Kanban.
+  const [layout, setLayout] = useState<'split' | 'list' | 'kanban'>(() => (window.innerWidth >= 1100 ? 'split' : 'list'));
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showPayModal, setShowPayModal] = useState<Record<string, any> | null>(null);
   const [payMethod, setPayMethod] = useState('cash');
@@ -380,13 +383,18 @@ export default function EmittedInvoicesTab() {
 
   return (
     <div className="prj">
-      <section className="prj-kpis" aria-label="Indicateurs">
+      {layout !== 'split' && <section className="prj-kpis" aria-label="Indicateurs">
         <ListKpi label="À encaisser" value={`${n(toCollect)} DH`} sub={`${openInvoices.length} facture${openInvoices.length > 1 ? 's' : ''}${overdue.length ? ` · ${n(overdueAmount)} DH échus` : ''}`} tone={overdue.length ? 'orange' : undefined} />
         <ListKpi label="Facturé" value={`${n(totalBilled)} DH`} sub={`${billed.length} facture${billed.length > 1 ? 's' : ''} hors annulées`} />
         <ListKpi label="Taux d'encaissement" value={`${rate} %`} sub={`${n(totalPaid)} DH encaissés`} tone={rate >= 100 ? 'green' : undefined} />
-      </section>
+      </section>}
 
       <ListToolbar search={searchQuery} onSearch={setSearchQuery} placeholder="N° de facture, client, commande ou bon de livraison…">
+        <div className="prj-views" role="group" aria-label="Affichage">
+          <button type="button" className={layout === 'split' ? 'active' : ''} aria-pressed={layout === 'split'} onClick={() => setLayout('split')}><Columns3 size={14} /> Colonnes</button>
+          <button type="button" className={layout === 'list' ? 'active' : ''} aria-pressed={layout === 'list'} onClick={() => setLayout('list')}><List size={14} /> Liste</button>
+          <button type="button" className={layout === 'kanban' ? 'active' : ''} aria-pressed={layout === 'kanban'} onClick={() => setLayout('kanban')}><SquareKanban size={14} /> Kanban</button>
+        </div>
         <button type="button" onClick={openCreate} className="odoo-btn-primary"><Plus size={13} /> Nouvelle facture</button>
       </ListToolbar>
       <FilterChips label="Filtrer les factures" value={lateOnly ? 'late' : statusFilter}
@@ -401,6 +409,32 @@ export default function EmittedInvoicesTab() {
         <ListEmpty icon={Receipt} title={hasFilters ? 'Aucune facture pour ces filtres' : 'Aucune facture'}
           text={hasFilters ? 'Changez de filtre ou effacez la recherche.' : 'Les factures naissent des bons de livraison ou d\'une saisie manuelle.'}
           action={hasFilters ? <button type="button" className="odoo-btn-secondary" onClick={() => { setStatusFilter(''); setLateOnly(false); setSearchQuery(''); }}>Effacer les filtres</button> : undefined} />
+      ) : layout === 'split' ? (() => {
+        const active = filteredInvoices.find(inv => inv.id === activeId) ?? filteredInvoices[0];
+        return (
+          <div className="ord-split">
+            <nav className="ord-list" aria-label="Factures">
+              {filteredInvoices.map(inv => {
+                const st = stageOf(inv);
+                const late = isOverdue(inv, today);
+                const rest = remainingOf(inv);
+                const sel = inv.id === active.id;
+                return (
+                  <button key={inv.id as string} type="button" className={`ord-row${sel ? ' sel' : ''}`} aria-current={sel ? 'true' : undefined} onClick={() => setActiveId(inv.id as string)}>
+                    <span className={`ord-dot${late ? ' late' : (st === 'pending' || st === 'partial') ? ' today' : ''}`} aria-hidden="true" />
+                    <span className="ord-l1"><span className="ord-nm">{customerLabel(inv)}</span><span className="ord-when">{fmtDate(inv.invoice_date, 'd MMM yyyy')}</span></span>
+                    <span className="ord-l2"><span className="sal-num">{inv.invoice_number as string}</span> · {isCredit(inv) ? '−' : ''}{n(num(inv.total_amount))} DH</span>
+                    <span className="ord-l3">{late ? 'En retard' : STATUS_LABEL[st] || st}{(st === 'pending' || st === 'partial') && rest > 0.004 ? ` · reste ${n(rest)} DH` : ''}</span>
+                  </button>
+                );
+              })}
+            </nav>
+            <InvoicePane key={active.id as string} inv={active} late={isOverdue(active, today)} menu={menuItems(active)}
+              onPay={() => openPay(active)} onPdf={() => handleDownloadPdf(active)} onFull={() => setViewing(active)} />
+          </div>
+        );
+      })() : layout === 'kanban' ? (
+        <InvoiceKanban invoices={filteredInvoices} today={today} onOpen={setViewing} />
       ) : (
         <ListPanel footer={
           <div className="sal-foot">
@@ -1130,5 +1164,150 @@ function CreditNoteModal({ invoice: inv, onClose, onDone }: {
         </div>
       </div>
     </ModalBackdrop>
+  );
+}
+
+/* ═══════════════ Colonnes (fiche à droite) et Kanban — style Apple, 2026-11 ═══════════════ */
+
+const initialsOf = (name: string) => name.split(/\s+/).filter(w => /[A-Za-zÀ-ÿ]/.test(w[0] ?? '')).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '·';
+
+/** Fiche de la facture choisie : encaissement, articles, règlements ; la fenêtre complète garde avoirs et litiges. */
+function InvoicePane({ inv, late, menu, onPay, onPdf, onFull }: {
+  inv: Inv; late: boolean; menu: RowMenuItem[]; onPay: () => void; onPdf: () => void; onFull: () => void;
+}) {
+  const { getLabel: getPaymentLabel } = useReferentiel('payment_methods');
+  const { data: detail, isLoading } = useQuery({
+    queryKey: ['invoice-detail', inv.id],
+    queryFn: () => invoicesApi.getById(inv.id as string) as Promise<Record<string, any>>,
+  });
+  const status = stageOf(inv);
+  const credit = isCredit(inv);
+  const total = num(inv.total_amount);
+  const paid = num(inv.paid_amount);
+  const remaining = remainingOf(inv);
+  const open = status === 'pending' || status === 'partial';
+  const pct = total > 0 ? Math.min(100, paid / total * 100) : 0;
+  const items: Inv[] = detail?.items || [];
+  const payments: Inv[] = detail?.payments || [];
+  const lateDays = late && inv.due_date ? differenceInCalendarDays(startOfDay(new Date()), startOfDay(new Date(String(inv.due_date).slice(0, 10) + 'T00:00:00'))) : 0;
+  const origin = credit ? (CREDIT_REASON_LABEL[inv.credit_reason as string] ?? 'Avoir') + (inv.credited_invoice_number ? ` sur ${inv.credited_invoice_number}` : '')
+    : (inv.delivery_note_numbers || inv.order_number_ref) ? String(inv.delivery_note_numbers || inv.order_number_ref) : 'saisie manuelle';
+  const steps = [
+    { label: 'Émise', sub: fmtDate(inv.invoice_date, 'd MMM yyyy'), tone: 'done' },
+    { label: 'Échéance', sub: inv.due_date ? fmtDate(inv.due_date, 'd MMM yyyy') + (late ? ` · ${lateDays} j de retard` : '') : 'non fixée', tone: status === 'paid' ? 'done' : late ? 'warn' : 'current' },
+    { label: 'Encaissée', sub: status === 'paid' ? 'soldée' : paid > 0.004 ? `${n(paid)} DH reçus` : 'rien reçu', tone: status === 'paid' ? 'done' : '' },
+  ];
+
+  return (
+    <section className="ord-pane" aria-label={`Facture ${inv.invoice_number as string}`}>
+      <header className="ord-head">
+        <span className="ord-mono" aria-hidden="true">{initialsOf(customerLabel(inv))}</span>
+        <div className="ord-who">
+          <h2>{customerLabel(inv)}</h2>
+          <p><span className="sal-num">{inv.invoice_number as string}</span> · {origin}</p>
+        </div>
+        <div className="ord-amt">
+          <b>{credit ? '−' : ''}{n(total)} DH</b>
+          <small>{status === 'cancelled' ? 'annulée' : credit ? (remaining > 0.004 ? `${n(remaining)} DH à imputer` : 'imputé') : remaining > 0.004 ? `reste à encaisser ${n(remaining)} DH` : 'soldée'}</small>
+        </div>
+      </header>
+
+      <div className="ord-actions">
+        {open && !credit && remaining > 0.004 && <button type="button" className="odoo-btn-primary" onClick={onPay} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Banknote size={14} /> Encaisser</button>}
+        <button type="button" className="odoo-btn-secondary" onClick={onPdf} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={13} /> PDF</button>
+        <button type="button" className="odoo-btn-secondary" onClick={onFull} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Maximize2 size={13} /> Détail complet</button>
+        <RowMenu items={menu} label="Autres actions" />
+      </div>
+
+      {status === 'cancelled' ? (
+        <div className="kl-widget"><div className="ord-state">Facture annulée</div><div className="ord-state-sub">{inv.cancelled_by_credit ? 'Annulée par avoir : ses bons de livraison sont redevenus « à facturer ».' : 'Facture annulée.'}</div></div>
+      ) : credit ? (
+        <div className="kl-widget"><div className="ord-state">Avoir</div><div className="ord-state-sub">{remaining > 0.004 ? `${n(remaining)} DH au crédit du client, à imputer sur une facture.` : 'Avoir entièrement imputé.'}</div></div>
+      ) : (
+        <div className="kl-widget">
+          <div className="ord-state">{late ? 'En retard' : STATUS_LABEL[status]}</div>
+          <div className="ord-state-sub">{Math.round(pct)} % encaissé{late ? ` · échue depuis ${lateDays} j` : inv.due_date && status !== 'paid' ? ` · échéance le ${fmtDate(inv.due_date, 'd MMMM')}` : ''}</div>
+          <div className={`ord-track${late ? ' late' : ''}`} aria-hidden="true"><span style={{ width: `${status === 'paid' ? 100 : Math.max(pct, 4)}%` }} /></div>
+          <ol className="ord-steps" aria-label="Avancement">
+            {steps.map(st => <li key={st.label} className={st.tone || undefined}><b>{st.label}</b><span>{st.sub}</span></li>)}
+          </ol>
+        </div>
+      )}
+
+      <section>
+        <div className="kl-sec"><h2>Articles</h2><small>{items.length ? `${items.length} ligne${items.length > 1 ? 's' : ''}` : ''}</small></div>
+        <div className="kl-group">
+          {items.length ? items.map((it, i) => (
+            <div key={i} className="ord-line">
+              <span className="ord-qty">{num(it.quantity)} ×</span>
+              <span className="ord-pn">{(it.description as string) || (it.product_name as string)}<small>{n(num(it.unit_price))} HT{it.tva_rate != null ? ` · TVA ${num(it.tva_rate)} %` : ''}</small></span>
+              <span className="ord-pv">{n(num(it.subtotal))}</span>
+            </div>
+          )) : <div className="kl-empty">{isLoading ? 'Chargement…' : 'Aucun article.'}</div>}
+          <div className="ord-kv"><span>Total HT</span><b>{n(num(inv.amount))} DH</b></div>
+          <div className="ord-kv"><span>TVA</span><b>{n(num(inv.tax_amount))} DH</b></div>
+          <div className="ord-line tot"><span className="ord-pn">Total TTC</span><span className="ord-pv">{n(total)} DH</span></div>
+        </div>
+      </section>
+
+      {!credit && (
+        <section>
+          <div className="kl-sec"><h2>Encaissements</h2><small>{payments.length ? `${n(paid)} DH reçus` : ''}</small></div>
+          <div className="kl-group">
+            {payments.length ? payments.map(p => (
+              <div key={p.id as string} className="ord-kv" style={{ opacity: p.voided_at ? 0.5 : 1 }}>
+                <span>{fmtDate(p.payment_date, 'd MMM yyyy')} · {payLabel(getPaymentLabel, (p.payment_method as string) || '')}{p.reference ? ` · ${p.reference as string}` : ''}</span>
+                <b style={{ textDecoration: p.voided_at ? 'line-through' : undefined }}>{n(num(p.allocated_amount ?? p.amount))} DH</b>
+              </div>
+            )) : <div className="kl-empty">{isLoading ? 'Chargement…' : 'Aucun encaissement.'}</div>}
+          </div>
+        </section>
+      )}
+
+      {(inv.notes || detail?.customer_ice) && (
+        <section>
+          <div className="kl-sec"><h2>Informations</h2></div>
+          <div className="kl-group">
+            {detail?.customer_ice && <div className="ord-kv"><span>ICE du client</span><b>{detail.customer_ice as string}</b></div>}
+            {inv.notes && <div className="ord-kv"><span>Notes</span><b style={{ whiteSpace: 'pre-line', textAlign: 'right' }}>{inv.notes as string}</b></div>}
+          </div>
+        </section>
+      )}
+    </section>
+  );
+}
+
+/** Kanban : À encaisser, En retard, Partielles, Soldées (avoirs et annulées hors tableau) ; une carte ouvre le détail. */
+function InvoiceKanban({ invoices, today, onOpen }: { invoices: Inv[]; today: Date; onOpen: (inv: Inv) => void }) {
+  const lanes: Array<{ key: string; label: string; tone: string; match: (inv: Inv) => boolean }> = [
+    { key: 'pending', label: 'À encaisser', tone: '', match: inv => stageOf(inv) === 'pending' && !isOverdue(inv, today) },
+    { key: 'late', label: 'En retard', tone: 'red', match: inv => isOverdue(inv, today) },
+    { key: 'partial', label: 'Partielles', tone: 'orange', match: inv => stageOf(inv) === 'partial' && !isOverdue(inv, today) },
+    { key: 'paid', label: 'Soldées', tone: 'green', match: inv => stageOf(inv) === 'paid' },
+  ];
+  return (
+    <div className="prj-board">
+      {lanes.map(l => {
+        const cards = invoices.filter(l.match);
+        const sum = cards.reduce((s, inv) => s + (l.key === 'paid' ? num(inv.total_amount) : remainingOf(inv)), 0);
+        return (
+          <section key={l.key} aria-label={l.label} className="prj-lane">
+            <div className="prj-lane-head"><span className={`prj-dot ${l.tone}`} /><strong>{l.label}</strong><small className="sal-lane-sum">{cards.length} · {n(sum)} DH</small></div>
+            {!cards.length && <div className="prj-lane-empty">Aucune facture</div>}
+            {cards.slice(0, 60).map(inv => (
+              <button key={inv.id as string} type="button" className="prj-task" onClick={() => onOpen(inv)} style={{ cursor: 'pointer' }}>
+                <span className="prj-card-num">{inv.invoice_number as string}</span>
+                <span className="prj-task-title">{customerLabel(inv)}</span>
+                <span className="prj-task-meta">
+                  <span style={{ flex: 1 }}>{inv.due_date ? `échéance ${fmtDate(inv.due_date, 'd MMM')}` : fmtDate(inv.invoice_date, 'd MMM')}</span>
+                  <span className="sal-amount">{n(l.key === 'paid' ? num(inv.total_amount) : remainingOf(inv))} DH</span>
+                </span>
+              </button>
+            ))}
+            {cards.length > 60 && <div className="prj-lane-empty">+ {cards.length - 60} autres — filtrez ou passez en liste</div>}
+          </section>
+        );
+      })}
+    </div>
   );
 }
