@@ -306,7 +306,7 @@ export default function OrderRecordPage() {
                 {credit.credit_hold && <span className="sal-late-txt">Client bloqué (relances)</span>}
               </div>
             )}
-            {o.customer_id && <button type="button" className="sal-link" style={{ marginLeft: 0, justifySelf: 'start' }} onClick={() => navigate('/customers')}>Ouvrir le fichier clients</button>}
+            {o.customer_id && <button type="button" className="sal-link" style={{ marginLeft: 0, justifySelf: 'start' }} onClick={() => navigate(`/customers/${o.customer_id}`)}>Ouvrir la fiche client</button>}
           </section>
 
           <section className="prj-panel">

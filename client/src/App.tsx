@@ -40,6 +40,7 @@ import ProductionSettingsPage from './features/production/ProductionSettingsPage
 import SalesLayout from './features/sales/SalesLayout';
 import SalesDashboard from './features/sales/SalesDashboard';
 import OrderRecordPage from './features/orders/OrderRecordPage';
+import CustomerRecordPage from './features/customers/CustomerRecordPage';
 import PriceListsPage from './features/pricing/PriceListsPage';
 import ProductTransfersPage from './features/logistics/ProductTransfersPage';
 import ProReturnsPage from './features/logistics/ProReturnsPage';
@@ -102,6 +103,7 @@ export default function App() {
                 <Route path="/rebates" element={<RebatesPage />} />
                 <Route path="/sales" element={<SalesPage />} />
                 <Route path="/customers" element={<CustomersPage />} />
+                <Route path="/customers/:id" element={<CustomerRecordPage />} />
                 <Route path="/products" element={<ProductsPage />} />
                 <Route path="/sales-channels" element={<SalesChannelsPage />} />
                 <Route path="/price-lists" element={<PriceListsPage />} />

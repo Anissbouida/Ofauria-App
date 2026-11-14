@@ -228,9 +228,23 @@ export const customerRepository = {
       GROUP BY s.id
       ORDER BY s.created_at DESC LIMIT 20`, [id]);
 
+    // Achats des 12 derniers mois (fiche client 360) : tickets de caisse + factures émises,
+    // avoirs exclus ; les commandes ne comptent pas en plus (elles finissent en ticket ou en facture).
+    const monthly = await db.query(
+      `SELECT to_char(m, 'YYYY-MM') AS month, COALESCE(SUM(t.total), 0)::float8 AS amount
+         FROM generate_series(date_trunc('month', CURRENT_DATE) - interval '11 months', date_trunc('month', CURRENT_DATE), interval '1 month') m
+         LEFT JOIN (
+           SELECT s.created_at AS at, s.total FROM sales s WHERE s.customer_id = $1
+           UNION ALL
+           SELECT i.invoice_date::timestamp, i.total_amount FROM invoices i
+            WHERE i.customer_id = $1 AND i.invoice_type = 'emitted' AND i.status <> 'cancelled' AND COALESCE(i.kind, 'invoice') <> 'credit_note'
+         ) t ON date_trunc('month', t.at) = m
+        GROUP BY m ORDER BY m`, [id]);
+
     return {
       orders: { ...ordersRes.rows[0], history: orderHistory.rows },
       sales: { ...salesRes.rows[0], history: salesHistory.rows },
+      monthly: monthly.rows as Array<{ month: string; amount: number }>,
     };
   },
 

@@ -2,16 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customersApi } from '../../api/customers.api';
 import { loyaltyApi, tierOf, type LoyaltyTier } from '../../api/promotions.api';
-import CustomerLoyalty from '../promotions/CustomerLoyalty';
-import CustomerAddressesPanel from './CustomerAddressesPanel';
-import CustomerTaxExemptionsPanel from './CustomerTaxExemptionsPanel';
-import CustomerPortalPanel from './CustomerPortalPanel';
-import CustomerHistoryPanel from './CustomerHistoryPanel';
-import CustomerDataProtectionPanel from './CustomerDataProtectionPanel';
 import { usersApi } from '../../api/users.api';
 import {
-  Plus, Search, Pencil, Star, Trash2, Users, ShoppingCart, Receipt, X, Loader2, Phone, Mail,
-  ArrowUpDown, ArrowUp, ArrowDown, Building2, MapPin, HeartHandshake, FileText, CreditCard, User,
+  Plus, Search, Pencil, Users, ShoppingCart, X, Loader2, Phone, Mail,
+  ArrowUpDown, ArrowUp, ArrowDown, Building2, MapPin, HeartHandshake, CreditCard, User,
   FileBadge2, UserPlus, CheckCircle2, Moon, AlertTriangle, Filter, Award, MessageSquare, Contact,
   Archive, RotateCcw, History,
 } from 'lucide-react';
@@ -25,6 +19,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   StagePipeline, SelectFilter, Pager, PAGE_SIZE, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
@@ -37,10 +32,10 @@ import {
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
-type CustomerType = 'particulier' | 'professionnel' | 'association' | 'revendeur';
+export type CustomerType = 'particulier' | 'professionnel' | 'association' | 'revendeur';
 type Customer = Record<string, any>;
 
-const TYPE_META: Record<CustomerType, { label: string; icon: typeof User }> = {
+export const TYPE_META: Record<CustomerType, { label: string; icon: typeof User }> = {
   particulier: { label: 'Particulier', icon: User },
   professionnel: { label: 'Société', icon: Building2 },
   association: { label: 'Association', icon: HeartHandshake },
@@ -63,11 +58,11 @@ function useLoyaltyTiers() {
   return useQuery({ queryKey: ['loyalty-tiers'], queryFn: loyaltyApi.tiers, staleTime: 300_000 }).data ?? [];
 }
 
-function isMoral(t: string | undefined): boolean {
+export function isMoral(t: string | undefined): boolean {
   return t === 'professionnel' || t === 'association' || t === 'revendeur';
 }
 
-function displayName(c: Customer): { primary: string; secondary: string | null } {
+export function displayName(c: Customer): { primary: string; secondary: string | null } {
   const personne = `${c.first_name || ''} ${c.last_name || ''}`.trim();
   if (isMoral(c.customer_type) && c.company_name) {
     return { primary: c.company_name as string, secondary: personne || null };
@@ -93,7 +88,7 @@ const STAGE_DOT: Record<string, string> = {
   incomplete: '#d9822b', new: '#3b82f6', active: '#28a745', dormant: '#adb5bd',
 };
 
-function needsIce(c: Customer): boolean {
+export function needsIce(c: Customer): boolean {
   return (c.customer_type === 'professionnel' || c.customer_type === 'revendeur') && !c.ice;
 }
 function missingContact(c: Customer): boolean {
@@ -110,15 +105,7 @@ function stageOf(c: Customer, today: Date): string {
 
 type SortKey = 'name' | 'city' | 'last_purchase' | 'purchases' | 'loyalty_points' | 'total_spent';
 
-const ORDER_STATUS: Record<string, { label: string; tag: string }> = {
-  pending: { label: 'En attente', tag: 'odoo-tag-yellow' },
-  confirmed: { label: 'Confirmée', tag: 'odoo-tag-blue' },
-  in_production: { label: 'En production', tag: 'odoo-tag-purple' },
-  ready: { label: 'Prête', tag: 'odoo-tag-green' },
-  completed: { label: 'Terminée', tag: 'odoo-tag-green' },
-  cancelled: { label: 'Annulée', tag: 'odoo-tag-grey' },
-};
-const PAYMENT_LABELS: Record<string, string> = { cash: 'Espèces', card: 'Carte', mixed: 'Mixte', transfer: 'Virement', check: 'Chèque' };
+export const PAYMENT_LABELS: Record<string, string> = { cash: 'Espèces', card: 'Carte', mixed: 'Mixte', transfer: 'Virement', check: 'Chèque' };
 
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
 const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400';
@@ -138,7 +125,9 @@ export default function CustomersPage() {
   const [stage, setStage] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  // ?edit=<id> : « Modifier » depuis la fiche client 360 ouvre le formulaire de cette page.
+  const [urlParams, setUrlParams] = useSearchParams();
   const [sortKey, setSortKey] = useState<SortKey>('total_spent');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(1);
@@ -275,7 +264,15 @@ export default function CustomersPage() {
   const resetFilters = () => { setTypeFilter(''); setTierFilter(''); setCityFilter(''); setSearchInput(''); setSearchTerm(''); };
 
   const openNew = () => { setEditing(null); setShowForm(true); };
-  const openEdit = (c: Customer) => { setSelectedId(null); setEditing(c); setShowForm(true); };
+  const openEdit = (c: Customer) => { setEditing(c); setShowForm(true); };
+  const editId = urlParams.get('edit');
+  useEffect(() => {
+    if (!editId || !data) return;
+    const target = ((data as { data?: Customer[] }).data ?? []).find(x => x.id === editId);
+    if (target) openEdit(target);
+    else customersApi.getById(editId).then(openEdit).catch(() => {});
+    urlParams.delete('edit'); setUrlParams(urlParams, { replace: true });
+  }, [editId, data]); // eslint-disable-line react-hooks/exhaustive-deps
   const askDelete = async (c: Customer) => {
     const { primary } = displayName(c);
     // Archivage (phase 4.4) : le client garde son historique, il n'est pas effacé.
@@ -413,7 +410,7 @@ export default function CustomersPage() {
                   const action = nextAction(c);
                   const detail = stageDetail(c);
                   return (
-                    <tr key={c.id as string} onClick={() => setSelectedId(c.id as string)} style={{ cursor: 'pointer' }}>
+                    <tr key={c.id as string} onClick={() => navigate(`/customers/${c.id as string}`)} style={{ cursor: 'pointer' }}>
                       <td>
                         <span style={{ fontWeight: 500 }}>{primary}</span>
                         {secondary && <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{secondary}{c.contact_role ? ` · ${c.contact_role}` : ''}</div>}
@@ -478,13 +475,6 @@ export default function CustomersPage() {
         )}
       </div>
 
-      {selectedId && (
-        <CustomerDetailPanel
-          customerId={selectedId}
-          onClose={() => setSelectedId(null)}
-          onEdit={openEdit}
-        />
-      )}
 
       {showForm && (
         <CustomerFormModal
@@ -498,256 +488,7 @@ export default function CustomersPage() {
   );
 }
 
-/* ═══════════════════════ FICHE CLIENT ═══════════════════════ */
-function CustomerDetailPanel({ customerId, onClose, onEdit }: {
-  customerId: string;
-  onClose: () => void;
-  onEdit: (c: Customer) => void;
-}) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['customer-stats', customerId],
-    queryFn: () => customersApi.stats(customerId),
-  });
-  const [tab, setTab] = useState<'fiche' | 'sales' | 'orders' | 'loyalty'>('fiche');
-  // Situation de compte (mig 351) : ce que le client doit, en retard, plafond restant.
-  const { data: situation } = useQuery({
-    queryKey: ['customer-situation', customerId],
-    queryFn: () => customersApi.situation(customerId),
-  });
-
-  const customer = data?.customer as Customer | undefined;
-  const orders = data?.orders;
-  const sales = data?.sales;
-  const type = ((customer?.customer_type as CustomerType) || 'particulier');
-  const meta = TYPE_META[type] || TYPE_META.particulier;
-  const TypeIcon = meta.icon;
-  const { primary, secondary } = customer ? displayName(customer) : { primary: '', secondary: null };
-  const points = Number(customer?.loyalty_points) || 0;
-  const { data: loyalty } = useQuery({ queryKey: ['loyalty', 'customer', customerId], queryFn: () => loyaltyApi.customer(customerId) });
-  const tier = loyalty?.tier ?? null;
-
-  return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ ...panelStyle, maxWidth: 760, height: 'min(92vh, 720px)' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <Users size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Client</span>
-            <span className="odoo-breadcrumb-separator">/</span>
-            <span className="odoo-breadcrumb-current">{primary || '…'}</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          {customer && (
-            <div style={{ display: 'inline-flex', gap: 2, marginRight: 8 }}>
-              <button type="button" onClick={() => setTab('fiche')} className={tab === 'fiche' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '3px 10px' }}>Fiche</button>
-              <button type="button" onClick={() => setTab('sales')} className={tab === 'sales' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '3px 10px', display: 'inline-flex', gap: 4, alignItems: 'center' }}><Receipt size={12} /> Ventes · {sales?.count || 0}</button>
-              <button type="button" onClick={() => setTab('orders')} className={tab === 'orders' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '3px 10px', display: 'inline-flex', gap: 4, alignItems: 'center' }}><ShoppingCart size={12} /> Commandes · {orders?.count || 0}</button>
-              <button type="button" onClick={() => setTab('loyalty')} className={tab === 'loyalty' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '3px 10px', display: 'inline-flex', gap: 4, alignItems: 'center' }}><Star size={12} /> Fidélité</button>
-              <button type="button" onClick={() => onEdit(customer)} className="odoo-btn-secondary" style={{ padding: '3px 10px', display: 'inline-flex', gap: 4, alignItems: 'center', marginLeft: 6 }}><Pencil size={12} /> Modifier</button>
-            </div>
-          )}
-          <button onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
-        </div>
-
-        {isLoading || !customer ? (
-          <div style={{ padding: '3rem', textAlign: 'center', ...muted }}><Loader2 className="animate-spin" size={18} style={{ margin: '0 auto' }} /></div>
-        ) : (
-          <div className="flex-1 overflow-y-auto">
-            {/* Synthèse chiffrée */}
-            <div className="odoo-stat-grid">
-              <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-                <div className="odoo-stat-card-label">CA cumulé</div>
-                <div className="odoo-stat-card-value">{n(parseFloat(customer.total_spent) || 0)}</div>
-                <div className="odoo-stat-card-sub">DH</div>
-              </div>
-              <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-                <div className="odoo-stat-card-label" style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Star size={11} /> Fidélité</div>
-                <div className="odoo-stat-card-value">{points.toLocaleString('fr-FR')}</div>
-                <div className="odoo-stat-card-sub">{tier ? `points · niveau ${tier.label}` : 'points'}</div>
-              </div>
-              <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-                <div className="odoo-stat-card-label">Ventes caisse</div>
-                <div className="odoo-stat-card-value">{sales?.count || 0}</div>
-                <div className="odoo-stat-card-sub">{n(parseFloat(sales?.total_amount) || 0)} DH</div>
-              </div>
-              <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-                <div className="odoo-stat-card-label">Commandes</div>
-                <div className="odoo-stat-card-value">{orders?.count || 0}</div>
-                <div className="odoo-stat-card-sub">{n(parseFloat(orders?.total_amount) || 0)} DH</div>
-              </div>
-              {situation && (
-                <div className="odoo-stat-card" style={{ cursor: 'default' }}
-                  title="Tickets portés sur son compte et factures non réglées (Ventes › Créances clients)">
-                  <div className="odoo-stat-card-label">Doit</div>
-                  <div className="odoo-stat-card-value" style={{ color: situation.overdue > 0 ? '#dc2626' : undefined }}>{n(situation.total)}</div>
-                  <div className="odoo-stat-card-sub">
-                    {situation.overdue > 0 ? <span style={{ color: '#dc2626' }}>dont {n(situation.overdue)} DH en retard</span> : 'DH · à jour'}
-                    {situation.creditLimit != null && <> · disponible {n(Math.max(situation.available ?? 0, 0))} / {n(situation.creditLimit)}</>}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {tab === 'fiche' && (
-              <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {needsIce(customer) && (
-                  <StatusBanner tone="warning" icon={AlertTriangle} title="ICE manquant"
-                    actions={<button type="button" className="odoo-btn-secondary" onClick={() => onEdit(customer)}>Compléter</button>}>
-                    Les factures adressées à ce client ne seront pas conformes tant que son ICE n'est pas saisi.
-                  </StatusBanner>
-                )}
-                {customer.notes && (
-                  <StatusBanner tone="neutral" icon={MessageSquare} title="Notes internes">{customer.notes}</StatusBanner>
-                )}
-
-                <div style={sectionTitle}><Contact size={12} /> Identité et contact</div>
-                <KvTable rows={[
-                  ['Type', <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><TypeIcon size={12} /> {meta.label}</span>],
-                  ...(isMoral(type) ? [['Raison sociale', customer.company_name] as [string, React.ReactNode]] : []),
-                  [isMoral(type) ? 'Contact' : 'Nom', (secondary ?? primary) ? `${secondary ?? primary}${customer.contact_role ? ` (${customer.contact_role})` : ''}` : null],
-                  ['Téléphone', customer.phone && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Phone size={11} /> {customer.phone}</span>],
-                  ['Email', customer.email && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Mail size={11} /> {customer.email}</span>],
-                  ['Contact préféré', ({ phone: 'Téléphone', email: 'Email', whatsapp: 'WhatsApp' } as Record<string, string>)[customer.preferred_contact as string]],
-                  ['Adresse', [customer.address, customer.city].filter(Boolean).join(', ')],
-                  ...(type === 'particulier' ? [
-                    ['Date de naissance', customer.birthday ? format(new Date(customer.birthday), 'd MMMM yyyy', { locale: fr }) : null] as [string, React.ReactNode],
-                    ['Allergies', customer.allergies] as [string, React.ReactNode],
-                  ] : []),
-                  ['Client depuis', format(new Date(customer.created_at), 'MMMM yyyy', { locale: fr })],
-                ]} />
-
-                <CustomerAddressesPanel customerId={customer.id as string} />
-
-                <CustomerTaxExemptionsPanel customerId={customer.id as string} />
-
-                <CustomerPortalPanel customerId={customer.id as string} />
-
-                <CustomerHistoryPanel customerId={customer.id as string} isActive={customer.is_active !== false} />
-
-                <CustomerDataProtectionPanel customerId={customer.id as string}
-                  marketingConsent={customer.marketing_consent === true}
-                  anonymizedAt={(customer.anonymized_at as string | null) ?? null} />
-
-                {isMoral(type) && (
-                  <>
-                    <div style={sectionTitle}><FileText size={12} /> Identifiants légaux</div>
-                    <KvTable mono rows={type === 'association' ? [
-                      ['Récépissé', customer.association_recepisse],
-                      ['IF', customer.if_fiscal],
-                      ['Président', customer.president],
-                      ['TVA', <span>{customer.tva_exonere ? 'Exonérée' : 'Assujettie'}</span>],
-                    ] : [
-                      ['Forme juridique', customer.forme_juridique],
-                      ['ICE', customer.ice],
-                      ['IF', customer.if_fiscal],
-                      ['RC', customer.rc ? `${customer.rc}${customer.rc_ville ? ' — ' + customer.rc_ville : ''}` : null],
-                      ['TP', customer.tp],
-                      ['CNSS', customer.cnss],
-                      ['TVA', <span>{customer.tva_exonere ? 'Exonérée' : 'Assujettie'}</span>],
-                    ]} />
-                  </>
-                )}
-
-                {type !== 'particulier' && (
-                  <>
-                    <div style={sectionTitle}><CreditCard size={12} /> Conditions commerciales</div>
-                    <KvTable rows={[
-                      ['Facturation', customer.billing_frequency === 'per_delivery' ? 'À chaque livraison' : 'Mensuelle (BL regroupés)'],
-                      ['Plafond de crédit', customer.credit_limit ? `${n(parseFloat(customer.credit_limit))} DH` : null],
-                      ['Remise', customer.remise_pct ? `${customer.remise_pct} %` : null],
-                      ['Délai de paiement', customer.delai_paiement_jours ? `${customer.delai_paiement_jours} jours` : null],
-                    ]} />
-                  </>
-                )}
-              </div>
-            )}
-
-            {tab === 'sales' && (
-              <HistoryTable empty="Aucune vente caisse"
-                rows={(sales?.history || []) as Customer[]}
-                head={['N°', 'Date', 'Articles', 'Paiement', 'Total']}
-                render={s => {
-                  const items = Array.isArray(s.items) ? (s.items as Customer[]).filter(it => it?.name) : [];
-                  return [
-                    <span style={{ fontFamily: 'ui-monospace, monospace' }}>{s.sale_number}</span>,
-                    format(new Date(s.created_at), 'dd/MM/yyyy HH:mm'),
-                    items.length === 0 ? '—' : (
-                      <span title={items.map(it => `${it.quantity}× ${it.name}`).join('\n')}>
-                        {items.slice(0, 2).map(it => `${it.quantity}× ${it.name}`).join(', ')}
-                        {items.length > 2 && <span style={muted}> +{items.length - 2}</span>}
-                      </span>
-                    ),
-                    PAYMENT_LABELS[s.payment_method as string] || s.payment_method || '—',
-                    <span style={{ fontWeight: 600 }}>{n(parseFloat(s.total) || 0)} DH</span>,
-                  ];
-                }} />
-            )}
-
-            {tab === 'loyalty' && <CustomerLoyalty customerId={customerId} />}
-            {tab === 'orders' && (
-              <HistoryTable empty="Aucune commande"
-                rows={(orders?.history || []) as Customer[]}
-                head={['N°', 'Date', 'Statut', 'Paiement', 'Total']}
-                render={o => {
-                  const st = ORDER_STATUS[o.status as string] || { label: o.status, tag: 'odoo-tag-grey' };
-                  return [
-                    <span style={{ fontFamily: 'ui-monospace, monospace' }}>{o.order_number}</span>,
-                    format(new Date(o.created_at), 'dd/MM/yyyy HH:mm'),
-                    <span className={`odoo-tag ${st.tag}`}>{st.label}</span>,
-                    PAYMENT_LABELS[o.payment_method as string] || o.payment_method || '—',
-                    <span style={{ fontWeight: 600 }}>{n(parseFloat(o.total) || 0)} DH</span>,
-                  ];
-                }} />
-            )}
-          </div>
-        )}
-      </div>
-    </ModalBackdrop>
-  );
-}
-
-/** Tableau libellé / valeur (les valeurs vides sont masquées). */
-function KvTable({ rows, mono }: { rows: Array<[string, React.ReactNode]>; mono?: boolean }) {
-  const shown = rows.filter(([, v]) => v !== null && v !== undefined && v !== '');
-  if (shown.length === 0) return <p style={{ fontSize: '0.8125rem', ...muted, margin: 0 }}>Non renseigné.</p>;
-  return (
-    <table className="odoo-table">
-      <tbody>
-        {shown.map(([k, v]) => (
-          <tr key={k}>
-            <td style={{ width: 180, ...muted }}>{k}</td>
-            <td style={mono && typeof v === 'string' ? { fontFamily: 'ui-monospace, monospace' } : undefined}>{v}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function HistoryTable({ rows, head, render, empty }: {
-  rows: Customer[]; head: string[]; render: (r: Customer) => React.ReactNode[]; empty: string;
-}) {
-  if (rows.length === 0) {
-    return <div style={{ padding: '2rem', textAlign: 'center', fontSize: '0.8125rem', ...muted }}>{empty}</div>;
-  }
-  return (
-    <div style={{ padding: 16 }}>
-      <table className="odoo-table">
-        <thead><tr>{head.map((h, i) => <th key={h} style={i === head.length - 1 ? { textAlign: 'right' } : undefined}>{h}</th>)}</tr></thead>
-        <tbody>
-          {rows.map(r => (
-            <tr key={r.id as string}>
-              {render(r).map((cell, i) => (
-                <td key={i} style={i === head.length - 1 ? { textAlign: 'right', whiteSpace: 'nowrap' } : i === 1 ? { whiteSpace: 'nowrap', ...muted } : i === 0 ? { whiteSpace: 'nowrap' } : undefined}>{cell}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p style={{ fontSize: '0.6875rem', ...muted, marginTop: 6 }}>20 dernières opérations.</p>
-    </div>
-  );
-}
+/* La fiche client est une page : CustomerRecordPage.tsx (route /customers/:id). */
 
 /* ═══════════════════════ FORMULAIRE CLIENT ═══════════════════════ */
 function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {

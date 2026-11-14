@@ -247,7 +247,7 @@ export default function SalesDashboard() {
               <thead><tr><th>Client</th><th style={{ textAlign: 'right' }}>Achats</th><th style={{ textAlign: 'right' }}>CA TTC</th><th style={{ textAlign: 'right' }}>Reste dû</th></tr></thead>
               <tbody>
                 {topCustomers.map(c => (
-                  <tr key={c.id} onClick={() => navigate('/customers')}>
+                  <tr key={c.id} onClick={() => navigate(`/customers/${c.id}`)}>
                     <td><span style={{ fontWeight: 500 }}>{c.name}</span><span className="sal-sub">{c.pro ? 'Professionnel' : 'Particulier'}</span></td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{c.purchases}</td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}><strong>{n2(c.spent)}</strong></td>

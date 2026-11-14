@@ -72,6 +72,8 @@ export default function SalesLayout() {
       ? `reports:${tab === 'menu' || tab === 'margins' || tab === 'builder' ? tab : 'overview'}`
       : pathname === '/orders' || pathname.startsWith('/orders/')
         ? (tab === 'pro' ? 'orders:deliveries' : 'orders')
+        : pathname.startsWith('/customers/')
+          ? 'customers'
         : pathname === '/sales-channels'
           ? 'channels'
           : pathname.slice(1);
