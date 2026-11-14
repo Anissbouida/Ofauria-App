@@ -85,7 +85,7 @@
 .prj-aside { flex: 1 1 300px; min-width: 0; display: grid; gap: 14px; }
 .prj-aside .prj-panel { padding: 14px 16px; display: grid; gap: 10px; }
 .prj-aside h2 { margin: 0; font-size: 0.9375rem; font-weight: 600; }
-.prj-dl { margin: 0; display: grid; grid-template-columns: 120px 1fr; gap: 8px 12px; font-size: 0.8125rem; }
+.prj-dl { margin: 0; display: grid; grid-template-columns: 96px 1fr; gap: 8px 12px; font-size: 0.8125rem; }
 .prj-dl dt { color: var(--odoo-text-muted); }
 .prj-dl dd { margin: 0; min-width: 0; }
 
