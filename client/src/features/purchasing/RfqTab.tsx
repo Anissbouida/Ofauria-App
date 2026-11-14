@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FileQuestion, Send, Plus, Search, Loader2, CheckCircle2, XCircle, Trophy, Trash2, X, Inbox, FilePenLine, Clock, Ban, RotateCcw, Award, Filter,
 } from 'lucide-react';
+import '../projects/projects.css';
+import './purchasing.css';
 import { format } from 'date-fns';
 import { rfqApi, RFQ_STATUS_LABELS, type Rfq, type RfqStatus, type RfqItem, type RfqItemInput, type Quotation, type RfqSupplier } from '../../api/rfq.api';
 import { ingredientsApi } from '../../api/inventory.api';
@@ -322,66 +324,108 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
                 ))}</tbody>
               </table>
             ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table className="odoo-table">
-                  <thead>
-                    <tr>
-                      <th>Article</th><th style={{ textAlign: 'right' }}>Qté</th><th style={{ textAlign: 'right' }}>Dernier prix</th>
-                      {quotes.map(q => <th key={q.id} style={{ textAlign: 'right', background: q.id === r.recommended_quotation_id ? 'rgba(40,167,69,0.08)' : undefined }}>{q.supplier_name}{q.status === 'selected' && <Trophy size={12} style={{ marginLeft: 4, color: '#28a745' }} />}{q.status !== 'selected' && q.id === r.recommended_quotation_id && <div style={{ fontSize: '0.65rem', fontWeight: 600, color: '#28a745' }}>recommandé</div>}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map(it => (
-                      <tr key={it.id}>
-                        <td>{it.label}</td>
-                        <td style={{ textAlign: 'right' }}>{Number(it.quantity).toLocaleString('fr-FR')} {it.unit_label ?? ''}</td>
-                        <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{it.last_price ? n4(it.last_price) : '—'}</td>
-                        {quotes.map(q => {
-                          const l = q.lines.find(x => x.rfq_item_id === it.id);
-                          const best = r.best_by_item?.[it.id]?.quotationId === q.id;
-                          return (
-                            <td key={q.id} style={{ textAlign: 'right', fontWeight: best ? 700 : 400, color: best ? '#28a745' : undefined }}>
-                              {l && l.available && l.unit_price != null ? n4(l.unit_price) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
-                              {l?.note && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{l.note}</div>}
-                            </td>
-                          );
-                        })}
-                      </tr>
+              <div className="pur-scope" style={{ display: 'grid', gap: 14 }}>
+                {/* Notation configurable (mig 459) : une colonne par devis, une ligne par critère ; le mieux noté est recommandé. */}
+                <div className="prj-panel pur-compare">
+                  <div className="pur-compare-grid" style={{ gridTemplateColumns: `220px repeat(${quotes.length}, minmax(190px, 1fr))` }}>
+                    <div className="label" style={{ justifyContent: 'flex-end' }}><small>Critère · poids</small></div>
+                    {quotes.map(q => {
+                      const best = q.id === r.recommended_quotation_id;
+                      return (
+                        <div key={q.id} className={`col head${best ? ' best' : ''}`}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <strong style={{ fontSize: '0.9375rem' }}>{q.supplier_name}</strong>
+                            {q.status === 'selected' && <span className="pur-badge won"><Trophy size={10} /> retenu</span>}
+                            {q.status !== 'selected' && best && <span className="pur-badge reco">Recommandé</span>}
+                            {q.id === r.best_total_quotation_id && <span className="pur-badge cheap">Moins cher</span>}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                            <span className="pur-score" style={{ color: best ? 'var(--odoo-purple)' : undefined }}>{q.score ?? '—'}</span>
+                            <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>/ 100</span>
+                          </div>
+                          <div style={{ fontSize: '0.8125rem' }}>
+                            <strong>{n2(q.total_ht)} DH HT</strong>
+                            {q.total_foreign && <span style={{ color: 'var(--theme-text-muted)' }}> · {n2(q.total_foreign)} {String(q.currency_code).trim()}</span>}
+                            {!q.complete && <div style={{ fontSize: '0.75rem', color: 'var(--prj-orange)' }}>{q.covered}/{items.length} lignes chiffrées</div>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {(r.criteria ?? []).map(c => {
+                      const totalWeight = (r.criteria ?? []).reduce((t, x) => t + Number(x.weight || 0), 0) || 1;
+                      return (
+                        <Fragment key={c.code}>
+                          <div className="label"><span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{c.label}</span><small>{Math.round(Number(c.weight) / totalWeight * 100)} % · {c.type === 'manual' ? 'noté à la main' : 'calculé'}</small></div>
+                          {quotes.map(q => {
+                            const v = q.scores?.[c.code];
+                            const unrated = c.type === 'manual' && q.criteria_scores?.[c.code] == null;
+                            return (
+                              <div key={q.id} className={`col${q.id === r.recommended_quotation_id ? ' best' : ''}`}>
+                                <div className="pur-crit">
+                                  <div className="prj-bar" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, Number(v ?? 0)))}%` }} /></div>
+                                  <span title={unrated ? 'non noté' : undefined}>{v ?? '—'}{unrated ? ' *' : ''}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </Fragment>
+                      );
+                    })}
+                    <div className="label"><span style={{ fontSize: '0.875rem', fontWeight: 500 }}>Conditions</span><small>délai · validité · paiement</small></div>
+                    {quotes.map(q => (
+                      <div key={q.id} className={`col${q.id === r.recommended_quotation_id ? ' best' : ''}`} style={{ fontSize: '0.8125rem' }}>
+                        <span>{q.delivery_days != null ? `Livré en ${q.delivery_days} j` : 'Délai non précisé'}</span>
+                        <span style={{ color: 'var(--theme-text-muted)' }}>
+                          {[q.valid_until ? `valable jusqu'au ${format(new Date(q.valid_until), 'dd/MM')}` : null, q.payment_terms || null,
+                            Number(q.shipping_cost) > 0 ? `port ${n2(q.shipping_cost)}` : 'franco', Number(q.discount_pct) > 0 ? `remise ${q.discount_pct} %` : null].filter(Boolean).join(' · ')}
+                        </span>
+                      </div>
                     ))}
-                    <tr style={{ fontWeight: 600 }}>
-                      <td colSpan={3}>Total HT (remise et port compris)</td>
-                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right', color: q.id === r.best_total_quotation_id ? '#1a73c7' : undefined }} title={q.id === r.best_total_quotation_id ? 'Le moins cher' : undefined}>{n2(q.total_ht)}{q.total_foreign && <div style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--theme-text-muted)' }}>{n2(q.total_foreign)} {String(q.currency_code).trim()}</div>}{!q.complete && <div style={{ fontSize: '0.7rem', fontWeight: 400, color: '#d9822b' }}>{q.covered}/{items.length} lignes</div>}</td>)}
-                    </tr>
-                    {/* Notation configurable (mig 459) : une ligne par critère actif + la note globale. Le mieux noté est recommandé. */}
-                    {(r.criteria ?? []).map(c => (
-                      <tr key={c.code} style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                        <td colSpan={3}>{c.label} <span style={{ opacity: 0.6 }}>(poids {c.weight})</span></td>
-                        {quotes.map(q => <td key={q.id} style={{ textAlign: 'right' }}>{q.scores?.[c.code] ?? '—'}{c.type === 'manual' && (q.criteria_scores?.[c.code] == null) ? <span title="non notée"> *</span> : ''}</td>)}
-                      </tr>
-                    ))}
-                    <tr style={{ fontWeight: 700 }}>
-                      <td colSpan={3}>Note globale /100</td>
-                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right', color: q.id === r.recommended_quotation_id ? '#28a745' : undefined }}>{q.score ?? '—'}</td>)}
-                    </tr>
-                    <tr style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-                      <td colSpan={3}>Délai · validité · conditions</td>
-                      {quotes.map(q => <td key={q.id} style={{ textAlign: 'right' }}>{q.delivery_days != null ? `${q.delivery_days} j` : '—'}{q.valid_until ? ` · jusqu'au ${format(new Date(q.valid_until), 'dd/MM')}` : ''}{q.payment_terms ? ` · ${q.payment_terms}` : ''}{Number(q.shipping_cost) > 0 ? ` · port ${n2(q.shipping_cost)}${q.currency_code && String(q.currency_code).trim() !== 'MAD' ? ` ${String(q.currency_code).trim()}` : ''}` : ''}{Number(q.discount_pct) > 0 ? ` · remise ${q.discount_pct} %` : ''}</td>)}
-                    </tr>
-                    {open && (
+                    {open && <>
+                      <div className="label" style={{ borderBottom: 0 }} />
+                      {quotes.map(q => (
+                        <div key={q.id} className={`col${q.id === r.recommended_quotation_id ? ' best' : ''}`} style={{ borderBottom: 0 }}>
+                          <button className={q.id === r.recommended_quotation_id ? 'odoo-btn-primary' : 'odoo-btn-secondary'} disabled={award.isPending} style={{ alignSelf: 'flex-start' }}
+                            onClick={async () => { if (await confirm(`Retenir le devis de ${q.supplier_name} (note ${q.score ?? '—'}/100${q.id === r.recommended_quotation_id ? ', recommandé' : ''}) et créer le bon de commande (${n2(q.total_ht)} DH HT) ?`)) award.mutate(q.id); }}>
+                            <Award size={12} /> Attribuer
+                          </button>
+                        </div>
+                      ))}
+                    </>}
+                  </div>
+                </div>
+
+                {/* Prix article par article : le moins cher de chaque ligne en vert. */}
+                <div className="prj-panel" style={{ overflowX: 'auto' }}>
+                  <div className="prj-panel-head">Prix par article <small>le moins cher de chaque ligne en vert</small></div>
+                  <table className="odoo-table" style={{ margin: 0 }}>
+                    <thead>
                       <tr>
-                        <td colSpan={3} />
-                        {quotes.map(q => (
-                          <td key={q.id} style={{ textAlign: 'right' }}>
-                            <button className={q.id === r.recommended_quotation_id ? 'odoo-btn-primary' : 'odoo-btn-secondary'} disabled={award.isPending}
-                              onClick={async () => { if (await confirm(`Retenir le devis de ${q.supplier_name} (note ${q.score ?? '—'}/100${q.id === r.recommended_quotation_id ? ', recommandé' : ''}) et créer le bon de commande (${n2(q.total_ht)} DH HT) ?`)) award.mutate(q.id); }}>
-                              <Award size={12} /> Retenir
-                            </button>
-                          </td>
-                        ))}
+                        <th>Article</th><th style={{ textAlign: 'right' }}>Qté</th><th style={{ textAlign: 'right' }}>Dernier prix</th>
+                        {quotes.map(q => <th key={q.id} style={{ textAlign: 'right' }}>{q.supplier_name}</th>)}
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {items.map(it => (
+                        <tr key={it.id}>
+                          <td>{it.label}</td>
+                          <td style={{ textAlign: 'right' }}>{Number(it.quantity).toLocaleString('fr-FR')} {it.unit_label ?? ''}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}>{it.last_price ? n4(it.last_price) : '—'}</td>
+                          {quotes.map(q => {
+                            const l = q.lines.find(x => x.rfq_item_id === it.id);
+                            const best = r.best_by_item?.[it.id]?.quotationId === q.id;
+                            return (
+                              <td key={q.id} style={{ textAlign: 'right', fontWeight: best ? 700 : 400, color: best ? 'var(--prj-green)' : undefined }}>
+                                {l && l.available && l.unit_price != null ? n4(l.unit_price) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
+                                {l?.note && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{l.note}</div>}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>

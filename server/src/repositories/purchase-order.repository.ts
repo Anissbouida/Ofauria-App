@@ -220,7 +220,19 @@ export const purchaseOrderRepository = {
                  WHERE inv.status != 'cancelled'
                    AND (inv.purchase_order_id = po.id
                         OR EXISTS (SELECT 1 FROM invoice_purchase_orders ipo WHERE ipo.invoice_id = inv.id AND ipo.purchase_order_id = po.id))
-              ), '[]'::json) AS invoices
+              ), '[]'::json) AS invoices,
+              -- Chaîne des pièces (refonte Achats 2026-11) : demande de prix d'origine,
+              -- bons de réception, nombre de demandes d'achat couvertes.
+              (SELECT json_build_object('id', r.id, 'number', r.number, 'title', r.title)
+                 FROM rfqs r WHERE r.purchase_order_id = po.id ORDER BY r.created_at DESC LIMIT 1) AS rfq,
+              COALESCE((
+                SELECT json_agg(json_build_object('id', rv.id, 'voucher_number', rv.voucher_number, 'created_at', rv.created_at)
+                                ORDER BY rv.created_at)
+                  FROM reception_vouchers rv WHERE rv.purchase_order_id = po.id
+              ), '[]'::json) AS receptions,
+              (SELECT COUNT(DISTINCT x.purchase_request_id)::int
+                 FROM request_po_lines x JOIN purchase_order_items i ON i.id = x.po_item_id
+                WHERE i.purchase_order_id = po.id) AS request_count
        FROM purchase_orders po
        JOIN suppliers s ON s.id = po.supplier_id
        LEFT JOIN users u ON u.id = po.created_by

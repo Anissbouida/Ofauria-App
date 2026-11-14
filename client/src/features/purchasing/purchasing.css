@@ -1,0 +1,76 @@
+/*
+ * Module Achats — refonte (maquette 2026-11-13) : circuit d'achat, liste « À traiter »,
+ * chaîne des pièces d'un BC, comparateur de devis. Les tuiles, panneaux et barres
+ * (prj-kpi, prj-panel, prj-bar, prj-pill…) viennent de la feuille partagée projects.css.
+ */
+.pur-circuit { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.pur-stage { width: 100%; height: 100%; display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--odoo-border); background: color-mix(in srgb, var(--odoo-text-muted) 4%, var(--theme-bg-card)); text-align: left; font: inherit; color: inherit; cursor: pointer; transition: border-color .15s; }
+.pur-stage:hover, .pur-stage:focus-visible { border-color: var(--odoo-purple); outline: none; }
+.pur-stage.orange { border-color: color-mix(in srgb, var(--prj-orange) 35%, transparent); background: color-mix(in srgb, var(--prj-orange) 6%, var(--theme-bg-card)); }
+.pur-stage.red { border-color: color-mix(in srgb, var(--prj-red) 35%, transparent); background: color-mix(in srgb, var(--prj-red) 5%, var(--theme-bg-card)); }
+.pur-stage-head { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 600; color: var(--odoo-text-muted); }
+.pur-stage-num { width: 18px; height: 18px; border-radius: 50%; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 0.6875rem; color: #fff; background: var(--odoo-purple); }
+.pur-stage-count { font-size: 1.5rem; font-weight: 700; line-height: 1.15; }
+.pur-stage-sub { font-size: 0.75rem; color: var(--odoo-text-muted); }
+.pur-stage.orange .pur-stage-sub { color: var(--prj-orange); font-weight: 600; }
+.pur-stage.red .pur-stage-sub { color: var(--prj-red); font-weight: 600; }
+
+.pur-inbox { list-style: none; margin: 0; padding: 0; }
+.pur-inbox li { display: flex; align-items: center; gap: 14px; padding: 11px 16px; border-bottom: 1px solid var(--odoo-border); flex-wrap: wrap; }
+.pur-inbox li:last-child { border-bottom: 0; }
+.pur-kind { font-size: 0.75rem; font-weight: 600; padding: 3px 10px; border-radius: 12px; min-width: 110px; text-align: center; }
+.pur-kind.po { background: color-mix(in srgb, var(--odoo-purple) 12%, transparent); color: var(--odoo-purple); }
+.pur-kind.inv { background: color-mix(in srgb, var(--prj-orange) 13%, transparent); color: var(--prj-orange); }
+.pur-kind.req { background: color-mix(in srgb, var(--odoo-text-muted) 14%, transparent); }
+.pur-kind.rfq { background: color-mix(in srgb, #6d4bb8 13%, transparent); color: #5b3aa0; }
+.pur-kind.appr { background: color-mix(in srgb, var(--prj-green) 13%, transparent); color: var(--prj-green); }
+.pur-inbox-main { flex: 1; min-width: 220px; }
+.pur-inbox-title { display: block; font-size: 0.875rem; font-weight: 500; }
+.pur-inbox-meta { display: block; font-size: 0.8125rem; color: var(--odoo-text-muted); margin-top: 2px; }
+.pur-inbox-meta code { font-family: ui-monospace, Menlo, monospace; font-size: 0.75rem; }
+.pur-inbox-amount { font-size: 0.875rem; font-weight: 600; min-width: 100px; text-align: right; font-variant-numeric: tabular-nums; }
+.pur-inbox-due { font-size: 0.8125rem; min-width: 120px; color: var(--odoo-text-muted); }
+.pur-inbox-due.late { color: var(--prj-red); font-weight: 600; }
+
+/* Chaîne des pièces d'un BC */
+.pur-chain { display: flex; align-items: center; flex-wrap: wrap; row-gap: 8px; }
+.pur-doc { display: flex; flex-direction: column; gap: 1px; padding: 7px 11px; border-radius: 8px; min-width: 120px; border: 1px solid var(--odoo-border); background: color-mix(in srgb, var(--odoo-text-muted) 4%, var(--theme-bg-card)); }
+.pur-doc small { font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--odoo-text-muted); }
+.pur-doc strong { font-size: 0.8125rem; font-family: ui-monospace, Menlo, monospace; }
+.pur-doc span { font-size: 0.75rem; color: var(--odoo-text-muted); }
+.pur-doc.current { border-color: var(--odoo-purple); background: color-mix(in srgb, var(--odoo-purple) 9%, transparent); }
+.pur-doc.current span { color: var(--odoo-purple); }
+.pur-doc.warn { border-color: color-mix(in srgb, var(--prj-orange) 40%, transparent); background: color-mix(in srgb, var(--prj-orange) 6%, transparent); }
+.pur-doc.warn span { color: var(--prj-orange); }
+.pur-doc.done span { color: var(--prj-green); }
+.pur-doc.todo { border-style: dashed; background: transparent; }
+.pur-chain-arrow { margin: 0 4px; color: var(--odoo-text-muted); flex: none; }
+
+.pur-check { font-size: 0.75rem; font-weight: 600; padding: 2px 9px; border-radius: 10px; white-space: nowrap; }
+.pur-check.ok { background: color-mix(in srgb, var(--prj-green) 13%, transparent); color: var(--prj-green); }
+.pur-check.wait { background: color-mix(in srgb, var(--odoo-text-muted) 14%, transparent); }
+.pur-check.gap { background: color-mix(in srgb, var(--prj-orange) 13%, transparent); color: var(--prj-orange); }
+
+.pur-supplier { display: flex; align-items: center; gap: 12px; }
+.pur-supplier-logo { width: 40px; height: 40px; border-radius: 10px; flex: none; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; color: var(--odoo-purple); background: color-mix(in srgb, var(--odoo-purple) 11%, transparent); }
+
+/* Comparateur de devis */
+.pur-compare { overflow-x: auto; }
+.pur-compare-grid { display: grid; min-width: 760px; }
+.pur-compare-grid > div { padding: 12px 14px; border-bottom: 1px solid var(--odoo-border); }
+.pur-compare-grid > .col { border-left: 1px solid var(--odoo-border); display: flex; flex-direction: column; gap: 6px; }
+.pur-compare-grid > .col.best { background: color-mix(in srgb, var(--odoo-purple) 6%, transparent); }
+.pur-compare-grid > .head.best { box-shadow: inset 0 3px 0 var(--odoo-purple); }
+.pur-compare-grid > .label { display: flex; flex-direction: column; gap: 2px; }
+.pur-compare-grid > .label small { color: var(--odoo-text-muted); font-size: 0.75rem; }
+.pur-score { font-size: 1.75rem; font-weight: 700; line-height: 1.1; }
+.pur-badge { font-size: 0.6875rem; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+.pur-badge.reco { background: var(--odoo-purple); color: #fff; }
+.pur-badge.cheap { background: color-mix(in srgb, var(--prj-green) 14%, transparent); color: var(--prj-green); }
+.pur-badge.won { background: color-mix(in srgb, var(--prj-green) 14%, transparent); color: var(--prj-green); }
+.pur-crit { display: flex; align-items: center; gap: 8px; }
+.pur-crit .prj-bar { flex: 1; }
+.pur-crit span { font-size: 0.75rem; color: var(--odoo-text-muted); width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Couleurs d'état (mêmes valeurs que .prj) pour les fiches ouvertes hors de .prj (modales). */
+.pur-scope { --prj-green: #1F7A4D; --prj-orange: #B45309; --prj-red: #B42318; --prj-track: var(--odoo-border); }

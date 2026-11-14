@@ -12,7 +12,7 @@ import {
   ClipboardList, Receipt, Paperclip, Eye, Trash2, Upload,
   Loader2, Search, Coins, Filter, ArrowUpDown, ArrowUp, ArrowDown,
   Clock, CheckCircle2, Scale, CalendarClock, Ban, Settings, FileQuestion, Ship, Award,
-  Boxes, FilePlus2, PackageCheck,
+  Boxes, FilePlus2, PackageCheck, LayoutDashboard,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -21,6 +21,7 @@ import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import PurchaseOrdersTab from '../accounting/PurchaseOrdersTab';
 import SuppliersTab from './SuppliersTab';
 import PurchasingPilotageTab from './PurchasingPilotageTab';
+import PurchasingWorkbench from './PurchasingWorkbench';
 import RfqTab from './RfqTab';
 import LandedCostTab from './LandedCostTab';
 import SupplierScoreTab from './SupplierScoreTab';
@@ -45,7 +46,7 @@ import {
 } from '../../components/purchasing/ProcessBoard';
 
 type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'pilotage' | 'rfq' | 'landed' | 'scores'
-  | 'identification' | 'purchase_requests' | 'reception' | 'approvals' | 'price_variances';
+  | 'identification' | 'purchase_requests' | 'reception' | 'approvals' | 'price_variances' | 'workbench';
 
 /**
  * Étapes du processus d'une facture reçue (dérivées côté serveur, cf.
@@ -86,27 +87,30 @@ export default function PurchasingPage() {
   const approvalsCount = useApprovalsCount();
   const views: ModuleView<PurchasingTab | 'approvals' | 'settings'>[] = [
     // Mig 312 (D9) : reçu non facturé, facturé non reçu, engagements, par ligne de BC.
-    { key: 'pilotage', label: 'Pilotage', icon: Scale, section: 'dashboard' },
+    // Poste de travail (refonte 2026-11) : circuit d'achat, actions à mener, montants à suivre.
+    { key: 'workbench', label: 'Poste de travail', icon: LayoutDashboard, section: 'dashboard' },
     // ─── OPÉRATIONS : les 7 étapes du cycle procure-to-pay, dans l'ordre ───
     // 1 Identification = besoins à commander (ruptures + stock sous le seuil), via l'écran
     // « À commander » ; 2 Demande d'achat = demandes en attente. L'approbation des achats
     // (mig 465) vient APRÈS la demande de prix : on approuve l'engagement chiffré (devis
     // retenu / BC), pas un besoin estimé. D'où l'ordre : Demande de prix (3) → Approbation (4).
-    { key: 'identification', label: '1 · Identification', icon: Boxes, section: 'operations' },
-    { key: 'purchase_requests', label: '2 · Demande d\'achat', icon: FilePlus2, section: 'operations' },
+    { key: 'identification', label: 'À commander', icon: Boxes, section: 'operations' },
+    { key: 'purchase_requests', label: 'Demandes d\'achat', icon: FilePlus2, section: 'operations' },
     // Appels d'offres (mig 360) : demande de prix à plusieurs fournisseurs, devis, comparatif, BC.
-    { key: 'rfq', label: '3 · Demandes de prix', icon: FileQuestion, section: 'operations' },
-    { key: 'approvals', label: '4 · Approbation', icon: ClipboardCheck, section: 'operations', badge: approvalsCount },
-    { key: 'purchase_orders', label: '5 · Bons de commande', icon: ClipboardList, section: 'operations' },
+    { key: 'rfq', label: 'Demandes de prix', icon: FileQuestion, section: 'operations' },
+    { key: 'approvals', label: 'Approbations', icon: ClipboardCheck, section: 'operations', badge: approvalsCount },
+    { key: 'purchase_orders', label: 'Bons de commande', icon: ClipboardList, section: 'operations' },
     // Réception (étape 6) : liste des bons de réception ; la réception se complète dans le détail du BC.
-    { key: 'reception', label: '6 · Réceptions', icon: PackageCheck, section: 'operations' },
-    { key: 'invoices', label: '7 · Factures reçues', icon: FileText, section: 'operations' },
+    { key: 'reception', label: 'Réceptions', icon: PackageCheck, section: 'operations' },
+    { key: 'invoices', label: 'Factures reçues', icon: FileText, section: 'operations' },
     // Frais d'approche (mig 361) : transport, douane répartis sur une réception, appliqués au coût.
     { key: 'landed', label: 'Frais d\'approche', icon: Ship, section: 'operations' },
     // Écarts de prix (lot L3 P2P) : décision du gérant sur les écarts de réception + simulation
     // de la réévaluation facture → stock / écart (IPV). Contrôle de gestion, gérant/admin.
     { key: 'price_variances', label: 'Écarts de prix', icon: ShieldAlert, section: 'operations' },
     // Évaluation des fournisseurs (mig 362) : note calculée délais / complétude / conformité / prix / litiges.
+    // Ancien tableau de bord : le rapprochement commande / réception / facture, par ligne.
+    { key: 'pilotage', label: 'Rapprochement', icon: Scale, section: 'reports' },
     { key: 'scores', label: 'Évaluation des fournisseurs', icon: Award, section: 'reports' },
     { key: 'suppliers', label: 'Fournisseurs', icon: Truck, section: 'setup' },
     { key: 'settings', label: 'Réglages des achats', icon: Settings, section: 'setup', href: '/settings?page=purchasing', external: true },
@@ -136,6 +140,7 @@ export default function PurchasingPage() {
       {tab === 'invoices' && <InvoicesTab {...focus} />}
       {tab === 'landed' && <LandedCostTab />}
       {tab === 'scores' && <SupplierScoreTab />}
+      {tab === 'workbench' && <PurchasingWorkbench onOpenTab={k => openTab(k as PurchasingTab)} onOpenInvoice={f => openTab('invoices', f)} />}
       {tab === 'pilotage' && <PurchasingPilotageTab onOpenInvoice={(f) => openTab('invoices', f)} onOpenTab={(k) => openTab(k)} />}
     </ModuleShell>
   );

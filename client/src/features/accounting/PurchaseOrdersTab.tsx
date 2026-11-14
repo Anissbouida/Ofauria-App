@@ -2,6 +2,9 @@ import { useState, useMemo, useEffect, useRef, Fragment, type CSSProperties } fr
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseOrdersApi, newIdempotencyKey } from '../../api/purchase-orders.api';
+import { supplierScoreApi, STANDING_TAG } from '../../api/supplier-score.api';
+import '../projects/projects.css';
+import '../purchasing/purchasing.css';
 import { suppliersApi, invoicesApi } from '../../api/accounting.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import { containerOf, roundUpToContainer, containerLabel, type ContainerDef } from '../../utils/container';
@@ -1898,8 +1901,10 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
     queryFn: () => purchaseOrdersApi.getById(poId),
   });
   const [downloading, setDownloading] = useState(false);
+  // Note fournisseur (mig 362) pour la carte fournisseur ; absente = pas encore évalué.
+  const { data: standings = [] } = useQuery({ queryKey: ['supplier-scores', 'latest'], queryFn: supplierScoreApi.latest, retry: false, staleTime: 300_000 });
 
-  const panel: CSSProperties = { width: '100%', maxWidth: 980, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' };
+  const panel: CSSProperties = { width: '100%', maxWidth: 1120, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' };
 
   if (isLoading || !po) {
     return (
@@ -1970,17 +1975,40 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
     }
   };
 
-  const bar = (value: number, max: number) => (
-    <span style={{ display: 'block', height: 6, borderRadius: 3, background: 'var(--odoo-border)', overflow: 'hidden' }}>
-      <span style={{ display: 'block', height: '100%', width: `${max > 0 ? Math.min(100, (value / max) * 100) : 0}%`, background: 'var(--odoo-purple)' }} />
-    </span>
-  );
+  // Chaîne des pièces (refonte 2026-11) : demandes → demande de prix → BC → réceptions → factures → paiement.
+  const receptions = (po.receptions || []) as Array<{ id: string; voucher_number: string; created_at: string }>;
+  const rfqDoc = po.rfq as { id: string; number: string; title: string } | null;
+  const requestCount = num(po.request_count);
+  const totalPaid = invoices.reduce((s, i) => s + num(i.paid_amount), 0);
+  const allPaid = invoices.length > 0 && invoices.every(i => num(i.paid_amount) >= num(i.total_amount) - 0.005);
+  const chain: Array<{ kind: string; ref: string; sub: string; state: 'done' | 'current' | 'warn' | 'todo' }> = [
+    ...(requestCount > 0 ? [{ kind: 'Demande', ref: `${requestCount} DA`, sub: 'couverte(s)', state: 'done' as const }] : []),
+    ...(rfqDoc ? [{ kind: 'Demande de prix', ref: rfqDoc.number, sub: 'devis retenu', state: 'done' as const }] : []),
+    { kind: 'Commande', ref: po.order_number, sub: cancelled ? (status === 'annule' ? 'annulée' : 'non livrée') : stage === 0 ? 'brouillon' : `envoyée${d(po.locked_at) ? ` le ${d(po.locked_at)}` : ''}`, state: 'current' },
+    { kind: 'Réception', ref: receptions.length ? receptions[receptions.length - 1].voucher_number : '—', sub: receptions.length ? (stage === 2 ? `partielle · ${receptions.length} bon(s)` : `${receptions.length} bon(s)`) : isLate ? 'en retard' : 'à venir', state: receptions.length ? (stage === 2 ? 'warn' : 'done') : isLate ? 'warn' : 'todo' },
+    { kind: 'Facture', ref: invoices.length ? (invoices[0].supplier_invoice_number || invoices[0].invoice_number) : '—', sub: invoices.length ? `${invoices.length} facture(s)` : stage >= 3 ? 'attendue' : 'à venir', state: invoices.length ? 'done' : stage >= 3 ? 'warn' : 'todo' },
+    { kind: 'Paiement', ref: invoices.length ? `${n(totalPaid)} DH` : '—', sub: allPaid ? 'réglé' : invoices.length ? `reste ${n(totalInvoiced - totalPaid)}` : 'à venir', state: allPaid ? 'done' : 'todo' },
+  ];
+  const receivedPct = totalOrdered > 0 ? Math.min(100, (totalReceived / totalOrdered) * 100) : 0;
+  const invoicedPct = totalOrdered > 0 ? Math.min(100, (totalInvoiced / totalOrdered) * 100) : 0;
+  const lineCheck = (it: POItem): { cls: 'ok' | 'wait' | 'gap'; label: string } => {
+    const ordered = num(it.quantity_ordered); const received = num(it.quantity_delivered);
+    const remaining = it.qty_remaining_base != null ? num(it.qty_remaining_base) : Math.max(0, ordered - received);
+    if (it.unit_price == null) return { cls: 'gap', label: 'Prix à définir' };
+    if (received > ordered + 1e-9) return { cls: 'gap', label: 'Surlivré' };
+    if (remaining > 0) return { cls: 'wait', label: received > 0 ? 'Reliquat' : 'À recevoir' };
+    return { cls: 'ok', label: 'Reçu' };
+  };
+  const lineGaps = items.filter(it => lineCheck(it).cls === 'gap').length;
+  const standing = standings.find(x => x.supplier_id === po.supplier_id);
+  const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('');
+
   const sectionTitle: CSSProperties = { margin: 0, fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--odoo-text-muted)' };
   const card: CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 12, display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--odoo-bg)' };
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" role="dialog" aria-label={`Bon de commande ${po.order_number}`} style={panel} onClick={(e) => e.stopPropagation()}>
+      <div className="odoo-scope pur-scope" role="dialog" aria-label={`Bon de commande ${po.order_number}`} style={panel} onClick={(e) => e.stopPropagation()}>
         {/* En-tête */}
         <div className="odoo-control-bar" style={{ flexWrap: 'wrap', rowGap: 6 }}>
           <div className="odoo-breadcrumb">
@@ -2009,6 +2037,16 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
             </span>
           </div>
 
+          {/* Chaîne des pièces liées */}
+          <div className="pur-chain" aria-label="Pièces liées" style={{ padding: '12px 16px 0' }}>
+            {chain.map((c, i) => (
+              <Fragment key={c.kind}>
+                {i > 0 && <ArrowRight size={14} className="pur-chain-arrow" aria-hidden="true" />}
+                <span className={`pur-doc ${c.state}`}><small>{c.kind}</small><strong>{c.ref}</strong><span>{c.sub}</span></span>
+              </Fragment>
+            ))}
+          </div>
+
           {/* Frise du processus */}
           {!cancelled ? (
             <ol className="ui-timeline" aria-label="Avancement du bon de commande" style={{ marginTop: 12 }}>
@@ -2027,6 +2065,18 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
           ) : <div style={{ height: 12 }} />}
 
           <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="prj-kpis" aria-label="Avancement">
+              <div className="prj-kpi"><div className="prj-kpi-head"><span>Reçu</span><span>{linesDone} / {items.length} lignes</span></div>
+                <div className="prj-kpi-value">{Math.round(receivedPct)} %</div><div className="prj-bar"><span style={{ width: `${receivedPct}%` }} /></div></div>
+              <div className="prj-kpi"><div className="prj-kpi-head"><span>Facturé</span><span>{invoices.length} facture(s)</span></div>
+                <div className="prj-kpi-value">{n(totalInvoiced)} DH</div><div className="prj-bar green"><span style={{ width: `${invoicedPct}%` }} /></div></div>
+              <div className="prj-kpi"><div className="prj-kpi-head"><span>Contrôle des lignes</span><span>prix · quantités</span></div>
+                <div className="prj-kpi-value" style={{ color: lineGaps ? 'var(--prj-orange)' : 'var(--prj-green)' }}>{lineGaps ? `${lineGaps} écart${lineGaps > 1 ? 's' : ''}` : 'Aucun écart'}</div>
+                <div className="prj-kpi-sub">{missingPrices ? `${missingPrices} prix à définir` : 'prix renseignés'}</div></div>
+              <div className="prj-kpi"><div className="prj-kpi-head"><span>Total commandé HT</span><span>{poCur !== 'MAD' ? poCur : 'DH'}</span></div>
+                <div className="prj-kpi-value">{n(totalOrdered)} DH</div><div className="prj-kpi-sub">réglé {n(totalPaid)} DH</div></div>
+            </div>
+
             <StatusBanner tone={next.tone} icon={next.tone === 'success' ? CheckCircle2 : next.tone === 'neutral' ? Ban : next.tone === 'danger' ? AlertTriangle : Clock}
               title={next.title}
               actions={next.action ? (
@@ -2053,6 +2103,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
                       <th style={{ textAlign: 'right' }}>Reste</th>
                       <th style={{ textAlign: 'right' }}>Prix unit.</th>
                       <th style={{ textAlign: 'right' }}>Montant</th>
+                      <th>Contrôle</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2080,6 +2131,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
                             {poCur !== 'MAD' && it.foreign_unit_price != null && <div style={{ fontSize: '0.6875rem' }}>{n(num(it.foreign_unit_price))} {poCur}</div>}
                           </td>
                           <td style={{ textAlign: 'right', fontWeight: 600 }}>{it.unit_price != null ? n(ordered * num(it.unit_price)) : '—'}</td>
+                          <td>{(() => { const c = lineCheck(it); return <span className={`pur-check ${c.cls}`}>{c.label}</span>; })()}</td>
                         </tr>
                       );
                     })}
@@ -2088,6 +2140,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
                     <tr style={{ fontWeight: 700, borderTop: '2px solid var(--odoo-border)' }}>
                       <td colSpan={5}>Total</td>
                       <td style={{ textAlign: 'right' }}>{n(totalOrdered)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></td>
+                      <td />
                     </tr>
                   </tfoot>
                 </table>
@@ -2095,21 +2148,17 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
 
               {/* Colonne de droite */}
               <aside style={{ flex: '1 1 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <section style={card} aria-label="Montants">
-                  <h3 style={sectionTitle}>Montants</h3>
-                  {[
-                    { label: 'Commandé', value: totalOrdered },
-                    { label: 'Reçu', value: totalReceived },
-                    { label: 'Facturé', value: totalInvoiced },
-                  ].map(m => (
-                    <div key={m.label} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <span style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
-                        <span style={{ color: 'var(--odoo-text-muted)' }}>{m.label}</span>
-                        <strong>{n(m.value)} DH</strong>
-                      </span>
-                      {bar(m.value, totalOrdered)}
-                    </div>
-                  ))}
+                <section style={card} aria-label="Fournisseur">
+                  <div className="pur-supplier">
+                    <span className="pur-supplier-logo">{initialsOf(String(po.supplier_name ?? '?'))}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <strong style={{ display: 'block', fontSize: '0.9375rem' }}>{po.supplier_name}</strong>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{[po.supplier_contact, po.supplier_phone].filter(Boolean).join(' · ') || 'contact non renseigné'}</span>
+                    </span>
+                    {standing && standing.standing !== 'new' && (
+                      <span className={`odoo-tag ${STANDING_TAG[standing.standing]}`} title={`Évaluation au ${standing.period_to}`}>{standing.standing}{standing.score != null ? ` · ${Math.round(Number(standing.score))}/100` : ''}</span>
+                    )}
+                  </div>
                 </section>
 
                 <section style={card} aria-label="Dates">
