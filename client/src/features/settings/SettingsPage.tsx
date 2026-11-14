@@ -16,7 +16,8 @@ import WorkshopsCard from './WorkshopsCard';
 import ProductionMarkupTab from './ProductionMarkupTab';
 import AuditLogTab from './AuditLogTab';
 import NumberingTab from './NumberingTab';
-import ParametersPanel from './ParametersPanel';
+import ParametersPanel, { RulesSummary } from './ParametersPanel';
+import { purchasingSettingsApi } from '../../api/purchasing-settings.api';
 import SodMonitor from './SodMonitor';
 import ProductCategoriesTab from './ProductCategoriesTab';
 import CompanyPage from './CompanyPage';
@@ -209,13 +210,15 @@ function SettingsShell() {
     ),
     purchasing: (
       <div style={{ display: 'grid', gap: 16 }}>
-        <SodMonitor />
-        <ParametersPanel domains={['purchasing']} />
-        <ReceptionQcCategoriesCard />
-        <RfqCriteriaCard />
+        <PurchasingOverview />
+        <ParametersPanel domains={['purchasing']} extras={{
+          'Réception': <ReceptionQcCategoriesCard />,
+          'Contrôles internes': <SodMonitor compact />,
+          'Fournisseurs': <RfqCriteriaCard />,
+        }} />
       </div>
     ),
-    salesRules: <ParametersPanel keys={['sales.quotes', 'sales.dunning', 'sales.legal_mentions', 'sales.vat_regime', 'sales.stamp_duty', 'sales.returns']} />,
+    salesRules: <ParametersPanel keys={['sales.quotes', 'sales.dunning', 'sales.pricing', 'sales.legal_mentions', 'sales.vat_regime', 'sales.stamp_duty', 'sales.returns']} />,
     // Règles de caisse + contrôle des sachets (ex-page Sachets, lot S3) : chaque partie
     // suit sa section du droit « Paramètres ».
     posRules: (
@@ -357,6 +360,24 @@ function SettingsShell() {
 
       {/* Monte a l'ouverture seulement : chaque recherche repart d'une saisie vide. */}
       {searchOpen && <SettingsSearch open onClose={() => setSearchOpen(false)} pages={pages} onSelect={onSearchSelect} />}
+    </div>
+  );
+}
+
+/* ============ ACHATS : résumé des contrôles et circuit ============ */
+
+function PurchasingOverview() {
+  const { data: sod } = useQuery({ queryKey: ['purchasing-sod'], queryFn: purchasingSettingsApi.getSod, staleTime: 30_000 });
+  const gaps = (sod?.violations ?? []).reduce((n, v) => n + Number(v.occurrences), 0);
+  const steps = ["Demande d'achat", 'Bon de commande', 'Réception', 'Facture', 'Paiement'];
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <RulesSummary domains={['purchasing']} extra={sod?.rules?.length ? { label: 'Écarts journalisés · 90 j', value: gaps } : undefined} />
+      <div className="odoo-params-flow">
+        <span>Le circuit :</span>
+        {steps.map((s, i) => <span key={s} className="odoo-params-flow-step">{i > 0 && <em>→</em>}<b>{s}</b></span>)}
+        <span>· chaque bloc ci-dessous règle une étape</span>
+      </div>
     </div>
   );
 }
