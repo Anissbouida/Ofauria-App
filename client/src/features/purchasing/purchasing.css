@@ -3,7 +3,7 @@
  * chaîne des pièces d'un BC, comparateur de devis. Les tuiles, panneaux et barres
  * (prj-kpi, prj-panel, prj-bar, prj-pill…) viennent de la feuille partagée projects.css.
  */
-.pur-circuit { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.pur-circuit { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; }
 .pur-stage { width: 100%; height: 100%; display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--odoo-border); background: color-mix(in srgb, var(--odoo-text-muted) 4%, var(--theme-bg-card)); text-align: left; font: inherit; color: inherit; cursor: pointer; transition: border-color .15s; }
 .pur-stage:hover, .pur-stage:focus-visible { border-color: var(--odoo-purple); outline: none; }
 .pur-stage.orange { border-color: color-mix(in srgb, var(--prj-orange) 35%, transparent); background: color-mix(in srgb, var(--prj-orange) 6%, var(--theme-bg-card)); }

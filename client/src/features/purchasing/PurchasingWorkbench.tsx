@@ -90,7 +90,7 @@ export default function PurchasingWorkbench({ onOpenTab, onOpenInvoice }: {
       due: r.response_deadline ? `clôture ${day(r.response_deadline)}` : undefined, late: r.is_overdue, urgent: r.is_overdue, action: 'Comparer', run: () => onOpenTab('rfq'),
     });
     for (const inv of blocked?.rows ?? []) out.push({
-      key: `blk-${inv.id}`, kind: 'inv', kindLabel: 'Facture', title: inv.blocking_holds ? `Paiement bloqué : ${inv.blocking_holds}` : 'Paiement bloqué', ref: inv.invoice_number, who: inv.supplier_name,
+      key: `blk-${inv.id}`, kind: 'inv', kindLabel: 'Facture', title: Number(inv.blocking_holds) > 1 ? `Paiement bloqué · ${inv.blocking_holds} blocages` : 'Paiement bloqué · écart ou litige à lever', ref: inv.invoice_number, who: inv.supplier_name,
       amount: Number(inv.total_amount) - Number(inv.paid_amount ?? 0), due: inv.due_date ? `échéance ${day(inv.due_date)}` : undefined, gap: true, action: 'Vérifier',
       run: () => onOpenInvoice({ search: inv.invoice_number, view: 'open' }),
     });
