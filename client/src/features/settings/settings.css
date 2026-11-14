@@ -449,7 +449,7 @@
 .odoo-params-seg button.on.off { background: var(--odoo-bg-alt); color: var(--odoo-text); }
 .odoo-params-seg button.on.warn { background: #fff1e6; color: #b85d1a; }
 .odoo-params-seg button.on.block { background: #fdecea; color: #c0392b; }
-.odoo-params-seg button.on.on { background: var(--odoo-purple-light); color: var(--odoo-purple); }
+.odoo-params-seg button.on.accent { background: var(--odoo-purple-light); color: var(--odoo-purple); }
 .odoo-params-extra { padding: 0.75rem 1rem 1rem; border-top: 1px solid var(--odoo-border); }
 .odoo-params-extra > div, .odoo-params-extra > section { border: none !important; padding: 0 !important; background: transparent !important; }
 .odoo-params-history { margin-top: 0.25rem; }

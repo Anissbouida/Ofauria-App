@@ -53,7 +53,7 @@ const SHORT: Record<string, string> = {
 };
 const shortLabel = (l: string) => SHORT[l] ?? l.replace(/\s*\(.*\)$/, '');
 /** Couleur d'une valeur de contrôle. */
-const tone = (v: string) => (v === 'off' ? 'off' : v === 'warn' ? 'warn' : v.startsWith('block') ? 'block' : 'on');
+const tone = (v: string) => (v === 'off' ? 'off' : v === 'warn' ? 'warn' : v.startsWith('block') ? 'block' : 'accent');
 const SEGMENT_MAX = 26;
 
 /** Aperçu propre à certains paramètres (calculé avec les valeurs en cours de saisie). */
