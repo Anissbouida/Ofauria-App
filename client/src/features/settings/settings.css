@@ -334,3 +334,77 @@
 .odoo-company-paper .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .odoo-company-preview-note { margin: 0; font-size: 0.75rem; color: var(--odoo-text-muted); }
 .odoo-company-preview-note button { color: var(--odoo-purple); }
+
+/* ═══ Établissements en cartes (après S5) ═══ */
+.odoo-stores { display: grid; gap: 1rem; min-width: 0; }
+.odoo-stores-bar { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.odoo-stores-summary { flex: 1; min-width: 220px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.875rem; font-size: 0.8125rem; color: var(--odoo-text-muted); }
+.odoo-stores-summary strong { font-size: 0.9375rem; color: var(--odoo-text); }
+.odoo-stores-summary span + span::before, .odoo-stores-summary strong + span::before { content: '·'; margin-right: 0.875rem; color: var(--odoo-border-strong); }
+.odoo-stores .odoo-view-switcher button { display: inline-flex; align-items: center; gap: 0.3rem; }
+
+.odoo-stores-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; }
+.odoo-stores-card {
+  display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem; min-width: 0;
+  border: 1px solid var(--odoo-border); border-radius: 10px; background: var(--odoo-bg); transition: border-color 0.15s, box-shadow 0.15s;
+}
+.odoo-stores-card:hover { border-color: var(--odoo-border-strong); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05); }
+.odoo-stores-card.off { opacity: 0.65; }
+.odoo-stores-card > header { display: flex; align-items: flex-start; gap: 0.75rem; }
+.odoo-stores-card-icon { width: 38px; height: 38px; border-radius: 10px; background: var(--odoo-purple-light); color: var(--odoo-purple);
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.odoo-stores-card-name { font-size: 0.9375rem; font-weight: 700; color: var(--odoo-text); display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.odoo-stores-card-name code { font-size: 0.6875rem; font-weight: 500; padding: 0 0.375rem; border-radius: 4px; background: var(--odoo-bg-alt);
+  border: 1px solid var(--odoo-border); color: var(--odoo-text-muted); }
+.odoo-stores-card-kind { display: flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: var(--odoo-text-muted); margin-top: 0.125rem; }
+.odoo-stores-dot { width: 7px; height: 7px; border-radius: 50%; background: #1e7e34; display: inline-block; }
+.odoo-stores-dot.off { background: var(--odoo-text-muted); }
+.odoo-stores-card-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3125rem; font-size: 0.8125rem; color: var(--odoo-text); }
+.odoo-stores-card-lines li { display: flex; align-items: flex-start; gap: 0.5rem; min-width: 0; overflow-wrap: anywhere; }
+.odoo-stores-card-lines svg { color: var(--odoo-text-muted); flex-shrink: 0; margin-top: 0.1875rem; }
+.odoo-stores-card-lines em { font-style: normal; color: var(--odoo-text-muted); }
+.odoo-stores-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.25rem; }
+.odoo-stores-strip span {
+  display: grid; justify-items: center; gap: 0.0625rem; padding: 0.25rem 0.125rem; border-radius: 6px; font-size: 0.625rem; line-height: 1.2;
+  background: #e6f4ea; color: #1e7e34; text-align: center; overflow: hidden;
+}
+.odoo-stores-strip span b { font-size: 0.6875rem; }
+.odoo-stores-strip span.closed { background: var(--odoo-bg-alt); color: var(--odoo-text-muted); }
+.odoo-stores-strip span.today { outline: 2px solid var(--odoo-purple); outline-offset: -2px; }
+.odoo-stores-add-hours {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.375rem; padding: 0.5rem; border-radius: 6px;
+  border: 1px dashed var(--odoo-border); font-size: 0.8125rem; color: var(--odoo-purple);
+}
+.odoo-stores-add-hours:hover { border-color: var(--odoo-purple); background: var(--odoo-purple-light); }
+.odoo-stores-missing { display: flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: #b85d1a; }
+.odoo-stores-card > footer { margin-top: auto; display: flex; gap: 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--odoo-border); }
+.odoo-stores-card > footer .odoo-btn-secondary { display: inline-flex; align-items: center; gap: 0.3rem; }
+.odoo-stores-empty {
+  display: grid; justify-items: center; gap: 0.5rem; padding: 2.5rem 1rem; text-align: center;
+  border: 1px dashed var(--odoo-border); border-radius: 10px; color: var(--odoo-text-muted); font-size: 0.8125rem;
+}
+.odoo-stores-empty strong { color: var(--odoo-text); font-size: 0.9375rem; }
+.odoo-stores-empty .odoo-btn-primary { display: inline-flex; align-items: center; gap: 0.3rem; }
+
+.odoo-stores-editor { display: grid; gap: 0.875rem; padding: 1rem; border: 1px solid var(--odoo-purple); border-radius: 10px; background: var(--odoo-bg-alt); scroll-margin-top: 1rem; }
+.odoo-stores-editor-head { display: flex; align-items: center; gap: 0.5rem; font-size: 1rem; font-weight: 700; color: var(--odoo-text); }
+.odoo-stores-editor-head svg { color: var(--odoo-purple); }
+.odoo-stores-editor-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+.odoo-stores-toggles { display: flex; flex-wrap: wrap; gap: 0.75rem 2rem; padding: 0 1rem 1rem; }
+.odoo-stores-toggles label { display: flex; align-items: flex-start; gap: 0.625rem; font-size: 0.8125rem; font-weight: 600; color: var(--odoo-text); cursor: pointer; }
+.odoo-stores-toggles small { display: block; font-size: 0.75rem; font-weight: 400; color: var(--odoo-text-muted); }
+.odoo-stores-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: var(--odoo-text-muted); }
+.odoo-stores-quick button { padding: 0.125rem 0.5rem; border: 1px solid var(--odoo-border); border-radius: 999px; background: var(--odoo-bg); color: var(--odoo-text); }
+.odoo-stores-quick button:hover { border-color: var(--odoo-purple); color: var(--odoo-purple); }
+.odoo-stores-week { display: grid; gap: 0.375rem; }
+.odoo-stores-day { display: grid; grid-template-columns: 100px 110px minmax(0, 1fr); align-items: center; gap: 0.75rem; padding: 0.375rem 0.5rem; border-radius: 6px; }
+.odoo-stores-day:nth-child(odd) { background: var(--odoo-bg-alt); }
+.odoo-stores-day-name { font-size: 0.8125rem; font-weight: 600; color: var(--odoo-text); }
+.odoo-stores-day.closed .odoo-stores-day-name { color: var(--odoo-text-muted); }
+.odoo-stores-day-open { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; color: var(--odoo-text-muted); }
+.odoo-stores-day-times { display: inline-flex; align-items: center; gap: 0.375rem; }
+.odoo-stores-day-times .odoo-input { width: 110px; }
+@media (max-width: 760px) {
+  .odoo-stores-day { grid-template-columns: 1fr auto; }
+  .odoo-stores-day-times { grid-column: 1 / -1; }
+}
