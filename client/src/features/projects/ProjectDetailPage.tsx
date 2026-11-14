@@ -16,7 +16,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import {
-  ProjectFormModal, TaskFormModal, TimeEntryForm, n2, n0, h1, initials, PRIORITY_TAG, projectRevenue, consumption, usageTone,
+  ProjectFormModal, TaskFormModal, TimeEntryForm, TaskBoard, n2, n0, h1, PRIORITY_TAG, projectRevenue, consumption, usageTone,
 } from './shared';
 
 /**
@@ -25,9 +25,6 @@ import {
  * informations et activité récente (reconstituée à partir des tâches, du temps et des factures).
  */
 type Tab = 'tasks' | 'time' | 'purchases' | 'notes';
-const LANES: Array<{ status: TaskStatus; label: string; tone: string }> = [
-  { status: 'todo', label: 'À faire', tone: 'grey' }, { status: 'in_progress', label: 'En cours', tone: '' }, { status: 'done', label: 'Terminé', tone: 'green' },
-];
 const TASK_LAYOUT_KEY = 'kalum.projects.taskLayout';
 const fmtDay = (d: string | null | undefined) => (d ? format(new Date(d), 'd MMM yyyy', { locale: fr }) : null);
 
@@ -47,7 +44,6 @@ export default function ProjectDetailPage() {
   const [tab, setTab] = useState<Tab>('tasks');
   const [taskLayout, setTaskLayoutState] = useState<'board' | 'list'>(() => { try { return localStorage.getItem(TASK_LAYOUT_KEY) === 'list' ? 'list' : 'board'; } catch { return 'board'; } });
   const setTaskLayout = (l: 'board' | 'list') => { setTaskLayoutState(l); try { localStorage.setItem(TASK_LAYOUT_KEY, l); } catch { /* commodité seulement */ } };
-  const [dragOver, setDragOver] = useState<TaskStatus | null>(null);
   const refresh = () => { qc.invalidateQueries({ queryKey: ['project', id] }); qc.invalidateQueries({ queryKey: ['projects'] }); qc.invalidateQueries({ queryKey: ['project-time'] }); qc.invalidateQueries({ queryKey: ['project-tasks'] }); qc.invalidateQueries({ queryKey: ['project-invoices', id] }); };
   const unlinkInvoice = useMutation({ mutationFn: (invId: string) => projectsApi.unlinkInvoice(id, invId), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
   const setStatus = useMutation({ mutationFn: (s: ProjectStatus) => projectsApi.setStatus(id, s), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
@@ -90,13 +86,6 @@ export default function ProjectDetailPage() {
   // Rentabilité : achats + main-d'œuvre + marge, sur la plus grande des deux bornes.
   const scale = Math.max(revenue, totalCost) || 1;
   const seg = (v: number) => `${Math.max(v, 0) / scale * 100}%`;
-
-  const onDrop = (status: TaskStatus) => (e: React.DragEvent) => {
-    e.preventDefault(); setDragOver(null);
-    const taskId = e.dataTransfer.getData('text/plain');
-    const t = tasks.find(x => x.id === taskId);
-    if (t && t.status !== status) setTaskStatus.mutate({ taskId, status });
-  };
 
   return (
     <div className="odoo-scope" style={{ minHeight: '100%' }}>
@@ -203,34 +192,8 @@ export default function ProjectDetailPage() {
               {tab === 'tasks' && (tasks.length === 0 ? (
                 <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune tâche. Découpez le projet en étapes à affecter.</p>
               ) : taskLayout === 'board' ? (
-                <div className="prj-board">
-                  {LANES.map(lane => {
-                    const list = tasks.filter(t => t.status === lane.status);
-                    return (
-                      <div key={lane.status} className={`prj-lane${dragOver === lane.status ? ' over' : ''}`}
-                        onDragOver={editable ? e => { e.preventDefault(); setDragOver(lane.status); } : undefined}
-                        onDragLeave={() => setDragOver(d => (d === lane.status ? null : d))}
-                        onDrop={editable ? onDrop(lane.status) : undefined}>
-                        <div className="prj-lane-head"><span className={`prj-dot ${lane.tone}`} /><strong>{lane.label}</strong><small>{list.length}</small></div>
-                        {list.map(t => (
-                          <button key={t.id} type="button" className={`prj-task${t.status === 'done' ? ' done' : ''}`} draggable={editable}
-                            onDragStart={e => { e.dataTransfer.setData('text/plain', t.id); e.dataTransfer.effectAllowed = 'move'; }}
-                            onClick={() => editable && setTaskModal({ task: t })} title={editable ? 'Glisser pour changer de colonne · cliquer pour modifier' : undefined}>
-                            <span className="prj-task-title">{t.title}</span>
-                            <span className="prj-task-meta">
-                              <span className={`prj-prio ${t.priority}`}>{PRIORITY_LABELS[t.priority]}</span>
-                              <span style={{ flex: 1 }}>
-                                {t.due_date && <span className={t.is_overdue ? 'late' : ''}>{format(new Date(t.due_date), 'd MMM', { locale: fr })}</span>}
-                                {Number(t.hours_spent) > 0 || t.estimated_hours ? ` · ${h1(t.hours_spent)}${t.estimated_hours ? ` / ${h1(t.estimated_hours)}` : ''} h` : ''}
-                              </span>
-                              {t.assignee_name && <span className="prj-avatar" title={t.assignee_name}>{initials(t.assignee_name)}</span>}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    );
-                  })}
-                </div>
+                <TaskBoard tasks={tasks} editable={editable} onMove={(taskId, status) => setTaskStatus.mutate({ taskId, status })}
+                  onOpen={t => editable && setTaskModal({ task: t })} />
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <table className="odoo-table">

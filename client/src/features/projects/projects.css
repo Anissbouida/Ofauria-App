@@ -147,3 +147,12 @@
 .prj-gantt-today { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--prj-red); z-index: 1; pointer-events: none; }
 .prj-gantt-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.8125rem; color: var(--odoo-text-muted); }
 .prj-gantt-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.prj-lane-empty { font-size: 0.75rem; color: var(--odoo-text-muted); padding: 10px 6px; text-align: center; border: 1px dashed var(--odoo-border); border-radius: 6px; }
+.prj-panel-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--odoo-border); font-size: 0.9375rem; font-weight: 600; }
+.prj-panel-head small { font-weight: 400; color: var(--odoo-text-muted); font-size: 0.8125rem; }
+.prj-panel > .odoo-table, .prj-panel .prj-scroll > .odoo-table { margin: 0; }
+.prj-scroll { overflow-x: auto; }
+.prj-panel-body { padding: 14px 16px; }
+.prj-note { margin: 0; font-size: 0.8125rem; color: var(--odoo-text-muted); }
+.prj-inline-bar { display: inline-block; vertical-align: middle; width: 64px; height: 6px; border-radius: 3px; background: var(--prj-track); overflow: hidden; margin-left: 8px; }
+.prj-inline-bar > span { display: block; height: 100%; }

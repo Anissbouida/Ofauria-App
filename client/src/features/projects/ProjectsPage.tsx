@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, FolderKanban, ListChecks, Timer, BarChart3, Database, Plus, Search, Loader2, CheckCircle2, AlertTriangle, Clock, Trash2, LayoutGrid, List, GanttChartSquare,
+  LayoutDashboard, FolderKanban, ListChecks, Timer, BarChart3, Database, Plus, Search, Loader2, CheckCircle2, AlertTriangle, Clock, Trash2, LayoutGrid, List, GanttChartSquare, Columns3,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  projectsApi, PROJECT_STATUS_LABELS, TASK_STATUS_LABELS, type Project, type ProjectStatus, type TaskStatus,
+  projectsApi, PROJECT_STATUS_LABELS, TASK_STATUS_LABELS, PRIORITY_LABELS, type Project, type ProjectStatus, type TaskStatus,
 } from '../../api/projects.api';
 import { apiErrorMessage } from '../../api/errors';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -18,7 +18,7 @@ import { PeriodFilter, Pager, periodParams, periodLabel, type PeriodKey } from '
 import { useAuth } from '../../context/AuthContext';
 import ProjectsPlanning from './ProjectsPlanning';
 import {
-  ProjectFormModal, TimeEntryForm, Meter, n2, n0, h1, initials, PRIORITY_TAG, projectHealth, consumption, usageTone, needsAttention, projectRevenue, projectCost,
+  ProjectFormModal, TimeEntryForm, TaskBoard, Kpi, Meter, n2, n0, h1, initials, projectHealth, consumption, usageTone, needsAttention, projectRevenue, projectCost,
 } from './shared';
 
 /**
@@ -216,108 +216,114 @@ function Overview() {
   const { data, isLoading } = useQuery({ queryKey: ['projects', 'overview', range], queryFn: () => projectsApi.overview(range) });
   const { data: tasks = [] } = useQuery({ queryKey: ['project-tasks', 'open', 'overview'], queryFn: () => projectsApi.openTasks({ limit: '8' }) });
   if (isLoading || !data) return <Loading />;
-  const kpi = (label: string, value: string, sub?: string, danger?: boolean) => (
-    <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-      <div className="odoo-stat-card-label">{label}</div>
-      <div className="odoo-stat-card-value" style={{ color: danger ? '#dc3545' : undefined }}>{value}</div>
-      {sub && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{sub}</div>}
-    </div>
-  );
   const margin = Number(data.time.amount) - Number(data.time.cost);
   return (
-    <>
-      <div className="odoo-search-panel" style={{ margin: 0, flexWrap: 'wrap', rowGap: 8 }}>
+    <div className="prj">
+      <div className="prj-toolbar">
         <PeriodFilter label="Temps passé" title="Période des heures" period={period} onPeriod={setPeriod} from={from} onFrom={setFrom} to={to} onTo={setTo} />
-        <strong style={{ fontSize: '0.8125rem' }}>{periodLabel(period, from, to)}</strong>
+        <strong style={{ fontSize: '0.875rem' }}>{periodLabel(period, from, to)}</strong>
       </div>
-      <div className="odoo-stat-grid">
-        {kpi('Projets en cours', String(data.projects.active + data.projects.on_hold), `${data.projects.draft} brouillon(s)`)}
-        {kpi('Projets en retard', String(data.projects.overdue), 'échéance dépassée', data.projects.overdue > 0)}
-        {kpi('Tâches ouvertes', String(data.tasks.open), `${data.tasks.overdue} en retard`, data.tasks.overdue > 0)}
-        {kpi('Heures sur la période', `${h1(data.time.hours)} h`, `coût ${n2(data.time.cost)} DH`)}
-        {kpi('Facturable sur la période', `${n2(data.time.amount)} DH`, `marge ${n2(margin)} DH`, margin < 0)}
-        {kpi('Reste à facturer', `${n2(data.time.unbilled)} DH`, 'temps facturable non facturé')}
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <Kpi label="Projets en cours" value={String(data.projects.active + data.projects.on_hold)} sub={`${data.projects.draft} brouillon${data.projects.draft > 1 ? 's' : ''} à lancer`} />
+        <Kpi label="Projets en retard" value={String(data.projects.overdue)} sub="échéance dépassée" tone={data.projects.overdue > 0 ? 'red' : undefined} />
+        <Kpi label="Tâches ouvertes" value={String(data.tasks.open)} sub={`${data.tasks.overdue} en retard`} tone={data.tasks.overdue > 0 ? 'red' : undefined} />
+        <Kpi label="Heures sur la période" value={`${h1(data.time.hours)} h`} sub={`coût ${n0(data.time.cost)} DH`} />
+        <Kpi label="Facturable sur la période" value={`${n0(data.time.amount)} DH`} sub={`marge ${n0(margin)} DH`} tone={margin < 0 ? 'red' : undefined} />
+        <Kpi label="Reste à facturer" value={`${n0(data.time.unbilled)} DH`} sub="temps facturable non facturé" />
+      </section>
+      <div className="prj-columns">
+        <section className="prj-main" style={{ display: 'grid', gap: 12 }} aria-label="Projets en cours">
+          <div className="prj-panel-head" style={{ padding: 0, border: 0 }}>Projets en cours <small>{data.active.length}</small></div>
+          {data.active.length === 0
+            ? <p className="prj-note">Aucun projet en cours.</p>
+            : <div className="prj-cards">{data.active.map(p => <ProjectCard key={p.id} p={p} />)}</div>}
+        </section>
+        <aside className="prj-aside">
+          <section className="prj-panel">
+            <h2>Prochaines tâches</h2>
+            {tasks.length === 0 ? <p className="prj-note">Aucune tâche ouverte.</p> : (
+              <ul className="prj-feed">
+                {tasks.map(t => (
+                  <li key={t.id}>
+                    {t.is_overdue ? <AlertTriangle size={14} style={{ color: 'var(--prj-red)', flex: 'none', marginTop: 2 }} /> : <Clock size={14} style={{ color: 'var(--theme-text-muted)', flex: 'none', marginTop: 2 }} />}
+                    <button type="button" onClick={() => navigate(`/projects/${t.project_id}`)} style={{ flex: 1, minWidth: 0, background: 'none', border: 0, padding: 0, font: 'inherit', color: 'inherit', textAlign: 'left', cursor: 'pointer' }}>
+                      <strong style={{ fontWeight: 500 }}>{t.title}</strong>
+                      <small>{t.project_name}{t.assignee_name ? ` · ${t.assignee_name}` : ''}{t.due_date ? ` · ${format(new Date(t.due_date), 'd MMM', { locale: fr })}` : ''}</small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </aside>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16 }}>
-        <div>
-          <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}><FolderKanban size={12} /> Projets en cours</div>
-          {data.active.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucun projet en cours.</p> : (
-            <table className="odoo-table">
-              <thead><tr><th>Projet</th><th>Client</th><th>Échéance</th><th>Avancement</th><th style={{ textAlign: 'right' }}>Heures</th></tr></thead>
-              <tbody>{data.active.map(p => (
-                <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)} style={{ cursor: 'pointer' }}>
-                  <td><strong>{p.name}</strong> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{p.number}</span></td>
-                  <td>{p.customer_label || '—'}</td>
-                  <td style={{ color: p.is_overdue ? '#dc3545' : undefined }}>{p.due_date ? format(new Date(p.due_date), 'dd/MM') : '—'}</td>
-                  <td><Progress p={p} /></td>
-                  <td style={{ textAlign: 'right' }}>{h1(p.hours_spent)} h</td>
-                </tr>
-              ))}</tbody>
-            </table>
-          )}
-        </div>
-        <div>
-          <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}><ListChecks size={12} /> Prochaines tâches</div>
-          {tasks.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune tâche ouverte.</p> : (
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
-              {tasks.map(t => (
-                <li key={t.id} onClick={() => navigate(`/projects/${t.project_id}`)} style={{ cursor: 'pointer', fontSize: '0.8125rem', display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {t.is_overdue ? <AlertTriangle size={13} style={{ color: '#dc3545' }} /> : <Clock size={13} style={{ color: 'var(--theme-text-muted)' }} />}
-                  <span style={{ flex: 1 }}><strong>{t.title}</strong> <span style={{ color: 'var(--theme-text-muted)' }}>· {t.project_name}</span></span>
-                  <span style={{ color: 'var(--theme-text-muted)' }}>{t.assignee_name || '—'}</span>
-                  <span style={{ color: t.is_overdue ? '#dc3545' : 'var(--theme-text-muted)' }}>{t.due_date ? format(new Date(t.due_date), 'dd/MM') : ''}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-    </>
+    </div>
   );
 }
+
+const TASKS_LAYOUT_KEY = 'kalum.projects.openTasksLayout';
 
 function OpenTasks() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { canEdit } = usePermissions();
   const [assignee, setAssignee] = useState('');
+  const [layout, setLayoutState] = useState<'board' | 'list'>(() => { try { return localStorage.getItem(TASKS_LAYOUT_KEY) === 'list' ? 'list' : 'board'; } catch { return 'board'; } });
+  const setLayout = (l: 'board' | 'list') => { setLayoutState(l); try { localStorage.setItem(TASKS_LAYOUT_KEY, l); } catch { /* commodité seulement */ } };
   const { data: people = [] } = useQuery({ queryKey: ['project-people'], queryFn: projectsApi.people });
   const { data: tasks = [], isLoading } = useQuery({ queryKey: ['project-tasks', 'open', assignee], queryFn: () => projectsApi.openTasks({ limit: '200', ...(assignee ? { assigneeId: assignee } : {}) }) });
   const setStatus = useMutation({
     mutationFn: (p: { id: string; status: TaskStatus }) => projectsApi.updateTask(p.id, { status: p.status }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['project-tasks'] }), onError: e => notify.error(apiErrorMessage(e)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['project-tasks'] }); qc.invalidateQueries({ queryKey: ['projects'] }); }, onError: e => notify.error(apiErrorMessage(e)),
   });
+  const late = tasks.filter(t => t.is_overdue).length;
+  const doing = tasks.filter(t => t.status === 'in_progress').length;
+  const unassigned = tasks.filter(t => !t.assignee_id).length;
   return (
-    <>
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
-        <select className="odoo-filter-dropdown" value={assignee} onChange={e => setAssignee(e.target.value)}>
+    <div className="prj">
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <Kpi label="Tâches ouvertes" value={String(tasks.length)} sub={`${doing} en cours`} />
+        <Kpi label="En retard" value={String(late)} sub="échéance dépassée" tone={late ? 'red' : undefined} />
+        <Kpi label="Sans responsable" value={String(unassigned)} sub="à affecter" />
+      </section>
+      <div className="prj-toolbar">
+        <select className="odoo-filter-dropdown" aria-label="Affectée à" value={assignee} onChange={e => setAssignee(e.target.value)} style={{ height: 38 }}>
           <option value="">Tout le monde</option>
           {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
-        <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{tasks.length} tâche{tasks.length > 1 ? 's' : ''} ouverte{tasks.length > 1 ? 's' : ''}, retards d'abord</span>
+        <span className="prj-note" style={{ flex: 1 }}>Projets en brouillon ou en cours, retards d’abord.</span>
+        <div className="prj-views" role="group" aria-label="Affichage">
+          <button type="button" className={layout === 'board' ? 'active' : ''} aria-pressed={layout === 'board'} onClick={() => setLayout('board')}><Columns3 size={14} /> Kanban</button>
+          <button type="button" className={layout === 'list' ? 'active' : ''} aria-pressed={layout === 'list'} onClick={() => setLayout('list')}><List size={14} /> Liste</button>
+        </div>
       </div>
       {isLoading ? <Loading /> : tasks.length === 0 ? (
         <StatusBanner tone="success" icon={CheckCircle2} title="Aucune tâche ouverte">Tout est fait, ou rien n'est encore planifié.</StatusBanner>
+      ) : layout === 'board' ? (
+        <TaskBoard tasks={tasks} editable={canEdit('projects')} showProject onMove={(id, status) => setStatus.mutate({ id, status })} onOpen={t => navigate(`/projects/${t.project_id}`)} />
       ) : (
-        <table className="odoo-table">
-          <thead><tr><th>Tâche</th><th>Projet</th><th>Affectée à</th><th>Priorité</th><th>Échéance</th><th>Statut</th><th style={{ textAlign: 'right' }}>Heures</th></tr></thead>
-          <tbody>{tasks.map(t => (
-            <tr key={t.id}>
-              <td><strong>{t.title}</strong></td>
-              <td onClick={() => navigate(`/projects/${t.project_id}`)} style={{ cursor: 'pointer', color: 'var(--odoo-purple)' }}>{t.project_name}</td>
-              <td>{t.assignee_name || '—'}</td>
-              <td><span className={`odoo-tag ${PRIORITY_TAG[t.priority]}`}>{t.priority}</span></td>
-              <td style={{ color: t.is_overdue ? '#dc3545' : undefined, fontWeight: t.is_overdue ? 600 : 400 }}>{t.due_date ? format(new Date(t.due_date), 'dd/MM/yyyy') : '—'}</td>
-              <td>
-                <select className="odoo-filter-dropdown" value={t.status} onChange={e => setStatus.mutate({ id: t.id, status: e.target.value as TaskStatus })}>
-                  {Object.entries(TASK_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </td>
-              <td style={{ textAlign: 'right' }}>{h1(t.hours_spent)}{t.estimated_hours ? ` / ${h1(t.estimated_hours)}` : ''} h</td>
-            </tr>
-          ))}</tbody>
-        </table>
+        <section className="prj-panel prj-scroll">
+          <table className="odoo-table">
+            <thead><tr><th>Tâche</th><th>Projet</th><th>Affectée à</th><th>Priorité</th><th>Échéance</th><th>Statut</th><th style={{ textAlign: 'right' }}>Heures</th></tr></thead>
+            <tbody>{tasks.map(t => (
+              <tr key={t.id}>
+                <td><strong>{t.title}</strong></td>
+                <td><button type="button" onClick={() => navigate(`/projects/${t.project_id}`)} style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'var(--odoo-purple)', cursor: 'pointer' }}>{t.project_name}</button></td>
+                <td>{t.assignee_name || '—'}</td>
+                <td><span className={`prj-prio ${t.priority}`}>{PRIORITY_LABELS[t.priority]}</span></td>
+                <td style={{ color: t.is_overdue ? 'var(--prj-red)' : undefined, fontWeight: t.is_overdue ? 600 : 400 }}>{t.due_date ? format(new Date(t.due_date), 'dd/MM/yyyy') : '—'}</td>
+                <td>
+                  <select className="odoo-filter-dropdown" aria-label="Statut" value={t.status} disabled={!canEdit('projects')} onChange={e => setStatus.mutate({ id: t.id, status: e.target.value as TaskStatus })}>
+                    {Object.entries(TASK_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </td>
+                <td style={{ textAlign: 'right' }}>{h1(t.hours_spent)}{t.estimated_hours ? ` / ${h1(t.estimated_hours)}` : ''} h</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </section>
       )}
-    </>
+    </div>
   );
 }
 
@@ -334,41 +340,56 @@ function TimeSheet() {
   if (employee) params.employeeId = employee;
   const { data, isLoading } = useQuery({ queryKey: ['project-time', params], queryFn: () => projectsApi.listTime(params) });
   const del = useMutation({ mutationFn: (id: string) => projectsApi.deleteTime(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ['project-time'] }); qc.invalidateQueries({ queryKey: ['projects'] }); }, onError: e => notify.error(apiErrorMessage(e)) });
+  const margin = data ? Number(data.amount) - Number(data.cost) : 0;
   return (
-    <>
-      {canEdit('projects') && <TimeEntryForm />}
-      <div className="odoo-search-panel" style={{ margin: 0, flexWrap: 'wrap', rowGap: 8 }}>
+    <div className="prj">
+      <div className="prj-toolbar">
         <PeriodFilter label="Période" title="Dates de travail" period={period} onPeriod={setPeriod} from={from} onFrom={setFrom} to={to} onTo={setTo} />
-        <select className="odoo-filter-dropdown" value={employee} onChange={e => setEmployee(e.target.value)}>
+        <select className="odoo-filter-dropdown" aria-label="Personne" value={employee} onChange={e => setEmployee(e.target.value)} style={{ height: 38 }}>
           <option value="">Tout le monde</option>
           {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
-        {data && <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}><strong>{h1(data.hours)} h</strong> · coût {n2(data.cost)} DH · facturable {n2(data.amount)} DH</span>}
+        <strong style={{ fontSize: '0.875rem' }}>{periodLabel(period, from, to)}</strong>
       </div>
-      {isLoading ? <Loading /> : !data?.rows.length ? (
-        <StatusBanner tone="info" icon={Timer} title="Aucun temps saisi">Déclarez les heures passées sur un projet avec le formulaire ci-dessus.</StatusBanner>
-      ) : (
-        <>
-          <table className="odoo-table">
-            <thead><tr><th>Date</th><th>Qui</th><th>Projet</th><th>Tâche / activité</th><th>Note</th><th style={{ textAlign: 'right' }}>Heures</th><th style={{ textAlign: 'right' }}>Coût</th><th style={{ textAlign: 'right' }}>Facturable</th><th /></tr></thead>
-            <tbody>{data.rows.map(t => (
-              <tr key={t.id}>
-                <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(t.work_date), 'EEE dd/MM', { locale: fr })}</td>
-                <td>{t.employee_name}</td>
-                <td>{t.project_name}</td>
-                <td>{t.task_title || t.activity_label || '—'}</td>
-                <td style={{ color: 'var(--theme-text-muted)' }}>{t.note || ''}</td>
-                <td style={{ textAlign: 'right' }}>{h1(t.hours)}</td>
-                <td style={{ textAlign: 'right' }}>{n2(t.cost)}</td>
-                <td style={{ textAlign: 'right' }}>{t.billable ? n2(t.amount) : <span style={{ color: 'var(--theme-text-muted)' }}>non fact.</span>}</td>
-                <td>{!t.invoice_id && canEdit('projects') && <button className="odoo-btn-secondary" title="Supprimer" onClick={() => del.mutate(t.id)}><Trash2 size={12} /></button>}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-          <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} ligne${data.total > 1 ? 's' : ''}`} />
-        </>
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <Kpi label="Heures" value={data ? `${h1(data.hours)} h` : '…'} sub={data ? `${data.total} saisie${data.total > 1 ? 's' : ''}` : undefined} />
+        <Kpi label="Coût" value={data ? `${n0(data.cost)} DH` : '…'} sub="heures × coût horaire" />
+        <Kpi label="Facturable" value={data ? `${n0(data.amount)} DH` : '…'} sub="heures facturables × taux" />
+        <Kpi label="Marge sur le temps" value={data ? `${n0(margin)} DH` : '…'} tone={data ? (margin < 0 ? 'red' : 'green') : undefined} />
+      </section>
+      {canEdit('projects') && (
+        <section className="prj-panel">
+          <div className="prj-panel-head">Saisir du temps</div>
+          <div className="prj-panel-body"><TimeEntryForm /></div>
+        </section>
       )}
-    </>
+      {isLoading ? <Loading /> : !data?.rows.length ? (
+        <StatusBanner tone="info" icon={Timer} title="Aucun temps saisi">Aucune heure sur cette période.</StatusBanner>
+      ) : (
+        <section className="prj-panel">
+          <div className="prj-panel-head">Saisies <small>{data.total}</small></div>
+          <div className="prj-scroll">
+            <table className="odoo-table">
+              <thead><tr><th>Date</th><th>Qui</th><th>Projet</th><th>Tâche / activité</th><th>Note</th><th style={{ textAlign: 'right' }}>Heures</th><th style={{ textAlign: 'right' }}>Coût</th><th style={{ textAlign: 'right' }}>Facturable</th><th /></tr></thead>
+              <tbody>{data.rows.map(t => (
+                <tr key={t.id}>
+                  <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(t.work_date), 'EEE dd/MM', { locale: fr })}</td>
+                  <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span className="prj-avatar">{initials(t.employee_name)}</span>{t.employee_name}</span></td>
+                  <td>{t.project_name}</td>
+                  <td>{t.task_title || t.activity_label || '—'}</td>
+                  <td style={{ color: 'var(--theme-text-muted)' }}>{t.note || ''}</td>
+                  <td style={{ textAlign: 'right' }}>{h1(t.hours)}</td>
+                  <td style={{ textAlign: 'right' }}>{n2(t.cost)}</td>
+                  <td style={{ textAlign: 'right' }}>{t.billable ? n2(t.amount) : <span style={{ color: 'var(--theme-text-muted)' }}>non fact.</span>}</td>
+                  <td>{!t.invoice_id && canEdit('projects') && <button className="odoo-btn-secondary" title="Supprimer" aria-label="Supprimer la saisie" onClick={() => del.mutate(t.id)}><Trash2 size={12} /></button>}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} ligne${data.total > 1 ? 's' : ''}`} />
+        </section>
+      )}
+    </div>
   );
 }
 
@@ -377,32 +398,40 @@ function Profitability() {
   const { data, isLoading } = useQuery({ queryKey: ['projects', 'profitability'], queryFn: () => projectsApi.list({ pageSize: '100' }) });
   if (isLoading || !data) return <Loading />;
   const rows = data.rows.filter(p => p.status !== 'cancelled');
-  const revenue = (p: Project) => (p.billing_type === 'fixed' ? Number(p.budget_amount ?? 0) : p.billing_type === 'time' ? Number(p.billable_amount) : 0);
+  const billed = rows.filter(p => projectRevenue(p) > 0);
+  const rev = billed.reduce((t, p) => t + projectRevenue(p), 0);
+  const cost = billed.reduce((t, p) => t + projectCost(p), 0);
+  const m = rev - cost;
   return (
-    <>
-      <StatusBanner tone="info" icon={BarChart3} title="Coût réel = heures × coût horaire des personnes">
-        Facturable = forfait du projet, ou heures facturables × taux. La marge ne compte pas encore les achats affectés au projet.
-      </StatusBanner>
-      <table className="odoo-table">
-        <thead><tr><th>Projet</th><th>Client</th><th>Statut</th><th style={{ textAlign: 'right' }}>Heures</th><th style={{ textAlign: 'right' }}>Prévu</th><th style={{ textAlign: 'right' }}>Coût réel</th><th style={{ textAlign: 'right' }}>Facturable</th><th style={{ textAlign: 'right' }}>Marge</th><th style={{ textAlign: 'right' }}>Marge %</th></tr></thead>
-        <tbody>{rows.map(p => {
-          const rev = revenue(p); const cost = Number(p.cost_spent); const m = rev - cost;
-          return (
-            <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)} style={{ cursor: 'pointer' }}>
-              <td><strong>{p.name}</strong> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{p.number}</span></td>
-              <td>{p.customer_label || '—'}</td>
-              <td><span className={`odoo-tag ${STATUS_TAG[p.status]}`}>{PROJECT_STATUS_LABELS[p.status]}</span></td>
-              <td style={{ textAlign: 'right' }}>{h1(p.hours_spent)}{p.estimated_hours ? ` / ${h1(p.estimated_hours)}` : ''}</td>
-              <td style={{ textAlign: 'right' }}>{p.estimated_hours ? `${h1(p.estimated_hours)} h` : '—'}</td>
-              <td style={{ textAlign: 'right' }}>{n2(cost)}</td>
-              <td style={{ textAlign: 'right' }}>{rev ? n2(rev) : '—'}</td>
-              <td style={{ textAlign: 'right', color: m < 0 ? '#dc3545' : '#28a745', fontWeight: 600 }}>{rev ? n2(m) : '—'}</td>
-              <td style={{ textAlign: 'right' }}>{rev ? `${Math.round((m / rev) * 100)} %` : '—'}</td>
-            </tr>
-          );
-        })}</tbody>
-      </table>
-    </>
+    <div className="prj">
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <Kpi label="Recette attendue" value={`${n0(rev)} DH`} sub={`${billed.length} projet${billed.length > 1 ? 's' : ''} facturé${billed.length > 1 ? 's' : ''}`} />
+        <Kpi label="Coûts engagés" value={`${n0(cost)} DH`} sub="main-d’œuvre + achats rattachés" />
+        <Kpi label="Marge" value={`${n0(m)} DH`} tone={rev ? (m < 0 ? 'red' : 'green') : undefined} />
+        <Kpi label="Marge moyenne" value={rev ? `${Math.round(m / rev * 100)} %` : '—'} tone={rev ? (m < 0 ? 'red' : 'green') : undefined} />
+      </section>
+      <p className="prj-note">Recette = forfait, ou heures facturables × taux. Coûts = heures × coût horaire + factures fournisseurs rattachées.</p>
+      <section className="prj-panel prj-scroll">
+        <table className="odoo-table">
+          <thead><tr><th>Projet</th><th>Client</th><th>Statut</th><th style={{ textAlign: 'right' }}>Heures</th><th style={{ textAlign: 'right' }}>Coûts</th><th style={{ textAlign: 'right' }}>Recette</th><th style={{ textAlign: 'right' }}>Marge</th><th>Marge %</th></tr></thead>
+          <tbody>{rows.map(p => {
+            const r = projectRevenue(p); const c = projectCost(p); const mm = r - c; const pct = r ? Math.round((mm / r) * 100) : null;
+            return (
+              <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)} style={{ cursor: 'pointer' }}>
+                <td><strong>{p.name}</strong> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{p.number}</span></td>
+                <td>{p.customer_label || '—'}</td>
+                <td><span className={`prj-pill ${p.status}`}>{PROJECT_STATUS_LABELS[p.status]}</span></td>
+                <td style={{ textAlign: 'right' }}>{h1(p.hours_spent)}{p.estimated_hours ? ` / ${h1(p.estimated_hours)}` : ''}</td>
+                <td style={{ textAlign: 'right' }}>{n2(c)}</td>
+                <td style={{ textAlign: 'right' }}>{r ? n2(r) : '—'}</td>
+                <td style={{ textAlign: 'right', color: r ? (mm < 0 ? 'var(--prj-red)' : 'var(--prj-green)') : undefined, fontWeight: 600 }}>{r ? n2(mm) : '—'}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>{pct === null ? '—' : <>{pct} %<span className="prj-inline-bar" aria-hidden="true"><span style={{ width: `${Math.min(Math.max(pct, 0), 100)}%`, background: pct < 0 ? 'var(--prj-red)' : 'var(--prj-green)' }} /></span></>}</td>
+              </tr>
+            );
+          })}</tbody>
+        </table>
+      </section>
+    </div>
   );
 }
 

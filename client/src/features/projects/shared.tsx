@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, X } from 'lucide-react';
+import { fr } from 'date-fns/locale';
 import { format } from 'date-fns';
 import {
-  projectsApi, BILLING_LABELS, PRIORITY_LABELS, type BillingType, type Priority, type Project, type ProjectInput, type Task, type TaskInput,
+  projectsApi, BILLING_LABELS, PRIORITY_LABELS, type BillingType, type Priority, type Project, type ProjectInput, type Task, type TaskInput, type TaskStatus,
 } from '../../api/projects.api';
 import { customersApi } from '../../api/customers.api';
 import { apiErrorMessage } from '../../api/errors';
@@ -70,6 +71,72 @@ export function Meter({ label, value, pct, tone }: { label: string; value: strin
       <div className={`prj-bar ${tone ?? ''}`} role="progressbar" aria-label={label} aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
         <span style={{ width: `${Math.min(Math.max(pct, 0), 100)}%` }} />
       </div>
+    </div>
+  );
+}
+
+const LANES: Array<{ status: TaskStatus; label: string; tone: string; empty: string }> = [
+  { status: 'todo', label: 'À faire', tone: 'grey', empty: 'Rien à faire' },
+  { status: 'in_progress', label: 'En cours', tone: '', empty: 'Rien en cours' },
+  { status: 'done', label: 'Terminé', tone: 'green', empty: 'Déposez une tâche ici pour la terminer' },
+];
+
+/**
+ * Kanban des tâches (fiche projet et tâches ouvertes) : une colonne par statut,
+ * glisser une carte la change de colonne, cliquer l'ouvre. `showProject` affiche
+ * le projet de chaque tâche (vue transverse).
+ */
+export function TaskBoard({ tasks, editable, onMove, onOpen, showProject }: {
+  tasks: Task[]; editable: boolean; onMove: (taskId: string, status: TaskStatus) => void;
+  onOpen?: (t: Task) => void; showProject?: boolean;
+}) {
+  const [over, setOver] = useState<TaskStatus | null>(null);
+  return (
+    <div className="prj-board">
+      {LANES.map(lane => {
+        const list = tasks.filter(t => t.status === lane.status);
+        return (
+          <div key={lane.status} className={`prj-lane${over === lane.status ? ' over' : ''}`}
+            onDragOver={editable ? e => { e.preventDefault(); setOver(lane.status); } : undefined}
+            onDragLeave={() => setOver(o => (o === lane.status ? null : o))}
+            onDrop={editable ? e => {
+              e.preventDefault(); setOver(null);
+              const id = e.dataTransfer.getData('text/plain');
+              const t = tasks.find(x => x.id === id);
+              if (t && t.status !== lane.status) onMove(id, lane.status);
+            } : undefined}>
+            <div className="prj-lane-head"><span className={`prj-dot ${lane.tone}`} /><strong>{lane.label}</strong><small>{list.length}</small></div>
+            {!list.length && <div className="prj-lane-empty">{lane.empty}</div>}
+            {list.map(t => (
+              <button key={t.id} type="button" className={`prj-task${t.status === 'done' ? ' done' : ''}`} draggable={editable}
+                onDragStart={e => { e.dataTransfer.setData('text/plain', t.id); e.dataTransfer.effectAllowed = 'move'; }}
+                onClick={() => onOpen?.(t)} title={editable ? 'Glisser pour changer de colonne · cliquer pour ouvrir' : undefined}>
+                {showProject && t.project_name && <span className="prj-card-num">{t.project_number} · {t.project_name}</span>}
+                <span className="prj-task-title">{t.title}</span>
+                <span className="prj-task-meta">
+                  <span className={`prj-prio ${t.priority}`}>{PRIORITY_LABELS[t.priority]}</span>
+                  <span style={{ flex: 1 }}>
+                    {t.due_date && <span className={t.is_overdue ? 'late' : ''}>{format(new Date(t.due_date), 'd MMM', { locale: fr })}</span>}
+                    {Number(t.hours_spent) > 0 || t.estimated_hours ? ` · ${h1(t.hours_spent)}${t.estimated_hours ? ` / ${h1(t.estimated_hours)}` : ''} h` : ''}
+                  </span>
+                  {t.assignee_name && <span className="prj-avatar" title={t.assignee_name}>{initials(t.assignee_name)}</span>}
+                </span>
+              </button>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Indicateur en tuile, commun aux rubriques du module. */
+export function Kpi({ label, value, sub, tone, aside }: { label: string; value: string; sub?: string; tone?: 'red' | 'green'; aside?: string }) {
+  return (
+    <div className="prj-kpi">
+      <div className="prj-kpi-head"><span>{label}</span>{aside && <span>{aside}</span>}</div>
+      <div className="prj-kpi-value" style={{ color: tone ? `var(--prj-${tone})` : undefined }}>{value}</div>
+      {sub && <div className="prj-kpi-sub">{sub}</div>}
     </div>
   );
 }
