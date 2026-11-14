@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Database, Loader2, ShieldCheck } from 'lucide-react';
+import { Download, Database, Loader2 } from 'lucide-react';
+import { PageNote } from './SettingsPrimitives';
 import { settingsApi } from '../../api/settings.api';
 import ImportSection from './ImportSection';
-import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 
 /**
@@ -84,10 +84,9 @@ export default function DataTab() {
       {/* ── État de la base ── */}
       <section style={card}>
         <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Database size={15} /> État de la base</div>
-        <StatusBanner tone="info" icon={ShieldCheck} title="Sauvegardes">
-          Les sauvegardes automatiques de la base sont assurées par l'hébergeur et ne sont pas visibles depuis l'application.
-          Gardez en plus un export mensuel des données et de la configuration.
-        </StatusBanner>
+        <PageNote help="Les sauvegardes automatiques de la base sont faites par l'hébergeur et ne sont pas visibles ici. Gardez en plus un export mensuel des données et de la configuration.">
+          Sauvegardes assurées par l'hébergeur ; exportez aussi chaque mois.
+        </PageNote>
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: '0.875rem' }}>
           <span>Taille : <strong>{status.size}</strong></span>
           {status.lastMigration && <span>Version de la base : <strong>{status.lastMigration.name.replace(/\.sql$/, '')}</strong></span>}

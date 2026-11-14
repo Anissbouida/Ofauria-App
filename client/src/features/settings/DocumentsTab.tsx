@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDirtyForm, useDraft } from './DirtyForms';
 import { FileText, Loader2, Eye } from 'lucide-react';
+import { PageNote } from './SettingsPrimitives';
 import { settingsApi, type DocumentTemplate } from '../../api/settings.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -25,10 +26,9 @@ export default function DocumentsTab() {
   if (isLoading) return <Loader2 className="animate-spin" size={18} />;
   return (
     <div className="odoo-scope" style={{ display: 'grid', gap: 16 }}>
-      <StatusBanner tone="neutral" icon={FileText} title="Une mise en page commune">
-        Le pied de page légal est tiré de l'onglet Société (raison sociale, forme juridique, capital, siège, RC, IF, ICE, patente)
-        et le compte bancaire du compte par défaut. Réglez ici les mentions propres à chaque pièce, puis vérifiez avec l'aperçu.
-      </StatusBanner>
+      <PageNote help="Le pied de page légal (raison sociale, forme juridique, capital, siège, RC, IF, ICE, patente) vient de la page Société, et le compte bancaire du compte par défaut. Réglez ici les mentions propres à chaque pièce, puis vérifiez avec l'aperçu.">
+        Mentions propres à chaque pièce. Le pied de page légal vient de Société.
+      </PageNote>
       {!data.length && <StatusBanner tone="warning" icon={FileText} title="Modèles indisponibles">La migration 332 n'est pas appliquée sur cette base.</StatusBanner>}
       {data.map(t => <TemplateCard key={t.doc_type} tpl={t} />)}
     </div>

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Info, History } from 'lucide-react';
+import { Save, History } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { productionMarkupApi, type MarkupConfig } from '../../api/production-markup.api';
-import { SettingsSection, SettingItem } from './SettingsPrimitives';
+import { SettingsSection, SettingItem, PageNote } from './SettingsPrimitives';
 
 type Draft = {
   globalPercent: string;
@@ -89,13 +89,10 @@ export default function ProductionMarkupTab() {
 
   return (
     <>
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex gap-2 text-sm text-blue-900 mb-6">
-        <Info size={16} className="flex-shrink-0 mt-0.5" />
-        <p>
-          La majoration est appliquée aux quantités suggérées de l'approvisionnement (ventes
-          du même jour la semaine précédente) pour absorber les aléas de demande. Laissez le
-          champ d'une catégorie <strong>vide</strong> pour qu'elle utilise le taux global.
-        </p>
+      <div style={{ marginBottom: 16 }}>
+        <PageNote help="Les quantités suggérées partent des ventes du même jour la semaine précédente ; la majoration absorbe les aléas de demande.">
+          Majoration des quantités suggérées. Catégorie vide = taux global.
+        </PageNote>
       </div>
 
       <SettingsSection title="Majoration globale" columns={1}>

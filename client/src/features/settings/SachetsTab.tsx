@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, Info, BarChart3, Settings as SettingsIcon } from 'lucide-react';
+import { Save, BarChart3, Settings as SettingsIcon } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { sachetConfigApi, type SachetConfig } from '../../api/sachet-config.api';
-import { SettingsSection, SettingItem, OdooToggle } from './SettingsPrimitives';
+import { SettingsSection, SettingItem, OdooToggle, PageNote } from './SettingsPrimitives';
 
 const REASON_LABELS: Record<string, string> = {
   client_demande: 'Client a demandé',
@@ -164,14 +164,10 @@ function ConfigPanel() {
 
   return (
     <>
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex gap-2 text-sm text-blue-900 mb-6">
-        <Info size={16} className="flex-shrink-0 mt-0.5" />
-        <p>
-          Le ratio est un <strong>seuil</strong> : 1 sachet est suggéré par tranche complète
-          d'articles. Avec un ratio de 15, il faut 15 viennoiseries pour 1 sachet (1 à 14 → 0,
-          15 à 29 → 1, etc.). Désactivez "Nécessite un sachet" pour les produits déjà emballés
-          (bouteilles, sachets madeleine conditionnés...).
-        </p>
+      <div style={{ marginBottom: 16 }}>
+        <PageNote help="Avec un ratio de 15 : 1 à 14 articles → 0 sachet, 15 à 29 → 1, etc. Désactivez « Nécessite un sachet » pour les produits déjà emballés (bouteilles, madeleines conditionnées…).">
+          1 sachet suggéré par tranche complète d'articles (le ratio est un seuil).
+        </PageNote>
       </div>
 
       <SettingsSection title="Réglage global" columns={1}>

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Upload, Loader2, FileSpreadsheet, RefreshCw, Undo2, History } from 'lucide-react';
+import { PageNote } from './SettingsPrimitives';
 import { settingsApi, type ImportPreview, type ImportMode, type DataStatus } from '../../api/settings.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -81,10 +82,9 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
     <>
       <section style={card}>
         <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Upload size={15} /> Importer des données</div>
-        <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
-          Téléchargez le modèle ou partez de votre propre fichier Excel ou CSV : vous associez ses colonnes aux champs de la fiche,
-          chaque ligne est contrôlée, puis tout est importé d'un coup (ou rien s'il reste une erreur). Chaque import s'annule depuis le journal.
-        </div>
+        <PageNote help="Partez du modèle ou de votre propre fichier : vous associez ses colonnes aux champs de la fiche, chaque ligne est contrôlée, puis tout est importé d'un coup, ou rien s'il reste une erreur. Chaque import s'annule depuis le journal.">
+          Excel ou CSV, contrôlé ligne par ligne, annulable.
+        </PageNote>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <select aria-label="Données à importer" value={entity} style={select}
             onChange={e => { const k = e.target.value; setEntity(k); const m = (status.entities.find(x => x.key === k)?.modes ?? ['upsert']) as ImportMode[]; setMode(m[0]); reset(); }}>

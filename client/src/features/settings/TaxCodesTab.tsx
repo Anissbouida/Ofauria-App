@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Loader2, Percent } from 'lucide-react';
+import { PageNote } from './SettingsPrimitives';
 import { settingsApi, type TaxCode } from '../../api/settings.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -61,10 +62,9 @@ export default function TaxCodesTab() {
 
   return (
     <div className="odoo-scope" style={{ display: 'grid', gap: 12 }}>
-      <StatusBanner tone="neutral" icon={Percent} title="Taux datés">
-        Un taux ne se modifie pas : ajoutez le nouveau taux avec sa date d'effet, l'ancien s'arrête la veille.
-        Les pièces déjà enregistrées gardent leur taux.
-      </StatusBanner>
+      <PageNote help="Un taux ne se modifie pas : ajoutez le nouveau avec sa date d'effet, l'ancien s'arrête la veille. Les pièces déjà enregistrées gardent leur taux.">
+        Taux datés : un nouveau taux remplace l'ancien à sa date d'effet.
+      </PageNote>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <label htmlFor="tax-show-past" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.875rem' }}>
           <input id="tax-show-past" type="checkbox" checked={showPast} onChange={e => setShowPast(e.target.checked)} /> Afficher l'historique

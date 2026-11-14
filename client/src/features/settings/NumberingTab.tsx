@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Hash, Loader2, Pencil, ShieldCheck } from 'lucide-react';
+import { Hash, Loader2, Pencil } from 'lucide-react';
+import { PageNote } from './SettingsPrimitives';
 import { settingsApi, type DocumentSequence, type DocumentSequenceInput } from '../../api/settings.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -33,12 +34,9 @@ export default function NumberingTab() {
 
   return (
     <div className="odoo-scope" style={{ display: 'grid', gap: 12 }}>
-      <StatusBanner tone="neutral" icon={ShieldCheck} title="Numéros sans doublon">
-        Chaque pièce reçoit le numéro suivant de sa série au moment où elle est enregistrée. Si l'enregistrement
-        échoue, le numéro est rendu. Le compteur ne revient jamais en arrière, même après une suppression ou un
-        changement de modèle. Les factures clients ont une numérotation continue : elles ne peuvent plus être
-        supprimées, seulement annulées.
-      </StatusBanner>
+      <PageNote help="Le numéro est attribué à l'enregistrement ; s'il échoue, le numéro est rendu. Le compteur ne revient jamais en arrière, même après une suppression ou un changement de modèle. Les factures clients ont une numérotation continue : elles ne se suppriment pas, elles s'annulent.">
+        Numéros attribués à l'enregistrement, sans doublon ni retour en arrière.
+      </PageNote>
 
       {isLoading ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>

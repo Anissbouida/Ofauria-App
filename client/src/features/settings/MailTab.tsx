@@ -58,13 +58,13 @@ export default function MailTab() {
     <div className="odoo-scope" style={{ display: 'grid', gap: 16 }}>
       {st.mode === 'off' ? (
         <StatusBanner tone="warning" icon={Mail} title="Aucun serveur d'envoi configuré">
-          Les e-mails sont mis en file mais ne partent pas. L'hébergeur doit renseigner les variables du serveur d'envoi
-          (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM) ; ce sont des secrets, ils ne se saisissent pas ici.
-          Les messages en attente partiront dès que l'envoi sera configuré ; ceux de plus de 72 h sont abandonnés (alertes périmées).
+          <span title="L'hébergeur renseigne SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS et SMTP_FROM (des secrets, pas saisis ici). Les messages en attente partiront dès la configuration ; ceux de plus de 72 h sont abandonnés.">
+            Les e-mails restent en file : l'hébergeur doit configurer le serveur SMTP.
+          </span>
         </StatusBanner>
       ) : st.mode === 'log' ? (
         <StatusBanner tone="info" icon={Mail} title="Mode journal (développement)">
-          Les messages sont traités comme envoyés et écrits dans le journal du serveur, sans partir réellement.
+          Les messages sont écrits dans le journal du serveur, sans partir.
         </StatusBanner>
       ) : (
         <StatusBanner tone={st.enabled ? 'success' : 'warning'} icon={Mail} title={st.enabled ? 'Envoi actif' : 'Envoi coupé'}>

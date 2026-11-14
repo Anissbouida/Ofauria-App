@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { HelpCircle } from 'lucide-react';
 import './settings.css';
 
 /** Ancre stable d'un réglage, partagée par les blocs et l'index de recherche ⌘K. */
@@ -6,6 +7,19 @@ export function settingAnchor(title: string) {
   const slug = title.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   return `set-${slug}`;
+}
+
+/**
+ * Note d'une ligne en tête de page ou de carte (sobriété façon Odoo) : la phrase
+ * courte est visible, le détail passe dans le « ? » au survol.
+ */
+export function PageNote({ children, help }: { children: ReactNode; help?: string }) {
+  return (
+    <p className="odoo-page-note">
+      <span>{children}</span>
+      {help && <span className="odoo-params-q" tabIndex={0} title={help} aria-label={help}><HelpCircle size={13} /></span>}
+    </p>
+  );
 }
 
 // Interrupteur facon Odoo, sans label (le label vit dans SettingItem).

@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useSettings } from '../../context/SettingsContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import { allowedSettingsSections } from '@ofauria/shared';
 import { settingsApi } from '../../api/settings.api';
 import SalesChannelsManager from '../sales/SalesChannelsManager';
-import { Upload, Image, Eye, Check, Search, Lock, Users, ExternalLink, Printer, ChevronDown, ChevronRight, EyeOff, History, Menu } from 'lucide-react';
+import { Upload, Image, Eye, Check, Search, Lock, Users, ExternalLink, ChevronDown, ChevronRight, EyeOff, History, Menu } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import PrinterSettingsCard from './PrinterSettingsCard';
@@ -40,7 +40,7 @@ import SettingsSearch from './SettingsSearch';
 import SetupHome from './SetupHome';
 import { tableLabel } from './AuditLogTab';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { SettingsSection, SettingItem, SettingsTabs, SETTINGS_REVEAL_EVENT } from './SettingsPrimitives';
+import { SettingsSection, SettingItem, SettingsTabs, SETTINGS_REVEAL_EVENT, PageNote } from './SettingsPrimitives';
 import { DirtyFormsProvider, SaveBar, useDirtyForm, useDirtyForms, useDraft } from './DirtyForms';
 import { HOME_PAGE, LEGACY_PAGES, SETTINGS_GROUPS, SETTINGS_PAGES, USERS_GROUP, type SearchEntry, type SettingsPageKey } from './settingsPages';
 import { format } from 'date-fns';
@@ -821,10 +821,9 @@ function PrintTab() {
             </select>
           </SettingItem>
           <div>
-            <StatusBanner tone="neutral" icon={Printer} title="Configuration de l'imprimante">
-              Connectez l'imprimante thermique (USB ou réseau) et installez son pilote ; choisissez-la comme imprimante
-              par défaut du navigateur et désactivez ses en-têtes et pieds de page. Le tiroir-caisse se branche sur le port RJ11/DK de l'imprimante.
-            </StatusBanner>
+            <PageNote help="Installez le pilote de l'imprimante thermique (USB ou réseau), choisissez-la comme imprimante par défaut du navigateur et désactivez ses en-têtes et pieds de page. Le tiroir-caisse se branche sur le port RJ11/DK de l'imprimante.">
+              Imprimante thermique par défaut du navigateur, sans en-têtes ni pieds de page.
+            </PageNote>
           </div>
         </SettingsSection>
 

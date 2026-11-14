@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  Building2, Store, Paintbrush, Printer, Radio, ShoppingBag, Factory, Truck, Percent, Hash, FileText,
+  Building2, Store, Paintbrush, Printer, Radio, Factory, Truck, Percent, Hash, FileText,
   BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal, Layers, Webhook, ShoppingCart, Landmark, Bot } from 'lucide-react';
 import type { AppModule, SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingAnchor } from './SettingsPrimitives';

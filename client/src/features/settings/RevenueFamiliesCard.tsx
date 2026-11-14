@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BookOpen } from 'lucide-react';
+import { PageNote } from './SettingsPrimitives';
 import { revenueFamiliesApi, planComptableApi, type RevenueFamily } from '../../api/ledger.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -45,11 +46,9 @@ export default function RevenueFamiliesCard() {
         <BookOpen size={16} style={{ color: 'var(--theme-accent)' }} />
         <div style={{ fontWeight: 600 }}>Comptes de produits par famille</div>
       </div>
-      <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-        À la comptabilisation d'une vente (ticket ou facture), le chiffre d'affaires est ventilé
-        sur le compte choisi ici, par famille de catégorie. Une famille sans compte choisi reste
-        sur le compte par défaut <strong>{DEFAULT_ACCOUNT}</strong>.
-      </div>
+      <PageNote help="À la comptabilisation d'une vente (ticket ou facture), le chiffre d'affaires est ventilé par famille de catégorie sur le compte choisi ici.">
+        Sans compte choisi, une famille reste sur <strong>{DEFAULT_ACCOUNT}</strong>.
+      </PageNote>
 
       {isLoading ? (
         <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement…</div>

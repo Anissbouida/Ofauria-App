@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, Coins } from 'lucide-react';
+import { Plus, Loader2 } from 'lucide-react';
+import { PageNote } from './SettingsPrimitives';
 import { currenciesApi, type Currency } from '../../api/currencies.api';
 import { usePermissions } from '../../context/PermissionsContext';
-import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 
@@ -44,10 +44,9 @@ export default function CurrenciesTab() {
 
   return (
     <div className="odoo-scope" style={{ display: 'grid', gap: 12 }}>
-      <StatusBanner tone="neutral" icon={Coins} title="Le dirham reste la devise de tenue">
-        Stock, coût matière et comptabilité restent en DH. Un bon de commande ou un devis fournisseur peut être saisi dans une autre devise :
-        il fige le taux du jour et chaque ligne garde son prix d'origine. Un taux = combien de DH pour 1 unité de la devise ; il est daté, les pièces passées gardent le leur.
-      </StatusBanner>
+      <PageNote help="Stock, coût matière et comptabilité restent en DH. Un bon de commande ou un devis fournisseur saisi dans une autre devise fige le taux du jour, et chaque ligne garde son prix d'origine. Un taux est daté : les pièces passées gardent le leur.">
+        Taux = nombre de DH pour 1 unité de la devise. La tenue reste en DH.
+      </PageNote>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         {!newCur && canCreate('settings') && (
           <button className="odoo-btn-secondary" onClick={() => setNewCur({ code: '', label: '', symbol: '' })} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Ajouter une devise</button>

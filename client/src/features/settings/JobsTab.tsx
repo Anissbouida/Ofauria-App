@@ -44,10 +44,10 @@ export default function JobsTab() {
   return (
     <div className="odoo-scope" style={{ display: 'grid', gap: 16 }}>
       <StatusBanner tone={errors ? 'danger' : 'neutral'} icon={Timer} title={errors ? `${errors} tâche(s) en erreur au dernier passage` : 'Ce que l\'application fait seule'}>
-        Les tâches tournent toutes les minutes tant que le serveur est actif (dernier passage interne : {dt(engine.lastInternalTick)})
+        Toutes les minutes · dernier passage {dt(engine.lastInternalTick)}
         {engine.externalConfigured
-          ? <>, et sont relancées par le déclencheur externe (dernier appel : {dt(engine.lastExternalTick)}).</>
-          : <>. Si l'hébergeur met le serveur en veille (Cloud Run), il faut un déclencheur externe : variable CRON_SECRET et un appel planifié à /api/v1/cron/tick.</>}
+          ? <> · déclencheur externe {dt(engine.lastExternalTick)}</>
+          : <span title="Si l'hébergeur met le serveur en veille (Cloud Run), il faut un déclencheur externe : variable CRON_SECRET et un appel planifié à /api/v1/cron/tick."> · sans déclencheur externe</span>}
       </StatusBanner>
       <div style={{ overflowX: 'auto' }}>
         <table className="odoo-table">

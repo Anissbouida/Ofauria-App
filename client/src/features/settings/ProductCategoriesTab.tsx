@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Layers, Save, Info } from 'lucide-react';
+import { Save, Info } from 'lucide-react';
+import { PageNote } from './SettingsPrimitives';
 import { categoriesApi } from '../../api/categories.api';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
-import { StatusBanner } from '../../components/ui/StatusBanner';
 
 /**
  * Catégories de vente (mig 375) : famille d'appartenance et ordre d'affichage. En caisse,
@@ -34,10 +34,9 @@ export default function ProductCategoriesTab() {
 
   return (
     <div className="odoo-scope" style={{ display: 'grid', gap: 12 }}>
-      <StatusBanner tone="info" icon={Layers} title="Familles de catégories">
-        La caisse affiche d'abord les familles (Boulangerie, Pâtisserie, Salé…), puis les catégories de la famille choisie.
-        Tapez un nom de famille existant ou nouveau ; une catégorie sans famille apparaît sous « Autres ». L'ordre règle la place dans la rangée.
-      </StatusBanner>
+      <PageNote help="Tapez un nom de famille existant ou nouveau ; une catégorie sans famille apparaît sous « Autres ». L'ordre règle la place dans la rangée.">
+        La caisse affiche les familles, puis les catégories de la famille choisie.
+      </PageNote>
       {isLoading ? <p style={{ fontSize: '0.875rem' }}>Chargement…</p> : (
         <div className="odoo-section" style={{ margin: 0 }}>
           <table className="odoo-table" style={{ tableLayout: 'fixed' }}>

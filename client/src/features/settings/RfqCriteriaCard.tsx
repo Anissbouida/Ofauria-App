@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, GripVertical } from 'lucide-react';
+import { PageNote } from './SettingsPrimitives';
 import { rfqApi, RFQ_CRITERION_TYPE_LABELS, type RfqCriterion, type RfqCriterionType } from '../../api/rfq.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -40,10 +41,9 @@ export default function RfqCriteriaCard() {
     <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '12px 16px', background: 'var(--odoo-bg)', display: 'grid', gap: 10 }}>
       <div>
         <div style={{ fontWeight: 600 }}>Critères de notation des demandes de prix</div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-          Le devis recommandé est le mieux noté sur ces critères (moyenne pondérée). Ajoutez ou retirez un critère, réglez son poids.
-          Les critères calculés sont automatiques ; les critères manuels se notent sur chaque devis.
-        </div>
+        <PageNote help="Moyenne pondérée. Les critères calculés sont automatiques ; les critères manuels se notent sur chaque devis.">
+          Le devis recommandé est le mieux noté sur ces critères.
+        </PageNote>
       </div>
 
       {isLoading ? <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement…</div> : (

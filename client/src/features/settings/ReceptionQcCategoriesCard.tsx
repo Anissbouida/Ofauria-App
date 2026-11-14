@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck } from 'lucide-react';
+import { PageNote } from './SettingsPrimitives';
 import { expenseCategoriesApi } from '../../api/accounting.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -50,10 +51,9 @@ export default function ReceptionQcCategoriesCard() {
         <ShieldCheck size={16} style={{ color: 'var(--theme-accent)' }} />
         <div style={{ fontWeight: 600 }}>Exigences de réception par catégorie</div>
       </div>
-      <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-        <strong>Contrôle qualité</strong> : les lots de cette catégorie entrent en quarantaine (indisponibles tant qu'un contrôle réception n'est pas conforme) et le n° de lot fournisseur devient obligatoire.
-        <strong> DLC</strong> et <strong>Lot</strong> : exigés à la saisie de la réception.
-      </div>
+      <PageNote help="Contrôle qualité : les lots entrent en quarantaine, indisponibles tant qu'un contrôle réception n'est pas conforme, et le n° de lot fournisseur devient obligatoire. DLC et Lot : exigés à la saisie de la réception.">
+        Ce qui est exigé à la réception, par catégorie.
+      </PageNote>
 
       {isLoading ? (
         <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Chargement…</div>

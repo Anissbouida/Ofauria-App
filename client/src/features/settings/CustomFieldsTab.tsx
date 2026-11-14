@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, SlidersHorizontal, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Loader2, ArrowUp, ArrowDown } from 'lucide-react';
+import { PageNote } from './SettingsPrimitives';
 import { customFieldsApi, CF_TYPE_LABELS, type CfEntity, type CfType, type CustomFieldDef } from '../../api/custom-fields.api';
 import { usePermissions } from '../../context/PermissionsContext';
-import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage } from '../../api/errors';
@@ -72,10 +72,9 @@ export default function CustomFieldsTab() {
   if (isLoading) return <Loader2 className="animate-spin" size={18} />;
   return (
     <div className="odoo-scope" style={{ display: 'grid', gap: 12 }}>
-      <StatusBanner tone="neutral" icon={SlidersHorizontal} title="Les informations propres à votre métier">
-        Ajoutez à une fiche les champs dont votre activité a besoin. Ils apparaissent dans le formulaire de la fiche, peuvent
-        s'afficher dans sa liste et se remplissent aussi par import. Le type d'un champ ne change plus une fois créé.
-      </StatusBanner>
+      <PageNote help="Les champs ajoutés apparaissent dans le formulaire de la fiche, peuvent s'afficher dans sa liste et se remplissent aussi par import. Le type d'un champ ne change plus une fois créé.">
+        Ajoutez à une fiche les champs propres à votre activité.
+      </PageNote>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {entities.map(e => {
           const n = all.filter(d => d.entity === e.key && d.is_active).length;

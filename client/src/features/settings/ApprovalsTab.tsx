@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ClipboardCheck, Loader2, Plus, Trash2, ArrowRight, Clock } from 'lucide-react';
+import { PageNote } from './SettingsPrimitives';
 import {
   ROLE_LABELS, APPROVAL_DOC_TYPES, APPROVAL_OPS, describeApprovalCondition,
   type ApprovalDocType, type ApprovalDocTypeDef, type ApprovalCondition, type ApprovalOp,
@@ -124,15 +125,16 @@ export default function ApprovalsTab() {
   if (isLoading) return <Loader2 className="animate-spin" size={18} />;
   return (
     <div className="odoo-scope" style={{ display: 'grid', gap: 16 }}>
-      <StatusBanner tone="neutral" icon={ClipboardCheck} title="Qui approuve quoi, et à partir de quand"
-        actions={editable && canCreate('settings') && !draft ? (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <PageNote help="Les approbateurs décident dans l'ordre (série) ou tous en même temps (parallèle). Le demandeur ne peut jamais approuver sa propre pièce. Les décisions se prennent depuis la boîte « À approuver » de la cloche.">
+          Une pièce qui remplit la condition attend l'accord des approbateurs.
+        </PageNote>
+        {editable && canCreate('settings') && !draft && (
           <button type="button" className="odoo-btn-secondary" onClick={() => setDraft({ label: '', docType: 'purchase_order', condition: null, roles: ['manager'], mode: 'serial' })}>
             <Plus size={14} /> Nouvelle règle
           </button>
-        ) : undefined}>
-        Une pièce qui remplit la condition attend l'accord des approbateurs, dans l'ordre (série) ou tous en même temps (parallèle).
-        Le demandeur ne peut jamais approuver sa propre pièce. Les décisions se prennent depuis la boîte « À approuver » de la cloche.
-      </StatusBanner>
+        )}
+      </div>
       {!rules.length && <StatusBanner tone="warning" icon={ClipboardCheck} title="Circuits indisponibles">La migration 350 n'est pas appliquée sur cette base.</StatusBanner>}
 
       {draft && (

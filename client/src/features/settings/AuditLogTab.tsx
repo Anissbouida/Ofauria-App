@@ -1,8 +1,7 @@
 import { Fragment, useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import {
-  History, LogIn, Loader2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search, ShieldCheck,
-} from 'lucide-react';
+import { History, LogIn, Loader2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { PageNote } from './SettingsPrimitives';
 import { settingsApi, type AuditLogEntry, type AuthEventEntry } from '../../api/settings.api';
 import { usersApi } from '../../api/users.api';
 import { MODULE_LABELS, type AppModule } from '@ofauria/shared';
@@ -125,11 +124,9 @@ export default function AuditLogTab() {
 
   return (
     <div className="odoo-scope" style={{ display: 'grid', gap: 12 }}>
-      <StatusBanner tone="neutral" icon={ShieldCheck} title="Journal en ajout seul">
-        Chaque modification des paramètres, des points de vente, des utilisateurs, des droits, des imprimantes,
-        de la paie et du référentiel est enregistrée avec son auteur et l'ancienne valeur. Personne, administrateur
-        compris, ne peut modifier ou effacer ce journal depuis l'application.
-      </StatusBanner>
+      <PageNote help="Paramètres, points de vente, utilisateurs, droits, imprimantes, paie et référentiel : chaque modification est enregistrée avec son auteur et l'ancienne valeur. Personne, administrateur compris, ne peut modifier ou effacer ce journal depuis l'application.">
+        Toutes les modifications, avec leur auteur. Le journal ne s'efface pas.
+      </PageNote>
       <div className="odoo-view-switcher" style={{ alignSelf: 'start', justifySelf: 'start' }}>
         <button className={view === 'changes' ? 'active' : ''} onClick={() => setView('changes')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <History size={14} /> Modifications
