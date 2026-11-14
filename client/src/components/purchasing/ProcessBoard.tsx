@@ -1,3 +1,4 @@
+import { createContext, useContext } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { CalendarRange, ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, subMonths, startOfMonth, startOfYear } from 'date-fns';
@@ -13,6 +14,13 @@ export type StageDef = { key: string; label: string; hint: string; icon: LucideI
 export type StageStat = { count: number; sub: string; late?: number; alertLabel?: string };
 
 export const PAGE_SIZE = 25;
+
+/**
+ * Présentation des briques processus. « cards » (défaut) : bandeau de cartes d'étape ;
+ * « chips » : gabarit Liste de la refonte Ventes (pastilles numérotées, bascule segmentée).
+ * Le module Achats fournit « chips » ; les autres modules qui partagent ces briques ne changent pas.
+ */
+export const ProcessBoardVariant = createContext<'cards' | 'chips'>('cards');
 
 /* ── Période ── */
 export type PeriodKey = '3m' | 'month' | 'lastMonth' | 'year' | '12m' | 'all' | 'custom';
@@ -116,7 +124,30 @@ export function StagePipeline({ title, summary, stages, stats, isActive, onPick 
   isActive: (key: string) => boolean;
   onPick: (key: string) => void;
 }) {
+  const variant = useContext(ProcessBoardVariant);
   const last = stages[stages.length - 1]?.key;
+  if (variant === 'chips') {
+    // Pastilles numérotées : l'ordre du circuit reste lisible, le clic filtre comme une carte.
+    return (
+      <div className="pb-stage-chips">
+        <div className="prj-chips" role="group" aria-label={title}>
+          {stages.map((s, idx) => {
+            const st = stats[s.key] ?? { count: 0, sub: '' };
+            const active = isActive(s.key);
+            return (
+              <button key={s.key} type="button" onClick={() => onPick(s.key)} aria-pressed={active}
+                title={[st.sub, s.hint].filter(Boolean).join(' · ')}
+                className={`prj-chip${active ? ' active' : ''}${st.count ? '' : ' empty'}`}>
+                <span className="pb-chip-num">{idx + 1}</span> {s.label} <small>{st.count}</small>
+                {(st.late ?? 0) > 0 && <span className="pb-chip-late">{st.late} {st.alertLabel ?? 'en retard'}</span>}
+              </button>
+            );
+          })}
+        </div>
+        <span className="pb-stage-summary">{summary}</span>
+      </div>
+    );
+  }
   return (
     <div className="pb-pipeline" style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)' }}>
       <div className="pb-pipeline-head" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '10px 16px 0' }}>
@@ -176,6 +207,18 @@ export function StageProgress({ count, current, done, late }: { count: number; c
 export function ViewSwitch({ view, onChange, openLabel, historyLabel, ariaLabel = 'Vue' }: {
   view: 'open' | 'history'; onChange: (v: 'open' | 'history') => void; openLabel: string; historyLabel: string; ariaLabel?: string;
 }) {
+  const variant = useContext(ProcessBoardVariant);
+  if (variant === 'chips') {
+    return (
+      <div className="prj-views" role="tablist" aria-label={ariaLabel}>
+        {([['open', openLabel], ['history', historyLabel]] as const).map(([key, label]) => (
+          <button key={key} type="button" role="tab" aria-selected={view === key} className={view === key ? 'active' : ''} onClick={() => onChange(key)}>
+            {label}
+          </button>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="odoo-view-switcher" role="tablist" aria-label={ariaLabel}>
       {([['open', openLabel], ['history', historyLabel]] as const).map(([key, label]) => (

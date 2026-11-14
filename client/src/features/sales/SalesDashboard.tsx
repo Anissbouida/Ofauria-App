@@ -16,6 +16,7 @@ import { salesApi } from '../../api/sales.api';
 import { customersApi } from '../../api/customers.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
 import SalesPageShell from './SalesPageShell';
+import '../purchasing/purchasing.css';
 import { ListKpi } from './ListTemplate';
 
 /**
@@ -109,15 +110,19 @@ export default function SalesDashboard() {
   if (noIce.length) todo.push({ tone: 'b', icon: UserPlus, title: `${noIce.length} client${noIce.length > 1 ? 's' : ''} professionnel${noIce.length > 1 ? 's' : ''} sans ICE`, sub: 'Leurs factures ne seraient pas conformes', action: 'Compléter', href: '/customers' });
   if (openSessions.length) todo.push({ tone: 'x', icon: Lock, title: `${openSessions.length} session${openSessions.length > 1 ? 's' : ''} de caisse ouverte${openSessions.length > 1 ? 's' : ''}`, sub: openSessions.map(s => `${s.first_name ?? ''} ${s.last_name ?? ''}`.trim() + (s.opened_at ? ` depuis ${format(new Date(s.opened_at), 'HH:mm')}` : '')).join(' · '), action: 'Voir', href: '/sales?tab=sessions' });
 
-  /* ── Chaîne pro, du devis à l'encaissement ── */
-  const flow = [
-    { label: 'Devis ouverts', count: String(openQuotes.count), amount: openQuotes.amount, href: '/quotes?status=open' },
-    { label: 'Commandes en cours', count: String(openOrders.length), amount: sum(openOrders, 'total'), href: '/orders' },
-    { label: 'Livrées, à facturer', count: String(blCount), amount: blAmount, href: '/delivery-notes' },
-    { label: 'Créances à encaisser', count: String(t?.documents ?? 0), amount: t?.total ?? 0, href: '/sales?tab=unpaid' },
-    { label: 'Dont échu', count: `${overdueCustomers.length} client${overdueCustomers.length > 1 ? 's' : ''}`, amount: t?.overdue ?? 0, href: '/sales?tab=unpaid&filter=overdue', red: true },
+  /* ── Circuit de vente pro, du devis à l'encaissement (même grammaire que le Poste de travail Achats) ── */
+  const circuit: Array<{ n: number; label: string; count: string; sub: string; tone?: 'orange' | 'red'; href: string }> = [
+    { n: 1, label: 'Devis', count: String(openQuotes.count), href: followQuotes ? '/quotes?status=follow' : '/quotes?status=open',
+      sub: followQuotes ? `${followQuotes} à relancer` : `${n0(openQuotes.amount)} DH ouverts`, tone: followQuotes ? 'orange' : undefined },
+    { n: 2, label: 'Commandes', count: String(openOrders.length), href: lateOrders.length ? '/orders?filter=late' : '/orders',
+      sub: lateOrders.length ? `${lateOrders.length} en retard` : `${n0(sum(openOrders, 'total'))} DH à livrer`, tone: lateOrders.length ? 'red' : undefined },
+    { n: 3, label: 'À facturer', count: String(blCount), href: '/delivery-notes',
+      sub: blCount ? `${n0(blAmount)} DH livrés` : 'rien en attente', tone: blCount ? 'orange' : undefined },
+    { n: 4, label: 'À encaisser', count: String(t?.documents ?? 0), href: '/sales?tab=unpaid', sub: `${n0(t?.total ?? 0)} DH` },
+    { n: 5, label: 'Échu', count: String(overdueCustomers.length), href: '/sales?tab=unpaid&filter=overdue',
+      sub: (t?.overdue ?? 0) > 0 ? `${n0(t!.overdue)} DH à relancer` : 'rien d\'échu', tone: (t?.overdue ?? 0) > 0 ? 'red' : undefined },
   ];
-  const flowMax = Math.max(1, ...flow.map(f => f.amount));
+  const circuitTodo = circuit.filter(c => c.tone).length;
 
   const chart = useMemo(() => (sales as Row[]).map(x => ({ date: format(new Date(x.date), 'd MMM', { locale: fr }), revenue: num(x.revenue) })), [sales]);
   const byCategory = useMemo(() => {
@@ -144,6 +149,24 @@ export default function SalesDashboard() {
       summary={format(new Date(), 'EEEE d MMMM yyyy', { locale: fr })}
       actions={<button type="button" className="odoo-btn-primary" onClick={() => navigate('/orders')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle commande</button>}>
 
+      <section className="prj-panel" aria-label="Circuit de vente" style={{ padding: 14 }}>
+        <div className="prj-panel-head" style={{ padding: '0 0 10px', border: 0 }}>
+          Ventes pro, du devis à l'encaissement
+          <small>{circuitTodo ? `${circuitTodo} étape${circuitTodo > 1 ? 's' : ''} demande${circuitTodo > 1 ? 'nt' : ''} votre attention · ` : ''}cliquez une étape pour ouvrir ses pièces</small>
+        </div>
+        <ol className="pur-circuit">
+          {circuit.map(c => (
+            <li key={c.n}>
+              <button type="button" className={`pur-stage ${c.tone ?? ''}`} onClick={() => navigate(c.href)}>
+                <span className="pur-stage-head"><span className="pur-stage-num">{c.n}</span>{c.label}</span>
+                <span className="pur-stage-count">{c.count}</span>
+                <span className="pur-stage-sub">{c.sub}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
+      </section>
+
       <div className="prj-toolbar">
         <div className="prj-views" role="group" aria-label="Période">
           {PERIODS.map(p => (
@@ -164,48 +187,29 @@ export default function SalesDashboard() {
           <div className="prj-kpi-value">{n0(tickets)}</div>
           <div className="prj-kpi-sub">panier moyen {n2(basket)} DH <Delta d={delta(basket, prevBasket)} /></div>
         </div>
-        <ListKpi label="Commandes en cours" value={String(openOrders.length)}
-          sub={lateOrders.length ? `${lateOrders.length} en retard · ${n0(sum(openOrders, 'total'))} DH` : `${n0(sum(openOrders, 'total'))} DH à livrer`} tone={lateOrders.length ? 'red' : undefined} />
-        <ListKpi label="Devis ouverts" value={String(openQuotes.count)}
-          sub={`${n0(openQuotes.amount)} DH${qov?.conversion.rate != null ? ` · transformation ${qov.conversion.rate} %` : ''}`} />
-        <ListKpi label="À encaisser" value={t ? `${n0(t.total)} DH` : '—'} sub={t ? (t.overdue > 0 ? `${n0(t.overdue)} DH échus` : 'rien d\'échu') : ''} tone={t && t.overdue > 0 ? 'orange' : undefined} />
+        <ListKpi label="Transformation des devis" value={qov?.conversion.rate != null ? `${qov.conversion.rate} %` : '—'}
+          sub={qov ? `90 j : ${qov.conversion.won} gagné(s), ${qov.conversion.lost} perdu(s)` : ''} />
         <ListKpi label="Marge brute" value={margin ? `${margin.pct.toFixed(1).replace('.', ',')} %` : '—'}
           sub={margin ? `${n0(margin.amount)} DH · coût matière ${margin.food.toFixed(1).replace('.', ',')} %` : 'coûts non disponibles'} />
       </section>
 
-      <div className="sal-row">
-        <section className="prj-panel sal-grow">
-          <div className="prj-panel-head">À traiter <small>{todo.length ? `${todo.length} point${todo.length > 1 ? 's' : ''} demande${todo.length > 1 ? 'nt' : ''} une action` : ''}</small></div>
-          {todo.length ? (
-            <ul className="sal-todo">
-              {todo.map(i => (
-                <li key={i.title}>
-                  <span className={`sal-todo-ic ${i.tone}`}><i.icon size={16} /></span>
-                  <div className="sal-todo-tx"><strong>{i.title}</strong><span className="sal-sub">{i.sub}</span></div>
-                  {i.amount && <span className="sal-todo-amt">{i.amount}</span>}
-                  <button type="button" className="sal-next" onClick={() => navigate(i.href)}>{i.action}</button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="sal-empty"><CheckCircle2 size={26} style={{ color: 'var(--prj-green)' }} /><strong>Rien à traiter</strong><span>Commandes, devis, livraisons et créances sont à jour.</span></div>
-          )}
-        </section>
-        <section className="prj-panel sal-side">
-          <div className="prj-panel-head">Ventes pro, du devis à l'encaissement</div>
-          <ol className="sal-flow">
-            {flow.map(f => (
-              <li key={f.label}>
-                <button type="button" onClick={() => navigate(f.href)}>
-                  <span className="sal-flow-h"><span>{f.label} · {f.count}</span><strong>{n0(f.amount)} DH</strong></span>
-                  <span className={`prj-bar ${f.red ? 'red' : ''}`}><span style={{ width: `${f.amount ? Math.max(2, f.amount / flowMax * 100) : 0}%` }} /></span>
-                </button>
+      <section className="prj-panel">
+        <div className="prj-panel-head">À traiter <small>{todo.length ? `${todo.length} point${todo.length > 1 ? 's' : ''} demande${todo.length > 1 ? 'nt' : ''} une action` : ''}</small></div>
+        {todo.length ? (
+          <ul className="sal-todo">
+            {todo.map(i => (
+              <li key={i.title}>
+                <span className={`sal-todo-ic ${i.tone}`}><i.icon size={16} /></span>
+                <div className="sal-todo-tx"><strong>{i.title}</strong><span className="sal-sub">{i.sub}</span></div>
+                {i.amount && <span className="sal-todo-amt">{i.amount}</span>}
+                <button type="button" className="sal-next" onClick={() => navigate(i.href)}>{i.action}</button>
               </li>
             ))}
-          </ol>
-          <p className="prj-note" style={{ padding: '0 16px 14px' }}>Chaque étape ouvre la liste correspondante.</p>
-        </section>
-      </div>
+          </ul>
+        ) : (
+          <div className="sal-empty"><CheckCircle2 size={26} style={{ color: 'var(--prj-green)' }} /><strong>Rien à traiter</strong><span>Commandes, devis, livraisons et créances sont à jour.</span></div>
+        )}
+      </section>
 
       <div className="sal-row">
         <section className="prj-panel sal-grow">

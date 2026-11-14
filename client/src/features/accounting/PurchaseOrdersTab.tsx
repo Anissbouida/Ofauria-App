@@ -5,6 +5,9 @@ import { purchaseOrdersApi, newIdempotencyKey } from '../../api/purchase-orders.
 import { supplierScoreApi, STANDING_TAG } from '../../api/supplier-score.api';
 import '../projects/projects.css';
 import '../purchasing/purchasing.css';
+import '../sales/sales.css';
+import { ListKpi } from '../sales/ListTemplate';
+import { PurHeaderActions } from '../purchasing/PurHeaderActions';
 import { suppliersApi, invoicesApi } from '../../api/accounting.api';
 import { ingredientsApi } from '../../api/inventory.api';
 import { containerOf, roundUpToContainer, containerLabel, type ContainerDef } from '../../utils/container';
@@ -521,7 +524,47 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
         </StatusBanner>
       )}
 
-      {/* Pipeline du processus : une carte par étape, clic = filtre */}
+      {/* Tuiles : les montants que les pastilles ne donnent pas (engagé, à recevoir, à facturer, retards). */}
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="Engagé en cours" value={`${n(openStats.amount)} DH`} sub={`${openStats.count} BC ouverts`} />
+        <ListKpi label="À recevoir" value={`${n((stageStats.sent?.amount ?? 0) + (stageStats.partial?.amount ?? 0))} DH`}
+          sub={`${(stageStats.sent?.count ?? 0) + (stageStats.partial?.count ?? 0)} BC envoyés ou en partie reçus`} />
+        <ListKpi label="À facturer" value={`${n(stageStats.invoice?.amount ?? 0)} DH`} sub={`${stageStats.invoice?.count ?? 0} BC reçus sans facture`}
+          tone={(stageStats.invoice?.count ?? 0) > 0 ? 'orange' : undefined} />
+        <ListKpi label="Livraisons en retard" value={String(lateList.length >= 5 ? '5+' : lateList.length)} sub="date de livraison dépassée"
+          tone={lateList.length ? 'red' : undefined} />
+      </section>
+
+      {/* Barre d'outils unique : recherche, filtres, bascule En cours / Historique, création */}
+      <div className="prj-toolbar">
+        <label className="prj-search">
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
+          <input type="search" placeholder="N° de BC ou fournisseur…" aria-label="Rechercher un bon de commande"
+            value={searchInput} onChange={e => setSearchInput(e.target.value)} />
+          {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+        </label>
+        <SelectFilter label="Statut" icon={Filter} value={statusFilter} onChange={setStatusFilter} options={VIEW_STATUSES[view]} />
+        <PeriodFilter label="Commandé" title="Filtre sur la date de commande"
+          period={period} onPeriod={setPeriod}
+          from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
+        <div style={{ minWidth: 200 }}>
+          <SearchSelect options={supplierOptions} value={supplierFilter} onChange={setSupplierFilter} placeholder="Tous les fournisseurs" />
+        </div>
+        {hasFilters && (
+          <button type="button" onClick={resetFilters} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <X size={12} /> Effacer
+          </button>
+        )}
+        <ViewSwitch view={view} onChange={switchView}
+          openLabel={`En cours · ${openStats.count}`} historyLabel={`Historique · ${historyCount}`} />
+      </div>
+      <PurHeaderActions>
+        <button onClick={() => setShowCreate(true)} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={13} /> Nouveau BC
+        </button>
+      </PurHeaderActions>
+
+      {/* Circuit du BC : une pastille numérotée par étape, clic = filtre */}
       <StagePipeline
         title="Où en sont mes commandes"
         summary={`${openStats.count} BC en cours · ${n(openStats.amount)} DH engagés`}
@@ -534,72 +577,22 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
         onPick={pickStage}
       />
 
-      {/* Barre de vue + filtres */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <ViewSwitch view={view} onChange={switchView}
-          openLabel={`En cours · ${openStats.count}`} historyLabel={`Historique · ${historyCount}`} />
-        {view === 'open' && stage && (
-          <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            Étape : {PO_STAGES.find(s => s.key === stage)?.label}
-            <button type="button" onClick={() => setStage('')} aria-label="Retirer le filtre d'étape" style={{ display: 'inline-flex' }}>
-              <X size={11} />
-            </button>
-          </span>
-        )}
-        <div style={{ flex: 1 }} />
-        {selectedPoIds.size > 0 && (
-          <>
-            <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-              {selectedPoIds.size} BC selectionne{selectedPoIds.size > 1 ? 's' : ''}
-            </span>
-            <button onClick={() => setSelectedRows(new Map())} className="odoo-btn-secondary"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-              title="Tout deselectionner">
-              <X size={13} />
-            </button>
-            <button onClick={() => setShowMergeModal(true)} disabled={!mergeReady}
-              className="odoo-btn-primary"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, opacity: mergeReady ? 1 : 0.5 }}
-              title={mergeReady ? 'Fusionner les factures liees' : mergeWarning}>
-              <Combine size={13} /> Fusionner les factures
-            </button>
-          </>
-        )}
-        <button onClick={() => setShowCreate(true)} className="odoo-btn-primary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Plus size={13} /> Nouveau BC
-        </button>
-      </div>
+      {selectedPoIds.size > 0 && (
+        <div className="sal-bulk" role="region" aria-label="Actions sur la sélection">
+          <strong>{selectedPoIds.size} BC sélectionné{selectedPoIds.size > 1 ? 's' : ''}</strong>
+          <button type="button" onClick={() => setShowMergeModal(true)} disabled={!mergeReady}
+            title={mergeReady ? 'Fusionner les factures liées' : mergeWarning}>
+            <Combine size={13} style={{ display: 'inline', marginRight: 4 }} /> Fusionner les factures
+          </button>
+          <button type="button" onClick={() => setSelectedRows(new Map())} aria-label="Tout désélectionner"><X size={13} /></button>
+        </div>
+      )}
       {mergeWarning && (
         <div className="odoo-alert" style={{ fontSize: '0.75rem' }}>
           <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4 }} />
           {mergeWarning}
         </div>
       )}
-
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" placeholder="Rechercher par N° ou fournisseur..." aria-label="Rechercher un bon de commande"
-          value={searchInput} onChange={e => setSearchInput(e.target.value)} className="odoo-search-input"
-          style={{ flex: '1 1 220px', minWidth: 0 }} />
-        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
-        <SelectFilter label="Statut" icon={Filter} value={statusFilter} onChange={setStatusFilter} options={VIEW_STATUSES[view]} />
-        <PeriodFilter label="Commandé" title="Filtre sur la date de commande"
-          period={period} onPeriod={setPeriod}
-          from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
-        <SearchSelect
-          options={supplierOptions}
-          value={supplierFilter}
-          onChange={setSupplierFilter}
-          placeholder="Tous les fournisseurs"
-        />
-        {hasFilters && (
-          <button type="button" onClick={resetFilters} className="odoo-btn-secondary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={12} /> Effacer les filtres
-          </button>
-        )}
-      </div>
 
       {/* Liste */}
       {isLoading ? (
@@ -685,7 +678,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
                       <td>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           {isExpanded ? <ChevronUp size={13} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronDown size={13} style={{ color: 'var(--theme-text-muted)' }} />}
-                          <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{po.order_number as string}</span>
+                          <span className="sal-num">{po.order_number as string}</span>
                           {po.currency_code && String(po.currency_code).trim() !== 'MAD' && <span className="odoo-tag odoo-tag-blue" title={`Négocié en ${String(po.currency_code).trim()} · taux ${po.exchange_rate}`}>{String(po.currency_code).trim()}</span>}
                         </span>
                         <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginLeft: 17 }}>

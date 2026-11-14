@@ -24,7 +24,10 @@ import PurchasingPilotageTab from './PurchasingPilotageTab';
 import PurchasingWorkbench from './PurchasingWorkbench';
 import '../projects/projects.css';
 import './purchasing.css';
+import '../sales/sales.css';
 import RfqTab from './RfqTab';
+import { PurHeaderSlot, PurHeaderActions } from './PurHeaderActions';
+import { ListKpi } from '../sales/ListTemplate';
 import LandedCostTab from './LandedCostTab';
 import SupplierScoreTab from './SupplierScoreTab';
 import ReceptionsTab from './ReceptionsTab';
@@ -43,7 +46,7 @@ import { RotateCcw, FilePenLine } from 'lucide-react';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
 import {
-  StagePipeline, StageProgress, ViewSwitch, PeriodFilter, SelectFilter, Pager,
+  StagePipeline, StageProgress, ViewSwitch, PeriodFilter, SelectFilter, Pager, ProcessBoardVariant,
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 
@@ -120,14 +123,30 @@ export default function PurchasingPage() {
   // Onglet ouvrable par lien (?tab=purchase_orders), ex. depuis Stock › À commander après création des BC.
   const { current, select } = useModuleView(views);
   const tab = current?.key;
+  const CurrentIcon = current?.icon;
+  const [headerSlot, setHeaderSlot] = useState<HTMLDivElement | null>(null);
   // Ouverture d'un onglet pré-filtré (fournisseur, recherche, vue) depuis Fournisseurs ou Pilotage.
   const [focus, setFocus] = useState<TabFocus>({});
   const openTab = (next: PurchasingTab, f: TabFocus = {}) => { setFocus(f); select(next); };
 
   return (
-    <ModuleShell title="Achats" views={views} current={current} onSelect={k => openTab(k as PurchasingTab)}>
-      {/* Refonte 2026-11 : toutes les rubriques partagent le style cartes/panneaux (purchasing.css, .pur-module). */}
-      <div className="pur-module">
+    <ModuleShell title="Achats" views={views} current={current} onSelect={k => openTab(k as PurchasingTab)} bar={false} flush>
+      {/* En-tête « Achats / rubrique », même barre que les onglets Ventes (SalesPageShell). */}
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          {CurrentIcon && <CurrentIcon size={14} style={{ color: 'var(--theme-accent)' }} />}
+          <span>Achats</span>
+          <span className="odoo-breadcrumb-separator">/</span>
+          <span className="odoo-breadcrumb-current">{current?.label}</span>
+        </div>
+        <div style={{ flex: 1 }} />
+        <div ref={setHeaderSlot} style={{ display: 'flex', gap: 8, alignItems: 'center' }} />
+      </div>
+      {/* Refonte 2026-11 : toutes les rubriques partagent le style cartes/panneaux (purchasing.css, .pur-module) ;
+          les briques processus passent au gabarit Liste de la refonte Ventes (pastilles, bascule segmentée). */}
+      <PurHeaderSlot.Provider value={headerSlot}>
+      <ProcessBoardVariant.Provider value="chips">
+      <div className="pur-module pur-head-body">
       {tab === 'suppliers' && (
         <SuppliersTab
           onOpenOrders={id => openTab('purchase_orders', { supplierId: id })}
@@ -147,6 +166,8 @@ export default function PurchasingPage() {
       {tab === 'workbench' && <PurchasingWorkbench onOpenTab={k => openTab(k as PurchasingTab)} onOpenInvoice={f => openTab('invoices', f)} />}
       {tab === 'pilotage' && <PurchasingPilotageTab onOpenInvoice={(f) => openTab('invoices', f)} />}
       </div>
+      </ProcessBoardVariant.Provider>
+      </PurHeaderSlot.Provider>
     </ModuleShell>
   );
 }
@@ -541,7 +562,46 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
         </StatusBanner>
       )}
 
-      {/* Pipeline du processus : une carte par étape, clic = filtre */}
+      {/* Tuiles : reste dû, bloqué, échu, réglé (montants que les pastilles ne donnent pas). */}
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="Reste à payer" value={`${n(openStats.remaining)} DH`} sub={`${openStats.count} facture${openStats.count > 1 ? 's' : ''} à traiter`} />
+        <ListKpi label="Bloqué / litige" value={`${n(stageStats.blocked?.remaining ?? 0)} DH`} sub={`${stageStats.blocked?.count ?? 0} paiement(s) suspendu(s)`}
+          tone={(stageStats.blocked?.count ?? 0) > 0 ? 'orange' : undefined} />
+        <ListKpi label="Échéance dépassée" value={String(lateList.length >= 5 ? '5+' : lateList.length)}
+          sub={lateList.length ? `${n(lateList.reduce((a, l) => a + (parseFloat(l.remaining) || 0), 0))} DH en tête de liste` : 'aucune facture échue'}
+          tone={lateList.length ? 'red' : undefined} />
+        <ListKpi label="Réglé" value={`${n(stageStats.paid?.amount ?? 0)} DH`} sub={`${stageStats.paid?.count ?? 0} facture(s) soldée(s)`} />
+      </section>
+
+      {/* Barre d'outils unique : recherche, filtres, bascule À traiter / Historique */}
+      <div className="prj-toolbar">
+        <label className="prj-search">
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
+          <input type="search" placeholder="N° facture, fournisseur, BC ou catégorie…" aria-label="Rechercher une facture"
+            value={searchInput} onChange={e => setSearchInput(e.target.value)} />
+          {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+        </label>
+        <SelectFilter label="Statut" icon={Filter} value={statusFilter} onChange={setStatusFilter} options={INV_VIEW_STATUSES[view]} />
+        <PeriodFilter label="Facturé" title="Filtre sur la date de facture"
+          period={period} onPeriod={setPeriod}
+          from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
+        <div style={{ minWidth: 190 }}><SearchSelect options={supplierOptions} value={supplierFilter} onChange={setSupplierFilter} placeholder="Tous les fournisseurs" /></div>
+        <div style={{ minWidth: 190 }}><SearchSelect options={categoryOptions} value={categoryFilter} onChange={setCategoryFilter} placeholder="Toutes les catégories" /></div>
+        {hasFilters && (
+          <button type="button" onClick={resetFilters} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <X size={12} /> Effacer
+          </button>
+        )}
+        <ViewSwitch view={view} onChange={switchView}
+          openLabel={`À traiter · ${openStats.count}`} historyLabel={`Historique · ${historyCount}`} />
+      </div>
+      <PurHeaderActions>
+        <button onClick={() => setShowForm(true)} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={13} /> Nouvelle facture
+        </button>
+      </PurHeaderActions>
+
+      {/* Circuit de la facture : une pastille numérotée par étape, clic = filtre */}
       <StagePipeline
         title="Où en sont mes factures"
         summary={`${openStats.count} facture${openStats.count > 1 ? 's' : ''} à traiter · ${n(openStats.remaining)} DH restant dus`}
@@ -555,56 +615,6 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
         isActive={k => (k === 'paid' ? view === 'history' : view === 'open' && stage === k)}
         onPick={pickStage}
       />
-
-      {/* Barre de vue + nouvelle facture */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <ViewSwitch view={view} onChange={switchView}
-          openLabel={`À traiter · ${openStats.count}`} historyLabel={`Historique · ${historyCount}`} />
-        {view === 'open' && stage && (
-          <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            Étape : {INV_STAGES.find(s => s.key === stage)?.label}
-            <button type="button" onClick={() => setStage('')} aria-label="Retirer le filtre d'étape" style={{ display: 'inline-flex' }}>
-              <X size={11} />
-            </button>
-          </span>
-        )}
-        <div style={{ flex: 1 }} />
-        <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Plus size={13} /> Nouvelle facture
-        </button>
-      </div>
-
-      {/* Recherche + filtres */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" placeholder="Rechercher par N° facture, fournisseur, BC ou catégorie..." aria-label="Rechercher une facture"
-          value={searchInput} onChange={e => setSearchInput(e.target.value)} className="odoo-search-input"
-          style={{ flex: '1 1 220px', minWidth: 0 }} />
-        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
-        <SelectFilter label="Statut" icon={Filter} value={statusFilter} onChange={setStatusFilter} options={INV_VIEW_STATUSES[view]} />
-        <PeriodFilter label="Facturé" title="Filtre sur la date de facture"
-          period={period} onPeriod={setPeriod}
-          from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
-        <SearchSelect
-          options={supplierOptions}
-          value={supplierFilter}
-          onChange={setSupplierFilter}
-          placeholder="Tous les fournisseurs"
-        />
-        <SearchSelect
-          options={categoryOptions}
-          value={categoryFilter}
-          onChange={setCategoryFilter}
-          placeholder="Toutes les catégories"
-        />
-        {hasFilters && (
-          <button type="button" onClick={resetFilters} className="odoo-btn-secondary"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={12} /> Effacer les filtres
-          </button>
-        )}
-      </div>
 
       {/* Liste */}
       {isLoading ? (

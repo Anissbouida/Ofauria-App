@@ -23,6 +23,8 @@ import {
   StagePipeline, ViewSwitch, PeriodFilter, SelectFilter, Pager,
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
+import { ListKpi } from '../sales/ListTemplate';
+import { PurHeaderActions } from './PurHeaderActions';
 
 /**
  * Onglet Fournisseurs (refonte Achats D1, lot 1 — mig 304).
@@ -300,7 +302,40 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
         </StatusBanner>
       )}
 
-      {/* Situation de la relation : une carte par étape, clic = filtre */}
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="Restant dû" value={`${n(openDue)} DH`} sub={`${stageStats.due?.count ?? 0} fournisseur(s) à régler`} tone={openDue > 0 ? 'orange' : undefined} />
+        <ListKpi label="Commandes ouvertes" value={`${n(SUP_OPEN_STAGES.reduce((a, k) => a + (stageStats[k]?.openPo ?? 0), 0))} DH`} sub={`${stageStats.ordering?.count ?? 0} fournisseur(s) avec BC en cours`} />
+        <ListKpi label="Achats 12 mois" value={`${n(SUP_OPEN_STAGES.reduce((a, k) => a + (stageStats[k]?.p12 ?? 0), 0))} DH`} sub={`${openCount} fournisseur(s) actif(s)`} />
+        <ListKpi label="Fiches sans ICE" value={String(incompleteCount)} sub="facture non probante" tone={incompleteCount ? 'red' : undefined} />
+      </section>
+
+      <div className="prj-toolbar">
+        <label className="prj-search">
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
+          <input type="search" placeholder="Nom, raison sociale, contact, ville, ICE, IF…" aria-label="Rechercher un fournisseur"
+            value={searchInput} onChange={e => setSearchInput(e.target.value)} />
+          {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+        </label>
+        <SelectFilter label="Critère" icon={Filter} value={flag} onChange={setFlag} options={SUP_FLAGS[view]} />
+        <SelectFilter label="Ville" icon={MapPin} value={city} onChange={setCity} options={cityOptions} allLabel="Toutes" />
+        <PeriodFilter label="Commandé" title="Fournisseurs ayant au moins un BC commandé sur la période"
+          period={period} onPeriod={setPeriod}
+          from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
+        {hasFilters && (
+          <button type="button" onClick={resetFilters} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <X size={12} /> Effacer
+          </button>
+        )}
+        <ViewSwitch view={view} onChange={switchView}
+          openLabel={`Actifs · ${openCount}`} historyLabel={`Inactifs · ${inactiveCount}`} />
+      </div>
+      <PurHeaderActions>
+        <button onClick={openNew} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Plus size={13} /> Nouveau fournisseur
+        </button>
+      </PurHeaderActions>
+
+      {/* Situation de la relation : une pastille numérotée par étape, clic = filtre */}
       <StagePipeline
         title="Où en sont mes fournisseurs"
         summary={`${openCount} actif${openCount > 1 ? 's' : ''} · ${n(openDue)} DH restant dus`}
@@ -316,44 +351,6 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
         isActive={k => (k === 'inactive' ? view === 'history' : view === 'open' && stage === k)}
         onPick={pickStage}
       />
-
-      {/* Barre de vue + nouveau fournisseur */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <ViewSwitch view={view} onChange={switchView}
-          openLabel={`Actifs · ${openCount}`} historyLabel={`Inactifs · ${inactiveCount}`} />
-        {view === 'open' && stage && (
-          <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            Situation : {SUP_STAGES.find(s => s.key === stage)?.label}
-            <button type="button" onClick={() => setStage('')} aria-label="Retirer le filtre de situation" style={{ display: 'inline-flex' }}>
-              <X size={11} />
-            </button>
-          </span>
-        )}
-        <div style={{ flex: 1 }} />
-        <button onClick={openNew} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <Plus size={13} /> Nouveau fournisseur
-        </button>
-      </div>
-
-      {/* Recherche + filtres */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" placeholder="Rechercher par nom, raison sociale, contact, ville ou identifiant (ICE, IF…)"
-          aria-label="Rechercher un fournisseur"
-          value={searchInput} onChange={e => setSearchInput(e.target.value)} className="odoo-search-input"
-          style={{ flex: '1 1 220px', minWidth: 0 }} />
-        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
-        <SelectFilter label="Critère" icon={Filter} value={flag} onChange={setFlag} options={SUP_FLAGS[view]} />
-        <SelectFilter label="Ville" icon={MapPin} value={city} onChange={setCity} options={cityOptions} allLabel="Toutes" />
-        <PeriodFilter label="Commandé" title="Fournisseurs ayant au moins un BC commandé sur la période"
-          period={period} onPeriod={setPeriod}
-          from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
-        {hasFilters && (
-          <button type="button" onClick={resetFilters} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={12} /> Effacer les filtres
-          </button>
-        )}
-      </div>
 
       {isLoading ? (
         <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>

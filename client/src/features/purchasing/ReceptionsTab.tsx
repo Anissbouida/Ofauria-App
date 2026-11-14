@@ -6,10 +6,12 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { receptionVouchersApi, purchaseOrdersApi } from '../../api/purchase-orders.api';
 import { PODetailModal, DeliveryModal } from '../accounting/PurchaseOrdersTab';
+import { ListKpi } from '../sales/ListTemplate';
 import { ViewSwitch, PeriodFilter, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 
 const fmt = (v: number | string | null | undefined) =>
   v == null ? '—' : Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (v: number) => `${fmt(v)} DH`;
 const date = (v: string | null | undefined) => (v ? String(v).slice(0, 10).split('-').reverse().join('/') : '—');
 const monthKey = (v: string | null | undefined) => (v ? String(v).slice(0, 7) : '');
 const monthLabel = (v: string | null | undefined) =>
@@ -112,6 +114,8 @@ export default function ReceptionsTab() {
   }, [vouchers, dateFrom, dateTo, term]);
 
   const hasPeriodFilter = period !== 'all';
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const monthVouchers = vouchers.filter(r => String(r.reception_date ?? '').slice(0, 7) === thisMonth);
 
   return (
     <>
@@ -119,24 +123,21 @@ export default function ReceptionsTab() {
         Choisissez un bon de commande envoyé et saisissez les quantités reçues.
       </PageNote>
 
-      {/* Bascule À réceptionner / Historique */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <ViewSwitch
-          view={view}
-          onChange={setView}
-          openLabel={`À réceptionner${loadingPending ? '' : ` · ${pending.length}`}`}
-          historyLabel={`Historique${loadingVouchers ? '' : ` · ${vouchers.length}`}`}
-          ariaLabel="Vue des réceptions"
-        />
-      </div>
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="À réceptionner" value={String(pending.length)} sub={`${money(pending.reduce((a, po) => a + (Number(po.total_amount) || 0), 0))} attendus`} />
+        <ListKpi label="Livraisons en retard" value={String(pending.filter(po => po.is_late).length)} sub="date prévue dépassée" tone={pending.some(po => po.is_late) ? 'red' : undefined} />
+        <ListKpi label="Reçues ce mois" value={String(monthVouchers.length)} sub={money(monthVouchers.reduce((a, r) => a + (Number(r.total_amount) || 0), 0))} />
+        <ListKpi label="Dernière réception" value={date(vouchers.map(r => String(r.reception_date ?? '')).sort().pop())} sub="bon de réception le plus récent" />
+      </section>
 
-      {/* Recherche + (historique) filtre de période */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" aria-label="Rechercher"
-          placeholder={view === 'open' ? 'Rechercher par N° de BC, fournisseur...' : 'Rechercher par N° de réception, BC, fournisseur...'}
-          value={searchInput} onChange={e => setSearchInput(e.target.value)} className="odoo-search-input"
-          style={{ flex: '1 1 220px', minWidth: 0 }} />
+      {/* Barre d'outils unique : recherche, période (historique), bascule À réceptionner / Historique */}
+      <div className="prj-toolbar">
+        <label className="prj-search">
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
+          <input type="search" aria-label="Rechercher"
+            placeholder={view === 'open' ? 'N° de BC, fournisseur…' : 'N° de réception, BC, fournisseur…'}
+            value={searchInput} onChange={e => setSearchInput(e.target.value)} />
+        </label>
         {view === 'history' && (
           <PeriodFilter label="Reçu" title="Filtre sur la date de réception"
             period={period} onPeriod={setPeriod}
@@ -149,6 +150,13 @@ export default function ReceptionsTab() {
             <X size={12} /> Effacer
           </button>
         )}
+        <ViewSwitch
+          view={view}
+          onChange={setView}
+          openLabel={`À réceptionner${loadingPending ? '' : ` · ${pending.length}`}`}
+          historyLabel={`Historique${loadingVouchers ? '' : ` · ${vouchers.length}`}`}
+          ariaLabel="Vue des réceptions"
+        />
       </div>
 
       {/* ───────── À réceptionner ───────── */}

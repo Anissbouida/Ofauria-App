@@ -106,3 +106,16 @@
 .pur-module .odoo-view-switcher:not(.fixed .odoo-view-switcher) { border-radius: 6px; overflow: hidden; background: var(--theme-bg-card); }
 .pur-module .odoo-section-header { font-size: 0.9375rem; text-transform: none; letter-spacing: 0; color: var(--odoo-text); }
 .pur-module .odoo-search-panel:not(.fixed .odoo-search-panel) .input { width: auto; flex: 0 0 auto; }
+
+/* Gabarit Liste (refonte Ventes appliquée aux Achats, 2026-11-14) : pastilles numérotées du circuit,
+   barre d'outils unique, en-tête « Achats / … ». ProcessBoardVariant = 'chips' (PurchasingPage). */
+.pur-head-body { padding: 16px 20px; }
+@media (max-width: 768px) { .pur-head-body { padding: 12px 16px; } }
+.pb-stage-chips { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pb-stage-chips .prj-chips { flex: 1 1 auto; }
+.pb-stage-summary { font-size: 0.8125rem; color: var(--odoo-text-muted); margin-left: auto; text-align: right; }
+.pb-chip-num { width: 18px; height: 18px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.625rem; font-weight: 700; background: var(--odoo-border); color: var(--odoo-text); }
+.prj-chip.active .pb-chip-num { background: var(--odoo-purple); color: #fff; }
+.pb-chip-late { font-size: 0.6875rem; font-weight: 600; color: var(--prj-red, #B42318); background: color-mix(in srgb, var(--prj-red, #B42318) 10%, transparent); border-radius: 10px; padding: 1px 7px; }
+.pur-module .prj-toolbar > label:has(.odoo-filter-dropdown) { height: 36px; padding: 0 4px 0 10px; border: 1px solid var(--odoo-border); border-radius: 6px; background: var(--theme-bg-card); }
+.pur-module .prj-toolbar .odoo-filter-dropdown { width: auto; max-width: 180px; height: 34px; border: 0; background: transparent; }

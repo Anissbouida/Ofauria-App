@@ -15,6 +15,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { apiErrorMessage } from '../../api/errors';
 import { PeriodFilter, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
+import { FilterChips } from '../sales/ListTemplate';
 
 /** Statuts calculés par la base depuis la couverture des lignes de BC (mig 305). */
 const STATUS_INFO: Record<string, { label: string; tag: string; dot: string }> = {
@@ -230,29 +231,16 @@ export default function PurchaseRequestsPage() {
         </div>
       </div>
 
-      {/* Search panel */}
-      <div className="odoo-search-panel">
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" placeholder="Rechercher par fournisseur ou ingrédient..."
-          value={search} onChange={e => setSearch(e.target.value)} className="odoo-search-input" />
-        <div style={{ display: 'inline-flex', gap: 4 }}>
-          <button onClick={() => setViewMode('grouped')} className="odoo-filter-dropdown"
-            style={{
-              backgroundColor: viewMode === 'grouped' ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
-              color: viewMode === 'grouped' ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
-              fontWeight: viewMode === 'grouped' ? 600 : 400,
-            }}>
-            Par fournisseur
-          </button>
-          <button onClick={() => setViewMode('all')} className="odoo-filter-dropdown"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 4,
-              backgroundColor: viewMode === 'all' ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
-              color: viewMode === 'all' ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
-              fontWeight: viewMode === 'all' ? 600 : 400,
-            }}>
-            <History size={12} /> Historique
-          </button>
+      {/* Barre d'outils : recherche + présentation Par fournisseur / Historique */}
+      <div className="prj-toolbar">
+        <label className="prj-search">
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
+          <input type="search" aria-label="Rechercher une demande" placeholder="Fournisseur ou ingrédient…"
+            value={search} onChange={e => setSearch(e.target.value)} />
+        </label>
+        <div className="prj-views" role="tablist" aria-label="Présentation">
+          <button type="button" role="tab" aria-selected={viewMode === 'grouped'} className={viewMode === 'grouped' ? 'active' : ''} onClick={() => setViewMode('grouped')}>Par fournisseur</button>
+          <button type="button" role="tab" aria-selected={viewMode === 'all'} className={viewMode === 'all' ? 'active' : ''} onClick={() => setViewMode('all')}><History size={13} /> Historique</button>
         </div>
       </div>
 
@@ -436,20 +424,9 @@ export default function PurchaseRequestsPage() {
       {/* All view */}
       {viewMode === 'all' && (
         <>
-          <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-            {['', 'pending', 'assigned', 'received', 'closed', 'cancelled'].map(s => {
-              const label = s ? STATUS_INFO[s].label : 'Tous';
-              return (
-                <button key={s} onClick={() => setStatusFilter(s)} className="odoo-filter-dropdown"
-                  style={{
-                    backgroundColor: statusFilter === s ? 'var(--theme-accent-light, rgba(0,0,0,0.05))' : 'transparent',
-                    color: statusFilter === s ? 'var(--theme-accent, var(--theme-text))' : 'var(--theme-text-muted)',
-                    fontWeight: statusFilter === s ? 600 : 400,
-                  }}>
-                  {label}
-                </button>
-              );
-            })}
+          <div className="prj-toolbar">
+            <FilterChips label="Filtrer par statut" value={statusFilter} onChange={setStatusFilter}
+              chips={['', 'pending', 'assigned', 'received', 'closed', 'cancelled'].map(k => ({ key: k, label: k ? STATUS_INFO[k].label : 'Tous' }))} />
             <span style={{ flex: 1 }} />
             <PeriodFilter label="Demandé" title="Filtre sur la date de la demande"
               period={period} onPeriod={setPeriod}

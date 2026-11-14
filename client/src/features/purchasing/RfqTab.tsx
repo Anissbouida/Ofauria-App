@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import '../projects/projects.css';
 import './purchasing.css';
+import { ListKpi } from '../sales/ListTemplate';
+import { PurHeaderActions } from './PurHeaderActions';
 import { format } from 'date-fns';
 import { rfqApi, RFQ_STATUS_LABELS, type Rfq, type RfqStatus, type RfqItem, type RfqItemInput, type Quotation, type RfqSupplier } from '../../api/rfq.api';
 import { ingredientsApi } from '../../api/inventory.api';
@@ -66,18 +68,28 @@ export default function RfqTab({ onOpenOrder }: { onOpenOrder?: (purchaseOrderId
   const statusOptions = (view === 'open' ? OPEN_STATUSES : HISTORY_STATUSES).map(k => ({ key: k, label: RFQ_STATUS_LABELS[k] }));
   return (
     <>
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="En attente de devis" value={String(by.sent?.count ?? 0)} sub="envoyées aux fournisseurs" />
+        <ListKpi label="Devis à comparer" value={String(by.quoted?.count ?? 0)} sub="au moins un devis reçu" tone={(by.quoted?.count ?? 0) > 0 ? 'orange' : undefined} />
+        <ListKpi label="Date limite dépassée" value={String((by.sent?.overdue ?? 0) + (by.quoted?.overdue ?? 0))} sub="à relancer ou clôturer"
+          tone={(by.sent?.overdue ?? 0) + (by.quoted?.overdue ?? 0) > 0 ? 'red' : undefined} />
+        <ListKpi label="Clôturées" value={String(historyCount)} sub="attribuées, annulées ou sans suite" />
+      </section>
+      <div className="prj-toolbar">
+        <label className="prj-search">
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
+          <input type="search" aria-label="Rechercher une demande de prix" value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, objet, fournisseur…" />
+        </label>
+        <SelectFilter label="Statut" icon={Filter} value={status} onChange={v => setStatus(v as RfqStatus | '')} options={statusOptions} allLabel="Tous statuts" />
+        <ViewSwitch view={view} onChange={switchView}
+          openLabel={`En cours · ${openCount}`} historyLabel={`Historique · ${historyCount}`} ariaLabel="Vue des demandes de prix" />
+      </div>
+      <PurHeaderActions>
+        <button className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouvelle demande de prix</button>
+      </PurHeaderActions>
       <StagePipeline title="Où en sont les demandes de prix" summary={`${(by.sent?.count ?? 0) + (by.quoted?.count ?? 0)} en cours · ${(by.sent?.overdue ?? 0) + (by.quoted?.overdue ?? 0)} au-delà de la date limite`}
         stages={STAGES} stats={Object.fromEntries(STAGES.map(s => [s.key, { count: by[s.key]?.count ?? 0, sub: '', late: by[s.key]?.overdue ?? 0, alertLabel: 'en retard' }]))}
         isActive={k => status === k} onPick={pickStage} />
-      <div className="odoo-search-panel" style={{ margin: 0, flexWrap: 'wrap', rowGap: 8 }}>
-        <ViewSwitch view={view} onChange={switchView}
-          openLabel={`En cours · ${openCount}`} historyLabel={`Historique · ${historyCount}`} ariaLabel="Vue des demandes de prix" />
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', marginLeft: 4 }} />
-        <input className="odoo-search-input" style={{ flex: '1 1 200px', minWidth: 0 }} value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, objet, fournisseur…" />
-        <SelectFilter label="Statut" icon={Filter} value={status} onChange={v => setStatus(v as RfqStatus | '')} options={statusOptions} allLabel="Tous statuts" />
-        <div style={{ flex: 1 }} />
-        <button className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouvelle demande de prix</button>
-      </div>
       {isLoading ? <Loading /> : !data?.rows.length ? (
         <StatusBanner tone="info" icon={FileQuestion} title={view === 'history' ? 'Aucune demande de prix clôturée' : 'Aucune demande de prix en cours'}>
           {view === 'history'

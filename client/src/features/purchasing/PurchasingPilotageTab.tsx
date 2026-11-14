@@ -12,6 +12,7 @@ import {
   StagePipeline, ViewSwitch, PeriodFilter, SelectFilter, Pager,
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
+import { ListKpi } from '../sales/ListTemplate';
 
 const fmt = (v: number | string | null | undefined) =>
   v == null ? '—' : Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -166,7 +167,19 @@ export default function PurchasingPilotageTab({ onOpenInvoice }: {
     <>
       {/* Frise du cycle d'achat : les 7 étapes P2P, de l'identification à la facture */}
 
-      {/* Les 4 contrôles du rapprochement : une carte par liste, clic = afficher */}
+      {/* Montants des 4 contrôles (au prix du BC) ; les pastilles dessous choisissent la liste affichée. */}
+      {s && (
+        <section className="prj-kpis" aria-label="Indicateurs">
+          <ListKpi label="Commandé, non reçu" value={`${fmt(s.open_commitments.amount)} DH`} sub={plural(s.open_commitments.pos, 'BC envoyé')} />
+          <ListKpi label="Reçu, non facturé" value={`${fmt(s.received_not_invoiced.amount)} DH`} sub={`${plural(s.received_not_invoiced.lines, 'ligne')} · ${s.received_not_invoiced.aged} > 30 j`}
+            tone={s.received_not_invoiced.aged ? 'orange' : undefined} />
+          <ListKpi label="Facturé, non reçu" value={`${fmt(s.invoiced_not_received.amount)} DH`} sub={plural(s.invoiced_not_received.lines, 'ligne') + ' à vérifier'}
+            tone={s.invoiced_not_received.lines ? 'red' : undefined} />
+          <ListKpi label="Factures sans lignes" value={`${fmt(s.invoices_without_lines.amount)} DH`} sub={plural(s.invoices_without_lines.count, 'facture') + ' hors contrôle'} />
+        </section>
+      )}
+
+      {/* Les 4 contrôles du rapprochement : une pastille par liste, clic = afficher */}
       <StagePipeline
         title="Rapprochement commande → réception → facture"
         summary="Mesuré par ligne de BC, au prix du BC"
@@ -198,29 +211,30 @@ export default function PurchasingPilotageTab({ onOpenInvoice }: {
         <PageNote help="Elles ne peuvent pas être rapprochées des réceptions ligne par ligne.">Factures saisies sans lignes : complétez-les pour qu'elles entrent dans le contrôle.</PageNote>
       )}
 
-      {/* Vue + filtres */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <ViewSwitch ariaLabel="Présentation" view={group === 'detail' ? 'open' : 'history'}
-          onChange={v => setGroup(v === 'open' ? 'detail' : 'supplier')}
-          openLabel="Détail" historyLabel="Par fournisseur" />
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0, marginLeft: 8 }} />
-        <input type="text" aria-label="Rechercher"
-          placeholder={kind === 'nolines' ? 'Rechercher par fournisseur ou N° de facture...' : 'Rechercher par fournisseur, BC ou article...'}
-          value={searchInput} onChange={e => setSearchInput(e.target.value)} className="odoo-search-input"
-          style={{ flex: '1 1 200px', minWidth: 0 }} />
-        {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+      {/* Barre d'outils unique : recherche, filtres, présentation Détail / Par fournisseur */}
+      <div className="prj-toolbar">
+        <label className="prj-search">
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
+          <input type="search" aria-label="Rechercher"
+            placeholder={kind === 'nolines' ? 'Fournisseur ou N° de facture…' : 'Fournisseur, BC ou article…'}
+            value={searchInput} onChange={e => setSearchInput(e.target.value)} />
+          {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
+        </label>
         {kind !== 'inr' && (
           <SelectFilter label="Ancienneté" icon={Clock} value={minAge} onChange={setMinAge} options={AGES} allLabel="Toutes" />
         )}
         <PeriodFilter label={DATE_LABEL[kind].label} title={DATE_LABEL[kind].title}
           period={period} onPeriod={setPeriod}
           from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
-        <SearchSelect options={supplierOptions} value={supplierFilter} onChange={setSupplierFilter} placeholder="Tous les fournisseurs" />
+        <div style={{ minWidth: 190 }}><SearchSelect options={supplierOptions} value={supplierFilter} onChange={setSupplierFilter} placeholder="Tous les fournisseurs" /></div>
         {hasFilters && (
           <button type="button" onClick={resetFilters} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <X size={12} /> Effacer les filtres
+            <X size={12} /> Effacer
           </button>
         )}
+        <ViewSwitch ariaLabel="Présentation" view={group === 'detail' ? 'open' : 'history'}
+          onChange={v => setGroup(v === 'open' ? 'detail' : 'supplier')}
+          openLabel="Détail" historyLabel="Par fournisseur" />
       </div>
 
       {isLoading || !board ? (
