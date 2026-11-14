@@ -348,7 +348,7 @@ function SupplierScore({ param, draft, disabled, onChange }: {
       <div className="odoo-params-score-weights">
         {weights.map((n, i) => (
           <label key={n} htmlFor={`param-${param.key}-${n}`} style={{ borderTopColor: shades[i] }}>
-            <span>{f(n).label.replace(/^Poids\s+/i, '')}</span>
+            <span>{f(n).label.replace(/^Poids\s+/i, '').replace(/^./, c => c.toUpperCase())}</span>
             {num(n)}
           </label>
         ))}
