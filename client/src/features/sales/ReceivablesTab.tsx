@@ -33,7 +33,11 @@ const day = (d: string) => format(new Date(d + 'T00:00:00'), 'dd MMM yyyy', { lo
 type Filter = 'all' | 'overdue' | 'over60';
 
 export default function ReceivablesTab() {
-  const [filter, setFilter] = useState<Filter>('all');
+  // ?filter=overdue|over60 : lien « Créances échues » du tableau de bord.
+  const [filter, setFilter] = useState<Filter>(() => {
+    const f = new URLSearchParams(window.location.search).get('filter');
+    return f === 'overdue' || f === 'over60' ? f : 'all';
+  });
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [paying, setPaying] = useState<{ doc: ReceivableDoc; customer: string } | null>(null);

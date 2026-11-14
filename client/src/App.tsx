@@ -38,6 +38,7 @@ import MrpPage from './features/production/MrpPage';
 import AtelierPage from './features/production/AtelierPage';
 import ProductionSettingsPage from './features/production/ProductionSettingsPage';
 import SalesLayout from './features/sales/SalesLayout';
+import SalesDashboard from './features/sales/SalesDashboard';
 import PriceListsPage from './features/pricing/PriceListsPage';
 import ProductTransfersPage from './features/logistics/ProductTransfersPage';
 import ProReturnsPage from './features/logistics/ProReturnsPage';
@@ -87,6 +88,7 @@ export default function App() {
               <Route path="/pos" element={<POSPage />} />
               {/* Module Ventes : commandes, ventes, clients et produits sous une même barre latérale. */}
               <Route element={<SalesLayout />}>
+                <Route path="/sales-dashboard" element={<SalesDashboard />} />
                 <Route path="/crm" element={<CrmPage />} />
                 <Route path="/promotions" element={<PromotionsPage />} />
                 <Route path="/quotes" element={<QuotesPage />} />

@@ -28,7 +28,8 @@ export default function SalesLayout() {
   // Opérations rangées par flux (maquette 2026-11-13) : la caisse, puis la chaîne pro
   // devis → commande → livraison → facture, au lieu d'une liste à plat.
   const views: ModuleView[] = [
-    { key: 'reports:overview', label: "Vue d'ensemble", icon: LayoutDashboard, section: 'dashboard', href: '/reports', hidden: !hasModule('reports') },
+    // Tableau de bord Ventes (maquette planche 1) ; l'analyse détaillée (/reports) passe en Rapports.
+    { key: 'sales-dashboard', label: 'Tableau de bord', icon: LayoutDashboard, section: 'dashboard', href: '/sales-dashboard', hidden: !isDirection },
     { key: 'pos', label: 'Point de vente', icon: Monitor, section: 'operations', group: 'Caisse', href: '/pos', external: true, hidden: !hasModule('pos') },
     salesView('sales', Receipt, 'Caisse'),
     salesView('returns', RotateCcw, 'Caisse'),
@@ -50,6 +51,7 @@ export default function SalesLayout() {
     { key: 'sales:subscriptions', label: 'Abonnements', icon: Repeat, section: 'operations', group: 'Facturation', href: '/sales?tab=subscriptions', hidden: !hasModule('sales') || !isDirection },
     // Ristournes de fin d'année (phase 11, D5-12) : taux sur le CA annuel, direction.
     { key: 'rebates', label: 'Ristournes', icon: BadgePercent, section: 'operations', group: 'Facturation', href: '/rebates', hidden: !hasModule('sales') || !isDirection },
+    { key: 'reports:overview', label: 'Analyse des ventes', icon: BarChart3, section: 'reports', href: '/reports', hidden: !hasModule('reports') },
     { key: 'reports:margins', label: 'Marges', icon: Percent, section: 'reports', href: '/reports?tab=margins', hidden: !hasModule('reports') },
     { key: 'reports:menu', label: 'Menu Engineering', icon: Sparkles, section: 'reports', href: '/reports?tab=menu', hidden: !hasModule('reports') },
     // Objectifs par commercial (phase 11, D3-13) : objectif vs réalisé par vendeur.

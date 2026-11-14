@@ -36,3 +36,31 @@
 
 .sal-lane-sum { margin-left: auto; font-variant-numeric: tabular-nums; }
 .prj-task .sal-amount { font-weight: 600; color: var(--odoo-text); font-variant-numeric: tabular-nums; }
+
+/* Tableau de bord Ventes (planche 1) : « À traiter », chaîne pro, familles, encours. */
+.sal-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: stretch; }
+.sal-grow { flex: 999 1 560px; min-width: 0; }
+.sal-side { flex: 1 1 340px; min-width: 0; }
+.sal-up, .sal-down { display: inline-flex; align-items: center; gap: 3px; font-size: 0.75rem; font-weight: 600; }
+.sal-up { color: var(--prj-green); }
+.sal-down { color: var(--prj-red); }
+.sal-link { margin-left: auto; border: 0; background: none; padding: 0; font: inherit; font-size: 0.8125rem; font-weight: 500; color: var(--odoo-purple); cursor: pointer; }
+.sal-link:hover { text-decoration: underline; }
+.sal-todo { list-style: none; margin: 0; padding: 0; }
+.sal-todo li { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--odoo-border); }
+.sal-todo li:last-child { border-bottom: 0; }
+.sal-todo-ic { width: 34px; height: 34px; border-radius: 8px; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+.sal-todo-ic.r { background: color-mix(in srgb, var(--prj-red) 12%, transparent); color: var(--prj-red); }
+.sal-todo-ic.o { background: color-mix(in srgb, var(--prj-orange) 13%, transparent); color: var(--prj-orange); }
+.sal-todo-ic.b { background: color-mix(in srgb, var(--odoo-purple) 12%, transparent); color: var(--odoo-purple); }
+.sal-todo-ic.x { background: color-mix(in srgb, var(--odoo-text-muted) 14%, transparent); color: var(--odoo-text-muted); }
+.sal-todo-tx { flex: 1; min-width: 200px; }
+.sal-todo-tx strong { font-size: 0.875rem; font-weight: 600; }
+.sal-todo-amt { font-size: 0.875rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sal-flow { list-style: none; margin: 0; padding: 6px 8px 4px; display: grid; gap: 2px; }
+.sal-flow button { width: 100%; display: grid; gap: 6px; padding: 10px 8px; border: 0; border-radius: 8px; background: transparent; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.sal-flow button:hover, .sal-flow button:focus-visible { background: color-mix(in srgb, var(--odoo-text-muted) 7%, transparent); outline: none; }
+.sal-flow-h { display: flex; justify-content: space-between; gap: 10px; font-size: 0.8125rem; }
+.sal-flow-h strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sal-cat { list-style: none; margin: 0; padding: 12px 16px 16px; display: grid; gap: 12px; }
+.sal-cat li { display: grid; gap: 5px; }

@@ -134,7 +134,8 @@ export default function OrdersPage() {
   const [rescheduleOrder, setRescheduleOrder] = useState<OrderRow | null>(null);
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
-  const [lateOnly, setLateOnly] = useState(false);
+  // ?filter=late : lien « À traiter » du tableau de bord.
+  const [lateOnly, setLateOnly] = useState(() => new URLSearchParams(window.location.search).get('filter') === 'late');
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState<OrderRow | null>(null);

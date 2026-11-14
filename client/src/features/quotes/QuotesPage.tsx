@@ -44,7 +44,8 @@ async function openPdf(id: string, kind: 'quote' | 'proforma') {
 
 export default function QuotesPage() {
   const qc = useQueryClient();
-  const [status, setStatus] = useState('');
+  // ?status=follow|open : liens du tableau de bord Ventes.
+  const [status, setStatus] = useState(() => new URLSearchParams(window.location.search).get('status') ?? '');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -119,6 +120,7 @@ export default function QuotesPage() {
       <FilterChips label="Filtrer par étape" value={status} onChange={setStatus} chips={[
         { key: '', label: 'Tous', count: allCount },
         ...(follow ? [{ key: 'follow', label: 'À relancer', count: follow, tone: 'late' as const, icon: Clock }] : []),
+        { key: 'open', label: 'En cours', count: open.count },
         { key: 'draft', label: 'Brouillons', count: by.draft?.count ?? 0 },
         { key: 'sent', label: 'Envoyés', count: by.sent?.count ?? 0 },
         { key: 'accepted', label: 'Acceptés', count: by.accepted?.count ?? 0 },
