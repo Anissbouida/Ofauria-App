@@ -50,13 +50,15 @@ const STATUS: Record<DeliveryNote['status'], { label: string; cls: string }> = {
 export default function ProSalesTab() {
   // Une seule rangée de filtres : « À facturer » = BL livrés regroupés par client
   // avec l'action de facturation ; les autres filtrent la liste des BL.
-  const [view, setView] = useState<'' | 'inprogress' | 'delivered' | 'invoiced' | 'cancelled' | null>(null);
+  // Retour depuis une commande (?open=<id>) : tous les BL, pour que le bon d'origine reste visible et sélectionné.
+  const [view, setView] = useState<'' | 'inprogress' | 'delivered' | 'invoiced' | 'cancelled' | null>(() => (new URLSearchParams(window.location.search).get('open') ? '' : null));
   // Style Apple (2026-11) : Colonnes (liste + fiche) par défaut sur grand écran, Liste, Kanban.
   const [layout, setLayout] = useState<'split' | 'list' | 'kanban'>(() => (window.innerWidth >= 1100 ? 'split' : 'list'));
   const [search, setSearch] = useState('');
   const [showNew, setShowNew] = useState(false);
   // ?open=<id> : bon ouvert depuis la fiche commande.
-  const [detailId, setDetailId] = useState<string | null>(() => new URLSearchParams(window.location.search).get('open'));
+  // En vue Colonnes, le bon demandé s'affiche dans la colonne de droite (NotesSplit) : pas de fenêtre en plus.
+  const [detailId, setDetailId] = useState<string | null>(() => (window.innerWidth >= 1100 ? null : new URLSearchParams(window.location.search).get('open')));
   const { data: toInvoice = [], isSuccess } = useQuery({ queryKey: ['delivery-notes', 'to-invoice'], queryFn: () => deliveryNotesApi.toInvoice() });
   const pending = toInvoice.reduce((n, g) => n + g.notes.length, 0);
   const current = view ?? (isSuccess && pending > 0 ? 'delivered' : '');
@@ -548,7 +550,7 @@ function NotePane({ note, next, menu, busy }: { note: DeliveryNote; next: { labe
       <div className="ord-actions">
         {next && <button type="button" className="odoo-btn-primary" disabled={busy} onClick={next.run} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><next.icon size={14} /> {next.label}</button>}
         <button type="button" className="odoo-btn-secondary" onClick={() => printNote(n.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Printer size={13} /> Imprimer</button>
-        {n.order_id && <button type="button" className="odoo-btn-secondary" onClick={() => navigate(`/orders/${n.order_id}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ExternalLink size={13} /> Commande</button>}
+        {n.order_id && <button type="button" className="odoo-btn-secondary" onClick={() => navigate(`/orders/${n.order_id}`, { state: { from: { label: 'Bons de livraison', href: `/delivery-notes?open=${n.id}` } } })} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ExternalLink size={13} /> Commande</button>}
         <RowMenu items={menu} label="Autres actions" />
       </div>
 

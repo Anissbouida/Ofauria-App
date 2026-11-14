@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ORDER_STATUS_LABELS } from '@ofauria/shared';
 import { startOfDay } from 'date-fns';
@@ -81,6 +81,8 @@ export function orderSteps(o: Row) {
 export default function OrderRecordPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
+  // Écran d'origine (ex. bon de livraison) : le lien retour y ramène, sinon la liste des commandes.
+  const from = (useLocation().state as { from?: { label: string; href: string } } | null)?.from ?? { label: 'Commandes', href: '/orders' };
   const qc = useQueryClient();
   const confirm = useConfirm();
   const { user } = useAuth();
@@ -166,7 +168,7 @@ export default function OrderRecordPage() {
   return (
     <div className="prj prj-detail">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', flexWrap: 'wrap' }}>
-        <button type="button" className="sal-link" style={{ marginLeft: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => navigate('/orders')}><ArrowLeft size={14} /> Commandes</button>
+        <button type="button" className="sal-link" style={{ marginLeft: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => navigate(from.href)}><ArrowLeft size={14} /> {from.label}</button>
         <span aria-hidden="true">›</span><span>{o.order_number}</span>
       </div>
 
