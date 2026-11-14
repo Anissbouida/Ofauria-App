@@ -14,7 +14,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
-import { PeriodFilter, Pager, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
+import { PeriodFilter, Pager, periodParams, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import { useAuth } from '../../context/AuthContext';
 import ProjectsPlanning from './ProjectsPlanning';
 import {
@@ -221,7 +221,6 @@ function Overview() {
     <div className="prj">
       <div className="prj-toolbar">
         <PeriodFilter label="Temps passé" title="Période des heures" period={period} onPeriod={setPeriod} from={from} onFrom={setFrom} to={to} onTo={setTo} />
-        <strong style={{ fontSize: '0.875rem' }}>{periodLabel(period, from, to)}</strong>
       </div>
       <section className="prj-kpis" aria-label="Indicateurs">
         <Kpi label="Projets en cours" value={String(data.projects.active + data.projects.on_hold)} sub={`${data.projects.draft} brouillon${data.projects.draft > 1 ? 's' : ''} à lancer`} />
@@ -349,7 +348,6 @@ function TimeSheet() {
           <option value="">Tout le monde</option>
           {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
-        <strong style={{ fontSize: '0.875rem' }}>{periodLabel(period, from, to)}</strong>
       </div>
       <section className="prj-kpis" aria-label="Indicateurs">
         <Kpi label="Heures" value={data ? `${h1(data.hours)} h` : '…'} sub={data ? `${data.total} saisie${data.total > 1 ? 's' : ''}` : undefined} />
