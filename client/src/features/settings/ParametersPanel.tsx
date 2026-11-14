@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, History, Search, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { Loader2, History, Search, RotateCcw, SlidersHorizontal, HelpCircle } from 'lucide-react';
 import { settingsApi, type BusinessParameter, type ParamField } from '../../api/settings.api';
 import { useSettings } from '../../context/SettingsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -73,6 +73,15 @@ function hintFor(key: string, v: Record<string, unknown>): string | null {
 }
 
 const themeOf = (p: BusinessParameter) => THEME_OF.get(p.key) ?? p.domainLabel;
+
+/** Aide courte affichée sous une règle (une ligne, comme Odoo) ; le texte complet passe dans le « ? ». */
+const HELP_MAX = 95;
+function shortHelp(help: string): string {
+  const first = help.split(/(?<=\.)\s|\s:\s|\s;\s/)[0].replace(/\.$/, '');
+  if (first.length <= HELP_MAX) return first;
+  const cut = first.slice(0, HELP_MAX);
+  return `${cut.slice(0, cut.lastIndexOf(' '))}…`;
+}
 
 export default function ParametersPanel({ keys, domains, searchable = !keys && !domains, extras }: {
   keys?: string[]; domains?: string[]; searchable?: boolean;
@@ -185,35 +194,37 @@ function ParameterRow({ param }: { param: BusinessParameter }) {
   const custom = param.key === 'purchasing.supplier_score';
   const inline = !custom && numbers.length <= 2 ? numbers : [];
   const rest = custom ? [] : param.fields.filter(f => f !== primary && !inline.includes(f));
-  const helpShort = param.help.split(/(?<=\.)\s/)[0];
+  const helpShort = shortHelp(param.help);
+  const last = param.history[0];
 
   return (
     <div id={`param-${param.key}`} className={`odoo-params-row${param.available ? '' : ' unavailable'}`}>
       <div className="odoo-params-row-main">
         <div className="odoo-params-label">
           <span>{param.label}</span>
+          {param.help.replace(/\.$/, '') !== helpShort && (
+            <span className="odoo-params-q" title={param.help} aria-label={param.help} tabIndex={0}><HelpCircle size={13} /></span>
+          )}
           {param.available && !isDefault && <span className="odoo-params-custom" title="Valeur personnalisée (différente de la valeur par défaut)" />}
+          {last && (
+            <button type="button" className="odoo-params-icon" aria-expanded={showHistory} onClick={() => setShowHistory(!showHistory)}
+              title={`Modifié le ${new Date(last.changed_at).toLocaleDateString('fr-FR')}${last.by_name ? ` par ${last.by_name}` : ''} : voir l'historique`}>
+              <History size={13} />
+            </button>
+          )}
+          {!disabled && !draftIsDefault && (
+            // Ne fait que préparer le brouillon : l'enregistrement passe par la barre commune.
+            <button type="button" className="odoo-params-icon" title="Revenir à la valeur par défaut (à enregistrer ensuite)"
+              onClick={() => setDraft({ ...draft, ...Object.fromEntries(param.fields.map(f => [f.name, param.defaults[f.name]])) })}>
+              <RotateCcw size={13} />
+            </button>
+          )}
           {changes > 0 && <span className="odoo-setting-changed">Modifié</span>}
           {changes > 0 && <button type="button" className="odoo-setting-revert" onClick={reset}>Rétablir</button>}
           {!param.available && <span className="odoo-tag odoo-tag-grey">Non disponible sur cette base</span>}
           {param.available && !param.editable && <span className="odoo-tag odoo-tag-grey">Lecture seule</span>}
         </div>
-        <p className="odoo-params-help" title={param.help !== helpShort ? param.help : undefined}>{helpShort}</p>
-        <div className="odoo-params-meta">
-          {param.history.length > 0 && (
-            <button type="button" onClick={() => setShowHistory(!showHistory)}>
-              <History size={11} /> Modifié le {new Date(param.history[0].changed_at).toLocaleDateString('fr-FR')}
-              {param.history[0].by_name ? ` par ${param.history[0].by_name}` : ''}
-            </button>
-          )}
-          {!disabled && !draftIsDefault && (
-            // Ne fait que préparer le brouillon : l'enregistrement passe par la barre commune.
-            <button type="button" title="Revenir à la valeur par défaut (à enregistrer ensuite)"
-              onClick={() => setDraft({ ...draft, ...Object.fromEntries(param.fields.map(f => [f.name, param.defaults[f.name]])) })}>
-              <RotateCcw size={11} /> Valeur par défaut
-            </button>
-          )}
-        </div>
+        <p className="odoo-params-help">{helpShort}</p>
       </div>
 
       <div className="odoo-params-control">

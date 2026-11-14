@@ -1,24 +1,30 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, Loader2 } from 'lucide-react';
+import { Bell, Loader2, Mail, HelpCircle, Plus, X } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
 import { settingsApi, type NotificationRule } from '../../api/settings.api';
 import { rolesApi } from '../../api/users.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
+import { OdooToggle, settingAnchor } from './SettingsPrimitives';
 
 /**
  * Règles de notification (audit Paramètres, lot 6, mig 332) : par événement,
  * notification active ou non et rôles à prévenir en plus. Appliquées en base
  * (trigger) : tous les écrans qui notifient les respectent.
+ * Refonte (après S5) : une carte par domaine, un événement par ligne (interrupteur,
+ * volume des 30 derniers jours, rôles en plus, e-mail), résumé et filtre en tête.
  */
 
 const DOMAINS: Record<string, string> = {
   production: 'Production', stock: 'Stock et bons de sortie', replenishment: 'Réapprovisionnement',
   sales: 'Ventes', products: 'Nouveaux produits', quality: 'Qualité', approvals: 'Approbations',
   sav: 'SAV / réclamations', projects: 'Projets', maintenance: 'Maintenance', purchasing: 'Achats', quotes: 'Devis clients',
+  crm: 'CRM',
 };
+
+type Filter = 'all' | 'on' | 'off' | 'email';
 
 function errorMessage(err: unknown, fallback: string) {
   const e = err as { response?: { data?: { error?: { message?: string } | string } } };
@@ -30,6 +36,7 @@ export default function NotificationsTab() {
   const queryClient = useQueryClient();
   const { canEdit } = usePermissions();
   const editable = canEdit('settings');
+  const [filter, setFilter] = useState<Filter>('all');
   const { data: rules = [], isLoading } = useQuery({ queryKey: ['notification-rules'], queryFn: settingsApi.notificationRules });
   // Rôles éditables (lot 3) pour les libellés ; repli sur les libellés fixes.
   const { data: roles = [] } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list, retry: false });
@@ -44,6 +51,7 @@ export default function NotificationsTab() {
     onError: (err) => notify.error(errorMessage(err, 'Enregistrement refusé')),
   });
 
+  const visible = (r: NotificationRule) => filter === 'all' || (filter === 'on' ? r.enabled : filter === 'off' ? !r.enabled : !!r.email_enabled);
   const groups = useMemo(() => {
     const m = new Map<string, NotificationRule[]>();
     for (const r of rules) m.set(r.domain, [...(m.get(r.domain) ?? []), r]);
@@ -51,64 +59,94 @@ export default function NotificationsTab() {
   }, [rules]);
 
   if (isLoading) return <Loader2 className="animate-spin" size={18} />;
+  if (!rules.length) return <StatusBanner tone="warning" icon={Bell} title="Règles indisponibles">La migration 332 n'est pas appliquée sur cette base.</StatusBanner>;
+
+  const active = rules.filter(r => r.enabled).length;
+  const byMail = rules.filter(r => r.enabled && r.email_enabled).length;
+  const sent = rules.reduce((n, r) => n + Number(r.sent_30d ?? 0), 0);
+  const counts: Record<Filter, number> = { all: rules.length, on: active, off: rules.length - active, email: byMail };
+
   return (
-    <div className="odoo-scope" style={{ display: 'grid', gap: 16 }}>
-      <StatusBanner tone="neutral" icon={Bell} title="Qui est prévenu, et de quoi">
-        Chaque événement prévient le rôle prévu par l'application. Vous pouvez couper un événement trop bavard ou prévenir
-        d'autres rôles en plus. Cochez « E-mail » pour qu'un événement parte aussi par e-mail aux personnes concernées qui ont une
-        adresse (réglages d'envoi : <a href="?page=mail">E-mails</a>). Le changement s'applique aux notifications suivantes.
-      </StatusBanner>
-      {!rules.length && <StatusBanner tone="warning" icon={Bell} title="Règles indisponibles">La migration 332 n'est pas appliquée sur cette base.</StatusBanner>}
-      {groups.map(([domain, list]) => (
-        <section key={domain} style={{ display: 'grid', gap: 6 }}>
-          <h3 style={{ margin: 0, fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--odoo-text-muted)' }}>{DOMAINS[domain] ?? domain}</h3>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="odoo-table">
-              <thead><tr><th style={{ width: 70 }}>Active</th><th style={{ width: 70 }}>E-mail</th><th>Événement</th><th>Prévenus (30 jours)</th><th style={{ textAlign: 'right' }}>Envois (30 j)</th><th>Prévenir aussi</th></tr></thead>
-              <tbody>
-                {list.map(r => (
-                  <tr key={r.type} id={`notif-row-${r.type}`} style={{ opacity: r.enabled ? 1 : 0.6 }}>
-                    <td>
-                      <input id={`notif-${r.type}`} type="checkbox" checked={r.enabled} disabled={!editable || save.isPending}
-                        aria-label={`Activer « ${r.label} »`}
-                        onChange={e => save.mutate({ type: r.type, data: { enabled: e.target.checked } })} />
-                    </td>
-                    <td>
-                      <input type="checkbox" checked={!!r.email_enabled} disabled={!editable || !r.enabled || save.isPending}
-                        aria-label={`Envoyer aussi par e-mail « ${r.label} »`}
-                        onChange={e => save.mutate({ type: r.type, data: { emailEnabled: e.target.checked } })} />
-                    </td>
-                    <td>{r.label}</td>
-                    <td style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{(r.recipients_30d ?? []).map(roleLabel).join(', ') || '—'}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.sent_30d}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                        {r.extra_roles.map(c => (
-                          <span key={c} className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            {roleLabel(c)}
-                            {editable && (
-                              <button type="button" aria-label={`Retirer ${roleLabel(c)}`} style={{ border: 0, background: 'transparent', cursor: 'pointer', padding: 0 }}
-                                onClick={() => save.mutate({ type: r.type, data: { extraRoles: r.extra_roles.filter(x => x !== c) } })}>×</button>
-                            )}
-                          </span>
-                        ))}
-                        {editable && r.enabled && (
-                          <select aria-label={`Prévenir aussi pour « ${r.label} »`} value=""
-                            style={{ fontSize: '0.8125rem', padding: '2px 4px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' }}
-                            onChange={e => e.target.value && save.mutate({ type: r.type, data: { extraRoles: [...r.extra_roles, e.target.value] } })}>
-                            <option value="">+ Ajouter</option>
-                            {roleOptions.filter(([c]) => !r.extra_roles.includes(c)).map(([c, l]) => <option key={c} value={c}>{l}</option>)}
-                          </select>
+    <div className="odoo-scope odoo-notif">
+      <div className="odoo-params-summary">
+        <div className="info"><small>Événements actifs</small><strong>{active} / {rules.length}</strong></div>
+        <div className="info"><small>Aussi par e-mail</small><strong>{byMail}</strong></div>
+        <div className="off"><small>Notifications envoyées · 30 j</small><strong>{sent.toLocaleString('fr-FR')}</strong></div>
+      </div>
+
+      <div className="odoo-notif-bar">
+        <div className="odoo-view-switcher" role="tablist" aria-label="Filtrer les événements">
+          {([['all', 'Tous'], ['on', 'Actifs'], ['off', 'Coupés'], ['email', 'Par e-mail']] as const).map(([k, l]) => (
+            <button key={k} type="button" role="tab" aria-selected={filter === k} className={filter === k ? 'active' : ''} onClick={() => setFilter(k)}>
+              {l} <span className="odoo-notif-count">{counts[k]}</span>
+            </button>
+          ))}
+        </div>
+        <span className="odoo-notif-note">
+          Chaque événement prévient le rôle prévu ; ajoutez-en d'autres ou coupez-le.
+          <span className="odoo-params-q" tabIndex={0}
+            title="Le changement vaut pour les notifications suivantes. L'e-mail part aux personnes concernées qui ont une adresse ; le serveur d'envoi se règle dans Automatisation › E-mails.">
+            <HelpCircle size={13} />
+          </span>
+        </span>
+      </div>
+
+      {groups.map(([domain, list]) => {
+        const shown = list.filter(visible);
+        if (!shown.length) return null;
+        const on = list.filter(r => r.enabled).length;
+        const title = DOMAINS[domain] ?? domain;
+        return (
+          <section key={domain} id={settingAnchor(title)} data-toc={title} className="odoo-company-card odoo-notif-card">
+            <h3>{title}<span className="odoo-company-card-note">{on} / {list.length} actif{on > 1 ? 's' : ''}</span></h3>
+            {shown.map(r => {
+              const extra = r.extra_roles;
+              const recipients = (r.recipients_30d ?? []).map(roleLabel).join(', ');
+              return (
+                <div key={r.type} id={`notif-row-${r.type}`} className={`odoo-notif-row${r.enabled ? '' : ' off'}`}>
+                  <OdooToggle checked={r.enabled} disabled={!editable || save.isPending}
+                    onChange={v => save.mutate({ type: r.type, data: { enabled: v } })} />
+                  <div className="odoo-notif-main">
+                    <span className="odoo-notif-label">{r.label}</span>
+                    <span className="odoo-notif-meta">
+                      {Number(r.sent_30d) > 0
+                        ? <>{r.sent_30d} envoi{Number(r.sent_30d) > 1 ? 's' : ''} en 30 j{recipients ? ` · ${recipients}` : ''}</>
+                        : 'Aucun envoi en 30 j'}
+                    </span>
+                  </div>
+                  <div className="odoo-notif-roles">
+                    {extra.map(c => (
+                      <span key={c} className="odoo-notif-role">
+                        + {roleLabel(c)}
+                        {editable && (
+                          <button type="button" aria-label={`Retirer ${roleLabel(c)}`}
+                            onClick={() => save.mutate({ type: r.type, data: { extraRoles: extra.filter(x => x !== c) } })}><X size={11} /></button>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ))}
+                      </span>
+                    ))}
+                    {editable && r.enabled && (
+                      <label className="odoo-notif-add" title="Prévenir aussi un autre rôle">
+                        <Plus size={12} />
+                        <select aria-label={`Prévenir aussi pour « ${r.label} »`} value=""
+                          onChange={e => e.target.value && save.mutate({ type: r.type, data: { extraRoles: [...extra, e.target.value] } })}>
+                          <option value="">Rôle</option>
+                          {roleOptions.filter(([c]) => !extra.includes(c)).map(([c, l]) => <option key={c} value={c}>{l}</option>)}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+                  <button type="button" className={`odoo-notif-mail${r.email_enabled && r.enabled ? ' on' : ''}`}
+                    disabled={!editable || !r.enabled || save.isPending} aria-pressed={!!r.email_enabled}
+                    title={r.email_enabled ? 'Envoyé aussi par e-mail : cliquer pour arrêter' : 'Envoyer aussi par e-mail'}
+                    onClick={() => save.mutate({ type: r.type, data: { emailEnabled: !r.email_enabled } })}>
+                    <Mail size={13} /> E-mail
+                  </button>
+                </div>
+              );
+            })}
+          </section>
+        );
+      })}
     </div>
   );
 }
