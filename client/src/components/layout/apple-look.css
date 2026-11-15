@@ -424,3 +424,5 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-stmt-cols { display: flex; justify-content: flex-end; gap: 14px; padding: 10px 16px 2px; font-size: 12px; color: var(--kl-muted); }
 .kl-stmt-cols span { min-width: 120px; text-align: right; }
 @media (max-width: 560px) { .kl-stmt-cols span:last-child { display: none; } }
+.kl-sess-rec td small.warn { color: var(--prj-orange); }
+.kl-sess-rec-note { margin: 0; padding: 8px 14px 10px; font-size: 12px; color: var(--kl-muted); border-top: 1px solid var(--kl-hair); }

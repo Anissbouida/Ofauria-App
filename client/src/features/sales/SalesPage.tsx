@@ -292,8 +292,8 @@ export default function SalesPage() {
       k.revenue += parseFloat(s.total_revenue as string) || 0;
       if (s.status !== 'closed') { k.open++; continue; }
       k.closed++;
-      if (s.difference == null && s.card_difference == null) continue;
-      const d = (parseFloat(s.difference as string) || 0) + (parseFloat(s.card_difference as string) || 0);
+      const d = sessionGaps(s).total;
+      if (d == null) continue;
       k.diff += d;
       if (d === 0) k.exact++;
       if (d < k.worst) k.worst = d;
@@ -1108,11 +1108,7 @@ export default function SalesPage() {
                 <div className="kl-sec"><h2>Clôturées</h2><small>{sessionKpis.closed} session{sessionKpis.closed > 1 ? 's' : ''}</small></div>
                 <div style={{ display: 'grid', gap: 12 }}>
                   {sessions.filter((s: Record<string, any>) => s.status === 'closed').map((s: Record<string, any>) => {
-                    const diff = s.difference !== null ? parseFloat(s.difference as string) : null;
-                    // Mig 467 — l'écart affiché cumule espèces + carte (TPE). Avant, le
-                    // tag ne reflétait que le tiroir : un manque carte restait invisible.
-                    const cardDiff = s.card_difference != null ? parseFloat(s.card_difference as string) : null;
-                    const totalDiff = (diff === null && cardDiff === null) ? null : (diff || 0) + (cardDiff || 0);
+                    const { cash: diff, card: cardDiff, cardMissing, total: totalDiff } = sessionGaps(s);
                     const pill = totalDiff === null ? 'x' : totalDiff === 0 ? 'g' : totalDiff > 0 ? 'b' : 'r';
                     const statusLabel = totalDiff === null ? 'Sans comptage'
                       : totalDiff === 0 ? 'Caisse juste'
@@ -1123,7 +1119,8 @@ export default function SalesPage() {
                     const cashExpected = parseFloat(s.expected_cash as string || '0');
                     const cashCounted = s.actual_amount != null ? parseFloat(s.actual_amount as string) : null;
                     const cardExpected = parseFloat(s.card_revenue as string || '0');
-                    const cardCounted = s.actual_card_amount != null ? parseFloat(s.actual_card_amount as string) : (cardExpected === 0 ? 0 : null);
+                    // Carte non saisie = 0 DH déclaré (l'écart vaut −ventes carte).
+                    const cardCounted = s.actual_card_amount != null ? parseFloat(s.actual_card_amount as string) : 0;
                     const totalExpected = cashExpected + cardExpected;
                     const totalCounted = cashCounted != null && cardCounted != null ? cashCounted + cardCounted : null;
                     return (
@@ -1145,9 +1142,9 @@ export default function SalesPage() {
                         </header>
                         <div className="kl-sess-grid">
                           <div><span>Fond de caisse</span><b>{formatCurrency(parseFloat(s.opening_amount as string || '0'))}</b></div>
-                          <div><span>Ventes espèces</span><b>{formatCurrency(parseFloat(s.cash_revenue as string || '0'))}</b></div>
-                          <div><span>Ventes carte</span><b>{formatCurrency(cardExpected)}</b></div>
-                          {advances > 0 && <div><span>Avances reçues</span><b>{formatCurrency(advances)}</b></div>}
+                          <div><span>Encaissé espèces</span><b>{formatCurrency(parseFloat(s.cash_revenue as string || '0'))}</b></div>
+                          <div><span>Encaissé carte</span><b>{formatCurrency(cardExpected)}</b></div>
+                          {advances > 0 && <div><span>dont avances reçues</span><b>{formatCurrency(advances)}</b></div>}
                           {advances > 0 && <div><span>Commandes en attente</span><b>{parseInt(String(s.pending_orders ?? s.total_orders ?? 0))}</b></div>}
                         </div>
                         {/* Rapprochement : ce que le système attend face à ce que le caissier a saisi à la fermeture. */}
@@ -1167,20 +1164,25 @@ export default function SalesPage() {
                               <tr>
                                 <th><CreditCard size={14} /> Carte <small>TPE</small></th>
                                 <td>{formatCurrency(cardExpected)}</td>
-                                <td>{cardCounted != null ? formatCurrency(cardCounted) : cardExpected > 0 ? <em>non saisie</em> : '—'}</td>
-                                <td>{cardDiff != null ? <b className={tone(cardDiff)}>{signed(cardDiff)}</b> : cardExpected > 0 ? <em>non rapprochée</em> : '—'}
-                                  {s.card_difference_reason && <small>{REASON_LABELS[s.card_difference_reason as string] ?? s.card_difference_reason}</small>}</td>
+                                <td>{cardExpected === 0 && s.actual_card_amount == null ? '—' : formatCurrency(cardCounted)}
+                                  {cardMissing && <small className="warn">non saisie à la fermeture</small>}</td>
+                                <td>{cardDiff != null ? <b className={tone(cardDiff)}>{signed(cardDiff)}</b> : '—'}
+                                  {cardMissing ? <small>Montant TPE non saisi</small>
+                                    : s.card_difference_reason && <small>{REASON_LABELS[s.card_difference_reason as string] ?? s.card_difference_reason}</small>}</td>
                               </tr>
                             </tbody>
                             <tfoot>
                               <tr>
                                 <th>Total</th>
                                 <td>{formatCurrency(totalExpected)}</td>
-                                <td>{totalCounted != null ? formatCurrency(totalCounted) : <em>incomplet</em>}</td>
+                                <td>{totalCounted != null ? formatCurrency(totalCounted) : '—'}</td>
                                 <td>{totalDiff != null ? <b className={tone(totalDiff)}>{signed(totalDiff)}</b> : '—'}</td>
                               </tr>
                             </tfoot>
                           </table>
+                          <p className="kl-sess-rec-note">
+                            Attendu espèces = fond de caisse + encaissements en espèces{advances > 0 ? ` (avances reçues comprises : ${formatCurrency(advances)})` : ''} + entrées − sorties de caisse.
+                          </p>
                         </div>
                         <SessionLedgerRow session={s} diff={totalDiff} />
                         {(
@@ -1386,6 +1388,20 @@ const REASON_LABELS: Record<string, string> = {
   depense_hors_paidout: 'Dépense non déclarée', autre: 'Autre motif',
   erreur_saisie_tpe: 'Erreur de saisie TPE', transaction_manquante: 'Transaction manquante', transaction_refusee: 'Transaction refusée',
 };
+
+/**
+ * Écarts d'une session clôturée. Carte non saisie au TPE alors qu'il y a eu des
+ * ventes carte (sessions antérieures à la mig 467) = rien n'a été justifié :
+ * l'écart carte vaut alors −ventes carte, comme un tiroir non compté.
+ */
+function sessionGaps(s: Record<string, any>) {
+  const cash = s.difference != null ? parseFloat(s.difference as string) : null;
+  const cardExpected = parseFloat(s.card_revenue as string || '0') || 0;
+  const cardMissing = s.actual_card_amount == null && cardExpected > 0;
+  const card = s.card_difference != null ? parseFloat(s.card_difference as string) : cardMissing ? -cardExpected : null;
+  const total = cash === null && card === null ? null : Math.round(((cash || 0) + (card || 0)) * 100) / 100;
+  return { cash, card, cardMissing, total };
+}
 
 function sessionInitials(s: Record<string, any>): string {
   return `${String(s.first_name ?? '').charAt(0)}${String(s.last_name ?? '').charAt(0)}`.toUpperCase() || '·';
