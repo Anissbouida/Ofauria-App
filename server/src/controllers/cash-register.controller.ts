@@ -7,6 +7,15 @@ import { settingsRepository } from '../repositories/settings.repository.js';
 import { companyLegalFromRow } from '../utils/company-legal.js';
 
 export const cashRegisterController = {
+  /** Rattrapage des écarts de fermeture non comptabilisés : aperçu puis exécution (mig 518). */
+  async closureGapsPreview(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await cashRegisterRepository.closureGapsPreview(req.user!.storeId ?? null) });
+  },
+  async postClosureGaps(req: AuthRequest, res: Response) {
+    const data = await cashRegisterRepository.postMissingClosureGaps(req.user!.storeId ?? null, req.user!.userId);
+    res.json({ success: true, data });
+  },
+
   async list(req: AuthRequest, res: Response) {
     const { userId, status, dateFrom, dateTo, page = '1', limit = '20' } = req.query as Record<string, string>;
     const p = parseInt(page); const l = parseInt(limit);

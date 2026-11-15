@@ -8,6 +8,12 @@ export const cashRegisterApi = {
   open: (openingAmount: number) => api.post('/cash-register/open', { openingAmount }).then(r => r.data.data),
   close: (closeType?: string) => api.post('/cash-register/close', { closeType }).then(r => r.data.data),
   submitAmount: (id: string, data: { actualAmount: number; notes?: string; differenceReason?: string; actualCardAmount?: number; cardDifferenceReason?: string }) => api.post(`/cash-register/${id}/submit`, data).then(r => r.data.data),
+  /** Rattrapage des écarts de fermeture non comptabilisés (mig 518) : aperçu puis exécution. */
+  closureGaps: () => api.get('/cash-register/closure-gaps').then(r => r.data.data as {
+    sessions: number; cashCount: number; cashTotal: number; cardCount: number; cardTotal: number; cardMissingCount: number;
+    skippedManualDays: number; firstDate: string | null; lastDate: string | null }),
+  postClosureGaps: () => api.post('/cash-register/closure-gaps/post').then(r => r.data.data as {
+    sessions: number; cashPosted: number; cardPosted: number; cardFilled: number; queued: number; skippedManualDays: number }),
   getInventoryItems: (id: string) => api.get(`/cash-register/${id}/inventory`).then(r => r.data.data),
   // Rapport Z / passation sur l'imprimante thermique du store.
   // printerId optionnel : imprimante du poste (parametres locaux du terminal).

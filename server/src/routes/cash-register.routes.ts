@@ -9,6 +9,8 @@ const router = Router();
 router.get('/', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.list);
 router.get('/current', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.currentSession);
 router.get('/last-amount', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.lastClosedAmount);
+router.get('/closure-gaps', authenticate, authorize(...ROLE_GROUPS.ADMIN), cashRegisterController.closureGapsPreview);
+router.post('/closure-gaps/post', authenticate, authorize(...ROLE_GROUPS.ADMIN), cashRegisterController.postClosureGaps);
 router.get('/:id', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.getById);
 router.get('/:id/inventory', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.getInventoryItems);
 router.post('/open', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.open);

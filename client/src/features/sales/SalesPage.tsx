@@ -24,6 +24,7 @@ import EmittedInvoicesTab from './EmittedInvoicesTab';
 import SubscriptionsTab from './SubscriptionsTab';
 import RoutesTab from './RoutesTab';
 import { ListKpi } from './ListTemplate';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ReceivablesTab from './ReceivablesTab';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -1083,6 +1084,8 @@ export default function SalesPage() {
               <ListKpi label="Écart cumulé" value={`${sessionKpis.diff > 0 ? '+' : ''}${formatCurrency(sessionKpis.diff)}`} sub={sessionKpis.worst < 0 ? `plus gros manque ${formatCurrency(sessionKpis.worst)}` : 'espèces + carte'} tone={sessionKpis.diff < 0 ? 'red' : undefined} />
               <ListKpi label="Caisses justes" value={`${sessionKpis.exact} / ${sessionKpis.closed}`} sub="sessions clôturées sans écart" tone={sessionKpis.closed && sessionKpis.exact === sessionKpis.closed ? 'green' : undefined} />
             </section>
+            {user?.role === 'admin' && <ClosureGapsBanner />}
+
             {/* Sessions en cours : liste groupée façon Réglages (nom, ouverture, pastille). */}
             {sessions.some((s: Record<string, any>) => s.status !== 'closed') && (
               <section>
@@ -1386,7 +1389,7 @@ function LoadingState() {
 const REASON_LABELS: Record<string, string> = {
   rendu_monnaie: 'Rendu de monnaie', vol: 'Vol', erreur_comptage: 'Erreur de comptage',
   depense_hors_paidout: 'Dépense non déclarée', autre: 'Autre motif',
-  erreur_saisie_tpe: 'Erreur de saisie TPE', transaction_manquante: 'Transaction manquante', transaction_refusee: 'Transaction refusée',
+  erreur_saisie_tpe: 'Erreur de saisie TPE', carte_non_saisie: 'Montant TPE non saisi', transaction_manquante: 'Transaction manquante', transaction_refusee: 'Transaction refusée',
 };
 
 /**
@@ -1394,6 +1397,54 @@ const REASON_LABELS: Record<string, string> = {
  * ventes carte (sessions antérieures à la mig 467) = rien n'a été justifié :
  * l'écart carte vaut alors −ventes carte, comme un tiroir non compté.
  */
+/**
+ * Rattrapage comptable des écarts de fermeture (mig 518) : écarts espèces jamais
+ * passés au journal et cartes non saisies au TPE (écart = −ventes carte).
+ * Affiché seulement s'il reste quelque chose à comptabiliser.
+ */
+function ClosureGapsBanner() {
+  const queryClient = useQueryClient();
+  const confirm = useConfirm();
+  const { data } = useQuery({ queryKey: ['closure-gaps'], queryFn: cashRegisterApi.closureGaps });
+  const run = useMutation({
+    mutationFn: cashRegisterApi.postClosureGaps,
+    onSuccess: (r) => {
+      queryClient.invalidateQueries({ queryKey: ['closure-gaps'] });
+      queryClient.invalidateQueries({ queryKey: ['cash-register-sessions'] });
+      notify.success(`${r.sessions} session(s) comptabilisée(s) · ${r.cashPosted} écart(s) espèces, ${r.cardPosted} écart(s) carte${r.queued ? ` · ${r.queued} en attente (voir la file comptable)` : ''}`);
+    },
+    onError: (e) => notify.error(getApiErrorMessage(e, 'Comptabilisation impossible')),
+  });
+  if (!data || data.sessions === 0) return null;
+  const period = data.firstDate && data.lastDate
+    ? `du ${format(parseISO(data.firstDate), 'dd/MM/yyyy')} au ${format(parseISO(data.lastDate), 'dd/MM/yyyy')}` : '';
+  const go = async () => {
+    const ok = await confirm(
+      `${data.sessions} session(s) ${period}.\n\n`
+      + `Écarts espèces : ${data.cashCount} écriture(s), ${formatCurrency(data.cashTotal)} (6588/7588 contre 5161).\n`
+      + `Écarts carte : ${data.cardCount} écriture(s), ${formatCurrency(data.cardTotal)} (6588/7588 contre 5141)`
+      + (data.cardMissingCount ? `, dont ${data.cardMissingCount} carte(s) non saisie(s) passées en manque.` : '.')
+      + (data.skippedManualDays ? `\n\n${data.skippedManualDays} session(s) ignorée(s) : journée couverte par une saisie manuelle.` : '')
+      + `\n\nLes écritures sont définitives (correction par extourne uniquement).`,
+      { title: 'Comptabiliser les écarts de fermeture', confirmLabel: 'Comptabiliser', danger: true });
+    if (ok) run.mutate();
+  };
+  return (
+    <section className="kl-ar-rec">
+      <span className="kl-ic o"><AlertTriangle size={16} /></span>
+      <span className="tx">
+        <b>Écarts de fermeture non comptabilisés</b>
+        <small>{data.sessions} session(s) {period}{data.cardMissingCount ? ` · ${data.cardMissingCount} carte(s) non saisie(s) au TPE` : ''}</small>
+      </span>
+      <span className="kl-ar-rec-v"><small>Espèces</small><b>{formatCurrency(data.cashTotal)}</b></span>
+      <span className="kl-ar-rec-v"><small>Carte</small><b>{formatCurrency(data.cardTotal)}</b></span>
+      <button type="button" className="odoo-btn-primary" disabled={run.isPending} onClick={go}>
+        {run.isPending ? 'Comptabilisation…' : 'Comptabiliser'}
+      </button>
+    </section>
+  );
+}
+
 function sessionGaps(s: Record<string, any>) {
   const cash = s.difference != null ? parseFloat(s.difference as string) : null;
   const cardExpected = parseFloat(s.card_revenue as string || '0') || 0;

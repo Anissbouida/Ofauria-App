@@ -16,7 +16,115 @@ async function generateClosureNumber(
   return nextDocumentNumber(client, 'cash_closure');
 }
 
+/**
+ * Rattrapage des écarts de fermeture non comptabilisés (2026-11-15).
+ * Cibles : sessions clôturées dont
+ *   - l'écart espèces n'a pas d'écriture closure_diff (LEDGER_AUTOGEN coupé à l'époque) ;
+ *   - la carte n'a pas été saisie au TPE alors qu'il y a eu des ventes carte
+ *     (avant mig 467) : écart carte = −card_revenue, motif 'carte_non_saisie' (mig 518).
+ * Exclues : les journées couvertes par une saisie manuelle historique
+ * (manual_shift_entries porte déjà le réel espèces/carte de ces jours, mig 415).
+ */
+const CLOSURE_GAP_CANDIDATES = `
+  SELECT cs.id, cs.closure_number, cs.closed_at, cs.difference, cs.card_revenue, cs.actual_card_amount, cs.card_difference,
+         u.first_name, u.last_name,
+         EXISTS (SELECT 1 FROM journal_entries je WHERE je.source_id = cs.id AND je.source_kind = 'closure_diff'
+                  AND COALESCE(je.source_detail, '') = '' AND je.status <> 'draft') AS cash_posted,
+         EXISTS (SELECT 1 FROM journal_entries je WHERE je.source_id = cs.id AND je.source_kind = 'closure_diff'
+                  AND je.source_detail = 'card' AND je.status <> 'draft') AS card_posted,
+         EXISTS (SELECT 1 FROM manual_shift_entries m WHERE m.store_id = cs.store_id
+                  AND m.entry_date = (cs.closed_at AT TIME ZONE 'Africa/Casablanca')::date) AS manual_day
+    FROM cash_register_sessions cs
+    JOIN users u ON u.id = cs.user_id
+   WHERE cs.status = 'closed' AND cs.closed_at IS NOT NULL
+     AND ($1::uuid IS NULL OR cs.store_id = $1)
+   ORDER BY cs.closed_at`;
+
+type GapRow = { id: string; closure_number: string | null; closed_at: string; difference: string | null; card_revenue: string | null;
+  actual_card_amount: string | null; card_difference: string | null; first_name: string; last_name: string;
+  cash_posted: boolean; card_posted: boolean; manual_day: boolean };
+
+function planGap(r: GapRow) {
+  const cash = parseFloat(r.difference ?? '0') || 0;
+  const cardRevenue = parseFloat(r.card_revenue ?? '0') || 0;
+  const cardMissing = r.actual_card_amount == null && r.card_difference == null && cardRevenue > 0;
+  const card = r.card_difference != null ? parseFloat(r.card_difference) : cardMissing ? -cardRevenue : 0;
+  return {
+    cardMissing,
+    cash: !r.cash_posted && Math.abs(cash) >= 0.01 ? Math.round(cash * 100) / 100 : 0,
+    card: !r.card_posted && Math.abs(card) >= 0.01 ? Math.round(card * 100) / 100 : 0,
+  };
+}
+
 export const cashRegisterRepository = {
+  /** Aperçu (sans écriture) puis exécution du rattrapage des écarts de fermeture. */
+  async closureGapsPreview(storeId: string | null) {
+    const rows = (await db.query(CLOSURE_GAP_CANDIDATES, [storeId])).rows as GapRow[];
+    const out = { sessions: 0, cashCount: 0, cashTotal: 0, cardCount: 0, cardTotal: 0, cardMissingCount: 0, skippedManualDays: 0,
+      firstDate: null as string | null, lastDate: null as string | null };
+    for (const r of rows) {
+      const g = planGap(r);
+      if (!g.cash && !g.card) continue;
+      if (r.manual_day) { out.skippedManualDays++; continue; }
+      out.sessions++;
+      if (g.cash) { out.cashCount++; out.cashTotal += g.cash; }
+      if (g.card) { out.cardCount++; out.cardTotal += g.card; if (g.cardMissing) out.cardMissingCount++; }
+      const d = new Date(r.closed_at).toISOString().slice(0, 10);
+      if (!out.firstDate || d < out.firstDate) out.firstDate = d;
+      if (!out.lastDate || d > out.lastDate) out.lastDate = d;
+    }
+    out.cashTotal = Math.round(out.cashTotal * 100) / 100;
+    out.cardTotal = Math.round(out.cardTotal * 100) / 100;
+    return out;
+  },
+
+  async postMissingClosureGaps(storeId: string | null, userId: string) {
+    if (!FLAGS.LEDGER_AUTOGEN) {
+      throw Object.assign(new Error('Comptabilisation automatique désactivée (LEDGER_AUTOGEN)'), { statusCode: 409 });
+    }
+    const rows = (await db.query(CLOSURE_GAP_CANDIDATES, [storeId])).rows as GapRow[];
+    const result = { sessions: 0, cashPosted: 0, cardPosted: 0, cardFilled: 0, queued: 0, skippedManualDays: 0 };
+    for (const r of rows) {
+      const g = planGap(r);
+      if (!g.cash && !g.card) continue;
+      if (r.manual_day) { result.skippedManualDays++; continue; }
+      const client = await db.getClient();
+      try {
+        await client.query('BEGIN');
+        await client.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
+        if (g.cardMissing) {
+          const upd = await client.query(
+            `UPDATE cash_register_sessions SET card_difference = -card_revenue, card_difference_reason = 'carte_non_saisie'
+              WHERE id = $1 AND actual_card_amount IS NULL AND card_difference IS NULL AND card_revenue > 0`, [r.id]);
+          if (upd.rowCount) result.cardFilled++;
+        }
+        const row = (await client.query(`SELECT * FROM cash_register_sessions WHERE id = $1`, [r.id])).rows[0];
+        if (g.cash) {
+          const ok = await postOrQueue(client, { kind: 'closure_diff', id: r.id }, async () => {
+            const entry = await fromClosureDiff(client, row);
+            if (entry) await persistEntry(client, entry, { userId });
+          });
+          if (ok) result.cashPosted++; else result.queued++;
+        }
+        if (g.card) {
+          const ok = await postOrQueue(client, { kind: 'closure_diff', id: r.id, detail: 'card' }, async () => {
+            const entry = await fromClosureDiff(client, row, 'card');
+            if (entry) await persistEntry(client, entry, { userId });
+          });
+          if (ok) result.cardPosted++; else result.queued++;
+        }
+        await client.query('COMMIT');
+        result.sessions++;
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
+    return result;
+  },
+
   async findOpenSession(userId: string) {
     const result = await db.query(
       `SELECT * FROM cash_register_sessions WHERE user_id = $1 AND status = 'open' ORDER BY opened_at DESC LIMIT 1`,
