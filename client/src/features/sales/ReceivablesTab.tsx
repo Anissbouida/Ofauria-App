@@ -358,85 +358,82 @@ function StatementDialog({ customerId, name, onClose }: { customerId: string; na
     queryFn: () => customersApi.statement(customerId, from, to),
   });
 
-  return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()}
-        style={{ background: 'var(--odoo-bg)', borderRadius: 8, width: 'min(760px, 96vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
-            <ScrollText size={16} /> Relevé de compte — {name}
-          </div>
-          <button type="button" onClick={onClose} className="odoo-pager-btn"><X size={14} /></button>
-        </div>
+  const fmt = (d: string) => format(new Date(d + 'T00:00:00'), 'd MMM yyyy', { locale: fr });
 
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', padding: '12px 16px', borderBottom: '1px solid var(--odoo-border)' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
-            Du
-            <input type="date" value={from} onChange={e => setFrom(e.target.value)} style={{ padding: '0.4rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit' }} />
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
-            Au
-            <input type="date" value={to} onChange={e => setTo(e.target.value)} style={{ padding: '0.4rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit' }} />
-          </label>
+  return (
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.32)' }}>
+      {/* Style Apple (2026-11) : même feuille que la fiche facture (apple-look.css, .kl-sheet). */}
+      <div className="odoo-scope kl-sheet w-full" style={{ maxWidth: 780, maxHeight: '92vh' }} onClick={e => e.stopPropagation()} role="dialog" aria-label={`Relevé de compte ${name}`}>
+        <header className="kl-sheet-head">
+          <span className="ord-mono" aria-hidden="true"><ScrollText size={18} /></span>
+          <div className="ord-who">
+            <h2>Relevé de compte</h2>
+            <p>{name} · du {fmt(from)} au {fmt(to)}</p>
+          </div>
           {data && (
-            <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Solde de clôture</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 700, color: data.closing > 0 ? '#dc2626' : 'var(--odoo-text)', fontVariantNumeric: 'tabular-nums' }}>{money(data.closing)}</div>
+            <div className="ord-amt">
+              <b>{money(data.closing)}</b>
+              <small>{data.closing > 0.004 ? 'solde dû au ' + fmt(to) : 'compte soldé'}</small>
             </div>
           )}
+          <button type="button" className="kl-sheet-close" onClick={onClose} aria-label="Fermer"><X size={16} /></button>
+        </header>
+
+        <div className="kl-sheet-body">
+          <div className="kl-stmt-period">
+            <label>Du<input type="date" value={from} max={to} onChange={e => setFrom(e.target.value)} /></label>
+            <label>Au<input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} /></label>
+          </div>
+
+          {data && (
+            <div className="kl-stmt-sum">
+              <div><span>Solde d'ouverture</span><b>{money(data.opening)}</b></div>
+              <div><span>Facturé</span><b>{money(data.totalDebit)}</b></div>
+              <div><span>Réglé</span><b className="g">{data.totalCredit > 0 ? '−' : ''}{money(data.totalCredit)}</b></div>
+              <div><span>Solde de clôture</span><b className={data.closing > 0.004 ? 'r' : ''}>{money(data.closing)}</b></div>
+            </div>
+          )}
+
+          <section>
+            <div className="kl-sec"><h2>Mouvements</h2>{data && <small>{data.entries.length} écriture{data.entries.length > 1 ? 's' : ''}</small>}</div>
+            <div className="kl-group">
+              {isLoading ? (
+                <div className="kl-empty"><Loader2 size={16} className="animate-spin" /> Chargement…</div>
+              ) : (
+                <>
+                  {data && <div className="kl-stmt-cols"><span>Montant</span><span>Solde</span></div>}
+                  {data && (
+                    <div className="kl-stmt-row muted">
+                      <span className="kl-ic x"><Scale size={15} /></span>
+                      <span className="tx"><span className="t1">Solde d'ouverture</span><span className="t2">{fmt(data.from)}</span></span>
+                      <span className="kl-stmt-amt" />
+                      <span className="kl-stmt-bal">{money(data.opening)}</span>
+                    </div>
+                  )}
+                  {data?.entries.map((e, i) => {
+                    const pay = e.kind === 'payment';
+                    return (
+                      <div key={i} className="kl-stmt-row">
+                        <span className={`kl-ic ${pay ? 'g' : 'b'}`}>{pay ? <Banknote size={15} /> : <FileText size={15} />}</span>
+                        <span className="tx">
+                          <span className="t1">{e.label} <span className="num">{e.number}</span></span>
+                          <span className="t2">{fmt(e.date)}</span>
+                        </span>
+                        <span className={`kl-stmt-amt${pay ? ' g' : ''}`}>{pay ? `−${money(e.credit)}` : `+${money(e.debit)}`}</span>
+                        <span className="kl-stmt-bal">{money(e.balance)}</span>
+                      </div>
+                    );
+                  })}
+                  {data && data.entries.length === 0 && <div className="kl-empty">Aucun mouvement sur cette période.</div>}
+                </>
+              )}
+            </div>
+          </section>
         </div>
 
-        <div style={{ overflowY: 'auto', padding: '8px 16px 16px' }}>
-          {isLoading ? (
-            <div style={{ textAlign: 'center', padding: 32, color: 'var(--odoo-text-muted)' }}><Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /></div>
-          ) : (
-            <table style={{ width: '100%', fontSize: '0.8125rem', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ color: 'var(--odoo-text-muted)', textAlign: 'left' }}>
-                  <th style={{ padding: 4 }}>Date</th><th style={{ padding: 4 }}>Pièce</th>
-                  <th style={{ padding: 4, textAlign: 'right' }}>Débit</th>
-                  <th style={{ padding: 4, textAlign: 'right' }}>Crédit</th>
-                  <th style={{ padding: 4, textAlign: 'right' }}>Solde</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr style={{ borderTop: '1px solid var(--odoo-border)', color: 'var(--odoo-text-muted)' }}>
-                  <td style={{ padding: 4 }}>{data ? day(data.from) : ''}</td>
-                  <td style={{ padding: 4, fontStyle: 'italic' }}>Solde d'ouverture</td>
-                  <td /><td />
-                  <td style={{ padding: 4, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{data ? money(data.opening) : ''}</td>
-                </tr>
-                {data?.entries.map((e, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid var(--odoo-border)' }}>
-                    <td style={{ padding: 4, whiteSpace: 'nowrap' }}>{day(e.date)}</td>
-                    <td style={{ padding: 4 }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        {e.kind === 'payment' ? <Banknote size={12} /> : <FileText size={12} />}
-                        {e.label} <span style={{ fontFamily: 'ui-monospace, monospace' }}>{e.number}</span>
-                      </span>
-                    </td>
-                    <td style={{ padding: 4, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{e.debit > 0 ? money(e.debit) : '—'}</td>
-                    <td style={{ padding: 4, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--odoo-text-muted)' }}>{e.credit > 0 ? money(e.credit) : '—'}</td>
-                    <td style={{ padding: 4, textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{money(e.balance)}</td>
-                  </tr>
-                ))}
-                {data && data.entries.length === 0 && (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24, color: 'var(--odoo-text-muted)' }}>Aucun mouvement sur cette période.</td></tr>
-                )}
-              </tbody>
-              {data && (
-                <tfoot>
-                  <tr style={{ borderTop: '2px solid var(--odoo-border)', fontWeight: 700 }}>
-                    <td style={{ padding: 4 }} colSpan={2}>Total période</td>
-                    <td style={{ padding: 4, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(data.totalDebit)}</td>
-                    <td style={{ padding: 4, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(data.totalCredit)}</td>
-                    <td style={{ padding: 4, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(data.closing)}</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          )}
-        </div>
+        <footer className="kl-sheet-foot">
+          <button type="button" className="odoo-btn-secondary" onClick={onClose}>Fermer</button>
+        </footer>
       </div>
     </ModalBackdrop>
   );
