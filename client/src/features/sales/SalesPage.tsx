@@ -1076,133 +1076,98 @@ export default function SalesPage() {
       {/* ═══════════ SESSIONS TAB ═══════════ */}
       {mainTab === 'sessions' && (
         sessionsLoading ? <LoadingState /> : (
-          <div className="prj" style={{ gap: 12 }}>
+          <div className="prj" style={{ gap: 24 }}>
             <section className="prj-kpis" aria-label="Indicateurs">
               <ListKpi label="Sessions" value={String(sessions.length)} sub={sessionKpis.open ? `${sessionKpis.open} encore ouverte${sessionKpis.open > 1 ? 's' : ''}` : 'toutes clôturées'} tone={sessionKpis.open ? 'orange' : undefined} />
               <ListKpi label="CA encaissé" value={formatCurrency(sessionKpis.revenue)} sub="sur la période" />
               <ListKpi label="Écart cumulé" value={`${sessionKpis.diff > 0 ? '+' : ''}${formatCurrency(sessionKpis.diff)}`} sub={sessionKpis.worst < 0 ? `plus gros manque ${formatCurrency(sessionKpis.worst)}` : 'espèces + carte'} tone={sessionKpis.diff < 0 ? 'red' : undefined} />
               <ListKpi label="Caisses justes" value={`${sessionKpis.exact} / ${sessionKpis.closed}`} sub="sessions clôturées sans écart" tone={sessionKpis.closed && sessionKpis.exact === sessionKpis.closed ? 'green' : undefined} />
             </section>
-            {sessions.map((s: Record<string, any>) => {
-              const diff = s.difference !== null ? parseFloat(s.difference as string) : null;
-              // Mig 467 — l'écart affiché cumule espèces + carte (TPE). Avant, le
-              // tag ne reflétait que le tiroir : un manque carte restait invisible.
-              const cardDiff = s.card_difference != null ? parseFloat(s.card_difference as string) : null;
-              const totalDiff = (diff === null && cardDiff === null) ? null : (diff || 0) + (cardDiff || 0);
-              const isClosed = s.status === 'closed';
-              const statusTag = !isClosed ? 'odoo-tag-yellow'
-                : totalDiff === null ? 'odoo-tag-grey'
-                : totalDiff === 0 ? 'odoo-tag-green'
-                : totalDiff > 0 ? 'odoo-tag-blue' : 'odoo-tag-red';
-              const statusLabel = !isClosed ? 'En cours'
-                : totalDiff === null ? '—'
-                : totalDiff === 0 ? 'Caisse juste'
-                : totalDiff > 0 ? `+${totalDiff.toFixed(2)} DH` : `${totalDiff.toFixed(2)} DH`;
-              const dotClass = !isClosed ? 'warning'
-                : totalDiff === 0 ? 'ok'
-                : (totalDiff !== null && Math.abs(totalDiff) > 5) ? 'danger' : 'neutral';
-              return (
-                <div key={s.id as string} className="odoo-section">
-                  <div className="odoo-section-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span className={`odoo-status-dot ${dotClass}`} />
-                    <Lock size={13} style={{ color: 'var(--theme-text-muted)' }} />
-                    <strong>{s.first_name as string} {s.last_name as string}</strong>
-                    <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400 }}>
-                      · {format(new Date(s.opened_at as string), 'dd/MM/yyyy HH:mm', { locale: fr })}
-                      {s.closed_at as unknown as boolean && <> — {format(new Date(s.closed_at as string), 'HH:mm', { locale: fr })}</>}
-                    </span>
-                    <span style={{ flex: 1 }} />
-                    <span className={`odoo-tag ${statusTag}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                      {!isClosed ? <Clock size={9} /> : totalDiff === 0 ? <CheckCircle size={9} /> : totalDiff !== null && totalDiff > 0 ? <AlertTriangle size={9} /> : <XCircle size={9} />}
-                      {statusLabel}
-                    </span>
-                  </div>
-
-                  {isClosed && (
-                    <div style={{ padding: '12px 16px' }}>
-                      <table className="odoo-table" style={{ margin: 0, boxShadow: 'none' }}>
-                        <tbody>
-                          <tr>
-                            <td style={{ color: 'var(--theme-text-muted)' }}>Fond de caisse</td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(parseFloat(s.opening_amount as string))}</td>
-                            <td style={{ color: 'var(--theme-text-muted)' }}>CA encaissé</td>
-                            <td style={{ textAlign: 'right', fontWeight: 700, color: '#28a745' }}>
-                              {formatCurrency(parseFloat(s.total_revenue as string))}
-                              <span style={{ marginLeft: 4, color: 'var(--theme-text-muted)', fontSize: '0.6875rem', fontWeight: 400 }}>
-                                · {s.total_sales as number} op.
-                              </span>
-                            </td>
-                          </tr>
-                          <tr>
-                            <td style={{ color: 'var(--theme-text-muted)' }}>Attendu</td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(parseFloat(s.expected_cash as string))}</td>
-                            <td style={{ color: 'var(--theme-text-muted)' }}>Saisi</td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(parseFloat(s.actual_amount as string))}</td>
-                          </tr>
-                          <tr>
-                            <td style={{ color: 'var(--theme-text-muted)' }}>
-                              <Banknote size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Espèces
-                            </td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(parseFloat(s.cash_revenue as string))}</td>
-                            <td style={{ color: 'var(--theme-text-muted)' }}>
-                              <CreditCard size={11} style={{ display: 'inline', marginRight: 4, color: 'var(--theme-accent)' }} />Carte
-                            </td>
-                            <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(parseFloat(s.card_revenue as string))}</td>
-                          </tr>
-                          {/* Mig 467 — rapprochement carte : TPE saisi + écart carte */}
-                          {s.actual_card_amount != null && (
-                            <tr>
-                              <td style={{ color: 'var(--theme-text-muted)' }}>
-                                <CreditCard size={11} style={{ display: 'inline', marginRight: 4, color: 'var(--theme-accent)' }} />Carte saisie (TPE)
-                              </td>
-                              <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(parseFloat(s.actual_card_amount as string))}</td>
-                              <td style={{ color: 'var(--theme-text-muted)' }}>Écart carte</td>
-                              <td style={{ textAlign: 'right', fontWeight: 600, color: (cardDiff ?? 0) < 0 ? '#dc3545' : (cardDiff ?? 0) > 0 ? 'var(--theme-accent)' : 'var(--theme-text-muted)' }}>
-                                {(cardDiff ?? 0) > 0 ? '+' : ''}{formatCurrency(cardDiff ?? 0)}
-                              </td>
-                            </tr>
-                          )}
-                          {cardDiff != null && (
-                            <tr>
-                              <td colSpan={3} style={{ fontWeight: 700 }}>Écart total</td>
-                              <td style={{ textAlign: 'right', fontWeight: 700, color: (totalDiff ?? 0) < 0 ? '#dc3545' : (totalDiff ?? 0) > 0 ? 'var(--theme-accent)' : '#28a745' }}>
-                                {(totalDiff ?? 0) > 0 ? '+' : ''}{formatCurrency(totalDiff ?? 0)}
-                              </td>
-                            </tr>
-                          )}
-                          {(parseFloat(s.total_advances as string || '0') > 0) && (
-                            <tr>
-                              <td style={{ color: 'var(--theme-text-muted)' }}>
-                                <ClipboardList size={11} style={{ display: 'inline', marginRight: 4, color: '#b85d1a' }} />Avances reçues
-                              </td>
-                              <td style={{ textAlign: 'right', fontWeight: 600, color: '#b85d1a' }}>{formatCurrency(parseFloat(s.total_advances as string || '0'))}</td>
-                              <td style={{ color: 'var(--theme-text-muted)' }}>Commandes en attente</td>
-                              <td style={{ textAlign: 'right' }}>{parseInt(String(s.pending_orders ?? s.total_orders ?? 0))}</td>
-                            </tr>
-                          )}
-                          <SessionLedgerRow session={s} diff={totalDiff} />
-                        </tbody>
-                      </table>
+            {/* Sessions en cours : liste groupée façon Réglages (nom, ouverture, pastille). */}
+            {sessions.some((s: Record<string, any>) => s.status !== 'closed') && (
+              <section>
+                <div className="kl-sec"><h2>En cours</h2><small>{sessionKpis.open} caisse{sessionKpis.open > 1 ? 's' : ''} ouverte{sessionKpis.open > 1 ? 's' : ''}</small></div>
+                <div className="kl-group">
+                  {sessions.filter((s: Record<string, any>) => s.status !== 'closed').map((s: Record<string, any>) => (
+                    <div key={s.id as string} className="kl-cell av" style={{ cursor: 'default' }}>
+                      <span className="kl-mono">{sessionInitials(s)}</span>
+                      <span className="tx">
+                        <span className="t1">{s.first_name as string} {s.last_name as string}</span>
+                        <span className="t2">Ouverte le {format(new Date(s.opened_at as string), "dd/MM/yyyy 'à' HH:mm", { locale: fr })} · fond {formatCurrency(parseFloat(s.opening_amount as string || '0'))}</span>
+                      </span>
+                      <span className="kl-pill o">En cours</span>
                     </div>
-                  )}
-
-                  {isClosed && (
-                    s.inv_total_replenished !== null ||
-                    s.inv_total_sold !== null ||
-                    s.inv_total_remaining !== null ||
-                    s.inv_total_discrepancy !== null
-                  ) && (
-                    <InventoryBilan session={s} />
-                  )}
-
-                  {s.notes && (
-                    <div style={{ padding: '8px 16px', color: 'var(--theme-text-muted)', fontSize: '0.75rem', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <FileText size={11} /> {s.notes as string}
-                    </div>
-                  )}
+                  ))}
                 </div>
-              );
-            })}
+              </section>
+            )}
+
+            {/* Sessions clôturées : une carte par session, chiffres en grille. */}
+            {sessions.some((s: Record<string, any>) => s.status === 'closed') && (
+              <section>
+                <div className="kl-sec"><h2>Clôturées</h2><small>{sessionKpis.closed} session{sessionKpis.closed > 1 ? 's' : ''}</small></div>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {sessions.filter((s: Record<string, any>) => s.status === 'closed').map((s: Record<string, any>) => {
+                    const diff = s.difference !== null ? parseFloat(s.difference as string) : null;
+                    // Mig 467 — l'écart affiché cumule espèces + carte (TPE). Avant, le
+                    // tag ne reflétait que le tiroir : un manque carte restait invisible.
+                    const cardDiff = s.card_difference != null ? parseFloat(s.card_difference as string) : null;
+                    const totalDiff = (diff === null && cardDiff === null) ? null : (diff || 0) + (cardDiff || 0);
+                    const pill = totalDiff === null ? 'x' : totalDiff === 0 ? 'g' : totalDiff > 0 ? 'b' : 'r';
+                    const statusLabel = totalDiff === null ? 'Sans comptage'
+                      : totalDiff === 0 ? 'Caisse juste'
+                      : `${totalDiff > 0 ? '+' : ''}${formatCurrency(totalDiff)}`;
+                    const signed = (v: number) => `${v > 0 ? '+' : ''}${formatCurrency(v)}`;
+                    const tone = (v: number | null) => (v ?? 0) < 0 ? 'r' : (v ?? 0) > 0 ? 'b' : 'g';
+                    const advances = parseFloat(s.total_advances as string || '0');
+                    return (
+                      <article key={s.id as string} className="kl-sess">
+                        <header className="kl-sess-head">
+                          <span className="kl-mono">{sessionInitials(s)}</span>
+                          <span className="tx">
+                            <span className="kl-sess-name">{s.first_name as string} {s.last_name as string}</span>
+                            <span className="kl-sess-when">
+                              {format(new Date(s.opened_at as string), 'EEEE d MMMM yyyy · HH:mm', { locale: fr })}
+                              {s.closed_at ? ` – ${format(new Date(s.closed_at as string), 'HH:mm', { locale: fr })}` : ''}
+                            </span>
+                          </span>
+                          <span className="kl-sess-amt">
+                            {formatCurrency(parseFloat(s.total_revenue as string || '0'))}
+                            <small>{s.total_sales as number} op.</small>
+                          </span>
+                          <span className={`kl-pill ${pill}`}>{statusLabel}</span>
+                        </header>
+                        <div className="kl-sess-grid">
+                          <div><span>Fond de caisse</span><b>{formatCurrency(parseFloat(s.opening_amount as string || '0'))}</b></div>
+                          <div><span>Espèces</span><b>{formatCurrency(parseFloat(s.cash_revenue as string || '0'))}</b></div>
+                          <div><span>Carte</span><b>{formatCurrency(parseFloat(s.card_revenue as string || '0'))}</b></div>
+                          <div><span>Attendu en caisse</span><b>{formatCurrency(parseFloat(s.expected_cash as string || '0'))}</b></div>
+                          <div><span>Compté</span><b>{formatCurrency(parseFloat(s.actual_amount as string || '0'))}</b></div>
+                          {diff !== null && <div><span>Écart espèces</span><b className={tone(diff)}>{signed(diff)}</b></div>}
+                          {/* Mig 467 — rapprochement carte : TPE saisi + écart carte */}
+                          {s.actual_card_amount != null && <div><span>Carte saisie (TPE)</span><b>{formatCurrency(parseFloat(s.actual_card_amount as string))}</b></div>}
+                          {cardDiff != null && <div><span>Écart carte</span><b className={tone(cardDiff)}>{signed(cardDiff)}</b></div>}
+                          {advances > 0 && <div><span>Avances reçues</span><b>{formatCurrency(advances)}</b></div>}
+                          {advances > 0 && <div><span>Commandes en attente</span><b>{parseInt(String(s.pending_orders ?? s.total_orders ?? 0))}</b></div>}
+                        </div>
+                        <SessionLedgerRow session={s} diff={totalDiff} />
+                        {(
+                          s.inv_total_replenished !== null ||
+                          s.inv_total_sold !== null ||
+                          s.inv_total_remaining !== null ||
+                          s.inv_total_discrepancy !== null
+                        ) && (
+                          <InventoryBilan session={s} />
+                        )}
+                        {s.notes && (
+                          <div className="kl-sess-note"><FileText size={13} /> {s.notes as string}</div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
             {sessions.length === 0 && (
               <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
                 <Lock size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
@@ -1383,29 +1348,28 @@ function LoadingState() {
 // ═══ État comptable d'une fermeture de caisse ═══
 // Les tickets sont comptabilisés un à un (caisse/banque, CA, TVA) et l'écart de
 // fermeture passe en 6588/7588 : la session est la source des recettes.
+function sessionInitials(s: Record<string, any>): string {
+  return `${String(s.first_name ?? '').charAt(0)}${String(s.last_name ?? '').charAt(0)}`.toUpperCase() || '·';
+}
+
 function SessionLedgerRow({ session, diff }: { session: Record<string, any>; diff: number | null }) {
   const tickets = parseInt(String(session.tickets_count ?? 0), 10) || 0;
   const unposted = parseInt(String(session.tickets_unposted ?? 0), 10) || 0;
   const closureEntry = session.closure_entry_number as string | null;
   const diffUnposted = diff !== null && diff !== 0 && !closureEntry;
   const [tag, label] = unposted > 0
-    ? ['odoo-tag-orange', `${unposted} ticket(s) non comptabilisé(s)`]
-    : diffUnposted ? ['odoo-tag-red', 'Écart non comptabilisé']
-    : ['odoo-tag-green', 'Comptabilisée'];
+    ? ['o', `${unposted} ticket(s) non comptabilisé(s)`]
+    : diffUnposted ? ['r', 'Écart non comptabilisé']
+    : ['g', 'Comptabilisée'];
   return (
-    <tr>
-      <td style={{ color: 'var(--theme-text-muted)' }}>Comptabilité</td>
-      <td style={{ textAlign: 'right' }}><span className={`odoo-tag ${tag}`}>{label}</span></td>
-      <td style={{ color: 'var(--theme-text-muted)' }}>Tickets comptabilisés</td>
-      <td style={{ textAlign: 'right', fontWeight: 600 }}>
-        {tickets - unposted} / {tickets}
-        {closureEntry && (
-          <span style={{ marginLeft: 6, fontFamily: 'ui-monospace, monospace', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>
-            · écart {closureEntry}
-          </span>
-        )}
-      </td>
-    </tr>
+    <div className="kl-sess-foot">
+      <span>Comptabilité</span>
+      <span className={`kl-pill ${tag}`}>{label}</span>
+      <span style={{ flex: 1 }} />
+      <span>Tickets comptabilisés <b>{tickets - unposted} / {tickets}</b>
+        {closureEntry && <span className="kl-sess-ref"> · écart {closureEntry}</span>}
+      </span>
+    </div>
   );
 }
 
@@ -1423,24 +1387,23 @@ function InventoryBilan({ session }: { session: Record<string, any> }) {
     enabled: expanded,
   });
 
-  const ecartTag = totalDiscrepancy === 0 ? 'odoo-tag-green'
-    : totalDiscrepancy > 0 ? 'odoo-tag-red' : 'odoo-tag-blue';
+  const ecartTag = totalDiscrepancy === 0 ? 'g'
+    : totalDiscrepancy > 0 ? 'r' : 'b';
   const ecartLabel = totalDiscrepancy === 0 ? 'Aucun écart'
     : totalDiscrepancy > 0 ? `−${totalDiscrepancy} manquant` : `+${Math.abs(totalDiscrepancy)} surplus`;
 
   return (
-    <div style={{ margin: '0 16px 12px', borderTop: '1px solid var(--theme-bg-separator)' }}>
-      <button onClick={() => setExpanded(!expanded)}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '0.8125rem' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--theme-text)' }}>
-          <Package size={13} style={{ color: 'var(--theme-accent)' }} />
-          <strong>Bilan des produits</strong>
-          <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400 }}>
-            · {totalRep} approv. · {totalSold} vendus · {totalRemaining} restants
+    <div className="kl-sess-inv">
+      <button onClick={() => setExpanded(!expanded)} className="kl-sess-inv-btn">
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <span className="kl-ic b" style={{ width: 28, height: 28, borderRadius: 8 }}><Package size={14} /></span>
+          <span>
+            <b>Bilan des produits</b>
+            <small> · {totalRep} approv. · {totalSold} vendus · {totalRemaining} restants</small>
           </span>
         </span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span className={`odoo-tag ${ecartTag}`}>{ecartLabel}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <span className={`kl-pill ${ecartTag}`}>{ecartLabel}</span>
           {expanded ? <ChevronUp size={13} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronDown size={13} style={{ color: 'var(--theme-text-muted)' }} />}
         </span>
       </button>

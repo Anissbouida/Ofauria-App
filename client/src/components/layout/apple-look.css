@@ -299,3 +299,32 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-apple .fixed .odoo-control-bar .odoo-breadcrumb-current { font-size: 15px; font-weight: 600; }
 .kl-apple .fixed .odoo-control-bar .odoo-btn-secondary, .kl-apple .fixed .odoo-control-bar .odoo-pager-btn { background: rgba(255, 255, 255, .2) !important; color: #fff !important; border-color: transparent !important; }
 .kl-apple .fixed .odoo-control-bar .odoo-pager-btn { border-radius: 50%; width: 30px; height: 30px; display: inline-grid; place-items: center; }
+
+/* ─── Sessions de caisse (Ventes › Caisse) ─────────────────────────────── */
+.kl-sess { background: var(--kl-card); border-radius: 14px; overflow: hidden; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+.kl-sess-head { display: flex; align-items: center; gap: 14px; padding: 14px 16px; }
+.kl-sess-head .tx { flex: 1; min-width: 0; }
+.kl-sess-name { display: block; font-size: 16px; font-weight: 600; color: var(--kl-ink); letter-spacing: -.01em; }
+.kl-sess-when { display: block; font-size: 13px; color: var(--kl-muted); margin-top: 1px; }
+.kl-sess-when::first-letter { text-transform: uppercase; }
+.kl-sess-amt { font-size: 19px; font-weight: 700; letter-spacing: -.02em; color: var(--kl-ink); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.kl-sess-amt small { display: block; font-size: 12px; font-weight: 500; letter-spacing: 0; color: var(--kl-muted); }
+.kl-sess-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 2px 8px; margin: 0 16px; padding: 12px 0 14px; border-top: 1px solid var(--kl-hair); }
+.kl-sess-grid > div { padding: 6px 0; }
+.kl-sess-grid span { display: block; font-size: 12px; color: var(--kl-muted); }
+.kl-sess-grid b { display: block; font-size: 16px; font-weight: 600; color: var(--kl-ink); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.kl-sess-grid b.r { color: var(--prj-red); }
+.kl-sess-grid b.g { color: var(--prj-green); }
+.kl-sess-grid b.b { color: var(--kl-accent-ink); }
+.kl-sess-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 16px; background: color-mix(in srgb, var(--kl-bg) 55%, var(--kl-card)); font-size: 13px; color: var(--kl-muted); }
+.kl-sess-foot b { color: var(--kl-ink); font-weight: 600; font-variant-numeric: tabular-nums; margin-left: 4px; }
+.kl-sess-ref { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; }
+.kl-sess-inv { border-top: 1px solid var(--kl-hair); padding: 0 16px; }
+.kl-sess-inv-btn { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; background: transparent; border: 0; cursor: pointer; font: inherit; font-size: 14px; color: var(--kl-ink); text-align: left; }
+.kl-sess-inv-btn b { font-weight: 600; }
+.kl-sess-inv-btn small { font-size: 13px; color: var(--kl-muted); }
+.kl-sess-note { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--kl-hair); font-size: 13px; color: var(--kl-muted); }
+@media (max-width: 640px) {
+  .kl-sess-head { flex-wrap: wrap; }
+  .kl-sess-amt { text-align: left; }
+}
