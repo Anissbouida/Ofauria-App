@@ -16,6 +16,7 @@ import {
 import { TrendingUp, ShoppingCart, Banknote, Package, ClipboardList, AlertTriangle, ArrowUpRight, ArrowDownRight, Crown, BarChart3, ChevronRight, Search, X } from 'lucide-react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import SalesPageShell from '../sales/SalesPageShell';
+import { ListKpi, ListToolbar, ListPanel, FilterChips } from '../sales/ListTemplate';
 
 type DatePreset = 'today' | '7d' | '30d' | '90d' | 'custom';
 type Tab = 'overview' | 'menu' | 'cost' | 'margins' | 'builder';
@@ -34,10 +35,10 @@ const tabs: { key: Tab; label: string; subtitle: string }[] = [
 ];
 
 const CLASS_META: Record<MenuEngineeringClass, { label: string; color: string; bg: string; border: string; dot: string; advice: string }> = {
-  STAR:   { label: 'Etoiles',     color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', dot: '#10b981', advice: 'Mettre en avant, ne pas changer le prix' },
-  PUZZLE: { label: 'Enigmes',     color: 'text-rose-700',    bg: 'bg-rose-50',    border: 'border-rose-200',    dot: '#f43f5e', advice: 'Repositionner : visibilite menu, photo, suggestion serveur' },
-  HORSE:  { label: 'Chevaux',     color: 'text-amber-700',   bg: 'bg-amber-50',   border: 'border-amber-200',   dot: '#f59e0b', advice: 'Reduire le cout matiere ou augmenter le prix' },
-  DOG:    { label: 'Poids morts', color: 'text-gray-700',    bg: 'bg-gray-50',    border: 'border-gray-200',    dot: '#9ca3af', advice: 'Refondre ou retirer du menu' },
+  STAR:   { label: 'Étoiles',     color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', dot: '#15803D', advice: 'Mettre en avant, ne pas changer le prix' },
+  PUZZLE: { label: 'Énigmes',     color: 'text-rose-700',    bg: 'bg-rose-50',    border: 'border-rose-200',    dot: 'var(--theme-accent)', advice: 'Repositionner : visibilité, photo, suggestion en caisse' },
+  HORSE:  { label: 'Chevaux',     color: 'text-amber-700',   bg: 'bg-amber-50',   border: 'border-amber-200',   dot: '#B45309', advice: 'Réduire le coût matière ou augmenter le prix' },
+  DOG:    { label: 'Poids morts', color: 'text-gray-700',    bg: 'bg-gray-50',    border: 'border-gray-200',    dot: '#94A3B8', advice: 'Refondre ou retirer de la carte' },
 };
 
 function getZoneColor(value: number, opts: { greenMax?: number; greenMin?: number; orangeMax: number }): { text: string; bg: string; ring: string; label: string } {
@@ -55,7 +56,7 @@ const presets: { key: DatePreset; label: string }[] = [
   { key: '7d', label: '7 jours' },
   { key: '30d', label: '30 jours' },
   { key: '90d', label: '90 jours' },
-  { key: 'custom', label: 'Personnalise' },
+  { key: 'custom', label: 'Personnalisée' },
 ];
 
 function getPresetDates(preset: DatePreset): { start: string; end: string } {
@@ -173,44 +174,25 @@ export default function ReportsPage({ fixedTab }: { fixedTab?: Tab } = {}) {
     }
   };
 
-  // Barre de période : partagée par la vue d'ensemble et l'onglet Marges.
+  // Barre de période (style Apple) : partagée par l'analyse, les marges et le Menu Engineering.
+  const fmtD = (iso: string) => format(new Date(iso + 'T00:00:00'), 'd MMM yyyy', { locale: fr });
   const periodBar = (
-  <div className="bg-white rounded-xl border border-gray-100 px-4 py-3 flex flex-wrap items-center gap-3">
-    <BarChart3 size={18} className="text-gray-400" />
-    <span className="text-sm font-medium text-gray-600 mr-1">Periode :</span>
-    <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-0.5">
-      {presets.map((p) => (
-        <button
-          key={p.key}
-          onClick={() => handlePreset(p.key)}
-          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-            activePreset === p.key
-              ? 'bg-white text-blue-600 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          {p.label}
-        </button>
-      ))}
-    </div>
-    {activePreset === 'custom' && (
-      <div className="flex items-center gap-2 ml-2">
-        <input
-          type="date"
-          value={customStart}
-          onChange={(e) => setCustomStart(e.target.value)}
-          className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-        />
-        <span className="text-gray-400 text-xs">a</span>
-        <input
-          type="date"
-          value={customEnd}
-          onChange={(e) => setCustomEnd(e.target.value)}
-          className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-        />
+    <div className="kl-rep-period">
+      <div className="prj-views" role="tablist" aria-label="Période">
+        {presets.map((p) => (
+          <button key={p.key} type="button" role="tab" aria-selected={activePreset === p.key}
+            className={activePreset === p.key ? 'active' : ''} onClick={() => handlePreset(p.key)}>{p.label}</button>
+        ))}
       </div>
-    )}
-  </div>
+      {activePreset === 'custom' && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} aria-label="Du" />
+          <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
+          <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} aria-label="Au" />
+        </span>
+      )}
+      <small>{fmtD(startDate)} – {fmtD(endDate)}{activeTab === 'overview' ? ' · comparé à la période précédente' : ''}</small>
+    </div>
   );
 
   // Ancien lien /reports?tab=cost : les coûts sont désormais un rapport de Production.
@@ -219,7 +201,9 @@ export default function ReportsPage({ fixedTab }: { fixedTab?: Tab } = {}) {
 
   return (
     <SalesPageShell parent="Ventes" title={current.label} summary={current.subtitle}>
-      <div className="space-y-6 max-w-7xl mx-auto">
+      <div className={activeTab === 'cost' ? 'space-y-6 max-w-7xl mx-auto' : 'prj kl-rep'}>
+
+      {activeTab !== 'cost' && activeTab !== 'builder' && periodBar}
 
       {/* ============ Tab: Vue d'ensemble ============ */}
       {activeTab === 'overview' && (
@@ -247,7 +231,7 @@ export default function ReportsPage({ fixedTab }: { fixedTab?: Tab } = {}) {
       )}
 
       {/* ============ Tab: Marges (mig 317) ============ */}
-      {activeTab === 'margins' && <>{periodBar}<MarginsTab from={startDate} to={endDate} /></>}
+      {activeTab === 'margins' && <MarginsTab from={startDate} to={endDate} />}
 
       {activeTab === 'builder' && <ReportBuilder />}
 
@@ -314,195 +298,159 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
     });
   }, [items, filterClass, menuSearch, menuSortCol, menuSortDir]);
 
+  const zone = (v: number, o: { greenMin?: number; greenMax: number; orangeMax: number }) => {
+    if ((o.greenMin === undefined || v >= o.greenMin) && v <= o.greenMax) return { tone: 'green' as const, label: 'Optimal' };
+    if (v <= o.orangeMax) return { tone: 'orange' as const, label: 'Acceptable' };
+    return { tone: 'red' as const, label: 'Critique' };
+  };
+  const food = costData?.foodCostPct ?? 0, labor = costData?.laborCostPct ?? 0, prime = costData?.primeCostPct ?? 0;
+  const zFood = zone(food, { greenMin: 25, greenMax: 30, orangeMax: 35 });
+  const zLabor = zone(labor, { greenMax: 30, orangeMax: 35 });
+  const zPrime = zone(prime, { greenMax: 60, orangeMax: 65 });
+  const pctTxt = (v: number) => costLoading ? '…' : `${v.toFixed(1)} %`;
+  const classes = ['STAR', 'PUZZLE', 'HORSE', 'DOG'] as MenuEngineeringClass[];
+
   return (
     <>
-      {/* Cost KPIs banner */}
-      <CostKpisRow costData={costData} loading={costLoading} />
+      {/* Coûts de la période */}
+      <section className="prj-kpis" aria-label="Coûts">
+        <ListKpi label="Coût matière" value={pctTxt(food)} sub={`${zFood.label} · cible 25–30 %`} tone={costLoading ? undefined : zFood.tone} />
+        <ListKpi label="Coût main-d'œuvre" value={pctTxt(labor)} sub={`${zLabor.label} · cible < 30 %`} tone={costLoading ? undefined : zLabor.tone} />
+        <ListKpi label="Coût primaire" value={pctTxt(prime)} sub={`${zPrime.label} · cible < 60 %`} tone={costLoading ? undefined : zPrime.tone} />
+      </section>
 
-      {/* Missing cost warning */}
       {missingCostCount > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3 flex items-center gap-3">
-          <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
-            <AlertTriangle size={18} className="text-amber-600" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-amber-800">
-              {missingCostCount} produit{missingCostCount > 1 ? 's' : ''} sans cout defini
-            </p>
-            <p className="text-xs text-amber-600">
-              Ces produits contribuent 0 au cout matiere. Ajoutez une recette ou un cout d'achat manuel pour fiabiliser le rapport.
-            </p>
-          </div>
-        </div>
+        <section className="kl-ar-rec">
+          <span className="kl-ic o"><AlertTriangle size={16} /></span>
+          <span className="tx">
+            <b>{missingCostCount} produit{missingCostCount > 1 ? 's' : ''} sans coût défini</b>
+            <small>Ces produits comptent pour 0 dans le coût matière. Ajoutez une recette ou un coût d'achat pour fiabiliser le rapport.</small>
+          </span>
+        </section>
       )}
 
-      {/* Matrix legend + counts */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {(['STAR', 'PUZZLE', 'HORSE', 'DOG'] as MenuEngineeringClass[]).map((cls) => {
-          const meta = CLASS_META[cls];
-          const active = filterClass === cls;
-          return (
-            <button
-              key={cls}
-              onClick={() => setFilterClass(active ? 'ALL' : cls)}
-              className={`text-left rounded-xl border p-4 transition-all ${meta.bg} ${meta.border} ${active ? 'ring-2 ring-blue-400' : 'hover:shadow-sm'}`}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: meta.dot }} />
-                <span className={`text-xs font-semibold uppercase tracking-wider ${meta.color}`}>{meta.label}</span>
-              </div>
-              <p className="text-2xl font-bold text-gray-800">{counts[cls] || 0}</p>
-              <p className="text-[11px] text-gray-500 mt-1 leading-tight">{meta.advice}</p>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Scatter plot matrix */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5">
-        <div className="flex items-center justify-between mb-1">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-700">Matrice produits</h2>
-            <p className="text-xs text-gray-400">Quantite vendue (X) x Contribution totale (Y) — seuils = mediane</p>
+      {/* Matrice : légende cliquable + nuage de points */}
+      <section>
+        <div className="kl-sec"><h2>Matrice produits</h2><small>Quantité vendue × contribution totale · seuils = médianes</small></div>
+        <div className="kl-widget">
+          <div className="kl-legend" style={{ marginBottom: 8 }}>
+            {classes.map(cls => {
+              const meta = CLASS_META[cls];
+              const active = filterClass === cls;
+              return (
+                <button key={cls} type="button" aria-pressed={active} onClick={() => setFilterClass(active ? 'ALL' : cls)}
+                  style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', ...(active ? { background: 'var(--theme-accent-light)' } : {}) }}>
+                  <span className="l"><i style={{ background: meta.dot }} />{meta.label}</span>
+                  <b style={{ display: 'block', fontSize: 24, fontWeight: 700, letterSpacing: '-.02em', marginTop: 2 }}>{counts[cls] || 0}</b>
+                  <small style={{ fontSize: 12, color: 'var(--theme-text-muted)', lineHeight: 1.35, display: 'block' }}>{meta.advice}</small>
+                </button>
+              );
+            })}
           </div>
-        </div>
-        <div className="mt-3" style={{ height: 360 }}>
-          {menuLoading ? (
-            <div className="flex items-center justify-center h-full text-gray-400 text-sm">Chargement...</div>
-          ) : items.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-gray-400 text-sm">Aucune donnee pour cette periode</div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 20, right: 30, bottom: 30, left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" dataKey="x" name="Quantite vendue"
-                  tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false}
-                  label={{ value: 'Quantite vendue', position: 'insideBottom', offset: -10, style: { fontSize: 11, fill: '#9ca3af' } }} />
-                <YAxis type="number" dataKey="y" name="Contribution"
-                  tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false}
-                  tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
-                  label={{ value: 'Contribution (DH)', angle: -90, position: 'insideLeft', style: { fontSize: 11, fill: '#9ca3af' } }} />
-                <ZAxis range={[80, 80]} />
-                <ReferenceLine x={median.medianQty} stroke="#cbd5e1" strokeDasharray="4 4" />
-                <ReferenceLine y={median.medianContribution} stroke="#cbd5e1" strokeDasharray="4 4" />
-                <Tooltip
-                  cursor={{ strokeDasharray: '3 3' }}
-                  contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 24px rgba(0,0,0,0.1)', fontSize: 12 }}
-                  content={({ active, payload }) => {
-                    if (!active || !payload || !payload.length) return null;
-                    const p = payload[0].payload;
-                    return (
-                      <div className="bg-white rounded-lg shadow-lg px-3 py-2 border border-gray-100">
-                        <p className="text-sm font-semibold text-gray-800">{p.name}</p>
-                        <p className="text-xs text-gray-500">Qte: {p.qty}</p>
-                        <p className="text-xs text-gray-500">Contribution: {formatCurrency(p.contribution)}</p>
-                      </div>
-                    );
-                  }}
-                />
-                {(['STAR', 'PUZZLE', 'HORSE', 'DOG'] as MenuEngineeringClass[]).map((cls) => (
-                  <Scatter key={cls} name={CLASS_META[cls].label} data={scatterByClass[cls]} fill={CLASS_META[cls].dot} />
-                ))}
-              </ScatterChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
-
-      {/* Classified table */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5">
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          <h2 className="text-sm font-semibold text-gray-700 mr-1">Detail par produit</h2>
-          <div className="relative flex-1 min-w-[180px] max-w-xs">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Rechercher produit..." value={menuSearch} onChange={e => setMenuSearch(e.target.value)}
-              className="w-full pl-7 pr-7 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200" />
-            {menuSearch && (
-              <button onClick={() => setMenuSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>
+          <div style={{ height: 340 }}>
+            {menuLoading ? (
+              <div className="kl-viz-empty">Chargement…</div>
+            ) : items.length === 0 ? (
+              <div className="kl-viz-empty">Aucune donnée pour cette période</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart margin={{ top: 16, right: 24, bottom: 28, left: 12 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--theme-bg-separator)" />
+                  <XAxis type="number" dataKey="x" name="Quantité vendue"
+                    tick={{ fontSize: 12, fill: 'var(--theme-text-muted)' }} axisLine={false} tickLine={false}
+                    label={{ value: 'Quantité vendue', position: 'insideBottom', offset: -12, style: { fontSize: 12, fill: 'var(--theme-text-muted)' } }} />
+                  <YAxis type="number" dataKey="y" name="Contribution" width={56}
+                    tick={{ fontSize: 12, fill: 'var(--theme-text-muted)' }} axisLine={false} tickLine={false}
+                    tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
+                    label={{ value: 'Contribution (DH)', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: 'var(--theme-text-muted)' } }} />
+                  <ZAxis range={[90, 90]} />
+                  <ReferenceLine x={median.medianQty} stroke="var(--theme-text-muted)" strokeOpacity={0.4} strokeDasharray="4 4" />
+                  <ReferenceLine y={median.medianContribution} stroke="var(--theme-text-muted)" strokeOpacity={0.4} strokeDasharray="4 4" />
+                  <Tooltip
+                    cursor={{ strokeDasharray: '3 3' }}
+                    content={({ active, payload }) => {
+                      if (!active || !payload || !payload.length) return null;
+                      const p = payload[0].payload;
+                      return (
+                        <div style={{ background: 'var(--theme-bg-card)', borderRadius: 12, padding: '8px 12px', boxShadow: '0 8px 24px rgba(15,23,42,.12)', fontSize: 13 }}>
+                          <b style={{ display: 'block' }}>{p.name}</b>
+                          <span style={{ color: 'var(--theme-text-muted)' }}>{p.qty} vendus · {formatCurrency(p.contribution)}</span>
+                        </div>
+                      );
+                    }}
+                  />
+                  {classes.map((cls) => (
+                    <Scatter key={cls} name={CLASS_META[cls].label} data={filterClass === 'ALL' || filterClass === cls ? scatterByClass[cls] : []} fill={CLASS_META[cls].dot} />
+                  ))}
+                </ScatterChart>
+              </ResponsiveContainer>
             )}
           </div>
-          {filterClass !== 'ALL' && (
-            <button onClick={() => setFilterClass('ALL')} className="text-xs text-blue-600 hover:underline whitespace-nowrap">
-              {CLASS_META[filterClass].label} ×
-            </button>
-          )}
-          <span className="text-xs text-gray-400 ml-auto whitespace-nowrap">{filteredItems.length} produit(s)</span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th onClick={() => toggleMenuSort('name')} className="text-left py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Produit<MenuSortIcon col="name" /></th>
-                <th onClick={() => toggleMenuSort('class')} className="text-left py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Classification<MenuSortIcon col="class" /></th>
-                <th onClick={() => toggleMenuSort('qty')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Vendus<MenuSortIcon col="qty" /></th>
-                <th onClick={() => toggleMenuSort('revenue')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Revenus<MenuSortIcon col="revenue" /></th>
-                <th onClick={() => toggleMenuSort('cost')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Cout matiere<MenuSortIcon col="cost" /></th>
-                <th onClick={() => toggleMenuSort('pct')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">% matiere<MenuSortIcon col="pct" /></th>
-                <th onClick={() => toggleMenuSort('contribution')} className="text-right py-2.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer select-none">Contribution<MenuSortIcon col="contribution" /></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {menuLoading ? (
-                <tr><td colSpan={7} className="text-center py-8 text-gray-400 text-sm">Chargement...</td></tr>
-              ) : filteredItems.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-8 text-gray-400 text-sm">Aucune donnee</td></tr>
-              ) : (
-                filteredItems.map((it) => {
+      </section>
+
+      {/* Détail par produit */}
+      <section>
+        <div className="kl-sec"><h2>Détail par produit</h2><small>{filteredItems.length} produit{filteredItems.length > 1 ? 's' : ''}</small></div>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <ListToolbar search={menuSearch} onSearch={setMenuSearch} placeholder="Rechercher un produit ou une famille…" />
+          <FilterChips label="Classification" value={filterClass} onChange={k => setFilterClass(k as MenuEngineeringClass | 'ALL')} chips={[
+            { key: 'ALL', label: 'Tous', count: items.length },
+            ...classes.map(c => ({ key: c, label: CLASS_META[c].label, count: counts[c] || 0 })),
+          ]} />
+          <ListPanel>
+            <table className="odoo-table">
+              <thead>
+                <tr>
+                  <th onClick={() => toggleMenuSort('name')} style={{ cursor: 'pointer' }}>Produit<MenuSortIcon col="name" /></th>
+                  <th onClick={() => toggleMenuSort('class')} style={{ cursor: 'pointer' }}>Classification<MenuSortIcon col="class" /></th>
+                  <th onClick={() => toggleMenuSort('qty')} style={{ cursor: 'pointer', textAlign: 'right' }}>Vendus<MenuSortIcon col="qty" /></th>
+                  <th onClick={() => toggleMenuSort('revenue')} style={{ cursor: 'pointer', textAlign: 'right' }}>CA<MenuSortIcon col="revenue" /></th>
+                  <th onClick={() => toggleMenuSort('cost')} style={{ cursor: 'pointer', textAlign: 'right' }}>Coût matière<MenuSortIcon col="cost" /></th>
+                  <th onClick={() => toggleMenuSort('pct')} style={{ cursor: 'pointer', textAlign: 'right' }}>% matière<MenuSortIcon col="pct" /></th>
+                  <th onClick={() => toggleMenuSort('contribution')} style={{ cursor: 'pointer', textAlign: 'right' }}>Contribution<MenuSortIcon col="contribution" /></th>
+                </tr>
+              </thead>
+              <tbody>
+                {menuLoading ? (
+                  <tr><td colSpan={7} className="kl-viz-empty">Chargement…</td></tr>
+                ) : filteredItems.length === 0 ? (
+                  <tr><td colSpan={7} className="kl-viz-empty">Aucune donnée</td></tr>
+                ) : filteredItems.map((it) => {
                   const meta = CLASS_META[it.classification];
                   const foodPct = parseFloat(it.food_cost_pct) || 0;
                   return (
-                    <tr key={it.product_id} className={`hover:bg-gray-50/50 transition-colors ${!it.has_cost_data ? 'bg-amber-50/30' : ''}`}>
-                      <td className="py-3">
-                        <div className="flex items-center gap-2">
-                          {!it.has_cost_data && (
-                            <span title="Aucun cout defini (ni recette ni cout d'achat manuel)">
-                              <AlertTriangle size={14} className="text-amber-500 flex-shrink-0" />
-                            </span>
-                          )}
-                          <div>
-                            <p className="text-sm font-medium text-gray-800">{it.name}</p>
-                            {it.category && <p className="text-xs text-gray-400">{it.category}</p>}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${meta.bg} ${meta.color}`}>
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.dot }} />
-                          {meta.label}
+                    <tr key={it.product_id}>
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          {!it.has_cost_data && <span title="Aucun coût défini (ni recette ni coût d'achat)"><AlertTriangle size={14} style={{ color: 'var(--prj-orange)' }} /></span>}
+                          <span>
+                            <b style={{ fontWeight: 500, display: 'block' }}>{it.name}</b>
+                            {it.category && <small style={{ color: 'var(--theme-text-muted)' }}>{it.category}</small>}
+                          </span>
                         </span>
                       </td>
-                      <td className="py-3 text-right text-sm text-gray-700">{parseFloat(it.qty_sold).toFixed(0)}</td>
-                      <td className="py-3 text-right text-sm font-medium text-gray-800">{formatCurrency(parseFloat(it.revenue) || 0)}</td>
-                      <td className="py-3 text-right">
-                        <span className="text-sm text-gray-600">{formatCurrency(parseFloat(it.total_food_cost) || 0)}</span>
-                        {it.has_cost_data && (
-                          <span className="block text-[10px] text-gray-400">
-                            {it.cost_from_production
-                              ? 'production reelle'
-                              : it.cost_from_recipe
-                                ? 'recette theorique'
-                                : 'cout manuel'}
-                          </span>
-                        )}
+                      <td><span className="kl-pill x" style={{ gap: 6 }}><i style={{ width: 7, height: 7, borderRadius: '50%', background: meta.dot, display: 'inline-block' }} />{meta.label}</span></td>
+                      <td style={{ textAlign: 'right' }}>{parseFloat(it.qty_sold).toFixed(0)}</td>
+                      <td style={{ textAlign: 'right' }}>{formatCurrency(parseFloat(it.revenue) || 0)}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {formatCurrency(parseFloat(it.total_food_cost) || 0)}
+                        {it.has_cost_data && <small style={{ display: 'block', color: 'var(--theme-text-muted)' }}>{it.cost_from_production ? 'production réelle' : it.cost_from_recipe ? 'recette théorique' : 'coût manuel'}</small>}
                       </td>
-                      <td className="py-3 text-right">
-                        {it.has_cost_data ? (
-                          <span className={`text-xs font-semibold ${foodPct > 35 ? 'text-rose-600' : foodPct > 30 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                            {foodPct.toFixed(1)}%
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
+                      <td style={{ textAlign: 'right' }}>
+                        {it.has_cost_data
+                          ? <span className={foodPct > 35 ? 'kl-rep-tone-r' : foodPct > 30 ? 'kl-rep-tone-o' : 'kl-rep-tone-g'} style={{ fontWeight: 600 }}>{foodPct.toFixed(1)} %</span>
+                          : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                       </td>
-                      <td className="py-3 text-right text-sm font-bold text-gray-800">{formatCurrency(parseFloat(it.total_contribution) || 0)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(parseFloat(it.total_contribution) || 0)}</td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
+                })}
+              </tbody>
+            </table>
+          </ListPanel>
         </div>
-      </div>
+      </section>
     </>
   );
 }

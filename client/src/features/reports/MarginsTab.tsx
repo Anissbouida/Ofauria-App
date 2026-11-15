@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Loader2, AlertTriangle, Info } from 'lucide-react';
 import { managementApi } from '../../api/management.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { ListKpi, ListPanel } from '../sales/ListTemplate';
 
 /**
  * Rapports › Marges (mig 317) : marge sur coût de revient par famille, canal ou
@@ -19,7 +20,6 @@ const GROUPS: Array<{ key: GroupBy; label: string }> = [
 ];
 const dh = (v: number) => v.toLocaleString('fr-FR', { maximumFractionDigits: 0 });
 const pct = (v: number | null) => (v == null ? '—' : `${v.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`);
-const tableWrap: React.CSSProperties = { overflowX: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4 };
 
 export default function MarginsTab({ from, to }: { from: string; to: string }) {
   const [groupBy, setGroupBy] = useState<GroupBy>('category');
@@ -32,91 +32,91 @@ export default function MarginsTab({ from, to }: { from: string; to: string }) {
   const t = data.total;
   const lowCoverage = (t.coverage_pct ?? 0) < 80;
 
-  return (
-    <div className="odoo-scope" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'flex', gap: 6 }}>
-        {GROUPS.map(g => (
-          <button key={g.key} type="button" className={groupBy === g.key ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setGroupBy(g.key)}>{g.label}</button>
-        ))}
-      </div>
+  const groupLabel = GROUPS.find(g => g.key === groupBy)!.label.replace('Par ', '').replace(/^./, c => c.toUpperCase());
 
-      <div className="odoo-stat-grid" style={{ border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
-        <Tile label="Chiffre d'affaires" value={`${dh(t.revenue)} DH`} sub="toutes ventes de la période" />
-        <Tile label="CA dont le coût est connu" value={pct(t.coverage_pct)} sub={`${dh(t.revenue_costed)} DH`} />
-        <Tile label="Marge sur coût de revient" value={`${dh(t.margin)} DH`} sub="sur le CA couvert" />
-        <Tile label="Taux de marge" value={pct(t.margin_pct)} sub="marge / CA couvert" />
-      </div>
+  return (
+    <>
+      <section className="prj-kpis" aria-label="Indicateurs">
+        <ListKpi label="Chiffre d'affaires" value={`${dh(t.revenue)} DH`} sub="toutes ventes de la période" />
+        <ListKpi label="CA dont le coût est connu" value={pct(t.coverage_pct)} sub={`${dh(t.revenue_costed)} DH`} tone={lowCoverage && t.revenue > 0 ? 'orange' : undefined} />
+        <ListKpi label="Marge sur coût de revient" value={`${dh(t.margin)} DH`} sub="sur le CA couvert" />
+        <ListKpi label="Taux de marge" value={pct(t.margin_pct)} sub="marge / CA couvert" />
+      </section>
 
       {t.revenue === 0 ? (
         <StatusBanner tone="info" icon={Info} title="Aucune vente sur la période" />
       ) : lowCoverage && (
-        <StatusBanner tone="warning" icon={AlertTriangle} title={`Seulement ${pct(t.coverage_pct)} du CA a un coût de revient fiable`}>
-          La marge ne porte que sur cette part. Complétez les fiches techniques des produits listés plus bas pour l'étendre.
-        </StatusBanner>
+        <section className="kl-ar-rec">
+          <span className="kl-ic o"><AlertTriangle size={16} /></span>
+          <span className="tx">
+            <b>Seulement {pct(t.coverage_pct)} du CA a un coût de revient fiable</b>
+            <small>La marge ne porte que sur cette part. Complétez les fiches techniques des produits listés plus bas pour l'étendre.</small>
+          </span>
+        </section>
       )}
 
       {data.groups.length > 0 && (
-        <div style={tableWrap}>
-          <table className="odoo-table" style={{ margin: 0 }}>
-            <thead><tr>
-              <th>{GROUPS.find(g => g.key === groupBy)!.label.replace('Par ', '').replace(/^./, c => c.toUpperCase())}</th>
-              <th style={{ textAlign: 'right' }}>CA</th><th style={{ textAlign: 'right' }}>Couverture</th>
-              <th style={{ textAlign: 'right' }}>Coût</th><th style={{ textAlign: 'right' }}>Marge</th><th style={{ textAlign: 'right' }}>Taux</th>
-              {groupBy !== 'product' && <th style={{ textAlign: 'right' }}>Produits sans coût</th>}
-            </tr></thead>
-            <tbody>{data.groups.map(g => (
-              <tr key={g.key}>
-                <td style={{ fontWeight: 600 }}>{g.key}</td>
-                <td style={{ textAlign: 'right' }}>{dh(g.revenue)}</td>
-                <td style={{ textAlign: 'right', color: (g.coverage_pct ?? 0) < 50 ? '#b85d1a' : undefined }}>{pct(g.coverage_pct)}</td>
-                <td style={{ textAlign: 'right' }}>{g.revenue_costed ? dh(g.cost) : '—'}</td>
-                <td style={{ textAlign: 'right' }}>{g.revenue_costed ? dh(g.margin) : '—'}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{pct(g.margin_pct)}</td>
-                {groupBy !== 'product' && <td style={{ textAlign: 'right' }}>{g.products_without_cost + g.products_incoherent} / {g.products}</td>}
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
+        <section>
+          <div className="kl-sec">
+            <h2>Marge {groupBy === 'category' ? 'par famille' : groupBy === 'channel' ? 'par canal' : 'par produit'}</h2>
+            <div className="prj-views" role="tablist" aria-label="Regrouper">
+              {GROUPS.map(g => (
+                <button key={g.key} type="button" role="tab" aria-selected={groupBy === g.key} className={groupBy === g.key ? 'active' : ''} onClick={() => setGroupBy(g.key)}>{g.label.replace('Par ', '').replace(/^./, c => c.toUpperCase())}</button>
+              ))}
+            </div>
+          </div>
+          <ListPanel>
+            <table className="odoo-table">
+              <thead><tr>
+                <th>{groupLabel}</th>
+                <th style={{ textAlign: 'right' }}>CA</th><th style={{ textAlign: 'right' }}>Couverture</th>
+                <th style={{ textAlign: 'right' }}>Coût</th><th style={{ textAlign: 'right' }}>Marge</th><th style={{ textAlign: 'right' }}>Taux</th>
+                {groupBy !== 'product' && <th style={{ textAlign: 'right' }}>Produits sans coût</th>}
+              </tr></thead>
+              <tbody>{data.groups.map(g => (
+                <tr key={g.key}>
+                  <td style={{ fontWeight: 500 }}>{g.key}</td>
+                  <td style={{ textAlign: 'right' }}>{dh(g.revenue)}</td>
+                  <td style={{ textAlign: 'right' }} className={(g.coverage_pct ?? 0) < 50 ? 'kl-rep-tone-o' : undefined}>{pct(g.coverage_pct)}</td>
+                  <td style={{ textAlign: 'right' }}>{g.revenue_costed ? dh(g.cost) : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{g.revenue_costed ? dh(g.margin) : '—'}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{pct(g.margin_pct)}</td>
+                  {groupBy !== 'product' && <td style={{ textAlign: 'right' }}>{g.products_without_cost + g.products_incoherent} / {g.products}</td>}
+                </tr>
+              ))}</tbody>
+            </table>
+          </ListPanel>
+        </section>
       )}
 
       {data.toFix.length > 0 && (
-        <>
-          <h3 style={{ margin: '6px 0 0', fontSize: '0.875rem', fontWeight: 600 }}>Coûts à corriger (plus gros CA d'abord)</h3>
-          <div style={tableWrap}>
-            <table className="odoo-table" style={{ margin: 0 }}>
+        <section>
+          <div className="kl-sec"><h2>Coûts à corriger</h2><small>plus gros CA d'abord</small></div>
+          <ListPanel>
+            <table className="odoo-table">
               <thead><tr><th>Produit</th><th>Famille</th><th style={{ textAlign: 'right' }}>CA</th><th style={{ textAlign: 'right' }}>Prix moyen vendu</th><th style={{ textAlign: 'right' }}>Coût retenu</th><th>Problème</th></tr></thead>
               <tbody>{data.toFix.map(p => (
                 <tr key={p.name}>
-                  <td style={{ fontWeight: 600 }}>{p.name}</td>
+                  <td style={{ fontWeight: 500 }}>{p.name}</td>
                   <td>{p.category ?? '—'}</td>
                   <td style={{ textAlign: 'right' }}>{dh(p.revenue)}</td>
                   <td style={{ textAlign: 'right' }}>{p.avg_price.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}</td>
                   <td style={{ textAlign: 'right' }}>{p.unit_cost == null ? '—' : p.unit_cost.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}</td>
-                  <td style={{ fontSize: '0.75rem' }}>
+                  <td>
                     {p.issue === 'missing'
-                      ? <span className="odoo-tag odoo-tag-grey">Pas de coût de revient</span>
-                      : <span className="odoo-tag odoo-tag-orange" title="Unité de vente différente de la fiche (part vs entier) ou coût erroné">Coût ≥ prix de vente</span>}
+                      ? <span className="kl-pill x">Pas de coût de revient</span>
+                      : <span className="kl-pill o" title="Unité de vente différente de la fiche (part vs entier) ou coût erroné">Coût ≥ prix de vente</span>}
                   </td>
                 </tr>
               ))}</tbody>
             </table>
-          </div>
-        </>
+          </ListPanel>
+        </section>
       )}
-      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+      <p className="kl-rep-note">
         Coût de revient : format de la fiche technique, sinon recette, sinon coût saisi sur le produit (ignoré s'il est égal ou supérieur au prix).
         Les ventes importées du Contrôle des ventes sont rattachées au canal par défaut. Les charges ne portant pas de canal, il s'agit d'une marge sur coût de revient, pas d'un résultat net.
       </p>
-    </div>
-  );
-}
-
-function Tile({ label, value, sub }: { label: string; value: string; sub: string }) {
-  return (
-    <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-      <div className="odoo-stat-card-label">{label}</div>
-      <div className="odoo-stat-card-value">{value}</div>
-      <div className="odoo-stat-card-sub">{sub}</div>
-    </div>
+    </>
   );
 }

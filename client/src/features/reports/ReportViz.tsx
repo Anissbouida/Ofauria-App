@@ -1,7 +1,6 @@
 import type { ReportColumn } from '../../api/reports.api';
 
 export type VizType = 'table' | 'bar' | 'line' | 'kpi';
-const palette = ['#4f8df7', '#34c38f', '#f6a609', '#8e6fe0', '#ef6b6b', '#2ab7c4', '#e879a6', '#7a8b99'];
 
 export function fmtVal(v: any, col?: ReportColumn): string {
   if (v == null) return '—';
@@ -11,7 +10,16 @@ export function fmtVal(v: any, col?: ReportColumn): string {
     if (col.format === 'integer') return n.toLocaleString('fr-FR', { maximumFractionDigits: 0 });
     return n.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
   }
-  return String(v);
+  // Dimension date : le serveur renvoie un horodatage ISO (jour) ou « AAAA-MM » (mois).
+  const str = String(v);
+  const month = /^(\d{4})-(\d{2})$/.exec(str);
+  if (month) return new Date(Number(month[1]), Number(month[2]) - 1, 1).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
+  if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) { const [y, m, d] = str.split('-'); return `${d}/${m}/${y}`; }
+  return str;
 }
 
 export function toCsv(columns: ReportColumn[], rows: Record<string, any>[]): string {
@@ -28,53 +36,49 @@ export function ReportViz({ columns, rows, viz, measureKey }: { columns: ReportC
   const dim = dims[0];
   const measure = meas.find(m => m.key === measureKey) ?? meas[0];
 
-  if (!rows.length) return <p style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)', padding: 12, margin: 0 }}>Aucune donnée.</p>;
+  if (!rows.length) return <p className="kl-viz-empty">Aucune donnée.</p>;
 
   if (viz === 'kpi') {
     const totals = meas.map(m => ({ m, total: rows.reduce((s, r) => s + (Number(r[m.key]) || 0), 0) }));
     return (
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, padding: 8 }}>
+      <div className="kl-viz-kpis">
         {totals.map(({ m, total }) => (
-          <div key={m.key} style={{ minWidth: 120 }}>
-            <div style={{ fontSize: '1.4rem', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtVal(total, m)}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{m.label}</div>
-          </div>
+          <div key={m.key}><b>{fmtVal(total, m)}</b><span>{m.label}</span></div>
         ))}
       </div>
     );
   }
 
   if ((viz === 'bar' || viz === 'line') && dim && measure) {
-    const data = rows.slice(0, viz === 'line' ? 60 : 14).map(r => ({ label: String(r[dim.key] ?? '—'), value: Number(r[measure.key]) || 0 }));
+    const data = rows.slice(0, viz === 'line' ? 60 : 14).map(r => ({ label: fmtVal(r[dim.key], dim), value: Number(r[measure.key]) || 0 }));
     const max = Math.max(1, ...data.map(d => Math.abs(d.value)));
     if (viz === 'bar') {
       return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: 8 }}>
+        <div className="kl-viz-bars">
           {data.map((d, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 92px', gap: 8, alignItems: 'center', fontSize: '0.78rem' }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.label}>{d.label}</span>
-              <div style={{ background: 'var(--theme-bg-subtle, #eef1f4)', borderRadius: 3, height: 15 }}>
-                <div style={{ width: `${Math.max(2, (Math.abs(d.value) / max) * 100)}%`, background: palette[i % palette.length], height: '100%', borderRadius: 3 }} />
-              </div>
-              <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtVal(d.value, measure)}</span>
+            <div key={i} className="kl-viz-bar">
+              <span title={d.label}>{d.label}</span>
+              <div className="t"><i style={{ width: `${Math.max(2, (Math.abs(d.value) / max) * 100)}%`, opacity: 1 - Math.min(i, 10) * 0.05 }} /></div>
+              <b>{fmtVal(d.value, measure)}</b>
             </div>
           ))}
         </div>
       );
     }
-    // Courbe (SVG)
+    // Courbe (SVG) dans la couleur du thème
     const W = 480, H = 150, pad = 8;
     const n = data.length;
     const x = (i: number) => (n <= 1 ? W / 2 : pad + (i * (W - 2 * pad)) / (n - 1));
     const y = (v: number) => H - pad - (Math.abs(v) / max) * (H - 2 * pad);
     const pts = data.map((d, i) => `${x(i)},${y(d.value)}`).join(' ');
+    const area = `${x(0)},${H - pad} ${pts} ${x(n - 1)},${H - pad}`;
     return (
-      <div style={{ padding: 8 }}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', maxHeight: 180 }} preserveAspectRatio="none">
-          <polyline points={pts} fill="none" stroke={palette[0]} strokeWidth="2" vectorEffect="non-scaling-stroke" />
-          {data.map((d, i) => <circle key={i} cx={x(i)} cy={y(d.value)} r="2.5" fill={palette[0]} />)}
+      <div style={{ padding: '8px 4px' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', maxHeight: 200, color: 'var(--theme-accent)' }} preserveAspectRatio="none">
+          <polygon points={area} fill="currentColor" opacity="0.1" />
+          <polyline points={pts} fill="none" stroke="currentColor" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
         </svg>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--theme-text-muted)', marginTop: 4 }}>
           <span>{data[0]?.label}</span><span>{measure.label}</span><span>{data[n - 1]?.label}</span>
         </div>
       </div>

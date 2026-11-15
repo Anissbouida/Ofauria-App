@@ -49,7 +49,7 @@ export default function SalesTargetsPage() {
   const withTarget = rows.filter(r => r.target > 0);
   return (
     <SalesPageShell icon={Target} title="Objectifs" parent="Ventes" list
-      summary={totalTarget > 0 ? `${money(totalRealized)} réalisés sur ${money(totalTarget)}` : undefined}>
+      summary={totalTarget > 0 ? `${money(totalRealized)} réalisés sur ${money(totalTarget)}` : 'Objectif et réalisé par vendeur sur la période'}>
       <section className="prj-kpis" aria-label="Indicateurs">
         <ListKpi label="Objectif de la période" value={money(totalTarget)} sub={`${withTarget.length} vendeur${withTarget.length > 1 ? 's' : ''} avec objectif`} />
         <ListKpi label="Réalisé" value={money(totalRealized)} sub={totalTarget > 0 ? `${Math.round((totalRealized / totalTarget) * 100)} % de l'objectif` : 'factures émises nettes'} tone={totalTarget > 0 && totalRealized >= totalTarget ? 'green' : undefined} />
@@ -57,23 +57,39 @@ export default function SalesTargetsPage() {
         <ListKpi label="Objectifs atteints" value={`${withTarget.filter(r => r.realized >= r.target).length} / ${withTarget.length}`} sub="vendeurs à 100 % ou plus" />
       </section>
 
-      <div className="prj-toolbar">
-        <label className="prj-chip" style={{ cursor: 'default' }}>Du <input className="odoo-input" type="date" value={start} onChange={e => setStart(e.target.value)} style={{ border: 0, background: 'transparent' }} /></label>
-        <label className="prj-chip" style={{ cursor: 'default' }}>au <input className="odoo-input" type="date" value={end} onChange={e => setEnd(e.target.value)} style={{ border: 0, background: 'transparent' }} /></label>
-        <p className="prj-note" style={{ flex: 1, minWidth: 240 }}>Réalisé = factures émises attribuées au vendeur, net des avoirs.</p>
+      <div className="kl-rep-period">
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <input type="date" value={start} onChange={e => setStart(e.target.value)} aria-label="Du" />
+          <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
+          <input type="date" value={end} onChange={e => setEnd(e.target.value)} aria-label="Au" />
+        </span>
+        <small>Réalisé = factures émises attribuées au vendeur, net des avoirs.</small>
       </div>
 
       {isDirection && (
-        <section className="prj-panel" style={{ padding: '12px 14px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <strong style={{ fontSize: '0.875rem', marginRight: 4 }}>Fixer un objectif</strong>
-          <select className="odoo-input" aria-label="Vendeur" value={sellerId} onChange={e => setSellerId(e.target.value)} style={{ minWidth: 200 }}>
-            <option value="">Vendeur…</option>
-            {sellers.map(s => <option key={s.id} value={s.id}>{`${s.first_name || ''} ${s.last_name || ''}`.trim()}</option>)}
-          </select>
-          <input className="odoo-input" aria-label="Objectif en DH" type="number" placeholder="Objectif (DH)" value={amount} onChange={e => setAmount(e.target.value)} style={{ width: 150 }} />
-          <button className="odoo-btn-primary" disabled={!sellerId || !(Number(amount) >= 0) || save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Enregistrer
-          </button>
+        <section>
+          <div className="kl-sec"><h2>Fixer un objectif</h2></div>
+          <div className="kl-group kl-rb-form">
+            <div className="kl-rb-row">
+              <span className="k">Vendeur</span>
+              <span className="v">
+                <select aria-label="Vendeur" value={sellerId} onChange={e => setSellerId(e.target.value)} style={{ minWidth: 220 }}>
+                  <option value="">Choisir…</option>
+                  {sellers.map(s => <option key={s.id} value={s.id}>{`${s.first_name || ''} ${s.last_name || ''}`.trim()}</option>)}
+                </select>
+              </span>
+            </div>
+            <div className="kl-rb-row">
+              <span className="k">Objectif<small>en DH sur la période</small></span>
+              <span className="v">
+                <input aria-label="Objectif en DH" type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} style={{ width: 160 }} />
+                <span style={{ flex: 1 }} />
+                <button className="odoo-btn-primary" disabled={!sellerId || !(Number(amount) >= 0) || save.isPending} onClick={() => save.mutate()}>
+                  {save.isPending ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Enregistrer
+                </button>
+              </span>
+            </div>
+          </div>
         </section>
       )}
 

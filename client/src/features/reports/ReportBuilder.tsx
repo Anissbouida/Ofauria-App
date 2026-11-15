@@ -20,13 +20,10 @@ const VIZ: { key: VizType; label: string; icon: typeof Table2 }[] = [
 export default function ReportBuilder() {
   const [mode, setMode] = useState<'report' | 'dashboard'>('report');
   return (
-    <div className="odoo-scope" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <StatusBanner tone="info" icon={BarChart3} title="Rapports & tableaux de bord configurables">
-        Construisez des rapports (source → dimensions, indicateurs, filtres), visualisez-les, exportez-les, puis composez des tableaux de bord de plusieurs tuiles.
-      </StatusBanner>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className={mode === 'report' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setMode('report')}>Constructeur</button>
-        <button className={mode === 'dashboard' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setMode('dashboard')}><LayoutGrid size={14} /> Tableaux de bord</button>
+    <div className="kl-rep" style={{ display: 'grid' }}>
+      <div className="prj-views" role="tablist" aria-label="Rapports personnalisés" style={{ justifySelf: 'start' }}>
+        <button type="button" role="tab" aria-selected={mode === 'report'} className={mode === 'report' ? 'active' : ''} onClick={() => setMode('report')}><BarChart3 size={13} /> Constructeur</button>
+        <button type="button" role="tab" aria-selected={mode === 'dashboard'} className={mode === 'dashboard' ? 'active' : ''} onClick={() => setMode('dashboard')}><LayoutGrid size={13} /> Tableaux de bord</button>
       </div>
       {mode === 'report' ? <BuilderView /> : <Dashboards />}
     </div>
@@ -96,83 +93,108 @@ function BuilderView() {
     a.download = `${(name || sourceKey || 'rapport').replace(/\s+/g, '_')}.csv`; a.click(); URL.revokeObjectURL(a.href);
   }
 
-  const Chip = ({ f, on, onClick }: { f: ReportField; on: boolean; onClick: () => void }) => (
-    <button type="button" onClick={onClick} className={on ? 'odoo-tag odoo-tag-blue' : 'odoo-tag odoo-tag-grey'} style={{ cursor: 'pointer', border: 'none', padding: '0.25rem 0.55rem' }}>{f.label}</button>
+  const Tog = ({ f, on, onClick }: { f: ReportField; on: boolean; onClick: () => void }) => (
+    <button type="button" onClick={onClick} aria-pressed={on} className={`kl-rb-tog${on ? ' on' : ''}`}>{f.label}</button>
   );
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 250px', gap: 16, alignItems: 'start' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Source</span>
-            <select value={sourceKey} onChange={e => pickSource(e.target.value)} style={{ ...inp, minWidth: 150 }}>{sources.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}</select></label>
-          {source?.hasDate !== false && <>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Du</span><input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={inp} /></label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Au</span><input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={inp} /></label>
-          </>}
-          {isFetching && <Loader2 size={15} className="animate-spin" style={{ marginBottom: 8 }} />}
-        </div>
-
-        {source && (<>
-          <Section label="Dimensions (regrouper par)"><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{source.dimensions.map(d => <Chip key={d.key} f={d} on={dims.includes(d.key)} onClick={() => toggle(dims, setDims, d.key)} />)}</div></Section>
-          <Section label="Indicateurs (calculer)"><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{source.measures.map(m => <Chip key={m.key} f={m} on={meas.includes(m.key)} onClick={() => toggle(meas, setMeas, m.key)} />)}</div></Section>
-          {source.filters.length > 0 && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{source.filters.map(f => <FilterSelect key={f.key} sourceKey={sourceKey} field={f} value={filters[f.key] ?? ''} onChange={v => setFilters(p => ({ ...p, [f.key]: v }))} />)}</div>}
-        </>)}
+    <div className="kl-rb">
+      <div style={{ display: 'grid', gap: 20, minWidth: 0 }}>
+        <section>
+          <div className="kl-sec"><h2>Paramètres</h2>{isFetching && <small><Loader2 size={13} className="animate-spin" style={{ display: 'inline' }} /> calcul…</small>}</div>
+          <div className="kl-group kl-rb-form">
+            <div className="kl-rb-row">
+              <span className="k">Source</span>
+              <span className="v"><select value={sourceKey} onChange={e => pickSource(e.target.value)} style={{ minWidth: 180 }}>{sources.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}</select></span>
+            </div>
+            {source?.hasDate !== false && (
+              <div className="kl-rb-row">
+                <span className="k">Période</span>
+                <span className="v">
+                  <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} aria-label="Du" />
+                  <span style={{ color: 'var(--theme-text-muted)' }}>→</span>
+                  <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} aria-label="Au" />
+                </span>
+              </div>
+            )}
+            {source && (<>
+              <div className="kl-rb-row">
+                <span className="k">Regrouper par<small>dimensions</small></span>
+                <span className="v">{source.dimensions.map(d => <Tog key={d.key} f={d} on={dims.includes(d.key)} onClick={() => toggle(dims, setDims, d.key)} />)}</span>
+              </div>
+              <div className="kl-rb-row">
+                <span className="k">Calculer<small>indicateurs</small></span>
+                <span className="v">{source.measures.map(m => <Tog key={m.key} f={m} on={meas.includes(m.key)} onClick={() => toggle(meas, setMeas, m.key)} />)}</span>
+              </div>
+              {source.filters.length > 0 && (
+                <div className="kl-rb-row">
+                  <span className="k">Filtres</span>
+                  <span className="v">{source.filters.map(f => <FilterSelect key={f.key} sourceKey={sourceKey} field={f} value={filters[f.key] ?? ''} onChange={v => setFilters(p => ({ ...p, [f.key]: v }))} />)}</span>
+                </div>
+              )}
+            </>)}
+          </div>
+        </section>
 
         {meas.length === 0 && <StatusBanner tone="warning" icon={Play} title="Sélectionnez au moins un indicateur à calculer." />}
         {isError && <StatusBanner tone="danger" icon={X} title="Erreur">{apiErrorMessage(error)}</StatusBanner>}
 
-        {cols.length > 0 && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', gap: 4 }}>{VIZ.map(v => <button key={v.key} type="button" onClick={() => setViz(v.key)} className={viz === v.key ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '0.3rem 0.5rem' }}><v.icon size={13} /> {v.label}</button>)}</div>
-            <button type="button" className="odoo-btn-secondary" onClick={exportCsv} disabled={!rows.length} style={{ marginLeft: 'auto' }}><Download size={13} /> CSV</button>
-            <button type="button" className="odoo-btn-secondary" onClick={() => setAddOpen(true)} disabled={meas.length === 0}><Plus size={13} /> Ajouter à un tableau de bord</button>
+        <section>
+          <div className="kl-sec"><h2>Résultat</h2>{rows.length > 0 && <small>{rows.length} ligne{rows.length > 1 ? 's' : ''}{rows.length === 500 ? ' (limité à 500)' : ''}</small>}</div>
+          <div className="kl-group">
+            {cols.length > 0 && (
+              <div className="kl-rb-res-head">
+                <div className="prj-views" role="tablist" aria-label="Visualisation">
+                  {VIZ.map(v => <button key={v.key} type="button" role="tab" aria-selected={viz === v.key} className={viz === v.key ? 'active' : ''} onClick={() => setViz(v.key)}><v.icon size={13} /> {v.label}</button>)}
+                </div>
+                <span style={{ flex: 1 }} />
+                <button type="button" className="odoo-btn-secondary" onClick={exportCsv} disabled={!rows.length}><Download size={13} /> CSV</button>
+                <button type="button" className="odoo-btn-secondary" onClick={() => setAddOpen(true)} disabled={meas.length === 0}><Plus size={13} /> Ajouter à un tableau de bord</button>
+              </div>
+            )}
+            <div className="kl-rb-res-body"><ReportViz columns={cols} rows={rows} viz={viz} /></div>
           </div>
-        )}
-
-        <div style={{ border: cols.length ? '1px solid var(--odoo-border)' : 'none', borderRadius: 6 }}>
-          <ReportViz columns={cols} rows={rows} viz={viz} />
-        </div>
-        {rows.length > 0 && <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{rows.length} ligne(s){rows.length === 500 ? ' (limité à 500)' : ''}.</p>}
+        </section>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>{editingId ? 'Modifier le rapport' : 'Enregistrer le rapport'}</div>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="Nom du rapport" style={inp} />
+      <aside className="kl-rb-side">
+        <div className="kl-widget">
+          <h3>{editingId ? 'Modifier le rapport' : 'Enregistrer le rapport'}</h3>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Nom du rapport" aria-label="Nom du rapport" />
           <div style={{ display: 'flex', gap: 6 }}>
-            <button type="button" className="odoo-btn-primary" onClick={save} style={{ flex: 1 }}><Save size={13} /> {editingId ? 'Enregistrer' : 'Créer'}</button>
-            {editingId && <button type="button" className="odoo-btn-secondary" onClick={reset} title="Nouveau"><Plus size={13} /></button>}
+            <button type="button" className="odoo-btn-primary" onClick={save} style={{ flex: 1, justifyContent: 'center' }}><Save size={13} /> {editingId ? 'Enregistrer' : 'Créer'}</button>
+            {editingId && <button type="button" className="odoo-btn-secondary" onClick={reset} title="Nouveau rapport"><Plus size={13} /></button>}
           </div>
         </div>
-        <div>
-          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', margin: '2px 0 6px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Rapports enregistrés</div>
-          {saved.length === 0 && <p style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>Aucun rapport.</p>}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <section>
+          <div className="kl-sec"><h2 style={{ fontSize: 17 }}>Rapports enregistrés</h2><small>{saved.length}</small></div>
+          <div className="kl-group kl-rb-saved">
+            {saved.length === 0 && <div className="kl-viz-empty">Aucun rapport.</div>}
             {saved.map(s => (
-              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.35rem 0.5rem', borderRadius: 4, background: editingId === s.id ? 'var(--theme-bg-subtle, #eef3ff)' : 'transparent', border: '1px solid var(--odoo-border)' }}>
-                <button type="button" onClick={() => load(s)} style={{ flex: 1, textAlign: 'left', fontSize: '0.8rem', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.name}>{s.name}</button>
-                <button type="button" onClick={async () => { await reportsApi.customDelete(s.id); if (editingId === s.id) reset(); qc.invalidateQueries({ queryKey: ['rb-saved'] }); }} className="odoo-pager-btn" title="Supprimer"><Trash2 size={12} /></button>
+              <div key={s.id} className={`kl-cell${editingId === s.id ? ' on' : ''}`} role="button" tabIndex={0} onClick={() => load(s)}
+                onKeyDown={e => { if (e.key === 'Enter') load(s); }}>
+                <span className="kl-ic b" style={{ width: 28, height: 28, borderRadius: 8 }}><BarChart3 size={14} /></span>
+                <span className="tx"><span className="t1" title={s.name}>{s.name}</span></span>
+                <button type="button" className="kl-rb-del" title="Supprimer" aria-label={`Supprimer ${s.name}`}
+                  onClick={async e => { e.stopPropagation(); await reportsApi.customDelete(s.id); if (editingId === s.id) reset(); qc.invalidateQueries({ queryKey: ['rb-saved'] }); }}>
+                  <Trash2 size={14} />
+                </button>
               </div>
             ))}
           </div>
-        </div>
-      </div>
+        </section>
+      </aside>
 
       {addOpen && <AddToDashboard tile={{ id: uid(), title: name || source?.label || 'Tuile', source_key: sourceKey, config: config(), viz }} onClose={() => setAddOpen(false)} />}
     </div>
   );
 }
 
-function Section({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</div>{children}</div>;
-}
-
 function FilterSelect({ sourceKey, field, value, onChange }: { sourceKey: string; field: ReportField; value: string; onChange: (v: string) => void }) {
   const { data: options = [] } = useQuery({ queryKey: ['rb-fopt', sourceKey, field.key], queryFn: () => reportsApi.customFilterOptions(sourceKey, field.key) });
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>{field.label}</span>
-      <select value={value} onChange={e => onChange(e.target.value)} style={{ ...inp, minWidth: 140 }}><option value="">Tous</option>{options.map(o => <option key={o} value={o}>{o}</option>)}</select></label>
+    <label className="kl-rb-filter">{field.label}
+      <select value={value} onChange={e => onChange(e.target.value)} style={{ minWidth: 130 }}><option value="">Tous</option>{options.map(o => <option key={o} value={o}>{o}</option>)}</select></label>
   );
 }
 
@@ -256,16 +278,28 @@ function Dashboards() {
     qc.invalidateQueries({ queryKey: ['rb-dash'] });
   }
 
-  if (!dashboards.length) return <StatusBanner tone="info" icon={LayoutGrid} title="Aucun tableau de bord">Créez un rapport dans le Constructeur puis « Ajouter à un tableau de bord ».</StatusBanner>;
+  if (!dashboards.length) return (
+    <div className="kl-ar-empty" style={{ display: 'grid', justifyItems: 'center', gap: 6, padding: '40px 16px' }}>
+      <LayoutGrid size={28} style={{ opacity: .35 }} />
+      <b style={{ color: 'var(--theme-text-strong)', fontSize: 16 }}>Aucun tableau de bord</b>
+      <span>Créez un rapport dans le Constructeur, puis « Ajouter à un tableau de bord ».</span>
+    </div>
+  );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <select value={activeId ?? ''} onChange={e => setSelId(e.target.value)} style={{ ...inp, minWidth: 220 }}>{dashboards.map(d => <option key={d.id} value={d.id}>{d.name} ({d.tile_count})</option>)}</select>
-        {dash && <button type="button" className="odoo-btn-secondary" onClick={del} style={{ marginLeft: 'auto' }}><Trash2 size={13} /> Supprimer</button>}
+    <div style={{ display: 'grid', gap: 20 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        {dashboards.length <= 6 ? (
+          <div className="prj-views" role="tablist" aria-label="Tableaux de bord">
+            {dashboards.map(d => <button key={d.id} type="button" role="tab" aria-selected={d.id === activeId} className={d.id === activeId ? 'active' : ''} onClick={() => setSelId(d.id)}>{d.name} <small style={{ opacity: .6 }}>{d.tile_count}</small></button>)}
+          </div>
+        ) : (
+          <select value={activeId ?? ''} onChange={e => setSelId(e.target.value)} style={{ ...inp, minWidth: 220, border: 0, borderRadius: 8 }}>{dashboards.map(d => <option key={d.id} value={d.id}>{d.name} ({d.tile_count})</option>)}</select>
+        )}
+        {dash && <button type="button" className="odoo-btn-danger" onClick={del} style={{ marginLeft: 'auto' }}><Trash2 size={13} /> Supprimer</button>}
       </div>
-      {dash && dash.tiles.length === 0 && <StatusBanner tone="info" icon={LayoutGrid} title="Tableau de bord vide">Ajoutez des tuiles depuis le Constructeur.</StatusBanner>}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+      {dash && dash.tiles.length === 0 && <div className="kl-ar-empty">Tableau de bord vide : ajoutez des tuiles depuis le Constructeur.</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 20 }}>
         {dash?.tiles.map((t, i) => (
           <div key={t.id} style={{ gridColumn: (t.size ?? 'half') === 'full' ? '1 / -1' : 'auto', minWidth: 0 }}>
             <Tile tile={t} onRemove={() => removeTile(t.id)} onResize={() => resizeTile(t.id, (t.size ?? 'half') === 'full' ? 'half' : 'full')}
@@ -286,19 +320,19 @@ function Tile({ tile, onRemove, onResize, onUp, onDown, isFirst, isLast }: {
   });
   const full = (tile.size ?? 'half') === 'full';
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderBottom: '1px solid var(--odoo-border)', background: 'var(--theme-bg-subtle, #f7f8fa)' }}>
-        <span style={{ fontWeight: 600, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tile.title}>{tile.title}</span>
-        <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-          {isFetching && <Loader2 size={13} className="animate-spin" />}
-          <button type="button" onClick={onUp} disabled={isFirst} className="odoo-pager-btn" title="Monter"><ChevronUp size={13} /></button>
-          <button type="button" onClick={onDown} disabled={isLast} className="odoo-pager-btn" title="Descendre"><ChevronDown size={13} /></button>
-          <button type="button" onClick={onResize} className="odoo-pager-btn" title={full ? 'Demi-largeur' : 'Pleine largeur'}>{full ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</button>
-          <button type="button" onClick={onRemove} className="odoo-pager-btn" title="Retirer"><X size={13} /></button>
+    <div className="kl-rb-tile">
+      <div className="kl-rb-tile-head">
+        <b title={tile.title}>{tile.title}</b>
+        <div className="acts">
+          {isFetching && <Loader2 size={13} className="animate-spin" style={{ alignSelf: 'center', marginRight: 4 }} />}
+          <button type="button" onClick={onUp} disabled={isFirst} title="Monter" aria-label="Monter"><ChevronUp size={14} /></button>
+          <button type="button" onClick={onDown} disabled={isLast} title="Descendre" aria-label="Descendre"><ChevronDown size={14} /></button>
+          <button type="button" onClick={onResize} title={full ? 'Demi-largeur' : 'Pleine largeur'} aria-label={full ? 'Demi-largeur' : 'Pleine largeur'}>{full ? <Minimize2 size={14} /> : <Maximize2 size={14} />}</button>
+          <button type="button" onClick={onRemove} title="Retirer" aria-label="Retirer"><X size={14} /></button>
         </div>
       </div>
-      <div style={{ padding: 4, minHeight: 60, flex: 1 }}>
-        {isError ? <p style={{ fontSize: '0.8rem', color: '#dc3545', padding: 12 }}>Erreur de chargement.</p>
+      <div style={{ padding: '0 14px 14px', minHeight: 60, flex: 1 }}>
+        {isError ? <p className="kl-viz-empty" style={{ color: 'var(--prj-red)' }}>Erreur de chargement.</p>
           : result ? <ReportViz columns={result.columns} rows={result.rows} viz={tile.viz} />
             : <div style={{ padding: 20, textAlign: 'center' }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></div>}
       </div>
