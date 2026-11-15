@@ -506,3 +506,43 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-viz-kpis b { display: block; font-size: 26px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--kl-ink); }
 .kl-viz-kpis span { font-size: 13px; color: var(--kl-muted); }
 .kl-viz-empty { padding: 20px 12px; text-align: center; font-size: 14px; color: var(--kl-muted); margin: 0; }
+
+/* ─── Bandeaux de statut (StatusBanner) en carte Apple, pages et fenêtres ── */
+.kl-apple .status-banner {
+  --kl-sb: var(--kl-accent-ink);
+  align-items: center; gap: 14px; padding: 12px 16px; border: 0 !important; border-radius: 14px;
+  background: var(--kl-card); box-shadow: 0 1px 2px rgba(15, 23, 42, .04); font-size: 14px;
+}
+.kl-apple .status-banner.info { --kl-sb: var(--kl-accent-ink); }
+.kl-apple .status-banner.success { --kl-sb: var(--prj-green); }
+.kl-apple .status-banner.warning, .kl-apple .status-banner.orange { --kl-sb: var(--prj-orange); }
+.kl-apple .status-banner.danger { --kl-sb: var(--prj-red); }
+.kl-apple .status-banner.neutral { --kl-sb: var(--kl-ink2); }
+.kl-apple .status-banner-icon {
+  box-sizing: content-box; width: 16px; height: 16px; padding: 8px; border-radius: 9px; margin: 0;
+  color: var(--kl-sb); background: color-mix(in srgb, var(--kl-sb) 12%, transparent);
+}
+.kl-apple .status-banner-title { color: var(--kl-ink); font-size: 15px; font-weight: 600; }
+.kl-apple .status-banner-text { color: var(--kl-muted); font-size: 13px; margin-top: 1px; }
+.kl-apple .fixed .status-banner { background: var(--kl-card); box-shadow: none; border: 1px solid var(--kl-hair) !important; }
+.kl-apple .status-banner-note.danger { background: color-mix(in srgb, var(--prj-red) 10%, transparent); color: var(--prj-red); border-radius: 8px; }
+
+/* ─── Achats : fiche BC et pièces chaînées ─────────────────────────────── */
+.kl-apple .pur-doc { border: 0; border-radius: 12px; background: var(--theme-bg-card); box-shadow: 0 1px 2px rgba(15, 23, 42, .05); padding: 8px 12px; }
+.kl-apple .pur-doc small { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 500; }
+.kl-apple .pur-doc.current { background: var(--theme-accent-light); box-shadow: inset 0 0 0 1.5px var(--theme-accent); }
+.kl-apple .pur-doc.current span { color: var(--theme-accent-hover); }
+.kl-apple .pur-doc.warn { background: color-mix(in srgb, var(--prj-orange) 8%, var(--theme-bg-card)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--prj-orange) 35%, transparent); }
+.kl-apple .pur-doc.todo { background: transparent; box-shadow: inset 0 0 0 1px dashed var(--kl-sep); border: 1px dashed var(--kl-sep); }
+.kl-apple .kl-po-body .prj-kpi { border: 0; border-radius: 14px; background: var(--theme-bg-card); box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+.kl-apple .kl-po-body .ui-timeline { background: var(--theme-bg-card); border-radius: 14px; border: 0; box-shadow: 0 1px 2px rgba(15, 23, 42, .04); padding-top: 14px; padding-bottom: 12px; }
+.kl-apple .kl-po-body .odoo-table { border: 0; }
+.kl-apple .kl-po-body .odoo-table tfoot td { border-top: 1px solid var(--kl-sep, var(--theme-bg-separator)); }
+.kl-apple .pur-check { border-radius: 999px; }
+
+/* Libellés en capitales posés en style inline (anciens formulaires) : casse normale, comme le reste. */
+.kl-apple [style*="text-transform: uppercase"], .kl-apple [style*="textTransform"] { text-transform: none !important; letter-spacing: 0 !important; }
+.kl-apple .fixed label[style*="text-transform: uppercase"] { font-size: 13px !important; font-weight: 500 !important; color: var(--theme-text-muted) !important; }
+/* Encadrés des anciens formulaires (bordure inline) : trait fin et coins arrondis. */
+.kl-apple .fixed [style*="border: 1px solid var(--odoo-border)"],
+.kl-apple .fixed [style*="border: 1px dashed var(--odoo-border)"] { border-color: var(--theme-bg-separator) !important; border-radius: 12px !important; }

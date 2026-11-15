@@ -1996,8 +1996,9 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
   const standing = standings.find(x => x.supplier_id === po.supplier_id);
   const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('');
 
-  const sectionTitle: CSSProperties = { margin: 0, fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--odoo-text-muted)' };
-  const card: CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 12, display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--odoo-bg)' };
+  // Style Apple (2026-11) : fond gris de feuille, cartes blanches sans bordure, titres en casse normale.
+  const sectionTitle: CSSProperties = { margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--theme-text-strong)' };
+  const card: CSSProperties = { borderRadius: 14, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--theme-bg-card)', boxShadow: '0 1px 2px rgba(15,23,42,.04)' };
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -2019,10 +2020,10 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
           <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer"><X size={14} /></button>
         </div>
 
-        <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
+        <div className="kl-po-body" style={{ overflowY: 'auto', flex: 1, minHeight: 0, background: 'var(--theme-bg-page)' }}>
           {/* Identité */}
-          <div style={{ padding: '12px 16px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 12px', fontSize: '0.8125rem' }}>
-            <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--odoo-text)' }}>{po.supplier_name}</span>
+          <div style={{ padding: '16px 20px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 12px', fontSize: 14 }}>
+            <span style={{ fontWeight: 700, fontSize: 21, letterSpacing: '-.02em', color: 'var(--theme-text-strong)' }}>{po.supplier_name}</span>
             <span style={{ color: 'var(--odoo-text-muted)' }}>
               {items.length} article{items.length > 1 ? 's' : ''} · <strong style={{ color: 'var(--odoo-text)' }}>{n(totalOrdered)} DH</strong>
               {poCur !== 'MAD' && <> · <strong style={{ color: 'var(--odoo-text)' }}>{n(totalForeign)} {poCur}</strong> <span className="odoo-tag odoo-tag-blue">1 {poCur} = {num(po.exchange_rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })} DH</span></>}
@@ -2031,7 +2032,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
           </div>
 
           {/* Chaîne des pièces liées */}
-          <div className="pur-chain" aria-label="Pièces liées" style={{ padding: '12px 16px 0' }}>
+          <div className="pur-chain" aria-label="Pièces liées" style={{ padding: '14px 20px 0' }}>
             {chain.map((c, i) => (
               <Fragment key={c.kind}>
                 {i > 0 && <ArrowRight size={14} className="pur-chain-arrow" aria-hidden="true" />}
@@ -2042,7 +2043,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
 
           {/* Frise du processus */}
           {!cancelled ? (
-            <ol className="ui-timeline" aria-label="Avancement du bon de commande" style={{ marginTop: 12 }}>
+            <ol className="ui-timeline kl-po-timeline" aria-label="Avancement du bon de commande" style={{ margin: '14px 20px 0' }}>
               {steps.map((s, i) => {
                 const done = i < stage || stage === 5;
                 const current = i === stage;
@@ -2057,7 +2058,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
             </ol>
           ) : <div style={{ height: 12 }} />}
 
-          <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ padding: '16px 20px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="prj-kpis" aria-label="Avancement">
               <div className="prj-kpi"><div className="prj-kpi-head"><span>Reçu</span><span>{linesDone} / {items.length} lignes</span></div>
                 <div className="prj-kpi-value">{Math.round(receivedPct)} %</div><div className="prj-bar"><span style={{ width: `${receivedPct}%` }} /></div></div>
@@ -2086,7 +2087,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-start' }}>
               {/* Articles */}
-              <div style={{ flex: '999 1 520px', minWidth: 0, border: '1px solid var(--odoo-border)', borderRadius: 4, overflowX: 'auto' }}>
+              <div style={{ flex: '999 1 520px', minWidth: 0, borderRadius: 14, overflowX: 'auto', background: 'var(--theme-bg-card)', boxShadow: '0 1px 2px rgba(15,23,42,.04)' }}>
                 <table className="odoo-table" style={{ margin: 0 }}>
                   <thead>
                     <tr>
@@ -2149,7 +2150,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
                       <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{[po.supplier_contact, po.supplier_phone].filter(Boolean).join(' · ') || 'contact non renseigné'}</span>
                     </span>
                     {standing && standing.standing !== 'new' && (
-                      <span className={`odoo-tag ${STANDING_TAG[standing.standing]}`} title={`Évaluation au ${standing.period_to}`}>{standing.standing}{standing.score != null ? ` · ${Math.round(Number(standing.score))}/100` : ''}</span>
+                      <span className={`kl-pill ${standing.standing === 'A' ? 'g' : standing.standing === 'B' ? 'b' : standing.standing === 'C' ? 'o' : 'r'}`} title={`Évaluation au ${standing.period_to}`}>{standing.standing}{standing.score != null ? ` · ${Math.round(Number(standing.score))}/100` : ''}</span>
                     )}
                   </div>
                 </section>
@@ -2187,8 +2188,8 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
               </aside>
             </div>
 
-            <section aria-label="Historique">
-              <h3 style={{ ...sectionTitle, marginBottom: 8 }}>Historique</h3>
+            <section aria-label="Historique" style={card}>
+              <h3 style={sectionTitle}>Historique</h3>
               <DocumentActionsTimeline queryKey={['po-actions', poId]} fetcher={() => purchaseOrdersApi.actions(poId)} />
             </section>
           </div>
