@@ -1120,6 +1120,12 @@ export default function SalesPage() {
                     const signed = (v: number) => `${v > 0 ? '+' : ''}${formatCurrency(v)}`;
                     const tone = (v: number | null) => (v ?? 0) < 0 ? 'r' : (v ?? 0) > 0 ? 'b' : 'g';
                     const advances = parseFloat(s.total_advances as string || '0');
+                    const cashExpected = parseFloat(s.expected_cash as string || '0');
+                    const cashCounted = s.actual_amount != null ? parseFloat(s.actual_amount as string) : null;
+                    const cardExpected = parseFloat(s.card_revenue as string || '0');
+                    const cardCounted = s.actual_card_amount != null ? parseFloat(s.actual_card_amount as string) : (cardExpected === 0 ? 0 : null);
+                    const totalExpected = cashExpected + cardExpected;
+                    const totalCounted = cashCounted != null && cardCounted != null ? cashCounted + cardCounted : null;
                     return (
                       <article key={s.id as string} className="kl-sess">
                         <header className="kl-sess-head">
@@ -1139,16 +1145,42 @@ export default function SalesPage() {
                         </header>
                         <div className="kl-sess-grid">
                           <div><span>Fond de caisse</span><b>{formatCurrency(parseFloat(s.opening_amount as string || '0'))}</b></div>
-                          <div><span>Espèces</span><b>{formatCurrency(parseFloat(s.cash_revenue as string || '0'))}</b></div>
-                          <div><span>Carte</span><b>{formatCurrency(parseFloat(s.card_revenue as string || '0'))}</b></div>
-                          <div><span>Attendu en caisse</span><b>{formatCurrency(parseFloat(s.expected_cash as string || '0'))}</b></div>
-                          <div><span>Compté</span><b>{formatCurrency(parseFloat(s.actual_amount as string || '0'))}</b></div>
-                          {diff !== null && <div><span>Écart espèces</span><b className={tone(diff)}>{signed(diff)}</b></div>}
-                          {/* Mig 467 — rapprochement carte : TPE saisi + écart carte */}
-                          {s.actual_card_amount != null && <div><span>Carte saisie (TPE)</span><b>{formatCurrency(parseFloat(s.actual_card_amount as string))}</b></div>}
-                          {cardDiff != null && <div><span>Écart carte</span><b className={tone(cardDiff)}>{signed(cardDiff)}</b></div>}
+                          <div><span>Ventes espèces</span><b>{formatCurrency(parseFloat(s.cash_revenue as string || '0'))}</b></div>
+                          <div><span>Ventes carte</span><b>{formatCurrency(cardExpected)}</b></div>
                           {advances > 0 && <div><span>Avances reçues</span><b>{formatCurrency(advances)}</b></div>}
                           {advances > 0 && <div><span>Commandes en attente</span><b>{parseInt(String(s.pending_orders ?? s.total_orders ?? 0))}</b></div>}
+                        </div>
+                        {/* Rapprochement : ce que le système attend face à ce que le caissier a saisi à la fermeture. */}
+                        <div className="kl-sess-rec">
+                          <table>
+                            <thead>
+                              <tr><th /><th>Attendu</th><th>Saisi par le caissier</th><th>Écart</th></tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                <th><Banknote size={14} /> Espèces <small>tiroir</small></th>
+                                <td>{formatCurrency(cashExpected)}</td>
+                                <td>{cashCounted != null ? formatCurrency(cashCounted) : <em>non compté</em>}</td>
+                                <td>{diff != null ? <b className={tone(diff)}>{signed(diff)}</b> : '—'}
+                                  {s.difference_reason && <small>{REASON_LABELS[s.difference_reason as string] ?? s.difference_reason}</small>}</td>
+                              </tr>
+                              <tr>
+                                <th><CreditCard size={14} /> Carte <small>TPE</small></th>
+                                <td>{formatCurrency(cardExpected)}</td>
+                                <td>{cardCounted != null ? formatCurrency(cardCounted) : cardExpected > 0 ? <em>non saisie</em> : '—'}</td>
+                                <td>{cardDiff != null ? <b className={tone(cardDiff)}>{signed(cardDiff)}</b> : cardExpected > 0 ? <em>non rapprochée</em> : '—'}
+                                  {s.card_difference_reason && <small>{REASON_LABELS[s.card_difference_reason as string] ?? s.card_difference_reason}</small>}</td>
+                              </tr>
+                            </tbody>
+                            <tfoot>
+                              <tr>
+                                <th>Total</th>
+                                <td>{formatCurrency(totalExpected)}</td>
+                                <td>{totalCounted != null ? formatCurrency(totalCounted) : <em>incomplet</em>}</td>
+                                <td>{totalDiff != null ? <b className={tone(totalDiff)}>{signed(totalDiff)}</b> : '—'}</td>
+                              </tr>
+                            </tfoot>
+                          </table>
                         </div>
                         <SessionLedgerRow session={s} diff={totalDiff} />
                         {(
@@ -1348,6 +1380,13 @@ function LoadingState() {
 // ═══ État comptable d'une fermeture de caisse ═══
 // Les tickets sont comptabilisés un à un (caisse/banque, CA, TVA) et l'écart de
 // fermeture passe en 6588/7588 : la session est la source des recettes.
+/** Motifs d'écart saisis à la fermeture (espèces et carte, mig 467). */
+const REASON_LABELS: Record<string, string> = {
+  rendu_monnaie: 'Rendu de monnaie', vol: 'Vol', erreur_comptage: 'Erreur de comptage',
+  depense_hors_paidout: 'Dépense non déclarée', autre: 'Autre motif',
+  erreur_saisie_tpe: 'Erreur de saisie TPE', transaction_manquante: 'Transaction manquante', transaction_refusee: 'Transaction refusée',
+};
+
 function sessionInitials(s: Record<string, any>): string {
   return `${String(s.first_name ?? '').charAt(0)}${String(s.last_name ?? '').charAt(0)}`.toUpperCase() || '·';
 }
