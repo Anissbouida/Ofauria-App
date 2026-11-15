@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Wallet, AlertTriangle, Users, ChevronDown, ChevronRight, Banknote, X, Loader2, Receipt, FileText, Phone, ScrollText, Layers, PiggyBank, Scale } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Banknote, X, Loader2, Receipt, FileText, Phone, ScrollText, Layers, PiggyBank, Scale } from 'lucide-react';
 import { salesApi, type AgingBucket, type CustomerReceivable, type ReceivableDoc } from '../../api/sales.api';
 import { customersApi, type CustomerStatement } from '../../api/customers.api';
 import { paymentsApi } from '../../api/accounting.api';
@@ -10,7 +10,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { RowMenu } from '../../components/ui/RowMenu';
-import { ListToolbar, FilterChips, ListKpi, ListPanel, NextStep } from './ListTemplate';
+import { ListToolbar, FilterChips, ListKpi, NextStep } from './ListTemplate';
 
 /**
  * Créances clients (mig 351) — remplace l'onglet « Impayés ».
@@ -21,7 +21,7 @@ import { ListToolbar, FilterChips, ListKpi, ListPanel, NextStep } from './ListTe
  */
 
 const BUCKETS: Array<{ key: AgingBucket; label: string; tone: string }> = [
-  { key: 'current', label: 'Non échu', tone: 'var(--odoo-text)' },
+  { key: 'current', label: 'Non échu', tone: 'var(--theme-accent)' },
   { key: 'd30', label: '1-30 j', tone: '#b45309' },
   { key: 'd60', label: '31-60 j', tone: '#c2410c' },
   { key: 'd90', label: '61-90 j', tone: '#dc2626' },
@@ -69,7 +69,7 @@ export default function ReceivablesTab() {
   const reconciled = rec ? Math.abs(rec.gap - rec.legacyTickets - rec.unassigned) < 1 : true;
 
   return (
-    <div className="prj">
+    <div className="prj" style={{ gap: 20 }}>
       <section className="prj-kpis" aria-label="Indicateurs">
         <ListKpi label="Total dû par les clients" value={t ? money(t.total) : '—'} sub={t ? `${t.documents} document${t.documents > 1 ? 's' : ''} ouverts` : ''} />
         <ListKpi label="Échu (en retard)" value={t ? money(t.overdue) : '—'} sub="à relancer" tone={t && t.overdue > 0 ? 'red' : undefined} />
@@ -79,24 +79,44 @@ export default function ReceivablesTab() {
 
       {/* Rapprochement avec le compte clients 3421 (G-CA-05) : une seule vue des créances */}
       {rec && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 10, padding: '10px 14px',
-          background: reconciled ? 'rgba(46,125,50,0.06)' : 'rgba(199,119,0,0.08)',
-          display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16, fontSize: '0.8125rem' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
-            <Scale size={14} /> Rapprochement comptable
+        <section className="kl-ar-rec">
+          <span className={`kl-ic ${reconciled ? 'g' : 'o'}`}><Scale size={16} /></span>
+          <span className="tx">
+            <b>Rapprochement comptable</b>
+            <small>
+              {[rec.legacyTickets > 0.005 ? `${money(rec.legacyTickets)} en tickets à crédit non comptabilisés` : '',
+                rec.unassigned > 0.005 ? `${money(rec.unassigned)} sans fiche client` : '',
+                rec.unappliedCredits > 0.005 ? `${money(rec.unappliedCredits)} d'avoirs non imputés` : ''].filter(Boolean).join(' · ') || 'Tout est comptabilisé au grand livre'}
+            </small>
           </span>
-          <span>Pièces de gestion&nbsp;: <b>{money(rec.documents)}</b></span>
-          <span>Compte clients 3421&nbsp;: <b>{money(rec.ledger)}</b></span>
-          <span style={{ color: reconciled ? '#2e7d32' : '#c77700', fontWeight: 600 }}>
-            {reconciled ? 'Concorde' : `Écart non expliqué ${money(rec.gap - rec.legacyTickets - rec.unassigned)}`}
+          <span className="kl-ar-rec-v"><small>Pièces de gestion</small><b>{money(rec.documents)}</b></span>
+          <span className="kl-ar-rec-v"><small>Compte clients 3421</small><b>{money(rec.ledger)}</b></span>
+          <span className={`kl-pill ${reconciled ? 'g' : 'o'}`}>
+            {reconciled ? 'Concorde' : `Écart ${money(rec.gap - rec.legacyTickets - rec.unassigned)}`}
           </span>
-          <span style={{ flex: 1 }} />
-          <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }} title="Ce qui distingue la vue gestion du grand livre">
-            {[rec.legacyTickets > 0.005 ? `${money(rec.legacyTickets)} en tickets à crédit non comptabilisés` : '',
-              rec.unassigned > 0.005 ? `${money(rec.unassigned)} sans fiche client` : '',
-              rec.unappliedCredits > 0.005 ? `${money(rec.unappliedCredits)} d'avoirs non imputés` : ''].filter(Boolean).join(' · ') || 'Tout est comptabilisé au grand livre'}
-          </span>
-        </div>
+        </section>
+      )}
+
+      {/* Balance âgée : répartition du total dû par tranche de retard */}
+      {t && t.total > 0 && (
+        <section>
+          <div className="kl-sec"><h2>Balance âgée</h2><small>{money(t.total)} dus</small></div>
+          <div className="kl-ar-aging">
+            <div className="kl-ar-bar" aria-hidden="true">
+              {BUCKETS.map(b => t.buckets[b.key] > 0 && (
+                <i key={b.key} style={{ flexGrow: t.buckets[b.key], background: b.tone }} />
+              ))}
+            </div>
+            <div className="kl-ar-buckets">
+              {BUCKETS.map(b => (
+                <div key={b.key} className={t.buckets[b.key] > 0 ? '' : 'empty'}>
+                  <span><i style={{ background: b.tone }} />{b.label}</span>
+                  <b>{t.buckets[b.key] > 0 ? money(t.buckets[b.key]) : '—'}</b>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
       )}
 
       <ListToolbar search={search} onSearch={setSearch} placeholder="Client, téléphone ou n° de pièce…" />
@@ -106,47 +126,25 @@ export default function ReceivablesTab() {
         { key: 'over60', label: '+ 60 jours', count: counts.over60 },
       ]} />
 
-      {/* Balance âgée */}
-      <ListPanel>
-        <table className="odoo-table" style={{ minWidth: 960 }}>
-          <thead>
-            <tr>
-              <th>Client</th>
-              {BUCKETS.map(b => <th key={b.key} style={{ textAlign: 'right' }}>{b.label}</th>)}
-              <th style={{ textAlign: 'right' }}>Total dû</th>
-              <th style={{ textAlign: 'right' }}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
-            {!isLoading && rows.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign: 'center', padding: 24, color: 'var(--odoo-text-muted)' }}>
-                {data?.customers.length ? 'Aucun client pour ce filtre' : 'Aucune créance : tous les clients sont à jour.'}
-              </td></tr>
-            )}
-            {rows.map(c => {
-              const key = c.customerId ?? c.name;
-              const isOpen = open.has(key);
-              return (
-                <CustomerRows key={key} c={c} isOpen={isOpen} onToggle={() => toggle(key)}
-                  onPay={doc => setPaying({ doc, customer: c.name })}
-                  onStatement={() => c.customerId && setStatement({ id: c.customerId, name: c.name })}
-                  onReceipt={() => setReceipt(c)} />
-              );
-            })}
-          </tbody>
-          {t && rows.length > 0 && (
-            <tfoot>
-              <tr style={{ fontWeight: 700 }}>
-                <td>Total</td>
-                {BUCKETS.map(b => <td key={b.key} style={{ textAlign: 'right' }}>{t.buckets[b.key] > 0 ? money(t.buckets[b.key]) : '—'}</td>)}
-                <td style={{ textAlign: 'right' }}>{money(t.total)}</td>
-                <td />
-              </tr>
-            </tfoot>
-          )}
-        </table>
-      </ListPanel>
+      {/* Clients débiteurs : une carte par client, pièces dépliables */}
+      <section style={{ display: 'grid', gap: 12 }}>
+        {isLoading && <div className="kl-ar-empty"><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></div>}
+        {!isLoading && rows.length === 0 && (
+          <div className="kl-ar-empty">
+            {data?.customers.length ? 'Aucun client pour ce filtre' : 'Aucune créance : tous les clients sont à jour.'}
+          </div>
+        )}
+        {rows.map(c => {
+          const key = c.customerId ?? c.name;
+          const isOpen = open.has(key);
+          return (
+            <CustomerCard key={key} c={c} isOpen={isOpen} onToggle={() => toggle(key)}
+              onPay={doc => setPaying({ doc, customer: c.name })}
+              onStatement={() => c.customerId && setStatement({ id: c.customerId, name: c.name })}
+              onReceipt={() => setReceipt(c)} />
+          );
+        })}
+      </section>
 
       {paying && <PayDialog doc={paying.doc} customer={paying.customer} onClose={() => setPaying(null)} />}
       {statement && <StatementDialog customerId={statement.id} name={statement.name} onClose={() => setStatement(null)} />}
@@ -155,104 +153,88 @@ export default function ReceivablesTab() {
   );
 }
 
-function CustomerRows({ c, isOpen, onToggle, onPay, onStatement, onReceipt }: { c: CustomerReceivable; isOpen: boolean; onToggle: () => void; onPay: (d: ReceivableDoc) => void; onStatement: () => void; onReceipt: () => void }) {
+function CustomerCard({ c, isOpen, onToggle, onPay, onStatement, onReceipt }: { c: CustomerReceivable; isOpen: boolean; onToggle: () => void; onPay: (d: ReceivableDoc) => void; onStatement: () => void; onReceipt: () => void }) {
   const overLimit = c.creditLimit != null && c.total > c.creditLimit;
+  const initials = c.name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '·';
+  const hasInvoices = c.docs.some(d => d.kind === 'invoice');
   return (
-    <>
-      <tr onClick={onToggle} style={{ cursor: 'pointer' }}>
-        <td>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <span style={{ fontWeight: 600 }}>{c.name}</span>
-            {c.customerType === 'professionnel' && <span className="odoo-tag odoo-tag-blue" style={{ fontSize: '0.625rem' }}>Pro</span>}
-            {overLimit && <span className="odoo-tag odoo-tag-red" style={{ fontSize: '0.625rem' }} title={`Plafond ${money(c.creditLimit!)}`}>plafond dépassé</span>}
+    <article className="kl-ar-card">
+      <div className="kl-ar-head" role="button" tabIndex={0} aria-expanded={isOpen} onClick={onToggle}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}>
+        <span className="kl-mono">{initials}</span>
+        <span className="tx">
+          <span className="kl-ar-name">
+            {c.name}
+            {c.customerType === 'professionnel' && <span className="kl-pill b">Pro</span>}
+            {overLimit && <span className="kl-pill r" title={`Plafond ${money(c.creditLimit!)}`}>Plafond dépassé</span>}
           </span>
-          <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginLeft: 20 }}>
-            {c.phone && <><Phone size={10} style={{ display: 'inline', verticalAlign: -1 }} /> {c.phone} · </>}
+          <span className="kl-ar-sub">
+            {c.phone && <><Phone size={11} style={{ display: 'inline', verticalAlign: -1 }} /> {c.phone} · </>}
             {c.docs.length} pièce{c.docs.length > 1 ? 's' : ''}
-            {c.maxDaysLate > 0 && <span style={{ color: '#dc2626' }}> · plus ancien retard {c.maxDaysLate} j</span>}
-          </div>
-        </td>
-        {BUCKETS.map(b => (
-          <td key={b.key} style={{ textAlign: 'right', color: c.buckets[b.key] > 0 ? b.tone : 'var(--odoo-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
-            {c.buckets[b.key] > 0 ? money(c.buckets[b.key]) : '—'}
-          </td>
-        ))}
-        <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{money(c.total)}</td>
-        <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-          <div className="sal-actions">
-            {c.docs.length === 1
-              ? <NextStep icon={Banknote} label="Encaisser" onClick={() => onPay(c.docs[0])} />
-              : <NextStep icon={isOpen ? ChevronDown : ChevronRight} label={`${c.docs.length} pièces`} onClick={onToggle} />}
-            <RowMenu items={[
-              { label: isOpen ? 'Masquer les pièces' : 'Voir les pièces', icon: FileText, onSelect: onToggle },
-              ...(c.customerId && c.docs.some(d => d.kind === 'invoice') ? [{ label: 'Règlement sur plusieurs factures', icon: Layers, onSelect: onReceipt }] : []),
-              ...(c.customerId ? [{ label: 'Relevé de compte', icon: ScrollText, onSelect: onStatement }] : []),
-            ]} />
-          </div>
-        </td>
-      </tr>
+            {c.maxDaysLate > 0 && <span className="late"> · plus ancien retard {c.maxDaysLate} j</span>}
+          </span>
+        </span>
+        <span className="kl-ar-split">
+          {BUCKETS.filter(b => c.buckets[b.key] > 0).map(b => (
+            <span key={b.key}><i style={{ background: b.tone }} />{b.label} <b>{money(c.buckets[b.key])}</b></span>
+          ))}
+        </span>
+        <span className="kl-ar-total"><small>Total dû</small>{money(c.total)}</span>
+        <span className="sal-actions" onClick={e => e.stopPropagation()}>
+          {c.docs.length === 1 && <NextStep icon={Banknote} label="Encaisser" onClick={() => onPay(c.docs[0])} />}
+          <RowMenu items={[
+            { label: isOpen ? 'Masquer les pièces' : 'Voir les pièces', icon: FileText, onSelect: onToggle },
+            ...(c.customerId && hasInvoices ? [{ label: 'Règlement sur plusieurs factures', icon: Layers, onSelect: onReceipt }] : []),
+            ...(c.customerId ? [{ label: 'Relevé de compte', icon: ScrollText, onSelect: onStatement }] : []),
+          ]} />
+        </span>
+        <ChevronDown size={16} className={`kl-ar-chev${isOpen ? ' open' : ''}`} />
+      </div>
+
       {isOpen && (
-        <tr>
-          <td colSpan={8} style={{ background: 'var(--odoo-bg-alt, #f8f9fa)', padding: '8px 12px 12px 32px' }}>
-            {c.customerId && (
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginBottom: 6 }}>
-                {c.docs.some(d => d.kind === 'invoice') && (
-                  <button type="button" className="odoo-btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem' }}
-                    title="Un chèque ou un virement qui règle plusieurs factures ; le reste devient une avance"
-                    onClick={e => { e.stopPropagation(); onReceipt(); }}>
-                    <Layers size={12} /> Règlement sur plusieurs factures
-                  </button>
-                )}
-                <button type="button" className="odoo-btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem' }}
-                  onClick={e => { e.stopPropagation(); onStatement(); }}>
-                  <ScrollText size={12} /> Relevé de compte
+        <div className="kl-ar-body">
+          {c.customerId && (
+            <div className="kl-ar-actions">
+              {hasInvoices && (
+                <button type="button" className="odoo-btn-secondary"
+                  title="Un chèque ou un virement qui règle plusieurs factures ; le reste devient une avance"
+                  onClick={onReceipt}>
+                  <Layers size={13} /> Règlement sur plusieurs factures
                 </button>
+              )}
+              <button type="button" className="odoo-btn-secondary" onClick={onStatement}>
+                <ScrollText size={13} /> Relevé de compte
+              </button>
+            </div>
+          )}
+          {c.customerId && <AdvancesBlock customerId={c.customerId} invoices={c.docs.filter(d => d.kind === 'invoice')} />}
+          {c.gap != null && Math.abs(c.gap) > 0.005 && (
+            <div className="kl-ar-warn">
+              <AlertTriangle size={12} /> Écart avec le compte 3421&nbsp;: {money(c.gap)} à vérifier
+              {c.legacyTickets > 0.005 ? ` (hors ${money(c.legacyTickets)} de tickets à crédit non comptabilisés)` : ''}
+            </div>
+          )}
+          <div className="kl-ar-docs">
+            {c.docs.map(d => (
+              <div key={d.kind + d.id} className="kl-ar-doc">
+                <span className={`kl-ic ${d.days_late > 0 ? 'r' : 'x'}`}>{d.kind === 'ticket' ? <Receipt size={15} /> : <FileText size={15} />}</span>
+                <span className="tx">
+                  <span className="t1"><span className="num">{d.number}</span> <span className="kind">{d.kind === 'ticket' ? 'Ticket' : 'Facture'}</span></span>
+                  <span className="t2">
+                    Émise le {day(d.doc_date)} · échéance <span className={d.days_late > 0 ? 'late' : ''}>{day(d.due_date)}{d.days_late > 0 ? ` · ${d.days_late} j de retard` : ''}</span>
+                  </span>
+                </span>
+                <span className="kl-ar-amt">
+                  <b>{money(d.remaining)}</b>
+                  {d.paid > 0 && <small>sur {money(d.amount)} · {money(d.paid)} payés</small>}
+                </span>
+                <NextStep icon={Banknote} label="Encaisser" onClick={() => onPay(d)} />
               </div>
-            )}
-            {c.customerId && <AdvancesBlock customerId={c.customerId} invoices={c.docs.filter(d => d.kind === 'invoice')} />}
-            {c.gap != null && Math.abs(c.gap) > 0.005 && (
-              <div style={{ fontSize: '0.75rem', color: '#c77700', marginBottom: 6, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                <AlertTriangle size={11} /> Écart avec le compte 3421&nbsp;: {money(c.gap)} à vérifier
-                {c.legacyTickets > 0.005 ? ` (hors ${money(c.legacyTickets)} de tickets à crédit non comptabilisés)` : ''}
-              </div>
-            )}
-            <table style={{ width: '100%', fontSize: '0.8125rem', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ color: 'var(--odoo-text-muted)', textAlign: 'left' }}>
-                  <th style={{ padding: 4 }}>Pièce</th><th style={{ padding: 4 }}>Date</th><th style={{ padding: 4 }}>Échéance</th>
-                  <th style={{ padding: 4, textAlign: 'right' }}>Montant</th><th style={{ padding: 4, textAlign: 'right' }}>Déjà payé</th>
-                  <th style={{ padding: 4, textAlign: 'right' }}>Reste dû</th><th />
-                </tr>
-              </thead>
-              <tbody>
-                {c.docs.map(d => (
-                  <tr key={d.kind + d.id} style={{ borderTop: '1px solid var(--odoo-border)' }}>
-                    <td style={{ padding: 4 }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        {d.kind === 'ticket' ? <Receipt size={12} /> : <FileText size={12} />}
-                        <span style={{ fontFamily: 'ui-monospace, monospace' }}>{d.number}</span>
-                        <span className="odoo-tag odoo-tag-grey" style={{ fontSize: '0.625rem' }}>{d.kind === 'ticket' ? 'Ticket' : 'Facture'}</span>
-                      </span>
-                    </td>
-                    <td style={{ padding: 4 }}>{day(d.doc_date)}</td>
-                    <td style={{ padding: 4, color: d.days_late > 0 ? '#dc2626' : undefined }}>
-                      {day(d.due_date)}{d.days_late > 0 ? ` · ${d.days_late} j de retard` : ''}
-                    </td>
-                    <td style={{ padding: 4, textAlign: 'right' }}>{money(d.amount)}</td>
-                    <td style={{ padding: 4, textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{d.paid > 0 ? money(d.paid) : '—'}</td>
-                    <td style={{ padding: 4, textAlign: 'right', fontWeight: 600 }}>{money(d.remaining)}</td>
-                    <td style={{ padding: 4, textAlign: 'right' }}>
-                      <NextStep icon={Banknote} label="Encaisser" onClick={() => onPay(d)} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </td>
-        </tr>
+            ))}
+          </div>
+        </div>
       )}
-    </>
+    </article>
   );
 }
 
@@ -479,7 +461,7 @@ function AdvancesBlock({ customerId, invoices }: { customerId: string; invoices:
   });
   if (!advances.length) return null;
   return (
-    <div style={{ marginBottom: 8, padding: '6px 10px', border: '1px dashed var(--odoo-border)', borderRadius: 4, fontSize: '0.8125rem', display: 'grid', gap: 6 }}>
+    <div className="kl-ar-adv">
       {advances.map(a => (
         <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <PiggyBank size={13} style={{ color: '#6f42c1' }} />
