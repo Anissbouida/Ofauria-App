@@ -3,6 +3,7 @@ import { logger } from '../utils/logger.js';
 import { processOutbox } from './mailer.js';
 import { maintenanceRepository } from '../repositories/maintenance.repository.js';
 import { systemUserId } from './system-user.js';
+import { runDepreciation } from './depreciation.service.js';
 import { dunningRepository } from '../repositories/dunning.repository.js';
 import { ledgerIntegrityRepository } from '../repositories/ledger-integrity.repository.js';
 import { expireDue as loyaltyExpireDue } from './loyalty.js';
@@ -239,6 +240,43 @@ async function purchaseSuggestions(): Promise<JobResult> {
   return { items: created, message: created ? `${created} demande(s) d'achat proposée(s)` : 'Aucune nouvelle proposition (besoins couverts)' };
 }
 
+/** Mois écoulé au fuseau de Casablanca : { year, month } et son dernier jour (AAAA-MM-JJ). */
+async function previousMonth(): Promise<{ year: number; month: number; lastDay: string }> {
+  const r = (await db.query(
+    `SELECT EXTRACT(YEAR FROM d)::int AS year, EXTRACT(MONTH FROM d)::int AS month, to_char(d, 'YYYY-MM-DD') AS last_day
+       FROM (SELECT (date_trunc('month', now() AT TIME ZONE 'Africa/Casablanca') - interval '1 day')::date AS d) x`)).rows[0];
+  return { year: r.year, month: r.month, lastDay: r.last_day };
+}
+
+/**
+ * G1-07 — dotations aux amortissements : passe les dotations manquantes de l'exercice du
+ * mois écoulé, de janvier à ce mois (rattrape un mois oublié). Idempotent : runDepreciation
+ * saute toute immobilisation déjà dotée pour le mois. Un mois dont la période comptable est
+ * verrouillée fait échouer la tâche, avec le message de la base.
+ */
+async function depreciationMonthly(): Promise<JobResult> {
+  const { year, month } = await previousMonth();
+  const userId = await systemUserId();
+  let created = 0, total = 0;
+  for (let m = 1; m <= month; m++) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const r = await runDepreciation(client, { year, month: m, userId });
+      await client.query('COMMIT');
+      created += r.created; total = Math.round((total + r.totalAmount) * 100) / 100;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw new Error(`Dotations ${String(m).padStart(2, '0')}/${year} : ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      client.release();
+    }
+  }
+  return { items: created, message: created
+    ? `${created} dotation(s) comptabilisée(s) jusqu'à ${String(month).padStart(2, '0')}/${year}, ${total.toFixed(2)} DH`
+    : `Dotations à jour jusqu'à ${String(month).padStart(2, '0')}/${year}` };
+}
+
 async function webhookOutbox(): Promise<JobResult> {
   const r = await webhookRepository.deliverPending();
   return { items: r.sent, message: `${r.sent} envoyé(s)${r.failed ? ` · ${r.failed} échec(s)` : ''}` };
@@ -259,6 +297,7 @@ export const JOBS: Record<string, Handler> = {
   ledger_seal: () => ledgerIntegrityRepository.sealAuto(),
   ledger_partitions: ledgerPartitions,
   monthly_invoicing: () => monthlyInvoicing(),
+  depreciation_monthly: depreciationMonthly,
   housekeeping,
 };
 
