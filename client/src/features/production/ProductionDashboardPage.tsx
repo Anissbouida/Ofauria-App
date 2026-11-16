@@ -1,3 +1,4 @@
+import { useProductionPolicies, yieldLevel, YIELD_PILL } from './usePolicies';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -18,6 +19,10 @@ import { format, subDays } from 'date-fns';
 export default function ProductionDashboardPage() {
   const { user } = useAuth();
   const storeId = user?.storeId || '';
+  // M1-03 : seuils d'affichage du rendement moyen lus dans les politiques de production.
+  const policies = useProductionPolicies({ store: storeId || undefined });
+  const avgGood = policies.num('production.yield_display', 'good');
+  const avgAlert = policies.num('production.yield_display', 'alert');
   const [period, setPeriod] = useState<'7d' | '30d' | '90d'>('30d');
 
   const dateFrom = format(subDays(new Date(), period === '7d' ? 7 : period === '30d' ? 30 : 90), 'yyyy-MM-dd');
@@ -123,7 +128,7 @@ export default function ProductionDashboardPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <StatCard icon={<Scale size={18} className="text-violet-500" />} label="Rendement moyen"
               value={rendementStats?.avg_rendement ? `${parseFloat(rendementStats.avg_rendement).toFixed(1)}%` : '—'}
-              color={parseFloat(rendementStats?.avg_rendement || '0') >= 85 ? 'emerald' : 'amber'}
+              color={yieldLevel(parseFloat(rendementStats?.avg_rendement || '0'), avgGood) === 'warn' ? 'amber' : 'emerald'}
               sub={`${rendementStats?.total_items || 0} items`} />
             <StatCard icon={<AlertTriangle size={18} className="text-red-500" />} label="Total pertes"
               value={rendementStats?.total_pertes ? parseFloat(rendementStats.total_pertes).toFixed(0) : '0'}
@@ -260,8 +265,8 @@ export default function ProductionDashboardPage() {
                           <td className="px-5 py-2.5 font-medium text-gray-900">{r.product_name}</td>
                           <td className="px-3 py-2.5 text-center text-gray-600">{r.nb_productions}</td>
                           <td className="px-3 py-2.5 text-center">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${avgR >= 85 ? 'bg-emerald-50 text-emerald-700' : avgR >= 70 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>
-                              {avgR >= 85 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${YIELD_PILL[yieldLevel(avgR, avgGood, avgAlert)]}`}>
+                              {yieldLevel(avgR, avgGood, avgAlert) === 'good' ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
                               {avgR.toFixed(1)}%
                             </span>
                           </td>

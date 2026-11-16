@@ -22,7 +22,7 @@ export const productionEtapesApi = {
     api.delete(`/production-etapes/readings/${readingId}`).then(r => r.data.data),
 
   // Rétro-planning par temps de procédé (mig 432) — épic labo L6
-  computeRetroPlanning: (planId: string, heure_vitrine: string) =>
+  computeRetroPlanning: (planId: string, heure_vitrine?: string) =>
     api.post(`/production-etapes/plans/${planId}/retro-planning`, { heure_vitrine }).then(r => r.data.data as {
       scheduled_count: number;
       earliest_start: string | null;

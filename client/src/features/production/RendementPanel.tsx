@@ -1,3 +1,4 @@
+import { useProductionPolicies, yieldLevel, YIELD_PILL, YIELD_TEXT } from './usePolicies';
 import { useState } from 'react';
 import { apiErrorMessage } from '../../api/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -13,6 +14,9 @@ interface RendementPanelProps {
   planStatus: string;
   items: Record<string, any>[];
   isChef: boolean;
+  /** Contexte des politiques (seuils d'affichage) : atelier et établissement du plan. */
+  workshop?: string | null;
+  storeId?: string | null;
 }
 
 interface Rendement {
@@ -51,8 +55,13 @@ interface RendementTarget {
   categoriesPertes: string[];
 }
 
-export default function RendementPanel({ planId, planStatus, items, isChef }: RendementPanelProps) {
+export default function RendementPanel({ planId, planStatus, items, isChef, workshop, storeId }: RendementPanelProps) {
   const queryClient = useQueryClient();
+  // M1-03 : seuils lus dans les politiques de production, plus en dur.
+  const policies = useProductionPolicies({ workshop, store: storeId });
+  const yieldTarget = policies.num('production.yield_target', 'pct');
+  const avgGood = policies.num('production.yield_display', 'good');
+  const avgAlert = policies.num('production.yield_display', 'alert');
   const [recordingItem, setRecordingItem] = useState<string | null>(null);
   const [formData, setFormData] = useState<{
     quantite_brute: number; quantite_nette_reelle: number;
@@ -151,7 +160,7 @@ export default function RendementPanel({ planId, planStatus, items, isChef }: Re
           <div className="flex items-center gap-1.5">
             <PieChart size={12} className="text-violet-500" />
             <span className="text-gray-500">Rendement moy:</span>
-            <span className={`font-bold ${avgRendement >= 85 ? 'text-emerald-600' : avgRendement >= 70 ? 'text-amber-600' : 'text-red-600'}`}>
+            <span className={`font-bold ${YIELD_TEXT[yieldLevel(avgRendement, avgGood, avgAlert)]}`}>
               {avgRendement.toFixed(1)}%
             </span>
           </div>
@@ -191,8 +200,8 @@ export default function RendementPanel({ planId, planStatus, items, isChef }: Re
 
                 {existing ? (
                   <div className="flex items-center gap-3">
-                    <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${existing.rendement_reel >= (existing.seuil_rendement || 85) ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                      {existing.rendement_reel >= (existing.seuil_rendement || 85) ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+                    <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${YIELD_PILL[yieldLevel(existing.rendement_reel, Number(existing.seuil_rendement) || yieldTarget)]}`}>
+                      {yieldLevel(existing.rendement_reel, Number(existing.seuil_rendement) || yieldTarget) === 'good' ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
                       {existing.rendement_reel.toFixed(1)}%
                     </div>
                     <span className="text-[10px] text-gray-400">
@@ -309,7 +318,7 @@ export default function RendementPanel({ planId, planStatus, items, isChef }: Re
                   {/* Rendement preview */}
                   {formData.quantite_brute > 0 && (
                     <div className="text-xs text-gray-500 flex items-center gap-3">
-                      <span>Rendement: <span className={`font-bold ${(formData.quantite_nette_reelle / formData.quantite_brute * 100) >= (target?.seuilRendement || 85) ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      <span>Rendement: <span className={`font-bold ${YIELD_TEXT[yieldLevel(formData.quantite_nette_reelle / formData.quantite_brute * 100, Number(target?.seuilRendement) || yieldTarget)]}`}>
                         {(formData.quantite_nette_reelle / formData.quantite_brute * 100).toFixed(1)}%
                       </span></span>
                       {target && <span className="text-gray-400">Seuil: {target.seuilRendement}%</span>}

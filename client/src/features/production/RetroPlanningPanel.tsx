@@ -1,3 +1,4 @@
+import { useProductionPolicies } from './usePolicies';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -38,14 +39,21 @@ interface Props {
   planId: string;
   planStatus: string;
   isChef: boolean;
+  /** Contexte de la politique « Heure de mise en vitrine ». */
+  workshop?: string | null;
+  storeId?: string | null;
 }
 
 const hhmm = (iso: string) => format(new Date(iso), 'HH:mm', { locale: fr });
 
-export default function RetroPlanningPanel({ planId, planStatus, isChef }: Props) {
+export default function RetroPlanningPanel({ planId, planStatus, isChef, workshop, storeId }: Props) {
   const queryClient = useQueryClient();
   const refs = useProcessRefs();
-  const [heureVitrine, setHeureVitrine] = useState('07:00');
+  // M1-03 : l'heure proposée vient de la politique « Heure de mise en vitrine » ; tant que
+  // le chef n'a rien saisi, c'est elle qui s'affiche et que le serveur applique.
+  const policies = useProductionPolicies({ workshop, store: storeId });
+  const [typedHeure, setHeureVitrine] = useState('');
+  const heureVitrine = typedHeure || policies.text('production.showcase_time', 'time') || '';
   const [lastResult, setLastResult] = useState<{ earliest_start: string | null; conflicts: Conflict[] } | null>(null);
 
   const { data: etapes = [], isLoading } = useQuery<Etape[]>({
@@ -55,7 +63,7 @@ export default function RetroPlanningPanel({ planId, planStatus, isChef }: Props
   });
 
   const compute = useMutation({
-    mutationFn: () => productionEtapesApi.computeRetroPlanning(planId, heureVitrine),
+    mutationFn: () => productionEtapesApi.computeRetroPlanning(planId, heureVitrine || undefined),
     onSuccess: (res) => {
       setLastResult({ earliest_start: res.earliest_start, conflicts: res.conflicts });
       queryClient.invalidateQueries({ queryKey: ['plan-etapes', planId] });

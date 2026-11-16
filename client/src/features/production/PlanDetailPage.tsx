@@ -1,3 +1,4 @@
+import { useProductionPolicies, shiftOf } from './usePolicies';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
@@ -101,6 +102,8 @@ export default function PlanDetailPage() {
   });
   // G1-05 : fonctions de production activées (étapes, rendement, coût de revient).
   const { data: productionSettings } = useQuery({ queryKey: ['production-settings'], queryFn: productionApi.getSettings, staleTime: 5 * 60_000 });
+  // M1-03 : seuils et coupure d'équipe lus dans les politiques de production (atelier du plan).
+  const policies = useProductionPolicies({ workshop: plan?.target_role as string | undefined, store: plan?.store_id as string | undefined });
   const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
 
@@ -393,7 +396,7 @@ export default function PlanDetailPage() {
       notify.error("Impression refusée : ce plan n'a pas encore de bon de sortie. Générez le bon de sortie, son numéro est attribué par le serveur.");
       return;
     }
-    setPrintHtml(buildBsiHtml(plan, needs, settings, getPlanLotPrefix(), bonNumber));
+    setPrintHtml(buildBsiHtml(plan, needs, settings, getPlanLotPrefix(), bonNumber, shiftOf(new Date(), policies.num('production.shift_cutoff', 'hour'))));
   };
   const printFicheProduction = (planData?: Record<string, any>) => {
     const p = planData || plan;
@@ -1128,7 +1131,9 @@ export default function PlanDetailPage() {
   const rendementList = rendements as Record<string, any>[];
   const avgRendement = rendementList.length > 0
     ? rendementList.reduce((s, r) => s + num(r.rendement_reel), 0) / rendementList.length : null;
-  const minSeuil = rendementList.length > 0 ? Math.min(...rendementList.map(r => num(r.seuil_rendement) || 85)) : 85;
+  const yieldTarget = policies.num('production.yield_target', 'pct');
+  const seuils = rendementList.map(r => num(r.seuil_rendement) || yieldTarget).filter((v): v is number => v !== null);
+  const minSeuil = seuils.length > 0 ? Math.min(...seuils) : yieldTarget;
   const pertesTotal = rendementList.reduce((s, r) => s + num(r.pertes_total), 0);
   const coutTotal = coutReel ? num(coutReel.cout_total) : null;
   const ecartPct = coutReel?.ecart_pct != null ? num(coutReel.ecart_pct) : null;
@@ -1146,8 +1151,8 @@ export default function PlanDetailPage() {
       { label: 'Produit', icon: <CheckCircle2 size={11} />, value: `${qtyDone} / ${qtyPlanned}`, sub: `${pct} % du prévu`, tone: pct >= 100 ? 'ok' : 'warn' },
       avgRendement != null
         ? { label: 'Rendement', icon: <Scale size={11} />, value: `${avgRendement.toFixed(1)} %`,
-            sub: rendementsMissing.length > 0 ? `${rendementsMissing.length} article(s) non saisi(s)` : `seuil ${minSeuil} %`,
-            tone: rendementsMissing.length > 0 || avgRendement < minSeuil ? 'warn' : 'ok' }
+            sub: rendementsMissing.length > 0 ? `${rendementsMissing.length} article(s) non saisi(s)` : minSeuil === null ? '' : `seuil ${minSeuil} %`,
+            tone: rendementsMissing.length > 0 || (minSeuil !== null && avgRendement < minSeuil) ? 'warn' : 'ok' }
         : { label: 'Rendement', icon: <Scale size={11} />, value: isSemiFini ? '—' : 'Non saisi', sub: isSemiFini ? undefined : 'pas saisi pendant la production', tone: isSemiFini ? undefined : 'warn' },
       coutTotal != null
         ? { label: 'Coût réel', icon: <Coins size={11} />, value: fmtDh(coutTotal),
@@ -1872,12 +1877,12 @@ export default function PlanDetailPage() {
           Le retro-planning sert a caler le demarrage : inutile une fois le plan termine. */}
       {showProd && hasResults && (
         <>
-          {plan.status === 'in_progress' && <RetroPlanningPanel planId={id!} planStatus={plan.status} isChef={isChef} />}
+          {plan.status === 'in_progress' && <RetroPlanningPanel planId={id!} planStatus={plan.status} isChef={isChef} workshop={plan.target_role as string | null} storeId={plan.store_id as string | null} />}
           {/* G1-05 : panneaux masqués quand la fonction est coupée (Production › Paramétrage). */}
           {productionSettings?.production_steps_enabled !== false && <EtapesPanel planId={id!} planStatus={plan.status} isChef={isChef} />}
           {productionSettings?.production_yield_enabled !== false && (
             <div id="plan-rendement">
-              <RendementPanel planId={id!} planStatus={plan.status} items={items} isChef={isChef} />
+              <RendementPanel planId={id!} planStatus={plan.status} items={items} isChef={isChef} workshop={plan.target_role as string | null} storeId={plan.store_id as string | null} />
             </div>
           )}
         </>

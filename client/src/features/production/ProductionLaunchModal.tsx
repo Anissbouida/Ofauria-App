@@ -1,3 +1,4 @@
+import { useProductionPolicies, shiftOf } from './usePolicies';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -115,10 +116,6 @@ function nowLocalISO(): string {
   return d.toISOString().slice(0, 16);
 }
 
-function detectShift(dateStr: string): string {
-  const h = new Date(dateStr).getHours();
-  return h < 14 ? 'Matin' : 'Apres-midi';
-}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -268,6 +265,9 @@ export default function ProductionLaunchModal({
     [items],
   );
 
+  // M1-03 : coupure d'équipe lue dans les politiques de production (atelier du plan).
+  const policies = useProductionPolicies({ workshop: plan?.target_role as string | undefined, store: plan?.store_id as string | undefined });
+  const detectShift = (dateStr: string) => shiftOf(new Date(dateStr), policies.num('production.shift_cutoff', 'hour'));
   const shift = detectShift(producedAt);
   const currentStepDef = STEPS[step - 1];
   const colors = stepColorMap[currentStepDef.color];

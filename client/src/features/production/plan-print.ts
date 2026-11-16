@@ -100,13 +100,12 @@ body { font-family: Arial, sans-serif; padding: 15px; color: #333; font-size: 12
 }
 
 
-export function buildBsiHtml(plan: Record<string, any>, needs: Record<string, any>[], settings: PrintSettings, planLotPrefix: string, bonNumber: string): string {
+/** `shift` : équipe du moment (« Matin » / « Après-midi »), calculée par l'appelant d'après la politique « Coupure d'équipe ». */
+export function buildBsiHtml(plan: Record<string, any>, needs: Record<string, any>[], settings: PrintSettings, planLotPrefix: string, bonNumber: string, shift: string): string {
   const dateStr = format(new Date(plan.plan_date as string), 'dd/MM/yyyy');
   const now = format(new Date(), 'dd/MM/yyyy HH:mm');
   const planDate = new Date(plan.plan_date as string);
   const bsiDateStr = `${String(planDate.getFullYear() % 100).padStart(2, '0')}${String(planDate.getMonth() + 1).padStart(2, '0')}${String(planDate.getDate()).padStart(2, '0')}`;
-  const hour = new Date().getHours();
-  const shift = hour < 14 ? 'Matin' : 'Apres-midi';
 
   // Build ingredient rows — l'allocation par lot (FEFO) est maintenant geree
   // dans le BSI / module Warehouse. Ici on imprime juste la liste des besoins
