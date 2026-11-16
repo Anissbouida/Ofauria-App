@@ -8,6 +8,7 @@ import { receptionVouchersApi, purchaseOrdersApi } from '../../api/purchase-orde
 import { PODetailModal, DeliveryModal } from '../accounting/PurchaseOrdersTab';
 import { ListKpi } from '../sales/ListTemplate';
 import { ViewSwitch, PeriodFilter, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
+import { usePurLayout, LayoutSwitch, SplitView, KanbanView, POPane, pdate, pmoney } from './PurLayouts';
 
 const fmt = (v: number | string | null | undefined) =>
   v == null ? '—' : Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -59,6 +60,9 @@ export default function ReceptionsTab() {
   const [period, setPeriod] = useState<PeriodKey>('all');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
+  // Style Apple (2026-11) : Colonnes (liste + fiche BC) / Liste / Kanban, comme les Ventes.
+  const [layout, setLayout] = usePurLayout();
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   // Historique des bons de réception.
   const { data: vouchers = [], isLoading: loadingVouchers } = useQuery<ReceptionRow[]>({
@@ -123,12 +127,12 @@ export default function ReceptionsTab() {
         Choisissez un bon de commande envoyé et saisissez les quantités reçues.
       </PageNote>
 
-      <section className="prj-kpis" aria-label="Indicateurs">
+      {layout !== 'split' && <section className="prj-kpis" aria-label="Indicateurs">
         <ListKpi label="À réceptionner" value={String(pending.length)} sub={`${money(pending.reduce((a, po) => a + (Number(po.total_amount) || 0), 0))} attendus`} />
         <ListKpi label="Livraisons en retard" value={String(pending.filter(po => po.is_late).length)} sub="date prévue dépassée" tone={pending.some(po => po.is_late) ? 'red' : undefined} />
         <ListKpi label="Reçues ce mois" value={String(monthVouchers.length)} sub={money(monthVouchers.reduce((a, r) => a + (Number(r.total_amount) || 0), 0))} />
         <ListKpi label="Dernière réception" value={date(vouchers.map(r => String(r.reception_date ?? '')).sort().pop())} sub="bon de réception le plus récent" />
-      </section>
+      </section>}
 
       {/* Barre d'outils unique : recherche, période (historique), bascule À réceptionner / Historique */}
       <div className="prj-toolbar">
@@ -150,9 +154,10 @@ export default function ReceptionsTab() {
             <X size={12} /> Effacer
           </button>
         )}
+        <LayoutSwitch value={layout} onChange={setLayout} />
         <ViewSwitch
           view={view}
-          onChange={setView}
+          onChange={v => { setView(v); setActiveId(null); }}
           openLabel={`À réceptionner${loadingPending ? '' : ` · ${pending.length}`}`}
           historyLabel={`Historique${loadingVouchers ? '' : ` · ${vouchers.length}`}`}
           ariaLabel="Vue des réceptions"
@@ -173,6 +178,29 @@ export default function ReceptionsTab() {
               {term ? 'Aucun BC à réceptionner pour cette recherche' : 'Aucun bon de commande en attente de livraison'}
             </p>
           </div>
+        ) : layout === 'split' ? (
+          <SplitView items={pendingRows} getId={po => po.id as string} activeId={activeId} onPick={setActiveId} label="Bons de commande à réceptionner"
+            row={po => ({
+              title: String(po.supplier_name ?? '—'), when: po.expected_delivery_date ? pdate(po.expected_delivery_date, 'd MMM') : undefined,
+              l2: <><span className="sal-num">{po.order_number}</span> · {pmoney(po.total_amount)}</>,
+              l3: po.is_late ? `En retard de ${daysLate(po.expected_delivery_date)} j` : po.stage === 'partial' ? 'Reliquat attendu' : 'En attente de livraison',
+              dot: po.is_late ? 'late' : 'today',
+            })}
+            pane={po => (
+              <POPane poId={po.id as string} onFull={() => setPoDetail(po.id as string)}
+                actions={<button type="button" className={po.is_late ? 'odoo-btn-danger' : 'odoo-btn-primary'} onClick={() => setReceivePoId(po.id as string)}>
+                  <PackageCheck size={14} /> {po.stage === 'partial' ? 'Réceptionner le reliquat' : 'Réceptionner'}</button>} />
+            )} />
+        ) : layout === 'kanban' ? (
+          <KanbanView items={pendingRows} getId={po => po.id as string} onOpen={po => setPoDetail(po.id as string)} empty="Aucun BC"
+            sum={cards => pmoney(cards.reduce((a, po) => a + (Number(po.total_amount) || 0), 0))}
+            lanes={[
+              { key: 'sent', label: 'Attendus', match: po => po.stage !== 'partial' && !po.is_late },
+              { key: 'late', label: 'En retard', tone: 'red', match: po => !!po.is_late },
+              { key: 'partial', label: 'Reliquat attendu', tone: 'orange', match: po => po.stage === 'partial' && !po.is_late },
+            ]}
+            card={po => ({ num: String(po.order_number ?? '—'), title: String(po.supplier_name ?? '—'),
+              meta: po.expected_delivery_date ? `prévu ${pdate(po.expected_delivery_date, 'd MMM')}` : 'sans date', amount: pmoney(po.total_amount) })} />
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="odoo-table">
@@ -242,7 +270,40 @@ export default function ReceptionsTab() {
               {term || hasPeriodFilter ? 'Aucune réception pour ces filtres' : 'Aucune réception enregistrée'}
             </p>
           </div>
-        ) : (
+        ) : layout === 'split' ? (
+          <SplitView items={vouchersRows} getId={r => r.id} activeId={activeId} onPick={setActiveId} label="Bons de réception"
+            row={r => ({
+              title: r.supplier_name ?? '—', when: pdate(r.reception_date, 'd MMM'),
+              l2: <><span className="sal-num">{r.voucher_number}</span> · {pmoney(r.total_amount)}</>,
+              l3: `${r.order_number ?? '—'} · ${r.item_count} ligne${Number(r.item_count) > 1 ? 's' : ''}${r.received_by_name ? ` · ${r.received_by_name}` : ''}`,
+            })}
+            pane={r => (
+              <POPane poId={r.purchase_order_id} onFull={() => setPoDetail(r.purchase_order_id)}>
+                <section>
+                  <div className="kl-sec"><h2>Réception {r.voucher_number}</h2><small>{pdate(r.reception_date)}</small></div>
+                  <div className="kl-group">
+                    <div className="ord-kv"><span>Montant reçu</span><b>{pmoney(r.total_amount)}</b></div>
+                    <div className="ord-kv"><span>Lignes</span><b>{r.item_count}</b></div>
+                    <div className="ord-kv"><span>Reçu par</span><b>{r.received_by_name ?? '—'}</b></div>
+                    {r.notes && <div className="ord-kv"><span>Notes</span><b style={{ whiteSpace: 'pre-line', textAlign: 'right' }}>{r.notes}</b></div>}
+                  </div>
+                </section>
+              </POPane>
+            )} />
+        ) : layout === 'kanban' ? (() => {
+          const now = new Date(); const m0 = now.toISOString().slice(0, 7);
+          const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1); const m1 = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+          return (
+            <KanbanView items={vouchersRows} getId={r => r.id} onOpen={r => setPoDetail(r.purchase_order_id)} empty="Aucune réception"
+              sum={cards => pmoney(cards.reduce((a, r) => a + (Number(r.total_amount) || 0), 0))}
+              lanes={[
+                { key: 'm0', label: 'Ce mois-ci', tone: 'green', match: r => monthKey(r.reception_date) === m0 },
+                { key: 'm1', label: 'Mois dernier', match: r => monthKey(r.reception_date) === m1 },
+                { key: 'old', label: 'Plus ancien', match: r => monthKey(r.reception_date) < m1 },
+              ]}
+              card={r => ({ num: r.voucher_number, title: r.supplier_name ?? '—', meta: `${pdate(r.reception_date, 'd MMM')} · ${r.order_number ?? ''}`, amount: pmoney(r.total_amount) })} />
+          );
+        })() : (
           <div style={{ overflowX: 'auto' }}>
             <table className="odoo-table">
               <thead><tr>

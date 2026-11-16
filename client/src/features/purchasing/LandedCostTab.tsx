@@ -14,6 +14,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
+import { usePurLayout, LayoutSwitch, SplitView, KanbanView, PaneHead, PaneState, pdate, pmoney } from './PurLayouts';
 
 /**
  * Achats › Frais d'approche (mig 361) : transport, douane, assurance répartis sur les
@@ -30,6 +31,9 @@ export default function LandedCostTab() {
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  // Style Apple (2026-11) : Colonnes / Liste / Kanban.
+  const [layout, setLayout] = usePurLayout();
+  const [activeId, setActiveId] = useState<string | null>(null);
   useEffect(() => { const t = setTimeout(() => setSearch(searchInput.trim()), 300); return () => clearTimeout(t); }, [searchInput]);
   useEffect(() => { setPage(1); }, [status, search]);
   const params: Record<string, string> = { page: String(page), pageSize: String(PAGE_SIZE) };
@@ -49,10 +53,35 @@ export default function LandedCostTab() {
         </select>
         {data && <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{n2(data.appliedTotal)} DH appliqués</span>}
         <div style={{ flex: 1 }} />
+        <LayoutSwitch value={layout} onChange={setLayout} />
         <button className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouveaux frais</button>
       </div>
       {isLoading ? <Loading /> : !data?.rows.length ? (
         <StatusBanner tone="info" icon={Ship} title="Aucun frais d'approche">Rattachez une facture de transport ou de douane à une réception pour l'intégrer au coût des articles.</StatusBanner>
+      ) : layout === 'split' ? (
+        <>
+          <SplitView items={data.rows} getId={v => v.id} activeId={activeId} onPick={setActiveId} label="Frais d'approche"
+            row={v => ({
+              title: v.supplier_name || '—', when: pdate(v.reception_date, 'd MMM'),
+              l2: <><span className="sal-num">{v.number}</span> · {pmoney(v.total_amount)}</>,
+              l3: `${LANDED_STATUS_LABELS[v.status]} · ${v.reception_number}${v.order_number ? ` · ${v.order_number}` : ''}`,
+              dot: v.status === 'draft' ? 'today' : '',
+            })}
+            pane={v => <LandedCostPane id={v.id} onFull={() => setOpenId(v.id)} />} />
+          <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} bon${data.total > 1 ? 's' : ''} de frais`} />
+        </>
+      ) : layout === 'kanban' ? (
+        <>
+          <KanbanView items={data.rows} getId={v => v.id} onOpen={v => setOpenId(v.id)} empty="Aucun bon"
+            sum={cards => pmoney(cards.reduce((a, v) => a + Number(v.total_amount || 0), 0))}
+            lanes={[
+              { key: 'draft', label: 'Brouillons', tone: 'orange', match: v => v.status === 'draft' },
+              { key: 'applied', label: 'Appliqués', tone: 'green', match: v => v.status === 'applied' },
+              { key: 'cancelled', label: 'Annulés', match: v => v.status === 'cancelled' },
+            ]}
+            card={v => ({ num: v.number, title: v.supplier_name || '—', meta: `${v.reception_number} · ${METHOD_LABELS[v.allocation_method]}`, amount: pmoney(v.total_amount) })} />
+          <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} bon${data.total > 1 ? 's' : ''} de frais`} />
+        </>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table">
@@ -187,6 +216,65 @@ function LandedCostFormModal({ onClose, onSaved }: { onClose: () => void; onSave
         </div>
       </div>
     </ModalBackdrop>
+  );
+}
+
+/* ═══════════════════ Fiche compacte (vue Colonnes) ═══════════════════ */
+function LandedCostPane({ id, onFull }: { id: string; onFull: () => void }) {
+  const qc = useQueryClient();
+  const confirm = useConfirm();
+  const { data: v, isLoading } = useQuery({ queryKey: ['landed-cost', id], queryFn: () => landedCostApi.get(id) });
+  const refresh = () => { qc.invalidateQueries({ queryKey: ['landed-cost', id] }); qc.invalidateQueries({ queryKey: ['landed-costs'] }); qc.invalidateQueries({ queryKey: ['ingredients'] }); };
+  const apply = useMutation({ mutationFn: () => landedCostApi.apply(id), onSuccess: () => { refresh(); notify.success('Frais appliqués : coûts des lots et coûts standard mis à jour'); }, onError: e => notify.error(apiErrorMessage(e)) });
+  const cancel = useMutation({ mutationFn: () => landedCostApi.cancel(id), onSuccess: refresh, onError: e => notify.error(apiErrorMessage(e)) });
+  if (isLoading || !v) return <section className="ord-pane"><div className="kl-empty">Chargement…</div></section>;
+  const applied = v.status === 'applied';
+  return (
+    <section className="ord-pane" aria-label={`Frais ${v.number}`}>
+      <PaneHead name={v.supplier_name || '—'} sub={<><span className="sal-num">{v.number}</span> · réception {v.reception_number}{v.order_number ? ` · ${v.order_number}` : ''}</>}
+        amount={pmoney(v.total_amount)} amountSub={`${v.line_count} ligne${Number(v.line_count) > 1 ? 's' : ''} · ${METHOD_LABELS[v.allocation_method]}`} />
+      <div className="ord-actions">
+        {v.status === 'draft' && <>
+          <button className="odoo-btn-primary" disabled={apply.isPending} onClick={async () => {
+            if (await confirm(`Appliquer ${n2(v.total_amount)} DH de frais sur ${v.line_count} ligne(s) ? Les coûts des lots et les coûts standard seront augmentés ; l'opération ne se défait pas.`)) apply.mutate();
+          }}><CheckCircle2 size={13} /> Appliquer aux coûts</button>
+          <button className="odoo-btn-secondary" onClick={async () => { if (await confirm('Annuler ce brouillon ?', { danger: true })) cancel.mutate(); }}><XCircle size={13} /> Annuler</button>
+        </>}
+        <button type="button" className="odoo-btn-secondary" onClick={onFull}>Fiche complète</button>
+      </div>
+      <PaneState title={LANDED_STATUS_LABELS[v.status]} pct={applied ? 100 : v.status === 'draft' ? 45 : 0}
+        sub={applied ? `Appliqué le ${pdate(v.applied_at)} par ${v.applied_by_name ?? '—'}` : v.status === 'draft' ? 'À appliquer aux coûts des lots reçus' : 'Brouillon annulé'}
+        steps={[
+          { label: 'Réception', sub: pdate(v.reception_date), tone: 'done' },
+          { label: 'Frais saisis', sub: `créé par ${v.created_by_name || '—'}`, tone: 'done' },
+          { label: 'Appliqué', sub: applied ? pdate(v.applied_at) : v.status === 'draft' ? 'à faire' : '—', tone: applied ? 'done' : v.status === 'draft' ? 'current' : '' },
+        ]} />
+      <section>
+        <div className="kl-sec"><h2>Frais</h2><small>{(v.charges ?? []).length}</small></div>
+        <div className="kl-group">
+          {(v.charges ?? []).map(c => (
+            <div key={c.id} className="ord-line">
+              <span className="ord-pn">{c.label}<small>{[c.category_name, c.supplier_name, c.invoice_number].filter(Boolean).join(' · ') || '—'}</small></span>
+              <span className="ord-pv">{pmoney(c.amount)}</span>
+            </div>
+          ))}
+          <div className="ord-line tot"><span className="ord-pn">Total</span><span className="ord-pv">{pmoney(v.total_amount)}</span></div>
+        </div>
+      </section>
+      <section>
+        <div className="kl-sec"><h2>Répartition</h2><small>{(v.allocations ?? []).length} ligne{(v.allocations ?? []).length > 1 ? 's' : ''}</small></div>
+        <div className="kl-group">
+          {(v.allocations ?? []).map(a => (
+            <div key={a.id} className="ord-line">
+              <span className="ord-qty">{Number(a.share_pct).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %</span>
+              <span className="ord-pn">{a.label}<small>{Number(a.quantity).toLocaleString('fr-FR')} {a.unit ?? ''}{a.lot_number ? ` · lot ${a.lot_number}` : ''} · +{n4(a.unit_increment)} par unité</small></span>
+              <span className="ord-pv">{pmoney(a.amount)}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+      {v.notes && <section><div className="kl-sec"><h2>Notes</h2></div><div className="kl-group"><div className="ord-kv"><span style={{ whiteSpace: 'pre-line' }}>{v.notes}</span></div></div></section>}
+    </section>
   );
 }
 

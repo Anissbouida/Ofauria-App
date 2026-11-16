@@ -3,6 +3,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseOrdersApi, newIdempotencyKey } from '../../api/purchase-orders.api';
 import { supplierScoreApi, STANDING_TAG } from '../../api/supplier-score.api';
+import { usePurLayout, LayoutSwitch, SplitView, KanbanView, POPane, pdate, pmoney } from '../purchasing/PurLayouts';
 import '../projects/projects.css';
 import '../purchasing/purchasing.css';
 import '../sales/sales.css';
@@ -216,6 +217,9 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
   // Vue processus : « En cours » (non clôturés, filtrables par étape) ou « Historique »
   // (clôturés/annulés, par période). Tout est filtré et paginé côté serveur.
   const [view, setView] = useState<'open' | 'history'>('open');
+  // Style Apple (2026-11) : Colonnes (liste + fiche BC) / Liste / Kanban, comme les Ventes.
+  const [layout, setLayout] = usePurLayout();
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [stage, setStage] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   // Période sur la date de commande : « Toutes » par défaut en cours, 3 mois en historique.
@@ -247,6 +251,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
   const switchView = (next: 'open' | 'history') => {
     if (next === view) return;
     setView(next);
+    setActiveId(null);
     setStage('');
     setStatusFilter('');
     if (period !== 'custom') setPeriod(next === 'history' ? '3m' : 'all');
@@ -525,7 +530,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
       )}
 
       {/* Tuiles : les montants que les pastilles ne donnent pas (engagé, à recevoir, à facturer, retards). */}
-      <section className="prj-kpis" aria-label="Indicateurs">
+      {layout !== 'split' && <section className="prj-kpis" aria-label="Indicateurs">
         <ListKpi label="Engagé en cours" value={`${n(openStats.amount)} DH`} sub={`${openStats.count} BC ouverts`} />
         <ListKpi label="À recevoir" value={`${n((stageStats.sent?.amount ?? 0) + (stageStats.partial?.amount ?? 0))} DH`}
           sub={`${(stageStats.sent?.count ?? 0) + (stageStats.partial?.count ?? 0)} BC envoyés ou en partie reçus`} />
@@ -533,7 +538,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
           tone={(stageStats.invoice?.count ?? 0) > 0 ? 'orange' : undefined} />
         <ListKpi label="Livraisons en retard" value={String(lateList.length >= 5 ? '5+' : lateList.length)} sub="date de livraison dépassée"
           tone={lateList.length ? 'red' : undefined} />
-      </section>
+      </section>}
 
       {/* Barre d'outils unique : recherche, filtres, bascule En cours / Historique, création */}
       <div className="prj-toolbar">
@@ -555,6 +560,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
             <X size={12} /> Effacer
           </button>
         )}
+        <LayoutSwitch value={layout} onChange={setLayout} />
         <ViewSwitch view={view} onChange={switchView}
           openLabel={`En cours · ${openStats.count}`} historyLabel={`Historique · ${historyCount}`} />
       </div>
@@ -619,6 +625,51 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
             </button>
           )}
         </div>
+      ) : layout === 'split' ? (
+        <>
+          <SplitView items={rows} getId={po => po.id as string} activeId={activeId} onPick={setActiveId} label="Bons de commande"
+            row={po => {
+              const st = po.stage as string;
+              return {
+                title: String(po.supplier_name ?? '—'),
+                when: view === 'open' && po.expected_delivery_date ? pdate(po.expected_delivery_date, 'd MMM') : pdate(po.order_date, 'd MMM'),
+                l2: <><span className="sal-num">{po.order_number as string}</span> · {pmoney(po.total_amount)}</>,
+                l3: `${PO_STAGES.find(x => x.key === st)?.label ?? (po.status === 'non_livre' ? 'Non livré' : 'Annulé')} · ${stageDetail(po)}`,
+                dot: po.is_late ? 'late' : po.on_hold ? 'late' : (st === 'draft' || st === 'invoice') ? 'today' : '',
+              };
+            }}
+            pane={po => {
+              const action = view === 'open' ? nextAction(po) : null;
+              return (
+                <POPane poId={po.id as string} onFull={() => setShowDetail(po.id as string)}
+                  actions={<>
+                    {action && <button type="button" className={action.danger ? 'odoo-btn-danger' : 'odoo-btn-primary'} onClick={action.run}>{action.label}</button>}
+                    <button type="button" className="odoo-btn-secondary" onClick={() => handleDownloadPoPdf(po)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Download size={13} /> PDF</button>
+                  </>} />
+              );
+            }} />
+          <Pager page={page} total={total} onPage={setPage} note={`${total} BC`} />
+        </>
+      ) : layout === 'kanban' ? (
+        <>
+          <KanbanView items={rows} getId={po => po.id as string} empty="Aucun BC"
+            onOpen={po => { setActiveId(po.id as string); setLayout('split'); }}
+            sum={cards => pmoney(cards.reduce((a, po) => a + (parseFloat(po.total_amount as string) || 0), 0))}
+            lanes={view === 'open' ? [
+              { key: 'draft', label: 'Brouillons', match: po => po.stage === 'draft' },
+              { key: 'sent', label: 'Envoyés', tone: 'blue', match: po => po.stage === 'sent' && !po.is_late },
+              { key: 'late', label: 'En retard', tone: 'red', match: po => (po.stage === 'sent' || po.stage === 'partial') && !!po.is_late },
+              { key: 'partial', label: 'Réception partielle', tone: 'orange', match: po => po.stage === 'partial' && !po.is_late },
+              { key: 'invoice', label: 'À facturer', tone: 'green', match: po => po.stage === 'invoice' },
+            ] : [
+              { key: 'closed', label: 'Clôturés', tone: 'green', match: po => po.stage === 'closed' },
+              { key: 'cancelled', label: 'Annulés / non livrés', match: po => po.stage !== 'closed' },
+            ]}
+            card={po => ({ num: String(po.order_number), title: String(po.supplier_name ?? '—'),
+              meta: view === 'open' && po.expected_delivery_date ? `livraison ${pdate(po.expected_delivery_date, 'd MMM')}` : pdate(po.order_date, 'd MMM'),
+              amount: pmoney(po.total_amount) })} />
+          <Pager page={page} total={total} onPage={setPage} note={`${total} BC`} />
+        </>
       ) : (
         <div style={{ overflowX: 'auto', opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
           <table className="odoo-table">

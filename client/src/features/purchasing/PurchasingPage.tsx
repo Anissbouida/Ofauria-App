@@ -27,6 +27,7 @@ import './purchasing.css';
 import '../sales/sales.css';
 import RfqTab from './RfqTab';
 import { PurHeaderSlot, PurHeaderActions } from './PurHeaderActions';
+import { usePurLayout, LayoutSwitch, SplitView, KanbanView, PaneHead, PaneState, pdate, pmoney, pn } from './PurLayouts';
 import { ListKpi } from '../sales/ListTemplate';
 import LandedCostTab from './LandedCostTab';
 import SupplierScoreTab from './SupplierScoreTab';
@@ -226,6 +227,9 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
   // Vue processus : « À traiter » (non réglées, filtrables par étape) ou « Historique »
   // (réglées / annulées, par période). Filtrage, tri et pagination côté serveur.
   const [view, setView] = useState<'open' | 'history'>(initialView);
+  // Style Apple (2026-11) : Colonnes (liste + fiche) / Liste / Kanban, comme les Ventes.
+  const [layout, setLayout] = usePurLayout();
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [stage, setStage] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [searchInput, setSearchInput] = useState(initialSearch);
@@ -430,6 +434,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
   const switchView = (next: 'open' | 'history') => {
     if (next === view) return;
     setView(next);
+    setActiveId(null);
     setStage('');
     setStatusFilter('');
     if (period !== 'custom') setPeriod(defaultPeriod(next));
@@ -565,7 +570,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
       )}
 
       {/* Tuiles : reste dû, bloqué, échu, réglé (montants que les pastilles ne donnent pas). */}
-      <section className="prj-kpis" aria-label="Indicateurs">
+      {layout !== 'split' && <section className="prj-kpis" aria-label="Indicateurs">
         <ListKpi label="Reste à payer" value={`${n(openStats.remaining)} DH`} sub={`${openStats.count} facture${openStats.count > 1 ? 's' : ''} à traiter`} />
         <ListKpi label="Bloqué / litige" value={`${n(stageStats.blocked?.remaining ?? 0)} DH`} sub={`${stageStats.blocked?.count ?? 0} paiement(s) suspendu(s)`}
           tone={(stageStats.blocked?.count ?? 0) > 0 ? 'orange' : undefined} />
@@ -573,7 +578,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
           sub={lateList.length ? `${n(lateList.reduce((a, l) => a + (parseFloat(l.remaining) || 0), 0))} DH en tête de liste` : 'aucune facture échue'}
           tone={lateList.length ? 'red' : undefined} />
         <ListKpi label="Réglé" value={`${n(stageStats.paid?.amount ?? 0)} DH`} sub={`${stageStats.paid?.count ?? 0} facture(s) soldée(s)`} />
-      </section>
+      </section>}
 
       {/* Barre d'outils unique : recherche, filtres, bascule À traiter / Historique */}
       <div className="prj-toolbar">
@@ -594,6 +599,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
             <X size={12} /> Effacer
           </button>
         )}
+        <LayoutSwitch value={layout} onChange={setLayout} />
         <ViewSwitch view={view} onChange={switchView}
           openLabel={`À traiter · ${openStats.count}`} historyLabel={`Historique · ${historyCount}`} />
       </div>
@@ -637,6 +643,46 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
             </p>
           )}
         </div>
+      ) : layout === 'split' ? (
+        <>
+          <SplitView items={rows} getId={inv => inv.id as string} activeId={activeId} onPick={setActiveId} label="Factures reçues"
+            row={inv => {
+              const st = inv.stage as string;
+              return {
+                title: String(inv.supplier_name ?? '—'), when: pdate(inv.invoice_date, 'd MMM'),
+                l2: <><span className="sal-num">{inv.invoice_number as string}</span> · {pmoney(inv.total_amount)}</>,
+                l3: `${st === 'cancelled' ? 'Annulée' : INV_STAGES.find(x => x.key === st)?.label ?? st} · ${stageDetail(inv)}`,
+                dot: inv.is_late ? 'late' : (st === 'to_pay' || st === 'partial' || st === 'draft') ? 'today' : '',
+              };
+            }}
+            pane={inv => (
+              <ReceivedInvoicePane inv={inv} detail={stageDetail(inv)} action={view === 'open' ? nextAction(inv) : null}
+                onControl={() => setControlFor(inv.id as string)} onEdit={() => setEditInvoice(inv)} onLines={() => setEditLinesInvoiceId(inv.id as string)}
+                onPayments={pn(inv.paid_amount) > 0 ? () => setPaymentsInvoiceId(inv.id as string) : undefined}
+                onAttach={() => handleAttachFile(inv.id as string)} />
+            )} />
+          <Pager page={page} total={total} onPage={setPage} note={`${total} facture${total > 1 ? 's' : ''}`} />
+        </>
+      ) : layout === 'kanban' ? (
+        <>
+          <KanbanView items={rows} getId={inv => inv.id as string} empty="Aucune facture"
+            onOpen={inv => { setActiveId(inv.id as string); setLayout('split'); }}
+            sum={cards => pmoney(cards.reduce((a, inv) => a + (view === 'history' ? pn(inv.total_amount) : pn(inv.total_amount) - pn(inv.paid_amount)), 0))}
+            lanes={view === 'open' ? [
+              { key: 'draft', label: 'Brouillons', match: inv => inv.stage === 'draft' },
+              { key: 'blocked', label: 'Bloquées / litige', tone: 'orange', match: inv => inv.stage === 'blocked' },
+              { key: 'late', label: 'Échues', tone: 'red', match: inv => (inv.stage === 'to_pay' || inv.stage === 'partial') && !!inv.is_late },
+              { key: 'to_pay', label: 'À payer', tone: 'blue', match: inv => inv.stage === 'to_pay' && !inv.is_late },
+              { key: 'partial', label: 'Partiellement réglées', match: inv => inv.stage === 'partial' && !inv.is_late },
+            ] : [
+              { key: 'paid', label: 'Réglées', tone: 'green', match: inv => inv.stage === 'paid' },
+              { key: 'cancelled', label: 'Annulées', match: inv => inv.stage === 'cancelled' },
+            ]}
+            card={inv => ({ num: String(inv.invoice_number), title: String(inv.supplier_name ?? '—'),
+              meta: inv.due_date ? `échéance ${pdate(inv.due_date, 'd MMM')}` : pdate(inv.invoice_date, 'd MMM'),
+              amount: pmoney(view === 'history' ? pn(inv.total_amount) : pn(inv.total_amount) - pn(inv.paid_amount)) })} />
+          <Pager page={page} total={total} onPage={setPage} note={`${total} facture${total > 1 ? 's' : ''}`} />
+        </>
       ) : (
         <div style={{ overflowX: 'auto', opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
           <table className="odoo-table">
@@ -2149,5 +2195,87 @@ function InvoicePaymentsModal({
           onSubmit={(data) => reissueMutation.mutate({ id: reissueTarget.id as string, data })} />
       )}
     </ModalBackdrop>
+  );
+}
+
+
+/* ═══ Factures reçues — fiche compacte (vue Colonnes, style Apple 2026-11) ═══ */
+function ReceivedInvoicePane({ inv, detail, action, onControl, onEdit, onLines, onPayments, onAttach }: {
+  inv: Record<string, any>; detail: string; action: { label: string; run: () => void; cls: string } | null;
+  onControl: () => void; onEdit: () => void; onLines: () => void; onPayments?: () => void; onAttach: () => void;
+}) {
+  const { modes: payModes } = usePaymentModes();
+  const { getLabel: getPaymentLabel } = useReferentiel('payment_methods');
+  const { data: full, isLoading } = useQuery({ queryKey: ['invoice-detail', inv.id], queryFn: () => invoicesApi.getById(inv.id as string) as Promise<Record<string, any>> });
+  const st = inv.stage as string;
+  const total = pn(inv.total_amount); const paid = pn(inv.paid_amount); const remaining = Math.max(0, total - paid);
+  const items: Record<string, any>[] = full?.items || [];
+  const payments: Record<string, any>[] = full?.payments || [];
+  const idx = INV_STAGES.findIndex(x => x.key === st);
+  const late = !!inv.is_late;
+  const steps = [
+    { label: 'Reçue', sub: pdate(inv.invoice_date), tone: 'done' as const },
+    { label: 'Validée', sub: st === 'draft' ? 'à valider' : 'oui', tone: (st === 'draft' ? 'current' : 'done') as 'current' | 'done' },
+    { label: 'Échéance', sub: inv.due_date ? pdate(inv.due_date) : 'non fixée', tone: (st === 'paid' ? 'done' : late ? 'warn' : st === 'draft' ? '' : 'current') as 'done' | 'warn' | 'current' | '' },
+    { label: 'Réglée', sub: st === 'paid' ? 'soldée' : paid > 0.004 ? `${n(paid)} DH payés` : 'rien payé', tone: (st === 'paid' ? 'done' : '') as 'done' | '' },
+  ];
+  return (
+    <section className="ord-pane" aria-label={`Facture ${inv.invoice_number as string}`}>
+      <PaneHead name={String(inv.supplier_name ?? '—')}
+        sub={<><span className="sal-num">{inv.invoice_number as string}</span>{inv.supplier_invoice_number ? ` · réf. ${inv.supplier_invoice_number as string}` : ''}{inv.purchase_order_number ? ` · ${inv.purchase_order_number as string}` : ''}</>}
+        amount={pmoney(total)} amountSub={st === 'cancelled' ? 'annulée' : remaining > 0.004 ? `reste à payer ${n(remaining)} DH` : 'réglée'} />
+      <div className="ord-actions">
+        {action && <button type="button" className={action.cls} onClick={action.run} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{(st === 'to_pay' || st === 'partial') && <Banknote size={14} />}{action.label}</button>}
+        <button type="button" className="odoo-btn-secondary" onClick={onControl} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Number(inv.blocking_holds) > 0 ? <ShieldAlert size={13} /> : <ShieldCheck size={13} />} Contrôle</button>
+        <button type="button" className="odoo-btn-secondary" onClick={onEdit} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Pencil size={13} /> Modifier</button>
+        <button type="button" className="odoo-btn-secondary" onClick={onLines} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ClipboardList size={13} /> Lignes</button>
+        {onPayments && <button type="button" className="odoo-btn-secondary" onClick={onPayments} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Coins size={13} /> Paiements</button>}
+        {inv.attachment_url
+          ? <a className="odoo-btn-secondary" href={inv.attachment_url as string} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Eye size={13} /> Pièce jointe</a>
+          : <button type="button" className="odoo-btn-secondary" onClick={onAttach} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Upload size={13} /> Joindre</button>}
+      </div>
+      {st === 'cancelled' ? (
+        <div className="kl-widget"><div className="ord-state">Facture annulée</div><div className="ord-state-sub">Conservée comme pièce ; son écriture est extournée.</div></div>
+      ) : (
+        <PaneState title={late ? 'Échéance dépassée' : INV_STAGES[idx]?.label ?? st} sub={detail} late={late || st === 'blocked'}
+          pct={st === 'paid' ? 100 : total > 0 ? Math.max(st === 'draft' ? 6 : 14, paid / total * 100) : 10} steps={steps} />
+      )}
+      <section>
+        <div className="kl-sec"><h2>Articles</h2><small>{items.length ? `${items.length} ligne${items.length > 1 ? 's' : ''}` : ''}</small></div>
+        <div className="kl-group">
+          {items.length ? items.map((it, i) => (
+            <div key={i} className="ord-line">
+              <span className="ord-qty">{pn(it.quantity).toLocaleString('fr-FR', { maximumFractionDigits: 3 })} ×</span>
+              <span className="ord-pn">{(it.description as string) || (it.ingredient_name as string) || '—'}<small>{n(pn(it.unit_price))} HT{it.tva_rate != null ? ` · TVA ${pn(it.tva_rate)} %` : ''}</small></span>
+              <span className="ord-pv">{n(pn(it.subtotal ?? pn(it.quantity) * pn(it.unit_price)))}</span>
+            </div>
+          )) : <div className="kl-empty">{isLoading ? 'Chargement…' : 'Aucune ligne.'}</div>}
+          <div className="ord-kv"><span>Total HT</span><b>{n(pn(inv.amount ?? full?.amount))} DH</b></div>
+          <div className="ord-kv"><span>TVA</span><b>{n(pn(inv.tax_amount ?? full?.tax_amount))} DH</b></div>
+          <div className="ord-line tot"><span className="ord-pn">Total TTC</span><span className="ord-pv">{n(total)} DH</span></div>
+        </div>
+      </section>
+      <section>
+        <div className="kl-sec"><h2>Paiements</h2><small>{payments.length ? `${n(paid)} DH payés` : ''}</small></div>
+        <div className="kl-group">
+          {payments.length ? payments.map(p => (
+            <div key={p.id as string} className="ord-kv" style={{ opacity: p.voided_at ? 0.5 : 1 }}>
+              <span>{pdate(p.payment_date)} · {paymentModeLabel(p, payModes)}{p.reference ? ` · ${p.reference as string}` : ''}</span>
+              <b style={{ textDecoration: p.voided_at ? 'line-through' : undefined }}>{n(pn(p.allocated_amount ?? p.amount))} DH</b>
+            </div>
+          )) : <div className="kl-empty">{isLoading ? 'Chargement…' : 'Aucun paiement.'}</div>}
+        </div>
+      </section>
+      {(inv.category_name || inv.expected_payment_mode || inv.notes) && (
+        <section>
+          <div className="kl-sec"><h2>Informations</h2></div>
+          <div className="kl-group">
+            {inv.category_name && <div className="ord-kv"><span>Catégorie</span><b>{inv.category_name as string}</b></div>}
+            {inv.expected_payment_mode && <div className="ord-kv"><span>Mode prévu</span><b>{getPaymentLabel(String(inv.expected_payment_mode))}</b></div>}
+            {inv.notes && <div className="ord-kv"><span>Notes</span><b style={{ whiteSpace: 'pre-line', textAlign: 'right' }}>{inv.notes as string}</b></div>}
+          </div>
+        </section>
+      )}
+    </section>
   );
 }
