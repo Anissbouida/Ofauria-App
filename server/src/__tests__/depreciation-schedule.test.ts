@@ -32,6 +32,15 @@ describe('Amortissement dégressif (G0-15)', () => {
     expect(lines[lines.length - 1]).toMatchObject({ year: 2031, month: 6 });
   });
 
+  // Table de référence de la règle marocaine : 100 000 DH, 5 ans, taux 40 %, acquis le 1er avril.
+  // Bascule en N+3 : 12 mois sur 27 restants (1 / 2,25 an = 44,44 %) dépasse 40 %.
+  it('acquisition en avril : table de référence, 3 mois en N+5, VNA finale à zéro', () => {
+    const lines = plan('2026-04-01', 5, 100000);
+    expect(byYear(lines)).toEqual([[2026, 30000], [2027, 28000], [2028, 16800], [2029, 11200], [2030, 11200], [2031, 2800]]);
+    expect(lines.filter(l => l.year === 2031)).toHaveLength(3);
+    expect(r2(lines.reduce((s, l) => s + l.amount, 0))).toBe(100000);
+  });
+
   it('acquisition en décembre : un seul mois la première année', () => {
     const lines = plan('2026-12-15');
     expect(byYear(lines)[0]).toEqual([2026, 4000]);       // 120 000 × 40 % × 1/12
