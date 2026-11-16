@@ -39,8 +39,57 @@ export const taxScaleRepository = {
   },
 
   async list() {
-    const r = await db.query('SELECT * FROM payroll_tax_scales ORDER BY effective_from DESC');
+    const r = await db.query(
+      `SELECT s.*, (SELECT COUNT(*)::int FROM payroll p WHERE p.tax_scale_id = s.id) AS payslip_count
+         FROM payroll_tax_scales s ORDER BY s.effective_from DESC`);
     return r.rows;
+  },
+
+  /** Nombre de bulletins calculés avec ce barème. */
+  async usedByPayslips(id: string): Promise<number> {
+    return (await db.query('SELECT COUNT(*)::int AS n FROM payroll WHERE tax_scale_id = $1', [id])).rows[0].n as number;
+  },
+
+  /**
+   * G0-13 : nouvelle version datée du barème (loi de finances). Copie du barème en
+   * vigueur juste avant `effectiveFrom`, à modifier ensuite. La version précédente
+   * est close la veille : les bulletins des mois antérieurs gardent leur barème,
+   * donc leur IR.
+   */
+  async createVersion(data: { effectiveFrom: string; label?: string | null }, userId?: string) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const dup = await client.query('SELECT 1 FROM payroll_tax_scales WHERE effective_from = $1::date', [data.effectiveFrom]);
+      if (dup.rows.length) throw Object.assign(new Error('Un barème démarre déjà à cette date.'), { statusCode: 409 });
+      const src = (await client.query(
+        `SELECT id FROM payroll_tax_scales WHERE effective_from < $1::date ORDER BY effective_from DESC LIMIT 1 FOR UPDATE`,
+        [data.effectiveFrom])).rows[0];
+      if (!src) throw Object.assign(new Error('Aucun barème antérieur à cette date à dupliquer.'), { statusCode: 400 });
+      // Si un barème plus récent existe déjà, la nouvelle version s'arrête la veille de son début.
+      const next = (await client.query(
+        `SELECT effective_from FROM payroll_tax_scales WHERE effective_from > $1::date ORDER BY effective_from LIMIT 1`, [data.effectiveFrom])).rows[0];
+      const cols = (await client.query(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_schema = current_schema() AND table_name = 'payroll_tax_scales'
+            AND column_name NOT IN ('id', 'effective_from', 'effective_to', 'label', 'created_at', 'updated_at', 'updated_by')`)).rows
+        .map((r: { column_name: string }) => `"${r.column_name}"`).join(', ');
+      const label = (data.label && data.label.trim()) || `Barème au ${data.effectiveFrom.split('-').reverse().join('/')}`;
+      const created = (await client.query(
+        `INSERT INTO payroll_tax_scales (effective_from, effective_to, label, updated_by, ${cols})
+         SELECT $1::date, ($2::date - 1), $3, $4, ${cols} FROM payroll_tax_scales WHERE id = $5 RETURNING *`,
+        [data.effectiveFrom, next?.effective_from ?? null, label.slice(0, 100), userId ?? null, src.id])).rows[0];
+      await client.query(
+        `UPDATE payroll_tax_scales SET effective_to = ($2::date - 1), updated_at = NOW(), updated_by = $3 WHERE id = $1`,
+        [src.id, data.effectiveFrom, userId ?? null]);
+      await client.query('COMMIT');
+      return created;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
   },
 
   /**
@@ -69,6 +118,14 @@ export const taxScaleRepository = {
       values.push(col === 'ir_brackets' ? JSON.stringify(data[key]) : data[key]);
     }
     if (fields.length === 0) return null;
+    // G0-13 : un barème déjà utilisé par un bulletin n'est plus modifiable dans ses
+    // valeurs de calcul (sinon le recalcul d'un bulletin passé changerait) : on crée
+    // une nouvelle version datée. Libellé, notes, fin de validité et SMIG restent libres.
+    const FREE = new Set(['label', 'effective_to', 'notes', 'smig_hourly', 'smig_monthly']);
+    const touchesCalc = Object.entries(mapping).some(([key, col]) => data[key] !== undefined && !FREE.has(col));
+    if (touchesCalc && await this.usedByPayslips(id) > 0) {
+      throw Object.assign(new Error('Ce barème a déjà servi à calculer des bulletins : créez une nouvelle version datée au lieu de le modifier.'), { statusCode: 409 });
+    }
     fields.push(`updated_at = NOW()`, `updated_by = $${i++}`);
     values.push(userId ?? null, id);
     const r = await db.query(`UPDATE payroll_tax_scales SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`, values);

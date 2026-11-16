@@ -234,6 +234,12 @@ export const payrollSettingsSchema = z.object({
 });
 
 const rate = z.coerce.number().min(0).max(1);
+/** G0-13 : nouvelle version du barème, datée du premier jour d'application. */
+export const createTaxScaleSchema = z.object({
+  effectiveFrom: isoDate,
+  label: z.string().max(100).nullable().optional(),
+});
+
 export const updateTaxScaleSchema = z.object({
   label: z.string().min(1).max(100).optional(),
   cnssPlafond: z.coerce.number().positive().optional(),

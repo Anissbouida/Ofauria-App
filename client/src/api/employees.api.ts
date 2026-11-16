@@ -101,6 +101,8 @@ export const payrollApi = {
 export const payrollConfigApi = {
   settings: () => api.get('/payroll/settings').then(r => r.data.data),
   updateSettings: (data: Record<string, any>) => api.put('/payroll/settings', data).then(r => r.data.data),
+  /** G0-13 : nouvelle version datée du barème, copie de la version en vigueur. */
+  createTaxScale: (effectiveFrom: string) => api.post('/payroll/tax-scales', { effectiveFrom }).then(r => r.data.data),
   updateTaxScale: (id: string, data: Record<string, any>) => api.put(`/payroll/tax-scales/${id}`, data).then(r => r.data.data),
   rubriques: (all = false) => api.get('/payroll/rubriques', { params: all ? { all: 'true' } : undefined }).then(r => r.data.data),
   createRubrique: (data: Record<string, any>) => api.post('/payroll/rubriques', data).then(r => r.data.data),

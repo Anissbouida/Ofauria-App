@@ -15,7 +15,7 @@ import {
   createEmployeeSchema, updateEmployeeSchema,
   upsertAttendanceSchema, bulkAttendanceSchema,
   createLeaveSchema,
-  generatePayrollSchema, updatePayrollSchema, markPaidSchema,
+  generatePayrollSchema, updatePayrollSchema, markPaidSchema, createTaxScaleSchema,
   generateWeeklyPayrollSchema, updateWeeklyPayrollSchema,
   generateBiweeklyPayrollSchema, updateBiweeklyPayrollSchema,
   createAdvanceSchema, updateAdvanceSchema,
@@ -160,6 +160,8 @@ payrollRouter.use('/biweekly', biweeklyPayrollRouter);
 // cloture : admin (impact legal et comptable sur tous les bulletins).
 payrollRouter.get('/settings', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.getSettings));
 payrollRouter.put('/settings', authenticate, authorize(ROLES.ADMIN), validate(payrollSettingsSchema), asyncHandler(payrollConfigController.updateSettings));
+// G0-13 : une nouvelle loi de finances = une nouvelle version datée, pas une réécriture.
+payrollRouter.post('/tax-scales', authenticate, authorize(ROLES.ADMIN), validate(createTaxScaleSchema), asyncHandler(payrollConfigController.createTaxScale));
 payrollRouter.put('/tax-scales/:id', authenticate, authorize(ROLES.ADMIN), validate(updateTaxScaleSchema), asyncHandler(payrollConfigController.updateTaxScale));
 payrollRouter.get('/rubriques', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.listRubriques));
 payrollRouter.post('/rubriques', authenticate, authorize(ROLES.ADMIN), validate(createRubriqueSchema), asyncHandler(payrollConfigController.createRubrique));

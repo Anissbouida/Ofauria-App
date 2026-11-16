@@ -141,6 +141,13 @@ export const payrollConfigController = {
   async updateSettings(req: AuthRequest, res: Response) {
     res.json({ success: true, data: await payrollSettingsRepository.update(req.body, req.user!.userId) });
   },
+  /** POST /payroll/tax-scales — nouvelle version datée du barème (G0-13). */
+  async createTaxScale(req: AuthRequest, res: Response) {
+    try {
+      const row = await taxScaleRepository.createVersion(req.body, req.user!.userId);
+      res.status(201).json({ success: true, data: row });
+    } catch (err) { fail(res, err); }
+  },
   async updateTaxScale(req: AuthRequest, res: Response) {
     try {
       const row = await taxScaleRepository.update(req.params.id, req.body, req.user!.userId);

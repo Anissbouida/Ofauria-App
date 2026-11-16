@@ -86,6 +86,7 @@ export default function PayrollSettingsView() {
   const scale = data?.taxScales?.[0];
   const [form, setForm] = useState<Record<string, string>>({});
   const [brackets, setBrackets] = useState<Bracket[]>([]);
+  const [newScaleDate, setNewScaleDate] = useState('');
   useEffect(() => {
     if (!scale) return;
     setForm({
@@ -278,6 +279,31 @@ export default function PayrollSettingsView() {
                 { title: 'Modifier le barème', confirmLabel: 'Enregistrer' }))) return;
               saveScale.mutate();
             }}><Save size={13} /> Enregistrer le barème</SubmitButton></div>
+          )}
+          {/* G0-13 : une nouvelle loi de finances = une nouvelle version datée. Un
+              barème déjà utilisé par des bulletins ne se modifie plus. */}
+          {isAdmin && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>
+                {Number(scale.payslip_count) > 0
+                  ? `${scale.payslip_count} bulletin(s) calculé(s) avec ce barème : ses taux ne sont plus modifiables.`
+                  : 'Aucun bulletin calculé avec ce barème : il reste modifiable.'}
+              </span>
+              <input type="date" className={inputCls} value={newScaleDate} onChange={e => setNewScaleDate(e.target.value)}
+                style={{ width: 150 }} aria-label="Date d'effet de la nouvelle version" />
+              <button type="button" className="odoo-btn-secondary" disabled={!newScaleDate}
+                onClick={async () => {
+                  if (!(await confirm(`Créer une nouvelle version du barème, applicable à partir du ${newScaleDate.split('-').reverse().join('/')} ?\n\nElle reprend les valeurs actuelles, à modifier ensuite. Le barème actuel reste appliqué aux mois antérieurs.`,
+                    { title: 'Nouvelle version du barème', confirmLabel: 'Créer' }))) return;
+                  try {
+                    await payrollConfigApi.createTaxScale(newScaleDate);
+                    setNewScaleDate(''); invalidate();
+                    notify.success('Nouvelle version créée : modifiez ses valeurs puis enregistrez');
+                  } catch (err) { notify.error(apiErrorMessage(err, 'Erreur')); }
+                }}>
+                Nouvelle version
+              </button>
+            </div>
           )}
         </section>
       )}
