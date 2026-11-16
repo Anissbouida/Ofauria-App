@@ -948,11 +948,15 @@ export const tvaDeclarationRepository = {
     // Mig 311 (G-D8-15) : TVA déductible = factures fournisseurs dont le droit est
     // né dans la période (date du règlement qui les solde, CGI art. 101), hors
     // exclusions (espèces au-delà du plafond…). Plus la date de facture.
+    // G0-17 : même périmètre d'établissement que la TVA collectée — les factures de
+    // l'établissement et celles sans établissement ; sans filtre, toutes les factures.
+    const store = (param: string, col = 'store_id') => (params.storeId ? ` AND (${col} IS NULL OR ${col} = ${param})` : '');
+    const withStore = (base: unknown[]) => (params.storeId ? [...base, params.storeId] : base);
     const ded = await db.query(
       `WITH inv AS (
          SELECT i.id, i.amount, i.tax_amount FROM invoices i
           WHERE i.invoice_type = 'received' AND i.status <> 'cancelled' AND i.tax_amount > 0
-            AND i.is_vat_recoverable AND i.vat_recoverable_from BETWEEN $1 AND $2
+            AND i.is_vat_recoverable AND i.vat_recoverable_from BETWEEN $1 AND $2${store('$3', 'i.store_id')}
        ), by_line AS (
          SELECT ROUND(ii.tva_rate)::int AS rate, SUM(ii.tva_amount) AS tva
            FROM invoice_items ii JOIN inv ON inv.id = ii.invoice_id
@@ -965,7 +969,7 @@ export const tvaDeclarationRepository = {
        )
        SELECT rate, ROUND(SUM(tva), 2) AS amount FROM (SELECT * FROM by_line UNION ALL SELECT * FROM by_header) x
         GROUP BY rate HAVING ROUND(SUM(tva), 2) <> 0 ORDER BY rate`,
-      [params.startDate, params.endDate]);
+      withStore([params.startDate, params.endDate]));
     const codeFor = (r: number) => (r === 20 ? '34552' : r === 14 ? '34553' : r === 10 ? '34554' : r === 7 ? '34555' : '3455');
     const deductible = ded.rows.map((r: { rate: number; amount: string }) => ({
       code: codeFor(r.rate), label: `TVA récupérable sur achats ${r.rate} %`, tva_rate: r.rate,
@@ -974,12 +978,12 @@ export const tvaDeclarationRepository = {
     const pend = await db.query(
       `SELECT COUNT(*)::int AS n, COALESCE(SUM(tax_amount), 0) AS tva FROM invoices
         WHERE invoice_type = 'received' AND status <> 'cancelled' AND tax_amount > 0 AND is_vat_recoverable
-          AND invoice_date <= $1 AND (vat_recoverable_from IS NULL OR vat_recoverable_from > $1)`, [params.endDate]);
+          AND invoice_date <= $1 AND (vat_recoverable_from IS NULL OR vat_recoverable_from > $1)${store('$2')}`, withStore([params.endDate]));
     const excl = await db.query(
       `SELECT vat_non_recoverable_reason AS reason, COUNT(*)::int AS n, COALESCE(SUM(tax_amount), 0) AS tva FROM invoices
         WHERE invoice_type = 'received' AND status <> 'cancelled' AND tax_amount > 0 AND NOT is_vat_recoverable
-          AND COALESCE(vat_recoverable_from, invoice_date) BETWEEN $1 AND $2
-        GROUP BY 1`, [params.startDate, params.endDate]);
+          AND COALESCE(vat_recoverable_from, invoice_date) BETWEEN $1 AND $2${store('$3')}
+        GROUP BY 1`, withStore([params.startDate, params.endDate]));
     const totalCollected = collected.reduce((s: number, r: { amount: string }) => s + (parseFloat(r.amount) || 0), 0);
     const totalDeductible = deductible.reduce((s: number, r: { amount: string }) => s + (parseFloat(r.amount) || 0), 0);
 
@@ -1153,12 +1157,14 @@ export const purchaseLedgerRepository = {
         ORDER BY age_days DESC, order_number`, [params.supplierId ?? null, params.minAge ?? null]);
     return r.rows;
   },
-  async vatDeductionStatement(params: { startDate: string; endDate: string }) {
+  /** Relevé des déductions ; avec storeId, même périmètre que la déclaration (G0-17). */
+  async vatDeductionStatement(params: { startDate: string; endDate: string; storeId?: string }) {
     const r = await db.query(
       `SELECT * FROM v_vat_deduction_statement
-        WHERE (vat_recoverable_from BETWEEN $1 AND $2)
-           OR (NOT is_vat_recoverable AND COALESCE(vat_recoverable_from, invoice_date) BETWEEN $1 AND $2)
-        ORDER BY vat_recoverable_from NULLS LAST, invoice_date`, [params.startDate, params.endDate]);
+        WHERE ((vat_recoverable_from BETWEEN $1 AND $2)
+           OR (NOT is_vat_recoverable AND COALESCE(vat_recoverable_from, invoice_date) BETWEEN $1 AND $2))
+          AND ($3::uuid IS NULL OR invoice_id IN (SELECT id FROM invoices WHERE store_id IS NULL OR store_id = $3))
+        ORDER BY vat_recoverable_from NULLS LAST, invoice_date`, [params.startDate, params.endDate, params.storeId ?? null]);
     return r.rows;
   },
   async postingProfiles() {

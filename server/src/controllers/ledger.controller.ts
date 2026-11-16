@@ -338,7 +338,7 @@ export const purchaseLedgerController = {
   async vatStatement(req: AuthRequest, res: Response) {
     const { startDate, endDate } = req.query as Record<string, string>;
     if (!startDate || !endDate) { res.status(400).json({ success: false, error: { message: 'startDate et endDate requis' } }); return; }
-    res.json({ success: true, data: await purchaseLedgerRepository.vatDeductionStatement({ startDate, endDate }) });
+    res.json({ success: true, data: await purchaseLedgerRepository.vatDeductionStatement({ startDate, endDate, storeId: req.user!.storeId }) });
   },
   async postingProfiles(_req: AuthRequest, res: Response) {
     const [profiles, missing] = await Promise.all([
