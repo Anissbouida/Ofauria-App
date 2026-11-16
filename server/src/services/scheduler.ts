@@ -7,6 +7,7 @@ import { systemUserId } from './system-user.js';
 import { runDepreciation } from './depreciation.service.js';
 import { prepaidChargeRepository } from '../repositories/prepaid-charge.repository.js';
 import { productLotRepository } from '../repositories/product-lot.repository.js';
+import { journalTemplateRepository } from '../repositories/journal-template.repository.js';
 import { dunningRepository } from '../repositories/dunning.repository.js';
 import { ledgerIntegrityRepository } from '../repositories/ledger-integrity.repository.js';
 import { expireDue as loyaltyExpireDue } from './loyalty.js';
@@ -440,6 +441,18 @@ async function hrDocumentsDue(): Promise<JobResult> {
   return { items: fresh.size, message: `${fresh.size} échéance(s) signalée(s) sous ${days.join(' / ')} jour(s)` };
 }
 
+/**
+ * G1-09 — écritures récurrentes : instancie les modèles d'écritures périodiques dont
+ * l'échéance est atteinte (date de Casablanca). Une échéance refusée (période comptable
+ * fermée…) met la tâche en erreur avec son motif ; les autres sont passées quand même.
+ */
+async function recurringEntries(): Promise<JobResult> {
+  const today = (await db.query(`SELECT to_char((now() AT TIME ZONE 'Africa/Casablanca')::date, 'YYYY-MM-DD') AS d`)).rows[0].d as string;
+  const { posted, errors } = await journalTemplateRepository.runRecurring(today, await systemUserId());
+  if (errors.length) throw new Error(`${posted} écriture(s) passée(s) ; ${errors.length} échéance(s) refusée(s) : ${errors.join(' | ')}`);
+  return { items: posted, message: posted ? `${posted} écriture(s) récurrente(s) passée(s)` : 'Aucune échéance à instancier' };
+}
+
 async function webhookOutbox(): Promise<JobResult> {
   const r = await webhookRepository.deliverPending();
   return { items: r.sent, message: `${r.sent} envoyé(s)${r.failed ? ` · ${r.failed} échec(s)` : ''}` };
@@ -465,6 +478,7 @@ export const JOBS: Record<string, Handler> = {
   lots_expire: lotsExpire,
   dlc_alerts: dlcAlerts,
   hr_documents_due: hrDocumentsDue,
+  recurring_entries: recurringEntries,
   housekeeping,
 };
 

@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 
 /**
  * Modèles d'écritures comptables (mig 391) : structure réutilisable (journal,
@@ -9,7 +9,24 @@ import { db } from '../config/database.js';
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export type TemplateLineInput = { accountId: string; side: 'debit' | 'credit'; amount: number; label?: string | null };
-export type TemplateInput = { name: string; journalCode?: string; description?: string | null; lines: TemplateLineInput[] };
+export type Recurrence = 'monthly' | 'quarterly' | 'yearly';
+export type TemplateInput = {
+  name: string; journalCode?: string; description?: string | null; lines: TemplateLineInput[];
+  /** G1-09 : périodicité (null = modèle manuel), première échéance et dernière échéance possible. */
+  recurrence?: Recurrence | null; firstRunOn?: string | null; endOn?: string | null;
+};
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** Périodicité demandée : undefined = ne pas toucher ; null = retirer ; sinon contrôlée. */
+function readRecurrence(input: TemplateInput): { error: string } | { set: false } | { set: true; recurrence: Recurrence | null; firstRunOn: string | null; endOn: string | null } {
+  if (input.recurrence === undefined) return { set: false };
+  if (input.recurrence === null) return { set: true, recurrence: null, firstRunOn: null, endOn: null };
+  if (!['monthly', 'quarterly', 'yearly'].includes(input.recurrence)) return { error: 'Périodicité inconnue' };
+  if (!input.firstRunOn || !ISO_DATE.test(input.firstRunOn)) return { error: 'Indiquez la date de la première échéance' };
+  if (input.endOn && !ISO_DATE.test(input.endOn)) return { error: 'Date de fin invalide' };
+  if (input.endOn && input.endOn < input.firstRunOn) return { error: 'La date de fin précède la première échéance' };
+  return { set: true, recurrence: input.recurrence, firstRunOn: input.firstRunOn, endOn: input.endOn ?? null };
+}
 
 function validateLines(lines: TemplateLineInput[]): string | null {
   if (!lines || lines.length < 2) return 'Un modèle doit avoir au moins deux lignes';
@@ -56,6 +73,8 @@ export const journalTemplateRepository = {
   async create(input: TemplateInput, ctx: { userId: string | null; storeId: string | null }) {
     const err = validateLines(input.lines);
     if (err) return { error: err };
+    const rec = readRecurrence(input);
+    if ('error' in rec) return { error: rec.error };
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -64,14 +83,33 @@ export const journalTemplateRepository = {
          VALUES ($1, $2, $3, $4, $5) RETURNING id`,
         [input.name.trim().slice(0, 160), (input.journalCode || 'OD').trim(), input.description?.trim() || null, ctx.storeId, ctx.userId])).rows[0].id;
       await this._replaceLines(client, id, input.lines);
+      if (rec.set && rec.recurrence) await this._setRecurrence(client, id, rec.recurrence, rec.firstRunOn!, rec.endOn);
       await client.query('COMMIT');
       return { id };
     } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
   },
 
+  /** Pose ou retire la périodicité. Changer la périodicité ou la première échéance repart de zéro. */
+  async _setRecurrence(client: PoolClient, id: string, recurrence: Recurrence | null, firstRunOn: string | null, endOn: string | null) {
+    if (!recurrence) {
+      await client.query(
+        `UPDATE journal_entry_templates SET recurrence = NULL, recurrence_anchor = NULL, next_run_on = NULL, end_on = NULL WHERE id = $1`, [id]);
+      return;
+    }
+    // Même périodicité et même prochaine échéance : seul la date de fin change, le décompte est gardé.
+    await client.query(
+      `UPDATE journal_entry_templates SET
+              recurrence_anchor = CASE WHEN recurrence = $2 AND next_run_on = $3::date THEN recurrence_anchor ELSE $3::date END,
+              run_count         = CASE WHEN recurrence = $2 AND next_run_on = $3::date THEN run_count ELSE 0 END,
+              next_run_on = $3::date, recurrence = $2, end_on = $4::date
+        WHERE id = $1`, [id, recurrence, firstRunOn, endOn]);
+  },
+
   async update(id: string, input: TemplateInput) {
     const err = validateLines(input.lines);
     if (err) return { error: err };
+    const rec = readRecurrence(input);
+    if ('error' in rec) return { error: rec.error };
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
@@ -81,6 +119,7 @@ export const journalTemplateRepository = {
       if (!upd) { await client.query('ROLLBACK'); return { error: 'Modèle introuvable' }; }
       await client.query(`DELETE FROM journal_entry_template_lines WHERE template_id = $1`, [id]);
       await this._replaceLines(client, id, input.lines);
+      if (rec.set) await this._setRecurrence(client, id, rec.recurrence, rec.firstRunOn, rec.endOn);
       await client.query('COMMIT');
       return { id };
     } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
@@ -157,5 +196,50 @@ export const journalTemplateRepository = {
       await client.query('COMMIT');
       return { id: entryId, entry_number: num };
     } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+  },
+
+  /**
+   * G1-09 — instancie les modèles périodiques dont l'échéance est atteinte (≤ asOf), une
+   * écriture par échéance, datée de l'échéance. Chaque échéance passe dans une transaction
+   * qui verrouille le modèle : deux passages simultanés ne créent pas deux écritures. Une
+   * échéance refusée (période comptable fermée…) n'avance pas le modèle et est rapportée.
+   */
+  async runRecurring(asOf: string, userId: string | null) {
+    const due = (await db.query(
+      `SELECT id, name FROM journal_entry_templates
+        WHERE is_active AND recurrence IS NOT NULL AND next_run_on IS NOT NULL AND next_run_on <= $1::date
+          AND (end_on IS NULL OR next_run_on <= end_on)
+        ORDER BY next_run_on, name`, [asOf])).rows as { id: string; name: string }[];
+    let posted = 0;
+    const errors: string[] = [];
+    for (const tpl of due) {
+      // Rattrapage : plusieurs échéances manquées sont passées une à une (borné).
+      for (let guard = 0; guard < 36; guard++) {
+        try {
+          const done = await withTransaction(async () => {
+            const t = (await db.query(
+              `SELECT name, next_run_on::text AS next_run_on, end_on::text AS end_on, store_id
+                 FROM journal_entry_templates WHERE id = $1 AND is_active AND recurrence IS NOT NULL FOR UPDATE`, [tpl.id])).rows[0];
+            if (!t || !t.next_run_on || t.next_run_on > asOf || (t.end_on && t.next_run_on > t.end_on)) return false;
+            const d = t.next_run_on as string;
+            const out = await this.instantiate(tpl.id, {
+              date: d, label: `${t.name} — ${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`, storeId: t.store_id, userId });
+            if ('error' in out) throw new Error(out.error);
+            await db.query(
+              `UPDATE journal_entry_templates SET run_count = run_count + 1, last_run_on = next_run_on,
+                      next_run_on = (recurrence_anchor + ((run_count + 1) * CASE recurrence
+                        WHEN 'monthly' THEN interval '1 month' WHEN 'quarterly' THEN interval '3 months' ELSE interval '1 year' END))::date
+                WHERE id = $1`, [tpl.id]);
+            return true;
+          });
+          if (!done) break;
+          posted++;
+        } catch (e) {
+          errors.push(`${tpl.name} : ${e instanceof Error ? e.message : String(e)}`);
+          break;
+        }
+      }
+    }
+    return { posted, errors };
   },
 };

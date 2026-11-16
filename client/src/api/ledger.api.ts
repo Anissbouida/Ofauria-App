@@ -70,10 +70,14 @@ export type EntryTemplateLine = {
 export type EntryTemplate = {
   id: string; name: string; journal_code: string; journal_name?: string; description: string | null;
   is_active: boolean; line_count?: number; total_debit?: number; lines?: EntryTemplateLine[];
+  /** G1-09 : périodicité, prochaine échéance, dernière échéance possible, dernière échéance passée. */
+  recurrence?: 'monthly' | 'quarterly' | 'yearly' | null; next_run_on?: string | null; end_on?: string | null; last_run_on?: string | null; run_count?: number;
 };
 export type EntryTemplateInput = {
   name: string; journalCode?: string; description?: string | null;
   lines: { accountId: string; side: 'debit' | 'credit'; amount: number; label?: string | null }[];
+  /** Périodicité : absente = inchangée, null = retirée (modèle manuel). */
+  recurrence?: 'monthly' | 'quarterly' | 'yearly' | null; firstRunOn?: string | null; endOn?: string | null;
 };
 export const entryTemplatesApi = {
   list: (): Promise<EntryTemplate[]> => api.get('/ledger/entry-templates').then(r => r.data.data),

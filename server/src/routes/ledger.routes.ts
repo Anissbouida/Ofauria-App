@@ -476,6 +476,10 @@ const tplBody = z.object({
   journalCode: z.string().trim().max(10).optional(),
   description: z.string().trim().max(2000).nullish(),
   lines: z.array(tplLine).min(2),
+  // G1-09 : périodicité du modèle (absente = inchangée, null = retirée).
+  recurrence: z.enum(['monthly', 'quarterly', 'yearly']).nullable().optional(),
+  firstRunOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  endOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
 });
 const tplBad = (res: Response, m = 'Paramètres invalides') => res.status(400).json({ success: false, error: { message: m } });
 

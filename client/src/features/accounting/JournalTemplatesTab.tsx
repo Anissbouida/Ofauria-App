@@ -34,14 +34,24 @@ export default function JournalTemplatesTab() {
       <div><button className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={14} /> Nouveau modèle</button></div>
       <div style={{ overflowX: 'auto' }}>
         <table className="odoo-table">
-          <thead><tr><th>Modèle</th><th>Journal</th><th style={{ textAlign: 'right' }}>Lignes</th><th style={{ textAlign: 'right' }}>Montant</th><th>État</th><th /></tr></thead>
+          <thead><tr><th>Modèle</th><th>Journal</th><th>Périodicité</th><th style={{ textAlign: 'right' }}>Lignes</th><th style={{ textAlign: 'right' }}>Montant</th><th>État</th><th /></tr></thead>
           <tbody>
             {isLoading && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24 }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /></td></tr>}
-            {!isLoading && rows.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucun modèle. Créez-en un pour vos écritures récurrentes.</td></tr>}
+            {!isLoading && rows.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucun modèle. Créez-en un pour vos écritures récurrentes.</td></tr>}
             {rows.map(t => (
               <tr key={t.id}>
                 <td style={{ fontWeight: 500, cursor: 'pointer' }} onClick={() => setEditing(t.id)}>{t.name}</td>
                 <td>{t.journal_name || t.journal_code}</td>
+                <td>
+                  {t.recurrence ? (
+                    <>
+                      <div>{RECURRENCE_LABEL[t.recurrence]}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--theme-text-muted)' }}>
+                        {t.next_run_on && (!t.end_on || day(t.next_run_on) <= day(t.end_on)) ? `Prochaine : ${frDate(t.next_run_on)}` : 'Terminée'}
+                      </div>
+                    </>
+                  ) : <span style={{ color: 'var(--theme-text-muted)' }}>Manuel</span>}
+                </td>
                 <td style={{ textAlign: 'right' }}>{t.line_count ?? 0}</td>
                 <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(Number(t.total_debit || 0))}</td>
                 <td><span className={`odoo-tag ${t.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{t.is_active ? 'Actif' : 'Inactif'}</span></td>
@@ -61,6 +71,11 @@ export default function JournalTemplatesTab() {
   );
 }
 
+const RECURRENCE_LABEL: Record<'monthly' | 'quarterly' | 'yearly', string> = { monthly: 'Mensuelle', quarterly: 'Trimestrielle', yearly: 'Annuelle' };
+/** Date civile AAAA-MM-JJ d'une valeur renvoyée par le serveur (date seule ou horodatage). */
+const day = (v: string) => (v.length > 10 ? new Date(v).toLocaleDateString('en-CA') : v);
+const frDate = (v: string) => day(v).split('-').reverse().join('/');
+
 function TemplateEditor({ id, onClose, onSaved }: { id: string | null; onClose: () => void; onSaved: () => void }) {
   const { data: existing } = useQuery({ queryKey: ['entry-template', id], queryFn: () => entryTemplatesApi.getById(id!), enabled: !!id });
   const { data: accounts = [] } = useQuery({ queryKey: ['plan-comptable'], queryFn: () => planComptableApi.list() });
@@ -71,9 +86,14 @@ function TemplateEditor({ id, onClose, onSaved }: { id: string | null; onClose: 
   const [journalCode, setJournalCode] = useState('OD');
   const [description, setDescription] = useState('');
   const [lines, setLines] = useState<EditLine[]>([]);
+  // G1-09 : périodicité du modèle ('' = manuel), première ou prochaine échéance, date de fin.
+  const [recurrence, setRecurrence] = useState<'' | 'monthly' | 'quarterly' | 'yearly'>('');
+  const [firstRunOn, setFirstRunOn] = useState('');
+  const [endOn, setEndOn] = useState('');
   const [loaded, setLoaded] = useState(false);
   if (existing && !loaded) {
     setName(existing.name); setJournalCode(existing.journal_code); setDescription(existing.description || '');
+    setRecurrence(existing.recurrence ?? ''); setFirstRunOn(existing.next_run_on ? day(existing.next_run_on) : ''); setEndOn(existing.end_on ? day(existing.end_on) : '');
     setLines((existing.lines || []).map((l: EntryTemplateLine) => ({ account_id: l.account_id, side: l.side, amount: Number(l.amount), label: l.label || '' })));
     setLoaded(true);
   }
@@ -87,7 +107,11 @@ function TemplateEditor({ id, onClose, onSaved }: { id: string | null; onClose: 
   const setLine = (i: number, patch: Partial<EditLine>) => setLines(a => a.map((l, j) => j === i ? { ...l, ...patch } : l));
   const save = useMutation({
     mutationFn: () => {
-      const payload = { name: name.trim(), journalCode, description: description.trim() || null, lines: lines.map(l => ({ accountId: l.account_id, side: l.side, amount: round2(Number(l.amount) || 0), label: l.label.trim() || null })) };
+      const payload = {
+        name: name.trim(), journalCode, description: description.trim() || null,
+        lines: lines.map(l => ({ accountId: l.account_id, side: l.side, amount: round2(Number(l.amount) || 0), label: l.label.trim() || null })),
+        recurrence: recurrence || null, firstRunOn: recurrence ? firstRunOn || null : null, endOn: recurrence ? endOn || null : null,
+      };
       return id ? entryTemplatesApi.update(id, payload) : entryTemplatesApi.create(payload);
     },
     onSuccess: () => { notify.success(id ? 'Modèle enregistré' : 'Modèle créé'); onSaved(); },
@@ -112,6 +136,30 @@ function TemplateEditor({ id, onClose, onSaved }: { id: string | null; onClose: 
             </label>
           </div>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Note (optionnel)</span><input type="text" value={description} onChange={e => setDescription(e.target.value)} style={{ ...inp, width: '100%' }} /></label>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', flex: 1, minWidth: 170 }}><span style={{ color: 'var(--theme-text-muted)' }}>Périodicité</span>
+              <select value={recurrence} onChange={e => setRecurrence(e.target.value as typeof recurrence)} style={{ ...inp, width: '100%' }}>
+                <option value="">Manuel (à utiliser à la demande)</option>
+                <option value="monthly">Mensuelle</option>
+                <option value="quarterly">Trimestrielle</option>
+                <option value="yearly">Annuelle</option>
+              </select>
+            </label>
+            {recurrence && (
+              <>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', minWidth: 160 }}><span style={{ color: 'var(--theme-text-muted)' }}>{existing?.run_count ? 'Prochaine échéance' : 'Première échéance'}</span>
+                  <input type="date" value={firstRunOn} onChange={e => setFirstRunOn(e.target.value)} style={{ ...inp, width: '100%' }} /></label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', minWidth: 160 }}><span style={{ color: 'var(--theme-text-muted)' }}>Dernière échéance (optionnel)</span>
+                  <input type="date" value={endOn} onChange={e => setEndOn(e.target.value)} style={{ ...inp, width: '100%' }} /></label>
+              </>
+            )}
+          </div>
+          {recurrence && (
+            <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', margin: 0 }}>
+              L'écriture est passée automatiquement à chaque échéance, datée de l'échéance, avec les montants du modèle. Une échéance sur une période comptable fermée n'est pas passée : elle est signalée dans Paramètres › Tâches planifiées.
+            </p>
+          )}
 
           <div style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>Lignes</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -138,7 +186,7 @@ function TemplateEditor({ id, onClose, onSaved }: { id: string | null; onClose: 
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
           <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
-          <button type="button" className="odoo-btn-primary" disabled={name.trim().length < 2 || !balanced || !complete || save.isPending} onClick={() => save.mutate()}>{save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {id ? 'Enregistrer' : 'Créer'}</button>
+          <button type="button" className="odoo-btn-primary" disabled={name.trim().length < 2 || !balanced || !complete || (recurrence !== '' && !firstRunOn) || save.isPending} onClick={() => save.mutate()}>{save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {id ? 'Enregistrer' : 'Créer'}</button>
         </div>
       </div>
     </ModalBackdrop>
