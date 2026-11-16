@@ -27,7 +27,7 @@ import './purchasing.css';
 import '../sales/sales.css';
 import RfqTab from './RfqTab';
 import { PurHeaderSlot, PurHeaderActions } from './PurHeaderActions';
-import { usePurLayout, LayoutSwitch, SplitView, KanbanView, PaneHead, PaneState, pdate, pmoney, pn, KANBAN_ALL } from './PurLayouts';
+import { usePurLayout, LayoutSwitch, SplitView, KanbanView, PaneHead, PaneState, InvoiceStageTag, pdate, pmoney, pn, KANBAN_ALL } from './PurLayouts';
 import { ListKpi } from '../sales/ListTemplate';
 import LandedCostTab from './LandedCostTab';
 import SupplierScoreTab from './SupplierScoreTab';
@@ -652,9 +652,9 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
               const st = inv.stage as string;
               return {
                 title: String(inv.supplier_name ?? '—'), when: pdate(inv.invoice_date, 'd MMM'),
-                l2: <><span className="sal-num">{inv.invoice_number as string}</span> · {pmoney(inv.total_amount)}</>,
-                l3: `${st === 'cancelled' ? 'Annulée' : INV_STAGES.find(x => x.key === st)?.label ?? st} · ${stageDetail(inv)}`,
-                dot: inv.is_late ? 'late' : (st === 'to_pay' || st === 'partial' || st === 'draft') ? 'today' : '',
+                l2: <><span className="sal-num">{inv.invoice_number as string}</span> · <b>{pmoney(inv.total_amount)}</b></>,
+                l3: <><InvoiceStageTag stage={st} late={!!inv.is_late} label={st === 'cancelled' ? 'Annulée' : INV_STAGES.find(x => x.key === st)?.label ?? st} /> {stageDetail(inv)}</>,
+                dot: inv.is_late ? 'late' : '',
               };
             }}
             pane={inv => (
@@ -672,10 +672,10 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
             sum={cards => pmoney(cards.reduce((a, inv) => a + (view === 'history' ? pn(inv.total_amount) : pn(inv.total_amount) - pn(inv.paid_amount)), 0))}
             lanes={view === 'open' ? [
               { key: 'draft', label: 'Brouillons', match: inv => inv.stage === 'draft' },
-              { key: 'blocked', label: 'Bloquées / litige', tone: 'orange', match: inv => inv.stage === 'blocked' },
+              { key: 'blocked', label: 'Bloquées / litige', tone: 'red', match: inv => inv.stage === 'blocked' },
               { key: 'late', label: 'Échues', tone: 'red', match: inv => (inv.stage === 'to_pay' || inv.stage === 'partial') && !!inv.is_late },
-              { key: 'to_pay', label: 'À payer', tone: 'blue', match: inv => inv.stage === 'to_pay' && !inv.is_late },
-              { key: 'partial', label: 'Partiellement réglées', match: inv => inv.stage === 'partial' && !inv.is_late },
+              { key: 'to_pay', label: 'À payer', tone: 'orange', match: inv => inv.stage === 'to_pay' && !inv.is_late },
+              { key: 'partial', label: 'Partiellement réglées', tone: 'blue', match: inv => inv.stage === 'partial' && !inv.is_late },
             ] : [
               { key: 'paid', label: 'Réglées', tone: 'green', match: inv => inv.stage === 'paid' },
               { key: 'cancelled', label: 'Annulées', match: inv => inv.stage === 'cancelled' },

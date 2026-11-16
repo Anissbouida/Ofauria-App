@@ -2,7 +2,7 @@ import { Fragment, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Columns3, List, SquareKanban, Maximize2 } from 'lucide-react';
+import { Columns3, List, SquareKanban, Maximize2, PencilLine, TriangleAlert, Clock, CircleDashed, CircleCheck, Ban, CalendarX, type LucideIcon } from 'lucide-react';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import '../sales/sales.css';
 
@@ -33,7 +33,21 @@ export function LayoutSwitch({ value, onChange }: { value: PurLayout; onChange: 
   );
 }
 
-export type SplitRowView = { title: string; when?: string; l2: ReactNode; l3?: ReactNode; dot?: 'late' | 'today' | '' };
+/** Étiquette de statut d'une facture reçue (apple-look.css, .kl-tag) : couleur + icône + libellé. */
+const INV_TAG: Record<string, { cls: string; Icon: LucideIcon }> = {
+  draft: { cls: 'x', Icon: PencilLine },
+  blocked: { cls: 'r', Icon: TriangleAlert },
+  to_pay: { cls: 'o', Icon: Clock },
+  partial: { cls: 'b', Icon: CircleDashed },
+  paid: { cls: 'g', Icon: CircleCheck },
+  cancelled: { cls: 'x', Icon: Ban },
+};
+export function InvoiceStageTag({ stage, label, late }: { stage: string; label: string; late?: boolean }) {
+  const t = late && (stage === 'to_pay' || stage === 'partial') ? { cls: 'rs', Icon: CalendarX } : INV_TAG[stage] ?? INV_TAG.draft;
+  return <span className={`kl-tag ${t.cls}`}><t.Icon size={12} strokeWidth={2.4} aria-hidden="true" />{late && t.cls === 'rs' ? `${label} · en retard` : label}</span>;
+}
+
+export type SplitRowView ={ title: string; when?: string; l2: ReactNode; l3?: ReactNode; dot?: 'late' | 'today' | '' };
 
 /** Liste compacte à gauche, fiche de l'élément choisi à droite. */
 export function SplitView<T>({ items, getId, activeId, onPick, row, pane, label }: {

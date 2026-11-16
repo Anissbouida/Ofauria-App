@@ -8,6 +8,34 @@
  * Portée : .kl-apple, posée par ModuleShell (look="apple") sur les modules qui l'activent.
  * Les fenêtres modales (.fixed) gardent leur présentation.
  */
+
+/* ── Lisibilité (2026-11-15) : textes secondaires et courants assombris d'après le thème ──
+   Calculées sur :root (valeurs du thème posées par SettingsContext) puis réinjectées dans
+   --theme-text-* des zones Apple : tout ce qui lit --theme-text-muted/body (sales.css,
+   purchasing.css, utilitaires) en profite. Thème actuel : secondaire 4,3:1 → 7:1 sur le fond
+   de page, courant 10:1 → 13:1. Le texte d'aide des champs garde la teinte d'origine (4,8:1). */
+:root {
+  --kl-read-muted: color-mix(in srgb, var(--theme-text-muted) 70%, var(--theme-text-strong));
+  --kl-read-body: color-mix(in srgb, var(--theme-text-body) 65%, var(--theme-text-strong));
+  --kl-read-placeholder: var(--theme-text-muted);
+  --kl-read-line: color-mix(in srgb, var(--theme-text-muted) 80%, var(--theme-bg-card));
+}
+.kl-apple, .kl-sheet { --theme-text-muted: var(--kl-read-muted); --theme-text-body: var(--kl-read-body); }
+.kl-apple input::placeholder, .kl-apple textarea::placeholder,
+.kl-sheet input::placeholder, .kl-sheet textarea::placeholder { color: var(--kl-read-placeholder); opacity: 1; }
+/* Contour des filtres de la barre d'outils (SearchSelect, SelectFilter, PeriodFilter) : 1,5:1 → 3,2:1. */
+.kl-apple .prj-toolbar > label:not(.prj-search), .kl-apple .prj-toolbar input:not([type=search]), .kl-apple .prj-toolbar select { border-color: var(--kl-read-line) !important; }
+
+/* Étiquette de statut : couleur + icône + libellé (jamais la couleur seule). */
+.kl-tag { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: 0; white-space: nowrap; vertical-align: middle; line-height: 1; }
+.kl-tag svg { flex: none; }
+.kl-tag.x { background: color-mix(in srgb, var(--theme-text-muted) 12%, var(--theme-bg-card)); color: var(--theme-text-body); }
+.kl-tag.r { background: #FEF2F2; color: #B91C1C; }
+.kl-tag.o { background: #FFFBEB; color: #B45309; }
+.kl-tag.b { background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-bg-card)); color: var(--theme-accent-hover); }
+.kl-tag.g { background: #F0FDF4; color: #15803D; }
+.kl-tag.rs { background: #B91C1C; color: #fff; }
+
 .kl-apple {
   --kl-bg: var(--theme-bg-page);
   --kl-card: var(--theme-bg-card);
@@ -72,10 +100,20 @@
 
 /* ── Boutons en pilule ── */
 .kl-apple .odoo-btn-primary:not(.fixed *) { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; }
-.kl-apple .odoo-btn-secondary:not(.fixed *) { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; border-color: transparent; background: var(--kl-fill); color: var(--kl-accent-ink); }
-.kl-apple .odoo-btn-secondary:not(.fixed *):hover { background: color-mix(in srgb, var(--theme-text-muted) 20%, transparent); }
-.kl-apple .sal-next { border: 0; border-radius: 999px; background: var(--kl-fill); color: var(--kl-accent-ink); height: 30px; padding: 0 12px; }
-.kl-apple .sal-next:hover:not(:disabled) { background: color-mix(in srgb, var(--theme-text-muted) 20%, transparent); color: var(--kl-accent-ink); }
+/* Boutons secondaires : teinte d'accent claire plutôt que gris (bleu sur gris 4,4:1 → 5,9:1). */
+.kl-apple .odoo-btn-secondary:not(.fixed *) { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; border-color: transparent; background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-bg-card)); color: var(--kl-accent-ink); }
+.kl-apple .odoo-btn-secondary:not(.fixed *):hover { background: color-mix(in srgb, var(--theme-accent) 17%, var(--theme-bg-card)); }
+.kl-apple .sal-next { border: 0; border-radius: 999px; background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-bg-card)); color: var(--kl-accent-ink); height: 30px; padding: 0 12px; }
+.kl-apple .sal-next:hover:not(:disabled) { background: color-mix(in srgb, var(--theme-accent) 17%, var(--theme-bg-card)); color: var(--kl-accent-ink); }
+
+/* Liste à gauche (vue Colonnes) : sélection en teinte claire + barre d'accent, texte foncé
+   (le bloc plein obligeait à éclaircir les sous-lignes : 3,3:1 → 15:1). */
+.kl-apple .ord-row.sel { background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-bg-card)); color: var(--kl-ink); box-shadow: inset 3px 0 0 var(--theme-accent); }
+.kl-apple .ord-row.sel .ord-when, .kl-apple .ord-row.sel .ord-l3 { color: var(--theme-text-muted); }
+.kl-apple .ord-row.sel .ord-l2 { color: var(--theme-text-body); }
+.kl-apple .ord-row.sel .ord-dot.today { background: var(--theme-accent); }
+.kl-apple .ord-l2 b { font-weight: 600; color: var(--kl-ink); }
+.kl-apple .ord-l3 .kl-tag { margin-right: 2px; }
 
 /* ── Cartes ── */
 .kl-apple .prj-panel:not(.fixed .prj-panel),
@@ -214,8 +252,8 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 .kl-sheet-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
 .kl-sheet-foot { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 20px; border-top: 1px solid var(--kl-sep); background: color-mix(in srgb, var(--kl-card) 85%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
 .kl-sheet .odoo-btn-primary, .kl-sheet .odoo-btn-secondary, .kl-sheet .odoo-btn-danger { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
-.kl-sheet .odoo-btn-secondary { border-color: transparent; background: var(--kl-fill); color: var(--kl-accent-ink); }
-.kl-sheet .odoo-btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--theme-text-muted) 20%, transparent); }
+.kl-sheet .odoo-btn-secondary { border-color: transparent; background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-bg-card)); color: var(--kl-accent-ink); }
+.kl-sheet .odoo-btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--theme-accent) 17%, var(--theme-bg-card)); }
 .kl-sheet .odoo-btn-danger { border: 0; background: color-mix(in srgb, var(--prj-red) 10%, transparent); color: var(--prj-red); }
 .kl-sheet .odoo-btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--prj-red) 16%, transparent); }
 .kl-sheet .kl-widget { background: var(--kl-card); border-radius: 18px; padding: 18px 20px; box-shadow: var(--kl-shadow); }
@@ -257,8 +295,8 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
   box-shadow: 0 24px 60px rgba(15, 23, 42, .22), 0 0 0 .5px rgba(15, 23, 42, .08) !important;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; letter-spacing: -.011em; }
 .kl-apple .fixed .odoo-btn-primary, .kl-apple .fixed .odoo-btn-secondary, .kl-apple .fixed .odoo-btn-danger { border-radius: 999px; padding: 0.45rem 1rem; font-size: 14px; }
-.kl-apple .fixed .odoo-btn-secondary { border-color: transparent; background: color-mix(in srgb, var(--theme-text-muted) 13%, transparent); color: var(--theme-accent-hover); }
-.kl-apple .fixed .odoo-btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--theme-text-muted) 20%, transparent); }
+.kl-apple .fixed .odoo-btn-secondary { border-color: transparent; background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-bg-card)); color: var(--theme-accent-hover); }
+.kl-apple .fixed .odoo-btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--theme-accent) 17%, var(--theme-bg-card)); }
 .kl-apple .fixed .odoo-btn-danger { border: 0; background: color-mix(in srgb, #DC2626 10%, transparent); color: #DC2626; }
 .kl-apple .fixed .odoo-section-header { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; background: transparent; }
 .kl-apple .fixed .odoo-table thead th { background: transparent; text-transform: none; letter-spacing: 0; font-weight: 500; }
