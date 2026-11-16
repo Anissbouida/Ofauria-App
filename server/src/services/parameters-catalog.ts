@@ -117,10 +117,10 @@ export const PARAMETERS: ParamDef[] = [
   {
     key: 'production.showcase_time', domain: 'production', section: 'production',
     label: 'Heure de mise en vitrine',
-    help: 'Heure cible proposée par le rétro-planning : les étapes sont calées pour que l\'article soit prêt à cette heure.',
+    help: 'Heure cible proposée par le rétro-planning : les étapes sont calées pour que l\'article soit prêt à cette heure. Un article peut porter sa propre heure sur le plan.',
     fields: [{ name: 'time', label: 'Heure de mise en vitrine', type: 'time' }],
     defaults: { time: '07:00' },
-    storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop', 'product'],
+    storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop'],
   },
   {
     key: 'production.shift_cutoff', domain: 'production', section: 'production',

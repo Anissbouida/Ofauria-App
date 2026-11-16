@@ -1,3 +1,4 @@
+import { resolvePolicy } from '../services/policies.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productionEtapesRepository } from '../repositories/production-etapes.repository.js';
@@ -87,10 +88,16 @@ export const productionEtapesController = {
       res.status(400).json({ success: false, error: { message: parsed.error.issues.map(i => i.message).join(', ') } });
       return;
     }
-    const result = await productionEtapesRepository.computeRetroPlanning(
-      req.params.planId as string,
-      parsed.data.heure_vitrine,
-    );
+    const planId = req.params.planId as string;
+    let heure = parsed.data.heure_vitrine;
+    if (!heure) {
+      // M1-03 : heure cible de la politique (atelier, puis établissement, puis société ; 07:00 par défaut).
+      const { db } = await import('../config/database.js');
+      const plan = (await db.query(`SELECT store_id, target_role FROM production_plans WHERE id = $1`, [planId])).rows[0];
+      heure = (await resolvePolicy<{ time: string }>('production.showcase_time',
+        plan ? { storeId: plan.store_id, workshop: plan.target_role } : {})).value.time;
+    }
+    const result = await productionEtapesRepository.computeRetroPlanning(planId, heure);
     res.json({ success: true, data: result });
   },
 
