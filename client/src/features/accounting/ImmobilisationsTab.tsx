@@ -11,6 +11,7 @@ import { planComptableApi } from '../../api/ledger.api';
 import type { Account } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
 function n(v: string | number): string {
@@ -309,25 +310,22 @@ function AssetForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => v
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <label style={labelStyle}>Compte immobilisation (23xx) *</label>
-              <select value={form.assetAccountId} onChange={e => setForm({ ...form, assetAccountId: e.target.value })} style={inputStyle}>
-                <option value="">—</option>
-                {assetAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.label}</option>)}
-              </select>
+              <SearchSelect value={form.assetAccountId} onChange={v => setForm({ ...form, assetAccountId: v })}
+                placeholder="—" width="100%" size="md" ariaLabel="Compte immobilisation"
+                options={assetAccounts.map(a => ({ id: String(a.id), label: `${a.code} — ${a.label}` }))} />
             </div>
             <div>
               <label style={labelStyle}>Compte amortissement (28xx) *</label>
-              <select value={form.depreciationAccountId} onChange={e => setForm({ ...form, depreciationAccountId: e.target.value })} style={inputStyle}>
-                <option value="">—</option>
-                {deprAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.label}</option>)}
-              </select>
+              <SearchSelect value={form.depreciationAccountId} onChange={v => setForm({ ...form, depreciationAccountId: v })}
+                placeholder="—" width="100%" size="md" ariaLabel="Compte amortissement"
+                options={deprAccounts.map(a => ({ id: String(a.id), label: `${a.code} — ${a.label}` }))} />
             </div>
           </div>
           <div>
             <label style={labelStyle}>Compte dotation (619x) *</label>
-            <select value={form.expenseAccountId} onChange={e => setForm({ ...form, expenseAccountId: e.target.value })} style={inputStyle}>
-              <option value="">—</option>
-              {expenseAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.label}</option>)}
-            </select>
+            <SearchSelect value={form.expenseAccountId} onChange={v => setForm({ ...form, expenseAccountId: v })}
+              placeholder="—" width="100%" size="md" ariaLabel="Compte dotation"
+              options={expenseAccounts.map(a => ({ id: String(a.id), label: `${a.code} — ${a.label}` }))} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>

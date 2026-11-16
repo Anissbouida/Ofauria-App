@@ -6,6 +6,7 @@ import { CalendarClock, Plus, Play, X, Loader2 } from 'lucide-react';
 import { prepaidChargesApi, type PrepaidChargeListItem } from '../../api/prepaid-charges.api';
 import { planComptableApi } from '../../api/ledger.api';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
@@ -146,10 +147,9 @@ function PrepaidForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
             <input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Ex. Assurance locaux 2026" style={inp} />
           </Field>
           <Field label="Compte de charge (classe 6)">
-            <select value={account} onChange={e => setAccount(e.target.value)} style={inp}>
-              <option value="">— Choisir —</option>
-              {chargeAccounts.map(a => <option key={a.code} value={a.code}>{a.code} — {a.label}</option>)}
-            </select>
+            <SearchSelect value={account} onChange={setAccount}
+              placeholder="— Choisir —" width="100%" size="md" ariaLabel="Compte de charge"
+              options={chargeAccounts.map(a => ({ id: String(a.code), label: `${a.code} — ${a.label}` }))} />
           </Field>
           <Field label="Montant total (DH)">
             <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" style={inp} />

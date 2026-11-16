@@ -5,6 +5,7 @@ import { fr } from 'date-fns/locale';
 import { Target, Loader2, Plus, Power, X, ChevronRight, ChevronDown, Split, Eraser, CheckCircle2, Trash2 } from 'lucide-react';
 import { costCentersApi, analyticApi, type CostCenter, type AnalyticBalance } from '../../api/cost-centers.api';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useAuth } from '../../context/AuthContext';
@@ -253,10 +254,9 @@ function Assign() {
                 <td style={{ fontSize: '0.85rem' }}>{i.party || '—'}</td>
                 <td style={{ ...mono, textAlign: 'right' }}>{money(i.amount)}</td>
                 <td>
-                  <select value={i.cost_center_id ?? ''} onChange={e => assign.mutate({ invoiceId: i.id, costCenterId: e.target.value || null })} style={{ ...inp, minWidth: 150 }}>
-                    <option value="">— Non affecté —</option>
-                    {activeCenters.map(c => <option key={c.id} value={c.id}>{c.axis_code} · {c.code} — {c.name}</option>)}
-                  </select>
+                  <SearchSelect value={i.cost_center_id != null ? String(i.cost_center_id) : ''} onChange={id => assign.mutate({ invoiceId: i.id, costCenterId: id || null })}
+                    placeholder="— Non affecté —" width={190} ariaLabel="Centre de coût"
+                    options={activeCenters.map(c => ({ id: String(c.id), label: `${c.axis_code} · ${c.code} — ${c.name}` }))} />
                 </td>
               </tr>
             ))}

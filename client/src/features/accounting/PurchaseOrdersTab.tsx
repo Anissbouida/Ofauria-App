@@ -1658,9 +1658,9 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
             <div className="flex items-end gap-3 flex-wrap">
               <div style={{ width: 200 }}>
                 <label style={odooLabelStyle}>Devise du bon</label>
-                <select value={currency} onChange={e => changeCurrency(e.target.value)} style={odooFieldStyle}>
-                  {currencies.map(c => <option key={c.code} value={c.code}>{c.code} — {c.label}</option>)}
-                </select>
+                <SearchSelect value={currency} onChange={changeCurrency} clearable={false}
+                  placeholder="Devise" width="100%" size="md" ariaLabel="Devise du bon"
+                  options={currencies.map(c => ({ id: c.code, label: `${c.code} — ${c.label}` }))} />
               </div>
               {currency !== BASE_CURRENCY && (<>
                 <div style={{ width: 180 }}>

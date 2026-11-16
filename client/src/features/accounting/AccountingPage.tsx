@@ -3970,13 +3970,13 @@ function InternalTransferModal({ accounts, pending, onClose, onSubmit }: {
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div><label style={lbl}>De *</label>
-              <select value={fromId} onChange={e => setFromId(e.target.value)} className={field}>
-                {accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
-              </select></div>
+              <SearchSelect value={fromId} onChange={setFromId} clearable={false}
+                placeholder="Compte source" width="100%" size="md" ariaLabel="Compte source"
+                options={accounts.map(a => ({ id: String(a.id), label: a.label as string }))} /></div>
             <div><label style={lbl}>Vers *</label>
-              <select value={toId} onChange={e => setToId(e.target.value)} className={field}>
-                {accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
-              </select></div>
+              <SearchSelect value={toId} onChange={setToId} clearable={false}
+                placeholder="Compte destination" width="100%" size="md" ariaLabel="Compte destination"
+                options={accounts.map(a => ({ id: String(a.id), label: a.label as string }))} /></div>
           </div>
           {fromId === toId && <p style={{ margin: 0, fontSize: '0.75rem', color: '#b71c1c' }}>Choisissez deux comptes différents.</p>}
           <div className="grid grid-cols-2 gap-3">
