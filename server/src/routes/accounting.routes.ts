@@ -12,6 +12,7 @@ import { createSupplierSchema, updateSupplierSchema } from '../validators/suppli
 import { reasonCodeSchema } from '../validators/purchase-order-action.validator.js';
 import { createPaymentSchema, updatePaymentSchema, voidPaymentSchema, reissuePaymentSchema, internalTransferSchema, cashCumulQuerySchema } from '../validators/payment.validator.js';
 import { listActions } from '../services/document-actions.service.js';
+import { createInvoiceSchema, updateInvoiceSchema, mergeInvoicesSchema } from '../validators/invoice.validator.js';
 import { z } from 'zod';
 
 const manualHoldSchema = z.object({ note: z.string().trim().min(3, 'Précisez la raison du blocage').max(1000) });
@@ -112,10 +113,10 @@ invoicesRouter.get('/:id/bad-debts', authenticate, authorize(...ROLE_GROUPS.ADMI
 invoicesRouter.post('/:id/bad-debts', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.classifyBadDebt));
 invoicesRouter.put('/bad-debts/:badDebtId/revert', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('badDebtId'), asyncHandler(invoiceController.revertBadDebt));
 // PUT /:id : modification complete (admin + gerant) — montants, dates, fournisseur, etc.
-invoicesRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.update));
-invoicesRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.create));
+invoicesRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), validate(updateInvoiceSchema), asyncHandler(invoiceController.update));
+invoicesRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(createInvoiceSchema), asyncHandler(invoiceController.create));
 invoicesRouter.post('/from-order/:orderId', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('orderId'), asyncHandler(invoiceController.createFromOrder));
-invoicesRouter.post('/merge', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(invoiceController.merge));
+invoicesRouter.post('/merge', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(mergeInvoicesSchema), asyncHandler(invoiceController.merge));
 // Echelonnement d'une facture en N echeances (materiel achete a credit) — mig 258.
 invoicesRouter.post('/:id/schedule', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(paymentScheduleController.createInvoiceSchedule));
 invoicesRouter.post('/:id/cancel', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(invoiceController.cancel));

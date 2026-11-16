@@ -112,7 +112,8 @@ describe.skipIf(!hasTestDb)('Comptabilité analytique', () => {
     const p = testPool();
     const supplier = (await p.query(`INSERT INTO suppliers (name) VALUES ($1) RETURNING id`, [`Fournisseur analytique ${tag}`])).rows[0].id;
     const aux = (await p.query(`SELECT id FROM account_auxiliaries WHERE supplier_id = $1`, [supplier])).rows[0].id;
-    const amount = 100 + Math.floor(Math.random() * 9000) / 100;
+    // Au centime exact : 100 + 74,67 donne sinon 174,67000000000002 en flottant.
+    const amount = (10000 + Math.floor(Math.random() * 9000)) / 100;
     const inv = (await p.query(
       `INSERT INTO invoices (invoice_number, invoice_type, supplier_id, invoice_date, amount, total_amount, status)
        VALUES ($1, 'received', $2, $3, $4, $4, 'pending') RETURNING id`, [`FA-AN-${tag}`, supplier, day, amount])).rows[0].id;

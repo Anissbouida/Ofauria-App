@@ -3,6 +3,8 @@ import { cashRegisterController } from '../controllers/cash-register.controller.
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
+import { openRegisterSchema, closeRegisterSchema, submitRegisterAmountSchema } from '../validators/cash-register.validator.js';
 
 const router = Router();
 
@@ -13,9 +15,10 @@ router.get('/closure-gaps', authenticate, authorize(...ROLE_GROUPS.ADMIN), cashR
 router.post('/closure-gaps/post', authenticate, authorize(...ROLE_GROUPS.ADMIN), cashRegisterController.postClosureGaps);
 router.get('/:id', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.getById);
 router.get('/:id/inventory', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.getInventoryItems);
-router.post('/open', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.open);
-router.post('/close', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.close);
-router.post('/:id/submit', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.submitAmount);
+// G0-07 : montants de caisse validés par schéma.
+router.post('/open', authenticate, authorize(...ROLE_GROUPS.CASH), validate(openRegisterSchema), cashRegisterController.open);
+router.post('/close', authenticate, authorize(...ROLE_GROUPS.CASH), validate(closeRegisterSchema), cashRegisterController.close);
+router.post('/:id/submit', authenticate, authorize(...ROLE_GROUPS.CASH), validateUuidParams('id'), validate(submitRegisterAmountSchema), cashRegisterController.submitAmount);
 router.post('/:id/print-z', authenticate, authorize(...ROLE_GROUPS.CASH), cashRegisterController.printZ);
 
 export default router;

@@ -7,14 +7,17 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
 import { requireUnits, requireStockUnitChange } from '../services/unit-referential.js';
+import { validate } from '../middleware/validate.middleware.js';
+import { restockSchema, adjustStockSchema, stockThresholdSchema } from '../validators/stock.validator.js';
 
 const router = Router();
 
 router.get('/', authenticate, inventoryController.list);
 router.get('/alerts', authenticate, inventoryController.alerts);
-router.post('/restock', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.restock);
-router.post('/adjust', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.adjust);
-router.put('/threshold', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.updateThreshold);
+// G0-07 : mouvements de stock validés par schéma.
+router.post('/restock', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(restockSchema), inventoryController.restock);
+router.post('/adjust', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(adjustStockSchema), inventoryController.adjust);
+router.put('/threshold', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(stockThresholdSchema), inventoryController.updateThreshold);
 router.get('/transactions', authenticate, inventoryController.transactions);
 // Consommation matieres par periode (admin/gerant, utilise par Comptabilite)
 router.get('/consumption', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.consumption);

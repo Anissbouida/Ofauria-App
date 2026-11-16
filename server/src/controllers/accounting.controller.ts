@@ -16,6 +16,7 @@ import { customerReceiptRepository } from '../repositories/customer-receipt.repo
 import { getParameter, type ExpenseRequiresPo } from '../services/module-parameters.service.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
 import { storeFile, FileRejectedError, DOCUMENT_MIMES } from '../services/storage.service.js';
+import { tvaRatesOf } from '../validators/invoice.validator.js';
 
 // Valide un code de mode de reglement contre le referentiel payment_methods
 // (table de reference) plutot que contre une liste figee en dur.
@@ -215,6 +216,17 @@ export const invoiceController = {
     res.json({ success: true, data: invoice });
   },
   async create(req: AuthRequest, res: Response) {
+    // G0-07 : le corps est déjà validé par createInvoiceSchema (clés inconnues
+    // retirées) ; reste à confronter les taux de TVA au référentiel des codes TVA.
+    const rates = tvaRatesOf(req.body);
+    if (rates.length) {
+      const known = (await db.query(`SELECT DISTINCT rate::float8 AS rate FROM tax_codes`)).rows.map((r: { rate: number }) => r.rate);
+      const unknown = rates.filter(r => !known.some((k: number) => Math.abs(k - r) < 0.001));
+      if (known.length && unknown.length) {
+        res.status(400).json({ success: false, error: { message: `Taux de TVA hors référentiel : ${unknown.join(', ')} %` } });
+        return;
+      }
+    }
     const data = { ...req.body, createdBy: req.user!.userId, storeId: req.user!.storeId };
     if (!data.totalAmount) data.totalAmount = (parseFloat(data.amount) || 0) + (parseFloat(data.taxAmount) || 0);
     const invoice = await invoiceRepository.create(data);
