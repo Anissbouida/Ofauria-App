@@ -1,3 +1,4 @@
+import { policyNumber } from '../services/policies.js';
 import { db, withTransaction } from '../config/database.js';
 import { forecastRepository } from './forecast.repository.js';
 import { productionRepository } from './production.repository.js';
@@ -6,7 +7,7 @@ import { getCompositionForNeeds } from './recipe-composition.helper.js';
 import { workshopForCategorySlug, workshopLabel, workshopsOf } from '../services/workshops.js';
 
 const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
-function datesBetween(from: string, to: string, cap = 14): string[] {
+function datesBetween(from: string, to: string, cap: number): string[] {
   const out: string[] = [];
   for (let d = from; d <= to && out.length < cap; d = addDays(d, 1)) out.push(d);
   return out;
@@ -196,13 +197,14 @@ export const mrpRepository = {
   },
 
   /**
-   * Horizon multi-jours : besoins nets par article et par jour sur [from, to] (14 j max).
+   * Horizon multi-jours : besoins nets par article et par jour sur [from, to], borné par la
+   * politique « Horizon du plan directeur » (M1-03 ; 14 jours par défaut).
    * Le stock fini actuel est reporté de jour en jour (il peut couvrir plusieurs jours),
    * mais aucun surplus de production n'est reporté — la production est dimensionnée au
    * juste net. Demande et déjà planifié sont propres à chaque jour.
    */
   async horizon(storeId: string, from: string, to: string) {
-    const dates = datesBetween(from, to);
+    const dates = datesBetween(from, to, await policyNumber('production.mrp_horizon', 'days', { storeId }));
     if (!dates.length) return { store_id: storeId, dates: [], rows: [], totals_by_date: {} };
     const last = dates[dates.length - 1];
     const key = (pid: string, d: string) => `${pid}|${d}`;
