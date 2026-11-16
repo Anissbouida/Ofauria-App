@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import { format, addDays, differenceInDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { getApiErrorMessage } from '../../utils/api-error';
@@ -1344,15 +1345,12 @@ export default function SalesPage() {
             ) : (
               <div className="mb-5">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Client (ticket anonyme)</label>
-                <select value={invoiceCustomerId} onChange={(e) => setInvoiceCustomerId(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary-400">
-                  <option value="">— Choisir un client —</option>
-                  {((invoiceCustomers?.data ?? invoiceCustomers ?? []) as Record<string, any>[]).map((c) => (
-                    <option key={c.id as string} value={c.id as string}>
-                      {c.first_name} {c.last_name}{c.company_name ? ` (${c.company_name})` : ''}
-                    </option>
-                  ))}
-                </select>
+                <SearchSelect value={invoiceCustomerId} onChange={setInvoiceCustomerId}
+                  placeholder="— Choisir un client —" width="100%" size="md" ariaLabel="Client"
+                  options={((invoiceCustomers?.data ?? invoiceCustomers ?? []) as Record<string, any>[]).map((c) => ({
+                    id: c.id as string,
+                    label: `${c.first_name} ${c.last_name}${c.company_name ? ` (${c.company_name})` : ''}`.trim(),
+                  }))} />
               </div>
             )}
             <div className="flex gap-3">

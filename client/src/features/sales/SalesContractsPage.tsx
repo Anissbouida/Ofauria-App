@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Handshake, Loader2, Plus, Lock, Archive } from 'lucide-react';
 import { StatusTag } from '../../components/ui/StatusTag';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { salesContractsApi, type SalesContract, type CreateContractInput } from '../../api/sales-contracts.api';
 import { customersApi } from '../../api/customers.api';
 import { productsApi } from '../../api/products.api';
@@ -86,10 +87,9 @@ export default function SalesContractsPage() {
         <section className="prj-panel" style={{ padding: 16, display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <label style={{ display: 'grid', gap: 2 }}>Client
-              <select className="odoo-input" value={f.customerId} onChange={e => setF({ ...f, customerId: e.target.value })}>
-                <option value="">—</option>
-                {customers.map(c => <option key={c.id} value={c.id}>{c.company_name || `${c.first_name || ''} ${c.last_name || ''}`.trim()}</option>)}
-              </select>
+              <SearchSelect value={f.customerId} onChange={v => setF({ ...f, customerId: v })}
+                placeholder="— Client —" width={240} size="md" ariaLabel="Client"
+                options={customers.map(c => ({ id: String(c.id), label: c.company_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() }))} />
             </label>
             <label style={{ display: 'grid', gap: 2 }}>Base
               <select className="odoo-input" value={f.basis} onChange={e => setF({ ...f, basis: e.target.value as 'quantity' | 'value' })}>
@@ -100,10 +100,9 @@ export default function SalesContractsPage() {
             {f.basis === 'quantity' ? (
               <>
                 <label style={{ display: 'grid', gap: 2 }}>Article
-                  <select className="odoo-input" value={f.productId ?? ''} onChange={e => setF({ ...f, productId: e.target.value })}>
-                    <option value="">—</option>
-                    {products.map(pr => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
-                  </select>
+                  <SearchSelect value={f.productId ?? ''} onChange={v => setF({ ...f, productId: v })}
+                    placeholder="— Article —" width={240} size="md" ariaLabel="Article"
+                    options={products.map(pr => ({ id: String(pr.id), label: pr.name as string }))} />
                 </label>
                 <label style={{ display: 'grid', gap: 2 }}>Quantité engagée
                   <input className="odoo-input" type="number" value={f.committedQuantity ?? ''} onChange={e => setF({ ...f, committedQuantity: Number(e.target.value) })} style={{ width: 130 }} />

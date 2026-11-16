@@ -5,6 +5,7 @@ import { salesTargetsApi } from '../../api/sales-targets.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import SalesPageShell from './SalesPageShell';
 import { RowMenu } from '../../components/ui/RowMenu';
@@ -73,10 +74,9 @@ export default function SalesTargetsPage() {
             <div className="kl-rb-row">
               <span className="k">Vendeur</span>
               <span className="v">
-                <select aria-label="Vendeur" value={sellerId} onChange={e => setSellerId(e.target.value)} style={{ minWidth: 220 }}>
-                  <option value="">Choisir…</option>
-                  {sellers.map(s => <option key={s.id} value={s.id}>{`${s.first_name || ''} ${s.last_name || ''}`.trim()}</option>)}
-                </select>
+                <SearchSelect value={sellerId} onChange={setSellerId}
+                  placeholder="Choisir un vendeur…" width={240} size="md" ariaLabel="Vendeur"
+                  options={sellers.map(s => ({ id: String(s.id), label: `${s.first_name || ''} ${s.last_name || ''}`.trim() }))} />
               </span>
             </div>
             <div className="kl-rb-row">

@@ -13,6 +13,7 @@ import {
   FileText, Truck, Undo2, Columns3, List, SquareKanban, Maximize2,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -569,10 +570,9 @@ export default function EmittedInvoicesTab() {
                   <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
                     <div>
                       <label style={labelStyle}>Client</label>
-                      <select value={manualCustomerId} onChange={e => setManualCustomerId(e.target.value)} style={fieldStyle}>
-                        <option value="">— Sélectionner un client —</option>
-                        {customers.map(c => (<option key={c.id as string} value={c.id as string}>{customerOption(c)}</option>))}
-                      </select>
+                      <SearchSelect value={manualCustomerId} onChange={setManualCustomerId}
+                        placeholder="— Sélectionner un client —" width="100%" size="md" ariaLabel="Client"
+                        options={customers.map(c => ({ id: c.id as string, label: customerOption(c) }))} />
                     </div>
                     <div>
                       <label style={labelStyle}>Date de facturation</label>
@@ -581,13 +581,10 @@ export default function EmittedInvoicesTab() {
                     <div>
                       <label style={labelStyle}>Devise</label>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <select value={manualCurrency} disabled={!!editingInvoiceId || currencies.length <= 1}
-                          title={editingInvoiceId ? 'La devise d\'une facture émise ne change pas'
-                            : currencies.length <= 1 ? 'Activez d\'autres devises dans Paramètres › Devises' : undefined}
-                          onChange={e => { setManualCurrency(e.target.value); setManualRate(e.target.value === BASE_CURRENCY ? '' : dayRate(e.target.value)); }}
-                          style={{ ...fieldStyle, flex: foreign ? '0 0 76px' : 1 }}>
-                          {currencies.map(c => <option key={c.code} value={c.code.trim()}>{c.code.trim()}</option>)}
-                        </select>
+                        <SearchSelect value={manualCurrency} disabled={!!editingInvoiceId || currencies.length <= 1} clearable={false}
+                          onChange={v => { setManualCurrency(v); setManualRate(v === BASE_CURRENCY ? '' : dayRate(v)); }}
+                          placeholder="Devise" width={foreign ? 90 : '100%'} size="md" ariaLabel="Devise"
+                          options={currencies.map(c => ({ id: c.code.trim(), label: c.code.trim() }))} />
                         {foreign && (
                           <input value={manualRate} onChange={e => setManualRate(e.target.value)} disabled={!!editingInvoiceId} inputMode="decimal"
                             placeholder="taux" title={`DH pour 1 ${manualCurrency}`} style={{ ...fieldStyle, textAlign: 'right', minWidth: 0 }} />

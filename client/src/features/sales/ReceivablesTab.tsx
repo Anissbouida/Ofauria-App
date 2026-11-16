@@ -7,6 +7,7 @@ import { salesApi, type AgingBucket, type CustomerReceivable, type ReceivableDoc
 import { customersApi, type CustomerStatement } from '../../api/customers.api';
 import { paymentsApi } from '../../api/accounting.api';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { RowMenu } from '../../components/ui/RowMenu';
@@ -466,10 +467,9 @@ function AdvancesBlock({ customerId, invoices }: { customerId: string; invoices:
             <span style={{ color: 'var(--odoo-text-muted)' }}> · règlement du {day(a.payment_date)}{a.check_number ? ` · n° ${a.check_number}` : ''}</span></span>
           {invoices.length > 0 && (
             <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }} onClick={e => e.stopPropagation()}>
-              <select value={target[a.id] ?? invoices[0].id} onChange={e => setTarget(t => ({ ...t, [a.id]: e.target.value }))}
-                style={{ padding: '0.2rem 0.4rem', border: '1px solid var(--odoo-border)', borderRadius: 4, fontSize: '0.75rem' }}>
-                {invoices.map(i => <option key={i.id} value={i.id}>{i.number} · reste {money(i.remaining)}</option>)}
-              </select>
+              <SearchSelect value={target[a.id] ?? invoices[0].id} onChange={v => setTarget(t => ({ ...t, [a.id]: v }))}
+                placeholder="Facture à affecter" width={220} clearable={false} ariaLabel="Facture à affecter"
+                options={invoices.map(i => ({ id: String(i.id), label: `${i.number} · reste ${money(i.remaining)}` }))} />
               <button type="button" className="odoo-btn-secondary" style={{ padding: '0.2rem 0.6rem', fontSize: '0.75rem' }} disabled={mutation.isPending}
                 onClick={() => mutation.mutate({ id: a.id, invoiceId: target[a.id] ?? invoices[0].id })}>Affecter</button>
             </span>

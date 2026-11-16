@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BadgePercent, Loader2, Plus, Lock, X } from 'lucide-react';
 import { StatusTag } from '../../components/ui/StatusTag';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { rebatesApi, type RebateAgreement } from '../../api/rebates.api';
 import { customersApi } from '../../api/customers.api';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -86,10 +87,9 @@ export default function RebatesPage() {
       {isDirection && (
         <section className="prj-panel" style={{ padding: '12px 14px', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <strong style={{ fontSize: '0.875rem', marginRight: 4 }}>Nouvel accord {year}</strong>
-          <select className="odoo-input" aria-label="Client" value={form.customerId} onChange={e => setForm({ ...form, customerId: e.target.value })} style={{ minWidth: 220 }}>
-            <option value="">Client…</option>
-            {customers.map(c => <option key={c.id} value={c.id}>{c.company_name || `${c.first_name || ''} ${c.last_name || ''}`.trim()}</option>)}
-          </select>
+          <SearchSelect value={form.customerId} onChange={v => setForm({ ...form, customerId: v })}
+            placeholder="Client…" width={240} size="md" ariaLabel="Client"
+            options={customers.map(c => ({ id: String(c.id), label: c.company_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() }))} />
           <input className="odoo-input" aria-label="Taux en %" type="number" step="0.1" placeholder="Taux %" value={form.ratePercent} onChange={e => setForm({ ...form, ratePercent: e.target.value })} style={{ width: 90 }} />
           <input className="odoo-input" aria-label="Seuil de CA en DH" type="number" placeholder="Seuil CA (DH)" value={form.minTurnover} onChange={e => setForm({ ...form, minTurnover: e.target.value })} style={{ width: 130 }} />
           <button className="odoo-btn-primary" disabled={!form.customerId || !(Number(form.ratePercent) >= 0) || create.isPending} onClick={() => create.mutate()}>
