@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, leavesApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
 import { notify } from '../../../components/ui/InlineNotification';
+import SearchSelect from '../../../components/ui/SearchSelect';
 import { useAuth } from '../../../context/AuthContext';
 import { apiErrorMessage } from '../shared';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
@@ -52,12 +53,9 @@ export default function LeaveRequestForm({ onClose }: { onClose: () => void }) {
       </>}>
         <form ref={formRef} onSubmit={e => { e.preventDefault(); create.mutate(); }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Field label="Employé *">
-            <select className={inputCls} required value={form.employeeId} onChange={e => setForm({ ...form, employeeId: e.target.value })}>
-              <option value="">Choisir...</option>
-              {(employees as Record<string, any>[]).filter(e => e.is_active).map(e => (
-                <option key={e.id as string} value={e.id as string}>{e.first_name as string} {e.last_name as string}</option>
-              ))}
-            </select></Field>
+            <SearchSelect value={form.employeeId} onChange={id => setForm({ ...form, employeeId: id })}
+              placeholder="Choisir un employé…" width="100%" size="md" ariaLabel="Employé"
+              options={(employees as Record<string, any>[]).filter(e => e.is_active).map(e => ({ id: e.id as string, label: `${e.first_name as string} ${e.last_name as string}` }))} /></Field>
           <Field label="Type *">
             <select className={inputCls} required value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
               {leaveTypes.map(lt => <option key={lt.code} value={lt.code}>{lt.label}</option>)}

@@ -12,6 +12,7 @@ import { StatusTag, type StatusTone } from '../../../components/ui/StatusTag';
 import { ViewSwitch } from '../../../components/purchasing/ProcessBoard';
 import { HrModal, Field, EmptyState, inputCls } from '../ui';
 import { notify } from '../../../components/ui/InlineNotification';
+import SearchSelect from '../../../components/ui/SearchSelect';
 import { useAuth } from '../../../context/AuthContext';
 import { MONTH_NAMES, isoDate } from '../shared';
 import AdvanceRequestsPanel from './AdvanceRequestsPanel';
@@ -26,6 +27,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
   // Champs controles du formulaire d'octroi (pour l'apercu d'etalement en direct)
   const [formAmount, setFormAmount] = useState('');
   const [formMonthly, setFormMonthly] = useState('');
+  const [formEmployeeId, setFormEmployeeId] = useState('');
   // Modale de modification (admin) : montant/date/mode si aucune retenue, plan+notes toujours
   const [editingAdvance, setEditingAdvance] = useState<Record<string, any> | null>(null);
   const [editAmount, setEditAmount] = useState('');
@@ -122,7 +124,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
       <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
         <ViewSwitch view={statusFilter === 'open' ? 'open' : 'history'} onChange={v => setStatusFilter(v === 'open' ? 'open' : 'all')}
           openLabel="En cours" historyLabel="Toutes" ariaLabel="Filtre des avances" />
-        <button onClick={() => { setFormAmount(''); setFormMonthly(''); setShowForm(true); }} className="odoo-btn-primary"
+        <button onClick={() => { setFormAmount(''); setFormMonthly(''); setFormEmployeeId(''); setShowForm(true); }} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Plus size={13} /> Accorder une avance
         </button>
@@ -274,7 +276,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
           <form id="advance-grant-form" onSubmit={e => {
             e.preventDefault();
             const fd = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, any>;
-            if (!fd.employeeId) { notify.error('Sélectionnez un employé'); return; }
+            if (!formEmployeeId) { notify.error('Sélectionnez un employé'); return; }
             const amount = parseFloat(fd.amount as string);
             if (!amount || amount <= 0) { notify.error('Montant invalide'); return; }
             const monthly = parseFloat(formMonthly) || 0;
@@ -283,7 +285,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
               return;
             }
             createMutation.mutate({
-              employeeId: fd.employeeId, amount,
+              employeeId: formEmployeeId, amount,
               paymentMethod: fd.paymentMethod || 'cash',
               advanceDate: fd.advanceDate || undefined,
               notes: fd.notes || undefined,
@@ -291,12 +293,9 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
             });
           }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <Field label="Employé *">
-              <select name="employeeId" required className={inputCls}>
-                <option value="">Sélectionner...</option>
-                {(employees as Record<string, any>[]).filter(e2 => e2.is_active).map(e2 => (
-                  <option key={e2.id as string} value={e2.id as string}>{e2.first_name as string} {e2.last_name as string}</option>
-                ))}
-              </select>
+              <SearchSelect value={formEmployeeId} onChange={setFormEmployeeId}
+                placeholder="Sélectionner un employé…" width="100%" size="md" ariaLabel="Employé"
+                options={(employees as Record<string, any>[]).filter(e2 => e2.is_active).map(e2 => ({ id: e2.id as string, label: `${e2.first_name as string} ${e2.last_name as string}` }))} />
             </Field>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <Field label="Montant (DH) *">
