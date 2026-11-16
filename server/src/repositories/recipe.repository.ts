@@ -1,3 +1,4 @@
+import { policyNumber } from '../services/policies.js';
 import { db } from '../config/database.js';
 import { snapshotRecipeVersion } from './recipe-version.helper.js';
 import {
@@ -459,7 +460,10 @@ export const recipeRepository = {
         }
       }
 
-      const margin = data.marginMultiplier && data.marginMultiplier > 0 ? data.marginMultiplier : 3;
+      // M1-03 : sans multiplicateur saisi, la politique « Multiplicateur de marge » (×3 par défaut).
+      const margin = data.marginMultiplier && data.marginMultiplier > 0
+        ? data.marginMultiplier
+        : await policyNumber('production.margin_multiplier', 'value');
       // total_cost INSERT a 0 par defaut — la vraie valeur vient toujours de la vue.
       // Frais indirects : si non fournis, on les pre-remplit depuis company_settings.
       const csResult = await client.query(

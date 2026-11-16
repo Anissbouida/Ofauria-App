@@ -61,7 +61,8 @@ export const createRecipeSchema = z.object({
   // Parametres de pate (mig 342) : T° de pate en fin de petrissage, hydratation en % boulanger.
   temperaturePateCibleC: z.number().min(-10).max(60, 'Température de pâte invalide').nullable().optional(),
   hydratationPct: z.number().min(0).max(200, 'Hydratation invalide (0-200 %)').nullable().optional(),
-  marginMultiplier: z.number().positive('Le multiplicateur doit être positif').default(3),
+  // Absent : le dépôt applique la politique « Multiplicateur de marge » (M1-03), plus 3 en dur.
+  marginMultiplier: z.number().positive('Le multiplicateur doit être positif').optional(),
   salePrice: z.number().nonnegative('Le prix de vente doit être positif').optional().nullable(),
   // Frais indirects au niveau recette (default 0 si absent — preserve le comportement existant)
   tauxMainOeuvreDhH: z.number().nonnegative().optional(),
