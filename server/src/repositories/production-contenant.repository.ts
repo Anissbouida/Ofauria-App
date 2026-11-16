@@ -1,3 +1,4 @@
+import { policyNumber } from '../services/policies.js';
 import { db } from '../config/database.js';
 
 export const productionContenantRepository = {
@@ -26,7 +27,7 @@ export const productionContenantRepository = {
     quantite_theorique: number;
     pertes_fixes: number;
     poids_kg?: number | null;
-    seuil_rendement_defaut: number;
+    seuil_rendement_defaut?: number;
     etapes_defaut: unknown[];
     categories_pertes: string[];
     longueur_cm?: number | null;
@@ -43,7 +44,8 @@ export const productionContenantRepository = {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING *, quantite_nette_cible`,
       [data.nom, data.type_production, data.unite_lancement, data.quantite_theorique,
-       data.pertes_fixes, data.poids_kg ?? null, data.seuil_rendement_defaut,
+       data.pertes_fixes, data.poids_kg ?? null,
+       data.seuil_rendement_defaut ?? await policyNumber('production.yield_target', 'pct'),
        JSON.stringify(data.etapes_defaut), JSON.stringify(data.categories_pertes),
        data.longueur_cm ?? null, data.largeur_cm ?? null, data.profondeur_cm ?? null,
        data.diametre_cm ?? null, data.type_decoupe ?? null, data.nb_pieces_decoupe ?? null]

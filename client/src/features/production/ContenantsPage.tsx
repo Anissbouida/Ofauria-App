@@ -1,3 +1,4 @@
+import { useProductionPolicies } from './usePolicies';
 import { useState, useMemo } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -579,7 +580,11 @@ function ContenantForm({ contenant, onClose, onSaved }: {
   const [uniteLancement, setUniteLancement] = useState(contenant?.unite_lancement || 'cadre');
   const [quantiteTheorique, setQuantiteTheorique] = useState(contenant?.quantite_theorique || '');
   const [pertesFixes, setPertesFixes] = useState(contenant?.pertes_fixes || '0');
-  const [seuilRendement, setSeuilRendement] = useState(contenant?.seuil_rendement_defaut || '90');
+  // M1-03 : pour un nouveau contenant, le seuil proposé est la politique « Rendement cible ».
+  const policies = useProductionPolicies();
+  const policyYield = policies.num('production.yield_target', 'pct');
+  const [typedSeuil, setSeuilRendement] = useState<string>(contenant?.seuil_rendement_defaut ? String(contenant.seuil_rendement_defaut) : '');
+  const seuilRendement = typedSeuil || (policyYield !== null ? String(policyYield) : '');
   const [categoriesPertes, setCategoriesPertes] = useState(contenant?.categories_pertes?.join(', ') || '');
   // Dimensions physiques (mig 167)
   const [longueurCm, setLongueurCm] = useState(contenant?.longueur_cm || '');
@@ -615,7 +620,7 @@ function ContenantForm({ contenant, onClose, onSaved }: {
       unite_lancement: uniteLancement,
       quantite_theorique: parseFloat(quantiteTheorique),
       pertes_fixes: parseFloat(pertesFixes) || 0,
-      seuil_rendement_defaut: parseFloat(seuilRendement) || 90,
+      seuil_rendement_defaut: parseFloat(seuilRendement) || undefined,
       categories_pertes: categoriesPertes
         .split(',')
         .map(s => s.trim())

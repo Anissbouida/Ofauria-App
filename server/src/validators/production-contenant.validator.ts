@@ -30,7 +30,8 @@ export const createContenantSchema = z.object({
   quantite_theorique: z.number().positive('La quantite doit etre positive'),
   pertes_fixes: z.number().min(0).default(0),
   poids_kg: z.number().positive().nullable().optional(),
-  seuil_rendement_defaut: z.number().min(0).max(100).default(90),
+  // Absent : le dépôt applique la politique « Rendement cible » (M1-03), plus 90 en dur.
+  seuil_rendement_defaut: z.number().min(0).max(100).optional(),
   etapes_defaut: z.array(etapeSchema).default([]),
   categories_pertes: z.array(z.string()).default([]),
   // Dimensions physiques (mig 167) — toutes nullables, saisie progressive
