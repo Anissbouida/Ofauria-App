@@ -77,7 +77,8 @@ export const userRepository = {
   },
 
   async findAll(): Promise<UserRow[]> {
-    const result = await db.query('SELECT * FROM users ORDER BY created_at DESC');
+    // Le compte technique « Système » (mig 530) n'est pas un utilisateur à gérer.
+    const result = await db.query('SELECT * FROM users WHERE NOT is_system ORDER BY created_at DESC');
     return result.rows;
   },
 

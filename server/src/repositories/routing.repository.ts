@@ -159,25 +159,43 @@ export const routingRepository = {
   // TRS ≈ disponibilité × performance (qualité non rattachable au poste, exclue).
   async getOee(workCenterId: string, from: string, to: string) {
     const r = await db.query(
-      `WITH dt AS (
-         SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(to_time, now()) - from_time)) / 60), 0) AS downtime
-         FROM work_center_downtime WHERE work_center_id = $1 AND from_time >= $2 AND from_time < $3
+      `WITH stops AS (
+         -- G0-28 : un arrêt compte pour sa part qui CHEVAUCHE la période (un arrêt commencé
+         -- avant la période, ou encore ouvert, était ignoré ou compté en entier).
+         SELECT GREATEST(from_time, $2::timestamptz) AS a, LEAST(COALESCE(to_time, now()), $3::timestamptz) AS b
+           FROM work_center_downtime
+          WHERE work_center_id = $1 AND from_time < $3::timestamptz AND COALESCE(to_time, now()) > $2::timestamptz
        ),
+       dt AS (SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (b - a)) / 60), 0) AS downtime FROM stops WHERE b > a),
        perf AS (
          SELECT COALESCE(SUM(pie.duree_estimee_min), 0) AS est,
-                COALESCE(SUM(pie.duree_reelle_min), 0)  AS reel,
-                COUNT(DISTINCT pp.plan_date)            AS active_days
+                COALESCE(SUM(pie.duree_reelle_min), 0)  AS reel
          FROM production_item_etapes pie
          JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
          JOIN production_plans pp ON pp.id = ppi.plan_id
          WHERE pie.work_center_id = $1 AND pie.status = 'completed'
            AND pie.completed_at >= $2 AND pie.completed_at < $3 AND pie.duree_reelle_min IS NOT NULL
        ),
+       -- G0-28 : jours planifiés = jours où le poste a travaillé OU a été à l'arrêt. Un jour
+       -- d'arrêt total (aucune étape terminée) sortait du temps planifié et gonflait la
+       -- disponibilité. Faute de calendrier par poste, ce sont les jours d'activité connus.
+       days AS (
+         SELECT (pie.completed_at AT TIME ZONE 'Africa/Casablanca')::date AS d
+           FROM production_item_etapes pie
+          WHERE pie.work_center_id = $1 AND pie.status = 'completed'
+            AND pie.completed_at >= $2 AND pie.completed_at < $3 AND pie.duree_reelle_min IS NOT NULL
+         UNION
+         SELECT g::date FROM stops,
+                generate_series((a AT TIME ZONE 'Africa/Casablanca')::date,
+                                ((b - interval '1 second') AT TIME ZONE 'Africa/Casablanca')::date, interval '1 day') g
+          WHERE b > a
+       ),
+       act AS (SELECT COUNT(*) AS active_days FROM days),
        cap AS (SELECT capacity_minutes_per_day AS cap FROM work_centers WHERE id = $1)
-       SELECT ROUND(dt.downtime)::int AS downtime_min, perf.active_days::int AS active_days,
-              cap.cap, (cap.cap * perf.active_days) AS planned_min,
+       SELECT ROUND(dt.downtime)::int AS downtime_min, act.active_days::int AS active_days,
+              cap.cap, (cap.cap * act.active_days) AS planned_min,
               perf.est::int AS standard_min, perf.reel::int AS reel_min
-       FROM dt, perf, cap`, [workCenterId, from, to]);
+       FROM dt, perf, cap, act`, [workCenterId, from, to]);
     const row = r.rows[0] || {};
     const planned = row.planned_min != null ? parseFloat(row.planned_min) : 0;
     const downtime = row.downtime_min != null ? parseInt(row.downtime_min) : 0;

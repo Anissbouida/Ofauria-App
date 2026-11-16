@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { localIsoDate } from '../utils/local-date.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 
 /**
@@ -288,7 +289,8 @@ export const maintenanceRepository = {
     return this.create({
       kind: 'preventive', title: plan.label, fixedAssetId: plan.fixed_asset_id, customerId: plan.customer_id, equipmentLabel: plan.equipment_label,
       serialNo: plan.serial_no, planId, reportedProblem: plan.checklist, assigneeId: plan.assignee_id,
-      scheduledAt: `${plan.next_due_on instanceof Date ? plan.next_due_on.toISOString().slice(0, 10) : String(plan.next_due_on).slice(0, 10)}T09:00:00`,
+      // G0-28 : date civile de l'échéance, sans passer par UTC (toISOString la reculait d'un jour).
+      scheduledAt: `${localIsoDate(plan.next_due_on)}T09:00:00`,
     }, { userId: ctx.userId, storeId: plan.store_id ?? ctx.storeId });
   },
 

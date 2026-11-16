@@ -2,6 +2,7 @@ import { db } from '../config/database.js';
 import { logger } from '../utils/logger.js';
 import { processOutbox } from './mailer.js';
 import { maintenanceRepository } from '../repositories/maintenance.repository.js';
+import { systemUserId } from './system-user.js';
 import { dunningRepository } from '../repositories/dunning.repository.js';
 import { ledgerIntegrityRepository } from '../repositories/ledger-integrity.repository.js';
 import { expireDue as loyaltyExpireDue } from './loyalty.js';
@@ -85,7 +86,8 @@ async function maintenanceDue(): Promise<JobResult> {
         AND (pl.due_notified_on IS NULL OR pl.due_notified_on < pl.next_due_on)`);
   let created = 0;
   for (const pl of plans.rows) {
-    const it = await maintenanceRepository.createFromPlan(pl.id, { userId: null as unknown as string, storeId: pl.store_id });
+    // G0-28 : la tâche planifiée agit au nom de l'utilisateur technique « Système ».
+    const it = await maintenanceRepository.createFromPlan(pl.id, { userId: await systemUserId(), storeId: pl.store_id });
     if (!it) continue;
     created++;
     await db.query(`UPDATE maintenance_plans SET due_notified_on = next_due_on WHERE id = $1`, [pl.id]);
