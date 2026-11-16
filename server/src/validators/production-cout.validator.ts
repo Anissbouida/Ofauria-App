@@ -6,7 +6,8 @@ export const createEquipementSchema = z.object({
   type: z.string().min(1).max(60),
   cout_horaire: z.number().min(0).default(0),
   puissance_kw: z.number().min(0).optional(),
-  cout_kwh: z.number().min(0).default(1.50),
+  // Absent : le dépôt applique la politique « Prix du kWh » (M1-03), plus 1,50 en dur.
+  cout_kwh: z.number().min(0).optional(),
   notes: z.string().optional(),
   store_id: z.string().uuid().optional(),
 });

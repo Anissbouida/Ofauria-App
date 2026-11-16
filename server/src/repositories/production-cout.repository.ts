@@ -35,11 +35,13 @@ export const productionCoutRepository = {
     nom: string; type: string; cout_horaire: number;
     puissance_kw?: number; cout_kwh?: number; notes?: string; store_id?: string;
   }) {
+    // M1-03 : sans prix saisi, la politique « Prix du kWh » (établissement, puis société).
+    const coutKwh = data.cout_kwh || await policyNumber('production.kwh_price', 'price', { storeId: data.store_id ?? null });
     const result = await db.query(
       `INSERT INTO production_equipements (nom, type, cout_horaire, puissance_kw, cout_kwh, notes, store_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [data.nom, data.type, data.cout_horaire, data.puissance_kw || null,
-       data.cout_kwh || 1.50, data.notes || null, data.store_id || null]
+       coutKwh, data.notes || null, data.store_id || null]
     );
     return result.rows[0];
   },
