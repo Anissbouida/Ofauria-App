@@ -130,6 +130,9 @@ export const payrollConfigApi = {
     api.get('/payroll/transfer', { params: { month, year, includeUnpaid } }).then(r => r.data.data),
   transferFile: (month: number, year: number, includeUnpaid: boolean, format: 'csv' | 'pdf') =>
     api.get('/payroll/transfer', { params: { month, year, includeUnpaid, format }, responseType: 'blob' }),
+  /** Livre de paie (G0-12) : PDF paysage ou Excel, d'un mois ou de l'année (month omis). */
+  bookFile: (year: number, month: number | null, format: 'pdf' | 'xlsx') =>
+    api.get('/payroll/book', { params: { year, ...(month ? { month } : {}), format }, responseType: 'blob' }),
   /** Attestation de travail / de salaire (salarie en poste). */
   attestation: (employeeId: string, kind: 'travail' | 'salaire') =>
     api.get(`/employees/${employeeId}/attestations/${kind}`, { responseType: 'blob' }),

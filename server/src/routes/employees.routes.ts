@@ -177,6 +177,8 @@ const preetabliUpload = multer({ storage: multer.memoryStorage(), limits: { file
 payrollRouter.post('/declarations/ebds', authenticate, authorizeModule('employees', 'view'), preetabliUpload.single('file'), asyncHandler(payrollComplianceController.ebds));
 // Ordre de virement groupe des salaires (mig 325) : liste, CSV banque, lettre PDF.
 payrollRouter.get('/transfer', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollComplianceController.transferOrder));
+// Livre de paie (G0-12) : une ligne par salarié et par mois, PDF paysage ou Excel.
+payrollRouter.get('/book', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollComplianceController.book));
 // Elements fixes par employe (primes/indemnites/retenues recurrentes).
 payrollRouter.get('/items/employee/:employeeId', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.listItems));
 payrollRouter.post('/items/employee/:employeeId', authenticate, authorizeModule('employees', 'edit'), validate(employeePayrollItemSchema), asyncHandler(payrollConfigController.createItem));

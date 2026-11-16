@@ -6,6 +6,8 @@ import { payrollSettingsRepository, taxScaleRepository, monthBounds } from '../r
 import { payrollDeclarationRepository } from '../repositories/payroll-declarations.repository.js';
 import { buildEbds, parsePreetabli } from '../services/ebds.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
+import { loadPayrollBook, payrollBookEdition } from '../services/payroll-book.service.js';
+import { editionContext, renderPdf, renderXlsx } from '../services/ledger-editions.service.js';
 import {
   generateEmploymentAttestationPdf, generateSalaryAttestationPdf, generateTransferOrderPdf,
 } from '../services/hr-documents-pdf.service.js';
@@ -102,6 +104,28 @@ export const payrollComplianceController = {
     } catch (err) {
       res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Préétabli illisible' } });
     }
+  },
+
+  /**
+   * GET /payroll/book?year&month&format=json|pdf|xlsx — livre de paie (G0-12).
+   * Sans `month` : toute l'année, un sous-total par mois.
+   */
+  async book(req: AuthRequest, res: Response) {
+    const year = parseInt(String(req.query.year), 10);
+    const month = req.query.month ? parseInt(String(req.query.month), 10) : null;
+    if (!year || year < 2000 || year > 2100 || (month !== null && !(month >= 1 && month <= 12))) {
+      res.status(400).json({ success: false, error: { message: 'year (et month de 1 à 12) requis' } }); return;
+    }
+    const book = await loadPayrollBook({ year, month, storeId: req.user!.storeId });
+    const format = String(req.query.format ?? 'json');
+    if (format === 'json') { res.json({ success: true, data: book }); return; }
+    if (format !== 'pdf' && format !== 'xlsx') { res.status(400).json({ success: false, error: { message: 'format : json, pdf ou xlsx' } }); return; }
+    const edition = payrollBookEdition(book);
+    const ctx = await editionContext(req.user!.userId);
+    const buf = format === 'xlsx' ? await renderXlsx(edition, ctx) : await renderPdf(edition, ctx);
+    res.setHeader('Content-Type', format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${edition.key}.${format}"`);
+    res.send(buf);
   },
 
   /** GET /payroll/transfer?month&year&includeUnpaid&format=json|csv|pdf */

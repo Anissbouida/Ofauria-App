@@ -2,7 +2,7 @@ import PayrollPayDialog from './PayrollPayDialog';
 import { useMemo, useState } from 'react';
 import SearchSelect from '../../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { payrollApi, advancesApi } from '../../../api/employees.api';
+import { payrollApi, advancesApi, payrollConfigApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
 import {
   UserCog, Users, Banknote, Download, ArrowUpDown, ArrowUp, ArrowDown, FileText, RotateCcw, Lock, Unlock,
@@ -250,6 +250,26 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
             title="Ordre de virement groupé : fichier banque et lettre à signer"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Banknote size={13} /> Virement groupé
+          </button>
+          {/* G0-12 : livre de paie du mois (PDF paysage, Excel) ou de l'année. */}
+          {(['pdf', 'xlsx'] as const).map(fmt => (
+            <button key={fmt} className="odoo-btn-secondary" disabled={sortedPayrolls.length === 0}
+              title={`Livre de paie de ${MONTH_NAMES[month - 1]} ${year} — ${fmt === 'pdf' ? 'PDF' : 'Excel'}`}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              onClick={async () => {
+                try { saveBlobResponse(await payrollConfigApi.bookFile(year, month, fmt), `livre_de_paie_${year}-${String(month).padStart(2, '0')}.${fmt}`); }
+                catch (err) { notify.error(apiErrorMessage(err, 'Erreur lors de l\'édition du livre de paie')); }
+              }}>
+              <FileText size={13} /> Livre de paie {fmt === 'pdf' ? 'PDF' : 'Excel'}
+            </button>
+          ))}
+          <button className="odoo-btn-secondary" title={`Livre de paie de l'année ${year} (Excel)`}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            onClick={async () => {
+              try { saveBlobResponse(await payrollConfigApi.bookFile(year, null, 'xlsx'), `livre_de_paie_${year}.xlsx`); }
+              catch (err) { notify.error(apiErrorMessage(err, 'Erreur lors de l\'édition du livre de paie')); }
+            }}>
+            <FileText size={13} /> Livre {year}
           </button>
           <button onClick={async () => {
             if (!(await confirm(`Générer les bulletins de paie ${MONTH_NAMES[month - 1]} ${year} pour les employés mensuels et les employés hebdo / quinzaine déclarés ?\n\nLes bulletins déjà PAYÉS ne sont jamais écrasés. Les autres sont recalculés depuis le pointage et les paies périodiques du mois.`,
