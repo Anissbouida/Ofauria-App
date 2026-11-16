@@ -31,12 +31,12 @@ import { OrderStatusTag } from './OrderSplit';
 
 type Row = Record<string, any>;
 type StepTone = 'done' | 'current' | 'warn' | '';
-const INVOICE_STATUS: Record<string, { label: string; tag: string; tone: StatusTone; icon?: LucideIcon }> = {
-  pending: { label: 'À encaisser', tag: 'odoo-tag-yellow', tone: 'todo' }, partial: { label: 'Partielle', tag: 'odoo-tag-blue', tone: 'progress' },
-  paid: { label: 'Soldée', tag: 'odoo-tag-green', tone: 'done' }, draft: { label: 'Brouillon', tag: 'odoo-tag-grey', tone: 'draft' },
+const INVOICE_STATUS: Record<string, { label: string; tone: StatusTone; icon?: LucideIcon }> = {
+  pending: { label: 'À encaisser', tone: 'todo' }, partial: { label: 'Partielle', tone: 'progress' },
+  paid: { label: 'Soldée', tone: 'done' }, draft: { label: 'Brouillon', tone: 'draft' },
 };
-const BL_STATUS: Record<string, { label: string; tag: string; tone: StatusTone; icon?: LucideIcon }> = {
-  delivered: { label: 'À facturer', tag: 'odoo-tag-orange', tone: 'todo', icon: FileText }, invoiced: { label: 'Facturé', tag: 'odoo-tag-green', tone: 'done' }, cancelled: { label: 'Annulé', tag: 'odoo-tag-grey', tone: 'cancelled' },
+const BL_STATUS: Record<string, { label: string; tone: StatusTone; icon?: LucideIcon }> = {
+  delivered: { label: 'À facturer', tone: 'todo', icon: FileText }, invoiced: { label: 'Facturé', tone: 'done' }, cancelled: { label: 'Annulé', tone: 'cancelled' },
 };
 const STAGE_ORDER = ['pending', 'confirmed', 'in_production', 'ready', 'partially_delivered', 'completed'];
 
@@ -333,9 +333,10 @@ export default function OrderRecordPage() {
           <section className="prj-panel">
             <h2>Pièces liées</h2>
             <ul className="sal-docs">
-              {quote && <li><span className="odoo-tag odoo-tag-green">Devis</span><button type="button" className="sal-link sal-doc-main" onClick={() => navigate(`/quotes?open=${quote.id}`)}>{quote.number}</button><span className="sal-mono">{n(num(quote.total))}</span></li>}
-              {allNotes.map(d => <li key={d.id}><span className={`odoo-tag ${BL_STATUS[d.status]?.tag ?? 'odoo-tag-grey'}`}>BL</span><button type="button" className="sal-link sal-doc-main" onClick={() => navigate(`/delivery-notes?open=${d.id}`)}>{d.number}</button><span className="sal-mono">{n(num(d.total_ttc))}</span></li>)}
-              {allInvoices.map(i => <li key={i.id}><span className={`odoo-tag ${INVOICE_STATUS[i.status]?.tag ?? 'odoo-tag-grey'}`}>{i.kind === 'credit_note' ? 'Avoir' : 'Facture'}</span><button type="button" className="sal-link sal-doc-main" onClick={() => navigate('/sales?tab=invoices')}>{i.invoice_number}</button><span className="sal-mono">{n(num(i.total_amount))}</span></li>)}
+              {/* Type de pièce en gris (catégorie) ; l'état de la pièce en étiquette de statut commune. */}
+              {quote && <li><span className="odoo-tag odoo-tag-grey">Devis</span><button type="button" className="sal-link sal-doc-main" onClick={() => navigate(`/quotes?open=${quote.id}`)}>{quote.number}</button><span className="sal-mono">{n(num(quote.total))}</span></li>}
+              {allNotes.map(d => <li key={d.id}><span className="odoo-tag odoo-tag-grey">BL</span><button type="button" className="sal-link sal-doc-main" onClick={() => navigate(`/delivery-notes?open=${d.id}`)}>{d.number}</button>{BL_STATUS[d.status] && <StatusTag tone={BL_STATUS[d.status].tone} icon={BL_STATUS[d.status].icon} label={BL_STATUS[d.status].label} />}<span className="sal-mono">{n(num(d.total_ttc))}</span></li>)}
+              {allInvoices.map(i => <li key={i.id}><span className="odoo-tag odoo-tag-grey">{i.kind === 'credit_note' ? 'Avoir' : 'Facture'}</span><button type="button" className="sal-link sal-doc-main" onClick={() => navigate('/sales?tab=invoices')}>{i.invoice_number}</button>{INVOICE_STATUS[i.status] && <StatusTag tone={INVOICE_STATUS[i.status].tone} label={INVOICE_STATUS[i.status].label} />}<span className="sal-mono">{n(num(i.total_amount))}</span></li>)}
               {!quote && !allNotes.length && !allInvoices.length && <li className="sal-sub" style={{ margin: 0 }}>Aucune pièce liée pour l'instant.</li>}
             </ul>
             {pro && st === 'ready' && <NextStep icon={Check} label="Créer le bon de livraison" onClick={() => setModal('deliver')} />}

@@ -84,6 +84,9 @@
 .sal-docs { list-style: none; margin: 0; padding: 0; display: grid; }
 .sal-docs li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--odoo-border); font-size: 0.8125rem; }
 .sal-docs li:last-child { border-bottom: 0; }
+/* Pièces liées : le numéro reste sur une ligne ; statut et montant passent dessous si la colonne est étroite. */
+.sal-docs li { flex-wrap: wrap; row-gap: 4px; }
+.sal-docs .sal-doc-main { white-space: nowrap; min-width: max-content; }
 .sal-doc-main { flex: 1; min-width: 0; text-align: left; font-family: ui-monospace, Menlo, monospace; font-size: 0.8125rem; }
 
 /* Fiche client 360 (planche 4) : alerte, achats par mois, balance âgée. */

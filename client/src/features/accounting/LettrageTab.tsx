@@ -314,7 +314,9 @@ export default function LettrageTab() {
                           : !l.lettrage_id && <input type="checkbox" checked={selected.has(l.id)} onChange={() => toggle(l.id)} aria-label={`Sélectionner ${l.entry_number}`} />}
                       </td>
                       <td>{l.code && <span className={`odoo-tag ${l.lettrage_partiel_id ? 'odoo-tag-orange' : 'odoo-tag-green'}`} style={{ ...mono, fontWeight: 600 }}
-                        title={l.lettrage_partiel_id ? 'Pré-lettré : pièce et acomptes rapprochés, reste dû à solder' : l.lettered_at ? `Lettré le ${new Date(l.lettered_at).toLocaleString('fr-FR')}` : undefined}>{l.code}</span>}</td>
+                        title={l.lettrage_partiel_id ? 'Pré-lettré : pièce et acomptes rapprochés, reste dû à solder' : l.lettered_at ? `Lettré le ${new Date(l.lettered_at).toLocaleString('fr-FR')}` : undefined}>{l.code}</span>}
+                        {/* Partiel / total ne repose pas sur la seule couleur : mention visible du partiel. */}
+                        {l.code && l.lettrage_partiel_id && <small style={{ display: 'block', marginTop: 2, fontSize: 11, fontWeight: 600, color: '#B45309' }}>partiel</small>}</td>
                       <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{fmtDate(l.entry_date)}</td>
                       <td style={{ ...mono, fontSize: '0.75rem', color: '#185fa5' }}>{l.entry_number}</td>
                       <td style={{ ...mono, fontSize: '0.6875rem' }}>{l.journal_code}</td>

@@ -645,12 +645,16 @@ export function BonSortiePanel({
               {isMagasinier && (
                 <td className="bsi-num">
                   {ev && ev.qty !== null ? (
-                    <span className={`odoo-tag ${ev.outOfBand ? 'odoo-tag-orange' : 'odoo-tag-green'}`}>
-                      {ev.outOfBand ? <AlertTriangle size={10} /> : <Check size={10} />}
+                    <span className={`odoo-tag ${ev.outOfBand ? 'odoo-tag-orange' : 'odoo-tag-green'}`}
+                      title={ev.outOfBand ? 'Hors tolérance' : 'Dans la tolérance'} aria-label={ev.outOfBand ? 'Écart hors tolérance' : 'Écart dans la tolérance'}>
+                      {ev.outOfBand ? <AlertTriangle size={10} aria-hidden="true" /> : <Check size={10} aria-hidden="true" />}
                       {Number(fmtQty(Math.abs(ev.ecart), unit).v) === 0 ? 'pile' : `${ev.ecart > 0 ? '+' : '−'}${fmtQty(Math.abs(ev.ecart), unit).v} ${fmtQty(Math.abs(ev.ecart), unit).u}`}
                     </span>
                   ) : !ev && actual !== null ? (
-                    <span className={`odoo-tag ${line.ecart_reason ? 'odoo-tag-orange' : Number(recordedEcart.v) === 0 ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>
+                    <span className={`odoo-tag ${line.ecart_reason ? 'odoo-tag-orange' : Number(recordedEcart.v) === 0 ? 'odoo-tag-green' : 'odoo-tag-grey'}`}
+                      title={line.ecart_reason ? `Écart justifié : ${line.ecart_reason}` : Number(recordedEcart.v) === 0 ? 'Poids exact' : 'Écart enregistré, sans motif'}>
+                      {/* Le sens ne repose pas sur la seule couleur : même icône que l'écart en direct. */}
+                      {line.ecart_reason ? <AlertTriangle size={10} aria-hidden="true" /> : Number(recordedEcart.v) === 0 ? <Check size={10} aria-hidden="true" /> : null}
                       {Number(recordedEcart.v) === 0 ? 'pile' : `${weighedEcart > 0 ? '+' : '−'}${recordedEcart.v} ${recordedEcart.u}`}
                     </span>
                   ) : <span className="bsi-empty">—</span>}
