@@ -1103,11 +1103,17 @@ async function balanceSheetIn(db: Querier, params: { endDate: string; storeId?: 
         // Immobilise : on garde le signe (28xx amort = negatif, reduit le net)
         immobilise.push({ code: r.code, label: r.label, amount: Math.round(solde * 100) / 100 });
       } else if (r.account_class === 3) {
-        circulantActif.push(line);
+        // Un compte d'actif circulant a solde CREDITEUR (client crediteur, avance recue) est
+        // une dette : il passe au passif circulant. Le compter en valeur absolue a l'actif
+        // desequilibrait le bilan du double de ce solde.
+        if (solde >= 0) circulantActif.push(line); else circulantPassif.push(line);
       } else if (r.account_class === 1) {
-        financementPermanent.push(line);
+        // Financement permanent : signe conserve (un report a nouveau debiteur le reduit).
+        financementPermanent.push({ code: r.code, label: r.label, amount: Math.round(-solde * 100) / 100 });
       } else if (r.account_class === 4) {
-        circulantPassif.push(line);
+        // Un compte de passif circulant a solde DEBITEUR (charges constatees d'avance 486,
+        // fournisseur debiteur, credit de TVA) est une creance : il passe a l'actif circulant.
+        if (solde <= 0) circulantPassif.push(line); else circulantActif.push(line);
       } else if (r.account_class === 5) {
         if (solde >= 0) tresorerieActif.push(line);
         else tresoreriePassif.push(line);
