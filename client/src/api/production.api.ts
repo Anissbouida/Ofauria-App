@@ -103,8 +103,15 @@ export const productionApi = {
   start: (id: string) => api.post(`/production/${id}/start`).then(r => r.data.data),
   startItems: (id: string, itemIds: string[], startedAt?: string) =>
     api.post(`/production/${id}/start-items`, { itemIds, startedAt }).then(r => r.data),
-  produceItems: (id: string, items: { planItemId: string; actualQuantity: number; outputs?: { productId?: string | null; equivPieces?: number; quantity: number }[] }[], producedAt?: string) =>
-    api.post(`/production/${id}/produce-items`, { items, producedAt }).then(r => r.data),
+  /** G0-24 : `extra` porte les saisies du lancement (observations, bases, pertes), enregistrées
+   *  avec la déclaration dans une seule transaction côté serveur. */
+  produceItems: (id: string, items: { planItemId: string; actualQuantity: number; outputs?: { productId?: string | null; equivPieces?: number; quantity: number }[] }[], producedAt?: string,
+    extra?: {
+      observations?: string;
+      bases?: { subRecipeId: string; actualQuantity: number; alreadyProduced?: boolean }[];
+      losses?: { planItemId: string; quantity: number; reason: string; reasonNote?: string }[];
+    }) =>
+    api.post(`/production/${id}/produce-items`, { items, producedAt, ...extra }).then(r => r.data),
   pendingTransfers: () => api.get('/production/transfers/pending').then(r => r.data.data),
   confirmTransferReception: (transferId: string, items: { itemId: string; qtyReceived: number; notes?: string }[]) =>
     api.post(`/production/transfers/${transferId}/receive`, { items }).then(r => r.data),

@@ -67,6 +67,22 @@ export const produceItemsSchema = z.object({
     })).max(20).optional(),
   })).min(1, 'Aucun article à produire'),
   producedAt: clientTimestamp.optional(),
+  // G0-24 : saisies de la fenêtre de lancement, enregistrées avec la déclaration.
+  /** Observation libre du chef. */
+  observations: z.string().trim().max(2000).optional(),
+  /** Bases partagées : quantité réellement produite, ou « déjà produite ». */
+  bases: z.array(z.object({
+    subRecipeId: uuid,
+    actualQuantity: z.number().finite().min(0).max(1_000_000),
+    alreadyProduced: z.boolean().optional(),
+  })).max(100).optional(),
+  /** Pertes constatées à la déclaration (prévu − produit), créées dans la même transaction. */
+  losses: z.array(z.object({
+    planItemId: uuid,
+    quantity: z.number().finite().positive().max(1_000_000),
+    reason: z.string().trim().min(1).max(60),
+    reasonNote: z.string().trim().max(500).optional(),
+  })).max(200).optional(),
 });
 
 export const completeSchema = z.object({

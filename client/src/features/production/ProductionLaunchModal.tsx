@@ -5,7 +5,6 @@ import { productsApi } from '../../api/products.api';
 import { apiErrorMessage } from '../../api/errors';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { productionApi } from '../../api/production.api';
-import { productLossesApi } from '../../api/product-losses.api';
 import { recipesApi } from '../../api/recipes.api';
 import { contenantsApi } from '../../api/contenants.api';
 import { useReferentiel } from '../../hooks/useReferentiel';
@@ -343,7 +342,7 @@ export default function ProductionLaunchModal({
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      // 1. Produce items
+      // 1. Articles produits
       const itemsToSubmit = [...selectedItems]
         .map((itemId) => {
           const outputs = cutMode[itemId]
@@ -363,29 +362,33 @@ export default function ProductionLaunchModal({
         })
         .filter((i) => i.actualQuantity > 0);
 
-      await productionApi.produceItems(planId, itemsToSubmit, producedAt);
-
-      // 2. Record losses (auto-detect for single item, or declareLosses flag for multi)
+      // 2. Pertes (prévu − produit), observations et bases : envoyées AVEC la déclaration
+      // (G0-24). Le serveur enregistre le tout dans une seule transaction ; avant, les pertes
+      // partaient dans des appels séparés et les observations n'étaient envoyées nulle part.
       const shouldRecordLosses = isSingleItem || declareLosses;
-      if (shouldRecordLosses) {
-        for (const itemId of selectedItems) {
-          const item = items.find((i) => (i.id as string) === itemId);
-          if (!item) continue;
-          const planned = (item.planned_quantity as number) || 0;
-          const actual = actuals[itemId] || 0;
-          const lost = planned - actual;
-          if (lost > 0 && lossReasons[itemId]) {
-            await productLossesApi.create({
-              productId: item.product_id as string,
-              quantity: lost,
-              lossType: 'production',
-              reason: lossReasons[itemId],
-              reasonNote: lossNotes[itemId] || undefined,
-              productionPlanId: planId,
-            });
-          }
-        }
-      }
+      const losses = shouldRecordLosses
+        ? [...selectedItems].flatMap((itemId) => {
+            const item = items.find((i) => (i.id as string) === itemId);
+            if (!item) return [];
+            const lost = ((item.planned_quantity as number) || 0) - (actuals[itemId] || 0);
+            return lost > 0 && lossReasons[itemId]
+              ? [{ planItemId: itemId, quantity: lost, reason: lossReasons[itemId], reasonNote: lossNotes[itemId] || undefined }]
+              : [];
+          })
+        : [];
+      const bases = subRecipes
+        .filter((sr) => baseActuals[sr.subRecipeId] !== undefined || baseAlreadyProduced[sr.subRecipeId])
+        .map((sr) => ({
+          subRecipeId: sr.subRecipeId,
+          actualQuantity: baseActuals[sr.subRecipeId] ?? sr.totalNeeded,
+          alreadyProduced: !!baseAlreadyProduced[sr.subRecipeId],
+        }));
+
+      await productionApi.produceItems(planId, itemsToSubmit, producedAt, {
+        observations: observations.trim() || undefined,
+        bases: bases.length > 0 ? bases : undefined,
+        losses: losses.length > 0 ? losses : undefined,
+      });
 
       // 3. Invalidate queries and wait for refetch to complete
       await Promise.all([

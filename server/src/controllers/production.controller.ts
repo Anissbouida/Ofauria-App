@@ -12,6 +12,7 @@ import { isTransitionError, listPlanEvents } from '../services/production-state.
 import { db } from '../config/database.js';
 import { workshopsOf, workshopForCategorySlug, workshopLabel, listWorkshops, saveWorkshop } from '../services/workshops.js';
 import { processRefs } from '../services/process-referentials.js';
+import { declareProduction, listPlanObservations } from '../services/production-declaration.js';
 
 /** Charge le plan et vérifie qu'il appartient au magasin de l'utilisateur
  *  (admin sans magasin = accès global). Répond 404 / 403 et renvoie null sinon. */
@@ -182,7 +183,8 @@ export const productionController = {
     if (req.user!.storeId && plan.store_id && plan.store_id !== req.user!.storeId) {
       res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
     }
-    res.json({ success: true, data: plan });
+    // G0-24 : observations et bases saisies aux déclarations de production.
+    res.json({ success: true, data: { ...plan, observations: await listPlanObservations(req.params.id) } });
   },
 
   async create(req: AuthRequest, res: Response) {
@@ -422,13 +424,15 @@ export const productionController = {
       res.status(409).json({ success: false, error: { message: 'Le plan doit etre en cours pour produire des articles' } });
       return;
     }
-    const { items, producedAt } = req.body;
+    const { items, producedAt, observations, bases, losses } = req.body;
     if (!items || items.length === 0) {
       res.status(400).json({ success: false, error: { message: 'Aucun article a produire' } });
       return;
     }
     try {
-      const { warnings, autoCompleted } = await productionRepository.produceItems(req.params.id, items, req.user!.userId, req.user!.storeId, producedAt);
+      // G0-24 : production, pertes et observations du lancement dans une seule transaction.
+      const { warnings, autoCompleted } = await declareProduction(req.params.id, { items, producedAt, observations, bases, losses },
+        { userId: req.user!.userId, storeId: req.user!.storeId });
       const updated = await productionRepository.findById(req.params.id);
 
       // If plan auto-completed, notify manager
