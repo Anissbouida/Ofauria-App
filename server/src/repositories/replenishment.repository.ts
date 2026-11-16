@@ -1,3 +1,4 @@
+import { policyNumber } from '../services/policies.js';
 import { db } from '../config/database.js';
 import { workshopForCategorySlug } from '../services/workshops.js';
 import { getUserTimezone } from '../utils/timezone.js';
@@ -1012,10 +1013,10 @@ export const replenishmentRepository = {
       WHERE s.store_id = $1
         AND si.product_id = ANY($2)
         AND EXTRACT(DOW FROM s.created_at AT TIME ZONE '${tz}') = $3
-        AND s.created_at AT TIME ZONE '${tz}' >= (NOW() AT TIME ZONE '${tz}') - INTERVAL '29 days'
+        AND s.created_at AT TIME ZONE '${tz}' >= (NOW() AT TIME ZONE '${tz}') - ($4::int * INTERVAL '1 day')
       GROUP BY si.product_id, DATE(s.created_at AT TIME ZONE '${tz}')
       ORDER BY si.product_id, sale_date DESC
-    `, [storeId, productIds, targetDow]);
+    `, [storeId, productIds, targetDow, await policyNumber('production.replenishment_history', 'days', { storeId })]);
 
     // Organiser : { productId => [{ date, qty }, ...] } trie par date desc
     const salesByProduct: Record<string, { date: string; qty: number }[]> = {};
