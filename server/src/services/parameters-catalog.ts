@@ -160,6 +160,17 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'stock.dlc_alerts', domain: 'production', section: 'business',
+    label: 'Alertes de DLC',
+    help: 'Prévient quand un lot de matière ou de produit fini encore en stock approche de sa date limite. Une alerte par lot et par seuil : le magasinier est notifié pour les matières, le gérant pour les produits finis. Seuils en jours avant l\'échéance.',
+    fields: [
+      { name: 'days', label: 'Seuils', type: 'list', unit: 'jours avant l\'échéance' },
+      { name: 'email', label: 'Envoyer aussi un e-mail aux responsables', type: 'boolean' },
+    ],
+    defaults: { days: [7, 2], email: false },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'sales.vat_regime', domain: 'sales', section: 'business',
     label: 'Régime de TVA',
     help: 'Débit : la TVA est déclarée dès la facture. Encaissement : la TVA des factures et tickets à crédit est déclarée au fur et à mesure des règlements, à partir de la date de bascule (les factures antérieures restent déclarées à la facturation). Sans date de bascule, la déclaration reste au régime des débits.',

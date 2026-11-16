@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { logger } from '../utils/logger.js';
-import { processOutbox } from './mailer.js';
+import { processOutbox, enqueueEmail } from './mailer.js';
+import { getParameter } from './module-parameters.service.js';
 import { maintenanceRepository } from '../repositories/maintenance.repository.js';
 import { systemUserId } from './system-user.js';
 import { runDepreciation } from './depreciation.service.js';
@@ -301,6 +302,82 @@ async function lotsExpire(): Promise<JobResult> {
   return { items: count, message: count ? `${count} lot(s) périmé(s) sorti(s) du stock, ${productIds.length} produit(s) concerné(s)` : 'Aucun lot à périmer' };
 }
 
+/** Réglage des alertes d'échéance : seuils en jours, croissants et sans doublon ; e-mail en plus. */
+function alertThresholds(cfg: { days?: unknown; email?: unknown } | null | undefined, fallback: number[]) {
+  const raw = Array.isArray(cfg?.days) ? cfg!.days as unknown[] : fallback;
+  const days = [...new Set(raw.map(Number).filter(n => Number.isInteger(n) && n > 0 && n <= 365))].sort((a, b) => a - b);
+  return { days: days.length ? days : fallback, email: cfg?.email === true };
+}
+
+/** Responsables à prévenir par e-mail : gérants et administrateurs actifs de l'établissement (ou sans établissement). */
+async function managerEmails(storeId: string | null): Promise<{ email: string; name: string }[]> {
+  const r = await db.query(
+    `SELECT email, TRIM(CONCAT(first_name, ' ', last_name)) AS name FROM users
+      WHERE is_active AND NOT is_system AND role IN ('admin', 'manager') AND email IS NOT NULL
+        AND ($1::uuid IS NULL OR store_id IS NULL OR store_id = $1)`, [storeId]);
+  return r.rows;
+}
+
+/**
+ * G1-11 — alertes de DLC : lots de matières et de produits finis encore en stock qui
+ * expirent sous N jours, pour chaque seuil de stock.dlc_alerts. Une alerte par lot et par
+ * seuil (lot_expiry_alerts) ; une notification par établissement et par nature de lot,
+ * au magasinier pour les matières, au gérant pour les produits finis.
+ */
+async function dlcAlerts(): Promise<JobResult> {
+  const { days, email } = alertThresholds(await getParameter<{ days?: number[]; email?: boolean }>('stock.dlc_alerts'), [7, 2]);
+  type Row = { lot_kind: 'ingredient' | 'product'; lot_id: string; store_id: string | null; name: string; lot_number: string | null; expires_on: string; days_left: number };
+  const fresh = new Map<string, Row>();
+  for (const t of days) {
+    const r = await db.query(
+      `WITH today AS (SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date AS d),
+            due AS (
+              SELECT 'ingredient'::text AS lot_kind, il.id AS lot_id, il.store_id, i.name,
+                     COALESCE(il.supplier_lot_number, il.lot_number) AS lot_number, il.expiration_date AS expires_on
+                FROM ingredient_lots il JOIN ingredients i ON i.id = il.ingredient_id, today
+               WHERE il.status = 'active' AND il.quantity_remaining > 0
+                 AND il.expiration_date BETWEEN today.d AND today.d + $1::int
+              UNION ALL
+              SELECT 'product', pl.id, pl.store_id, p.name, pl.lot_number, pl.expires_at
+                FROM product_lots pl JOIN products p ON p.id = pl.product_id, today
+               WHERE pl.status = 'active' AND (pl.backroom_qty + pl.vitrine_qty) > 0
+                 AND pl.expires_at BETWEEN today.d AND today.d + $1::int),
+            ins AS (
+              INSERT INTO lot_expiry_alerts (lot_kind, lot_id, threshold_days, expires_on)
+              SELECT lot_kind, lot_id, $1::smallint, expires_on FROM due
+              ON CONFLICT DO NOTHING RETURNING lot_kind, lot_id)
+       SELECT d.lot_kind, d.lot_id, d.store_id, d.name, d.lot_number, to_char(d.expires_on, 'DD/MM/YYYY') AS expires_on,
+              (d.expires_on - (SELECT d FROM today))::int AS days_left
+         FROM due d JOIN ins ON ins.lot_kind = d.lot_kind AND ins.lot_id = d.lot_id`, [t]);
+    for (const row of r.rows as Row[]) fresh.set(`${row.lot_kind}:${row.lot_id}`, row);
+  }
+  if (!fresh.size) return { items: 0, message: `Aucun nouveau lot sous ${days.join(' / ')} jour(s)` };
+
+  // Une notification par établissement et par nature de lot.
+  const groups = new Map<string, Row[]>();
+  for (const row of fresh.values()) {
+    const k = `${row.store_id ?? ''}|${row.lot_kind}`;
+    groups.set(k, [...(groups.get(k) ?? []), row]);
+  }
+  for (const rows of groups.values()) {
+    rows.sort((a, b) => a.days_left - b.days_left);
+    const kind = rows[0].lot_kind, storeId = rows[0].store_id;
+    const what = kind === 'ingredient' ? 'matière' : 'produit fini';
+    const lines = rows.map(x => `${x.name}${x.lot_number ? ` (lot ${x.lot_number})` : ''} — ${x.expires_on}, ${x.days_left === 0 ? "aujourd'hui" : `dans ${x.days_left} j`}`);
+    const title = `DLC proche · ${rows.length} lot${rows.length > 1 ? 's' : ''} de ${what}`;
+    const message = lines.slice(0, 6).join(' ; ') + (lines.length > 6 ? ` ; et ${lines.length - 6} autre(s)` : '');
+    await db.query(
+      `INSERT INTO notifications (target_role, store_id, type, title, message, reference_type)
+       VALUES ($1, $2, 'dlc_alert', $3, $4, 'lot')`, [kind === 'ingredient' ? 'magasinier' : 'manager', storeId, title, message]);
+    if (email) {
+      for (const m of await managerEmails(storeId)) {
+        await enqueueEmail({ to: m.email, toName: m.name, subject: title, text: `Lots proches de leur date limite :\n\n${lines.join('\n')}`, type: 'dlc_alert' });
+      }
+    }
+  }
+  return { items: fresh.size, message: `${fresh.size} lot(s) signalé(s) sous ${days.join(' / ')} jour(s)` };
+}
+
 async function webhookOutbox(): Promise<JobResult> {
   const r = await webhookRepository.deliverPending();
   return { items: r.sent, message: `${r.sent} envoyé(s)${r.failed ? ` · ${r.failed} échec(s)` : ''}` };
@@ -324,6 +401,7 @@ export const JOBS: Record<string, Handler> = {
   depreciation_monthly: depreciationMonthly,
   prepaid_recognition: prepaidRecognition,
   lots_expire: lotsExpire,
+  dlc_alerts: dlcAlerts,
   housekeeping,
 };
 
