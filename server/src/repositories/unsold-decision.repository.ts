@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { getUserTimezone, getLocalNow } from '../utils/timezone.js';
 import { productLotRepository } from './product-lot.repository.js';
+import { removeFromVitrine } from './product-stock.helper.js';
 import { productMaterialsUnitCost } from './product-cost.helper.js';
 
 /**
@@ -554,11 +555,8 @@ export const unsoldDecisionRepository = {
           if (d.finalDestination === 'recycle') {
             // Vitrine -> ingredient recycle. d.recycleIngredientId peut etre overide
             // par la caissiere via le dropdown multi-destinations (Phase recyclage).
-            await client.query(
-              `UPDATE product_store_stock SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
-               WHERE product_id = $2 AND store_id = $3`,
-              [d.remainingQty, d.productId, data.storeId]
-            );
+            await removeFromVitrine(client, { productId: d.productId, storeId: data.storeId, qty: d.remainingQty,
+              origin: { type: 'unsold_decision', id: data.checkId ?? null }, userId: data.decidedBy, label: d.productName });
 
             // Mirror sur product_lots : recycled_qty += qty pour chaque lot consomme FEFO
             for (const step of fefoPlan) {
@@ -638,11 +636,8 @@ export const unsoldDecisionRepository = {
 
           } else if (d.finalDestination === 'waste') {
             // Les invendus sont exposes en vitrine — decrement de vitrine_quantity
-            await client.query(
-              `UPDATE product_store_stock SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
-               WHERE product_id = $2 AND store_id = $3`,
-              [d.remainingQty, d.productId, data.storeId]
-            );
+            await removeFromVitrine(client, { productId: d.productId, storeId: data.storeId, qty: d.remainingQty,
+              origin: { type: 'unsold_decision', id: data.checkId ?? null }, userId: data.decidedBy, label: d.productName });
             // Mirror sur product_lots
             for (const step of fefoPlan) {
               await productLotRepository.consumeVitrineWaste(client, step.lotId, step.qty, { type: 'unsold_decision' });
@@ -675,11 +670,11 @@ export const unsoldDecisionRepository = {
             // Phase 2 — Retour reserve : vitrine -> backroom sans toucher la DLV
             // (modele Cumule). Seuls les produits revendables (DLC OK + DLV restante)
             // doivent prendre cette branche — controle cote frontend via computeSuggestion.
+            // G0-18 : la vitrine est d'abord déchargée (manque tracé), puis la réserve créditée.
+            await removeFromVitrine(client, { productId: d.productId, storeId: data.storeId, qty: d.remainingQty,
+              origin: { type: 'unsold_decision', id: data.checkId ?? null }, userId: data.decidedBy, label: d.productName });
             await client.query(
-              `UPDATE product_store_stock
-               SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1),
-                   stock_quantity   = stock_quantity + $1,
-                   updated_at = NOW()
+              `UPDATE product_store_stock SET stock_quantity = stock_quantity + $1::numeric, updated_at = NOW()
                WHERE product_id = $2 AND store_id = $3`,
               [d.remainingQty, d.productId, data.storeId]
             );
@@ -744,11 +739,8 @@ export const unsoldDecisionRepository = {
         // silencieusement du stock systeme.
         if (discrepancy > 0 && data.closeType === 'fin_journee') {
           // Decrement vitrine pour les unites manquantes (sortent du systeme)
-          await client.query(
-            `UPDATE product_store_stock SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
-             WHERE product_id = $2 AND store_id = $3`,
-            [discrepancy, d.productId, data.storeId]
-          );
+          await removeFromVitrine(client, { productId: d.productId, storeId: data.storeId, qty: discrepancy,
+            origin: { type: 'unsold_discrepancy', id: data.checkId ?? null }, userId: data.decidedBy, label: d.productName });
 
           // Mirror sur product_lots (FEFO sur ce qui reste apres les decisions principales).
           // includeExpired car l'ecart peut concerner des lots deja expires.
@@ -1148,11 +1140,8 @@ export const unsoldDecisionRepository = {
         }
         const primaryLotId = consumedLots[0]?.lotId ?? null;
 
-        await client.query(
-          `UPDATE product_store_stock SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
-           WHERE product_id = $2 AND store_id = $3`,
-          [actualQty, item.productId, data.storeId]
-        );
+        await removeFromVitrine(client, { productId: item.productId, storeId: data.storeId, qty: actualQty,
+          origin: { type: 'expired_destruction' }, userId: data.decidedBy, label: item.productName ?? null });
 
         await client.query(
           `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)

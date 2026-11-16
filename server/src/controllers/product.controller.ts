@@ -513,7 +513,8 @@ export const productController = {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
-      const stockAfter = await adjustProductStock(client, req.params.id, change, req.user!.storeId);
+      const stockAfter = await adjustProductStock(client, req.params.id, change, req.user!.storeId,
+        { origin: { type: 'manual_adjustment' }, userId: req.user!.userId });
 
       await client.query(
         `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)

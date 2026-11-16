@@ -93,10 +93,42 @@ describe.skipIf(!hasTestDb)('Sorties supérieures au stock (G0-18)', () => {
       .toMatchObject({ requested_qty: 6, available_qty: 3, shortfall_qty: 3 });
   });
 
+  it('sortie de vitrine (invendus, manquants) : bornée à zéro et tracée', async () => {
+    await setStock(4, 2);
+    await inTx(c => stock.removeFromVitrine(c, { productId, storeId: fx.storeId, qty: 5,
+      origin: { type: 'unsold_decision' }, userId: fx.userId, label: 'Pain G018' }));
+    expect(await stockOf()).toEqual({ s: 4, v: 0 });           // la réserve n'est pas touchée
+    expect((await open()).find((a: { origin_type: string }) => a.origin_type === 'unsold_decision'))
+      .toMatchObject({ requested_qty: 5, available_qty: 2, shortfall_qty: 3 });
+  });
+
+  it('emballage : sortie supérieure au stock tracée avec son document', async () => {
+    const { packagingItemRepository } = await import('../../repositories/packaging-item.repository.js');
+    const pkgId = (await p().query(
+      `INSERT INTO packaging_items (name, unit, unit_cost, category) VALUES ($1, 'piece', 0.5, 'autre') RETURNING id`, [`Sachet G018 ${RUN}`])).rows[0].id;
+    try {
+      await inTx(c => packagingItemRepository.adjustStock(c, { packagingId: pkgId, storeId: fx.storeId, change: 8, type: 'reception' }));
+      const after = await inTx(c => packagingItemRepository.adjustStock(c, { packagingId: pkgId, storeId: fx.storeId, change: -10,
+        type: 'consumption', performedBy: fx.userId }));
+      expect(after).toBe(0);
+      const list = (await anomalies.stockAnomalyRepository.list({ status: 'open', storeId: fx.storeId }))
+        .filter((a: { item_id: string }) => a.item_id === pkgId);
+      expect(list).toHaveLength(1);
+      expect(list[0]).toMatchObject({ item_kind: 'packaging', requested_qty: 10, available_qty: 8, shortfall_qty: 2, origin_type: 'packaging_consumption' });
+      expect(list[0].item_name).toContain('Sachet G018');
+    } finally {
+      await p().query(`DELETE FROM stock_anomalies WHERE item_id = $1`, [pkgId]).catch(() => undefined);
+      await p().query(`DELETE FROM packaging_stock_transactions WHERE packaging_id = $1`, [pkgId]).catch(() => undefined);
+      await p().query(`DELETE FROM packaging_store_stock WHERE packaging_id = $1`, [pkgId]).catch(() => undefined);
+      await p().query(`DELETE FROM packaging_items WHERE id = $1`, [pkgId]).catch(() => undefined);
+    }
+  });
+
   it('une anomalie se clôt avec un motif, une seule fois', async () => {
     const [first] = await open();
+    const before = (await open()).length;
     await anomalies.stockAnomalyRepository.resolve(first.id, 'Inventaire refait, écart confirmé', fx.userId);
-    expect(await open()).toHaveLength(1);
+    expect(await open()).toHaveLength(before - 1);
     await expect(anomalies.stockAnomalyRepository.resolve(first.id, 'Encore', fx.userId)).rejects.toMatchObject({ statusCode: 404 });
   });
 });

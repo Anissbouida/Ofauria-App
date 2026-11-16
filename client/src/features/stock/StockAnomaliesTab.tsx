@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { Loader2, PackageX, Search, Check } from 'lucide-react';
 import { inventoryApi, type StockAnomaly } from '../../api/inventory.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -18,7 +19,17 @@ const KIND_LABEL: Record<StockAnomaly['item_kind'], string> = {
 const ORIGIN_LABEL: Record<string, string> = {
   production_plan: 'Production', lot_disposal: 'Mise au rebut d\'un lot', lot_expiry: 'Péremption d\'un lot',
   product_stock_adjust: 'Mouvement de stock produit', delivery_note: 'Bon de livraison',
+  bon_sortie: 'Bon de sortie (pesée)', opening_check: 'Contrôle d\'ouverture', inventory_check: 'Inventaire de vitrine',
+  unsold_decision: 'Décision sur les invendus', unsold_discrepancy: 'Écart d\'invendus', expired_destruction: 'Destruction de périmés',
+  product_transfer: 'Transfert entre sites', product_loss: 'Perte déclarée', manual_adjustment: 'Ajustement manuel',
+  production_transfer_gap: 'Écart de réception en boutique', frigo_loss: 'Perte au frigo', frigo_expired: 'Périmé au frigo',
+  packaging_consumption: 'Consommation d\'emballage', packaging_waste: 'Perte d\'emballage', packaging_adjustment: 'Ajustement d\'emballage',
 };
+/** Page où l'on ajuste le stock de l'article, avec un motif. */
+const adjustLink = (a: StockAnomaly): string | null =>
+  a.item_kind === 'ingredient' ? `/stock/${a.item_id}`
+    : a.item_kind === 'product' ? '/products'
+    : a.item_kind === 'packaging' ? '/stock?tab=consumables' : null;
 // Quantité dans l'unité de stock de l'article, telle qu'elle a été saisie.
 const qty = (n: number, unit: string) => `${n.toLocaleString('fr-FR', { maximumFractionDigits: 3 })}${unit ? ' ' + unit : ''}`;
 const day = (iso: string) => new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -124,7 +135,14 @@ export default function StockAnomaliesTab() {
                         <button type="button" className="odoo-btn-secondary" onClick={() => { setEditing(null); setNote(''); }}>Annuler</button>
                       </form>
                     ) : (
-                      <button type="button" className="odoo-btn-secondary" onClick={() => { setEditing(a.id); setNote(''); }}>Régulariser</button>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {adjustLink(a) && (
+                          <Link to={adjustLink(a)!} className="odoo-btn-secondary" title="Ouvre l'article pour ajuster son stock, avec un motif">
+                            Ajuster le stock
+                          </Link>
+                        )}
+                        <button type="button" className="odoo-btn-secondary" onClick={() => { setEditing(a.id); setNote(''); }}>Clôturer</button>
+                      </div>
                     )}
                   </td>
                 </tr>

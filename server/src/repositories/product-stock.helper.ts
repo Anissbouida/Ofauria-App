@@ -55,6 +55,15 @@ export async function adjustProductStock(
   return after;
 }
 
+/** Retire une quantité de la vitrine seule (invendus, pertes, manquants) : bornée à zéro, manque tracé (G0-18). */
+export function removeFromVitrine(client: PoolClient, p: {
+  productId: string; storeId: string; qty: number;
+  origin: { type: string; id?: string | null }; userId?: string | null; label?: string | null;
+}): Promise<void> {
+  return removeFromStoreStock(client, { productId: p.productId, storeId: p.storeId, backroom: 0, vitrine: p.qty,
+    origin: p.origin, userId: p.userId, label: p.label });
+}
+
 /**
  * Retire des quantités de la réserve et de la vitrine d'un magasin (mise au rebut d'un lot,
  * péremption). Le stock reste borné à zéro ; un manque par rapport au stock du magasin est

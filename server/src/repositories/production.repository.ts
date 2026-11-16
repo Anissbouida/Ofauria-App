@@ -1717,11 +1717,17 @@ export const productionRepository = {
           if (pdep && pdep.parent_plan_id) {
             const consumeForParent = Math.min(parseFloat(item.actual_quantity), parseFloat(pdep.quantity_to_produce) || 0);
             if (consumeForParent > 1e-9) {
-              await client.query(
-                `UPDATE semi_finished_stock SET quantity_available = GREATEST(0, quantity_available - $1), updated_at = NOW()
-                  WHERE recipe_id = $2 AND store_id = $3`,
+              const sfBefore = await client.query(
+                `WITH cur AS (SELECT quantity_available FROM semi_finished_stock WHERE recipe_id = $2 AND store_id = $3)
+                 UPDATE semi_finished_stock SET quantity_available = GREATEST(0, quantity_available - $1), updated_at = NOW()
+                  WHERE recipe_id = $2 AND store_id = $3
+                  RETURNING (SELECT quantity_available FROM cur)::float8 AS before`,
                 [consumeForParent, item.base_recipe_id, effectiveStoreId]
               );
+              // G0-18 : semi-fini consommé au-delà du stock, refusé ou tracé.
+              await applyStockOut(client, { kind: 'semi_finished', itemId: item.base_recipe_id, storeId: effectiveStoreId,
+                requested: consumeForParent, available: sfBefore.rows[0]?.before ?? 0,
+                origin: { type: 'production_plan', id: planId }, userId, label: `Semi-fini (production ${item.product_name})` });
               let remainingForParent = consumeForParent;
               const sfLots = await client.query(
                 `SELECT id, quantity_remaining FROM semi_finished_lots
@@ -2013,7 +2019,8 @@ export const productionRepository = {
           const productId: string = tItem.rows[0].product_id;
           discrepancies.push({ product_id: productId, product_name: tItem.rows[0].product_name, transferred, received: item.qtyReceived, delta });
 
-          const stockAfter = await adjustProductStock(client, productId, delta, transferStoreId);
+          const stockAfter = await adjustProductStock(client, productId, delta, transferStoreId,
+            { origin: { type: 'production_transfer_gap' } });
           await client.query(
             `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,

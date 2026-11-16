@@ -17,7 +17,8 @@ import { createNotification } from '../utils/notify.js';
 
 export type StockItemKind = 'ingredient' | 'product' | 'packaging' | 'semi_finished';
 export type NegativePolicy = 'allow_trace' | 'block';
-type Queryable = Pick<PoolClient, 'query'>;
+/** Client de transaction, ou `db` (qui suit la transaction ambiante). */
+type Queryable = PoolClient | typeof db;
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const fail = (message: string, statusCode = 409) => Object.assign(new Error(message), { statusCode });
@@ -78,14 +79,15 @@ export const stockAnomalyRepository = {
       `SELECT a.id, a.item_kind, a.item_id, a.lot_id, a.store_id, a.requested_qty::float8 AS requested_qty,
               a.available_qty::float8 AS available_qty, a.shortfall_qty::float8 AS shortfall_qty,
               a.origin_type, a.origin_id, a.label, a.created_at, a.status, a.resolved_at, a.resolution_note,
-              COALESCE(i.name, p.name, pk.name, a.label) AS item_name,
+              COALESCE(i.name, p.name, pk.name, r.name, a.label) AS item_name,
               COALESCE(i.unit, pk.unit, '') AS unit,
               s.name AS store_name,
               NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), '') AS created_by_name,
               NULLIF(TRIM(CONCAT(ru.first_name, ' ', ru.last_name)), '') AS resolved_by_name
          FROM stock_anomalies a
          LEFT JOIN ingredients i ON a.item_kind = 'ingredient' AND i.id = a.item_id
-         LEFT JOIN products p ON a.item_kind = 'product' AND p.id = a.item_id
+         LEFT JOIN products p ON a.item_kind IN ('product', 'semi_finished') AND p.id = a.item_id
+         LEFT JOIN recipes r ON a.item_kind = 'semi_finished' AND r.id = a.item_id
          LEFT JOIN packaging_items pk ON a.item_kind = 'packaging' AND pk.id = a.item_id
          LEFT JOIN stores s ON s.id = a.store_id
          LEFT JOIN users u ON u.id = a.created_by

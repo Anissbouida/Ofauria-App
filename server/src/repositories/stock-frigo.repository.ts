@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { applyStockOut } from '../services/stock-anomaly.js';
 
 export const stockFrigoRepository = {
 
@@ -138,10 +139,18 @@ export const stockFrigoRepository = {
     try {
       await client.query('BEGIN');
 
-      await client.query(
-        `UPDATE stock_semifini_frigo SET quantity = GREATEST(quantity - $1, 0), updated_at = NOW() WHERE id = $2`,
+      const before = await client.query(
+        `WITH cur AS (SELECT quantity FROM stock_semifini_frigo WHERE id = $2)
+         UPDATE stock_semifini_frigo SET quantity = GREATEST(quantity - $1, 0), updated_at = NOW() WHERE id = $2
+         RETURNING product_id, store_id, lot_number, (SELECT quantity FROM cur)::float8 AS before`,
         [quantity, stockFrigoId]
       );
+      // G0-18 : perte déclarée au-delà du stock du frigo — toujours tracée, jamais refusée.
+      if (before.rows[0]) {
+        await applyStockOut(client, { kind: 'semi_finished', itemId: before.rows[0].product_id, storeId: before.rows[0].store_id,
+          requested: quantity, available: before.rows[0].before, origin: { type: `frigo_${type}`, id: stockFrigoId },
+          userId: performedBy, label: before.rows[0].lot_number ? `Frigo — lot ${before.rows[0].lot_number}` : 'Frigo', neverBlock: true });
+      }
 
       await client.query(
         `INSERT INTO stock_frigo_transactions (stock_frigo_id, type, quantity, performed_by, notes)

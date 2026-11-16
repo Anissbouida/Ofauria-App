@@ -58,7 +58,8 @@ export const productTransferRepository = {
         }
         await client.query(`INSERT INTO product_transfer_items (transfer_id, product_id, quantity) VALUES ($1,$2,$3)`, [head.id, it.productId, qty]);
         // Deux mouvements : sortie source, entrée destination (stock_after = solde après).
-        const afterFrom = await adjustProductStock(client, it.productId, -qty, data.fromStoreId);
+        const afterFrom = await adjustProductStock(client, it.productId, -qty, data.fromStoreId,
+          { origin: { type: 'product_transfer', id: head.id }, userId: data.createdBy });
         const afterTo = await adjustProductStock(client, it.productId, qty, data.toStoreId);
         await client.query(
           `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, reference_id, store_id, performed_by)

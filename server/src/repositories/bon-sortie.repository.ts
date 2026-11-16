@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
+import { applyStockOut } from '../services/stock-anomaly.js';
 import type { PoolClient } from 'pg';
 import { packagingItemRepository } from './packaging-item.repository.js';
 import { setActor, setReason, transitionPlan, transitionBon, withActor } from '../services/production-state.js';
@@ -131,6 +132,13 @@ async function consumeBonLines(client: PoolClient, bon: BonRow, userId: string) 
     // complement dans le sac encore range en economat), le surplus est preleve sur
     // l'economat du meme lot : avant, le lot etait borne a 0 alors que le mouvement
     // enregistrait la quantite complete, et l'inventaire derivait a chaque fois.
+    // G0-18 : pesée supérieure à ce que le lot détient (réserve + pesage), refusée ou tracée.
+    const lotBefore = await client.query(
+      `SELECT (COALESCE(economat_quantity, 0) + COALESCE(pesage_quantity, 0))::float8 AS available
+         FROM ingredient_lots WHERE id = $1 FOR UPDATE`, [lotId]);
+    await applyStockOut(client, { kind: 'ingredient', itemId: line.ingredient_id, lotId, storeId: bon.store_id,
+      requested: qty, available: lotBefore.rows[0]?.available ?? 0, origin: { type: 'bon_sortie', id: bon.id }, userId,
+      label: `${line.ingredient_name} — BSI ${bon.numero}` });
     await client.query(
       `UPDATE ingredient_lots
           SET economat_quantity = GREATEST(economat_quantity - GREATEST($1 - pesage_quantity, 0), 0),

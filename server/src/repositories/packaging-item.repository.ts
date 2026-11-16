@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { capitalizeFirst } from '../utils/text.js';
+import { applyStockOut } from '../services/stock-anomaly.js';
 
 /**
  * Packaging items — emballages : caissettes, boites, sachets, etiquettes, films...
@@ -155,15 +156,23 @@ export const packagingItemRepository = {
   ): Promise<number> {
     // Upsert + decrement avec lock implicite (ON CONFLICT pour atomique)
     const result = await client.query(
-      `INSERT INTO packaging_store_stock (packaging_id, store_id, stock_quantity)
+      `WITH cur AS (SELECT stock_quantity FROM packaging_store_stock WHERE packaging_id = $1 AND store_id = $2)
+       INSERT INTO packaging_store_stock (packaging_id, store_id, stock_quantity)
        VALUES ($1, $2, GREATEST($3::numeric, 0))
        ON CONFLICT (packaging_id, store_id)
        DO UPDATE SET stock_quantity = GREATEST(packaging_store_stock.stock_quantity + $3::numeric, 0),
                      updated_at = NOW()
-       RETURNING stock_quantity`,
+       RETURNING stock_quantity, COALESCE((SELECT stock_quantity FROM cur), 0)::float8 AS before`,
       [data.packagingId, data.storeId, data.change]
     );
     const newStock = parseFloat(result.rows[0].stock_quantity);
+    // G0-18 : sortie d'emballage supérieure au stock, refusée ou tracée (stock.negative_policy).
+    if (data.change < 0) {
+      await applyStockOut(client, { kind: 'packaging', itemId: data.packagingId, storeId: data.storeId,
+        requested: -data.change, available: result.rows[0].before,
+        origin: { type: data.referenceType ?? `packaging_${data.type}`, id: data.referenceId ?? null },
+        userId: data.performedBy ?? null, label: data.note ?? null });
+    }
 
     await client.query(
       `INSERT INTO packaging_stock_transactions

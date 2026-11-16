@@ -1,7 +1,7 @@
 import { db } from '../config/database.js';
 import { workshopForCategorySlug } from '../services/workshops.js';
 import { getUserTimezone } from '../utils/timezone.js';
-import { transferBackroomToVitrine } from './product-stock.helper.js';
+import { transferBackroomToVitrine, removeFromVitrine } from './product-stock.helper.js';
 import { productLotRepository } from './product-lot.repository.js';
 import { productMaterialsUnitCost } from './product-cost.helper.js';
 import { createNotification } from '../utils/notify.js';
@@ -832,12 +832,9 @@ export const replenishmentRepository = {
         // Apply destination effects on stock (end-of-day inventory on what was left on the vitrine)
         if (it.remainingQty > 0) {
           if (destination === 'recycle') {
-            // Reduce vitrine stock — the remaining sat on the display
-            await client.query(
-              `UPDATE product_store_stock SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
-               WHERE product_id = $2 AND store_id = $3`,
-              [it.remainingQty, it.productId, data.storeId]
-            );
+            // Reduce vitrine stock — the remaining sat on the display (G0-18 : manque tracé)
+            await removeFromVitrine(client, { productId: it.productId, storeId: data.storeId, qty: it.remainingQty,
+              origin: { type: 'inventory_check', id: checkId }, userId: data.checkedBy, label: it.productName });
             // Add to recycle ingredient stock if configured
             const recycleResult = await client.query(
               `SELECT recycle_ingredient_id FROM products WHERE id = $1`, [it.productId]
@@ -867,12 +864,9 @@ export const replenishmentRepository = {
               [it.productId, data.storeId]
             );
           } else if (destination === 'waste') {
-            // Reduce vitrine stock — perte sur la vitrine
-            await client.query(
-              `UPDATE product_store_stock SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
-               WHERE product_id = $2 AND store_id = $3`,
-              [it.remainingQty, it.productId, data.storeId]
-            );
+            // Reduce vitrine stock — perte sur la vitrine (G0-18 : manque tracé)
+            await removeFromVitrine(client, { productId: it.productId, storeId: data.storeId, qty: it.remainingQty,
+              origin: { type: 'inventory_check', id: checkId }, userId: data.checkedBy, label: it.productName });
             // Record waste transaction
             await client.query(
               `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)

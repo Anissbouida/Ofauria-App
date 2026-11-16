@@ -129,7 +129,8 @@ export const productLossController = {
               [quantity, sourceLotId]
             );
           }
-          const stockAfter = await adjustProductStock(client, productId, -quantity, req.user!.storeId);
+          const stockAfter = await adjustProductStock(client, productId, -quantity, req.user!.storeId,
+            { origin: { type: 'product_loss' }, userId: req.user!.userId });
           await client.query(
             `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
              VALUES ($1, 'loss', $2, $3, $4, $5, $6)`,

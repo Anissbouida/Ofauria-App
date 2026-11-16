@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { productLotRepository } from './product-lot.repository.js';
+import { removeFromVitrine } from './product-stock.helper.js';
 
 export type OpeningCheckStatus = 'pending' | 'awaiting_validation' | 'validated' | 'rejected';
 export type MissingReason =
@@ -214,12 +215,9 @@ export const openingInventoryCheckRepository = {
             for (const step of fefo) {
               await productLotRepository.consumeVitrineWaste(client, step.lotId, step.qty, { type: 'opening_check' });
             }
-            await client.query(
-              `UPDATE product_store_stock
-                  SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1), updated_at = NOW()
-                WHERE product_id = $2 AND store_id = $3`,
-              [missing, item.product_id, check.store_id]
-            );
+            // G0-18 : manquant supérieur au stock de la vitrine, tracé comme anomalie.
+            await removeFromVitrine(client, { productId: item.product_id, storeId: check.store_id, qty: missing,
+              origin: { type: 'opening_check', id: check.id ?? null }, userId: params.validatedBy });
             await client.query(
               `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
                VALUES ($1, 'waste', $2, 0, $3, $4, $5)`,
