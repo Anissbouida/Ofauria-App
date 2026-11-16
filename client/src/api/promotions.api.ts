@@ -1,4 +1,6 @@
+import { CalendarClock, Hourglass, Archive, type LucideIcon } from 'lucide-react';
 import api from './client';
+import type { StatusTone } from '../components/ui/StatusTag';
 
 /** Promotions (règles de prix) et programme de fidélité (mig 372). */
 export type PromoTarget = 'items' | 'cart';
@@ -60,9 +62,10 @@ export type LoyaltyOverview = {
 export const PROMO_KIND_LABEL: Record<PromoKind, string> = {
   percent: 'Pourcentage', amount: 'Montant', fixed_price: 'Prix spécial', buy_x_get_y: 'X achetés = Y offerts',
 };
-export const PROMO_STATE: Record<PromoState, { label: string; tag: string }> = {
-  running: { label: 'En cours', tag: 'odoo-tag-green' }, scheduled: { label: 'Programmée', tag: 'odoo-tag-blue' },
-  ended: { label: 'Terminée', tag: 'odoo-tag-grey' }, exhausted: { label: 'Épuisée', tag: 'odoo-tag-orange' }, inactive: { label: 'Arrêtée', tag: 'odoo-tag-grey' },
+/** État d'une promotion : libellé + ton de l'étiquette commune (en vigueur = vert, épuisée = à revoir). */
+export const PROMO_STATE: Record<PromoState, { label: string; tone: StatusTone; icon?: LucideIcon }> = {
+  running: { label: 'En cours', tone: 'done' }, scheduled: { label: 'Programmée', tone: 'progress', icon: CalendarClock },
+  ended: { label: 'Terminée', tone: 'cancelled', icon: Archive }, exhausted: { label: 'Épuisée', tone: 'todo', icon: Hourglass }, inactive: { label: 'Arrêtée', tone: 'cancelled' },
 };
 export const LOYALTY_KIND_LABEL: Record<LoyaltyKind, string> = {
   earn: 'Gagnés', redeem: 'Utilisés', expire: 'Expirés', adjust: 'Ajustement', reverse: 'Annulation',

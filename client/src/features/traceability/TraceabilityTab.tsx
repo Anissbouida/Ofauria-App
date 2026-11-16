@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, ArrowLeft, Siren, Printer, Info, AlertTriangle, CheckCircle2, ShieldAlert, Lock } from 'lucide-react';
+import { Search, Loader2, ArrowLeft, Siren, Printer, Info, AlertTriangle, CheckCircle2, ShieldAlert, Lock, type LucideIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   traceabilityApi, DISPOSITION_LABELS, RECALL_STATUS_LABELS,
   type Certainty, type Disposition, type ProductLotTrace, type RecallStatus, type SearchHit,
 } from '../../api/traceability.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 
 /**
@@ -28,7 +29,13 @@ const d = (s: string | null) => (s ? format(new Date(s.length === 10 ? `${s}T00:
 const dt = (s: string | null) => (s ? format(new Date(s), 'dd/MM/yyyy HH:mm') : '—');
 const q = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString('fr-FR', { maximumFractionDigits: 3 }));
 const tableWrap: React.CSSProperties = { overflowX: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4 };
-const RECALL_TAG: Record<RecallStatus, string> = { open: 'odoo-tag-orange', blocked: 'odoo-tag-red', closed: 'odoo-tag-green' };
+/** Statut du rappel en étiquette commune : ouvert = lots à bloquer, action attendue. */
+const RECALL_TONE: Record<RecallStatus, { tone: StatusTone; icon?: LucideIcon }> = {
+  open: { tone: 'todo', icon: Siren }, blocked: { tone: 'blocked', icon: Lock }, closed: { tone: 'done' },
+};
+const RecallStatusTag = ({ status }: { status: RecallStatus }) => (
+  <StatusTag tone={RECALL_TONE[status]?.tone ?? 'draft'} icon={RECALL_TONE[status]?.icon} label={RECALL_STATUS_LABELS[status]} />
+);
 
 function CertaintyTag({ c }: { c?: Certainty }) {
   return c === 'certain'
@@ -113,7 +120,7 @@ function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: 
                   <td style={{ maxWidth: 280 }}>{r.reason}</td>
                   <td style={{ textAlign: 'right' }}>{r.items_count}</td>
                   <td>{dt(r.created_at)}<div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{r.created_by_name}</div></td>
-                  <td><span className={`odoo-tag ${RECALL_TAG[r.status]}`}>{RECALL_STATUS_LABELS[r.status]}</span></td>
+                  <td><RecallStatusTag status={r.status} /></td>
                 </tr>
               ))}
             </tbody>
@@ -348,7 +355,7 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
       <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, fontSize: '0.8125rem' }}>
         <div><div style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>Origine</div>{r.origin_label}</div>
         <div><div style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>Motif</div>{r.reason}</div>
-        <div><div style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>Statut</div><span className={`odoo-tag ${RECALL_TAG[r.status]}`}>{RECALL_STATUS_LABELS[r.status]}</span></div>
+        <div><div style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>Statut</div><RecallStatusTag status={r.status} /></div>
         <div><div style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>Ouvert</div>{dt(r.created_at)} · {r.created_by_name}</div>
         <div><div style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>Bloqué</div>{r.blocked_at ? `${dt(r.blocked_at)} · ${r.blocked_by_name ?? ''}` : '—'}</div>
         <div><div style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>Clôturé</div>{r.closed_at ? `${dt(r.closed_at)} · ${r.closed_by_name ?? ''}` : '—'}</div>

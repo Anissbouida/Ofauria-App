@@ -5,6 +5,7 @@ import { PageNote } from './SettingsPrimitives';
 import { currenciesApi, type Currency } from '../../api/currencies.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { apiErrorMessage } from '../../api/errors';
 
 /**
@@ -74,7 +75,7 @@ export default function CurrenciesTab() {
                 </td>
                 <td>{c.is_base ? '—' : d(c.rate_date)}</td>
                 <td style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>{c.rate_source ?? ''}</td>
-                <td>{c.is_active ? <span className="odoo-tag odoo-tag-green">Active</span> : <span className="odoo-tag odoo-tag-grey">Inactive</span>}</td>
+                <td>{c.is_active ? <StatusTag tone="done" label="Active" /> : <StatusTag tone="cancelled" label="Inactive" />}</td>
                 <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
                   {!c.is_base && <>
                     {canCreate('settings') && c.is_active && <button className="odoo-btn-primary" style={{ padding: '2px 8px' }} onClick={() => setRateFor({ code: c.code, rate: c.rate ? String(Number(c.rate)) : '', validOn: today, source: '' })}>Nouveau taux</button>}{' '}

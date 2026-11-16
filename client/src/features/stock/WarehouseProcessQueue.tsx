@@ -7,6 +7,7 @@ import { bonSortieApi } from '../../api/bon-sortie.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { BonSortiePanel } from '../production/BonSortiePanel';
 import { bonStatusTag } from '../production/status';
+import { StatusTag } from '../../components/ui/StatusTag';
 import {
   Truck, Loader2, Scale, CheckCircle, Inbox, Handshake, ChevronLeft, ChevronRight,
   ArrowLeft, AlertTriangle, Check, ArrowRight, Search, X as XIcon,
@@ -341,7 +342,7 @@ export function WarehouseBonWorkspace({
             <span className="odoo-form-title" style={{ fontSize: '1.125rem' }}>
               Plan du {fmtDate(bon.plan_date, 'EEEE dd MMMM yyyy') ?? '—'}
             </span>
-            <span className={`odoo-tag ${tag.cls}`}>{tag.label}</span>
+            <StatusTag tone={tag.tone} icon={tag.icon} label={tag.label} />
           </div>
           <div className="odoo-form-subtitle" style={{ marginTop: 2 }}>
             <span style={{ fontFamily: 'ui-monospace, monospace' }}>{bon.numero as string}</span>

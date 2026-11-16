@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { settingsApi, type SetupCheck } from '../../api/settings.api';
 import { tableLabel } from './AuditLogTab';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { GROUP_ICONS, LEGACY_PAGES, SETTINGS_GROUPS, SETTINGS_PAGES, USERS_GROUP, type SettingsPageDef, type SettingsPageKey } from './settingsPages';
 
 /**
@@ -16,11 +17,11 @@ import { GROUP_ICONS, LEGACY_PAGES, SETTINGS_GROUPS, SETTINGS_PAGES, USERS_GROUP
 
 type Filter = 'all' | 'open' | 'done';
 
-const STATUS: Record<SetupCheck['status'], { icon: typeof Info; color: string; tag: string; label: string }> = {
-  todo: { icon: CircleAlert, color: '#c0392b', tag: 'odoo-tag-red', label: 'À faire' },
-  warn: { icon: TriangleAlert, color: '#b85d1a', tag: 'odoo-tag-orange', label: 'Recommandé' },
-  info: { icon: Info, color: 'var(--odoo-text-muted)', tag: 'odoo-tag-grey', label: 'À vérifier' },
-  ok: { icon: CheckCircle2, color: '#1e7e34', tag: 'odoo-tag-green', label: 'Fait' },
+const STATUS: Record<SetupCheck['status'], { icon: typeof Info; color: string; label: string }> = {
+  todo: { icon: CircleAlert, color: '#c0392b', label: 'À faire' },
+  warn: { icon: TriangleAlert, color: '#b85d1a', label: 'Recommandé' },
+  info: { icon: Info, color: 'var(--odoo-text-muted)', label: 'À vérifier' },
+  ok: { icon: CheckCircle2, color: '#1e7e34', label: 'Fait' },
 };
 const ORDER: Record<SetupCheck['status'], number> = { todo: 0, warn: 1, info: 2, ok: 3 };
 const OPERATIONS: Record<string, string> = { INSERT: 'Création', UPDATE: 'Modification', DELETE: 'Suppression' };
@@ -128,9 +129,9 @@ export default function SetupHome({ pages, onOpen, onOpenUsers }: {
               <section key={g.name} className="odoo-setup-card odoo-setup-tile" aria-label={g.name}>
                 <header className="odoo-setup-card-head">
                   <span className="odoo-setup-tile-title"><g.icon size={17} aria-hidden="true" /> {g.name}</span>
-                  {g.todo > 0 ? <span className="odoo-tag odoo-tag-red">{g.todo} à faire</span>
-                    : g.warn > 0 ? <span className="odoo-tag odoo-tag-orange">{g.warn} conseil{g.warn > 1 ? 's' : ''}</span>
-                    : <span className="odoo-tag odoo-tag-green">OK</span>}
+                  {g.todo > 0 ? <StatusTag tone="todo" icon={CircleAlert} label={`${g.todo} à faire`} />
+                    : g.warn > 0 ? <StatusTag tone="todo" icon={Info} label={`${g.warn} conseil${g.warn > 1 ? 's' : ''}`} />
+                    : <StatusTag tone="done" label="OK" />}
                 </header>
                 {g.reqTotal > 0 && (
                   <div className="odoo-setup-bar" aria-hidden><span style={{ width: `${(g.reqDone / g.reqTotal) * 100}%` }} /></div>

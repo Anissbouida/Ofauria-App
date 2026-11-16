@@ -3,8 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardCheck, Loader2, Printer, Plus, Search, CheckCircle2, RotateCcw, Ban, AlertTriangle, Send, X } from 'lucide-react';
 import { format } from 'date-fns';
 import {
-  stockCountsApi, parseCountExpression, STOCK_COUNT_STATUS_LABELS, STOCK_COUNT_STATUS_TAG, type StockCount, type StockCountLine,
+  stockCountsApi, parseCountExpression, STOCK_COUNT_STATUS_LABELS, type StockCount, type StockCountLine, type StockCountStatus,
 } from '../../api/stock-counts.api';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { ingredientsApi } from '../../api/inventory.api';
 import { packagingApi } from '../../api/packaging.api';
 import { apiErrorMessage } from '../../api/errors';
@@ -14,6 +15,9 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useStockCategories } from './useStockCategories';
+
+/** Statut d'une campagne d'inventaire en étiquette commune : à vérifier = action attendue. */
+const COUNT_TONE: Record<StockCountStatus, StatusTone> = { counting: 'progress', review: 'todo', validated: 'done', cancelled: 'cancelled' };
 
 /**
  * Inventaire physique (mig 367) : ouvrir une campagne, compter (à l'écran ou sur la
@@ -66,7 +70,7 @@ export default function StockCountsTab() {
                 <td>{c.title ?? (c.scope === 'full' ? 'Inventaire complet' : 'Inventaire tournant')}<div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{{ ingredient: 'Matières', packaging: 'Consommables', both: 'Matières et consommables' }[c.item_kinds]}{c.blind ? ' · à l\'aveugle' : ''}</div></td>
                 <td>{format(new Date(`${String(c.count_date).slice(0, 10)}T00:00:00`), 'dd/MM/yyyy')}</td>
                 <td>{c.lines_counted}/{c.lines_total}</td>
-                <td><span className={`odoo-tag ${STOCK_COUNT_STATUS_TAG[c.status]}`}>{STOCK_COUNT_STATUS_LABELS[c.status]}</span></td>
+                <td><StatusTag tone={COUNT_TONE[c.status] ?? 'draft'} label={STOCK_COUNT_STATUS_LABELS[c.status]} /></td>
                 {isDirection && <td style={{ textAlign: 'right', color: Number(c.gap_value) < 0 ? '#dc3545' : undefined }}>{c.gap_value != null ? `${n2(c.gap_value)} DH` : '—'}</td>}
                 <td>{c.validated_by_name ?? '—'}</td>
               </tr>
@@ -189,7 +193,7 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <button className="odoo-btn-secondary" onClick={onBack}>← Inventaires</button>
         <h2 style={{ margin: 0, fontSize: '1.125rem', flex: 1 }}>{c.number} · {c.title ?? (c.scope === 'full' ? 'Inventaire complet' : 'Inventaire tournant')}</h2>
-        <span className={`odoo-tag ${STOCK_COUNT_STATUS_TAG[c.status]}`}>{STOCK_COUNT_STATUS_LABELS[c.status]}</span>
+        <StatusTag tone={COUNT_TONE[c.status] ?? 'draft'} label={STOCK_COUNT_STATUS_LABELS[c.status]} />
         <button className="odoo-btn-secondary" onClick={() => openSheet(c.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Printer size={13} /> Feuille de comptage</button>
       </div>
 

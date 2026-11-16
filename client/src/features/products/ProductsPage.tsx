@@ -15,6 +15,7 @@ import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import CustomFieldsEditor from '../../components/custom-fields/CustomFieldsEditor';
 import { customFieldsApi, useCustomFieldsForm, type CfValues } from '../../api/custom-fields.api';
@@ -544,6 +545,7 @@ function CatalogueTab() {
                 const isLow = threshold > 0 && stock <= threshold && stock > 0;
                 const isOut = stock <= 0;
                 const dotClass = isOut ? 'danger' : isLow ? 'warning' : 'ok';
+                const dotLabel = isOut ? 'Rupture' : isLow ? 'Stock bas' : 'En stock';
 
                 return (
                   <tr key={p.id as string} onClick={() => { setEditingProduct(p); setShowForm(true); }}>
@@ -552,7 +554,7 @@ function CatalogueTab() {
                         onChange={() => toggleSelect(p.id as string)}
                         style={{ cursor: 'pointer', accentColor: 'var(--theme-accent)' }} />
                     </td>
-                    <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+                    <td><span className={`odoo-status-dot ${dotClass}`} role="img" title={dotLabel} aria-label={dotLabel} /></td>
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
                         {p.image_url ? (
@@ -581,9 +583,9 @@ function CatalogueTab() {
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       {isOut ? (
-                        <span className="odoo-tag odoo-tag-red">Rupture</span>
+                        <StatusTag tone="blocked" label="Rupture" />
                       ) : isLow ? (
-                        <span className="odoo-tag odoo-tag-orange">{p.sale_unit === 'weight' ? `${(stock / 1000).toFixed(2)} kg` : stock}</span>
+                        <StatusTag tone="todo" label={p.sale_unit === 'weight' ? `${(stock / 1000).toFixed(2)} kg` : String(stock)} title="Stock bas" />
                       ) : (
                         <span style={{ fontWeight: 500 }}>{p.sale_unit === 'weight' ? `${(stock / 1000).toFixed(2)} kg` : stock}</span>
                       )}
@@ -596,9 +598,9 @@ function CatalogueTab() {
                     </td>
                     <td>
                       {p.is_available ? (
-                        <span className="odoo-tag odoo-tag-green">Actif</span>
+                        <StatusTag tone="done" label="Actif" />
                       ) : (
-                        <span className="odoo-tag odoo-tag-grey">Inactif</span>
+                        <StatusTag tone="cancelled" label="Inactif" />
                       )}
                     </td>
                     <td>
@@ -736,7 +738,7 @@ function ProductPreview({ form, imagePreview, categories, chefUsers }: {
             {priceStr}<span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--theme-text-muted)', marginLeft: 4 }}>{priceUnit}</span>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            <span className={`odoo-tag ${form.isAvailable ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{form.isAvailable ? 'Disponible' : 'Indisponible'}</span>
+            <StatusTag tone={form.isAvailable ? 'done' : 'cancelled'} label={form.isAvailable ? 'Disponible' : 'Indisponible'} />
             {form.isCustomOrderable && <span className="odoo-tag odoo-tag-blue">Sur commande</span>}
             <span className="odoo-tag odoo-tag-purple">{modeLabel}</span>
             <span className="odoo-tag odoo-tag-yellow">{saleTypeLabel}</span>

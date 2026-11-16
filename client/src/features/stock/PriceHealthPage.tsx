@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { ShieldAlert, ArrowLeft, Loader2, ChevronRight, AlertTriangle, CheckCircle } from 'lucide-react';
+import { ShieldAlert, ArrowLeft, Loader2, ChevronRight, CheckCircle } from 'lucide-react';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { inventoryApi } from '../../api/inventory.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 
@@ -65,8 +66,8 @@ export default function PriceHealthPage() {
                   </td>
                   <td>
                     {r.flag === 'ecart_prix'
-                      ? <span className="odoo-tag" style={{ background: '#fef2f2', color: '#c62828' }}><AlertTriangle size={10} style={{ display: 'inline' }} /> Écart de prix</span>
-                      : <span className="odoo-tag odoo-tag-grey">Prix manquant</span>}
+                      ? <StatusTag tone="blocked" label="Écart de prix" />
+                      : <StatusTag tone="todo" label="Prix manquant" />}
                   </td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.catalogue_cost != null ? `${Number(r.catalogue_cost).toFixed(2)} /${r.unit}` : '—'}</td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{r.lot_avg_cost != null ? `${Number(r.lot_avg_cost).toFixed(2)} /${r.unit}` : '—'}</td>

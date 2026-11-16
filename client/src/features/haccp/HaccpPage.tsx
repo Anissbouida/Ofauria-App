@@ -8,6 +8,7 @@ import {
   type TodayEquipment, type TodayTask, type CorrectiveAction,
 } from '../../api/haccp.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 
 /**
@@ -129,7 +130,7 @@ function ReadingCard({ e }: { e: TodayEquipment }) {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
         <strong style={{ fontSize: '0.875rem' }}>{e.nom}</strong>
         <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{t(e.temp_min)} à {t(e.temp_max)}</span>
-        <span className={`odoo-tag ${done ? 'odoo-tag-green' : 'odoo-tag-orange'}`} style={{ marginLeft: 'auto' }}>{e.readings_today}/{e.readings_per_day}</span>
+        <span style={{ marginLeft: 'auto' }}><StatusTag tone={done ? 'done' : 'todo'} icon={Thermometer} label={`${e.readings_today}/${e.readings_per_day}`} title="Relevés du jour" /></span>
       </div>
       <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
         {e.last_value == null ? 'Aucun relevé aujourd\'hui' : <>Dernier : <strong style={{ color: e.last_in_range ? 'var(--odoo-text)' : '#dc3545' }}>{t(e.last_value)}</strong> à {time(e.last_at)}</>}
@@ -193,7 +194,7 @@ function CleaningTable({ tasks }: { tasks: TodayTask[] }) {
                     <button type="button" className="odoo-btn-primary" disabled={log.isPending} onClick={() => log.mutate({ taskId: k.id, conforme: true })}>Fait</button>{' '}
                     <button type="button" className="odoo-btn-secondary" onClick={() => setFailing(failing === k.id ? null : k.id)}>Non conforme</button>
                   </>
-                ) : <span className="odoo-tag odoo-tag-green"><CheckCircle2 size={11} /> à jour</span>}
+                ) : <StatusTag tone="done" label="à jour" />}
               </td>
             </tr>,
             failing === k.id && (
@@ -236,7 +237,7 @@ function ActionCard({ a }: { a: CorrectiveAction }) {
       )}
       {a.status === 'done' ? (
         <div style={{ fontSize: '0.75rem' }}>
-          <span className="odoo-tag odoo-tag-yellow">En attente de validation</span> {a.action_taken}
+          <StatusTag tone="todo" label="En attente de validation" /> {a.action_taken}
         </div>
       ) : (
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>

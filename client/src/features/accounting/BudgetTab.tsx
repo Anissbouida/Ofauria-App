@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsive
 import { Loader2, Target, CheckCircle2, Info, Lock, Unlock, Trash2, Save } from 'lucide-react';
 import { managementApi, type BudgetComparison, type BudgetRow } from '../../api/management.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 
 /**
@@ -53,7 +54,7 @@ export default function BudgetTab() {
         {b && (
           <>
             <strong style={{ fontSize: '0.8125rem' }}>{b.name}</strong>
-            <span className={`odoo-tag ${b.status === 'approved' ? 'odoo-tag-green' : 'odoo-tag-yellow'}`}>{b.status === 'approved' ? 'Approuvé' : 'Brouillon'}</span>
+            <StatusTag tone={b.status === 'approved' ? 'done' : 'draft'} label={b.status === 'approved' ? 'Approuvé' : 'Brouillon'} />
             <div style={{ display: 'flex', gap: 6 }}>
               <button type="button" className={view === 'compare' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('compare')}>Budget vs réel</button>
               <button type="button" className={view === 'edit' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('edit')}>Saisie</button>

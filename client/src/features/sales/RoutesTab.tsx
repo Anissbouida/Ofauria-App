@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Truck, Plus, X, Loader2, ChevronUp, ChevronDown, Trash2, MapPin, Phone, CheckCircle2 } from 'lucide-react';
+import { Truck, Plus, X, Loader2, ChevronUp, ChevronDown, Trash2, MapPin, Phone, CheckCircle2, type LucideIcon } from 'lucide-react';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { deliveryRoutesApi, type DeliveryRoute, type RouteStatus, type RouteStop } from '../../api/delivery-routes.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -11,8 +12,9 @@ import { ListKpi, ListPanel, ListEmpty } from './ListTemplate';
 
 const day = (d: string) => format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr });
 const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', width: '100%', font: 'inherit' };
-const STATUS: Record<RouteStatus, { label: string; tag: string }> = {
-  planned: { label: 'Planifiée', tag: 'odoo-tag-blue' }, in_progress: { label: 'En cours', tag: 'odoo-tag-orange' }, done: { label: 'Terminée', tag: 'odoo-tag-green' },
+/** Tournée planifiée = à lancer (action attendue), en cours = bleu, terminée = vert. */
+const STATUS: Record<RouteStatus, { label: string; tone: StatusTone; icon?: LucideIcon }> = {
+  planned: { label: 'Planifiée', tone: 'todo' }, in_progress: { label: 'En cours', tone: 'progress', icon: Truck }, done: { label: 'Terminée', tone: 'done' },
 };
 
 export default function RoutesTab() {
@@ -51,7 +53,7 @@ export default function RoutesTab() {
                   <td style={{ fontWeight: 500 }}>{r.label}</td>
                   <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.85rem' }}>{r.driver_name || '—'}</td>
                   <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{r.delivered}/{r.stops}</td>
-                  <td><span className={`odoo-tag ${STATUS[r.status].tag}`}>{STATUS[r.status].label}</span></td>
+                  <td><StatusTag tone={STATUS[r.status].tone} icon={STATUS[r.status].icon} label={STATUS[r.status].label} /></td>
                 </tr>
               ))}
             </tbody>

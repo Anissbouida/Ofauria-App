@@ -7,6 +7,7 @@ import type { FiscalPeriod } from '@ofauria/shared';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { apiErrorMessage } from '../../api/errors';
@@ -15,10 +16,10 @@ import FiscalYearsPanel from './FiscalYearsPanel';
 
 const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
-const STATUS_META: Record<string, { label: string; tag: string; icon: typeof Lock }> = {
-  open:   { label: 'Ouverte',     tag: 'odoo-tag-green',  icon: LockOpen },
-  closed: { label: 'Clôturée',    tag: 'odoo-tag-orange', icon: Lock },
-  locked: { label: 'Verrouillée', tag: 'odoo-tag-red',    icon: ShieldCheck },
+const STATUS_META: Record<string, { label: string; tone: StatusTone; icon: typeof Lock }> = {
+  open:   { label: 'Ouverte',     tone: 'progress', icon: LockOpen },
+  closed: { label: 'Clôturée',    tone: 'done',     icon: Lock },
+  locked: { label: 'Verrouillée', tone: 'done',     icon: ShieldCheck },
 };
 const TRANSITION_LABEL: Record<string, string> = { open: 'Rouverte', closed: 'Clôturée', locked: 'Verrouillée' };
 
@@ -172,7 +173,6 @@ export default function ClotureTab() {
             <tbody>
               {(periods as FiscalPeriod[]).map(p => {
                 const meta = STATUS_META[p.status];
-                const Icon = meta.icon;
                 const expanded = openChecks === p.id;
                 return (
                   <Fragment key={p.id}>
@@ -182,9 +182,7 @@ export default function ClotureTab() {
                         {String(p.start_date).slice(0, 10)} → {String(p.end_date).slice(0, 10)}
                       </td>
                       <td>
-                        <span className={`odoo-tag ${meta.tag}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <Icon size={11} /> {meta.label}
-                        </span>
+                        <StatusTag tone={meta.tone} icon={meta.icon} label={meta.label} />
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <div style={{ display: 'inline-flex', gap: 6 }}>
@@ -316,8 +314,8 @@ function PeriodChecks({ periodId }: { periodId: string }) {
               <td style={{ textAlign: 'right' }}>{c.item_count}</td>
               <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{c.amount != null && c.item_count > 0 ? fmt(c.amount) : '—'}</td>
               <td>{c.item_count === 0
-                ? <span className="odoo-tag odoo-tag-green">OK</span>
-                : c.blocking ? <span className="odoo-tag odoo-tag-red">Bloquant</span> : <span className="odoo-tag odoo-tag-orange">À examiner</span>}</td>
+                ? <StatusTag tone="done" label="OK" />
+                : c.blocking ? <StatusTag tone="blocked" label="Bloquant" /> : <StatusTag tone="todo" label="À examiner" />}</td>
             </tr>
           ))}
         </tbody>

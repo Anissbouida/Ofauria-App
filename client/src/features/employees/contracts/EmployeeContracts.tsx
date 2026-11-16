@@ -1,18 +1,21 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { FilePlus2, RefreshCw, Hourglass, CircleStop, Plus, FileSignature } from 'lucide-react';
+import { FilePlus2, RefreshCw, Hourglass, CircleStop, Plus, FileSignature, type LucideIcon } from 'lucide-react';
 import { contractsApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
 import { notify } from '../../../components/ui/InlineNotification';
 import { apiErrorMessage, isoDate } from '../shared';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { StatusTag, type StatusTone } from '../../../components/ui/StatusTag';
 import { SectionTitle, SubmitButton, fieldLabel, inputCls, panel, smallBtn } from '../ui';
 
 const fr = (d: unknown) => { const s = isoDate(d); return s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : ''; };
 const KIND: Record<string, string> = { contrat: 'Contrat', avenant: 'Avenant', renouvellement: 'Renouvellement' };
 const CATEGORY: Record<string, string> = { cadre: 'Cadre', employe: 'Employé', ouvrier: 'Ouvrier' };
-const STATUS: Record<string, [string, string]> = {
-  active: ['En vigueur', 'odoo-tag-green'], superseded: ['Remplacé', 'odoo-tag-grey'], ended: ['Terminé', 'odoo-tag-red'],
+const STATUS: Record<string, { label: string; tone: StatusTone; icon?: LucideIcon }> = {
+  active: { label: 'En vigueur', tone: 'done' },
+  superseded: { label: 'Remplacé', tone: 'cancelled', icon: RefreshCw },
+  ended: { label: 'Terminé', tone: 'cancelled', icon: CircleStop },
 };
 type Action = 'create' | 'avenant' | 'renew' | 'end' | null;
 
@@ -170,7 +173,7 @@ export default function EmployeeContracts({ employeeId, onChanged }: { employeeI
                 <td style={{ fontSize: '0.75rem' }}>{fr(c.start_date)} → {c.end_date ? fr(c.end_date) : 'indéterminée'}</td>
                 <td style={{ textAlign: 'right' }}>{c.monthly_salary ? `${parseFloat(c.monthly_salary).toFixed(2)}` : '—'}</td>
                 <td style={{ fontSize: '0.75rem' }}>{c.trial_end_date ? `${fr(c.trial_end_date)}${c.trial_renewed ? ' (renouvelé)' : ''}` : '—'}</td>
-                <td><span className={`odoo-tag ${STATUS[c.status]?.[1] ?? ''}`}>{STATUS[c.status]?.[0] ?? c.status}</span></td>
+                <td><StatusTag tone={STATUS[c.status]?.tone ?? 'draft'} icon={STATUS[c.status]?.icon} label={STATUS[c.status]?.label ?? c.status} /></td>
               </tr>
             ))}
           </tbody>

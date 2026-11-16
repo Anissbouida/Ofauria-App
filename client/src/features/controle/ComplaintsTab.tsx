@@ -16,6 +16,7 @@ import { useReferentiel } from '../../hooks/useReferentiel';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import ComplaintFormModal from '../../components/sav/ComplaintFormModal';
 import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { InterventionFormModal } from '../maintenance/forms';
@@ -37,7 +38,8 @@ const STAGES: Array<StageDef & { key: ComplaintStatus }> = [
   { key: 'rejected', label: 'Non fondées', hint: 'sans suite', icon: XCircle },
 ];
 const PRIORITY_TAG: Record<ComplaintPriority, string> = { critical: 'odoo-tag-red', high: 'odoo-tag-orange', normal: 'odoo-tag-blue', low: 'odoo-tag-grey' };
-const STATUS_TAG: Record<ComplaintStatus, string> = { open: 'odoo-tag-orange', in_progress: 'odoo-tag-blue', resolved: 'odoo-tag-green', closed: 'odoo-tag-grey', rejected: 'odoo-tag-grey' };
+/** Statut d'une réclamation en étiquette commune : ouverte = à traiter, non fondée = classée sans suite. */
+const STATUS_TONE: Record<ComplaintStatus, StatusTone> = { open: 'todo', in_progress: 'progress', resolved: 'done', closed: 'done', rejected: 'cancelled' };
 
 export default function ComplaintsTab({ range, periodText }: { range: Record<string, string>; periodText: string }) {
   const [status, setStatus] = useState<ComplaintStatus | ''>('');
@@ -115,7 +117,7 @@ export default function ComplaintsTab({ range, periodText }: { range: Record<str
                   <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={c.subject}>{c.subject}</td>
                   <td>{c.product_name || '—'}{c.lot_number ? <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}> · {c.lot_number}</span> : null}</td>
                   <td><span className={`odoo-tag ${PRIORITY_TAG[c.priority]}`}>{PRIORITY_LABELS[c.priority]}</span></td>
-                  <td><span className={`odoo-tag ${STATUS_TAG[c.status]}`}>{STATUS_LABELS[c.status]}</span></td>
+                  <td><StatusTag tone={STATUS_TONE[c.status] ?? 'draft'} label={STATUS_LABELS[c.status]} /></td>
                   <td style={{ whiteSpace: 'nowrap' }}><Due c={c} /></td>
                   <td>{c.assigned_name || <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}</td>
                 </tr>
@@ -192,7 +194,7 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
               <div className="odoo-breadcrumb">
                 <MessageSquareWarning size={14} style={{ color: 'var(--theme-accent)' }} />
                 <span className="font-mono">{c.number}</span>
-                <span className={`odoo-tag ${STATUS_TAG[c.status]}`} style={{ marginLeft: 6 }}>{STATUS_LABELS[c.status]}</span>
+                <span style={{ marginLeft: 6 }}><StatusTag tone={STATUS_TONE[c.status] ?? 'draft'} label={STATUS_LABELS[c.status]} /></span>
                 <span className={`odoo-tag ${PRIORITY_TAG[c.priority]}`}>{PRIORITY_LABELS[c.priority]}</span>
               </div>
               <div style={{ flex: 1 }} />

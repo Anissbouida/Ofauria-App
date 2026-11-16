@@ -3,13 +3,15 @@ import { Link } from 'react-router-dom';
 import { BON_SORTIE_STATUS_LABELS } from '@ofauria/shared';
 import { apiErrorMessage } from '../../api/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Package, PackageOpen, AlertTriangle, X, CalendarClock, ShoppingCart, CheckCircle } from 'lucide-react';
+import { Loader2, Package, PackageOpen, AlertTriangle, X, CalendarClock, ShoppingCart } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { bonSortieApi } from '../../api/bon-sortie.api';
 import { referentielApi } from '../../api/referentiel.api';
 import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
+import { bonStatusTag } from '../production/status';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 
 type TransferModalPayload = {
@@ -210,9 +212,8 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
             <span style={{ color: 'var(--theme-text-muted)' }}>·</span>
             <span>Plan du {g.plan_date ? format(new Date(g.plan_date), 'dd MMM yyyy', { locale: fr }) : '—'}</span>
             {g.plan_type && <span className="odoo-tag odoo-tag-grey">{g.plan_type}</span>}
-            <span className="odoo-tag odoo-tag-orange">
-              {BON_SORTIE_STATUS_LABELS[g.bon_status as keyof typeof BON_SORTIE_STATUS_LABELS] || g.bon_status}
-            </span>
+            <StatusTag tone={bonStatusTag(g.bon_status).tone} icon={bonStatusTag(g.bon_status).icon}
+              label={BON_SORTIE_STATUS_LABELS[g.bon_status as keyof typeof BON_SORTIE_STATUS_LABELS] || g.bon_status} />
             <div style={{ flex: 1 }} />
             <Link to={`/stock?tab=bons&bon=${bonId}`} className="odoo-btn-secondary" style={{ textDecoration: 'none' }}>Ouvrir le bon</Link>
           </div>
@@ -256,13 +257,13 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: insufficient ? '#dc3545' : undefined, fontWeight: insufficient ? 600 : 400 }}>
                       {economatAvailable.toFixed(2)} {unit}
-                      {insufficient && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }}><AlertTriangle size={10} /> insuffisant</span>}
+                      {insufficient && <span style={{ marginLeft: 6 }}><StatusTag tone="blocked" label="insuffisant" /></span>}
                     </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       {/* Scelle insuffisant : le transfert est impossible (regle serveur),
                           on propose de commander le seul delta manquant. */}
                       {insufficient && (alreadyOrdered ? (
-                        <span className="odoo-tag odoo-tag-green" style={{ marginRight: 6 }}><CheckCircle size={10} /> Manquant commandé</span>
+                        <span style={{ marginRight: 6 }}><StatusTag tone="progress" icon={ShoppingCart} label="Manquant commandé" /></span>
                       ) : (
                         <button type="button" onClick={() => commanderMutation.mutate({ line: l, missing })}
                           disabled={isOrdering || transferringAll} className="odoo-btn-secondary" style={{ marginRight: 6 }}

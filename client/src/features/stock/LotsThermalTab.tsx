@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Snowflake, Sun, Package, AlertTriangle } from 'lucide-react';
+import { Snowflake, Sun, Package, AlertTriangle, type LucideIcon } from 'lucide-react';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { lotThermalApi, type FreezableLot } from '../../api/lot-thermal.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage } from '../../api/errors';
 
-const ETAT_BADGE: Record<string, { label: string; cls: string }> = {
-  frais: { label: 'Frais', cls: 'odoo-tag' },
-  surgele: { label: 'Surgelé', cls: 'odoo-tag-blue' },
-  decongele: { label: 'Décongelé', cls: 'odoo-tag-amber' },
+/** État thermique en étiquette commune (StatusTag) : décongelé = à consommer, action attendue. */
+const ETAT_BADGE: Record<string, { label: string; tone: StatusTone; icon?: LucideIcon }> = {
+  frais: { label: 'Frais', tone: 'done', icon: Sun },
+  surgele: { label: 'Surgelé', tone: 'progress', icon: Snowflake },
+  decongele: { label: 'Décongelé', tone: 'todo' },
 };
 const FILTERS: { key: string | null; label: string }[] = [
   { key: null, label: 'Tous' },
@@ -91,10 +93,7 @@ export default function LotsThermalTab() {
                   </td>
                   <td style={{ textAlign: 'right' }} className="tabular-nums">{Math.round(l.quantity)} {l.unit}</td>
                   <td>
-                    <span className={badge.cls}>
-                      {l.etat_thermique === 'surgele' && <Snowflake size={10} style={{ display: 'inline', marginRight: 2 }} />}
-                      {badge.label}
-                    </span>
+                    <StatusTag tone={badge.tone} icon={badge.icon} label={badge.label} />
                   </td>
                   <td className="tabular-nums" style={{ color: expired ? 'var(--theme-danger, #dc3545)' : undefined }}>
                     {fmtDate(l.dlc_affichee)}

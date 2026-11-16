@@ -5,6 +5,7 @@ import { automationApi, type OutboxMessage } from '../../api/automation.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 
@@ -12,9 +13,9 @@ import { apiErrorMessage } from '../../api/errors';
  * Paramètres › E-mails (mig 364). Le serveur d'envoi (SMTP) se configure par variables
  * d'environnement : l'écran montre son état, l'expéditeur affiché et la file d'envoi.
  */
-const STATUS: Record<OutboxMessage['status'], { label: string; cls: string }> = {
-  queued: { label: 'En attente', cls: 'odoo-tag-orange' }, sent: { label: 'Envoyé', cls: 'odoo-tag-green' },
-  failed: { label: 'Échec', cls: 'odoo-tag-red' }, cancelled: { label: 'Annulé', cls: 'odoo-tag-grey' },
+const STATUS: Record<OutboxMessage['status'], { label: string; tone: StatusTone }> = {
+  queued: { label: 'En attente', tone: 'todo' }, sent: { label: 'Envoyé', tone: 'done' },
+  failed: { label: 'Échec', tone: 'blocked' }, cancelled: { label: 'Annulé', tone: 'cancelled' },
 };
 const dt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', width: '100%' };
@@ -128,7 +129,7 @@ export default function MailTab() {
                   <td>{m.subject}{m.last_error && <div style={{ fontSize: '0.75rem', color: '#c0392b' }} title={m.last_error}>{m.last_error.slice(0, 120)}</div>}</td>
                   <td style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{m.type_label ?? (m.type === 'manual' ? 'Envoi manuel' : m.type)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
-                    <span className={`odoo-tag ${STATUS[m.status].cls}`}>{STATUS[m.status].label}</span>
+                    <StatusTag tone={STATUS[m.status].tone} label={STATUS[m.status].label} />
                     <div style={{ fontSize: '0.7rem', color: 'var(--odoo-text-muted)' }}>
                       {m.status === 'sent' ? dt(m.sent_at) : m.status === 'queued' && m.attempts > 0 ? `essai ${m.attempts + 1} à ${dt(m.next_attempt_at)}` : m.attempts ? `${m.attempts} essai(s)` : ''}
                     </div>

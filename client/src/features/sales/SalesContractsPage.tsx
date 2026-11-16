@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Handshake, Loader2, Plus, Lock } from 'lucide-react';
+import { Handshake, Loader2, Plus, Lock, Archive } from 'lucide-react';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { salesContractsApi, type SalesContract, type CreateContractInput } from '../../api/sales-contracts.api';
 import { customersApi } from '../../api/customers.api';
 import { productsApi } from '../../api/products.api';
@@ -159,7 +160,7 @@ export default function SalesContractsPage() {
                       <span className="sal-sub">{fmt(c.consumed)}</span>
                     </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{fmt(c.remaining)}</td>
-                    <td><span className={`odoo-tag ${c.status === 'active' ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{c.status === 'active' ? 'Actif' : 'Clôturé'}</span></td>
+                    <td>{c.status === 'active' ? <StatusTag tone="done" label="Actif" /> : <StatusTag tone="cancelled" icon={Archive} label="Clôturé" />}</td>
                     <td style={{ textAlign: 'right' }}>{c.status === 'active' && (
                       <NextStep icon={Lock} label="Clôturer" disabled={close.isPending} onClick={async () => {
                         if (await confirm(`Clôturer le contrat ${c.number} ? Les commandes ne pourront plus y être rattachées.`, { title: 'Clôturer le contrat', confirmLabel: 'Clôturer' })) close.mutate(c.id);

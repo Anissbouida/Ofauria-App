@@ -12,7 +12,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { StatusTag } from '../../components/ui/StatusTag';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
 import { usePurLayout, LayoutSwitch, SplitView, KanbanView, PaneHead, PaneState, pdate, pmoney, KANBAN_ALL } from './PurLayouts';
@@ -23,7 +23,7 @@ import { usePurLayout, LayoutSwitch, SplitView, KanbanView, PaneHead, PaneState,
  */
 const n2 = (v: string | number | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const n4 = (v: string | number | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-const STATUS_TAG: Record<LandedCostStatus, string> = { draft: 'odoo-tag-orange', applied: 'odoo-tag-green', cancelled: 'odoo-tag-grey' };
+const STATUS_TONE: Record<LandedCostStatus, StatusTone> = { draft: 'draft', applied: 'done', cancelled: 'cancelled' };
 const label: React.CSSProperties = { fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4, display: 'block' };
 
 export default function LandedCostTab() {
@@ -66,7 +66,7 @@ export default function LandedCostTab() {
             row={v => ({
               title: v.supplier_name || '—', when: pdate(v.reception_date, 'd MMM'),
               l2: <><span className="sal-num">{v.number}</span> · <b>{pmoney(v.total_amount)}</b></>,
-              l3: <><StatusTag tone={v.status === 'applied' ? 'done' : v.status === 'cancelled' ? 'cancelled' : 'draft'} label={LANDED_STATUS_LABELS[v.status]} /> {v.reception_number}{v.order_number ? ` · ${v.order_number}` : ''}</>,
+              l3: <><StatusTag tone={STATUS_TONE[v.status] ?? 'draft'} label={LANDED_STATUS_LABELS[v.status]} /> {v.reception_number}{v.order_number ? ` · ${v.order_number}` : ''}</>,
               dot: '',
             })}
             pane={v => <LandedCostPane id={v.id} onFull={() => setOpenId(v.id)} />} />
@@ -96,7 +96,7 @@ export default function LandedCostTab() {
                 <td>{METHOD_LABELS[v.allocation_method]}</td>
                 <td style={{ textAlign: 'right', fontWeight: 600 }}>{n2(v.total_amount)}</td>
                 <td style={{ textAlign: 'center' }}>{v.line_count}</td>
-                <td><span className={`odoo-tag ${STATUS_TAG[v.status]}`}>{LANDED_STATUS_LABELS[v.status]}</span></td>
+                <td><StatusTag tone={STATUS_TONE[v.status] ?? 'draft'} label={LANDED_STATUS_LABELS[v.status]} /></td>
                 <td style={{ color: 'var(--theme-text-muted)' }}>{v.applied_at ? `${format(new Date(v.applied_at), 'dd/MM/yyyy')} · ${v.applied_by_name ?? ''}` : '—'}</td>
               </tr>
             ))}</tbody>
@@ -297,7 +297,7 @@ function LandedCostDrawer({ id, onClose }: { id: string; onClose: () => void }) 
               <div className="odoo-breadcrumb">
                 <Truck size={14} style={{ color: 'var(--theme-accent)' }} />
                 <span className="font-mono">{v.number}</span>
-                <span className={`odoo-tag ${STATUS_TAG[v.status]}`} style={{ marginLeft: 6 }}>{LANDED_STATUS_LABELS[v.status]}</span>
+                <span style={{ marginLeft: 6 }}><StatusTag tone={STATUS_TONE[v.status] ?? 'draft'} label={LANDED_STATUS_LABELS[v.status]} /></span>
               </div>
               <div style={{ flex: 1 }} />
               {v.status === 'draft' && <>

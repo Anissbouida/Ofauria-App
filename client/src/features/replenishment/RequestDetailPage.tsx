@@ -7,12 +7,13 @@ import { useWorkshops } from '../../api/production.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { getApiErrorMessage } from '../../utils/api-error';
 import {
   ArrowLeft, Package, CheckCircle2, Clock, Truck,
   ClipboardCheck, AlertTriangle, XCircle, PackageCheck,
   Loader2, User, Calendar, Hash, ChefHat, Layers, ArrowRight,
-  ShoppingBag,
+  ShoppingBag, Send, type LucideIcon,
 } from 'lucide-react';
 
 /* ─── Constants ─── */
@@ -27,6 +28,19 @@ const STATUS_LABELS: Record<string, string> = {
   closed: 'Clôturé',
   closed_with_discrepancy: 'Clôturé (écart)',
   cancelled: 'Annulé',
+};
+
+/** Étiquette de statut commune : transféré = à réceptionner par la boutique, écart = à traiter. */
+const STATUS_TAG: Record<string, { tone: StatusTone; icon?: LucideIcon }> = {
+  submitted: { tone: 'progress', icon: Send },
+  acknowledged: { tone: 'progress' },
+  partially_received: { tone: 'progress', icon: Truck },
+  preparing: { tone: 'progress', icon: PackageCheck },
+  transferred: { tone: 'todo', icon: Truck },
+  partially_delivered: { tone: 'progress', icon: Truck },
+  closed: { tone: 'done' },
+  closed_with_discrepancy: { tone: 'blocked' },
+  cancelled: { tone: 'cancelled' },
 };
 
 const STATUS_GRADIENT: Record<string, string> = {
@@ -318,12 +332,7 @@ function SubRequestDetailView({
 
   /* ─── Render ─── */
 
-  const statusTagClass = displayStatus === 'closed' ? 'odoo-tag-green'
-    : displayStatus === 'closed_with_discrepancy' ? 'odoo-tag-orange'
-    : displayStatus === 'cancelled' ? 'odoo-tag-grey'
-    : displayStatus === 'submitted' ? 'odoo-tag-yellow'
-    : displayStatus === 'transferred' ? 'odoo-tag-purple'
-    : 'odoo-tag-blue';
+  const statusTag = STATUS_TAG[displayStatus] || STATUS_TAG.submitted;
   const priorityTagClass = request.priority === 'urgent' ? 'odoo-tag-red'
     : request.priority === 'high' ? 'odoo-tag-orange'
     : request.priority === 'low' ? 'odoo-tag-blue'
@@ -344,7 +353,7 @@ function SubRequestDetailView({
             #{request.request_number || (request.id as string).slice(0, 8).toUpperCase()}
           </span>
         </div>
-        <span className={`odoo-tag ${statusTagClass}`}>{STATUS_LABELS[displayStatus] || displayStatus}</span>
+        <StatusTag tone={statusTag.tone} icon={statusTag.icon} label={STATUS_LABELS[displayStatus] || displayStatus} />
         <span className={`odoo-tag ${priorityTagClass}`}>{PRIORITY_LABELS[request.priority as string] || request.priority}</span>
         <div style={{ flex: 1 }} />
         {(isAdmin || isStoreStaff) && ['submitted', 'acknowledged', 'partially_received'].includes(status) && (

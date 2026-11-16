@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  LayoutDashboard, Wrench, CalendarClock, BarChart3, Building2, Plus, Search, Loader2, CheckCircle2, AlertTriangle, Clock, PlayCircle, XCircle, RotateCcw, X, Send, CalendarPlus, Pencil,
+  LayoutDashboard, Wrench, CalendarClock, BarChart3, Building2, Plus, Search, Loader2, CheckCircle2, AlertTriangle, Clock, PlayCircle, XCircle, RotateCcw, X, Send, CalendarPlus, Pencil, type LucideIcon,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -14,6 +14,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
 import { StagePipeline, PeriodFilter, Pager, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { InterventionFormModal, PlanFormModal, n2, PRIORITY_TAG } from './forms';
@@ -24,7 +25,14 @@ import { InterventionFormModal, PlanFormModal, n2, PRIORITY_TAG } from './forms'
  * Générique : matériel interne (immobilisations) ou équipement chez le client.
  */
 type View = 'overview' | 'interventions' | 'plans' | 'equipment' | 'assets';
-const STATUS_TAG: Record<InterventionStatus, string> = { requested: 'odoo-tag-orange', scheduled: 'odoo-tag-blue', in_progress: 'odoo-tag-purple', done: 'odoo-tag-green', cancelled: 'odoo-tag-grey' };
+/** Statut d'une intervention en étiquette commune : à planifier = action attendue. */
+const STATUS_TONE: Record<InterventionStatus, { tone: StatusTone; icon?: LucideIcon }> = {
+  requested: { tone: 'todo' }, scheduled: { tone: 'progress', icon: CalendarClock }, in_progress: { tone: 'progress', icon: Wrench },
+  done: { tone: 'done' }, cancelled: { tone: 'cancelled' },
+};
+const InterventionStatusTag = ({ status }: { status: InterventionStatus }) => (
+  <StatusTag tone={STATUS_TONE[status]?.tone ?? 'draft'} icon={STATUS_TONE[status]?.icon} label={STATUS_LABELS[status]} />
+);
 const STAGES: Array<StageDef & { key: InterventionStatus }> = [
   { key: 'requested', label: 'À planifier', hint: 'demandées', icon: AlertTriangle },
   { key: 'scheduled', label: 'Planifiées', hint: 'date fixée', icon: CalendarClock },
@@ -77,7 +85,7 @@ function Row({ i, onOpen }: { i: Intervention; onOpen: (id: string) => void }) {
       <td>{i.equipment_name}{i.serial_no ? <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}> · {i.serial_no}</span> : null}</td>
       <td>{i.customer_label || <span style={{ color: 'var(--theme-text-muted)' }}>interne</span>}</td>
       <td><span className={`odoo-tag ${PRIORITY_TAG[i.priority]}`}>{PRIORITY_LABELS[i.priority]}</span></td>
-      <td><span className={`odoo-tag ${STATUS_TAG[i.status]}`}>{STATUS_LABELS[i.status]}</span></td>
+      <td><InterventionStatusTag status={i.status} /></td>
       <td style={{ whiteSpace: 'nowrap' }}><When i={i} /></td>
       <td>{i.assignee_name || '—'}</td>
       <td style={{ textAlign: 'right' }}>{i.status === 'done' ? n2(i.total_cost) : '—'}</td>
@@ -159,7 +167,7 @@ function Overview({ onOpen }: { onOpen: (id: string) => void }) {
               <tr key={i.id} onClick={() => onOpen(i.id)} style={{ cursor: 'pointer' }}>
                 <td><strong>{i.title}</strong><div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{i.equipment_name}{i.customer_label ? ` · ${i.customer_label}` : ''}</div></td>
                 <td><span className={`odoo-tag ${PRIORITY_TAG[i.priority]}`}>{PRIORITY_LABELS[i.priority]}</span></td>
-                <td><span className={`odoo-tag ${STATUS_TAG[i.status]}`}>{STATUS_LABELS[i.status]}</span></td>
+                <td><InterventionStatusTag status={i.status} /></td>
                 <td style={{ whiteSpace: 'nowrap' }}><When i={i} /></td>
               </tr>
             ))}</tbody></table>
@@ -205,7 +213,7 @@ function Plans({ onOpen }: { onOpen: (id: string) => void }) {
           <thead><tr><th>Entretien</th><th>Équipement</th><th>Client</th><th>Fréquence</th><th>Dernier</th><th>Prochain</th><th>Intervenant</th><th /></tr></thead>
           <tbody>{plans.map(pl => (
             <tr key={pl.id} style={{ opacity: pl.is_active ? 1 : 0.5 }}>
-              <td><strong>{pl.label}</strong>{!pl.is_active && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>inactif</span>}</td>
+              <td><strong>{pl.label}</strong>{!pl.is_active && <span style={{ marginLeft: 6 }}><StatusTag tone="cancelled" label="inactif" /></span>}</td>
               <td>{pl.equipment_name}{pl.serial_no ? <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}> · {pl.serial_no}</span> : null}</td>
               <td>{pl.customer_label || <span style={{ color: 'var(--theme-text-muted)' }}>interne</span>}</td>
               <td>tous les {pl.frequency_days} j</td>
@@ -292,7 +300,7 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
               <div className="odoo-breadcrumb">
                 <Wrench size={14} style={{ color: 'var(--theme-accent)' }} />
                 <span className="font-mono">{i.number}</span>
-                <span className={`odoo-tag ${STATUS_TAG[i.status]}`} style={{ marginLeft: 6 }}>{STATUS_LABELS[i.status]}</span>
+                <span style={{ marginLeft: 6 }}><InterventionStatusTag status={i.status} /></span>
                 <span className={`odoo-tag ${PRIORITY_TAG[i.priority]}`}>{PRIORITY_LABELS[i.priority]}</span>
                 <span className="odoo-tag odoo-tag-grey">{KIND_LABELS[i.kind]}</span>
               </div>

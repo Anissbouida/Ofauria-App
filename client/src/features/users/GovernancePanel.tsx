@@ -12,6 +12,7 @@ import {
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 
 /**
  * Gouvernance des droits (mig 336) : séparation des tâches (SoD), plafonds
@@ -339,7 +340,7 @@ function DelegationsSection() {
                 <td><strong>{d.from_name}</strong> → {d.to_name}</td>
                 <td>{d.role_label}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>{fmt(d.starts_at)} → {fmt(d.ends_at)}</td>
-                <td><span className={`odoo-tag ${d.active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{d.active ? 'Active' : 'Inactive'}</span></td>
+                <td><StatusTag tone={d.active ? 'done' : 'cancelled'} label={d.active ? 'Active' : 'Inactive'} /></td>
                 <td>
                   <button className="odoo-btn-danger" style={{ padding: '2px 8px' }}
                     onClick={async () => { if (await confirm('Retirer cette délégation ?', { danger: true, confirmLabel: 'Retirer' })) remove.mutate(d.id); }}>

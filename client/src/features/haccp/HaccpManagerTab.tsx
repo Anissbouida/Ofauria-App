@@ -9,6 +9,7 @@ import {
   type ActionStatus, type CleaningTask, type EquipmentConfig, type EquipmentType, type Frequency, type ReceptionRow,
 } from '../../api/haccp.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 
 /**
@@ -30,7 +31,8 @@ const iso = (d: Date) => format(d, 'yyyy-MM-dd');
 const daysAgo = (n: number) => iso(new Date(Date.now() - n * 86_400_000));
 const dt = (s: string | null) => (s ? format(new Date(s), 'dd/MM/yyyy HH:mm') : '—');
 const t = (v: number | null) => (v == null ? '—' : `${v.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} °C`);
-const STATUS_TAG: Record<ActionStatus, string> = { open: 'odoo-tag-red', done: 'odoo-tag-yellow', validated: 'odoo-tag-green' };
+/** Statut d'une action corrective en étiquette commune : à traiter / à valider = action attendue. */
+const STATUS_TONE: Record<ActionStatus, StatusTone> = { open: 'todo', done: 'todo', validated: 'done' };
 const tableWrap: React.CSSProperties = { overflowX: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4 };
 
 export default function HaccpManagerTab() {
@@ -125,7 +127,7 @@ function ActionsView() {
                     {a.done_by_name && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{a.done_by_name} · {dt(a.done_at)}</div>}
                     {a.validation_note && <div style={{ fontSize: '0.6875rem', color: '#b85d1a' }}>Gérant : {a.validation_note}</div>}
                   </td>
-                  <td><span className={`odoo-tag ${STATUS_TAG[a.status]}`}>{ACTION_STATUS_LABELS[a.status]}</span>
+                  <td><StatusTag tone={STATUS_TONE[a.status] ?? 'draft'} label={ACTION_STATUS_LABELS[a.status]} />
                     {a.validated_by_name && a.status === 'validated' && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{a.validated_by_name}</div>}
                   </td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -178,7 +180,7 @@ function TemperaturesView() {
                   <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{t(r.temp_min)} à {t(r.temp_max)}</td>
                   <td style={{ fontSize: '0.75rem' }}>{r.read_by_name ?? '—'}</td>
                   <td style={{ fontSize: '0.75rem' }}>
-                    {r.action_status ? <><span className={`odoo-tag ${STATUS_TAG[r.action_status]}`}>{ACTION_STATUS_LABELS[r.action_status]}</span> {r.action_taken}</> : '—'}
+                    {r.action_status ? <><StatusTag tone={STATUS_TONE[r.action_status] ?? 'draft'} label={ACTION_STATUS_LABELS[r.action_status]} /> {r.action_taken}</> : '—'}
                   </td>
                 </tr>
               ))}
@@ -212,7 +214,7 @@ function CleaningView() {
                   <td>{FREQUENCY_LABELS[l.frequency]}</td>
                   <td style={{ fontSize: '0.75rem' }}>{l.done_by_name ?? '—'}</td>
                   <td style={{ fontSize: '0.75rem' }}>
-                    {l.conforme ? <span className="odoo-tag odoo-tag-green">Conforme</span> : <><span className="odoo-tag odoo-tag-red">Non conforme</span> {l.note}</>}
+                    {l.conforme ? <StatusTag tone="done" label="Conforme" /> : <><StatusTag tone="blocked" label="Non conforme" /> {l.note}</>}
                   </td>
                 </tr>
               ))}
@@ -318,8 +320,8 @@ function ReceptionsView() {
                   <td style={{ fontSize: '0.75rem' }}>{r.received_by_name ?? '—'}</td>
                   <td style={{ fontSize: '0.75rem' }}>
                     {r.overall_conformity == null ? <span style={{ color: '#b85d1a', fontWeight: 600 }}>Non contrôlée</span>
-                      : r.overall_conformity ? <span className="odoo-tag odoo-tag-green">Conforme</span>
-                        : <span className="odoo-tag odoo-tag-red">Non conforme</span>}
+                      : r.overall_conformity ? <StatusTag tone="done" label="Conforme" />
+                        : <StatusTag tone="blocked" label="Non conforme" />}
                     {r.temperature_value != null && ` · ${t(r.temperature_value)}`}
                     {r.checked_by_name && <div style={{ color: 'var(--theme-text-muted)' }}>{r.checked_by_name} · {dt(r.checked_at)}</div>}
                   </td>

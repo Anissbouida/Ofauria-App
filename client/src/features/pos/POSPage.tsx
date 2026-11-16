@@ -3366,12 +3366,16 @@ export default function POSPage() {
                                   const dotClass = !hasBeenCounted ? 'warning'
                                     : closeType !== 'passation' && finalDest === 'waste' ? 'danger'
                                     : discrepancy !== 0 ? (discrepancy > 0 ? 'danger' : 'warning') : 'ok';
+                                  // Le point ne doit pas porter seul l'état : libellé lu au survol et par les lecteurs d'écran.
+                                  const dotLabel = !hasBeenCounted ? 'Non compté'
+                                    : closeType !== 'passation' && finalDest === 'waste' ? 'Perte'
+                                    : discrepancy !== 0 ? (discrepancy > 0 ? `Manquant (${discrepancy})` : `Surplus (${-discrepancy})`) : 'Conforme';
 
                                   return (
                                     <tr key={pid} className={rowClass} style={{ cursor: 'default' }}>
                                       <td>
                                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-                                          <span className={`odoo-status-dot ${dotClass}`} style={{ marginTop: 6 }} />
+                                          <span className={`odoo-status-dot ${dotClass}`} style={{ marginTop: 6 }} role="img" title={dotLabel} aria-label={dotLabel} />
                                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                                             <span style={{ fontWeight: 500, color: 'var(--odoo-text)' }}
                                               title={sugReason || undefined}>

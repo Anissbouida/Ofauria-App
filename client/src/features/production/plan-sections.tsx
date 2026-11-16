@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { History, Layers, Package } from 'lucide-react';
+import { History, Layers, Package, ChefHat, PackageCheck, type LucideIcon } from 'lucide-react';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import type { ProductionPlanEvent } from '@ofauria/shared';
 import { planStatusTag, bonStatusTag } from './status';
 
@@ -42,8 +43,8 @@ export function PlanJournal({ events }: { events: ProductionPlanEvent[] }) {
                 <tr key={ev.id} style={{ cursor: 'default' }}>
                   <td style={{ whiteSpace: 'nowrap', color: 'var(--theme-text-muted)' }}>{format(new Date(ev.created_at as string), 'dd/MM/yyyy HH:mm', { locale: fr })}</td>
                   <td>{isBon ? <span style={{ fontFamily: 'ui-monospace, monospace' }}>{ev.bon_numero as string}</span> : 'Plan'}</td>
-                  <td>{from ? <span className={`odoo-tag ${from.cls}`}>{from.label}</span> : <span style={{ color: 'var(--theme-text-muted)' }}>création</span>}</td>
-                  <td><span className={`odoo-tag ${to.cls}`}>{to.label}</span></td>
+                  <td>{from ? <StatusTag tone={from.tone} icon={from.icon} label={from.label} /> : <span style={{ color: 'var(--theme-text-muted)' }}>création</span>}</td>
+                  <td><StatusTag tone={to.tone} icon={to.icon} label={to.label} /></td>
                   <td style={{ color: 'var(--theme-text-muted)' }}>{(ev.actor_name as string) || '—'}</td>
                   <td style={{ color: 'var(--theme-text-muted)' }}>{(ev.reason as string) || ''}</td>
                 </tr>
@@ -87,7 +88,7 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
               const isExpired = !!expDate && expDate < new Date();
               return (
                 <tr key={idx} style={{ cursor: 'default' }}>
-                  <td><span className={`odoo-status-dot ${isExpired ? 'danger' : 'ok'}`} /></td>
+                  <td><span className={`odoo-status-dot ${isExpired ? 'danger' : 'ok'}`} title={isExpired ? 'DLC dépassée' : 'DLC valide'} aria-label={isExpired ? 'DLC dépassée' : 'DLC valide'} role="img" /></td>
                   <td style={{ fontWeight: 500 }}>{usage.ingredient_name as string}</td>
                   {/* Lot interne = celui affiche sur le bon de sortie ; le lot fournisseur
                       (etiquette du sac) n'est pas toujours saisi a la reception. */}
@@ -97,7 +98,7 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
                   <td style={{ color: 'var(--theme-text-muted)' }}>{usage.received_at ? format(new Date(usage.received_at as string), 'dd/MM/yyyy') : '—'}</td>
                   <td>
                     {expDate
-                      ? (isExpired ? <span className="odoo-tag odoo-tag-red">Expiré {format(expDate, 'dd/MM/yyyy')}</span> : <span style={{ color: 'var(--theme-text-muted)' }}>{format(expDate, 'dd/MM/yyyy')}</span>)
+                      ? (isExpired ? <StatusTag tone="late" label={`Expiré ${format(expDate, 'dd/MM/yyyy')}`} /> : <span style={{ color: 'var(--theme-text-muted)' }}>{format(expDate, 'dd/MM/yyyy')}</span>)
                       : '—'}
                   </td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
@@ -116,11 +117,12 @@ export function PlanLotTraceability({ usage }: { usage: Record<string, any>[] })
 
 export function PlanLinkedOrder({ plan }: { plan: Record<string, any> }) {
   const os = plan.order_status as string;
-  const orderTag = os === 'in_production' ? 'odoo-tag-yellow'
-    : os === 'ready' ? 'odoo-tag-green'
-    : os === 'completed' ? 'odoo-tag-grey'
-    : os === 'cancelled' ? 'odoo-tag-red'
-    : 'odoo-tag-blue';
+  const orderTone: { tone: StatusTone; icon?: LucideIcon } = os === 'in_production' ? { tone: 'progress', icon: ChefHat }
+    : os === 'ready' ? { tone: 'todo', icon: PackageCheck }
+    : os === 'completed' ? { tone: 'done' }
+    : os === 'cancelled' ? { tone: 'cancelled' }
+    : os === 'confirmed' ? { tone: 'progress' }
+    : { tone: 'draft' };
   const orderLabel = os === 'pending' ? 'En attente' : os === 'confirmed' ? 'Confirmée'
     : os === 'in_production' ? 'En production' : os === 'ready' ? 'Prête'
     : os === 'completed' ? 'Livrée' : os === 'cancelled' ? 'Annulée' : os;
@@ -135,7 +137,7 @@ export function PlanLinkedOrder({ plan }: { plan: Record<string, any> }) {
       <div className="odoo-section-header">
         <Package size={12} /> Commande liée
         <span style={{ marginLeft: 4, fontFamily: 'ui-monospace, monospace', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>{plan.order_number}</span>
-        <span className={`odoo-tag ${orderTag}`} style={{ marginLeft: 'auto' }}>{orderLabel}</span>
+        <span style={{ marginLeft: 'auto' }}><StatusTag tone={orderTone.tone} icon={orderTone.icon} label={orderLabel} /></span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', padding: '0.75rem 1rem', backgroundColor: 'var(--theme-bg-card)' }}>
         {plan.order_customer_first_name && cell('Client', `${plan.order_customer_first_name} ${plan.order_customer_last_name || ''}`)}

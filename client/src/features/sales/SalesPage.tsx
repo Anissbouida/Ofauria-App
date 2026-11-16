@@ -11,6 +11,7 @@ import { format, addDays, differenceInDays, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { getApiErrorMessage } from '../../utils/api-error';
 import {
   Receipt, Lock, AlertTriangle, CheckCircle, XCircle, LayoutGrid, ShoppingBag,
@@ -715,13 +716,13 @@ export default function SalesPage() {
                       const dotClass = isUnpaid ? 'warning' : 'ok';
                       return (
                       <tr key={s.id as string} className={isUnpaid ? 'row-warning' : ''}>
-                        <td><span className={`odoo-status-dot ${dotClass}`} /></td>
+                        <td><span className={`odoo-status-dot ${dotClass}`} role="img" title={isUnpaid ? 'Impayé' : 'Payé'} aria-label={isUnpaid ? 'Impayé' : 'Payé'} /></td>
                         <td>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                             <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{s.sale_number as string}</span>
                             {(s.sale_type === 'advance') && <span className="odoo-tag odoo-tag-orange">Avance</span>}
                             {(s.sale_type === 'delivery') && <span className="odoo-tag odoo-tag-blue">Solde liv.</span>}
-                            {isUnpaid && <span className="odoo-tag odoo-tag-yellow">Impayé</span>}
+                            {isUnpaid && <StatusTag tone="todo" label="Impayé" />}
                           </span>
                         </td>
                         <td>
@@ -732,9 +733,7 @@ export default function SalesPage() {
                         <td style={{ color: 'var(--theme-text-muted)' }}>{s.cashier_first_name as string} {s.cashier_last_name as string}</td>
                         <td>
                           {isUnpaid ? (
-                            <span className="odoo-tag odoo-tag-orange">
-                              <Clock size={9} style={{ display: 'inline', marginRight: 2 }} /> À encaisser
-                            </span>
+                            <StatusTag tone="todo" icon={Clock} label="À encaisser" />
                           ) : (
                             <span className={`odoo-tag ${s.payment_method === 'cash' ? 'odoo-tag-green' : 'odoo-tag-blue'}`}>
                               {s.payment_method === 'cash' ? <Banknote size={9} style={{ display: 'inline', marginRight: 2 }} /> : <CreditCard size={9} style={{ display: 'inline', marginRight: 2 }} />}

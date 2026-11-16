@@ -3,12 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { bonSortieApi, type WeighingPayload } from '../../api/bon-sortie.api';
 import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import {
-  Loader2, CheckCircle, AlertTriangle, Package, PackageOpen, Check, XCircle,
-  RefreshCw, ChevronDown, ChevronUp, Scale, Truck, ShoppingCart, Clock, Layers,
+  Loader2, CheckCircle, AlertTriangle, Package, PackageOpen, Check,
+  RefreshCw, ChevronDown, ChevronUp, Scale, Truck, ShoppingCart, Layers, type LucideIcon,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage } from '../../api/errors';
 import { smartFormatQuantity } from '../../utils/units';
@@ -69,14 +70,15 @@ function lineTarget(l: Line, kind: LineKind): number {
   return parseFloat(l.allocated_quantity as string || '0');
 }
 
-const KIND_TAG: Record<LineKind, { label: string; cls: string; Icon: typeof CheckCircle; title: string }> = {
-  pese:         { label: 'Pesé',          cls: 'odoo-tag-green',  Icon: CheckCircle,  title: 'Ingrédient pesé et prêt' },
-  a_peser:      { label: 'À peser',       cls: 'odoo-tag-grey',   Icon: Scale,        title: 'Le stock est au pesage : saisissez le poids' },
-  a_ouvrir:     { label: 'À ouvrir',      cls: 'odoo-tag-blue',   Icon: PackageOpen,  title: 'Le stock est en économat : pesez, le contenant est ouvert automatiquement' },
-  manquant:     { label: 'Manquant',      cls: 'odoo-tag-red',    Icon: AlertTriangle, title: 'Rien en stock (pesage ni économat) : commandez, ou remettez le bon en signalant le manquant' },
-  stock_revenu: { label: 'Stock revenu',  cls: 'odoo-tag-yellow', Icon: RefreshCw,    title: 'Du stock est arrivé depuis : actualisez le stock ou choisissez un lot' },
-  lot_perime:   { label: 'Lot périmé',    cls: 'odoo-tag-red',    Icon: XCircle,      title: 'Le lot alloué a dépassé sa DLC : choisissez un autre lot' },
-  attente:      { label: 'En attente',    cls: 'odoo-tag-grey',   Icon: Clock,        title: '' },
+/** Statut d'une ligne en étiquette commune (StatusTag) : ton choisi par le sens. */
+const KIND_TAG: Record<LineKind, { label: string; tone: StatusTone; icon?: LucideIcon; title: string }> = {
+  pese:         { label: 'Pesé',          tone: 'done',                         title: 'Ingrédient pesé et prêt' },
+  a_peser:      { label: 'À peser',       tone: 'todo',    icon: Scale,         title: 'Le stock est au pesage : saisissez le poids' },
+  a_ouvrir:     { label: 'À ouvrir',      tone: 'todo',    icon: PackageOpen,   title: 'Le stock est en économat : pesez, le contenant est ouvert automatiquement' },
+  manquant:     { label: 'Manquant',      tone: 'blocked',                      title: 'Rien en stock (pesage ni économat) : commandez, ou remettez le bon en signalant le manquant' },
+  stock_revenu: { label: 'Stock revenu',  tone: 'todo',    icon: RefreshCw,     title: 'Du stock est arrivé depuis : actualisez le stock ou choisissez un lot' },
+  lot_perime:   { label: 'Lot périmé',    tone: 'late',                         title: 'Le lot alloué a dépassé sa DLC : choisissez un autre lot' },
+  attente:      { label: 'En attente',    tone: 'todo',                         title: '' },
 };
 
 /** Lot reellement pris, a choisir parmi les lots utilisables (pesage puis economat, FEFO). */
@@ -379,8 +381,8 @@ export function BonSortiePanel({
           <Truck size={12} /> Bon de sortie
           <span style={{ marginLeft: 4, fontFamily: 'monospace', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{bon.numero as string}</span>
           {isClosed && (
-            <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 'auto' }}>
-              <CheckCircle size={10} /> Livré
+            <span style={{ marginLeft: 'auto' }}>
+              <StatusTag tone="done" icon={Truck} label="Livré" />
             </span>
           )}
         </div>
@@ -473,9 +475,7 @@ export function BonSortiePanel({
             {canPrepare && weighableLines.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                 {blockedWeighings.length > 0 && (
-                  <span className="odoo-tag odoo-tag-orange">
-                    <AlertTriangle size={10} /> {blockedWeighings.length} à compléter (motif ou lot)
-                  </span>
+                  <StatusTag tone="todo" label={`${blockedWeighings.length} à compléter (motif ou lot)`} />
                 )}
                 <button
                   onClick={() => weighAllMutation.mutate(readyWeighings.map(({ line, ev }) => ({ ligneId: line.id as string, ...payloadOf(line, ev) })))}
@@ -519,7 +519,7 @@ export function BonSortiePanel({
           const canWeigh = canPrepare && WEIGHABLE.includes(kind);
           const ev = canWeigh ? evalWeighing(line, kind) : null;
           const entry = entryOf(line.id as string);
-          const tag = hasEcart ? { label: 'Pesé — écart', cls: 'odoo-tag-orange', Icon: AlertTriangle, title: 'Hors tolérance, motif enregistré' } : KIND_TAG[kind];
+          const tag: { label: string; tone: StatusTone; icon?: LucideIcon; title: string } = hasEcart ? { label: 'Pesé — écart', tone: 'done', icon: AlertTriangle, title: 'Hors tolérance, motif enregistré' } : KIND_TAG[kind];
           const rowDot = hasEcart ? 'warning' : isDone ? 'ok' : (kind === 'manquant' || kind === 'lot_perime') ? 'danger' : 'neutral';
           const shown = fmtQty(isMagasinier ? target : needed, unit);
           const weighedEcart = actual === null ? 0 : actual - allocated;
@@ -601,10 +601,10 @@ export function BonSortiePanel({
                 )}
               </td>
               <td>
-                <span className={`odoo-tag ${tag.cls}`} title={tag.title}><tag.Icon size={10} /> {tag.label}</span>
+                <StatusTag tone={tag.tone} icon={tag.icon} label={tag.label} title={tag.title || undefined} />
                 {isMagasinier && kind === 'manquant' && !isDelivered && (
                   alreadyOrdered
-                    ? <div style={{ marginTop: 4 }}><span className="odoo-tag odoo-tag-green"><ShoppingCart size={10} /> Commandé</span></div>
+                    ? <div style={{ marginTop: 4 }}><StatusTag tone="progress" icon={ShoppingCart} label="Commandé" /></div>
                     : <div style={{ marginTop: 4 }}>
                         <button type="button" className="bsi-link-btn" disabled={orderMutation.isPending}
                           onClick={() => orderMutation.mutate(line)} title="Demander l'achat du manquant (Stock › À commander)">
@@ -706,7 +706,7 @@ export function BonSortiePanel({
                       <td style={{ width: 28 }}><span className={`odoo-status-dot ${short ? 'warning' : 'ok'}`} /></td>
                       <td><strong>{p.ingredient_name as string}</strong>{p.packaging_format ? <span className="bsi-sub"> {p.packaging_format as string}</span> : null}</td>
                       <td className="bsi-num">{need.toFixed(need % 1 === 0 ? 0 : 2)} <span className="bsi-unit">{(p.unit || '') as string}</span></td>
-                      <td>{short ? <span className="odoo-tag odoo-tag-orange"><AlertTriangle size={10} /> stock insuffisant ({alloc.toFixed(0)} dispo)</span> : <span className="odoo-tag odoo-tag-green"><Check size={10} /> en stock</span>}</td>
+                      <td>{short ? <StatusTag tone="blocked" label={`stock insuffisant (${alloc.toFixed(0)} dispo)`} /> : <StatusTag tone="done" label="en stock" />}</td>
                     </tr>
                   );
                 })}

@@ -759,12 +759,12 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
                         ) : null}
                         <span style={{ fontSize: '0.75rem' }}>
                           {poStage === 'cancelled'
-                            ? <span className="odoo-tag odoo-tag-grey">{STATUS_LABELS[status] ?? status}</span>
+                            ? <StatusTag tone="cancelled" label={STATUS_LABELS[status] ?? status} />
                             : <strong style={{ fontWeight: 600 }}>{PO_STAGES[stageIdx]?.label}</strong>}
                           <span style={{ color: 'var(--odoo-text-muted)' }}> · {stageDetail(po)}</span>
                         </span>
-                        {po.on_hold && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }} title="Bloqué : ni réception ni facture">bloqué</span>}
-                        {po.approval_pending === true && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 6 }} title="En attente d'approbation : partira au fournisseur dès l'accord">à approuver</span>}
+                        {po.on_hold && <span style={{ marginLeft: 6 }}><StatusTag tone="blocked" label="bloqué" title="Bloqué : ni réception ni facture" /></span>}
+                        {po.approval_pending === true && <span style={{ marginLeft: 6 }}><StatusTag tone="todo" label="à approuver" title="En attente d'approbation : partira au fournisseur dès l'accord" /></span>}
                       </td>
                       <td>
                         {view === 'open' ? (

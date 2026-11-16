@@ -6,15 +6,16 @@ import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { notify } from '../../../components/ui/InlineNotification';
 import { MONTH_NAMES, apiErrorMessage, saveBlobResponse } from '../shared';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../../components/ui/StatusTag';
 import { Field, SectionTitle, EmptyState, inputCls, panel, smallBtn } from '../ui';
 
 const fmt = (v: unknown) => (parseFloat(String(v ?? 0)) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const frd = (s?: string | null) => (s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : '—');
-const STATUS: Record<string, [string, string]> = {
-  pending: ['En attente', 'odoo-tag-yellow'], approved: ['Accordée', 'odoo-tag-green'], rejected: ['Refusée', 'odoo-tag-red'],
-  cancelled: ['Annulée', 'odoo-tag-grey'], open: ['En cours', 'odoo-tag-orange'], partial: ['Partiellement remboursée', 'odoo-tag-orange'], repaid: ['Remboursée', 'odoo-tag-green'],
+const STATUS: Record<string, [string, StatusTone]> = {
+  pending: ['En attente', 'todo'], approved: ['Accordée', 'done'], rejected: ['Refusée', 'blocked'],
+  cancelled: ['Annulée', 'cancelled'], open: ['En cours', 'progress'], partial: ['Partiellement remboursée', 'progress'], repaid: ['Remboursée', 'done'],
 };
-const tag = (s: string) => <span className={`odoo-tag ${STATUS[s]?.[1] ?? ''}`}>{STATUS[s]?.[0] ?? s}</span>;
+const tag = (s: string) => <StatusTag tone={STATUS[s]?.[1] ?? 'draft'} label={STATUS[s]?.[0] ?? s} />;
 
 /**
  * Espace employé : ses bulletins (PDF), son solde de congés et ses demandes,

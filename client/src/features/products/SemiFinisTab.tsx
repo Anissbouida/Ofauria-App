@@ -8,9 +8,10 @@ import { storesApi } from '../../api/stores.api';
 import { useAuth } from '../../context/AuthContext';
 import {
   Layers, Search, ChevronDown, ChevronRight, Snowflake,
-  AlertTriangle, Package, Clock, ArrowUp, ArrowDown, ArrowUpDown,
+  Package, Clock, ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -445,9 +446,7 @@ function SemiFiniRow({
         <td style={{ textAlign: 'right' }}>
           {earliestExpiry ? (
             isExpiring ? (
-              <span className="odoo-tag odoo-tag-red" style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                <AlertTriangle size={10} /> {format(earliestExpiry, 'dd/MM', { locale: fr })}
-              </span>
+              <StatusTag tone="late" label={format(earliestExpiry, 'dd/MM', { locale: fr })} title="DLC dépassée ou sous 24 h" />
             ) : (
               <span style={{ color: 'var(--theme-text-muted)' }}>{format(earliestExpiry, 'dd/MM', { locale: fr })}</span>
             )
@@ -627,11 +626,15 @@ function SemiFiniRow({
                               </td>
                               <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                                 <span style={{ fontWeight: 600 }}>{parseFloat(lot.quantity).toFixed(2)} {recipe.yield_unit}</span>
-                                {expires && (
-                                  <span className={expiring ? 'odoo-tag odoo-tag-red' : undefined} style={expiring ? { marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 3 } : { marginLeft: 8, color: 'var(--theme-text-muted)' }}>
+                                {expires && (expiring ? (
+                                  <span style={{ marginLeft: 8 }}>
+                                    <StatusTag tone="late" label={format(expires, 'dd/MM/yy', { locale: fr })} title="DLC dépassée ou sous 24 h" />
+                                  </span>
+                                ) : (
+                                  <span style={{ marginLeft: 8, color: 'var(--theme-text-muted)' }}>
                                     <Clock size={10} /> {format(expires, 'dd/MM/yy', { locale: fr })}
                                   </span>
-                                )}
+                                ))}
                               </td>
                             </tr>
                           );

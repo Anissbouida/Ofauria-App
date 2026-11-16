@@ -38,10 +38,6 @@ export type QuotesOverview = {
 export const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
   draft: 'Brouillon', sent: 'Envoyé', accepted: 'Accepté', refused: 'Perdu', expired: 'Expiré', converted: 'Commandé', cancelled: 'Annulé',
 };
-export const QUOTE_STATUS_TAG: Record<QuoteStatus, string> = {
-  draft: 'odoo-tag-grey', sent: 'odoo-tag-blue', accepted: 'odoo-tag-green', refused: 'odoo-tag-red', expired: 'odoo-tag-orange', converted: 'odoo-tag-purple', cancelled: 'odoo-tag-grey',
-};
-
 export interface QuoteVersion {
   id: string; number: string; version: number; status: QuoteStatus;
   total: string; created_at: string; superseded_by: string | null; superseded_at: string | null;

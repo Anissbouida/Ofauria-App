@@ -6,6 +6,7 @@ import { recipesApi } from '../../api/recipes.api';
 import { ChefHat, Search, BookOpen, Plus, Pencil, Trash2, Layers, LayoutGrid, List, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, Repeat, Upload, Download, Printer, Archive, ArchiveRestore } from 'lucide-react';
 import ContenantsPage from '../production/ContenantsPage';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import RecipeCreateDialog, { type RecipeIdentity } from './RecipeCreateDialog';
@@ -668,7 +669,7 @@ export default function RecipesPage() {
                         onChange={() => toggleSelect(r.id as string)}
                         style={{ cursor: 'pointer', verticalAlign: 'middle' }} />
                     </td>
-                    <td><span className={`odoo-status-dot ${dotClass}`} title={dotTitle} /></td>
+                    <td><span className={`odoo-status-dot ${dotClass}`} role="img" title={dotTitle} aria-label={dotTitle} /></td>
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
                         {r.is_base ? <Layers size={13} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={13} style={{ color: 'var(--theme-accent)' }} />}
@@ -678,6 +679,9 @@ export default function RecipesPage() {
                             {r.category_label as string}
                           </span>
                         )}
+                        {/* L'état de la donnée n'est pas porté par la seule pastille : libellé visible. */}
+                        {!r.is_base && r.compo_vide && <StatusTag tone="blocked" label="À corriger" title={dotTitle} />}
+                        {!r.is_base && !r.compo_vide && r.rendement_a_definir && <StatusTag tone="todo" label="Rendement à définir" title={dotTitle} />}
                       </span>
                     </td>
                     {!isBaseTab && (

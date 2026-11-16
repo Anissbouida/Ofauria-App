@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BadgePercent, Loader2, Plus, Lock, X } from 'lucide-react';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { rebatesApi, type RebateAgreement } from '../../api/rebates.api';
 import { customersApi } from '../../api/customers.api';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -123,7 +124,7 @@ export default function RebatesPage() {
                       <span className={`prj-bar ${reached >= 100 ? 'green' : ''}`} style={{ marginTop: 4 }} title={`${Math.round(reached)} % du seuil`}><span style={{ width: `${reached}%` }} /></span>
                     </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{r.current_amount > 0 ? money(r.current_amount) : '—'}</td>
-                    <td><span className={`odoo-tag ${r.status === 'active' ? 'odoo-tag-green' : r.status === 'settled' ? 'odoo-tag-blue' : 'odoo-tag-grey'}`}>{r.status === 'active' ? 'Actif' : r.status === 'settled' ? 'Clôturé' : 'Annulé'}</span>
+                    <td>{r.status === 'active' ? <StatusTag tone="progress" label="Actif" /> : r.status === 'settled' ? <StatusTag tone="done" icon={Lock} label="Clôturé" /> : <StatusTag tone="cancelled" label="Annulé" />}
                       {r.status === 'settled' && r.settled_credit_note_id && <span className="sal-sub">avoir émis</span>}</td>
                     <td style={{ textAlign: 'right' }}>{isDirection && r.status === 'active' && (
                       <div className="sal-actions">

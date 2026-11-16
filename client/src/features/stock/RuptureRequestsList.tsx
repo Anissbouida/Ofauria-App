@@ -8,6 +8,7 @@ import { fr } from 'date-fns/locale';
 import { bonSortieApi } from '../../api/bon-sortie.api';
 import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 
 /**
  * Onglet « À commander » du module Stock (ex-Économat, delta v1 point 5).
@@ -140,7 +141,7 @@ export function RuptureRequestsList({ variant = 'tab' }: { variant?: 'tab' | 'co
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: '#dc3545' }}>{missing.toFixed(2)} {unit}</td>
                     <td style={{ textAlign: 'right' }}>
                       {alreadyOrdered ? (
-                        <span className="odoo-tag odoo-tag-green"><CheckCircle size={10} /> Commandé</span>
+                        <StatusTag tone="progress" icon={ShoppingCart} label="Commandé" />
                       ) : (
                         <button type="button" onClick={() => commanderMutation.mutate(l)} disabled={isPending}
                           className="odoo-btn-primary" title={`Ajouter ${need.toFixed(2)} ${unit} à la liste d'attente d'achat`}>

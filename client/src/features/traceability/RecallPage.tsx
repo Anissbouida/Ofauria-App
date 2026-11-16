@@ -8,6 +8,11 @@ import {
 } from 'lucide-react';
 import { recallApi, type RecallResult, type RecallNode, type RecallSale, type RecallDelivery } from '../../api/recall.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
+import { planStatusTag } from '../production/status';
+
+/** Statut d'un lot matière (valeur brute affichée) en étiquette commune. */
+const LOT_TONE: Record<string, StatusTone> = { active: 'done', quarantine: 'blocked', blocked: 'blocked', waste: 'cancelled', consumed: 'cancelled' };
 
 /** Date lisible (jour) ou '—'. */
 function fmtDate(v: string | null | undefined): string {
@@ -151,7 +156,7 @@ export default function RecallPage() {
                   <td>{l.ingredient_name || '—'}</td>
                   <td>{l.supplier_name || '—'}{l.supplier_lot_number ? ` · ${l.supplier_lot_number}` : ''}</td>
                   <td>{fmtDate(l.expiration_date)}</td>
-                  <td><span className={`odoo-tag ${l.status === 'active' ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{l.status}</span></td>
+                  <td><StatusTag tone={LOT_TONE[l.status] ?? 'draft'} label={l.status} /></td>
                 </tr>
               ))}
             </tbody>
@@ -266,8 +271,8 @@ export default function RecallPage() {
                       <td>{s.cashierName || '—'}</td>
                       <td>
                         {s.approximate
-                          ? <span className="odoo-tag odoo-tag-orange">Approximatif</span>
-                          : <span className="odoo-tag odoo-tag-green">Tracé</span>}
+                          ? <StatusTag tone="todo" label="Approximatif" />
+                          : <StatusTag tone="done" label="Tracé" />}
                       </td>
                     </tr>
                   ))}
@@ -319,7 +324,7 @@ function RecallNodeView({ node, depth }: { node: RecallNode; depth: number }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', marginBottom: 4 }}>
               <Factory size={13} style={{ color: 'var(--odoo-text-muted)' }} />
               Plan du {fmtDate(plan.planDate)}
-              {plan.planStatus && <span className="odoo-tag odoo-tag-grey">{plan.planStatus}</span>}
+              {plan.planStatus && <StatusTag tone={planStatusTag(plan.planStatus).tone} icon={planStatusTag(plan.planStatus).icon} label={plan.planStatus} />}
               <span style={{ color: 'var(--odoo-text-muted)' }}>· {n2(plan.quantityUsed)} utilisé(s)</span>
             </div>
             {plan.batches.length === 0 ? (

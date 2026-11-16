@@ -10,6 +10,7 @@ import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -70,7 +71,7 @@ function Statement() {
                 <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(r.sales_base)}</td>
                 <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{r.mode === 'scheme' ? '—' : money(r.commissionable_base)}</td>
                 <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(r.commission)}</td>
-                <td>{r.already_paid && <span className="odoo-tag odoo-tag-green">Versé</span>}</td>
+                <td>{r.already_paid && <StatusTag tone="done" label="Versé" />}</td>
               </tr>
             ))}
           </tbody>
@@ -262,7 +263,7 @@ function Schemes() {
             {!isLoading && schemes.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucun contrat-cadre.</td></tr>}
             {schemes.map(s => (
               <tr key={s.id} style={{ opacity: s.is_active ? 1 : 0.55 }}>
-                <td style={{ fontWeight: 500 }}>{s.name}{!s.is_active && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>Inactif</span>}</td>
+                <td style={{ fontWeight: 500 }}>{s.name}{!s.is_active && <>{' '}<StatusTag tone="cancelled" label="Inactif" /></>}</td>
                 <td style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>{tiersLabel(s)}</td>
                 <td style={{ textAlign: 'right' }}>{s.assigned_count}</td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, Percent } from 'lucide-react';
+import { Plus, Loader2, Percent, CalendarClock, History, type LucideIcon } from 'lucide-react';
 import { PageNote } from './SettingsPrimitives';
 import { settingsApi, type TaxCode } from '../../api/settings.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 
 /**
@@ -18,10 +19,10 @@ const KINDS: [string, string][] = [
   ['exempt_without_credit', 'Exonéré sans droit à déduction'], ['exempt_with_credit', 'Exonéré avec droit à déduction'],
   ['out_of_scope', 'Hors champ'],
 ];
-const STATUS: Record<TaxCode['status'], { cls: string; label: string }> = {
-  current: { cls: 'odoo-tag odoo-tag-green', label: 'En vigueur' },
-  future: { cls: 'odoo-tag odoo-tag-blue', label: 'À venir' },
-  past: { cls: 'odoo-tag odoo-tag-grey', label: 'Historique' },
+const STATUS: Record<TaxCode['status'], { tone: StatusTone; icon?: LucideIcon; label: string }> = {
+  current: { tone: 'done', label: 'En vigueur' },
+  future: { tone: 'progress', icon: CalendarClock, label: 'À venir' },
+  past: { tone: 'cancelled', icon: History, label: 'Historique' },
 };
 const d = (iso: string | null) => (iso ? new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString('fr-FR') : '—');
 /** Veille d'une date AAAA-MM-JJ, calculée en UTC pour ne pas dépendre du fuseau. */
@@ -92,7 +93,7 @@ export default function TaxCodesTab() {
                   <td>{c.recoverable ? 'Oui' : 'Non'}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{d(c.valid_from)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{d(c.valid_to)}</td>
-                  <td><span className={STATUS[c.status].cls}>{STATUS[c.status].label}</span></td>
+                  <td><StatusTag tone={STATUS[c.status].tone} icon={STATUS[c.status].icon} label={STATUS[c.status].label} /></td>
                   <td style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{c.legal_ref ?? ''}</td>
                   <td>
                     {c.status !== 'past' && !draft && canCreate('settings') && (

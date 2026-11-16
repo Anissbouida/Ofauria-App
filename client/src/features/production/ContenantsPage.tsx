@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { contenantsApi, type BulkResult } from '../../api/contenants.api';
 import { recipesApi } from '../../api/recipes.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 import {
   Plus, Pencil, Trash2, Search, X, Check, ChevronDown, ChevronUp,
   Layers, Package, Weight, Ban,
@@ -440,6 +441,9 @@ function ContenantRow({ contenant: c, linkedRecipes, expanded, selected, onSelec
 }) {
   const mode = getModeCalcul(c.unite_lancement);
   const unite = mode === 'poids' ? 'kg' : 'pcs';
+  const dotLabel = !c.is_active ? 'Format inactif'
+    : linkedRecipes.length === 0 ? 'Aucune recette n’utilise ce format'
+    : `${linkedRecipes.length} recette(s) liée(s)`;
   const num = (v: string) => (
     <>
       <span style={{ fontWeight: 600 }}>{v}</span>
@@ -460,9 +464,8 @@ function ContenantRow({ contenant: c, linkedRecipes, expanded, selected, onSelec
             est un format à raccrocher ou à désactiver. */}
         <td>
           <span className={`odoo-status-dot ${!c.is_active ? 'neutral' : linkedRecipes.length === 0 ? 'warning' : 'ok'}`}
-            title={!c.is_active ? 'Format inactif'
-              : linkedRecipes.length === 0 ? 'Aucune recette n’utilise ce format'
-              : `${linkedRecipes.length} recette(s) liée(s)`} />
+            role="img"
+            title={dotLabel} aria-label={dotLabel} />
         </td>
         <td>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
@@ -495,9 +498,7 @@ function ContenantRow({ contenant: c, linkedRecipes, expanded, selected, onSelec
             : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
         </td>
         <td>
-          <span className={`odoo-tag ${c.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>
-            {c.is_active ? 'Actif' : 'Inactif'}
-          </span>
+          <StatusTag tone={c.is_active ? 'done' : 'cancelled'} label={c.is_active ? 'Actif' : 'Inactif'} />
         </td>
         <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
           <div style={{ display: 'inline-flex', gap: 2 }}>

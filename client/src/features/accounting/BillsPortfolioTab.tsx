@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Info, Landmark, Percent, Ban, CheckCircle2, Undo2 } from 'lucide-react';
+import { Loader2, Info, Landmark, Percent, Ban, CheckCircle2, Undo2, type LucideIcon } from 'lucide-react';
 import { billsApi, type BillEffect, type BillStatus, type BillRemittance } from '../../api/ledger.api';
 import { paymentsApi } from '../../api/accounting.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -22,12 +23,13 @@ const mono = { fontFamily: 'ui-monospace, monospace', fontVariantNumeric: 'tabul
 const num = (s: string) => { const v = Number(s.replace(/\s/g, '').replace(',', '.')); return Number.isFinite(v) ? v : 0; };
 const errMsg = (e: unknown) => (e as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message ?? (e instanceof Error ? e.message : 'Action impossible');
 
-const STATUS: Record<BillStatus, { label: string; tag: string }> = {
-  portfolio: { label: 'En portefeuille', tag: 'odoo-tag-blue' },
-  remitted: { label: 'Remis à l\'encaissement', tag: 'odoo-tag-yellow' },
-  discounted: { label: 'Escompté', tag: 'odoo-tag-purple' },
-  cashed: { label: 'Encaissé', tag: 'odoo-tag-green' },
-  unpaid: { label: 'Impayé', tag: 'odoo-tag-red' },
+/** En portefeuille = à remettre en banque (action attendue) ; remis / escompté = en cours. */
+const STATUS: Record<BillStatus, { label: string; tone: StatusTone; icon?: LucideIcon }> = {
+  portfolio: { label: 'En portefeuille', tone: 'todo' },
+  remitted: { label: 'Remis à l\'encaissement', tone: 'progress', icon: Landmark },
+  discounted: { label: 'Escompté', tone: 'progress', icon: Percent },
+  cashed: { label: 'Encaissé', tone: 'done' },
+  unpaid: { label: 'Impayé', tone: 'blocked' },
 };
 
 function Modal({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer: React.ReactNode }) {
@@ -150,7 +152,7 @@ export default function BillsPortfolioTab() {
                     <td style={mono}>{fmtDate(e.received_on)}</td>
                     <td style={{ ...mono, textAlign: 'right' }}>{n(e.amount)}</td>
                     <td>
-                      <span className={`odoo-tag ${STATUS[e.status].tag}`}>{STATUS[e.status].label}</span>
+                      <StatusTag tone={STATUS[e.status].tone} icon={STATUS[e.status].icon} label={STATUS[e.status].label} />
                       <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
                         {e.remittance_number && <span style={mono}>{e.remittance_number}</span>}
                         {e.status === 'cashed' && ` le ${fmtDate(e.cashed_at)}`}
@@ -184,7 +186,7 @@ export default function BillsPortfolioTab() {
             <tbody>
               {remittances.map(r => (
                 <tr key={r.id} style={{ opacity: r.status === 'cancelled' ? 0.55 : 1 }}>
-                  <td style={mono}>{r.remittance_number}{r.status === 'cancelled' && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }}>Annulé</span>}</td>
+                  <td style={mono}>{r.remittance_number}{r.status === 'cancelled' && <span style={{ marginLeft: 6 }}><StatusTag tone="cancelled" label="Annulé" /></span>}</td>
                   <td>{r.kind === 'discount' ? 'Escompte' : 'Encaissement'}</td>
                   <td style={mono}>{fmtDate(r.remittance_date)}</td>
                   <td>{r.bank_label} <span style={{ ...mono, color: 'var(--theme-text-muted)' }}>{r.bank_code}</span></td>

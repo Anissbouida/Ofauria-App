@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { StatusTag } from '../../../components/ui/StatusTag';
 import { StagePipeline, StageProgress, type StageDef } from '../../../components/purchasing/ProcessBoard';
 import { EmptyState } from '../ui';
 
@@ -261,7 +262,8 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
                 return (
                   <tr key={r.employee_id} className={paid ? '' : generated ? 'row-warning' : ''}>
                     <td>
-                      <span className={`odoo-status-dot ${paid ? 'ok' : generated ? 'warning' : 'neutral'}`} />
+                      <span className={`odoo-status-dot ${paid ? 'ok' : generated ? 'warning' : 'neutral'}`}
+                        role="img" title={paid ? 'Payé' : generated ? 'Généré, à payer' : 'Non généré'} aria-label={paid ? 'Payé' : generated ? 'Généré, à payer' : 'Non généré'} />
                     </td>
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
@@ -329,9 +331,7 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
                           <StageProgress count={3} current={paid ? 3 : 1} done={paid} />
                           {paid ? (
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                              <span className="odoo-tag odoo-tag-green">
-                                <Check size={10} style={{ marginRight: 3 }} /> Payé
-                              </span>
+                              <StatusTag tone="done" label="Payé" />
                               <button onClick={async () => {
                                 if (!(await confirm(`Annuler le paiement de ${r.first_name} ${r.last_name} ?\n\nLa sortie de caisse liée sera supprimée (écriture comptable reversée) et les retenues d'avance re-créditées. Vous pourrez ensuite re-payer sans doublon.`,
                                   { title: 'Annuler le paiement', confirmLabel: 'Annuler le paiement', danger: true }))) return;
@@ -363,7 +363,7 @@ export default function BiweeklyPayrollView({ queryClient }: { queryClient: Retu
                         </td>
                         <td style={{ textAlign: 'center' }}>
                           <StageProgress count={3} current={0} />
-                          <span className="odoo-tag odoo-tag-grey">Non généré</span>
+                          <StatusTag tone="draft" label="Non généré" />
                         </td>
                       </>
                     )}

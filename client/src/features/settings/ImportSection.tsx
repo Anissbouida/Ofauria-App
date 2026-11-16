@@ -6,6 +6,7 @@ import { settingsApi, type ImportPreview, type ImportMode, type DataStatus } fro
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 
 /**
@@ -203,8 +204,8 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
                   <td style={{ textAlign: 'right' }}>{i.updated_count}</td>
                   <td>{i.by_name ?? '—'}</td>
                   <td>{i.status === 'undone'
-                    ? <span className="odoo-tag odoo-tag-grey" title={i.undo_report ? `${i.undo_report.deleted} supprimée(s), ${i.undo_report.deactivated} désactivée(s), ${i.undo_report.restored} remise(s) en l'état` : undefined}>Annulé{i.undone_by_name ? ` par ${i.undone_by_name}` : ''}</span>
-                    : <span className="odoo-tag odoo-tag-green">Importé</span>}</td>
+                    ? <StatusTag tone="cancelled" title={i.undo_report ? `${i.undo_report.deleted} supprimée(s), ${i.undo_report.deactivated} désactivée(s), ${i.undo_report.restored} remise(s) en l'état` : undefined} label={`Annulé${i.undone_by_name ? ` par ${i.undone_by_name}` : ''}`} />
+                    : <StatusTag tone="done" label="Importé" />}</td>
                   <td style={{ textAlign: 'right' }}>
                     {i.can_undo && canEdit('settings') && (
                       <button className="odoo-btn-secondary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={busy !== null}

@@ -7,6 +7,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { apiErrorMessage } from '../shared';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { StatusTag } from '../../../components/ui/StatusTag';
 import { HrModal, SubmitButton, Field, SectionTitle, inputCls, fieldLabel, panel } from '../ui';
 
 type Bracket = { upTo: number | null; rate: number; deduction: number };
@@ -286,7 +287,7 @@ export default function PayrollSettingsView() {
                 <td style={{ textAlign: 'center' }}>{r.kind === 'gain' ? (r.soumis_cnss ? 'Soumis' : 'Exonéré') : '—'}</td>
                 <td style={{ textAlign: 'center' }}>{r.kind === 'gain' ? (r.soumis_ir ? 'Soumis' : 'Exonéré') : '—'}</td>
                 <td style={{ textAlign: 'right' }}>{r.plafond_exoneration_mensuel != null ? `${parseFloat(r.plafond_exoneration_mensuel).toFixed(2)} DH/mois` : '—'}</td>
-                <td><span className={`odoo-tag ${r.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{r.is_active ? 'Active' : 'Inactive'}</span></td>
+                <td><StatusTag tone={r.is_active ? 'done' : 'cancelled'} label={r.is_active ? 'Active' : 'Inactive'} /></td>
                 {isAdmin && <td><button className="odoo-pager-btn" title="Modifier" onClick={() => setEditRub({ ...r })}><Pencil size={13} /></button></td>}
               </tr>
             ))}

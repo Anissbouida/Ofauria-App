@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Download, FileCheck2, Banknote, Lock, AlertTriangle, Landmark, Upload } from 'lucide-react';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { StatusTag } from '../../../components/ui/StatusTag';
 import { HrModal, SubmitButton, PromptDialog, Field, SectionTitle, inputCls } from '../ui';
 import SearchSelect from '../../../components/ui/SearchSelect';
 import { payrollConfigApi } from '../../../api/employees.api';
@@ -139,9 +140,9 @@ export default function DeclarationsView() {
                   <div className="odoo-stat-card-label">{KIND_LABEL[k]} <span style={{ color: 'var(--odoo-text-light)' }}>· {KIND_ACCOUNT[k]}</span></div>
                   <div className="odoo-stat-card-value">{fmt(d ? parseFloat(d.amount) : due[k])} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
                   <div className="odoo-stat-card-sub" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    {d?.status === 'paid' ? <span className="odoo-tag odoo-tag-green">Réglée le {new Date(d.paid_at).toLocaleDateString('fr-FR')}</span>
-                      : d ? <span className="odoo-tag odoo-tag-orange">Déclarée{d.reference ? ` · ${d.reference}` : ''}</span>
-                      : <span className="odoo-tag odoo-tag-grey">À déclarer</span>}
+                    {d?.status === 'paid' ? <StatusTag tone="done" label={`Réglée le ${new Date(d.paid_at).toLocaleDateString('fr-FR')}`} />
+                      : d ? <StatusTag tone="progress" icon={FileCheck2} label={`Déclarée${d.reference ? ` · ${d.reference}` : ''}`} />
+                      : <StatusTag tone="todo" label="À déclarer" />}
                     {isAdmin && closed && !d && due[k] > 0 && (
                       <button className="odoo-btn-secondary" style={{ padding: '0.15rem 0.5rem', fontSize: '0.6875rem', display: 'inline-flex', alignItems: 'center', gap: 3 }}
                         disabled={declare.isPending}

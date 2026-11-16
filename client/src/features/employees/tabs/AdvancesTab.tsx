@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../../components/ui/StatusTag';
 import { ViewSwitch } from '../../../components/purchasing/ProcessBoard';
 import { HrModal, Field, EmptyState, inputCls } from '../ui';
 import { notify } from '../../../components/ui/InlineNotification';
@@ -97,10 +98,10 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
   const totalGranted = rows.reduce((s, a) => s + pn(a.amount), 0);
   const totalRepaid = rows.reduce((s, a) => s + pn(a.amount) - pn(a.remaining_amount), 0);
 
-  const STATUS_META: Record<string, { label: string; cls: string }> = {
-    open: { label: 'En cours', cls: 'odoo-tag-orange' },
-    partial: { label: 'Partiel', cls: 'odoo-tag-purple' },
-    repaid: { label: 'Soldée', cls: 'odoo-tag-green' },
+  const STATUS_META: Record<string, { label: string; tone: StatusTone }> = {
+    open: { label: 'En cours', tone: 'progress' },
+    partial: { label: 'Partiel', tone: 'progress' },
+    repaid: { label: 'Soldée', tone: 'done' },
   };
 
   const toggleExpand = (id: string) => setExpanded(prev => {
@@ -206,7 +207,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                           </span>
                         ) : <span style={{ color: 'var(--odoo-text-light)' }}>—</span>}
                       </td>
-                      <td style={{ textAlign: 'center' }}><span className={`odoo-tag ${meta.cls}`}>{meta.label}</span></td>
+                      <td style={{ textAlign: 'center' }}><StatusTag tone={meta.tone} label={meta.label} /></td>
                       <td style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>{getPaymentLabel(a.payment_method as string)}</td>
                       <td style={{ textAlign: 'center' }}>
                         {user?.role === 'admin' && (
@@ -350,7 +351,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
         return (
           <HrModal icon={HandCoins} crumb="Avance" width={520} onClose={() => setEditingAdvance(null)}
             title={`Modifier — ${editingAdvance.first_name as string} ${editingAdvance.last_name as string}`}
-            tag={<span className={`odoo-tag ${meta.cls}`}>{meta.label}</span>}
+            tag={<StatusTag tone={meta.tone} label={meta.label} />}
             footer={<>
               <button type="button" className="odoo-btn-secondary" onClick={() => setEditingAdvance(null)}>Annuler</button>
               <button type="submit" form="advance-edit-form" disabled={updateMutation.isPending} className="odoo-btn-primary"

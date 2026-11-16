@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, FolderKanban, ListChecks, Timer, BarChart3, Database, Plus, Search, Loader2, CheckCircle2, AlertTriangle, Clock, Trash2, LayoutGrid, List, GanttChartSquare, Columns3,
+  LayoutDashboard, FolderKanban, ListChecks, Timer, BarChart3, Database, Plus, Search, Loader2, CheckCircle2, AlertTriangle, Clock, Trash2, LayoutGrid, List, GanttChartSquare, Columns3, PauseCircle,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -13,6 +13,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { usePermissions } from '../../context/PermissionsContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
 import { PeriodFilter, Pager, periodParams, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import { useAuth } from '../../context/AuthContext';
@@ -60,7 +61,10 @@ export default function ProjectsPage() {
   );
 }
 
-const STATUS_TAG: Record<ProjectStatus, string> = { draft: 'odoo-tag-grey', active: 'odoo-tag-blue', on_hold: 'odoo-tag-orange', completed: 'odoo-tag-green', cancelled: 'odoo-tag-grey' };
+const STATUS_TONE: Record<ProjectStatus, StatusTone> = { draft: 'draft', active: 'progress', on_hold: 'blocked', completed: 'done', cancelled: 'cancelled' };
+const ProjectStatusTag = ({ status }: { status: ProjectStatus }) => (
+  <StatusTag tone={STATUS_TONE[status] ?? 'draft'} icon={status === 'on_hold' ? PauseCircle : undefined} label={PROJECT_STATUS_LABELS[status] ?? status} />
+);
 
 function Progress({ p }: { p: Project }) {
   const pct = p.task_count ? Math.round((p.task_done / p.task_count) * 100) : 0;
@@ -82,7 +86,7 @@ function ProjectRow({ p }: { p: Project }) {
       <td className="font-mono" style={{ whiteSpace: 'nowrap' }}>{p.number}</td>
       <td><strong>{p.name}</strong></td>
       <td>{p.customer_label || <span style={{ color: 'var(--theme-text-muted)' }}>interne</span>}</td>
-      <td><span className={`odoo-tag ${STATUS_TAG[p.status]}`}>{PROJECT_STATUS_LABELS[p.status]}</span></td>
+      <td><ProjectStatusTag status={p.status} /></td>
       <td><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}><span className={`prj-dot ${health.tone}`} />{health.label}</span></td>
       <td style={{ whiteSpace: 'nowrap' }}>{p.due_date ? format(new Date(p.due_date), 'dd/MM/yyyy') : '—'}</td>
       <td><Progress p={p} /></td>
@@ -108,7 +112,7 @@ function ProjectCard({ p }: { p: Project }) {
           <div className="prj-card-name">{p.name}</div>
           <div className="prj-card-client">{p.customer_label || 'Interne'}{p.order_number ? ` · ${p.order_number}` : ''}</div>
         </div>
-        <span className={`prj-pill ${p.status}`}>{PROJECT_STATUS_LABELS[p.status]}</span>
+        <ProjectStatusTag status={p.status} />
       </div>
       <Meter label="Tâches" value={p.task_count ? `${p.task_done} / ${p.task_count}` : 'aucune'} pct={pct} />
       {use
@@ -417,7 +421,7 @@ function Profitability() {
               <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)} style={{ cursor: 'pointer' }}>
                 <td><strong>{p.name}</strong> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{p.number}</span></td>
                 <td>{p.customer_label || '—'}</td>
-                <td><span className={`prj-pill ${p.status}`}>{PROJECT_STATUS_LABELS[p.status]}</span></td>
+                <td><ProjectStatusTag status={p.status} /></td>
                 <td style={{ textAlign: 'right' }}>{h1(p.hours_spent)}{p.estimated_hours ? ` / ${h1(p.estimated_hours)}` : ''}</td>
                 <td style={{ textAlign: 'right' }}>{n2(c)}</td>
                 <td style={{ textAlign: 'right' }}>{r ? n2(r) : '—'}</td>

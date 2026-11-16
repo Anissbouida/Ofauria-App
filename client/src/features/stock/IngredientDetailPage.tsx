@@ -23,6 +23,8 @@ import CategoryCascadeSelector, { CONSUMABLE_ROOT_IDS } from '../../components/C
 import { useStockCategories } from './useStockCategories';
 import { containerOf, containerLabel, type ContainerDef } from '../../utils/container';
 import SupplierItemsSection from './SupplierItemsSection';
+import { StatusTag } from '../../components/ui/StatusTag';
+import { planStatusTag } from '../production/status';
 
 const CATEGORY_COLORS: Record<string, string> = {
   farines: 'bg-amber-100 text-amber-700',
@@ -431,8 +433,8 @@ export default function IngredientDetailPage() {
             {resolveCategory(categoryId)?.typeName || 'Non classé'}
           </span>
           {supplier && <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{supplier}</span>}
-          {isLow && <span className="odoo-tag odoo-tag-orange">STOCK BAS</span>}
-          {expiredCount > 0 && <span className="odoo-tag odoo-tag-red">LOT EXPIRÉ</span>}
+          {isLow && <StatusTag tone="todo" label="STOCK BAS" />}
+          {expiredCount > 0 && <StatusTag tone="late" label="LOT EXPIRÉ" />}
         </div>
       </div>
 
@@ -981,6 +983,12 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
     remaining <= 0 ? 'neutral' :
     isExpired ? 'danger' :
     daysUntil !== null && daysUntil <= 7 ? 'warning' : 'ok';
+  // La pastille ne porte jamais seule l'état : libellé lu au survol et par les lecteurs d'écran.
+  const dotLabel = lot.status === 'quarantine' ? 'En quarantaine' :
+    lot.status === 'waste' ? 'Mis au rebut' :
+    remaining <= 0 ? 'Épuisé' :
+    isExpired ? 'Expiré' :
+    daysUntil !== null && daysUntil <= 7 ? 'DLC proche' : 'Utilisable';
 
   return (
     <div>
@@ -989,21 +997,21 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
           padding: '0.5rem 0.875rem', display: 'flex', alignItems: 'center', gap: '0.625rem',
           cursor: 'pointer', backgroundColor: '#fff', fontSize: '0.8125rem',
         }}>
-        <span className={`odoo-status-dot ${dotClass}`} />
+        <span className={`odoo-status-dot ${dotClass}`} role="img" title={dotLabel} aria-label={dotLabel} />
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--theme-text-strong)' }}>
               {lot.supplier_lot_number || lot.lot_number || '—'}
             </span>
-            {lot.status === 'quarantine' && <span className="odoo-tag odoo-tag-orange">QUARANTAINE</span>}
-            {lot.status === 'blocked' && <span className="odoo-tag odoo-tag-red">BLOQUÉ</span>}
+            {lot.status === 'quarantine' && <StatusTag tone="blocked" label="QUARANTAINE" />}
+            {lot.status === 'blocked' && <StatusTag tone="blocked" label="BLOQUÉ" />}
             <span className="odoo-tag" title={lot.date_kind === 'dluo' ? 'Date de durabilité minimale (sec)' : 'Date limite de consommation (périssable)'}>
               {lot.date_kind === 'dluo' ? 'DLUO' : 'DLC'}
             </span>
-            {isExpired && lot.status === 'active' && <span className="odoo-tag odoo-tag-red">EXPIRÉ</span>}
+            {isExpired && lot.status === 'active' && <StatusTag tone="late" label="EXPIRÉ" />}
             {!isExpired && daysUntil !== null && daysUntil <= 7 && lot.status === 'active' && (
-              <span className="odoo-tag odoo-tag-yellow">{daysUntil}j</span>
+              <StatusTag tone="todo" label={`${daysUntil}j`} title={`DLC dans ${daysUntil} jour(s)`} />
             )}
           </div>
           <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
@@ -1103,12 +1111,8 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
                         <span style={{ fontWeight: 500 }}>
                           {format(new Date(t.plan_date), 'dd/MM/yyyy')} — {t.plan_type === 'morning' ? 'Matin' : t.plan_type === 'afternoon' ? 'Après-midi' : t.plan_type}
                         </span>
-                        <span className={`odoo-tag ${
-                          t.plan_status === 'completed' ? 'odoo-tag-green' :
-                          t.plan_status === 'in_progress' ? 'odoo-tag-yellow' : 'odoo-tag-grey'
-                        }`}>
-                          {t.plan_status === 'completed' ? 'Terminé' : t.plan_status === 'in_progress' ? 'En cours' : t.plan_status}
-                        </span>
+                        <StatusTag tone={planStatusTag(t.plan_status).tone} icon={planStatusTag(t.plan_status).icon}
+                          label={t.plan_status === 'completed' ? 'Terminé' : t.plan_status === 'in_progress' ? 'En cours' : t.plan_status} />
                       </div>
                       <span style={{ fontWeight: 600, color: '#1f6391' }}>
                         {parseFloat(t.quantity_used).toFixed(1)} {lot.ingredient_unit}

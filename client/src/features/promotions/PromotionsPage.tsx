@@ -8,7 +8,7 @@ import {
 import { format } from 'date-fns';
 import {
   promotionsApi, loyaltyApi, PROMO_KIND_LABEL, PROMO_STATE, LOYALTY_KIND_LABEL, DAYS,
-  type Promotion, type PromotionInput, type PromoKind, type PromoTarget, type CustomerScope, type LoyaltyKind, type LoyaltyTier, type PromoState,
+  type Promotion, type PromotionInput, type PromoKind, type PromoTarget, type CustomerScope, type LoyaltyKind, type LoyaltyTier,
 } from '../../api/promotions.api';
 import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
@@ -18,6 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { StatusTag } from '../../components/ui/StatusTag';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { SelectFilter } from '../../components/purchasing/ProcessBoard';
@@ -46,7 +47,6 @@ function Dot({ color, children }: { color: keyof typeof DOT; children: React.Rea
   return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
     <span style={{ width: 8, height: 8, borderRadius: 999, background: DOT[color], flexShrink: 0 }} />{children}</span>;
 }
-const STATE_DOT: Record<PromoState, keyof typeof DOT> = { running: 'green', scheduled: 'blue', exhausted: 'orange', ended: 'grey', inactive: 'grey' };
 
 type Tab = 'promotions' | 'loyalty' | 'history';
 const TABS: { key: Tab; label: string; icon: typeof Gift; direction?: boolean }[] = [
@@ -227,7 +227,7 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{n2(p.granted_amount)} DH</td>
                     <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
                       {canEdit ? <OdooToggle checked={p.is_active} disabled={quick.isPending} onChange={v => quick.mutate({ id: p.id, isActive: v })} />
-                        : <Dot color={STATE_DOT[p.state]}>{PROMO_STATE[p.state].label}</Dot>}
+                        : <StatusTag tone={PROMO_STATE[p.state].tone} icon={PROMO_STATE[p.state].icon} label={PROMO_STATE[p.state].label} />}
                     </td>
                     <td onClick={e => e.stopPropagation()}>
                       {/* Trois emplacements fixes : un emplacement vide garde l'alignement des autres. */}

@@ -8,6 +8,7 @@ import { planComptableApi } from '../../api/ledger.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
 /**
@@ -94,9 +95,8 @@ export default function PrepaidChargesTab() {
                   </td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(r.remaining)}</td>
                   <td>
-                    <span className={`odoo-tag ${r.status === 'done' ? 'odoo-tag-green' : r.status === 'cancelled' ? 'odoo-tag-grey' : 'odoo-tag-blue'}`}>
-                      {r.status === 'done' ? 'Soldée' : r.status === 'cancelled' ? 'Annulée' : 'En cours'}
-                    </span>
+                    <StatusTag tone={r.status === 'done' ? 'done' : r.status === 'cancelled' ? 'cancelled' : 'progress'}
+                      label={r.status === 'done' ? 'Soldée' : r.status === 'cancelled' ? 'Annulée' : 'En cours'} />
                   </td>
                 </tr>
               );

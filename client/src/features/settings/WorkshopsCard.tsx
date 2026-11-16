@@ -6,6 +6,7 @@ import { categoriesApi } from '../../api/categories.api';
 import { rolesApi, usersApi } from '../../api/users.api';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { SettingsSection } from './SettingsPrimitives';
 
 /**
@@ -86,7 +87,7 @@ export default function WorkshopsCard() {
                   </td>
                   <td>{w.categoryIds.length ? `${w.categoryIds.length} catégorie(s)` : '—'}</td>
                   <td>{[...w.memberRoles.map(roleLabel), ...(w.memberUsers.length ? [`${w.memberUsers.length} utilisateur(s)`] : [])].join(', ') || '—'}</td>
-                  <td><span className={`odoo-tag ${w.isActive ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{w.isActive ? 'Actif' : 'Inactif'}</span></td>
+                  <td><StatusTag tone={w.isActive ? 'done' : 'cancelled'} label={w.isActive ? 'Actif' : 'Inactif'} /></td>
                   <td><button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => open(w)} aria-label={`Modifier ${w.label}`}><Pencil size={13} /></button></td>
                 </tr>
               ))}

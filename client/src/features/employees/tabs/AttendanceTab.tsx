@@ -282,7 +282,10 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                 return (
                   <tr key={emp.id as string} className={isOnLeave ? 'row-warning' : ''}>
                     <td>
-                      <span className={`odoo-status-dot ${isOnLeave ? 'neutral' : hasCheckIn ? 'ok' : (isExpected ? 'warning' : 'neutral')}`} />
+                      {(() => {
+                        const dotLabel = isOnLeave ? 'En congé' : hasCheckIn ? 'Pointage enregistré' : isExpected ? 'Présence prévue, non pointé' : 'Non prévu, non pointé';
+                        return <span className={`odoo-status-dot ${isOnLeave ? 'neutral' : hasCheckIn ? 'ok' : (isExpected ? 'warning' : 'neutral')}`} title={dotLabel} aria-label={dotLabel} role="img" />;
+                      })()}
                     </td>
                     <td>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>

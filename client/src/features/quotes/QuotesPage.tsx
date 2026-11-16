@@ -3,9 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   FileSignature, FileText, Send, CheckCircle2, XCircle, ShoppingCart, Plus, Loader2, X, Copy, RotateCcw, Ban, Trash2, Printer, Clock, Pencil,
+  type LucideIcon,
 } from 'lucide-react';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { format } from 'date-fns';
-import { quotesApi, QUOTE_STATUS_LABELS, QUOTE_STATUS_TAG, type Quote, type QuoteStatus, type QuoteInput } from '../../api/quotes.api';
+import { quotesApi, QUOTE_STATUS_LABELS, type Quote, type QuoteStatus, type QuoteInput } from '../../api/quotes.api';
 import { customersApi } from '../../api/customers.api';
 import { productsApi } from '../../api/products.api';
 import { deliveryNotesApi } from '../../api/delivery-notes.api';
@@ -33,6 +35,15 @@ const fr = (v: string | null | undefined) => (v ? format(new Date(`${d10(v)}T00:
 const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', width: '100%' };
 const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
 const TVA_RATES = ['', '0', '7', '10', '14', '20'];
+/** Statut d'un devis en étiquette commune (perdu = clos sans suite, expiré = échéance dépassée). */
+export const QUOTE_TONE: Record<QuoteStatus, { tone: StatusTone; icon?: LucideIcon }> = {
+  draft: { tone: 'draft' }, sent: { tone: 'progress', icon: Send }, accepted: { tone: 'done' },
+  refused: { tone: 'cancelled', icon: XCircle }, expired: { tone: 'late' }, converted: { tone: 'done', icon: ShoppingCart }, cancelled: { tone: 'cancelled' },
+};
+export function QuoteStatusTag({ status }: { status: QuoteStatus }) {
+  const t = QUOTE_TONE[status] ?? { tone: 'draft' as StatusTone };
+  return <StatusTag tone={t.tone} icon={t.icon} label={QUOTE_STATUS_LABELS[status] ?? status} />;
+}
 
 
 async function openPdf(id: string, kind: 'quote' | 'proforma') {
@@ -155,7 +166,7 @@ export default function QuotesPage() {
                   {!q.is_overdue && q.expires_soon && <span className="sal-sub" style={{ color: 'var(--prj-orange)', fontWeight: 600 }}>expire bientôt</span>}
                 </td>
                 <td>
-                  <span className={`odoo-tag ${QUOTE_STATUS_TAG[q.status]}`}>{QUOTE_STATUS_LABELS[q.status]}</span>
+                  <QuoteStatusTag status={q.status} />
                   {q.lost_reason_label && <span className="sal-sub">{q.lost_reason_label}</span>}
                   {q.order_number && <span className="sal-sub sal-mono">{q.order_number}</span>}
                 </td>
@@ -438,7 +449,7 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
         {isLoading || !q ? <div style={{ padding: 24 }}><Loader2 className="animate-spin" size={18} /></div> : (<>
           <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1, flexWrap: 'wrap', gap: 6 }}>
             <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">Devis {q.number}</span></div>
-            <span className={`odoo-tag ${QUOTE_STATUS_TAG[q.status]}`}>{QUOTE_STATUS_LABELS[q.status]}</span>
+            <QuoteStatusTag status={q.status} />
             {(q as { version?: number }).version && (q as { version?: number }).version! > 1 && (
               <span className="odoo-tag odoo-tag-grey" title="Version du devis">v{(q as { version?: number }).version}</span>
             )}

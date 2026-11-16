@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { productionApi, useWorkshops } from '../../api/production.api';
 import { planStatusTag, PLAN_STATUS_ORDER } from './status';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage } from '../../api/errors';
 import { productsApi } from '../../api/products.api';
@@ -30,15 +31,6 @@ const roleConfig: Record<string, { color: string; bg: string; gradient: string }
   pastry_chef:  { color: 'text-pink-700',   bg: 'bg-pink-50',   gradient: 'from-pink-500 to-pink-600' },
   viennoiserie: { color: 'text-orange-700', bg: 'bg-orange-50', gradient: 'from-orange-500 to-orange-600' },
   beldi_sale:   { color: 'text-teal-700',   bg: 'bg-teal-50',   gradient: 'from-teal-500 to-teal-600' },
-};
-
-const statusConfig: Record<string, { color: string; bg: string; icon: typeof Clock; gradient: string }> = {
-  draft:                { color: 'text-gray-600',    bg: 'bg-gray-100',    icon: FileText,     gradient: 'from-gray-400 to-gray-500' },
-  confirmed:            { color: 'text-blue-700',    bg: 'bg-blue-50',     icon: CheckCircle2, gradient: 'from-blue-500 to-blue-600' },
-  awaiting_ingredients: { color: 'text-orange-700',  bg: 'bg-orange-50',   icon: Clock,        gradient: 'from-orange-500 to-orange-600' },
-  ready_to_produce:     { color: 'text-indigo-700',  bg: 'bg-indigo-50',   icon: AlertCircle,  gradient: 'from-indigo-500 to-indigo-600' },
-  in_progress:          { color: 'text-amber-700',   bg: 'bg-amber-50',    icon: Play,         gradient: 'from-amber-500 to-amber-600' },
-  completed:            { color: 'text-emerald-700', bg: 'bg-emerald-50',  icon: Flag,         gradient: 'from-emerald-500 to-emerald-600' },
 };
 
 function SortHeader({ label, sortKey: sk, currentKey, currentDir, onSort, align = 'left' }: {
@@ -323,8 +315,6 @@ function ProductionPlansView() {
             <tbody>
                 {sortedPlans.map((p: Record<string, any>, idx: number) => {
                   const status = p.status as string;
-                  const sCfg = statusConfig[status] || statusConfig.draft;
-                  const StatusIcon = sCfg.icon;
                   const hasOrder = !!p.order_number;
                   const planDate = new Date(p.plan_date as string);
                   const planNumber = (p.id as string).slice(0, 8).toUpperCase();
@@ -350,17 +340,15 @@ function ProductionPlansView() {
                         </span>
                       </td>
                       <td>
-                        <span className={`odoo-tag ${planStatusTag(status).cls}`}>
-                          <StatusIcon size={10} />
-                          {PRODUCTION_STATUS_LABELS[(status) as keyof typeof PRODUCTION_STATUS_LABELS]}
-                        </span>
+                        <StatusTag tone={planStatusTag(status).tone} icon={planStatusTag(status).icon}
+                          label={PRODUCTION_STATUS_LABELS[(status) as keyof typeof PRODUCTION_STATUS_LABELS]} />
                         {Number(p.dep_total) > 0 && (() => {
                           const depTotal = Number(p.dep_total);
                           const depFulfilled = Number(p.dep_fulfilled);
                           const allDone = depFulfilled === depTotal;
                           return (
-                            <span className={`odoo-tag ${allDone ? 'odoo-tag-green' : 'odoo-tag-yellow'}`} style={{ marginLeft: 4 }}>
-                              <Layers size={9} /> SF {depFulfilled}/{depTotal}
+                            <span style={{ marginLeft: 4 }}>
+                              <StatusTag tone={allDone ? 'done' : 'progress'} icon={Layers} label={`SF ${depFulfilled}/${depTotal}`} />
                             </span>
                           );
                         })()}
@@ -486,8 +474,6 @@ function ProductionPlansView() {
                     {yesterdayPlans.map((plan) => {
                       const role = plan.target_role as string;
                       const rc = roleConfig[role] || { color: 'text-gray-700', bg: 'bg-gray-50', gradient: 'from-gray-400 to-gray-500' };
-                      const sc = statusConfig[plan.status as string] || statusConfig.draft;
-                      const StatusIcon = sc.icon;
                       return (
                         <button key={plan.id as string}
                           onClick={async () => {
@@ -515,10 +501,8 @@ function ProductionPlansView() {
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${sc.bg} ${sc.color}`}>
-                                <StatusIcon size={10} />
-                                {PRODUCTION_STATUS_LABELS[plan.status as keyof typeof PRODUCTION_STATUS_LABELS] || plan.status as string}
-                              </span>
+                              <StatusTag tone={planStatusTag(plan.status as string).tone} icon={planStatusTag(plan.status as string).icon}
+                                label={PRODUCTION_STATUS_LABELS[plan.status as keyof typeof PRODUCTION_STATUS_LABELS] || plan.status as string} />
                               <RotateCcw size={14} className="text-gray-300 group-hover:text-violet-500 transition-colors" />
                             </div>
                           </div>

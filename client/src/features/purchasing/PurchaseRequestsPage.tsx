@@ -16,15 +16,16 @@ import { fr } from 'date-fns/locale';
 import { apiErrorMessage } from '../../api/errors';
 import { PeriodFilter, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import { FilterChips } from '../sales/ListTemplate';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 
 /** Statuts calculés par la base depuis la couverture des lignes de BC (mig 305). */
-const STATUS_INFO: Record<string, { label: string; tag: string; dot: string }> = {
-  pending:   { label: 'À commander', tag: 'odoo-tag-yellow', dot: 'warning' },
-  assigned:  { label: 'Commandé',    tag: 'odoo-tag-blue',   dot: 'neutral' },
-  ordered:   { label: 'Commandé',    tag: 'odoo-tag-blue',   dot: 'neutral' },
-  received:  { label: 'Reçu',        tag: 'odoo-tag-green',  dot: 'ok' },
-  closed:    { label: 'Clôturé',     tag: 'odoo-tag-grey',   dot: 'neutral' },
-  cancelled: { label: 'Annulé',      tag: 'odoo-tag-grey',   dot: 'neutral' },
+const STATUS_INFO: Record<string, { label: string; tone: StatusTone; dot: string }> = {
+  pending:   { label: 'À commander', tone: 'todo',      dot: 'warning' },
+  assigned:  { label: 'Commandé',    tone: 'progress',  dot: 'neutral' },
+  ordered:   { label: 'Commandé',    tone: 'progress',  dot: 'neutral' },
+  received:  { label: 'Reçu',        tone: 'done',      dot: 'ok' },
+  closed:    { label: 'Clôturé',     tone: 'done',      dot: 'neutral' },
+  cancelled: { label: 'Annulé',      tone: 'cancelled', dot: 'neutral' },
 };
 
 /**
@@ -34,11 +35,11 @@ const STATUS_INFO: Record<string, { label: string; tag: string; dot: string }> =
  * 'draft' = proposition MRP à activer ; 'approved' = prête à sourcer.
  * ('pending'/'rejected' : données héritées de l'ancien circuit d'approbation de DA.)
  */
-const APPROVAL_INFO: Record<string, { label: string; tag: string }> = {
-  draft:    { label: 'Proposition', tag: 'odoo-tag-grey' },
-  pending:  { label: 'À approuver', tag: 'odoo-tag-yellow' },
-  approved: { label: 'Prête',       tag: 'odoo-tag-green' },
-  rejected: { label: 'Refusée',     tag: 'odoo-tag-red' },
+const APPROVAL_INFO: Record<string, { label: string; tone: StatusTone }> = {
+  draft:    { label: 'Proposition', tone: 'draft' },
+  pending:  { label: 'À approuver', tone: 'todo' },
+  approved: { label: 'Prête',       tone: 'done' },
+  rejected: { label: 'Refusée',     tone: 'blocked' },
 };
 const isApproved = (s: string | undefined) => (s ?? 'approved') === 'approved';
 
@@ -366,7 +367,7 @@ export default function PurchaseRequestsPage() {
                               </td>
                               <td style={{ fontWeight: 500 }}>{req.ingredient_name}</td>
                               <td><span className={`odoo-tag ${reasonTag}`}>{reasonInfo.label}</span></td>
-                              <td><span className={`odoo-tag ${appr.tag}`}>{appr.label}</span></td>
+                              <td><StatusTag tone={appr.tone} label={appr.label} /></td>
                               <td style={{ color: 'var(--theme-text-muted)' }}>
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                                   <User size={10} /> {req.requested_by_name}
@@ -470,8 +471,7 @@ export default function PurchaseRequestsPage() {
                     : req.reason === 'production' ? 'odoo-tag-blue'
                     : req.reason === 'replenishment' ? 'odoo-tag-purple'
                     : 'odoo-tag-grey';
-                  const st = STATUS_INFO[req.status as string] ?? { label: req.status as string, tag: 'odoo-tag-grey', dot: 'neutral' };
-                  const statusTag = st.tag;
+                  const st = STATUS_INFO[req.status as string] ?? { label: req.status as string, tone: 'draft' as StatusTone, dot: 'neutral' };
                   const dotClass = st.dot;
                   const statusLabel = st.label;
                   const qReq = parseFloat(req.quantity as string) || 0;
@@ -496,8 +496,8 @@ export default function PurchaseRequestsPage() {
                       <td style={{ fontWeight: 500 }}>{req.ingredient_name as string}</td>
                       <td style={{ color: 'var(--theme-text-muted)' }}>{(req.supplier_name as string) || '—'}</td>
                       <td><span className={`odoo-tag ${reasonTag}`}>{reasonInfo.label}</span></td>
-                      <td><span className={`odoo-tag ${statusTag}`} title={traceTitle}>{statusLabel}</span></td>
-                      <td>{(() => { const a = APPROVAL_INFO[req.approval_status as string] ?? APPROVAL_INFO.approved; return <span className={`odoo-tag ${a.tag}`}>{a.label}</span>; })()}</td>
+                      <td><StatusTag tone={st.tone} label={statusLabel} title={traceTitle} /></td>
+                      <td>{(() => { const a = APPROVAL_INFO[req.approval_status as string] ?? APPROVAL_INFO.approved; return <StatusTag tone={a.tone} label={a.label} />; })()}</td>
                       <td style={{ color: 'var(--theme-text-muted)' }}>{req.requested_by_name as string}</td>
                       <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{format(new Date(req.created_at as string), 'dd/MM HH:mm')}</td>
                       <td style={{ color: 'var(--theme-accent)', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{(req.purchase_order_number as string) || '—'}</td>

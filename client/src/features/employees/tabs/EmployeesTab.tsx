@@ -7,6 +7,7 @@ import {
   Plus, Pencil, UserCog, Users, Banknote, Search, ArrowUpDown, ArrowUp, ArrowDown, FileText, Trash2, RotateCcw, AlertOctagon,
 } from 'lucide-react';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { StatusTag } from '../../../components/ui/StatusTag';
 import { EmptyState } from '../ui';
 import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
@@ -370,9 +371,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                     })()}
                   </td>
                   <td>
-                    <span className={`odoo-tag ${e.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>
-                      {e.is_active ? 'Actif' : 'Inactif'}
-                    </span>
+                    <StatusTag tone={e.is_active ? 'done' : 'cancelled'} label={e.is_active ? 'Actif' : 'Inactif'} />
                   </td>
                   <td style={{ textAlign: 'right' }} onClick={(ev) => ev.stopPropagation()}>
                     <div style={{ display: 'inline-flex', gap: 2 }}>

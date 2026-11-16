@@ -8,6 +8,7 @@ import { qualityApi, type QualityTemplate, type QualityItem, type QualityResult,
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
 const APPLIES: Record<AppliesTo, string> = { general: 'Général', reception: 'Réception', production: 'Production', product: 'Produit' };
@@ -34,8 +35,8 @@ export default function QualityTab() {
 const NC_SEVERITY: Record<NcSeverity, { label: string; tag: string }> = {
   low: { label: 'Faible', tag: 'odoo-tag-grey' }, medium: { label: 'Moyenne', tag: 'odoo-tag-orange' }, high: { label: 'Élevée', tag: 'odoo-tag-red' },
 };
-const NC_STATUS: Record<NcStatus, { label: string; tag: string }> = {
-  open: { label: 'Ouverte', tag: 'odoo-tag-red' }, in_progress: { label: 'En cours', tag: 'odoo-tag-orange' }, closed: { label: 'Clôturée', tag: 'odoo-tag-green' },
+const NC_STATUS: Record<NcStatus, { label: string; tone: StatusTone }> = {
+  open: { label: 'Ouverte', tone: 'blocked' }, in_progress: { label: 'En cours', tone: 'progress' }, closed: { label: 'Clôturée', tone: 'done' },
 };
 const NC_SOURCE: Record<NcSource, string> = { inspection: 'Inspection', reception: 'Réception', production: 'Production', complaint: 'Réclamation', other: 'Autre' };
 
@@ -74,7 +75,7 @@ function NonConformities() {
                 <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem', color: nc.overdue ? '#dc2626' : 'var(--theme-text-muted)', fontWeight: nc.overdue ? 600 : 400 }}>
                   {nc.overdue && <AlertTriangle size={11} style={{ display: 'inline', verticalAlign: -1, marginRight: 3 }} />}{nc.due_date ? day(nc.due_date) : '—'}
                 </td>
-                <td><span className={`odoo-tag ${NC_STATUS[nc.status].tag}`}>{NC_STATUS[nc.status].label}</span></td>
+                <td><StatusTag tone={NC_STATUS[nc.status].tone} label={NC_STATUS[nc.status].label} /></td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
                   {nc.status !== 'closed'
                     ? <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => setStatus.mutate({ id: nc.id, status: 'closed' })}>Clôturer</button>
@@ -165,8 +166,8 @@ function Inspections() {
                 <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.85rem' }}>{r.reference_note || '—'}</td>
                 <td style={{ textAlign: 'center' }}>
                   {r.conformity
-                    ? <span className="odoo-tag odoo-tag-green"><CheckCircle2 size={11} style={{ display: 'inline', verticalAlign: -1, marginRight: 3 }} />Conforme</span>
-                    : <span className="odoo-tag odoo-tag-red"><XCircle size={11} style={{ display: 'inline', verticalAlign: -1, marginRight: 3 }} />{r.failed} non conforme{r.failed > 1 ? 's' : ''}</span>}
+                    ? <StatusTag tone="done" label="Conforme" />
+                    : <StatusTag tone="blocked" label={`${r.failed} non conforme${r.failed > 1 ? 's' : ''}`} />}
                 </td>
                 <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.85rem' }}>{r.inspected_by_name || '—'}</td>
               </tr>
@@ -305,7 +306,7 @@ function Templates() {
                 <td>{APPLIES[t.applies_to]}</td>
                 <td style={{ textAlign: 'right' }}>{t.items.length}</td>
                 <td style={{ textAlign: 'right' }}>{t.inspections_count}</td>
-                <td><span className={`odoo-tag ${t.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{t.is_active ? 'Actif' : 'Inactif'}</span></td>
+                <td><StatusTag tone={t.is_active ? 'done' : 'cancelled'} label={t.is_active ? 'Actif' : 'Inactif'} /></td>
                 <td style={{ textAlign: 'right' }}>
                   <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
                     onClick={e => { e.stopPropagation(); toggle.mutate({ id: t.id, active: !t.is_active }); }} title={t.is_active ? 'Désactiver' : 'Activer'}>

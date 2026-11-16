@@ -5,6 +5,7 @@ import PageNote from '../../components/ui/PageNote';
 import { purchasingReportsApi, type PilotageKind } from '../../api/purchasing-reports.api';
 import { suppliersApi } from '../../api/accounting.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { PODetailModal } from '../accounting/PurchaseOrdersTab';
@@ -41,10 +42,10 @@ const AGES = [
   { key: '60', label: 'plus de 60 jours' },
   { key: '90', label: 'plus de 90 jours' },
 ];
-const PAYMENT_STATUS: Record<string, { label: string; tag: string }> = {
-  pending: { label: 'Non réglée', tag: 'odoo-tag-yellow' }, partial: { label: 'Partielle', tag: 'odoo-tag-blue' },
-  paid: { label: 'Réglée', tag: 'odoo-tag-green' }, overdue: { label: 'En retard', tag: 'odoo-tag-red' },
-  disputed: { label: 'En litige', tag: 'odoo-tag-orange' }, cancelled: { label: 'Annulée', tag: 'odoo-tag-grey' },
+const PAYMENT_STATUS: Record<string, { label: string; tone: StatusTone }> = {
+  pending: { label: 'Non réglée', tone: 'todo' }, partial: { label: 'Partielle', tone: 'progress' },
+  paid: { label: 'Réglée', tone: 'done' }, overdue: { label: 'En retard', tone: 'late' },
+  disputed: { label: 'En litige', tone: 'blocked' }, cancelled: { label: 'Annulée', tone: 'cancelled' },
 };
 const PO_STATUS: Record<string, string> = { en_attente: 'Brouillon', envoye: 'Envoyé', livre_partiel: 'Partiel' };
 
@@ -372,7 +373,7 @@ export default function PurchasingPilotageTab({ onOpenInvoice }: {
                         <td style={{ color: 'var(--theme-text-muted)' }}>{date(r.invoice_date)}</td>
                         <td>
                           {PAYMENT_STATUS[r.invoice_status as string]
-                            ? <span className={`odoo-tag ${PAYMENT_STATUS[r.invoice_status as string].tag}`}>{PAYMENT_STATUS[r.invoice_status as string].label}</span>
+                            ? <StatusTag tone={PAYMENT_STATUS[r.invoice_status as string].tone} label={PAYMENT_STATUS[r.invoice_status as string].label} />
                             : '—'}
                         </td>
                         <td style={{ textAlign: 'right' }}>{fmt(r.doc_amount)}</td>

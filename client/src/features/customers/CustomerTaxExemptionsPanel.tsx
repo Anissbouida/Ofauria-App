@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, Plus, Trash2, Check, X } from 'lucide-react';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { customersApi, type CustomerTaxExemption } from '../../api/customers.api';
 import { notify } from '../../components/ui/InlineNotification';
 
@@ -56,7 +57,7 @@ export default function CustomerTaxExemptionsPanel({ customerId }: { customerId:
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: '0.8125rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 {r.certificate_number}
-                {todayActive(r) && <span className="odoo-tag odoo-tag-green">En cours</span>}
+                {todayActive(r) && <StatusTag tone="done" label="En cours" />}
               </div>
               {r.reason && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{r.reason}</div>}
               <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Du {r.valid_from}{r.valid_to ? ` au ${r.valid_to}` : ' (sans fin)'}</div>

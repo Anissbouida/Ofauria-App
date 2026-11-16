@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Lock, LockOpen, ShieldCheck, ListChecks, AlertTriangle, CheckCircle2, CalendarRange, Fingerprint, Download } from 'lucide-react';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -98,13 +99,9 @@ export default function FiscalYearsPanel({ isAdmin }: { isAdmin: boolean }) {
                     </td>
                     <td>
                       {closed ? (
-                        <span className="odoo-tag odoo-tag-red" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <ShieldCheck size={11} /> Clôturé
-                        </span>
+                        <StatusTag tone="done" icon={ShieldCheck} label="Clôturé" />
                       ) : (
-                        <span className="odoo-tag odoo-tag-green" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <LockOpen size={11} /> Ouvert{fy.months_open ? ` · ${fy.months_open} mois ouverts` : ''}
-                        </span>
+                        <StatusTag tone="progress" icon={LockOpen} label={`Ouvert${fy.months_open ? ` · ${fy.months_open} mois ouverts` : ''}`} />
                       )}
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: Number(result) < 0 ? '#c62828' : undefined }}>
@@ -197,8 +194,8 @@ function YearChecks({ year }: { year: number }) {
               <td style={{ textAlign: 'right' }}>{c.item_count}</td>
               <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{c.amount != null && c.item_count > 0 ? fmt(c.amount) : '—'}</td>
               <td>{c.item_count === 0
-                ? <span className="odoo-tag odoo-tag-green">OK</span>
-                : c.blocking ? <span className="odoo-tag odoo-tag-red">Bloquant</span> : <span className="odoo-tag odoo-tag-orange">À examiner</span>}</td>
+                ? <StatusTag tone="done" label="OK" />
+                : c.blocking ? <StatusTag tone="blocked" label="Bloquant" /> : <StatusTag tone="todo" label="À examiner" />}</td>
             </tr>
           ))}
           {result && (

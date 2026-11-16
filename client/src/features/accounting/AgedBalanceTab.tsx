@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Loader2, Download, Calendar, Search, X, ChevronRight, ChevronDown, CheckCircle2, AlertTriangle, BellRing, Hourglass, Info } from 'lucide-react';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { agedBalanceApi } from '../../api/ledger.api';
 import type { AgedBucket, AgedItem, AgedSide } from '../../api/ledger.api';
 import EditionButtons from './EditionButtons';
@@ -205,7 +206,7 @@ export default function AgedBalanceTab() {
                             <td style={{ paddingLeft: 32 }}>
                               <span style={{ color: 'var(--theme-text-muted)' }}>{KIND_LABELS[i.kind]}</span>{' '}
                               <span style={{ ...mono, color: '#185fa5' }}>{i.reference}</span>
-                              {i.partial && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 4 }} title="Pièce et acomptes pré-lettrés : le montant est le reste dû">pré-lettré</span>}
+                              {i.partial && <span style={{ marginLeft: 4 }}><StatusTag tone="progress" label="pré-lettré" title="Pièce et acomptes pré-lettrés : le montant est le reste dû" /></span>}
                               <span style={{ color: 'var(--theme-text-muted)' }}> · du {fmtDate(i.doc_date)} · échéance {fmtDate(i.due_date)}{i.days_late > 0 ? ` · ${i.days_late} j de retard` : ''}</span>
                             </td>
                             {BUCKETS.map(b => <td key={b.key} style={{ ...mono, textAlign: 'right' }}>{b.key === i.bucket ? n(i.amount) : ''}</td>)}

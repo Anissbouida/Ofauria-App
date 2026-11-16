@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { salesChannelsApi, type SalesChannel } from '../../api/sales-channels.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 
 /**
  * Gestion des canaux de vente (mig 172) : liste, création, défaut, (dés)activation.
@@ -69,7 +70,7 @@ export default function SalesChannelsManager() {
               <div className="odoo-setting-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {c.label}
                 {c.is_default && <span className="odoo-tag odoo-tag-green">Par défaut</span>}
-                {!c.is_active && <span className="odoo-tag odoo-tag-grey">Inactif</span>}
+                {!c.is_active && <StatusTag tone="cancelled" label="Inactif" />}
               </div>
               <div className="odoo-setting-help" style={{ fontFamily: 'ui-monospace, monospace' }}>{c.code}</div>
             </div>

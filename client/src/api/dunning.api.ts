@@ -23,8 +23,6 @@ export type DunningLevel = {
 export type DunningOverview = { settings: DunningSettings; proposals: DunningProposal[]; drafts: { count: number; amount: number }; blocked: BlockedCustomer[] };
 
 export const DUNNING_STATUS_LABELS: Record<DunningStatus, string> = { draft: 'À envoyer', sent: 'Envoyée', resolved: 'Soldée', cancelled: 'Annulée' };
-export const DUNNING_STATUS_TAG: Record<DunningStatus, string> = { draft: 'odoo-tag-orange', sent: 'odoo-tag-blue', resolved: 'odoo-tag-green', cancelled: 'odoo-tag-grey' };
-
 export const dunningApi = {
   overview: (): Promise<DunningOverview> => api.get('/dunning/overview').then(r => r.data.data),
   list: (params: Record<string, string>): Promise<{ data: Dunning[]; total: number }> => api.get('/dunning', { params }).then(r => ({ data: r.data.data, total: r.data.total })),

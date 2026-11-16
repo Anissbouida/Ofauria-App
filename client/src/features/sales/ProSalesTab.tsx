@@ -39,13 +39,13 @@ const day = (d: string) => format(new Date(String(d).slice(0, 10) + 'T00:00:00')
 const TVA_RATES = [0, 7, 10, 14, 20];
 /** Cycle différé (mig 489) : brouillon, préparé, expédié — avant la livraison. */
 const IN_PROGRESS = new Set<DeliveryNote['status']>(['draft', 'prepared', 'shipped']);
-const STATUS: Record<DeliveryNote['status'], { label: string; cls: string }> = {
-  draft: { label: 'Brouillon', cls: 'odoo-tag-grey' },
-  prepared: { label: 'Préparé', cls: 'odoo-tag-blue' },
-  shipped: { label: 'Expédié', cls: 'odoo-tag-yellow' },
-  delivered: { label: 'À facturer', cls: 'odoo-tag-orange' },
-  invoiced: { label: 'Facturé', cls: 'odoo-tag-green' },
-  cancelled: { label: 'Annulé', cls: 'odoo-tag-grey' },
+const STATUS: Record<DeliveryNote['status'], { label: string }> = {
+  draft: { label: 'Brouillon' },
+  prepared: { label: 'Préparé' },
+  shipped: { label: 'Expédié' },
+  delivered: { label: 'À facturer' },
+  invoiced: { label: 'Facturé' },
+  cancelled: { label: 'Annulé' },
 };
 /** Étiquette commune par statut de BL (à facturer = action attendue → ambre). */
 const STATUS_TAG: Record<DeliveryNote['status'], { tone: StatusTone; icon?: LucideIcon }> = {
@@ -182,7 +182,7 @@ function NotesList({ status, search, onOpen, onToInvoice }: { status: string; se
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{money(n.total_ht)}</td>
               <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(n.total_ttc)}</td>
               <td>
-                <span className={`odoo-tag ${STATUS[n.status].cls}`}>{STATUS[n.status].label}</span>
+                <StatusTag tone={STATUS_TAG[n.status].tone} icon={STATUS_TAG[n.status].icon} label={STATUS[n.status].label} />
                 {n.invoice_number && <span className="sal-sub sal-mono">{n.invoice_number}</span>}
               </td>
               <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
@@ -444,7 +444,7 @@ function NoteDetail({ id, onClose }: { id: string; onClose: () => void }) {
               <div><div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Livré le</div>{day(n.delivery_date)}</div>
               {n.order_number && <div><div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Commande</div>{n.order_number}</div>}
               <div><div style={{ color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}>Statut</div>
-                <span className={`odoo-tag ${STATUS[n.status].cls}`}>{STATUS[n.status].label}</span>{n.invoice_number ? ` ${n.invoice_number}` : ''}</div>
+                <StatusTag tone={STATUS_TAG[n.status].tone} icon={STATUS_TAG[n.status].icon} label={STATUS[n.status].label} />{n.invoice_number ? ` ${n.invoice_number}` : ''}</div>
             </div>
             {n.notes && <div><b>Notes :</b> {n.notes}</div>}
             <table className="odoo-table">

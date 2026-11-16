@@ -8,10 +8,12 @@ import { useAuth } from '../../context/AuthContext';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import {
   Plus, Package, ArrowRight, Clock, AlertTriangle, CheckCircle,
   Send, ShoppingBag, Trash2, Calendar, Search, X, Lightbulb, Truck,
   Loader2, PackageOpen, ChevronRight, Hash, User, Layers, PackageCheck,
+  type LucideIcon,
 } from 'lucide-react';
 
 const STORE_ROLES = ['cashier', 'saleswoman'];
@@ -28,16 +30,17 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: 'Annulé',
 };
 
-const STATUS_CONFIG: Record<string, { bg: string; text: string; dot: string; icon: React.ReactNode }> = {
-  submitted: { bg: 'bg-yellow-100', text: 'text-yellow-700', dot: 'bg-yellow-400', icon: <Clock size={12} /> },
-  acknowledged: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500', icon: <Send size={12} /> },
-  partially_received: { bg: 'bg-teal-100', text: 'text-teal-700', dot: 'bg-teal-500', icon: <Truck size={12} /> },
-  preparing: { bg: 'bg-indigo-100', text: 'text-indigo-700', dot: 'bg-indigo-500', icon: <PackageCheck size={12} /> },
-  transferred: { bg: 'bg-purple-100', text: 'text-purple-700', dot: 'bg-purple-500', icon: <Truck size={12} /> },
-  partially_delivered: { bg: 'bg-teal-100', text: 'text-teal-700', dot: 'bg-teal-500', icon: <Truck size={12} /> },
-  closed: { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500', icon: <CheckCircle size={12} /> },
-  closed_with_discrepancy: { bg: 'bg-orange-100', text: 'text-orange-700', dot: 'bg-orange-500', icon: <AlertTriangle size={12} /> },
-  cancelled: { bg: 'bg-gray-100', text: 'text-gray-500', dot: 'bg-gray-400', icon: <X size={12} /> },
+/** Étiquette de statut commune : transféré = à réceptionner par la boutique, écart = à traiter. */
+const STATUS_TAG: Record<string, { tone: StatusTone; icon?: LucideIcon }> = {
+  submitted: { tone: 'progress', icon: Send },
+  acknowledged: { tone: 'progress' },
+  partially_received: { tone: 'progress', icon: Truck },
+  preparing: { tone: 'progress', icon: PackageCheck },
+  transferred: { tone: 'todo', icon: Truck },
+  partially_delivered: { tone: 'progress', icon: Truck },
+  closed: { tone: 'done' },
+  closed_with_discrepancy: { tone: 'blocked' },
+  cancelled: { tone: 'cancelled' },
 };
 
 const PRIORITY_LABELS: Record<string, string> = {
@@ -234,7 +237,7 @@ export default function ReplenishmentPage() {
             <tbody>
               {filtered.map((r) => {
                 const effectiveStatus = (r.display_status as string) || (r.status as string);
-                const sc = STATUS_CONFIG[effectiveStatus] || STATUS_CONFIG.submitted;
+                const sc = STATUS_TAG[effectiveStatus] || STATUS_TAG.submitted;
                 const itemCount = (r.item_count as number) || 0;
                 const completedCount = (r.completed_count as number) || 0;
                 const progress = itemCount > 0 ? Math.round((completedCount / itemCount) * 100) : 0;
@@ -244,12 +247,6 @@ export default function ReplenishmentPage() {
                   : effectiveStatus === 'cancelled' ? 'neutral'
                   : effectiveStatus === 'submitted' ? 'warning'
                   : 'ok';
-                const statusTag = effectiveStatus === 'closed' ? 'odoo-tag-green'
-                  : effectiveStatus === 'closed_with_discrepancy' ? 'odoo-tag-orange'
-                  : effectiveStatus === 'cancelled' ? 'odoo-tag-grey'
-                  : effectiveStatus === 'submitted' ? 'odoo-tag-yellow'
-                  : effectiveStatus === 'transferred' ? 'odoo-tag-purple'
-                  : 'odoo-tag-blue';
                 const priorityTag = r.priority === 'urgent' ? 'odoo-tag-red'
                   : r.priority === 'high' ? 'odoo-tag-orange'
                   : r.priority === 'low' ? 'odoo-tag-blue'
@@ -264,9 +261,7 @@ export default function ReplenishmentPage() {
                       </span>
                     </td>
                     <td>
-                      <span className={`odoo-tag ${statusTag}`}>
-                        {sc.icon} {STATUS_LABELS[effectiveStatus] || effectiveStatus}
-                      </span>
+                      <StatusTag tone={sc.tone} icon={sc.icon} label={STATUS_LABELS[effectiveStatus] || effectiveStatus} />
                     </td>
                     <td>
                       <span className={`odoo-tag ${priorityTag}`}>

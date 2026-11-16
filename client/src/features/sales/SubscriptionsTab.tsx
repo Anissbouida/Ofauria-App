@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Repeat, Plus, Play, Pause, X, Loader2, Eye, RotateCcw } from 'lucide-react';
+import { Repeat, Plus, Play, Pause, X, Loader2, Eye, RotateCcw, Archive } from 'lucide-react';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { subscriptionsApi, type Subscription, type SubscriptionDetail, type SubFrequency } from '../../api/subscriptions.api';
 import { customersApi } from '../../api/customers.api';
 import { notify } from '../../components/ui/InlineNotification';
@@ -76,9 +77,9 @@ export default function SubscriptionsTab() {
                 <td>{FREQ[r.frequency]}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>{r.status === 'active' ? day(r.next_invoice_date) : '—'}</td>
                 <td>
-                  <span className={`odoo-tag ${r.status === 'active' ? 'odoo-tag-green' : r.status === 'paused' ? 'odoo-tag-orange' : 'odoo-tag-grey'}`}>
-                    {r.status === 'active' ? 'Actif' : r.status === 'paused' ? 'En pause' : 'Terminé'}
-                  </span>
+                  {r.status === 'active' ? <StatusTag tone="done" label="Actif" />
+                    : r.status === 'paused' ? <StatusTag tone="cancelled" icon={Pause} label="En pause" />
+                    : <StatusTag tone="cancelled" icon={Archive} label="Terminé" />}
                 </td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <button type="button" className="odoo-btn-secondary" style={btnSm} onClick={() => setDetailId(r.id)} title="Factures générées"><Eye size={12} /></button>

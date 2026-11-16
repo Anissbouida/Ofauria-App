@@ -1734,7 +1734,7 @@ function CaisseTab() {
             <tbody>
               {((data as Record<string, any>).reconciliationAlerts as { date: string; cashCaissiere: number; cashSysteme: number; ecart: number }[]).map(a => (
                 <tr key={a.date}>
-                  <td><span className="odoo-status-dot danger" /></td>
+                  <td><span className="odoo-status-dot danger" role="img" title="Écart caisse significatif" aria-label="Écart caisse significatif" /></td>
                   <td style={{ textTransform: 'capitalize' }}>{format(parseLocalDate(a.date), 'EEEE dd/MM', { locale: fr })}</td>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Caissière {n(a.cashCaissiere)}</td>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Système {n(a.cashSysteme)}</td>

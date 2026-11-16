@@ -1,8 +1,9 @@
 import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellRing, Loader2, Mail, Printer, Phone, Ban, Lock, Unlock, PauseCircle, ChevronDown, ChevronUp, Settings2, CheckCircle2, Plus } from 'lucide-react';
+import { BellRing, Loader2, Mail, Printer, Phone, Ban, Lock, Unlock, PauseCircle, ChevronDown, ChevronUp, Settings2, CheckCircle2, Plus, Send, type LucideIcon } from 'lucide-react';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { format } from 'date-fns';
-import { dunningApi, DUNNING_STATUS_LABELS, DUNNING_STATUS_TAG, type Dunning, type DunningLevel, type DunningStatus } from '../../api/dunning.api';
+import { dunningApi, DUNNING_STATUS_LABELS, type Dunning, type DunningLevel, type DunningStatus } from '../../api/dunning.api';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -10,6 +11,11 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi } from '../sales/ListTemplate';
+
+/** Statut d'une lettre de relance en étiquette commune (à envoyer = action attendue). */
+const DUNNING_TONE: Record<DunningStatus, { tone: StatusTone; icon?: LucideIcon }> = {
+  draft: { tone: 'todo' }, sent: { tone: 'progress', icon: Send }, resolved: { tone: 'done' }, cancelled: { tone: 'cancelled' },
+};
 
 /**
  * Relances clients (mig 366) : clients à relancer selon les niveaux, lettres (e-mail ou
@@ -99,7 +105,7 @@ function Letters() {
                 <tr key={p.customerId}>
                   <td><input type="checkbox" aria-label={`Sélectionner ${p.customerName}`} checked={selected.has(p.customerId)}
                     onChange={e => { const s = new Set(selected); if (e.target.checked) s.add(p.customerId); else s.delete(p.customerId); setSelected(s); }} /></td>
-                  <td><strong>{p.customerName}</strong>{p.creditHold && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }}>bloqué</span>}
+                  <td><strong>{p.customerName}</strong>{p.creditHold && <>{' '}<StatusTag tone="blocked" icon={Lock} label="bloqué" /></>}
                     <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{p.email || <span style={{ color: '#b85d1a' }}>pas d'e-mail</span>}{p.phone ? ` · ${p.phone}` : ''}</div></td>
                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{n2(p.overdue)} DH</td>
                   <td style={{ textAlign: 'right', color: p.maxDaysLate > 60 ? '#dc3545' : undefined }}>{p.maxDaysLate} j</td>
@@ -135,11 +141,11 @@ function Letters() {
                 <Fragment key={d.id}>
                   <tr>
                     <td className="font-mono">{d.number}</td>
-                    <td>{d.customer_name}{d.credit_hold && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }}>bloqué</span>}</td>
+                    <td>{d.customer_name}{d.credit_hold && <>{' '}<StatusTag tone="blocked" icon={Lock} label="bloqué" /></>}</td>
                     <td>{d.level} · {d.level_label}</td>
                     <td>{fr(d.dunning_date)}<div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{d.created_by_name ?? 'proposée automatiquement'}</div></td>
                     <td style={{ textAlign: 'right' }}>{n2(d.amount_due)} DH{Number(d.fee_amount) + Number(d.interest_amount) > 0 && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>+ {n2(Number(d.fee_amount) + Number(d.interest_amount))} frais et pénalités</div>}</td>
-                    <td><span className={`odoo-tag ${DUNNING_STATUS_TAG[d.status]}`}>{DUNNING_STATUS_LABELS[d.status]}</span>
+                    <td><StatusTag tone={DUNNING_TONE[d.status]?.tone ?? 'draft'} icon={DUNNING_TONE[d.status]?.icon} label={DUNNING_STATUS_LABELS[d.status]} />
                       {d.sent_at && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{format(new Date(d.sent_at), 'dd/MM HH:mm')} · {VIA[d.sent_via ?? ''] ?? ''}</div>}</td>
                     <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
                       <button className="odoo-pager-btn" title="Lettre PDF" aria-label="Lettre PDF" onClick={() => openPdf(d.id)}><Printer size={13} /></button>{' '}
@@ -179,8 +185,8 @@ function Letters() {
             <tbody>{ov.blocked.map(b => (
               <tr key={b.id}>
                 <td><strong>{b.name}</strong></td>
-                <td>{b.credit_hold_at ? <span className="odoo-tag odoo-tag-red"><Lock size={10} /> bloqué</span> : null}{' '}
-                  {b.dunning_paused_until && <span className="odoo-tag odoo-tag-grey"><PauseCircle size={10} /> relances en pause jusqu'au {fr(b.dunning_paused_until)}</span>}</td>
+                <td>{b.credit_hold_at ? <StatusTag tone="blocked" icon={Lock} label="bloqué" /> : null}{' '}
+                  {b.dunning_paused_until && <StatusTag tone="cancelled" icon={PauseCircle} label={`relances en pause jusqu'au ${fr(b.dunning_paused_until)}`} />}</td>
                 <td style={{ fontSize: '0.8125rem' }}>{b.credit_hold_reason ?? '—'}</td>
                 <td style={{ fontSize: '0.8125rem' }}>{b.credit_hold_at ? `${format(new Date(b.credit_hold_at), 'dd/MM/yyyy')}${b.held_by_name ? ` · ${b.held_by_name}` : ' · relance'}` : '—'}</td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>

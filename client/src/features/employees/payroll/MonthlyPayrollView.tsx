@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
+import { StatusTag } from '../../../components/ui/StatusTag';
 import { StagePipeline, StageProgress, type StageDef } from '../../../components/purchasing/ProcessBoard';
 import { HrModal, EmptyState, SectionTitle, inputCls } from '../ui';
 
@@ -402,7 +403,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                     <StageProgress count={3} current={p.paid ? 3 : isClosed ? 2 : 1} done={!!p.paid} />
                     {p.paid ? (
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <span className="odoo-tag odoo-tag-green">Payé</span>
+                        <StatusTag tone="done" label="Payé" />
                         <button onClick={async () => {
                           if (!(await confirm(`Annuler le paiement de ${p.first_name} ${p.last_name} ?\n\nLa sortie de caisse liée sera supprimée (écriture comptable reversée) et les retenues d'avance re-créditées. Vous pourrez ensuite re-payer sans doublon.`,
                             { title: 'Annuler le paiement', confirmLabel: 'Annuler le paiement', danger: true }))) return;
@@ -453,9 +454,9 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
       {detailPayroll && (() => {
         const p = detailPayroll;
         const notDeclared = p.is_declared === false;
-        const tag = p.paid ? <span className="odoo-tag odoo-tag-green">Payé</span>
+        const tag = p.paid ? <StatusTag tone="done" label="Payé" />
           : notDeclared ? <span className="odoo-tag odoo-tag-grey">Non déclaré</span>
-          : <span className="odoo-tag odoo-tag-orange">À payer</span>;
+          : <StatusTag tone="todo" label="À payer" />;
         // Cycle de vie du bulletin : Généré → Mois clôturé → Payé (le paiement
         // peut preceder la cloture : chaque etape est franchie independamment).
         const steps = [

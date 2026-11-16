@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Undo2, Plus, Trash2, Check } from 'lucide-react';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { proReturnsApi, type ProReturn } from '../../api/pro-returns.api';
 import { customersApi } from '../../api/customers.api';
 import { productsApi } from '../../api/products.api';
@@ -116,7 +117,7 @@ export default function ProReturnsPage() {
                   <td style={{ whiteSpace: 'nowrap' }}>{String(r.return_date).slice(0, 10).split('-').reverse().join('/')}</td>
                   <td style={{ fontWeight: 500 }}>{r.customer_name}</td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.item_count}</td>
-                  <td>{r.credit_note_id ? <span className="odoo-tag odoo-tag-green">Émis</span> : <span className="odoo-tag odoo-tag-orange">À émettre</span>}</td>
+                  <td>{r.credit_note_id ? <StatusTag tone="done" label="Émis" /> : <StatusTag tone="todo" label="À émettre" />}</td>
                 </tr>
               ))}
             </tbody>

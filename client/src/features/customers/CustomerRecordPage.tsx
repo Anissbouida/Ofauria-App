@@ -4,10 +4,13 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ORDER_STATUS_LABELS } from '@ofauria/shared';
-import { ArrowLeft, Loader2, Users, Pencil, AlertTriangle, Phone, Mail, Wallet, BellRing } from 'lucide-react';
+import { ArrowLeft, Loader2, Users, Pencil, AlertTriangle, Phone, Mail, Wallet, BellRing, FileText, type LucideIcon } from 'lucide-react';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { customersApi } from '../../api/customers.api';
 import { salesApi, type AgingBucket } from '../../api/sales.api';
-import { quotesApi, QUOTE_STATUS_LABELS, QUOTE_STATUS_TAG } from '../../api/quotes.api';
+import { quotesApi, QUOTE_STATUS_LABELS } from '../../api/quotes.api';
+import { QUOTE_TONE } from '../quotes/QuotesPage';
+import { ORDER_TONE } from '../orders/OrderSplit';
 import { deliveryNotesApi } from '../../api/delivery-notes.api';
 import { loyaltyApi } from '../../api/promotions.api';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
@@ -33,12 +36,8 @@ type Row = Record<string, any>;
 type DocKind = 'quote' | 'order' | 'delivery' | 'invoice' | 'payment' | 'ticket';
 const KIND_LABEL: Record<DocKind, string> = { quote: 'Devis', order: 'Commande', delivery: 'Livraison', invoice: 'Facture', payment: 'Règlement', ticket: 'Ticket' };
 const KIND_PLURAL: Record<DocKind, string> = { quote: 'Devis', order: 'Commandes', delivery: 'Livraisons', invoice: 'Factures', payment: 'Règlements', ticket: 'Tickets' };
-const BL_STATUS: Record<string, { label: string; tag: string }> = {
-  delivered: { label: 'À facturer', tag: 'odoo-tag-orange' }, invoiced: { label: 'Facturé', tag: 'odoo-tag-green' }, cancelled: { label: 'Annulé', tag: 'odoo-tag-grey' },
-};
-const ORDER_TAG: Record<string, string> = {
-  pending: 'odoo-tag-grey', confirmed: 'odoo-tag-blue', in_production: 'odoo-tag-yellow', ready: 'odoo-tag-green',
-  partially_delivered: 'odoo-tag-orange', completed: 'odoo-tag-purple', cancelled: 'odoo-tag-red',
+const BL_STATUS: Record<string, { label: string; tone: StatusTone; icon?: LucideIcon }> = {
+  delivered: { label: 'À facturer', tone: 'todo', icon: FileText }, invoiced: { label: 'Facturé', tone: 'done' }, cancelled: { label: 'Annulé', tone: 'cancelled' },
 };
 const BUCKETS: Array<{ key: AgingBucket; label: string; color: string }> = [
   { key: 'current', label: 'Non échu', color: 'var(--odoo-purple)' },
@@ -54,7 +53,7 @@ const day = (d: string | null | undefined, p = 'dd MMM yyyy') => (d ? format(new
 const PAGE = 12;
 
 type Tab = 'docs' | 'receivables' | 'addresses' | 'loyalty' | 'portal' | 'data';
-type Doc = { kind: DocKind; key: string; number: string; date: string; status: string; tag: string; sub?: string; amount: number; owed: number | null; href?: string };
+type Doc = { kind: DocKind; key: string; number: string; date: string; status: string; tone: StatusTone; icon?: LucideIcon; sub?: string; amount: number; owed: number | null; href?: string };
 
 export default function CustomerRecordPage() {
   const { id = '' } = useParams();
@@ -79,26 +78,26 @@ export default function CustomerRecordPage() {
   const docs = useMemo(() => {
     const out: Doc[] = [];
     const owedBy = new Map((recCustomer?.docs ?? []).map(d => [d.number, d]));
-    for (const q of quotes?.data ?? []) out.push({ kind: 'quote', key: `q${q.id}`, number: q.number, date: q.quote_date, status: QUOTE_STATUS_LABELS[q.status], tag: QUOTE_STATUS_TAG[q.status], sub: q.title ?? undefined, amount: num(q.total), owed: null, href: `/quotes?open=${q.id}` });
-    for (const o of (stats?.orders?.history ?? []) as Row[]) out.push({ kind: 'order', key: `o${o.id}`, number: o.order_number, date: o.created_at, status: ORDER_STATUS_LABELS[o.status as keyof typeof ORDER_STATUS_LABELS] ?? o.status, tag: ORDER_TAG[o.status] ?? 'odoo-tag-grey', amount: num(o.total), owed: null, href: `/orders/${o.id}` });
-    for (const d of notes) out.push({ kind: 'delivery', key: `d${d.id}`, number: d.number, date: d.delivery_date, status: BL_STATUS[d.status]?.label ?? d.status, tag: BL_STATUS[d.status]?.tag ?? 'odoo-tag-grey', sub: d.order_number ?? undefined, amount: num(d.total_ttc), owed: null, href: `/delivery-notes?open=${d.id}` });
+    for (const q of quotes?.data ?? []) out.push({ kind: 'quote', key: `q${q.id}`, number: q.number, date: q.quote_date, status: QUOTE_STATUS_LABELS[q.status], tone: QUOTE_TONE[q.status]?.tone ?? 'draft', icon: QUOTE_TONE[q.status]?.icon, sub: q.title ?? undefined, amount: num(q.total), owed: null, href: `/quotes?open=${q.id}` });
+    for (const o of (stats?.orders?.history ?? []) as Row[]) out.push({ kind: 'order', key: `o${o.id}`, number: o.order_number, date: o.created_at, status: ORDER_STATUS_LABELS[o.status as keyof typeof ORDER_STATUS_LABELS] ?? o.status, tone: ORDER_TONE[o.status]?.tone ?? 'draft', icon: ORDER_TONE[o.status]?.icon, amount: num(o.total), owed: null, href: `/orders/${o.id}` });
+    for (const d of notes) out.push({ kind: 'delivery', key: `d${d.id}`, number: d.number, date: d.delivery_date, status: BL_STATUS[d.status]?.label ?? d.status, tone: BL_STATUS[d.status]?.tone ?? 'draft', icon: BL_STATUS[d.status]?.icon, sub: d.order_number ?? undefined, amount: num(d.total_ttc), owed: null, href: `/delivery-notes?open=${d.id}` });
     for (const e of statement?.entries ?? []) {
       if (e.kind === 'invoice') {
         const open = owedBy.get(e.number);
         out.push({
           kind: 'invoice', key: `i${e.number}${e.date}`, number: e.number, date: e.date,
           status: open ? (open.days_late > 0 ? `Échue · ${open.days_late} j` : 'À encaisser') : e.debit < 0 ? 'Avoir' : 'Soldée',
-          tag: open ? (open.days_late > 0 ? 'odoo-tag-red' : 'odoo-tag-blue') : 'odoo-tag-green',
+          tone: open ? (open.days_late > 0 ? 'late' : 'todo') : e.debit < 0 ? 'draft' : 'done',
           sub: open?.due_date ? `échéance ${day(open.due_date, 'dd MMM')}` : undefined,
           amount: e.debit || -e.credit, owed: open ? open.remaining : 0, href: '/sales?tab=invoices',
         });
       } else {
-        out.push({ kind: 'payment', key: `p${e.number}${e.date}`, number: e.number, date: e.date, status: 'Encaissé', tag: 'odoo-tag-green', sub: e.label, amount: e.credit, owed: null });
+        out.push({ kind: 'payment', key: `p${e.number}${e.date}`, number: e.number, date: e.date, status: 'Encaissé', tone: 'done', sub: e.label, amount: e.credit, owed: null });
       }
     }
     for (const s of (stats?.sales?.history ?? []) as Row[]) {
       const open = owedBy.get(s.sale_number);
-      out.push({ kind: 'ticket', key: `t${s.id}`, number: s.sale_number, date: s.created_at, status: open ? 'Sur compte' : (PAYMENT_LABELS[s.payment_method] ?? 'Payé'), tag: open ? 'odoo-tag-orange' : 'odoo-tag-grey', amount: num(s.total), owed: open ? open.remaining : null });
+      out.push({ kind: 'ticket', key: `t${s.id}`, number: s.sale_number, date: s.created_at, status: open ? 'Sur compte' : (PAYMENT_LABELS[s.payment_method] ?? 'Payé'), tone: open ? 'todo' : 'done', amount: num(s.total), owed: open ? open.remaining : null });
     }
     return out.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [quotes, stats, notes, statement, recCustomer]);
@@ -154,8 +153,8 @@ export default function CustomerRecordPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <h1>{primary}</h1>
               <span className={`odoo-tag ${moral ? 'odoo-tag-blue' : 'odoo-tag-grey'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><TypeIcon size={11} /> {meta.label}</span>
-              {c.is_active === false && <span className="odoo-tag odoo-tag-grey">Archivé</span>}
-              {c.credit_hold && <span className="odoo-tag odoo-tag-red">Bloqué (relances)</span>}
+              {c.is_active === false && <StatusTag tone="cancelled" label="Archivé" />}
+              {c.credit_hold && <StatusTag tone="blocked" label="Bloqué (relances)" />}
               {loyalty?.tier && <span className="odoo-tag odoo-tag-purple">Fidélité {loyalty.tier.label}</span>}
             </div>
             <div className="prj-hero-meta">
@@ -219,7 +218,7 @@ export default function CustomerRecordPage() {
                           <td><span className="odoo-tag odoo-tag-grey">{KIND_LABEL[d.kind]}</span></td>
                           <td><span className="sal-num">{d.number}</span>{d.sub && <span className="sal-sub">{d.sub}</span>}</td>
                           <td style={{ whiteSpace: 'nowrap' }}>{day(d.date)}</td>
-                          <td><span className={`odoo-tag ${d.tag}`}>{d.status}</span></td>
+                          <td><StatusTag tone={d.tone} icon={d.icon} label={d.status} /></td>
                           <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{n2(d.amount)}</td>
                           <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', fontWeight: d.owed ? 600 : 400, color: d.owed ? 'var(--prj-orange)' : 'var(--odoo-text-muted)' }}>{d.owed == null ? '—' : n2(d.owed)}</td>
                         </tr>

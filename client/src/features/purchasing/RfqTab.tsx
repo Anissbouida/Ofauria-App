@@ -18,6 +18,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StagePipeline, ViewSwitch, SelectFilter, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
 
@@ -28,7 +29,10 @@ import { StagePipeline, ViewSwitch, SelectFilter, Pager, PAGE_SIZE, type StageDe
  */
 const n2 = (v: string | number | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const n4 = (v: string | number | null | undefined) => Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-const STATUS_TAG: Record<RfqStatus, string> = { draft: 'odoo-tag-grey', sent: 'odoo-tag-blue', quoted: 'odoo-tag-purple', awarded: 'odoo-tag-green', cancelled: 'odoo-tag-grey', closed: 'odoo-tag-grey' };
+const STATUS_TONE: Record<RfqStatus, StatusTone> = { draft: 'draft', sent: 'progress', quoted: 'todo', awarded: 'done', cancelled: 'cancelled', closed: 'cancelled' };
+const RfqStatusTag = ({ status }: { status: RfqStatus }) => (
+  <StatusTag tone={STATUS_TONE[status] ?? 'draft'} label={RFQ_STATUS_LABELS[status]} icon={status === 'sent' ? Send : status === 'awarded' ? Trophy : undefined} />
+);
 const STAGES: Array<StageDef & { key: RfqStatus }> = [
   { key: 'draft', label: 'Brouillons', hint: 'à compléter', icon: FilePenLine },
   { key: 'sent', label: 'Envoyés', hint: 'en attente des devis', icon: Send },
@@ -108,7 +112,7 @@ export default function RfqTab({ onOpenOrder }: { onOpenOrder?: (purchaseOrderId
                 <td style={{ textAlign: 'center' }}>{r.supplier_count}</td>
                 <td style={{ textAlign: 'center' }}>{r.quotation_count}/{r.supplier_count}</td>
                 <td style={{ color: r.is_overdue ? '#dc3545' : undefined, fontWeight: r.is_overdue ? 600 : 400 }}>{r.response_deadline ? format(new Date(r.response_deadline), 'dd/MM/yyyy') : '—'}</td>
-                <td><span className={`odoo-tag ${STATUS_TAG[r.status]}`}>{RFQ_STATUS_LABELS[r.status]}</span></td>
+                <td><RfqStatusTag status={r.status} /></td>
                 <td>{r.awarded_supplier_name ? <>{r.awarded_supplier_name} <span className="font-mono" style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{r.purchase_order_number}</span></> : '—'}</td>
               </tr>
             ))}</tbody>
@@ -266,7 +270,7 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
           <div className="odoo-breadcrumb">
             <FileQuestion size={14} style={{ color: 'var(--theme-accent)' }} />
             <span className="font-mono">{r.number}</span>
-            <span className={`odoo-tag ${STATUS_TAG[r.status]}`} style={{ marginLeft: 6 }}>{RFQ_STATUS_LABELS[r.status]}</span>
+            <span style={{ marginLeft: 6 }}><RfqStatusTag status={r.status} /></span>
           </div>
           <div style={{ flex: 1 }} />
           {r.status === 'draft' && <>
@@ -308,10 +312,11 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
                     <td><strong>{s.supplier_name}</strong></td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{[s.contact_name, s.phone, s.email].filter(Boolean).join(' · ') || '—'}</td>
                     <td>
-                      {s.status === 'quoted' ? <span className="odoo-tag odoo-tag-green">devis reçu</span>
-                        : s.status === 'declined' ? <span className="odoo-tag odoo-tag-grey">a décliné</span>
-                        : s.status === 'no_response' ? <span className="odoo-tag odoo-tag-orange">sans réponse</span>
-                        : <span className="odoo-tag odoo-tag-blue">{r.status === 'draft' ? 'à consulter' : 'en attente'}</span>}
+                      {s.status === 'quoted' ? <StatusTag tone="done" label="devis reçu" />
+                        : s.status === 'declined' ? <StatusTag tone="cancelled" label="a décliné" />
+                        : s.status === 'no_response' ? <StatusTag tone="blocked" label="sans réponse" />
+                        : r.status === 'draft' ? <StatusTag tone="todo" label="à consulter" />
+                        : <StatusTag tone="progress" label="en attente" icon={Send} />}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {open && <>

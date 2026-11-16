@@ -7,6 +7,7 @@ import { ROLE_LABELS, APPROVAL_DOC_TYPES, APPROVAL_REQUEST_STATUS_LABELS, type A
 import { approvalsApi, apiErrorMessage, type ApprovalRequest } from '../../api/approvals.api';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
@@ -21,6 +22,10 @@ const DOC_TYPES = APPROVAL_DOC_TYPES as Record<string, ApprovalDocTypeDef>;
 const money = (v: string | number | null | undefined) => v === null || v === undefined ? '' : `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 const when = (d: string) => format(new Date(d), 'dd MMM yyyy à HH:mm', { locale: fr });
 const statusTag: Record<string, string> = { pending: 'odoo-tag-orange', approved: 'odoo-tag-green', rejected: 'odoo-tag-red', cancelled: 'odoo-tag-grey' };
+const STATUS_TONE: Record<string, StatusTone> = { pending: 'todo', approved: 'done', rejected: 'blocked', cancelled: 'cancelled' };
+const RequestStatusTag = ({ status }: { status: string }) => (
+  <StatusTag tone={STATUS_TONE[status] ?? 'draft'} label={(APPROVAL_REQUEST_STATUS_LABELS as Record<string, string>)[status] ?? status} />
+);
 const roleLabel = (c: string | null) => (c ? (ROLE_LABELS as Record<string, string>)[c] ?? c : '');
 
 function Steps({ r }: { r: ApprovalRequest }) {
@@ -34,10 +39,10 @@ function Steps({ r }: { r: ApprovalRequest }) {
             <span className="ui-timeline-dot" />
             <div className="ui-timeline-label">
               Étape {s.step_order} · {s.approver_name ?? roleLabel(s.approver_role)}
-              {s.status === 'pending' && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 6 }}>En cours</span>}
-              {s.status === 'approved' && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6 }}>Approuvée</span>}
-              {s.status === 'rejected' && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }}>Refusée</span>}
-              {s.status === 'skipped' && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>Sans objet</span>}
+              {s.status === 'pending' && <span style={{ marginLeft: 6 }}><StatusTag tone="progress" label="En cours" /></span>}
+              {s.status === 'approved' && <span style={{ marginLeft: 6 }}><StatusTag tone="done" label="Approuvée" /></span>}
+              {s.status === 'rejected' && <span style={{ marginLeft: 6 }}><StatusTag tone="blocked" label="Refusée" /></span>}
+              {s.status === 'skipped' && <span style={{ marginLeft: 6 }}><StatusTag tone="cancelled" label="Sans objet" /></span>}
             </div>
             <div className="ui-timeline-detail">
               {done && s.decided_at && <>{s.decided_by_name} · {when(s.decided_at)}{s.reason ? ` · ${s.reason}` : ''}</>}
@@ -175,7 +180,7 @@ function RequestCard({ r, decide, cancel }: {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {r.amount && <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{money(r.amount)}</span>}
-          <span className={`odoo-tag ${statusTag[r.status]}`}>{APPROVAL_REQUEST_STATUS_LABELS[r.status]}</span>
+          <RequestStatusTag status={r.status} />
         </div>
       </header>
       <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
@@ -360,7 +365,7 @@ export default function ApprovalsPage() {
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(r.amount)}</td>
                     <td>{r.requested_by_name}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>{when(r.requested_at)}</td>
-                    <td><span className={`odoo-tag ${statusTag[r.status]}`}>{APPROVAL_REQUEST_STATUS_LABELS[r.status]}</span>{r.apply_error && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 4 }}>effet non appliqué</span>}</td>
+                    <td><RequestStatusTag status={r.status} />{r.apply_error && <span style={{ marginLeft: 4 }}><StatusTag tone="blocked" label="effet non appliqué" /></span>}</td>
                     <td>{r.decided_by_name ?? '—'}{r.decided_at && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{when(r.decided_at)}</div>}</td>
                     <td style={{ fontSize: '0.8125rem' }}>{r.decision_reason ?? '—'}</td>
                   </tr>

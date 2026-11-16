@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ShieldCheck, Loader2 } from 'lucide-react';
 import { purchasingSettingsApi } from '../../api/purchasing-settings.api';
+import { StatusTag } from '../../components/ui/StatusTag';
 
 /**
  * Suivi de la séparation des tâches (lot L2 P2P, mig 442). Affiché au-dessus des
@@ -71,7 +72,7 @@ export default function SodMonitor({ compact = false }: { compact?: boolean }) {
         {rules.map(r => (
           <div key={r.code} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, fontSize: '0.8125rem' }}>
             <span style={{ color: 'var(--odoo-text)' }}>{r.label}</span>
-            <span className={`odoo-tag ${r.is_active ? 'odoo-tag-blue' : 'odoo-tag-grey'}`}>{r.is_active ? 'Active' : 'Inactive'}</span>
+            <StatusTag tone={r.is_active ? 'done' : 'cancelled'} label={r.is_active ? 'Active' : 'Inactive'} />
           </div>
         ))}
       </div>

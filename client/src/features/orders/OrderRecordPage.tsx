@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ORDER_STATUS_LABELS } from '@ofauria/shared';
 import { startOfDay } from 'date-fns';
 import {
-  ArrowLeft, Check, ClipboardList, Loader2, Minus, Pencil, CalendarClock, Banknote, Ban, Trash2, Building2, Phone,
+  ArrowLeft, Check, ClipboardList, Loader2, Minus, Pencil, CalendarClock, Banknote, Ban, Trash2, Building2, Phone, FileText,
+  type LucideIcon,
 } from 'lucide-react';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { ordersApi } from '../../api/orders.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../utils/api-error';
@@ -15,9 +16,10 @@ import { useAuth } from '../../context/AuthContext';
 import OrderFormModal from '../../components/orders/OrderFormModal';
 import { NextStep } from '../sales/ListTemplate';
 import {
-  STATUS_TAG, TYPE_LABELS, NEXT_STEP, CAN_CANCEL, CAN_RESCHEDULE, isPro, customerName, num, n, fmtDate, isLate, daysLate,
+  TYPE_LABELS, NEXT_STEP, CAN_CANCEL, CAN_RESCHEDULE, isPro, customerName, num, n, fmtDate, isLate, daysLate,
   DeliverModal, ProDeliverModal, RescheduleModal, PrepaymentModal,
 } from './OrdersPage';
+import { OrderStatusTag } from './OrderSplit';
 
 /**
  * Fiche commande (refonte Ventes, maquette planche 3) : en-tête avec l'action de l'étape
@@ -29,12 +31,12 @@ import {
 
 type Row = Record<string, any>;
 type StepTone = 'done' | 'current' | 'warn' | '';
-const INVOICE_STATUS: Record<string, { label: string; tag: string }> = {
-  pending: { label: 'À encaisser', tag: 'odoo-tag-yellow' }, partial: { label: 'Partielle', tag: 'odoo-tag-blue' },
-  paid: { label: 'Soldée', tag: 'odoo-tag-green' }, draft: { label: 'Brouillon', tag: 'odoo-tag-grey' },
+const INVOICE_STATUS: Record<string, { label: string; tag: string; tone: StatusTone; icon?: LucideIcon }> = {
+  pending: { label: 'À encaisser', tag: 'odoo-tag-yellow', tone: 'todo' }, partial: { label: 'Partielle', tag: 'odoo-tag-blue', tone: 'progress' },
+  paid: { label: 'Soldée', tag: 'odoo-tag-green', tone: 'done' }, draft: { label: 'Brouillon', tag: 'odoo-tag-grey', tone: 'draft' },
 };
-const BL_STATUS: Record<string, { label: string; tag: string }> = {
-  delivered: { label: 'À facturer', tag: 'odoo-tag-orange' }, invoiced: { label: 'Facturé', tag: 'odoo-tag-green' }, cancelled: { label: 'Annulé', tag: 'odoo-tag-grey' },
+const BL_STATUS: Record<string, { label: string; tag: string; tone: StatusTone; icon?: LucideIcon }> = {
+  delivered: { label: 'À facturer', tag: 'odoo-tag-orange', tone: 'todo', icon: FileText }, invoiced: { label: 'Facturé', tag: 'odoo-tag-green', tone: 'done' }, cancelled: { label: 'Annulé', tag: 'odoo-tag-grey', tone: 'cancelled' },
 };
 const STAGE_ORDER = ['pending', 'confirmed', 'in_production', 'ready', 'partially_delivered', 'completed'];
 
@@ -178,9 +180,9 @@ export default function OrderRecordPage() {
           <div style={{ flex: 1, minWidth: 260 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <h1 style={{ fontFamily: 'ui-monospace, Menlo, monospace' }}>{o.order_number}</h1>
-              <span className={`odoo-tag ${STATUS_TAG[st] || 'odoo-tag-grey'}`}>{ORDER_STATUS_LABELS[st as keyof typeof ORDER_STATUS_LABELS] || st}</span>
+              <OrderStatusTag status={st} />
               <span className={`odoo-tag ${pro ? 'odoo-tag-blue' : 'odoo-tag-grey'}`}>{pro ? 'Professionnel' : o.customer_id ? 'Particulier' : 'Passager'}</span>
-              {late && <span className="odoo-tag odoo-tag-red">Retrait en retard de {daysLate(o, today)} j</span>}
+              {late && <StatusTag tone="late" label={`Retrait en retard de ${daysLate(o, today)} j`} />}
             </div>
             <div className="prj-hero-meta">
               <span>{customerName(o)}</span>
@@ -269,7 +271,7 @@ export default function OrderRecordPage() {
                 <tbody>{allNotes.map(d => (
                   <tr key={d.id} onClick={() => navigate(`/delivery-notes?open=${d.id}`)} style={{ cursor: 'pointer' }}>
                     <td><span className="sal-num">{d.number}</span></td><td>{fmtDate(d.delivery_date)}</td><td>{d.created_by_name || '—'}</td>
-                    <td><span className={`odoo-tag ${BL_STATUS[d.status]?.tag ?? 'odoo-tag-grey'}`}>{BL_STATUS[d.status]?.label ?? d.status}</span>{d.invoice_number && <span className="sal-sub sal-mono">{d.invoice_number}</span>}</td>
+                    <td><StatusTag tone={BL_STATUS[d.status]?.tone ?? 'draft'} icon={BL_STATUS[d.status]?.icon} label={BL_STATUS[d.status]?.label ?? d.status} />{d.invoice_number && <span className="sal-sub sal-mono">{d.invoice_number}</span>}</td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{n(num(d.total_ht))}</td><td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{n(num(d.total_ttc))}</td>
                   </tr>))}</tbody>
               </table></div>
@@ -282,7 +284,7 @@ export default function OrderRecordPage() {
                   <tr key={i.id} onClick={() => navigate('/sales?tab=invoices')} style={{ cursor: 'pointer' }}>
                     <td><span className="sal-num">{i.invoice_number}</span>{i.kind === 'credit_note' && <span className="sal-sub">avoir</span>}</td>
                     <td>{fmtDate(i.invoice_date)}</td><td>{i.due_date ? fmtDate(i.due_date) : '—'}</td>
-                    <td><span className={`odoo-tag ${INVOICE_STATUS[i.status]?.tag ?? 'odoo-tag-grey'}`}>{INVOICE_STATUS[i.status]?.label ?? i.status}</span></td>
+                    <td><StatusTag tone={INVOICE_STATUS[i.status]?.tone ?? 'draft'} icon={INVOICE_STATUS[i.status]?.icon} label={INVOICE_STATUS[i.status]?.label ?? i.status} /></td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{n(num(i.total_amount))}</td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{n(num(i.paid_amount))}</td>
                   </tr>))}</tbody>

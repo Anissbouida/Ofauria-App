@@ -6,6 +6,7 @@ import { Scale, Check, X, ChevronDown, ChevronRight } from 'lucide-react';
 import PageNote from '../../components/ui/PageNote';
 import { receptionVouchersApi } from '../../api/purchase-orders.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 
@@ -63,10 +64,10 @@ interface PreviewLine {
   amount_to_variance: string | number;
 }
 
-const STATUS_TAG: Record<VarianceRow['price_status'], { label: string; cls: string }> = {
-  variance: { label: 'À décider', cls: 'odoo-tag orange' },
-  approved: { label: 'Approuvé', cls: 'odoo-tag success' },
-  rejected: { label: 'Rejeté', cls: 'odoo-tag danger' },
+const STATUS_TAG: Record<VarianceRow['price_status'], { label: string; tone: StatusTone }> = {
+  variance: { label: 'À décider', tone: 'todo' },
+  approved: { label: 'Approuvé', tone: 'done' },
+  rejected: { label: 'Rejeté', tone: 'blocked' },
 };
 
 export default function PriceVariancesTab() {
@@ -137,7 +138,7 @@ export default function PriceVariancesTab() {
                     <td style={{ textAlign: 'right', color: delta > 0 ? '#b91c1c' : delta < 0 ? '#047857' : undefined }}>
                       {delta > 0 ? '+' : ''}{money(delta)}
                     </td>
-                    <td><span className={tag.cls}>{tag.label}</span></td>
+                    <td><StatusTag tone={tag.tone} label={tag.label} /></td>
                     <td style={{ textAlign: 'right' }}>
                       {v.price_status === 'variance' ? (
                         <span className="inline-flex gap-1">

@@ -17,6 +17,7 @@ import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 
@@ -111,7 +112,7 @@ function Centers() {
                   </select>
                 </td>
                 <td style={{ textAlign: 'right' }}>{w.operations_count} op.</td>
-                <td><span className={`odoo-tag ${w.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{w.is_active ? 'Actif' : 'Inactif'}</span></td>
+                <td><StatusTag tone={w.is_active ? 'done' : 'cancelled'} label={w.is_active ? 'Actif' : 'Inactif'} /></td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', marginRight: 4 }} title="TRS & arrêts" onClick={() => setOeeFor({ id: w.id, name: w.name })}><Gauge size={12} /></button>
                   <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem' }} title={w.is_active ? 'Désactiver' : 'Activer'} onClick={() => toggle.mutate({ id: w.id, active: !w.is_active })}><Power size={12} /></button>
@@ -190,7 +191,7 @@ function Routings() {
                 <td style={{ textAlign: 'right' }}>{r.operations_count}</td>
                 <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.total_minutes} min</td>
                 <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(r.labor_cost)}</td>
-                <td><span className={`odoo-tag ${r.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{r.is_active ? 'Active' : 'Inactive'}</span></td>
+                <td><StatusTag tone={r.is_active ? 'done' : 'cancelled'} label={r.is_active ? 'Active' : 'Inactive'} /></td>
               </tr>
             ))}
           </tbody>

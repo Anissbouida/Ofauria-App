@@ -8,6 +8,7 @@ import { storesApi } from '../../api/stores.api';
 import { usersApi } from '../../api/users.api';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { OdooToggle } from './SettingsPrimitives';
 
 /**
@@ -390,7 +391,7 @@ export default function StoresPanel() {
                   <td>{s.manager_name || '—'}</td>
                   <td style={{ fontSize: '0.8125rem' }}>{hoursSummary(s.opening_hours)}</td>
                   <td style={{ fontVariantNumeric: 'tabular-nums' }}>{s.user_count}</td>
-                  <td><span className={`odoo-tag ${s.is_active === false ? 'odoo-tag-grey' : 'odoo-tag-green'}`}>{s.is_active === false ? 'Désactivé' : 'Actif'}</span></td>
+                  <td><StatusTag tone={s.is_active === false ? 'cancelled' : 'done'} label={s.is_active === false ? 'Désactivé' : 'Actif'} /></td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => open(s)} aria-label={`Modifier ${s.name}`}><Pencil size={13} /></button>
                     {Number(s.user_count) === 0 && (

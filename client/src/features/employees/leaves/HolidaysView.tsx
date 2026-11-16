@@ -6,6 +6,7 @@ import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
 import { apiErrorMessage } from '../shared';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { StatusTag } from '../../../components/ui/StatusTag';
 import { Field, EmptyState, inputCls, panel } from '../ui';
 
 /**
@@ -78,7 +79,7 @@ export default function HolidaysView() {
                 <td>{new Date(`${iso(h.holiday_date)}T00:00:00`).toLocaleDateString('fr-FR')}</td>
                 <td style={{ color: 'var(--odoo-text-muted)' }}>{new Date(`${iso(h.holiday_date)}T00:00:00`).toLocaleDateString('fr-FR', { weekday: 'long' })}</td>
                 <td>{h.label}</td>
-                <td>{h.is_confirmed ? <span className="odoo-tag odoo-tag-green">Confirmé</span> : <span className="odoo-tag odoo-tag-orange">Date à confirmer</span>}</td>
+                <td>{h.is_confirmed ? <StatusTag tone="done" label="Confirmé" /> : <StatusTag tone="todo" label="Date à confirmer" />}</td>
                 {isAdmin && (
                   <td>
                     <div style={{ display: 'inline-flex', gap: 2 }}>

@@ -5,6 +5,7 @@ import { pricingApi, type PriceList } from '../../api/pricing.api';
 import { salesChannelsApi } from '../../api/sales-channels.api';
 import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { getApiErrorMessage } from '../../utils/api-error';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi } from '../sales/ListTemplate';
@@ -108,7 +109,7 @@ export default function PriceListsPage() {
             <button key={l.id} onClick={() => setSelectedId(l.id)}
               style={{ textAlign: 'left', padding: '10px 12px', borderRadius: 8, border: `1px solid ${l.id === selectedId ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`,
                 background: l.id === selectedId ? 'color-mix(in srgb, var(--odoo-purple) 8%, var(--theme-bg-card))' : 'var(--theme-bg-card)', cursor: 'pointer' }}>
-              <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{l.name} {!l.is_active && <span className="odoo-tag">inactive</span>}</div>
+              <div style={{ fontWeight: 600, fontSize: '0.8125rem' }}>{l.name} {!l.is_active && <StatusTag tone="cancelled" label="inactive" />}</div>
               <div style={{ fontSize: '0.7rem', color: 'var(--odoo-text-muted)' }}>
                 {[l.channel_name, l.customer_type, l.price_group, l.customer_id ? 'client précis' : null].filter(Boolean).join(' · ') || 'Générale'} · {l.currency} · {l.item_count ?? 0} art.
               </div>

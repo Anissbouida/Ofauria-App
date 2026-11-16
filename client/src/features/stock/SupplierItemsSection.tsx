@@ -4,6 +4,7 @@ import { Star, Ban, Trash2, Plus, Loader2, X, Check, Clock, ChevronDown, Truck, 
 import { supplierItemsApi, suppliersApi, type SupplierItemPrice } from '../../api/accounting.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { StatusTag } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
 const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit', fontSize: '0.85rem', width: '100%' };
@@ -78,8 +79,8 @@ export default function SupplierItemsSection({ kind, purchasableId, unit }: { ki
                     <td style={{ fontWeight: 500 }}>
                       {it.is_preferred && <Star size={13} style={{ display: 'inline', color: '#f59e0b', fill: '#f59e0b', marginRight: 5, verticalAlign: '-2px' }} />}
                       {it.supplier_name}
-                      {it.is_blocked && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>Bloqué</span>}
-                      {!it.supplier_active && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>Inactif</span>}
+                      {it.is_blocked && <span style={{ marginLeft: 6 }}><StatusTag tone="blocked" label="Bloqué" /></span>}
+                      {!it.supplier_active && <span style={{ marginLeft: 6 }}><StatusTag tone="cancelled" label="Inactif" /></span>}
                     </td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                       {priceEdit?.id === it.id ? (

@@ -10,6 +10,7 @@ import { useReferentiel } from '../../hooks/useReferentiel';
 import { useAuth } from '../../context/AuthContext';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { inputCls } from './ui';
 import { isoDate, saveBlobResponse, apiErrorMessage } from './shared';
@@ -347,7 +348,7 @@ export default function EmployeeDetailPage() {
           <div className="odoo-form-subtitle" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
             {form.role && <span className="odoo-tag odoo-tag-purple" style={roleColor(String(form.role)) ? { backgroundColor: `${roleColor(String(form.role))}22`, color: roleColor(String(form.role)) } : undefined}>{roleLabel(String(form.role))}</span>}
             <span className="odoo-tag odoo-tag-grey">{contractLabel(String(form.contractType))}</span>
-            {!isNew && <span className={`odoo-tag ${active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{active ? 'Actif' : 'Inactif'}</span>}
+            {!isNew && <StatusTag tone={active ? 'done' : 'cancelled'} label={active ? 'Actif' : 'Inactif'} />}
             {form.hireDate && <span>Embauché le {frDate(String(form.hireDate))}</span>}
             {form.cin && <span style={{ fontFamily: 'ui-monospace, monospace' }}>· CIN {String(form.cin)}</span>}
           </div>

@@ -12,6 +12,7 @@ import {
   ShieldCheck, Loader2, RotateCcw, Scale, ScanSearch,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { HrModal, Field, SubmitButton, EmptyState } from '../employees/ui';
@@ -224,7 +225,7 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
                         : <span style={{ color: 'var(--odoo-text-light)' }}>{u.role === 'admin' ? 'Tous' : 'Non assigné'}</span>}
                     </td>
                     <td>{u.hasPin ? <span className="odoo-tag odoo-tag-green">Défini</span> : <span className="odoo-tag odoo-tag-grey">Non défini</span>}</td>
-                    <td><span className={`odoo-tag ${u.isActive ? 'odoo-tag-green' : 'odoo-tag-red'}`}>{u.isActive ? 'Actif' : 'Désactivé'}</span></td>
+                    <td><StatusTag tone={u.isActive ? 'done' : 'cancelled'} label={u.isActive ? 'Actif' : 'Désactivé'} /></td>
                     <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'inline-flex', gap: 4 }}>
                         <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => setReviewUser(u)}
@@ -329,7 +330,7 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
 
   return (
     <HrModal icon={Lock} crumb="Utilisateurs" title={user ? `${user.firstName} ${user.lastName}` : 'Nouvel utilisateur'}
-      tag={user && <span className={`odoo-tag ${user.isActive ? 'odoo-tag-green' : 'odoo-tag-red'}`}>{user.isActive ? 'Actif' : 'Désactivé'}</span>}
+      tag={user && <StatusTag tone={user.isActive ? 'done' : 'cancelled'} label={user.isActive ? 'Actif' : 'Désactivé'} />}
       width={560} onClose={onClose}
       footer={<>
         <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>

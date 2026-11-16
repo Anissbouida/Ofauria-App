@@ -4,6 +4,7 @@ import { Loader2, PackageOpen, Undo2, Trash2, X, AlertTriangle } from 'lucide-re
 import { ingredientLotsApi, type LotMovementType } from '../../api/inventory.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
 /** Ce que la modale a besoin de connaitre d'un lot, quel que soit l'ecran d'origine. */
@@ -144,7 +145,7 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
           <div style={{ border: '1px solid var(--theme-bg-separator)', borderRadius: 4, backgroundColor: '#f9fafb', padding: '0.5rem 0.75rem', fontSize: '0.75rem', display: 'flex', gap: '1rem' }}>
             <div>En réserve : <strong style={{ fontFamily: 'monospace' }}>{fmt(scelle)} {lot.unit}</strong></div>
             <div>Au pesage : <strong style={{ fontFamily: 'monospace', color: '#6f42c1' }}>{fmt(entame)} {lot.unit}</strong></div>
-            {expired && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 'auto' }}><AlertTriangle size={10} /> Lot périmé</span>}
+            {expired && <span style={{ marginLeft: 'auto' }}><StatusTag tone="late" label="Lot périmé" /></span>}
           </div>
 
           {type !== 'losses' && (

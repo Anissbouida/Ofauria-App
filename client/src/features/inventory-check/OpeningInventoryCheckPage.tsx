@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
-  ClipboardCheck, AlertTriangle, CheckCircle2, XCircle, Clock,
+  ClipboardCheck, AlertTriangle, CheckCircle2, XCircle,
   Plus, Minus, Package, RefreshCw,
 } from 'lucide-react';
 import {
@@ -10,6 +10,7 @@ import {
   type MissingReason,
   type OpeningCheckSubmitItem,
 } from '../../api/opening-inventory-check.api';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 
 const REASON_LABELS: Record<MissingReason, string> = {
   theft: 'Vol',
@@ -170,14 +171,10 @@ export default function OpeningInventoryCheckPage() {
 
   // ─── Cas 2 : check deja en cours ─────────────────────────────────────────
   if (existingCheck) {
-    const tagClass =
-      existingCheck.status === 'awaiting_validation' ? 'odoo-tag odoo-tag-yellow' :
-      existingCheck.status === 'validated' ? 'odoo-tag odoo-tag-green' :
-      'odoo-tag odoo-tag-red';
-    const tagIcon =
-      existingCheck.status === 'awaiting_validation' ? <Clock size={11} /> :
-      existingCheck.status === 'validated' ? <CheckCircle2 size={11} /> :
-      <XCircle size={11} />;
+    const tagTone: StatusTone =
+      existingCheck.status === 'awaiting_validation' ? 'todo' :
+      existingCheck.status === 'validated' ? 'done' :
+      'blocked';
     const tagLabel =
       existingCheck.status === 'awaiting_validation' ? 'En attente de validation' :
       existingCheck.status === 'validated' ? 'Validé' : 'Rejeté';
@@ -192,7 +189,7 @@ export default function OpeningInventoryCheckPage() {
             <span className="odoo-breadcrumb-current">Contrôle d'ouverture</span>
           </div>
           <div style={{ flex: 1 }} />
-          <span className={tagClass}>{tagIcon} {tagLabel}</span>
+          <StatusTag tone={tagTone} label={tagLabel} />
           {existingCheck.status === 'validated' && (
             <button onClick={() => navigate('/pos', { state: { autoOpenCash: true } })}
               className="odoo-btn-primary">
@@ -419,9 +416,7 @@ export default function OpeningInventoryCheckPage() {
                             ))}
                           </select>
                         ) : (
-                          <span className="odoo-tag odoo-tag-green">
-                            <CheckCircle2 size={11} /> Conforme
-                          </span>
+                          <StatusTag tone="done" label="Conforme" />
                         )}
                       </td>
                     </tr>

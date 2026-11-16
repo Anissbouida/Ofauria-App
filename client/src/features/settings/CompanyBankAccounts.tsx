@@ -5,6 +5,7 @@ import { settingsApi, type CompanyBankAccount } from '../../api/settings.api';
 import { storesApi } from '../../api/stores.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { settingAnchor } from './SettingsPrimitives';
 
 /**
@@ -78,7 +79,7 @@ export default function CompanyBankAccounts() {
                   <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>{formatRib(a.rib)}</td>
                   <td>{a.ledger_account ?? '—'}</td>
                   <td>{a.store_name ?? 'Tous'}</td>
-                  <td><span className={`odoo-tag ${a.is_active ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{a.is_active ? (a.show_on_invoices ? 'Actif · sur factures' : 'Actif') : 'Fermé'}</span></td>
+                  <td><StatusTag tone={a.is_active ? 'done' : 'cancelled'} label={a.is_active ? (a.show_on_invoices ? 'Actif · sur factures' : 'Actif') : 'Fermé'} /></td>
                   <td><button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => open(a)} aria-label={`Modifier ${a.label}`}><Pencil size={13} /></button></td>
                 </tr>
               ))}

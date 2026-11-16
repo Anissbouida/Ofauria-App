@@ -18,8 +18,6 @@ export type StockCount = {
 };
 
 export const STOCK_COUNT_STATUS_LABELS: Record<StockCountStatus, string> = { counting: 'Comptage en cours', review: 'À valider', validated: 'Validé', cancelled: 'Annulé' };
-export const STOCK_COUNT_STATUS_TAG: Record<StockCountStatus, string> = { counting: 'odoo-tag-blue', review: 'odoo-tag-orange', validated: 'odoo-tag-green', cancelled: 'odoo-tag-grey' };
-
 export const stockCountsApi = {
   list: (params: Record<string, string> = {}): Promise<{ data: StockCount[]; total: number }> => api.get('/stock-counts', { params }).then(r => ({ data: r.data.data, total: r.data.total })),
   get: (id: string): Promise<StockCount> => api.get(`/stock-counts/${id}`).then(r => r.data.data),

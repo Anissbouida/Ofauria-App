@@ -1,7 +1,6 @@
 import { useState, useMemo, type CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ordersApi } from '../../api/orders.api';
-import { ORDER_STATUS_LABELS } from '@ofauria/shared';
 import { format, startOfDay, differenceInCalendarDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
@@ -24,7 +23,8 @@ import OrderFormModal from '../../components/orders/OrderFormModal';
 import { deliveryNotesApi } from '../../api/delivery-notes.api';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi } from '../sales/ListTemplate';
-import { OrderList, OrderPane, OrderPaneEmpty } from './OrderSplit';
+import { OrderList, OrderPane, OrderPaneEmpty, OrderStatusTag } from './OrderSplit';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import '../projects/projects.css';
 import '../sales/sales.css';
 
@@ -42,16 +42,6 @@ const STAGES: StageDef[] = [
   { key: 'completed',     label: 'Terminées',     hint: 'livrées',            icon: Truck },
 ];
 const STAGE_KEYS = STAGES.map(s => s.key);
-
-export const STATUS_TAG: Record<string, string> = {
-  pending: 'odoo-tag-grey',
-  confirmed: 'odoo-tag-blue',
-  in_production: 'odoo-tag-yellow',
-  ready: 'odoo-tag-green',
-  partially_delivered: 'odoo-tag-orange',
-  completed: 'odoo-tag-purple',
-  cancelled: 'odoo-tag-red',
-};
 
 export const TYPE_LABELS: Record<string, string> = { custom: 'Sur mesure', online: 'En ligne', event: 'Événement', staff: 'Personnel' };
 
@@ -77,11 +67,11 @@ export function customerName(o: OrderRow) {
   return o.customer_first_name ? `${o.customer_first_name} ${o.customer_last_name || ''}`.trim() : '—';
 }
 /** Suivi Livrée → Facturée → Payée d'une commande de professionnel. */
-function proBilling(o: OrderRow): { label: string; tag: string; doc?: string } {
-  if (o.invoice_status === 'paid') return { label: 'Payée', tag: 'odoo-tag-green', doc: o.invoice_number as string };
-  if (o.invoice_number) return { label: 'Facturée', tag: 'odoo-tag-blue', doc: o.invoice_number as string };
-  if (o.delivery_note_number) return { label: 'Livrée · à facturer', tag: 'odoo-tag-orange', doc: o.delivery_note_number as string };
-  return { label: 'Sur facture', tag: 'odoo-tag-grey' };
+function proBilling(o: OrderRow): { label: string; tone: StatusTone; icon?: LucideIcon; doc?: string } {
+  if (o.invoice_status === 'paid') return { label: 'Payée', tone: 'done', doc: o.invoice_number as string };
+  if (o.invoice_number) return { label: 'Facturée', tone: 'progress', icon: FileText, doc: o.invoice_number as string };
+  if (o.delivery_note_number) return { label: 'Livrée · à facturer', tone: 'todo', icon: FileText, doc: o.delivery_note_number as string };
+  return { label: 'Sur facture', tone: 'draft', icon: FileText };
 }
 export const CAN_RESCHEDULE = new Set(['pending', 'confirmed', 'in_production', 'ready']);
 export function fmtDate(d: unknown, pattern = 'dd MMM yyyy') {
@@ -308,11 +298,11 @@ export default function OrdersPage() {
     const remaining = Math.max(0, totalAmt - advanceAmt);
     if (isPro(o)) {
       const b = proBilling(o);
-      return <><span className={`odoo-tag ${b.tag}`}>{b.label}</span>{b.doc && <span className="sal-sub sal-mono">{b.doc}</span>}</>;
+      return <><StatusTag tone={b.tone} icon={b.icon} label={b.label} />{b.doc && <span className="sal-sub sal-mono">{b.doc}</span>}</>;
     }
     if (status === 'cancelled') return <span className="sal-sub">{advanceAmt > 0 ? `avance de ${n(advanceAmt)} DH conservée` : '—'}</span>;
-    if (status === 'completed') return <span className="odoo-tag odoo-tag-green">Soldée</span>;
-    if (advanceAmt > 0) return <><span className="odoo-tag odoo-tag-orange">Avance {n(advanceAmt)}</span><span className="sal-sub">reste {n(remaining)} DH</span></>;
+    if (status === 'completed') return <StatusTag tone="done" label="Soldée" />;
+    if (advanceAmt > 0) return <><StatusTag tone="progress" icon={Banknote} label={`Avance ${n(advanceAmt)}`} /><span className="sal-sub">reste {n(remaining)} DH</span></>;
     return <span className="sal-sub">au retrait</span>;
   };
 
@@ -524,7 +514,7 @@ export default function OrdersPage() {
                                 ? <span className="sal-sub" style={{ margin: 0 }}>—</span>
                                 : <StageProgress count={STAGES.length - 1} current={STAGE_KEYS.indexOf(status)} done={status === 'completed'} late={late} />}
                             </td>
-                            <td><span className={`odoo-tag ${STATUS_TAG[status] || 'odoo-tag-grey'}`}>{ORDER_STATUS_LABELS[status as keyof typeof ORDER_STATUS_LABELS] || status}</span></td>
+                            <td><OrderStatusTag status={status} /></td>
                             <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                               <strong>{n(num(o.total))}</strong>
                               <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginLeft: 3 }}>DH</span>

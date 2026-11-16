@@ -14,6 +14,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import SearchSelect from '../../components/ui/SearchSelect';
+import { StatusTag } from '../../components/ui/StatusTag';
 
 /**
  * ECHEANCIER — le calendrier des sorties d'argent (migration 258).
@@ -298,7 +299,7 @@ export default function EcheancierView() {
                       <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>{e.supplier_name || '—'}</td>
                       <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
                         {e.amount_pending
-                          ? <span className="odoo-tag odoo-tag-orange">À chiffrer</span>
+                          ? <StatusTag tone="todo" label="À chiffrer" />
                           : n(parseFloat(e.amount_due || '0'))}
                       </td>
                       <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: 'var(--theme-text-muted)' }}>

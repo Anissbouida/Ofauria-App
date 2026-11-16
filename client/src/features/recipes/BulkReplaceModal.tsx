@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Repeat, X, Loader2, ArrowRight, AlertTriangle, Undo2, CheckCircle } from 'lucide-react';
+import { Repeat, X, Loader2, ArrowRight, AlertTriangle, Undo2 } from 'lucide-react';
 import { recipesApi } from '../../api/recipes.api';
 import SearchSelect from '../../components/ui/SearchSelect';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { StatusTag } from '../../components/ui/StatusTag';
 
 const fieldCol: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.82rem', flex: 1, minWidth: 180 };
 const lbl: React.CSSProperties = { color: 'var(--theme-text-muted)', fontWeight: 500 };
@@ -121,8 +122,8 @@ export default function BulkReplaceModal({ onClose }: { onClose: () => void }) {
                         <td style={{ fontSize: '0.82rem' }}>{l.source_name} → {l.target_name}</td>
                         <td style={{ textAlign: 'right' }}>{l.recipes_count}</td>
                         <td>{l.reverted_at
-                          ? <span className="odoo-tag odoo-tag-grey">Annulé</span>
-                          : <span className="odoo-tag odoo-tag-green"><CheckCircle size={10} style={{ display: 'inline' }} /> Appliqué</span>}</td>
+                          ? <StatusTag tone="cancelled" label="Annulé" />
+                          : <StatusTag tone="done" label="Appliqué" />}</td>
                         <td style={{ textAlign: 'right' }}>
                           {!l.reverted_at && (
                             <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem' }} disabled={revert.isPending}

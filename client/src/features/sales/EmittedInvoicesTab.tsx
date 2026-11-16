@@ -32,7 +32,6 @@ type Inv = Record<string, any>;
 const STATUS_LABEL: Record<string, string> = { pending: 'À encaisser', partial: 'Partielle', paid: 'Soldée', cancelled: 'Annulée', credit: 'Avoir' };
 /** Ton de l'étiquette commune par statut (avoir = gris, comme un document sans action). */
 const STATUS_TONE: Record<string, StatusTone> = { pending: 'todo', partial: 'progress', paid: 'done', cancelled: 'cancelled', credit: 'draft' };
-const STATUS_TAG: Record<string, string> = { pending: 'odoo-tag-yellow', partial: 'odoo-tag-blue', paid: 'odoo-tag-green', cancelled: 'odoo-tag-red', credit: 'odoo-tag-purple' };
 const STATUS_DOT: Record<string, string> = { pending: 'warning', partial: 'warning', paid: 'ok', cancelled: 'neutral', credit: 'neutral' };
 /** Motifs d'avoir (O2C L4, mig 450). */
 const CREDIT_REASON_LABEL: Record<string, string> = {
@@ -489,7 +488,7 @@ export default function EmittedInvoicesTab() {
                       {inv.due_date ? fmtDate(inv.due_date) : '—'}
                       {late && <span className="sal-late-txt">échue depuis {lateDays} j</span>}
                     </td>
-                    <td><span className={`odoo-tag ${STATUS_TAG[status] || 'odoo-tag-grey'}`}>{STATUS_LABEL[status] || status}</span></td>
+                    <td><StatusTag tone={STATUS_TONE[status] ?? 'draft'} label={STATUS_LABEL[status] || status} /></td>
                     <td style={{ minWidth: 110 }}>
                       {status === 'cancelled' ? <span className="sal-sub" style={{ margin: 0 }}>—</span>
                         : isCredit(inv) ? <span className="sal-sub" style={{ margin: 0 }}>{remaining > 0.004 ? 'à imputer' : 'imputé'}</span>

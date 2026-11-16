@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Banknote, ShieldAlert, ShieldCheck } from 'lucide-react';
+import { Banknote, ShieldAlert, ShieldCheck, Undo2 } from 'lucide-react';
+import { StatusTag } from '../ui/StatusTag';
 import { paymentsApi, type PaymentMode, type TreasuryAccount } from '../../api/accounting.api';
 import { StatusBanner } from '../ui/StatusBanner';
 import ReasonCodeDialog from './ReasonCodeDialog';
@@ -173,8 +174,9 @@ export function ReissuePaymentDialog({ payment, pending, onClose, onSubmit }: {
 
 /** Badge de statut d'un paiement (exécuté / annulé / contre-pièce). */
 export function PaymentStatusTag({ p }: { p: Record<string, unknown> }) {
-  if (p.voids_payment_id) return <span className="odoo-tag odoo-tag-red" title="Contre-pièce d'annulation">Contre-pièce</span>;
-  if (p.status === 'void') return <span className="odoo-tag odoo-tag-red" title={String(p.void_note ?? '')}>Annulé</span>;
+  // Statuts du règlement : étiquette commune (couleur + icône + libellé). Les deux suivants sont des attributs (odoo-tag).
+  if (p.voids_payment_id) return <StatusTag tone="cancelled" icon={Undo2} label="Contre-pièce" title="Contre-pièce d'annulation" />;
+  if (p.status === 'void') return <StatusTag tone="cancelled" label="Annulé" title={String(p.void_note ?? '') || undefined} />;
   if (p.non_deductible) return <span className="odoo-tag odoo-tag-orange" title="Espèces au-delà du plafond : charge non déductible">Non déductible</span>;
   if (p.replaces_payment_id) return <span className="odoo-tag odoo-tag-blue">Ré-émis</span>;
   return null;

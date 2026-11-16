@@ -39,6 +39,7 @@ import { useStockCategories } from './useStockCategories';
 import { format } from 'date-fns';
 import { fmtQty, type InventoryItem } from './types';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
 
 type SortKey = 'name' | 'category' | 'supplier' | 'scelle' | 'entame' | 'quantity' | 'lots' | 'dlc' | 'days_stock' | 'price' | 'value';
@@ -557,7 +558,7 @@ export default function StockPage() {
                           <span style={{ fontFamily: 'monospace', fontSize: '0.6875rem', color: '#721c24', backgroundColor: '#f8d7da', padding: '0 0.375rem', borderRadius: 2 }}>
                             {(lot.lot_number as string) || '?'}
                           </span>
-                          <span className="odoo-tag odoo-tag-red">DLC expirée</span>
+                          <StatusTag tone="late" label="DLC expirée" />
                         </div>
                         <div style={{ marginTop: 2, color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
                           Expiré depuis <strong style={{ color: '#dc3545' }}>{daysExpired}j</strong> ·
@@ -949,8 +950,8 @@ function KanbanView({ items, onSelect }: {
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {item.ingredient_name}
                       </span>
-                      {expiredCount > 0 && <span className="odoo-tag odoo-tag-red">DLC</span>}
-                      {!expiredCount && isLow && <span className="odoo-tag odoo-tag-orange">BAS</span>}
+                      {expiredCount > 0 && <StatusTag tone="late" label="DLC" title="DLC dépassée" />}
+                      {!expiredCount && isLow && <StatusTag tone="todo" label="BAS" title="Stock bas" />}
                     </div>
                     {item.supplier && (
                       <div className="odoo-kanban-card-supplier">{item.supplier}</div>

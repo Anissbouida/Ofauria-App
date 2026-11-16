@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { bonSortieApi } from '../../api/bon-sortie.api';
 import { bonStatusTag } from '../production/status';
+import { StatusTag } from '../../components/ui/StatusTag';
 import {
   PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel, type PeriodKey,
 } from '../../components/purchasing/ProcessBoard';
@@ -124,7 +125,7 @@ export function HistoryList({ onOpen }: { onOpen: (planId: string) => void }) {
                         </div>
                       )}
                     </td>
-                    <td><span className={`odoo-tag ${conf.cls}`}>{conf.label}</span></td>
+                    <td><StatusTag tone={conf.tone} icon={conf.icon} label={conf.label} /></td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{bon.total_lines as number}</td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{(bon.generated_by_name as string) || '—'}</td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{(bon.preparation_by_name as string) || '—'}</td>

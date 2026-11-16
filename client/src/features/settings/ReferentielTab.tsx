@@ -12,6 +12,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
 /**
@@ -360,7 +361,7 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
                             {Boolean((e.metadata as Row).is_base) && ' · base'}
                           </span>
                         )}
-                        {inactive && <span className="odoo-tag odoo-tag-grey">Inactive</span>}
+                        {inactive && <StatusTag tone="cancelled" label="Inactive" />}
                       </span>
                     </td>
                     <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>

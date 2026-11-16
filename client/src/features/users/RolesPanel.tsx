@@ -10,6 +10,7 @@ import { rolesApi, type RoleRow, type RolePermission } from '../../api/users.api
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 
 /**
  * Rôles éditables et contrôle des droits côté serveur (audit Paramètres, lot 3, mig 330).
@@ -65,7 +66,7 @@ export default function RolesPanel() {
                   <td>{r.is_system ? '—' : (BASE_ROLES.find(b => b[0] === r.base_role)?.[1] ?? r.base_role)}</td>
                   <td>{r.code === 'admin' ? 'Tous' : r.module_count}</td>
                   <td>{r.user_count}</td>
-                  <td><span className={`odoo-tag ${r.is_active ? 'odoo-tag-green' : 'odoo-tag-red'}`}>{r.is_active ? 'Actif' : 'Désactivé'}</span></td>
+                  <td><StatusTag tone={r.is_active ? 'done' : 'cancelled'} label={r.is_active ? 'Actif' : 'Désactivé'} /></td>
                 </tr>
               ))}
             </tbody>

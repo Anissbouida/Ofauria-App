@@ -10,7 +10,7 @@ import { TYPE_LABELS, isPro, customerName, num, n, fmtDate, isLate, daysLate } f
 import { orderSteps, orderHistory } from './OrderRecordPage';
 
 /** Statut d'une commande en étiquette commune (couleur + icône + libellé). */
-const ORDER_TONE: Record<string, { tone: StatusTone; icon?: LucideIcon }> = {
+export const ORDER_TONE: Record<string, { tone: StatusTone; icon?: LucideIcon }> = {
   pending: { tone: 'draft' },
   confirmed: { tone: 'progress', icon: ClipboardCheck },
   in_production: { tone: 'progress', icon: ChefHat },

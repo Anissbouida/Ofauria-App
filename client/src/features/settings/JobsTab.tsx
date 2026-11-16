@@ -4,6 +4,7 @@ import { Timer, Loader2, Play, ChevronDown, ChevronUp } from 'lucide-react';
 import { automationApi, type ScheduledJob } from '../../api/automation.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 
@@ -73,7 +74,7 @@ export default function JobsTab() {
                 </td>
                 <td style={{ whiteSpace: 'nowrap' }}>{dt(j.last_run_at)}{j.last_duration_ms != null && <div style={{ fontSize: '0.7rem', color: 'var(--odoo-text-muted)' }}>{j.last_duration_ms} ms</div>}</td>
                 <td style={{ maxWidth: 320 }}>
-                  {j.last_status && <span className={`odoo-tag ${j.last_status === 'ok' ? 'odoo-tag-green' : 'odoo-tag-red'}`}>{j.last_status === 'ok' ? 'OK' : 'Erreur'}</span>}{' '}
+                  {j.last_status && <StatusTag tone={j.last_status === 'ok' ? 'done' : 'blocked'} label={j.last_status === 'ok' ? 'OK' : 'Erreur'} />}{' '}
                   <span style={{ fontSize: '0.8125rem', color: j.last_status === 'error' ? '#c0392b' : 'var(--odoo-text-muted)' }}>{j.last_message ?? (j.last_run_at ? '' : 'Jamais lancée')}</span>
                 </td>
                 <td style={{ whiteSpace: 'nowrap', color: 'var(--odoo-text-muted)' }}>{j.enabled ? dt(j.next_run_at) : '—'}</td>
@@ -98,7 +99,7 @@ export default function JobsTab() {
                         <tr key={r.id}>
                           <td style={{ whiteSpace: 'nowrap' }}>{dt(r.started_at)}</td>
                           <td>{TRIGGERS[r.trigger]}</td>
-                          <td><span className={`odoo-tag ${r.status === 'ok' ? 'odoo-tag-green' : r.status === 'error' ? 'odoo-tag-red' : 'odoo-tag-orange'}`}>{r.status === 'ok' ? 'OK' : r.status === 'error' ? 'Erreur' : 'En cours'}</span></td>
+                          <td><StatusTag tone={r.status === 'ok' ? 'done' : r.status === 'error' ? 'blocked' : 'progress'} label={r.status === 'ok' ? 'OK' : r.status === 'error' ? 'Erreur' : 'En cours'} /></td>
                           <td style={{ textAlign: 'right' }}>{r.items}</td>
                           <td style={{ fontSize: '0.8125rem' }}>{r.message}</td>
                         </tr>

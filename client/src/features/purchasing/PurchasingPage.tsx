@@ -45,6 +45,7 @@ import { ShieldAlert, ShieldCheck, ClipboardCheck } from 'lucide-react';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { RotateCcw, FilePenLine } from 'lucide-react';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
 import {
   StagePipeline, StageProgress, ViewSwitch, PeriodFilter, SelectFilter, Pager, ProcessBoardVariant,
@@ -759,15 +760,15 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
                         )}
                         <span style={{ fontSize: '0.75rem' }}>
                           {invStage === 'cancelled'
-                            ? <span className="odoo-tag odoo-tag-grey">Annulée</span>
+                            ? <StatusTag tone="cancelled" label="Annulée" />
                             : <strong style={{ fontWeight: 600 }}>{INV_STAGES[stageIdx]?.label}</strong>}
                           <span style={{ color: inv.is_late ? '#dc3545' : 'var(--odoo-text-muted)' }}> · {stageDetail(inv)}</span>
                         </span>
                         {invStage !== 'cancelled' && toCheck && (
                           <button type="button" onClick={() => setControlFor(inv.id as string)}
-                            className="odoo-tag odoo-tag-orange" style={{ border: 'none', cursor: 'pointer', marginLeft: 6 }}
+                            style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', marginLeft: 6 }}
                             title="Points à régulariser : voir le contrôle">
-                            À vérifier
+                            <StatusTag tone="todo" label="À vérifier" />
                           </button>
                         )}
                       </td>

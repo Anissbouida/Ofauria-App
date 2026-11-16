@@ -6,6 +6,7 @@ import { inventoryApi } from '../../api/inventory.api';
 import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { fmtQty, type InventoryItem } from './types';
 
 /**
@@ -86,7 +87,7 @@ export function LowStockOrderList() {
                 <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{fmtQty(suggested)} {item.unit}</td>
                 <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                   {done ? (
-                    <span className="odoo-tag odoo-tag-green"><CheckCircle size={10} /> Commandé</span>
+                    <StatusTag tone="progress" icon={ShoppingCart} label="Commandé" />
                   ) : (
                     <button type="button" className="odoo-btn-primary" disabled={pending} onClick={() => orderMutation.mutate(item)}
                       title={`Ajouter ${fmtQty(suggested)} ${item.unit} à la liste d'attente d'achat`}>

@@ -4,6 +4,7 @@ import { Loader2, Info, XCircle, CheckCircle2, ArrowRightLeft, Undo2 } from 'luc
 import { consolidationApi, type Consolidation, type ConsolidationColumn } from '../../api/ledger.api';
 import { storesApi } from '../../api/stores.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 
@@ -169,7 +170,7 @@ function Transfers({ year, transfers }: { year: number; transfers: Consolidation
             {transfers.map(t => (
               <tr key={t.transfer_id} style={{ opacity: t.active ? 1 : 0.55 }}>
                 <td style={mono}>{fmtDate(t.date)}</td>
-                <td>{t.label}{!t.active && <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 6 }}>Annulé</span>}</td>
+                <td>{t.label}{!t.active && <span style={{ marginLeft: 6 }}><StatusTag tone="cancelled" label="Annulé" /></span>}</td>
                 <td>{name(t.from_store_id)}</td><td>{name(t.to_store_id)}</td>
                 <td style={mono}>{t.account_code}</td>
                 <td style={{ ...mono, textAlign: 'right' }}>{n(t.amount)}</td>

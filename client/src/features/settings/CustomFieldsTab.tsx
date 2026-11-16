@@ -5,6 +5,7 @@ import { PageNote } from './SettingsPrimitives';
 import { customFieldsApi, CF_TYPE_LABELS, type CfEntity, type CfType, type CustomFieldDef } from '../../api/custom-fields.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { notify } from '../../components/ui/InlineNotification';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage } from '../../api/errors';
 
@@ -105,7 +106,7 @@ export default function CustomFieldsTab() {
                 <td>{CF_TYPE_LABELS[d.field_type]}{d.field_type === 'select' && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{d.options.join(' · ')}</div>}</td>
                 <td>{d.required ? 'Oui' : 'Non'}</td>
                 <td>{d.show_in_list ? 'Oui' : 'Non'}</td>
-                <td>{d.is_active ? <span className="odoo-tag odoo-tag-green">Actif</span> : <span className="odoo-tag odoo-tag-grey">Désactivé</span>}</td>
+                <td>{d.is_active ? <StatusTag tone="done" label="Actif" /> : <StatusTag tone="cancelled" label="Désactivé" />}</td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                   {canEdit('settings') && <>
                     <button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => setDraft({ id: d.id, label: d.label, fieldType: d.field_type, options: d.options.join('\n'), required: d.required, showInList: d.show_in_list, help: d.help ?? '' })}>Modifier</button>{' '}

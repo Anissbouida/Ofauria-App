@@ -12,6 +12,7 @@ import LeaveRequestForm from '../leaves/LeaveRequestForm';
 import LeaveBalancesView from '../leaves/LeaveBalancesView';
 import HolidaysView from '../leaves/HolidaysView';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
+import { StatusTag } from '../../../components/ui/StatusTag';
 import { StagePipeline, type StageDef } from '../../../components/purchasing/ProcessBoard';
 import { EmptyState } from '../ui';
 
@@ -161,13 +162,10 @@ function LeaveRequests({ queryClient }: { queryClient: ReturnType<typeof useQuer
                     {l.reason as string || '—'}
                   </td>
                   <td>
-                    <span className={`odoo-tag ${
-                      l.status === 'approved' ? 'odoo-tag-green' :
-                      l.status === 'rejected' ? 'odoo-tag-red' :
-                      'odoo-tag-yellow'
-                    }`}>
-                      {l.status === 'pending' ? 'En attente' : l.status === 'approved' ? 'Approuvé' : 'Refusé'}
-                    </span>
+                    <StatusTag
+                      tone={l.status === 'approved' ? 'done' : l.status === 'rejected' ? 'blocked' : 'todo'}
+                      label={l.status === 'pending' ? 'En attente' : l.status === 'approved' ? 'Approuvé' : 'Refusé'}
+                    />
                   </td>
                   <td style={{ textAlign: 'center' }}>
                     <div style={{ display: 'inline-flex', gap: 2 }}>

@@ -16,14 +16,15 @@ import {
   ArrowLeft, CheckCircle, CheckCircle2, Play, AlertTriangle, Factory, Printer, Package,
   User, Calendar, Box, Clock, RotateCcw, XCircle, ChefHat,
   Hash, FileText, Loader2, PackageOpen, Layers, Beaker, TrendingUp, Flame,
-  Truck, Eye, Lock, RefreshCw, AlertCircle, BookOpen, Scale,
-  MessageSquare, Send, Info, Trash2, ChevronDown, LayoutDashboard, Coins
+  Truck, Eye, Lock, RefreshCw, BookOpen, Scale,
+  MessageSquare, Send, Info, Trash2, ChevronDown, LayoutDashboard, Coins, type LucideIcon
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { planStatusTag, bonStatusTag } from './status';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { buildTicketHtml, buildBsiHtml, buildFicheHtml } from './plan-print';
 import { PlanJournal, PlanLotTraceability, PlanLinkedOrder } from './plan-sections';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -38,16 +39,6 @@ import EtapesPanel from './EtapesPanel';
 import RetroPlanningPanel from './RetroPlanningPanel';
 import RendementPanel from './RendementPanel';
 import CoutReelPanel from './CoutReelPanel';
-
-// Icone du statut du plan (le libelle vient de PRODUCTION_STATUS_LABELS, la couleur de statusTagClass).
-const statusIcon: Record<string, React.ReactNode> = {
-  draft: <FileText size={14} />,
-  confirmed: <CheckCircle size={14} />,
-  awaiting_ingredients: <Clock size={14} />,
-  ready_to_produce: <AlertCircle size={14} />,
-  in_progress: <Play size={14} />,
-  completed: <CheckCircle size={14} />,
-};
 
 type PlanTab = 'synthese' | 'ingredients' | 'production' | 'couts';
 
@@ -529,7 +520,6 @@ export default function PlanDetailPage() {
   const needs = [...needsMap.values()];
   const insufficientNeeds = needs.filter((n) => parseFloat(n.available_quantity as string) < parseFloat(n.needed_quantity as string));
 
-  const planIcon = statusIcon[plan.status] || statusIcon.draft;
   const rc = plan.target_role ? { label: (plan.target_role_label as string) || ws.label(plan.target_role as string) } : null;
 
   // Progress stats
@@ -576,9 +566,7 @@ export default function PlanDetailPage() {
         {isMagasinier && (
           <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
             {insufficientNeeds.length > 0 && (
-              <span className="odoo-tag odoo-tag-red">
-                <AlertTriangle size={10} /> {insufficientNeeds.length} insuffisant(s)
-              </span>
+              <StatusTag tone="blocked" label={`${insufficientNeeds.length} insuffisant(s)`} />
             )}
             {(() => {
               const waiting = (plan.items as Record<string, any>[] || [])
@@ -657,9 +645,9 @@ export default function PlanDetailPage() {
                 {isMagasinier && (
                   <td>
                     {sufficient ? (
-                      <span className="odoo-tag odoo-tag-green"><CheckCircle size={10} /> OK</span>
+                      <StatusTag tone="done" label="OK" />
                     ) : (
-                      <span className="odoo-tag odoo-tag-red"><AlertTriangle size={10} /> -{(needed - available).toFixed(2)}</span>
+                      <StatusTag tone="blocked" label={`-${(needed - available).toFixed(2)}`} />
                     )}
                   </td>
                 )}
@@ -667,9 +655,7 @@ export default function PlanDetailPage() {
                   <td style={{ textAlign: 'right' }}>
                     {!sufficient && (
                       requestedVerifications.has(need.ingredient_id as string) ? (
-                        <span className="odoo-tag odoo-tag-green" title="Demande envoyée">
-                          <CheckCircle size={10} /> Envoyée
-                        </span>
+                        <StatusTag tone="progress" icon={Send} label="Envoyée" title="Demande envoyée" />
                       ) : (
                         <button onClick={() => setRestockNeed(need)} className="odoo-btn-primary"
                           style={{ padding: '2px 8px', fontSize: '0.6875rem', backgroundColor: '#1f6391', borderColor: '#1f6391' }}
@@ -698,12 +684,12 @@ export default function PlanDetailPage() {
       <div className="odoo-section">
         <div className="odoo-section-header">
           <Beaker size={12} /> Semi-finis requis
-          <span className={`odoo-tag ${allFulfilled ? 'odoo-tag-green' : 'odoo-tag-yellow'}`} style={{ marginLeft: 4 }}>
-            {fulfilledCount} / {totalDeps}
+          <span style={{ marginLeft: 4 }}>
+            <StatusTag tone={allFulfilled ? 'done' : 'progress'} label={`${fulfilledCount} / ${totalDeps}`} />
           </span>
           {!allFulfilled && (
-            <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 'auto' }}>
-              <Lock size={10} /> Production bloquée
+            <span style={{ marginLeft: 'auto' }}>
+              <StatusTag tone="blocked" icon={Lock} label="Production bloquée" />
             </span>
           )}
         </div>
@@ -752,12 +738,9 @@ export default function PlanDetailPage() {
                         <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{itemPct}%</span>
                       </div>
                     </td>
-                    <td>{depPlanTag ? <span className={`odoo-tag ${depPlanTag.cls}`}>{depPlanTag.label}</span> : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
+                    <td>{depPlanTag ? <StatusTag tone={depPlanTag.tone} icon={depPlanTag.icon} label={depPlanTag.label} /> : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}</td>
                     <td>
-                      <span className={`odoo-tag ${isFulfilled ? 'odoo-tag-green' : 'odoo-tag-yellow'}`}>
-                        {isFulfilled ? <CheckCircle size={10} /> : <Clock size={10} />}
-                        {isFulfilled ? 'Disponible' : 'En attente'}
-                      </span>
+                      <StatusTag tone={isFulfilled ? 'done' : 'todo'} label={isFulfilled ? 'Disponible' : 'En attente'} />
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       {depPlanId && (
@@ -836,13 +819,13 @@ export default function PlanDetailPage() {
               const actual = item.actual_quantity as number | null;
               const saleType = (item.sale_type as string) || 'jour';
 
-              const statusTag = itemStatus === 'produced' ? { cls: 'odoo-tag-green', label: 'Produit', Icon: CheckCircle }
-                : itemStatus === 'transferred' ? { cls: 'odoo-tag-purple', label: 'Transféré', Icon: TrendingUp }
-                : itemStatus === 'received' ? { cls: 'odoo-tag-blue', label: 'Reçu', Icon: Package }
-                : isInProgress ? { cls: 'odoo-tag-yellow', label: 'En cours', Icon: Play }
-                : isCancelled ? { cls: 'odoo-tag-red', label: 'Annulé', Icon: XCircle }
-                : isWaiting ? { cls: 'odoo-tag-orange', label: 'En attente', Icon: Clock }
-                : { cls: 'odoo-tag-grey', label: 'À faire', Icon: Clock };
+              const statusTag: { tone: StatusTone; label: string; icon?: LucideIcon } = itemStatus === 'produced' ? { tone: 'done', label: 'Produit' }
+                : itemStatus === 'transferred' ? { tone: 'done', label: 'Transféré', icon: Truck }
+                : itemStatus === 'received' ? { tone: 'done', label: 'Reçu', icon: Package }
+                : isInProgress ? { tone: 'progress', label: 'En cours', icon: ChefHat }
+                : isCancelled ? { tone: 'cancelled', label: 'Annulé' }
+                : isWaiting ? { tone: 'todo', label: 'En attente' }
+                : { tone: 'todo', label: 'À faire' };
               const dot = isProduced ? 'ok' : isInProgress ? 'warning' : isCancelled ? 'danger' : 'neutral';
               const empty = <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>;
 
@@ -888,7 +871,7 @@ export default function PlanDetailPage() {
                   <td style={{ color: 'var(--theme-text-muted)' }}>{isProduced && producedBy ? producedBy : isInProgress && startedBy ? startedBy : empty}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {isProduced && dlcDate
-                      ? (dlcDate <= now ? <span className="odoo-tag odoo-tag-red">Expiré</span> : <span style={{ color: 'var(--theme-text-muted)' }}>{format(dlcDate, 'dd/MM/yyyy')}</span>)
+                      ? (dlcDate <= now ? <StatusTag tone="late" label="Expiré" /> : <span style={{ color: 'var(--theme-text-muted)' }}>{format(dlcDate, 'dd/MM/yyyy')}</span>)
                       : empty}
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
@@ -898,7 +881,7 @@ export default function PlanDetailPage() {
                       : <span className="odoo-tag odoo-tag-orange">Vente du jour</span>
                     ) : empty}
                   </td>
-                  <td><span className={`odoo-tag ${statusTag.cls}`}><statusTag.Icon size={10} /> {statusTag.label}</span></td>
+                  <td><StatusTag tone={statusTag.tone} icon={statusTag.icon} label={statusTag.label} /></td>
                   <td style={{ textAlign: 'right' }}>
                     {plan.status === 'in_progress' && isChef && itemStatus === 'pending' && !isWaiting ? (
                       <button type="button" onClick={() => { setLaunchTargetItemId(item.id as string); setShowProductionLaunch(true); }} className="odoo-btn-primary">
@@ -1110,7 +1093,7 @@ export default function PlanDetailPage() {
     : plan.status === 'completed' && plan.completion_type === 'complete'
     ? 'Terminé (complet)'
     : PRODUCTION_STATUS_LABELS[plan.status as keyof typeof PRODUCTION_STATUS_LABELS];
-  const statusTagClass = planStatusTag(plan.status).cls;
+  const planTag = planStatusTag(plan.status);
 
   // ══ Indicateurs de l'en-tete, choisis selon l'etat du plan ══
   //   avant production : quoi produire et ou en est la preparation
@@ -1231,7 +1214,7 @@ export default function PlanDetailPage() {
             Plan du {format(new Date(plan.plan_date), 'dd MMM yyyy', { locale: fr })}
           </span>
         </div>
-        <span className={`odoo-tag ${statusTagClass}`}>{planIcon}{planStatusBadge}</span>
+        <StatusTag tone={planTag.tone} icon={planTag.icon} label={planStatusBadge || planTag.label} />
       </div>
 
       {/* ══════════════ EN-TETE FICHE : titre, meta, processus ══════════════ */}
@@ -1443,7 +1426,7 @@ export default function PlanDetailPage() {
               <div style={{ padding: '0.625rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', backgroundColor: 'var(--theme-bg-card)', fontSize: '0.75rem' }}>
                 {(() => {
                   const t = planStatusTag(dep.parent_status as string);
-                  return <span className={`odoo-tag ${t.cls}`}>{t.label}</span>;
+                  return <StatusTag tone={t.tone} icon={t.icon} label={t.label} />;
                 })()}
                 {parentNotes && <span style={{ color: 'var(--theme-text-muted)' }}>{parentNotes}</span>}
               </div>
@@ -1538,8 +1521,8 @@ export default function PlanDetailPage() {
         const ingrBadge = bsiCloture
           ? <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>&#10003;</span>
           : activeBon
-            ? <span className={`odoo-tag ${bsiTag?.cls || 'odoo-tag-yellow'}`} style={{ marginLeft: 4 }}>{bsiTag?.label}</span>
-            : bonNotNeeded ? <span className="odoo-tag odoo-tag-red" style={{ marginLeft: 4 }}>Bloqué</span> : null;
+            ? <span style={{ marginLeft: 4 }}><StatusTag tone={bsiTag?.tone ?? 'todo'} icon={bsiTag?.icon} label={bsiTag?.label ?? ''} /></span>
+            : bonNotNeeded ? <span style={{ marginLeft: 4 }}><StatusTag tone="blocked" label="Bloqué" /></span> : null;
         return (
           <div className="odoo-tabs plan-tabs">
             <button type="button" onClick={() => setPlanTab('synthese')}
@@ -1547,7 +1530,7 @@ export default function PlanDetailPage() {
               <LayoutDashboard size={13} />
               <span>Synthèse</span>
               {todos.some(t => t.tone === 'warning' || t.tone === 'danger') && (
-                <span className="odoo-tag odoo-tag-yellow" style={{ marginLeft: 4 }}>À faire</span>
+                <span style={{ marginLeft: 4 }}><StatusTag tone="todo" label="À faire" /></span>
               )}
             </button>
             <button type="button" onClick={() => setPlanTab('ingredients')}
@@ -1562,7 +1545,7 @@ export default function PlanDetailPage() {
                 <Factory size={13} />
                 <span>Production</span>
                 {plan.status === 'in_progress' && (
-                  <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 4 }}>{producedCount} / {totalActive}</span>
+                  <span style={{ marginLeft: 4 }}><StatusTag tone="progress" icon={ChefHat} label={`${producedCount} / ${totalActive}`} /></span>
                 )}
                 {plan.status === 'completed' && (
                   <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>&#10003;</span>
@@ -1601,7 +1584,7 @@ export default function PlanDetailPage() {
             <div className="odoo-section plan-phase">
               <div className="odoo-section-header">
                 <Truck size={12} /> Ingrédients
-                {bsiTag && <span className={`odoo-tag ${bsiCloture ? 'odoo-tag-green' : bsiTag.cls}`} style={{ marginLeft: 'auto' }}>{bsiTag.label}</span>}
+                {bsiTag && <span style={{ marginLeft: 'auto' }}><StatusTag tone={bsiCloture ? 'done' : bsiTag.tone} icon={bsiTag.icon} label={bsiTag.label} /></span>}
               </div>
               <ul className="plan-phase-list">
                 <li>{needs.length} ingrédient{needs.length > 1 ? 's' : ''} à prélever</li>
@@ -1614,7 +1597,7 @@ export default function PlanDetailPage() {
             <div className="odoo-section plan-phase">
               <div className="odoo-section-header">
                 <Factory size={12} /> Production
-                {hasResults && <span className={`odoo-tag ${progressPct >= 100 ? 'odoo-tag-green' : 'odoo-tag-blue'}`} style={{ marginLeft: 'auto' }}>{producedCount} / {totalActive}</span>}
+                {hasResults && <span style={{ marginLeft: 'auto' }}><StatusTag tone={progressPct >= 100 ? 'done' : 'progress'} label={`${producedCount} / ${totalActive}`} /></span>}
               </div>
               <ul className="plan-phase-list">
                 <li>{hasResults ? `${qtyDone} pièce(s) produite(s) sur ${qtyPlanned}` : `${qtyPlanned} pièce(s) prévue(s), ${items.length} article(s)`}</li>
@@ -1632,8 +1615,8 @@ export default function PlanDetailPage() {
               <div className="odoo-section plan-phase">
                 <div className="odoo-section-header">
                   <Coins size={12} /> Coûts
-                  <span className={`odoo-tag ${coutTotal == null ? 'odoo-tag-grey' : 'odoo-tag-green'}`} style={{ marginLeft: 'auto' }}>
-                    {coutTotal == null ? 'Non calculé' : 'Calculé'}
+                  <span style={{ marginLeft: 'auto' }}>
+                    <StatusTag tone={coutTotal == null ? 'draft' : 'done'} label={coutTotal == null ? 'Non calculé' : 'Calculé'} />
                   </span>
                 </div>
                 <ul className="plan-phase-list">
@@ -1793,7 +1776,7 @@ export default function PlanDetailPage() {
           <div className="odoo-section">
             <div className="odoo-section-header">
               <Clock size={12} /> Liste d'attente
-              {waitingItems.length > 0 && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: 4 }}>{waitingItems.length} en attente</span>}
+              {waitingItems.length > 0 && <span style={{ marginLeft: 4 }}><StatusTag tone="todo" label={`${waitingItems.length} en attente`} /></span>}
               {waitingItems.length > 1 && isChef && (
                 <button type="button"
                   onClick={() => restoreMutation.mutate(waitingItems.map((it: Record<string, any>) => it.id as string))}
@@ -1828,7 +1811,7 @@ export default function PlanDetailPage() {
                     <td><span className="odoo-status-dot warning" /></td>
                     <td style={{ fontWeight: 500 }}>{item.product_name as string}</td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{item.planned_quantity as number}</td>
-                    <td><span className="odoo-tag odoo-tag-orange"><Clock size={10} /> En attente</span></td>
+                    <td><StatusTag tone="todo" label="En attente" /></td>
                     <td style={{ textAlign: 'right' }}>
                       {isChef && (
                         <span style={{ display: 'inline-flex', gap: 6 }}>
@@ -1852,7 +1835,7 @@ export default function PlanDetailPage() {
                     <td><span className="odoo-status-dot ok" /></td>
                     <td style={{ fontWeight: 500 }}>{item.product_name as string}</td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{item.planned_quantity as number}</td>
-                    <td><span className="odoo-tag odoo-tag-green"><CheckCircle size={10} /> Restauré</span></td>
+                    <td><StatusTag tone="done" label="Restauré" /></td>
                     <td></td>
                   </tr>
                 ))}

@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Target, Plus, Search, Loader2, X, Phone, CalendarClock, Mail, CheckSquare, StickyNote, Trophy, XCircle, FileSignature, UserPlus, Check, Trash2, AlertTriangle, Megaphone,
+  Send, Handshake, Archive, type LucideIcon,
 } from 'lucide-react';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { format } from 'date-fns';
 import { crmApi, STAGES, STAGE_LABEL, ACTIVITY_LABEL, type Opportunity, type Stage, type ActivityKind, type OpportunityInput, type Campaign } from '../../api/crm.api';
 import { customersApi } from '../../api/customers.api';
@@ -29,6 +31,11 @@ const frt = (v: string | null | undefined) => (v ? format(new Date(v), 'dd/MM HH
 const field: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', width: '100%' };
 const lab: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
 const STAGE_COLOR: Record<Stage, string> = { new: '#6c757d', qualified: '#0d6efd', proposal: '#6f42c1', negotiation: '#d9822b', won: '#198754', lost: '#dc3545' };
+/** Étape d'une opportunité en étiquette commune (gagné = terminé, perdu = clos sans suite). */
+const STAGE_TONE: Record<Stage, { tone: StatusTone; icon?: LucideIcon }> = {
+  new: { tone: 'draft', icon: UserPlus }, qualified: { tone: 'progress' }, proposal: { tone: 'progress', icon: Send },
+  negotiation: { tone: 'progress', icon: Handshake }, won: { tone: 'done', icon: Trophy }, lost: { tone: 'cancelled', icon: XCircle },
+};
 const KIND_ICON: Record<ActivityKind, typeof Phone> = { call: Phone, meeting: CalendarClock, email: Mail, task: CheckSquare, note: StickyNote };
 const OPEN_STAGES: Stage[] = ['new', 'qualified', 'proposal', 'negotiation'];
 
@@ -112,7 +119,7 @@ export default function CrmPage() {
                   <td className="font-mono">{o.number}</td>
                   <td><strong>{o.title}</strong>{o.source_label && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{o.source_label}</div>}</td>
                   <td>{o.client_label}{!o.customer_id && <span className="odoo-tag odoo-tag-yellow" style={{ marginLeft: 6 }}>prospect</span>}</td>
-                  <td><span className="odoo-tag" style={{ background: `${STAGE_COLOR[o.stage]}1a`, color: STAGE_COLOR[o.stage] }}>{STAGE_LABEL[o.stage]}</span></td>
+                  <td><StatusTag tone={STAGE_TONE[o.stage]?.tone ?? 'draft'} icon={STAGE_TONE[o.stage]?.icon} label={STAGE_LABEL[o.stage]} /></td>
                   <td style={{ textAlign: 'right' }}>{o.expected_amount ? `${n0(o.expected_amount)} DH` : '—'}</td>
                   <td style={{ textAlign: 'right' }}>{o.probability} %</td>
                   <td>{fr(o.expected_close_date)}</td>
@@ -479,7 +486,7 @@ function CampaignsModal({ onClose }: { onClose: () => void }) {
                       <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{c.opportunities}</td>
                       <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{c.won}</td>
                       <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{money(c.won_amount)}</td>
-                      <td><span className={`odoo-tag ${c.status === 'active' ? 'odoo-tag-green' : 'odoo-tag-grey'}`}>{c.status === 'active' ? 'Active' : 'Clôturée'}</span></td>
+                      <td>{c.status === 'active' ? <StatusTag tone="done" label="Active" /> : <StatusTag tone="cancelled" icon={Archive} label="Clôturée" />}</td>
                       <td style={{ textAlign: 'right' }}>
                         <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
                           onClick={() => status.mutate({ id: c.id, s: c.status === 'active' ? 'closed' : 'active' })}>

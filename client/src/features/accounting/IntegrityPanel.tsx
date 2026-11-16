@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tansta
 import { Loader2, ShieldCheck, ShieldAlert, Fingerprint, Copy, History, ScanSearch, Stamp } from 'lucide-react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import {
@@ -156,7 +157,7 @@ export default function IntegrityPanel() {
               <tr key={`${g.table}.${g.trigger}`}>
                 <td>{g.role}</td>
                 <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{g.table}.{g.trigger}</td>
-                <td><span className="odoo-tag odoo-tag-red">{g.missing ? 'Supprimé' : 'Désactivé'}</span></td>
+                <td><StatusTag tone="blocked" label={g.missing ? 'Supprimé' : 'Désactivé'} /></td>
               </tr>
             ))}
             <tr><td colSpan={3} style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>

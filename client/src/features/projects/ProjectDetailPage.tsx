@@ -14,6 +14,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import {
   ProjectFormModal, TaskFormModal, TimeEntryForm, TaskBoard, n2, n0, h1, PRIORITY_TAG, projectRevenue, consumption, usageTone,
@@ -258,7 +259,7 @@ export default function ProjectDetailPage() {
                         <td><span className={`odoo-tag ${inv.invoice_type === 'received' ? 'odoo-tag-orange' : 'odoo-tag-blue'}`}>{inv.invoice_type === 'received' ? 'Coût' : 'Produit'}</span></td>
                         <td>{inv.supplier_name || inv.category_name || '—'}</td>
                         <td style={{ whiteSpace: 'nowrap' }}>{format(new Date(inv.invoice_date), 'dd/MM/yyyy')}</td>
-                        <td>{inv.status === 'cancelled' ? <span className="odoo-tag odoo-tag-grey">Annulée</span> : <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{inv.status}</span>}</td>
+                        <td>{inv.status === 'cancelled' ? <StatusTag tone="cancelled" label="Annulée" /> : <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{inv.status}</span>}</td>
                         <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{n2(inv.amount)}</td>
                         <td>{editable && <button className="odoo-btn-secondary" title="Détacher" aria-label={`Détacher ${inv.invoice_number}`} onClick={async () => { if (await confirm(`Détacher la facture ${inv.invoice_number} du projet ?`)) unlinkInvoice.mutate(inv.id); }}><Trash2 size={12} /></button>}</td>
                       </tr>
@@ -365,7 +366,7 @@ function LinkInvoiceModal({ projectId, onClose, onLinked }: { projectId: string;
                       <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{n2(inv.amount)}</td>
                       <td style={{ textAlign: 'right' }}>
                         {inv.project_id === projectId
-                          ? <span className="odoo-tag odoo-tag-green">Rattachée</span>
+                          ? <StatusTag tone="done" label="Rattachée" />
                           : <button className="odoo-btn-primary" style={{ padding: '0.25rem 0.55rem', fontSize: '0.75rem' }} disabled={link.isPending} onClick={() => link.mutate(inv.id)}><Plus size={12} /> Rattacher</button>}
                       </td>
                     </tr>
