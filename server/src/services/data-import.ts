@@ -1,5 +1,6 @@
 import { knownUnitCodes } from './unit-referential.js';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../utils/sheets.js';
+import { splitCsv } from './bank-statement-import.service.js';
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
@@ -162,7 +163,7 @@ export async function buildTemplate(def: EntityDef): Promise<Buffer> {
   ]);
   help['!cols'] = [{ wch: 30 }, { wch: 22 }, { wch: 60 }];
   XLSX.utils.book_append_sheet(wb, help, 'Consignes');
-  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  return XLSX.write(wb);
 }
 
 export interface PreviewRow {
@@ -240,24 +241,25 @@ export type PreviewOptions = { mapping?: Record<string, string> | null; mode?: I
  * Classeur Excel, ou CSV lu en UTF-8 (sinon les accents arrivent en Latin-1 : « UnitÃ© »).
  * Séparateur « ; » reconnu : c'est celui d'Excel en français.
  */
-export function readWorkbook(buffer: Buffer) {
+export async function readWorkbook(buffer: Buffer): Promise<XLSX.WorkBook> {
   const isZip = buffer.length > 3 && buffer[0] === 0x50 && buffer[1] === 0x4b; // .xlsx
   const isOle = buffer.length > 3 && buffer[0] === 0xd0 && buffer[1] === 0xcf; // .xls
-  if (isZip || isOle) return XLSX.read(buffer, { type: 'buffer', cellDates: true });
+  // G0-08 : lecture par exceljs ; un ancien .xls est refusé avec un message clair.
+  if (isZip || isOle) return XLSX.read(buffer);
   let text = buffer.toString('utf8');
   if (text.includes('\uFFFD')) text = buffer.toString('latin1'); // CSV enregistré en Windows-1252
   text = text.replace(/^\uFEFF/, '');
   const first = text.split(/\r?\n/, 1)[0] ?? '';
   const semi = (first.match(/;/g) ?? []).length; const comma = (first.match(/,/g) ?? []).length;
-  // raw : cellules gardées en texte (sinon « 7,5 » devient 75, la virgule lue comme séparateur de milliers) ;
-  // nombres et dates sont convertis ensuite par l'import (virgule décimale, JJ/MM/AAAA).
-  return XLSX.read(text, { type: 'string', raw: true, ...(semi > comma ? { FS: ';' } : {}) });
+  // Cellules gardées en texte (« 7,5 » ne doit pas devenir 75) ; nombres et dates sont
+  // convertis ensuite par l'import (virgule décimale, JJ/MM/AAAA).
+  return XLSX.fromRows(splitCsv(text, semi > comma ? ';' : ','));
 }
 
 /** Lecture du fichier et classement de chaque ligne, sans rien écrire. */
 export async function previewImport(def: EntityDef, buffer: Buffer, opts: PreviewOptions = {}) {
   const mode: ImportMode = opts.mode && def.modes.includes(opts.mode) ? opts.mode : def.modes[0];
-  const wb = readWorkbook(buffer);
+  const wb = await readWorkbook(buffer);
   const sheet = wb.Sheets[wb.SheetNames.find(n => n !== 'Consignes') ?? wb.SheetNames[0]];
   const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', blankrows: false, raw: true });
   const cols = await columnsFor(def);

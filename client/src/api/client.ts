@@ -13,19 +13,29 @@ const api = axios.create({
   withCredentials: true,
 });
 
+// Build mobile (Capacitor) : API sur un autre domaine que le WebView.
+const IS_MOBILE = !!import.meta.env.VITE_API_URL;
+
+// G0-08 (V13) : sur le web, l'authentification passe par le seul cookie HttpOnly.
+// Un ancien jeton resté dans localStorage n'est plus envoyé : il est purgé.
+if (!IS_MOBILE) {
+  try {
+    localStorage.removeItem('ofauria_token');
+    localStorage.removeItem('ofauria_user');
+  } catch { /* stockage indisponible (navigation privée) */ }
+}
+
 api.interceptors.request.use((config) => {
-  // Legacy fallback : si un token traine dans localStorage (vieille session),
-  // on l'envoie en Bearer. Retire apres migration complete.
-  const legacyToken = localStorage.getItem('ofauria_token');
-  if (legacyToken) {
-    config.headers.Authorization = `Bearer ${legacyToken}`;
+  // Mobile uniquement : le cookie SameSite=Strict est refusé entre domaines, le
+  // jeton de session est donc envoyé en Bearer (voir AuthContext).
+  if (IS_MOBILE) {
+    const token = localStorage.getItem('ofauria_token');
+    if (token) config.headers.Authorization = `Bearer ${token}`;
   }
   // Send user's local timezone to the server
   config.headers['X-Timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return config;
 });
-
-const IS_MOBILE = !!import.meta.env.VITE_API_URL;
 
 api.interceptors.response.use(
   (response) => response,

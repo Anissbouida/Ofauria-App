@@ -1786,7 +1786,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ◐ | G0-05 | Déploiement conditionné à la CI | non |
 | ☑ | G0-06 | Connexion par PIN | non |
 | ◐ | G0-07 | Validation des factures et des mutations | non |
-| ☐ | G0-08 | Reliquats de sécurité | non |
+| ◐ | G0-08 | Reliquats de sécurité | non |
 | ☐ | G0-09 | Pointages exclus de la paie | oui (paie) |
 | ☐ | G0-10 | Paie d'un mois non terminé | non |
 | ☐ | G0-11 | Contrôle du SMIG | non |
@@ -1812,6 +1812,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **G0-04** : code livré (migration 521). Reste côté infrastructure : créer le bucket privé et poser `STORAGE_DRIVER=gcs` / `STORAGE_BUCKET` sur Cloud Run (`docs/DEPLOYMENT.md`). Écart assumé : le fichier est renvoyé en flux par la route authentifiée, sans URL signée (aucune dépendance ajoutée).
 - **G0-05** : déclencheur, sondes de santé et image non root livrés. L'audit des dépendances reste en signalement (`continue-on-error`) : il échoue aujourd'hui sur `xlsx` (sans correctif) et `zod` ; à rendre bloquant après G0-08.
 - **G0-07** : factures (création, modification, fusion), stock de matières et caisse validés ; garde en CI. Il reste 361 mutations héritées sans schéma, inscrites dans `server/src/__tests__/fixtures/unvalidated-mutations.json` (dont règlements échelonnés, rapprochement, réceptions, paie) : `npx tsx scripts/audit-validation-routes.ts` en donne le détail.
+- **G0-08** : état de chaque point dans `docs/AUDIT_SECURITE.md`. Deux restent partiels : V3 (`xlsx` retiré, mais `zod`, `nodemailer` et trois failles modérées demandent une montée de version majeure) et V5 (lectures de marge, recettes, stock et lots encore ouvertes à tout utilisateur connecté, à traiter en M2-04 / M2-05). L'ancien format `.xls` n'est plus lu à l'import.
 - **G3-05** (étape 1, faite par nécessité) : la garde des numéros de migration tolère les six doublons historiques sur une base vierge.
 
 ### Lots suivants

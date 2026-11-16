@@ -596,7 +596,7 @@ export const recipeImportController = {
       scopeRaw === 'base' ? 'base' : scopeRaw === 'product' ? 'product' : 'all';
 
     const payload = await buildExportPayload(scope);
-    const buffer = generateRecipeWorkbook(payload, { includeCost: true });
+    const buffer = await generateRecipeWorkbook(payload, { includeCost: true });
 
     const stamp = new Date().toISOString().slice(0, 10);
     const suffix = scope === 'base' ? 'recettes-base' : scope === 'product' ? 'recettes-produits' : 'recettes';
@@ -618,7 +618,7 @@ export const recipeImportController = {
       return;
     }
     try {
-      const parsed = parseRecipeWorkbook(req.file.buffer, await knownUnitCodes());
+      const parsed = await parseRecipeWorkbook(req.file.buffer, await knownUnitCodes());
       const plan = await buildPlan(parsed);
 
       // Combine erreurs de parsing + erreurs de lookup
@@ -688,7 +688,7 @@ export const recipeImportController = {
     }
     let parsed: ParsedRecipesWorkbook;
     try {
-      parsed = parseRecipeWorkbook(req.file.buffer, await knownUnitCodes());
+      parsed = await parseRecipeWorkbook(req.file.buffer, await knownUnitCodes());
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur de parsing';
       res.status(400).json({ success: false, error: { message: msg } });
@@ -1046,7 +1046,7 @@ export const recipeImportController = {
         { recipeName: 'Croissant au beurre', packagingName: 'Sachet kraft 10x15', quantity: 10, unit: 'unit' },
       ],
     };
-    const buffer = generateRecipeWorkbook(payload, { includeCost: false });
+    const buffer = await generateRecipeWorkbook(payload, { includeCost: false });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="recettes-modele-import.xlsx"`);
     res.setHeader('Content-Length', String(buffer.length));

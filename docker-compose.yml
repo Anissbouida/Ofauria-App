@@ -6,19 +6,24 @@ services:
       POSTGRES_USER: ofauria
       POSTGRES_PASSWORD: ofauria_secret
       POSTGRES_DB: ofauria_db
+    # G0-08 (V12) : écoute sur la machine seulement, pas sur le réseau local.
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  # G0-08 (V12) : pgAdmin n'est plus lancé par défaut et n'a plus de mot de passe
+  # par défaut. Pour l'utiliser :
+  #   PGADMIN_DEFAULT_PASSWORD=<votre mot de passe> docker compose --profile outils up -d pgadmin
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: ofauria-pgadmin
+    profiles: ["outils"]
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@ofauria.com
-      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@ofauria.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-}
     ports:
-      - "5050:80"
+      - "127.0.0.1:5050:80"
     depends_on:
       - postgres
 

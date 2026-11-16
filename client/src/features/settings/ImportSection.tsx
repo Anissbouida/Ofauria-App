@@ -101,7 +101,7 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
           {canCreate('settings') && (
             <label className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
               <Upload size={13} /> {file ? file.name : 'Choisir le fichier'}
-              <input ref={input} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={e => pick(e.target.files?.[0] ?? null)} />
+              <input ref={input} type="file" accept=".xlsx,.csv" style={{ display: 'none' }} onChange={e => pick(e.target.files?.[0] ?? null)} />
             </label>
           )}
           {busy === 'preview' && <Loader2 className="animate-spin" size={16} />}

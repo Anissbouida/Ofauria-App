@@ -26,6 +26,24 @@ Les failles restantes sont concentrées sur **le contrôle d'accès aux ressourc
 
 _Effort : S = < 2 h, M = 0,5–1 j, L = 1–3 j._
 
+### État au 2026-11-16 (plan d'action 2026-11, tâche G0-08)
+
+| # | État | Ce qui a été fait, ou pourquoi c'est laissé |
+|---|---|---|
+| V1 | Corrigé | Les lectures et écritures d'un employé vérifient l'établissement (`employee.controller.ts`, `checkStoreOwnership`). |
+| V2 | Corrigé (G0-04) | Les pièces vont dans le stockage objet et se lisent par `GET /api/v1/files/:id`, authentifié ; `/uploads` ne sert plus que l'hérité, à un utilisateur connecté. Reste côté infrastructure : créer le bucket privé (`docs/DEPLOYMENT.md`). |
+| V3 | Corrigé pour `xlsx` ; partiel pour le reste | `xlsx` est retiré : lecture et écriture des classeurs par `exceljs` (`server/src/utils/sheets.ts`). Conséquence : l'ancien format `.xls` n'est plus lu (message invitant à enregistrer en `.xlsx` ou CSV). `npm audit fix` appliqué : 20 failles → 7. Restent `zod` et `nodemailer` (hautes), `qs`, `react-router`, `uuid` via `exceljs` (modérées) : toutes demandent une montée de version majeure, à planifier. L'audit en CI reste en signalement tant qu'elles sont là. |
+| V4 | Corrigé (G0-06) | Le compte est choisi avant le PIN : une seule comparaison de hachage, verrouillage après 5 échecs, nouveaux PIN de 6 à 10 chiffres. Les PIN de 4 chiffres existants restent acceptés à la connexion et sont signalés « À renouveler ». |
+| V5 | Partiel | `authorize` ajouté sur toutes les lectures de `production-cout.routes.ts` (rôles de production) et sur `POST /products/:id/image` (direction). Restent ouverts à tout utilisateur connecté : marge de production, recettes, stock et lots de matières — à traiter avec le passage aux permissions (M2-04, M2-05). |
+| V6 | Accepté, à traiter en G1-02 | Le cloisonnement par établissement se fait au niveau de la base (drapeau `RLS_STORE_SCOPE`, migration 436), à étendre et activer après la mise en place du staging. |
+| V7 | Corrigé (G0-05) | `USER node` dans le `Dockerfile`. |
+| V8 | Corrigé | `/auth/users-list` est réservé aux administrateurs et gérants connectés. L'écran PIN utilise `/auth/pin-users`, public mais réduit au prénom et à l'initiale du nom des comptes dotés d'un PIN, et limité en débit. |
+| V9 | Corrigé (G0-04) | SVG refusé ; le type réel du fichier est vérifié sur ses premiers octets. |
+| V10 | Accepté | Non exploitable : le fuseau vient d'une liste fermée (`utils/timezone.ts`). À encapsuler à l'occasion d'un passage sur ces dépôts de données. |
+| V11 | Corrigé | `.gitignore` racine : `.env.*` (sauf `.env.example`), exports et sauvegardes. Les deux fichiers d'environnement déjà suivis ne contiennent que l'URL publique de l'API. |
+| V12 | Corrigé | Postgres et pgAdmin n'écoutent plus que sur `127.0.0.1` ; pgAdmin n'est plus lancé par défaut et n'a plus de mot de passe par défaut. |
+| V13 | Corrigé sur le web, conservé sur mobile | Le web n'envoie plus de jeton `Bearer` et purge l'ancien jeton de `localStorage`. L'application mobile le garde : son WebView est sur un autre domaine que l'API, où le cookie `SameSite=Strict` est refusé. |
+
 **Deux volets sont propres (audités et confirmés) :**
 - **Injection SQL — RAS.** Les ~1600 appels `query()` sont tous paramétrés (`$1, $2…`) ; les seules interpolations `${}` portent sur `tz` (allowlist), des clauses `WHERE`/`SET` pré-formatées avec leurs propres placeholders, et des noms de colonnes issus de whitelists.
 - **Secrets — RAS.** Aucun secret réel dans le repo ni dans tout l'historique git. `JWT_SECRET`/`DATABASE_URL` viennent de GCP Secret Manager, auth GitHub→GCP par Workload Identity (OIDC, pas de clé de service), validation stricte au boot (`env.ts`), `.dockerignore` exclut les `.env`, seed sans mot de passe par défaut.

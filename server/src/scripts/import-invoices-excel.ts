@@ -12,7 +12,7 @@
  * Idempotence : si invoice_number existe deja pour le supplier, toute la facture est skip.
  */
 import { readFileSync } from 'node:fs';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../utils/sheets.js';
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 
@@ -225,9 +225,9 @@ function parseNum(v: unknown): number | null {
   return isNaN(n) ? null : n;
 }
 
-function parseLines(filePath: string): { lines: ExcelLine[]; invoices: ExcelInvoice[] } {
+async function parseLines(filePath: string): Promise<{ lines: ExcelLine[]; invoices: ExcelInvoice[] }> {
   const buf = readFileSync(filePath);
-  const wb = XLSX.read(buf, { type: 'buffer', cellDates: true });
+  const wb = await XLSX.read(buf);
 
   // ── Entrees Economat ──
   const ws = wb.Sheets[SHEET_NAME];
@@ -410,7 +410,7 @@ async function main() {
   console.log(`Mode    : ${COMMIT ? `${C.red}${C.bold}COMMIT${C.reset}` : `${C.green}DRY-RUN${C.reset}`}`);
   console.log();
 
-  const { lines, invoices: recapInvoices } = parseLines(fileArg!);
+  const { lines, invoices: recapInvoices } = await parseLines(fileArg!);
   console.log(`Excel : ${lines.length} lignes d'entrees, ${recapInvoices.length} factures dans recap\n`);
 
   // Group lignes par invoice_number

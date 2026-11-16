@@ -38,7 +38,8 @@ router.post('/bulk-delete', batchJsonParser, authenticate, authorize(ROLES.ADMIN
 router.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(updateProductSchema), productController.update);
 router.delete('/:id', authenticate, authorize(ROLES.ADMIN), productController.remove);
 router.patch('/:id/toggle-availability', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), productController.toggleAvailability);
-router.post('/:id/image', authenticate, upload.single('image'), productController.uploadImage);
+// G0-08 (V5) : même droit que la modification d'un article.
+router.post('/:id/image', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), upload.single('image'), productController.uploadImage);
 router.post('/:id/stock', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), productController.adjustStock);
 router.get('/:id/stock-history', authenticate, productController.stockHistory);
 // Paliers tarifaires (mig 171)

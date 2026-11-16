@@ -15,7 +15,7 @@
  * Convention de sens (comme bank_statement_lines) : 'in' = encaissement
  * (crédit sur le relevé), 'out' = décaissement (débit sur le relevé).
  */
-import * as XLSX from 'xlsx';
+import * as XLSX from '../utils/sheets.js';
 
 export type BankFormat = 'csv' | 'xlsx' | 'ofx' | 'mt940' | 'cfonb';
 export type DateFormat = 'DD/MM/YYYY' | 'DD-MM-YYYY' | 'DD.MM.YYYY' | 'DD/MM/YY' | 'YYYY-MM-DD' | 'MM/DD/YYYY';
@@ -170,11 +170,12 @@ export function guessDelimiter(text: string): string {
 }
 
 /**
- * Première feuille : valeurs brutes pour lire (dates = numéros de série Excel,
- * indépendants du fuseau horaire de la machine) et texte formaté pour l'aperçu.
+ * Première feuille : valeurs pour lire (une date est rendue avec les composantes
+ * affichées dans Excel, indépendantes du fuseau de la machine) et texte pour l'aperçu.
  */
-function rowsFromXlsx(buf: Buffer): { values: unknown[][]; display: string[][] } {
-  const wb = XLSX.read(buf, { type: 'buffer' });
+export type XlsxRows = { values: unknown[][]; display: string[][] };
+export async function rowsFromXlsx(buf: Buffer): Promise<XlsxRows> {
+  const wb = await XLSX.read(buf);
   const ws = wb.Sheets[wb.SheetNames[0]];
   const keep = (r: unknown[]) => r.some(c => String(c ?? '').trim() !== '');
   return {
@@ -376,13 +377,27 @@ export function parseCfonb(text: string): ParsedStatement {
 
 export const netOf = (lines: ParsedLine[]) => round2(lines.reduce((s, l) => s + (l.direction === 'in' ? l.amount : -l.amount), 0));
 
-export function parseStatement(buf: Buffer, opts: {
+export type ParseStatementOptions = {
   fileName?: string; format?: BankFormat | 'auto'; encoding?: 'auto' | 'utf-8' | 'windows-1252'; profile?: CsvProfile | null;
-}): ParsedStatement {
+  /** Feuille déjà lue d'un classeur (voir parseStatementFile). */
+  xlsx?: XlsxRows;
+};
+
+/**
+ * Relevé à partir d'un fichier téléversé, tous formats. La lecture d'un classeur
+ * étant asynchrone (G0-08), c'est le point d'entrée à utiliser pour un fichier.
+ */
+export async function parseStatementFile(buf: Buffer, opts: ParseStatementOptions): Promise<ParsedStatement> {
+  const format = !opts.format || opts.format === 'auto' ? detectFormat(buf, opts.fileName) : opts.format;
+  return parseStatement(buf, format === 'xlsx' ? { ...opts, format, xlsx: await rowsFromXlsx(buf) } : opts);
+}
+
+export function parseStatement(buf: Buffer, opts: ParseStatementOptions): ParsedStatement {
   const format = !opts.format || opts.format === 'auto' ? detectFormat(buf, opts.fileName) : opts.format;
   let out: ParsedStatement;
   if (format === 'xlsx') {
-    const x = rowsFromXlsx(buf);
+    const x = opts.xlsx;
+    if (!x) throw new Error('Classeur : passer par parseStatementFile (lecture asynchrone).');
     out = parseTabular(x.values, 'xlsx', opts.profile ?? null, x.display);
   }
   else {

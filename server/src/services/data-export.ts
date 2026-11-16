@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import * as XLSX from '../utils/sheets.js';
 import { db } from '../config/database.js';
 import { listDefs, type CfEntity } from './custom-fields.js';
 
@@ -111,7 +111,7 @@ export async function exportBaseData(): Promise<{ buffer: Buffer; counts: Record
     ...Object.entries(counts).map(([k, v]) => [k, v]),
   ]);
   XLSX.utils.book_append_sheet(wb, info, 'Sommaire');
-  return { buffer: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer, counts };
+  return { buffer: await XLSX.write(wb), counts };
 }
 
 /** État de la base pour l'écran Données : dernière migration, volumes, derniers exports. */

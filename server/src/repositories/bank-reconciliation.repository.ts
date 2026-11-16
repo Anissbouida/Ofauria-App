@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { db } from '../config/database.js';
 import {
-  parseStatement, netOf, type BankFormat, type CsvProfile, type DateFormat, type ParsedLine,
+  parseStatementFile, netOf, type BankFormat, type CsvProfile, type DateFormat, type ParsedLine,
 } from '../services/bank-statement-import.service.js';
 
 const fail = (message: string, statusCode = 400) => Object.assign(new Error(message), { statusCode });
@@ -68,7 +68,7 @@ async function analyse(input: ImportInput) {
     if (!profileRow) throw fail('Profil d\'import introuvable', 404);
     profile = toCsvProfile(profileRow);
   }
-  const parsed = parseStatement(input.content, { fileName: input.fileName, format: input.format, encoding: input.encoding, profile });
+  const parsed = await parseStatementFile(input.content, { fileName: input.fileName, format: input.format, encoding: input.encoding, profile });
 
   // Compte : choisi, sinon celui du profil, sinon celui dont l'IBAN porte le n° de compte du fichier, sinon le défaut.
   let tid = input.treasuryAccountId || profileRow?.treasury_account_id || null;

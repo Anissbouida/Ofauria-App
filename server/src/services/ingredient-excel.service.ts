@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import * as XLSX from '../utils/sheets.js';
 import { ALLERGEN_CODES, normalizeAllergens } from '../validators/allergens.js';
 
 /**
@@ -135,8 +135,8 @@ function parseAllergens(v: unknown): { codes: string[]; unknown: string[] } {
  * Parse un workbook xlsx d'ingredients. Premiere feuille utilisee.
  * Premiere ligne = en-tete (ignoree). Lignes vides ignorees.
  */
-export function parseIngredientWorkbook(buffer: Buffer, extraUnits: ReadonlySet<string> = new Set()): ParsedIngredientsWorkbook {
-  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+export async function parseIngredientWorkbook(buffer: Buffer, extraUnits: ReadonlySet<string> = new Set()): Promise<ParsedIngredientsWorkbook> {
+  const wb = await XLSX.read(buffer);
   const sheetName = wb.SheetNames[0];
   if (!sheetName) {
     throw new Error('Aucune feuille trouvee dans le fichier');
@@ -247,7 +247,7 @@ export interface IngredientExportRow {
  * Genere un workbook xlsx a partir d'une liste d'ingredients (avec stock optionnel).
  * Retourne un Buffer pret a etre envoye en HTTP response.
  */
-export function generateIngredientWorkbook(items: IngredientExportRow[], opts: { includeStock?: boolean } = {}): Buffer {
+export async function generateIngredientWorkbook(items: IngredientExportRow[], opts: { includeStock?: boolean } = {}): Promise<Buffer> {
   const includeStock = opts.includeStock !== false;
 
   const header = ['Nom', 'Categorie', 'Unite', 'Cout unitaire (DH)', 'Fournisseur', 'Allergenes'];
@@ -294,6 +294,5 @@ export function generateIngredientWorkbook(items: IngredientExportRow[], opts: {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, sheet, 'Ingredients');
 
-  const out = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  return out as Buffer;
+  return XLSX.write(wb);
 }

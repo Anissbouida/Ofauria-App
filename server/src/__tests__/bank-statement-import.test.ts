@@ -3,9 +3,9 @@
  * détection automatique, montants et dates.
  */
 import { describe, it, expect } from 'vitest';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../utils/sheets.js';
 import {
-  detectFormat, parseStatement, parseAmount, parseDate, type CsvProfile,
+  detectFormat, parseStatement, parseStatementFile, parseAmount, parseDate, type CsvProfile,
 } from '../services/bank-statement-import.service.js';
 
 const buf = (s: string) => Buffer.from(s, 'utf-8');
@@ -66,18 +66,18 @@ describe('CSV', () => {
 });
 
 describe('Excel', () => {
-  it('lit la première feuille avec de vraies dates et nombres', () => {
+  it('lit la première feuille avec de vraies dates et nombres', async () => {
     const ws = XLSX.utils.aoa_to_sheet([
       ['Relevé BMCE juin'], [],
       ['Date', 'Opération', 'Débit', 'Crédit'],
       [new Date(2026, 5, 2), 'VIR ECOMAB', 350.5, ''],
       [new Date(2026, 5, 5), 'REMISE', '', 1200],
-    ], { cellDates: true });
+    ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Relevé');
-    const file = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    const file = await XLSX.write(wb);
     expect(detectFormat(file, 'releve.xlsx')).toBe('xlsx');
-    const r = parseStatement(file, { profile: { decimalSep: ',', dateFormat: 'DD/MM/YYYY', skipRows: 1, hasHeader: true, colDate: 0, colLabel: 1, colDebit: 2, colCredit: 3 } });
+    const r = await parseStatementFile(file, { profile: { decimalSep: ',', dateFormat: 'DD/MM/YYYY', skipRows: 1, hasHeader: true, colDate: 0, colLabel: 1, colDebit: 2, colCredit: 3 } });
     expect(r.lines.map(l => [l.operationDate, l.amount, l.direction])).toEqual([['2026-06-02', 350.5, 'out'], ['2026-06-05', 1200, 'in']]);
   });
 });

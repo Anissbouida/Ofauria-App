@@ -16,7 +16,7 @@
  *   - Idempotence : skip si payment avec ce check_number existe deja.
  */
 import { readFileSync } from 'node:fs';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../utils/sheets.js';
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 
@@ -111,9 +111,9 @@ function parseNum(v: unknown): number | null {
   return isNaN(n) ? null : n;
 }
 
-function parseCheques(filePath: string): Cheque[] {
+async function parseCheques(filePath: string): Promise<Cheque[]> {
   const buf = readFileSync(filePath);
-  const wb = XLSX.read(buf, { type: 'buffer', cellDates: true });
+  const wb = await XLSX.read(buf);
   const out: Cheque[] = [];
   const seen = new Set<string>();   // dedup par check_number
 
@@ -187,7 +187,7 @@ async function main() {
   console.log(`Fichier : ${fileArg}`);
   console.log(`Mode    : ${COMMIT ? `${C.red}${C.bold}COMMIT${C.reset}` : `${C.green}DRY-RUN${C.reset}`}\n`);
 
-  const cheques = parseCheques(fileArg!);
+  const cheques = await parseCheques(fileArg!);
   console.log(`Cheques parses : ${cheques.length} (CHQ + EFFET)\n`);
 
   const client = await db.getClient();

@@ -2,8 +2,11 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+# G0-08 (V11) : tout fichier d'environnement, sauf le modèle. Les fichiers déjà
+# suivis (configuration publique du build mobile) le restent.
 .env
-.env.local
+.env.*
+!.env.example
 *.log
 .DS_Store
 uploads/
@@ -12,3 +15,9 @@ coverage/
 .env.backup.*
 server/scripts/reference/
 storage/
+# Exports et sauvegardes locales (données réelles)
+exports/
+backups/
+*.dump
+*.sql.gz
+*.backup

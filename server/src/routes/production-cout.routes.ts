@@ -14,39 +14,39 @@ const router = Router();
 // viennoiserie, beldi_sale).
 
 // ─── Equipements CRUD ───
-router.get('/equipements', authenticate, asyncHandler(productionCoutController.listEquipements));
-router.get('/equipements/:id', authenticate, asyncHandler(productionCoutController.getEquipement));
+router.get('/equipements', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.listEquipements));
+router.get('/equipements/:id', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.getEquipement));
 router.post('/equipements', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(productionCoutController.createEquipement));
 router.put('/equipements/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(productionCoutController.updateEquipement));
 
 // ─── Temps de travail ───
-router.get('/plans/:planId/temps-travail', authenticate, asyncHandler(productionCoutController.getTempsTravail));
+router.get('/plans/:planId/temps-travail', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.getTempsTravail));
 router.post('/plans/:planId/temps-travail', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.recordTempsTravail));
 
 // ─── Equipement usage ───
-router.get('/plans/:planId/equipement-usage', authenticate, asyncHandler(productionCoutController.getEquipementUsage));
+router.get('/plans/:planId/equipement-usage', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.getEquipementUsage));
 router.post('/plans/:planId/equipement-usage', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.recordEquipementUsage));
 
 // ─── Cost calculation ───
 // Chefs autorises a calculer et recalculer le cout de leur plan.
 router.post('/plans/:planId/calculate', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.calculateCost));
-router.get('/plans/:planId/cout', authenticate, asyncHandler(productionCoutController.getCost));
+router.get('/plans/:planId/cout', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.getCost));
 
 // ─── Dashboard ───
-router.get('/stats', authenticate, asyncHandler(productionCoutController.costStats));
-router.get('/by-day', authenticate, asyncHandler(productionCoutController.costByDay));
-router.get('/by-product', authenticate, asyncHandler(productionCoutController.costByProduct));
-router.get('/plans-with-cost', authenticate, asyncHandler(productionCoutController.plansWithCost));
+router.get('/stats', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.costStats));
+router.get('/by-day', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.costByDay));
+router.get('/by-product', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.costByProduct));
+router.get('/plans-with-cost', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.plansWithCost));
 router.post('/batch-calculate', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(productionCoutController.batchCalculate));
 
 // ─── Ecart MO standard (gamme mig 388) vs reel (etapes mig 089) — roadmap lot 1 ───
-router.get('/plans/:planId/mo-ecart', authenticate, asyncHandler(productionCoutController.getMoEcartByPlan));
-router.get('/by-product/mo-ecart', authenticate, asyncHandler(productionCoutController.getMoEcartByProduct));
+router.get('/plans/:planId/mo-ecart', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.getMoEcartByPlan));
+router.get('/by-product/mo-ecart', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.getMoEcartByProduct));
 
 // ─── Cout de revient par sortie de coupe (mig 302/397) — roadmap lot 2 ───
-router.get('/plans/:planId/outputs-cost', authenticate, asyncHandler(productionCoutController.getOutputCostByPlan));
+router.get('/plans/:planId/outputs-cost', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.getOutputCostByPlan));
 
 // ─── Charge par poste vs capacite (mig 398) — roadmap lot 3 ───
-router.get('/plans/:planId/charge', authenticate, asyncHandler(productionCoutController.getChargeByPlan));
+router.get('/plans/:planId/charge', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionCoutController.getChargeByPlan));
 
 export default router;

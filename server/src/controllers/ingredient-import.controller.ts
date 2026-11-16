@@ -134,7 +134,7 @@ export const ingredientImportController = {
         : null,
     }));
 
-    const buffer = generateIngredientWorkbook(items, { includeStock: true });
+    const buffer = await generateIngredientWorkbook(items, { includeStock: true });
     const stamp = new Date().toISOString().slice(0, 10);
     const filename = `ingredients-economat-${stamp}.xlsx`;
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -153,7 +153,7 @@ export const ingredientImportController = {
       return;
     }
     try {
-      const parsed = parseIngredientWorkbook(req.file.buffer, await knownUnitCodes());
+      const parsed = await parseIngredientWorkbook(req.file.buffer, await knownUnitCodes());
       const plan = await buildPlan(parsed.rows);
 
       res.json({
@@ -196,7 +196,7 @@ export const ingredientImportController = {
     }
     let parsed;
     try {
-      parsed = parseIngredientWorkbook(req.file.buffer, await knownUnitCodes());
+      parsed = await parseIngredientWorkbook(req.file.buffer, await knownUnitCodes());
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur de parsing';
       res.status(400).json({ success: false, error: { message: msg } });
@@ -334,7 +334,7 @@ export const ingredientImportController = {
       supplier: 'SONEPAL',
       allergens: ['gluten'],
     }];
-    const buffer = generateIngredientWorkbook(example, { includeStock: false });
+    const buffer = await generateIngredientWorkbook(example, { includeStock: false });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="ingredients-modele-import.xlsx"`);
     res.setHeader('Content-Length', String(buffer.length));

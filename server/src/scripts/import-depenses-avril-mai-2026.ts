@@ -17,7 +17,7 @@
  *   npx tsx server/src/scripts/import-depenses-avril-mai-2026.ts --file=<path.xlsx> --commit  # persiste
  */
 import { readFileSync } from 'node:fs';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../utils/sheets.js';
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 
@@ -152,9 +152,9 @@ function parseNum(v: unknown): number | null {
 //
 // On differencie les 2 sections factures par presence de la sous-section "Facture N° XXX" :
 // dans la section detaillee, chaque facture a un header "    Facture N° XXX  ·  DD/MM/YYYY".
-function parseWorkbook(filePath: string): { caisse: CaisseRow[]; factures: FactureLine[] } {
+async function parseWorkbook(filePath: string): Promise<{ caisse: CaisseRow[]; factures: FactureLine[] }> {
   const buf = readFileSync(filePath);
-  const wb = XLSX.read(buf, { type: 'buffer', cellDates: true });
+  const wb = await XLSX.read(buf);
   const ws = wb.Sheets['DETAIL'];
   if (!ws) throw new Error('Feuille DETAIL manquante');
 
@@ -395,7 +395,7 @@ async function main() {
   console.log(`Fichier : ${fileArg}`);
   console.log(`Mode    : ${COMMIT ? `${C.red}${C.bold}COMMIT${C.reset}` : `${C.green}DRY-RUN${C.reset}`}\n`);
 
-  const { caisse, factures } = parseWorkbook(fileArg!);
+  const { caisse, factures } = await parseWorkbook(fileArg!);
 
   // Stats parsing
   const caisseTotal = caisse.reduce((s, r) => s + r.amount, 0);

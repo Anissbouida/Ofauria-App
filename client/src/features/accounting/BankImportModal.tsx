@@ -183,7 +183,7 @@ export default function BankImportModal({ onClose, onSaved }: { onClose: () => v
               <label style={labelStyle}>Fichier de la banque *</label>
               <label className="odoo-btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', justifyContent: 'center' }}>
                 <Upload size={13} /> {file ? file.name : 'Choisir un fichier (CSV, Excel, OFX, MT940, CFONB)'}
-                <input type="file" accept=".csv,.txt,.xlsx,.xls,.ofx,.qfx,.sta,.mt940,.940,.cfo,.dat" style={{ display: 'none' }}
+                <input type="file" accept=".csv,.txt,.xlsx,.ofx,.qfx,.sta,.mt940,.940,.cfo,.dat" style={{ display: 'none' }}
                   onChange={e => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
               </label>
             </div>

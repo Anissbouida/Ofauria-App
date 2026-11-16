@@ -62,7 +62,7 @@ export const caisseImportController = {
   async preview(req: AuthRequest, res: Response) {
     if (!req.file) { res.status(400).json({ success: false, error: { message: 'Aucun fichier envoyé' } }); return; }
     try {
-      const parsed = parseCaisseWorkbook(req.file.buffer);
+      const parsed = await parseCaisseWorkbook(req.file.buffer);
       const suppliers = await resolveSuppliers(parsed);
 
       const totalExpenses = parsed.operations.filter(o => o.type === 'expense').reduce((s, o) => s + o.amount, 0);
@@ -119,7 +119,7 @@ export const caisseImportController = {
     if (!req.file) { res.status(400).json({ success: false, error: { message: 'Aucun fichier envoyé' } }); return; }
     const client = await db.getClient();
     try {
-      const parsed = parseCaisseWorkbook(req.file.buffer);
+      const parsed = await parseCaisseWorkbook(req.file.buffer);
       await client.query('BEGIN');
 
       // 1. Créer les fournisseurs manquants

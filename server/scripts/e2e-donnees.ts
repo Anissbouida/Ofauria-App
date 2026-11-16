@@ -6,7 +6,7 @@
 //   npx tsx scripts/e2e-donnees.ts      (depuis server/)
 import pg from 'pg';
 import dotenv from 'dotenv';
-import * as XLSX from 'xlsx';
+import * as XLSX from '../src/utils/sheets.js';
 import { fileURLToPath } from 'node:url';
 import type { AddressInfo } from 'node:net';
 dotenv.config({ path: fileURLToPath(new URL('../../.env', import.meta.url)) });
@@ -68,12 +68,12 @@ try {
   const book = (header: string[], ...lines: unknown[][]) => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...lines]), 'Import');
-    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    return XLSX.write(wb);
   };
 
   console.log('1. Modele et droits');
   const tpl = await call('GET', '/settings/data/import/suppliers/template', admin);
-  const tplHeaders = (XLSX.utils.sheet_to_json<unknown[]>(XLSX.read(tpl.buf).Sheets['Fournisseurs'], { header: 1 })[0] as string[]);
+  const tplHeaders = (XLSX.utils.sheet_to_json<unknown[]>((await XLSX.read(tpl.buf)).Sheets['Fournisseurs'], { header: 1 })[0] as string[]);
   ok(tpl.status === 200 && tplHeaders.includes('Nom') && tplHeaders.includes('ICE'), 'modele fournisseurs avec ses colonnes', tplHeaders);
   ok((await call('GET', '/settings/data/status', manager)).status === 403, 'gerant sans droit Donnees : 403');
 
@@ -121,7 +121,7 @@ try {
   const txt = conf.buf.toString('utf8');
   ok(!/password_hash|pin_code|logo_url/.test(txt), 'aucun secret ni logo dans la configuration');
   const data = await call('GET', '/settings/data/export/base', admin);
-  const sheets = XLSX.read(data.buf).SheetNames;
+  const sheets = (await XLSX.read(data.buf)).SheetNames;
   ok(data.status === 200 && ['Produits', 'Ingrédients', 'Fournisseurs', 'Clients', 'Personnel', 'Sommaire'].every(n => sheets.includes(n)), 'donnees de base : une feuille par referentiel', sheets);
   const st = await call('GET', '/settings/data/status', admin);
   const kinds = st.json.data.exports.map((e: any) => e.event_type);

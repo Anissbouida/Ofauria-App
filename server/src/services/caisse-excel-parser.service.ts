@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import * as XLSX from '../utils/sheets.js';
 
 /**
  * Parser spécifique au format "CAISSE_MOIS_ANNEE_CONSOLIDE.xlsx" d'Ofauria.
@@ -82,8 +82,8 @@ function classifySupplier(raw: string): { kind: SupplierKind; key: string } {
   return { kind, key };
 }
 
-export function parseCaisseWorkbook(buffer: Buffer): ParsedCaisse {
-  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+export async function parseCaisseWorkbook(buffer: Buffer): Promise<ParsedCaisse> {
+  const wb = await XLSX.read(buffer);
   const firstSheetName = wb.SheetNames[0];
   if (!firstSheetName) throw new Error('Fichier Excel vide (aucune feuille)');
   const ws = wb.Sheets[firstSheetName];

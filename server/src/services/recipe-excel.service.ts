@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import * as XLSX from '../utils/sheets.js';
 
 /**
  * Parser/generateur xlsx pour les recettes (recettes produits + recettes de base).
@@ -132,8 +132,8 @@ function findSheet(wb: XLSX.WorkBook, targetName: string): XLSX.WorkSheet | null
  * Premiere ligne de chaque feuille = en-tete (ignoree).
  * Lignes vides ignorees. Lookup par nom (case-insensitive).
  */
-export function parseRecipeWorkbook(buffer: Buffer, extraUnits: ReadonlySet<string> = new Set()): ParsedRecipesWorkbook {
-  const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+export async function parseRecipeWorkbook(buffer: Buffer, extraUnits: ReadonlySet<string> = new Set()): Promise<ParsedRecipesWorkbook> {
+  const wb = await XLSX.read(buffer);
   if (wb.SheetNames.length === 0) {
     throw new Error('Aucune feuille trouvee dans le fichier');
   }
@@ -394,7 +394,7 @@ export interface RecipeExportPayload {
 /**
  * Genere un workbook xlsx avec 4 feuilles a partir des donnees de recettes.
  */
-export function generateRecipeWorkbook(payload: RecipeExportPayload, opts: { includeCost?: boolean } = {}): Buffer {
+export async function generateRecipeWorkbook(payload: RecipeExportPayload, opts: { includeCost?: boolean } = {}): Promise<Buffer> {
   const includeCost = opts.includeCost !== false;
 
   // === Feuille 1 : Recettes ===
@@ -460,6 +460,5 @@ export function generateRecipeWorkbook(payload: RecipeExportPayload, opts: { inc
   XLSX.utils.book_append_sheet(wb, subSheet, SHEET_SUB_RECIPES);
   XLSX.utils.book_append_sheet(wb, pkgSheet, SHEET_PACKAGING);
 
-  const out = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  return out as Buffer;
+  return XLSX.write(wb);
 }
