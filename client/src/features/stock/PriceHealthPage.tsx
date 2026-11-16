@@ -16,6 +16,8 @@ export default function PriceHealthPage() {
   const navigate = useNavigate();
   const { data, isLoading } = useQuery({ queryKey: ['price-health'], queryFn: inventoryApi.priceHealth });
   const rows = data?.rows ?? [];
+  // G0-26 : conversions d'unité impossibles (calculées aujourd'hui avec un facteur 1).
+  const { data: conversions = [], isLoading: loadingConversions } = useQuery({ queryKey: ['unit-conversion-issues'], queryFn: inventoryApi.unitConversionIssues });
   const s = data?.summary;
 
   return (
@@ -76,6 +78,39 @@ export default function PriceHealthPage() {
                   </td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.value_gap ? money(r.value_gap) : '—'}</td>
                   <td style={{ textAlign: 'right', color: 'var(--theme-text-muted)' }}><ChevronRight size={14} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <StatusBanner tone={conversions.length > 0 ? 'warning' : 'info'} icon={ShieldAlert} title="Conversions d'unité impossibles">
+        Lignes de fiche technique saisies dans une unité qui ne se convertit pas vers l'unité de stock de la matière (pièce vers kg,
+        poids vers volume sans densité…). Leur coût et leurs besoins sont calculés comme si 1 valait 1 : ils sont faux.
+        Corrigez l'unité de la ligne, ou renseignez la densité de la matière.
+      </StatusBanner>
+      {!loadingConversions && conversions.length === 0 && (
+        <div style={{ padding: 16, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
+          <CheckCircle size={22} style={{ color: '#2e7d32', marginBottom: 6 }} />
+          <div>Aucune conversion impossible : toutes les lignes de fiche se convertissent vers l'unité de stock.</div>
+        </div>
+      )}
+      {conversions.length > 0 && (
+        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, overflow: 'hidden' }}>
+          <table className="odoo-table" style={{ margin: 0 }}>
+            <thead><tr>
+              <th>Recette</th><th>Matière</th>
+              <th style={{ textAlign: 'right' }}>Quantité saisie</th>
+              <th>Unité de stock</th><th>Densité</th>
+            </tr></thead>
+            <tbody>
+              {conversions.map(c => (
+                <tr key={`${c.source}-${c.line_id}`} style={{ cursor: 'pointer' }} onClick={() => navigate(`/stock/${c.ingredient_id}`)} title="Ouvrir la fiche de la matière">
+                  <td style={{ fontWeight: 500 }}>{c.recipe_name}</td>
+                  <td>{c.ingredient_name}</td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{c.quantity.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {c.line_unit}</td>
+                  <td>{c.stock_unit}</td>
+                  <td>{c.densite_kg_l ? c.densite_kg_l.toLocaleString('fr-FR') : <StatusTag tone="todo" label="Non renseignée" />}</td>
                 </tr>
               ))}
             </tbody>

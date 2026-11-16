@@ -211,6 +211,14 @@ export const inventoryController = {
   async resolveAnomaly(req: AuthRequest, res: Response) {
     res.json({ success: true, data: await stockAnomalyRepository.resolve(req.params.id, req.body.note, req.user!.userId) });
   },
+  /** GET /inventory/unit-conversion-issues — lignes de fiche dont l'unité ne se convertit pas (G0-26). */
+  async unitConversionIssues(_req: AuthRequest, res: Response) {
+    const r = await db.query(
+      `SELECT source, line_id, recipe_id, recipe_name, format_id, ingredient_id, ingredient_name,
+              line_unit, stock_unit, densite_kg_l::float8 AS densite_kg_l, quantity::float8 AS quantity
+         FROM v_impossible_unit_conversions ORDER BY recipe_name, ingredient_name LIMIT 500`);
+    res.json({ success: true, data: r.rows });
+  },
   /** GET /inventory/price-health — anomalies de prix catalogue (mig 406, lot prix P5). */
   async priceHealth(_req: AuthRequest, res: Response) {
     res.json({ success: true, data: await ingredientRepository.priceHealth() });

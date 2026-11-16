@@ -28,6 +28,8 @@ router.get('/aging', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inve
 // G0-18 : sorties supérieures au stock, tracées puis régularisées (admin/gérant).
 router.get('/stock-anomalies', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.anomalies);
 router.post('/stock-anomalies/:id/resolve', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(resolveStockAnomalySchema), inventoryController.resolveAnomaly);
+// G0-26 : lignes de fiche technique dont l'unité ne se convertit pas vers l'unité de stock.
+router.get('/unit-conversion-issues', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.unitConversionIssues);
 router.get('/price-health', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.priceHealth);
 
 // Cloture de stock par periode (mig 381) : instantane valorise (admin/gerant)

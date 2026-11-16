@@ -16,6 +16,9 @@ export const inventoryApi = {
     api.get('/inventory/purchases', { params }).then(r => r.data.data),
   /** Age du stock matiere : lots actifs par anciennete (tranches + detail). */
   aging: (): Promise<StockAging> => api.get('/inventory/aging').then(r => r.data.data),
+  /** Lignes de fiche technique dont l'unité ne se convertit pas vers l'unité de stock (G0-26). */
+  unitConversionIssues: (): Promise<{ source: string; line_id: string; recipe_id: string; recipe_name: string; ingredient_id: string; ingredient_name: string; line_unit: string; stock_unit: string; densite_kg_l: number | null; quantity: number }[]> =>
+    api.get('/inventory/unit-conversion-issues').then(r => r.data.data),
   /** Sorties supérieures au stock, tracées (G0-18). */
   anomalies: (status: 'open' | 'resolved'): Promise<StockAnomaly[]> =>
     api.get('/inventory/stock-anomalies', { params: { status } }).then(r => r.data.data),
