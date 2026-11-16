@@ -58,6 +58,11 @@ COPY --from=builder /app/server/migrations ./server/migrations
 COPY --from=builder /app/server/assets ./server/assets
 COPY --from=builder /app/client/dist ./client/dist
 
+# G0-05 (reliquat V7) : le serveur ne tourne plus en root. Seuls les dossiers
+# qu'il ecrit lui appartiennent (anciens uploads, pilote de stockage local).
+RUN mkdir -p /app/uploads /app/storage && chown -R node:node /app/uploads /app/storage
+USER node
+
 # Cloud Run ecoute sur PORT (par defaut 8080)
 EXPOSE 8080
 

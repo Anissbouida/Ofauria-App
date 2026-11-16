@@ -43,6 +43,13 @@ jobs:
       - name: Install dependencies
         run: npm ci --workspaces --include-workspace-root
 
+      # G0-05 : failles connues des dépendances de production. Pour l'instant en
+      # signalement (xlsx sans correctif et zod à monter, voir G0-08) : à rendre
+      # bloquant en retirant continue-on-error une fois ces deux points traités.
+      - name: Audit des dépendances de production
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
+
       - name: Build shared package
         run: npm run build:shared
 

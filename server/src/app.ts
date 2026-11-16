@@ -6,6 +6,7 @@ import path from 'path';
 import pinoHttp from 'pino-http';
 import { fileURLToPath } from 'url';
 import { env } from './config/env.js';
+import { db } from './config/database.js';
 import routes from './routes/index.js';
 import publicApiRoutes from './routes/public.routes.js';
 import portalRoutes from './routes/portal.routes.js';
@@ -188,9 +189,25 @@ app.use('/uploads', authenticate, express.static(path.resolve(__dirname, '../../
 // API routes
 app.use('/api/v1', routes);
 
-// Health check
-app.get('/health', (_req, res) => {
+// Santé (G0-05).
+// /health/live : le processus répond, sans aucune dépendance.
+app.get('/health/live', (_req, res) => {
   res.json({ status: 'ok', name: 'Kalum API' });
+});
+// /health : le service est utilisable — la base répond en moins de 2 s, sinon 503.
+app.get('/health', async (_req, res) => {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      db.query('SELECT 1'),
+      new Promise((_resolve, reject) => { timer = setTimeout(() => reject(new Error('timeout')), 2000); }),
+    ]);
+    res.json({ status: 'ok', name: 'Kalum API', database: 'ok' });
+  } catch {
+    res.status(503).json({ status: 'degraded', name: 'Kalum API', database: 'unreachable' });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 });
 
 // ─── Servir le client React (SPA) en production ──────────
@@ -199,7 +216,7 @@ app.get('/health', (_req, res) => {
 if (IS_PROD) {
   const clientDist = path.resolve(__dirname, '../../client/dist');
   app.use(express.static(clientDist, { index: false }));
-  app.get(/^\/(?!api\/|uploads\/|health$).*/, (_req, res) => {
+  app.get(/^\/(?!api\/|uploads\/|health(\/live)?$).*/, (_req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
   });
 }

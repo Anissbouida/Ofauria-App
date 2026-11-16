@@ -1,7 +1,12 @@
 name: Deploy to Cloud Run
 
+# G0-05 : le déploiement ne part plus sur un simple push. Il suit la RÉUSSITE de
+# la CI sur main (workflow_run) ; un commit qui casse un test ne se déploie pas.
+# workflow_dispatch reste disponible pour un déploiement manuel.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -9,11 +14,17 @@ concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+env:
+  # Commit validé par la CI (workflow_run) ou commit courant (lancement manuel).
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
 jobs:
   build-and-push:
     name: Build & push image
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # Les jobs suivants dépendent de celui-ci : une CI en échec arrête tout ici.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
 
     permissions:
       contents: read
@@ -25,6 +36,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Authenticate to Google Cloud
         id: auth
@@ -42,7 +55,7 @@ jobs:
       - name: Compute image URI
         id: image
         run: |
-          IMAGE="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_AR_REPOSITORY }}/${{ vars.GCP_SERVICE_NAME }}:${{ github.sha }}"
+          IMAGE="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_AR_REPOSITORY }}/${{ vars.GCP_SERVICE_NAME }}:${{ env.DEPLOY_SHA }}"
           echo "uri=$IMAGE" >> "$GITHUB_OUTPUT"
           echo "Image: $IMAGE"
 
@@ -77,6 +90,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
