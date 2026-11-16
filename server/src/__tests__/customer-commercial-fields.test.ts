@@ -7,6 +7,10 @@ const repo = vi.hoisted(() => ({
     id: 'c1', customer_type: 'particulier', credit_limit: null, remise_pct: '0.00',
     delai_paiement_jours: null, tva_exonere: false, billing_frequency: 'monthly',
   })),
+  // Référentiel des identifiants légaux (phase 4.3) : aucun motif dans ces scénarios.
+  identifierPatterns: vi.fn(async () => ({})),
+  // Journal des décisions sur la fiche client : sans effet ici.
+  logAudit: vi.fn(async () => undefined),
 }));
 vi.mock('../repositories/customer.repository.js', () => ({ customerRepository: repo }));
 vi.mock('../repositories/receivables.repository.js', () => ({ receivablesRepository: {} }));

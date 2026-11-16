@@ -15,6 +15,7 @@ describe.skipIf(!hasTestDb)('Consolidation multi-établissements', () => {
   let manual: typeof import('../../repositories/manual-entry.repository.js').manualEntryRepository;
   const ids: Record<string, string> = {};
   let userId: string;
+  let gapBefore = 0;
   const p = () => testPool();
 
   beforeAll(async () => {
@@ -25,6 +26,9 @@ describe.skipIf(!hasTestDb)('Consolidation multi-établissements', () => {
     for (const k of ['A', 'B']) ids[k] = (await p().query(`INSERT INTO stores (name, city) VALUES ($1, 'Test') RETURNING id`, [`Conso ${k} ${RUN}`])).rows[0].id;
     const acc = async (code: string) => (await p().query(`SELECT id FROM accounts WHERE code = $1`, [code])).rows[0].id as string;
     const [cash, sales, rent] = [await acc('5161'), await acc('7111'), await acc('6131')];
+    // Écart combiné / liasse AVANT nos écritures (base partagée avec les autres suites).
+    const before = await conso.build(2027);
+    gapBefore = before.company.actif - before.combined.total_actif;
     await manual.createAndPost({ journalCode: 'OD', date: '2027-03-04', description: `Ventes A ${RUN}`, lines: [
       { accountId: cash, debit: 1000, credit: 0 }, { accountId: sales, debit: 0, credit: 1000 }] }, { userId, storeId: ids.A });
     await manual.createAndPost({ journalCode: 'OD', date: '2027-03-05', description: `Loyer B ${RUN}`, lines: [
@@ -59,7 +63,11 @@ describe.skipIf(!hasTestDb)('Consolidation multi-établissements', () => {
     expect(b).toMatchObject({ result: -400, liaison: 300, ecart: 0 });
     expect(b.cpc.II).toBe(400);
     expect(r.combined.liaison_residual).toBe(0);
-    expect(r.controls.filter(c => /liaison|liasse|déséquilibré/.test(c.message))).toEqual([]);
+    // Nos deux établissements sont équilibrés et la liaison est éliminée.
+    expect(r.controls.filter(c => /liaison/.test(c.message) || (c.message.includes(RUN) && /déséquilibré/.test(c.message)))).toEqual([]);
+    // Rapprochement avec la liasse : nos écritures n'ajoutent AUCUN écart à celui que
+    // les écritures 2027 des autres suites laissent déjà dans la base de test.
+    expect(r.company.actif - r.combined.total_actif).toBeCloseTo(gapBefore, 2);
     expect(r.combined.result).toBeCloseTo(r.company.result, 2);
     expect(r.transfers.find(x => x.transfer_id === t.transfer_id)).toMatchObject({ active: true, from_store_id: ids.A, to_store_id: ids.B, account_code: '5161', amount: 300 });
 

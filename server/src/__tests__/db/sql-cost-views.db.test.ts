@@ -121,6 +121,9 @@ describe.skipIf(!hasTestDb)('SQL — allergenes agreges (mig 343)', () => {
     await client.query(`INSERT INTO recipe_ingredients (recipe_id, ingredient_id, quantity, unit) VALUES ($1,$2,0.2,'kg')`, [parentId, farine.rows[0].id]);
     const fmtInactif = await client.query(`INSERT INTO recipe_formats (recipe_id, quantite_par_format, nb_par_defaut, is_active, is_default) VALUES ($1,800,1,false,false) RETURNING id`, [parentId]);
     await client.query(`INSERT INTO recipe_format_components (format_id, source_ingredient_id, quantite, unite, role) VALUES ($1,$2,50,'g','ingredient')`, [fmtInactif.rows[0].id, noisette.rows[0].id]);
+    // La nomenclature d'un format ACTIF remplace celle de la recette (miroir
+    // trg_rf_sync_mirror) : le format porte donc aussi la base crème.
+    await client.query(`INSERT INTO recipe_format_components (format_id, source_recipe_id, quantite, unite, role) VALUES ($1,$2,300,'g','base')`, [fmtInactif.rows[0].id, creme.rows[0].id]);
   });
   afterAll(async () => { await client.query('ROLLBACK'); client.release(); await closeTestPool(); });
 

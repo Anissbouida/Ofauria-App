@@ -26,6 +26,11 @@ vi.mock('../services/promotions.js', () => ({
 }));
 vi.mock('../services/module-parameters.service.js', () => ({ posAllowsNegativeStock: vi.fn(async () => false), getParameter: vi.fn(async () => ({})) }));
 vi.mock('../services/loyalty.js', () => ({ checkRedeem: vi.fn(async () => ({ error: 'Programme de fidélité non simulé' })) }));
+// Listes de prix (phase 6) : aucune liste en vigueur, la caisse retombe sur le prix catalogue.
+vi.mock('../services/pricing.service.js', () => ({
+  resolveSalePrice: vi.fn(async () => null),
+  priceContextForCustomer: vi.fn(async () => ({})),
+}));
 vi.mock('../repositories/sale.repository.js', () => ({ saleRepository: { create: vi.fn() } }));
 vi.mock('../repositories/product.repository.js', () => ({ productRepository: { findById: vi.fn() } }));
 vi.mock('../repositories/product-pricing-tier.repository.js', () => ({ pricingTierRepository: { findMatchingTier: vi.fn() } }));

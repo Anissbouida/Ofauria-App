@@ -18,7 +18,9 @@ import {
   createBaseFixtures, createIngredient, cleanupFixtures, RUN, num, type Fixtures,
 } from './helpers.js';
 
-const SAC = 'dfb5eb29-8fec-4ad9-a788-74c989bd8ef7'; // ref_entries container_types 'sac'
+// Type de contenant « sac » du référentiel : son identifiant est propre à chaque base
+// (généré à la migration), on le lit donc par son code.
+const SAC_SQL = `(SELECT id FROM ref_entries WHERE code = 'sac' ORDER BY created_at LIMIT 1)`;
 
 describe.skipIf(!hasTestDb)('Scénarios ACHATS (BC → réception → CMUP → facture)', () => {
   let repos: Awaited<ReturnType<typeof importRepositories>>;
@@ -146,7 +148,7 @@ describe.skipIf(!hasTestDb)('Scénarios ACHATS (BC → réception → CMUP → f
   it('A3 — arrondi au contenant : 42 kg en sacs de 25 → 50 kg (2 sacs), _roundings signalé', async () => {
     const ingId = await createIngredient(fx, { name: 'Sucre A3', unit: 'kg', unitCost: 8 });
     await testPool().query(
-      `UPDATE ingredients SET container_size = 25, container_type_id = $2 WHERE id = $1`, [ingId, SAC]);
+      `UPDATE ingredients SET container_size = 25, container_type_id = ${SAC_SQL} WHERE id = $1`, [ingId]);
 
     const po = await createPo([{ ingredientId: ingId, quantityOrdered: 42, unitPrice: 8 }]);
     expect(po._roundings).toHaveLength(1);

@@ -115,7 +115,8 @@ describe.skipIf(!hasTestDb)('O2C L2 — flux documentaire et livraisons partiell
     });
     const after = (await p().query(`SELECT id, quantity FROM order_items WHERE order_id = $1 ORDER BY quantity DESC`, [o.id])).rows;
     expect(after.map(r => r.id)).toEqual([o.a, o.b]);
-    expect(after.map(r => r.quantity)).toEqual([12, 6]);
+    // order_items.quantity est décimale depuis la mig 512 : pg la rend en texte.
+    expect(after.map(r => Number(r.quantity))).toEqual([12, 6]);
     // Ligne retirée : seule B reste, A disparaît.
     await orders.update(o.id, { subtotal: 18, taxAmount: 0, discountAmount: 0, total: 18, items: [{ productId: ids.pb, quantity: 6, unitPrice: 3, subtotal: 18 }] });
     expect((await p().query(`SELECT id FROM order_items WHERE order_id = $1`, [o.id])).rows.map(r => r.id)).toEqual([o.b]);
