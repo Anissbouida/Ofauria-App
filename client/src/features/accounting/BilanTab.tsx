@@ -127,7 +127,7 @@ export default function BilanTab() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             {/* ACTIF */}
             <div className="odoo-section" style={{ padding: 0 }}>
-              <div style={{ padding: '10px 14px', background: '#e8f0fe', borderBottom: '1px solid var(--theme-bg-separator)', fontWeight: 600, fontSize: '0.875rem', color: '#185fa5' }}>ACTIF</div>
+              <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid var(--theme-bg-separator)', fontWeight: 600, fontSize: 15, color: 'var(--theme-text-strong)' }}>Actif</div>
               <table className="odoo-table" style={{ margin: 0 }}>
                 <tbody>
                   {masseHeader('Actif immobilisé', data.actif.total_immobilise)}
@@ -138,8 +138,8 @@ export default function BilanTab() {
                   <MasseLines lines={data.actif.tresorerie} />
                 </tbody>
                 <tfoot>
-                  <tr style={{ background: '#185fa5', color: '#fff', fontWeight: 600 }}>
-                    <td colSpan={2}>TOTAL ACTIF</td>
+                  <tr style={{ fontWeight: 700, borderTop: '1px solid var(--theme-bg-separator)' }}>
+                    <td colSpan={2}>Total actif</td>
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(data.actif.total)}</td>
                   </tr>
                 </tfoot>
@@ -148,7 +148,7 @@ export default function BilanTab() {
 
             {/* PASSIF */}
             <div className="odoo-section" style={{ padding: 0 }}>
-              <div style={{ padding: '10px 14px', background: '#fdeee8', borderBottom: '1px solid var(--theme-bg-separator)', fontWeight: 600, fontSize: '0.875rem', color: '#b3541e' }}>PASSIF</div>
+              <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid var(--theme-bg-separator)', fontWeight: 600, fontSize: 15, color: 'var(--theme-text-strong)' }}>Passif</div>
               <table className="odoo-table" style={{ margin: 0 }}>
                 <tbody>
                   {masseHeader('Financement permanent', data.passif.total_financement)}
@@ -175,8 +175,8 @@ export default function BilanTab() {
                   <MasseLines lines={data.passif.tresorerie} />
                 </tbody>
                 <tfoot>
-                  <tr style={{ background: '#b3541e', color: '#fff', fontWeight: 600 }}>
-                    <td colSpan={2}>TOTAL PASSIF</td>
+                  <tr style={{ fontWeight: 700, borderTop: '1px solid var(--theme-bg-separator)' }}>
+                    <td colSpan={2}>Total passif</td>
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(data.passif.total)}</td>
                   </tr>
                 </tfoot>

@@ -140,7 +140,7 @@ export default function TvaTab() {
           <div className="odoo-section" style={{ padding: 0 }}>
             <table className="odoo-table" style={{ margin: 0 }}>
               <tbody>
-                <tr style={{ background: '#f0f9f4' }}>
+                <tr>
                   <td colSpan={3} style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#0e7c3a' }}>
                     <Percent size={12} style={{ display: 'inline', marginRight: 4 }} />TVA collectée sur ventes
                   </td>
@@ -155,7 +155,7 @@ export default function TvaTab() {
                   </tr>
                 ))}
 
-                <tr style={{ background: '#e8f0fe' }}>
+                <tr>
                   <td colSpan={3} style={{ fontWeight: 600, fontSize: '0.8125rem', color: '#1565c0' }}>
                     <Percent size={12} style={{ display: 'inline', marginRight: 4 }} />TVA déductible sur achats
                   </td>

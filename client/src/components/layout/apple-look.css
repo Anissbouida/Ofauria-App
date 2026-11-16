@@ -267,7 +267,8 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 /* Barres d'actions internes à une page (sous le grand titre) : simples rangées d'outils,
    ni collantes ni translucides — seule la barre du haut de page l'est. */
 .kl-apple .sal-page .odoo-control-bar:not(.fixed .odoo-control-bar),
-.kl-apple .pur-head-body .odoo-control-bar:not(.fixed .odoo-control-bar) {
+.kl-apple .pur-head-body .odoo-control-bar:not(.fixed .odoo-control-bar),
+.kl-apple .acc-page .odoo-control-bar:not(.fixed .odoo-control-bar) {
   position: static; min-height: 0; padding: 0; background: transparent; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none; flex-wrap: wrap;
 }
 /* Onglets restants (odoo-tabs) : soulignement fin à l'accent, sans fond. */
@@ -546,3 +547,21 @@ button.kl-cell:hover, button.kl-cell:focus-visible { background: color-mix(in sr
 /* Encadrés des anciens formulaires (bordure inline) : trait fin et coins arrondis. */
 .kl-apple .fixed [style*="border: 1px solid var(--odoo-border)"],
 .kl-apple .fixed [style*="border: 1px dashed var(--odoo-border)"] { border-color: var(--theme-bg-separator) !important; border-radius: 12px !important; }
+
+/* ─── Comptabilité : page de rubrique (grand titre + marges comme Ventes/Achats) ── */
+.kl-apple .acc-page { display: flex; flex-direction: column; gap: 22px; padding: 24px 32px 56px; min-width: 0; }
+@media (max-width: 768px) { .kl-apple .acc-page { padding: 18px 16px 40px; } }
+.kl-apple .acc-page > * { min-width: 0; }
+/* Sections (.odoo-section), tuiles (.odoo-stat-card) et étapes (.pb-*) des écrans comptables. */
+.kl-apple .odoo-section:not(.fixed .odoo-section) { border: 0 !important; border-radius: 16px; background: var(--kl-card); box-shadow: var(--kl-shadow); overflow: hidden; }
+.kl-apple .odoo-section-header:not(.fixed .odoo-section-header) { text-transform: none; letter-spacing: 0; font-size: 15px; font-weight: 600; color: var(--kl-ink); background: transparent; border-bottom: 1px solid var(--kl-hair); padding-top: 14px; padding-bottom: 12px; }
+.kl-apple .odoo-stat-card-label { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; color: var(--kl-muted); }
+.kl-apple .odoo-stat-card-value { letter-spacing: -.02em; }
+.kl-apple .odoo-stat-grid:not(.fixed .odoo-stat-grid) { border: 0 !important; background: transparent; gap: 12px; }
+.kl-apple .pb-stage-num { text-transform: none; letter-spacing: 0; }
+.kl-apple .odoo-section .odoo-table:not(.fixed .odoo-table) { box-shadow: none; border-radius: 0; }
+.kl-apple .acc-page .odoo-section { margin-left: 0 !important; margin-right: 0 !important; }
+/* Montants : chiffres tabulaires dans la police du système (les codes de compte/pièce gardent la chasse fixe). */
+.kl-apple .acc-page td[style*="text-align: right"][style*="monospace"],
+.kl-apple .acc-page [style*="monospace"][style*="font-variant"],
+.kl-apple .fixed td[style*="text-align: right"][style*="monospace"] { font-family: inherit !important; font-variant-numeric: tabular-nums; }

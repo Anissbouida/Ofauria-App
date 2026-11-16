@@ -171,17 +171,17 @@ export default function GrandLivreTab() {
                 {/* En-tete du compte */}
                 <button onClick={() => toggle(a.code)} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-                  background: 'var(--theme-bg-secondary)', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  background: 'var(--theme-bg-card)', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: 15,
                   borderBottom: open ? '1px solid var(--theme-bg-separator)' : 'none',
                 }}>
                   {open ? <ChevronDown size={14} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronRight size={14} style={{ color: 'var(--theme-text-muted)' }} />}
                   <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, minWidth: 70 }}>{a.code}</span>
                   <span style={{ fontWeight: 500, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.label}</span>
                   <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{a.movements.length} mvt</span>
-                  <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', minWidth: 180, textAlign: 'right' }}>
+                  <span style={{ fontSize: 13, minWidth: 190, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                     <span style={{ color: 'var(--theme-text-muted)' }}>D {n(a.total_debit) || '0,00'} · C {n(a.total_credit) || '0,00'}</span>
                   </span>
-                  <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, minWidth: 110, textAlign: 'right', color: a.closing >= 0 ? '#1565c0' : '#c62828' }}>
+                  <span style={{ fontWeight: 600, minWidth: 120, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: a.closing >= 0 ? 'var(--theme-text-strong)' : 'var(--prj-red, #DC2626)' }}>
                     {sign(a.closing)}
                   </span>
                 </button>
@@ -200,18 +200,18 @@ export default function GrandLivreTab() {
                       </tr>
                     </thead>
                     <tbody>
-                      <tr style={{ background: 'var(--theme-bg-tertiary)' }}>
+                      <tr>
                         <td colSpan={6} style={{ fontStyle: 'italic', color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>Solde d'ouverture</td>
                         <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{sign(a.opening)}</td>
                       </tr>
                       <RunningRows opening={a.opening} movements={a.movements} />
                     </tbody>
                     <tfoot>
-                      <tr style={{ background: 'var(--theme-bg-secondary)', fontWeight: 600 }}>
+                      <tr style={{ fontWeight: 600 }}>
                         <td colSpan={4} style={{ textAlign: 'right' }}>Totaux / Solde de clôture :</td>
                         <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(a.total_debit)}</td>
                         <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(a.total_credit)}</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: a.closing >= 0 ? '#1565c0' : '#c62828' }}>{sign(a.closing)}</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: a.closing >= 0 ? 'var(--theme-text-strong)' : 'var(--prj-red, #DC2626)' }}>{sign(a.closing)}</td>
                       </tr>
                     </tfoot>
                   </table>

@@ -110,7 +110,7 @@ export default function CpcTab() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             {/* Produits */}
             <div className="odoo-section" style={{ padding: 0 }}>
-              <div style={{ padding: '10px 14px', background: '#f0f9f4', borderBottom: '1px solid var(--theme-bg-separator)', fontWeight: 600, fontSize: '0.8125rem', color: '#0e7c3a' }}>
+              <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid var(--theme-bg-separator)', fontWeight: 600, fontSize: 15, color: 'var(--theme-text-strong)' }}>
                 Produits
               </div>
               <table className="odoo-table" style={{ margin: 0 }}>
@@ -127,7 +127,7 @@ export default function CpcTab() {
                   )}
                 </tbody>
                 <tfoot>
-                  <tr style={{ background: '#f0f9f4', fontWeight: 600 }}>
+                  <tr style={{ fontWeight: 700, borderTop: '1px solid var(--theme-bg-separator)' }}>
                     <td colSpan={2}>Total produits</td>
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(data.total_produits)}</td>
                   </tr>
@@ -137,7 +137,7 @@ export default function CpcTab() {
 
             {/* Charges */}
             <div className="odoo-section" style={{ padding: 0 }}>
-              <div style={{ padding: '10px 14px', background: '#fff5f5', borderBottom: '1px solid var(--theme-bg-separator)', fontWeight: 600, fontSize: '0.8125rem', color: '#c62828' }}>
+              <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid var(--theme-bg-separator)', fontWeight: 600, fontSize: 15, color: 'var(--theme-text-strong)' }}>
                 Charges
               </div>
               <table className="odoo-table" style={{ margin: 0 }}>
@@ -154,7 +154,7 @@ export default function CpcTab() {
                   )}
                 </tbody>
                 <tfoot>
-                  <tr style={{ background: '#fff5f5', fontWeight: 600 }}>
+                  <tr style={{ fontWeight: 700, borderTop: '1px solid var(--theme-bg-separator)' }}>
                     <td colSpan={2}>Total charges</td>
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{n(data.total_charges)}</td>
                   </tr>

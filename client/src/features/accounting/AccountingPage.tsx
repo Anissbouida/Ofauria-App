@@ -329,7 +329,10 @@ export default function AccountingPage() {
   const tab = current?.key;
 
   return (
-    <ModuleShell title="Comptabilité" views={views} current={current} onSelect={select}>
+    <ModuleShell title="Comptabilité" views={views} current={current} onSelect={select} flush look="apple">
+      {/* Style Apple (2026-11) : grand titre de la rubrique, marges et barres internes comme Ventes/Achats. */}
+      <div className="acc-page">
+      <header className="kl-largetitle"><h1>{current?.label}</h1></header>
       {/* Suivi des echeances fournisseurs (visible sur tous les onglets) */}
       <PaymentAlertsWidget />
       {tab === 'pilotage' && <PilotageTab />}
@@ -362,6 +365,7 @@ export default function AccountingPage() {
       {tab === 'cca' && <PrepaidChargesTab />}
       {tab === 'cashflow' && <CashFlowTab />}
       {tab === 'costcenters' && <CostCentersTab />}
+      </div>
     </ModuleShell>
   );
 }
