@@ -87,7 +87,7 @@ export const productionApi = {
   mrpGeneratePurchaseRequests: (date: string, store?: string): Promise<{ created: number; skipped_existing: number; candidates: number }> =>
     api.post('/production/mrp/generate-purchase-requests', { date, ...(store ? { store } : {}) }).then(r => r.data.data),
   /** Politiques de production (M1-03 / M1-04) : valeurs effectives pour un contexte et valeurs posées. */
-  listPolicies: (ctx: { store?: string; workshop?: string; orderType?: string; product?: string } = {}): Promise<ProductionPolicies> =>
+  listPolicies: (ctx: { store?: string; workshop?: string; orderType?: string; product?: string; exact?: '1' } = {}): Promise<ProductionPolicies> =>
     api.get('/production/policies', { params: Object.fromEntries(Object.entries(ctx).filter(([, v]) => v)) }).then(r => r.data.data),
   /** Pose (value = champs) ou retire (value = null) une politique à un niveau. */
   setPolicy: (key: string, scopeType: PolicyScopeType, scopeId: string, value: Record<string, unknown> | null) =>

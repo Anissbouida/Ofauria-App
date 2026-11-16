@@ -163,7 +163,9 @@ export const productionController = {
   async listPolicies(req: AuthRequest, res: Response) {
     const q = (k: string) => (typeof req.query[k] === 'string' && req.query[k] ? req.query[k] as string : undefined);
     res.json({ success: true, data: await listPolicies({
-      storeId: q('store') ?? req.user!.storeId ?? undefined, workshop: q('workshop'), orderType: q('orderType'), productId: q('product'),
+      // exact=1 (écran des politiques) : le contexte demandé tel quel, sans l'établissement de l'utilisateur.
+      storeId: q('store') ?? (q('exact') ? undefined : req.user!.storeId ?? undefined),
+      workshop: q('workshop'), orderType: q('orderType'), productId: q('product'),
     }) });
   },
   /** Pose (value = objet de champs) ou retire (value = null) une politique à un niveau. */

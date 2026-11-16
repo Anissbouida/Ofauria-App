@@ -6,6 +6,8 @@ import { productionApi, type ProductionSettings } from '../../api/production.api
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { SettingsTabs } from '../settings/SettingsPrimitives';
+import ProductionPoliciesPanel from './ProductionPoliciesPanel';
 
 const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit', width: 120, textAlign: 'right' };
 
@@ -67,8 +69,8 @@ export default function ProductionSettingsPage() {
 
   const set = <K extends keyof NonNullable<typeof form>>(k: K, v: NonNullable<typeof form>[K]) => setForm(f => f ? { ...f, [k]: v } : f);
 
-  return (
-    <div className="odoo-scope" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
+  const general = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <StatusBanner tone="info" icon={SlidersHorizontal} title="Paramétrage de la production">
         Réglages du module : coût de revient, tolérance de surproduction et fonctions activées. Appliqués sans redéploiement.
       </StatusBanner>
@@ -123,6 +125,16 @@ export default function ProductionSettingsPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+
+  // M1-04 : les réglages du module d'un côté, les politiques à héritage de l'autre.
+  return (
+    <div className="odoo-scope" style={{ padding: '1rem' }}>
+      <SettingsTabs label="Paramétrage de la production" tabs={[
+        { key: 'general', label: 'Réglages', content: general },
+        { key: 'policies', label: 'Politiques', content: <ProductionPoliciesPanel /> },
+      ]} />
     </div>
   );
 }
