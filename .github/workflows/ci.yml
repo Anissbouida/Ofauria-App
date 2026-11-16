@@ -76,6 +76,10 @@ jobs:
           DATABASE_URL: postgres://postgres@localhost:5432/kalum_test
           TEST_DATABASE_URL: postgres://postgres@localhost:5432/kalum_test
 
+      # G0-21 : premiers tests du client (file hors-ligne de la caisse).
+      - name: Run client tests
+        run: npm run test --workspace=client
+
       - name: Build client
         run: npm run build --workspace=client
 

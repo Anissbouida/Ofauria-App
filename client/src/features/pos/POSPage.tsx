@@ -4,7 +4,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
 import { salesApi } from '../../api/sales.api';
-import { enqueueCheckout, flushQueue, pendingCount, isNetworkError } from './offlineQueue';
+import { enqueueCheckout, flushQueue, pendingCount, rejectedCount, isNetworkError } from './offlineQueue';
+import OfflineRejectedModal from './OfflineRejectedModal';
 import { sachetConfigApi } from '../../api/sachet-config.api';
 import { customersApi } from '../../api/customers.api';
 import UnpaidCustomerPicker from './UnpaidCustomerPicker';
@@ -99,6 +100,8 @@ interface ReceiptData {
   advanceDate?: string;
   orderTotal?: number;
   isAdvanceReceipt?: boolean;
+  /** G0-21 : vente encaissée hors ligne, pas encore connue du serveur. */
+  offline?: boolean;
 }
 
 type PosTab = 'sell' | 'orders' | 'returns' | 'unpaid' | 'parked';
@@ -126,6 +129,9 @@ export default function POSPage() {
   const ws = useWorkshops(); // libellés des ateliers (mig 511)
   // File hors-ligne (phase 8.4) : ventes en attente de synchronisation.
   const [offlinePending, setOfflinePending] = useState(() => pendingCount());
+  // G0-21 : ventes hors-ligne refusées par le serveur, à corriger ou abandonner.
+  const [offlineRejected, setOfflineRejected] = useState(() => rejectedCount());
+  const [showOfflineRejected, setShowOfflineRejected] = useState(false);
   const [posTab, setPosTab] = useState<PosTab>('sell');
   // Onglet Impayes : vente a plus tard en cours d'encaissement.
   const [unpaidPayTarget, setUnpaidPayTarget] = useState<Record<string, any> | null>(null);
@@ -758,6 +764,35 @@ export default function POSPage() {
   const { data: discountPolicy } = useQuery({ queryKey: ['pos-discount-policy'], queryFn: salesApi.discountPolicy, staleTime: 5 * 60_000 });
   const [discountApprovalFor, setDiscountApprovalFor] = useState<{ variables: Record<string, any>; pct: number; maxPct: number; error?: string | null } | null>(null);
 
+  /** Ticket du panier courant ; `ref` porte ce qui vient du serveur (ou la référence provisoire hors ligne). */
+  const buildReceipt = (ref: { saleId?: string; saleNumber: string; date: string; isUnpaid: boolean; customerName?: string; offline?: boolean }): ReceiptData => ({
+    saleId: ref.saleId,
+    saleNumber: ref.saleNumber,
+    date: ref.date,
+    cashierName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
+    customerName: ref.customerName,
+    items: cart.map(i => ({
+      name: i.name,
+      quantity: i.quantity,
+      unitPrice: i.price,
+      subtotal: i.unit === 'g' ? (i.quantity / 1000) * i.price : i.price * i.quantity,
+      unit: i.unit,
+      displayUnit: i.displayUnit,
+    })),
+    subtotal,
+    discountAmount,
+    promotions: promoEval?.promotion.applied.map(a => ({ label: a.label, amount: a.amount })),
+    loyaltyPoints: loyaltyAmount > 0 ? loyaltyPoints : undefined,
+    loyaltyAmount: loyaltyAmount > 0 ? loyaltyAmount : undefined,
+    total,
+    paymentMethod: ref.isUnpaid ? 'credit' : paymentMethod,
+    cashGiven: !ref.isUnpaid && paymentMethod === 'cash' && cashGiven !== null ? cashGiven : undefined,
+    changeAmount: !ref.isUnpaid && paymentMethod === 'cash' && cashGiven !== null && cashGiven >= total ? cashGiven - total : undefined,
+    cashPart: !ref.isUnpaid && paymentMethod === 'mixed' ? mixedCash : undefined,
+    cardPart: !ref.isUnpaid && paymentMethod === 'mixed' ? mixedCard : undefined,
+    offline: ref.offline,
+  });
+
   const checkoutMutation = useMutation({
     mutationFn: salesApi.checkout,
     onSuccess: (sale: Record<string, any>) => {
@@ -767,32 +802,10 @@ export default function POSPage() {
       const beneficiaryName = customerSearch.length >= 2
         ? customerSearch
         : (sale.unpaid_customer_name as string | undefined);
-      const receipt: ReceiptData = {
-        saleId: sale.id as string,
-        saleNumber: sale.sale_number as string,
-        date: sale.created_at as string,
-        cashierName: `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
-        customerName: beneficiaryName,
-        items: cart.map(i => ({
-          name: i.name,
-          quantity: i.quantity,
-          unitPrice: i.price,
-          subtotal: i.unit === 'g' ? (i.quantity / 1000) * i.price : i.price * i.quantity,
-          unit: i.unit,
-          displayUnit: i.displayUnit,
-        })),
-        subtotal,
-        discountAmount,
-        promotions: promoEval?.promotion.applied.map(a => ({ label: a.label, amount: a.amount })),
-        loyaltyPoints: loyaltyAmount > 0 ? loyaltyPoints : undefined,
-        loyaltyAmount: loyaltyAmount > 0 ? loyaltyAmount : undefined,
-        total,
-        paymentMethod: effectivePaymentMethod,
-        cashGiven: !isUnpaid && paymentMethod === 'cash' && cashGiven !== null ? cashGiven : undefined,
-        changeAmount: !isUnpaid && paymentMethod === 'cash' && cashGiven !== null && cashGiven >= total ? cashGiven - total : undefined,
-        cashPart: !isUnpaid && paymentMethod === 'mixed' ? mixedCash : undefined,
-        cardPart: !isUnpaid && paymentMethod === 'mixed' ? mixedCard : undefined,
-      };
+      const receipt = buildReceipt({
+        saleId: sale.id as string, saleNumber: sale.sale_number as string, date: sale.created_at as string,
+        isUnpaid, customerName: beneficiaryName,
+      });
       setLastReceipt(receipt);
       // Impression automatique silencieuse (pas de fenêtre modale : la caissière enchaîne) ;
       // réglage du poste puis réglage global. Le serveur choisit l'imprimante du poste ou,
@@ -855,7 +868,21 @@ export default function POSPage() {
       // Coupure réseau (phase 8.4) : la vente est mise en file locale et rejouée à la
       // reconnexion. La clé d'idempotence garantit l'absence de doublon.
       if (isNetworkError(e)) {
-        enqueueCheckout(variables);
+        // G0-21 : la vente garde de quoi être reconnue plus tard (heure, total, contenu), et le
+        // client repart avec un ticket « hors ligne » dont la référence provisoire est le début
+        // de la clé d'idempotence. Le ticket s'imprime depuis le navigateur : l'imprimante
+        // thermique passe par le serveur, injoignable.
+        const isUnpaid = variables.paymentStatus === 'unpaid';
+        const key = enqueueCheckout(variables, {
+          total,
+          summary: cart.map(i => `${i.unit === 'g' ? `${i.quantity} g` : i.quantity} × ${i.name}`).join(', ').slice(0, 200),
+        });
+        const offlineReceipt = buildReceipt({
+          saleNumber: `HL-${key.slice(0, 8).toUpperCase()}`, date: new Date().toISOString(), isUnpaid,
+          customerName: customerSearch.length >= 2 ? customerSearch : (variables.unpaidCustomerName as string | undefined), offline: true,
+        });
+        setLastReceipt(offlineReceipt);
+        setReceiptData(offlineReceipt);
         setOfflinePending(pendingCount());
         setCart([]); setCustomerId(''); setCustomerSearch(''); setCashGiven(null);
         setDiscountInput(''); setMixedCashInput(''); setMixedCardInput('');
@@ -869,21 +896,27 @@ export default function POSPage() {
   });
 
   // Synchronisation hors-ligne (phase 8.4) : rejoue la file à la reconnexion.
-  useEffect(() => {
-    const flush = async () => {
-      if (pendingCount() === 0) return;
-      const done = await flushQueue((p) => salesApi.checkout(p as Record<string, any>));
-      setOfflinePending(pendingCount());
-      if (done > 0) {
-        notify.success(`${done} vente${done > 1 ? 's' : ''} synchronisée${done > 1 ? 's' : ''}`);
-        queryClient.invalidateQueries({ queryKey: ['sales'] });
-        queryClient.invalidateQueries({ queryKey: ['pos-products'] });
-      }
-    };
-    window.addEventListener('online', flush);
-    flush();
-    return () => window.removeEventListener('online', flush);
+  // G0-21 : une vente refusée par le serveur ne bloque plus la file, elle passe « à traiter ».
+  const flushOffline = useCallback(async () => {
+    if (pendingCount() === 0) { setOfflineRejected(rejectedCount()); return; }
+    const { done, rejected } = await flushQueue((p) => salesApi.checkout(p as Record<string, any>));
+    setOfflinePending(pendingCount());
+    setOfflineRejected(rejectedCount());
+    if (done > 0) {
+      notify.success(`${done} vente${done > 1 ? 's' : ''} synchronisée${done > 1 ? 's' : ''}`);
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['pos-products'] });
+    }
+    if (rejected > 0) {
+      playPosSound('error');
+      notify.error(`${rejected} vente${rejected > 1 ? 's' : ''} hors ligne refusée${rejected > 1 ? 's' : ''} par le serveur : à traiter depuis la barre d'état`);
+    }
   }, [queryClient]);
+  useEffect(() => {
+    window.addEventListener('online', flushOffline);
+    void flushOffline();
+    return () => window.removeEventListener('online', flushOffline);
+  }, [flushOffline]);
 
   // Suggestion de sachets calculee cote serveur a partir du contenu du panier.
   // On utilise une cle stable (productId|quantity tries) pour eviter les fetchs
@@ -2864,6 +2897,20 @@ export default function POSPage() {
           <span className="flex items-center gap-1 text-amber-600 font-semibold">
             <Clock size={12} /> {offlinePending} vente{offlinePending > 1 ? 's' : ''} en attente de synchronisation
           </span>
+        )}
+        {offlineRejected > 0 && (
+          <button type="button" onClick={() => setShowOfflineRejected(true)}
+            className="flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 font-semibold text-white hover:bg-red-700">
+            <AlertTriangle size={12} /> {offlineRejected} vente{offlineRejected > 1 ? 's' : ''} à traiter
+          </button>
+        )}
+        {showOfflineRejected && (
+          <OfflineRejectedModal onClose={() => setShowOfflineRejected(false)}
+            onChanged={action => {
+              setOfflineRejected(rejectedCount());
+              setOfflinePending(pendingCount());
+              if (action === 'retry') void flushOffline();
+            }} />
         )}
         <span className="flex items-center gap-1"><Printer size={12} /> {terminalPrefs.printerId ? 'Imprimante du poste' : 'Imprimante par défaut du magasin'}</span>
         {lastReceipt && (

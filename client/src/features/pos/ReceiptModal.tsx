@@ -44,6 +44,8 @@ interface ReceiptData {
   advanceDate?: string;
   orderTotal?: number;
   isAdvanceReceipt?: boolean;
+  /** G0-21 : vente encaissée hors ligne, pas encore connue du serveur. */
+  offline?: boolean;
 }
 
 const paymentLabels: Record<string, string> = {
@@ -259,6 +261,11 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
 
               {/* Info */}
               <div style={{ fontSize: `${fs - 1}px`, marginBottom: '2px' }}>N: {receipt.saleNumber}</div>
+              {receipt.offline && (
+                <div style={{ fontSize: `${fs - 1}px`, marginBottom: '2px', fontWeight: 700 }}>
+                  TICKET HORS LIGNE — référence provisoire, numéro définitif à la reconnexion
+                </div>
+              )}
               {settings.receiptShowDate && (
                 <div style={{ fontSize: `${fs - 1}px`, marginBottom: '2px' }}>Date: {formattedDate}</div>
               )}
