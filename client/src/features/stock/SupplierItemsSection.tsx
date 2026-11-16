@@ -6,6 +6,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusTag } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import SearchSelect from '../../components/ui/SearchSelect';
 
 const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit', fontSize: '0.85rem', width: '100%' };
 const field: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 };
@@ -156,10 +157,9 @@ function AddSupplierModal({ kind, purchasableId, unit, avail, onClose, onSaved }
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <label style={field}><span style={lbl}>Fournisseur</span>
-            <select value={sup} onChange={e => setSup(e.target.value)} style={inp}>
-              <option value="">— Choisir —</option>
-              {avail.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <SearchSelect value={sup} onChange={setSup}
+              placeholder="— Choisir —" width="100%" size="md" ariaLabel="Fournisseur"
+              options={avail.map(s => ({ id: String(s.id), label: s.name as string }))} />
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <label style={field}><span style={lbl}>Prix d'achat{unit ? ` / ${unit}` : ''} <span style={{ fontWeight: 400 }}>(optionnel)</span></span>

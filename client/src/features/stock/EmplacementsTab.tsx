@@ -5,6 +5,7 @@ import { stockLocationsApi, type StockLocation, type StockLocationInput } from '
 import { productionCoutApi } from '../../api/production-cout.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -166,15 +167,13 @@ function EmplacementForm({ initial, locations, equipements, saving, onCancel, on
               {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select></label>
           <label className="flex flex-col gap-1"><span className="text-xs font-medium text-gray-600">Enceinte (sonde HACCP)</span>
-            <select value={f.equipementId ?? ''} onChange={e => set({ equipementId: e.target.value || null })} className={inp}>
-              <option value="">— aucune —</option>
-              {equipements.map(eq => <option key={eq.id} value={eq.id}>{eq.nom}</option>)}
-            </select></label>
+            <SearchSelect value={f.equipementId != null ? String(f.equipementId) : ''} onChange={id => set({ equipementId: id || null })}
+              placeholder="— aucune —" width="100%" size="md" ariaLabel="Enceinte (sonde HACCP)"
+              options={equipements.map(eq => ({ id: String(eq.id), label: eq.nom as string }))} /></label>
           <label className="flex flex-col gap-1"><span className="text-xs font-medium text-gray-600">Emplacement parent</span>
-            <select value={f.parentId ?? ''} onChange={e => set({ parentId: e.target.value || null })} className={inp}>
-              <option value="">— aucun —</option>
-              {locations.filter(l => l.id !== initial?.id).map(l => <option key={l.id} value={l.id}>{l.code} — {l.name}</option>)}
-            </select></label>
+            <SearchSelect value={f.parentId != null ? String(f.parentId) : ''} onChange={id => set({ parentId: id || null })}
+              placeholder="— aucun —" width="100%" size="md" ariaLabel="Emplacement parent"
+              options={locations.filter(l => l.id !== initial?.id).map(l => ({ id: String(l.id), label: `${l.code} — ${l.name}` }))} /></label>
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1"><span className="text-xs font-medium text-gray-600">T° min</span>
               <input value={f.tempMin ?? ''} onChange={e => set({ tempMin: e.target.value === '' ? null : parseFloat(e.target.value) })} inputMode="decimal" className={inp} placeholder="hérité" /></label>

@@ -24,6 +24,7 @@ import { useStockCategories } from './useStockCategories';
 import { containerOf, containerLabel, type ContainerDef } from '../../utils/container';
 import SupplierItemsSection from './SupplierItemsSection';
 import { StatusTag } from '../../components/ui/StatusTag';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { planStatusTag } from '../production/status';
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -893,12 +894,9 @@ function OrderRequestModal({ ingredientName, unit, container, isLow, supplierHin
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Fournisseur</label>
-            <select className="input" value={form.supplierId} onChange={e => setForm({ ...form, supplierId: e.target.value })}>
-              <option value="">— Aucun fournisseur —</option>
-              {(suppliers as Record<string, any>[]).filter(s => s.is_active !== false).map(s => (
-                <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
-              ))}
-            </select>
+            <SearchSelect value={form.supplierId} onChange={v => setForm({ ...form, supplierId: v })}
+              placeholder="— Aucun fournisseur —" width="100%" size="md" ariaLabel="Fournisseur"
+              options={(suppliers as Record<string, any>[]).filter(s => s.is_active !== false).map(s => ({ id: s.id as string, label: s.name as string }))} />
           </div>
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>
@@ -1184,13 +1182,9 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
             {onMove && locations && locations.length > 0 && lot.status === 'active' && remaining > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.5rem', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
                 <MapPin size={12} style={{ color: 'var(--theme-text-muted)' }} />
-                <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)}
-                  style={{ fontSize: '0.75rem', padding: '2px 6px', border: '1px solid var(--theme-bg-separator)', borderRadius: 6 }}>
-                  <option value="">Déplacer vers…</option>
-                  {locations.filter(l => l.id !== lot.location_id).map(l => (
-                    <option key={l.id} value={l.id}>{l.code} — {l.name}</option>
-                  ))}
-                </select>
+                <SearchSelect value={moveTo} onChange={setMoveTo}
+                  placeholder="Déplacer vers…" width={200} ariaLabel="Déplacer vers un emplacement"
+                  options={locations.filter(l => l.id !== lot.location_id).map(l => ({ id: l.id, label: `${l.code} — ${l.name}` }))} />
                 <button className="odoo-btn-secondary" disabled={!moveTo}
                   onClick={() => { if (moveTo) { onMove(lot.id, moveTo); setMoveTo(''); } }}>
                   Déplacer
