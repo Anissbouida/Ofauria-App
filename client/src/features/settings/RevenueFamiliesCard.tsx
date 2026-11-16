@@ -4,6 +4,7 @@ import { BookOpen } from 'lucide-react';
 import { PageNote } from './SettingsPrimitives';
 import { revenueFamiliesApi, planComptableApi, type RevenueFamily } from '../../api/ledger.api';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 
 const DEFAULT_ACCOUNT = '7111';
@@ -69,19 +70,15 @@ export default function RevenueFamiliesCard() {
                 <td>{f.family}</td>
                 <td style={{ textAlign: 'center', color: 'var(--theme-text-muted)' }}>{f.category_count}</td>
                 <td>
-                  <select
-                    className="odoo-input"
-                    style={{ width: '100%' }}
+                  <SearchSelect
                     value={f.account_code ?? ''}
                     disabled={setAccount.isPending}
-                    aria-label={`Compte de produit — ${f.family}`}
-                    onChange={e => setAccount.mutate({ family: f.family, code: e.target.value })}
-                  >
-                    <option value="">{DEFAULT_ACCOUNT} — par défaut</option>
-                    {revenueAccounts.map(a => (
-                      <option key={a.code} value={a.code}>{a.code} — {a.label}</option>
-                    ))}
-                  </select>
+                    ariaLabel={`Compte de produit — ${f.family}`}
+                    placeholder={`${DEFAULT_ACCOUNT} — par défaut`}
+                    width="100%" size="md"
+                    onChange={code => setAccount.mutate({ family: f.family, code })}
+                    options={revenueAccounts.map(a => ({ id: String(a.code), label: `${a.code} — ${a.label}` }))}
+                  />
                 </td>
               </tr>
             ))}

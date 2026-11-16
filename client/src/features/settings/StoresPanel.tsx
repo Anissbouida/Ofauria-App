@@ -7,6 +7,7 @@ import {
 import { storesApi } from '../../api/stores.api';
 import { usersApi } from '../../api/users.api';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { OdooToggle } from './SettingsPrimitives';
@@ -235,10 +236,9 @@ export default function StoresPanel() {
               {users.length > 0 && (
                 <div className="odoo-company-field">
                   <label htmlFor="store-manager">Responsable</label>
-                  <select id="store-manager" className="odoo-input" value={d.managerUserId} onChange={e => set('managerUserId', e.target.value)}>
-                    <option value="">—</option>
-                    {users.filter(u => u.isActive !== false).map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
-                  </select>
+                  <SearchSelect value={d.managerUserId} onChange={v => set('managerUserId', v)}
+                    placeholder="—" width="100%" size="md" ariaLabel="Responsable"
+                    options={users.filter(u => u.isActive !== false).map(u => ({ id: String(u.id), label: `${u.firstName} ${u.lastName}` }))} />
                 </div>
               )}
             </div>
