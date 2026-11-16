@@ -1778,14 +1778,14 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 
 | ☐ | Tâche | Objet | Change des chiffres |
 |---|---|---|---|
-| ☐ | G0-00 | Jeu de référence | — |
-| ☐ | G0-01 | API publique : prix, validation, idempotence | non |
-| ☐ | G0-02 | Limiteurs de débit | non |
-| ☐ | G0-03 | Expiration du jeton de portail | non |
-| ☐ | G0-04 | Stockage des fichiers | non |
-| ☐ | G0-05 | Déploiement conditionné à la CI | non |
-| ☐ | G0-06 | Connexion par PIN | non |
-| ☐ | G0-07 | Validation des factures et des mutations | non |
+| ☑ | G0-00 | Jeu de référence | — |
+| ☑ | G0-01 | API publique : prix, validation, idempotence | non |
+| ☑ | G0-02 | Limiteurs de débit | non |
+| ☑ | G0-03 | Expiration du jeton de portail | non |
+| ◐ | G0-04 | Stockage des fichiers | non |
+| ◐ | G0-05 | Déploiement conditionné à la CI | non |
+| ☑ | G0-06 | Connexion par PIN | non |
+| ◐ | G0-07 | Validation des factures et des mutations | non |
 | ☐ | G0-08 | Reliquats de sécurité | non |
 | ☐ | G0-09 | Pointages exclus de la paie | oui (paie) |
 | ☐ | G0-10 | Paie d'un mois non terminé | non |
@@ -1807,6 +1807,12 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ☐ | G0-26 | Conversion d'unité stricte | non |
 | ☐ | G0-27 | Défauts du calcul des besoins | oui (besoins) |
 | ☐ | G0-28 | Divers (date, utilisateur système, TRS) | oui (TRS) |
+
+**Restes des tâches ◐ (au 2026-11-16).**
+- **G0-04** : code livré (migration 521). Reste côté infrastructure : créer le bucket privé et poser `STORAGE_DRIVER=gcs` / `STORAGE_BUCKET` sur Cloud Run (`docs/DEPLOYMENT.md`). Écart assumé : le fichier est renvoyé en flux par la route authentifiée, sans URL signée (aucune dépendance ajoutée).
+- **G0-05** : déclencheur, sondes de santé et image non root livrés. L'audit des dépendances reste en signalement (`continue-on-error`) : il échoue aujourd'hui sur `xlsx` (sans correctif) et `zod` ; à rendre bloquant après G0-08.
+- **G0-07** : factures (création, modification, fusion), stock de matières et caisse validés ; garde en CI. Il reste 361 mutations héritées sans schéma, inscrites dans `server/src/__tests__/fixtures/unvalidated-mutations.json` (dont règlements échelonnés, rapprochement, réceptions, paie) : `npx tsx scripts/audit-validation-routes.ts` en donne le détail.
+- **G3-05** (étape 1, faite par nécessité) : la garde des numéros de migration tolère les six doublons historiques sur une base vierge.
 
 ### Lots suivants
 
