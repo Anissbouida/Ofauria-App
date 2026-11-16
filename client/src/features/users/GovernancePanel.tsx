@@ -13,6 +13,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
+import SearchSelect from '../../components/ui/SearchSelect';
 
 /**
  * Gouvernance des droits (mig 336) : séparation des tâches (SoD), plafonds
@@ -306,16 +307,14 @@ function DelegationsSection() {
       </StatusBanner>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, background: 'var(--odoo-bg-alt)' }}>
         <label style={{ ...lab, width: 180 }}>Délégant (titulaire)
-          <select style={field} value={f.fromUserId} onChange={e => set('fromUserId', e.target.value)}>
-            <option value="">— choisir —</option>
-            {activeUsers.map(u => <option key={u.id as string} value={u.id as string}>{userName(u)}</option>)}
-          </select>
+          <SearchSelect value={f.fromUserId} onChange={v => set('fromUserId', v)}
+            placeholder="— choisir —" width={180} size="md" ariaLabel="Délégant"
+            options={activeUsers.map(u => ({ id: u.id as string, label: userName(u) }))} />
         </label>
         <label style={{ ...lab, width: 180 }}>Délégataire
-          <select style={field} value={f.toUserId} onChange={e => set('toUserId', e.target.value)}>
-            <option value="">— choisir —</option>
-            {activeUsers.filter(u => u.id !== f.fromUserId).map(u => <option key={u.id as string} value={u.id as string}>{userName(u)}</option>)}
-          </select>
+          <SearchSelect value={f.toUserId} onChange={v => set('toUserId', v)}
+            placeholder="— choisir —" width={180} size="md" ariaLabel="Délégataire"
+            options={activeUsers.filter(u => u.id !== f.fromUserId).map(u => ({ id: u.id as string, label: userName(u) }))} />
         </label>
         <label style={{ ...lab, width: 170 }}>Rôle délégué
           <select style={field} value={f.roleCode} onChange={e => set('roleCode', e.target.value)}>
