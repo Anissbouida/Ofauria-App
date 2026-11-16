@@ -1792,7 +1792,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ◐ | G0-11 | Contrôle du SMIG | non |
 | ◐ | G0-12 | Livre de paie | non |
 | ◐ | G0-13 | Barème IR versionné | non |
-| ☐ | G0-14 | Paiement de bulletin en transaction | non |
+| ◐ | G0-14 | Paiement de bulletin en transaction | non |
 | ☐ | G0-15 | Amortissement dégressif | oui (immobilisations) |
 | ☐ | G0-16 | Régime de TVA | oui si bascule |
 | ☐ | G0-17 | TVA déductible par établissement | oui (par établissement) |
@@ -1817,6 +1817,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **G0-11** : contrôle livré (migration 524), inactif tant que le SMIG mensuel ou horaire n'est pas saisi dans le barème (Paramètres de paie) — valeurs à fournir par le comptable de paie. L'alerte figure sur le bulletin et en bandeau de la paie mensuelle ; elle n'est pas encore reprise dans le tableau de bord RH. Le contrôle porte sur le bulletin mensuel, pas sur les paies hebdomadaires et de quinzaine prises isolément.
 - **G0-12** : livre de paie livré (`GET /payroll/book`, PDF paysage et Excel, par mois ou par année ; boutons dans la paie mensuelle). Reste à faire valider la présentation par le comptable avant diffusion. Pas de colonne matricule : la fiche salarié n'en porte pas, le numéro CNSS en tient lieu.
 - **G0-13** : versions datées du barème livrées (`POST /payroll/tax-scales`, bouton « Nouvelle version » dans Paramètres de paie) ; un barème déjà utilisé par un bulletin n'est plus modifiable dans ses valeurs de calcul. Reste à vérifier avec le comptable que le barème en base est bien celui de l'exercice en cours.
+- **G0-14** : `withTransaction` livré (transaction ambiante, `server/src/config/database.ts`) ; les trois paiements (mensuel, hebdomadaire, quinzaine) passent dans une seule transaction, verrou de ligne compris, et la compensation manuelle est retirée. Non fait : la factorisation des trois corps de paiement en un service commun `payPayslip` ; le reclassement 4432 du mensuel reste volontairement isolé par un point de sauvegarde (son échec n'annule pas le paiement).
 - **G3-05** (étape 1, faite par nécessité) : la garde des numéros de migration tolère les six doublons historiques sur une base vierge.
 
 ### Lots suivants

@@ -1,4 +1,5 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
+import { logger } from '../utils/logger.js';
 import { paymentRepository } from './accounting.repository.js';
 import { cancelPayrollPayment, payrollLedger } from '../services/payroll-ledger.service.js';
 import { salaryAdvanceRepository } from './salary-advance.repository.js';
@@ -940,12 +941,15 @@ export const payrollRepository = {
   },
 
   async markPaid(id: string, paymentMethod: string, createdBy?: string, storeId?: string, advanceDeduction = 0) {
-    // Lecture pre-validation (net + solde d'avances). On travaille sur un
-    // snapshot : la seule chose qui compte pour l'atomicite, c'est l'UPDATE
-    // conditionnel qui suit (voir plus bas). Si un autre process valide la
-    // paie entre ce SELECT et le UPDATE, notre UPDATE ne matchera pas (WHERE
-    // paid = false) et on ressort proprement.
-    const existing = await db.query('SELECT * FROM payroll WHERE id = $1', [id]);
+    // G0-14 : marquage payé, sortie de caisse et retenue d'avance dans UNE seule
+    // transaction. Une erreur à n'importe quelle étape annule tout.
+    return withTransaction(() => this.markPaidInTx(id, paymentMethod, createdBy, storeId, advanceDeduction));
+  },
+
+  /** Corps du paiement, exécuté dans la transaction ouverte par markPaid. */
+  async markPaidInTx(id: string, paymentMethod: string, createdBy?: string, storeId?: string, advanceDeduction = 0) {
+    // Verrou de la ligne : un double clic attend, puis voit le bulletin déjà payé.
+    const existing = await db.query('SELECT * FROM payroll WHERE id = $1 FOR UPDATE', [id]);
     const current = existing.rows[0];
     if (!current) return null;
     if (current.paid) return current;
@@ -1061,27 +1065,19 @@ export const payrollRepository = {
         }
       }
     } catch (err) {
-      if (createdPaymentId) {
-        try { await cancelPayrollPayment(createdPaymentId, createdBy, 'Échec du paiement de paie (annulation automatique)'); }
-        catch (cleanupErr) {
-          // eslint-disable-next-line no-console
-          console.error('[payroll.markPaid] cleanup paiement echoue', createdPaymentId, cleanupErr);
-        }
-      }
-      await db.query(
-        `UPDATE payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0 WHERE id = $1`,
-        [id]
-      );
+      // G0-14 : plus de compensation manuelle — la transaction annule la sortie de
+      // caisse, la retenue et le marquage payé.
+      void createdPaymentId;
       throw new Error(`Paiement annulé — la sortie de caisse n'a pas pu être créée : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
     }
 
     // Mois deja comptabilise (cloture) : solde la dette 4432 du net paye.
     // Un echec ici n'annule pas le paiement (deja en caisse) : il est
     // rejoue a la prochaine cloture (postMonth est idempotent).
-    try { await payrollLedger.afterPaid(id, createdBy || payroll.employee_id); }
+    // Point de sauvegarde (G0-14) : son échec est annulé seul, sans emporter le paiement.
+    try { await withTransaction(() => payrollLedger.afterPaid(id, createdBy || payroll.employee_id)); }
     catch (ledgerErr) {
-      // eslint-disable-next-line no-console
-      console.error('[payroll.markPaid] reclassement 4432 non passe', id, ledgerErr);
+      logger.error({ err: ledgerErr, payrollId: id }, '[payroll.markPaid] reclassement 4432 non passé');
     }
 
     return payroll;

@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { paymentRepository } from './accounting.repository.js';
 import { cancelPayrollPayment } from '../services/payroll-ledger.service.js';
 import { leaveBalanceRepository, loadLeaveConfig } from './leave.repository.js';
@@ -242,10 +242,15 @@ export const weeklyPayrollRepository = {
    * Idempotent : si deja paye, retourne la ligne sans recreer l'ecriture.
    */
   async markPaid(id: string, paymentMethod: string, createdBy?: string, storeId?: string, advanceDeduction = 0) {
-    // Pre-validation net + solde d'avances (voir employee.repository.ts:markPaid
-    // pour le raisonnement complet). L'atomicite reelle est portee par le
-    // UPDATE conditionnel qui suit.
-    const existing = await db.query('SELECT * FROM weekly_payroll WHERE id = $1', [id]);
+    // G0-14 : marquage payé, sortie de caisse et retenue d'avance dans UNE seule
+    // transaction. Une erreur à n'importe quelle étape annule tout.
+    return withTransaction(() => this.markPaidInTx(id, paymentMethod, createdBy, storeId, advanceDeduction));
+  },
+
+  /** Corps du paiement, exécuté dans la transaction ouverte par markPaid. */
+  async markPaidInTx(id: string, paymentMethod: string, createdBy?: string, storeId?: string, advanceDeduction = 0) {
+    // Verrou de la ligne : un double clic attend, puis voit la paie déjà payée.
+    const existing = await db.query('SELECT * FROM weekly_payroll WHERE id = $1 FOR UPDATE', [id]);
     const row = existing.rows[0];
     if (!row) return null;
     if (row.paid) return row;
@@ -326,17 +331,9 @@ export const weeklyPayrollRepository = {
         }
       }
     } catch (err) {
-      if (createdPaymentId) {
-        try { await cancelPayrollPayment(createdPaymentId, createdBy, 'Échec du paiement de paie (annulation automatique)'); }
-        catch (cleanupErr) {
-          // eslint-disable-next-line no-console
-          console.error('[weeklyPayroll.markPaid] cleanup paiement echoue', createdPaymentId, cleanupErr);
-        }
-      }
-      await db.query(
-        `UPDATE weekly_payroll SET paid = false, paid_at = NULL, payment_method = NULL, advance_deduction = 0 WHERE id = $1`,
-        [id]
-      );
+      // G0-14 : plus de compensation manuelle — la transaction annule la sortie de
+      // caisse, la retenue et le marquage payé.
+      void createdPaymentId;
       throw new Error(`Paiement annulé — la sortie de caisse n'a pas pu être créée : ${err instanceof Error ? err.message : 'erreur inconnue'}`);
     }
 
