@@ -836,6 +836,15 @@ export default function POSPage() {
         setDiscountApprovalFor(prev => (prev ? { ...prev, error: apiError.message ?? 'Validation refusée' } : prev));
         return;
       }
+      // G0-20 : une autre caisse vient de prendre la dernière utilisation d'une promotion.
+      // Rien n'est vendu : le ticket est recalculé sans elle, le caissier revalide le total.
+      if (apiError?.code === 'PROMOTION_EXHAUSTED') {
+        playPosSound('error');
+        setDiscountApprovalFor(null);
+        void queryClient.invalidateQueries({ queryKey: ['pos-promotions'] });
+        notify.error(`${apiError.message ?? 'Promotion épuisée.'} Vérifiez le nouveau total avant d'encaisser.`);
+        return;
+      }
       // Une remise à valider ne peut pas partir en file hors-ligne : le PIN du responsable
       // n'est jamais stocké, et sans lui le serveur refuserait la vente au rejeu.
       if (isNetworkError(e) && (variables.discountApproval || needsDiscountApproval)) {

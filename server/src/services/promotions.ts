@@ -199,7 +199,12 @@ export async function evaluate(lines: PromoLine[], ctx: PromoContext, runner: Ru
  * utilisation (un devis non : il sera compté à sa conversion en commande ; une commande
  * modifiée non plus, countUse = false).
  */
-export async function recordApplied(client: Runner, doc: { saleId?: string; orderId?: string; quoteId?: string }, applied: AppliedPromo[], countUse = !doc.quoteId) {
+export async function recordApplied(
+  client: Runner, doc: { saleId?: string; orderId?: string; quoteId?: string }, applied: AppliedPromo[],
+  countUse = !doc.quoteId,
+  /** false = décompte sans refus (conversion d'un devis : le prix a déjà été promis au client). */
+  enforceLimit = true,
+) {
   if (doc.quoteId) await client.query(`DELETE FROM document_promotions WHERE quote_id = $1`, [doc.quoteId]);
   if (doc.orderId) await client.query(`DELETE FROM document_promotions WHERE order_id = $1`, [doc.orderId]);
   for (const a of applied) {
@@ -208,6 +213,19 @@ export async function recordApplied(client: Runner, doc: { saleId?: string; orde
       [a.promotionId, doc.saleId ?? null, doc.orderId ?? null, doc.quoteId ?? null, a.label, a.amount]);
   }
   if (countUse && applied.length) {
-    await client.query(`UPDATE promotions SET uses_count = uses_count + 1 WHERE id = ANY ($1::uuid[])`, [applied.map(a => a.promotionId)]);
+    // G0-20 : l'utilisation est prise et vérifiée dans la même instruction. Deux caisses
+    // simultanées ne peuvent plus dépasser le maximum : la seconde attend le verrou de
+    // ligne, relit le compteur et n'obtient rien. L'erreur annule la transaction du document.
+    const labels = new Map(applied.map(a => [a.promotionId, a.label]));
+    for (const promotionId of labels.keys()) {
+      const taken = await client.query(
+        `UPDATE promotions SET uses_count = uses_count + 1
+          WHERE id = $1 AND ($2::boolean IS FALSE OR max_uses IS NULL OR uses_count < max_uses) RETURNING id`,
+        [promotionId, enforceLimit]);
+      if (!taken.rows[0]) {
+        throw Object.assign(new Error(`Promotion épuisée : « ${labels.get(promotionId)} » a atteint son nombre maximal d'utilisations. Le ticket doit être recalculé sans elle.`),
+          { statusCode: 409, code: 'PROMOTION_EXHAUSTED' });
+      }
+    }
   }
 }

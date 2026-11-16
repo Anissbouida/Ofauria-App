@@ -491,7 +491,7 @@ export const quoteRepository = {
       if (promotionAmount > 0) {
         const applied = (await client.query(`SELECT promotion_id, label, amount FROM document_promotions WHERE quote_id = $1`, [id])).rows;
         await client.query(`UPDATE orders SET promotion_amount = $2 WHERE id = $1`, [order.id, promotionAmount]);
-        await recordApplied(client, { orderId: order.id }, applied.map(a => ({ promotionId: a.promotion_id, label: a.label, amount: Number(a.amount) })));
+        await recordApplied(client, { orderId: order.id }, applied.map(a => ({ promotionId: a.promotion_id, label: a.label, amount: Number(a.amount) })), true, false);
       }
       await client.query(`UPDATE quotes SET status = 'converted', order_id = $2, converted_at = now(),
                              customer_id = COALESCE(customer_id, $3), decided_at = COALESCE(decided_at, now()) WHERE id = $1`,
