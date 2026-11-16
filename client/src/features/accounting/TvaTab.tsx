@@ -185,6 +185,17 @@ export default function TvaTab() {
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+            {data.regime?.mode === 'encaissement' && (
+              <StatusBanner tone="info" icon={Percent} title={`Régime des encaissements depuis le ${(data.regime.since ?? '').split('-').reverse().join('/')}`}>
+                La TVA des factures et tickets à crédit est déclarée au fur et à mesure des règlements.
+                {(data.awaiting_collection ?? 0) > 0 && ` TVA facturée non encore encaissée au ${endDate.split('-').reverse().join('/')} : ${n(data.awaiting_collection ?? 0)} DH.`}
+              </StatusBanner>
+            )}
+            {data.regime?.missing_since && (
+              <StatusBanner tone="warning" icon={Hourglass} title="Régime des encaissements sans date de bascule">
+                La déclaration reste calculée au régime des débits. Renseignez la date de bascule dans Paramètres › Ventes › Régime de TVA.
+              </StatusBanner>
+            )}
             {data.pending_payment && data.pending_payment.count > 0 && (
               <StatusBanner tone="info" icon={Hourglass} title={`TVA en attente de règlement : ${n(data.pending_payment.amount)} DH`}>
                 {data.pending_payment.count} facture(s) fournisseur non soldée(s) au {endDate.split('-').reverse().join('/')} : leur TVA sera déductible le mois de leur règlement.

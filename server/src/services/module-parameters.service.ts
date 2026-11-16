@@ -19,7 +19,7 @@ const DEFAULTS: Record<string, unknown> = {
   'sales.legal_mentions': { enforce_customer_ice: false } satisfies LegalMentionsRules,
   'sales.returns': { enabled: false, max_days: 14, max_amount_without_approval: 500 } satisfies ReturnRules,
   'sales.closure': { require_unsold_inventory: true },
-  'sales.vat_regime': { mode: 'debit' },
+  'sales.vat_regime': { mode: 'debit', since: null },
   'sales.stamp_duty': { enabled: false, rate_pct: 0.25, min_dh: 1, cash_only: true } satisfies StampDutyRules,
 };
 
@@ -81,7 +81,19 @@ export async function returnRules(): Promise<ReturnRules> {
   };
 }
 
-/** Régime de TVA (phase 5.7) : débit (exigible à la facture) ou encaissement. Informatif. */
+/**
+ * Régime de TVA tel que la déclaration l'applique (G0-16). Le régime des encaissements
+ * ne vaut qu'avec sa date de bascule : les factures antérieures ont déjà été déclarées
+ * à la facturation et ne doivent pas l'être une seconde fois à leur règlement.
+ */
+export async function vatRegimeSetting(): Promise<{ mode: VatRegime; since: string | null; missingSince: boolean }> {
+  const v = await getParameter<{ mode?: string; since?: string | null }>('sales.vat_regime');
+  const since = typeof v?.since === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v.since) ? v.since : null;
+  const wanted = v?.mode === 'encaissement';
+  return { mode: wanted && since ? 'encaissement' : 'debit', since: wanted ? since : null, missingSince: wanted && !since };
+}
+
+/** Régime de TVA (phase 5.7) : débit (exigible à la facture) ou encaissement. */
 export type VatRegime = 'debit' | 'encaissement';
 export async function vatRegime(): Promise<VatRegime> {
   const v = await getParameter<{ mode?: string }>('sales.vat_regime');

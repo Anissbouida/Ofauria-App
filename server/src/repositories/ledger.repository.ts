@@ -1,5 +1,6 @@
 import type { QueryResult } from 'pg';
 import { db } from '../config/database.js';
+import { vatRegimeSetting } from '../services/module-parameters.service.js';
 
 /* ═══ Plan comptable CGNC ═══ */
 export const accountRepository = {
@@ -829,6 +830,19 @@ export const financialStatementsRepository = {
   },
 };
 
+/**
+ * Écriture dont la TVA collectée est déclarée à l'encaissement (G0-16) : facture client
+ * (hors avoir, hors annulée) ou ticket à crédit non annulé, validée, datée depuis la
+ * bascule. `sinceParam` est le paramètre SQL de la date de bascule ; alias attendu : je.
+ */
+const deferredVatEntry = (sinceParam: string) => `(
+  je.status = 'posted' AND je.entry_date >= ${sinceParam}::date AND (
+    (je.source_kind = 'invoice' AND EXISTS (
+       SELECT 1 FROM invoices di WHERE di.id = je.source_id AND di.invoice_type = 'emitted'
+          AND di.kind <> 'credit_note' AND di.status <> 'cancelled'))
+    OR (je.source_kind = 'sale' AND COALESCE(je.source_detail, '') = '' AND EXISTS (
+       SELECT 1 FROM sales ds WHERE ds.id = je.source_id AND ds.sold_on_credit AND ds.cancelled_at IS NULL))))`;
+
 /* ═══ Declaration TVA (CA20 Maroc) ═══ */
 export const tvaDeclarationRepository = {
   /**
@@ -850,6 +864,14 @@ export const tvaDeclarationRepository = {
     let p = 3;
     if (params.storeId) { values.push(params.storeId); where.push(`(je.store_id IS NULL OR je.store_id = $${p++})`); }
 
+    // Régime des encaissements (G0-16) : la TVA des factures et tickets à crédit émis depuis
+    // la date de bascule sort de la lecture « à la date d'écriture » ; elle est reprise plus
+    // bas au prorata des règlements. Le reste (caisse, avoirs, extournes, factures d'avant
+    // la bascule) reste déclaré à la date d'écriture.
+    const regime = await vatRegimeSetting();
+    const cash = regime.mode === 'encaissement';
+    if (cash) { values.push(regime.since); where.push(`NOT (a.tva_direction = 'collected' AND ${deferredVatEntry(`$${p++}`)})`); }
+
     const rows = await db.query(
       `SELECT
          a.code, a.label, a.tva_rate, a.tva_direction,
@@ -869,6 +891,60 @@ export const tvaDeclarationRepository = {
     );
 
     const collected = rows.rows.filter((r: { tva_direction: string }) => r.tva_direction === 'collected');
+    let awaitingCollection = 0;
+    if (cash) {
+      // Par écriture de vente à crédit : TVA nette par compte, créance née (3421) et cumul
+      // réglé avant la période puis à sa fin. Déclaré = cumul fin − cumul début, chaque cumul
+      // arrondi au centime : la somme des périodes retombe exactement sur la TVA facturée.
+      const storeCond = params.storeId ? `AND (je.store_id IS NULL OR je.store_id = $4)` : '';
+      const def = await db.query(
+        `WITH def AS (
+           SELECT je.id, je.source_kind, je.source_id, je.entry_date FROM journal_entries je
+            WHERE je.entry_date <= $2 AND ${deferredVatEntry('$3')} ${storeCond}
+         ), vat AS (
+           SELECT d.id, d.entry_date, a.code, a.label, a.tva_rate, SUM(jel.credit - jel.debit) AS v
+             FROM def d JOIN journal_entry_lines jel ON jel.journal_entry_id = d.id
+             JOIN accounts a ON a.id = jel.account_id AND a.tva_direction = 'collected'
+            GROUP BY d.id, d.entry_date, a.code, a.label, a.tva_rate
+         ), rec AS (
+           SELECT d.id, SUM(jel.debit - jel.credit) AS r
+             FROM def d JOIN journal_entry_lines jel ON jel.journal_entry_id = d.id
+             JOIN accounts a ON a.id = jel.account_id AND a.code = '3421'
+            GROUP BY d.id
+         ), ev AS (
+           SELECT d.id, al.amount,
+                  CASE WHEN al.posted_with_payment THEN pay.payment_date
+                       ELSE GREATEST((al.allocated_at AT TIME ZONE 'Africa/Casablanca')::date, pay.payment_date) END AS on_date
+             FROM def d JOIN payment_allocations al ON al.invoice_id = d.source_id
+             JOIN payments pay ON pay.id = al.payment_id AND pay.status <> 'void'
+            WHERE d.source_kind = 'invoice'
+           UNION ALL
+           SELECT d.id, s.total, (s.paid_at AT TIME ZONE 'Africa/Casablanca')::date
+             FROM def d JOIN sales s ON s.id = d.source_id
+            WHERE d.source_kind = 'sale' AND s.payment_status = 'paid' AND s.paid_at IS NOT NULL
+         ), cum AS (
+           SELECT id, COALESCE(SUM(amount) FILTER (WHERE on_date < $1), 0) AS c0,
+                      COALESCE(SUM(amount) FILTER (WHERE on_date <= $2), 0) AS c1
+             FROM ev GROUP BY id
+         )
+         SELECT v.code, v.label, v.tva_rate,
+                SUM(CASE WHEN COALESCE(r.r, 0) <= 0 THEN CASE WHEN v.entry_date >= $1 THEN v.v ELSE 0 END
+                         ELSE ROUND(v.v * LEAST(1, COALESCE(c.c1, 0) / r.r), 2) - ROUND(v.v * LEAST(1, COALESCE(c.c0, 0) / r.r), 2) END) AS amount,
+                SUM(CASE WHEN COALESCE(r.r, 0) <= 0 THEN 0
+                         ELSE v.v - ROUND(v.v * LEAST(1, COALESCE(c.c1, 0) / r.r), 2) END) AS awaiting
+           FROM vat v LEFT JOIN rec r ON r.id = v.id LEFT JOIN cum c ON c.id = v.id
+          GROUP BY v.code, v.label, v.tva_rate`,
+        params.storeId ? [params.startDate, params.endDate, regime.since, params.storeId] : [params.startDate, params.endDate, regime.since]);
+      for (const d of def.rows as { code: string; label: string; tva_rate: string; amount: string; awaiting: string }[]) {
+        awaitingCollection += parseFloat(d.awaiting) || 0;
+        const amount = parseFloat(d.amount) || 0;
+        if (amount === 0) continue;
+        const line = collected.find((r: { code: string }) => r.code === d.code);
+        if (line) line.amount = (Math.round(((parseFloat(line.amount) || 0) + amount) * 100) / 100).toFixed(2);
+        else collected.push({ code: d.code, label: d.label, tva_rate: d.tva_rate, tva_direction: 'collected', amount: amount.toFixed(2) });
+      }
+      collected.sort((a: { tva_rate: string }, b: { tva_rate: string }) => parseFloat(a.tva_rate) - parseFloat(b.tva_rate));
+    }
     // Mig 311 (G-D8-15) : TVA déductible = factures fournisseurs dont le droit est
     // né dans la période (date du règlement qui les solde, CGI art. 101), hors
     // exclusions (espèces au-delà du plafond…). Plus la date de facture.
@@ -909,6 +985,9 @@ export const tvaDeclarationRepository = {
 
     return {
       period: { startDate: params.startDate, endDate: params.endDate },
+      // G0-16 : régime appliqué ; en encaissement, TVA facturée à crédit non encore encaissée.
+      regime: { mode: regime.mode, since: regime.since, missing_since: regime.missingSince },
+      awaiting_collection: Math.round(awaitingCollection * 100) / 100,
       collected,
       deductible,
       total_collected: totalCollected,

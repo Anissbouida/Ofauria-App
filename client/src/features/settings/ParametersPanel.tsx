@@ -357,6 +357,15 @@ function FieldInput({ id, field, value, disabled, onChange }: {
     );
   }
   if (field.type === 'list') return <ListField id={id} field={field} value={value} disabled={disabled} onChange={onChange} />;
+  if (field.type === 'date') {
+    return (
+      <label htmlFor={id} className="odoo-params-num">
+        <span>{field.label}</span>
+        <input id={id} type="date" className="odoo-input" style={{ width: 160 }} value={typeof value === 'string' ? value : ''} disabled={disabled}
+          aria-label={field.label} onChange={e => onChange(e.target.value || null)} />
+      </label>
+    );
+  }
   return <NumberField id={id} field={field} value={value} disabled={disabled} onChange={onChange} />;
 }
 

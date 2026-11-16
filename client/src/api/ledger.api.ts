@@ -496,6 +496,9 @@ export interface TvaDeclaration {
   total_collected: number;
   total_deductible: number;
   tva_due: number;
+  // G0-16 : régime appliqué ; en encaissement, TVA facturée à crédit non encore encaissée.
+  regime?: { mode: 'debit' | 'encaissement'; since: string | null; missing_since: boolean };
+  awaiting_collection?: number;
   // Mig 311 : TVA dont le droit n'est pas encore né (facture non soldée) et exclusions.
   pending_payment?: { count: number; amount: number };
   excluded?: { reason: string; count: number; amount: number }[];

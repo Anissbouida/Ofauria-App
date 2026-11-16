@@ -13,7 +13,7 @@ import type { SettingsSection } from '@ofauria/shared';
  * Ajouter un paramètre = ajouter une entrée ici (et sa valeur initiale en base).
  */
 
-export type FieldType = 'boolean' | 'number' | 'integer' | 'percent' | 'enum' | 'list';
+export type FieldType = 'boolean' | 'number' | 'integer' | 'percent' | 'enum' | 'list' | 'date';
 
 export interface ParamField {
   name: string;
@@ -150,9 +150,12 @@ export const PARAMETERS: ParamDef[] = [
   {
     key: 'sales.vat_regime', domain: 'sales', section: 'business',
     label: 'Régime de TVA',
-    help: 'Débit : la TVA est exigible dès la facture. Encaissement : exigible au paiement. Réglage informatif en attente des règles de déclaration (phase 5.7, expert-comptable).',
-    fields: [{ name: 'mode', label: 'Régime', type: 'enum', options: [{ value: 'debit', label: 'Débit (à la facture)' }, { value: 'encaissement', label: 'Encaissement (au paiement)' }] }],
-    defaults: { mode: 'debit' },
+    help: 'Débit : la TVA est déclarée dès la facture. Encaissement : la TVA des factures et tickets à crédit est déclarée au fur et à mesure des règlements, à partir de la date de bascule (les factures antérieures restent déclarées à la facturation). Sans date de bascule, la déclaration reste au régime des débits.',
+    fields: [
+      { name: 'mode', label: 'Régime', type: 'enum', options: [{ value: 'debit', label: 'Débit (à la facture)' }, { value: 'encaissement', label: 'Encaissement (au paiement)' }] },
+      { name: 'since', label: 'Encaissement appliqué aux factures à partir du', type: 'date' },
+    ],
+    defaults: { mode: 'debit', since: null },
     storage: { kind: 'module_parameters' },
   },
   {
@@ -364,6 +367,12 @@ export function validateParameter(def: ParamDef, input: unknown, current: Record
         const uniq = [...new Set(nums)].sort((a, b) => a - b);
         if (uniq.length === 0) return `${f.label} : au moins une valeur`;
         out[name] = uniq;
+        break;
+      }
+      case 'date': {
+        if (raw === null || raw === '') { out[name] = null; break; }
+        if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw) || Number.isNaN(Date.parse(raw))) return `${f.label} : date attendue`;
+        out[name] = raw;
         break;
       }
       default: {
