@@ -13,7 +13,8 @@ import {
   createBaseFixtures, createIngredient, cleanupFixtures, RUN, type Fixtures,
 } from './helpers.js';
 
-const SAC = 'dfb5eb29-8fec-4ad9-a788-74c989bd8ef7';   // ref_entries container_types 'sac'
+// Le type « sac » est retrouvé par son code : son identifiant change à chaque base reconstruite.
+const SAC_SQL = `(SELECT id FROM ref_entries WHERE table_id = 'container_types' AND code = 'sac' LIMIT 1)`;
 
 describe.skipIf(!hasTestDb)('BC — arrondi au contenant signale (F-012)', () => {
   let repos: Awaited<ReturnType<typeof importRepositories>>;
@@ -28,8 +29,8 @@ describe.skipIf(!hasTestDb)('BC — arrondi au contenant signale (F-012)', () =>
     ingId = await createIngredient(fx, { name: 'Farine f012', unit: 'kg', unitCost: 12 });
     // Ingredient defini par contenant : sacs de 25 kg.
     await testPool().query(
-      `UPDATE ingredients SET container_size = 25, container_type_id = $2 WHERE id = $1`,
-      [ingId, SAC]
+      `UPDATE ingredients SET container_size = 25, container_type_id = ${SAC_SQL} WHERE id = $1`,
+      [ingId]
     );
     const sup = await testPool().query(
       `INSERT INTO suppliers (name) VALUES ($1) RETURNING id`, [`Fournisseur f012 ${RUN}`]
