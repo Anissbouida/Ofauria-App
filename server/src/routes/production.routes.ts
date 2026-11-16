@@ -8,7 +8,7 @@ import { ROLE_GROUPS } from '@ofauria/shared';
 import { validate, validateQuery, validateUuidParams } from '../middleware/validate.middleware.js';
 import {
   createPlanSchema, updateItemsSchema, itemIdsSchema, startItemsSchema, produceItemsSchema,
-  completeSchema, cancelItemsSchema, relaunchSchema, addActivitySchema, requestStockVerificationSchema, listQuerySchema,
+  completeSchema, cancelItemsSchema, relaunchSchema, addActivitySchema, requestStockVerificationSchema, listQuerySchema, setPolicySchema,
 } from '../validators/production.validator.js';
 
 const id = validateUuidParams('id');
@@ -37,7 +37,7 @@ router.post('/mrp/generate-purchase-requests', authenticate, authorize(...ROLE_G
 router.get('/settings', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.getSettings));
 // M1-04 — politiques de production (lecture : production ; écriture : droit Paramètres › Production).
 router.get('/policies', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.listPolicies));
-router.put('/policies/:key', authenticate, authorizeSettings('production', 'edit'), asyncHandler(productionController.setPolicy));
+router.put('/policies/:key', authenticate, authorizeSettings('production', 'edit'), validate(setPolicySchema), asyncHandler(productionController.setPolicy));
 router.put('/settings', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(productionController.updateSettings));
 router.post('/transfers/:transferId/receive', authenticate, validateUuidParams('transferId'), authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.confirmProductionTransfer));
 

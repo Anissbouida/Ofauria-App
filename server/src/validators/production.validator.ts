@@ -118,3 +118,13 @@ export const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(20),
 });
+
+/**
+ * M1-04 — pose ou retire une politique de production à un niveau. Les champs de `value`
+ * sont contrôlés ensuite contre le catalogue (type, bornes) par setPolicy.
+ */
+export const setPolicySchema = z.object({
+  scopeType: z.enum(['company', 'store', 'workshop', 'order_type', 'product']),
+  scopeId: z.string().max(80).default(''),
+  value: z.record(z.string(), z.union([z.number(), z.string().max(40), z.boolean()])).nullable(),
+});
