@@ -1,3 +1,4 @@
+import { policySnapshot, restorePolicies, type PolicyRow } from '../services/policies.js';
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
@@ -44,7 +45,7 @@ export type Activation = {
 
 export type AdjustmentChanges = { modules?: Record<string, boolean | null>; features?: Record<string, boolean | null> };
 
-export type ConfigSnapshot = { sector: string; modules: ModuleOverrides; features: ModuleOverrides; rollout?: ModuleRollout };
+export type ConfigSnapshot = { sector: string; modules: ModuleOverrides; features: ModuleOverrides; rollout?: ModuleRollout; policies?: PolicyRow[] };
 
 /** Diffusion d'un module : pilote (null = ouvert à tous) et établissements fermés. */
 export type RolloutChange = { pilot: ModulePilot | null; disabledStores: string[] };
@@ -311,7 +312,7 @@ export const sectorRepository = {
    * l'historique est vide, l'état de départ est d'abord enregistré comme
    * « Configuration initiale » : le tout premier changement reste annulable.
    */
-  async commit(current: Activation, target: Target, userId?: string | null, label?: string) {
+  async commit(current: Activation, target: Target, userId?: string | null, label?: string, opts: { policies?: PolicyRow[] } = {}) {
     const before: Target = { sector: current.sector, modules: current.moduleOverrides, features: current.featureOverrides, rollout: current.rollout };
     const after = stateOf(target, current.catalog);
     const summary = describeDiff(diffActivation(current, after), this.featureLabel(current));
@@ -322,8 +323,10 @@ export const sectorRepository = {
       const { rows: existing } = await client.query(`SELECT 1 FROM config_versions LIMIT 1`);
       if (!existing.length) {
         await client.query(`INSERT INTO config_versions (created_by, label, snapshot) VALUES (NULL, $1, $2)`,
-          ['Configuration initiale', JSON.stringify(snapshotOf(before))]);
+          ['Configuration initiale', JSON.stringify({ ...snapshotOf(before), policies: await policySnapshot(client) })]);
       }
+      // M1-02 : une version porte aussi les politiques ; la restauration les remet en place.
+      if (opts.policies) await restorePolicies(client, opts.policies, userId);
       if (target.sector.code !== current.sector.code) {
         await client.query(`UPDATE company_settings SET sector_pack = $1, updated_at = now() WHERE id = 1`, [target.sector.code]);
       }
@@ -331,7 +334,8 @@ export const sectorRepository = {
       await syncOverrides(client, 'company_feature_settings', 'feature_key', current.featureOverrides, target.features, userId);
       await syncRollout(client, current.rollout, target.rollout, userId);
       await client.query(`INSERT INTO config_versions (created_by, label, snapshot) VALUES ($1, $2, $3)`,
-        [userId ?? null, label ? (summary === NO_VISIBLE_CHANGE ? label : `${label} — ${summary}`) : summary, JSON.stringify(snapshotOf(target))]);
+        [userId ?? null, label ? (summary === NO_VISIBLE_CHANGE ? label : `${label} — ${summary}`) : summary,
+          JSON.stringify({ ...snapshotOf(target), policies: await policySnapshot(client) })]);
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK').catch(() => undefined);
@@ -340,6 +344,23 @@ export const sectorRepository = {
       client.release();
       this.invalidate();
     }
+  },
+
+  /**
+   * Version enregistrée sans toucher à l'activation (M1-02) : une politique vient d'être
+   * modifiée dans la transaction en cours. `policiesBefore` est l'état d'avant, gardé
+   * comme « Configuration initiale » si l'historique était vide.
+   */
+  async recordVersion(label: string, userId?: string | null, policiesBefore: PolicyRow[] = []) {
+    const current = await this.activation();
+    const state = snapshotOf({ sector: current.sector, modules: current.moduleOverrides, features: current.featureOverrides, rollout: current.rollout });
+    const { rows: existing } = await db.query(`SELECT 1 FROM config_versions LIMIT 1`);
+    if (!existing.length) {
+      await db.query(`INSERT INTO config_versions (created_by, label, snapshot) VALUES (NULL, $1, $2)`,
+        ['Configuration initiale', JSON.stringify({ ...state, policies: policiesBefore })]);
+    }
+    await db.query(`INSERT INTO config_versions (created_by, label, snapshot) VALUES ($1, $2, $3)`,
+      [userId ?? null, label, JSON.stringify({ ...state, policies: await policySnapshot() })]);
   },
 
   /** Retire d'une diffusion les rôles, utilisateurs et établissements disparus. */
@@ -435,7 +456,9 @@ export const sectorRepository = {
     for (const [k, on] of Object.entries(snap.features ?? {})) if (known.has(k)) features[k] = on;
     const target = normalize({ sector: pack, modules, features, rollout: await this.cleanRollout(snap.rollout ?? EMPTY_ROLLOUT) });
     const date = new Date(rows[0].created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Africa/Casablanca' });
-    await this.commit(current, target, userId, `Restauration de la version du ${date}`);
+    // Une version d'avant les politiques (sans le champ) ne les touche pas.
+    await this.commit(current, target, userId, `Restauration de la version du ${date}`,
+      Array.isArray(snap.policies) ? { policies: snap.policies } : {});
     return { activation: await this.activation() };
   },
 };

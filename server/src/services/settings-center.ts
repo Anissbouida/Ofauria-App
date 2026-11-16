@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { auditedQuery } from '../utils/audit-context.js';
 import { PARAMETERS, type ParamDef } from './parameters-catalog.js';
+import { policySnapshot, setPolicy } from './policies.js';
 
 /**
  * Lecture / écriture des paramètres du catalogue (lot 4), quel que soit leur
@@ -21,8 +22,13 @@ export async function readAll(): Promise<Map<string, Record<string, unknown> | n
     const keys = PARAMETERS.filter(p => p.storage.kind === 'module_parameters').map(p => p.key);
     for (const r of (await db.query(`SELECT key, value FROM module_parameters WHERE key = ANY($1)`, [keys])).rows) mp.set(r.key, r.value);
   }
+  // Politiques (mig 538) : l'écran Paramètres règle le niveau société ; sans ligne, le défaut.
+  const company_policies = new Map((await policySnapshot()).filter(r => r.scope_type === 'company').map(r => [r.key, r.value]));
+  const hasPolicies = (await db.query(`SELECT to_regclass('public.policy_values') IS NOT NULL AS ok`)).rows[0].ok as boolean;
   for (const p of PARAMETERS) {
-    if (p.storage.kind === 'company_settings') {
+    if (p.storage.kind === 'policy') {
+      out.set(p.key, hasPolicies ? { ...p.defaults, ...(company_policies.get(p.key) ?? {}) } : null);
+    } else if (p.storage.kind === 'company_settings') {
       const v: Record<string, unknown> = { ...p.defaults };
       for (const [field, col] of Object.entries(p.storage.columns)) {
         if (col in company && company[col] !== null) {
@@ -42,6 +48,13 @@ export async function readAll(): Promise<Map<string, Record<string, unknown> | n
 export async function history(def: ParamDef) {
   const exists = (await db.query(`SELECT to_regclass('public.config_audit_log') IS NOT NULL AS ok`)).rows[0].ok;
   if (!exists) return [];
+  if (def.storage.kind === 'policy') {
+    return (await db.query(
+      `SELECT l.changed_at, concat_ws(' ', u.first_name, u.last_name) AS by_name, l.diff
+         FROM config_audit_log l LEFT JOIN users u ON u.id = l.changed_by
+        WHERE l.table_name = 'policy_values' AND l.record_id = $1 AND l.subject_id = 'company' AND l.operation = 'UPDATE'
+        ORDER BY l.changed_at DESC LIMIT 5`, [def.key])).rows;
+  }
   const r = def.storage.kind === 'module_parameters'
     ? await db.query(
       `SELECT l.changed_at, concat_ws(' ', u.first_name, u.last_name) AS by_name, l.diff
@@ -58,6 +71,9 @@ export async function history(def: ParamDef) {
 
 /** Enregistre la valeur (déjà contrôlée) avec son auteur. */
 export async function write(def: ParamDef, value: Record<string, unknown>, actorId?: string): Promise<boolean> {
+  if (def.storage.kind === 'policy') {
+    return !('error' in await setPolicy(def.key, 'company', '', value, actorId));
+  }
   if (def.storage.kind === 'module_parameters') {
     if (!(await moduleParametersAvailable())) return false;
     const r = await auditedQuery(actorId,

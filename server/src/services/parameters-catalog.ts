@@ -8,7 +8,9 @@ import type { SettingsSection } from '@ofauria/shared';
  * le code ; la valeur est en base, à l'un de deux endroits :
  *   - module_parameters (mig 306) : une ligne par clé, valeur JSON ;
  *   - company_settings : colonnes historiques, lues telles quelles par le code
- *     existant (aucun consommateur à modifier).
+ *     existant (aucun consommateur à modifier) ;
+ *   - policy_values (mig 538) : politique à héritage, réglable à plusieurs niveaux
+ *     (société, établissement, atelier, type d'ordre, article) — services/policies.ts.
  * L'écran Paramètres › Paramètres métier est construit à partir de ce catalogue.
  * Ajouter un paramètre = ajouter une entrée ici (et sa valeur initiale en base).
  */
@@ -34,8 +36,13 @@ export interface ParamDef {
   section: SettingsSection;
   fields: ParamField[];
   defaults: Record<string, unknown>;
-  storage: { kind: 'module_parameters' } | { kind: 'company_settings'; columns: Record<string, string> };
+  storage: { kind: 'module_parameters' } | { kind: 'company_settings'; columns: Record<string, string> } | { kind: 'policy' };
+  /** Politique (stockage `policy`) : niveaux où elle peut être réglée. */
+  scopes?: ('company' | 'store' | 'workshop' | 'order_type' | 'product')[];
 }
+
+/** Tous les niveaux d'une politique de production. */
+const ALL_SCOPES: NonNullable<ParamDef['scopes']> = ['company', 'store', 'workshop', 'order_type', 'product'];
 
 export const DOMAIN_LABELS: Record<ParamDef['domain'], string> = {
   production: 'Production',
@@ -52,6 +59,14 @@ const MODE_WARN_BLOCK = [
 ];
 
 export const PARAMETERS: ParamDef[] = [
+  {
+    key: 'production.yield_target', domain: 'production', section: 'production',
+    label: 'Rendement cible',
+    help: 'Rendement attendu quand ni le contenant ni la recette n\'en fixent : en dessous, le rendement d\'un article est signalé. Se règle par établissement, atelier, type d\'ordre ou article dans Production › Paramétrage › Politiques.',
+    fields: [{ name: 'pct', label: 'Rendement cible', type: 'percent', unit: '%', min: 0, max: 100 }],
+    defaults: { pct: 90 },
+    storage: { kind: 'policy' }, scopes: ALL_SCOPES,
+  },
   {
     key: 'production.fixed_charges', domain: 'production', section: 'production',
     label: 'Charges fixes mensuelles',
