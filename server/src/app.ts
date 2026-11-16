@@ -12,6 +12,7 @@ import portalRoutes from './routes/portal.routes.js';
 import { cronTick } from './routes/automation.routes.js';
 import { errorHandler } from './middleware/error.middleware.js';
 import { originCheck } from './middleware/csrf.middleware.js';
+import { publicApiLimiter, portalLimiter, globalApiLimiter } from './middleware/rate-limit.middleware.js';
 import { runWithTimezone } from './utils/timezone.js';
 import { logger } from './utils/logger.js';
 
@@ -122,9 +123,13 @@ app.post('/api/v1/cron/tick', cronTick);
 
 // API publique (phase 10.2) : clé Bearer, ni cookie ni Origin — montée avant le
 // contrôle anti-CSRF, comme /cron/tick. Son routeur porte son propre parser JSON.
-app.use('/api/v1/public', publicApiRoutes);
+// G0-02 : limiteurs de débit (par clé d'API, par IP) avant les routeurs exposés.
+app.use('/api/v1/public', publicApiLimiter, publicApiRoutes);
 // Portail client (phase 10.3) : jeton Bearer rattaché au client, ni cookie ni Origin.
-app.use('/api/v1/portal', portalRoutes);
+app.use('/api/v1/portal', portalLimiter, portalRoutes);
+
+// Dernier recours pour le reste de l'API (par IP, seuil large).
+app.use('/api/v1', globalApiLimiter);
 
 app.use('/api/v1', originCheck(allowedOrigins));
 
