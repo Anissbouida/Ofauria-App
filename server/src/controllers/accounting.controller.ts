@@ -153,7 +153,8 @@ export const invoiceController = {
     const STAGES = ['draft', 'blocked', 'to_pay', 'partial', 'paid', 'cancelled'];
     const STATUSES = ['pending', 'partial', 'overdue', 'disputed', 'paid', 'cancelled', 'late', 'blocked', 'to_check'];
     const isDate = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined);
-    const pageSize = Math.min(Math.max(parseInt(q.pageSize || '25', 10) || 25, 1), 100);
+    // Jusqu'à 500 : la vue Kanban charge toutes les pièces d'une vue en une fois.
+    const pageSize = Math.min(Math.max(parseInt(q.pageSize || '25', 10) || 25, 1), 500);
     const page = Math.max(parseInt(q.page || '1', 10) || 1, 1);
     const data = await invoiceRepository.findReceivedBoard({
       storeId: req.user!.storeId,

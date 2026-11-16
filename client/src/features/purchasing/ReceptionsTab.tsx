@@ -73,11 +73,11 @@ export default function ReceptionsTab() {
   // BC à réceptionner : étapes « sent » (envoyé, attente de livraison) et « partial » (reliquat attendu).
   const { data: sentBoard, isLoading: loadingSent } = useQuery({
     queryKey: ['purchase-orders', 'board', 'reception-sent'],
-    queryFn: () => purchaseOrdersApi.board({ view: 'open', stage: 'sent', page: '1', pageSize: '100' }),
+    queryFn: () => purchaseOrdersApi.board({ view: 'open', stage: 'sent', page: '1', pageSize: '500' }),
   });
   const { data: partialBoard, isLoading: loadingPartial } = useQuery({
     queryKey: ['purchase-orders', 'board', 'reception-partial'],
-    queryFn: () => purchaseOrdersApi.board({ view: 'open', stage: 'partial', page: '1', pageSize: '100' }),
+    queryFn: () => purchaseOrdersApi.board({ view: 'open', stage: 'partial', page: '1', pageSize: '500' }),
   });
 
   const pending = useMemo<PendingPO[]>(() => {

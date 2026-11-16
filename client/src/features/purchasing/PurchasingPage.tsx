@@ -27,7 +27,7 @@ import './purchasing.css';
 import '../sales/sales.css';
 import RfqTab from './RfqTab';
 import { PurHeaderSlot, PurHeaderActions } from './PurHeaderActions';
-import { usePurLayout, LayoutSwitch, SplitView, KanbanView, PaneHead, PaneState, pdate, pmoney, pn } from './PurLayouts';
+import { usePurLayout, LayoutSwitch, SplitView, KanbanView, PaneHead, PaneState, pdate, pmoney, pn, KANBAN_ALL } from './PurLayouts';
 import { ListKpi } from '../sales/ListTemplate';
 import LandedCostTab from './LandedCostTab';
 import SupplierScoreTab from './SupplierScoreTab';
@@ -253,14 +253,16 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
   useEffect(() => { setPage(1); }, [view, stage, statusFilter, period, customFrom, customTo, searchTerm, supplierFilter, categoryFilter, sortBy, sortDir]);
 
   const boardParams = useMemo(() => {
-    const p: Record<string, string> = { view, page: String(page), pageSize: String(PAGE_SIZE), sort: sortBy, dir: sortDir };
+    // Kanban : toutes les factures de la vue en une page (pas de pagination dans les colonnes).
+    const kanban = layout === 'kanban';
+    const p: Record<string, string> = { view, page: kanban ? '1' : String(page), pageSize: String(kanban ? KANBAN_ALL : PAGE_SIZE), sort: sortBy, dir: sortDir };
     if (view === 'open' && stage) p.stage = stage;
     if (statusFilter) p.status = statusFilter;
     if (searchTerm) p.search = searchTerm;
     if (supplierFilter) p.supplierId = supplierFilter;
     if (categoryFilter) p.categoryId = categoryFilter;
     return { ...p, ...periodParams(period, customFrom, customTo) };
-  }, [view, stage, statusFilter, searchTerm, supplierFilter, categoryFilter, period, customFrom, customTo, page, sortBy, sortDir]);
+  }, [view, stage, statusFilter, searchTerm, supplierFilter, categoryFilter, period, customFrom, customTo, page, sortBy, sortDir, layout]);
 
   const { data: board, isLoading, isFetching } = useQuery({
     queryKey: ['invoices', 'received-board', boardParams],
@@ -681,7 +683,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
             card={inv => ({ num: String(inv.invoice_number), title: String(inv.supplier_name ?? '—'),
               meta: inv.due_date ? `échéance ${pdate(inv.due_date, 'd MMM')}` : pdate(inv.invoice_date, 'd MMM'),
               amount: pmoney(view === 'history' ? pn(inv.total_amount) : pn(inv.total_amount) - pn(inv.paid_amount)) })} />
-          <Pager page={page} total={total} onPage={setPage} note={`${total} facture${total > 1 ? 's' : ''}`} />
+          <p className="prj-note">{total > rows.length ? `${rows.length} factures affichées sur ${total} — affinez les filtres (période, fournisseur) pour voir les autres.` : `${total} facture${total > 1 ? 's' : ''}`}</p>
         </>
       ) : (
         <div style={{ overflowX: 'auto', opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>

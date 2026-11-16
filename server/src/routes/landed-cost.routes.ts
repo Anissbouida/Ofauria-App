@@ -29,7 +29,7 @@ function notFound(res: Response) { res.status(404).json({ success: false, error:
 const ok = (res: Response, data: unknown) => res.json({ success: true, data });
 
 landedCostRouter.get('/', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
-  const r = z.object({ status: z.enum(['draft', 'applied', 'cancelled']).optional(), search: text(100).optional(), page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25) }).safeParse(req.query);
+  const r = z.object({ status: z.enum(['draft', 'applied', 'cancelled']).optional(), search: text(100).optional(), page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(500).default(25) }).safeParse(req.query);
   if (!r.success) { bad(res); return; }
   const { page, pageSize, search, status } = r.data;
   ok(res, { ...(await repo.list({ status, search: search || undefined, storeId: storeOf(req), limit: pageSize, offset: (page - 1) * pageSize })), page, pageSize });

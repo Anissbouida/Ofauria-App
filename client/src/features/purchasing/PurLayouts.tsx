@@ -14,6 +14,8 @@ import '../sales/sales.css';
  */
 
 export type PurLayout = 'split' | 'list' | 'kanban';
+/** Taille de page demandée en Kanban : toutes les pièces de la vue (plafond serveur 500). */
+export const KANBAN_ALL = 500;
 
 /** Colonnes par défaut sur grand écran, Liste sinon (même règle que les Ventes). */
 export function usePurLayout(): [PurLayout, (l: PurLayout) => void] {
@@ -77,7 +79,7 @@ export function KanbanView<T>({ items, lanes, getId, card, onOpen, sum, empty = 
           <section key={l.key} aria-label={l.label} className="prj-lane">
             <div className="prj-lane-head"><span className={`prj-dot ${l.tone ?? ''}`} /><strong>{l.label}</strong><small className="sal-lane-sum">{cards.length}{sum && cards.length ? ` · ${sum(cards)}` : ''}</small></div>
             {!cards.length && <div className="prj-lane-empty">{empty}</div>}
-            {cards.slice(0, 60).map(t => {
+            {cards.map(t => {
               const c = card(t);
               return (
                 <button key={getId(t)} type="button" className="prj-task" onClick={() => onOpen(t)} style={{ cursor: 'pointer' }}>
@@ -92,7 +94,6 @@ export function KanbanView<T>({ items, lanes, getId, card, onOpen, sum, empty = 
                 </button>
               );
             })}
-            {cards.length > 60 && <div className="prj-lane-empty">+ {cards.length - 60} autres — filtrez ou passez en liste</div>}
           </section>
         );
       })}

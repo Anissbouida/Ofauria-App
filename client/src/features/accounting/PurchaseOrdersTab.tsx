@@ -3,7 +3,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchaseOrdersApi, newIdempotencyKey } from '../../api/purchase-orders.api';
 import { supplierScoreApi, STANDING_TAG } from '../../api/supplier-score.api';
-import { usePurLayout, LayoutSwitch, SplitView, KanbanView, POPane, pdate, pmoney } from '../purchasing/PurLayouts';
+import { usePurLayout, LayoutSwitch, SplitView, KanbanView, POPane, pdate, pmoney, KANBAN_ALL } from '../purchasing/PurLayouts';
 import '../projects/projects.css';
 import '../purchasing/purchasing.css';
 import '../sales/sales.css';
@@ -258,13 +258,15 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
   };
 
   const boardParams = useMemo(() => {
-    const p: Record<string, string> = { view, page: String(page), pageSize: String(PAGE_SIZE) };
+    // Kanban : toutes les pièces de la vue en une page (pas de pagination dans les colonnes).
+    const kanban = layout === 'kanban';
+    const p: Record<string, string> = { view, page: kanban ? '1' : String(page), pageSize: String(kanban ? KANBAN_ALL : PAGE_SIZE) };
     if (view === 'open' && stage) p.stage = stage;
     if (statusFilter) p.status = statusFilter;
     if (searchTerm) p.search = searchTerm;
     if (supplierFilter) p.supplierId = supplierFilter;
     return { ...p, ...periodParams(period, customFrom, customTo) };
-  }, [view, stage, statusFilter, period, customFrom, customTo, page, searchTerm, supplierFilter]);
+  }, [view, stage, statusFilter, period, customFrom, customTo, page, searchTerm, supplierFilter, layout]);
   const hasFilters = !!(statusFilter || searchTerm || supplierFilter || period !== (view === 'history' ? '3m' : 'all'));
   const periodText = periodLabel(period, customFrom, customTo);
   const resetFilters = () => {
@@ -668,7 +670,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
             card={po => ({ num: String(po.order_number), title: String(po.supplier_name ?? '—'),
               meta: view === 'open' && po.expected_delivery_date ? `livraison ${pdate(po.expected_delivery_date, 'd MMM')}` : pdate(po.order_date, 'd MMM'),
               amount: pmoney(po.total_amount) })} />
-          <Pager page={page} total={total} onPage={setPage} note={`${total} BC`} />
+          <p className="prj-note">{total > rows.length ? `${rows.length} BC affichés sur ${total} — affinez les filtres pour voir les autres.` : `${total} BC`}</p>
         </>
       ) : (
         <div style={{ overflowX: 'auto', opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>

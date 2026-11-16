@@ -113,7 +113,8 @@ export const purchaseOrderController = {
     const STAGES = ['draft', 'sent', 'partial', 'invoice', 'closed', 'cancelled'];
     const STATUSES = ['en_attente', 'envoye', 'livre_partiel', 'livre_complet', 'en_attente_facturation', 'non_livre', 'annule'];
     const isDate = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined);
-    const pageSize = Math.min(Math.max(parseInt(q.pageSize || '25', 10) || 25, 1), 100);
+    // Jusqu'à 500 : la vue Kanban charge toutes les pièces d'une vue en une fois.
+    const pageSize = Math.min(Math.max(parseInt(q.pageSize || '25', 10) || 25, 1), 500);
     const page = Math.max(parseInt(q.page || '1', 10) || 1, 1);
     const { rows, total } = await purchaseOrderRepository.findBoard({
       storeId: effectiveStoreFilter(req),

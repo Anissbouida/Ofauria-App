@@ -14,7 +14,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
-import { usePurLayout, LayoutSwitch, SplitView, KanbanView, PaneHead, PaneState, pdate, pmoney } from './PurLayouts';
+import { usePurLayout, LayoutSwitch, SplitView, KanbanView, PaneHead, PaneState, pdate, pmoney, KANBAN_ALL } from './PurLayouts';
 
 /**
  * Achats › Frais d'approche (mig 361) : transport, douane, assurance répartis sur les
@@ -36,7 +36,8 @@ export default function LandedCostTab() {
   const [activeId, setActiveId] = useState<string | null>(null);
   useEffect(() => { const t = setTimeout(() => setSearch(searchInput.trim()), 300); return () => clearTimeout(t); }, [searchInput]);
   useEffect(() => { setPage(1); }, [status, search]);
-  const params: Record<string, string> = { page: String(page), pageSize: String(PAGE_SIZE) };
+  // Kanban : tous les bons en une page.
+  const params: Record<string, string> = layout === 'kanban' ? { page: '1', pageSize: String(KANBAN_ALL) } : { page: String(page), pageSize: String(PAGE_SIZE) };
   if (status) params.status = status; if (search) params.search = search;
   const { data, isLoading } = useQuery({ queryKey: ['landed-costs', params], queryFn: () => landedCostApi.list(params) });
   return (
@@ -80,7 +81,7 @@ export default function LandedCostTab() {
               { key: 'cancelled', label: 'Annulés', match: v => v.status === 'cancelled' },
             ]}
             card={v => ({ num: v.number, title: v.supplier_name || '—', meta: `${v.reception_number} · ${METHOD_LABELS[v.allocation_method]}`, amount: pmoney(v.total_amount) })} />
-          <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} bon${data.total > 1 ? 's' : ''} de frais`} />
+          <p className="prj-note">{data.total > data.rows.length ? `${data.rows.length} bons affichés sur ${data.total}` : `${data.total} bon${data.total > 1 ? 's' : ''} de frais`}</p>
         </>
       ) : (
         <div style={{ overflowX: 'auto' }}>
