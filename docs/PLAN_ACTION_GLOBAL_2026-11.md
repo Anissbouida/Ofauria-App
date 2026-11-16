@@ -923,6 +923,28 @@ Compléments :
 
 **Étapes.** Relever chaque constante métier de la production, avec fichier, ligne, valeur et sens. Liste de départ : rendements 90 / 85 / 70, taux de charges 0,40, 191 h par mois, kWh à 1,50, marge ×3, horizon de 14 jours, vitrine à 07:00, coupure d'équipe à 14 h, devise « DH », fuseau. Sortie : un tableau dans ce document.
 
+**Résultat de l'inventaire (2026-11-16).** Relevé sur `server/src` et `client/src/features/production`, hors tests. « Clé » est le nom de la politique proposée pour M1-03.
+
+| # | Constante | Valeur | Où (fichier:ligne) | Sens | Déjà réglable ? | Clé proposée |
+|---|---|---|---|---|---|---|
+| 1 | Rendement cible par défaut d'un contenant | 90 % | `production-rendement.repository.ts:211`, `production-contenant.validator.ts:33`, `ContenantsPage.tsx:582,618`, défaut de colonne mig 082 | Seuil sous lequel un rendement est jugé insuffisant quand ni le contenant ni la recette n'en fixent | par contenant et par recette, pas le repli | `production.yield_target_pct` |
+| 2 | Seuil « bon rendement » des écrans | 85 % | `RendementPanel.tsx:154,194,195,312`, `PlanDetailPage.tsx:1131`, `ProductionDashboardPage.tsx:126,264` | Couleur verte / orange quand la ligne n'a pas de seuil ; diffère du repli serveur (90) | non | `production.yield_target_pct` (même clé : un seul repli) |
+| 3 | Seuil « rendement critique » | 70 % | `RendementPanel.tsx:154` | Passage au rouge | non | `production.yield_alert_pct` |
+| 4 | Taux de charges fixes estimé | 0,40 | `production-cout.repository.ts:3,393` | Repli quand `production_charges_fixes_pct` est vide | oui (colonne société), le repli non | `production.fixed_charges_rate` |
+| 5 | Heures légales par mois | 191 h | `production-cout.repository.ts:73,232,233,570` | Taux horaire = salaire mensuel / 191 quand l'employé n'a pas de taux | oui en paie (`monthly_legal_hours`), ignoré par la production | `production.monthly_hours` (défaut : valeur de la paie) |
+| 6 | Prix du kWh | 1,50 DH | `production-cout.repository.ts:33`, `production-cout.validator.ts:9` | Valeur par défaut d'un nouvel équipement | par équipement, pas le défaut | `production.kwh_price` |
+| 7 | Multiplicateur de marge | ×3 | `recipe-component.repository.ts:59`, `recipe.validator.ts:64`, `NomenclatureEditor.tsx:514`, `ProductsPage.tsx:899` | Prix conseillé = coût × multiplicateur quand la recette n'en porte pas | par recette, pas le repli | `production.margin_multiplier` |
+| 8 | Horizon du plan directeur | 14 jours | `mrp.repository.ts:9` | Nombre maximal de jours calculés | non | `production.mrp_horizon_days` |
+| 9 | Heure de mise en vitrine | 07:00 | `production-etapes.validator.ts:31`, `RetroPlanningPanel.tsx:48` | Heure cible du rétro-planning | saisie à chaque calcul, pas le défaut | `production.showcase_time` |
+| 10 | Coupure d'équipe | 14 h | `plan-print.ts:109`, `ProductionLaunchModal.tsx:120` | Avant 14 h « Matin », après « Après-midi » sur les bons | non | `production.shift_cutoff_hour` |
+| 11 | Seuils du TRS | 85 % / 60 % | `WorkCenterOeeModal.tsx:50` | Couleur du TRS d'un poste de charge | non | `production.oee_good_pct`, `production.oee_alert_pct` |
+| 12 | Fenêtre d'historique de la prévision | 56 jours (8 semaines) | `forecast.repository.ts:17,107` | Ventes prises en compte pour prévoir la demande | non | `production.forecast_history_days` |
+| 13 | Fenêtre de l'approvisionnement boutique | 29 jours, « même jour il y a 14 jours » | `replenishment.repository.ts:1015,1068` | Historique des ventes servant à proposer les quantités | non | `production.replenishment_history_days` |
+| 14 | Devise « DH » | texte | 21 occurrences dans `client/src/features/production` | Libellé monétaire des écrans | non | traité par M3-06 (helper de devise), pas une politique |
+| 15 | Fuseau « Africa/Casablanca » | texte | 47 occurrences dans `server/src` (dont `routing.repository.ts` ×3, `replenishment.repository.ts`) | Date métier du jour | constante centrale `utils/timezone.ts`, recopiée ailleurs | traité par G6 (pack pays), pas une politique |
+
+Constats annexes : le repli serveur du rendement (90) et celui des écrans (85) ne sont pas la même valeur — M1-03 retient 90, valeur du serveur et des contenants, et l'écran lira la valeur résolue ; les lignes 14 et 15 sortent du périmètre M1 (elles ont leur tâche) ; `CHEF_ROLES` a déjà été remplacé par `services/workshops.ts`.
+
 ### M1-02 — Résolution des paramètres à héritage
 
 **Constat.** Le paramétrage existe au niveau société et établissement (`parameters-catalog.ts`, `company_module_settings`, `store_module_settings`, `config_versions`). Il manque les niveaux atelier, type d'ordre et article.
@@ -1849,7 +1871,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ◐ | G1-10 | Tâche : péremption des lots | non |
 | ☑ | G1-11 | Tâche : alertes de DLC | non |
 | ☑ | G1-12 | Tâche : échéances des documents RH | non |
-| ☐ | M1-01 | Inventaire des constantes en dur | non |
+| ☑ | M1-01 | Inventaire des constantes en dur | non |
 | ☐ | M1-02 | Résolution des paramètres à héritage | non |
 | ☐ | M1-03 | Reprise des constantes | non |
 | ☐ | M1-04 | Écran unique des politiques de production | non |
