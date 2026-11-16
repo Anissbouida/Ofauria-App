@@ -4,6 +4,7 @@ import { processOutbox } from './mailer.js';
 import { maintenanceRepository } from '../repositories/maintenance.repository.js';
 import { systemUserId } from './system-user.js';
 import { runDepreciation } from './depreciation.service.js';
+import { prepaidChargeRepository } from '../repositories/prepaid-charge.repository.js';
 import { dunningRepository } from '../repositories/dunning.repository.js';
 import { ledgerIntegrityRepository } from '../repositories/ledger-integrity.repository.js';
 import { expireDue as loyaltyExpireDue } from './loyalty.js';
@@ -277,6 +278,18 @@ async function depreciationMonthly(): Promise<JobResult> {
     : `Dotations à jour jusqu'à ${String(month).padStart(2, '0')}/${year}` };
 }
 
+/**
+ * G1-08 — charges constatées d'avance : constate les mois échus non encore constatés, pour
+ * toutes les charges actives, jusqu'au dernier jour du mois écoulé. Idempotent (une
+ * constatation par charge et par mois).
+ */
+async function prepaidRecognition(): Promise<JobResult> {
+  const { year, month, lastDay } = await previousMonth();
+  const { posted } = await prepaidChargeRepository.recognizeDue({ asOf: lastDay, userId: await systemUserId() });
+  const period = `${String(month).padStart(2, '0')}/${year}`;
+  return { items: posted, message: posted ? `${posted} constatation(s) comptabilisée(s) jusqu'à ${period}` : `Charges constatées d'avance à jour jusqu'à ${period}` };
+}
+
 async function webhookOutbox(): Promise<JobResult> {
   const r = await webhookRepository.deliverPending();
   return { items: r.sent, message: `${r.sent} envoyé(s)${r.failed ? ` · ${r.failed} échec(s)` : ''}` };
@@ -298,6 +311,7 @@ export const JOBS: Record<string, Handler> = {
   ledger_partitions: ledgerPartitions,
   monthly_invoicing: () => monthlyInvoicing(),
   depreciation_monthly: depreciationMonthly,
+  prepaid_recognition: prepaidRecognition,
   housekeeping,
 };
 

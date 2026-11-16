@@ -1844,7 +1844,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ☐ | G1-05 | Interrupteurs de production sans effet | non |
 | ☐ | G1-06 | Garde des modules en mode strict | non |
 | ◐ | G1-07 | Tâche : dotations aux amortissements | oui si activée |
-| ☐ | G1-08 | Tâche : charges constatées d'avance | oui si activée |
+| ◐ | G1-08 | Tâche : charges constatées d'avance | oui si activée |
 | ☐ | G1-09 | Tâche : écritures récurrentes | oui si activée |
 | ☐ | G1-10 | Tâche : péremption des lots | non |
 | ☐ | G1-11 | Tâche : alertes de DLC | non |
@@ -1857,6 +1857,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 **Notes du lot 2 (au 2026-11-16).**
 - **Tâches non codables en l'état** : G1-01 demande une revue des avertissements cas par cas avec le gérant et une date pivot ; G1-02 et G1-03 ont pour prérequis un environnement de staging (G3-01) ; G1-04 attend la validation du schéma d'écriture par le comptable ; G1-06 demande 30 jours de journal du mode `log`.
 - **G1-07** : tâche `depreciation_monthly` (mig 531, `services/scheduler.ts`). Elle passe chaque jour les dotations manquantes de l'exercice du mois écoulé, de janvier à ce mois ; une période verrouillée fait échouer la tâche avec le message de la base. Livrée DÉSACTIVÉE : elle écrit en comptabilité, et la règle du dégressif (G0-15) n'est pas validée par l'expert-comptable. À activer dans Paramètres › Tâches planifiées.
+- **G1-08** : tâche `prepaid_recognition` (mig 532) : constate chaque jour les mois échus des charges constatées d'avance, jusqu'au mois écoulé, par `prepaidChargeRepository.recognizeDue`. Livrée DÉSACTIVÉE, pour la même raison (écritures comptables).
 - **G3-05** (étape 1, faite par nécessité) : la garde des numéros de migration tolère les six doublons historiques sur une base vierge.
 
 ### Lots suivants
