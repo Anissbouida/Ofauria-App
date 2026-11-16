@@ -25,11 +25,15 @@ interface SearchSelectProps {
   size?: 'sm' | 'md';
   /** Libellé accessible quand aucun <label> visible n'est associé. */
   ariaLabel?: string;
+  /** Désactive la saisie (champ de formulaire grisé, non ouvrable). */
+  disabled?: boolean;
+  /** Masque la croix d'effacement (utile quand une valeur est obligatoire). */
+  clearable?: boolean;
 }
 
 const normalize = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-export default function SearchSelect({ options, value, onChange, placeholder, width = 220, size = 'sm', ariaLabel }: SearchSelectProps) {
+export default function SearchSelect({ options, value, onChange, placeholder, width = 220, size = 'sm', ariaLabel, disabled = false, clearable = true }: SearchSelectProps) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
@@ -91,24 +95,27 @@ export default function SearchSelect({ options, value, onChange, placeholder, wi
         ref={inputRef}
         type="text"
         aria-label={ariaLabel ?? placeholder}
+        disabled={disabled}
+        readOnly={disabled}
         value={open ? query : (selected?.label || '')}
         placeholder={selected ? selected.label : placeholder}
-        onFocus={() => setOpen(true)}
-        onChange={e => { setQuery(e.target.value); if (!open) setOpen(true); }}
+        onFocus={() => { if (!disabled) setOpen(true); }}
+        onChange={e => { if (disabled) return; setQuery(e.target.value); if (!open) setOpen(true); }}
         onKeyDown={handleKeyDown}
         style={{
           width: '100%',
           padding: size === 'md' ? '0.5rem 1.75rem 0.5rem 1.75rem' : '0.25rem 1.625rem 0.25rem 1.625rem',
           borderRadius: size === 'md' ? 6 : 3,
           border: '1px solid var(--odoo-border)',
-          backgroundColor: 'var(--odoo-bg)',
+          backgroundColor: disabled ? 'var(--odoo-bg-alt)' : 'var(--odoo-bg)',
           fontSize: size === 'md' ? '0.875rem' : '0.8125rem',
           fontWeight: size === 'md' ? 400 : 500,
           color: selected && !open ? 'var(--odoo-text)' : 'var(--odoo-text-muted)',
           outline: 'none',
+          cursor: disabled ? 'not-allowed' : 'text',
         }}
       />
-      {selected && !open && (
+      {selected && !open && !disabled && clearable && (
         <button
           type="button"
           onClick={() => { onChange(''); setQuery(''); }}

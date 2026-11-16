@@ -167,10 +167,9 @@ function LandedCostFormModal({ onClose, onSaved }: { onClose: () => void; onSave
                 <tr key={c.key}>
                   <td><input className="input" style={{ width: '100%' }} value={c.label} onChange={e => upd(c.key, { label: e.target.value })} placeholder="Transport, douane, assurance…" /></td>
                   <td>
-                    <select className="input" style={{ width: '100%' }} value={c.categoryId ?? ''} onChange={e => upd(c.key, { categoryId: e.target.value || null })}>
-                      <option value="">—</option>
-                      {(categories as Record<string, any>[]).filter(x => x.is_active !== false).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
-                    </select>
+                    <SearchSelect value={c.categoryId != null ? String(c.categoryId) : ''} onChange={id => upd(c.key, { categoryId: id || null })}
+                      placeholder="—" width="100%" ariaLabel="Catégorie de charge"
+                      options={(categories as Record<string, any>[]).filter(x => x.is_active !== false).map(x => ({ id: String(x.id), label: x.name as string }))} />
                   </td>
                   <td><input className="input" type="number" step="0.01" style={{ width: '100%', textAlign: 'right' }} value={c.amount || ''} onChange={e => upd(c.key, { amount: Number(e.target.value) })} /></td>
                   <td>{charges.length > 1 && <button type="button" className="odoo-btn-secondary" onClick={() => setCharges(cs => cs.filter(x => x.key !== c.key))}><Trash2 size={12} /></button>}</td>

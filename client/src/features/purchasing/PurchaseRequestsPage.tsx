@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { apiErrorMessage } from '../../api/errors';
@@ -309,26 +310,22 @@ export default function PurchaseRequestsPage() {
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.6875rem', color: '#b85d1a' }}>
                             <AlertTriangle size={10} /> Attribuez un fournisseur :
                           </span>
-                          <select
-                            className="odoo-filter-dropdown"
-                            defaultValue=""
+                          <SearchSelect
+                            value=""
                             disabled={assignSupplierMutation.isPending}
-                            onChange={(e) => {
-                              const supplierId = e.target.value;
+                            onChange={(supplierId) => {
                               if (!supplierId) return;
                               const sel = getSelectedForSupplier(group.supplier_id || '');
                               const ids = sel.size > 0
                                 ? Array.from(sel)
                                 : group.requests.map(r => r.id);
                               assignSupplierMutation.mutate({ requestIds: ids, supplierId });
-                              e.currentTarget.value = '';
                             }}
-                          >
-                            <option value="" disabled>Choisir un fournisseur...</option>
-                            {(suppliers as { id: string; name: string }[]).map(s => (
-                              <option key={s.id} value={s.id}>{s.name}</option>
-                            ))}
-                          </select>
+                            placeholder="Choisir un fournisseur…"
+                            width={230}
+                            ariaLabel="Attribuer un fournisseur"
+                            options={(suppliers as { id: string; name: string }[]).map(s => ({ id: s.id, label: s.name }))}
+                          />
                         </div>
                       )}
                     </div>

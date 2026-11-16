@@ -709,9 +709,9 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
                     <input type="email" value={form.email} onChange={e => set('email', e.target.value)} className={inputCls} maxLength={255} placeholder="Pour l'envoi des BC" />
                     {errorText('email')}</div>
                   <div><label style={fieldLabel}>Devise des achats</label>
-                    <select value={form.currencyCode} onChange={e => set('currencyCode', e.target.value)} className={inputCls}>
-                      {(currencies.length ? currencies : [{ code: 'MAD', label: 'Dirham marocain' }]).map(c => <option key={c.code} value={c.code}>{c.code} — {c.label}</option>)}
-                    </select>
+                    <SearchSelect value={form.currencyCode} onChange={v => set('currencyCode', v)}
+                      placeholder="Devise" width="100%" size="md" ariaLabel="Devise des achats" clearable={false}
+                      options={(currencies.length ? currencies : [{ code: 'MAD', label: 'Dirham marocain' }]).map(c => ({ id: c.code, label: `${c.code} — ${c.label}` }))} />
                     {form.currencyCode !== 'MAD' && <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>Proposée sur ses BC et devis ; le stock reste valorisé en DH.</span>}
                   </div>
                 </div>

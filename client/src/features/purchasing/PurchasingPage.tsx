@@ -1285,6 +1285,7 @@ function ReceivedInvoiceFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!supplierId) { notify.error('Fournisseur obligatoire'); return; }
     const data: Record<string, any> = {
       invoiceNumber: invoiceNumber.trim() || undefined,
       invoiceDate,
@@ -1334,13 +1335,9 @@ function ReceivedInvoiceFormModal({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Fournisseur *</label>
-                <select value={supplierId} onChange={e => setSupplierId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" required>
-                  <option value="">Choisir...</option>
-                  {suppliers.filter(s => s.is_active || s.id === supplierId).map(s => (
-                    <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
-                  ))}
-                </select></div>
+                <SearchSelect value={supplierId} onChange={setSupplierId} placeholder="Choisir un fournisseur…"
+                  width="100%" size="md" ariaLabel="Fournisseur"
+                  options={suppliers.filter(s => s.is_active || s.id === supplierId).map(s => ({ id: s.id as string, label: s.name as string }))} /></div>
               <div><label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 }}>Catégorie</label>
                 <CategoryCascadeSelector value={categoryId} onChange={setCategoryId} type="expense" /></div>
             </div>
@@ -1854,21 +1851,16 @@ function InvoiceLinesEditorModal({
                     return (
                       <tr key={idx} style={{ borderBottom: '1px solid var(--theme-bg-separator)' }}>
                         <td style={{ padding: '4px 6px' }}>
-                          <select value={line.ingredientId || ''}
-                            onChange={e => {
-                              const id = e.target.value || null;
+                          <SearchSelect value={line.ingredientId || ''}
+                            onChange={id => {
                               const ing = (ingredients as Record<string, any>[]).find(i => i.id === id);
                               updateLine(idx, {
-                                ingredientId: id,
+                                ingredientId: id || null,
                                 description: ing ? (ing.name as string) : line.description,
                               });
                             }}
-                            style={{ width: '100%', padding: '4px 6px', border: '1px solid var(--theme-bg-separator)', borderRadius: 3, fontSize: '0.8125rem', background: 'white' }}>
-                            <option value="">— Libre —</option>
-                            {(ingredients as Record<string, any>[]).map(i => (
-                              <option key={i.id as string} value={i.id as string}>{i.name as string}</option>
-                            ))}
-                          </select>
+                            placeholder="— Libre —" width="100%" ariaLabel="Article"
+                            options={(ingredients as Record<string, any>[]).map(i => ({ id: i.id as string, label: i.name as string }))} />
                         </td>
                         <td style={{ padding: '4px 6px' }}>
                           <input type="text" value={line.description}

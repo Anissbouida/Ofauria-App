@@ -545,9 +545,9 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
             <div><span style={label}>Valable jusqu'au</span><input className="input" type="date" style={{ width: '100%' }} value={head.validUntil} onChange={e => set('validUntil', e.target.value)} /></div>
             <div><span style={label}>Délai (jours)</span><input className="input" type="number" min="0" style={{ width: '100%' }} value={head.deliveryDays} onChange={e => set('deliveryDays', e.target.value)} /></div>
             <div><span style={label}>Conditions de paiement</span><input className="input" style={{ width: '100%' }} value={head.paymentTerms} onChange={e => set('paymentTerms', e.target.value)} placeholder="30 j fin de mois…" /></div>
-            <div><span style={label}>Devise</span><select className="input" style={{ width: '100%' }} value={currency} onChange={e => { setCurrency(e.target.value); setRateInput(''); }}>
-              {(currencies.length ? currencies : [{ code: 'MAD', label: 'Dirham marocain' }]).map(c => <option key={c.code} value={c.code}>{c.code} — {c.label}</option>)}
-            </select></div>
+            <div><span style={label}>Devise</span><SearchSelect value={currency} onChange={v => { setCurrency(v); setRateInput(''); }}
+              placeholder="Devise" width="100%" size="md" ariaLabel="Devise" clearable={false}
+              options={(currencies.length ? currencies : [{ code: 'MAD', label: 'Dirham marocain' }]).map(c => ({ id: c.code, label: `${c.code} — ${c.label}` }))} /></div>
             <div><span style={label}>{currency === 'MAD' ? 'Taux' : `1 ${currency} = … DH`}</span>{currency === 'MAD'
               ? <div style={{ paddingTop: 6, color: 'var(--theme-text-muted)' }}>—</div>
               : <input className="input" type="number" min="0" step="0.0001" style={{ width: '100%' }} value={rateInput} onChange={e => setRateInput(e.target.value)} />}</div>
