@@ -12,6 +12,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
 import { usePurLayout, LayoutSwitch, SplitView, KanbanView, PaneHead, PaneState, pdate, pmoney, KANBAN_ALL } from './PurLayouts';
@@ -64,9 +65,9 @@ export default function LandedCostTab() {
           <SplitView items={data.rows} getId={v => v.id} activeId={activeId} onPick={setActiveId} label="Frais d'approche"
             row={v => ({
               title: v.supplier_name || '—', when: pdate(v.reception_date, 'd MMM'),
-              l2: <><span className="sal-num">{v.number}</span> · {pmoney(v.total_amount)}</>,
-              l3: `${LANDED_STATUS_LABELS[v.status]} · ${v.reception_number}${v.order_number ? ` · ${v.order_number}` : ''}`,
-              dot: v.status === 'draft' ? 'today' : '',
+              l2: <><span className="sal-num">{v.number}</span> · <b>{pmoney(v.total_amount)}</b></>,
+              l3: <><StatusTag tone={v.status === 'applied' ? 'done' : v.status === 'cancelled' ? 'cancelled' : 'draft'} label={LANDED_STATUS_LABELS[v.status]} /> {v.reception_number}{v.order_number ? ` · ${v.order_number}` : ''}</>,
+              dot: '',
             })}
             pane={v => <LandedCostPane id={v.id} onFull={() => setOpenId(v.id)} />} />
           <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} bon${data.total > 1 ? 's' : ''} de frais`} />
@@ -76,9 +77,9 @@ export default function LandedCostTab() {
           <KanbanView items={data.rows} getId={v => v.id} onOpen={v => setOpenId(v.id)} empty="Aucun bon"
             sum={cards => pmoney(cards.reduce((a, v) => a + Number(v.total_amount || 0), 0))}
             lanes={[
-              { key: 'draft', label: 'Brouillons', tone: 'orange', match: v => v.status === 'draft' },
+              { key: 'draft', label: 'Brouillons', tone: 'grey', match: v => v.status === 'draft' },
               { key: 'applied', label: 'Appliqués', tone: 'green', match: v => v.status === 'applied' },
-              { key: 'cancelled', label: 'Annulés', match: v => v.status === 'cancelled' },
+              { key: 'cancelled', label: 'Annulés', tone: 'grey', match: v => v.status === 'cancelled' },
             ]}
             card={v => ({ num: v.number, title: v.supplier_name || '—', meta: `${v.reception_number} · ${METHOD_LABELS[v.allocation_method]}`, amount: pmoney(v.total_amount) })} />
           <p className="prj-note">{data.total > data.rows.length ? `${data.rows.length} bons affichés sur ${data.total}` : `${data.total} bon${data.total > 1 ? 's' : ''} de frais`}</p>

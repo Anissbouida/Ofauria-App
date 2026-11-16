@@ -19,7 +19,30 @@
   --theme-accent-light: #F5E6CC;
   --theme-cta-color: #C4872B;
   --theme-cta-text: #FFFFFF;
+
+  /* Lisibilité (2026-11-15) : teintes de lecture dérivées du thème, calculées ici (:root porte
+     les valeurs posées par SettingsContext) puis réinjectées sur <body> dans --theme-text-*.
+     Tout le système en profite (pages, modules, fenêtres en portail). Thème bleu actuel :
+     secondaire 4,3:1 → 7:1 sur le fond de page, courant 10:1 → 13:1. Le texte d'aide des
+     champs garde la teinte d'origine du thème (4,8:1) pour rester distinct d'une saisie. */
+  --kl-read-muted: color-mix(in srgb, var(--theme-text-muted) 70%, var(--theme-text-strong));
+  --kl-read-body: color-mix(in srgb, var(--theme-text-body) 65%, var(--theme-text-strong));
+  --kl-read-placeholder: var(--theme-text-muted);
+  --kl-read-line: color-mix(in srgb, var(--theme-text-muted) 80%, var(--theme-bg-card));
 }
+body { --theme-text-muted: var(--kl-read-muted); --theme-text-body: var(--kl-read-body); }
+input::placeholder, textarea::placeholder { color: var(--kl-read-placeholder); opacity: 1; }
+
+/* Étiquette de statut commune (composant StatusTag) : couleur + icône + libellé, jamais la
+   couleur seule. Toutes les paires ≥ 4,7:1. */
+.kl-tag { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: 0; white-space: nowrap; vertical-align: middle; line-height: 1; }
+.kl-tag svg { flex: none; }
+.kl-tag.x { background: color-mix(in srgb, var(--theme-text-muted) 12%, var(--theme-bg-card)); color: var(--theme-text-body); }
+.kl-tag.r { background: #FEF2F2; color: #B91C1C; }
+.kl-tag.o { background: #FFFBEB; color: #B45309; }
+.kl-tag.b { background: color-mix(in srgb, var(--theme-accent) 10%, var(--theme-bg-card)); color: var(--theme-accent-hover); }
+.kl-tag.g { background: #F0FDF4; color: #15803D; }
+.kl-tag.rs { background: #B91C1C; color: #fff; }
 
 @layer base {
   body {
@@ -99,7 +122,7 @@
     border-color: var(--theme-accent);
   }
   .input::placeholder {
-    color: var(--theme-text-muted);
+    color: var(--kl-read-placeholder);
   }
   /* Override browser autofill background to match theme */
   .input:-webkit-autofill,
@@ -438,16 +461,20 @@
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  font-size: 0.6875rem;
+  font-size: 0.75rem; /* 11 px → 12 px, plancher de lisibilité */
   font-weight: 600;
   padding: 0.125rem 0.5rem;
   border-radius: 3px;
   white-space: nowrap;
 }
-.odoo-tag-purple  { background-color: var(--theme-accent-light); color: var(--theme-accent); }
+/* Lisibilité 2026-11-15 : accent 4,2:1 → 5,5:1 (teinte foncée du thème), orange 3,8:1 → 6:1 ;
+   amber/indigo étaient utilisées sans être définies. */
+.odoo-tag-purple  { background-color: var(--theme-accent-light); color: var(--theme-accent-hover); }
 .odoo-tag-blue    { background-color: #d6e9f8; color: #1f6391; }
 .odoo-tag-green   { background-color: #d4edda; color: #155724; }
-.odoo-tag-orange  { background-color: #ffe5d0; color: #b85d1a; }
+.odoo-tag-orange  { background-color: #ffe5d0; color: #9A3412; }
+.odoo-tag-amber   { background-color: #fff3cd; color: #856404; }
+.odoo-tag-indigo  { background-color: #e0e7ff; color: #3730a3; }
 .odoo-tag-red     { background-color: #f8d7da; color: #721c24; }
 .odoo-tag-yellow  { background-color: #fff3cd; color: #856404; }
 .odoo-tag-grey    { background-color: #e9ecef; color: #495057; }
@@ -460,10 +487,11 @@
   display: inline-block;
   flex-shrink: 0;
 }
-.odoo-status-dot.ok      { background-color: #28a745; }
-.odoo-status-dot.warning { background-color: #ffc107; }
+/* Teintes ≥ 3:1 sur fond blanc (objet graphique) : le jaune #ffc107 était à 1,6:1. */
+.odoo-status-dot.ok      { background-color: #16A34A; }
+.odoo-status-dot.warning { background-color: #D97706; }
 .odoo-status-dot.danger  { background-color: #dc3545; }
-.odoo-status-dot.neutral { background-color: #adb5bd; }
+.odoo-status-dot.neutral { background-color: #8492A6; }
 
 /* ── Alert banner sober ── */
 .odoo-alert {

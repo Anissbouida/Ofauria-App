@@ -109,7 +109,8 @@ const BULK_STEPS = [
   { from: 'confirmed', to: 'in_production', label: 'Lancer en production' },
   { from: 'in_production', to: 'ready', label: 'Marquer prêtes' },
 ];
-const LANE_TONE: Record<string, string> = { pending: 'grey', ready: 'green', partially_delivered: 'orange' };
+/** Couleur des colonnes = règle commune de StatusTag (gris brouillon, bleu en cours, ambre à remettre, vert terminé). */
+const LANE_TONE: Record<string, string> = { pending: 'grey', confirmed: 'blue', in_production: 'blue', ready: 'orange', partially_delivered: 'blue', completed: 'green', cancelled: 'grey' };
 
 /* Styles partagés des fenêtres (mêmes valeurs que les modales Achats). */
 const modalPanelStyle: CSSProperties = {

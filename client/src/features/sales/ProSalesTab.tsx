@@ -14,6 +14,7 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import SalesPageShell from './SalesPageShell';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { ListToolbar, FilterChips, ListPanel, ListEmpty, NextStep, ListKpi } from './ListTemplate';
 
 /** BL imprimable (mig 354) : remis avec la marchandise, signé par le client. */
@@ -45,6 +46,15 @@ const STATUS: Record<DeliveryNote['status'], { label: string; cls: string }> = {
   delivered: { label: 'À facturer', cls: 'odoo-tag-orange' },
   invoiced: { label: 'Facturé', cls: 'odoo-tag-green' },
   cancelled: { label: 'Annulé', cls: 'odoo-tag-grey' },
+};
+/** Étiquette commune par statut de BL (à facturer = action attendue → ambre). */
+const STATUS_TAG: Record<DeliveryNote['status'], { tone: StatusTone; icon?: LucideIcon }> = {
+  draft: { tone: 'draft' },
+  prepared: { tone: 'progress', icon: PackageCheck },
+  shipped: { tone: 'progress', icon: Truck },
+  delivered: { tone: 'todo', icon: FileText },
+  invoiced: { tone: 'done' },
+  cancelled: { tone: 'cancelled' },
 };
 
 export default function ProSalesTab() {
@@ -508,10 +518,10 @@ function NotesSplit({ notes, search, onToInvoice }: { notes: DeliveryNote[]; sea
       <nav className="ord-list" aria-label="Bons de livraison">
         {notes.map(n => (
           <button key={n.id} type="button" className={`ord-row${n.id === active.id ? ' sel' : ''}`} aria-current={n.id === active.id ? 'true' : undefined} onClick={() => setActiveId(n.id)}>
-            <span className={`ord-dot${n.status === 'delivered' ? ' today' : ''}`} aria-hidden="true" />
+            <span className="ord-dot" aria-hidden="true" />
             <span className="ord-l1"><span className="ord-nm">{n.customer_name}</span><span className="ord-when">{day(n.delivery_date)}</span></span>
-            <span className="ord-l2"><span className="sal-num">{n.number}</span> · {money(n.total_ttc)}</span>
-            <span className="ord-l3">{STATUS[n.status].label}{n.invoice_number ? ` · ${n.invoice_number}` : n.order_number ? ` · ${n.order_number}` : ''}</span>
+            <span className="ord-l2"><span className="sal-num">{n.number}</span> · <b>{money(n.total_ttc)}</b></span>
+            <span className="ord-l3"><StatusTag tone={STATUS_TAG[n.status].tone} icon={STATUS_TAG[n.status].icon} label={STATUS[n.status].label} />{n.invoice_number ? ` ${n.invoice_number}` : n.order_number ? ` ${n.order_number}` : ''}</span>
           </button>
         ))}
       </nav>
@@ -600,7 +610,7 @@ function NotePane({ note, next, menu, busy }: { note: DeliveryNote; next: { labe
 function NotesKanban({ notes, onOpen }: { notes: DeliveryNote[]; onOpen: (id: string) => void }) {
   const lanes: Array<{ key: string; label: string; tone: string; match: (n: DeliveryNote) => boolean }> = [
     { key: 'prep', label: 'En préparation', tone: 'grey', match: n => n.status === 'draft' || n.status === 'prepared' },
-    { key: 'shipped', label: 'Expédiés', tone: '', match: n => n.status === 'shipped' },
+    { key: 'shipped', label: 'Expédiés', tone: 'blue', match: n => n.status === 'shipped' },
     { key: 'delivered', label: 'Livrés · à facturer', tone: 'orange', match: n => n.status === 'delivered' },
     { key: 'invoiced', label: 'Facturés', tone: 'green', match: n => n.status === 'invoiced' },
   ];

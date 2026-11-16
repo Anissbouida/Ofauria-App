@@ -2,11 +2,27 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { startOfDay } from 'date-fns';
 import { ORDER_STATUS_LABELS } from '@ofauria/shared';
-import { ClipboardList, ExternalLink, Loader2, Phone, type LucideIcon } from 'lucide-react';
+import { ClipboardList, ClipboardCheck, ChefHat, PackageCheck, Truck, ExternalLink, Loader2, Phone, type LucideIcon } from 'lucide-react';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { ordersApi } from '../../api/orders.api';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
 import { TYPE_LABELS, isPro, customerName, num, n, fmtDate, isLate, daysLate } from './OrdersPage';
 import { orderSteps, orderHistory } from './OrderRecordPage';
+
+/** Statut d'une commande en étiquette commune (couleur + icône + libellé). */
+const ORDER_TONE: Record<string, { tone: StatusTone; icon?: LucideIcon }> = {
+  pending: { tone: 'draft' },
+  confirmed: { tone: 'progress', icon: ClipboardCheck },
+  in_production: { tone: 'progress', icon: ChefHat },
+  ready: { tone: 'todo', icon: PackageCheck },
+  partially_delivered: { tone: 'progress', icon: Truck },
+  completed: { tone: 'done' },
+  cancelled: { tone: 'cancelled' },
+};
+export function OrderStatusTag({ status }: { status: string }) {
+  const t = ORDER_TONE[status] ?? { tone: 'draft' as StatusTone };
+  return <StatusTag tone={t.tone} icon={t.icon} label={ORDER_STATUS_LABELS[status as keyof typeof ORDER_STATUS_LABELS] || status} />;
+}
 
 /**
  * Commandes en trois colonnes (style Apple, maquette 2026-11-14) : la barre du module, la
@@ -33,9 +49,12 @@ export function OrderList({ orders, activeId, onPick }: { orders: Row[]; activeI
           <button key={id} type="button" className={`ord-row${id === activeId ? ' sel' : ''}`} aria-current={id === activeId ? 'true' : undefined} onClick={() => onPick(id)}>
             <span className={`ord-dot${late ? ' late' : dayDiff === 0 && st !== 'completed' && st !== 'cancelled' ? ' today' : ''}`} aria-hidden="true" />
             <span className="ord-l1"><span className="ord-nm">{customerName(o)}</span><span className="ord-when">{when}</span></span>
-            <span className="ord-l2"><span className="sal-num">{o.order_number as string}</span> · {n(num(o.total))} DH</span>
+            <span className="ord-l2"><span className="sal-num">{o.order_number as string}</span> · <b>{n(num(o.total))} DH</b></span>
             <span className="ord-l3">
-              {late ? `En retard de ${daysLate(o, today)} j · ` : ''}{ORDER_STATUS_LABELS[st as keyof typeof ORDER_STATUS_LABELS] || st}
+              {late
+                ? <StatusTag tone="late" label={`En retard de ${daysLate(o, today)} j`} />
+                : <OrderStatusTag status={st} />}
+              {late && <> {ORDER_STATUS_LABELS[st as keyof typeof ORDER_STATUS_LABELS] || st}</>}
             </span>
           </button>
         );

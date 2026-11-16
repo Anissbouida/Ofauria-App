@@ -671,14 +671,14 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
             onOpen={inv => { setActiveId(inv.id as string); setLayout('split'); }}
             sum={cards => pmoney(cards.reduce((a, inv) => a + (view === 'history' ? pn(inv.total_amount) : pn(inv.total_amount) - pn(inv.paid_amount)), 0))}
             lanes={view === 'open' ? [
-              { key: 'draft', label: 'Brouillons', match: inv => inv.stage === 'draft' },
+              { key: 'draft', label: 'Brouillons', tone: 'grey', match: inv => inv.stage === 'draft' },
               { key: 'blocked', label: 'Bloquées / litige', tone: 'red', match: inv => inv.stage === 'blocked' },
               { key: 'late', label: 'Échues', tone: 'red', match: inv => (inv.stage === 'to_pay' || inv.stage === 'partial') && !!inv.is_late },
               { key: 'to_pay', label: 'À payer', tone: 'orange', match: inv => inv.stage === 'to_pay' && !inv.is_late },
               { key: 'partial', label: 'Partiellement réglées', tone: 'blue', match: inv => inv.stage === 'partial' && !inv.is_late },
             ] : [
               { key: 'paid', label: 'Réglées', tone: 'green', match: inv => inv.stage === 'paid' },
-              { key: 'cancelled', label: 'Annulées', match: inv => inv.stage === 'cancelled' },
+              { key: 'cancelled', label: 'Annulées', tone: 'grey', match: inv => inv.stage === 'cancelled' },
             ]}
             card={inv => ({ num: String(inv.invoice_number), title: String(inv.supplier_name ?? '—'),
               meta: inv.due_date ? `échéance ${pdate(inv.due_date, 'd MMM')}` : pdate(inv.invoice_date, 'd MMM'),

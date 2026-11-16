@@ -8,6 +8,7 @@ import '../projects/projects.css';
 import '../purchasing/purchasing.css';
 import '../sales/sales.css';
 import { ListKpi } from '../sales/ListTemplate';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { PurHeaderActions } from '../purchasing/PurHeaderActions';
 import { suppliersApi, invoicesApi } from '../../api/accounting.api';
 import { ingredientsApi } from '../../api/inventory.api';
@@ -135,6 +136,8 @@ const PO_STAGES: Array<{ key: string; label: string; hint: string; icon: typeof 
   { key: 'closed', label: 'Clôturé', hint: 'voir l\'historique', icon: CheckCircle2 },
 ];
 const OPEN_STAGES = ['draft', 'sent', 'partial', 'invoice'];
+/** Ton de l'étiquette commune par étape du BC (à facturer = action attendue → ambre). */
+const PO_TONE: Record<string, StatusTone> = { draft: 'draft', sent: 'progress', partial: 'progress', invoice: 'todo', closed: 'done' };
 
 // Filtre par statut : les choix dépendent de la vue (un BC annulé n'est jamais « en cours »).
 const VIEW_STATUSES: Record<'open' | 'history', Array<{ key: string; label: string }>> = {
@@ -635,9 +638,12 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
               return {
                 title: String(po.supplier_name ?? '—'),
                 when: view === 'open' && po.expected_delivery_date ? pdate(po.expected_delivery_date, 'd MMM') : pdate(po.order_date, 'd MMM'),
-                l2: <><span className="sal-num">{po.order_number as string}</span> · {pmoney(po.total_amount)}</>,
-                l3: `${PO_STAGES.find(x => x.key === st)?.label ?? (po.status === 'non_livre' ? 'Non livré' : 'Annulé')} · ${stageDetail(po)}`,
-                dot: po.is_late ? 'late' : po.on_hold ? 'late' : (st === 'draft' || st === 'invoice') ? 'today' : '',
+                l2: <><span className="sal-num">{po.order_number as string}</span> · <b>{pmoney(po.total_amount)}</b></>,
+                l3: <><StatusTag
+                  tone={po.on_hold ? 'blocked' : po.is_late ? 'late' : PO_TONE[st] ?? 'cancelled'}
+                  icon={PO_STAGES.find(x => x.key === st)?.icon}
+                  label={`${PO_STAGES.find(x => x.key === st)?.label ?? (po.status === 'non_livre' ? 'Non livré' : 'Annulé')}${po.on_hold ? ' · bloqué' : po.is_late ? ' · en retard' : ''}`} /> {stageDetail(po)}</>,
+                dot: po.is_late || po.on_hold ? 'late' : '',
               };
             }}
             pane={po => {
@@ -658,14 +664,14 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
             onOpen={po => { setActiveId(po.id as string); setLayout('split'); }}
             sum={cards => pmoney(cards.reduce((a, po) => a + (parseFloat(po.total_amount as string) || 0), 0))}
             lanes={view === 'open' ? [
-              { key: 'draft', label: 'Brouillons', match: po => po.stage === 'draft' },
+              { key: 'draft', label: 'Brouillons', tone: 'grey', match: po => po.stage === 'draft' },
               { key: 'sent', label: 'Envoyés', tone: 'blue', match: po => po.stage === 'sent' && !po.is_late },
               { key: 'late', label: 'En retard', tone: 'red', match: po => (po.stage === 'sent' || po.stage === 'partial') && !!po.is_late },
-              { key: 'partial', label: 'Réception partielle', tone: 'orange', match: po => po.stage === 'partial' && !po.is_late },
-              { key: 'invoice', label: 'À facturer', tone: 'green', match: po => po.stage === 'invoice' },
+              { key: 'partial', label: 'Réception partielle', tone: 'blue', match: po => po.stage === 'partial' && !po.is_late },
+              { key: 'invoice', label: 'À facturer', tone: 'orange', match: po => po.stage === 'invoice' },
             ] : [
               { key: 'closed', label: 'Clôturés', tone: 'green', match: po => po.stage === 'closed' },
-              { key: 'cancelled', label: 'Annulés / non livrés', match: po => po.stage !== 'closed' },
+              { key: 'cancelled', label: 'Annulés / non livrés', tone: 'grey', match: po => po.stage !== 'closed' },
             ]}
             card={po => ({ num: String(po.order_number), title: String(po.supplier_name ?? '—'),
               meta: view === 'open' && po.expected_delivery_date ? `livraison ${pdate(po.expected_delivery_date, 'd MMM')}` : pdate(po.order_date, 'd MMM'),

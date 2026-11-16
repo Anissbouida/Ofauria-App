@@ -17,6 +17,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { RowMenu, type RowMenuItem } from '../../components/ui/RowMenu';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { ListToolbar, FilterChips, ListKpi, ListPanel, ListEmpty, NextStep } from './ListTemplate';
 import { useReferentiel } from '../../hooks/useReferentiel';
 
@@ -29,6 +30,8 @@ function n(val: number): string {
 type Inv = Record<string, any>;
 
 const STATUS_LABEL: Record<string, string> = { pending: 'À encaisser', partial: 'Partielle', paid: 'Soldée', cancelled: 'Annulée', credit: 'Avoir' };
+/** Ton de l'étiquette commune par statut (avoir = gris, comme un document sans action). */
+const STATUS_TONE: Record<string, StatusTone> = { pending: 'todo', partial: 'progress', paid: 'done', cancelled: 'cancelled', credit: 'draft' };
 const STATUS_TAG: Record<string, string> = { pending: 'odoo-tag-yellow', partial: 'odoo-tag-blue', paid: 'odoo-tag-green', cancelled: 'odoo-tag-red', credit: 'odoo-tag-purple' };
 const STATUS_DOT: Record<string, string> = { pending: 'warning', partial: 'warning', paid: 'ok', cancelled: 'neutral', credit: 'neutral' };
 /** Motifs d'avoir (O2C L4, mig 450). */
@@ -415,10 +418,10 @@ export default function EmittedInvoicesTab() {
                 const sel = inv.id === active.id;
                 return (
                   <button key={inv.id as string} type="button" className={`ord-row${sel ? ' sel' : ''}`} aria-current={sel ? 'true' : undefined} onClick={() => setActiveId(inv.id as string)}>
-                    <span className={`ord-dot${late ? ' late' : (st === 'pending' || st === 'partial') ? ' today' : ''}`} aria-hidden="true" />
+                    <span className={`ord-dot${late ? ' late' : ''}`} aria-hidden="true" />
                     <span className="ord-l1"><span className="ord-nm">{customerLabel(inv)}</span><span className="ord-when">{fmtDate(inv.invoice_date, 'd MMM yyyy')}</span></span>
-                    <span className="ord-l2"><span className="sal-num">{inv.invoice_number as string}</span> · {isCredit(inv) ? '−' : ''}{n(num(inv.total_amount))} DH</span>
-                    <span className="ord-l3">{late ? 'En retard' : STATUS_LABEL[st] || st}{(st === 'pending' || st === 'partial') && rest > 0.004 ? ` · reste ${n(rest)} DH` : ''}</span>
+                    <span className="ord-l2"><span className="sal-num">{inv.invoice_number as string}</span> · <b>{isCredit(inv) ? '−' : ''}{n(num(inv.total_amount))} DH</b></span>
+                    <span className="ord-l3"><StatusTag tone={late ? 'late' : STATUS_TONE[st] ?? 'draft'} label={late ? 'En retard' : STATUS_LABEL[st] || st} />{(st === 'pending' || st === 'partial') && rest > 0.004 ? ` reste ${n(rest)} DH` : ''}</span>
                   </button>
                 );
               })}
@@ -1218,9 +1221,9 @@ function InvoicePane({ inv, late, menu, onPay, onPdf, onFull }: {
 /** Kanban : À encaisser, En retard, Partielles, Soldées (avoirs et annulées hors tableau) ; une carte ouvre le détail. */
 function InvoiceKanban({ invoices, today, onOpen }: { invoices: Inv[]; today: Date; onOpen: (inv: Inv) => void }) {
   const lanes: Array<{ key: string; label: string; tone: string; match: (inv: Inv) => boolean }> = [
-    { key: 'pending', label: 'À encaisser', tone: '', match: inv => stageOf(inv) === 'pending' && !isOverdue(inv, today) },
+    { key: 'pending', label: 'À encaisser', tone: 'orange', match: inv => stageOf(inv) === 'pending' && !isOverdue(inv, today) },
     { key: 'late', label: 'En retard', tone: 'red', match: inv => isOverdue(inv, today) },
-    { key: 'partial', label: 'Partielles', tone: 'orange', match: inv => stageOf(inv) === 'partial' && !isOverdue(inv, today) },
+    { key: 'partial', label: 'Partielles', tone: 'blue', match: inv => stageOf(inv) === 'partial' && !isOverdue(inv, today) },
     { key: 'paid', label: 'Soldées', tone: 'green', match: inv => stageOf(inv) === 'paid' },
   ];
   return (

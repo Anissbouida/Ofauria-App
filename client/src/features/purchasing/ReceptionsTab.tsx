@@ -9,6 +9,7 @@ import { PODetailModal, DeliveryModal } from '../accounting/PurchaseOrdersTab';
 import { ListKpi } from '../sales/ListTemplate';
 import { ViewSwitch, PeriodFilter, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import { usePurLayout, LayoutSwitch, SplitView, KanbanView, POPane, pdate, pmoney } from './PurLayouts';
+import { StatusTag } from '../../components/ui/StatusTag';
 
 const fmt = (v: number | string | null | undefined) =>
   v == null ? '—' : Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -182,9 +183,13 @@ export default function ReceptionsTab() {
           <SplitView items={pendingRows} getId={po => po.id as string} activeId={activeId} onPick={setActiveId} label="Bons de commande à réceptionner"
             row={po => ({
               title: String(po.supplier_name ?? '—'), when: po.expected_delivery_date ? pdate(po.expected_delivery_date, 'd MMM') : undefined,
-              l2: <><span className="sal-num">{po.order_number}</span> · {pmoney(po.total_amount)}</>,
-              l3: po.is_late ? `En retard de ${daysLate(po.expected_delivery_date)} j` : po.stage === 'partial' ? 'Reliquat attendu' : 'En attente de livraison',
-              dot: po.is_late ? 'late' : 'today',
+              l2: <><span className="sal-num">{po.order_number}</span> · <b>{pmoney(po.total_amount)}</b></>,
+              l3: po.is_late
+                ? <StatusTag tone="late" label={`En retard de ${daysLate(po.expected_delivery_date)} j`} />
+                : po.stage === 'partial'
+                  ? <StatusTag tone="progress" icon={PackageSearch} label="Reliquat attendu" />
+                  : <StatusTag tone="todo" icon={Truck} label="En attente de livraison" />,
+              dot: po.is_late ? 'late' : '',
             })}
             pane={po => (
               <POPane poId={po.id as string} onFull={() => setPoDetail(po.id as string)}
@@ -195,9 +200,9 @@ export default function ReceptionsTab() {
           <KanbanView items={pendingRows} getId={po => po.id as string} onOpen={po => setPoDetail(po.id as string)} empty="Aucun BC"
             sum={cards => pmoney(cards.reduce((a, po) => a + (Number(po.total_amount) || 0), 0))}
             lanes={[
-              { key: 'sent', label: 'Attendus', match: po => po.stage !== 'partial' && !po.is_late },
+              { key: 'sent', label: 'Attendus', tone: 'orange', match: po => po.stage !== 'partial' && !po.is_late },
               { key: 'late', label: 'En retard', tone: 'red', match: po => !!po.is_late },
-              { key: 'partial', label: 'Reliquat attendu', tone: 'orange', match: po => po.stage === 'partial' && !po.is_late },
+              { key: 'partial', label: 'Reliquat attendu', tone: 'blue', match: po => po.stage === 'partial' && !po.is_late },
             ]}
             card={po => ({ num: String(po.order_number ?? '—'), title: String(po.supplier_name ?? '—'),
               meta: po.expected_delivery_date ? `prévu ${pdate(po.expected_delivery_date, 'd MMM')}` : 'sans date', amount: pmoney(po.total_amount) })} />
