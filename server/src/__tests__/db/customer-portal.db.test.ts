@@ -76,6 +76,27 @@ describe.skipIf(!hasTestDb)('Portail client', () => {
     expect(await customerPortalRepository.statusFor(custA)).toBeNull();
   });
 
+  it('un jeton expiré est refusé ; la durée choisie est appliquée (G0-03)', async () => {
+    const t = await customerPortalRepository.issue(custB, userId, 30);
+    const st = await customerPortalRepository.statusFor(custB);
+    const daysLeft = (new Date(st.expires_at).getTime() - Date.now()) / 86400000;
+    expect(daysLeft).toBeGreaterThan(29);
+    expect(daysLeft).toBeLessThan(31);
+    expect(st.expired).toBe(false);
+    expect((await customerPortalRepository.verify(t.token))?.customerId).toBe(custB);
+    expect((await customerPortalRepository.statusFor(custB)).last_used_at).not.toBeNull();
+
+    // Durée hors liste : repli sur 90 jours.
+    const t90 = await customerPortalRepository.issue(custB, userId, 7);
+    const d90 = (new Date(t90.expiresAt).getTime() - Date.now()) / 86400000;
+    expect(d90).toBeGreaterThan(89);
+
+    // Expiration dépassée : refus, et l'état le signale.
+    await p().query(`UPDATE customer_portal_tokens SET expires_at = now() - interval '1 minute' WHERE id = $1`, [t90.id]);
+    expect(await customerPortalRepository.verify(t90.token)).toBeNull();
+    expect((await customerPortalRepository.statusFor(custB)).expired).toBe(true);
+  });
+
   it('cloisonne les factures au client', async () => {
     const rows = (await p().query(
       `SELECT id, invoice_number FROM invoices

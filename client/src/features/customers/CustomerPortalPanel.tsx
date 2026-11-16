@@ -25,8 +25,10 @@ export default function CustomerPortalPanel({ customerId }: { customerId: string
 
   const portalUrl = typeof window !== 'undefined' ? `${window.location.origin}/portail` : '/portail';
 
+  // G0-03 : durée de validité du lien, choisie à l'émission.
+  const [days, setDays] = useState(90);
   const issue = useMutation({
-    mutationFn: () => customersApi.issuePortalToken(customerId),
+    mutationFn: () => customersApi.issuePortalToken(customerId, days),
     onSuccess: (r) => { setIssued(r.token); qc.invalidateQueries({ queryKey: ['customer-portal', customerId] }); },
     onError: (e) => notify.error(apiErrorMessage(e)),
   });
@@ -39,6 +41,17 @@ export default function CustomerPortalPanel({ customerId }: { customerId: string
   const copy = (what: string, value: string) => {
     navigator.clipboard?.writeText(value).then(() => { setCopied(what); setTimeout(() => setCopied(''), 2000); });
   };
+
+  const validitySelect = (
+    <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
+      Validité
+      <select className="odoo-input" value={days} onChange={e => setDays(Number(e.target.value))} style={{ width: 'auto' }}>
+        <option value={30}>30 jours</option>
+        <option value={90}>90 jours</option>
+        <option value={365}>1 an</option>
+      </select>
+    </label>
+  );
 
   return (
     <section>
@@ -63,11 +76,15 @@ export default function CustomerPortalPanel({ customerId }: { customerId: string
 
       {isLoading ? <Loader2 className="spin" /> : status ? (
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
-          <span>Accès actif (<code>{status.token_prefix}…</code>)</span>
-          <span style={{ opacity: 0.7 }}>Dernière connexion : {status.last_login_at ? new Date(status.last_login_at).toLocaleString('fr-FR') : 'jamais'}</span>
+          <span>{status.expired ? 'Accès expiré' : 'Accès actif'} (<code>{status.token_prefix}…</code>)</span>
+          <span style={{ opacity: 0.7 }}>Dernière utilisation : {status.last_used_at ?? status.last_login_at ? new Date((status.last_used_at ?? status.last_login_at) as string).toLocaleString('fr-FR') : 'jamais'}</span>
+          <span style={{ opacity: 0.7, color: status.expired ? 'var(--color-danger, #b42318)' : undefined }}>
+            {status.expired ? 'Expiré le' : 'Expire le'} {new Date(status.expires_at).toLocaleDateString('fr-FR')}
+          </span>
           {editable && (
             <>
-              <button className="odoo-btn-secondary" disabled={issue.isPending} onClick={() => issue.mutate()}>Régénérer</button>
+              {validitySelect}
+              <button className="odoo-btn-secondary" disabled={issue.isPending} onClick={() => issue.mutate()}>Régénérer le lien</button>
               <button className="odoo-btn-secondary" disabled={revoke.isPending} onClick={() => revoke.mutate()}><Trash2 size={13} /> Révoquer</button>
             </>
           )}
@@ -75,6 +92,7 @@ export default function CustomerPortalPanel({ customerId }: { customerId: string
       ) : (
         <div style={{ marginTop: 8 }}>
           <span style={{ opacity: 0.7 }}>Aucun accès. </span>
+          {editable && validitySelect}{' '}
           {editable && (
             <button className="odoo-btn-primary" disabled={issue.isPending} onClick={() => issue.mutate()}>
               {issue.isPending ? <Loader2 size={13} className="spin" /> : <KeyRound size={13} />} Créer un accès

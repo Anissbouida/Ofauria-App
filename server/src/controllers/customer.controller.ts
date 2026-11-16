@@ -199,7 +199,9 @@ export const customerController = {
     res.json({ success: true, data: status });
   },
   async issuePortalToken(req: AuthRequest, res: Response) {
-    const r = await customerPortalRepository.issue(req.params.id, req.user?.userId ?? null);
+    // G0-03 : durée de validité au choix (30, 90, 365 jours) ; 90 par défaut.
+    const days = Number((req.body ?? {}).expiresInDays);
+    const r = await customerPortalRepository.issue(req.params.id, req.user?.userId ?? null, Number.isFinite(days) ? days : undefined);
     // `token` : le jeton en clair, renvoyé une seule fois.
     res.status(201).json({ success: true, data: r });
   },
