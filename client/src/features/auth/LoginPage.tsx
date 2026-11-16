@@ -3,7 +3,13 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { notify } from '../../components/ui/InlineNotification';
-import { Delete, Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { ArrowLeft, Delete, Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { authApi } from '../../api/auth.api';
+
+/** G0-06 : un PIN antérieur compte 4 chiffres, un PIN récent 6 à 10. */
+const PIN_MIN = 4;
+const PIN_MAX = 10;
+type PinUser = { id: string; firstName: string; lastInitial: string };
 
 export default function LoginPage() {
   const { user, loginWithPin, login } = useAuth();
@@ -22,16 +28,28 @@ export default function LoginPage() {
   const loginWithPinRef = useRef(loginWithPin);
   loginWithPinRef.current = loginWithPin;
 
+  // G0-06 : on choisit d'abord son nom (tuile), puis on saisit son PIN. Le
+  // serveur ne compare alors qu'un seul hachage.
+  const [pinUsers, setPinUsers] = useState<PinUser[] | null>(null);
+  const [selected, setSelected] = useState<PinUser | null>(null);
+  const selectedRef = useRef<PinUser | null>(null);
+  selectedRef.current = selected;
+  useEffect(() => {
+    if (mode !== 'pin') return;
+    authApi.pinUsers().then(setPinUsers).catch(() => setPinUsers([]));
+  }, [mode]);
+
   const handlePinSubmit = useCallback(async (pinCode: string) => {
+    const who = selectedRef.current;
+    if (!who || pinCode.length < PIN_MIN) return;
     setLoading(true);
     setError('');
     try {
-      await loginWithPinRef.current(pinCode);
+      await loginWithPinRef.current(who.id, pinCode);
       // login success — no notification needed
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: { message?: string } } }; message?: string };
       const serverMsg = axiosErr?.response?.data?.error?.message;
-      console.error('PIN login error:', err, 'Server message:', serverMsg);
       setError(serverMsg || axiosErr?.message || 'Code PIN incorrect');
       setPin('');
     } finally {
@@ -39,23 +57,22 @@ export default function LoginPage() {
     }
   }, []);
 
+  // La longueur du PIN n'est plus fixe (4 chiffres pour un PIN antérieur, 6 à 10
+  // sinon) : la saisie se valide par « Valider » ou Entrée, plus automatiquement.
   const handleDigit = useCallback((digit: string) => {
-    if (loading) return;
+    if (loading || !selectedRef.current) return;
     setError('');
-    setPin(prev => {
-      const next = prev + digit;
-      if (next.length >= 4) {
-        setTimeout(() => handlePinSubmit(next), 200);
-      }
-      return next.length <= 6 ? next : prev;
-    });
-  }, [handlePinSubmit, loading]);
+    setPin(prev => (prev.length < PIN_MAX ? prev + digit : prev));
+  }, [loading]);
 
   const handleBackspace = () => { if (!loading) { setPin(prev => prev.slice(0, -1)); setError(''); } };
   const handleClear = () => { if (!loading) { setPin(''); setError(''); } };
+  const backToTiles = () => { if (!loading) { setSelected(null); setPin(''); setError(''); } };
 
   const handleDigitRef = useRef(handleDigit);
   handleDigitRef.current = handleDigit;
+  const pinRef = useRef(pin);
+  pinRef.current = pin;
 
   // Keyboard support — only in PIN mode
   useEffect(() => {
@@ -63,7 +80,8 @@ export default function LoginPage() {
     const handler = (e: KeyboardEvent) => {
       if (e.key >= '0' && e.key <= '9') handleDigitRef.current(e.key);
       else if (e.key === 'Backspace') handleBackspace();
-      else if (e.key === 'Escape') handleClear();
+      else if (e.key === 'Enter') handlePinSubmit(pinRef.current);
+      else if (e.key === 'Escape') { if (pinRef.current) handleClear(); else backToTiles(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -146,22 +164,62 @@ export default function LoginPage() {
         <p className="mt-1" style={{ color: 'var(--theme-text-muted)' }}>{settings.subtitle}</p>
       </div>
 
+      {!selected ? (
+        // ── Étape 1 : choisir son nom ──
+        <div className="flex flex-col items-center w-full max-w-2xl">
+          <div className="flex items-center gap-2 mb-6">
+            <Lock size={20} className="text-gray-400" />
+            <span className="text-gray-500">Qui se connecte ?</span>
+          </div>
+          {pinUsers === null ? (
+            <div className="text-sm" style={{ color: 'var(--theme-text-muted)' }}>Chargement…</div>
+          ) : pinUsers.length === 0 ? (
+            <div className="text-sm text-center" style={{ color: 'var(--theme-text-muted)' }}>
+              Aucun compte n'a de code PIN. Utilisez la connexion administrateur.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 w-full">
+              {pinUsers.map(u => (
+                <button key={u.id} type="button" onClick={() => { setSelected(u); setPin(''); setError(''); }}
+                  className="rounded-2xl shadow p-4 flex flex-col items-center gap-2 transition-all active:scale-95 hover:shadow-md"
+                  style={{ backgroundColor: 'var(--theme-bg-card)' }}>
+                  <span className="w-12 h-12 rounded-full flex items-center justify-center text-white text-lg font-semibold"
+                    style={{ backgroundColor: 'var(--theme-accent)' }}>
+                    {(u.firstName[0] ?? '?').toUpperCase()}{u.lastInitial}
+                  </span>
+                  <span className="text-sm font-medium text-gray-800 text-center leading-tight">
+                    {u.firstName}{u.lastInitial ? ` ${u.lastInitial}.` : ''}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          <a href="/login?mode=email"
+            className="mt-8 text-sm text-gray-400 hover:text-gray-600 flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer no-underline">
+            <Mail size={14} /> Connexion administrateur
+          </a>
+        </div>
+      ) : (
+      // ── Étape 2 : saisir son PIN ──
       <div className="flex flex-col items-center">
+        <button type="button" onClick={backToTiles} disabled={loading}
+          className="mb-4 text-sm text-gray-500 hover:text-gray-700 flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100">
+          <ArrowLeft size={14} /> Changer de personne
+        </button>
         <div className="flex items-center gap-2 mb-4">
           <Lock size={20} className="text-gray-400" />
-          <span className="text-gray-500">Entrez votre code PIN</span>
+          <span className="text-gray-500">
+            <strong className="text-gray-800">{selected.firstName}{selected.lastInitial ? ` ${selected.lastInitial}.` : ''}</strong> — entrez votre code PIN
+          </span>
         </div>
 
-        <div className="flex gap-4 mb-6">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i}
-              className={`w-5 h-5 rounded-full transition-all duration-150 ${
-                i < pin.length
-                  ? error ? 'bg-red-500 scale-125' : 'scale-125'
-                  : 'border-2 border-gray-300'
-              }`}
-              style={i < pin.length && !error ? { backgroundColor: 'var(--theme-accent)' } : undefined} />
-          ))}
+        <div className="flex gap-3 mb-6 h-5 items-center" aria-label={`${pin.length} chiffre(s) saisi(s)`}>
+          {pin.length === 0
+            ? <span className="text-sm text-gray-300">• • • •</span>
+            : Array.from({ length: pin.length }, (_, i) => (
+              <div key={i} className={`w-4 h-4 rounded-full ${error ? 'bg-red-500' : ''}`}
+                style={!error ? { backgroundColor: 'var(--theme-accent)' } : undefined} />
+            ))}
         </div>
 
         {error && <div className="text-red-500 text-sm font-medium mb-4">{error}</div>}
@@ -188,14 +246,13 @@ export default function LoginPage() {
               <Delete size={22} />
             </button>
           </div>
+          <button type="button" onClick={() => handlePinSubmit(pin)} disabled={loading || pin.length < PIN_MIN}
+            className="btn-primary w-full py-3 mt-4 disabled:opacity-50">
+            {loading ? 'Vérification…' : 'Valider'}
+          </button>
         </div>
-
-        {/* Lien direct — pas de state React, change l'URL */}
-        <a href="/login?mode=email"
-          className="mt-8 text-sm text-gray-400 hover:text-gray-600 flex items-center gap-2 px-4 py-3 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer no-underline">
-          <Mail size={14} /> Connexion administrateur
-        </a>
       </div>
+      )}
     </div>
   );
 }

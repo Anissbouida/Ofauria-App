@@ -8,6 +8,8 @@ export interface User {
   role: Role;
   isActive: boolean;
   storeId?: string | null;
+  /** G0-06 : mot de passe antérieur à la politique — à changer avant toute autre action. */
+  mustChangePassword?: boolean;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,5 +1,4 @@
 import { db } from '../config/database.js';
-import { comparePin } from '../utils/hash.js';
 import { auditedQuery, setAuditUser } from '../utils/audit-context.js';
 
 export interface UserRow {
@@ -7,6 +6,8 @@ export interface UserRow {
   email: string;
   password_hash: string;
   pin_code: string | null;
+  pin_length?: number | null;
+  must_change_password?: boolean;
   first_name: string;
   last_name: string;
   role: string;
@@ -45,16 +46,27 @@ export const userRepository = {
     return result.rows[0];
   },
 
-  async findByPinCode(pinCode: string): Promise<UserRow | null> {
-    // PINs are hashed — load all active users with a PIN and compare via bcrypt
+  /**
+   * G0-06 : comptes proposés sur l'écran de connexion par PIN (tuiles). Route
+   * publique : on n'expose que le prénom et l'initiale du nom, et seulement des
+   * comptes actifs dotés d'un PIN. La connexion ne compare ensuite qu'UN hachage.
+   */
+  async findPinUsers(): Promise<{ id: string; first_name: string; last_initial: string }[]> {
     const result = await db.query(
-      'SELECT * FROM users WHERE pin_code IS NOT NULL AND is_active = true'
+      `SELECT id, first_name, upper(left(btrim(last_name), 1)) AS last_initial
+         FROM users WHERE pin_code IS NOT NULL AND is_active = true
+        ORDER BY first_name, last_name`
     );
-    for (const user of result.rows) {
-      const match = await comparePin(pinCode, user.pin_code);
-      if (match) return user;
-    }
-    return null;
+    return result.rows;
+  },
+
+  /** Longueur du PIN apprise à une connexion réussie (PIN antérieurs à la mig 522). */
+  async learnPinLength(id: string, length: number): Promise<void> {
+    await db.query(`UPDATE users SET pin_length = $2 WHERE id = $1 AND pin_length IS DISTINCT FROM $2`, [id, length]);
+  },
+
+  async setMustChangePassword(id: string, value: boolean): Promise<void> {
+    await db.query(`UPDATE users SET must_change_password = $2 WHERE id = $1 AND must_change_password IS DISTINCT FROM $2`, [id, value]);
   },
 
   async findAllActive(): Promise<Pick<UserRow, 'id' | 'first_name' | 'last_name' | 'role'>[]> {
@@ -72,6 +84,9 @@ export const userRepository = {
   async update(id: string, data: {
     email?: string; firstName?: string; lastName?: string;
     role?: string; isActive?: boolean; passwordHash?: string; pinCode?: string | null; storeId?: string | null;
+    /** Longueur du PIN posé (mig 522) ; null quand le PIN est retiré. */
+    pinLength?: number | null;
+    mustChangePassword?: boolean;
   }, actorId?: string): Promise<UserRow> {
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -84,6 +99,8 @@ export const userRepository = {
     if (data.passwordHash !== undefined) { fields.push(`password_hash = $${i++}`); values.push(data.passwordHash); }
     if (data.pinCode !== undefined) { fields.push(`pin_code = $${i++}`); values.push(data.pinCode); }
     if (data.storeId !== undefined) { fields.push(`store_id = $${i++}`); values.push(data.storeId); }
+    if (data.pinLength !== undefined) { fields.push(`pin_length = $${i++}`); values.push(data.pinLength); }
+    if (data.mustChangePassword !== undefined) { fields.push(`must_change_password = $${i++}`); values.push(data.mustChangePassword); }
     fields.push('updated_at = NOW()');
     values.push(id);
     const result = await auditedQuery(actorId,

@@ -224,7 +224,11 @@ function AccountsTab({ onEdit }: { onEdit: (u: UserRow) => void }) {
                         ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><MapPin size={12} /> {store}</span>
                         : <span style={{ color: 'var(--odoo-text-light)' }}>{u.role === 'admin' ? 'Tous' : 'Non assigné'}</span>}
                     </td>
-                    <td>{u.hasPin ? <span className="odoo-tag odoo-tag-green">Défini</span> : <span className="odoo-tag odoo-tag-grey">Non défini</span>}</td>
+                    <td>
+                      {!u.hasPin ? <span className="odoo-tag odoo-tag-grey">Non défini</span>
+                        : u.pinWeak ? <span className="odoo-tag odoo-tag-orange" title="PIN de moins de 6 chiffres ou antérieur à la règle : à renouveler">À renouveler</span>
+                        : <span className="odoo-tag odoo-tag-green">Défini</span>}
+                    </td>
                     <td><StatusTag tone={u.isActive ? 'done' : 'cancelled'} label={u.isActive ? 'Actif' : 'Désactivé'} /></td>
                     <td onClick={e => e.stopPropagation()} style={{ whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'inline-flex', gap: 4 }}>
@@ -293,7 +297,8 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
   const [removePin, setRemovePin] = useState(false);
   const set = (k: keyof typeof form, v: string) => setForm(f => ({ ...f, [k]: v }));
 
-  const pinInvalid = !!form.pinCode && !/^\d{4,6}$/.test(form.pinCode);
+  // G0-06 : tout nouveau PIN compte 6 à 10 chiffres.
+  const pinInvalid = !!form.pinCode && !/^\d{6,10}$/.test(form.pinCode);
   const passwordInvalid = !user && form.password.length < 4;
   const invalid = !form.firstName.trim() || !form.lastName.trim() || !/^\S+@\S+\.\S+$/.test(form.email) || pinInvalid || passwordInvalid || roleCodes.length === 0;
 
@@ -350,11 +355,11 @@ function UserFormModal({ user, onClose }: { user: UserRow | null; onClose: () =>
           <input id="user-password" type="password" className={`odoo-input${form.password && passwordInvalid ? ' invalid' : ''}`} autoComplete="new-password"
             value={form.password} onChange={e => set('password', e.target.value)} placeholder={user ? '••••••••' : ''} />
         </Field>
-        <Field label="Code PIN" hint={user ? (user.hasPin ? (removePin ? 'Sera retiré à l\'enregistrement' : 'Défini ; vide = inchangé') : 'Non défini') : '4 à 6 chiffres, connexion en caisse'}>
+        <Field label="Code PIN" hint={user ? (user.hasPin ? (removePin ? 'Sera retiré à l\'enregistrement' : (user.pinWeak ? 'À renouveler (6 chiffres au moins) ; vide = inchangé' : 'Défini ; vide = inchangé')) : 'Non défini ; 6 à 10 chiffres') : '6 à 10 chiffres, connexion en caisse'}>
           <div style={{ display: 'flex', gap: 6 }}>
-            <input id="user-pin" inputMode="numeric" maxLength={6} className={`odoo-input${pinInvalid ? ' invalid' : ''}`}
+            <input id="user-pin" inputMode="numeric" maxLength={10} className={`odoo-input${pinInvalid ? ' invalid' : ''}`}
               style={{ fontFamily: 'ui-monospace, monospace', letterSpacing: '0.2em' }} autoComplete="off" disabled={removePin}
-              value={form.pinCode} onChange={e => set('pinCode', e.target.value.replace(/\D/g, ''))} placeholder="1234" />
+              value={form.pinCode} onChange={e => set('pinCode', e.target.value.replace(/\D/g, ''))} placeholder="123456" />
             {user?.hasPin && (
               <button type="button" className={removePin ? 'odoo-btn-secondary' : 'odoo-btn-danger'} style={{ whiteSpace: 'nowrap' }}
                 onClick={() => { setRemovePin(!removePin); set('pinCode', ''); }}>

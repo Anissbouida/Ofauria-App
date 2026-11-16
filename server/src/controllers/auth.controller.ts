@@ -5,7 +5,8 @@ import { userRepository } from '../repositories/user.repository.js';
 import { revokedTokenRepository } from '../repositories/revoked-token.repository.js';
 import { loginRoleContext } from '../services/access-rights.js';
 import { authEventRepository } from '../repositories/auth-event.repository.js';
-import { hashPassword, comparePassword } from '../utils/hash.js';
+import { hashPassword, comparePassword, comparePin } from '../utils/hash.js';
+import { meetsPasswordPolicy } from '../validators/auth.validator.js';
 import { generateToken } from '../utils/jwt.js';
 
 // OWASP A07-4 : hash bcrypt factice (reel, parsable) utilise pour uniformiser
@@ -124,9 +125,14 @@ export const authController = {
 
     // Reset compteur sur login reussi.
     await userRepository.resetFailedLogins(user.id);
+    // G0-06 : un mot de passe antérieur à la politique (trop court, sans
+    // majuscule…) laisse entrer, mais impose son changement avant toute autre action.
+    const mustChange = !!user.must_change_password || !meetsPasswordPolicy(password);
+    if (mustChange) await userRepository.setMustChangePassword(user.id, true);
     await authEventRepository.recordFromRequest(req, {
       eventType: 'login_success',
       userId: user.id, email: user.email, success: true,
+      ...(mustChange ? { details: { mustChangePassword: true } } : {}),
     });
 
     // Le jeton porte le role de BASE (perimetre technique des routes) ; un role cree
@@ -149,8 +155,54 @@ export const authController = {
           roles: roleCtx.roles,
           isActive: user.is_active,
           storeId: user.store_id || null,
+          mustChangePassword: mustChange,
         },
       },
+    });
+  },
+
+  /**
+   * G0-06 : changement de son propre mot de passe (obligatoire quand le compte
+   * porte must_change_password). Invalide les autres sessions du compte.
+   */
+  async changePassword(req: AuthRequest, res: Response) {
+    const { currentPassword, newPassword } = req.body as { currentPassword: string; newPassword: string };
+    const user = await userRepository.findById(req.user!.userId);
+    if (!user || !user.is_active) {
+      res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } });
+      return;
+    }
+    if (!(await comparePassword(currentPassword, user.password_hash))) {
+      await authEventRepository.recordFromRequest(req, {
+        eventType: 'login_failed', userId: user.id, email: user.email, success: false,
+        details: { reason: 'password_change_bad_current' },
+      });
+      res.status(400).json({ success: false, error: { message: 'Mot de passe actuel incorrect' } });
+      return;
+    }
+    if (currentPassword === newPassword) {
+      res.status(400).json({ success: false, error: { message: 'Le nouveau mot de passe doit être différent de l\'actuel' } });
+      return;
+    }
+    await userRepository.update(user.id, { passwordHash: await hashPassword(newPassword), mustChangePassword: false }, user.id);
+    // Les jetons déjà émis deviennent invalides ; on en réémet un pour cette session.
+    const tokenVersion = await userRepository.bumpTokenVersion(user.id);
+    await authEventRepository.recordFromRequest(req, {
+      eventType: 'user_updated', userId: user.id, targetUserId: user.id, email: user.email, success: true,
+      details: { changed: ['passwordHash'], self: true },
+    });
+    const roleCtx = await loginRoleContext(user.id);
+    const token = generateToken({ userId: user.id, role: roleCtx.primaryBaseRole, baseRoles: roleCtx.baseRoles, storeId: user.store_id || undefined, tokenVersion });
+    setAuthCookie(res, token);
+    res.json({ success: true, data: { token, mustChangePassword: false } });
+  },
+
+  /** G0-06 : tuiles de l'écran de connexion par PIN (prénom + initiale du nom). */
+  async pinUsers(_req: AuthRequest, res: Response) {
+    const users = await userRepository.findPinUsers();
+    res.json({
+      success: true,
+      data: users.map(u => ({ id: u.id, firstName: u.first_name, lastInitial: u.last_initial })),
     });
   },
 
@@ -180,22 +232,22 @@ export const authController = {
   },
 
   async pinLogin(req: AuthRequest, res: Response) {
-    const { pinCode } = req.body;
-    if (!pinCode) {
-      res.status(400).json({ success: false, error: { message: 'Code PIN requis' } });
-      return;
-    }
+    // G0-06 : le compte est désigné par la tuile choisie ; UNE seule comparaison
+    // de hachage, puis le verrouillage du compte comme pour le mot de passe.
+    const { userId, pinCode } = req.body as { userId: string; pinCode: string };
 
-    const user = await userRepository.findByPinCode(pinCode);
-    if (!user || !user.is_active) {
+    const user = await userRepository.findById(userId);
+    if (!user || !user.is_active || !user.pin_code) {
+      // Comparaison factice : même durée qu'un compte réel (pas d'énumération).
+      await comparePin(pinCode, DUMMY_HASH);
       await authEventRepository.recordFromRequest(req, {
-        eventType: 'pin_login_failed', success: false, details: { reason: 'no_match' },
+        eventType: 'pin_login_failed', success: false, details: { reason: 'unknown_or_no_pin' },
       });
       res.status(401).json({ success: false, error: { message: 'Code PIN incorrect' } });
       return;
     }
 
-    // Refus si compte verrouille (A04-2).
+    // Refus si compte verrouille (A04-2) — avant toute comparaison.
     const lockedUntil = await userRepository.isLocked(user.id);
     if (lockedUntil) {
       await authEventRepository.recordFromRequest(req, {
@@ -206,8 +258,31 @@ export const authController = {
       return;
     }
 
-    // Reset sur login PIN reussi.
+    const valid = await comparePin(pinCode, user.pin_code);
+    if (!valid) {
+      const { count, lockedUntil: newLock } = await userRepository.recordFailedLogin(
+        user.id, LOGIN_FAIL_THRESHOLD, LOGIN_LOCK_DURATION_MS
+      );
+      await authEventRepository.recordFromRequest(req, {
+        eventType: 'pin_login_failed', userId: user.id, email: user.email, success: false,
+        details: { reason: 'bad_pin', failedCount: count },
+      });
+      if (newLock && newLock > new Date()) {
+        await authEventRepository.recordFromRequest(req, {
+          eventType: 'account_locked', userId: user.id, email: user.email, success: false,
+          details: { until: newLock.toISOString(), threshold: LOGIN_FAIL_THRESHOLD, via: 'pin' },
+        });
+        res.status(423).json({ success: false, error: { message: lockoutErrorMessage(newLock) } });
+        return;
+      }
+      const remaining = Math.max(0, LOGIN_FAIL_THRESHOLD - count);
+      res.status(401).json({ success: false, error: { message: `Code PIN incorrect (${remaining} tentative(s) restante(s))` } });
+      return;
+    }
+
+    // Reset sur login PIN reussi ; on apprend la longueur d'un PIN antérieur.
     await userRepository.resetFailedLogins(user.id);
+    await userRepository.learnPinLength(user.id, pinCode.length);
     await authEventRepository.recordFromRequest(req, {
       eventType: 'pin_login_success', userId: user.id, email: user.email, success: true,
     });
@@ -289,6 +364,7 @@ export const authController = {
         roles: roleCtx.roles,
         isActive: user.is_active,
         storeId: user.store_id || null,
+        mustChangePassword: !!user.must_change_password,
       },
     });
   },

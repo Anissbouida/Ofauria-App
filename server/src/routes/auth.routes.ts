@@ -5,7 +5,12 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
 import { validate } from '../middleware/validate.middleware.js';
-import { loginSchema, registerSchema, pinLoginSchema } from '../validators/auth.validator.js';
+import { loginSchema, registerSchema, pinLoginSchema, changePasswordSchema } from '../validators/auth.validator.js';
+import { makeLimiter } from '../middleware/rate-limit.middleware.js';
+import { ipKeyGenerator } from 'express-rate-limit';
+
+// G0-06 : la liste des tuiles est publique → 60 lectures / minute par IP.
+const pinUsersLimiter = makeLimiter(60, (req) => ipKeyGenerator(req.ip ?? ''), 'Trop de requêtes. Réessayez dans une minute.');
 
 // OWASP A07 : rate limiters par IP.
 // DEV : les limites IP sont desactivees en dev/test pour eviter de bloquer
@@ -38,11 +43,14 @@ const router = Router();
 
 router.post('/login', loginLimiter, validate(loginSchema), authController.login);
 router.post('/pin-login', pinLimiter, validate(pinLoginSchema), authController.pinLogin);
-// Ancien selecteur d'utilisateur de l'ecran PIN : la connexion se fait desormais
-// par PIN seul et aucun ecran n'appelle plus cette route. Elle exposait sans
-// authentification les nom, prenom et role de tous les comptes actifs (audit
-// Parametres, lot 1) : reservee aux administrateurs et gerants connectes.
+// G0-06 : tuiles de l'écran PIN. Publique par nécessité (avant connexion), donc
+// réduite au strict nécessaire — prénom + initiale du nom des seuls comptes
+// dotés d'un PIN, ni e-mail ni rôle — et limitée en débit par IP.
+router.get('/pin-users', pinUsersLimiter, authController.pinUsers);
+// Liste complète (nom, prénom, rôle) : réservée aux administrateurs et gérants
+// connectés (audit Paramètres, lot 1).
 router.get('/users-list', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), authController.activeUsers);
+router.post('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
 router.post('/register', authenticate, authorize('admin'), validate(registerSchema), authController.register);
 router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, authController.me);

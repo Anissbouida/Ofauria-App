@@ -4,6 +4,12 @@ import { userRepository } from '../repositories/user.repository.js';
 import { permissionRepository } from '../repositories/permission.repository.js';
 import { authEventRepository } from '../repositories/auth-event.repository.js';
 import { hashPassword, hashPin } from '../utils/hash.js';
+import { NEW_PIN_RE, NEW_PIN_MIN_LENGTH } from '../validators/auth.validator.js';
+
+/** G0-06 : PIN à renouveler — moins de 6 chiffres, ou antérieur (longueur inconnue). */
+const pinIsWeak = (u: { pin_code: string | null; pin_length?: number | null }) =>
+  !!u.pin_code && (u.pin_length == null || u.pin_length < NEW_PIN_MIN_LENGTH);
+const NEW_PIN_MESSAGE = 'Le code PIN doit compter 6 à 10 chiffres';
 import { roleRepository } from '../repositories/role.repository.js';
 import { effectiveRights } from '../services/access-rights.js';
 import { normalizePermissions, permissionView } from '../services/permission-input.js';
@@ -21,7 +27,8 @@ export const userController = {
     const safe = users.map(u => ({
       id: u.id, email: u.email, firstName: u.first_name, lastName: u.last_name,
       role: u.role, roles: rolesByUser.get(u.id) ?? (u.role ? [u.role] : []),
-      isActive: u.is_active, hasPin: !!u.pin_code, storeId: u.store_id, createdAt: u.created_at,
+      isActive: u.is_active, hasPin: !!u.pin_code, pinWeak: pinIsWeak(u), mustChangePassword: !!u.must_change_password,
+      storeId: u.store_id, createdAt: u.created_at,
     }));
     res.json({ success: true, data: safe });
   },
@@ -55,19 +62,17 @@ export const userController = {
       res.status(409).json({ success: false, error: { message: 'Cet email est déjà utilisé' } });
       return;
     }
-    if (pinCode) {
-      // With hashed PINs we can't check uniqueness via SQL — check by comparing
-      const existingPin = await userRepository.findByPinCode(pinCode);
-      if (existingPin) {
-        res.status(409).json({ success: false, error: { message: 'Ce code PIN est déjà utilisé' } });
-        return;
-      }
+    // G0-06 : tout nouveau PIN compte 6 à 10 chiffres. Le PIN n'a plus à être
+    // unique : le compte est désigné par sa tuile avant la saisie du PIN.
+    if (pinCode && !NEW_PIN_RE.test(String(pinCode))) {
+      res.status(400).json({ success: false, error: { message: NEW_PIN_MESSAGE } });
+      return;
     }
     const passwordHash = await hashPassword(password);
     const user = await userRepository.create({ email, passwordHash, firstName, lastName, role: primaryRole, storeId }, req.user?.userId);
     if (pinCode) {
-      const pinHash = await hashPin(pinCode);
-      await userRepository.update(user.id, { pinCode: pinHash }, req.user?.userId);
+      const pinHash = await hashPin(String(pinCode));
+      await userRepository.update(user.id, { pinCode: pinHash, pinLength: String(pinCode).length }, req.user?.userId);
     }
     await userRepository.setRoleCodes(user.id, roleCodes, primaryRole, req.user?.userId);
     // Lien espace employé (employees.user_id) si une fiche est choisie.
@@ -145,14 +150,16 @@ export const userController = {
     if (password) updateData.passwordHash = await hashPassword(password);
     if (pinCode !== undefined) {
       if (pinCode) {
-        const existingPin = await userRepository.findByPinCode(pinCode);
-        if (existingPin && existingPin.id !== req.params.id) {
-          res.status(409).json({ success: false, error: { message: 'Ce code PIN est déjà utilisé' } });
+        // G0-06 : nouveau PIN de 6 à 10 chiffres, sans contrainte d'unicité.
+        if (!NEW_PIN_RE.test(String(pinCode))) {
+          res.status(400).json({ success: false, error: { message: NEW_PIN_MESSAGE } });
           return;
         }
-        updateData.pinCode = await hashPin(pinCode);
+        updateData.pinCode = await hashPin(String(pinCode));
+        updateData.pinLength = String(pinCode).length;
       } else {
         updateData.pinCode = null;
+        updateData.pinLength = null;
       }
     }
 

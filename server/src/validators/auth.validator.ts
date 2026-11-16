@@ -27,12 +27,23 @@ export const registerSchema = z.object({
   role: z.string().regex(/^[a-z][a-z0-9_]{1,29}$/, 'Role invalide'),
 });
 
-// OWASP A07-1 : PIN numerique de 4 a 10 chiffres.
-// NOTE TRANSITION : la recommandation est >= 6 chiffres (10^6 combinaisons).
-// On accepte temporairement 4 chiffres pour les comptes legacy (Khadija, etc.).
-// Le rate limit (5 tentatives/heure) + lockout compte apres 5 echecs (A04-2)
-// rendent le brute-force de 10 000 combinaisons long. A reserrer a {6,10}
-// une fois tous les comptes migres.
+// G0-06 : la connexion par PIN désigne d'abord le compte (tuile), puis le PIN.
+// Le serveur ne compare qu'un hachage. Les PIN de 4 chiffres antérieurs restent
+// acceptés À LA CONNEXION (sinon ces comptes seraient bloqués) ; le verrouillage
+// du compte après 5 échecs borne l'essai des 10 000 combinaisons.
 export const pinLoginSchema = z.object({
+  userId: z.string().uuid('Choisissez votre nom'),
   pinCode: z.string().regex(/^\d{4,10}$/, 'PIN numerique de 4 a 10 chiffres'),
+});
+
+/** Tout NOUVEAU PIN : 6 à 10 chiffres. */
+export const NEW_PIN_RE = /^\d{6,10}$/;
+export const NEW_PIN_MIN_LENGTH = 6;
+
+/** Le mot de passe respecte-t-il la politique en vigueur ? (comptes antérieurs) */
+export const meetsPasswordPolicy = (password: string) => strongPassword.safeParse(password).success;
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Mot de passe actuel requis').max(128),
+  newPassword: strongPassword,
 });

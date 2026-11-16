@@ -3,6 +3,7 @@ import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import Header from './Header';
+import ForcePasswordChange from '../../features/auth/ForcePasswordChange';
 import { AlertTriangle } from 'lucide-react';
 import { NAV_HOME, navLabel, isNavItemVisible, visibleNavGroups } from '../../config/navigation';
 import type { NavItem } from '../../config/navigation';
@@ -120,6 +121,10 @@ export default function AppLayout() {
   }
 
   if (!user) return <Navigate to="/login" replace />;
+
+  // G0-06 : mot de passe antérieur à la politique — rien d'autre n'est accessible
+  // tant qu'il n'est pas changé.
+  if (user.mustChangePassword) return <ForcePasswordChange />;
 
   // Cashier/saleswoman: full-screen POS without header/menu
   if (isCashierRole) {

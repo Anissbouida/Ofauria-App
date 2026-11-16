@@ -11,7 +11,9 @@ const WARNING_BEFORE = 2; // Show warning 2 minutes before auto-logout
 interface AuthContextType {
   user: User | null;
   login: (data: LoginRequest) => Promise<void>;
-  loginWithPin: (pinCode: string) => Promise<void>;
+  loginWithPin: (userId: string, pinCode: string) => Promise<void>;
+  /** G0-06 : le mot de passe vient d'être changé, l'obligation est levée. */
+  passwordChanged: (token?: string) => void;
   logout: () => void;
   isLoading: boolean;
   timeoutWarning: boolean;
@@ -134,8 +136,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshSettings();
   };
 
-  const loginWithPin = async (pinCode: string) => {
-    const result = await authApi.pinLogin(pinCode);
+  const loginWithPin = async (userId: string, pinCode: string) => {
+    const result = await authApi.pinLogin(userId, pinCode);
     if (IS_MOBILE_BUILD && result.token) {
       localStorage.setItem('ofauria_token', result.token);
     }
@@ -148,8 +150,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     performLogout();
   };
 
+  const passwordChanged = (token?: string) => {
+    if (IS_MOBILE_BUILD && token) localStorage.setItem('ofauria_token', token);
+    setUser(u => (u ? { ...u, mustChangePassword: false } : u));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, loginWithPin, logout, isLoading, timeoutWarning, extendSession }}>
+    <AuthContext.Provider value={{ user, login, loginWithPin, passwordChanged, logout, isLoading, timeoutWarning, extendSession }}>
       {children}
     </AuthContext.Provider>
   );
