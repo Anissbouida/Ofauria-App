@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { forecastRepository } from './forecast.repository.js';
 import { productionRepository } from './production.repository.js';
 import { purchaseRequestRepository } from './purchase-request.repository.js';
@@ -287,7 +287,8 @@ export const mrpRepository = {
 
     const prodIds = toProduce.map(r => r.product_id);
     const [recipesRes, fmtRes] = await Promise.all([
-      db.query(`SELECT product_id, id AS recipe_id FROM recipes WHERE product_id = ANY($1::uuid[])`, [prodIds]),
+      // G0-27 : une fiche archivée ne produit plus de besoins (même règle que la production).
+      db.query(`SELECT product_id, id AS recipe_id FROM recipes WHERE product_id = ANY($1::uuid[]) AND archived_at IS NULL`, [prodIds]),
       db.query(
         `SELECT DISTINCT ON (product_id) product_id, id AS format_id FROM recipe_formats
           WHERE product_id = ANY($1::uuid[]) AND is_active = true
@@ -296,25 +297,49 @@ export const mrpRepository = {
     const recipeByProduct = new Map<string, string>(recipesRes.rows.map((r: Record<string, any>) => [r.product_id, r.recipe_id]));
     const fmtByProduct = new Map<string, string>(fmtRes.rows.map((r: Record<string, any>) => [r.product_id, r.format_id]));
 
-    // Consolide les besoins de bases via la nomenclature (helper lecture seule).
-    const needs = new Map<string, { subRecipeId: string; name: string; unit: string; needed: number }>();
+    // G0-27 : toute la nomenclature est descendue, niveau par niveau. Une base peut elle-même
+    // être faite d'autres bases : le besoin d'un niveau est calculé sur ce qu'il RESTE à
+    // produire du niveau au-dessus (après son stock), pas sur son besoin brut.
+    type Comp = NonNullable<Awaited<ReturnType<typeof getCompositionForNeeds>>>;
+    const compCache = new Map<string, Comp | null>();
+    const compOf = async (recipeId: string, formatId: string | null = null) => {
+      const key = `${recipeId}|${formatId ?? ''}`;
+      if (!compCache.has(key)) compCache.set(key, await getCompositionForNeeds(db as any, recipeId, formatId));
+      return compCache.get(key) ?? null;
+    };
+    const bases = (comp: Comp) => comp.subRecipes.filter(sub => sub.isBase);
+
+    // 1. Parcours du graphe : profondeur de chaque base = plus long chemin depuis un produit fini.
+    //    Une base n'est traitée qu'après tous ses parents ; un cycle est coupé (profondeur bornée).
+    const depth = new Map<string, number>();
+    const info = new Map<string, { name: string; unit: string }>();
+    const MAX_DEPTH = 12;
+    const explore = async (comp: Comp, level: number, path: Set<string>) => {
+      for (const sub of bases(comp)) {
+        if (path.has(sub.subRecipeId) || level > MAX_DEPTH) continue;
+        info.set(sub.subRecipeId, { name: sub.name, unit: sub.yieldUnit });
+        if ((depth.get(sub.subRecipeId) ?? 0) >= level) continue;
+        depth.set(sub.subRecipeId, level);
+        const child = await compOf(sub.subRecipeId);
+        if (child) await explore(child, level + 1, new Set([...path, sub.subRecipeId]));
+      }
+    };
+
+    // 2. Besoins de niveau 1, depuis les produits finis à produire.
+    const needed = new Map<string, number>();
+    const add = (id: string, qty: number) => needed.set(id, (needed.get(id) ?? 0) + qty);
     for (const r of toProduce) {
       const recipeId = recipeByProduct.get(r.product_id);
       if (!recipeId) continue;
-      const comp = await getCompositionForNeeds(db as any, recipeId, fmtByProduct.get(r.product_id) ?? null);
+      const comp = await compOf(recipeId, fmtByProduct.get(r.product_id) ?? null);
       if (!comp) continue;
+      await explore(comp, 1, new Set([recipeId]));
       const batches = r.net_to_produce / comp.batchDivisor;
-      for (const sub of comp.subRecipes) {
-        if (!sub.isBase) continue;
-        const qty = sub.netQtyPerBatch * batches;
-        const e = needs.get(sub.subRecipeId);
-        if (e) e.needed += qty;
-        else needs.set(sub.subRecipeId, { subRecipeId: sub.subRecipeId, name: sub.name, unit: sub.yieldUnit, needed: qty });
-      }
+      for (const sub of bases(comp)) add(sub.subRecipeId, sub.netQtyPerBatch * batches);
     }
-    if (!needs.size) return { date, rows: [] };
+    if (!depth.size) return { date, rows: [] };
 
-    const subIds = [...needs.keys()];
+    const subIds = [...depth.keys()];
     const stockRes = await db.query(
       `SELECT recipe_id, COALESCE(SUM(quantity_available), 0)::float AS qty
          FROM semi_finished_stock
@@ -323,14 +348,23 @@ export const mrpRepository = {
         GROUP BY recipe_id`, [subIds, storeId]);
     const stockMap = new Map<string, number>(stockRes.rows.map((r: Record<string, any>) => [r.recipe_id, Number(r.qty)]));
 
-    const out = [...needs.values()].map(n => {
-      const available = stockMap.get(n.subRecipeId) ?? 0;
-      const fromStock = Math.min(available, n.needed);
-      return {
-        recipe_id: n.subRecipeId, name: n.name, unit: n.unit,
-        needed: round3(n.needed), from_stock: round3(fromStock), to_produce: round3(Math.max(0, n.needed - fromStock)),
-      };
-    }).sort((a, b) => a.name.localeCompare(b.name));
+    // 3. Niveau par niveau : stock défalqué, puis le reste à produire éclaté sur le niveau suivant.
+    const out: { recipe_id: string; name: string; unit: string; level: number; needed: number; from_stock: number; to_produce: number }[] = [];
+    for (const id of subIds.sort((x, y) => depth.get(x)! - depth.get(y)!)) {
+      const need = needed.get(id) ?? 0;
+      if (need <= 0) continue;
+      const fromStock = Math.min(stockMap.get(id) ?? 0, need);
+      const toMake = Math.max(0, need - fromStock);
+      out.push({ recipe_id: id, name: info.get(id)!.name, unit: info.get(id)!.unit, level: depth.get(id)!,
+        needed: round3(need), from_stock: round3(fromStock), to_produce: round3(toMake) });
+      if (toMake <= 0) continue;
+      const comp = await compOf(id);
+      if (!comp) continue;
+      for (const sub of bases(comp)) {
+        if (depth.has(sub.subRecipeId) && depth.get(sub.subRecipeId)! > depth.get(id)!) add(sub.subRecipeId, sub.netQtyPerBatch * (toMake / comp.batchDivisor));
+      }
+    }
+    out.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 
     return { date, rows: out };
   },
@@ -357,7 +391,8 @@ export const mrpRepository = {
               COALESCE(inv.minimum_threshold, 0)::float AS seuil,
               COALESCE(ing.unit_cost, 0)::float AS unit_cost
        FROM demand
-       JOIN LATERAL (SELECT id, yield_quantity FROM recipes WHERE product_id = demand.product_id AND archived_at IS NULL ORDER BY id LIMIT 1) r ON true
+       -- G0-27 : la fiche ACTIVE de l'article (une seule par produit, index unique ; les archivées sont écartées).
+       JOIN recipes r ON r.product_id = demand.product_id AND r.archived_at IS NULL
        JOIN v_recipe_explosion e ON e.recipe_id = r.id
        JOIN ingredients ing ON ing.id = e.ingredient_id
        LEFT JOIN inventory inv ON inv.ingredient_id = e.ingredient_id AND inv.store_id = $1
@@ -381,27 +416,33 @@ export const mrpRepository = {
 
   /**
    * Génère les demandes d'achat pour les matières manquantes du MRP (shortage > 0).
-   * Saute les ingrédients ayant déjà une demande « pending » (anti-doublon). La
-   * quantité est arrondie au contenant par purchaseRequestRepository.create.
+   * G0-27 : tout ou rien (une transaction), sous verrou par établissement pour que deux
+   * générations simultanées ne créent pas chacune leurs demandes ; une matière qui a déjà
+   * une demande OUVERTE (en attente, affectée ou commandée, pas encore reçue) est sautée.
+   * La quantité est arrondie au contenant par purchaseRequestRepository.create.
    */
   async generatePurchaseRequests(storeId: string, date: string, userId: string) {
-    const mr = await this.materialRequirements(storeId, date);
-    const toOrder = mr.rows.filter(r => r.shortage > 0);
-    const existing = await db.query(
-      `SELECT DISTINCT ingredient_id FROM purchase_requests WHERE status = 'pending' AND (store_id = $1 OR store_id IS NULL)`,
-      [storeId]
-    );
-    const skip = new Set<string>(existing.rows.map((r: { ingredient_id: string }) => r.ingredient_id));
-    let created = 0, skipped = 0;
-    for (const r of toOrder) {
-      if (skip.has(r.ingredient_id)) { skipped++; continue; }
-      await purchaseRequestRepository.create({
-        ingredientId: r.ingredient_id, quantity: r.shortage, unit: r.unit,
-        reason: 'production', note: `MRP ${date} — besoin de production`,
-        requestedBy: userId, storeId,
-      });
-      created++;
-    }
-    return { created, skipped_existing: skipped, candidates: toOrder.length };
+    return withTransaction(async () => {
+      await db.query(`SELECT pg_advisory_xact_lock(hashtext('mrp_purchase_requests_' || $1))`, [storeId]);
+      const mr = await this.materialRequirements(storeId, date);
+      const toOrder = mr.rows.filter(r => r.shortage > 0);
+      const existing = await db.query(
+        `SELECT DISTINCT ingredient_id FROM purchase_requests
+          WHERE status IN ('pending', 'assigned', 'ordered') AND (store_id = $1 OR store_id IS NULL)`,
+        [storeId]
+      );
+      const skip = new Set<string>(existing.rows.map((r: { ingredient_id: string }) => r.ingredient_id));
+      let created = 0, skipped = 0;
+      for (const r of toOrder) {
+        if (skip.has(r.ingredient_id)) { skipped++; continue; }
+        await purchaseRequestRepository.create({
+          ingredientId: r.ingredient_id, quantity: r.shortage, unit: r.unit,
+          reason: 'production', note: `MRP ${date} — besoin de production`,
+          requestedBy: userId, storeId,
+        });
+        created++;
+      }
+      return { created, skipped_existing: skipped, candidates: toOrder.length };
+    });
   },
 };

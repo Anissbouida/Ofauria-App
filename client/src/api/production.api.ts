@@ -34,7 +34,7 @@ export type MrpHorizonRow = {
   days: Record<string, { demand: number; net: number }>; total_net: number;
 };
 export type MrpHorizon = { store_id: string; dates: string[]; rows: MrpHorizonRow[]; totals_by_date: Record<string, number> };
-export type SemiFinishedNeed = { recipe_id: string; name: string; unit: string; needed: number; from_stock: number; to_produce: number };
+export type SemiFinishedNeed = { recipe_id: string; name: string; unit: string; /** Niveau dans la nomenclature (1 = base directe du produit), G0-27. */ level?: number; needed: number; from_stock: number; to_produce: number };
 
 // Réglages de production centralisés (mig 403) — roadmap lot 9
 export interface ProductionSettings {
