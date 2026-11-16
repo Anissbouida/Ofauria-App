@@ -1595,8 +1595,12 @@ export const productionRepository = {
           }
 
           // Emballages : au prorata produit / rendement, comme dans complete().
-          // Quand un BSI existe, ils ont ete consommes au prelevement (bon-sortie).
-          if (storeId && recipe.yield_quantity && parseFloat(recipe.yield_quantity) > 0) {
+          // Quand un BSI existe, ils ont ete consommes au prelevement (bon-sortie) : ce bloc
+          // est alors saute avec les ingredients (bsiAlreadyDeducted2).
+          // G0-22 : UN SEUL bloc. Un second, sans point de sauvegarde, consommait les memes
+          // emballages une deuxieme fois (notes « Production partielle: »). Un plan de
+          // semi-finis n'emballe rien.
+          if (storeId && !isSemiFinishedPlan && recipe.yield_quantity && parseFloat(recipe.yield_quantity) > 0) {
             const packagingNeeds = await client.query(
               `SELECT rp.packaging_id, rp.quantity, pi.name, pi.unit_cost
                  FROM recipe_packaging rp JOIN packaging_items pi ON pi.id = rp.packaging_id
@@ -1623,38 +1627,6 @@ export const productionRepository = {
             }
           }
 
-          // ─── Emballages : meme consommation que complete() (audit 2026-10-23 §4.2).
-          // Un plan auto-complete via produceItems ne decrementait jamais les
-          // emballages : seule la cloture manuelle le faisait.
-          if (storeId && !isSemiFinishedPlan) {
-            const packagingNeeds = await client.query(
-              `SELECT rp.packaging_id, rp.quantity, pi.name, pi.unit_cost
-               FROM recipe_packaging rp
-               JOIN packaging_items pi ON pi.id = rp.packaging_id
-               WHERE rp.recipe_id = $1`,
-              [recipe.id]
-            );
-            for (const pk of packagingNeeds.rows) {
-              const pkConsumption = (parseFloat(pk.quantity) / parseFloat(recipe.yield_quantity)) * parseFloat(item.actual_quantity);
-              if (pkConsumption <= 0) continue;
-              try {
-                await packagingItemRepository.adjustStock(client, {
-                  packagingId: pk.packaging_id,
-                  storeId,
-                  change: -pkConsumption,
-                  type: 'consumption',
-                  referenceId: planId,
-                  referenceType: 'production_plan',
-                  unitCost: parseFloat(pk.unit_cost),
-                  note: `Production partielle: ${item.product_name} x${item.actual_quantity}`,
-                  performedBy: userId,
-                });
-              } catch (pkErr) {
-                console.error(`[packaging consumption] erreur pour ${pk.name}:`, pkErr);
-                warnings.push(`Stock emballage insuffisant: ${pk.name} (besoin ${pkConsumption.toFixed(2)})`);
-              }
-            }
-          }
         }
 
         // For semi-finished plans: feed semi_finished_stock instead of product stock
