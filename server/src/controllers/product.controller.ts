@@ -8,25 +8,9 @@ import { db } from '../config/database.js';
 import { adjustProductStock } from '../repositories/product-stock.helper.js';
 import { storeFile, FileRejectedError } from '../services/storage.service.js';
 
-// Phase B — debounce le lazy trigger d'auto-expire pour ne pas le rejouer
-// a chaque requete (cout : 1 query par lot expire). On laisse passer toutes
-// les 60 secondes par store. En memoire process — multi-instances : c'est
-// idempotent donc on tolere une concurrence rare.
-const lastAutoExpire: Map<string, number> = new Map();
-const AUTO_EXPIRE_DEBOUNCE_MS = 60_000;
-async function maybeAutoExpire(storeId: string | null | undefined) {
-  if (!storeId) return;
-  const last = lastAutoExpire.get(storeId) ?? 0;
-  const now = Date.now();
-  if (now - last < AUTO_EXPIRE_DEBOUNCE_MS) return;
-  lastAutoExpire.set(storeId, now);
-  try {
-    await productLotRepository.autoExpireDueLots();
-  } catch (err) {
-    console.error('[autoExpireDueLots] erreur silencieuse :', err);
-    // On ne bloque pas la requete utilisateur si le job echoue
-  }
-}
+// G1-10 : la péremption des lots est faite par la tâche planifiée `lots_expire`
+// (services/scheduler.ts). L'ancien appel « paresseux » à chaque chargement de la liste est
+// retiré : sa requête échouait à chaque fois et l'erreur était avalée en silence.
 
 function slugify(text: string): string {
   return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -101,10 +85,6 @@ export const productController = {
       return;
     }
 
-    // Phase B — Lazy auto-expire : debounced 60s par store, garantit que
-    // les lots dont la DLV ou DDE est passee sont auto-marques avant
-    // qu'ils n'apparaissent dans la liste POS comme vendables.
-    await maybeAutoExpire(req.user!.storeId);
 
     const result = await productRepository.findAll({
       categoryId: categoryId ? parseInt(categoryId) : undefined,

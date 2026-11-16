@@ -915,7 +915,10 @@ export const productLotRepository = {
              OR (pl.display_expires_at IS NOT NULL AND pl.display_expires_at <= NOW())
            )
            AND (pl.backroom_qty + pl.vitrine_qty) > 0
-         FOR UPDATE`
+         -- G1-10 : verrou sur le lot seul. « FOR UPDATE » nu échouait à chaque appel
+         -- (« cannot be applied to the nullable side of an outer join », à cause du
+         -- LEFT JOIN sur v_product_unit_cost) : la péremption automatique ne passait jamais.
+         FOR UPDATE OF pl`
       );
 
       const productIdsAffected = new Set<string>();

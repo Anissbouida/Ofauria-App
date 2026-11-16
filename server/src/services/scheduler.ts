@@ -5,6 +5,7 @@ import { maintenanceRepository } from '../repositories/maintenance.repository.js
 import { systemUserId } from './system-user.js';
 import { runDepreciation } from './depreciation.service.js';
 import { prepaidChargeRepository } from '../repositories/prepaid-charge.repository.js';
+import { productLotRepository } from '../repositories/product-lot.repository.js';
 import { dunningRepository } from '../repositories/dunning.repository.js';
 import { ledgerIntegrityRepository } from '../repositories/ledger-integrity.repository.js';
 import { expireDue as loyaltyExpireDue } from './loyalty.js';
@@ -290,6 +291,16 @@ async function prepaidRecognition(): Promise<JobResult> {
   return { items: posted, message: posted ? `${posted} constatation(s) comptabilisée(s) jusqu'à ${period}` : `Charges constatées d'avance à jour jusqu'à ${period}` };
 }
 
+/**
+ * G1-10 — péremption des lots de produits finis : DLC ou DLV dépassée. Perte enregistrée,
+ * stock du magasin synchronisé, lot passé à « périmé » (productLotRepository.autoExpireDueLots).
+ * Idempotent : un lot traité n'est plus actif.
+ */
+async function lotsExpire(): Promise<JobResult> {
+  const { count, productIds } = await productLotRepository.autoExpireDueLots();
+  return { items: count, message: count ? `${count} lot(s) périmé(s) sorti(s) du stock, ${productIds.length} produit(s) concerné(s)` : 'Aucun lot à périmer' };
+}
+
 async function webhookOutbox(): Promise<JobResult> {
   const r = await webhookRepository.deliverPending();
   return { items: r.sent, message: `${r.sent} envoyé(s)${r.failed ? ` · ${r.failed} échec(s)` : ''}` };
@@ -312,6 +323,7 @@ export const JOBS: Record<string, Handler> = {
   monthly_invoicing: () => monthlyInvoicing(),
   depreciation_monthly: depreciationMonthly,
   prepaid_recognition: prepaidRecognition,
+  lots_expire: lotsExpire,
   housekeeping,
 };
 
