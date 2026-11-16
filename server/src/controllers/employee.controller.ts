@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { checkPayrollPeriod, monthEnd, setProvisional, provisionalRefusal } from '../services/payroll-period.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { db } from '../config/database.js';
 import { employeeRepository, scheduleRepository, attendanceRepository, leaveRepository, payrollRepository } from '../repositories/employee.repository.js';
@@ -281,14 +282,20 @@ export const weeklyPayrollController = {
       return;
     }
     const { start, end } = weekBounds(ref);
+    // G0-10 : pas de paie sur une semaine non terminée (dérogation admin = provisoire).
+    const period = checkPayrollPeriod(end, { allowOpenPeriod: req.body.allowOpenPeriod === true, role: req.user!.role, label: 'La semaine' });
+    if (!period.ok) { res.status(period.status).json({ success: false, error: { message: period.message, code: 'PERIOD_OPEN', availableFrom: period.availableFrom } }); return; }
     const generated = await weeklyPayrollRepository.generate(start, end, req.user!.storeId);
-    res.json({ success: true, data: { weekStart: start, weekEnd: end, generated } });
+    await setProvisional('weekly', generated.map(g => g.id as string), period.provisional);
+    res.json({ success: true, data: { weekStart: start, weekEnd: end, generated, provisional: period.provisional } });
   },
 
   async markPaid(req: AuthRequest, res: Response) {
     const scoped = await loadWeeklyPayrollInScope(req.params.id, req.user!.storeId);
     if (!scoped) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
     const { paymentMethod, advanceDeduction } = req.body;
+    const refused = await provisionalRefusal('weekly', req.params.id);
+    if (refused) { res.status(409).json({ success: false, error: { message: refused } }); return; }
     try {
       const row = await weeklyPayrollRepository.markPaid(
         req.params.id, paymentMethod || 'cash', req.user!.userId, req.user!.storeId,
@@ -351,14 +358,20 @@ export const biweeklyPayrollController = {
 
   async generate(req: AuthRequest, res: Response) {
     const { start, end } = biweeklyBounds(String(req.body.periodStart));
+    // G0-10 : pas de paie sur une quinzaine non terminée (dérogation admin = provisoire).
+    const period = checkPayrollPeriod(end, { allowOpenPeriod: req.body.allowOpenPeriod === true, role: req.user!.role, label: 'La quinzaine' });
+    if (!period.ok) { res.status(period.status).json({ success: false, error: { message: period.message, code: 'PERIOD_OPEN', availableFrom: period.availableFrom } }); return; }
     const generated = await biweeklyPayrollRepository.generate(start, end, req.user!.storeId);
-    res.json({ success: true, data: { periodStart: start, periodEnd: end, generated } });
+    await setProvisional('biweekly', generated.map(g => g.id as string), period.provisional);
+    res.json({ success: true, data: { periodStart: start, periodEnd: end, generated, provisional: period.provisional } });
   },
 
   async markPaid(req: AuthRequest, res: Response) {
     const scoped = await loadBiweeklyPayrollInScope(req.params.id, req.user!.storeId);
     if (!scoped) { res.status(404).json({ success: false, error: { message: 'Ligne introuvable' } }); return; }
     const { paymentMethod, advanceDeduction } = req.body;
+    const refused = await provisionalRefusal('biweekly', req.params.id);
+    if (refused) { res.status(409).json({ success: false, error: { message: refused } }); return; }
     try {
       const row = await biweeklyPayrollRepository.markPaid(
         req.params.id, paymentMethod || 'cash', req.user!.userId, req.user!.storeId,
@@ -639,11 +652,15 @@ export const payrollController = {
   },
   async generate(req: AuthRequest, res: Response) {
     const { month, year } = req.body;
+    // G0-10 : pas de paie sur un mois non terminé (dérogation admin = provisoire).
+    const period = checkPayrollPeriod(monthEnd(Number(month), Number(year)), { allowOpenPeriod: req.body.allowOpenPeriod === true, role: req.user!.role, label: 'Le mois' });
+    if (!period.ok) { res.status(period.status).json({ success: false, error: { message: period.message, code: 'PERIOD_OPEN', availableFrom: period.availableFrom } }); return; }
     try {
       const { payrolls, removed } = await payrollRepository.generate(month, year, req.user!.storeId);
+      await setProvisional('monthly', payrolls.map(p => p.id as string), period.provisional);
       // `removed` : bulletins non payes retires (employe passe en hebdo/quinzaine),
       // affiches par le client au lieu d'une suppression silencieuse.
-      res.json({ success: true, data: payrolls, removed });
+      res.json({ success: true, data: payrolls.map(p => (p.paid ? p : { ...p, is_provisional: period.provisional })), removed, provisional: period.provisional });
     } catch (err) {
       // Mois cloture, bareme absent : erreur metier lisible, pas un 500.
       res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
@@ -665,6 +682,8 @@ export const payrollController = {
     const scoped = await loadPayrollInScope(req.params.id, req.user!.storeId);
     if (!scoped) { res.status(404).json({ success: false, error: { message: 'Bulletin introuvable' } }); return; }
     const { paymentMethod, advanceDeduction } = req.body;
+    const refused = await provisionalRefusal('monthly', req.params.id);
+    if (refused) { res.status(409).json({ success: false, error: { message: refused } }); return; }
     try {
       const payroll = await payrollRepository.markPaid(
         req.params.id, paymentMethod || 'cash', req.user!.userId, req.user!.storeId,

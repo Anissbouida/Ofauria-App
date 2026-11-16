@@ -1788,7 +1788,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ◐ | G0-07 | Validation des factures et des mutations | non |
 | ◐ | G0-08 | Reliquats de sécurité | non |
 | ◐ | G0-09 | Pointages exclus de la paie | oui (paie) |
-| ☐ | G0-10 | Paie d'un mois non terminé | non |
+| ☑ | G0-10 | Paie d'un mois non terminé | non |
 | ☐ | G0-11 | Contrôle du SMIG | non |
 | ☐ | G0-12 | Livre de paie | non |
 | ☐ | G0-13 | Barème IR versionné | non |

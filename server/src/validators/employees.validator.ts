@@ -152,6 +152,8 @@ export const createLeaveSchema = z.object({
 export const generatePayrollSchema = z.object({
   month: z.coerce.number().int().min(1).max(12),
   year: z.coerce.number().int().min(2000).max(2100),
+  // G0-10 : dérogation administrateur — paie provisoire d'une période non terminée.
+  allowOpenPeriod: z.boolean().optional(),
 });
 
 // Les montants passent par les lignes de rubriques (PUT /payroll/:id/lines) :
@@ -270,6 +272,7 @@ export const markPaidSchema = z.object({
 // ─── Weekly payroll ──────────────────────────────────────────────────────
 export const generateWeeklyPayrollSchema = z.object({
   weekStart: isoDate,
+  allowOpenPeriod: z.boolean().optional(),
 });
 
 export const updateWeeklyPayrollSchema = z.object({
@@ -286,6 +289,7 @@ export const updateWeeklyPayrollSchema = z.object({
 // periodStart = n'importe quelle date de la quinzaine : bornes recalculees serveur.
 export const generateBiweeklyPayrollSchema = z.object({
   periodStart: isoDate,
+  allowOpenPeriod: z.boolean().optional(),
 });
 
 export const updateBiweeklyPayrollSchema = updateWeeklyPayrollSchema;

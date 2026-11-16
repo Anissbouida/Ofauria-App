@@ -21,7 +21,7 @@ const PAY_STAGES: StageDef[] = [
   { key: 'paid', label: 'Payés', hint: 'paiement enregistré', icon: CheckCircle2 },
 ];
 import { notify } from '../../../components/ui/InlineNotification';
-import { MONTH_NAMES, apiErrorMessage, saveBlobResponse } from '../shared';
+import { MONTH_NAMES, apiErrorMessage, saveBlobResponse, openPeriodMessage, OPEN_PERIOD_CONFIRM } from '../shared';
 import PayslipLinesEditor from './PayslipLinesEditor';
 import SalaryTransferDialog from './SalaryTransferDialog';
 import { useAuth } from '../../../context/AuthContext';
@@ -91,7 +91,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
   }, [outstandingRows]);
 
   const generateMutation = useMutation({
-    mutationFn: () => payrollApi.generate(month, year),
+    mutationFn: (allowOpenPeriod: boolean = false) => payrollApi.generate(month, year, allowOpenPeriod),
     onSuccess: ({ removed }) => {
       queryClient.invalidateQueries({ queryKey: ['payroll'] });
       notify.success('Bulletins generes');
@@ -103,7 +103,14 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
           + removed.map(r => `${r.first_name} ${r.last_name} (${freq(r.pay_frequency)})`).join(', '));
       }
     },
-    onError: (err: unknown) => notify.error(apiErrorMessage(err, 'Erreur lors de la generation')),
+    onError: async (err: unknown) => {
+      // G0-10 : période non terminée — raison et date affichées ; l'administrateur
+      // peut générer une paie provisoire (non payable).
+      const open = openPeriodMessage(err);
+      if (!open) { notify.error(apiErrorMessage(err, 'Erreur lors de la génération')); return; }
+      if (isAdmin && await confirm(open + OPEN_PERIOD_CONFIRM)) generateMutation.mutate(true);
+      else notify.error(open);
+    },
   });
 
   const payMutation = useMutation({
@@ -248,7 +255,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
           <button onClick={async () => {
             if (!(await confirm(`Générer les bulletins de paie ${MONTH_NAMES[month - 1]} ${year} pour les employés mensuels et les employés hebdo / quinzaine déclarés ?\n\nLes bulletins déjà PAYÉS ne sont jamais écrasés. Les autres sont recalculés depuis le pointage et les paies périodiques du mois.`,
               { title: 'Générer les bulletins', confirmLabel: 'Générer' }))) return;
-            generateMutation.mutate();
+            generateMutation.mutate(false);
           }} disabled={generateMutation.isPending || isClosed} className="odoo-btn-primary"
             title={isClosed ? 'Mois clôturé : rouvrez-le pour régénérer' : undefined}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -412,6 +419,9 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                           <RotateCcw size={12} />
                         </button>
                       </div>
+                    ) : p.is_provisional ? (
+                      // G0-10 : généré avant la fin du mois par dérogation — non payable.
+                      <span className="odoo-tag odoo-tag-orange" title="Mois non terminé : régénérez la paie une fois le mois fini pour pouvoir payer">Provisoire</span>
                     ) : (
                       <button onClick={() => setPayTarget(p)} className="odoo-btn-primary" style={{ padding: '0.15rem 0.6rem', fontSize: '0.75rem' }}>
                         Payer

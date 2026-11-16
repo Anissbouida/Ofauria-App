@@ -54,6 +54,20 @@ export function apiErrorMessage(err: unknown, fallback: string): string {
   return msg || fallback;
 }
 
+/**
+ * G0-10 : la paie d'une période non terminée est refusée (code PERIOD_OPEN).
+ * Rend le message du serveur (raison + date à partir de laquelle générer), ou null.
+ */
+export function openPeriodMessage(err: unknown): string | null {
+  const e = err && typeof err === 'object' && 'response' in err
+    ? (err as { response?: { data?: { error?: { message?: string; code?: string } } } }).response?.data?.error
+    : null;
+  return e?.code === 'PERIOD_OPEN' ? (e.message ?? 'Période non terminée') : null;
+}
+
+/** Question posée à l'administrateur avant une paie provisoire. */
+export const OPEN_PERIOD_CONFIRM = '\n\nGénérer quand même une paie PROVISOIRE ? Elle ne pourra pas être payée tant que la période n\'est pas terminée.';
+
 /** Telecharge une reponse axios `responseType: 'blob'` (nom tire de Content-Disposition). */
 export function saveBlobResponse(response: { data: Blob; headers: Record<string, any> }, fallbackName: string) {
   const cd = String(response.headers?.['content-disposition'] ?? '');

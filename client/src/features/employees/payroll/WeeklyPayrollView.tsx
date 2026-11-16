@@ -20,6 +20,8 @@ const PAY_STAGES: StageDef[] = [
   { key: 'paid', label: 'Payés', hint: 'paiement enregistré', icon: Check },
 ];
 import { notify } from '../../../components/ui/InlineNotification';
+import { useAuth } from '../../../context/AuthContext';
+import { apiErrorMessage, openPeriodMessage, OPEN_PERIOD_CONFIRM } from '../shared';
 import { ROLE_LABELS } from '@ofauria/shared';
 
 /* ═══════════════════════ WEEKLY PAYROLL VIEW ═══════════════════════ */
@@ -82,15 +84,23 @@ export default function WeeklyPayrollView({ queryClient }: { queryClient: Return
   // Cible du dialogue de paiement (ouvert seulement si l'employe a une avance en cours)
   const [stageFilter, setStageFilter] = useState<PayStage | null>(null);
   const confirm = useConfirm();
+  const isAdmin = useAuth().user?.role === 'admin';
   const [payTarget, setPayTarget] = useState<{ row: WeeklyPayrollRow; method: string } | null>(null);
 
   const generateMutation = useMutation({
-    mutationFn: () => weeklyPayrollApi.generate(weekStartStr),
+    mutationFn: (allowOpenPeriod: boolean = false) => weeklyPayrollApi.generate(weekStartStr, allowOpenPeriod),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['weekly-payroll'] });
       notify.success('Paies hebdomadaires générées depuis le pointage');
     },
-    onError: () => notify.error('Erreur lors de la génération'),
+    onError: async (err: unknown) => {
+      // G0-10 : période non terminée — raison et date affichées ; l'administrateur
+      // peut générer une paie provisoire (non payable).
+      const open = openPeriodMessage(err);
+      if (!open) { notify.error(apiErrorMessage(err, 'Erreur lors de la génération')); return; }
+      if (isAdmin && await confirm(open + OPEN_PERIOD_CONFIRM)) generateMutation.mutate(true);
+      else notify.error(open);
+    },
   });
 
   const payMutation = useMutation({
@@ -180,7 +190,7 @@ export default function WeeklyPayrollView({ queryClient }: { queryClient: Return
           <button onClick={async () => {
             if (!(await confirm(`Generer la paie hebdo pour la semaine du ${weekStartStr} ?\n\nLes lignes deja PAYEES ne sont jamais ecrasees. Les autres sont recalculees depuis le pointage.`,
               { title: 'Générer la paie', confirmLabel: 'Générer' }))) return;
-            generateMutation.mutate();
+            generateMutation.mutate(false);
           }} disabled={generateMutation.isPending || rows.length === 0} className="odoo-btn-primary"
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Banknote size={13} /> {generateMutation.isPending ? 'Génération...' : 'Générer depuis pointage'}

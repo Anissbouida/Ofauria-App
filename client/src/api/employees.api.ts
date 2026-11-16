@@ -76,7 +76,7 @@ export const payrollApi = {
   list: (params?: Record<string, string>) => api.get('/payroll', { params }).then(r => r.data.data),
   /** Genere les bulletins du mois. `removed` = bulletins non payes retires
    *  (employe passe en hebdo/quinzaine) : a signaler a l'utilisateur. */
-  generate: (month: number, year: number) => api.post('/payroll/generate', { month, year })
+  generate: (month: number, year: number, allowOpenPeriod = false) => api.post('/payroll/generate', { month, year, ...(allowOpenPeriod ? { allowOpenPeriod } : {}) })
     .then(r => ({ payrolls: r.data.data, removed: (r.data.removed ?? []) as Array<{ employee_id: string; first_name: string; last_name: string; pay_frequency: string }> })),
   update: (id: string, data: Record<string, any>) => api.put(`/payroll/${id}`, data).then(r => r.data.data),
   /** advanceDeduction : montant retenu sur les avances en cours (0 = aucune retenue). */
@@ -152,8 +152,8 @@ export const weeklyPayrollApi = {
   list: (weekStart: string) =>
     api.get('/weekly-payroll', { params: { weekStart } }).then(r => r.data.data),
   /** Calcule et upsert les lignes paie hebdo pour la semaine. */
-  generate: (weekStart: string) =>
-    api.post('/weekly-payroll/generate', { weekStart }).then(r => r.data.data),
+  generate: (weekStart: string, allowOpenPeriod = false) =>
+    api.post('/weekly-payroll/generate', { weekStart, ...(allowOpenPeriod ? { allowOpenPeriod } : {}) }).then(r => r.data.data),
   /** Marque paye + cree ecriture comptable. advanceDeduction = retenue sur avances. */
   markPaid: (id: string, paymentMethod: string, advanceDeduction = 0) =>
     api.post(`/weekly-payroll/${id}/pay`, { paymentMethod, advanceDeduction }).then(r => r.data.data),
@@ -168,8 +168,8 @@ export const biweeklyPayrollApi = {
   /** periodStart = n'importe quelle date de la quinzaine (bornes recalculees serveur). */
   list: (periodStart: string) =>
     api.get('/payroll/biweekly', { params: { periodStart } }).then(r => r.data.data),
-  generate: (periodStart: string) =>
-    api.post('/payroll/biweekly/generate', { periodStart }).then(r => r.data.data),
+  generate: (periodStart: string, allowOpenPeriod = false) =>
+    api.post('/payroll/biweekly/generate', { periodStart, ...(allowOpenPeriod ? { allowOpenPeriod } : {}) }).then(r => r.data.data),
   markPaid: (id: string, paymentMethod: string, advanceDeduction = 0) =>
     api.post(`/payroll/biweekly/${id}/pay`, { paymentMethod, advanceDeduction }).then(r => r.data.data),
   unmarkPaid: (id: string) =>
