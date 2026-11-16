@@ -9,7 +9,9 @@ export const parametersController = {
   async list(req: AuthRequest, res: Response) {
     const access = await settingsAccess(req.user!);
     const values = await readAll();
-    const visible = PARAMETERS.filter(p => access.canView(p.section));
+    // Une politique dont le niveau société est une colonne historique (companyColumns) se
+    // règle sur son écran d'origine et dans Production › Politiques, pas ici.
+    const visible = PARAMETERS.filter(p => access.canView(p.section) && !(p.storage.kind === 'policy' && !(p.scopes ?? ['company']).includes('company')));
     const data = await Promise.all(visible.map(async p => ({
       key: p.key,
       domain: p.domain,

@@ -15,7 +15,7 @@ import type { SettingsSection } from '@ofauria/shared';
  * Ajouter un paramètre = ajouter une entrée ici (et sa valeur initiale en base).
  */
 
-export type FieldType = 'boolean' | 'number' | 'integer' | 'percent' | 'enum' | 'list' | 'date';
+export type FieldType = 'boolean' | 'number' | 'integer' | 'percent' | 'enum' | 'list' | 'date' | 'time';
 
 export interface ParamField {
   name: string;
@@ -39,6 +39,12 @@ export interface ParamDef {
   storage: { kind: 'module_parameters' } | { kind: 'company_settings'; columns: Record<string, string> } | { kind: 'policy' };
   /** Politique (stockage `policy`) : niveaux où elle peut être réglée. */
   scopes?: ('company' | 'store' | 'workshop' | 'order_type' | 'product')[];
+  /**
+   * Politique dont le niveau société est déjà une colonne de company_settings, réglée sur
+   * son écran d'origine : champ → colonne. Le niveau société n'est alors pas dans `scopes`
+   * (un seul endroit où le modifier) ; les niveaux plus précis le surchargent.
+   */
+  companyColumns?: Record<string, string>;
 }
 
 /** Tous les niveaux d'une politique de production. */
@@ -66,6 +72,90 @@ export const PARAMETERS: ParamDef[] = [
     fields: [{ name: 'pct', label: 'Rendement cible', type: 'percent', unit: '%', min: 0, max: 100 }],
     defaults: { pct: 90 },
     storage: { kind: 'policy' }, scopes: ALL_SCOPES,
+  },
+  {
+    key: 'production.yield_alert', domain: 'production', section: 'production',
+    label: 'Rendement critique',
+    help: 'En dessous de ce rendement, l\'article passe en alerte (rouge) sur les écrans de production.',
+    fields: [{ name: 'pct', label: 'Rendement critique', type: 'percent', unit: '%', min: 0, max: 100 }],
+    defaults: { pct: 70 },
+    storage: { kind: 'policy' }, scopes: ALL_SCOPES,
+  },
+  {
+    key: 'production.fixed_charges_rate', domain: 'production', section: 'production',
+    label: 'Taux de charges fixes',
+    help: 'Part de charges indirectes ajoutée au coût matière d\'un plan (mode « Taux sur les matières »). Le taux de la société se règle dans Production › Paramétrage ; ici, un établissement, un atelier ou un type d\'ordre peut avoir le sien.',
+    fields: [{ name: 'rate', label: 'Taux de charges fixes', type: 'number', unit: '× matières', min: 0, max: 5 }],
+    defaults: { rate: 0.40 },
+    storage: { kind: 'policy' }, scopes: ['store', 'workshop', 'order_type'],
+    companyColumns: { rate: 'production_charges_fixes_pct' },
+  },
+  {
+    key: 'production.kwh_price', domain: 'production', section: 'production',
+    label: 'Prix du kWh',
+    help: 'Prix proposé à la création d\'un équipement ; chaque équipement garde ensuite le sien.',
+    fields: [{ name: 'price', label: 'Prix du kWh', type: 'number', unit: 'DH / kWh', min: 0, max: 100 }],
+    defaults: { price: 1.5 },
+    storage: { kind: 'policy' }, scopes: ['company', 'store'],
+  },
+  {
+    key: 'production.margin_multiplier', domain: 'production', section: 'production',
+    label: 'Multiplicateur de marge',
+    help: 'Prix conseillé = coût de production × multiplicateur, quand la recette n\'en porte pas.',
+    fields: [{ name: 'value', label: 'Multiplicateur', type: 'number', unit: '× coût', min: 0.1, max: 50 }],
+    defaults: { value: 3 },
+    storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop'],
+  },
+  {
+    key: 'production.mrp_horizon', domain: 'production', section: 'production',
+    label: 'Horizon du plan directeur',
+    help: 'Nombre maximal de jours calculés par le plan directeur (besoins nets par jour).',
+    fields: [{ name: 'days', label: 'Horizon', type: 'integer', unit: 'jours', min: 1, max: 60 }],
+    defaults: { days: 14 },
+    storage: { kind: 'policy' }, scopes: ['company', 'store'],
+  },
+  {
+    key: 'production.showcase_time', domain: 'production', section: 'production',
+    label: 'Heure de mise en vitrine',
+    help: 'Heure cible proposée par le rétro-planning : les étapes sont calées pour que l\'article soit prêt à cette heure.',
+    fields: [{ name: 'time', label: 'Heure de mise en vitrine', type: 'time' }],
+    defaults: { time: '07:00' },
+    storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop', 'product'],
+  },
+  {
+    key: 'production.shift_cutoff', domain: 'production', section: 'production',
+    label: 'Coupure d\'équipe',
+    help: 'Heure qui sépare l\'équipe du matin de celle de l\'après-midi sur les bons de production.',
+    fields: [{ name: 'hour', label: 'Coupure d\'équipe', type: 'integer', unit: 'h', min: 0, max: 23 }],
+    defaults: { hour: 14 },
+    storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop'],
+  },
+  {
+    key: 'production.oee_thresholds', domain: 'production', section: 'production',
+    label: 'Seuils du TRS',
+    help: 'Taux de rendement synthétique d\'un poste de charge : bon au-dessus du premier seuil, en alerte sous le second.',
+    fields: [
+      { name: 'good', label: 'TRS bon à partir de', type: 'percent', unit: '%', min: 0, max: 100 },
+      { name: 'alert', label: 'TRS en alerte sous', type: 'percent', unit: '%', min: 0, max: 100 },
+    ],
+    defaults: { good: 85, alert: 60 },
+    storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop'],
+  },
+  {
+    key: 'production.forecast_history', domain: 'production', section: 'production',
+    label: 'Historique de la prévision',
+    help: 'Nombre de jours de ventes pris en compte pour prévoir la demande (au moins six semaines : la prévision compare six mêmes jours de la semaine).',
+    fields: [{ name: 'days', label: 'Historique', type: 'integer', unit: 'jours', min: 42, max: 365 }],
+    defaults: { days: 56 },
+    storage: { kind: 'policy' }, scopes: ['company', 'store'],
+  },
+  {
+    key: 'production.replenishment_history', domain: 'production', section: 'production',
+    label: 'Historique de l\'approvisionnement boutique',
+    help: 'Nombre de jours de ventes regardés pour proposer les quantités à envoyer en boutique (même jour de la semaine).',
+    fields: [{ name: 'days', label: 'Historique', type: 'integer', unit: 'jours', min: 14, max: 180 }],
+    defaults: { days: 29 },
+    storage: { kind: 'policy' }, scopes: ['company', 'store'],
   },
   {
     key: 'production.fixed_charges', domain: 'production', section: 'production',
@@ -416,6 +506,11 @@ export function validateParameter(def: ParamDef, input: unknown, current: Record
         const uniq = [...new Set(nums)].sort((a, b) => a - b);
         if (uniq.length === 0) return `${f.label} : au moins une valeur`;
         out[name] = uniq;
+        break;
+      }
+      case 'time': {
+        if (typeof raw !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(raw)) return `${f.label} : heure attendue (HH:MM)`;
+        out[name] = raw;
         break;
       }
       case 'date': {

@@ -1,3 +1,4 @@
+import { policyNumber } from '../services/policies.js';
 import { db } from '../config/database.js';
 
 // Freinte STANDARD (épic labo L3) : résolue depuis le format par défaut actif de
@@ -196,8 +197,10 @@ export const productionRendementRepository = {
               pc.quantite_theorique, pc.pertes_fixes, pc.seuil_rendement_defaut,
               pc.categories_pertes,
               ppp.surcharge_quantite_theorique, ppp.surcharge_pertes_fixes,
-              ppp.surcharge_seuil_rendement
+              ppp.surcharge_seuil_rendement,
+              ppi.product_id, pp.store_id, pp.target_role, pp.type AS order_type
        FROM production_plan_items ppi
+       JOIN production_plans pp ON pp.id = ppi.plan_id
        LEFT JOIN production_contenants pc ON pc.id = ppi.contenant_id
        LEFT JOIN produit_profil_production ppp ON ppp.produit_id = ppi.product_id
        WHERE ppi.id = $1`,
@@ -205,10 +208,15 @@ export const productionRendementRepository = {
     );
     if (!result.rows[0]) return null;
     const r = result.rows[0];
+    // M1-03 : sans seuil sur la recette ni sur le contenant, la politique « Rendement cible »
+    // (article → type d'ordre → atelier → établissement → société ; 90 % par défaut).
+    const seuil = r.surcharge_seuil_rendement ?? r.seuil_rendement_defaut
+      ?? await policyNumber('production.yield_target', 'pct', {
+        productId: r.product_id, orderType: r.order_type, workshop: r.target_role, storeId: r.store_id });
     return {
       quantiteTheorique: r.surcharge_quantite_theorique ?? r.quantite_theorique ?? 0,
       pertesFixes: r.surcharge_pertes_fixes ?? r.pertes_fixes ?? 0,
-      seuilRendement: r.surcharge_seuil_rendement ?? r.seuil_rendement_defaut ?? 90,
+      seuilRendement: seuil,
       nbContenants: r.nb_contenants ?? 1,
       quantiteNetteCible: r.quantite_nette_cible ?? 0,
       categoriesPertes: r.categories_pertes || [],

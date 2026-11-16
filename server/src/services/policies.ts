@@ -34,7 +34,7 @@ type Queryable = Pick<PoolClient, 'query'> | typeof db;
 // Lu à chaque calcul (coût, rendement, plan directeur) : cache court, vidé à l'écriture.
 // La durée borne le décalage entre deux instances du serveur.
 const CACHE_MS = 30_000;
-let cache: { at: number; byKey: Map<string, PolicyRow[]> } | null = null;
+let cache: { at: number; byKey: Map<string, PolicyRow[]>; company: Record<string, unknown> } | null = null;
 
 export function invalidatePolicies() { cache = null; }
 
@@ -45,15 +45,17 @@ export async function policySnapshot(q: Queryable = db): Promise<PolicyRow[]> {
   return (await q.query(`SELECT key, scope_type, scope_id, value FROM policy_values ORDER BY key, scope_type, scope_id`)).rows as PolicyRow[];
 }
 
-async function allPolicies(): Promise<Map<string, PolicyRow[]>> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.byKey;
+async function allPolicies(): Promise<{ byKey: Map<string, PolicyRow[]>; company: Record<string, unknown> }> {
+  if (cache && Date.now() - cache.at < CACHE_MS) return cache;
   const byKey = new Map<string, PolicyRow[]>();
   for (const r of await policySnapshot()) {
     const list = byKey.get(r.key);
     if (list) list.push(r); else byKey.set(r.key, [r]);
   }
-  cache = { at: Date.now(), byKey };
-  return byKey;
+  // Niveau société porté par une colonne de company_settings (companyColumns du catalogue).
+  const company = (await db.query(`SELECT * FROM company_settings WHERE id = 1`)).rows[0] ?? {};
+  cache = { at: Date.now(), byKey, company };
+  return cache;
 }
 
 const policyDef = (key: string): ParamDef => {
@@ -72,7 +74,8 @@ export const policyDefinitions = (): ParamDef[] => PARAMETERS.filter(p => p.stor
  */
 export async function resolvePolicy<T = Record<string, unknown>>(key: string, ctx: PolicyContext = {}): Promise<ResolvedPolicy<T>> {
   const def = policyDef(key);
-  const rows = (await allPolicies()).get(key) ?? [];
+  const all = await allPolicies();
+  const rows = all.byKey.get(key) ?? [];
   const wanted: [PolicyScope, string | null | undefined][] = [
     ['product', ctx.productId], ['order_type', ctx.orderType], ['workshop', ctx.workshop], ['store', ctx.storeId], ['company', ''],
   ];
@@ -80,6 +83,19 @@ export async function resolvePolicy<T = Record<string, unknown>>(key: string, ct
     if (id === null || id === undefined) continue;
     const hit = rows.find(r => r.scope_type === scope && r.scope_id === id);
     if (hit) return { value: { ...def.defaults, ...hit.value } as T, source: scope, scopeId: id };
+  }
+  // Niveau société tenu par une colonne historique : c'est elle qui fait foi.
+  if (def.companyColumns) {
+    const value: Record<string, unknown> = { ...def.defaults };
+    let found = false;
+    for (const [field, col] of Object.entries(def.companyColumns)) {
+      const raw = all.company[col];
+      if (raw === null || raw === undefined) continue;
+      const f = def.fields.find(x => x.name === field);
+      value[field] = f && !['boolean', 'enum', 'time', 'date', 'list'].includes(f.type) ? Number(raw) : raw;
+      found = true;
+    }
+    if (found) return { value: value as T, source: 'company', scopeId: '' };
   }
   return { value: { ...def.defaults } as T, source: 'default', scopeId: '' };
 }

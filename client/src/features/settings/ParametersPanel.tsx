@@ -366,6 +366,15 @@ function FieldInput({ id, field, value, disabled, onChange }: {
       </label>
     );
   }
+  if (field.type === 'time') {
+    return (
+      <label htmlFor={id} className="odoo-params-num">
+        <span>{field.label}</span>
+        <input id={id} type="time" className="odoo-input" style={{ width: 120 }} value={typeof value === 'string' ? value : ''} disabled={disabled}
+          aria-label={field.label} onChange={e => onChange(e.target.value)} />
+      </label>
+    );
+  }
   return <NumberField id={id} field={field} value={value} disabled={disabled} onChange={onChange} />;
 }
 
