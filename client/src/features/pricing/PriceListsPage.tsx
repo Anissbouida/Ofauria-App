@@ -5,6 +5,7 @@ import { pricingApi, type PriceList } from '../../api/pricing.api';
 import { salesChannelsApi } from '../../api/sales-channels.api';
 import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { getApiErrorMessage } from '../../utils/api-error';
 import SalesPageShell from '../sales/SalesPageShell';
@@ -163,10 +164,9 @@ export default function PriceListsPage() {
           <h3 style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: 6 }}>Prix par article (palier de quantité)</h3>
           <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'flex-end' }}>
             <label style={{ flex: 2 }}><span style={lab}>Article</span>
-              <select style={field} value={itemForm.productId} onChange={(e) => setItemForm({ ...itemForm, productId: e.target.value })}>
-                <option value="">— Choisir —</option>
-                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              <SearchSelect value={itemForm.productId} onChange={(v) => setItemForm({ ...itemForm, productId: v })}
+                placeholder="— Choisir —" width="100%" size="md" ariaLabel="Article"
+                options={products.map(p => ({ id: String(p.id), label: p.name as string }))} />
             </label>
             <label style={{ width: 110 }}><span style={lab}>À partir de</span>
               <input type="number" style={field} value={itemForm.minQuantity} onChange={(e) => setItemForm({ ...itemForm, minQuantity: e.target.value })} /></label>

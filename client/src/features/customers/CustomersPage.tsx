@@ -13,6 +13,7 @@ import { format, differenceInDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import CustomFieldsEditor, { useCustomListColumns } from '../../components/custom-fields/CustomFieldsEditor';
 import { customFieldsApi, useCustomFieldsForm, formatCfValue, type CfValues } from '../../api/custom-fields.api';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -512,6 +513,9 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
   const [tvaExonere, setTvaExonere] = useState<boolean>(
     editing?.tva_exonere === true || editing?.customer_type === 'association'
   );
+  const [salespersonId, setSalespersonId] = useState<string>(
+    (editing as Record<string, any> | null)?.salesperson_id || ''
+  );
   const isMoralEntity = isMoral(customerType);
   const title = editing ? displayName(editing).primary : 'Nouveau';
   // Partenaires possibles (entité mère / payeur) : autres clients B2B (phase 4.2).
@@ -551,6 +555,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
           const fd = new FormData(e.currentTarget);
           const payload: Customer = Object.fromEntries(fd);
           payload.tvaExonere = tvaExonere;
+          payload.salespersonId = salespersonId || '';
           const missing = cf.missing();
           if (missing.length) { notify.error(`À renseigner : ${missing.join(', ')}`); return; }
           onSubmit(payload, cf.defs.length ? cf.values : null);
@@ -655,10 +660,9 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
                 </div>
                 {/* Commercial attitré (phase 4.5) : repris sur devis, commande, BL, facture */}
                 <div><label style={fieldLabel}>Commercial attitré</label>
-                  <select name="salespersonId" defaultValue={ed?.salesperson_id || ''} className={inputCls}>
-                    <option value="">— Aucun</option>
-                    {salespeople.map(u => <option key={u.id as string} value={u.id as string}>{u.firstName as string} {u.lastName as string}</option>)}
-                  </select></div>
+                  <SearchSelect value={salespersonId} onChange={setSalespersonId}
+                    placeholder="— Aucun" width="100%" size="md" ariaLabel="Commercial attitré"
+                    options={salespeople.map(u => ({ id: u.id as string, label: `${u.firstName as string} ${u.lastName as string}` }))} /></div>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem', cursor: 'pointer' }}>
                   <input type="checkbox" checked={tvaExonere} disabled={!direction} onChange={(e) => setTvaExonere(e.target.checked)} />
                   Client exonéré de TVA

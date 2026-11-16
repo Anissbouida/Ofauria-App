@@ -15,6 +15,7 @@ import { productsApi } from '../../api/products.api';
 import { categoriesApi } from '../../api/categories.api';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { notify } from '../../components/ui/InlineNotification';
 
 /**
@@ -146,10 +147,8 @@ function GridTab({ canEdit, onTab }: { canEdit: boolean; onTab: (t: Tab) => void
           <Search size={13} style={{ position: 'absolute', left: 8, color: 'var(--theme-text-muted)' }} />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Produit…" className="odoo-search-input" style={{ paddingLeft: 26, width: 180 }} aria-label="Rechercher un produit" />
         </span>
-        <select value={category} onChange={e => setCategory(e.target.value)} className="odoo-search-input" aria-label="Catégorie">
-          <option value="">Toutes catégories</option>
-          {categories.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-        </select>
+        <SearchSelect value={category} onChange={setCategory} ariaLabel="Catégorie" placeholder="Toutes catégories" width={200}
+          options={categories.map(([id, name]) => ({ id: String(id), label: name as string }))} />
         <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', marginLeft: 'auto' }}>
           {rows.length} produit(s){canEdit && ' · cliquez sur une case pour la corriger'}
         </span>
@@ -286,10 +285,9 @@ function EventsTab({ canEdit }: { canEdit: boolean }) {
               onChange={e => setDraft({ ...draft, uplift_pct: Number(e.target.value) })} className="odoo-search-input" />
           </Field>
           <Field label="Catégorie">
-            <select value={draft.category_id ?? ''} onChange={e => setDraft({ ...draft, category_id: e.target.value ? Number(e.target.value) : null })} className="odoo-search-input">
-              <option value="">Toutes</option>
-              {(categories as Array<{ id: number; name: string }>).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <SearchSelect value={draft.category_id != null ? String(draft.category_id) : ''} onChange={id => setDraft({ ...draft, category_id: id ? Number(id) : null })}
+              placeholder="Toutes" width="100%" size="md" ariaLabel="Catégorie"
+              options={(categories as Array<{ id: number; name: string }>).map(c => ({ id: String(c.id), label: c.name as string }))} />
           </Field>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
             <input type="checkbox" checked={draft.all_stores} onChange={e => setDraft({ ...draft, all_stores: e.target.checked })} /> Tous les magasins

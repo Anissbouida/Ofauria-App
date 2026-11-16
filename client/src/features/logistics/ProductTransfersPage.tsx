@@ -5,6 +5,7 @@ import { productTransfersApi, type ProductTransfer } from '../../api/product-tra
 import { storesApi } from '../../api/stores.api';
 import { productsApi } from '../../api/products.api';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { getApiErrorMessage } from '../../utils/api-error';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi, ListPanel, ListEmpty, ListToolbar } from '../sales/ListTemplate';
@@ -73,10 +74,9 @@ export default function ProductTransfersPage() {
           {form.lines.map((l, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
               <label style={{ flex: 2 }}><span style={lab}>Article</span>
-                <select style={field} value={l.productId} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...l, productId: e.target.value }; setForm({ ...form, lines }); }}>
-                  <option value="">— Choisir —</option>
-                  {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select></label>
+                <SearchSelect value={l.productId} onChange={(id) => { const lines = [...form.lines]; lines[i] = { ...l, productId: id }; setForm({ ...form, lines }); }}
+                  placeholder="— Choisir —" width="100%" size="md" ariaLabel="Article"
+                  options={products.map(p => ({ id: String(p.id), label: p.name as string }))} /></label>
               <label style={{ width: 120 }}><span style={lab}>Quantité</span>
                 <input type="number" style={field} value={l.quantity} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...l, quantity: e.target.value }; setForm({ ...form, lines }); }} /></label>
               <button className="odoo-btn-secondary" onClick={() => setForm({ ...form, lines: form.lines.filter((_, j) => j !== i) })}><Trash2 size={12} /></button>

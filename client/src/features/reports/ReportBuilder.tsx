@@ -4,6 +4,7 @@ import { BarChart3, Loader2, Save, Trash2, Play, Plus, X, Download, LayoutGrid, 
 import { format, subDays } from 'date-fns';
 import { reportsApi, type ReportConfig, type ReportField, type DashboardTile } from '../../api/reports.api';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -105,7 +106,7 @@ function BuilderView() {
           <div className="kl-group kl-rb-form">
             <div className="kl-rb-row">
               <span className="k">Source</span>
-              <span className="v"><select value={sourceKey} onChange={e => pickSource(e.target.value)} style={{ minWidth: 180 }}>{sources.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}</select></span>
+              <span className="v"><SearchSelect value={sourceKey} onChange={pickSource} clearable={false} placeholder="Source" width={200} size="md" ariaLabel="Source de données" options={sources.map(s => ({ id: String(s.key), label: s.label as string }))} /></span>
             </div>
             {source?.hasDate !== false && (
               <div className="kl-rb-row">
@@ -234,10 +235,8 @@ function AddToDashboard({ tile, onClose }: { tile: DashboardTile; onClose: () =>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Titre de la tuile</span><input value={title} onChange={e => setTitle(e.target.value)} style={inp} /></label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Tableau de bord</span>
-            <select value={target} onChange={e => setTarget(e.target.value)} style={{ ...inp, width: '100%' }}>
-              <option value="">— Nouveau —</option>
-              {dashboards.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select></label>
+            <SearchSelect value={target} onChange={setTarget} placeholder="— Nouveau —" width="100%" size="md" ariaLabel="Tableau de bord"
+              options={dashboards.map(d => ({ id: String(d.id), label: d.name as string }))} /></label>
           {(!target) && <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' }}><span style={{ color: 'var(--theme-text-muted)' }}>Nom du nouveau tableau de bord</span><input value={newName} onChange={e => setNewName(e.target.value)} placeholder="ex : Pilotage quotidien" style={inp} /></label>}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
@@ -294,7 +293,7 @@ function Dashboards() {
             {dashboards.map(d => <button key={d.id} type="button" role="tab" aria-selected={d.id === activeId} className={d.id === activeId ? 'active' : ''} onClick={() => setSelId(d.id)}>{d.name} <small style={{ opacity: .6 }}>{d.tile_count}</small></button>)}
           </div>
         ) : (
-          <select value={activeId ?? ''} onChange={e => setSelId(e.target.value)} style={{ ...inp, minWidth: 220, border: 0, borderRadius: 8 }}>{dashboards.map(d => <option key={d.id} value={d.id}>{d.name} ({d.tile_count})</option>)}</select>
+          <SearchSelect value={activeId != null ? String(activeId) : ''} onChange={setSelId} clearable={false} placeholder="Tableau de bord" width={240} size="md" ariaLabel="Tableau de bord actif" options={dashboards.map(d => ({ id: String(d.id), label: `${d.name} (${d.tile_count})` }))} />
         )}
         {dash && <button type="button" className="odoo-btn-danger" onClick={del} style={{ marginLeft: 'auto' }}><Trash2 size={13} /> Supprimer</button>}
       </div>

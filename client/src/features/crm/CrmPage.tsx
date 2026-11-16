@@ -273,8 +273,8 @@ function OpportunityForm({ opp, onClose, onSaved }: { opp: Opportunity | null; o
             <label style={lab}>Probabilité (%)<input style={field} type="number" min={0} max={100} value={f.probability} onChange={e => set('probability', e.target.value)} placeholder="selon l'étape" /></label>
             <label style={lab}>Conclusion prévue<input style={field} type="date" value={f.expectedCloseDate} onChange={e => set('expectedCloseDate', e.target.value)} /></label>
             <label style={lab}>Source<select style={field} value={f.sourceCode} onChange={e => set('sourceCode', e.target.value)}><option value="">—</option>{sources.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}</select></label>
-            <label style={lab}>Responsable<select style={field} value={f.ownerId} onChange={e => set('ownerId', e.target.value)}>{owners.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
-            <label style={lab}>Campagne<select style={field} value={f.campaignId} onChange={e => set('campaignId', e.target.value)}><option value="">—</option>{campaignOpts.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+            <label style={lab}>Responsable<SearchSelect value={f.ownerId} onChange={v => set('ownerId', v)} placeholder="Responsable" width={180} size="md" ariaLabel="Responsable" options={owners.map(o => ({ id: String(o.id), label: o.name as string }))} /></label>
+            <label style={lab}>Campagne<SearchSelect value={f.campaignId} onChange={v => set('campaignId', v)} placeholder="—" width={180} size="md" ariaLabel="Campagne" options={campaignOpts.map(c => ({ id: String(c.id), label: c.name as string }))} /></label>
           </div>
           <label style={lab}>Description<textarea style={{ ...field, minHeight: 70 }} maxLength={4000} value={f.description} onChange={e => set('description', e.target.value)} placeholder="Besoin du client, contexte, interlocuteurs…" /></label>
           <CustomFieldsEditor entity="opportunity" values={cf.values} onChange={cf.setValues} />
@@ -377,7 +377,7 @@ function OpportunityDetail({ id, onClose, onEdit, onLose }: { id: string; onClos
                     placeholder={act.kind === 'note' ? 'Ce qui s\'est dit…' : 'Ex. : rappeler pour confirmer le nombre de convives'} /></label>
                   {act.kind !== 'note' && <>
                     <label style={{ ...lab, width: 190 }}>Échéance<input style={field} type="datetime-local" value={act.dueAt} onChange={e => setAct({ ...act, dueAt: e.target.value })} /></label>
-                    <label style={{ ...lab, width: 170 }}>Pour<select style={field} value={act.assignedTo} onChange={e => setAct({ ...act, assignedTo: e.target.value })}>{owners.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></label>
+                    <label style={{ ...lab, width: 170 }}>Pour<SearchSelect value={act.assignedTo} onChange={v => setAct({ ...act, assignedTo: v })} placeholder="Pour" width={170} size="md" ariaLabel="Assigné à" options={owners.map(u => ({ id: String(u.id), label: u.name as string }))} /></label>
                   </>}
                   <button className="odoo-btn-primary" disabled={act.subject.trim().length < 2 || add.isPending} onClick={() => add.mutate()}>Ajouter</button>
                 </div>

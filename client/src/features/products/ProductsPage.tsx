@@ -1364,22 +1364,17 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label style={fieldLabel}>Catégorie</label>
-                    <select style={fieldInput} value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: parseInt(e.target.value) })}>
-                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                    <SearchSelect value={form.categoryId != null ? String(form.categoryId) : ''} onChange={(id) => setForm({ ...form, categoryId: parseInt(id) })}
+                      clearable={false} placeholder="Catégorie" width="100%" size="md" ariaLabel="Catégorie"
+                      options={categories.map(c => ({ id: String(c.id), label: c.name as string }))} />
                   </div>
                   <div>
                     <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} /> Responsable
                     </label>
-                    <select style={fieldInput} value={form.responsibleUserId} onChange={(e) => setForm({ ...form, responsibleUserId: e.target.value })}>
-                      <option value="">Aucun responsable</option>
-                      {chefUsers.map((u: Record<string, any>) => (
-                        <option key={u.id as string} value={u.id as string}>
-                          {u.firstName as string} {u.lastName as string} — {ROLE_LABELS[(u.role as Role)] || u.role}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchSelect value={form.responsibleUserId} onChange={(v) => setForm({ ...form, responsibleUserId: v })}
+                      placeholder="Aucun responsable" width="100%" size="md" ariaLabel="Responsable"
+                      options={chefUsers.map((u: Record<string, any>) => ({ id: u.id as string, label: `${u.firstName as string} ${u.lastName as string} — ${ROLE_LABELS[(u.role as Role)] || u.role}` }))} />
                   </div>
                 </div>
 
