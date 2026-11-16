@@ -35,6 +35,9 @@ router.get('/mrp/material-requirements', authenticate, authorize(...ROLE_GROUPS.
 router.post('/mrp/generate-purchase-requests', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrpGeneratePurchaseRequests));
 // Réglages de production centralisés — roadmap lot 9. Avant /:id.
 router.get('/settings', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.getSettings));
+// M1-04 — politiques de production (lecture : production ; écriture : droit Paramètres › Production).
+router.get('/policies', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.listPolicies));
+router.put('/policies/:key', authenticate, authorizeSettings('production', 'edit'), asyncHandler(productionController.setPolicy));
 router.put('/settings', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(productionController.updateSettings));
 router.post('/transfers/:transferId/receive', authenticate, validateUuidParams('transferId'), authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.confirmProductionTransfer));
 

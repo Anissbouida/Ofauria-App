@@ -1,3 +1,4 @@
+import { listPolicies, setPolicy, type PolicyScope } from '../services/policies.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productionRepository } from '../repositories/production.repository.js';
@@ -158,6 +159,20 @@ export const productionController = {
   },
 
   /** Réglages de production centralisés (mig 403) — roadmap lot 9. */
+  /** M1-04 — politiques de production : valeurs effectives pour un contexte, et valeurs posées. */
+  async listPolicies(req: AuthRequest, res: Response) {
+    const q = (k: string) => (typeof req.query[k] === 'string' && req.query[k] ? req.query[k] as string : undefined);
+    res.json({ success: true, data: await listPolicies({
+      storeId: q('store') ?? req.user!.storeId ?? undefined, workshop: q('workshop'), orderType: q('orderType'), productId: q('product'),
+    }) });
+  },
+  /** Pose (value = objet de champs) ou retire (value = null) une politique à un niveau. */
+  async setPolicy(req: AuthRequest, res: Response) {
+    const b = (req.body ?? {}) as { scopeType?: string; scopeId?: string; value?: unknown };
+    const out = await setPolicy(req.params.key as string, (b.scopeType ?? '') as PolicyScope, String(b.scopeId ?? ''), b.value ?? null, req.user!.userId);
+    if ('error' in out) { res.status(400).json({ success: false, error: { message: out.error } }); return; }
+    res.json({ success: true, data: out });
+  },
   async getSettings(_req: AuthRequest, res: Response) {
     res.json({ success: true, data: await settingsRepository.getProductionSettings() });
   },

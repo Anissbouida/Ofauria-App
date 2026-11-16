@@ -86,6 +86,12 @@ export const productionApi = {
     api.get('/production/mrp/material-requirements', { params: { date, ...(store ? { store } : {}) } }).then(r => r.data.data),
   mrpGeneratePurchaseRequests: (date: string, store?: string): Promise<{ created: number; skipped_existing: number; candidates: number }> =>
     api.post('/production/mrp/generate-purchase-requests', { date, ...(store ? { store } : {}) }).then(r => r.data.data),
+  /** Politiques de production (M1-03 / M1-04) : valeurs effectives pour un contexte et valeurs posées. */
+  listPolicies: (ctx: { store?: string; workshop?: string; orderType?: string; product?: string } = {}): Promise<ProductionPolicies> =>
+    api.get('/production/policies', { params: Object.fromEntries(Object.entries(ctx).filter(([, v]) => v)) }).then(r => r.data.data),
+  /** Pose (value = champs) ou retire (value = null) une politique à un niveau. */
+  setPolicy: (key: string, scopeType: PolicyScopeType, scopeId: string, value: Record<string, unknown> | null) =>
+    api.put(`/production/policies/${encodeURIComponent(key)}`, { scopeType, scopeId, value }).then(r => r.data.data),
   /** Réglages de production centralisés — roadmap lot 9. */
   getSettings: (): Promise<ProductionSettings> => api.get('/production/settings').then(r => r.data.data),
   updateSettings: (data: Partial<ProductionSettingsInput>): Promise<ProductionSettings> =>
@@ -179,3 +185,17 @@ export function useProcessRefs() {
     },
   };
 }
+
+export type PolicyScopeType = 'company' | 'store' | 'workshop' | 'order_type' | 'product';
+export type PolicyField = { name: string; label: string; type: 'boolean' | 'number' | 'integer' | 'percent' | 'enum' | 'list' | 'date' | 'time'; unit?: string; min?: number; max?: number; options?: { value: string; label: string }[] };
+export type ProductionPolicy = {
+  key: string; label: string; help: string; fields: PolicyField[]; defaults: Record<string, unknown>;
+  scopes: PolicyScopeType[]; companyManagedElsewhere: boolean;
+  effective: { value: Record<string, unknown>; source: PolicyScopeType | 'default'; scopeId: string; sourceLabel: string; scopeLabel: string };
+  company: { value: Record<string, unknown>; source: PolicyScopeType | 'default' };
+  overrides: { scopeType: PolicyScopeType; scopeId: string; scopeTypeLabel: string; scopeLabel: string; value: Record<string, unknown> }[];
+};
+export type ProductionPolicies = {
+  policies: ProductionPolicy[];
+  levels: { stores: { id: string; label: string }[]; workshops: { id: string; label: string }[] };
+};

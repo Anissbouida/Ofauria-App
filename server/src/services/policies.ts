@@ -197,3 +197,52 @@ export async function restorePolicies(client: Queryable, list: PolicyRow[], user
      WHERE policy_values.value IS DISTINCT FROM EXCLUDED.value`, [json, userId ?? null]);
   invalidatePolicies();
 }
+
+/**
+ * Politiques de production pour l'écran Production › Paramétrage › Politiques (M1-04) et
+ * pour les écrans qui lisent un seuil : valeur effective dans le contexte demandé, niveau
+ * d'où elle vient, et toutes les valeurs posées avec le nom de leur niveau.
+ */
+export async function listPolicies(ctx: PolicyContext = {}) {
+  const defs = policyDefinitions();
+  const [rows, stores, workshops] = await Promise.all([
+    policySnapshot(),
+    db.query(`SELECT id, name FROM stores ORDER BY name`),
+    listWorkshops(),
+  ]);
+  const productIds = [...new Set(rows.filter(r => r.scope_type === 'product').map(r => r.scope_id))];
+  const products = productIds.length
+    ? (await db.query(`SELECT id, name FROM products WHERE id::text = ANY($1)`, [productIds])).rows
+    : [];
+  const names: Record<string, Map<string, string>> = {
+    store: new Map(stores.rows.map(s => [s.id as string, s.name as string])),
+    workshop: new Map(workshops.map(w => [w.code, w.label])),
+    product: new Map(products.map(p => [p.id as string, p.name as string])),
+  };
+  const scopeLabel = (type: PolicyScope, id: string) =>
+    type === 'company' ? 'Société' : type === 'order_type' ? id : (names[type]?.get(id) ?? id);
+
+  const policies = await Promise.all(defs.map(async def => {
+    const effective = await resolvePolicy(def.key, ctx);
+    const company = await resolvePolicy(def.key, {});
+    return {
+      key: def.key, label: def.label, help: def.help, fields: def.fields, defaults: def.defaults,
+      scopes: def.scopes ?? ['company'],
+      // Niveau société tenu par un autre écran (colonne historique) : affiché, non modifiable ici.
+      companyManagedElsewhere: Boolean(def.companyColumns),
+      effective: { ...effective, sourceLabel: POLICY_SCOPE_LABELS[effective.source], scopeLabel: effective.source === 'default' ? '' : scopeLabel(effective.source, effective.scopeId) },
+      company: { value: company.value, source: company.source },
+      overrides: rows.filter(r => r.key === def.key).map(r => ({
+        scopeType: r.scope_type, scopeId: r.scope_id, scopeTypeLabel: POLICY_SCOPE_LABELS[r.scope_type],
+        scopeLabel: scopeLabel(r.scope_type, r.scope_id), value: { ...def.defaults, ...r.value },
+      })),
+    };
+  }));
+  return {
+    policies,
+    levels: {
+      stores: stores.rows.map(s => ({ id: s.id as string, label: s.name as string })),
+      workshops: workshops.filter(w => w.isActive).map(w => ({ id: w.code, label: w.label })),
+    },
+  };
+}

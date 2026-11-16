@@ -74,12 +74,15 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'policy' }, scopes: ALL_SCOPES,
   },
   {
-    key: 'production.yield_alert', domain: 'production', section: 'production',
-    label: 'Rendement critique',
-    help: 'En dessous de ce rendement, l\'article passe en alerte (rouge) sur les écrans de production.',
-    fields: [{ name: 'pct', label: 'Rendement critique', type: 'percent', unit: '%', min: 0, max: 100 }],
-    defaults: { pct: 70 },
-    storage: { kind: 'policy' }, scopes: ALL_SCOPES,
+    key: 'production.yield_display', domain: 'production', section: 'production',
+    label: 'Seuils d\'affichage du rendement moyen',
+    help: 'Couleur d\'un rendement moyen sur les écrans de production : vert à partir du premier seuil, rouge sous le second, orange entre les deux.',
+    fields: [
+      { name: 'good', label: 'Rendement moyen bon à partir de', type: 'percent', unit: '%', min: 0, max: 100 },
+      { name: 'alert', label: 'Rendement moyen critique sous', type: 'percent', unit: '%', min: 0, max: 100 },
+    ],
+    defaults: { good: 85, alert: 70 },
+    storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop'],
   },
   {
     key: 'production.fixed_charges_rate', domain: 'production', section: 'production',
