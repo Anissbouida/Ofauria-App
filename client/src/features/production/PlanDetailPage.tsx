@@ -339,7 +339,10 @@ export default function PlanDetailPage() {
       const ln = firstLot.lot_number as string;
       return ln.substring(0, ln.lastIndexOf('-'));
     }
-    return `LOT-${dateStr}`;
+    // G0-25 : aucun numéro n'est fabriqué dans le navigateur. Sans lot attribué par le
+    // serveur, le préfixe est vide (les gabarits impriment « — »).
+    void dateStr;
+    return '';
   };
 
   const buildLotLabelData = (item: Record<string, any>): LotLabelData | null => {
@@ -349,7 +352,11 @@ export default function PlanDetailPage() {
     const sld = item.shelf_life_days as number;
     const dlcDate = item.expires_at ? new Date(item.expires_at as string) : sld ? new Date(prodDate.getTime() + sld * 86400000) : null;
     const planDate = new Date(plan.plan_date as string);
-    const lotNumber = (item.lot_number as string) || `LOT-${format(planDate, 'yyMMdd')}-001`;
+    // G0-25 : le numéro de lot vient du serveur (attribué à la confirmation, sous verrou).
+    // Sans lui, pas d'étiquette : un numéro fabriqué ici pouvait exister en double.
+    const lotNumber = item.lot_number as string | undefined;
+    if (!lotNumber) return null;
+    void planDate;
     // Audit P1.6 : libelle du cycle DERIVE du sale_type (source de verite),
     // pas de is_reexposable seul (qui pouvait rendre 'DLV — Conservable' sur
     // un produit sale_type='jour' non reexposable — trace physique erronee).
@@ -370,11 +377,21 @@ export default function PlanDetailPage() {
   };
 
   // Impressions : gabarits dans plan-print.ts, la page ne fait que les afficher.
+  // G0-25 : sans numéro venu du serveur, l'impression est refusée avec un message clair.
+  const NO_LOT_NUMBER = "Impression refusée : cet article n'a pas encore de numéro de lot. Le numéro est attribué par le serveur à la confirmation du plan.";
   const printProductionTicket = (item: Record<string, any>) => {
-    if (plan) setPrintHtml(buildTicketHtml(plan, item, settings));
+    if (!plan) return;
+    if (!item.lot_number) { notify.error(NO_LOT_NUMBER); return; }
+    setPrintHtml(buildTicketHtml(plan, item, settings));
   };
   const printBonSortieIngredients = () => {
-    if (plan) setPrintHtml(buildBsiHtml(plan, needs, settings, getPlanLotPrefix()));
+    if (!plan) return;
+    const bonNumber = activeBon?.numero as string | undefined;
+    if (!bonNumber) {
+      notify.error("Impression refusée : ce plan n'a pas encore de bon de sortie. Générez le bon de sortie, son numéro est attribué par le serveur.");
+      return;
+    }
+    setPrintHtml(buildBsiHtml(plan, needs, settings, getPlanLotPrefix(), bonNumber));
   };
   const printFicheProduction = (planData?: Record<string, any>) => {
     const p = planData || plan;
@@ -814,7 +831,7 @@ export default function PlanDetailPage() {
               const now = new Date();
               const producedBy = item.produced_by_first_name ? `${item.produced_by_first_name} ${item.produced_by_last_name}` : null;
               const startedBy = item.started_by_first_name ? `${item.started_by_first_name} ${item.started_by_last_name}` : null;
-              const lotNumber = (item.lot_number as string) || `LOT-${format(new Date(plan.plan_date as string), 'yyMMdd')}-${String(idx + 1).padStart(3, '0')}`;
+              const lotNumber = (item.lot_number as string) || '';
               const planned = item.planned_quantity as number;
               const actual = item.actual_quantity as number | null;
               const saleType = (item.sale_type as string) || 'jour';
@@ -864,7 +881,7 @@ export default function PlanDetailPage() {
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                     {actual != null ? <strong style={{ color: actual >= planned ? '#155724' : '#b85d1a' }}>{actual}</strong> : empty}
                   </td>
-                  <td style={{ fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap' }}>{(isProduced || isInProgress) ? lotNumber : empty}</td>
+                  <td style={{ fontFamily: 'ui-monospace, monospace', whiteSpace: 'nowrap' }}>{(isProduced || isInProgress) && lotNumber ? lotNumber : empty}</td>
                   <td style={{ whiteSpace: 'nowrap', color: 'var(--theme-text-muted)' }}>
                     {isProduced && prodTimestamp ? format(prodDate, 'dd/MM/yy HH:mm') : isInProgress && startTs ? format(new Date(startTs), 'dd/MM/yy HH:mm') : empty}
                   </td>
@@ -892,7 +909,7 @@ export default function PlanDetailPage() {
                         <Play size={12} /> Continuer
                       </button>
                     ) : isProduced ? (
-                      <button type="button" onClick={() => setPrintChoiceItem(item)} className="odoo-btn-secondary" title="Imprimer le ticket">
+                      <button type="button" onClick={() => { if (!item.lot_number) { notify.error(NO_LOT_NUMBER); return; } setPrintChoiceItem(item); }} className="odoo-btn-secondary" title="Imprimer le ticket">
                         <Printer size={12} /> Ticket
                       </button>
                     ) : null}

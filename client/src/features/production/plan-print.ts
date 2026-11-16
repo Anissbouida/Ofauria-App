@@ -18,7 +18,9 @@ export function buildTicketHtml(plan: Record<string, any>, item: Record<string, 
   const dlcDate = item.expires_at ? new Date(item.expires_at as string) : sld ? new Date(prodDate.getTime() + sld * 86400000) : null;
   const prodBy = item.produced_by_first_name ? `${item.produced_by_first_name} ${item.produced_by_last_name}` : '—';
   const planDate = new Date(plan.plan_date as string);
-  const lotNumber = (item.lot_number as string) || `LOT-${format(planDate, 'yyMMdd')}-${String(1).padStart(3, '0')}`;
+  // G0-25 : numéro attribué par le serveur ; l'appelant refuse l'impression s'il manque.
+  const lotNumber = (item.lot_number as string) || '—';
+  void planDate;
   // Audit P1.6 : libelle derive de sale_type (voir buildPrintPayload).
   const saleType = (item.sale_type as string) || 'jour';
   const cycleVie =
@@ -98,7 +100,7 @@ body { font-family: Arial, sans-serif; padding: 15px; color: #333; font-size: 12
 }
 
 
-export function buildBsiHtml(plan: Record<string, any>, needs: Record<string, any>[], settings: PrintSettings, planLotPrefix: string): string {
+export function buildBsiHtml(plan: Record<string, any>, needs: Record<string, any>[], settings: PrintSettings, planLotPrefix: string, bonNumber: string): string {
   const dateStr = format(new Date(plan.plan_date as string), 'dd/MM/yyyy');
   const now = format(new Date(), 'dd/MM/yyyy HH:mm');
   const planDate = new Date(plan.plan_date as string);
@@ -140,8 +142,9 @@ export function buildBsiHtml(plan: Record<string, any>, needs: Record<string, an
     }
   }
 
-  // Generate BSI number
-  const bsiNumber = `BSI-${bsiDateStr}-${String(1).padStart(3, '0')}`;
+  // G0-25 : numéro du bon de sortie tel qu'attribué par le serveur (plus de numéro fabriqué ici).
+  const bsiNumber = bonNumber;
+  void bsiDateStr;
 
   // Atelier du plan (libellé joint par le serveur, mig 511).
   const roleLabel = plan.target_role_label || plan.target_role || plan.created_by_name || '—';
@@ -203,7 +206,7 @@ tbody tr:nth-child(even) { background: #f9f9f9; }
 <div>
   <strong>Date de production :</strong> ${dateStr}<br/>
   <strong>Shift :</strong> ${shift}<br/>
-  <strong>N\u00b0 Plan :</strong> ${planLotPrefix}
+  <strong>N\u00b0 Plan :</strong> ${planLotPrefix || '—'}
 </div>
 <div style="text-align:right">
   <strong>Chef de production :</strong> ${roleLabel}<br/>
@@ -335,7 +338,7 @@ td { padding: 6px 10px; border-bottom: 1px solid #eee; }
 
 <div class="info">
 <div>
-  <strong>N\u00b0 Lot :</strong> ${planLotPrefix}<br/>
+  <strong>N\u00b0 Lot :</strong> ${planLotPrefix || '—'}<br/>
   <strong>Date de production :</strong> ${dateStr}<br/>
   <strong>Type :</strong> ${p.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
 </div>
