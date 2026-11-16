@@ -3,6 +3,7 @@ import { db } from '../config/database.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { productMaterialsUnitCost } from './product-cost.helper.js';
 import { sectorRepository } from './sector.repository.js';
+import { removeFromStoreStock } from './product-stock.helper.js';
 
 /**
  * Date civile (YYYY-MM-DD) d'un instant, dans le fuseau du magasin.
@@ -730,14 +731,9 @@ export const productLotRepository = {
 
       // Mise a jour product_store_stock (sync vitrine + backroom)
       if (totalLost > 0) {
-        await client.query(
-          `UPDATE product_store_stock
-              SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1),
-                  stock_quantity   = GREATEST(0, stock_quantity - $2),
-                  updated_at = NOW()
-            WHERE product_id = $3 AND store_id = $4`,
-          [vitrineQty, backroomQty, lot.product_id, lot.store_id]
-        );
+        // G0-18 : un lot plus grand que le stock du magasin est tracé comme anomalie.
+        await removeFromStoreStock(client, { productId: lot.product_id, storeId: lot.store_id, backroom: backroomQty, vitrine: vitrineQty,
+          lotId, origin: { type: 'lot_disposal', id: lotId }, userId, label: `${lot.product_name} — lot ${lot.lot_number}` });
 
         // Trace transaction stock
         await client.query(
@@ -940,23 +936,13 @@ export const productLotRepository = {
 
         // Synchroniser product_store_stock
         if (dlcExpired) {
-          await client.query(
-            `UPDATE product_store_stock
-             SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1),
-                 stock_quantity   = GREATEST(0, stock_quantity - $2),
-                 updated_at = NOW()
-             WHERE product_id = $3 AND store_id = $4`,
-            [vitrineQty, backroomQty, lot.product_id, lot.store_id]
-          );
+          // G0-18 : un lot plus grand que le stock du magasin est tracé comme anomalie.
+          await removeFromStoreStock(client, { productId: lot.product_id, storeId: lot.store_id, backroom: backroomQty, vitrine: vitrineQty,
+            lotId: lot.id, origin: { type: 'lot_expiry', id: lot.id }, label: `${lot.product_name} — lot ${lot.lot_number}` });
         } else if (dlvExpired && vitrineQty > 0) {
           // DLV seule : on ne touche QUE le vitrine_quantity du store
-          await client.query(
-            `UPDATE product_store_stock
-             SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1),
-                 updated_at = NOW()
-             WHERE product_id = $2 AND store_id = $3`,
-            [vitrineQty, lot.product_id, lot.store_id]
-          );
+          await removeFromStoreStock(client, { productId: lot.product_id, storeId: lot.store_id, backroom: 0, vitrine: vitrineQty,
+            lotId: lot.id, origin: { type: 'lot_expiry', id: lot.id }, label: `${lot.product_name} — lot ${lot.lot_number}` });
         }
 
         // Mettre a jour le lot

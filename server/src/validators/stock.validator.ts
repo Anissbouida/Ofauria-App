@@ -19,6 +19,11 @@ export const restockSchema = z.object({
   manufacturedDate: z.preprocess(blank, isoDate.optional()),
 }).passthrough();
 
+/** G0-18 : clôture d'une anomalie de stock, avec le motif de régularisation. */
+export const resolveStockAnomalySchema = z.object({
+  note: z.string().trim().min(3, 'Indiquez comment l\'anomalie a été régularisée').max(1000),
+});
+
 export const adjustStockSchema = z.object({
   ingredientId: uuid,
   // Signée : un ajustement peut retirer du stock.

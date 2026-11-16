@@ -25,6 +25,7 @@ import ConsommationTab from './ConsommationTab';
 import StockCountsTab from './StockCountsTab';
 import GoodsEntryRegisterTab from './GoodsEntryRegisterTab';
 import StockAgingTab from './StockAgingTab';
+import StockAnomaliesTab from './StockAnomaliesTab';
 import StockClosingTab from './StockClosingTab';
 import EmplacementsTab from './EmplacementsTab';
 import LotsThermalTab from './LotsThermalTab';
@@ -84,7 +85,7 @@ function situationOf(i: InventoryItem): Situation {
 }
 
 /** Onglets du module Stock (fusion Économat + Pesage, 2026-10-11). */
-type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'aging' | 'closing' | 'registre' | 'emplacements' | 'surgeles';
+type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'aging' | 'anomalies' | 'closing' | 'registre' | 'emplacements' | 'surgeles';
 /** Sous-vues de l'onglet Bons de sortie (?view=). */
 type BonsView = 'queue' | 'transfers' | 'history';
 /** Zone affichee dans l'onglet Stock (?zone=) : scelle (ex-Économat) ou entame (ex-Pesage). */
@@ -107,7 +108,7 @@ export default function StockPage() {
   //   -> A commander (ruptures BSI) -> Consommables -> Analyse (admin/gerant).
   // Tout est persiste en URL (?tab=&view=&zone=&bon=) pour les deep-links
   // (notifications, liens « Ouvrir au pesage », rafraichissement).
-  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'aging', 'closing', 'registre', 'emplacements', 'surgeles'];
+  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'aging', 'anomalies', 'closing', 'registre', 'emplacements', 'surgeles'];
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') as StockTab | null;
   const [econoTab, setEconoTab] = useState<StockTab>(
@@ -360,6 +361,8 @@ export default function StockPage() {
     { key: 'analyse', label: 'Analyse', icon: BarChart3, section: 'reports', hidden: !canManageIngredients },
     // Age du stock : lots matiere actifs par anciennete (admin/gerant).
     { key: 'aging', label: 'Âge du stock', icon: Clock, section: 'reports', hidden: !canManageIngredients },
+    // G0-18 : sorties supérieures au stock, à régulariser (admin/gérant).
+    { key: 'anomalies', label: 'Anomalies', icon: ShieldAlert, section: 'reports', hidden: !canManageIngredients },
     // Clôture de stock : instantané valorisé par période (admin/gérant).
     { key: 'closing', label: 'Clôtures', icon: Lock, section: 'reports', hidden: !canManageIngredients },
     // Santé des prix (mig 406) : anomalies de prix catalogue à corriger (admin/gérant).
@@ -506,6 +509,8 @@ export default function StockPage() {
         </div>
       ) : econoTab === 'aging' ? (
         <StockAgingTab />
+      ) : econoTab === 'anomalies' ? (
+        <StockAnomaliesTab />
       ) : econoTab === 'closing' ? (
         <StockClosingTab />
       ) : econoTab === 'emplacements' ? (

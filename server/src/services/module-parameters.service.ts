@@ -20,6 +20,7 @@ const DEFAULTS: Record<string, unknown> = {
   'sales.returns': { enabled: false, max_days: 14, max_amount_without_approval: 500 } satisfies ReturnRules,
   'sales.closure': { require_unsold_inventory: true },
   'sales.vat_regime': { mode: 'debit', since: null },
+  'stock.negative_policy': { ingredient: 'allow_trace', product: 'allow_trace', packaging: 'allow_trace', semi_finished: 'allow_trace' },
   'sales.stamp_duty': { enabled: false, rate_pct: 0.25, min_dh: 1, cash_only: true } satisfies StampDutyRules,
 };
 

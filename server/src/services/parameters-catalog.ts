@@ -148,6 +148,17 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'stock.negative_policy', domain: 'production', section: 'business',
+    label: 'Sortie supérieure au stock',
+    help: 'Quand une sortie dépasse le stock disponible. Autoriser et tracer : la sortie passe, le stock tombe à zéro et le manque est inscrit dans Stock › Anomalies. Bloquer : la sortie est refusée. Réglable par type d\'article.',
+    fields: (['ingredient', 'product', 'packaging', 'semi_finished'] as const).map((name, i) => ({
+      name, label: ['Matières premières', 'Produits finis', 'Emballages et consommables', 'Semi-finis'][i], type: 'enum' as const,
+      options: [{ value: 'allow_trace', label: 'Autoriser et tracer' }, { value: 'block', label: 'Bloquer' }],
+    })),
+    defaults: { ingredient: 'allow_trace', product: 'allow_trace', packaging: 'allow_trace', semi_finished: 'allow_trace' },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'sales.vat_regime', domain: 'sales', section: 'business',
     label: 'Régime de TVA',
     help: 'Débit : la TVA est déclarée dès la facture. Encaissement : la TVA des factures et tickets à crédit est déclarée au fur et à mesure des règlements, à partir de la date de bascule (les factures antérieures restent déclarées à la facturation). Sans date de bascule, la déclaration reste au régime des débits.',

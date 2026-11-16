@@ -14,6 +14,7 @@
  *     Produit sans suivi (revente) : sortie du stock sans lot.
  */
 import type { PoolClient } from 'pg';
+import { applyStockOut } from './stock-anomaly.js';
 
 const r3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 type Fail = Error & { statusCode?: number; code?: string };
@@ -102,7 +103,9 @@ export async function shipProduct(c: PoolClient, p: {
   const stock = row.s;
   const shortfall = r3(Math.max(0, fromBackroom - row.old_backroom) + Math.max(0, fromVitrine - row.old_vitrine));
   if (shortfall > 0) {
-    console.warn(`[product-shipment] Sortie supérieure au stock — produit ${p.productId}, magasin ${p.storeId}, manque ${shortfall} (réf ${p.ref.type}:${p.ref.id}). Stock borné à 0.`);
+    // G0-18 : refusé ou tracé selon stock.negative_policy (auparavant un simple avertissement console).
+    await applyStockOut(c, { kind: 'product', itemId: p.productId, storeId: p.storeId, requested: qty, available: r3(qty - shortfall),
+      origin: { type: p.ref.type, id: p.ref.id }, userId: p.userId, label: p.label });
   }
   await c.query(
     `INSERT INTO product_stock_transactions (product_id, type, quantity_change, stock_after, note, reference_id, performed_by, store_id)

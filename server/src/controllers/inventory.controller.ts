@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import { stockAnomalyRepository } from '../services/stock-anomaly.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { inventoryRepository, ingredientRepository } from '../repositories/inventory.repository.js';
 import { ingredientLotRepository } from '../repositories/ingredient-lot.repository.js';
@@ -200,6 +201,15 @@ export const inventoryController = {
   async aging(req: AuthRequest, res: Response) {
     const data = await inventoryRepository.stockAging(req.user!.storeId);
     res.json({ success: true, data });
+  },
+  /** GET /inventory/stock-anomalies?status=open|resolved — sorties supérieures au stock (G0-18). */
+  async anomalies(req: AuthRequest, res: Response) {
+    const status = req.query.status === 'open' || req.query.status === 'resolved' ? req.query.status : undefined;
+    res.json({ success: true, data: await stockAnomalyRepository.list({ status, storeId: req.user!.storeId }) });
+  },
+  /** POST /inventory/stock-anomalies/:id/resolve — clôt une anomalie avec son motif. */
+  async resolveAnomaly(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await stockAnomalyRepository.resolve(req.params.id, req.body.note, req.user!.userId) });
   },
   /** GET /inventory/price-health — anomalies de prix catalogue (mig 406, lot prix P5). */
   async priceHealth(_req: AuthRequest, res: Response) {

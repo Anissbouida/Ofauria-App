@@ -7,6 +7,7 @@ import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { posAllowsNegativeStock } from '../services/module-parameters.service.js';
+import { applyStockOut } from '../services/stock-anomaly.js';
 
 /** Decrement (or increment) stock and return the new value.
  *  $N::numeric : sans le cast, GREATEST(0 + $N, 0) fait inférer un entier à Postgres
@@ -16,27 +17,68 @@ export async function adjustProductStock(
   productId: string,
   change: number,
   storeId?: string | null,
+  /** G0-18 : document à l'origine d'une sortie, pour tracer un manque éventuel. */
+  ctx?: { origin?: { type: string; id?: string | null }; userId?: string | null; label?: string | null },
 ): Promise<number> {
+  // G0-18 : le stock AVANT mouvement est lu dans la même instruction, pour qu'une sortie
+  // supérieure au disponible soit refusée ou tracée (stock.negative_policy) au lieu de
+  // disparaître dans le GREATEST(…, 0).
+  let after: number, before: number;
   if (storeId) {
     // Upsert into product_store_stock (handles the case where the row doesn't exist yet)
     const result = await client.query(
-      `INSERT INTO product_store_stock (product_id, store_id, stock_quantity)
+      `WITH cur AS (SELECT stock_quantity FROM product_store_stock WHERE product_id = $1 AND store_id = $2)
+       INSERT INTO product_store_stock (product_id, store_id, stock_quantity)
        VALUES ($1, $2, GREATEST(0 + $3::numeric, 0))
        ON CONFLICT (product_id, store_id)
        DO UPDATE SET stock_quantity = GREATEST(product_store_stock.stock_quantity + $3::numeric, 0), updated_at = NOW()
-       RETURNING stock_quantity`,
+       RETURNING stock_quantity, COALESCE((SELECT stock_quantity FROM cur), 0) AS before`,
       [productId, storeId, change],
     );
-    return parseFloat(result.rows[0].stock_quantity);
+    after = parseFloat(result.rows[0].stock_quantity);
+    before = parseFloat(result.rows[0].before);
+  } else {
+    // Fallback: global stock on products table
+    const result = await client.query(
+      `WITH cur AS (SELECT stock_quantity FROM products WHERE id = $2)
+       UPDATE products SET stock_quantity = GREATEST(stock_quantity + $1::numeric, 0), updated_at = NOW()
+        WHERE id = $2 RETURNING stock_quantity, COALESCE((SELECT stock_quantity FROM cur), 0) AS before`,
+      [change, productId],
+    );
+    after = parseFloat(result.rows[0]?.stock_quantity ?? 0);
+    before = parseFloat(result.rows[0]?.before ?? 0);
   }
+  if (change < 0) {
+    await applyStockOut(client, { kind: 'product', itemId: productId, storeId: storeId ?? null, requested: -change, available: before,
+      origin: ctx?.origin ?? { type: 'product_stock_adjust' }, userId: ctx?.userId ?? null, label: ctx?.label ?? null });
+  }
+  return after;
+}
 
-  // Fallback: global stock on products table
-  const result = await client.query(
-    `UPDATE products SET stock_quantity = GREATEST(stock_quantity + $1::numeric, 0), updated_at = NOW()
-     WHERE id = $2 RETURNING stock_quantity`,
-    [change, productId],
-  );
-  return parseFloat(result.rows[0]?.stock_quantity ?? 0);
+/**
+ * Retire des quantités de la réserve et de la vitrine d'un magasin (mise au rebut d'un lot,
+ * péremption). Le stock reste borné à zéro ; un manque par rapport au stock du magasin est
+ * tracé (G0-18) : il révèle un écart entre les lots et le stock, jamais un motif de refus.
+ */
+export async function removeFromStoreStock(client: PoolClient, p: {
+  productId: string; storeId: string; backroom: number; vitrine: number; lotId?: string | null;
+  origin: { type: string; id?: string | null }; userId?: string | null; label?: string | null;
+}): Promise<void> {
+  const r = await client.query(
+    `WITH cur AS (SELECT stock_quantity, vitrine_quantity FROM product_store_stock WHERE product_id = $3 AND store_id = $4)
+     UPDATE product_store_stock
+        SET vitrine_quantity = GREATEST(0, vitrine_quantity - $1::numeric),
+            stock_quantity   = GREATEST(0, stock_quantity - $2::numeric),
+            updated_at = NOW()
+      WHERE product_id = $3 AND store_id = $4
+      RETURNING (SELECT stock_quantity FROM cur)::float8 AS old_backroom, (SELECT vitrine_quantity FROM cur)::float8 AS old_vitrine`,
+    [p.vitrine, p.backroom, p.productId, p.storeId]);
+  const oldBackroom = r.rows[0]?.old_backroom ?? 0;
+  const oldVitrine = r.rows[0]?.old_vitrine ?? 0;
+  // Disponible « utile » : ce que chaque zone pouvait réellement fournir à cette sortie.
+  const available = Math.min(p.backroom, Math.max(oldBackroom, 0)) + Math.min(p.vitrine, Math.max(oldVitrine, 0));
+  await applyStockOut(client, { kind: 'product', itemId: p.productId, lotId: p.lotId ?? null, storeId: p.storeId,
+    requested: p.backroom + p.vitrine, available, origin: p.origin, userId: p.userId ?? null, label: p.label ?? null, neverBlock: true });
 }
 
 /** Read current stock for a product in a given store (no transaction needed) */

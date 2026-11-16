@@ -16,6 +16,11 @@ export const inventoryApi = {
     api.get('/inventory/purchases', { params }).then(r => r.data.data),
   /** Age du stock matiere : lots actifs par anciennete (tranches + detail). */
   aging: (): Promise<StockAging> => api.get('/inventory/aging').then(r => r.data.data),
+  /** Sorties supérieures au stock, tracées (G0-18). */
+  anomalies: (status: 'open' | 'resolved'): Promise<StockAnomaly[]> =>
+    api.get('/inventory/stock-anomalies', { params: { status } }).then(r => r.data.data),
+  resolveAnomaly: (id: string, note: string) =>
+    api.post(`/inventory/stock-anomalies/${id}/resolve`, { note }).then(r => r.data.data),
   priceHealth: (): Promise<{
     rows: { ingredient_id: string; name: string; unit: string; catalogue_cost: number | null; lot_avg_cost: number | null; lot_qty: number; lot_value: number; catalogue_value: number; value_gap: number; flag: string; divergence_pct: number | null; used_in_recipe: boolean }[];
     summary: { ecart_prix: number; prix_manquant: number; total_gap: number };
@@ -45,6 +50,18 @@ export interface StockAgingLot {
   quantity_remaining: number; unit_cost: number; value: number;
   received_at: string; expiration_date: string | null; days_in_stock: number; days_to_expiry: number | null;
 }
+export interface StockAnomaly {
+  id: string;
+  item_kind: 'ingredient' | 'product' | 'packaging' | 'semi_finished';
+  item_id: string; item_name: string | null; unit: string;
+  store_name: string | null;
+  requested_qty: number; available_qty: number; shortfall_qty: number;
+  origin_type: string; origin_id: string | null; label: string | null;
+  created_at: string; created_by_name: string | null;
+  status: 'open' | 'resolved';
+  resolved_at: string | null; resolved_by_name: string | null; resolution_note: string | null;
+}
+
 export interface StockAging {
   buckets: { key: string; label: string; lots: number; value: number }[];
   totalValue: number;

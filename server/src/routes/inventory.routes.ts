@@ -8,7 +8,7 @@ import { authorize } from '../middleware/role.middleware.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
 import { requireUnits, requireStockUnitChange } from '../services/unit-referential.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { restockSchema, adjustStockSchema, stockThresholdSchema } from '../validators/stock.validator.js';
+import { restockSchema, adjustStockSchema, stockThresholdSchema, resolveStockAnomalySchema } from '../validators/stock.validator.js';
 
 const router = Router();
 
@@ -25,6 +25,9 @@ router.get('/consumption', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)
 router.get('/purchases', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.purchases);
 // Age du stock matiere : lots actifs par anciennete (admin/gerant)
 router.get('/aging', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.aging);
+// G0-18 : sorties supérieures au stock, tracées puis régularisées (admin/gérant).
+router.get('/stock-anomalies', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.anomalies);
+router.post('/stock-anomalies/:id/resolve', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(resolveStockAnomalySchema), inventoryController.resolveAnomaly);
 router.get('/price-health', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.priceHealth);
 
 // Cloture de stock par periode (mig 381) : instantane valorise (admin/gerant)

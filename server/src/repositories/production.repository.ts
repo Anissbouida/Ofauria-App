@@ -13,6 +13,7 @@ import { setActor, setReason, transitionPlan, transitionBon, withActor } from '.
 import { collectIngredientNeedsForUnits, getCompositionForNeeds } from './recipe-composition.helper.js';
 import { roundQty } from '../utils/quantity.js';
 import { sectorRepository } from './sector.repository.js';
+import { applyStockOut } from '../services/stock-anomaly.js';
 
 export const productionRepository = {
   async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRoles?: string[]; storeId?: string; limit: number; offset: number }) {
@@ -1117,6 +1118,10 @@ export const productionRepository = {
             const ingName = ingNameResult.rows[0]?.name || ingredientId;
             const ingUnit = ingNameResult.rows[0]?.unit || '';
             warnings.push(`Stock insuffisant: ${ingName} — besoin ${consumption.toFixed(2)} ${ingUnit}, disponible ${currentStock.toFixed(2)} ${ingUnit}`);
+            // G0-18 : le manque est refusé ou tracé selon stock.negative_policy, plus jamais silencieux.
+            await applyStockOut(client, { kind: 'ingredient', itemId: ingredientId, storeId: storeId || null,
+              requested: consumption, available: currentStock, origin: { type: 'production_plan', id: planId }, userId,
+              label: `${ingName} (production ${item.product_name})` });
           }
 
           // Clamp to 0: never allow negative stock
@@ -1556,6 +1561,10 @@ export const productionRepository = {
             if (actualConsumption < consumption) {
               const ingName = await client.query('SELECT name, unit FROM ingredients WHERE id = $1', [ingredientId]);
               warnings.push(`Stock insuffisant: ${ingName.rows[0]?.name} — disponible ${currentStock.toFixed(2)} ${ingName.rows[0]?.unit || ''}, requis ${consumption.toFixed(2)}`);
+              // G0-18 : manque refusé ou tracé selon stock.negative_policy.
+              await applyStockOut(client, { kind: 'ingredient', itemId: ingredientId, storeId: storeId || null,
+                requested: consumption, available: currentStock, origin: { type: 'production_plan', id: planId }, userId,
+                label: `${ingName.rows[0]?.name ?? 'Ingrédient'} (production partielle ${item.product_name})` });
             }
 
             const invParams: unknown[] = [actualConsumption, ingredientId];

@@ -140,6 +140,7 @@ export async function cleanupFixtures(fx: Fixtures) {
   await run(`DELETE FROM sale_item_lots WHERE product_lot_id IN (SELECT id FROM product_lots WHERE store_id = $1)`, [fx.storeId]);
   await run(`DELETE FROM product_lots WHERE store_id = $1`, [fx.storeId]);
   await run(`DELETE FROM product_display_tracking WHERE store_id = $1`, [fx.storeId]);
+  await run(`DELETE FROM stock_anomalies WHERE store_id = $1`, [fx.storeId]);
   await run(`DELETE FROM product_stock_transactions WHERE store_id = $1`, [fx.storeId]);
   await run(`DELETE FROM product_store_stock WHERE store_id = $1`, [fx.storeId]);
   await run(`DELETE FROM inventory_transactions WHERE store_id = $1 OR ingredient_id = ANY($2)`, [fx.storeId, fx.ids.ingredients]);
