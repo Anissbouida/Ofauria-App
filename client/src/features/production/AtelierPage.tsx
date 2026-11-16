@@ -5,6 +5,7 @@ import { productionEtapesApi } from '../../api/production-etapes.api';
 import { routingsApi } from '../../api/routings.api';
 import { employeesApi } from '../../api/employees.api';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 
@@ -134,16 +135,12 @@ export default function AtelierPage() {
                         )}
                       </div>
                       <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                        <select value={e.work_center_id ?? ''} title="Poste" style={inp}
-                          onChange={ev => assign.mutate({ id: e.etape_id, patch: { workCenterId: ev.target.value || null } })}>
-                          <option value="">— Poste —</option>
-                          {activeCenters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                        <select value={e.assigned_employee_id ?? ''} title="Opérateur" style={inp}
-                          onChange={ev => assign.mutate({ id: e.etape_id, patch: { assignedEmployeeId: ev.target.value || null } })}>
-                          <option value="">— Opérateur —</option>
-                          {empOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-                        </select>
+                        <SearchSelect value={e.work_center_id != null ? String(e.work_center_id) : ''} ariaLabel="Poste" width={150}
+                          onChange={id => assign.mutate({ id: e.etape_id, patch: { workCenterId: id || null } })}
+                          placeholder="— Poste —" options={activeCenters.map(c => ({ id: String(c.id), label: c.name as string }))} />
+                        <SearchSelect value={e.assigned_employee_id != null ? String(e.assigned_employee_id) : ''} ariaLabel="Opérateur" width={150}
+                          onChange={id => assign.mutate({ id: e.etape_id, patch: { assignedEmployeeId: id || null } })}
+                          placeholder="— Opérateur —" options={empOptions.map(o => ({ id: String(o.id), label: o.label as string }))} />
                         {paused ? (
                           <button className="odoo-btn-primary" style={{ padding: '0.3rem 0.5rem', whiteSpace: 'nowrap' }} disabled={resume.isPending} onClick={() => resume.mutate(e.etape_id)} title="Reprendre"><Play size={12} /></button>
                         ) : (

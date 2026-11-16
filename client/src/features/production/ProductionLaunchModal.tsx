@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { productsApi } from '../../api/products.api';
 import { apiErrorMessage } from '../../api/errors';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1631,17 +1632,15 @@ export default function ProductionLaunchModal({
                       {l.base ? (
                         <span className="font-medium text-gray-800">{l.label}</span>
                       ) : (
-                        <select value={l.productId}
-                          onChange={(e) => {
-                            const p = cutProducts.find((x) => x.id === e.target.value);
-                            edit(l.key, { productId: e.target.value, label: p?.name || '' });
+                        <SearchSelect value={l.productId}
+                          onChange={(id) => {
+                            const p = cutProducts.find((x) => x.id === id);
+                            edit(l.key, { productId: id, label: p?.name || '' });
                           }}
-                          className={`w-full h-9 px-2 bg-white border rounded-lg text-sm ${!l.productId ? 'border-amber-300' : 'border-gray-300'}`}>
-                          <option value="">— choisir le produit sorti —</option>
-                          {cutProducts
+                          placeholder="— choisir le produit sorti —" width="100%" ariaLabel="Produit sorti"
+                          options={cutProducts
                             .filter((p) => p.id !== item.product_id && (p.id === l.productId || !usedIds.has(p.id)))
-                            .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
+                            .map((p) => ({ id: String(p.id), label: p.name as string }))} />
                       )}
                     </td>
                     <td className="py-1.5 text-right">

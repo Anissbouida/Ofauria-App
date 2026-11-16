@@ -284,10 +284,9 @@ function RoutingEditor({ id, onClose, onSaved }: { id: string | null; onClose: (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: OPS_GRID, gap: 8, alignItems: 'center' }}>
                     <span style={{ textAlign: 'center', fontWeight: 600, color: 'var(--theme-text-muted)' }}>{i + 1}</span>
                     <input type="text" value={o.operationName} onChange={e => setOp(i, { operationName: e.target.value })} placeholder="Ex. Pétrissage" style={inp} />
-                    <select value={o.workCenterId ?? ''} onChange={e => setOp(i, { workCenterId: e.target.value || null })} style={inp}>
-                      <option value="">— Choisir —</option>
-                      {activeCenters.map(c => <option key={c.id} value={c.id}>{c.name} · {money(c.hourly_cost)}/h</option>)}
-                    </select>
+                    <SearchSelect value={o.workCenterId != null ? String(o.workCenterId) : ''} onChange={id => setOp(i, { workCenterId: id || null })}
+                      placeholder="— Choisir —" width="100%" size="md" ariaLabel="Poste de charge"
+                      options={activeCenters.map(c => ({ id: String(c.id), label: `${c.name} · ${money(c.hourly_cost)}/h` }))} />
                     <input type="number" min="0" value={o.durationMin || ''} onChange={e => setOp(i, { durationMin: Number(e.target.value) || 0 })} placeholder="0" style={{ ...inp, textAlign: 'center' }} />
                     <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: '0.84rem' }}>{money(opCost(o))}</span>
                     <button className="odoo-btn-secondary" style={{ padding: '0.35rem 0.4rem' }} title="Retirer l'opération" disabled={ops.length <= 1} onClick={() => setOps(a => a.filter((_, j) => j !== i))}><Trash2 size={13} /></button>
