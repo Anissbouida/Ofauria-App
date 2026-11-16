@@ -1,3 +1,4 @@
+import { policyNumber } from '../services/policies.js';
 import { db } from '../config/database.js';
 import { productionMarkupRepository } from './production-markup.repository.js';
 import {
@@ -13,8 +14,11 @@ import {
  * ou s'il porte une saisie manuelle : 365 lignes à zéro n'aident personne.
  */
 
-/** Fenêtre d'historique : 6 mêmes jours (42 j) + tendance (42 j) + marge. */
-const HISTORY_DAYS = 56;
+/**
+ * Fenêtre d'historique : 6 mêmes jours (42 j) + tendance (42 j) + marge. M1-03 : c'est la
+ * politique « Historique de la prévision » (56 jours par défaut, 42 au minimum).
+ */
+const historyDays = (storeId: string) => policyNumber('production.forecast_history', 'days', { storeId });
 
 type EventRow = ForecastEvent & { id: string; store_id: string | null; category_id: number | null };
 
@@ -60,6 +64,7 @@ export const forecastRepository = {
    * fiche de besoin applique son propre % d'ajustement par catégorie).
    */
   async compute(storeId: string, from: string, to: string, opts: { productIds?: string[]; withMarkup?: boolean } = {}) {
+    const HISTORY_DAYS = await historyDays(storeId);
     const histFrom = addDays(from, -HISTORY_DAYS);
 
     const [historyRes, eventsRes, overridesRes, markup] = await Promise.all([
