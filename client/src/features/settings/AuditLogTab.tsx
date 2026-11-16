@@ -169,11 +169,8 @@ function ChangesView({ users }: { users: Record<string, any>[] }) {
           <input className="odoo-search-input" style={{ paddingLeft: 26, minWidth: 200 }} placeholder="Rechercher (libellé, valeur)…"
             value={q} onChange={e => reset(setQ)(e.target.value)} aria-label="Rechercher" />
         </span>
-        <select style={filterInput} value={table} onChange={e => reset(setTable)(e.target.value)} aria-label="Objet">
-          <option value="">Tous les objets</option>
-          {tables.map(t => <option key={t} value={t}>{tableLabel(t)}</option>)}
-          <option value="referentiel">Référentiel</option>
-        </select>
+        <SearchSelect value={table} onChange={reset(setTable)} ariaLabel="Objet" placeholder="Tous les objets" width={200}
+          options={[...tables.map((t: string) => ({ id: t, label: tableLabel(t) })), { id: 'referentiel', label: 'Référentiel' }]} />
         {users.length > 0 && (
           <SearchSelect value={changedBy} onChange={reset(setChangedBy)} ariaLabel="Auteur" placeholder="Tous les auteurs" width={200}
             options={users.map(u => ({ id: String(u.id), label: `${u.firstName} ${u.lastName}` }))} />

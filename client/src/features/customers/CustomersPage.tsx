@@ -516,6 +516,12 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
   const [salespersonId, setSalespersonId] = useState<string>(
     (editing as Record<string, any> | null)?.salesperson_id || ''
   );
+  const [parentCustomerId, setParentCustomerId] = useState<string>(
+    (editing as Record<string, any> | null)?.parent_customer_id || ''
+  );
+  const [payerCustomerId, setPayerCustomerId] = useState<string>(
+    (editing as Record<string, any> | null)?.payer_customer_id || ''
+  );
   const isMoralEntity = isMoral(customerType);
   const title = editing ? displayName(editing).primary : 'Nouveau';
   // Partenaires possibles (entité mère / payeur) : autres clients B2B (phase 4.2).
@@ -556,6 +562,8 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
           const payload: Customer = Object.fromEntries(fd);
           payload.tvaExonere = tvaExonere;
           payload.salespersonId = salespersonId || '';
+          payload.parentCustomerId = parentCustomerId || '';
+          payload.payerCustomerId = payerCustomerId || '';
           const missing = cf.missing();
           if (missing.length) { notify.error(`À renseigner : ${missing.join(', ')}`); return; }
           onSubmit(payload, cf.defs.length ? cf.values : null);
@@ -646,15 +654,13 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
                 {/* Rôles partenaires (phase 4.2) : entité mère + payeur */}
                 <div className="grid grid-cols-2 gap-3">
                   <div><label style={fieldLabel}>Entité mère</label>
-                    <select name="parentCustomerId" defaultValue={ed?.parent_customer_id || ''} className={inputCls}>
-                      <option value="">— Aucune</option>
-                      {partnerOptions.map(c => <option key={c.id as string} value={c.id as string}>{displayName(c).primary}</option>)}
-                    </select></div>
+                    <SearchSelect value={parentCustomerId} onChange={setParentCustomerId}
+                      placeholder="— Aucune" width="100%" size="md" ariaLabel="Entité mère"
+                      options={partnerOptions.map(c => ({ id: c.id as string, label: displayName(c).primary }))} /></div>
                   <div><label style={fieldLabel}>Payeur (si différent)</label>
-                    <select name="payerCustomerId" defaultValue={ed?.payer_customer_id || ''} className={inputCls}>
-                      <option value="">— Le client paie lui-même</option>
-                      {partnerOptions.map(c => <option key={c.id as string} value={c.id as string}>{displayName(c).primary}</option>)}
-                    </select>
+                    <SearchSelect value={payerCustomerId} onChange={setPayerCustomerId}
+                      placeholder="— Le client paie lui-même" width="100%" size="md" ariaLabel="Payeur"
+                      options={partnerOptions.map(c => ({ id: c.id as string, label: displayName(c).primary }))} />
                     <p style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginTop: 2 }}>La facture part au payeur ; le BL reste au nom du client.</p>
                   </div>
                 </div>

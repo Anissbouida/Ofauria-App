@@ -632,13 +632,15 @@ function RecipeStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline;
         <div className="border-t border-gray-100 pt-3 space-y-3">
           <div>
             <label style={fieldLabel}>Assigner une recette</label>
-            <select value={recipeId} onChange={e => setRecipeId(e.target.value)}
-              style={fieldInput}>
-              <option value="">Choisir une recette...</option>
-              {recipes.map(r => (
-                <option key={String(r.id)} value={String(r.id)}>{String(r.name)}</option>
-              ))}
-            </select>
+            <SearchSelect
+              ariaLabel="Assigner une recette"
+              placeholder="Choisir une recette..."
+              width="100%"
+              size="md"
+              value={recipeId}
+              onChange={setRecipeId}
+              options={recipes.map(r => ({ id: String(r.id), label: String(r.name) }))}
+            />
           </div>
           <div>
             <label style={fieldLabel}>Notes de développement</label>

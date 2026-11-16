@@ -2702,15 +2702,18 @@ function ChargesTab() {
                   <label className="block text-sm font-medium mb-1.5 text-amber-800">
                     <ClipboardList size={14} className="inline mr-1" /> Bon de commande (obligatoire au-delà de {poRule?.threshold} {poRule?.currency})
                   </label>
-                  <select value={formPOId} onChange={e => setFormPOId(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-amber-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white">
-                    <option value="">Sélectionner un BC...</option>
-                    {(eligiblePOs as Record<string, any>[]).map(po => (
-                      <option key={po.id as string} value={po.id as string}>
-                        {po.order_number as string} — {po.supplier_name as string} — {n(parseFloat(po.total_amount as string) || 0)} DH
-                      </option>
-                    ))}
-                  </select>
+                  <SearchSelect
+                    ariaLabel="Bon de commande"
+                    placeholder="Sélectionner un BC..."
+                    width="100%"
+                    size="md"
+                    value={formPOId}
+                    onChange={setFormPOId}
+                    options={(eligiblePOs as Record<string, any>[]).map(po => ({
+                      id: po.id as string,
+                      label: `${po.order_number as string} — ${po.supplier_name as string} — ${n(parseFloat(po.total_amount as string) || 0)} DH`,
+                    }))}
+                  />
                   {selectedPO && (
                     <p className="text-xs text-amber-700 mt-2">
                       Fournisseur: <strong>{selectedPO.supplier_name as string}</strong> | Montant BC: <strong>{n(parseFloat(selectedPO.total_amount as string) || 0)} DH</strong>
