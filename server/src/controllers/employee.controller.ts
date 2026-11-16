@@ -421,7 +421,7 @@ export const attendanceController = {
   async upsert(req: AuthRequest, res: Response) {
     const scoped = await loadEmployeeInScope(req.body.employeeId, req.user!.storeId);
     if (!scoped) { res.status(404).json({ success: false, error: { message: 'Employe non trouve' } }); return; }
-    const record = await attendanceRepository.upsert(req.body);
+    const record = await attendanceRepository.upsert(req.body, req.user!.userId);
     res.json({ success: true, data: record });
   },
   async bulkUpsert(req: AuthRequest, res: Response) {
@@ -436,7 +436,7 @@ export const attendanceController = {
         return;
       }
     }
-    const records = await attendanceRepository.bulkUpsert(req.body.records);
+    const records = await attendanceRepository.bulkUpsert(req.body.records, req.user!.userId);
     res.json({ success: true, data: records });
   },
   async monthlySummary(req: AuthRequest, res: Response) {

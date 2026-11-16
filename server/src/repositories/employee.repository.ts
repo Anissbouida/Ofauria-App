@@ -539,13 +539,15 @@ export const scheduleRepository = {
         );
         updated += 1;
 
-        // Pre-remplit attendance attendue. Ne supplante pas un pointage reel
-        // (check_in deja saisi -> COALESCE preserve la valeur existante).
+        // Pré-remplit la présence attendue, SEULEMENT si aucune ligne n'existe.
+        // G0-09 : le planning ne touche jamais une ligne existante. Avant, tout
+        // pointage sans heure d'arrivée repassait « attendu » à chaque
+        // ré-enregistrement du planning — un salarié pointé présent (ou absent,
+        // en repos) sans heure sortait alors du calcul de la paie.
         await client.query(
           `INSERT INTO attendance (employee_id, date, status, is_expected)
            VALUES ($1, $2, 'present', true)
-           ON CONFLICT (employee_id, date) DO UPDATE SET
-             is_expected = CASE WHEN attendance.check_in IS NULL THEN true ELSE attendance.is_expected END`,
+           ON CONFLICT (employee_id, date) DO NOTHING`,
           [a.employeeId, a.date]
         );
       }
@@ -592,7 +594,7 @@ export const attendanceRepository = {
     overtimeNightMinutes?: number | null; isRestDay?: boolean | null;
     checkInMethod?: string; checkInTerminal?: string;
     checkOutMethod?: string; checkOutTerminal?: string;
-  }) {
+  }, actorId?: string | null) {
     // Fusion avec la ligne existante : un champ NON envoye garde sa valeur.
     // Avant, changer le statut ou une heure remettait les heures sup a 0 et
     // effacait la note (l'ecran n'envoie que les champs modifies).
@@ -622,9 +624,12 @@ export const attendanceRepository = {
     const result = await db.query(
       `INSERT INTO attendance (employee_id, date, check_in, check_out, status, overtime_minutes, notes,
                                check_in_method, check_in_terminal, check_out_method, check_out_terminal,
-                               overtime_night_minutes, is_rest_day, is_expected)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, false)
+                               overtime_night_minutes, is_rest_day, is_expected, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, false, $14, $14)
        ON CONFLICT (employee_id, date) DO UPDATE SET
+         -- G0-09 : qui a pointé, et quand (trace du pointage manuel).
+         updated_by = COALESCE(EXCLUDED.updated_by, attendance.updated_by),
+         updated_at = NOW(),
          check_in = EXCLUDED.check_in,
          check_out = EXCLUDED.check_out,
          status = EXCLUDED.status,
@@ -642,7 +647,7 @@ export const attendanceRepository = {
        data.status, overtime, notes,
        data.checkInMethod || null, data.checkInTerminal || null,
        data.checkOutMethod || null, data.checkOutTerminal || null,
-       night, isRestDay]
+       night, isRestDay, actorId ?? null]
     );
     return result.rows[0];
   },
@@ -693,10 +698,10 @@ export const attendanceRepository = {
   async bulkUpsert(records: {
     employeeId: string; date: string; status: string;
     checkIn?: string; checkOut?: string; overtimeMinutes?: number; notes?: string;
-  }[]) {
+  }[], actorId?: string | null) {
     const results = [];
     for (const r of records) {
-      results.push(await this.upsert(r));
+      results.push(await this.upsert(r, actorId));
     }
     return results;
   },
