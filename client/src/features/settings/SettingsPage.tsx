@@ -240,7 +240,8 @@ function SettingsShell() {
     ),
     referentiel: <ReferentielTab />,
     data: <DataTab />,
-    notifications: <NotificationsTab />,
+    // G1-12 : les seuils des échéances du personnel se règlent avec les notifications.
+    notifications: <><NotificationsTab /><ParametersPanel keys={['hr.documents_due']} /></>,
     mail: <MailTab />,
     customFields: <CustomFieldsTab />,
     jobs: <JobsTab />,

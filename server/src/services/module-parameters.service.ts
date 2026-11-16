@@ -22,6 +22,7 @@ const DEFAULTS: Record<string, unknown> = {
   'sales.vat_regime': { mode: 'debit', since: null },
   'stock.negative_policy': { ingredient: 'allow_trace', product: 'allow_trace', packaging: 'allow_trace', semi_finished: 'allow_trace' },
   'stock.dlc_alerts': { days: [7, 2], email: false },
+  'hr.documents_due': { days: [30, 7], email: false },
   'sales.stamp_duty': { enabled: false, rate_pct: 0.25, min_dh: 1, cash_only: true } satisfies StampDutyRules,
 };
 

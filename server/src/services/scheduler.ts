@@ -378,6 +378,68 @@ async function dlcAlerts(): Promise<JobResult> {
   return { items: fresh.size, message: `${fresh.size} lot(s) signalé(s) sous ${days.join(' / ')} jour(s)` };
 }
 
+/**
+ * G1-12 — échéances du personnel : carte d'identité, documents datés (visite médicale…),
+ * fin de CDD, fin de période d'essai, sous N jours pour chaque seuil de hr.documents_due.
+ * Une alerte par échéance et par seuil (hr_due_alerts) ; une notification au gérant par
+ * établissement. Seuls les salariés actifs sont suivis.
+ */
+async function hrDocumentsDue(): Promise<JobResult> {
+  const { days, email } = alertThresholds(await getParameter<{ days?: number[]; email?: boolean }>('hr.documents_due'), [30, 7]);
+  type Row = { kind: string; ref_id: string; store_id: string | null; employee: string; label: string; due_on: string; days_left: number };
+  const fresh = new Map<string, Row>();
+  for (const t of days) {
+    const r = await db.query(
+      `WITH today AS (SELECT (now() AT TIME ZONE 'Africa/Casablanca')::date AS d),
+            due AS (
+              SELECT 'cin'::text AS kind, e.id AS ref_id, e.store_id, e.first_name || ' ' || e.last_name AS employee,
+                     'Carte d''identité'::text AS label, e.cin_expires_on AS due_on
+                FROM employees e WHERE e.is_active AND e.cin_expires_on IS NOT NULL
+              UNION ALL
+              SELECT 'document', d.id, e.store_id, e.first_name || ' ' || e.last_name,
+                     COALESCE(NULLIF(d.title, ''), CASE d.doc_type WHEN 'visite_medicale' THEN 'Visite médicale'
+                       WHEN 'certificat_medical' THEN 'Certificat médical' WHEN 'cin' THEN 'Carte d''identité' ELSE d.doc_type END), d.expires_on
+                FROM employee_documents d JOIN employees e ON e.id = d.employee_id AND e.is_active WHERE d.expires_on IS NOT NULL
+              UNION ALL
+              SELECT 'cdd_end', c.id, e.store_id, e.first_name || ' ' || e.last_name, 'Fin de contrat (' || upper(c.contract_type) || ')', c.end_date
+                FROM employee_contracts c JOIN employees e ON e.id = c.employee_id AND e.is_active
+               WHERE c.status = 'active' AND c.end_date IS NOT NULL
+              UNION ALL
+              SELECT 'trial_end', c.id, e.store_id, e.first_name || ' ' || e.last_name, 'Fin de période d''essai', c.trial_end_date
+                FROM employee_contracts c JOIN employees e ON e.id = c.employee_id AND e.is_active
+               WHERE c.status = 'active' AND c.trial_end_date IS NOT NULL),
+            near AS (SELECT due.* FROM due, today WHERE due.due_on BETWEEN today.d AND today.d + $1::int),
+            ins AS (
+              INSERT INTO hr_due_alerts (kind, ref_id, threshold_days, due_on)
+              SELECT kind, ref_id, $1::smallint, due_on FROM near
+              ON CONFLICT DO NOTHING RETURNING kind, ref_id)
+       SELECT n.kind, n.ref_id, n.store_id, n.employee, n.label, to_char(n.due_on, 'DD/MM/YYYY') AS due_on,
+              (n.due_on - (SELECT d FROM today))::int AS days_left
+         FROM near n JOIN ins ON ins.kind = n.kind AND ins.ref_id = n.ref_id`, [t]);
+    for (const row of r.rows as Row[]) fresh.set(`${row.kind}:${row.ref_id}`, row);
+  }
+  if (!fresh.size) return { items: 0, message: `Aucune nouvelle échéance sous ${days.join(' / ')} jour(s)` };
+
+  const byStore = new Map<string, Row[]>();
+  for (const row of fresh.values()) byStore.set(row.store_id ?? '', [...(byStore.get(row.store_id ?? '') ?? []), row]);
+  for (const [key, rows] of byStore) {
+    rows.sort((a, b) => a.days_left - b.days_left);
+    const storeId = key || null;
+    const lines = rows.map(x => `${x.employee} — ${x.label} : ${x.due_on}, ${x.days_left === 0 ? "aujourd'hui" : `dans ${x.days_left} j`}`);
+    const title = `Personnel · ${rows.length} échéance${rows.length > 1 ? 's' : ''} proche${rows.length > 1 ? 's' : ''}`;
+    await db.query(
+      `INSERT INTO notifications (target_role, store_id, type, title, message, reference_type)
+       VALUES ('manager', $1, 'hr_document_due', $2, $3, 'employee')`,
+      [storeId, title, lines.slice(0, 6).join(' ; ') + (lines.length > 6 ? ` ; et ${lines.length - 6} autre(s)` : '')]);
+    if (email) {
+      for (const m of await managerEmails(storeId)) {
+        await enqueueEmail({ to: m.email, toName: m.name, subject: title, text: `Échéances du personnel à traiter :\n\n${lines.join('\n')}`, type: 'hr_document_due' });
+      }
+    }
+  }
+  return { items: fresh.size, message: `${fresh.size} échéance(s) signalée(s) sous ${days.join(' / ')} jour(s)` };
+}
+
 async function webhookOutbox(): Promise<JobResult> {
   const r = await webhookRepository.deliverPending();
   return { items: r.sent, message: `${r.sent} envoyé(s)${r.failed ? ` · ${r.failed} échec(s)` : ''}` };
@@ -402,6 +464,7 @@ export const JOBS: Record<string, Handler> = {
   prepaid_recognition: prepaidRecognition,
   lots_expire: lotsExpire,
   dlc_alerts: dlcAlerts,
+  hr_documents_due: hrDocumentsDue,
   housekeeping,
 };
 

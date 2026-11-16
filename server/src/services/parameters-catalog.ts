@@ -160,6 +160,17 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'module_parameters' },
   },
   {
+    key: 'hr.documents_due', domain: 'company', section: 'business',
+    label: 'Échéances du personnel',
+    help: 'Prévient le gérant quand une échéance d\'un salarié actif approche : carte d\'identité, documents datés (visite médicale, certificat…), fin de CDD, fin de période d\'essai. Une alerte par échéance et par seuil.',
+    fields: [
+      { name: 'days', label: 'Seuils', type: 'list', unit: 'jours avant l\'échéance' },
+      { name: 'email', label: 'Envoyer aussi un e-mail aux responsables', type: 'boolean' },
+    ],
+    defaults: { days: [30, 7], email: false },
+    storage: { kind: 'module_parameters' },
+  },
+  {
     key: 'stock.dlc_alerts', domain: 'production', section: 'business',
     label: 'Alertes de DLC',
     help: 'Prévient quand un lot de matière ou de produit fini encore en stock approche de sa date limite. Une alerte par lot et par seuil : le magasinier est notifié pour les matières, le gérant pour les produits finis. Seuils en jours avant l\'échéance.',
