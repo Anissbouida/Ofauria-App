@@ -30,6 +30,7 @@ export const integrationsApi = {
 export const API_SCOPES: [string, string][] = [
   ['orders:create', 'Créer des commandes'],
   ['products:read', 'Lire le catalogue'],
+  ['orders:price_override', 'Imposer le prix des lignes de commande'],
 ];
 
 /** Événements auxquels un webhook peut s'abonner. */
