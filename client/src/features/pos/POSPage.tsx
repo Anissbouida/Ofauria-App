@@ -8,6 +8,7 @@ import { enqueueCheckout, flushQueue, pendingCount, isNetworkError } from './off
 import { sachetConfigApi } from '../../api/sachet-config.api';
 import { customersApi } from '../../api/customers.api';
 import UnpaidCustomerPicker from './UnpaidCustomerPicker';
+import DiscountApprovalModal from './DiscountApprovalModal';
 import { salesChannelsApi } from '../../api/sales-channels.api';
 import { ordersApi } from '../../api/orders.api';
 import { cashRegisterApi } from '../../api/cash-register.api';
@@ -753,9 +754,14 @@ export default function POSPage() {
     onError: (e: unknown) => notify.error(getApiErrorMessage(e, 'Impression du rapport impossible')),
   });
 
+  // G0-19 : plafond de remise du caissier ; au-delà, un responsable valide par son PIN.
+  const { data: discountPolicy } = useQuery({ queryKey: ['pos-discount-policy'], queryFn: salesApi.discountPolicy, staleTime: 5 * 60_000 });
+  const [discountApprovalFor, setDiscountApprovalFor] = useState<{ variables: Record<string, any>; pct: number; maxPct: number; error?: string | null } | null>(null);
+
   const checkoutMutation = useMutation({
     mutationFn: salesApi.checkout,
     onSuccess: (sale: Record<string, any>) => {
+      setDiscountApprovalFor(null);
       const isUnpaid = sale.payment_status === 'unpaid';
       const effectivePaymentMethod = isUnpaid ? 'credit' : paymentMethod;
       const beneficiaryName = customerSearch.length >= 2
@@ -818,6 +824,25 @@ export default function POSPage() {
       notify.success(isUnpaid ? 'Vente sauvegardée — paiement reporté' : 'Vente enregistree !');
     },
     onError: (e: unknown, variables: Record<string, any>) => {
+      // G0-19 : remise au-delà du plafond — le serveur demande la validation d'un responsable.
+      const apiError = (e as { response?: { data?: { error?: { code?: string; message?: string; maxPct?: number; pct?: number } } } })?.response?.data?.error;
+      if (apiError?.code === 'DISCOUNT_APPROVAL_REQUIRED') {
+        const { discountApproval: _previous, ...rest } = variables;
+        setDiscountApprovalFor({ variables: rest, pct: apiError.pct ?? 0, maxPct: apiError.maxPct ?? 0 });
+        return;
+      }
+      if (apiError?.code === 'DISCOUNT_APPROVAL_REFUSED') {
+        playPosSound('error');
+        setDiscountApprovalFor(prev => (prev ? { ...prev, error: apiError.message ?? 'Validation refusée' } : prev));
+        return;
+      }
+      // Une remise à valider ne peut pas partir en file hors-ligne : le PIN du responsable
+      // n'est jamais stocké, et sans lui le serveur refuserait la vente au rejeu.
+      if (isNetworkError(e) && (variables.discountApproval || needsDiscountApproval)) {
+        playPosSound('error');
+        notify.error('Hors-ligne : une remise au-delà de votre plafond ne peut pas être validée. Réduisez la remise ou attendez la reconnexion.');
+        return;
+      }
       // Coupure réseau (phase 8.4) : la vente est mise en file locale et rejouée à la
       // reconnexion. La clé d'idempotence garantit l'absence de doublon.
       if (isNetworkError(e)) {
@@ -1043,6 +1068,14 @@ export default function POSPage() {
     Math.min(afterPromo, Math.max(0, discountType === 'percent' ? (afterPromo * discountRaw) / 100 : discountRaw)) * 100
   ) / 100;
   useEffect(() => { setManualForEval(discountAmount); }, [discountAmount]);
+  // G0-19 : remise en % du montant après promotions, comparée au plafond du rôle.
+  const discountPct = afterPromo > 0 ? Math.round((discountAmount / afterPromo) * 10000) / 100 : 0;
+  const discountMaxPct = discountPolicy?.maxPct ?? null;
+  const needsDiscountApproval = discountMaxPct !== null && discountPct > discountMaxPct + 0.001;
+  const discountHint = discountMaxPct === null ? null
+    : needsDiscountApproval
+      ? `Remise de ${discountPct.toLocaleString('fr-FR')} % au-delà de votre plafond (${discountMaxPct.toLocaleString('fr-FR')} %) : un responsable validera par son code PIN à l'encaissement.`
+      : `Plafond de remise : ${discountMaxPct.toLocaleString('fr-FR')} %`;
   // Points de fidélité : le maximum dépend du ticket (part maximum payable en points).
   const loyaltyInfo = customerId ? promoEval?.loyalty ?? null : null;
   const loyaltyPoints = Math.max(0, parseInt(loyaltyPointsInput, 10) || 0);
@@ -2059,6 +2092,18 @@ export default function POSPage() {
                   </div>
                   <button onClick={() => { setDiscountInput(''); setShowDiscountRow(false); }} title="Annuler la remise" className="text-gray-400 hover:text-red-500"><XCircle size={16} /></button>
                 </div>
+              )}
+              {showDiscountRow && cart.length > 0 && discountHint && (
+                <p className={`px-3 py-1 text-[11px] border-b border-gray-100 ${needsDiscountApproval ? 'text-amber-700 font-semibold' : 'text-gray-500'}`}>{discountHint}</p>
+              )}
+              {discountApprovalFor && (
+                <DiscountApprovalModal pct={discountApprovalFor.pct} maxPct={discountApprovalFor.maxPct}
+                  approvers={discountPolicy?.approvers ?? []} pending={checkoutMutation.isPending} error={discountApprovalFor.error}
+                  onSubmit={approval => {
+                    setDiscountApprovalFor(prev => (prev ? { ...prev, error: null } : prev));
+                    checkoutMutation.mutate({ ...discountApprovalFor.variables, discountApproval: approval });
+                  }}
+                  onClose={() => setDiscountApprovalFor(null)} />
               )}
 
               {cart.length > 0 ? (
@@ -4638,6 +4683,9 @@ export default function POSPage() {
                     className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${discountType === 'percent' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>%</button>
                 </div>
               </div>
+              {discountHint && (
+                <p className={`mt-1.5 text-[11px] ${needsDiscountApproval ? 'text-amber-700 font-semibold' : 'text-gray-500'}`}>{discountHint}</p>
+              )}
             </div>
 
             {/* Selecteur mode de reglement — 3 boutons segmentes (Especes / Carte / Mixte) */}

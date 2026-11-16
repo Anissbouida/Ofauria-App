@@ -16,6 +16,7 @@ import { dunningRepository } from '../repositories/dunning.repository.js';
 import { taxCodeRepository } from '../repositories/tax-code.repository.js';
 import { invoiceRepository } from '../repositories/accounting.repository.js';
 import { netFromGross, round2 } from '../utils/tva.js';
+import { exceededCeiling, approveDiscountByPin, discountCeiling, discountApprovers } from '../services/discount-policy.js';
 
 export const saleController = {
   async list(req: AuthRequest, res: Response) {
@@ -57,6 +58,11 @@ export const saleController = {
     res.json({ success: true, data: sale });
   },
 
+  /** GET /sales/discount-policy — plafond de remise du caissier et responsables pouvant valider (G0-19). */
+  async discountPolicy(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: { maxPct: await discountCeiling(req.user!.role), approvers: await discountApprovers() } });
+  },
+
   async checkout(req: AuthRequest, res: Response) {
     const {
       customerId, items, paymentMethod, notes, discountAmount = 0,
@@ -65,7 +71,7 @@ export const saleController = {
       channelId: explicitChannelId,
       cashAmount, cardAmount,
       couponCode, loyaltyPoints = 0,
-      idempotencyKey,
+      idempotencyKey, discountApproval,
     } = req.body;
 
     // Paiement reporte = creance d'un client identifie (mig 351, « Compte client ») :
@@ -184,6 +190,28 @@ export const saleController = {
       return;
     }
 
+    // G0-19 : remise manuelle plafonnée par rôle, en % du montant après promotions.
+    // Au-delà du plafond du caissier, un responsable valide par son PIN (dérogation tracée).
+    const afterPromo = round2(subtotal - promotionAmount);
+    const manualPct = discountAmount > 0 && afterPromo > 0 ? round2(discountAmount / afterPromo * 100) : 0;
+    let discountApprovedBy: string | null = null;
+    const ceiling = await exceededCeiling(manualPct, req.user!.role);
+    if (ceiling !== null) {
+      if (!discountApproval) {
+        res.status(403).json({ success: false, error: {
+          code: 'DISCOUNT_APPROVAL_REQUIRED', maxPct: ceiling, pct: manualPct,
+          message: `Remise de ${manualPct} % au-delà de votre plafond (${ceiling} %) : validation d'un responsable requise`,
+        } });
+        return;
+      }
+      const approved = await approveDiscountByPin(req, discountApproval, manualPct);
+      if (!approved.ok) {
+        res.status(approved.status).json({ success: false, error: { code: 'DISCOUNT_APPROVAL_REFUSED', message: approved.message } });
+        return;
+      }
+      discountApprovedBy = approved.approverId;
+    }
+
     // Points de fidélité utilisés : une remise payée par la dette de fidélité.
     let loyaltyAmount = 0;
     if (loyaltyPoints > 0) {
@@ -283,6 +311,8 @@ export const saleController = {
       cashAmount: isMixed ? Math.round(cashAmount * 100) / 100 : undefined,
       cardAmount: isMixed ? Math.round(cardAmount * 100) / 100 : undefined,
       idempotencyKey: idempotencyKey || undefined,
+      // G0-19 : remise manuelle et validation éventuelle, tracées sur le ticket.
+      manualDiscount: discountAmount > 0 ? { amount: round2(discountAmount), pct: manualPct, approvedBy: discountApprovedBy } : undefined,
     });
 
     res.status(201).json({ success: true, data: sale });

@@ -16,6 +16,7 @@ import { postOrQueue } from '../services/ledger-posting.service.js';
 import { evaluate as evaluatePromotions, recordApplied } from '../services/promotions.js';
 import { checkCredit, customerExposure } from '../services/credit-control.js';
 import { getParameter, type PricingRules } from '../services/module-parameters.service.js';
+import { exceededCeiling } from '../services/discount-policy.js';
 
 /** Atelier qui fabrique une catégorie (mig 511), sinon l'atelier par défaut. Remplace
  *  l'ancienne table catégorie → rôle recopiée ici (qui divergeait de celle des plans :
@@ -78,11 +79,9 @@ async function orderDiscount(body: Record<string, unknown>, subtotal: number, ro
   if (!Number.isFinite(pct) || pct < 0 || pct > 100) return { error: 'Remise invalide : entre 0 et 100 %' };
   pct = round2(pct);
   // O2C L3 (G-OM-05) : remise bornée par rôle côté serveur.
-  if (role !== 'admin' && pct > 0) {
-    const rules = await getParameter<PricingRules>('sales.pricing');
-    const max = role === 'manager' ? rules.max_discount_pct_manager : rules.max_discount_pct_sales;
-    if (pct > max + 0.001) return { error: `Remise de ${pct} % au-delà de votre plafond (${max} %) : demandez à la direction` };
-  }
+  // G0-19 : la règle vit dans services/discount-policy.ts, partagée avec la caisse.
+  const max = await exceededCeiling(pct, role);
+  if (max !== null) return { error: `Remise de ${pct} % au-delà de votre plafond (${max} %) : demandez à la direction` };
   return { pct, amount: round2(subtotal * pct / 100) };
 }
 

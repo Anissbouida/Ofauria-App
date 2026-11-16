@@ -24,6 +24,8 @@ router.get('/today', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler
 router.get('/summary', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(saleController.summary));
 // Avant /:id pour que "deferred" ne soit pas capture comme un id de vente.
 // Ouvert a SALES : la caissiere consulte et encaisse les impayes depuis le POS.
+// G0-19 : plafond de remise du caissier et responsables habilités à valider un dépassement.
+router.get('/discount-policy', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(saleController.discountPolicy));
 router.get('/deferred', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(saleController.deferred));
 router.get('/receivables', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(saleController.receivables));
 router.get('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(saleController.getById));

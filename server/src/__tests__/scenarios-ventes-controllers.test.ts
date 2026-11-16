@@ -119,6 +119,31 @@ describe('checkout — remise', () => {
   });
 });
 
+describe('checkout — plafond de remise par rôle (G0-19)', () => {
+  const cashier = (body: any): any => ({ body, user: { userId: UID, storeId: UID, role: 'cashier' } });
+  let params: any;
+  beforeAll(async () => { params = await import('../services/module-parameters.service.js'); });
+  beforeEach(() => {
+    params.getParameter.mockResolvedValue({ max_discount_pct_sales: 10, max_discount_pct_manager: 30 });
+  });
+
+  it('caissier à 10 % : une remise de 8 % passe et la remise manuelle est tracée', async () => {
+    const { res } = fakeRes();
+    // 20 x 5 = 100, remise 8 -> 8 %.
+    await saleController.checkout(cashier({ items: [{ productId: UID, quantity: 20 }], paymentMethod: 'cash', discountAmount: 8 }), res);
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(saleRepository.create.mock.calls[0][0].manualDiscount).toEqual({ amount: 8, pct: 8, approvedBy: null });
+  });
+
+  it('caissier à 10 % : une remise de 15 % sans validation -> 403 et aucune vente', async () => {
+    const { res, json } = fakeRes();
+    await saleController.checkout(cashier({ items: [{ productId: UID, quantity: 20 }], paymentMethod: 'cash', discountAmount: 15 }), res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(json.mock.calls[0][0].error).toMatchObject({ code: 'DISCOUNT_APPROVAL_REQUIRED', maxPct: 10, pct: 15 });
+    expect(saleRepository.create).not.toHaveBeenCalled();
+  });
+});
+
 describe('checkout — paiement mixte', () => {
   it('refuse une ventilation especes+carte != total -> 400', async () => {
     const { res, json } = fakeRes();

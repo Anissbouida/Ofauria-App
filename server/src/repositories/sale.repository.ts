@@ -183,6 +183,8 @@ export const saleRepository = {
     items: { productId: string; quantity: number; unitPrice: number; subtotal: number; unit?: 'unit' | 'g' | 'person'; displayUnit?: 'g' | 'kg' | null; promoDiscount?: number; taxRate?: number; taxAmount?: number }[];
     /** Clé d'idempotence (phase 8.4) : un rejeu hors-ligne ne crée pas de doublon. */
     idempotencyKey?: string | null;
+    /** G0-19 : remise manuelle du caissier (hors promotions et fidélité) et responsable l'ayant validée. */
+    manualDiscount?: { amount: number; pct: number; approvedBy: string | null };
   }, outer?: PoolClient) {
     // `outer` : transaction de l'appelant (avance prise avec la commande, O2C L3 G-OM-07).
     const client = outer ?? await db.getClient();
@@ -230,6 +232,11 @@ export const saleRepository = {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, ${paidAtExpr}, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, ${createdAtExpr}, $${idemIdx}) RETURNING *`,
         insertValues
       );
+      if (data.manualDiscount) {
+        await client.query(
+          `UPDATE sales SET manual_discount_amount = $2::numeric, manual_discount_pct = $3::numeric, discount_approved_by = $4 WHERE id = $1`,
+          [saleResult.rows[0].id, data.manualDiscount.amount, data.manualDiscount.pct, data.manualDiscount.approvedBy]);
+      }
 
       for (const item of data.items) {
         const saleItemResult = await client.query(
