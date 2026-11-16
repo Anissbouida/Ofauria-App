@@ -1,3 +1,4 @@
+import { useProductionPolicies } from './usePolicies';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Gauge, X, Loader2, AlertTriangle, Plus } from 'lucide-react';
@@ -47,7 +48,12 @@ export default function WorkCenterOeeModal({ workCenter, onClose }: { workCenter
   });
 
   const pct = (v: number | null | undefined) => v == null ? '—' : `${v}%`;
-  const trsColor = oee?.trs_pct == null ? undefined : oee.trs_pct >= 85 ? '#2e7d32' : oee.trs_pct >= 60 ? '#b45309' : '#c62828';
+  // M1-03 : seuils du TRS lus dans les politiques de production.
+  const policies = useProductionPolicies();
+  const trsGood = policies.num('production.oee_thresholds', 'good');
+  const trsAlert = policies.num('production.oee_thresholds', 'alert');
+  const trsColor = oee?.trs_pct == null || trsGood === null || trsAlert === null ? undefined
+    : oee.trs_pct >= trsGood ? '#2e7d32' : oee.trs_pct >= trsAlert ? '#b45309' : '#c62828';
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
