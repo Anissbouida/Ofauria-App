@@ -36,7 +36,9 @@ describe.skipIf(!hasTestDb)('Retours/echanges : lots en phase (F-045/F-036)', ()
     );
     const lot = await p.query(
       `INSERT INTO product_lots (product_id, store_id, lot_number, quantity_total, vitrine_qty, backroom_qty, sold_qty, produced_at, expires_at, status)
-       VALUES ($1, $2, $3, $4, $5, 0, $6, NOW(), CURRENT_DATE + 1, 'active') RETURNING id`,
+       -- Échéance à 3 jours : « demain » en date de la base peut déjà être « aujourd'hui »
+       -- à Casablanca (le test échouait le soir, quand les deux dates diffèrent).
+       VALUES ($1, $2, $3, $4, $5, 0, $6, NOW(), CURRENT_DATE + 3, 'active') RETURNING id`,
       [id, fx.storeId, `L-${slug}-${RUN}`, vitrine + sold, vitrine, sold]
     );
     return { id, lotId: lot.rows[0].id };
