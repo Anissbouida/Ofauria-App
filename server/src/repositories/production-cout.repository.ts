@@ -2,6 +2,15 @@ import { policyNumber } from '../services/policies.js';
 import { db } from '../config/database.js';
 
 
+/**
+ * M1-03 — heures légales par mois : celles de la paie (payroll_settings, 191 h par défaut),
+ * et non plus un nombre recopié ici. Un seul réglage : Personnel › Paramètres de paie.
+ */
+const MONTHLY_HOURS_SQL = `COALESCE((SELECT NULLIF(monthly_legal_hours, 0) FROM payroll_settings WHERE id = 1), 191)`;
+async function monthlyLegalHours(): Promise<number> {
+  return Number((await db.query(`SELECT ${MONTHLY_HOURS_SQL} AS h`)).rows[0].h);
+}
+
 export const productionCoutRepository = {
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -70,7 +79,7 @@ export const productionCoutRepository = {
       `SELECT hourly_rate, monthly_salary FROM employees WHERE id = $1`, [data.employeeId]
     );
     const emp = empResult.rows[0];
-    const rate = emp?.hourly_rate ?? (emp?.monthly_salary ? Math.round(emp.monthly_salary / 191 * 100) / 100 : null);
+    const rate = emp?.hourly_rate ?? (emp?.monthly_salary ? Math.round(emp.monthly_salary / (await monthlyLegalHours()) * 100) / 100 : null);
 
     const duree = data.dureeMinutes ?? (data.fin
       ? Math.round((new Date(data.fin).getTime() - new Date(data.debut).getTime()) / 60000)
@@ -225,12 +234,12 @@ export const productionCoutRepository = {
 
     // 2. Cout main d'oeuvre — depuis production_item_etapes
     // Chaque etape completee a un completed_by (user) et duree_reelle_min.
-    // Taux horaire = monthly_salary / 191 (norme marocaine 44h/semaine)
+    // Taux horaire = salaire mensuel / heures légales du mois (réglage de la paie)
     const moResult = await db.query(
       `SELECT e.id as employee_id, e.first_name || ' ' || e.last_name as name,
               SUM(pie.duree_reelle_min) as total_minutes,
-              COALESCE(e.hourly_rate, ROUND(e.monthly_salary / 191, 2)) as hourly_rate,
-              ROUND(SUM(pie.duree_reelle_min) * COALESCE(e.hourly_rate, ROUND(e.monthly_salary / 191, 2)) / 60.0, 2) as total
+              COALESCE(e.hourly_rate, ROUND(e.monthly_salary / ${MONTHLY_HOURS_SQL}, 2)) as hourly_rate,
+              ROUND(SUM(pie.duree_reelle_min) * COALESCE(e.hourly_rate, ROUND(e.monthly_salary / ${MONTHLY_HOURS_SQL}, 2)) / 60.0, 2) as total
        FROM production_item_etapes pie
        JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
        JOIN users u ON u.id = pie.completed_by
@@ -574,7 +583,7 @@ export const productionCoutRepository = {
                  )
              ) item_mat ON true
              LEFT JOIN LATERAL (
-               SELECT ROUND(SUM(pie.duree_reelle_min * COALESCE(e.hourly_rate, ROUND(e.monthly_salary / 191, 2)) / 60.0), 2) as cout_mo_item
+               SELECT ROUND(SUM(pie.duree_reelle_min * COALESCE(e.hourly_rate, ROUND(e.monthly_salary / ${MONTHLY_HOURS_SQL}, 2)) / 60.0), 2) as cout_mo_item
                FROM production_item_etapes pie
                JOIN users usr ON usr.id = pie.completed_by
                JOIN employees e ON e.user_id = usr.id
