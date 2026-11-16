@@ -135,6 +135,41 @@ gcloud run services update ofauria-app \
 
 Stocker les secrets sensibles dans **Secret Manager**, pas en variables.
 
+### Stockage des fichiers téléversés (G0-04)
+
+Le disque de Cloud Run est vidé à chaque révision : factures fournisseurs, photos de pertes, de réclamations et de produits vont dans un **bucket privé**. À faire une fois :
+
+```bash
+# Bucket privé, accès uniforme, sans accès public
+gcloud storage buckets create gs://NOM_DU_BUCKET \
+  --location=REGION --uniform-bucket-level-access --public-access-prevention
+
+# Le compte de service d'exécution de Cloud Run écrit et lit les objets
+gcloud storage buckets add-iam-policy-binding gs://NOM_DU_BUCKET \
+  --member="serviceAccount:COMPTE_DE_SERVICE_CLOUD_RUN" \
+  --role="roles/storage.objectAdmin"
+
+# Versions d'objets (sauvegarde, voir G3-02)
+gcloud storage buckets update gs://NOM_DU_BUCKET --versioning
+
+gcloud run services update ofauria-app --region=REGION \
+  --update-env-vars=STORAGE_DRIVER=gcs,STORAGE_BUCKET=NOM_DU_BUCKET
+```
+
+| Variable | Valeur | Rôle |
+|---|---|---|
+| `STORAGE_DRIVER` | `gcs` en production, `local` (défaut) en développement | pilote de stockage |
+| `STORAGE_BUCKET` | nom du bucket | obligatoire si `gcs` |
+| `STORAGE_LOCAL_DIR` | dossier (défaut : `storage/` à la racine du dépôt) | pilote local |
+
+Sans `STORAGE_DRIVER=gcs` en production, le serveur le signale au premier téléversement et les fichiers ne survivent pas au déploiement suivant.
+
+Les fichiers sont lus par `GET /api/v1/files/:id`, authentifié ; le dossier `/uploads` ne sert plus que les fichiers hérités, à un utilisateur connecté. Rapport des pièces héritées (présentes / perdues) : `npx tsx scripts/migrate-uploads-to-storage.ts` depuis `server/` (lecture seule ; `--apply` reprend les fichiers encore présents).
+
+### Limiteurs de débit (G0-02)
+
+`RATE_LIMIT_PUBLIC_PER_MIN` (défaut 120, par clé d'API), `RATE_LIMIT_PORTAL_PER_MIN` (60, par IP), `RATE_LIMIT_GLOBAL_PER_MIN` (1 200, par IP). `0` désactive le limiteur.
+
 ## 5. Workflow quotidien
 
 ```bash

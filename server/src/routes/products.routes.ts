@@ -1,7 +1,6 @@
 import { Router, json as expressJson } from 'express';
 import multer from 'multer';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { productController } from '../controllers/product.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
@@ -15,16 +14,8 @@ import {
 } from '../validators/product.validator.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-const storage = multer.diskStorage({
-  destination: path.resolve(__dirname, '../../../uploads'),
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  },
-});
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: (_req, file, cb) => {
+// G0-04 : image reçue en mémoire puis écrite dans le stockage objet (table files).
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: (_req, file, cb) => {
   const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
   cb(null, allowed.includes(path.extname(file.originalname).toLowerCase()));
 }});

@@ -15,6 +15,7 @@ import { creditNoteRepository, CREDIT_REASONS, type CreditReason } from '../repo
 import { customerReceiptRepository } from '../repositories/customer-receipt.repository.js';
 import { getParameter, type ExpenseRequiresPo } from '../services/module-parameters.service.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
+import { storeFile, FileRejectedError, DOCUMENT_MIMES } from '../services/storage.service.js';
 
 // Valide un code de mode de reglement contre le referentiel payment_methods
 // (table de reference) plutot que contre une liste figee en dur.
@@ -609,8 +610,19 @@ export const invoiceController = {
       res.status(400).json({ success: false, error: { message: 'Aucun fichier envoye' } });
       return;
     }
-    const url = `/uploads/invoices/${req.file.filename}`;
-    const invoice = await invoiceRepository.updateAttachment(req.params.id, url);
+    // G0-04 : stockage objet + table files ; lecture par /api/v1/files/:id (authentifiée).
+    let stored;
+    try {
+      stored = await storeFile({
+        buffer: req.file.buffer, originalName: req.file.originalname,
+        ownerType: 'invoice', ownerId: req.params.id, allowed: DOCUMENT_MIMES,
+        storeId: req.user?.storeId ?? null, uploadedBy: req.user?.userId ?? null,
+      });
+    } catch (err) {
+      if (err instanceof FileRejectedError) { res.status(400).json({ success: false, error: { message: err.message } }); return; }
+      throw err;
+    }
+    const invoice = await invoiceRepository.updateAttachment(req.params.id, stored.url);
     res.json({ success: true, data: invoice });
   },
   async removeAttachment(req: AuthRequest, res: Response) {

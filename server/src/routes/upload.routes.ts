@@ -1,35 +1,16 @@
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorizeSettings } from '../middleware/settings-access.middleware.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
+import { storeFile, FileRejectedError, type FileOwnerType } from '../services/storage.service.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-const lossPhotoStorage = multer.diskStorage({
-  destination: path.resolve(__dirname, '../../../uploads/losses'),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `loss-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
-  },
-});
-
+// G0-04 : plus de SVG (contenu actif possible) ; le type réel est vérifié sur les
+// premiers octets par storeFile, l'extension n'est qu'un premier tri.
 const imageFilter = (_req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowed = ['.png', '.jpg', '.jpeg', '.svg', '.webp'];
-  const ext = path.extname(file.originalname).toLowerCase();
-  if (allowed.includes(ext)) {
-    cb(null, true);
-  } else {
-    cb(new Error('Format non supporte. Utilisez PNG, JPG, SVG ou WebP.'));
-  }
-};
-
-// Le logo est genere sur les PDF (factures, bons de commande) par PDFKit, qui ne
-// sait pas rendre le SVG : on limite donc le logo aux formats raster.
-const logoFilter = (_req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowed = ['.png', '.jpg', '.jpeg', '.webp'];
   const ext = path.extname(file.originalname).toLowerCase();
   if (allowed.includes(ext)) {
@@ -39,20 +20,17 @@ const logoFilter = (_req: Express.Request, file: Express.Multer.File, cb: multer
   }
 };
 
+// Le logo est genere sur les PDF (factures, bons de commande) par PDFKit, qui ne
+// sait pas rendre le SVG : on limite donc le logo aux formats raster.
+const logoFilter = imageFilter;
+
 // Stockage en memoire : le logo n'est pas ecrit sur le disque local (ephemere sur
 // Cloud Run) mais renvoye en data URI base64 pour etre persiste en base
 // (company_settings.logo_url) et donc disponible a la generation des PDF.
 const uploadLogo = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 }, fileFilter: logoFilter });
-const uploadLossPhoto = multer({ storage: lossPhotoStorage, limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: imageFilter });
-// Photo jointe à une réclamation client (mig 357) : même mécanique, dossier dédié.
-const complaintPhotoStorage = multer.diskStorage({
-  destination: path.resolve(__dirname, '../../../uploads/complaints'),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `complaint-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
-  },
-});
-const uploadComplaintPhoto = multer({ storage: complaintPhotoStorage, limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: imageFilter });
+// G0-04 : photos de pertes et de réclamations en mémoire, puis dans le stockage
+// objet (table files) — plus rien sur le disque du serveur.
+const uploadPhoto = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: imageFilter });
 
 const router = Router();
 
@@ -66,21 +44,24 @@ router.post('/logo', authenticate, authorizeSettings('appearance', 'edit'), uplo
   res.json({ success: true, data: { url } });
 });
 
-router.post('/loss-photo', authenticate, uploadLossPhoto.single('photo'), (req: AuthRequest, res: Response) => {
+const photoHandler = (ownerType: FileOwnerType) => asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!req.file) {
     res.status(400).json({ success: false, error: { message: 'Aucune photo envoyee' } });
     return;
   }
-  const url = `/uploads/losses/${req.file.filename}`;
-  res.json({ success: true, data: { url } });
+  try {
+    const stored = await storeFile({
+      buffer: req.file.buffer, originalName: req.file.originalname, ownerType,
+      storeId: req.user?.storeId ?? null, uploadedBy: req.user?.userId ?? null,
+    });
+    res.json({ success: true, data: { url: stored.url, fileId: stored.id } });
+  } catch (err) {
+    if (err instanceof FileRejectedError) { res.status(400).json({ success: false, error: { message: err.message } }); return; }
+    throw err;
+  }
 });
 
-router.post('/complaint-photo', authenticate, uploadComplaintPhoto.single('photo'), (req: AuthRequest, res: Response) => {
-  if (!req.file) {
-    res.status(400).json({ success: false, error: { message: 'Aucune photo envoyee' } });
-    return;
-  }
-  res.json({ success: true, data: { url: `/uploads/complaints/${req.file.filename}` } });
-});
+router.post('/loss-photo', authenticate, uploadPhoto.single('photo'), photoHandler('loss'));
+router.post('/complaint-photo', authenticate, uploadPhoto.single('photo'), photoHandler('complaint'));
 
 export default router;

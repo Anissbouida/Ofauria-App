@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { caisseController, expenseCategoryController, revenueCategoryController, invoiceController, paymentController } from '../controllers/accounting.controller.js';
 import { caisseImportController } from '../controllers/caisse-import.controller.js';
 import { paymentScheduleController } from '../controllers/payment-schedule.controller.js';
@@ -36,16 +35,10 @@ const validateInvoiceSchema = z.object({
 import { authorize } from '../middleware/role.middleware.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const invoiceStorage = multer.diskStorage({
-  destination: path.resolve(__dirname, '../../../uploads/invoices'),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `facture-${Date.now()}-${Math.round(Math.random() * 1000)}${ext}`);
-  },
-});
+// G0-04 : la pièce jointe est reçue en mémoire puis écrite dans le stockage objet
+// (table files) par le contrôleur — plus rien sur le disque du serveur.
 const invoiceUpload = multer({
-  storage: invoiceStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   fileFilter: (_req, file, cb) => {
     const allowed = ['.pdf', '.png', '.jpg', '.jpeg', '.webp'];

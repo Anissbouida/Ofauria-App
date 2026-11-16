@@ -6,6 +6,7 @@ import { pricingTierRepository } from '../repositories/product-pricing-tier.repo
 import { channelPricingRepository } from '../repositories/product-channel-pricing.repository.js';
 import { db } from '../config/database.js';
 import { adjustProductStock } from '../repositories/product-stock.helper.js';
+import { storeFile, FileRejectedError } from '../services/storage.service.js';
 
 // Phase B — debounce le lazy trigger d'auto-expire pour ne pas le rejouer
 // a chaque requete (cout : 1 query par lot expire). On laisse passer toutes
@@ -473,8 +474,18 @@ export const productController = {
   },
   async uploadImage(req: AuthRequest, res: Response) {
     if (!req.file) { res.status(400).json({ success: false, error: { message: 'Aucune image fournie' } }); return; }
-    const imageUrl = `/uploads/${req.file.filename}`;
-    const product = await productRepository.update(req.params.id, { imageUrl });
+    // G0-04 : stockage objet + table files ; lecture par /api/v1/files/:id (authentifiée).
+    let stored;
+    try {
+      stored = await storeFile({
+        buffer: req.file.buffer, originalName: req.file.originalname,
+        ownerType: 'product', ownerId: req.params.id, uploadedBy: req.user?.userId ?? null,
+      });
+    } catch (err) {
+      if (err instanceof FileRejectedError) { res.status(400).json({ success: false, error: { message: err.message } }); return; }
+      throw err;
+    }
+    const product = await productRepository.update(req.params.id, { imageUrl: stored.url });
     res.json({ success: true, data: product });
   },
 

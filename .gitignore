@@ -11,3 +11,4 @@ coverage/
 .claude/
 .env.backup.*
 server/scripts/reference/
+storage/

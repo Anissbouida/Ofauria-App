@@ -93,6 +93,7 @@ import { customFieldsRouter } from './custom-fields.routes.js';
 import { crmRouter } from './crm.routes.js';
 import { promotionsRouter, loyaltyRouter } from './promotions.routes.js';
 import { posParkedRouter } from './pos-parked.routes.js';
+import filesRoutes from './files.routes.js';
 
 const router = Router();
 
@@ -141,6 +142,8 @@ router.use('/payments', rlsStoreScope('accounting'), paymentsRouter);
 router.use('/returns', returnRoutes);
 router.use('/stores', storeRoutes);
 router.use('/upload', uploadRoutes);
+// G0-04 : lecture authentifiée des fichiers téléversés (table files).
+router.use('/files', filesRoutes);
 router.use('/notifications', notificationsRoutes);
 router.use('/purchase-orders', purchaseOrderRoutes);
 router.use('/reception-vouchers', receptionVoucherRoutes);

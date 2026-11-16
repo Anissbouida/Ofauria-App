@@ -12,6 +12,7 @@ import portalRoutes from './routes/portal.routes.js';
 import { cronTick } from './routes/automation.routes.js';
 import { errorHandler } from './middleware/error.middleware.js';
 import { originCheck } from './middleware/csrf.middleware.js';
+import { authenticate } from './middleware/auth.middleware.js';
 import { publicApiLimiter, portalLimiter, globalApiLimiter } from './middleware/rate-limit.middleware.js';
 import { runWithTimezone } from './utils/timezone.js';
 import { logger } from './utils/logger.js';
@@ -166,17 +167,21 @@ app.use((req, res, next) => {
   runWithTimezone(timezone, () => next());
 });
 
-// ─── A05-3 Static uploads durcis ─────────────────────────
+// ─── A05-3 / G0-04 : anciens fichiers de /uploads ─────────
+// Les nouveaux téléversements vont dans le stockage objet et se lisent par
+// /api/v1/files/:id. Ce dossier ne sert plus que les fichiers HÉRITÉS encore
+// présents sur le disque (développement, avant reprise par
+// scripts/migrate-uploads-to-storage.ts) — et seulement à un utilisateur
+// connecté : une URL copiée hors session reçoit 401.
 // - X-Content-Type-Options: nosniff empeche le MIME sniffing d'un fichier.
 // - Content-Disposition: inline force l'affichage, pas d'execution.
-// - Cache-Control: public pour permettre CDN mais revalidation.
-app.use('/uploads', express.static(path.resolve(__dirname, '../../uploads'), {
+app.use('/uploads', authenticate, express.static(path.resolve(__dirname, '../../uploads'), {
   dotfiles: 'deny',
   index: false,
   setHeaders: (res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Disposition', 'inline');
-    res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+    res.setHeader('Cache-Control', 'private, max-age=3600, must-revalidate');
   },
 }));
 
