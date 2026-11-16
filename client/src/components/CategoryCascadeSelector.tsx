@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { expenseCategoriesApi } from '../api/accounting.api';
+import SearchSelect from './ui/SearchSelect';
 
 /**
  * Branches "stockables" de la hierarchie expense_categories proposees dans
@@ -67,7 +68,6 @@ export default function CategoryCascadeSelector({
   onChange,
   type = 'expense',
   className = '',
-  required = false,
   disabled = false,
   rootIds,
 }: CascadeSelectorProps) {
@@ -144,17 +144,19 @@ export default function CategoryCascadeSelector({
   const showL2 = filteredL2.length > 0;
   const showL3 = filteredL3.length > 0;
 
-  const selectClass = `w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent ${disabled ? 'opacity-50' : ''}`;
-
   return (
     <div className={`space-y-2 ${className}`}>
       {/* Level 1: Category */}
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Categorie *</label>
-        <select
+        <SearchSelect
+          ariaLabel="Categorie"
+          placeholder="Choisir une categorie..."
+          width="100%"
+          size="md"
+          disabled={disabled}
           value={selectedL1}
-          onChange={(e) => {
-            const id = e.target.value;
+          onChange={(id) => {
             setSelectedL1(id);
             setSelectedL2('');
             // Si L1 n'a ni sous-categorie ni type direct, L1 EST la feuille.
@@ -162,27 +164,22 @@ export default function CategoryCascadeSelector({
             const hasDirectL3 = id && level3.some(c => String(c.parent_id) === id);
             onChange(!id ? '' : (hasL2Children || hasDirectL3) ? '' : id);
           }}
-          className={selectClass}
-          required={required}
-          disabled={disabled}
-        >
-          <option value="">Choisir une categorie...</option>
-          {level1.map(c => (
-            <option key={String(c.id)} value={String(c.id)}>
-              {String(c.name)}
-            </option>
-          ))}
-        </select>
+          options={level1.map(c => ({ id: String(c.id), label: String(c.name) }))}
+        />
       </div>
 
       {/* Level 2: Subcategory (only if L1 has L2 children) */}
       {showL2 && (
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Sous-categorie</label>
-          <select
+          <SearchSelect
+            ariaLabel="Sous-categorie"
+            placeholder="Toutes les sous-categories"
+            width="100%"
+            size="md"
+            disabled={disabled}
             value={selectedL2}
-            onChange={(e) => {
-              const id = e.target.value;
+            onChange={(id) => {
               setSelectedL2(id);
               // Si la sous-categorie n'a pas de Type (L3), elle EST la feuille.
               const hasL3Children = id && level3.some(c => String(c.parent_id) === id);
@@ -194,16 +191,8 @@ export default function CategoryCascadeSelector({
                 onChange(hasL3Children ? '' : id);
               }
             }}
-            className={selectClass}
-            disabled={disabled}
-          >
-            <option value="">Toutes les sous-categories</option>
-            {filteredL2.map(c => (
-              <option key={String(c.id)} value={String(c.id)}>
-                {String(c.name)}
-              </option>
-            ))}
-          </select>
+            options={filteredL2.map(c => ({ id: String(c.id), label: String(c.name) }))}
+          />
         </div>
       )}
 
@@ -211,21 +200,16 @@ export default function CategoryCascadeSelector({
       {(showL3 || (selectedL1 && l1HasDirectTypes)) && (
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Type *</label>
-          <select
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            className={selectClass}
-            required={required}
+          <SearchSelect
+            ariaLabel="Type"
+            placeholder="Choisir un type..."
+            width="100%"
+            size="md"
             disabled={disabled}
-          >
-            <option value="">Choisir un type...</option>
-            {filteredL3.map(c => (
-              <option key={String(c.id)} value={String(c.id)}>
-                {String(c.name)}
-                {Boolean(c.requires_po) ? ' (BC requis)' : ''}
-              </option>
-            ))}
-          </select>
+            value={value}
+            onChange={(id) => onChange(id)}
+            options={filteredL3.map(c => ({ id: String(c.id), label: `${String(c.name)}${Boolean(c.requires_po) ? ' (BC requis)' : ''}` }))}
+          />
         </div>
       )}
     </div>

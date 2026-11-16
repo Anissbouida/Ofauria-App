@@ -2068,6 +2068,7 @@ function ChargesTab() {
   const { modes: payModes, byCode: payModeByCode, treasuryAccounts } = usePaymentModes();
   const [expMode, setExpMode] = useState('cash');
   const [expSupplierId, setExpSupplierId] = useState('');
+  const [expEmployeeId, setExpEmployeeId] = useState('');
   const [expAmount, setExpAmount] = useState(0);
   const [expDate, setExpDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [expOverride, setExpOverride] = useState<CashOverride>(null);
@@ -2451,7 +2452,7 @@ function ChargesTab() {
           <ArrowLeftRight size={13} /> Mouvement interne
         </button>
         <button onClick={() => {
-          setExpMode('cash'); setExpSupplierId(''); setExpAmount(0); setExpDate(format(new Date(), 'yyyy-MM-dd')); setExpOverride(null);
+          setExpMode('cash'); setExpSupplierId(''); setExpEmployeeId(''); setExpAmount(0); setExpDate(format(new Date(), 'yyyy-MM-dd')); setExpOverride(null);
           setShowForm(true);
         }} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -2650,6 +2651,8 @@ function ChargesTab() {
               fd.amount = parseFloat(fd.amount as string);
               fd.type = 'expense';
               fd.categoryId = formCategoryId || undefined;
+              fd.supplierId = expSupplierId || undefined;
+              fd.employeeId = expEmployeeId || undefined;
               if (requiresPO && formPOId) {
                 fd.purchaseOrderId = formPOId;
                 if (selectedPO) fd.supplierId = selectedPO.supplier_id as string;
@@ -2737,35 +2740,39 @@ function ChargesTab() {
                   <PaymentModeSelect value={expMode} onChange={setExpMode} /></div>
                 {!(requiresPO && formPOId) && !isPersonnelExpense && (
                   <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur</label>
-                    <select name="supplierId" disabled={isRhManagedCategory} onChange={e => setExpSupplierId(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
-                      <option value="">Aucun</option>
-                      {(suppliers as Record<string, any>[]).filter(s => s.is_active).map(s => (
-                        <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
-                      ))}
-                    </select></div>
+                    <SearchSelect
+                      ariaLabel="Fournisseur"
+                      placeholder="Aucun"
+                      width="100%"
+                      size="md"
+                      disabled={isRhManagedCategory}
+                      value={expSupplierId}
+                      onChange={setExpSupplierId}
+                      options={(suppliers as Record<string, any>[]).filter(s => s.is_active).map(s => ({ id: s.id as string, label: s.name as string }))}
+                    /></div>
                 )}
                 {/* Categorie sous "Charges de personnel" : on affiche le selecteur Employe.
                     Le champ est obligatoire (un salaire/prime doit etre rattache a une ressource). */}
                 {!(requiresPO && formPOId) && isPersonnelExpense && (
                   <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Ressource / Employé *</label>
-                    <select name="employeeId" required disabled={isRhManagedCategory}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
-                      <option value="">Choisir un employé...</option>
-                      {(employees as Record<string, any>[])
+                    <SearchSelect
+                      ariaLabel="Ressource / Employé"
+                      placeholder="Choisir un employé..."
+                      width="100%"
+                      size="md"
+                      disabled={isRhManagedCategory}
+                      value={expEmployeeId}
+                      onChange={setExpEmployeeId}
+                      options={(employees as Record<string, any>[])
                         .filter(emp => emp.is_active !== false)
                         .sort((a, b) => String(a.first_name || a.name || '').localeCompare(String(b.first_name || b.name || '')))
                         .map(emp => {
                           const fullName = [emp.first_name, emp.last_name].filter(Boolean).join(' ')
                             || (emp.name as string) || (emp.email as string) || 'Sans nom';
                           const role = emp.role || emp.position;
-                          return (
-                            <option key={emp.id as string} value={emp.id as string}>
-                              {fullName}{role ? ` — ${role}` : ''}
-                            </option>
-                          );
+                          return { id: emp.id as string, label: `${fullName}${role ? ` — ${role}` : ''}` };
                         })}
-                    </select></div>
+                    /></div>
                 )}
               </div>
 

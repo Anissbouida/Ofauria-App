@@ -2926,12 +2926,15 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label style={odooLabelStyle}>Fournisseur</label>
-                  <select value={supplierId} onChange={e => setSupplierId(e.target.value)} style={odooFieldStyle}>
-                    <option value="">—</option>
-                    {(suppliers as Record<string, any>[]).filter(s => s.is_active || s.id === supplierId).map(s => (
-                      <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
-                    ))}
-                  </select>
+                  <SearchSelect
+                    ariaLabel="Fournisseur"
+                    placeholder="—"
+                    width="100%"
+                    size="md"
+                    value={supplierId}
+                    onChange={setSupplierId}
+                    options={(suppliers as Record<string, any>[]).filter(s => s.is_active || s.id === supplierId).map(s => ({ id: s.id as string, label: s.name as string }))}
+                  />
                 </div>
                 <div>
                   <label style={odooLabelStyle}>Date livraison prévue</label>
@@ -2996,24 +2999,25 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                                 <LineKindTag kind={line.kind} />
                               </span>
                             ) : (
-                              <select value={line.ingredientId}
-                                onChange={e => {
-                                  const ing = (ingredients as Record<string, any>[]).find(i => i.id === e.target.value);
+                              <SearchSelect
+                                ariaLabel="Ingrédient"
+                                placeholder="— Choisir —"
+                                width="100%"
+                                size="md"
+                                value={line.ingredientId}
+                                onChange={id => {
+                                  const ing = (ingredients as Record<string, any>[]).find(i => i.id === id);
                                   const container = containerOf(ing);
                                   updateLine(idx, {
-                                    ingredientId: e.target.value,
+                                    ingredientId: id,
                                     ingredientName: ing ? (ing.name as string) : '',
                                     ingredientUnit: ing ? (ing.unit as string) : '',
                                     container,
                                     quantityOrdered: container ? String(container.size) : line.quantityOrdered,
                                   });
                                 }}
-                                style={odooFieldStyle}>
-                                <option value="">— Choisir —</option>
-                                {(ingredients as Record<string, any>[]).map(i => (
-                                  <option key={i.id as string} value={i.id as string}>{i.name as string}</option>
-                                ))}
-                              </select>
+                                options={(ingredients as Record<string, any>[]).map(i => ({ id: i.id as string, label: i.name as string }))}
+                              />
                             )}
                           </td>
                           <td>
