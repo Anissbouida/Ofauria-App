@@ -12,6 +12,9 @@ function sha256(content: string): string {
   return crypto.createHash('sha256').update(content, 'utf-8').digest('hex');
 }
 
+/** Numéros partagés par deux migrations avant l'ajout de la garde. Liste close. */
+const LEGACY_DUPLICATE_PREFIXES = new Set(['051', '264', '265', '426', '427', '428']);
+
 async function migrate() {
   // Create migrations tracking table (la colonne checksum est ajoutee par
   // la migration 102 elle-meme).
@@ -59,7 +62,11 @@ async function migrate() {
     for (const [prefix, group] of dupes) {
       console.warn(`⚠ Numéro de migration en double : ${prefix} → ${group.join(', ')}`);
     }
-    const withUnapplied = dupes.filter(([, group]) => group.some(f => !executed.has(f)));
+    // Doublons HISTORIQUES (déjà en production, checksums figés) : tolérés même
+    // non appliqués, sinon aucune base vierge (test, CI, staging) ne peut migrer.
+    // Tout NOUVEAU doublon reste refusé (plan d'action G3-05).
+    const withUnapplied = dupes.filter(([prefix, group]) =>
+      !LEGACY_DUPLICATE_PREFIXES.has(prefix) && group.some(f => !executed.has(f)));
     if (withUnapplied.length) {
       console.error(`❌ Doublon de numéro impliquant une migration non appliquée : ${withUnapplied.map(([p]) => p).join(', ')}. Renumérotez avant de migrer.`);
       await db.pool.end();
