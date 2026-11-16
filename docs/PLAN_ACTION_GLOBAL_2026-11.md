@@ -1793,7 +1793,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ◐ | G0-12 | Livre de paie | non |
 | ◐ | G0-13 | Barème IR versionné | non |
 | ◐ | G0-14 | Paiement de bulletin en transaction | non |
-| ☐ | G0-15 | Amortissement dégressif | oui (immobilisations) |
+| ◐ | G0-15 | Amortissement dégressif | oui (immobilisations) |
 | ☐ | G0-16 | Régime de TVA | oui si bascule |
 | ☐ | G0-17 | TVA déductible par établissement | oui (par établissement) |
 | ☐ | G0-18 | Écrêtage du stock | non (trace ajoutée) |
@@ -1818,6 +1818,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **G0-12** : livre de paie livré (`GET /payroll/book`, PDF paysage et Excel, par mois ou par année ; boutons dans la paie mensuelle). Reste à faire valider la présentation par le comptable avant diffusion. Pas de colonne matricule : la fiche salarié n'en porte pas, le numéro CNSS en tient lieu.
 - **G0-13** : versions datées du barème livrées (`POST /payroll/tax-scales`, bouton « Nouvelle version » dans Paramètres de paie) ; un barème déjà utilisé par un bulletin n'est plus modifiable dans ses valeurs de calcul. Reste à vérifier avec le comptable que le barème en base est bien celui de l'exercice en cours.
 - **G0-14** : `withTransaction` livré (transaction ambiante, `server/src/config/database.ts`) ; les trois paiements (mensuel, hebdomadaire, quinzaine) passent dans une seule transaction, verrou de ligne compris, et la compensation manuelle est retirée. Non fait : la factorisation des trois corps de paiement en un service commun `payPayslip` ; le reclassement 4432 du mensuel reste volontairement isolé par un point de sauvegarde (son échec n'annule pas le paiement).
+- **G0-15** : `computeSchedule` corrigé (première annuité au prorata des mois, exercice de complément, durée respectée) et testé sur des cas chiffrés à la main. Le plan étant recalculé à chaque lecture, les immobilisations sans dotation passée prennent la règle sans reprise de données. Base locale : aucune immobilisation en dégressif, jeu de référence identique. Non fait : la confirmation de la règle par l'expert-comptable ; le passage de `server/scripts/diagnose-degressif-ecart.ts` (lecture seule) sur la base de production pour chiffrer l'écart des immobilisations déjà dotées.
 - **G3-05** (étape 1, faite par nécessité) : la garde des numéros de migration tolère les six doublons historiques sur une base vierge.
 
 ### Lots suivants

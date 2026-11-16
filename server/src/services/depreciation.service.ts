@@ -95,23 +95,29 @@ export function computeSchedule(asset: {
   const coef = degressiveCoefficient(duration);
   const degressiveRate = coef / duration;
   let remaining = base;
-  const annuals: { year: number; annual: number }[] = [];
-  for (let yearIdx = 0; yearIdx < duration; yearIdx++) {
-    const yearsLeft = duration - yearIdx;
-    const linearRate = 1 / yearsLeft;
-    const rate = Math.max(degressiveRate, linearRate); // bascule vers lineaire
+  // G0-15 : la première annuité est proratisée en MOIS (base × taux × mois restants
+  // / 12). Avant, une annuité entière était comptée puis étalée sur les mois
+  // restants : le plan se terminait trop tôt. La durée totale reste de
+  // `duration` × 12 mois ; une acquisition en cours d'année ajoute donc un
+  // exercice de fin, qui solde le reste. Une acquisition en janvier est inchangée.
+  const annuals: { year: number; annual: number; months: number }[] = [];
+  let monthsLeft = duration * 12;
+  for (let yearIdx = 0; monthsLeft > 0; yearIdx++) {
+    const months = Math.min(yearIdx === 0 ? 12 - startMonth + 1 : 12, monthsLeft);
+    const linearRate = months / monthsLeft;                       // linéaire sur la durée restante
+    const rate = Math.max(degressiveRate * months / 12, linearRate); // bascule vers le linéaire
     let annual = round2(remaining * rate);
-    if (yearIdx === duration - 1) annual = round2(remaining); // derniere annee solde le reste
-    annuals.push({ year: startYear + yearIdx, annual });
+    if (months === monthsLeft) annual = round2(remaining);        // dernier exercice : solde le reste
+    annuals.push({ year: startYear + yearIdx, annual, months });
     remaining = round2(remaining - annual);
+    monthsLeft -= months;
   }
 
-  // Repartition mensuelle. La premiere annee est proratisee a partir du mois
-  // d'acquisition (mois restants jusqu'a decembre).
+  // Repartition mensuelle : chaque annuite est etalee sur les mois de son exercice
+  // (mois restants la premiere annee, mois de complement la derniere).
   for (let yearIdx = 0; yearIdx < annuals.length; yearIdx++) {
-    const { year, annual } = annuals[yearIdx];
+    const { year, annual, months: monthsInYear } = annuals[yearIdx];
     const firstMonth = yearIdx === 0 ? startMonth : 1;
-    const monthsInYear = 12 - firstMonth + 1;
     const monthly = round2(annual / monthsInYear);
     for (let mi = 0; mi < monthsInYear; mi++) {
       const m = firstMonth + mi;
