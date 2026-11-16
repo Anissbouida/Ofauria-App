@@ -10,3 +10,4 @@ uploads/
 coverage/
 .claude/
 .env.backup.*
+server/scripts/reference/
