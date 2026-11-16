@@ -229,6 +229,8 @@ export const payrollSettingsSchema = z.object({
   // Virement groupe des salaires (mig 325)
   employerRib: ribField,
   employerBankName: z.string().max(80).nullable().optional(),
+  // G0-11 : avertir (défaut) ou bloquer un bulletin sous le SMIG.
+  smigPolicy: z.enum(['warn', 'block']).optional(),
 });
 
 const rate = z.coerce.number().min(0).max(1);
@@ -251,6 +253,9 @@ export const updateTaxScaleSchema = z.object({
     .refine(b => b.every((x, i) => i === 0 || x.upTo === null || (b[i - 1].upTo !== null && x.upTo > (b[i - 1].upTo as number))), 'Tranches croissantes')
     .optional(),
   notes: z.string().max(2000).nullable().optional(),
+  // G0-11 : SMIG en vigueur ; vide = contrôle non fait.
+  smigHourly: z.preprocess(v => (v === '' ? null : v), z.coerce.number().positive().max(100000).nullable()).optional(),
+  smigMonthly: z.preprocess(v => (v === '' ? null : v), z.coerce.number().positive().max(10000000).nullable()).optional(),
 });
 
 // Modes acceptes par les CHECK des tables de paie (payroll / weekly_payroll /

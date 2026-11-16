@@ -3,7 +3,8 @@ import { paymentRepository } from './accounting.repository.js';
 import { cancelPayrollPayment, payrollLedger } from '../services/payroll-ledger.service.js';
 import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
-import { payrollPeriodRepository, loadPayrollContext, computeAndSavePayslip, loadPeriodicMonth, monthBounds as monthBoundsOf } from './payroll-config.repository.js';
+import { payrollPeriodRepository, loadPayrollContext, computeAndSavePayslip, loadPeriodicMonth, monthBounds as monthBoundsOf, taxScaleRepository, payrollSettingsRepository } from './payroll-config.repository.js';
+import { checkSmig, smigScaleFromRow, smigBlockMessage } from '../services/smig.js';
 import { loadTimeRules } from './time-rules.repository.js';
 import { nightOvertimeMinutes } from '../services/overtime-engine.js';
 
@@ -843,6 +844,16 @@ export const payrollRepository = {
       storeId ? [storeId] : []
     );
 
+    // G0-11 : contrôle du SMIG du barème en vigueur. En mode « bloquer », aucun
+    // bulletin n'est généré tant qu'un salarié est sous le minimum.
+    const { start: smigDate } = monthBoundsOf(month, year);
+    const smig = smigScaleFromRow(await taxScaleRepository.findForDate(smigDate));
+    const smigPolicy = String((await payrollSettingsRepository.get()).smig_policy ?? 'warn');
+    if (smigPolicy === 'block') {
+      const refusal = smigBlockMessage(employees.rows, smig);
+      if (refusal) throw new Error(refusal);
+    }
+
     // Purge les bulletins generes par erreur pour des employes passes en
     // hebdo/quinzaine (non payes uniquement — l'historique paye n'est jamais
     // touche). Les lignes supprimees sont renvoyees pour etre signalees.
@@ -869,7 +880,14 @@ export const payrollRepository = {
         const pm = await loadPeriodicMonth(emp.id, emp.pay_frequency, start, end);
         if (pm.withheld === 0) continue;
       }
-      results.push(await computeAndSavePayslip(emp, month, year, ctx));
+      const slip = await computeAndSavePayslip(emp, month, year, ctx);
+      // G0-11 : alerte SMIG portée par le bulletin (NULL = conforme ou non contrôlé).
+      const finding = checkSmig(emp, smig);
+      if (slip.paid !== true && (slip.smig_alert ?? null) !== (finding?.message ?? null)) {
+        await db.query('UPDATE payroll SET smig_alert = $2 WHERE id = $1', [slip.id, finding?.message ?? null]);
+        slip.smig_alert = finding?.message ?? null;
+      }
+      results.push(slip);
     }
     return { payrolls: results, removed: purge.rows };
   },

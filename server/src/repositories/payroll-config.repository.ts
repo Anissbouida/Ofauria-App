@@ -57,6 +57,8 @@ export const taxScaleRepository = {
       fraisProSeuilAnnuel: 'frais_pro_seuil_annuel', fraisProPlafondAnnuel: 'frais_pro_plafond_annuel',
       deductionFamilleAnnuelle: 'deduction_famille_annuelle', maxPersonnesCharge: 'max_personnes_charge',
       irBrackets: 'ir_brackets', notes: 'notes',
+      // G0-11 : SMIG du barème (saisi par le client, validé par son comptable).
+      smigHourly: 'smig_hourly', smigMonthly: 'smig_monthly',
     };
     const fields: string[] = [];
     const values: unknown[] = [];
@@ -92,6 +94,8 @@ export const payrollSettingsRepository = {
       holidayWorkedRate: 'holiday_worked_rate', otAnnualQuotaHours: 'ot_annual_quota_hours',
       // Virement groupe des salaires (mig 325).
       employerRib: 'employer_rib', employerBankName: 'employer_bank_name',
+      // G0-11 : politique du contrôle du SMIG (warn | block).
+      smigPolicy: 'smig_policy',
     };
     const fields: string[] = [];
     const values: unknown[] = [];

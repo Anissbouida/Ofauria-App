@@ -62,6 +62,7 @@ export default function PayrollSettingsView() {
       weeklyLegalHours: String(parseFloat(st.weekly_legal_hours ?? 44)),
       holidayWorkedRate: pctIn(st.holiday_worked_rate ?? 1),
       otAnnualQuotaHours: String(parseFloat(st.ot_annual_quota_hours ?? 100)),
+      smigPolicy: String(st.smig_policy ?? 'warn'),
     });
   }, [data]);
   const saveSettings = useMutation({
@@ -75,6 +76,7 @@ export default function PayrollSettingsView() {
       nightStart: rules.nightStart, nightEnd: rules.nightEnd,
       monthlyLegalHours: parseFloat(rules.monthlyLegalHours), weeklyLegalHours: parseFloat(rules.weeklyLegalHours),
       holidayWorkedRate: pctOut(rules.holidayWorkedRate), otAnnualQuotaHours: parseFloat(rules.otAnnualQuotaHours),
+      smigPolicy: rules.smigPolicy === 'block' ? 'block' : 'warn',
     }),
     onSuccess: () => { invalidate(); notify.success('Paramètres employeur enregistrés'); },
     onError: (err: unknown) => notify.error(apiErrorMessage(err, 'Erreur')),
@@ -96,6 +98,9 @@ export default function PayrollSettingsView() {
       fraisProPlafondAnnuel: String(parseFloat(scale.frais_pro_plafond_annuel ?? 0)),
       deductionFamilleAnnuelle: String(parseFloat(scale.deduction_famille_annuelle ?? 0)),
       maxPersonnesCharge: String(scale.max_personnes_charge ?? 6),
+      // G0-11 : SMIG du barème ; vide = contrôle non fait.
+      smigMonthly: scale.smig_monthly != null ? String(parseFloat(scale.smig_monthly)) : '',
+      smigHourly: scale.smig_hourly != null ? String(parseFloat(scale.smig_hourly)) : '',
     });
     setBrackets((typeof scale.ir_brackets === 'string' ? JSON.parse(scale.ir_brackets) : scale.ir_brackets) as Bracket[]);
   }, [scale]);
@@ -108,6 +113,8 @@ export default function PayrollSettingsView() {
       fraisProRateBas: pctOut(form.fraisProRateBas), fraisProRateHaut: pctOut(form.fraisProRateHaut),
       fraisProSeuilAnnuel: parseFloat(form.fraisProSeuilAnnuel), fraisProPlafondAnnuel: parseFloat(form.fraisProPlafondAnnuel),
       deductionFamilleAnnuelle: parseFloat(form.deductionFamilleAnnuelle), maxPersonnesCharge: parseInt(form.maxPersonnesCharge, 10),
+      smigMonthly: form.smigMonthly?.trim() ? parseFloat(form.smigMonthly.replace(',', '.')) : null,
+      smigHourly: form.smigHourly?.trim() ? parseFloat(form.smigHourly.replace(',', '.')) : null,
       irBrackets: brackets,
     }),
     onSuccess: () => { invalidate(); notify.success('Barème enregistré : régénérez les bulletins non payés pour l\'appliquer'); },
@@ -201,6 +208,14 @@ export default function PayrollSettingsView() {
           {ruleField('weeklyLegalHours', 'Durée légale hebdo', 'h')}
           {ruleField('holidayWorkedRate', 'Férié travaillé (indemnité)', '%')}
           {ruleField('otAnnualQuotaHours', 'Contingent annuel', 'h')}
+          {/* G0-11 : que faire d'un bulletin sous le SMIG saisi dans le barème. */}
+          <Field label="Salaire sous le SMIG">
+            <select className={inputCls} value={rules.smigPolicy ?? 'warn'} disabled={!isAdmin} style={{ width: 150 }}
+              onChange={e => setRules({ ...rules, smigPolicy: e.target.value })}>
+              <option value="warn">Avertir</option>
+              <option value="block">Bloquer la paie</option>
+            </select>
+          </Field>
         </div>
         {isAdmin && (
           <div><SubmitButton pending={saveSettings.isPending} onClick={() => saveSettings.mutate()}><Save size={13} /> Enregistrer</SubmitButton></div>
@@ -229,6 +244,8 @@ export default function PayrollSettingsView() {
             {field('fraisProPlafondAnnuel', 'Plafond frais pro annuel', 'DH')}
             {field('deductionFamilleAnnuelle', 'Charges de famille / personne / an', 'DH')}
             {field('maxPersonnesCharge', 'Personnes à charge max')}
+            {field('smigMonthly', 'SMIG mensuel (vide = non contrôlé)', 'DH')}
+            {field('smigHourly', 'SMIG horaire (vide = non contrôlé)', 'DH')}
           </div>
           <div>
             <span style={fieldLabel}>Barème IR annuel (IR = revenu net imposable × taux − somme à déduire)</span>

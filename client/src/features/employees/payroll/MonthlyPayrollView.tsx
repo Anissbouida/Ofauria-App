@@ -6,8 +6,7 @@ import { payrollApi, advancesApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
 import {
   UserCog, Users, Banknote, Download, ArrowUpDown, ArrowUp, ArrowDown, FileText, RotateCcw, Lock, Unlock,
-  CheckCircle2, Clock, Wallet, Receipt,
-} from 'lucide-react';
+  CheckCircle2, Clock, Wallet, Receipt, AlertTriangle } from 'lucide-react';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { StatusTag } from '../../../components/ui/StatusTag';
@@ -321,6 +320,11 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
         </>
       )}
 
+      {(payrolls as Record<string, any>[]).some(p => p.smig_alert) && (
+        <StatusBanner tone="warning" icon={AlertTriangle} title={`${(payrolls as Record<string, any>[]).filter(p => p.smig_alert).length} bulletin(s) sous le SMIG`}>
+          Le salaire de base de ces salariés est inférieur au SMIG saisi dans le barème de paie. Le détail est indiqué sur chaque ligne.
+        </StatusBanner>
+      )}
       {isLoading ? (
         <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>
       ) : sortedPayrolls.length === 0 ? (
@@ -352,6 +356,8 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500 }}>
                       <Users size={11} style={{ color: 'var(--theme-accent)' }} />
                       {p.first_name as string} {p.last_name as string}
+                      {/* G0-11 : salaire de base sous le SMIG du barème. */}
+                      {p.smig_alert && <span className="odoo-tag odoo-tag-orange" title={p.smig_alert as string} style={{ marginLeft: 6 }}>Sous le SMIG</span>}
                       <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {getRoleLabel(p.employee_role as string)}</span>
                       {p.is_declared === false && <span className="odoo-tag odoo-tag-grey" title="Ni cotisations ni IR">Non déclaré</span>}
                       {p.pay_frequency && p.pay_frequency !== 'monthly' && (

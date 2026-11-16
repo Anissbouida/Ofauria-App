@@ -1789,7 +1789,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ◐ | G0-08 | Reliquats de sécurité | non |
 | ◐ | G0-09 | Pointages exclus de la paie | oui (paie) |
 | ☑ | G0-10 | Paie d'un mois non terminé | non |
-| ☐ | G0-11 | Contrôle du SMIG | non |
+| ◐ | G0-11 | Contrôle du SMIG | non |
 | ☐ | G0-12 | Livre de paie | non |
 | ☐ | G0-13 | Barème IR versionné | non |
 | ☐ | G0-14 | Paiement de bulletin en transaction | non |
@@ -1814,6 +1814,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **G0-07** : factures (création, modification, fusion), stock de matières et caisse validés ; garde en CI. Il reste 361 mutations héritées sans schéma, inscrites dans `server/src/__tests__/fixtures/unvalidated-mutations.json` (dont règlements échelonnés, rapprochement, réceptions, paie) : `npx tsx scripts/audit-validation-routes.ts` en donne le détail.
 - **G0-08** : état de chaque point dans `docs/AUDIT_SECURITE.md`. Deux restent partiels : V3 (`xlsx` retiré, mais `zod`, `nodemailer` et trois failles modérées demandent une montée de version majeure) et V5 (lectures de marge, recettes, stock et lots encore ouvertes à tout utilisateur connecté, à traiter en M2-04 / M2-05). L'ancien format `.xls` n'est plus lu à l'import.
 - **G0-09** : correctif et test livrés. Rapport de rattrapage en lecture seule : `server/scripts/diagnose-pointages-exclus-paie.sql`. Sur la base locale : 3 jours certains (repos payés perdus, 376,93 DH) et 192 jours à vérifier. Reste à l'exécuter en production avec accord, puis à décider la régularisation avec le gérant.
+- **G0-11** : contrôle livré (migration 524), inactif tant que le SMIG mensuel ou horaire n'est pas saisi dans le barème (Paramètres de paie) — valeurs à fournir par le comptable de paie. L'alerte figure sur le bulletin et en bandeau de la paie mensuelle ; elle n'est pas encore reprise dans le tableau de bord RH. Le contrôle porte sur le bulletin mensuel, pas sur les paies hebdomadaires et de quinzaine prises isolément.
 - **G3-05** (étape 1, faite par nécessité) : la garde des numéros de migration tolère les six doublons historiques sur une base vierge.
 
 ### Lots suivants
