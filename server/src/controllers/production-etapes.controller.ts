@@ -2,6 +2,7 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productionEtapesRepository } from '../repositories/production-etapes.repository.js';
 import { productionRendementRepository } from '../repositories/production-rendement.repository.js';
+import { settingsRepository } from '../repositories/settings.repository.js';
 import { stockFrigoRepository } from '../repositories/stock-frigo.repository.js';
 import { updateEtapeStatusSchema, completeRepetitionSchema, recordRendementSchema, addReadingSchema, retroPlanningSchema } from '../validators/production-etapes.validator.js';
 import { ccpStepTypes, unknownCodes, unknownCodeMessage } from '../services/process-referentials.js';
@@ -143,6 +144,11 @@ export const productionEtapesController = {
     }
 
     const itemId = req.params.itemId as string;
+    // G1-05 : interrupteur « Rendement » de Production › Paramétrage.
+    if (!(await settingsRepository.productionFeatures()).yield) {
+      res.status(409).json({ success: false, error: { message: 'La saisie du rendement est désactivée (Production › Paramétrage).' } });
+      return;
+    }
     const target = await productionRendementRepository.getTargetForItem(itemId);
 
     const { db } = await import('../config/database.js');

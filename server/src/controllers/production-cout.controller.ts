@@ -4,6 +4,11 @@ import { productionCoutRepository } from '../repositories/production-cout.reposi
 import { createEquipementSchema, updateEquipementSchema, recordTempsTravailSchema, recordEquipementUsageSchema } from '../validators/production-cout.validator.js';
 import { unknownCodes, unknownCodeMessage } from '../services/process-referentials.js';
 
+import { settingsRepository } from '../repositories/settings.repository.js';
+
+// G1-05 : interrupteur « Coût de revient » de Production › Paramétrage.
+const COST_DISABLED = 'Le calcul du coût de revient est désactivé (Production › Paramétrage).';
+
 export const productionCoutController = {
 
   // ═══ Equipements CRUD ═══
@@ -99,6 +104,7 @@ export const productionCoutController = {
   // ═══ Cost calculation ═══
 
   async calculateCost(req: AuthRequest, res: Response) {
+    if (!(await settingsRepository.productionFeatures()).cost) { res.status(409).json({ success: false, error: { message: COST_DISABLED } }); return; }
     const data = await productionCoutRepository.calculateAndSave(req.params.planId as string, req.user!.userId);
     res.json({ success: true, data });
   },
@@ -140,6 +146,7 @@ export const productionCoutController = {
   },
 
   async batchCalculate(req: AuthRequest, res: Response) {
+    if (!(await settingsRepository.productionFeatures()).cost) { res.status(409).json({ success: false, error: { message: COST_DISABLED } }); return; }
     const data = await productionCoutRepository.calculateAllUncalculated(req.user!.userId);
     res.json({ success: true, data });
   },

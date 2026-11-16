@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { SlidersHorizontal, Loader2, Save } from 'lucide-react';
+import { SlidersHorizontal, Loader2, Save, ExternalLink } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { productionApi, type ProductionSettings } from '../../api/production.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
@@ -50,9 +51,9 @@ export default function ProductionSettingsPage() {
     mutationFn: () => productionApi.updateSettings({
       chargesFixesPct: (Number(form!.chargesFixesPct) || 0) / 100,
       overproductionPct: Number(form!.overproductionPct) || 0,
-      markupPercent: Number(form!.markupPercent) || 0,
+      // G1-05 : la majoration et les étapes bloquantes ne s'éditent plus ici (un seul écran
+      // d'édition : Paramètres › Production). Elles ne sont donc plus envoyées.
       stepsEnabled: form!.stepsEnabled,
-      stepsBlocking: form!.stepsBlocking,
       yieldEnabled: form!.yieldEnabled,
       costEnabled: form!.costEnabled,
     }),
@@ -83,9 +84,10 @@ export default function ProductionSettingsPage() {
                 <input type="number" step="0.1" min="0" value={form.chargesFixesPct} onChange={e => set('chargesFixesPct', e.target.value)} style={inp} /> %
               </div>
             </Row>
-            <Row label="Marge / markup produit" hint="Multiplicateur appliqué au prix de vente conseillé.">
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <input type="number" step="0.1" min="0" value={form.markupPercent} onChange={e => set('markupPercent', e.target.value)} style={inp} /> %
+            <Row label="Marge / markup produit" hint="Multiplicateur appliqué au prix de vente conseillé. Se règle dans Paramètres › Production › Majoration.">
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{Number(form.markupPercent).toLocaleString('fr-FR')} %</span>
+                <Link to="/settings?page=production" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><ExternalLink size={13} /> Modifier</Link>
               </div>
             </Row>
           </section>
@@ -97,16 +99,19 @@ export default function ProductionSettingsPage() {
                 <input type="number" step="1" min="0" value={form.overproductionPct} onChange={e => set('overproductionPct', e.target.value)} style={inp} /> %
               </div>
             </Row>
-            <Row label="Étapes de fabrication" hint="Active le mode opératoire étape par étape sur les plans.">
+            <Row label="Étapes de fabrication" hint="Mode opératoire étape par étape sur les plans. Coupé : le panneau des étapes est masqué et aucune étape ne bloque la production.">
               <Toggle value={form.stepsEnabled} onChange={v => set('stepsEnabled', v)} />
             </Row>
-            <Row label="Étapes bloquantes" hint="Une étape bloquante doit être terminée avant de produire l'article.">
-              <Toggle value={form.stepsBlocking} onChange={v => set('stepsBlocking', v)} />
+            <Row label="Étapes bloquantes" hint="Une étape bloquante doit être terminée avant de produire l'article. Se règle dans Paramètres › Production › Coûts et prix.">
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                <span>{form.stepsBlocking ? 'Oui' : 'Non'}</span>
+                <Link to="/settings?page=production" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><ExternalLink size={13} /> Modifier</Link>
+              </div>
             </Row>
-            <Row label="Rendement" hint="Saisie du rendement (vers magasin / frigo, pertes) à la production.">
+            <Row label="Rendement" hint="Saisie du rendement (vers magasin / frigo, pertes) à la production. Coupé : le panneau est masqué et la saisie refusée.">
               <Toggle value={form.yieldEnabled} onChange={v => set('yieldEnabled', v)} />
             </Row>
-            <Row label="Coût de revient" hint="Calcul du coût réel (matière + MO + énergie + charges) des plans.">
+            <Row label="Coût de revient" hint="Calcul du coût réel (matière + emballages + MO + énergie + charges) des plans. Coupé : le panneau est masqué et le calcul refusé.">
               <Toggle value={form.costEnabled} onChange={v => set('costEnabled', v)} />
             </Row>
           </section>

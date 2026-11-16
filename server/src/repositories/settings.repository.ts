@@ -127,6 +127,19 @@ export const settingsRepository = {
     );
     return r.rows[0] ?? null;
   },
+  /**
+   * G1-05 — fonctions de production activées (étapes, rendement, coût de revient). Une
+   * fonction coupée masque son panneau et fait refuser sa saisie côté serveur.
+   */
+  async productionFeatures(): Promise<{ steps: boolean; yield: boolean; cost: boolean }> {
+    const r = (await db.query(
+      `SELECT production_steps_enabled, production_yield_enabled, production_cost_enabled FROM company_settings WHERE id = 1`)).rows[0];
+    return {
+      steps: r?.production_steps_enabled !== false,
+      yield: r?.production_yield_enabled !== false,
+      cost: r?.production_cost_enabled !== false,
+    };
+  },
   async updateProductionSettings(data: {
     chargesFixesPct?: number; overproductionPct?: number; markupPercent?: number;
     stepsEnabled?: boolean; stepsBlocking?: boolean; yieldEnabled?: boolean; costEnabled?: boolean;

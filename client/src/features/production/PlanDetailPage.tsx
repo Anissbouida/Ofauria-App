@@ -99,6 +99,8 @@ export default function PlanDetailPage() {
     queryFn: () => productionApi.getActivities(id!),
     enabled: !!id,
   });
+  // G1-05 : fonctions de production activées (étapes, rendement, coût de revient).
+  const { data: productionSettings } = useQuery({ queryKey: ['production-settings'], queryFn: productionApi.getSettings, staleTime: 5 * 60_000 });
   const [newNote, setNewNote] = useState('');
   const [addingNote, setAddingNote] = useState(false);
 
@@ -1871,15 +1873,18 @@ export default function PlanDetailPage() {
       {showProd && hasResults && (
         <>
           {plan.status === 'in_progress' && <RetroPlanningPanel planId={id!} planStatus={plan.status} isChef={isChef} />}
-          <EtapesPanel planId={id!} planStatus={plan.status} isChef={isChef} />
-          <div id="plan-rendement">
-            <RendementPanel planId={id!} planStatus={plan.status} items={items} isChef={isChef} />
-          </div>
+          {/* G1-05 : panneaux masqués quand la fonction est coupée (Production › Paramétrage). */}
+          {productionSettings?.production_steps_enabled !== false && <EtapesPanel planId={id!} planStatus={plan.status} isChef={isChef} />}
+          {productionSettings?.production_yield_enabled !== false && (
+            <div id="plan-rendement">
+              <RendementPanel planId={id!} planStatus={plan.status} items={items} isChef={isChef} />
+            </div>
+          )}
         </>
       )}
 
       {/* ══════════════ COUT DE REVIENT (onglet Couts) ══════════════ */}
-      {showCosts && hasResults && (
+      {showCosts && hasResults && productionSettings?.production_cost_enabled !== false && (
         <CoutReelPanel planId={id!} planStatus={plan.status} isChef={isChef}
           totalQuantity={items.reduce((s: number, it: any) => s + ((it.actual_quantity as number) || (it.planned_quantity as number) || 0), 0)} />
       )}

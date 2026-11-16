@@ -1413,7 +1413,9 @@ export const productionRepository = {
       let stepsBlocking = false;
       try {
         await client.query('SAVEPOINT check_steps_blocking');
-        const settingsResult = await client.query(`SELECT production_steps_blocking FROM company_settings LIMIT 1`);
+        // G1-05 : sans les étapes de fabrication (interrupteur coupé), rien ne bloque.
+        const settingsResult = await client.query(
+          `SELECT (production_steps_blocking AND production_steps_enabled) AS production_steps_blocking FROM company_settings LIMIT 1`);
         stepsBlocking = settingsResult.rows[0]?.production_steps_blocking === true;
         await client.query('RELEASE SAVEPOINT check_steps_blocking');
       } catch {
