@@ -55,14 +55,15 @@ export const PARAMETERS: ParamDef[] = [
   {
     key: 'production.fixed_charges', domain: 'production', section: 'production',
     label: 'Charges fixes mensuelles',
-    help: 'Réparties sur chaque plan de production du mois pour calculer le coût de revient.',
+    help: 'Charges indirectes du coût de revient d\'un plan. Taux sur les matières : un pourcentage du coût matière (réglage « Charges fixes » de la production). Charges mensuelles : loyer, énergie et autres charges saisis ici, répartis sur les plans du mois au prorata de leurs matières ; ne saisissez pas ici l\'énergie déjà comptée par les usages d\'équipement.',
     fields: [
+      { name: 'method', label: 'Mode de calcul', type: 'enum', options: [{ value: 'rate', label: 'Taux sur les matières' }, { value: 'monthly', label: 'Charges mensuelles' }] },
       { name: 'loyer', label: 'Loyer de l\'atelier', type: 'number', unit: 'DH / mois', min: 0, max: 10_000_000 },
       { name: 'energie', label: 'Énergie (eau, électricité, gaz)', type: 'number', unit: 'DH / mois', min: 0, max: 10_000_000 },
       { name: 'autres', label: 'Autres charges fixes', type: 'number', unit: 'DH / mois', min: 0, max: 10_000_000 },
     ],
-    defaults: { loyer: 0, energie: 0, autres: 0 },
-    storage: { kind: 'company_settings', columns: { loyer: 'production_charge_loyer', energie: 'production_charge_energie', autres: 'production_charge_autres' } },
+    defaults: { method: 'rate', loyer: 0, energie: 0, autres: 0 },
+    storage: { kind: 'company_settings', columns: { method: 'production_charges_method', loyer: 'production_charge_loyer', energie: 'production_charge_energie', autres: 'production_charge_autres' } },
   },
   {
     key: 'production.steps_blocking', domain: 'production', section: 'production',

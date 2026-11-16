@@ -37,6 +37,9 @@ interface CoutReel {
    */
   cout_prevu_mix_reel?: Money;
   ecart_mix?: Money;
+  /** G0-23 : emballages consommés par le plan, et revient calculé par le serveur (seule définition). */
+  cout_emballages?: Money;
+  detail_emballages?: { packaging_id: string; name: string; unit: string | null; qty: Money; unit_cost: Money; total: Money }[];
   detail_matieres: { ingredient_id: string; name: string; qty: Money; unit_cost: Money; total: Money }[];
   detail_main_oeuvre: { employee_id: string; name: string; minutes: Money; hourly_rate: Money; total: Money }[];
   detail_energie: { equipement_id: string; name: string; minutes: Money; cout_horaire: Money; total: Money }[];
@@ -151,10 +154,13 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
   const coutMO = toNum(cout?.cout_main_oeuvre);
   const coutEnergie = toNum(cout?.cout_energie);
   const coutCharges = toNum(cout?.cout_charges_fixes);
-  // Revient = matieres + MO + energie + charges. Les pertes (cout_pertes) sont
-  // une valorisation de matiere DEJA comptee dans cout_matieres : un « dont »,
-  // pas un terme additif (mig 339).
-  const coutRevient = coutMat + coutMO + coutEnergie + coutCharges;
+  const coutEmballages = toNum(cout?.cout_emballages);
+  // G0-23 : le revient est celui du serveur (cout_total = matieres + emballages + MO +
+  // energie + charges) ; l'ecran ne refait plus l'addition. Les pertes (cout_pertes) sont
+  // une valorisation de matiere DEJA comptee dans cout_matieres : un « dont » (mig 339).
+  const coutRevient = cout?.cout_total != null
+    ? toNum(cout.cout_total)
+    : coutMat + coutEmballages + coutMO + coutEnergie + coutCharges;
   const coutPertes = toNum(cout?.cout_pertes);
 
   return (
@@ -196,6 +202,12 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                 <Package size={11} style={{ display: 'inline', marginRight: 4 }} />Matières
               </div>
               <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{formatDH(coutMat)}</div>
+            </div>
+            <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+              <div className="odoo-stat-card-label">
+                <Package size={11} style={{ display: 'inline', marginRight: 4 }} />Emballages
+              </div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{formatDH(coutEmballages)}</div>
             </div>
             <div className="odoo-stat-card" style={{ cursor: 'default' }}>
               <div className="odoo-stat-card-label">
@@ -315,6 +327,27 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
 
           {/* Expandable detail sections */}
           <div className="border-t border-gray-100 divide-y divide-gray-100">
+            {(cout.detail_emballages?.length ?? 0) > 0 && (
+              <DetailSection title="Détail emballages" icon={<Package size={12} className="text-orange-500" />}
+                isExpanded={expandedSection === 'emballages'} onToggle={() => setExpandedSection(expandedSection === 'emballages' ? null : 'emballages')}>
+                <table className="w-full text-xs">
+                  <thead><tr className="text-gray-400 uppercase">
+                    <th className="text-left py-1 px-2">Emballage</th>
+                    <th className="text-right py-1 px-2">Qté</th>
+                    <th className="text-right py-1 px-2">PU</th>
+                    <th className="text-right py-1 px-2">Total</th>
+                  </tr></thead>
+                  <tbody>{(cout.detail_emballages ?? []).map((d, i) => (
+                    <tr key={i} className="border-t border-gray-50">
+                      <td className="py-1 px-2 text-gray-700">{d.name}</td>
+                      <td className="py-1 px-2 text-right">{toNum(d.qty).toLocaleString('fr-FR', { maximumFractionDigits: 3 })}{d.unit ? ` ${d.unit}` : ''}</td>
+                      <td className="py-1 px-2 text-right">{toNum(d.unit_cost).toFixed(2)}</td>
+                      <td className="py-1 px-2 text-right font-medium">{formatDH(d.total)}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </DetailSection>
+            )}
             {cout.detail_matieres.length > 0 && (
               <DetailSection title="Detail matieres" icon={<Package size={12} className="text-amber-500" />}
                 isExpanded={expandedSection === 'matieres'} onToggle={() => setExpandedSection(expandedSection === 'matieres' ? null : 'matieres')}>

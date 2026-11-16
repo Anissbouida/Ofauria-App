@@ -148,7 +148,12 @@ export const productionCoutRepository = {
   //   dans cout_matieres — l'additionner la compterait deux fois). Cf. mig 339.
   // ═══════════════════════════════════════════════════════════════════════════
 
-  async calculateAndSave(planId: string, userId: string) {
+  /**
+   * Coût de revient d'un plan, détaillé (G0-23) : matières, emballages, main-d'œuvre,
+   * énergie, charges indirectes. SEULE fonction qui le calcule ; le tableau de bord, la
+   * fiche du plan et les rapports lisent ce qu'elle a enregistré (cout_total). N'écrit rien.
+   */
+  async computePlanCost(planId: string) {
     // 1. Cout matieres — FIFO reel via production_lot_usage, fallback inventory_transactions
     const lotUsageResult = await db.query(
       `SELECT plu.ingredient_id, i.name,
@@ -195,6 +200,28 @@ export const productionCoutRepository = {
       });
     }
     const coutMatieres = detailMatieres.reduce((s, d) => s + d.total, 0);
+
+    // 1b. Emballages (G0-23) — sorties d'emballage rattachees au plan, qu'elles viennent
+    // du bon de sortie (prelevement) ou de la declaration de production, au cout fige
+    // sur le mouvement (repli : cout catalogue).
+    const emballagesResult = await db.query(
+      `SELECT t.packaging_id, pi.name, pi.unit,
+              SUM(-t.quantity_change) AS qty,
+              ROUND(SUM(-t.quantity_change * COALESCE(t.unit_cost, pi.unit_cost, 0)), 2) AS total
+         FROM packaging_stock_transactions t
+         JOIN packaging_items pi ON pi.id = t.packaging_id
+        WHERE t.reference_type = 'production_plan' AND t.reference_id = $1 AND t.type = 'consumption'
+        GROUP BY t.packaging_id, pi.name, pi.unit
+       HAVING SUM(-t.quantity_change) > 0
+        ORDER BY pi.name`,
+      [planId]
+    );
+    const detailEmballages = emballagesResult.rows.map(r => {
+      const qty = parseFloat(r.qty), total = parseFloat(r.total);
+      return { packaging_id: r.packaging_id as string, name: r.name as string, unit: r.unit as string | null,
+        qty, unit_cost: qty > 0 ? Math.round(total / qty * 10000) / 10000 : 0, total };
+    });
+    const coutEmballages = Math.round(detailEmballages.reduce((s, d) => s + d.total, 0) * 100) / 100;
 
     // 2. Cout main d'oeuvre — depuis production_item_etapes
     // Chaque etape completee a un completed_by (user) et duree_reelle_min.
@@ -283,19 +310,24 @@ export const productionCoutRepository = {
     const coutPertes = Math.round(detailPertes.reduce((s, d) => s + d.total, 0) * 100) / 100;
 
     // 3. Charges fixes = taux paramétrable (mig 403, repli constante) × cout matieres
-    const tauxRow = await db.query(`SELECT production_charges_fixes_pct FROM company_settings WHERE id = 1`);
-    const tauxCharges = tauxRow.rows[0]?.production_charges_fixes_pct != null
-      ? Number(tauxRow.rows[0].production_charges_fixes_pct)
-      : TAUX_CHARGES_FIXES_ESTIME;
-    const coutCharges = Math.round(coutMatieres * tauxCharges * 100) / 100;
+    //    ou, si le gerant l'a choisi (G0-23), charges mensuelles saisies (loyer, energie,
+    //    autres) reparties au prorata des matieres des plans du meme mois et etablissement.
+    const charges = await this.chargesSettings();
+    let coutCharges: number;
     const detailCharges: { label: string; taux: number; base: number; part: number }[] = [];
-    if (coutCharges > 0) {
-      detailCharges.push({
-        label: 'Charges fixes estimees',
-        taux: tauxCharges,
-        base: coutMatieres,
-        part: coutCharges,
-      });
+    if (charges.method === 'monthly') {
+      const month = await this.monthMaterials(planId);
+      const base = month.others + coutMatieres;
+      const share = base > 0 ? coutMatieres / base : 0;
+      coutCharges = Math.round(charges.monthly * share * 100) / 100;
+      if (coutCharges > 0) {
+        detailCharges.push({ label: 'Charges mensuelles réparties (prorata des matières du mois)', taux: Math.round(share * 10000) / 10000, base: charges.monthly, part: coutCharges });
+      }
+    } else {
+      coutCharges = Math.round(coutMatieres * charges.rate * 100) / 100;
+      if (coutCharges > 0) {
+        detailCharges.push({ label: 'Charges fixes estimees', taux: charges.rate, base: coutMatieres, part: coutCharges });
+      }
     }
 
     // Cout prevu (mig 261, audit A6b + mig 268, audit A10). Deux totaux :
@@ -336,23 +368,64 @@ export const productionCoutRepository = {
     const ecartMix = coutPrevu != null && coutPrevuMixReel != null
       ? Math.round((coutPrevu - coutPrevuMixReel) * 100) / 100
       : null;
-    // Revient = matieres + MO + energie + charges (les pertes sont un « dont »).
-    const coutTotal = coutMatieres + coutMO + coutEnergie + coutCharges;
+    // Revient = matieres + emballages + MO + energie + charges (les pertes sont un « dont »).
+    // Meme somme que la colonne calculee production_cout_reel.cout_total (mig 527).
+    const coutTotal = coutMatieres + coutEmballages + coutMO + coutEnergie + coutCharges;
     const ecartPct = coutPrevu && coutPrevu > 0
       ? Math.round((coutTotal - coutPrevu) / coutPrevu * 10000) / 100
       : null;
 
-    // Upsert (mig 268 : + cout_prevu_mix_reel, ecart_mix ; mig 339 : energie/pertes reels)
+    return {
+      coutMatieres, coutEmballages, coutMO, coutEnergie, coutPertes, coutCharges, coutTotal,
+      coutPrevu, coutPrevuMixReel, ecartMix, ecartPct, chargesMethod: charges.method,
+      detailMatieres, detailEmballages, detailMO, detailEnergie, detailPertes, detailCharges,
+    };
+  },
+
+  /** Réglage des charges indirectes : taux sur les matières, ou charges mensuelles saisies. */
+  async chargesSettings(): Promise<{ method: 'rate' | 'monthly'; rate: number; monthly: number }> {
+    const r = (await db.query(
+      `SELECT production_charges_fixes_pct, production_charges_method,
+              COALESCE(production_charge_loyer, 0) + COALESCE(production_charge_energie, 0) + COALESCE(production_charge_autres, 0) AS monthly
+         FROM company_settings WHERE id = 1`)).rows[0];
+    return {
+      method: r?.production_charges_method === 'monthly' ? 'monthly' : 'rate',
+      rate: r?.production_charges_fixes_pct != null ? Number(r.production_charges_fixes_pct) : TAUX_CHARGES_FIXES_ESTIME,
+      monthly: Number(r?.monthly ?? 0),
+    };
+  },
+
+  /** Matières des AUTRES plans déjà chiffrés du même mois et du même établissement. */
+  async monthMaterials(planId: string): Promise<{ others: number }> {
+    const r = await db.query(
+      `SELECT COALESCE(SUM(pcr.cout_matieres), 0) AS others
+         FROM production_plans me
+         JOIN production_plans pp ON pp.store_id IS NOT DISTINCT FROM me.store_id
+                                 AND date_trunc('month', pp.plan_date) = date_trunc('month', me.plan_date) AND pp.id <> me.id
+         JOIN production_cout_reel pcr ON pcr.plan_id = pp.id
+        WHERE me.id = $1`, [planId]);
+    return { others: parseFloat(r.rows[0]?.others) || 0 };
+  },
+
+  /** Calcule le coût du plan (computePlanCost) et l'enregistre. */
+  async calculateAndSave(planId: string, userId: string) {
+    const c = await this.computePlanCost(planId);
+    const { coutMatieres, coutEmballages, coutMO, coutEnergie, coutPertes, coutCharges, coutPrevu, coutPrevuMixReel, ecartMix, ecartPct,
+      detailMatieres, detailEmballages, detailMO, detailEnergie, detailPertes, detailCharges } = c;
+
+    // Upsert (mig 268 : + cout_prevu_mix_reel, ecart_mix ; mig 339 : energie/pertes reels ; mig 527 : emballages)
     const result = await db.query(
       `INSERT INTO production_cout_reel
        (plan_id, cout_matieres, cout_main_oeuvre, cout_energie, cout_pertes,
         cout_charges_fixes, detail_charges_fixes,
         cout_prevu, ecart_pct, cout_prevu_mix_reel, ecart_mix,
         detail_matieres, detail_main_oeuvre, detail_energie, detail_pertes,
-        calculated_by, calculated_at)
-       VALUES ($1, $2, $3, $13, $14, $4, $5, $6, $7, $11, $12, $8, $9, $15, $16, $10, NOW())
+        calculated_by, calculated_at, cout_emballages, detail_emballages)
+       VALUES ($1, $2, $3, $13, $14, $4, $5, $6, $7, $11, $12, $8, $9, $15, $16, $10, NOW(), $17, $18)
        ON CONFLICT (plan_id)
        DO UPDATE SET
+         cout_emballages = EXCLUDED.cout_emballages,
+         detail_emballages = EXCLUDED.detail_emballages,
          cout_matieres = EXCLUDED.cout_matieres,
          cout_main_oeuvre = EXCLUDED.cout_main_oeuvre,
          cout_energie = EXCLUDED.cout_energie,
@@ -377,9 +450,38 @@ export const productionCoutRepository = {
        userId,
        coutPrevuMixReel, ecartMix,
        coutEnergie, coutPertes,
-       JSON.stringify(detailEnergie), JSON.stringify(detailPertes)]
+       JSON.stringify(detailEnergie), JSON.stringify(detailPertes),
+       coutEmballages, JSON.stringify(detailEmballages)]
     );
-    return result.rows[0];
+    // Charges mensuelles : ce plan change la base de repartition du mois. Les autres plans
+    // du mois sont re-repartis, pour que la somme des parts egale les charges saisies.
+    if (c.chargesMethod === 'monthly') await this.respreadMonthlyCharges(planId);
+    return (await db.query(`SELECT * FROM production_cout_reel WHERE id = $1`, [result.rows[0].id])).rows[0];
+  },
+
+  /** Re-répartit les charges mensuelles sur tous les plans chiffrés du mois du plan donné. */
+  async respreadMonthlyCharges(planId: string) {
+    const { monthly } = await this.chargesSettings();
+    await db.query(
+      `WITH me AS (SELECT store_id, date_trunc('month', plan_date) AS m FROM production_plans WHERE id = $1),
+            scope AS (
+              SELECT pcr.id, pcr.cout_matieres, SUM(pcr.cout_matieres) OVER () AS tot
+                FROM production_cout_reel pcr JOIN production_plans pp ON pp.id = pcr.plan_id, me
+               WHERE pp.store_id IS NOT DISTINCT FROM me.store_id AND date_trunc('month', pp.plan_date) = me.m)
+       UPDATE production_cout_reel pcr
+          SET cout_charges_fixes = CASE WHEN s.tot > 0 THEN ROUND($2::numeric * s.cout_matieres / s.tot, 2) ELSE 0 END,
+              detail_charges_fixes = CASE WHEN s.tot > 0 AND s.cout_matieres > 0 THEN jsonb_build_array(jsonb_build_object(
+                'label', 'Charges mensuelles réparties (prorata des matières du mois)',
+                'taux', ROUND(s.cout_matieres / s.tot, 4), 'base', $2::numeric,
+                'part', ROUND($2::numeric * s.cout_matieres / s.tot, 2))) ELSE '[]'::jsonb END,
+              updated_at = NOW()
+         FROM scope s WHERE s.id = pcr.id`, [planId, monthly]);
+    // L'ecart au prevu suit le nouveau total (cout_total est une colonne calculee).
+    await db.query(
+      `UPDATE production_cout_reel pcr
+          SET ecart_pct = CASE WHEN pcr.cout_prevu > 0 THEN ROUND((pcr.cout_total - pcr.cout_prevu) / pcr.cout_prevu * 100, 2) END
+         FROM production_plans pp, (SELECT store_id, date_trunc('month', plan_date) AS m FROM production_plans WHERE id = $1) me
+        WHERE pp.id = pcr.plan_id AND pp.store_id IS NOT DISTINCT FROM me.store_id AND date_trunc('month', pp.plan_date) = me.m`, [planId]);
   },
 
   // ─── Get cost for a plan ───
@@ -433,7 +535,11 @@ export const productionCoutRepository = {
          COALESCE(pcr.cout_matieres, 0) as plan_cout_matieres,
          COALESCE(pcr.cout_main_oeuvre, 0) as plan_cout_mo,
          COALESCE(pcr.cout_charges_fixes, 0) as plan_cout_charges,
-         COALESCE(pcr.cout_matieres, 0) + COALESCE(pcr.cout_main_oeuvre, 0) + COALESCE(pcr.cout_charges_fixes, 0) as plan_cout_revient,
+         COALESCE(pcr.cout_energie, 0) as plan_cout_energie,
+         COALESCE(pcr.cout_emballages, 0) as plan_cout_emballages,
+         -- G0-23 : le revient est celui de la fiche du plan (colonne calculee cout_total),
+         -- energie et emballages compris ; le tableau de bord ne refait plus l'addition.
+         COALESCE(pcr.cout_total, 0) as plan_cout_revient,
          pcr.detail_charges_fixes as plan_detail_charges,
          (
            SELECT json_agg(sub ORDER BY sub.product_name)
@@ -496,7 +602,10 @@ export const productionCoutRepository = {
          SUM(pcr.cout_matieres) as total_matieres,
          SUM(pcr.cout_main_oeuvre) as total_main_oeuvre,
          SUM(COALESCE(pcr.cout_charges_fixes, 0)) as total_charges,
-         SUM(pcr.cout_matieres + pcr.cout_main_oeuvre + COALESCE(pcr.cout_charges_fixes, 0)) as total_cout,
+         SUM(COALESCE(pcr.cout_energie, 0)) as total_energie,
+         SUM(COALESCE(pcr.cout_emballages, 0)) as total_emballages,
+         SUM(COALESCE(pcr.cout_pertes, 0)) as total_pertes,
+         SUM(pcr.cout_total) as total_cout,
          SUM(pcr.cout_prevu) as total_prevu,
          AVG(pcr.ecart_pct) as avg_ecart_pct
        FROM production_cout_reel pcr
@@ -514,7 +623,9 @@ export const productionCoutRepository = {
               SUM(pcr.cout_matieres) as matieres,
               SUM(pcr.cout_main_oeuvre) as main_oeuvre,
               SUM(COALESCE(pcr.cout_charges_fixes, 0)) as charges,
-              SUM(pcr.cout_matieres + pcr.cout_main_oeuvre + COALESCE(pcr.cout_charges_fixes, 0)) as total
+              SUM(COALESCE(pcr.cout_energie, 0)) as energie,
+              SUM(COALESCE(pcr.cout_emballages, 0)) as emballages,
+              SUM(pcr.cout_total) as total
        FROM production_cout_reel pcr
        JOIN production_plans pp ON pp.id = pcr.plan_id
        WHERE pp.store_id = $1 AND pp.plan_date >= $2 AND pp.plan_date <= $3

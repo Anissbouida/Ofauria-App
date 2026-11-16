@@ -216,13 +216,17 @@ export default function ProductionDashboardPage() {
               <h2 className="font-semibold text-gray-900 text-sm mb-4 flex items-center gap-2">
                 <PieChart size={16} className="text-amber-500" /> Repartition des couts
               </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                 <CostBar label="Matieres" icon={<Package size={12} />} value={parseFloat(coutStats.total_matieres || '0')}
                   total={parseFloat(coutStats.total_cout || '1')} color="amber" />
+                <CostBar label="Emballages" icon={<Package size={12} />} value={parseFloat(coutStats.total_emballages || '0')}
+                  total={parseFloat(coutStats.total_cout || '1')} color="orange" />
                 <CostBar label="Main d'oeuvre" icon={<Users size={12} />} value={parseFloat(coutStats.total_main_oeuvre || '0')}
                   total={parseFloat(coutStats.total_cout || '1')} color="blue" />
                 <CostBar label="Energie" icon={<Zap size={12} />} value={parseFloat(coutStats.total_energie || '0')}
                   total={parseFloat(coutStats.total_cout || '1')} color="violet" />
+                <CostBar label="Charges" icon={<DollarSign size={12} />} value={parseFloat(coutStats.total_charges || '0')}
+                  total={parseFloat(coutStats.total_cout || '1')} color="green" />
                 <CostBar label="Pertes" icon={<AlertTriangle size={12} />} value={parseFloat(coutStats.total_pertes || '0')}
                   total={parseFloat(coutStats.total_cout || '1')} color="red" />
               </div>
