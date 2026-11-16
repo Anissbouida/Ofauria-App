@@ -1,6 +1,6 @@
+import { policyNumber } from '../services/policies.js';
 import { db } from '../config/database.js';
 
-const TAUX_CHARGES_FIXES_ESTIME = 0.40;
 
 export const productionCoutRepository = {
 
@@ -142,7 +142,7 @@ export const productionCoutRepository = {
   // Formule : Cout de revient = Matieres + Main d'oeuvre + Energie + Charges fixes
   // MO calculee depuis production_item_etapes (qui a valide chaque etape)
   // Energie = usages equipements (production_equipement_usage) × cout horaire snapshot
-  // Charges fixes = taux forfaitaire sur matieres (TAUX_CHARGES_FIXES_ESTIME)
+  // Charges fixes = taux forfaitaire sur matieres (politique production.fixed_charges_rate)
   // Pertes = valorisation des pertes du rendement au cout matiere unitaire :
   //   un « dont » informatif, PAS un terme additif (la matiere perdue est deja
   //   dans cout_matieres — l'additionner la compterait deux fois). Cf. mig 339.
@@ -312,7 +312,7 @@ export const productionCoutRepository = {
     // 3. Charges fixes = taux paramétrable (mig 403, repli constante) × cout matieres
     //    ou, si le gerant l'a choisi (G0-23), charges mensuelles saisies (loyer, energie,
     //    autres) reparties au prorata des matieres des plans du meme mois et etablissement.
-    const charges = await this.chargesSettings();
+    const charges = await this.chargesSettings(planId);
     let coutCharges: number;
     const detailCharges: { label: string; taux: number; base: number; part: number }[] = [];
     if (charges.method === 'monthly') {
@@ -383,14 +383,21 @@ export const productionCoutRepository = {
   },
 
   /** Réglage des charges indirectes : taux sur les matières, ou charges mensuelles saisies. */
-  async chargesSettings(): Promise<{ method: 'rate' | 'monthly'; rate: number; monthly: number }> {
+  async chargesSettings(planId?: string): Promise<{ method: 'rate' | 'monthly'; rate: number; monthly: number }> {
     const r = (await db.query(
-      `SELECT production_charges_fixes_pct, production_charges_method,
+      `SELECT production_charges_method,
               COALESCE(production_charge_loyer, 0) + COALESCE(production_charge_energie, 0) + COALESCE(production_charge_autres, 0) AS monthly
          FROM company_settings WHERE id = 1`)).rows[0];
+    // M1-03 : le taux est une politique. Société = réglage « Charges fixes » (colonne lue
+    // fraîche) ; un établissement, un atelier ou un type d'ordre peut porter le sien.
+    const plan = planId
+      ? (await db.query(`SELECT store_id, target_role, type FROM production_plans WHERE id = $1`, [planId])).rows[0]
+      : undefined;
+    const rate = await policyNumber('production.fixed_charges_rate', 'rate',
+      plan ? { storeId: plan.store_id, workshop: plan.target_role, orderType: plan.type } : {});
     return {
       method: r?.production_charges_method === 'monthly' ? 'monthly' : 'rate',
-      rate: r?.production_charges_fixes_pct != null ? Number(r.production_charges_fixes_pct) : TAUX_CHARGES_FIXES_ESTIME,
+      rate,
       monthly: Number(r?.monthly ?? 0),
     };
   },
