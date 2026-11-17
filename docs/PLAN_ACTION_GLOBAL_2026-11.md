@@ -1977,6 +1977,25 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **M2-07** : Utilisateurs › Rôles › Permissions par action : matrice rôle × permission repliée par module (cases partielles), recherche, enregistrement groupé, rôle administrateur verrouillé ; bouton « Dupliquer » sur un rôle ; aperçu des permissions effectives d'un utilisateur (rôles, délégations, exceptions).
 - **M2-08** : mig 548 `production_plan_items.order_item_id`, posé par le sourcing d'une commande ; rattrapage des 42 lignes déjà liées en dev (même ordre et même produit, rattachement unique seulement). La fiche ordre montre la commande et le client de chaque ligne ; la fiche commande montre, sous chaque ligne, l'ordre qui la sert et son état.
 
+### Lot 7 — G5 : planification et stock
+
+| ☐ | Tâche | Objet | Change des chiffres |
+|---|---|---|---|
+| ◐ | G5-01 | Stock à la date | non |
+| ☑ | G5-02 | Point de commande et stock de sécurité | non (propositions seulement en mode manuel) |
+| ☑ | G5-03 | Classes ABC et inventaire tournant | non |
+| ☑ | G5-04 | Calcul des besoins phasé | non (lecture seule, création à la validation) |
+| ☑ | G5-05 | Plan directeur enregistré | non |
+| ☑ | G5-06 | Date de disponibilité promise | non |
+
+**Notes du lot 7.**
+- **G5-01** : étapes 2 à 5 livrées, 1 partielle. Mig 549 : `fn_stock_at(date, établissement)` reconstitue quantité, coût et valeur par article à la fin d'une date en retirant du stock courant les mouvements journalisés après elle (le coût est celui en vigueur ce jour-là, relu dans le journal des fiches achats) ; `fn_stock_journal_gaps` liste les articles dont le journal n'explique pas le stock ; un déclencheur refuse tout mouvement daté dans une période de stock clôturée une fois le jour de clôture passé. Écran Stock › Clôtures : « Stock valorisé au… » avec export CSV et avertissement des articles au journal incomplet. Contrôle : au présent la valeur rejouée égale la valeur courante (183 854,71 DH contre 183 854,70 en dev). CONSTAT base locale : 174 articles sur 377 ont un journal incomplet (578 lots sur 764 sans mouvement rattaché, dérives datées d'octobre : reprises et chargements directs) ; leurs dates passées sont approximatives. Les chemins de code vérifiés (réception, ajustement, réassort, production, invendus) écrivent bien leur mouvement. RESTE (étape 1) : rattraper l'historique demande une décision (écritures de reprise datées) ; auditer les mises à jour de lots sans mouvement (pesage, ouverture de contenant).
+- **G5-02** : mig 550. Le seuil d'alerte existant (`inventory.minimum_threshold`) est le point de commande — c'est déjà lui que lisent les alertes et « À commander ». Ajouts : stock de sécurité, maximum, mode manuel / calculé, dernier calcul (consommation moyenne, proposition). Calcul : consommation moyenne des 56 derniers jours × délai du fournisseur préféré (`supplier_items`, sinon délai par défaut) + stock de sécurité ; paramètres `stock.replenishment`. Tâche planifiée hebdomadaire `reorder_points` : applique en mode calculé, pose une proposition en mode manuel (jamais d'écrasement). « À commander » remonte jusqu'au maximum (à défaut, deux fois le point de commande, règle d'avant). Écran Stock › Paramétrage › Points de commande (édition, validation groupée des propositions). Permission `stock.inventory.reorder_points`.
+- **G5-03** : mig 551. Classe A/B/C par article et par établissement selon la valeur consommée sur 12 mois (80 % / 95 %), fréquence de comptage par classe (30 / 90 / 180 j), campagne tournante = campagne partielle du module Inventaires limitée aux articles dus (A en tête, 40 au plus) ; `stockCountRepository.create` accepte une liste d'ingrédients. Tâche `cycle_counts` créée DÉSACTIVÉE (elle ouvrirait des campagnes sur les données réelles). Encart dans Stock › Inventaires. Aucune classe calculée ni campagne ouverte sur la base locale.
+- **G5-04** : `services/mrp-phased.ts` (mig 552 : horizon, délais). Calcul pur testé à part (`planPhased`) : projection jour par jour, règles de lot (minimum, multiple), décalage par délai, explosion niveau par niveau (produit → bases → ingrédients ; sous-recettes non bases dépliées), signalement des besoins dans le délai, messages d'action avancer / retarder / annuler sur les ordres et bons de commande en cours. Chargement : prévision (ou plan directeur), commandes fermes à leur retrait, stocks finis, semi-finis et matières, ordres non produits, bons de commande ouverts à leur date de livraison prévue, délais et conditionnements fournisseurs, stock de sécurité. Validation : ordres de fabrication (un par jour de lancement) et demandes d'achat ; les bases restent informatives (leurs dépendances naissent à la confirmation de l'ordre, mécanisme existant). Écran Production › Plan directeur › Besoins phasés. Sur la base locale : 63 articles, 96 propositions en 0,3 s. CONSTAT en passant : la base est demandée dans son unité de rendement (g) alors que sa composition décrit un lot ; le facteur a été corrigé dans le nouveau moteur — le calcul « semi-finis » existant (`mrp.repository.semiFinishedNeeds`, niveaux 2 et plus) divise par le diviseur de lot et pourrait surestimer les sous-bases : à vérifier.
+- **G5-05** : mig 553 `master_schedule_entries` (article × semaine × établissement). Écran Production › Plan directeur › Plan par semaine : la prévision s'affiche en indication, une case saisie la remplace dans le calcul phasé (répartie selon le profil de la prévision, à parts égales si elle est nulle), une case vidée y revient ; commandes fermes comptées en plus. Permission `production.master_schedule`.
+- **G5-06** : `services/promise-date.ts` : stock libre (stock − réservé, mig 389) + production planifiée non affectée à une commande (M2-08), jour par jour ; sinon « à produire » à J + délai pour un produit fabriqué (la commande déclenche sa production), « à approvisionner » pour un produit acheté. Saisie de commande : la date s'affiche sous chaque article, en rouge si elle dépasse le retrait. LIMITE : capacité des ateliers non modélisée ; la production planifiée pour la boutique est promise aux commandes.
+
 ### Lots suivants
 
 | ☐ | Lot | Tâches |
@@ -1987,7 +2006,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ☐ | G3 | G3-01 à G3-11 |
 | ☐ | G4 | G4-01 à G4-03 |
 | ☑ | M2 | M2-01 à M2-08 |
-| ☐ | G5 | G5-01 à G5-06 |
+| ◐ | G5 | G5-01 à G5-06 |
 | ☐ | M3 | M3-01 à M3-06 |
 | ☐ | M4 | M4-01 à M4-07 |
 | ☐ | M5 | M5-01 à M5-05 |
