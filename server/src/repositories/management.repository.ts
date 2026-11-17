@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { controlRequest, type AccountPosition, type ControlAction, type ControlLine, type ControlPeriod } from '../services/budget-control.rules.js';
 
 /**
@@ -183,9 +183,8 @@ export const managementRepository = {
 
   /** Saisie : remplace les montants des cellules envoyées. Budget approuvé = figé. */
   async saveLines(budgetId: string, lines: { account_id: string; month: number; amount: number }[]) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const { rows } = await client.query(`SELECT status FROM budgets WHERE id = $1 FOR UPDATE`, [budgetId]);
       if (!rows[0]) throw Object.assign(new Error('Budget introuvable'), { statusCode: 404 });
       if (rows[0].status === 'approved') throw Object.assign(new Error('Budget approuvé : repassez-le en brouillon pour le modifier'), { statusCode: 409 });
@@ -196,13 +195,7 @@ export const managementRepository = {
           [budgetId, l.account_id, l.month, l.amount],
         );
       }
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async setStatus(budgetId: string, status: 'draft' | 'approved', userId: string) {
