@@ -267,6 +267,9 @@ export const settingsApi = {
     api.post('/settings/document-sequences/preview', data).then(r => r.data.data) as Promise<{ valid: boolean; sample?: string; error?: string }>,
   updateDocumentSequence: (docType: string, data: DocumentSequenceInput) =>
     api.put(`/settings/document-sequences/${docType}`, data).then(r => r.data.data) as Promise<{ doc_type: string; next_number: string }>,
+  /** G2-02 — qualité des données maîtres : compteurs, puis liste à corriger d'un compteur. */
+  dataQuality: () => api.get('/settings/data/quality').then(r => r.data.data) as Promise<DataQualityIndicator[]>,
+  dataQualityItems: (key: string) => api.get(`/settings/data/quality/${key}`).then(r => r.data.data) as Promise<DataQualityItem[]>,
   parameters: () => api.get('/settings/parameters').then(r => r.data.data) as Promise<BusinessParameter[]>,
   updateParameter: (key: string, value: Record<string, unknown>) =>
     api.put(`/settings/parameters/${key}`, { value }).then(r => r.data.data),
@@ -342,3 +345,6 @@ export const settingsApi = {
     }).then(r => r.data.data as { url: string });
   },
 };
+
+export type DataQualityIndicator = { key: string; label: string; help: string; task: string; toFix: number; total: number; detailLabel: string };
+export type DataQualityItem = { id: string; kind: 'recipe' | 'ingredient'; label: string; detail: string };

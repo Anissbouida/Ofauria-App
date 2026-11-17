@@ -110,6 +110,9 @@ router.put('/webhooks/:id', authenticate, jsonParser, authorizeSettings('company
 router.delete('/webhooks/:id', authenticate, authorizeSettings('company', 'delete'), asyncHandler(apiSettingsController.removeWebhook));
 
 router.get('/data/status', authenticate, authorizeSettings('data'), asyncHandler(dataController.status));
+// G2-02 — qualité des données maîtres (lecture seule).
+router.get('/data/quality', authenticate, authorizeSettings('data'), asyncHandler(dataController.quality));
+router.get('/data/quality/:key', authenticate, authorizeSettings('data'), asyncHandler(dataController.qualityItems));
 router.get('/data/import/:entity/template', authenticate, authorizeSettings('data'), asyncHandler(dataController.template));
 router.post('/data/import/:entity/preview', authenticate, authorizeSettings('data', 'create'), importUpload.single('file'), asyncHandler(dataController.preview));
 router.post('/data/import/:entity/commit', authenticate, authorizeSettings('data', 'create'), importUpload.single('file'), asyncHandler(dataController.commit));

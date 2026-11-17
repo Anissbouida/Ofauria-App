@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Store, Paintbrush, Printer, Radio, Factory, Truck, Percent, Hash, FileText,
-  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal, Layers, Webhook, ShoppingCart, Landmark, Bot } from 'lucide-react';
+  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal, Layers, Webhook, ShoppingCart, Landmark, Bot, Activity } from 'lucide-react';
 import type { AppModule, SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingAnchor } from './SettingsPrimitives';
 
@@ -18,7 +18,7 @@ export type SettingsPageKey =
   | 'print' | 'channels' | 'salesRules' | 'posRules' | 'productCategories'
   | 'production' | 'purchasing'
   | 'tax' | 'currencies' | 'numbering' | 'documents' | 'ledger'
-  | 'referentiel' | 'customFields' | 'data'
+  | 'referentiel' | 'customFields' | 'data' | 'dataQuality'
   | 'notifications' | 'mail' | 'jobs' | 'approvals' | 'audit';
 
 export interface SettingsPageDef {
@@ -134,6 +134,9 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
     description: 'Informations propres à votre métier sur les fiches', keywords: 'champ personnalise attribut specifique fiche formulaire colonne' },
   { key: 'data', group: 'Données', section: 'data', label: 'Import et export', icon: HardDrive,
     description: 'Import, export et état de la base', keywords: 'donnees csv excel sauvegarde import export' },
+  { key: 'dataQuality', group: 'Données', section: 'data', label: 'Qualité des données', icon: Activity,
+    description: 'Fiches incomplètes : poids cuit, allergènes, étapes, doublons, prix',
+    keywords: 'qualite completude donnees maitres allergene poids cuit etape doublon homonyme prix aberrant fiche technique etiquette' },
 
   { key: 'notifications', group: 'Automatisation', auditTable: 'notification_rules', section: 'notifications', label: 'Notifications', icon: Bell,
     description: 'Qui est prévenu, et de quoi', keywords: 'alerte notification destinataire' },

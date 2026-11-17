@@ -1896,7 +1896,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ☐ | Tâche | Objet | Change des chiffres |
 |---|---|---|---|
 | ◐ | G2-01 | Mesurer la complétude en production | non |
-| ☐ | G2-02 | Tableau de bord « Qualité des données » | non |
+| ☑ | G2-02 | Tableau de bord « Qualité des données » | non |
 | ☐ | G2-03 | Fusion des ingrédients en double | oui (coût des fiches) |
 | ☐ | G2-04 | Prix aberrants | oui (coût des fiches) |
 | ☐ | G2-05 | Poids cuit des formats | non |
@@ -1908,6 +1908,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 
 **Notes du lot 3.**
 - **G2-01** : `server/scripts/diagnose-master-data.sql` écrit (lecture seule : synthèse puis sept listes). Passé sur la base locale le 2026-11-16 : formats actifs sans poids cuit 49 / 49 ; ingrédients sans allergènes 405 / 405 ; fiches actives sans étapes 38 / 52 ; ingrédients homonymes 33 fiches en trop ; ingrédients sans prix 27 ; prix aberrants 24 sur 287 comparables ; fiches actives jamais produites 11 / 52. RESTE : le passer en production avec accord et joindre le résultat. « Prix aberrant » = plus de 5 fois la médiane des ingrédients de même catégorie et de même unité, ou moins du cinquième (catégories d'au moins 5 ingrédients valorisés).
+- **G2-02** : Paramètres › Données › Qualité des données (droit de la section Données). Sept compteurs calculés en direct (à corriger, total, complétude, état Complet / À compléter / Prioritaire) et, pour chacun, la liste à corriger (200 lignes au plus) avec un lien vers la fiche technique ou la fiche de l'ingrédient. Mêmes définitions que le script de G2-01 (`repositories/master-data-quality.repository.ts`). API `GET /settings/data/quality` et `GET /settings/data/quality/:key`, lecture seule.
 
 ### Lots suivants
 

@@ -1,3 +1,4 @@
+import { masterDataQualityRepository, type QualityKey } from '../repositories/master-data-quality.repository.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { authEventRepository } from '../repositories/auth-event.repository.js';
@@ -23,6 +24,16 @@ function importOptions(req: AuthRequest): PreviewOptions {
 }
 
 export const dataController = {
+  /** G2-02 — qualité des données maîtres : les compteurs. */
+  async quality(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await masterDataQualityRepository.summary() });
+  },
+  /** G2-02 — liste à corriger d'un compteur. */
+  async qualityItems(req: AuthRequest, res: Response) {
+    const items = await masterDataQualityRepository.items(req.params.key as QualityKey);
+    if (!items) { bad(res, 'Indicateur inconnu', 404); return; }
+    res.json({ success: true, data: items });
+  },
   async status(_req: AuthRequest, res: Response) {
     res.json({ success: true, data: { ...(await dataStatus()), entities: IMPORT_ENTITIES.map(e => ({ key: e.key, label: e.label, modes: e.modes, note: e.note ?? null })) } });
   },

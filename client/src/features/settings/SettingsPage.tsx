@@ -30,6 +30,7 @@ import JobsTab from './JobsTab';
 import DocumentsTab from './DocumentsTab';
 import NotificationsTab from './NotificationsTab';
 import DataTab from './DataTab';
+import DataQualityTab from './DataQualityTab';
 import ApprovalsTab from './ApprovalsTab';
 import IntegrationsTab from './IntegrationsTab';
 import RfqCriteriaCard from './RfqCriteriaCard';
@@ -240,6 +241,7 @@ function SettingsShell() {
     ),
     referentiel: <ReferentielTab />,
     data: <DataTab />,
+    dataQuality: <DataQualityTab />,
     // G1-12 : les seuils des échéances du personnel se règlent avec les notifications.
     notifications: <><NotificationsTab /><ParametersPanel keys={['hr.documents_due']} /></>,
     mail: <MailTab />,
