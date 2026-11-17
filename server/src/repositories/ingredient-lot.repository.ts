@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { strictContainerQty } from '../services/container-rule.js';
 import type { PoolClient } from 'pg';
 
@@ -105,9 +105,8 @@ export const ingredientLotRepository = {
     if (fromLocationId === toLocationId) {
       throw Object.assign(new Error('Le lot est déjà dans cet emplacement.'), { statusCode: 400 });
     }
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       await client.query(
         `INSERT INTO stock_location_moves (ingredient_lot_id, from_location_id, to_location_id, quantite, motif, moved_by)
          VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -117,14 +116,8 @@ export const ingredientLotRepository = {
         `UPDATE ingredient_lots SET location_id = $2 WHERE id = $1 RETURNING id, location_id`,
         [lotId, toLocationId]
       );
-      await client.query('COMMIT');
       return upd.rows[0];
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /** Lots expiring within N days */
@@ -194,9 +187,8 @@ export const ingredientLotRepository = {
    *  aucun mouvement d'inventaire : le stock total du lot ne change pas. */
   async returnToEconomat(lotId: string, quantity: number, userId: string, reason?: string) {
     if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Quantite a retourner invalide');
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const r = await client.query(
         `SELECT il.id, il.ingredient_id, il.store_id, il.lot_number, il.pesage_quantity, il.status,
                 ing.name AS ingredient_name, ing.unit AS ingredient_unit
@@ -218,14 +210,8 @@ export const ingredientLotRepository = {
             SET pesage_quantity = pesage_quantity - $1,
                 economat_quantity = economat_quantity + $1
           WHERE id = $2`, [quantity, lot.id]);
-      await client.query('COMMIT');
       return { lot_id: lot.id, lot_number: lot.lot_number, returned_quantity: quantity, pesage_quantity: pesage - quantity };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /** Ouverture d'un contenant A L'AVANCE (hors bon de sortie) : le magasinier
@@ -236,9 +222,8 @@ export const ingredientLotRepository = {
   async openToPesage(lotId: string, quantity: number, userId: string,
     options: { containerCount?: number | null; containerTypeId?: string | null; reason?: string | null } = {}) {
     if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Quantite a ouvrir invalide');
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const r = await client.query(
         `SELECT il.id, il.ingredient_id, il.store_id, il.lot_number, il.economat_quantity, il.status, il.expiration_date,
                 (il.expiration_date IS NOT NULL AND il.expiration_date < CURRENT_DATE) AS is_expired,
@@ -276,14 +261,8 @@ export const ingredientLotRepository = {
                 opening_history = opening_history || $2::jsonb
           WHERE id = $3`,
         [quantity, JSON.stringify({ qty: quantity, opened_at: new Date().toISOString(), opened_by: userId, container_count: containerCount, note: options.reason || null }), lot.id]);
-      await client.query('COMMIT');
       return { lot_id: lot.id, lot_number: lot.lot_number, ingredient_name: lot.ingredient_name, opened_quantity: quantity, container_count: containerCount, economat_quantity: eco - quantity };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /** Perte / casse en zone pesage (renversement, contamination, fond de sac, DLC
