@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { getUserTimezone, getLocalNow } from '../utils/timezone.js';
 import { productLotRepository } from './product-lot.repository.js';
 import { removeFromVitrine } from './product-stock.helper.js';
@@ -464,9 +464,8 @@ export const unsoldDecisionRepository = {
       }
     }
 
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       // 1. Creer l'inventaire check si pas encore fait.
       // N6 — check_type discriminant : 'passation' pour un changement de shift
@@ -795,14 +794,8 @@ export const unsoldDecisionRepository = {
         }
       }
 
-      await client.query('COMMIT');
       return { checkId, decisionIds: savedIds, count: savedIds.length };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
@@ -1090,9 +1083,8 @@ export const unsoldDecisionRepository = {
     decidedBy: string;
     items: { productId: string; quantity: number; reason: string; unitCost?: number; productName?: string }[];
   }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const destroyed: { productId: string; quantity: number; reason: string }[] = [];
       for (const item of data.items) {
         if (item.quantity <= 0) continue;
@@ -1162,14 +1154,8 @@ export const unsoldDecisionRepository = {
 
         destroyed.push({ productId: item.productId, quantity: actualQty, reason: item.reason });
       }
-      await client.query('COMMIT');
       return { destroyed, count: destroyed.length };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 };
 
