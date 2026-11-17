@@ -21,6 +21,7 @@ import {
   Check, RotateCcw, Calendar, ListTree, Notebook, BookOpen, FileBarChart, Lock, Building2, Landmark,
   ArrowLeftRight, Ban, Clock, CalendarClock, CheckCircle2, Filter,
   Target, NotebookPen, Link2, Hourglass, Percent, ArrowRightLeft, FileStack,
+  Banknote,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -47,6 +48,7 @@ import TvaTab from './TvaTab';
 import ClotureTab from './ClotureTab';
 import ImmobilisationsTab from './ImmobilisationsTab';
 import BanqueTab from './BanqueTab';
+import PaymentRunsTab from './PaymentRunsTab';
 import BilanTab from './BilanTab';
 import BudgetTab from './BudgetTab';
 import PrepaidChargesTab from './PrepaidChargesTab';
@@ -63,7 +65,7 @@ import {
   periodLabel as periodLabelOf, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 
-type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance' | 'is' | 'fx' | 'liasse' | 'effets' | 'consolidation';
+type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance' | 'is' | 'fx' | 'liasse' | 'effets' | 'consolidation' | 'paiements_lot';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -291,6 +293,7 @@ const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[]
   { key: 'effets', label: "Portefeuille d'effets", icon: Wallet, section: 'operations', adminOnly: true },
   { key: 'dettes', label: 'Créances & dettes', icon: Scale, section: 'operations' },
   { key: 'banque', label: 'Banque', icon: Landmark, section: 'operations', adminOnly: true },
+  { key: 'paiements_lot', label: 'Paiements en lot', icon: Banknote, section: 'operations', adminOnly: true },
   { key: 'cca', label: "Charges payées d'avance", icon: CalendarClock, section: 'operations', adminOnly: true },
   { key: 'ecritures', label: 'Journal', icon: Notebook, section: 'operations', adminOnly: true },
   { key: 'lettrage', label: 'Lettrage', icon: Link2, section: 'operations', adminOnly: true },
@@ -356,6 +359,7 @@ export default function AccountingPage() {
       {tab === 'ras' && <RetenuesSourceTab />}
       {tab === 'immobilisations' && <ImmobilisationsTab />}
       {tab === 'banque' && <BanqueTab />}
+      {tab === 'paiements_lot' && <PaymentRunsTab />}
       {tab === 'is' && <CorporateTaxTab />}
       {tab === 'fx' && <FxRevaluationTab />}
       {tab === 'liasse' && <LiasseTab />}

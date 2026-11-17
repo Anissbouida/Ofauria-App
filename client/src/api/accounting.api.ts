@@ -322,3 +322,41 @@ export const recurringChargesApi = {
     api.patch(`/recurring-charges/${id}`, data).then(r => r.data.data),
   remove: (id: string) => api.delete(`/recurring-charges/${id}`).then(r => r.data.data),
 };
+
+/** G4-01 — paiements fournisseurs en lot. */
+export type PaymentRunCandidate = {
+  invoice_id: string; invoice_number: string; supplier_invoice_number: string | null; invoice_date: string; due_date: string | null;
+  total_amount: number; remaining: number; supplier_id: string; supplier_name: string; rib: string | null; bank_name: string | null;
+  supplier_email: string | null; open_run: string | null; ribValid: boolean;
+};
+export type PaymentRunStatus = 'draft' | 'pending_approval' | 'approved' | 'file_generated' | 'executed' | 'cancelled';
+export type PaymentRunSummary = {
+  id: string; run_number: string; payment_date: string; status: PaymentRunStatus; total_amount: number; created_at: string;
+  executed_at: string | null; treasury_label: string; lines: number; rejected: number; created_by_name: string | null;
+};
+export type PaymentRunDetail = PaymentRunSummary & {
+  treasury_account_id: string; treasury_iban: string | null;
+  lines: { id: string; invoice_id: string; supplier_id: string; rib: string | null; bank_name: string | null; amount: number; status: 'pending' | 'paid' | 'rejected';
+    payment_id: string | null; reject_reason: string | null; invoice_number: string; supplier_invoice_number: string | null; due_date: string | null;
+    supplier_name: string; ribValid: boolean }[];
+};
+const saveBlob = (r: { data: Blob; headers: Record<string, string> }, fallback: string) => {
+  const name = /filename="([^"]+)"/.exec(r.headers['content-disposition'] ?? '')?.[1] ?? fallback;
+  const url = URL.createObjectURL(r.data);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+};
+export const paymentRunsApi = {
+  candidates: (dueBefore: string): Promise<PaymentRunCandidate[]> => api.get('/payment-runs/candidates', { params: { dueBefore } }).then(r => r.data.data),
+  list: (): Promise<PaymentRunSummary[]> => api.get('/payment-runs').then(r => r.data.data),
+  get: (id: string): Promise<PaymentRunDetail> => api.get(`/payment-runs/${id}`).then(r => r.data.data),
+  create: (data: { paymentDate: string; treasuryAccountId: string; lines: { invoiceId: string; amount: number }[]; notes?: string }): Promise<PaymentRunDetail> =>
+    api.post('/payment-runs', data).then(r => r.data.data),
+  submit: (id: string): Promise<{ status: PaymentRunStatus }> => api.post(`/payment-runs/${id}/submit`, {}).then(r => r.data.data),
+  transferFile: (id: string) => api.get(`/payment-runs/${id}/transfer-file`, { responseType: 'blob' }).then(r => saveBlob(r as never, 'virement.csv')),
+  orderLetter: (id: string) => api.get(`/payment-runs/${id}/order-letter`, { responseType: 'blob' }).then(r => saveBlob(r as never, 'ordre_virement.pdf')),
+  execute: (id: string): Promise<{ executed: number; advices: number }> => api.post(`/payment-runs/${id}/execute`, {}).then(r => r.data.data),
+  cancel: (id: string): Promise<PaymentRunDetail> => api.post(`/payment-runs/${id}/cancel`, {}).then(r => r.data.data),
+  rejectLine: (lineId: string, reasonCodeId: string, note: string) => api.post(`/payment-runs/lines/${lineId}/reject`, { reasonCodeId, note }).then(r => r.data.data),
+};

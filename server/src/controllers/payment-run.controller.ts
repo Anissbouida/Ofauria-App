@@ -1,3 +1,4 @@
+import { localIsoDate } from '../utils/local-date.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { paymentRunRepository } from '../repositories/payment-run.repository.js';
@@ -5,7 +6,7 @@ import { generateTransferOrderPdf } from '../services/hr-documents-pdf.service.j
 import { loadCompanyLegal } from '../utils/company-legal.js';
 
 /** Paiements fournisseurs en lot (G4-01). La logique est dans le dépôt de données. */
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localIsoDate(new Date());
 const isDate = (d: unknown): d is string => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d);
 
 export const paymentRunController = {

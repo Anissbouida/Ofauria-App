@@ -68,13 +68,14 @@ type FormState = {
   name: string; legalName: string; legalForm: string; vatRegime: Supplier['vat_regime'];
   parentSupplierId: string; contactName: string; phone: string; email: string;
   address: string; city: string; notes: string; currencyCode: string;
+  rib: string; bankName: string;
   identifiers: Record<string, { value: string; qualifier: string }>;
 };
 
 function emptyForm(): FormState {
   return {
     name: '', legalName: '', legalForm: '', vatRegime: 'assujetti', parentSupplierId: '',
-    contactName: '', phone: '', email: '', address: '', city: '', notes: '', currencyCode: 'MAD', identifiers: {},
+    contactName: '', phone: '', email: '', address: '', city: '', notes: '', currencyCode: 'MAD', rib: '', bankName: '', identifiers: {},
   };
 }
 
@@ -84,7 +85,8 @@ function formFromSupplier(s: Supplier): FormState {
   return {
     name: s.name, legalName: s.legal_name ?? '', legalForm: s.legal_form ?? '', vatRegime: s.vat_regime,
     parentSupplierId: s.parent_supplier_id ?? '', contactName: s.contact_name ?? '', phone: s.phone ?? '',
-    email: s.email ?? '', address: s.address ?? '', city: s.city ?? '', notes: s.notes ?? '', currencyCode: (s.currency_code ?? 'MAD').trim(), identifiers,
+    email: s.email ?? '', address: s.address ?? '', city: s.city ?? '', notes: s.notes ?? '', currencyCode: (s.currency_code ?? 'MAD').trim(),
+    rib: (s as Supplier & { rib?: string | null }).rib ?? '', bankName: (s as Supplier & { bank_name?: string | null }).bank_name ?? '', identifiers,
   };
 }
 
@@ -559,6 +561,7 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
         name: form.name.trim(), legalName: form.legalName, legalForm: form.legalForm || null, vatRegime: form.vatRegime,
         parentSupplierId: form.parentSupplierId || null, contactName: form.contactName, phone: form.phone, email: form.email,
         address: form.address, city: form.city, notes: form.notes, currencyCode: form.currencyCode, identifiers,
+        rib: form.rib, bankName: form.bankName,
       };
       const saved = supplier ? await suppliersApi.update(supplier.id, payload) : await suppliersApi.create(payload);
       // Champs personnalisés (mig 369) : enregistrés une fois l'id connu.
@@ -709,6 +712,13 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
                   <div><label style={fieldLabel}>Email</label>
                     <input type="email" value={form.email} onChange={e => set('email', e.target.value)} className={inputCls} maxLength={255} placeholder="Pour l'envoi des BC" />
                     {errorText('email')}</div>
+                  {/* G4-01 : RIB pour les paiements par virement en lot. */}
+                  <div><label style={fieldLabel}>RIB (24 chiffres)</label>
+                    <input value={form.rib} onChange={e => set('rib', e.target.value)} className={inputCls} maxLength={40} inputMode="numeric"
+                      style={{ fontFamily: 'ui-monospace, monospace' }} placeholder="Pour les virements groupés" />
+                    {errorText('rib')}</div>
+                  <div><label style={fieldLabel}>Banque</label>
+                    <input value={form.bankName} onChange={e => set('bankName', e.target.value)} className={inputCls} maxLength={100} /></div>
                   <div><label style={fieldLabel}>Devise des achats</label>
                     <SearchSelect value={form.currencyCode} onChange={v => set('currencyCode', v)}
                       placeholder="Devise" width="100%" size="md" ariaLabel="Devise des achats" clearable={false}
