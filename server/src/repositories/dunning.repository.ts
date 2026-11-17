@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
 import { getParameter } from '../services/module-parameters.service.js';
@@ -138,9 +138,8 @@ export const dunningRepository = {
       client: c.name, montant: n2(amount), pieces, jours: String(maxDaysLate), frais: n2(fee), penalites: n2(interest),
       total: n2(amount + fee + interest), societe: legal.name || '', date: new Date().toLocaleDateString('fr-FR'),
     };
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const number = await nextDocumentNumber(client, 'dunning');
       const r = await client.query(
         `INSERT INTO dunnings (number, customer_id, level, level_label, amount_due, fee_amount, interest_amount, max_days_late, subject, body, email_to, created_by)
@@ -153,14 +152,8 @@ export const dunningRepository = {
           `INSERT INTO dunning_items (dunning_id, doc_kind, doc_id, doc_number, doc_date, due_date, days_late, remaining) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [id, d.kind, d.id, d.number, d.doc_date, d.due_date, d.days_late, d.remaining]);
       }
-      await client.query('COMMIT');
       return { data: await this.findById(id), level };
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async list(p: { status?: string; customerId?: string; limit: number; offset: number }) {
