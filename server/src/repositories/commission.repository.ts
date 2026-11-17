@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 
 /**
  * Commissions commerciales (règles mig 123 + contrats-cadres à paliers et
@@ -100,17 +100,15 @@ export const commissionRepository = {
   async createScheme(input: CommissionSchemeInput, userId: string) {
     if (!input.name?.trim()) return { error: 'Nom requis' };
     if (!input.tiers?.length) return { error: 'Au moins un palier' };
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const s = await client.query(
         `INSERT INTO commission_schemes (name, is_active, notes, store_id, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
         [input.name.trim(), input.isActive ?? true, input.notes?.trim() || null, input.storeId ?? null, userId]);
       const id = s.rows[0].id as string;
       await this._replaceTiers(client, id, input.tiers);
-      await client.query('COMMIT');
       return { id };
-    } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+    });
   },
 
   async updateScheme(id: string, input: CommissionSchemeInput) {
