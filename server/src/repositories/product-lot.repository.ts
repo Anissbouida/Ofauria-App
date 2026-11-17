@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { productMaterialsUnitCost } from './product-cost.helper.js';
 import { sectorRepository } from './sector.repository.js';
@@ -585,9 +585,8 @@ export const productLotRepository = {
     userId: string,
     note?: string
   ): Promise<{ lostQuantity: number; lostValue: number; reasonLabel: string }> {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       const lockResult = await client.query(
         `SELECT pss.stock_quantity, pss.vitrine_quantity,
@@ -666,14 +665,8 @@ export const productLotRepository = {
          unitCost, lostValue, userId, storeId]
       );
 
-      await client.query('COMMIT');
       return { lostQuantity: total, lostValue, reasonLabel };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
