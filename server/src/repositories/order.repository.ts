@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { computeSourcingAndCreatePlan } from './sourcing.helper.js';
 import { releaseSemiFinishedReservations } from './production.repository.js';
@@ -314,9 +314,8 @@ export const orderRepository = {
 
   async updateStatus(id: string, status: string, cancel?: { userId: string; reason?: string | null }) {
     const completedAt = status === 'completed' ? 'NOW()' : 'NULL';
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const result = await client.query(
         `UPDATE orders SET status = $1::varchar, completed_at = ${completedAt},
                 cancelled_at = CASE WHEN $1::varchar = 'cancelled' THEN NOW() ELSE NULL END,
@@ -348,14 +347,8 @@ export const orderRepository = {
           }
         }
       }
-      await client.query('COMMIT');
       return order ? { ...order, plan_warnings: warnings } : order;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
@@ -363,9 +356,8 @@ export const orderRepository = {
    * production liés pas encore lancés glissent du même nombre de jours.
    */
   async reschedule(id: string, data: { newPickupDate: string; reason?: string | null; forced: boolean; userId: string }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const cur = (await client.query(`SELECT pickup_date FROM orders WHERE id = $1 FOR UPDATE`, [id])).rows[0];
       const upd = (await client.query(
         `UPDATE orders SET pickup_date = $2::timestamptz WHERE id = $1 RETURNING *`, [id, data.newPickupDate])).rows[0];
@@ -382,14 +374,8 @@ export const orderRepository = {
             WHERE order_id = $1 AND status IN ('draft', 'confirmed', 'awaiting_ingredients', 'ready_to_produce')`,
           [id, data.newPickupDate, cur.pickup_date]);
       }
-      await client.query('COMMIT');
       return upd;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async generateOrderNumber(client?: { query: (text: string, params?: unknown[]) => Promise<{ rows: Record<string, string>[] }> }) {
