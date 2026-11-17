@@ -859,10 +859,10 @@ export const productionCoutRepository = {
   async getOutputCostByPlan(planId: string) {
     const result = await db.query(
       `SELECT oc.output_id, oc.plan_item_id, oc.label, oc.quantity, oc.equiv_pieces,
-              oc.unit_cost, oc.cost_share,
+              oc.unit_cost, oc.cost_share, oc.output_type,
               p.name  AS output_product_name,
               ip.name AS item_product_name
-       FROM v_production_output_cost oc
+       FROM v_production_output_cost_v2 oc
        JOIN production_plan_items ppi ON ppi.id = oc.plan_item_id
        LEFT JOIN products p  ON p.id  = oc.product_id
        LEFT JOIN products ip ON ip.id = ppi.product_id
@@ -872,7 +872,7 @@ export const productionCoutRepository = {
     );
     type OutputLine = {
       output_id: string; label: string; product_name: string | null;
-      quantity: number; equiv_pieces: number;
+      quantity: number; equiv_pieces: number; output_type: string;
       unit_cost: number | null; cost_share: number | null;
     };
     type OutputGroup = {
@@ -898,6 +898,7 @@ export const productionCoutRepository = {
         product_name: row.output_product_name,
         quantity: parseFloat(row.quantity),
         equiv_pieces: parseFloat(row.equiv_pieces),
+        output_type: row.output_type,
         unit_cost: row.unit_cost != null ? parseFloat(row.unit_cost) : null,
         cost_share: costShare,
       });

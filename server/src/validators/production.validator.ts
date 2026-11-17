@@ -69,6 +69,9 @@ export const produceItemsSchema = z.object({
       productId: uuid.nullable().optional(),
       equivPieces: z.number().finite().positive().max(1000).optional(),
       quantity: z.number().finite().min(0).max(100000),
+      /** M4-06 : type de sortie (défaut : principal / co-produit selon le produit). */
+      outputType: z.enum(['principal', 'co_produit', 'sous_produit', 'dechet_valorise']).optional(),
+      fixedUnitValue: z.number().finite().min(0).max(1000000).nullable().optional(),
     })).max(20).optional(),
   })).min(1, 'Aucun article à produire'),
   producedAt: clientTimestamp.optional(),

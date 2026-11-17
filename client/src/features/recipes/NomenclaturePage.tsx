@@ -13,6 +13,7 @@ import VersionsSection from './VersionsSection';
 import BomVersionBanner from './BomVersionBanner';
 import AlternativeOfPanel from './AlternativeOfPanel';
 import SubstitutesPanel from './SubstitutesPanel';
+import RecipeOutputsPanel from './RecipeOutputsPanel';
 
 const dh = (v: number) => `${v.toFixed(2)} DH`;
 
@@ -143,6 +144,7 @@ export default function NomenclaturePage() {
         <BomVersionBanner recipeId={recipe.id} />
         <AlternativeOfPanel recipe={recipe} />
         <SubstitutesPanel recipeId={recipe.id} />
+        <RecipeOutputsPanel recipeId={recipe.id} />
 
         <NomenclatureEditor recipeId={recipe.id} onFinance={setKpi} onCancel={() => navigate('/recipes?tab=product')} onSaved={() => qc.invalidateQueries({ queryKey: ['recipe', id] })} />
 

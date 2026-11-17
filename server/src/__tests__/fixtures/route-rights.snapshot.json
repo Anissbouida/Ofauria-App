@@ -234,6 +234,14 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "DELETE /recipes/outputs/:outputId": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "DELETE /recipes/substitutes/:subId": [
   "admin",
   "baker",
@@ -1858,6 +1866,7 @@
  "GET /recipes/:id/bom-versions/pending": null,
  "GET /recipes/:id/explosion": null,
  "GET /recipes/:id/fiche-technique": null,
+ "GET /recipes/:id/outputs": null,
  "GET /recipes/:id/substitutes": null,
  "GET /recipes/:id/versions": null,
  "GET /recipes/:recipeId/children": null,
@@ -3829,6 +3838,14 @@
  "POST /recipes/:id/bom-versions/activate": [
   "admin",
   "manager"
+ ],
+ "POST /recipes/:id/outputs": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
  ],
  "POST /recipes/:id/restore": [
   "admin"

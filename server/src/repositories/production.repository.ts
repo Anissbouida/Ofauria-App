@@ -118,8 +118,15 @@ export const productionRepository = {
                     WHERE i2.product_id = ppi.product_id AND io2.product_id <> ppi.product_id
                     ORDER BY io2.product_id, io2.created_at DESC
                  ) h) AS cut_presets,
+              -- M4-06 : sorties déclarées sur la fiche de la ligne.
               (SELECT COALESCE(jsonb_agg(jsonb_build_object(
-                        'label', io.label, 'quantity', io.quantity, 'equiv_pieces', io.equiv_pieces,
+                        'product_id', ro.product_id, 'label', p4.name, 'output_type', ro.output_type,
+                        'quantity_per_unit', ro.quantity_per_unit, 'equiv_pieces', ro.equiv_pieces,
+                        'fixed_unit_value', ro.fixed_unit_value) ORDER BY ro.sort_order, p4.name), '[]'::jsonb)
+                 FROM recipe_outputs ro JOIN products p4 ON p4.id = ro.product_id
+                WHERE ro.recipe_id = COALESCE(ppi.alt_recipe_id, (SELECT r5.id FROM recipes r5 WHERE r5.product_id = ppi.product_id LIMIT 1))) AS declared_outputs,
+              (SELECT COALESCE(jsonb_agg(jsonb_build_object(
+                        'label', io.label, 'quantity', io.quantity, 'equiv_pieces', io.equiv_pieces, 'output_type', io.output_type,
                         'lot_number', pl2.lot_number) ORDER BY io.id), '[]'::jsonb)
                  FROM production_item_outputs io LEFT JOIN product_lots pl2 ON pl2.id = io.product_lot_id
                 WHERE io.plan_item_id = ppi.id) AS outputs,
@@ -1490,7 +1497,8 @@ export const productionRepository = {
           const resolved = await resolveCutOutputs(client, item.planItemId, item.outputs);
           if (resolved.length > 0) {
             cutByItem.set(item.planItemId, resolved);
-            item.actualQuantity = roundQty(resolved.reduce((sum, o) => sum + o.quantity * o.equiv, 0));
+            // Sous-produits / déchets valorisés (M4-06) : hors quantité produite de l'article.
+            item.actualQuantity = roundQty(resolved.filter(o => o.outputType === 'principal' || o.outputType === 'co_produit').reduce((sum, o) => sum + o.quantity * o.equiv, 0));
           }
         }
         if (item.actualQuantity <= 0) continue;
@@ -1862,9 +1870,9 @@ export const productionRepository = {
 
             if (cut) {
               await client.query(
-                `INSERT INTO production_item_outputs (plan_item_id, product_id, label, quantity, equiv_pieces, product_lot_id, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                [item.id, out.productId, out.label, out.quantity, out.equiv, lotId, userId]
+                `INSERT INTO production_item_outputs (plan_item_id, product_id, label, quantity, equiv_pieces, product_lot_id, created_by, output_type, fixed_unit_value)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::numeric)`,
+                [item.id, out.productId, out.label, out.quantity, out.equiv, lotId, userId, out.outputType ?? 'principal', out.fixedUnitValue ?? null]
               );
             }
           }
@@ -2759,9 +2767,13 @@ export interface CutOutput {
   quantity: number;
   /** Equivalence en pieces de l'article, figee au moment de la production. */
   equiv: number;
+  /** M4-06 : type de sortie ; sous-produit / déchet valorisé à prix fixe (déduit du coût). */
+  outputType?: OutputType;
+  fixedUnitValue?: number | null;
 }
 
-type CutInput = { productId?: string | null; equivPieces?: number; quantity: number };
+export type OutputType = 'principal' | 'co_produit' | 'sous_produit' | 'dechet_valorise';
+type CutInput = { productId?: string | null; equivPieces?: number; quantity: number; outputType?: OutputType; fixedUnitValue?: number | null };
 
 /**
  * Coupe (mig 302) : transforme la saisie du chef en lignes exploitables.
@@ -2773,10 +2785,15 @@ async function resolveCutOutputs(
   client: import('pg').PoolClient, planItemId: string, outputs: CutInput[],
 ): Promise<CutOutput[]> {
   const it = await client.query(
-    `SELECT ppi.product_id, COALESCE(p.name, '') AS product_name
+    `SELECT ppi.product_id, COALESCE(p.name, '') AS product_name, ppi.alt_recipe_id
        FROM production_plan_items ppi LEFT JOIN products p ON p.id = ppi.product_id
       WHERE ppi.id = $1`, [planItemId]);
   const base = it.rows[0];
+  // Sorties déclarées sur la fiche de la ligne (M4-06) : prix fixe des sous-produits par défaut.
+  const declared = base?.product_id ? (await client.query(
+    `SELECT ro.product_id, ro.output_type, ro.fixed_unit_value, ro.equiv_pieces FROM recipe_outputs ro
+      WHERE ro.recipe_id = COALESCE($2::uuid, (SELECT r.id FROM recipes r WHERE r.product_id = $1 LIMIT 1))`,
+    [base.product_id, base.alt_recipe_id ?? null])).rows : [];
   if (!base?.product_id) throw new Error('La coupe ne s\'applique qu\'aux produits finis');
   const ids = [...new Set(outputs.map(o => o.productId).filter((x): x is string => !!x && x !== base.product_id))];
   const prods = ids.length > 0
@@ -2787,18 +2804,25 @@ async function resolveCutOutputs(
     if (!(o.quantity > 0)) continue;
     const isBase = !o.productId || o.productId === base.product_id;
     let line: CutOutput;
-    if (isBase) {
-      line = { productId: base.product_id, label: base.product_name, quantity: o.quantity, equiv: 1 };
+    if (o.outputType === 'sous_produit' || o.outputType === 'dechet_valorise') {
+      const p = prods.find((x: Record<string, any>) => x.id === o.productId);
+      if (isBase || !p) throw new Error('Un sous-produit est un autre produit du catalogue');
+      const decl = declared.find((d: Record<string, any>) => d.product_id === p.id && d.output_type === o.outputType);
+      const fixed = o.fixedUnitValue ?? (decl?.fixed_unit_value != null ? Number(decl.fixed_unit_value) : null);
+      if (fixed == null || !(fixed >= 0)) throw new Error(`Indiquez la valeur unitaire de « ${p.name} »`);
+      line = { productId: p.id, label: p.name, quantity: o.quantity, equiv: 1, outputType: o.outputType, fixedUnitValue: fixed };
+    } else if (isBase) {
+      line = { productId: base.product_id, label: base.product_name, quantity: o.quantity, equiv: 1, outputType: 'principal' };
     } else {
       const p = prods.find((x: Record<string, any>) => x.id === o.productId);
       if (!p) throw new Error('Produit de sortie introuvable');
       if (!(o.equivPieces && o.equivPieces > 0)) {
         throw new Error(`Indiquez combien de pièces vaut « ${p.name} » dans le cadre`);
       }
-      line = { productId: p.id, label: p.name, quantity: o.quantity, equiv: o.equivPieces };
+      line = { productId: p.id, label: p.name, quantity: o.quantity, equiv: o.equivPieces, outputType: 'co_produit' };
     }
     // Meme produit saisi deux fois avec la meme equivalence : on cumule.
-    const key = `${line.productId}::${line.equiv}`;
+    const key = `${line.productId}::${line.equiv}::${line.outputType}`;
     const prev = merged.get(key);
     if (prev) prev.quantity += line.quantity; else merged.set(key, line);
   }

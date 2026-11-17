@@ -15,6 +15,7 @@ import { bomVersionRepository } from '../repositories/bom-version.repository.js'
 import { activateBomVersion } from '../services/bom-version-activation.js';
 import { recipesForProduct, setAlternative } from '../services/recipe-for.js';
 import { recipeSubstituteRepository } from '../repositories/recipe-substitute.repository.js';
+import { recipeOutputRepository } from '../repositories/recipe-output.repository.js';
 import { z } from 'zod';
 
 const alternativeSchema = z.object({
@@ -30,6 +31,14 @@ const substituteSchema = z.object({
   validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   validTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   note: z.string().max(500).nullable().optional(),
+});
+const recipeOutputSchema = z.object({
+  productId: z.string().uuid(),
+  outputType: z.enum(['co_produit', 'sous_produit', 'dechet_valorise']),
+  quantityPerUnit: z.coerce.number().positive().nullable().optional(),
+  equivPieces: z.coerce.number().positive().max(1000).nullable().optional(),
+  fixedUnitValue: z.coerce.number().min(0).nullable().optional(),
+  sortOrder: z.coerce.number().int().min(0).max(999).optional(),
 });
 const activateBomVersionSchema = z.object({
   reason: z.string().trim().min(3, 'Motif requis').max(1000),
@@ -134,6 +143,19 @@ router.post('/:id/substitutes', authenticate, validateUuidParams('id'), can('rec
 }));
 router.delete('/substitutes/:subId', authenticate, validateUuidParams('subId'), can('recipes.edit'), asyncHandler(async (req, res) => {
   const ok = await recipeSubstituteRepository.remove(req.params.subId as string);
+  res.status(ok ? 200 : 404).json({ success: ok });
+}));
+// Sorties déclarées : co-produits, sous-produits (M4-06).
+router.get('/:id/outputs', authenticate, validateUuidParams('id'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await recipeOutputRepository.list(req.params.id as string) });
+}));
+router.post('/:id/outputs', authenticate, validateUuidParams('id'), can('recipes.edit'), validate(recipeOutputSchema), asyncHandler(async (req, res) => {
+  try {
+    res.status(201).json({ success: true, data: await recipeOutputRepository.upsert(req.params.id as string, req.body) });
+  } catch (err) { res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } }); }
+}));
+router.delete('/outputs/:outputId', authenticate, validateUuidParams('outputId'), can('recipes.edit'), asyncHandler(async (req, res) => {
+  const ok = await recipeOutputRepository.remove(req.params.outputId as string);
   res.status(ok ? 200 : 404).json({ success: ok });
 }));
 // Versions de nomenclature (M4-01).

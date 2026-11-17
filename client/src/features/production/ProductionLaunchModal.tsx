@@ -131,6 +131,9 @@ interface CutLine {
   label: string;
   equiv: string;
   qty: string;
+  /** M4-06 : sous-produit / déchet valorisé à prix fixe (hors pièces équivalentes). */
+  kind?: 'sous_produit' | 'dechet_valorise';
+  value?: string;
 }
 
 export default function ProductionLaunchModal({
@@ -348,12 +351,16 @@ export default function ProductionLaunchModal({
         .map((itemId) => {
           const outputs = cutMode[itemId]
             ? (cutLines[itemId] || [])
-                .map((l) => ({
+                .map((l) => l.kind ? {
+                  productId: l.productId, outputType: l.kind,
+                  fixedUnitValue: l.value ? parseFloat(l.value.replace(',', '.')) : null,
+                  quantity: parseFloat(l.qty.replace(',', '.')) || 0,
+                } : {
                   productId: l.base ? null : l.productId,
                   equivPieces: l.base ? undefined : (parseFloat(l.equiv.replace(',', '.')) || 0),
                   quantity: parseFloat(l.qty.replace(',', '.')) || 0,
-                }))
-                .filter((o) => o.quantity > 0 && (o.productId === null || (o.productId && (o.equivPieces || 0) > 0)))
+                })
+                .filter((o) => o.quantity > 0 && (o.productId === null || ('outputType' in o ? !!o.productId : (o.productId && (o.equivPieces || 0) > 0))))
             : [];
           return {
             planItemId: itemId,
@@ -1565,7 +1572,8 @@ export default function ProductionLaunchModal({
     const presets = (Array.isArray(item.cut_presets) ? item.cut_presets : []) as Record<string, any>[];
     const num = (v: string) => parseFloat(String(v ?? '').replace(',', '.')) || 0;
     const lines: CutLine[] = cutLines[id] || [];
-    const totalOf = (ls: CutLine[]) => ls.reduce((sum, l) => sum + num(l.qty) * (l.base ? 1 : num(l.equiv)), 0);
+    const totalOf = (ls: CutLine[]) => ls.reduce((sum, l) => sum + (l.kind ? 0 : num(l.qty) * (l.base ? 1 : num(l.equiv))), 0);
+    const declared = (Array.isArray(item.declared_outputs) ? item.declared_outputs : []) as Record<string, any>[];
     const total = totalOf(lines);
     const apply = (next: CutLine[]) => {
       setCutLines((prev) => ({ ...prev, [id]: next }));
@@ -1590,13 +1598,15 @@ export default function ProductionLaunchModal({
         key, base: false,
         productId: (preset?.product_id as string) || '',
         label: (preset?.label as string) || '',
-        equiv: preset ? String(parseFloat(String(preset.equiv_pieces))) : '',
-        qty: '',
+        equiv: preset?.equiv_pieces != null ? String(parseFloat(String(preset.equiv_pieces))) : '',
+        qty: preset?.quantity_per_unit != null ? String(Math.round(num(String(preset.quantity_per_unit)) * planned * 1000) / 1000) : '',
+        ...(preset?.output_type === 'sous_produit' || preset?.output_type === 'dechet_valorise'
+          ? { kind: preset.output_type as CutLine['kind'], value: preset.fixed_unit_value != null ? String(parseFloat(String(preset.fixed_unit_value))) : '' } : {}),
       }]);
     };
     const diff = Math.round((total - planned) * 100) / 100;
     const usedIds = new Set(lines.map((l) => l.productId));
-    const incomplete = lines.some((l) => !l.base && num(l.qty) > 0 && (!l.productId || !(num(l.equiv) > 0)));
+    const incomplete = lines.some((l) => !l.base && num(l.qty) > 0 && (!l.productId || (l.kind ? !(num(l.value ?? '') >= 0 && (l.value ?? '') !== '') : !(num(l.equiv) > 0))));
 
     return (
       <div className="border border-indigo-200 rounded-xl overflow-hidden">
@@ -1656,6 +1666,13 @@ export default function ProductionLaunchModal({
                     <td className="py-1.5 text-right">
                       {l.base ? (
                         <span className="text-gray-500 tabular-nums">× 1</span>
+                      ) : l.kind ? (
+                        <input type="number" min={0} step={0.01} inputMode="decimal"
+                          value={l.value ?? ''} placeholder="valeur"
+                          aria-label="Valeur unitaire du sous-produit"
+                          title={`${l.kind === 'sous_produit' ? 'Sous-produit' : 'Déchet valorisé'} : valeur unitaire déduite du coût des autres sorties`}
+                          onChange={(e) => edit(l.key, { value: e.target.value })}
+                          className="w-20 border border-gray-300 rounded-lg px-2 py-1.5 text-right tabular-nums focus:ring-2 focus:ring-indigo-400" />
                       ) : (
                         <input type="number" min={0} step={0.5} inputMode="decimal"
                           value={l.equiv} placeholder="8"
@@ -1665,7 +1682,8 @@ export default function ProductionLaunchModal({
                       )}
                     </td>
                     <td className="py-1.5 text-right font-semibold tabular-nums">
-                      {(() => { const v = num(l.qty) * (l.base ? 1 : num(l.equiv)); return v.toFixed(v % 1 === 0 ? 0 : 1); })()}
+                      {l.kind ? <span className="text-xs font-normal text-gray-500">{l.kind === 'sous_produit' ? 'sous-produit' : 'déchet valorisé'}</span>
+                        : (() => { const v = num(l.qty) * (l.base ? 1 : num(l.equiv)); return v.toFixed(v % 1 === 0 ? 0 : 1); })()}
                     </td>
                     <td className="py-1.5 text-right">
                       {!l.base && (
@@ -1685,7 +1703,14 @@ export default function ProductionLaunchModal({
                 className="px-2.5 py-1.5 rounded-lg text-xs font-medium border border-indigo-200 text-indigo-700 bg-white hover:bg-indigo-50">
                 + Ajouter une sortie (entremets…)
               </button>
-              {presets.filter((p) => !usedIds.has(p.product_id as string)).map((p) => (
+              {declared.filter((p) => !usedIds.has(p.product_id as string)).map((p) => (
+                <button key={`d-${p.product_id}-${p.output_type}`} type="button" onClick={() => addLine(p)}
+                  title="Sortie déclarée sur la fiche"
+                  className="px-2.5 py-1.5 rounded-lg text-xs border border-indigo-200 text-indigo-700 bg-white hover:bg-indigo-50">
+                  {p.label as string} <span className="text-gray-400">{p.output_type === 'co_produit' ? `= ${parseFloat(String(p.equiv_pieces))} pièces` : `${p.output_type === 'sous_produit' ? 'sous-produit' : 'déchet valorisé'}`}</span>
+                </button>
+              ))}
+              {presets.filter((p) => !usedIds.has(p.product_id as string) && !declared.some((d) => d.product_id === p.product_id)).map((p) => (
                 <button key={p.product_id as string} type="button" onClick={() => addLine(p)}
                   title="Sortie déjà utilisée pour ce produit"
                   className="px-2.5 py-1.5 rounded-lg text-xs border border-gray-200 text-gray-600 bg-white hover:bg-gray-50">
