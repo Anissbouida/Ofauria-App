@@ -7,6 +7,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import IngredientMergeCard from './IngredientMergeCard';
 import FormatWeightsGrid from './FormatWeightsGrid';
+import AllergenGrid from './AllergenGrid';
 import { SettingsTabs } from './SettingsPrimitives';
 
 /**
@@ -116,13 +117,14 @@ export default function DataQualityTab() {
     </div>
   );
 
-  // Les contrôles d'un côté, les outils de correction de l'autre (G2-03, G2-05).
+  // Les contrôles d'un côté, les outils de correction de l'autre (G2-03, G2-05, G2-06).
   return (
     <div className="odoo-scope">
       <SettingsTabs label="Qualité des données" tabs={[
         { key: 'controls', label: 'Contrôles', content: controls },
         { key: 'duplicates', label: 'Ingrédients en double', content: <IngredientMergeCard /> },
         { key: 'weights', label: 'Poids des formats', content: <FormatWeightsGrid /> },
+        { key: 'allergens', label: 'Allergènes', content: <AllergenGrid /> },
       ]} />
     </div>
   );

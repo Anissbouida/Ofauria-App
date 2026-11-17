@@ -9,7 +9,7 @@ import { ROLE_GROUPS } from '@ofauria/shared';
 import { requireUnits, requireStockUnitChange } from '../services/unit-referential.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { restockSchema, adjustStockSchema, stockThresholdSchema, resolveStockAnomalySchema, mergeIngredientsSchema, correctIngredientCostSchema } from '../validators/stock.validator.js';
+import { restockSchema, adjustStockSchema, stockThresholdSchema, resolveStockAnomalySchema, mergeIngredientsSchema, correctIngredientCostSchema, ingredientAllergensSchema } from '../validators/stock.validator.js';
 
 const router = Router();
 
@@ -82,6 +82,9 @@ ingredientsRouter.post(
 );
 
 ingredientsRouter.get('/', authenticate, ingredientController.list);
+// G2-06 — grille des allergènes (déclarée avant /:id).
+ingredientsRouter.get('/allergen-grid', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(ingredientController.allergenGrid));
+ingredientsRouter.put('/:id/allergens', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(ingredientAllergensSchema), asyncHandler(ingredientController.saveAllergens));
 ingredientsRouter.get('/:id', authenticate, ingredientController.getById);
 // Unité de stock : code du référentiel `units` (mig 515).
 const stockUnitOf = requireUnits((body: { unit?: string | null }) => [{ unit: body.unit }]);

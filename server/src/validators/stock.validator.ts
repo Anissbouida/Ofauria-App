@@ -47,3 +47,9 @@ export const correctIngredientCostSchema = z.object({
   newCost: z.coerce.number().finite().positive('Le nouveau coût doit être supérieur à 0').max(1_000_000),
   reason: z.string().trim().min(5, 'Indiquez le motif de la correction').max(500),
 });
+
+/** G2-06 — allergènes d'un ingrédient : codes du référentiel, « contient » et « traces ». */
+export const ingredientAllergensSchema = z.object({
+  contains: z.array(z.string().max(40)).max(14),
+  traces: z.array(z.string().max(40)).max(14),
+});

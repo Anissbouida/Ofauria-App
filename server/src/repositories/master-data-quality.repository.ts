@@ -8,7 +8,8 @@ import { db } from '../config/database.js';
  * production) — garder les deux alignés :
  *   fiche active        : recette non archivée
  *   format actif        : recipe_formats.is_active d'une fiche active
- *   allergènes à saisir : ingredients.allergens vide ou NULL
+ *   allergènes à saisir : fiche jamais vérifiée (allergens_reviewed_at NULL, mig 541) et
+ *                         sans allergène
  *   homonymes           : même nom sans tenir compte de la casse ni des espaces
  *   prix aberrant       : plus de 5 fois la médiane des ingrédients de même catégorie et
  *                         de même unité, ou moins du cinquième (au moins 5 ingrédients)
@@ -70,7 +71,7 @@ export const masterDataQualityRepository = {
            WHERE rf.is_active AND rf.poids_cuit_g IS NULL)::int AS formats_sans_poids_cuit,
          (SELECT COUNT(*) FROM recipe_formats rf JOIN recipes r ON r.id = rf.recipe_id AND r.archived_at IS NULL
            WHERE rf.is_active)::int AS formats_total,
-         (SELECT COUNT(*) FROM ingredients WHERE COALESCE(cardinality(allergens), 0) = 0)::int AS ingredients_sans_allergenes,
+         (SELECT COUNT(*) FROM ingredients WHERE allergens_reviewed_at IS NULL AND COALESCE(cardinality(allergens), 0) = 0)::int AS ingredients_sans_allergenes,
          (SELECT COUNT(*) FROM ingredients)::int AS ingredients_total,
          (SELECT COUNT(*) FROM ${ACTIVE_RECIPES} AND ${NO_STEPS})::int AS fiches_sans_etapes,
          (SELECT COUNT(*) FROM ${ACTIVE_RECIPES})::int AS fiches_total,
@@ -106,7 +107,7 @@ export const masterDataQualityRepository = {
         return run(
           `SELECT i.id, 'ingredient' AS kind, i.name AS label, COALESCE(ec.name, i.category, 'Sans catégorie') AS detail
              FROM ingredients i LEFT JOIN expense_categories ec ON ec.id = i.category_id
-            WHERE COALESCE(cardinality(i.allergens), 0) = 0
+            WHERE i.allergens_reviewed_at IS NULL AND COALESCE(cardinality(i.allergens), 0) = 0
             ORDER BY detail, i.name`);
       case 'fiches_sans_etapes':
         return run(

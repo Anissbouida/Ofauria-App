@@ -119,6 +119,11 @@ export const ingredientLotsApi = {
 };
 
 export const ingredientsApi = {
+  /** G2-06 — grille des allergènes (missing = seulement les fiches non renseignées) et enregistrement d'une ligne. */
+  allergenGrid: (missing = false): Promise<AllergenGridRow[]> =>
+    api.get('/ingredients/allergen-grid', { params: missing ? { missing: 1 } : {} }).then(r => r.data.data),
+  saveAllergens: (id: string, data: { contains: string[]; traces: string[] }): Promise<AllergenGridRow> =>
+    api.put(`/ingredients/${id}/allergens`, data).then(r => r.data.data),
   /** G2-04 — prix à revoir (avec dernières réceptions et proposition), correction tracée, journal. */
   costSuspects: (): Promise<PriceSuspect[]> => api.get('/inventory/cost-corrections/suspects').then(r => r.data.data),
   correctCost: (ingredientId: string, newCost: number, reason: string): Promise<{ id: string; oldCost: number; newCost: number }> =>
@@ -213,4 +218,9 @@ export type PriceSuspect = {
 export type CostCorrection = {
   id: string; ingredient_id: string; ingredient_name: string; unit: string; old_cost: number; new_cost: number;
   reason: string; corrected_at: string; corrected_by_name: string | null;
+};
+
+export type AllergenGridRow = {
+  id: string; name: string; category: string | null; contains: string[]; traces: string[]; reviewed: boolean;
+  reviewedAt: string | null; reviewedByName: string | null; proposal: string[]; usedInRecipes: number;
 };

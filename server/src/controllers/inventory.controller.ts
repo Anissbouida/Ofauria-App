@@ -1,3 +1,4 @@
+import { ingredientAllergensRepository } from '../repositories/ingredient-allergens.repository.js';
 import { ingredientCostCorrectionRepository } from '../repositories/ingredient-cost-correction.repository.js';
 import { ingredientMergeRepository } from '../repositories/ingredient-merge.repository.js';
 import type { Response } from 'express';
@@ -291,6 +292,16 @@ export const inventoryController = {
 };
 
 export const ingredientController = {
+  /** GET /ingredients/allergen-grid — fiches et leurs allergènes, avec une proposition pour les non renseignées (G2-06). */
+  async allergenGrid(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await ingredientAllergensRepository.grid({ onlyMissing: req.query.missing === '1' }) });
+  },
+  /** PUT /ingredients/:id/allergens — enregistre « contient » et « traces » et marque la fiche vérifiée (G2-06). */
+  async saveAllergens(req: AuthRequest, res: Response) {
+    const out = await ingredientAllergensRepository.save(req.params.id as string, req.body, req.user!.userId);
+    if ('error' in out) { res.status(400).json({ success: false, error: { message: out.error } }); return; }
+    res.json({ success: true, data: out });
+  },
   async list(_req: AuthRequest, res: Response) {
     const ingredients = await ingredientRepository.findAll();
     res.json({ success: true, data: ingredients });

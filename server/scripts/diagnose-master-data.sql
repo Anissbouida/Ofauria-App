@@ -11,8 +11,10 @@
 -- server/src/services/master-data-quality.ts ; garder les deux alignés)
 --   fiche active        : recette non archivée (recipes.archived_at IS NULL)
 --   format actif        : recipe_formats.is_active d'une fiche active
---   allergènes à saisir : ingredients.allergens vide ou NULL (rien ne distingue encore
---                         « aucun allergène » de « non renseigné » : c'est l'objet de G2-06)
+--   allergènes à saisir : fiche sans allergène et jamais vérifiée. La colonne de
+--                         vérification (allergens_reviewed_at, mig 541, G2-06) est lue par
+--                         to_jsonb pour que ce script passe aussi sur une base d'avant la 541,
+--                         où toute fiche sans allergène compte comme « à saisir »
 --   homonymes           : même nom sans tenir compte de la casse ni des espaces
 --   prix aberrant       : coût unitaire plus de 5 fois au-dessus ou au-dessous de la
 --                         médiane des ingrédients de même catégorie et de même unité
@@ -36,7 +38,7 @@ SELECT 'Formats actifs sans poids cuit' AS indicateur,
        (SELECT COUNT(*) FROM recipe_formats rf JOIN active_recipes r ON r.id = rf.recipe_id WHERE rf.is_active AND rf.poids_cuit_g IS NULL) AS a_corriger,
        (SELECT COUNT(*) FROM recipe_formats rf JOIN active_recipes r ON r.id = rf.recipe_id WHERE rf.is_active) AS total
 UNION ALL SELECT 'Ingrédients sans allergènes renseignés',
-       (SELECT COUNT(*) FROM ingredients WHERE COALESCE(cardinality(allergens), 0) = 0), (SELECT COUNT(*) FROM ingredients)
+       (SELECT COUNT(*) FROM ingredients i WHERE COALESCE(cardinality(i.allergens), 0) = 0 AND to_jsonb(i) ->> 'allergens_reviewed_at' IS NULL), (SELECT COUNT(*) FROM ingredients)
 UNION ALL SELECT 'Fiches actives sans étapes',
        (SELECT COUNT(*) FROM active_recipes WHERE etapes IS NULL OR jsonb_typeof(etapes) <> 'array' OR jsonb_array_length(etapes) = 0),
        (SELECT COUNT(*) FROM active_recipes)
@@ -67,7 +69,7 @@ SELECT r.name AS fiche, COALESCE(pc.nom, '(sans contenant)') AS format, rf.poids
 \echo '═══ 3. Ingrédients sans allergènes renseignés, par catégorie ═══'
 SELECT COALESCE(ec.name, i.category, '(sans catégorie)') AS categorie, COUNT(*) AS ingredients
   FROM ingredients i LEFT JOIN expense_categories ec ON ec.id = i.category_id
- WHERE COALESCE(cardinality(i.allergens), 0) = 0
+ WHERE COALESCE(cardinality(i.allergens), 0) = 0 AND to_jsonb(i) ->> 'allergens_reviewed_at' IS NULL
  GROUP BY 1 ORDER BY 2 DESC;
 
 \echo ''
