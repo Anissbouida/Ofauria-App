@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { paymentRepository } from './accounting.repository.js';
 import { cancelPayrollPayment } from '../services/payroll-ledger.service.js';
@@ -150,9 +150,8 @@ export const salaryAdvanceRepository = {
       : 'biweekly_payroll_id';
     const val = params.payrollId || params.weeklyPayrollId || params.biweeklyPayrollId;
     if (!val) return 0;
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const reps = await client.query(
         `SELECT sr.id, sr.advance_id, sr.amount
            FROM salary_advance_repayments sr
@@ -177,14 +176,8 @@ export const salaryAdvanceRepository = {
         await client.query('DELETE FROM salary_advance_repayments WHERE id = $1', [rep.id]);
         reversed = Math.round((reversed + parseFloat(rep.amount)) * 100) / 100;
       }
-      await client.query('COMMIT');
       return reversed;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
@@ -317,9 +310,8 @@ export const salaryAdvanceRepository = {
     userId: string; storeId?: string; label: string;
   }): Promise<number> {
     if (data.amount <= 0) return 0;
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       const open = await client.query(
         `SELECT id, remaining_amount FROM salary_advances
@@ -373,13 +365,7 @@ export const salaryAdvanceRepository = {
         applied = Math.round((applied + take) * 100) / 100;
       }
 
-      await client.query('COMMIT');
       return applied;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 };
