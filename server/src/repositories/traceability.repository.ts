@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { ingredientLotRepository } from './ingredient-lot.repository.js';
 import { createNotification } from '../utils/notify.js';
 
@@ -323,9 +323,8 @@ export const traceabilityRepository = {
         certainty: 'certain', total: l.quantity_total, sold: l.sold_qty, remaining: l.remaining_qty, unit: 'u', status: l.status });
     }
 
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const { rows: seq } = await client.query(
         `SELECT COUNT(*)::int + 1 AS n FROM product_recalls WHERE EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM NOW())`,
       );
@@ -345,14 +344,8 @@ export const traceabilityRepository = {
           [recall.id, it.kind, it.lot_id, it.label, it.lot_number, it.store_id, it.certainty, it.total, it.sold, it.remaining, it.unit, it.status],
         );
       }
-      await client.query('COMMIT');
       return recall;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async listRecalls(storeId: string | null) {
