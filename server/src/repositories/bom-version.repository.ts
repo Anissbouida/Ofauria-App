@@ -90,28 +90,86 @@ export const bomVersionRepository = {
   },
 
   /**
-   * Fige la copie de travail en nouvelle version active à la date d'effet (aujourd'hui par
-   * défaut, jamais dans le futur) ; la version active devient obsolète la veille.
+   * Fige la copie de travail dans une version BROUILLON (au plus une par fiche) à la date
+   * d'effet demandée (aujourd'hui par défaut, jamais dans le futur).
    */
-  async activate(recipeId: string, input: { reason: string; validFrom?: string }, userId: string) {
+  async createDraft(recipeId: string, input: { reason: string; validFrom?: string }, userId: string) {
     const today = localIsoDate(new Date());
     const validFrom = input.validFrom ?? today;
     if (validFrom > today) throw new Error('La date d\'effet ne peut pas être dans le futur');
     return withTransaction(async () => {
       await db.query(`SELECT id FROM recipes WHERE id = $1 FOR UPDATE`, [recipeId]);
-      const cur = (await db.query(`SELECT id, version_no, valid_from::text AS valid_from, snapshot = fn_recipe_bom_snapshot($1) AS same
+      if ((await db.query(`SELECT 1 FROM bom_versions WHERE recipe_id = $1 AND status = 'brouillon'`, [recipeId])).rows.length) {
+        throw new Error('Une nouvelle version est déjà en attente d\'approbation pour cette fiche');
+      }
+      const cur = (await db.query(`SELECT version_no, valid_from::text AS valid_from, snapshot = fn_recipe_bom_snapshot($1) AS same
                                      FROM bom_versions WHERE recipe_id = $1 AND status = 'active'`, [recipeId])).rows[0];
       if (cur?.same) throw new Error('Aucune modification depuis la version active');
       if (cur && validFrom < cur.valid_from) throw new Error(`La date d'effet précède celle de la version ${cur.version_no}`);
       const next = Number((await db.query(`SELECT COALESCE(MAX(version_no), 0) + 1 AS n FROM bom_versions WHERE recipe_id = $1`, [recipeId])).rows[0].n);
-      if (cur) await db.query(`UPDATE bom_versions SET status = 'obsolete', valid_to = $2::date - 1 WHERE id = $1`, [cur.id, validFrom]);
-      const r = await db.query(
-        `INSERT INTO bom_versions (recipe_id, version_no, status, valid_from, reason, snapshot, unit_cost, created_by, activated_by, activated_at)
-         SELECT $1, $2, 'active', $3::date, $4, fn_recipe_bom_snapshot($1),
-                (SELECT v.total_cost / NULLIF(r.yield_quantity, 0) FROM v_recipe_total_cost_v2 v JOIN recipes r ON r.id = v.id WHERE v.id = $1),
-                $5, $5, now()
-         RETURNING id, version_no, status, valid_from::text AS valid_from`, [recipeId, next, validFrom, input.reason, userId]);
-      return r.rows[0];
+      return (await db.query(
+        `INSERT INTO bom_versions (recipe_id, version_no, status, valid_from, reason, snapshot, unit_cost, created_by)
+         SELECT $1, $2, 'brouillon', $3::date, $4, fn_recipe_bom_snapshot($1),
+                (SELECT v.total_cost / NULLIF(r.yield_quantity, 0) FROM v_recipe_total_cost_v2 v JOIN recipes r ON r.id = v.id WHERE v.id = $1), $5
+         RETURNING id, recipe_id, version_no, status, valid_from::text AS valid_from, unit_cost::float8 AS unit_cost`,
+        [recipeId, next, validFrom, input.reason, userId])).rows[0] as { id: string; recipe_id: string; version_no: number; status: string; valid_from: string; unit_cost: number | null };
     });
+  },
+
+  /** Le brouillon devient la version active ; l'active devient obsolète la veille de sa date d'effet. */
+  async promote(versionId: string, actorId: string) {
+    return withTransaction(async () => {
+      const d = (await db.query(`SELECT id, recipe_id, version_no, valid_from::text AS valid_from FROM bom_versions WHERE id = $1 AND status = 'brouillon' FOR UPDATE`, [versionId])).rows[0];
+      if (!d) throw new Error('Cette version n\'est plus en attente');
+      const today = localIsoDate(new Date());
+      const cur = (await db.query(`SELECT id, valid_from::text AS valid_from FROM bom_versions WHERE recipe_id = $1 AND status = 'active' FOR UPDATE`, [d.recipe_id])).rows[0];
+      // Une approbation tardive ne peut pas antidater au-delà de la version en place.
+      const validFrom = cur && d.valid_from < cur.valid_from ? today : d.valid_from;
+      if (cur) await db.query(`UPDATE bom_versions SET status = 'obsolete', valid_to = $2::date - 1 WHERE id = $1`, [cur.id, validFrom]);
+      return (await db.query(
+        `UPDATE bom_versions SET status = 'active', valid_from = $2::date, activated_by = $3, activated_at = now() WHERE id = $1
+         RETURNING id, version_no, status, valid_from::text AS valid_from`, [versionId, validFrom, actorId])).rows[0];
+    });
+  },
+
+  /** Retire un brouillon (demande refusée ou abandonnée). */
+  async discardDraft(versionId: string) {
+    await db.query(`DELETE FROM bom_versions WHERE id = $1 AND status = 'brouillon'`, [versionId]);
+  },
+
+  /** Impact d'un brouillon : coût avant / après, allergènes avant / après, ordres ouverts. */
+  async impact(versionId: string) {
+    const r = (await db.query(
+      `WITH d AS (SELECT * FROM bom_versions WHERE id = $1),
+            a AS (SELECT b.* FROM bom_versions b, d WHERE b.recipe_id = d.recipe_id AND b.status = 'active'),
+            alg AS (
+              SELECT src, array_agg(DISTINCT x ORDER BY x) AS allergens FROM (
+                SELECT 'after' AS src, unnest(g.allergens) AS x FROM d, ingredients g
+                 WHERE g.id::text IN (SELECT jsonb_array_elements(d.snapshot->'ingredients')->>'ingredient_id'
+                                      UNION SELECT jsonb_array_elements(d.snapshot->'components')->>'source_ingredient_id'
+                                      UNION SELECT jsonb_array_elements(f->'components')->>'source_ingredient_id' FROM jsonb_array_elements(d.snapshot->'formats') f)
+                UNION ALL
+                SELECT 'before', unnest(g.allergens) FROM a, ingredients g
+                 WHERE g.id::text IN (SELECT jsonb_array_elements(a.snapshot->'ingredients')->>'ingredient_id'
+                                      UNION SELECT jsonb_array_elements(a.snapshot->'components')->>'source_ingredient_id'
+                                      UNION SELECT jsonb_array_elements(f->'components')->>'source_ingredient_id' FROM jsonb_array_elements(a.snapshot->'formats') f)
+              ) z GROUP BY src)
+       SELECT d.recipe_id, d.version_no, d.reason, d.valid_from::text AS valid_from, r.name AS recipe_name,
+              a.unit_cost::float8 AS cost_before, d.unit_cost::float8 AS cost_after,
+              COALESCE((SELECT allergens FROM alg WHERE src = 'before'), '{}') AS allergens_before,
+              COALESCE((SELECT allergens FROM alg WHERE src = 'after'), '{}') AS allergens_after,
+              (SELECT COUNT(DISTINCT pp.id)::int FROM production_plan_items ppi JOIN production_plans pp ON pp.id = ppi.plan_id
+                WHERE pp.status IN ('draft', 'confirmed', 'awaiting_ingredients', 'ready_to_produce')
+                  AND (ppi.base_recipe_id = d.recipe_id OR ppi.product_id = r.product_id)) AS open_orders
+         FROM d JOIN recipes r ON r.id = d.recipe_id LEFT JOIN a ON true`, [versionId])).rows[0];
+    const before = Number(r.cost_before) || 0, after = Number(r.cost_after) || 0;
+    const added = (r.allergens_after as string[]).filter(x => !(r.allergens_before as string[]).includes(x));
+    return { ...r, cost_change_pct: before > 0 ? Math.round(Math.abs(after - before) / before * 1000) / 10 : 0, allergens_added: added };
+  },
+
+  /** Activation directe (sans circuit) : brouillon puis passage à l'état actif. */
+  async activate(recipeId: string, input: { reason: string; validFrom?: string }, userId: string) {
+    const draft = await this.createDraft(recipeId, input, userId);
+    return this.promote(draft.id, userId);
   },
 };

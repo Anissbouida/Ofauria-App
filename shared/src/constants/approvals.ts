@@ -97,6 +97,15 @@ export const APPROVAL_DOC_TYPES = {
       lines: { label: 'Nombre de factures', kind: 'number' },
     },
   },
+  bom_change: {
+    label: 'Modification de nomenclature',
+    effect: 'La nouvelle version de la fiche devient active à sa date d\'effet ; la précédente devient obsolète.',
+    fields: {
+      cost_change_pct: { label: 'Écart du coût unitaire (valeur absolue)', kind: 'number', unit: '%' },
+      open_orders: { label: 'Ordres ouverts concernés', kind: 'number' },
+      allergens_added: { label: 'Allergènes ajoutés', kind: 'number' },
+    },
+  },
   inventory_count: {
     label: 'Écart de contrôle d\'ouverture',
     effect: 'Le contrôle est validé et l\'écart répercuté sur le stock.',

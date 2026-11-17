@@ -6,6 +6,7 @@ import { purchaseRequestRepository } from '../repositories/purchase-request.repo
 import { invoiceRepository } from '../repositories/accounting.repository.js';
 import { creditNoteRepository } from '../repositories/credit-note.repository.js';
 import { openingInventoryCheckRepository } from '../repositories/opening-inventory-check.repository.js';
+import { bomVersionRepository } from '../repositories/bom-version.repository.js';
 
 /**
  * Effets des approbations par type de pièce (lot 8). Importé une fois par
@@ -65,4 +66,11 @@ registerApprovalHandler('inventory_count', {
   async onRejected(request, actorId, reason) {
     await openingInventoryCheckRepository.validateOpeningCheck({ checkId: request.doc_id, validatedBy: actorId, action: 'reject', rejectionReason: reason });
   },
+});
+
+// M4-03 : modification de nomenclature approuvée → la version brouillon devient active ;
+// refusée → le brouillon est retiré (la fiche garde ses modifications non activées).
+registerApprovalHandler('bom_change', {
+  async onApproved(request, actorId) { await bomVersionRepository.promote(request.doc_id, actorId); },
+  async onRejected(request) { await bomVersionRepository.discardDraft(request.doc_id); },
 });

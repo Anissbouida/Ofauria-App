@@ -41,10 +41,10 @@ export default function BomVersionBanner({ recipeId }: { recipeId: string }) {
   const { data: diff } = useQuery({ queryKey: ['bom-compare', recipeId, cmp], queryFn: () => api.get(`/recipes/${recipeId}/bom-versions/compare`, { params: cmp! }).then(r => r.data.data as Diff[]), enabled: !!cmp });
   const activate = useMutation({
     mutationFn: () => api.post(`/recipes/${recipeId}/bom-versions/activate`, { reason }).then(r => r.data.data),
-    onSuccess: (v: { version_no?: number; approval?: unknown }) => {
+    onSuccess: (v: { version_no?: number; pending?: boolean }) => {
       setReason(''); setShowPending(false);
       qc.invalidateQueries({ queryKey: ['bom-versions', recipeId] });
-      notify.success(v.version_no ? `Version ${v.version_no} active` : 'Demande d\'approbation envoyée');
+      notify.success(v.pending ? `Version ${v.version_no} soumise à approbation` : `Version ${v.version_no} active`);
     },
     onError: (e) => notify.error(apiErrorMessage(e)),
   });
