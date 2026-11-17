@@ -201,19 +201,19 @@ function componentQuery(table: string, keyColumn: string): string {
     SELECT c.source_recipe_id, c.source_ingredient_id,
            ing.name AS ingredient_name, ing.unit AS ingredient_unit,
            c.quantite AS qty_entered, c.unite AS unit_entered,
-           (c.quantite * fn_unit_conv(c.unite, ing.unit::text, ing.densite_kg_l))
+           (c.quantite * fn_convert_factor(c.unite, ing.unit::text, 'ingredient', ing.id))
              / NULLIF(1 - COALESCE(c.perte_pct, 0) / 100, 0) AS qty_ing_base,
            (((lower(c.unite) IN ('mg','g','kg') AND lower(ing.unit::text) IN ('ml','cl','dl','l'))
               OR (lower(c.unite) IN ('ml','cl','dl','l') AND lower(ing.unit::text) IN ('mg','g','kg')))
              AND ing.densite_kg_l IS NULL) AS conv_incertaine,
            br.name AS sub_name, br.is_base AS sub_is_base,
            br.yield_unit AS sub_yield_unit, br.yield_quantity AS sub_yield_quantity,
-           c.quantite * fn_unit_conv(c.unite, br.yield_unit) AS qty_sub_net,
+           c.quantite * fn_convert_factor(c.unite, br.yield_unit, NULL, NULL) AS qty_sub_net,
            COALESCE(
-             (c.quantite * fn_unit_conv(c.unite, br.yield_unit))
+             (c.quantite * fn_convert_factor(c.unite, br.yield_unit, NULL, NULL))
                / NULLIF(1 - COALESCE(br.perte_standard_pct, 0) / 100, 0)
                / NULLIF(1 - COALESCE(c.perte_pct, 0) / 100, 0),
-             (c.quantite * fn_unit_conv(c.unite, br.yield_unit))
+             (c.quantite * fn_convert_factor(c.unite, br.yield_unit, NULL, NULL))
                / NULLIF(1 - COALESCE(c.perte_pct, 0) / 100, 0)
            ) AS qty_sub_gross
       FROM ${table} c
