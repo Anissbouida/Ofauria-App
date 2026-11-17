@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { reorderPointRepository } from '../repositories/reorder-point.repository.js';
+import { cycleCountJob } from '../repositories/abc-cycle-count.repository.js';
 import { logger } from '../utils/logger.js';
 import { processOutbox, enqueueEmail } from './mailer.js';
 import { getParameter } from './module-parameters.service.js';
@@ -487,6 +488,7 @@ export const JOBS: Record<string, Handler> = {
   hr_documents_due: hrDocumentsDue,
   recurring_entries: recurringEntries,
   reorder_points: reorderPoints,
+  cycle_counts: cycleCountJob,
   housekeeping,
 };
 

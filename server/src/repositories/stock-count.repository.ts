@@ -25,6 +25,8 @@ async function theoretical(client: Runner, line: { item_kind: string; ingredient
 export type CountInput = {
   title?: string | null; scope?: 'full' | 'partial'; itemKinds?: 'ingredient' | 'packaging' | 'both';
   categoryIds?: string[]; blind?: boolean; includeInactive?: boolean; notes?: string | null; countDate?: string;
+  /** Inventaire tournant (G5-03) : seulement ces ingrédients (campagne partielle). */
+  ingredientIds?: string[];
 };
 
 export const stockCountRepository = {
@@ -79,7 +81,7 @@ export const stockCountRepository = {
       const c = await client.query(
         `INSERT INTO stock_counts (number, store_id, title, scope, item_kinds, category_ids, blind, notes, count_date, created_by)
          VALUES ($1, $2, $3, $4, $5, $6::uuid[], $7, $8, COALESCE($9::date, CURRENT_DATE), $10) RETURNING id`,
-        [number, ctx.storeId, input.title?.trim() || null, cats.length ? 'partial' : (input.scope ?? 'full'), kinds, cats,
+        [number, ctx.storeId, input.title?.trim() || null, (cats.length || input.ingredientIds?.length) ? 'partial' : (input.scope ?? 'full'), kinds, cats,
          input.blind ?? true, input.notes?.trim() || null, input.countDate ?? null, ctx.userId]);
       const id = c.rows[0].id as string;
       // $2 (catégories) et $3 (magasin) toujours référencés : un paramètre inutilisé n'a pas de type pour PostgreSQL.
@@ -95,9 +97,11 @@ export const stockCountRepository = {
                              WHERE l.ingredient_id = i.id AND ${storeLots} AND l.status = 'active'), 0)
              FROM ingredients i
             WHERE COALESCE(i.non_stocke, false) = false ${catFilter('i.category_id')}
-              AND ($4::boolean OR EXISTS (SELECT 1 FROM ingredient_lots l WHERE l.ingredient_id = i.id AND ${storeLots} AND l.status = 'active' AND l.economat_quantity + l.pesage_quantity <> 0)
+              AND (cardinality($5::uuid[]) = 0 OR i.id = ANY($5::uuid[]))
+              AND ($4::boolean OR cardinality($5::uuid[]) > 0
+                   OR EXISTS (SELECT 1 FROM ingredient_lots l WHERE l.ingredient_id = i.id AND ${storeLots} AND l.status = 'active' AND l.economat_quantity + l.pesage_quantity <> 0)
                    OR EXISTS (SELECT 1 FROM inventory_transactions t WHERE t.ingredient_id = i.id AND t.created_at > now() - interval '180 days'))`,
-          [id, cats, ctx.storeId, !!input.includeInactive]);
+          [id, cats, ctx.storeId, !!input.includeInactive, input.ingredientIds ?? []]);
       }
       if (kinds !== 'ingredient') {
         await client.query(

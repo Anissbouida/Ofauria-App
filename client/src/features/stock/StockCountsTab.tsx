@@ -58,6 +58,7 @@ export default function StockCountsTab() {
         </StatusBanner>
       )}
       {creating && !current && <NewCount onCancel={() => setCreating(false)} onCreated={c => { setCreating(false); setOpenId(c.id); }} />}
+      {isDirection && <CycleCountPanel canOpen={!current} onOpened={(id) => setOpenId(id)} />}
 
       <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Historique des inventaires</div>
       {!data?.data.length ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', margin: 0 }}>Aucun inventaire enregistré dans l'application.</p> : (
@@ -314,5 +315,54 @@ function AddLine({ countId, kinds, onDone }: { countId: string; kinds: StockCoun
       <button className="odoo-btn-primary" disabled={!value || add.isPending} onClick={() => add.mutate()}>Ajouter</button>
       <button className="odoo-pager-btn" aria-label="Fermer" onClick={onDone}><X size={13} /></button>
     </div>
+  );
+}
+
+/**
+ * Inventaire tournant (G5-03) : classes ABC (valeur consommée sur 12 mois) et articles
+ * dus selon la fréquence de leur classe ; ouvre une campagne partielle avec les articles dus.
+ */
+function CycleCountPanel({ canOpen, onOpened }: { canOpen: boolean; onOpened: (id: string) => void }) {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ['stock-abc'], queryFn: stockCountsApi.abc });
+  const classify = useMutation({
+    mutationFn: stockCountsApi.abcClassify,
+    onSuccess: (r) => { qc.invalidateQueries({ queryKey: ['stock-abc'] }); notify.success(`Classes recalculées : A ${r.A} · B ${r.B} · C ${r.C}`); },
+    onError: (e) => notify.error(apiErrorMessage(e)),
+  });
+  const open = useMutation({
+    mutationFn: stockCountsApi.cycle,
+    onSuccess: (c) => { qc.invalidateQueries({ queryKey: ['stock-counts'] }); qc.invalidateQueries({ queryKey: ['stock-abc'] }); onOpened(c.id); },
+    onError: (e) => notify.error(apiErrorMessage(e)),
+  });
+  if (!data) return null;
+  const days = { A: data.params.a_days, B: data.params.b_days, C: data.params.c_days };
+  const due = data.classes.reduce((t, c) => t + c.due, 0);
+  return (
+    <section style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, display: 'grid', gap: 10 }} aria-label="Inventaire tournant">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <strong>Inventaire tournant</strong>
+        <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
+          Classes par valeur consommée sur 12 mois ; A compté tous les {days.A} j, B tous les {days.B} j, C tous les {days.C} j.
+        </span>
+        <div style={{ flex: 1 }} />
+        <button type="button" className="odoo-btn-secondary" disabled={classify.isPending} onClick={() => classify.mutate()}>Recalculer les classes</button>
+        <button type="button" className="odoo-btn-primary" disabled={!canOpen || !due || open.isPending} onClick={() => open.mutate()}
+          title={!canOpen ? 'Un inventaire est déjà ouvert' : undefined}>
+          Ouvrir la campagne ({Math.min(due, data.params.max_lines)} article{Math.min(due, data.params.max_lines) > 1 ? 's' : ''})
+        </button>
+      </div>
+      <table className="odoo-table">
+        <thead><tr><th>Classe</th><th style={{ textAlign: 'right' }}>Articles</th><th style={{ textAlign: 'right' }}>Valeur consommée (12 mois)</th><th style={{ textAlign: 'right' }}>À compter</th></tr></thead>
+        <tbody>{data.classes.map(c => (
+          <tr key={c.class}>
+            <td><strong>{c.class}</strong></td>
+            <td style={{ textAlign: 'right' }}>{c.items}</td>
+            <td style={{ textAlign: 'right' }}>{c.value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH</td>
+            <td style={{ textAlign: 'right' }}>{c.due ? <StatusTag tone="todo" label={String(c.due)} /> : '0'}</td>
+          </tr>
+        ))}</tbody>
+      </table>
+    </section>
   );
 }

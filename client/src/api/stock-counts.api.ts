@@ -29,7 +29,17 @@ export const stockCountsApi = {
   action: (id: string, action: 'submit' | 'reopen' | 'cancel'): Promise<StockCount> => api.post(`/stock-counts/${id}/${action}`).then(r => r.data.data),
   validate: (id: string, zeroUncounted: boolean): Promise<StockCount> => api.post(`/stock-counts/${id}/validate`, { zeroUncounted }).then(r => r.data.data),
   sheet: (id: string) => api.get(`/stock-counts/${id}/sheet`, { responseType: 'blob' }).then(r => r.data as Blob),
+  /** Classes ABC et inventaire tournant (G5-03). */
+  abc: (): Promise<AbcBoard> => api.get('/stock-counts/abc').then(r => r.data.data),
+  abcClassify: (): Promise<{ A: number; B: number; C: number }> => api.post('/stock-counts/abc/classify', {}).then(r => r.data.data),
+  cycle: (): Promise<StockCount> => api.post('/stock-counts/cycle', {}).then(r => r.data.data),
 };
+
+export interface AbcBoard {
+  params: { a_share: number; b_share: number; a_days: number; b_days: number; c_days: number; max_lines: number };
+  classes: { class: 'A' | 'B' | 'C'; items: number; due: number; value: number }[];
+  rows: { ingredient_id: string; ingredient_name: string; abc_class: 'A' | 'B' | 'C'; abc_value: number; last_count: string | null; due_date: string | null; due: boolean }[];
+}
 
 /**
  * Quantité saisie au comptage : nombre, ou petite formule de comptage par contenants

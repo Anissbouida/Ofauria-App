@@ -2119,6 +2119,11 @@
   "magasinier",
   "manager"
  ],
+ "GET /stock-counts/abc": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
  "GET /stock-frigo": null,
  "GET /stock-frigo/:id/transactions": null,
  "GET /stock-frigo/available/:productId": null,
@@ -4079,6 +4084,14 @@
   "manager"
  ],
  "POST /stock-counts/:id/validate": [
+  "admin",
+  "manager"
+ ],
+ "POST /stock-counts/abc/classify": [
+  "admin",
+  "manager"
+ ],
+ "POST /stock-counts/cycle": [
   "admin",
   "manager"
  ],

@@ -6,6 +6,10 @@ import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js
 import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { stockCountRepository } from '../repositories/stock-count.repository.js';
+import { abcCycleCountRepository } from '../repositories/abc-cycle-count.repository.js';
+import { validate } from '../middleware/validate.middleware.js';
+
+const emptyBody = z.object({}).passthrough();
 
 /**
  * Inventaire physique (mig 367). Le magasin (magasinier, gérant) ouvre et compte ; la
@@ -45,6 +49,19 @@ stockCountsRouter.post('/', authenticate, can('stock.stock_counts.create'), asyn
   }).safeParse(req.body);
   if (!b.success) { bad(res, b.error.issues[0]?.message); return; }
   const r = await stockCountRepository.create(b.data, { userId: req.user!.userId, storeId: req.user!.storeId ?? null });
+  if ('error' in r) { bad(res, r.error, 409); return; }
+  res.status(201).json({ success: true, data: present(r.data!, req) });
+}));
+
+// Classes ABC et inventaire tournant (G5-03) — avant /:id.
+stockCountsRouter.get('/abc', authenticate, can('stock.stock_counts.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await abcCycleCountRepository.board(req.user!.storeId ?? null) });
+}));
+stockCountsRouter.post('/abc/classify', authenticate, can('stock.stock_counts.cycle'), validate(emptyBody), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await abcCycleCountRepository.classify(req.user!.storeId ?? null) });
+}));
+stockCountsRouter.post('/cycle', authenticate, can('stock.stock_counts.cycle'), validate(emptyBody), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const r = await abcCycleCountRepository.generate(req.user!.storeId ?? null, req.user!.userId);
   if ('error' in r) { bad(res, r.error, 409); return; }
   res.status(201).json({ success: true, data: present(r.data!, req) });
 }));
