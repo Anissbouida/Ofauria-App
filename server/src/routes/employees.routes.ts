@@ -1,7 +1,7 @@
 import { Router, json as expressJson, type Request, type Response, type NextFunction } from 'express';
 import { employeeController, scheduleController, attendanceController, leaveController, payrollController, shiftController, weeklyPayrollController, biweeklyPayrollController, salaryAdvanceController } from '../controllers/employee.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { authorizeModule } from '../middleware/module.middleware.js';
 import { payrollConfigController } from '../controllers/payroll-config.controller.js';
 import { hrContractController } from '../controllers/hr-contract.controller.js';
@@ -26,7 +26,6 @@ import {
   createContractSchema, contractAvenantSchema, renewContractSchema, endContractSchema, finalSettlementSchema,
   selfLeaveRequestSchema, selfAdvanceRequestSchema, decideAdvanceRequestSchema,
 } from '../validators/employees.validator.js';
-import { ROLES } from '@ofauria/shared';
 
 // Droits : module « employees » (Personnel) via authorizeModule — view pour les
 // lectures, create/edit pour les saisies. Les suppressions de saisies courantes
@@ -57,13 +56,13 @@ router.get('/hr-alerts', authenticate, authorizeModule('employees', 'view'), asy
 // Solde de tout compte : pieces (recu, certificat) et annulation (admin).
 router.get('/settlements/:id/receipt', authenticate, authorizeModule('employees', 'view'), asyncHandler(finalSettlementController.receipt));
 router.get('/settlements/:id/certificate', authenticate, authorizeModule('employees', 'view'), asyncHandler(finalSettlementController.certificate));
-router.post('/settlements/:id/cancel', authenticate, authorize(ROLES.ADMIN), asyncHandler(finalSettlementController.cancel));
+router.post('/settlements/:id/cancel', authenticate, can('employees.cancel'), asyncHandler(finalSettlementController.cancel));
 router.get('/documents/:docId/file', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.download));
 router.delete('/documents/:docId', authenticate, authorizeModule('employees', 'edit'), asyncHandler(hrContractController.removeDocument));
 router.get('/:id', authenticate, authorizeModule('employees', 'view'), asyncHandler(employeeController.getById));
 // G3-11 — export des données du salarié (loi 09-08) : droit de modification sur le Personnel.
 router.get('/:id/personal-data', authenticate, authorizeModule('employees', 'edit'), asyncHandler(employeeController.personalData));
-router.post('/', authenticate, authorize(ROLES.ADMIN), validate(createEmployeeSchema), asyncHandler(employeeController.create));
+router.post('/', authenticate, can('employees.create'), validate(createEmployeeSchema), asyncHandler(employeeController.create));
 router.put('/:id', authenticate, authorizeModule('employees', 'edit'), validate(updateEmployeeSchema), asyncHandler(employeeController.update));
 router.get('/:id/salary-history', authenticate, authorizeModule('employees', 'view'), asyncHandler(employeeController.salaryHistory));
 // Contrats et avenants (lot 4) : droit Personnel en edition.
@@ -78,7 +77,7 @@ router.get('/:employeeId/attestations/:kind', authenticate, authorizeModule('emp
 // Depart : apercu (droit Personnel), validation (admin : sortie des effectifs et paie).
 router.get('/:employeeId/settlements', authenticate, authorizeModule('employees', 'view'), asyncHandler(finalSettlementController.list));
 router.post('/:employeeId/settlements/preview', authenticate, authorizeModule('employees', 'view'), validate(finalSettlementSchema), asyncHandler(finalSettlementController.preview));
-router.post('/:employeeId/settlements', authenticate, authorize(ROLES.ADMIN), validate(finalSettlementSchema), asyncHandler(finalSettlementController.validate));
+router.post('/:employeeId/settlements', authenticate, can('employees.settlements'), validate(finalSettlementSchema), asyncHandler(finalSettlementController.validate));
 // Documents (stockes en base, 5 Mo max) : donnees personnelles, droit Personnel.
 const documentUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 router.get('/:employeeId/documents', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.documents));
@@ -90,9 +89,9 @@ const singleDocument = (req: Request, res: Response, next: NextFunction) =>
   });
 router.post('/:employeeId/documents', authenticate, authorizeModule('employees', 'edit'), singleDocument, asyncHandler(hrContractController.upload));
 // GET /:id/dependencies : compte les references vers l'employe (pour preview hard delete).
-router.get('/:id/dependencies', authenticate, authorize(ROLES.ADMIN), asyncHandler(employeeController.dependencies));
+router.get('/:id/dependencies', authenticate, can('employees.view'), asyncHandler(employeeController.dependencies));
 // DELETE /:id : soft delete par defaut. ?hard=true cascade les enfants + supprime l'employe.
-router.delete('/:id', authenticate, authorize(ROLES.ADMIN), asyncHandler(employeeController.remove));
+router.delete('/:id', authenticate, can('employees.delete'), asyncHandler(employeeController.remove));
 
 export default router;
 
@@ -131,12 +130,12 @@ leavesRouter.get('/balances', authenticate, authorizeModule('employees', 'view')
 leavesRouter.get('/preview', authenticate, authorizeModule('employees', 'view'), asyncHandler(leaveController.preview));
 // Jours feries : lecture droit Personnel, modification admin (impact paie et soldes).
 leavesRouter.get('/holidays', authenticate, authorizeModule('employees', 'view'), asyncHandler(leaveController.holidays));
-leavesRouter.put('/holidays', authenticate, authorize(ROLES.ADMIN), validate(holidaySchema), asyncHandler(leaveController.upsertHoliday));
-leavesRouter.delete('/holidays/:date', authenticate, authorize(ROLES.ADMIN), asyncHandler(leaveController.removeHoliday));
+leavesRouter.put('/holidays', authenticate, can('employees.leaves.edit'), validate(holidaySchema), asyncHandler(leaveController.upsertHoliday));
+leavesRouter.delete('/holidays/:date', authenticate, can('employees.leaves.delete'), asyncHandler(leaveController.removeHoliday));
 // Ajustements de solde (reprise d'un solde initial, regularisation) : admin.
 leavesRouter.get('/adjustments/:employeeId', authenticate, authorizeModule('employees', 'view'), asyncHandler(leaveController.adjustments));
-leavesRouter.post('/adjustments/:employeeId', authenticate, authorize(ROLES.ADMIN), validate(leaveAdjustmentSchema), asyncHandler(leaveController.createAdjustment));
-leavesRouter.delete('/adjustments/entry/:id', authenticate, authorize(ROLES.ADMIN), asyncHandler(leaveController.removeAdjustment));
+leavesRouter.post('/adjustments/:employeeId', authenticate, can('employees.leaves.adjustments'), validate(leaveAdjustmentSchema), asyncHandler(leaveController.createAdjustment));
+leavesRouter.delete('/adjustments/entry/:id', authenticate, can('employees.leaves.delete'), asyncHandler(leaveController.removeAdjustment));
 leavesRouter.post('/', authenticate, authorizeModule('employees', 'create'), validate(createLeaveSchema), asyncHandler(leaveController.create));
 leavesRouter.post('/:id/approve', authenticate, authorizeModule('employees', 'edit'), asyncHandler(leaveController.approve));
 leavesRouter.post('/:id/reject', authenticate, authorizeModule('employees', 'edit'), asyncHandler(leaveController.reject));
@@ -161,21 +160,21 @@ payrollRouter.use('/biweekly', biweeklyPayrollRouter);
 // Lecture : droit Personnel ; bareme, reglages employeur, rubriques et
 // cloture : admin (impact legal et comptable sur tous les bulletins).
 payrollRouter.get('/settings', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.getSettings));
-payrollRouter.put('/settings', authenticate, authorize(ROLES.ADMIN), validate(payrollSettingsSchema), asyncHandler(payrollConfigController.updateSettings));
+payrollRouter.put('/settings', authenticate, can('employees.payroll.edit'), validate(payrollSettingsSchema), asyncHandler(payrollConfigController.updateSettings));
 // G0-13 : une nouvelle loi de finances = une nouvelle version datée, pas une réécriture.
-payrollRouter.post('/tax-scales', authenticate, authorize(ROLES.ADMIN), validate(createTaxScaleSchema), asyncHandler(payrollConfigController.createTaxScale));
-payrollRouter.put('/tax-scales/:id', authenticate, authorize(ROLES.ADMIN), validate(updateTaxScaleSchema), asyncHandler(payrollConfigController.updateTaxScale));
+payrollRouter.post('/tax-scales', authenticate, can('employees.payroll.tax_scales'), validate(createTaxScaleSchema), asyncHandler(payrollConfigController.createTaxScale));
+payrollRouter.put('/tax-scales/:id', authenticate, can('employees.payroll.tax_scales'), validate(updateTaxScaleSchema), asyncHandler(payrollConfigController.updateTaxScale));
 payrollRouter.get('/rubriques', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.listRubriques));
-payrollRouter.post('/rubriques', authenticate, authorize(ROLES.ADMIN), validate(createRubriqueSchema), asyncHandler(payrollConfigController.createRubrique));
-payrollRouter.put('/rubriques/:id', authenticate, authorize(ROLES.ADMIN), validate(updateRubriqueSchema), asyncHandler(payrollConfigController.updateRubrique));
+payrollRouter.post('/rubriques', authenticate, can('employees.payroll.rubriques'), validate(createRubriqueSchema), asyncHandler(payrollConfigController.createRubrique));
+payrollRouter.put('/rubriques/:id', authenticate, can('employees.payroll.rubriques'), validate(updateRubriqueSchema), asyncHandler(payrollConfigController.updateRubrique));
 payrollRouter.get('/period', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.period));
-payrollRouter.post('/period/close', authenticate, authorize(ROLES.ADMIN), validate(payrollPeriodSchema), asyncHandler(payrollConfigController.closePeriod));
-payrollRouter.post('/period/reopen', authenticate, authorize(ROLES.ADMIN), validate(payrollPeriodSchema), asyncHandler(payrollConfigController.reopenPeriod));
+payrollRouter.post('/period/close', authenticate, can('employees.payroll.close'), validate(payrollPeriodSchema), asyncHandler(payrollConfigController.closePeriod));
+payrollRouter.post('/period/reopen', authenticate, can('employees.payroll.reopen'), validate(payrollPeriodSchema), asyncHandler(payrollConfigController.reopenPeriod));
 // Declarations CNSS / IR / CIMR : etats (droit Personnel), declarer et regler (admin).
 payrollRouter.get('/declarations', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.declarations));
 payrollRouter.get('/declarations/annual-ir', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollConfigController.annualIr));
-payrollRouter.post('/declarations/declare', authenticate, authorize(ROLES.ADMIN), validate(declarePayrollSchema), asyncHandler(payrollConfigController.declare));
-payrollRouter.post('/declarations/settle', authenticate, authorize(ROLES.ADMIN), validate(settlePayrollDeclarationSchema), asyncHandler(payrollConfigController.settle));
+payrollRouter.post('/declarations/declare', authenticate, can('employees.payroll.declare'), validate(declarePayrollSchema), asyncHandler(payrollConfigController.declare));
+payrollRouter.post('/declarations/settle', authenticate, can('employees.payroll.settle'), validate(settlePayrollDeclarationSchema), asyncHandler(payrollConfigController.settle));
 // Fichier e-BDS Damancom depuis le preetabli CNSS (mig 325).
 const preetabliUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
 payrollRouter.post('/declarations/ebds', authenticate, authorizeModule('employees', 'view'), preetabliUpload.single('file'), asyncHandler(payrollComplianceController.ebds));
@@ -210,8 +209,8 @@ salaryAdvancesRouter.get('/outstanding', authenticate, authorizeModule('employee
 salaryAdvancesRouter.post('/', authenticate, authorizeModule('employees', 'create'), validate(createAdvanceSchema), asyncHandler(salaryAdvanceController.create));
 // Suppression reservee admin : reverse le decaissement + son ecriture comptable.
 // Modification (plan de retenue, notes ; montant/mode/date si aucune retenue) : admin only
-salaryAdvancesRouter.put('/:id', authenticate, authorize(ROLES.ADMIN), validate(updateAdvanceSchema), asyncHandler(salaryAdvanceController.update));
-salaryAdvancesRouter.delete('/:id', authenticate, authorize(ROLES.ADMIN), asyncHandler(salaryAdvanceController.remove));
+salaryAdvancesRouter.put('/:id', authenticate, can('employees.salary_advances.edit'), validate(updateAdvanceSchema), asyncHandler(salaryAdvanceController.update));
+salaryAdvancesRouter.delete('/:id', authenticate, can('employees.salary_advances.delete'), asyncHandler(salaryAdvanceController.remove));
 
 // Weekly payroll (lundi = jour de paie pour les employes hebdo)
 export const weeklyPayrollRouter = Router();

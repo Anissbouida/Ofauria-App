@@ -1,14 +1,12 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
 import { commissionRepository as repo } from '../repositories/commission.repository.js';
 
 /** Commissions commerciales (barèmes mig 123 + relevé). Admin / gérant. */
 export const commissionsRouter = Router();
-const AM = [authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)];
 const uuid = z.string().uuid();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const bad = (res: Response, m = 'Paramètres invalides') => res.status(400).json({ success: false, error: { message: m } });
@@ -23,12 +21,12 @@ const ruleBody = z.object({
   validTo: isoDate.nullish(),
 });
 
-commissionsRouter.get('/rules', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+commissionsRouter.get('/rules', authenticate, can('employees.commissions.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const employeeId = typeof req.query.employeeId === 'string' ? req.query.employeeId : undefined;
   res.json({ success: true, data: await repo.listRules(employeeId) });
 }));
 
-commissionsRouter.post('/rules', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+commissionsRouter.post('/rules', authenticate, can('employees.commissions.rules'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = ruleBody.safeParse(req.body);
   if (!r.success) { bad(res, r.error.issues[0]?.message); return; }
   const out = await repo.createRule(r.data);
@@ -36,7 +34,7 @@ commissionsRouter.post('/rules', ...AM, asyncHandler(async (req: AuthRequest, re
   res.status(201).json({ success: true, data: out });
 }));
 
-commissionsRouter.put('/rules/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+commissionsRouter.put('/rules/:id', authenticate, can('employees.commissions.rules'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
   const r = ruleBody.safeParse(req.body);
   if (!r.success) { bad(res, r.error.issues[0]?.message); return; }
@@ -45,13 +43,13 @@ commissionsRouter.put('/rules/:id', ...AM, asyncHandler(async (req: AuthRequest,
   res.json({ success: true, data: out });
 }));
 
-commissionsRouter.delete('/rules/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+commissionsRouter.delete('/rules/:id', authenticate, can('employees.commissions.delete'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
   await repo.deleteRule(req.params.id);
   res.json({ success: true, data: null });
 }));
 
-commissionsRouter.get('/statement', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+commissionsRouter.get('/statement', authenticate, can('employees.commissions.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ from: isoDate, to: isoDate, employeeId: uuid.optional() }).safeParse(req.query);
   if (!r.success) { bad(res); return; }
   res.json({ success: true, data: await repo.statement({ ...r.data, storeId: storeOf(req) ?? null }) });
@@ -65,11 +63,11 @@ const schemeBody = z.object({
   tiers: z.array(z.object({ fromAmount: z.coerce.number().min(0), ratePercent: z.coerce.number().min(0).max(100) })).min(1),
 });
 
-commissionsRouter.get('/schemes', ...AM, asyncHandler(async (_req: AuthRequest, res: Response) => {
+commissionsRouter.get('/schemes', authenticate, can('employees.commissions.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await repo.listSchemes() });
 }));
 
-commissionsRouter.post('/schemes', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+commissionsRouter.post('/schemes', authenticate, can('employees.commissions.schemes'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = schemeBody.safeParse(req.body);
   if (!r.success) { bad(res, r.error.issues[0]?.message); return; }
   const out = await repo.createScheme({ ...r.data, storeId: storeOf(req) ?? null }, req.user!.userId);
@@ -77,7 +75,7 @@ commissionsRouter.post('/schemes', ...AM, asyncHandler(async (req: AuthRequest, 
   res.status(201).json({ success: true, data: out });
 }));
 
-commissionsRouter.put('/schemes/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+commissionsRouter.put('/schemes/:id', authenticate, can('employees.commissions.schemes'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
   const r = schemeBody.safeParse(req.body);
   if (!r.success) { bad(res, r.error.issues[0]?.message); return; }
@@ -86,32 +84,32 @@ commissionsRouter.put('/schemes/:id', ...AM, asyncHandler(async (req: AuthReques
   res.json({ success: true, data: out });
 }));
 
-commissionsRouter.delete('/schemes/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+commissionsRouter.delete('/schemes/:id', authenticate, can('employees.commissions.delete'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
   await repo.deleteScheme(req.params.id);
   res.json({ success: true, data: null });
 }));
 
 /* ─── Affectation d'un contrat-cadre à un vendeur ──────────────────────── */
-commissionsRouter.get('/assignments', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+commissionsRouter.get('/assignments', authenticate, can('employees.commissions.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const employeeId = typeof req.query.employeeId === 'string' ? req.query.employeeId : undefined;
   res.json({ success: true, data: await repo.listAssignments(employeeId) });
 }));
 
-commissionsRouter.post('/assignments', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+commissionsRouter.post('/assignments', authenticate, can('employees.commissions.assignments'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ employeeId: uuid, schemeId: uuid, validFrom: isoDate, validTo: isoDate.nullish() }).safeParse(req.body);
   if (!r.success) { bad(res, r.error.issues[0]?.message); return; }
   res.status(201).json({ success: true, data: await repo.assignScheme(r.data) });
 }));
 
-commissionsRouter.delete('/assignments/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+commissionsRouter.delete('/assignments/:id', authenticate, can('employees.commissions.delete'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
   await repo.unassignScheme(req.params.id);
   res.json({ success: true, data: null });
 }));
 
 /* ─── Versement sur bulletin de paie (mig 393) ─────────────────────────── */
-commissionsRouter.post('/payout', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+commissionsRouter.post('/payout', authenticate, can('employees.commissions.payout'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({
     from: isoDate, to: isoDate,
     payMonth: z.coerce.number().int().min(1).max(12),
@@ -124,7 +122,7 @@ commissionsRouter.post('/payout', ...AM, asyncHandler(async (req: AuthRequest, r
   res.json({ success: true, data: out });
 }));
 
-commissionsRouter.get('/payouts', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+commissionsRouter.get('/payouts', authenticate, can('employees.commissions.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const employeeId = typeof req.query.employeeId === 'string' ? req.query.employeeId : undefined;
   res.json({ success: true, data: await repo.listPayouts({ employeeId, limit: 100 }) });
 }));
