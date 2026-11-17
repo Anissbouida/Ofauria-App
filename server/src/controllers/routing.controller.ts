@@ -42,28 +42,25 @@ export const routingController = {
     res.json({ success: true, data: r });
   },
   async createRouting(req: AuthRequest, res: Response) {
-    const b = req.body as Record<string, unknown>;
-    if (!b.name) { res.status(400).json({ success: false, error: { message: 'Nom requis' } }); return; }
+    const b = req.body as { name: string; productId?: string | null; recipeId?: string | null; notes?: string | null; batchSize?: number | '' | null };
     res.status(201).json({ success: true, data: await routingRepository.createRouting({
-      name: String(b.name), productId: b.productId ? String(b.productId) : null, notes: b.notes ? String(b.notes) : null,
+      name: b.name, productId: b.productId ?? null, recipeId: b.recipeId ?? null, notes: b.notes ?? null,
       batchSize: b.batchSize != null && b.batchSize !== '' ? Number(b.batchSize) : undefined,
       storeId: req.user!.storeId ?? null, userId: req.user!.userId,
     }) });
   },
   async updateRouting(req: AuthRequest, res: Response) {
-    const b = req.body as Record<string, unknown>;
-    const ops = Array.isArray(b.operations) ? (b.operations as Record<string, unknown>[]).map(o => ({
-      operationName: String(o.operationName ?? ''), workCenterId: o.workCenterId ? String(o.workCenterId) : null, durationMin: Number(o.durationMin) || 0,
-    })) : undefined;
-    const r = await routingRepository.updateRouting(req.params.id, {
-      name: b.name !== undefined ? String(b.name) : undefined,
-      productId: b.productId !== undefined ? (b.productId ? String(b.productId) : null) : undefined,
-      notes: b.notes !== undefined ? (b.notes ? String(b.notes) : null) : undefined,
+    const b = req.body as Record<string, any>;
+    const r = await routingRepository.updateRouting(req.params.id as string, {
+      name: b.name, productId: b.productId, recipeId: b.recipeId, notes: b.notes,
       batchSize: b.batchSize != null && b.batchSize !== '' ? Number(b.batchSize) : undefined,
-      operations: ops,
+      operations: b.operations,
     });
     if (!r) { res.status(404).json({ success: false, error: { message: 'Gamme introuvable' } }); return; }
     res.json({ success: true, data: r });
+  },
+  async getRoutingForRecipe(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await routingRepository.getRoutingForRecipe(req.params.recipeId as string) });
   },
   async setRoutingActive(req: AuthRequest, res: Response) {
     const r = await routingRepository.setRoutingActive(req.params.id, Boolean((req.body as Record<string, unknown>).active));

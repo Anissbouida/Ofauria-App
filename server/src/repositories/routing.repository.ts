@@ -1,3 +1,4 @@
+import type { RoutingOperationInput } from '../validators/routing.validator.js';
 import { db } from '../config/database.js';
 
 /**
@@ -6,7 +7,7 @@ import { db } from '../config/database.js';
  */
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-type OperationInput = { operationName: string; workCenterId?: string | null; durationMin: number };
+type OperationInput = Partial<RoutingOperationInput> & { operationName: string; durationMin: number; workCenterId?: string | null };
 
 export const routingRepository = {
   /* ── Postes de travail ── */
@@ -52,12 +53,13 @@ export const routingRepository = {
     if (storeId) { params.push(storeId); where = `WHERE (r.store_id IS NULL OR r.store_id = $1)`; }
     const rows = await db.query(
       `SELECT r.*, p.name AS product_name,
-              COALESCE(SUM(ro.duration_min), 0)::int AS total_minutes,
-              ROUND(COALESCE(SUM(ro.duration_min * wc.hourly_cost / 60.0), 0)::numeric, 2)::float8 AS labor_cost,
+              COALESCE(SUM(m.labor_min), 0)::float8 AS total_minutes,
+              ROUND(COALESCE(SUM(m.labor_min * wc.hourly_cost / 60.0), 0)::numeric, 2)::float8 AS labor_cost,
               COUNT(ro.id)::int AS operations_count
          FROM routings r
          LEFT JOIN products p ON p.id = r.product_id
          LEFT JOIN routing_operations ro ON ro.routing_id = r.id
+         LEFT JOIN LATERAL fn_routing_op_minutes(ro.id, r.batch_size) m ON ro.id IS NOT NULL
          LEFT JOIN work_centers wc ON wc.id = ro.work_center_id
          ${where}
         GROUP BY r.id, p.name
@@ -67,40 +69,58 @@ export const routingRepository = {
 
   async getRouting(id: string) {
     const r = (await db.query(
-      `SELECT r.*, p.name AS product_name FROM routings r LEFT JOIN products p ON p.id = r.product_id WHERE r.id = $1`, [id])).rows[0];
+      `SELECT r.*, p.name AS product_name, rc.name AS recipe_name FROM routings r
+         LEFT JOIN products p ON p.id = r.product_id LEFT JOIN recipes rc ON rc.id = r.recipe_id WHERE r.id = $1`, [id])).rows[0];
     if (!r) return null;
     const ops = (await db.query(
-      `SELECT o.id, o.sequence, o.operation_name, o.work_center_id, o.duration_min, wc.name AS work_center_name,
+      `SELECT o.id, o.sequence, o.operation_name, o.operation_name_ar, o.work_center_id, o.duration_min, wc.name AS work_center_name,
+              o.op_type, o.setup_min::float8, o.machine_min_per_unit::float8, o.labor_min_per_unit::float8, o.base_quantity::float8,
+              o.control_point, o.is_blocking, o.temperature_c::float8, o.instructions,
+              m.labor_min::float8 AS planned_labor_min, m.machine_min::float8 AS planned_machine_min,
               COALESCE(wc.hourly_cost, 0)::float8 AS hourly_cost,
-              ROUND((o.duration_min * COALESCE(wc.hourly_cost, 0) / 60.0)::numeric, 2)::float8 AS operation_cost
-         FROM routing_operations o LEFT JOIN work_centers wc ON wc.id = o.work_center_id
+              ROUND((m.labor_min * COALESCE(wc.hourly_cost, 0) / 60.0)::numeric, 2)::float8 AS operation_cost
+         FROM routing_operations o
+         JOIN routings r ON r.id = o.routing_id
+         LEFT JOIN LATERAL fn_routing_op_minutes(o.id, r.batch_size) m ON true
+         LEFT JOIN work_centers wc ON wc.id = o.work_center_id
         WHERE o.routing_id = $1 ORDER BY o.sequence, o.operation_name`, [id])).rows;
     const laborCost = round2(ops.reduce((s: number, o: { operation_cost: number }) => s + Number(o.operation_cost), 0));
-    const totalMinutes = ops.reduce((s: number, o: { duration_min: number }) => s + Number(o.duration_min), 0);
+    const totalMinutes = ops.reduce((s: number, o: { planned_labor_min: number }) => s + Number(o.planned_labor_min), 0);
     return { ...r, operations: ops, labor_cost: laborCost, total_minutes: totalMinutes };
   },
 
-  async createRouting(input: { name: string; productId?: string | null; notes?: string | null; batchSize?: number; storeId?: string | null; userId: string | null }) {
+  async createRouting(input: { name: string; productId?: string | null; recipeId?: string | null; notes?: string | null; batchSize?: number; storeId?: string | null; userId: string | null }) {
     const r = await db.query(
-      `INSERT INTO routings (name, product_id, notes, batch_size, store_id, created_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      `INSERT INTO routings (name, product_id, recipe_id, notes, batch_size, store_id, created_by) VALUES ($1,$2,$7,$3,$4,$5,$6) RETURNING id`,
       [input.name.trim().slice(0, 160), input.productId || null, input.notes?.trim() || null,
        input.batchSize != null && input.batchSize > 0 ? input.batchSize : 1,
-       input.storeId ?? null, input.userId]);
+       input.storeId ?? null, input.userId, input.recipeId || null]);
     return this.getRouting(r.rows[0].id);
   },
 
-  async updateRouting(id: string, input: { name?: string; productId?: string | null; notes?: string | null; batchSize?: number; operations?: OperationInput[] }) {
+  /** Gamme active de la fiche technique (M5-01), sinon celle du produit de la fiche. */
+  async getRoutingForRecipe(recipeId: string) {
+    const r = (await db.query(
+      `SELECT ro.id FROM routings ro
+         LEFT JOIN recipes rc ON rc.id = $1
+        WHERE ro.is_active AND (ro.recipe_id = $1 OR (ro.recipe_id IS NULL AND rc.product_id IS NOT NULL AND ro.product_id = rc.product_id))
+        ORDER BY (ro.recipe_id = $1) DESC NULLS LAST, ro.created_at DESC LIMIT 1`, [recipeId])).rows[0];
+    return r ? this.getRouting(r.id) : null;
+  },
+
+  async updateRouting(id: string, input: { name?: string; productId?: string | null; recipeId?: string | null; notes?: string | null; batchSize?: number; operations?: OperationInput[] }) {
     const cur = (await db.query(`SELECT * FROM routings WHERE id = $1`, [id])).rows[0];
     if (!cur) return null;
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
       await client.query(
-        `UPDATE routings SET name = $2, product_id = $3, notes = $4, batch_size = $5 WHERE id = $1`,
+        `UPDATE routings SET name = $2, product_id = $3, notes = $4, batch_size = $5, recipe_id = $6 WHERE id = $1`,
         [id, (input.name ?? cur.name).trim().slice(0, 160),
          input.productId !== undefined ? (input.productId || null) : cur.product_id,
          input.notes !== undefined ? (input.notes?.trim() || null) : cur.notes,
-         input.batchSize != null && input.batchSize > 0 ? input.batchSize : cur.batch_size]);
+         input.batchSize != null && input.batchSize > 0 ? input.batchSize : cur.batch_size,
+         input.recipeId !== undefined ? (input.recipeId || null) : cur.recipe_id]);
       if (input.operations !== undefined) {
         await client.query(`DELETE FROM routing_operations WHERE routing_id = $1`, [id]);
         let seq = 0;
@@ -108,8 +128,13 @@ export const routingRepository = {
           if (!op.operationName?.trim()) continue;
           seq += 1;
           await client.query(
-            `INSERT INTO routing_operations (routing_id, sequence, operation_name, work_center_id, duration_min) VALUES ($1,$2,$3,$4,$5)`,
-            [id, seq, op.operationName.trim().slice(0, 160), op.workCenterId || null, Math.max(0, Math.round(Number(op.durationMin) || 0))]);
+            `INSERT INTO routing_operations (routing_id, sequence, operation_name, work_center_id, duration_min,
+                op_type, setup_min, machine_min_per_unit, labor_min_per_unit, base_quantity, control_point, is_blocking,
+                temperature_c, operation_name_ar, instructions)
+             VALUES ($1,$2,$3,$4,$5,$6,$7::numeric,$8::numeric,$9::numeric,$10::numeric,$11,$12,$13::numeric,$14,$15)`,
+            [id, seq, op.operationName.trim().slice(0, 160), op.workCenterId || null, Math.max(0, Math.round(Number(op.durationMin) || 0)),
+             op.opType ?? 'execution', op.setupMin ?? 0, op.machineMinPerUnit ?? 0, op.laborMinPerUnit ?? 0, op.baseQuantity ?? 1,
+             op.controlPoint || null, op.isBlocking ?? false, op.temperatureC ?? null, op.operationNameAr || null, op.instructions || null]);
         }
       }
       await client.query('COMMIT');

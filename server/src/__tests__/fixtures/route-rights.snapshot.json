@@ -2049,6 +2049,10 @@
   "admin",
   "manager"
  ],
+ "GET /routings/for-recipe/:recipeId": [
+  "admin",
+  "manager"
+ ],
  "GET /routings/work-centers": [
   "admin",
   "manager"

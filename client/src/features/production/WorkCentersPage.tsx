@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { money, currencySymbol } from '../../utils/money';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Cog, Plus, X, Loader2, Power, Trash2, Route, Save, Wrench, ListOrdered, Gauge } from 'lucide-react';
-import { routingsApi, type Routing, type OperationInput } from '../../api/routings.api';
+import { routingsApi, opToInput, OP_TYPE_LABELS, type OpType, type Routing, type OperationInput } from '../../api/routings.api';
 import WorkCenterOeeModal from './WorkCenterOeeModal';
 
 // Statuts de poste (mig 402)
@@ -202,7 +202,7 @@ function Routings() {
   );
 }
 
-function RoutingEditor({ id, onClose, onSaved }: { id: string | null; onClose: () => void; onSaved: () => void }) {
+export function RoutingEditor({ id, onClose, onSaved, recipeId, defaultName }: { id: string | null; onClose: () => void; onSaved: () => void; recipeId?: string; defaultName?: string }) {
   const qc = useQueryClient();
   const { data: existing } = useQuery({ queryKey: ['routing', id], queryFn: () => routingsApi.getById(id!), enabled: !!id });
   const { data: centers = [] } = useQuery({ queryKey: ['work-centers'], queryFn: routingsApi.workCenters });
@@ -212,7 +212,8 @@ function RoutingEditor({ id, onClose, onSaved }: { id: string | null; onClose: (
   const productOptions = useMemo(() => products.map(p => ({ id: String(p.id), label: String(p.name) })), [products]);
 
   // état local initialisé depuis `existing`
-  const [name, setName] = useState('');
+  const [name, setName] = useState(defaultName ?? '');
+  const [openOp, setOpenOp] = useState<number | null>(null);
   const [productId, setProductId] = useState('');
   const [batchSize, setBatchSize] = useState('1');
   const [ops, setOps] = useState<OperationInput[]>([]);
@@ -220,22 +221,25 @@ function RoutingEditor({ id, onClose, onSaved }: { id: string | null; onClose: (
   if (existing && !loaded) {
     setName(existing.name); setProductId(existing.product_id ?? '');
     setBatchSize(String(existing.batch_size ?? 1));
-    setOps(existing.operations.map(o => ({ operationName: o.operation_name, workCenterId: o.work_center_id, durationMin: o.duration_min })));
+    setOps(existing.operations.map(opToInput));
     setLoaded(true);
   }
   if (!id && !loaded) { setOps([{ operationName: '', workCenterId: null, durationMin: 0 }]); setLoaded(true); }
 
   const wcCost = (wid: string | null | undefined) => activeCenters.find(c => c.id === wid)?.hourly_cost ?? (centers.find(c => c.id === wid)?.hourly_cost ?? 0);
-  const opCost = (o: OperationInput) => round2(wcCost(o.workCenterId) * (Number(o.durationMin) || 0) / 60);
+  // Temps main-d'œuvre prévu pour une fournée (M5-01) : réglage + durée fixe + fournée / qté de base × MO unitaire.
+  const opMinutes = (o: OperationInput) => (Number(o.setupMin) || 0) + (Number(o.durationMin) || 0)
+    + (Number(batchSize) > 0 ? Number(batchSize) : 1) / (Number(o.baseQuantity) > 0 ? Number(o.baseQuantity) : 1) * (Number(o.laborMinPerUnit) || 0);
+  const opCost = (o: OperationInput) => round2(wcCost(o.workCenterId) * opMinutes(o) / 60);
   const liveCost = round2(ops.reduce((s, o) => s + opCost(o), 0));
-  const liveMinutes = ops.reduce((s, o) => s + (Number(o.durationMin) || 0), 0);
+  const liveMinutes = Math.round(ops.reduce((s, o) => s + opMinutes(o), 0) * 10) / 10;
 
   const save = useMutation({
     mutationFn: async () => {
       const clean = ops.filter(o => o.operationName.trim());
       const bs = Number(batchSize) > 0 ? Number(batchSize) : 1;
       if (id) return routingsApi.update(id, { name: name.trim(), productId: productId || null, batchSize: bs, operations: clean });
-      const created = await routingsApi.create({ name: name.trim(), productId: productId || null, batchSize: bs });
+      const created = await routingsApi.create({ name: name.trim(), productId: productId || null, recipeId: recipeId ?? null, batchSize: bs });
       return routingsApi.update(created.id, { operations: clean });
     },
     onSuccess: () => { notify.success(id ? 'Gamme enregistrée' : 'Gamme créée'); onSaved(); },
@@ -290,6 +294,22 @@ function RoutingEditor({ id, onClose, onSaved }: { id: string | null; onClose: (
                     <input type="number" min="0" value={o.durationMin || ''} onChange={e => setOp(i, { durationMin: Number(e.target.value) || 0 })} placeholder="0" style={{ ...inp, textAlign: 'center' }} />
                     <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: '0.84rem' }}>{money(opCost(o))}</span>
                     <button className="odoo-btn-secondary" style={{ padding: '0.35rem 0.4rem' }} title="Retirer l'opération" disabled={ops.length <= 1} onClick={() => setOps(a => a.filter((_, j) => j !== i))}><Trash2 size={13} /></button>
+                    <div style={{ gridColumn: '2 / -1', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: '0.75rem' }}>
+                      <button type="button" className="bsi-link-btn" onClick={() => setOpenOp(openOp === i ? null : i)}>
+                        {OP_TYPE_LABELS[o.opType ?? 'execution']}{o.isBlocking ? ' · bloquante' : ''}{(o.setupMin || o.laborMinPerUnit || o.machineMinPerUnit) ? ' · temps détaillés' : ''} {openOp === i ? '▲' : '▼'}
+                      </button>
+                      {openOp === i && <>
+                        <select className="input" style={{ width: 'auto', padding: '2px 6px' }} value={o.opType ?? 'execution'} aria-label="Type d'opération" onChange={e => setOp(i, { opType: e.target.value as OpType })}>
+                          {Object.entries(OP_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        </select>
+                        <label>Réglage <input type="number" min="0" style={{ ...inp, width: 64 }} value={o.setupMin || ''} onChange={e => setOp(i, { setupMin: Number(e.target.value) || 0 })} /> min</label>
+                        <label>MO <input type="number" min="0" step="0.01" style={{ ...inp, width: 64 }} value={o.laborMinPerUnit || ''} onChange={e => setOp(i, { laborMinPerUnit: Number(e.target.value) || 0 })} /></label>
+                        <label>Machine <input type="number" min="0" step="0.01" style={{ ...inp, width: 64 }} value={o.machineMinPerUnit || ''} onChange={e => setOp(i, { machineMinPerUnit: Number(e.target.value) || 0 })} /></label>
+                        <label>min pour <input type="number" min="0.001" step="0.001" style={{ ...inp, width: 64 }} value={o.baseQuantity ?? 1} onChange={e => setOp(i, { baseQuantity: Number(e.target.value) || 1 })} /> unités</label>
+                        <label><input type="checkbox" checked={!!o.isBlocking} onChange={e => setOp(i, { isBlocking: e.target.checked })} /> Bloquante</label>
+                        <input type="text" style={{ ...inp, width: 220 }} placeholder="Point de contrôle (ex. T° à cœur ≥ 72 °C)" value={o.controlPoint ?? ''} onChange={e => setOp(i, { controlPoint: e.target.value || null })} />
+                      </>}
+                    </div>
                   </div>
                 ))}
               </div>

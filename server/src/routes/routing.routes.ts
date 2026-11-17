@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { routingController } from '../controllers/routing.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
+import { createRoutingSchema, updateRoutingSchema } from '../validators/routing.validator.js';
 
 // Postes de travail & gammes (mig 388) : admin / gérant.
 const router = Router();
@@ -16,9 +18,10 @@ router.post('/work-centers/:id/downtime', authenticate, can('production.routings
 router.get('/work-centers/:id/downtime', authenticate, can('production.routings.view'), routingController.listDowntime);
 router.get('/work-centers/:id/oee', authenticate, can('production.routings.view'), routingController.getOee);
 router.get('/', authenticate, can('production.routings.view'), routingController.listRoutings);
-router.post('/', authenticate, can('production.routings.create'), routingController.createRouting);
+router.get('/for-recipe/:recipeId', authenticate, validateUuidParams('recipeId'), can('production.routings.view'), routingController.getRoutingForRecipe);
+router.post('/', authenticate, can('production.routings.create'), validate(createRoutingSchema), routingController.createRouting);
 router.get('/:id', authenticate, can('production.routings.view'), routingController.getRouting);
-router.put('/:id', authenticate, can('production.routings.edit'), routingController.updateRouting);
+router.put('/:id', authenticate, can('production.routings.edit'), validate(updateRoutingSchema), routingController.updateRouting);
 router.post('/:id/active', authenticate, can('production.routings.active'), routingController.setRoutingActive);
 router.delete('/:id', authenticate, can('production.routings.delete'), routingController.deleteRouting);
 
