@@ -6,6 +6,7 @@ import api, { serverUrl } from '../../api/client';
 import { Search, Camera, X, AlertTriangle, CheckCircle, Trash2, Image } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../utils/api-error';
+import { useReferentiel } from '../../hooks/useReferentiel';
 
 interface Props {
   onClose: () => void;
@@ -40,33 +41,21 @@ export interface PlanLossItem {
   imageUrl?: string | null;
 }
 
-const LOSS_REASONS_VITRINE = [
-  { value: 'chute', label: 'Chute / Tombé', icon: '💥' },
-  { value: 'casse', label: 'Cassé / Écrasé', icon: '💔' },
-  { value: 'perime', label: 'Périmé', icon: '⏰' },
-  { value: 'qualite_non_conforme', label: 'Qualité non conforme', icon: '⚠️' },
-  { value: 'retour_client', label: 'Retour client', icon: '↩️' },
-  { value: 'erreur_humaine', label: 'Erreur humaine', icon: '🙁' },
-  { value: 'autre', label: 'Autre', icon: '📝' },
-];
-
-const LOSS_REASONS_PRODUCTION = [
-  { value: 'brule', label: 'Brule / Trop cuit', icon: '🔥' },
-  { value: 'rate', label: 'Loupe / Rate', icon: '❌' },
-  { value: 'machine', label: 'Panne machine', icon: '⚙️' },
-  { value: 'matiere_defectueuse', label: 'Matiere defectueuse', icon: '🌾' },
-  { value: 'chute', label: 'Chute / Tombé', icon: '💥' },
-  { value: 'qualite_non_conforme', label: 'Qualite non conforme', icon: '⚠️' },
-  { value: 'erreur_humaine', label: 'Erreur humaine', icon: '🙁' },
-  { value: 'autre', label: 'Autre', icon: '📝' },
-];
+// M6-03 : motifs du référentiel unique « scrap_reasons », filtrés par domaine (vitrine / production).
+const ICONS: Record<string, string> = {
+  chute: '💥', casse: '💔', perime: '⏰', qualite_non_conforme: '⚠️', retour_client: '↩️', erreur_humaine: '🙁', autre: '📝',
+  brule: '🔥', rate: '❌', machine: '⚙️', matiere_defectueuse: '🌾',
+};
 
 export default function LossDeclarationModal({
   onClose, sessionId, context = 'vitrine', productionPlanId, productIdFilter, planItems,
 }: Props) {
   void sessionId; // reserve pour futur besoin
   const isProduction = context === 'production';
-  const LOSS_REASONS = isProduction ? LOSS_REASONS_PRODUCTION : LOSS_REASONS_VITRINE;
+  const { entries: scrapEntries } = useReferentiel('scrap_reasons');
+  const LOSS_REASONS = scrapEntries
+    .filter(e => { const d = (e.metadata as { domains?: string[] } | undefined)?.domains; return !d || d.includes(isProduction ? 'production' : 'vitrine'); })
+    .map(e => ({ value: e.code, label: e.label, icon: ICONS[e.code] ?? '•' }));
   const lossType = isProduction ? 'production' : 'vitrine';
 
   const [step, setStep] = useState<'product' | 'details' | 'done'>('product');

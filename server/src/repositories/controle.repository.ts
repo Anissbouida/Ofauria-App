@@ -37,6 +37,7 @@ export const controleRepository = {
     const off = add(p.offset);
     const r = await db.query(
       `SELECT l.*, COUNT(*) OVER() AS total_count,
+              fn_scrap_reason_label(l.reason_code) AS reason_label,  -- M6-03 : référentiel unique des motifs
               SUM(value) OVER() AS sum_value,
               COUNT(*) FILTER (WHERE cost_missing) OVER() AS missing_count
          FROM v_loss_register l

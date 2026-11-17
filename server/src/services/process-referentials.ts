@@ -8,7 +8,7 @@ import { db } from '../config/database.js';
  * Éditables dans Paramètres › Référentiels ; cache court (une modification y est
  * visible en moins de 30 s).
  */
-export type ProcessRefTable = 'production_step_types' | 'production_equipment_types' | 'process_reading_params';
+export type ProcessRefTable = 'production_step_types' | 'production_equipment_types' | 'process_reading_params' | 'scrap_reasons';
 
 export type ProcessRefEntry = { code: string; label: string; color: string | null; isActive: boolean; metadata: Record<string, unknown> };
 
@@ -19,7 +19,7 @@ async function load(): Promise<Map<string, ProcessRefEntry[]>> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.byTable;
   const { rows } = await db.query(
     `SELECT table_id, code, label, color, is_active, metadata FROM ref_entries
-      WHERE table_id IN ('production_step_types', 'production_equipment_types', 'process_reading_params')
+      WHERE table_id IN ('production_step_types', 'production_equipment_types', 'process_reading_params', 'scrap_reasons')
         AND code IS NOT NULL
       ORDER BY display_order, label`);
   const byTable = new Map<string, ProcessRefEntry[]>();
@@ -72,3 +72,27 @@ export function requireStepTypes(pick: (body: any) => (string | null | undefined
     } catch (err) { next(err); }
   };
 }
+
+/**
+ * Motifs de rebut (M6-03) : un code est accepté s'il est actif dans « scrap_reasons »,
+ * directement ou comme ancien code (metadata.legacy) d'un motif actif, et, si un domaine
+ * est donné, si le motif est déclaré pour ce domaine.
+ */
+export async function scrapReasonAllowed(code: string, domain?: string | null): Promise<boolean> {
+  const hit = (await processRefs('scrap_reasons')).find(e => e.isActive
+    && (e.code === code || (Array.isArray(e.metadata.legacy) && (e.metadata.legacy as string[]).includes(code))));
+  if (!hit) return false;
+  const domains = Array.isArray(hit.metadata.domains) ? hit.metadata.domains as string[] : [];
+  return !domain || domains.length === 0 || domains.includes(domain);
+}
+
+/** Middleware : refuse en 400 un motif de rebut inconnu (au lieu d'une erreur base en 500). */
+export const requireScrapReason = (pick: (body: any) => { code?: string | null; domain?: string | null }) =>
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { code, domain } = pick(req.body ?? {});
+    if (code && !(await scrapReasonAllowed(code, domain))) {
+      res.status(400).json({ success: false, error: { message: `Motif de rebut inconnu ou non prévu pour cet usage : ${code}` } });
+      return;
+    }
+    next();
+  };

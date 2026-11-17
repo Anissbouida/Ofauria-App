@@ -1,3 +1,4 @@
+import { scrapReasonAllowed } from '../services/process-referentials.js';
 import { db, withTransaction } from '../config/database.js';
 import { strictContainerQty } from '../services/container-rule.js';
 import type { PoolClient } from 'pg';
@@ -707,9 +708,10 @@ export const ingredientLotRepository = {
         quarantine_failed: 'Echec controle qualite',
         other: 'Autre',
       };
-      const reasonLabel = reasonLabels[reason] || reasonLabels.other;
-      // Code du referentiel material_loss_reasons (mig 333), lu par le registre des pertes.
-      const reasonCode = ({ dlc_expired: 'dlc_expiree', damaged: 'casse', quarantine_failed: 'qualite' } as Record<string, string>)[reason] ?? 'autre';
+      // M6-03 : code du référentiel unique scrap_reasons (canonique), anciens codes reconnus.
+      const legacy = ({ dlc_expired: 'dlc_expiree', damaged: 'casse', quarantine_failed: 'qualite_non_conforme', other: 'autre' } as Record<string, string>)[reason];
+      const reasonCode = legacy ?? ((await scrapReasonAllowed(reason, 'matiere')) ? reason : 'autre');
+      const reasonLabel = reasonLabels[reason] || (await client.query(`SELECT fn_scrap_reason_label($1) AS l`, [reasonCode])).rows[0]?.l || reasonLabels.other;
 
       // Trace mouvement de waste
       if (totalLost > 0) {

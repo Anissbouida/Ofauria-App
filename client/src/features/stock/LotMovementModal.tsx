@@ -31,12 +31,8 @@ const TYPE_META: Record<UiType, { label: string; title: string; icon: typeof Pac
   losses: { label: 'Lot aux pertes', title: 'Envoyer le lot entier aux pertes', icon: Trash2, danger: true },
 };
 
-const LOSS_REASONS = [
-  { v: 'dlc_expired', label: 'DLC expirée', sub: 'Date de péremption dépassée' },
-  { v: 'damaged', label: 'Endommagé', sub: 'Casse, contamination' },
-  { v: 'quarantine_failed', label: 'Échec contrôle', sub: 'Non conforme' },
-  { v: 'other', label: 'Autre', sub: 'Préciser dans la note' },
-] as const;
+// M6-03 : motifs du référentiel unique « scrap_reasons », domaine matière.
+const SUB: Record<string, string> = { dlc_expiree: 'Date de péremption dépassée', casse: 'Casse, renversé', qualite_non_conforme: 'Non conforme', autre: 'Préciser dans la note' };
 
 const fmt = (n: number) => String(Math.round(n * 10000) / 10000);
 
@@ -72,7 +68,11 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
   // Perte partielle : motif du referentiel material_loss_reasons (mig 333) + precision libre.
   const { entries: wasteReasons, getLabel: wasteLabel } = useReferentiel('material_loss_reasons');
   const [wasteCode, setWasteCode] = useState<string>(expired ? 'dlc_expiree' : '');
-  const [lossReason, setLossReason] = useState<string>(expired ? 'dlc_expired' : 'other');
+  const { entries: scrapEntries } = useReferentiel('scrap_reasons');
+  const LOSS_REASONS = scrapEntries
+    .filter(e => { const d = (e.metadata as { domains?: string[] } | undefined)?.domains; return !d || d.includes('matiere'); })
+    .map(e => ({ v: e.code, label: e.label, sub: SUB[e.code] ?? '' }));
+  const [lossReason, setLossReason] = useState<string>(expired ? 'dlc_expiree' : 'autre');
   const [note, setNote] = useState('');
 
   const switchType = (t: UiType) => {

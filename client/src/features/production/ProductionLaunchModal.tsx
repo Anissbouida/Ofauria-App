@@ -147,8 +147,11 @@ export default function ProductionLaunchModal({
   onCompleted,
 }: ProductionLaunchModalProps) {
   // Dynamic loss reasons from referentiel
-  const { entries: prodLossReasonEntries } = useReferentiel('production_loss_reasons');
-  const LOSS_REASONS = prodLossReasonEntries.map(e => ({ value: e.code, label: e.label }));
+  // M6-03 : référentiel unique des motifs de rebut, domaine production.
+  const { entries: prodLossReasonEntries } = useReferentiel('scrap_reasons');
+  const LOSS_REASONS = prodLossReasonEntries
+    .filter(e => { const d = (e.metadata as { domains?: string[] } | undefined)?.domains; return !d || d.includes('production'); })
+    .map(e => ({ value: e.code, label: e.label }));
 
   // Production timers
   const { timers: activeTimers, startTimer, stopTimer, getTimerRemaining, hasTimerFired } = useProductionTimers();
