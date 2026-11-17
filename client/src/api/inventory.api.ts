@@ -30,6 +30,13 @@ export const inventoryApi = {
   }> => api.get('/inventory/price-health').then(r => r.data.data),
 
   /* Cloture de stock par periode (mig 381). */
+  /** Stock valorisé à la fin d'une date (G5-01, mig 549). */
+  stockAt: (date: string): Promise<{ date: string; total: number; gaps: number; lines: { ingredient_id: string; ingredient_name: string; unit: string; quantity: number; unit_cost: number; value: number }[] }> =>
+    api.get('/inventory/stock-at', { params: { date } }).then(r => r.data.data),
+  stockAtCsv: (date: string): Promise<Blob> =>
+    api.get('/inventory/stock-at', { params: { date, format: 'csv' }, responseType: 'blob' }).then(r => r.data as Blob),
+  journalGaps: (): Promise<{ ingredient_id: string; ingredient_name: string; unit: string; current_quantity: number; journal_quantity: number; gap: number }[]> =>
+    api.get('/inventory/stock-journal-gaps').then(r => r.data.data),
   closingPreview: (): Promise<StockValuation> => api.get('/inventory/closings/preview').then(r => r.data.data),
   closingList: (): Promise<StockClosing[]> => api.get('/inventory/closings').then(r => r.data.data),
   closingGet: (id: string): Promise<StockClosingDetail> => api.get(`/inventory/closings/${id}`).then(r => r.data.data),

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Lock, Loader2, X, Eye, Trash2, Archive } from 'lucide-react';
+import { Lock, Loader2, X, Eye, Trash2, Archive, Download, CalendarClock, AlertTriangle } from 'lucide-react';
 import { inventoryApi, type StockClosing, type StockClosingDetail } from '../../api/inventory.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -44,6 +44,8 @@ export default function StockClosingTab() {
       <StatusBanner tone="info" icon={Lock} title="Clôture de stock par période">
         Fige la valeur du stock matière (quantités restantes × coût) à une date de fin de période. Sert de valeur de stock pour le bilan et de référence historique. L'instantané photographie l'état courant au moment de la clôture.
       </StatusBanner>
+
+      <StockAtDatePanel />
 
       <div>
         <button type="button" className="odoo-btn-primary" onClick={() => setShowForm(true)}>
@@ -193,3 +195,69 @@ function ClosingDetail({ id, onClose }: { id: string; onClose: () => void }) {
 }
 
 const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', width: '100%', font: 'inherit' };
+
+/**
+ * Stock valorisé au… (G5-01) : quantité, coût en vigueur et valeur de chaque article à
+ * la fin d'une date, reconstitués depuis le journal des mouvements. Un avertissement
+ * signale les articles dont le journal n'explique pas le stock courant.
+ */
+function StockAtDatePanel() {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const [date, setDate] = useState(today);
+  const [showGaps, setShowGaps] = useState(false);
+  const { data, isLoading } = useQuery({ queryKey: ['stock-at', date], queryFn: () => inventoryApi.stockAt(date), enabled: !!date });
+  const { data: gaps = [] } = useQuery({ queryKey: ['stock-journal-gaps'], queryFn: inventoryApi.journalGaps, enabled: showGaps });
+  const download = async () => {
+    try {
+      const blob = await inventoryApi.stockAtCsv(date);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `stock-valorise-${date}.csv`; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { notify.error(apiErrorMessage(e)); }
+  };
+  return (
+    <section style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, display: 'grid', gap: 10 }} aria-label="Stock valorisé à une date">
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <CalendarClock size={16} aria-hidden />
+        <strong>Stock valorisé au</strong>
+        <input type="date" className="input" value={date} max={today} onChange={e => setDate(e.target.value)} aria-label="Date du stock" style={{ width: 'auto' }} />
+        {data && <span>{data.lines.length} article(s) · <strong>{money(data.total)}</strong></span>}
+        <div style={{ flex: 1 }} />
+        <button type="button" className="odoo-btn-secondary" onClick={download} disabled={!data}><Download size={14} /> Exporter (CSV)</button>
+      </div>
+      {data && data.gaps > 0 && (
+        <StatusBanner tone="warning" icon={AlertTriangle} title={`${data.gaps} article(s) au journal incomplet`}
+          actions={<button type="button" className="odoo-btn-secondary" onClick={() => setShowGaps(v => !v)}>{showGaps ? 'Masquer' : 'Voir'}</button>}>
+          Pour ces articles, la somme des mouvements ne donne pas le stock actuel (mouvements non journalisés ou reprise de données) :
+          leur stock aux dates passées est approximatif. Le stock d'aujourd'hui reste exact.
+        </StatusBanner>
+      )}
+      {showGaps && gaps.length > 0 && (
+        <div style={{ maxHeight: 220, overflow: 'auto' }}>
+          <table className="odoo-table">
+            <thead><tr><th>Article</th><th style={{ textAlign: 'right' }}>Stock actuel</th><th style={{ textAlign: 'right' }}>Somme du journal</th><th style={{ textAlign: 'right' }}>Écart</th></tr></thead>
+            <tbody>{gaps.map(g => (
+              <tr key={`${g.ingredient_id}`}><td>{g.ingredient_name}</td><td style={{ textAlign: 'right' }}>{qty(g.current_quantity, g.unit)}</td>
+                <td style={{ textAlign: 'right' }}>{qty(g.journal_quantity, g.unit)}</td><td style={{ textAlign: 'right' }}>{qty(g.gap, g.unit)}</td></tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+      {isLoading ? <Loader2 size={16} className="animate-spin" /> : data && (
+        <div style={{ maxHeight: 320, overflow: 'auto' }}>
+          <table className="odoo-table">
+            <thead><tr><th>Article</th><th style={{ textAlign: 'right' }}>Quantité</th><th style={{ textAlign: 'right' }}>Coût unitaire</th><th style={{ textAlign: 'right' }}>Valeur</th></tr></thead>
+            <tbody>{data.lines.map(l => (
+              <tr key={l.ingredient_id}>
+                <td>{l.ingredient_name}</td>
+                <td style={{ textAlign: 'right', color: l.quantity < 0 ? 'var(--odoo-danger, #b91c1c)' : undefined }}>{qty(l.quantity, l.unit)}</td>
+                <td style={{ textAlign: 'right' }}>{l.unit_cost.toLocaleString('fr-FR', { maximumFractionDigits: 4 })}</td>
+                <td style={{ textAlign: 'right' }}>{money(l.value)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}

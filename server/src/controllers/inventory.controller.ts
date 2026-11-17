@@ -9,6 +9,8 @@ import { ingredientLotRepository } from '../repositories/ingredient-lot.reposito
 import { db } from '../config/database.js';
 import { adjustIngredientStock } from '../services/stock-adjust.js';
 import { allergensSchema } from '../validators/allergens.js';
+import { stockValuationRepository } from '../repositories/stock-valuation.repository.js';
+import { localIsoDate } from '../utils/local-date.js';
 
 export const inventoryController = {
   async list(req: AuthRequest, res: Response) {
@@ -258,6 +260,27 @@ export const inventoryController = {
   },
   /* ── Clôture de stock par période (mig 381) ── */
   /** GET /inventory/closings/preview — valorisation courante (avant de clôturer). */
+  /** GET /inventory/stock-at?date=AAAA-MM-JJ[&format=csv] — stock valorisé à la fin d'une date (G5-01). */
+  async stockAt(req: AuthRequest, res: Response) {
+    const date = typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date) ? req.query.date : localIsoDate(new Date());
+    const data = await stockValuationRepository.stockAt(date, req.user!.storeId ?? null);
+    if (req.query.format === 'csv') {
+      const num = (n: number, d = 2) => n.toFixed(d).replace('.', ',');
+      const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
+      const rows = [['Article', 'Unité', 'Quantité', 'Coût unitaire', 'Valeur'].join(';'),
+        ...data.lines.map(l => [esc(l.ingredient_name), l.unit, num(l.quantity, 3), num(l.unit_cost, 4), num(l.value)].join(';')),
+        ['Total', '', '', '', num(data.total)].join(';')];
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="stock-valorise-${date}.csv"`);
+      res.send('\ufeff' + rows.join('\r\n'));
+      return;
+    }
+    res.json({ success: true, data });
+  },
+  /** GET /inventory/stock-journal-gaps — articles dont le journal n'explique pas le stock (G5-01). */
+  async journalGaps(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await stockValuationRepository.journalGaps(req.user!.storeId ?? null) });
+  },
   async closingPreview(req: AuthRequest, res: Response) {
     res.json({ success: true, data: await inventoryRepository.stockValuation(req.user!.storeId) });
   },

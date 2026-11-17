@@ -41,6 +41,8 @@ router.post('/ingredient-merges', authenticate, can('stock.inventory.ingredient_
 router.get('/price-health', authenticate, can('stock.inventory.view'), inventoryController.priceHealth);
 
 // Cloture de stock par periode (mig 381) : instantane valorise (admin/gerant)
+router.get('/stock-at', authenticate, can('stock.inventory.view'), inventoryController.stockAt);
+router.get('/stock-journal-gaps', authenticate, can('stock.inventory.view'), inventoryController.journalGaps);
 router.get('/closings/preview', authenticate, can('stock.inventory.view'), inventoryController.closingPreview);
 router.get('/closings', authenticate, can('stock.inventory.view'), inventoryController.closingList);
 router.post('/closings', authenticate, can('stock.inventory.closings'), inventoryController.closingCreate);

@@ -911,6 +911,14 @@
   "admin",
   "manager"
  ],
+ "GET /inventory/stock-at": [
+  "admin",
+  "manager"
+ ],
+ "GET /inventory/stock-journal-gaps": [
+  "admin",
+  "manager"
+ ],
  "GET /inventory/transactions": null,
  "GET /inventory/unit-conversion-issues": [
   "admin",
