@@ -201,7 +201,7 @@ export const recipeComponentRepository = {
       const ings = await db.query(
         `SELECT NULL::uuid AS id, NULL AS role, NULL::uuid AS source_recipe_id, ri.ingredient_id AS source_ingredient_id,
                 ing.name AS source_name, 'ingredient' AS source_type, ri.quantity AS quantite, COALESCE(ri.unit, ing.unit) AS unite,
-                ri.quantity * fn_unit_conv(COALESCE(ri.unit, ing.unit)::text, ing.unit::text, ing.densite_kg_l) * COALESCE(ing.unit_cost, 0) AS cout_dh,
+                ri.quantity * fn_convert_factor(COALESCE(ri.unit, ing.unit)::text, ing.unit::text, 'ingredient', ing.id) * COALESCE(ing.unit_cost, 0) AS cout_dh,
                 -- Legacy : idem, applique fn_unit_conv_ok sur le meme couple, incluant
                 -- la validation par densite si un croisement poids↔volume est en jeu.
                 (fn_unit_conv_ok(COALESCE(ri.unit, ing.unit), ing.unit::text)
@@ -460,7 +460,7 @@ export const recipeComponentRepository = {
       `SELECT ing.name AS source_name, NULL::uuid AS source_recipe_id,
               ri.ingredient_id AS source_ingredient_id, 'ingredient' AS source_type,
               ri.quantity AS quantite, COALESCE(ri.unit, ing.unit) AS unite, NULL AS role,
-              ri.quantity * fn_unit_conv(COALESCE(ri.unit, ing.unit)::text, ing.unit::text, ing.densite_kg_l) * COALESCE(ing.unit_cost, 0) AS cout_dh,
+              ri.quantity * fn_convert_factor(COALESCE(ri.unit, ing.unit)::text, ing.unit::text, 'ingredient', ing.id) * COALESCE(ing.unit_cost, 0) AS cout_dh,
               false AS costed_on_default_format
        FROM recipe_ingredients ri
        JOIN ingredients ing ON ing.id = ri.ingredient_id
