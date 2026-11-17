@@ -8,7 +8,7 @@ import { can } from '../middleware/permission.middleware.js';
 import { requireUnits, requireStockUnitChange } from '../services/unit-referential.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { restockSchema, adjustStockSchema, stockThresholdSchema, resolveStockAnomalySchema, mergeIngredientsSchema, correctIngredientCostSchema, ingredientAllergensSchema, reorderApplySchema, reorderUpdateSchema } from '../validators/stock.validator.js';
+import { restockSchema, adjustStockSchema, stockThresholdSchema, resolveStockAnomalySchema, mergeIngredientsSchema, correctIngredientCostSchema, ingredientAllergensSchema, reorderApplySchema, reorderUpdateSchema, reorderRecalculateSchema } from '../validators/stock.validator.js';
 
 const router = Router();
 
@@ -42,7 +42,7 @@ router.get('/price-health', authenticate, can('stock.inventory.view'), inventory
 
 // Cloture de stock par periode (mig 381) : instantane valorise (admin/gerant)
 router.get('/reorder-points', authenticate, can('stock.inventory.view'), inventoryController.reorderPoints);
-router.post('/reorder-points/recalculate', authenticate, can('stock.inventory.reorder_points'), inventoryController.reorderRecalculate);
+router.post('/reorder-points/recalculate', authenticate, can('stock.inventory.reorder_points'), validate(reorderRecalculateSchema), inventoryController.reorderRecalculate);
 router.post('/reorder-points/apply', authenticate, can('stock.inventory.reorder_points'), validate(reorderApplySchema), inventoryController.reorderApply);
 router.put('/reorder-points/:id', authenticate, validateUuidParams('id'), can('stock.inventory.reorder_points'), validate(reorderUpdateSchema), inventoryController.reorderUpdate);
 router.get('/stock-at', authenticate, can('stock.inventory.view'), inventoryController.stockAt);
