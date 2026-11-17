@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import PlanCostAllocation from './PlanCostAllocation';
 import { apiErrorMessage } from '../../api/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionCoutApi } from '../../api/production-cout.api';
@@ -476,6 +477,11 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                 ))}
               </DetailSection>
             )}
+
+            <DetailSection title="Répartition du coût entre les articles" icon={<Scissors size={12} className="text-indigo-500" />}
+              isExpanded={expandedSection === 'allocation'} onToggle={() => setExpandedSection(expandedSection === 'allocation' ? null : 'allocation')}>
+              <PlanCostAllocation planId={planId} canEdit />
+            </DetailSection>
 
             {charge && charge.length > 0 && (
               <DetailSection title="Charge par poste (capacité)" icon={<Gauge size={12} className="text-cyan-600" />}

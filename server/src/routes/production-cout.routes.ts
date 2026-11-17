@@ -1,11 +1,14 @@
+import { z } from 'zod';
 import { Router } from 'express';
 import { ROLE_GROUPS } from '@ofauria/shared';
 import { productionCoutController } from '../controllers/production-cout.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 
 const router = Router();
+const costSharesSchema = z.object({ shares: z.array(z.object({ planItemId: z.string().uuid(), pct: z.number().min(0).max(100).nullable() })).min(1).max(500) });
 
 // Equipements : gestion catalogue reservee admin/manager.
 // Plans de production : les chefs doivent pouvoir enregistrer leur temps
@@ -29,6 +32,8 @@ router.post('/plans/:planId/equipement-usage', authenticate, can('production.pro
 
 // ─── Cost calculation ───
 // Chefs autorises a calculer et recalculer le cout de leur plan.
+router.get('/plans/:planId/allocation', authenticate, validateUuidParams('planId'), can('production.production_cout.view'), asyncHandler(productionCoutController.getAllocation));
+router.put('/plans/:planId/cost-shares', authenticate, validateUuidParams('planId'), can('production.production_cout.calculate'), validate(costSharesSchema), asyncHandler(productionCoutController.setCostShares));
 router.post('/plans/:planId/calculate', authenticate, can('production.production_cout.calculate'), asyncHandler(productionCoutController.calculateCost));
 router.get('/plans/:planId/cout', authenticate, can('production.production_cout.view'), asyncHandler(productionCoutController.getCost));
 

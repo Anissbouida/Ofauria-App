@@ -54,6 +54,7 @@ export default function ProductionPoliciesPanel() {
     queryKey: ['production-policies-admin', levelKey],
     queryFn: () => productionApi.listPolicies({
       exact: '1', ...(scopeType === 'workshop' ? { workshop: scopeId } : {}), ...(scopeType === 'store' ? { store: scopeId } : {}),
+      ...(scopeType === 'order_type' ? { orderType: scopeId } : {}),
     }),
   });
 
@@ -61,8 +62,10 @@ export default function ProductionPoliciesPanel() {
     { type: 'company', id: '', label: 'Société' },
     ...(data?.levels.stores ?? []).map(s => ({ type: 'store' as const, id: s.id, label: `Établissement · ${s.label}` })),
     ...(data?.levels.workshops ?? []).map(w => ({ type: 'workshop' as const, id: w.id, label: `Atelier · ${w.label}` })),
+    // Types d'ordre (M2-01) : un type peut porter sa propre valeur (ex. clé de répartition du coût).
+    ...(data?.levels.orderTypes ?? []).map(t => ({ type: 'order_type' as const, id: t.id, label: `Type d'ordre · ${t.label}` })),
   ];
-  const levelNoun = scopeType === 'workshop' ? 'cet atelier' : scopeType === 'store' ? 'cet établissement' : 'la société';
+  const levelNoun = scopeType === 'workshop' ? 'cet atelier' : scopeType === 'store' ? 'cet établissement' : scopeType === 'order_type' ? 'ce type d\'ordre' : 'la société';
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['production-policies-admin'] });

@@ -1,5 +1,5 @@
-import { policyNumber } from '../services/policies.js';
-import { db } from '../config/database.js';
+import { policyNumber, resolvePolicy } from '../services/policies.js';
+import { db, withTransaction } from '../config/database.js';
 
 
 /**
@@ -386,11 +386,76 @@ export const productionCoutRepository = {
       ? Math.round((coutTotal - coutPrevu) / coutPrevu * 10000) / 100
       : null;
 
+    const allocation = await this.allocate(planId, coutTotal);
+
     return {
       coutMatieres, coutEmballages, coutMO, coutEnergie, coutPertes, coutCharges, coutTotal,
       coutPrevu, coutPrevuMixReel, ecartMix, ecartPct, chargesMethod: charges.method,
       detailMatieres, detailEmballages, detailMO, detailEnergie, detailPertes, detailCharges,
+      allocation,
     };
+  },
+
+  /**
+   * Répartition du coût réel d'un plan entre ses articles (M3-05), selon la politique
+   * production.cost_allocation_key du plan (établissement, atelier, type d'ordre) :
+   *   poids           — quantité produite × poids unitaire (poids cuit du format, sinon
+   *                     poids d'une pièce de la fiche) ; un article sans poids connu fait
+   *                     retomber tout le plan sur la quantité (signalé) ;
+   *   quantite        — quantité produite (prévue si rien n'est encore produit) ;
+   *   valeur_de_vente — quantité × prix de vente ;
+   *   manuelle        — parts saisies sur le plan (production_plan_items.cost_share_pct, total 100).
+   * La somme des parts réparties égale toujours le coût total.
+   */
+  async allocate(planId: string, total: number) {
+    const plan = (await db.query(
+      `SELECT p.store_id, p.target_role, (SELECT t.code FROM production_order_types t WHERE t.id = p.order_type_id) AS order_type
+         FROM production_plans p WHERE p.id = $1`, [planId])).rows[0];
+    const policy = await resolvePolicy('production.cost_allocation_key',
+      plan ? { storeId: plan.store_id, workshop: plan.target_role, orderType: plan.order_type } : {});
+    const wanted = String(policy.value.key ?? 'poids') as 'poids' | 'quantite' | 'valeur_de_vente' | 'manuelle';
+    const items = (await db.query(
+      `SELECT ppi.id, p.name AS product_name,
+              COALESCE(ppi.actual_quantity, ppi.planned_quantity)::float8 AS qty,
+              COALESCE(rf.poids_cuit_g / 1000.0, r.piece_weight_kg)::float8 AS unit_kg,
+              COALESCE(p.price, 0)::float8 AS price, ppi.cost_share_pct::float8 AS share_pct
+         FROM production_plan_items ppi
+         JOIN products p ON p.id = ppi.product_id
+         LEFT JOIN recipe_formats rf ON rf.id = ppi.format_id
+         LEFT JOIN recipes r ON r.product_id = ppi.product_id AND r.archived_at IS NULL
+        WHERE ppi.plan_id = $1 AND ppi.status <> 'cancelled'
+        ORDER BY p.name`, [planId])).rows as { id: string; product_name: string; qty: number; unit_kg: number | null; price: number; share_pct: number | null }[];
+    let key = wanted;
+    let fallback: string | null = null;
+    if (key === 'poids' && items.some(i => !(i.unit_kg && i.unit_kg > 0))) { key = 'quantite'; fallback = 'Poids unitaire manquant sur un article : répartition à la quantité'; }
+    if (key === 'manuelle' && Math.abs(items.reduce((t, i) => t + (i.share_pct ?? 0), 0) - 100) > 0.01) { key = 'quantite'; fallback = 'Parts manuelles absentes ou différentes de 100 % : répartition à la quantité'; }
+    if (key === 'valeur_de_vente' && items.reduce((t, i) => t + i.qty * i.price, 0) <= 0) { key = 'quantite'; fallback = 'Aucun prix de vente : répartition à la quantité'; }
+    const basis = (i: typeof items[number]) =>
+      key === 'poids' ? i.qty * (i.unit_kg ?? 0) : key === 'valeur_de_vente' ? i.qty * i.price : key === 'manuelle' ? (i.share_pct ?? 0) : i.qty;
+    const sum = items.reduce((t, i) => t + basis(i), 0);
+    const rows = items.map(i => {
+      const share = sum > 0 ? basis(i) / sum : items.length ? 1 / items.length : 0;
+      return { plan_item_id: i.id, product_name: i.product_name, quantity: i.qty, basis: Math.round(basis(i) * 1000) / 1000,
+               share_pct: Math.round(share * 100000) / 1000, cost: Math.round(total * share * 100) / 100,
+               unit_cost: i.qty > 0 ? Math.round(total * share / i.qty * 10000) / 10000 : null, manual_pct: i.share_pct };
+    });
+    // Arrondis : l'écart de centimes va sur la plus grosse part, la somme égale le total.
+    const diff = Math.round((total - rows.reduce((t, r) => t + r.cost, 0)) * 100) / 100;
+    if (rows.length && diff !== 0) { const big = rows.reduce((a, b) => (b.cost > a.cost ? b : a)); big.cost = Math.round((big.cost + diff) * 100) / 100; }
+    return { key: wanted, applied: key, fallback, source: policy.source, items: rows };
+  },
+
+  /** Parts manuelles du plan (clé « manuelle ») : total 100 %, ou toutes retirées. */
+  async setCostShares(planId: string, shares: { planItemId: string; pct: number | null }[]) {
+    const vals = shares.filter(x => x.pct !== null).map(x => x.pct as number);
+    if (vals.length && Math.abs(vals.reduce((t, v) => t + v, 0) - 100) > 0.01) throw new Error('Les parts doivent totaliser 100 %');
+    if (vals.length && vals.length !== shares.length) throw new Error('Saisissez la part de chaque article, ou aucune');
+    return withTransaction(async () => {
+      for (const x of shares) {
+        await db.query(`UPDATE production_plan_items SET cost_share_pct = $3 WHERE id = $1 AND plan_id = $2`, [x.planItemId, planId, x.pct]);
+      }
+      return { saved: shares.length };
+    });
   },
 
   /** Réglage des charges indirectes : taux sur les matières, ou charges mensuelles saisies. */
@@ -402,10 +467,13 @@ export const productionCoutRepository = {
     // M1-03 : le taux est une politique. Société = réglage « Charges fixes » (colonne lue
     // fraîche) ; un établissement, un atelier ou un type d'ordre peut porter le sien.
     const plan = planId
-      ? (await db.query(`SELECT store_id, target_role, type FROM production_plans WHERE id = $1`, [planId])).rows[0]
+      ? (await db.query(
+          `SELECT p.store_id, p.target_role, (SELECT t.code FROM production_order_types t WHERE t.id = p.order_type_id) AS order_type
+             FROM production_plans p WHERE p.id = $1`, [planId])).rows[0]
       : undefined;
+    // Niveau « type d'ordre » = code du type d'ordre (M2-01).
     const rate = await policyNumber('production.fixed_charges_rate', 'rate',
-      plan ? { storeId: plan.store_id, workshop: plan.target_role, orderType: plan.type } : {});
+      plan ? { storeId: plan.store_id, workshop: plan.target_role, orderType: plan.order_type } : {});
     return {
       method: r?.production_charges_method === 'monthly' ? 'monthly' : 'rate',
       rate,

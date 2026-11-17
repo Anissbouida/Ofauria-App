@@ -198,7 +198,8 @@ export const productionRendementRepository = {
               pc.categories_pertes,
               ppp.surcharge_quantite_theorique, ppp.surcharge_pertes_fixes,
               ppp.surcharge_seuil_rendement,
-              ppi.product_id, pp.store_id, pp.target_role, pp.type AS order_type
+              ppi.product_id, pp.store_id, pp.target_role,
+              (SELECT t.code FROM production_order_types t WHERE t.id = pp.order_type_id) AS order_type
        FROM production_plan_items ppi
        JOIN production_plans pp ON pp.id = ppi.plan_id
        LEFT JOIN production_contenants pc ON pc.id = ppi.contenant_id

@@ -205,10 +205,12 @@ export async function restorePolicies(client: Queryable, list: PolicyRow[], user
  */
 export async function listPolicies(ctx: PolicyContext = {}) {
   const defs = policyDefinitions();
-  const [rows, stores, workshops] = await Promise.all([
+  const [rows, stores, workshops, orderTypes] = await Promise.all([
     policySnapshot(),
     db.query(`SELECT id, name FROM stores ORDER BY name`),
     listWorkshops(),
+    // Types d'ordre (M2-01) : le niveau « type d'ordre » porte leur code.
+    db.query(`SELECT code, label FROM production_order_types WHERE is_active ORDER BY display_order, label`),
   ]);
   const productIds = [...new Set(rows.filter(r => r.scope_type === 'product').map(r => r.scope_id))];
   const products = productIds.length
@@ -218,9 +220,10 @@ export async function listPolicies(ctx: PolicyContext = {}) {
     store: new Map(stores.rows.map(s => [s.id as string, s.name as string])),
     workshop: new Map(workshops.map(w => [w.code, w.label])),
     product: new Map(products.map(p => [p.id as string, p.name as string])),
+    order_type: new Map(orderTypes.rows.map(t => [t.code as string, t.label as string])),
   };
   const scopeLabel = (type: PolicyScope, id: string) =>
-    type === 'company' ? 'Société' : type === 'order_type' ? id : (names[type]?.get(id) ?? id);
+    type === 'company' ? 'Société' : (names[type]?.get(id) ?? id);
 
   const policies = await Promise.all(defs.map(async def => {
     const effective = await resolvePolicy(def.key, ctx);
@@ -243,6 +246,7 @@ export async function listPolicies(ctx: PolicyContext = {}) {
     levels: {
       stores: stores.rows.map(s => ({ id: s.id as string, label: s.name as string })),
       workshops: workshops.filter(w => w.isActive).map(w => ({ id: w.code, label: w.label })),
+      orderTypes: orderTypes.rows.map(t => ({ id: t.code as string, label: t.label as string })),
     },
   };
 }

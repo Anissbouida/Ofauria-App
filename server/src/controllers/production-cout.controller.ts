@@ -109,6 +109,21 @@ export const productionCoutController = {
     res.json({ success: true, data });
   },
 
+  /** Répartition du coût du plan entre ses articles (M3-05) : sur le coût enregistré, sinon calculé. */
+  async getAllocation(req: AuthRequest, res: Response) {
+    const planId = req.params.planId as string;
+    const saved = await productionCoutRepository.findByPlan(planId);
+    const total = saved?.cout_total != null ? Number(saved.cout_total) : (await productionCoutRepository.computePlanCost(planId)).coutTotal;
+    res.json({ success: true, data: { total, ...(await productionCoutRepository.allocate(planId, total)) } });
+  },
+  async setCostShares(req: AuthRequest, res: Response) {
+    try {
+      res.json({ success: true, data: await productionCoutRepository.setCostShares(req.params.planId as string, req.body.shares) });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
+
   async getCost(req: AuthRequest, res: Response) {
     const data = await productionCoutRepository.findByPlan(req.params.planId as string);
     if (!data) { res.status(404).json({ success: false, error: { message: 'Cout non calcule pour ce plan' } }); return; }

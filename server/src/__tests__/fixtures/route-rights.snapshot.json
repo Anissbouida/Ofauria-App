@@ -1454,6 +1454,14 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "GET /production-cout/plans/:planId/allocation": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /production-cout/plans/:planId/charge": [
   "admin",
   "baker",
@@ -4531,6 +4539,14 @@
  "PUT /production-cout/equipements/:id": [
   "admin",
   "manager"
+ ],
+ "PUT /production-cout/plans/:planId/cost-shares": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
  ],
  "PUT /production-etapes/etapes/:etapeId/assign": [
   "admin",

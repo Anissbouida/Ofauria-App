@@ -85,6 +85,17 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop'],
   },
   {
+    key: 'production.cost_allocation_key', domain: 'production', section: 'production',
+    label: 'Clé de répartition du coût entre les articles d\'un ordre',
+    help: 'Comment le coût réel d\'un ordre (matières, emballages, main-d\'œuvre, énergie, charges) se répartit entre ses articles : au poids produit (défaut), à la quantité, à la valeur de vente, ou selon des parts saisies sur l\'ordre. Se règle par établissement, atelier ou type d\'ordre.',
+    fields: [{ name: 'key', label: 'Clé', type: 'enum', options: [
+      { value: 'poids', label: 'Poids produit' }, { value: 'quantite', label: 'Quantité produite' },
+      { value: 'valeur_de_vente', label: 'Valeur de vente' }, { value: 'manuelle', label: 'Parts saisies sur l\'ordre' },
+    ] }],
+    defaults: { key: 'poids' },
+    storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop', 'order_type'],
+  },
+  {
     key: 'production.fixed_charges_rate', domain: 'production', section: 'production',
     label: 'Taux de charges fixes',
     help: 'Part de charges indirectes ajoutée au coût matière d\'un plan (mode « Taux sur les matières »). Le taux de la société se règle dans Production › Paramétrage ; ici, un établissement, un atelier ou un type d\'ordre peut avoir le sien.',

@@ -216,7 +216,7 @@ export type ProductionPolicy = {
 };
 export type ProductionPolicies = {
   policies: ProductionPolicy[];
-  levels: { stores: { id: string; label: string }[]; workshops: { id: string; label: string }[] };
+  levels: { stores: { id: string; label: string }[]; workshops: { id: string; label: string }[]; orderTypes?: { id: string; label: string }[] };
 };
 
 /** Type d'ordre de fabrication (M2-01, mig 546). */
