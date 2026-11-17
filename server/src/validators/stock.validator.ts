@@ -40,3 +40,10 @@ export const stockThresholdSchema = z.object({
 
 /** G2-03 — fusion de deux fiches d'ingrédient : la fiche en trop (source) et la fiche gardée (cible). */
 export const mergeIngredientsSchema = z.object({ sourceId: uuid, targetId: uuid });
+
+/** G2-04 — correction tracée du coût unitaire d'un ingrédient. */
+export const correctIngredientCostSchema = z.object({
+  ingredientId: uuid,
+  newCost: z.coerce.number().finite().positive('Le nouveau coût doit être supérieur à 0').max(1_000_000),
+  reason: z.string().trim().min(5, 'Indiquez le motif de la correction').max(500),
+});

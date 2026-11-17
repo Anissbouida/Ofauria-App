@@ -9,7 +9,7 @@ import { ROLE_GROUPS } from '@ofauria/shared';
 import { requireUnits, requireStockUnitChange } from '../services/unit-referential.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { restockSchema, adjustStockSchema, stockThresholdSchema, resolveStockAnomalySchema, mergeIngredientsSchema } from '../validators/stock.validator.js';
+import { restockSchema, adjustStockSchema, stockThresholdSchema, resolveStockAnomalySchema, mergeIngredientsSchema, correctIngredientCostSchema } from '../validators/stock.validator.js';
 
 const router = Router();
 
@@ -31,6 +31,10 @@ router.get('/stock-anomalies', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANA
 router.post('/stock-anomalies/:id/resolve', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(resolveStockAnomalySchema), inventoryController.resolveAnomaly);
 // G0-26 : lignes de fiche technique dont l'unité ne se convertit pas vers l'unité de stock.
 router.get('/unit-conversion-issues', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), inventoryController.unitConversionIssues);
+// G2-04 — prix aberrants : liste à revoir, correction tracée, journal.
+router.get('/cost-corrections/suspects', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(inventoryController.costSuspects));
+router.get('/cost-corrections', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(inventoryController.costCorrections));
+router.post('/cost-corrections', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(correctIngredientCostSchema), asyncHandler(inventoryController.correctCost));
 // G2-03 — fusion des ingrédients en double (aperçu, fusion, journal).
 router.get('/ingredient-merges', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(inventoryController.mergeHistory));
 router.post('/ingredient-merges/preview', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(mergeIngredientsSchema), asyncHandler(inventoryController.mergePreview));

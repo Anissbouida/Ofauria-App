@@ -1,3 +1,4 @@
+import { ingredientCostCorrectionRepository } from '../repositories/ingredient-cost-correction.repository.js';
 import { ingredientMergeRepository } from '../repositories/ingredient-merge.repository.js';
 import type { Response } from 'express';
 import { stockAnomalyRepository } from '../services/stock-anomaly.js';
@@ -211,6 +212,20 @@ export const inventoryController = {
   /** POST /inventory/stock-anomalies/:id/resolve — clôt une anomalie avec son motif. */
   async resolveAnomaly(req: AuthRequest, res: Response) {
     res.json({ success: true, data: await stockAnomalyRepository.resolve(req.params.id, req.body.note, req.user!.userId) });
+  },
+  /** GET /inventory/cost-corrections/suspects — prix à revoir, avec les dernières réceptions et une proposition (G2-04). */
+  async costSuspects(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await ingredientCostCorrectionRepository.suspects() });
+  },
+  /** POST /inventory/cost-corrections — corrige un coût unitaire avec son motif (G2-04). */
+  async correctCost(req: AuthRequest, res: Response) {
+    const out = await ingredientCostCorrectionRepository.correct(req.body.ingredientId, req.body.newCost, req.body.reason, req.user!.userId);
+    if ('error' in out) { res.status(400).json({ success: false, error: { message: out.error } }); return; }
+    res.json({ success: true, data: out });
+  },
+  /** GET /inventory/cost-corrections — journal des corrections de coût. */
+  async costCorrections(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await ingredientCostCorrectionRepository.history() });
   },
   /** POST /inventory/ingredient-merges/preview — ce que ferait la fusion de deux fiches (G2-03), sans rien écrire. */
   async mergePreview(req: AuthRequest, res: Response) {

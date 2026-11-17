@@ -1,3 +1,4 @@
+import PriceCorrectionsCard from './PriceCorrectionsCard';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { ShieldAlert, ArrowLeft, Loader2, ChevronRight, CheckCircle } from 'lucide-react';
@@ -84,6 +85,9 @@ export default function PriceHealthPage() {
           </table>
         </div>
       )}
+      {/* G2-04 : prix à revoir par rapport à la catégorie, avec correction tracée. */}
+      <PriceCorrectionsCard />
+
       <StatusBanner tone={conversions.length > 0 ? 'warning' : 'info'} icon={ShieldAlert} title="Conversions d'unité impossibles">
         Lignes de fiche technique saisies dans une unité qui ne se convertit pas vers l'unité de stock de la matière (pièce vers kg,
         poids vers volume sans densité…). Leur coût et leurs besoins sont calculés comme si 1 valait 1 : ils sont faux.

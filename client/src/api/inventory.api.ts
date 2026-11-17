@@ -119,6 +119,11 @@ export const ingredientLotsApi = {
 };
 
 export const ingredientsApi = {
+  /** G2-04 — prix à revoir (avec dernières réceptions et proposition), correction tracée, journal. */
+  costSuspects: (): Promise<PriceSuspect[]> => api.get('/inventory/cost-corrections/suspects').then(r => r.data.data),
+  correctCost: (ingredientId: string, newCost: number, reason: string): Promise<{ id: string; oldCost: number; newCost: number }> =>
+    api.post('/inventory/cost-corrections', { ingredientId, newCost, reason }).then(r => r.data.data),
+  costCorrections: (): Promise<CostCorrection[]> => api.get('/inventory/cost-corrections').then(r => r.data.data),
   /** G2-03 — fusion de deux fiches : aperçu de l'impact, fusion (tout ou rien), journal. */
   mergePreview: (sourceId: string, targetId: string): Promise<IngredientMergePreview> =>
     api.post('/inventory/ingredient-merges/preview', { sourceId, targetId }).then(r => r.data.data),
@@ -197,4 +202,15 @@ export type IngredientMergePreview = { source: MergeSide; target: MergeSide; blo
 export type IngredientMergeEntry = {
   id: string; source_name: string; target_id: string; target_name: string; impact: IngredientMergeImpact;
   unit_cost_before: string | null; unit_cost_after: string | null; merged_at: string; merged_by_name: string | null;
+};
+
+export type PriceSuspect = {
+  ingredientId: string; name: string; unit: string; category: string | null; unitCost: number; median: number | null;
+  reason: 'sans_prix' | 'aberrant'; usedInRecipes: number;
+  receptions: { date: string; voucher: string; quantity: number; unitPrice: number }[];
+  proposal: number | null;
+};
+export type CostCorrection = {
+  id: string; ingredient_id: string; ingredient_name: string; unit: string; old_cost: number; new_cost: number;
+  reason: string; corrected_at: string; corrected_by_name: string | null;
 };
