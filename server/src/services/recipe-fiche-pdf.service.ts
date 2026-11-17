@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { companyCurrency } from './currency.js';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 
@@ -280,9 +281,11 @@ function n(val: number | null, dec = 2): string {
     .replace(/[\u00A0\u202F\u2009]/g, ' ');
 }
 
+/** Symbole de la devise de la société (M3-06), posé au début de chaque génération. */
+let CUR = 'DH';
 /** Montant : « — » seul quand la valeur est absente, pas « — DH ». */
 function dh(v: number | null): string {
-  return v === null || !Number.isFinite(v) ? '\u2014' : `${n(v)} DH`;
+  return v === null || !Number.isFinite(v) ? '\u2014' : `${n(v)} ${CUR}`;
 }
 
 /** Quantite : on garde l'unite SAISIE, jamais convertie (420 g reste 420 g). */
@@ -292,6 +295,7 @@ function qty(v: number, unit: string): string {
 }
 
 export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
+  CUR = (await companyCurrency()).symbol;
   const doc = new PDFDocument({
     size: 'A4',
     // bottom: 0 — le pied de page est ecrit a PH-35, sous la marge basse
@@ -493,7 +497,7 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
     doc.rect(M, y, CW, 16).fill(BEIGE);
     doc.font('Helvetica-Bold').fontSize(8).fillColor(BROWN);
     txt('Total ingrédients', M + 4, y + 4.5);
-    txt(`${n(totalIng)} DH`, M + iCols[0].w + iCols[1].w + 4, y + 4.5,
+    txt(`${n(totalIng)} ${CUR}`, M + iCols[0].w + iCols[1].w + 4, y + 4.5,
         { width: iCols[2].w - 8, align: 'right' });
     y += 26;
   }
@@ -554,7 +558,7 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
       doc.font('Helvetica-Bold').fontSize(8).fillColor(BROWN);
       txt('Total lancement', M + 4, y + 4.5);
       const perPiece = f.nbParDefaut > 0 ? total / f.nbParDefaut : null;
-      txt(`${n(total)} DH   —   ${n(perPiece)} DH / pièce`,
+      txt(`${n(total)} ${CUR}   —   ${n(perPiece)} ${CUR} / pièce`,
           M + CW - cCols[4].w - 4, y + 4.5, { width: cCols[4].w, align: 'right' });
       y += 24;
     }

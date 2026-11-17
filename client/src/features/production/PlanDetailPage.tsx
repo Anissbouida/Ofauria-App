@@ -1,4 +1,5 @@
 import { useProductionPolicies, shiftOf } from './usePolicies';
+import { money } from '../../utils/money';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
@@ -1133,7 +1134,7 @@ export default function PlanDetailPage() {
   //   en production    : avancement
   //   termine          : resultat (quantite, rendement, cout, pertes)
   const num = (v: unknown) => { const x = typeof v === 'number' ? v : parseFloat(String(v ?? '')); return Number.isFinite(x) ? x : 0; };
-  const fmtDh = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
+  const fmtDh = (v: number) => money(v);
   const activeItems = items.filter((it: Record<string, any>) => it.status !== 'cancelled');
   const qtyPlanned = activeItems.reduce((s: number, it: Record<string, any>) => s + num(it.planned_quantity), 0);
   const qtyDone = activeItems.reduce((s: number, it: Record<string, any>) => s + num(it.actual_quantity), 0);

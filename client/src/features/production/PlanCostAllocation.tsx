@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { money } from '../../utils/money';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import api from '../../api/client';
@@ -15,7 +16,6 @@ type Allocation = {
   items: { plan_item_id: string; product_name: string; quantity: number; basis: number; share_pct: number; cost: number; unit_cost: number | null; manual_pct: number | null }[];
 };
 const KEY: Record<string, string> = { poids: 'Poids produit', quantite: 'Quantité produite', valeur_de_vente: 'Valeur de vente', manuelle: 'Parts saisies' };
-const money = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 
 export default function PlanCostAllocation({ planId, canEdit }: { planId: string; canEdit: boolean }) {
   const qc = useQueryClient();

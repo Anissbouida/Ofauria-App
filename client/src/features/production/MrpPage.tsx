@@ -1,4 +1,5 @@
 import { useState, Fragment } from 'react';
+import { money } from '../../utils/money';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { ClipboardList, Loader2, ChevronLeft, ChevronRight, Factory, Layers, Package, ShoppingCart } from 'lucide-react';
@@ -181,7 +182,7 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
                 <Package size={14} /> Besoins matière (achats)
               </h4>
               <span style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>
-                {matReq.totals.to_order} à commander · ~{nf(matReq.totals.estimated_cost)} DH
+                {matReq.totals.to_order} à commander · ~{money(matReq.totals.estimated_cost)}
               </span>
               <button type="button" className="odoo-btn-primary" style={{ marginLeft: 'auto' }} disabled={genPR.isPending}
                 onClick={async () => { if (await confirm(`Créer ${matReq.totals.to_order} demande(s) d'achat pour les matières manquantes du ${date} ?`, { title: "Demandes d'achat" })) genPR.mutate(); }}>
@@ -199,7 +200,7 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
                       <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{nf(r.on_hand)} {r.unit}</td>
                       <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{r.seuil > 0 ? `${nf(r.seuil)} ${r.unit}` : '—'}</td>
                       <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: '#c62828' }}>{nf(r.shortage)} {r.unit}</td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{nf(r.estimated_cost)} DH</td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{money(r.estimated_cost)}</td>
                     </tr>
                   ))}
                 </tbody>

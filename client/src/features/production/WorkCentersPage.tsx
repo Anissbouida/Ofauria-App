@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { money, currencySymbol } from '../../utils/money';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Cog, Plus, X, Loader2, Power, Trash2, Route, Save, Wrench, ListOrdered, Gauge } from 'lucide-react';
 import { routingsApi, type Routing, type OperationInput } from '../../api/routings.api';
@@ -21,7 +22,6 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 
-const money = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', width: '100%', font: 'inherit' };
 const fieldCol: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem' };
@@ -149,7 +149,7 @@ function CenterForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
           <label style={fieldCol}><span style={fieldLbl}>Coût horaire</span>
             <div style={{ position: 'relative' }}>
               <input type="number" step="0.01" min="0" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00" style={{ ...inp, paddingRight: 44 }} />
-              <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>DH/h</span>
+              <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>{currencySymbol()}/h</span>
             </div>
           </label>
           <label style={fieldCol}><span style={fieldLbl}>Capacité <span style={{ fontWeight: 400 }}>(optionnel)</span></span>

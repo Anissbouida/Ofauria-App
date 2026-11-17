@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { money } from '../../utils/money';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { History, Layers, Package, ChefHat, PackageCheck, type LucideIcon } from 'lucide-react';
@@ -144,7 +145,7 @@ export function PlanLinkedOrder({ plan }: { plan: Record<string, any> }) {
         {plan.order_customer_phone && cell('Téléphone', plan.order_customer_phone)}
         {plan.order_pickup_date && cell('Retrait', format(new Date(plan.order_pickup_date), 'dd/MM/yyyy', { locale: fr }))}
         {plan.order_total && cell('Total', <>
-          {parseFloat(plan.order_total).toFixed(2)} DH
+          {money(parseFloat(plan.order_total))}
           {parseFloat(plan.order_advance_amount) > 0 && (
             <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginLeft: 4 }}>(avance {parseFloat(plan.order_advance_amount).toFixed(2)})</span>
           )}

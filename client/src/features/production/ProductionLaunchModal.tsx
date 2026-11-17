@@ -1,4 +1,5 @@
 import { useProductionPolicies, shiftOf } from './usePolicies';
+import { money } from '../../utils/money';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -1027,7 +1028,7 @@ export default function ProductionLaunchModal({
               {recipeData && (
                 <p className="text-sm text-gray-500">
                   Rendement : {recipeData.yield_quantity} {recipeData.yield_unit || 'unite(s)'}
-                  {recipeData.total_cost && parseFloat(recipeData.total_cost) > 0 && ` | Cout : ${parseFloat(recipeData.total_cost).toFixed(2)} DH`}
+                  {recipeData.total_cost && parseFloat(recipeData.total_cost) > 0 && ` | Cout : ${money(parseFloat(recipeData.total_cost))}`}
                 </p>
               )}
             </div>
@@ -1185,7 +1186,7 @@ export default function ProductionLaunchModal({
               <div className="flex items-center gap-3 text-xs text-blue-600">
                 {recipeData.yield_quantity && <span>Rendement : {recipeData.yield_quantity} {recipeData.yield_unit || 'unite(s)'}</span>}
                 {recipeData.total_cost && parseFloat(recipeData.total_cost) > 0 && (
-                  <span>Cout : {parseFloat(recipeData.total_cost).toFixed(2)} DH</span>
+                  <span>Cout : {money(parseFloat(recipeData.total_cost))}</span>
                 )}
               </div>
             </div>

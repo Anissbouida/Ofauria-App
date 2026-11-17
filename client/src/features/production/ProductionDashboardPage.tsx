@@ -1,4 +1,5 @@
 import { useProductionPolicies, yieldLevel, YIELD_PILL } from './usePolicies';
+import { money } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -88,10 +89,10 @@ export default function ProductionDashboardPage() {
     },
   });
 
-  const formatDH = (val: unknown) => {
+  const fmtMoney = (val: unknown) => {
     const n = parseFloat(String(val));
     if (isNaN(n)) return '—';
-    return `${n.toFixed(2)} DH`;
+    return money(n);
   };
 
   const isLoading = loadingRendement || loadingCout;
@@ -135,7 +136,7 @@ export default function ProductionDashboardPage() {
               color="red"
               sub={`Brut: ${parseFloat(rendementStats?.total_brute || '0').toFixed(0)} → Net: ${parseFloat(rendementStats?.total_nette || '0').toFixed(0)}`} />
             <StatCard icon={<DollarSign size={18} className="text-amber-500" />} label="Cout total"
-              value={formatDH(coutStats?.total_cout)}
+              value={fmtMoney(coutStats?.total_cout)}
               color="amber"
               sub={`${coutStats?.total_plans || 0} plans`} />
             <StatCard icon={<TrendingUp size={18} className="text-emerald-500" />} label="Ecart moyen"
@@ -305,11 +306,11 @@ export default function ProductionDashboardPage() {
                     {coutByDay.map((d: any, i: number) => (
                       <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/60">
                         <td className="px-5 py-2.5 text-gray-900">{format(new Date(d.plan_date), 'dd/MM/yyyy')}</td>
-                        <td className="px-3 py-2.5 text-right text-amber-600">{formatDH(d.matieres)}</td>
-                        <td className="px-3 py-2.5 text-right text-blue-600">{formatDH(d.main_oeuvre)}</td>
-                        <td className="px-3 py-2.5 text-right text-violet-600">{formatDH(d.energie)}</td>
-                        <td className="px-3 py-2.5 text-right text-red-600">{formatDH(d.pertes)}</td>
-                        <td className="px-5 py-2.5 text-right font-bold text-gray-900">{formatDH(d.total)}</td>
+                        <td className="px-3 py-2.5 text-right text-amber-600">{fmtMoney(d.matieres)}</td>
+                        <td className="px-3 py-2.5 text-right text-blue-600">{fmtMoney(d.main_oeuvre)}</td>
+                        <td className="px-3 py-2.5 text-right text-violet-600">{fmtMoney(d.energie)}</td>
+                        <td className="px-3 py-2.5 text-right text-red-600">{fmtMoney(d.pertes)}</td>
+                        <td className="px-5 py-2.5 text-right font-bold text-gray-900">{fmtMoney(d.total)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -352,7 +353,7 @@ function CostBar({ label, icon, value, total, color }: {
       <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
         <div className={`h-full bg-${color}-500 rounded-full transition-all`} style={{ width: `${pct}%` }} />
       </div>
-      <div className="text-[10px] text-gray-400 mt-0.5">{value.toFixed(2)} DH</div>
+      <div className="text-[10px] text-gray-400 mt-0.5">{money(value)}</div>
     </div>
   );
 }

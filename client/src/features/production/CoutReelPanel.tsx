@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { money, currencySymbol } from '../../utils/money';
 import PlanCostAllocation from './PlanCostAllocation';
 import { apiErrorMessage } from '../../api/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -149,7 +150,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
 
   if (planStatus !== 'completed' && planStatus !== 'in_progress') return null;
 
-  const formatDH = (val: Money) => `${toNum(val).toFixed(2)} DH`;
+  const fmtMoney = (val: Money) => money(toNum(val));
 
   const coutMat = toNum(cout?.cout_matieres);
   const coutMO = toNum(cout?.cout_main_oeuvre);
@@ -170,7 +171,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
         <Calculator size={12} /> Coût de revient
         {cout && (
           <span style={{ marginLeft: 'auto', fontSize: '0.8125rem', fontWeight: 600, color: '#28a745' }}>
-            {formatDH(coutRevient)}
+            {fmtMoney(coutRevient)}
           </span>
         )}
       </div>
@@ -202,37 +203,37 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
               <div className="odoo-stat-card-label">
                 <Package size={11} style={{ display: 'inline', marginRight: 4 }} />Matières
               </div>
-              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{formatDH(coutMat)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{fmtMoney(coutMat)}</div>
             </div>
             <div className="odoo-stat-card" style={{ cursor: 'default' }}>
               <div className="odoo-stat-card-label">
                 <Package size={11} style={{ display: 'inline', marginRight: 4 }} />Emballages
               </div>
-              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{formatDH(coutEmballages)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{fmtMoney(coutEmballages)}</div>
             </div>
             <div className="odoo-stat-card" style={{ cursor: 'default' }}>
               <div className="odoo-stat-card-label">
                 <Users size={11} style={{ display: 'inline', marginRight: 4 }} />M.O.
               </div>
-              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{formatDH(coutMO)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{fmtMoney(coutMO)}</div>
             </div>
             <div className="odoo-stat-card" style={{ cursor: 'default' }}>
               <div className="odoo-stat-card-label">
                 <Zap size={11} style={{ display: 'inline', marginRight: 4 }} />Énergie
               </div>
-              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{formatDH(coutEnergie)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{fmtMoney(coutEnergie)}</div>
             </div>
             <div className="odoo-stat-card" style={{ cursor: 'default' }}>
               <div className="odoo-stat-card-label">
                 <Building2 size={11} style={{ display: 'inline', marginRight: 4 }} />Charges
               </div>
-              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{formatDH(coutCharges)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{fmtMoney(coutCharges)}</div>
             </div>
             <div className="odoo-stat-card" style={{ cursor: 'default', backgroundColor: 'var(--theme-bg-secondary)' }}>
               <div className="odoo-stat-card-label">
                 <DollarSign size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Revient
               </div>
-              <div className="odoo-stat-card-value" style={{ fontSize: '1rem', color: '#28a745' }}>{formatDH(coutRevient)}</div>
+              <div className="odoo-stat-card-value" style={{ fontSize: '1rem', color: '#28a745' }}>{fmtMoney(coutRevient)}</div>
             </div>
           </div>
 
@@ -250,7 +251,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                 dont pertes (matière perdue, déjà comptée dans Matières)
               </span>
               <span style={{ fontWeight: 600, color: '#dc3545' }}>
-                {formatDH(coutPertes)}{coutMat > 0 ? ` (${((coutPertes / coutMat) * 100).toFixed(1)} % des matières)` : ''}
+                {fmtMoney(coutPertes)}{coutMat > 0 ? ` (${((coutPertes / coutMat) * 100).toFixed(1)} % des matières)` : ''}
               </span>
             </div>
           )}
@@ -265,7 +266,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
               fontSize: '0.8125rem',
             }}>
               <span style={{ color: 'var(--theme-text-muted)' }}>Prix de revient par unité ({totalQuantity} unités)</span>
-              <span style={{ fontWeight: 600 }}>{(coutRevient / totalQuantity).toFixed(2)} DH</span>
+              <span style={{ fontWeight: 600 }}>{money(coutRevient / totalQuantity)}</span>
             </div>
           )}
 
@@ -288,14 +289,14 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span style={{ color: 'var(--theme-text-muted)' }}>Coût prévu (mix standard)</span>
-                  <span style={{ fontWeight: 500 }}>{formatDH(prevu)}</span>
+                  <span style={{ fontWeight: 500 }}>{fmtMoney(prevu)}</span>
                 </div>
                 {prevuMix != null && Math.abs((ecartMix ?? 0)) > 0.01 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}
                     title="Différence due au mix réellement produit (ex : 6 moyens au lieu de 3+3). N'implique aucune sur/sous-consommation de matière — c'est un effet volume par format.">
                     <span style={{ color: 'var(--theme-text-muted)' }}>Écart de mix</span>
                     <span style={{ fontWeight: 500, color: color(-(ecartMix ?? 0)) }}>
-                      {sign(-(ecartMix ?? 0))}{(-(ecartMix ?? 0)).toFixed(2)} DH
+                      {money(-(ecartMix ?? 0), { signed: true })}
                     </span>
                   </div>
                 )}
@@ -303,7 +304,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}
                     title="Coût prévu recalculé sur les quantités réellement produites (le mix standard ne compte plus).">
                     <span style={{ color: 'var(--theme-text-muted)' }}>Prévu au mix réel</span>
-                    <span style={{ fontWeight: 500 }}>{formatDH(prevuMix)}</span>
+                    <span style={{ fontWeight: 500 }}>{fmtMoney(prevuMix)}</span>
                   </div>
                 )}
                 {ecartPrix != null && (
@@ -311,14 +312,14 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                     title="Ce qui reste de l'écart après avoir absorbé le mix : sur/sous-consommation matière + pertes + variation de prix des ingrédients.">
                     <span style={{ color: 'var(--theme-text-muted)' }}>Écart prix / pertes</span>
                     <span style={{ fontWeight: 500, color: color(ecartPrix) }}>
-                      {sign(ecartPrix)}{ecartPrix.toFixed(2)} DH
+                      {money(ecartPrix, { signed: true })}
                     </span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 4, borderTop: '1px dashed var(--theme-bg-separator)', fontWeight: 600 }}>
                   <span>Écart total (Réel − Prévu)</span>
                   <span style={{ color: color(ecartTot) }}>
-                    {sign(ecartTot)}{ecartTot.toFixed(2)} DH
+                    {money(ecartTot, { signed: true })}
                     {' '}({sign(ecartTot)}{prevu > 0 ? ((ecartTot / prevu) * 100).toFixed(1) : '0.0'} %)
                   </span>
                 </div>
@@ -343,7 +344,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                       <td className="py-1 px-2 text-gray-700">{d.name}</td>
                       <td className="py-1 px-2 text-right">{toNum(d.qty).toLocaleString('fr-FR', { maximumFractionDigits: 3 })}{d.unit ? ` ${d.unit}` : ''}</td>
                       <td className="py-1 px-2 text-right">{toNum(d.unit_cost).toFixed(2)}</td>
-                      <td className="py-1 px-2 text-right font-medium">{formatDH(d.total)}</td>
+                      <td className="py-1 px-2 text-right font-medium">{fmtMoney(d.total)}</td>
                     </tr>
                   ))}</tbody>
                 </table>
@@ -407,9 +408,9 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                       <th className="text-left py-1 px-2">Produit</th>
                       <th className="text-right py-1 px-2">Std (min)</th>
                       <th className="text-right py-1 px-2">Réel (min)</th>
-                      <th className="text-right py-1 px-2">Std (DH)</th>
-                      <th className="text-right py-1 px-2">Réel (DH)</th>
-                      <th className="text-right py-1 px-2">Écart (DH)</th>
+                      <th className="text-right py-1 px-2">Std ({currencySymbol()})</th>
+                      <th className="text-right py-1 px-2">Réel ({currencySymbol()})</th>
+                      <th className="text-right py-1 px-2">Écart ({currencySymbol()})</th>
                     </tr></thead>
                     <tbody>{moEcart.items.map((d) => (
                       <tr key={d.plan_item_id} className="border-t border-gray-50">
@@ -464,13 +465,13 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                           <td className="py-1 px-2 text-gray-700">{o.product_name || o.label}</td>
                           <td className="py-1 px-2 text-right text-gray-500">{o.quantity}</td>
                           <td className="py-1 px-2 text-right text-gray-500">{o.equiv_pieces}</td>
-                          <td className="py-1 px-2 text-right text-gray-500">{o.unit_cost != null ? `${o.unit_cost.toFixed(2)} DH` : '—'}</td>
-                          <td className="py-1 px-2 text-right font-medium text-gray-900">{o.cost_share != null ? `${o.cost_share.toFixed(2)} DH` : '—'}</td>
+                          <td className="py-1 px-2 text-right text-gray-500">{o.unit_cost != null ? money(o.unit_cost) : '—'}</td>
+                          <td className="py-1 px-2 text-right font-medium text-gray-900">{o.cost_share != null ? money(o.cost_share) : '—'}</td>
                         </tr>
                       ))}</tbody>
                       <tfoot><tr className="border-t border-gray-200 font-semibold text-gray-800">
                         <td className="py-1 px-2" colSpan={4}>Total article{g.complete ? '' : ' (partiel — sortie sans coût)'}</td>
-                        <td className="py-1 px-2 text-right">{g.total_cost.toFixed(2)} DH</td>
+                        <td className="py-1 px-2 text-right">{money(g.total_cost)}</td>
                       </tr></tfoot>
                     </table>
                   </div>
@@ -521,8 +522,8 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
                   <tbody>{(cout.detail_charges_fixes || []).map((d, i) => (
                     <tr key={i} className="border-t border-gray-50">
                       <td className="py-1 px-2 text-gray-700">{d.label}</td>
-                      <td className="py-1 px-2 text-right text-gray-500">{formatDH(d.mensuel)}</td>
-                      <td className="py-1 px-2 text-right font-medium text-gray-900">{formatDH(d.part)}</td>
+                      <td className="py-1 px-2 text-right text-gray-500">{fmtMoney(d.mensuel)}</td>
+                      <td className="py-1 px-2 text-right font-medium text-gray-900">{fmtMoney(d.part)}</td>
                     </tr>
                   ))}</tbody>
                 </table>
