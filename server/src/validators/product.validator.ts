@@ -230,3 +230,10 @@ export const importProductsSchema = z.object({
     isAvailable: z.coerce.boolean().optional(),
   })).min(1, 'Fichier vide').max(2000, 'Trop de lignes (max 2000)'),
 });
+
+/** G2-09 — mentions d'étiquette du produit. Chaîne vide ou null : la mention est effacée. */
+export const productLabelFieldsSchema = z.object({
+  legalName: z.string().max(200).nullable().optional(),
+  storageConditions: z.string().max(300).nullable().optional(),
+  labelMentions: z.string().max(500).nullable().optional(),
+});

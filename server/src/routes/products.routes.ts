@@ -4,7 +4,9 @@ import path from 'path';
 import { productController } from '../controllers/product.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
-import { validate } from '../middleware/validate.middleware.js';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
+import { productLabelFieldsSchema } from '../validators/product.validator.js';
 import {
   createProductSchema,
   updateProductSchema,
@@ -26,6 +28,9 @@ router.get('/', authenticate, productController.list);
 router.get('/top-selling', authenticate, productController.topSelling);
 router.get('/alerts/low-stock', authenticate, productController.lowStock);
 router.get('/:id/effective-deadline', authenticate, productController.effectiveDeadline);
+// G2-09 — étiquette réglementaire : données composées et mentions du produit.
+router.get('/:id/label-data', authenticate, validateUuidParams('id'), asyncHandler(productController.labelData));
+router.put('/:id/label-fields', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), validate(productLabelFieldsSchema), asyncHandler(productController.saveLabelFields));
 router.get('/:id', authenticate, productController.getById);
 router.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(createProductSchema), productController.create);
 // Import CSV (export Loyverse) + suppression en masse.

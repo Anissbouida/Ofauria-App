@@ -1,3 +1,4 @@
+import { productLabelRepository } from '../repositories/product-label.repository.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productRepository } from '../repositories/product.repository.js';
@@ -17,6 +18,19 @@ function slugify(text: string): string {
 }
 
 export const productController = {
+  /** GET /products/:id/label-data — données de l'étiquette réglementaire (G2-09) : ingrédients éclatés par poids, allergènes, mentions, blocages. */
+  async labelData(req: AuthRequest, res: Response) {
+    const data = await productLabelRepository.labelData(req.params.id as string);
+    if (!data) { res.status(404).json({ success: false, error: { message: 'Produit introuvable' } }); return; }
+    res.json({ success: true, data });
+  },
+  /** PUT /products/:id/label-fields — dénomination légale, conservation, mentions (G2-09). */
+  async saveLabelFields(req: AuthRequest, res: Response) {
+    if (!(await productLabelRepository.saveFields(req.params.id as string, req.body))) {
+      res.status(404).json({ success: false, error: { message: 'Produit introuvable' } }); return;
+    }
+    res.json({ success: true, data: await productLabelRepository.labelData(req.params.id as string) });
+  },
   // ───── Paliers tarifaires (mig 171) ─────
   async listPricingTiers(req: AuthRequest, res: Response) {
     const tiers = await pricingTierRepository.listByProduct(req.params.id);
