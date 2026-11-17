@@ -283,6 +283,22 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
   const appliedPct = type === 'staff' ? staffDiscountPercent : discountPct;
   const effectiveDiscount = Math.round(subtotal * appliedPct) / 100;
   const validItems = items.filter((it) => it.productId && it.quantity > 0);
+  // Date de disponibilité promise de chaque article choisi (G5-06).
+  const promiseKey = validItems.map(it => `${it.productId}:${it.quantity}`).join(',');
+  const { data: promises = [] } = useQuery({
+    queryKey: ['order-promise-dates', promiseKey],
+    queryFn: () => ordersApi.promiseDates(validItems.map(it => ({ productId: it.productId, quantity: it.quantity }))),
+    enabled: validItems.length > 0, staleTime: 30_000,
+  });
+  const promiseOf = (productId: string) => promises.find(p => p.productId === productId);
+  const promiseLabel = (productId: string) => {
+    const p = promiseOf(productId);
+    if (!p) return null;
+    if (p.source === 'a_approvisionner') return { text: 'à approvisionner', late: true };
+    const when = p.date ? format(new Date(`${p.date}T12:00`), 'dd/MM', { locale: fr }) : '';
+    const text = p.source === 'stock' ? 'en stock' : p.source === 'planifie' ? `dispo le ${when}` : `à produire, dispo le ${when}`;
+    return { text, late: !!p.date && !!pickupDate && p.date > pickupDate };
+  };
   // Prix saisi différent de la grille : dérogation de la direction, motivée (O2C L3).
   const [priceOverrideReason, setPriceOverrideReason] = useState('');
   const pricesOverridden = validItems.some((it) => {
@@ -807,6 +823,11 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                       return (
                         <span key={item.productId} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-100 text-primary-800 text-sm font-medium">
                           {prod ? prod.name as string : item.productId} <strong>&times;{item.quantity}</strong>
+                          {(() => { const pl = promiseLabel(item.productId); return pl && (
+                            <span title="Date de disponibilité promise" className={pl.late ? 'text-red-600' : 'text-gray-500'} style={{ fontWeight: 400, fontSize: '0.75rem' }}>
+                              · {pl.text}{pl.late ? ' (après le retrait)' : ''}
+                            </span>
+                          ); })()}
                           <button type="button" onClick={() => setItemQty(item.productId, 0)}
                             className="ml-1 text-primary-400 hover:text-red-500">&times;</button>
                         </span>

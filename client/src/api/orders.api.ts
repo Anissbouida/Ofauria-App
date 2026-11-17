@@ -4,6 +4,9 @@ export const ordersApi = {
   list: (params?: Record<string, string>) => api.get('/orders', { params }).then(r => r.data),
   getById: (id: string) => api.get(`/orders/${id}`).then(r => r.data.data),
   create: (data: Record<string, any>) => api.post('/orders', data).then(r => r.data.data),
+  /** Date de disponibilité promise des lignes (G5-06). */
+  promiseDates: (items: { productId: string; quantity: number }[]): Promise<{ productId: string; quantity: number; date: string | null; source: 'stock' | 'planifie' | 'a_produire' | 'a_approvisionner'; available_now: number }[]> =>
+    api.post('/orders/promise-dates', { items }).then(r => r.data.data),
   update: (id: string, data: Record<string, any>) => api.put(`/orders/${id}`, data).then(r => r.data.data),
   updateStatus: (id: string, status: string, reason?: string) => api.put(`/orders/${id}/status`, { status, reason }).then(r => r.data.data),
   /** Report de la date de retrait (≥ 24 h avant, sinon direction avec motif). */

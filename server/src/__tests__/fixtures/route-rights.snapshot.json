@@ -3170,6 +3170,12 @@
   "manager",
   "saleswoman"
  ],
+ "POST /orders/promise-dates": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
  "POST /packaging-items": [
   "admin",
   "manager"

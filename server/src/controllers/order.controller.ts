@@ -2,6 +2,8 @@ import type { Response } from 'express';
 import { defaultWorkshop, workshopForCategorySlug } from '../services/workshops.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { orderRepository } from '../repositories/order.repository.js';
+import { promiseDates } from '../services/promise-date.js';
+import { localIsoDate } from '../utils/local-date.js';
 import { productRepository } from '../repositories/product.repository.js';
 import { cashRegisterRepository } from '../repositories/cash-register.repository.js';
 import { saleRepository } from '../repositories/sale.repository.js';
@@ -641,6 +643,13 @@ export const orderController = {
   },
 
   // Get pending orders for a specific date (for production planning)
+  /** POST /orders/promise-dates — date de disponibilité promise de chaque ligne (G5-06). */
+  async promiseDates(req: AuthRequest, res: Response) {
+    const storeId = req.user!.storeId;
+    if (!storeId) { res.status(400).json({ success: false, error: { message: 'Compte non rattaché à un établissement' } }); return; }
+    res.json({ success: true, data: await promiseDates(storeId, req.body.items, localIsoDate(new Date())) });
+  },
+
   async forDate(req: AuthRequest, res: Response) {
     const { date } = req.query as Record<string, string>;
     if (!date) { res.status(400).json({ success: false, error: { message: 'Date requise' } }); return; }
