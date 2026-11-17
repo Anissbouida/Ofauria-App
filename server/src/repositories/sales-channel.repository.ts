@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { auditedQuery, setAuditUser } from '../utils/audit-context.js';
 
 export interface SalesChannel {
@@ -35,9 +35,8 @@ export const salesChannelRepository = {
   },
 
   async create(data: { code: string; label: string; color?: string; displayOrder?: number; isDefault?: boolean }, actorId?: string): Promise<SalesChannel> {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       await setAuditUser(client, actorId);
       if (data.isDefault) {
         await client.query(`UPDATE sales_channels SET is_default = false WHERE is_default = true`);
@@ -47,14 +46,8 @@ export const salesChannelRepository = {
          VALUES ($1, $2, $3, $4, $5) RETURNING *`,
         [data.code, data.label, data.color || '#64748b', data.displayOrder ?? 0, data.isDefault || false],
       );
-      await client.query('COMMIT');
       return result.rows[0];
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async update(id: string, data: { label?: string; color?: string; displayOrder?: number; isDefault?: boolean; isActive?: boolean }, actorId?: string): Promise<SalesChannel | null> {
