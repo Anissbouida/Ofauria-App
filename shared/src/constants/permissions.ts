@@ -634,6 +634,7 @@ export const PERMISSIONS = {
   "stock.inventory.preview": { module: "stock", label: "Inventaire : preview", defaultRoles: ["admin", "manager"] },
   "stock.inventory.resolve": { module: "stock", label: "Inventaire : resolve", defaultRoles: ["admin", "manager"] },
   "stock.inventory.restock": { module: "stock", label: "Inventaire : restock", defaultRoles: ["admin", "manager"] },
+  "stock.inventory.reorder_points": { module: "stock", label: "Points de commande : régler, recalculer, valider les propositions", defaultRoles: ["admin", "manager"] },
   "stock.inventory.view": { module: "stock", label: "Inventaire : consulter", defaultRoles: ["admin", "manager"] },
   "stock.stock_counts.cancel": { module: "stock", label: "Stock comptages : annuler", defaultRoles: ["admin", "manager"] },
   "stock.stock_counts.create": { module: "stock", label: "Stock comptages : créer", defaultRoles: ["admin", "magasinier", "manager"] },

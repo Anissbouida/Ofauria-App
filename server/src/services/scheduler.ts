@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { reorderPointRepository } from '../repositories/reorder-point.repository.js';
 import { logger } from '../utils/logger.js';
 import { processOutbox, enqueueEmail } from './mailer.js';
 import { getParameter } from './module-parameters.service.js';
@@ -458,6 +459,12 @@ async function webhookOutbox(): Promise<JobResult> {
   return { items: r.sent, message: `${r.sent} envoyé(s)${r.failed ? ` · ${r.failed} échec(s)` : ''}` };
 }
 
+/** Points de commande (G5-02) : appliqués en mode calculé, proposés en mode manuel. */
+async function reorderPoints(): Promise<JobResult> {
+  const r = await reorderPointRepository.recalculate();
+  return { items: r.applied + r.proposed, message: `${r.applied} appliqué(s) · ${r.proposed} proposition(s) à valider` };
+}
+
 export const JOBS: Record<string, Handler> = {
   email_outbox: emailOutbox,
   webhook_outbox: webhookOutbox,
@@ -479,6 +486,7 @@ export const JOBS: Record<string, Handler> = {
   dlc_alerts: dlcAlerts,
   hr_documents_due: hrDocumentsDue,
   recurring_entries: recurringEntries,
+  reorder_points: reorderPoints,
   housekeeping,
 };
 

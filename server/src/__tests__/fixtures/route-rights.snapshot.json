@@ -907,6 +907,10 @@
   "admin",
   "manager"
  ],
+ "GET /inventory/reorder-points": [
+  "admin",
+  "manager"
+ ],
  "GET /inventory/stock-anomalies": [
   "admin",
   "manager"
@@ -2877,6 +2881,14 @@
   "admin",
   "manager"
  ],
+ "POST /inventory/reorder-points/apply": [
+  "admin",
+  "manager"
+ ],
+ "POST /inventory/reorder-points/recalculate": [
+  "admin",
+  "manager"
+ ],
  "POST /inventory/restock": [
   "admin",
   "manager"
@@ -4320,6 +4332,10 @@
   "manager"
  ],
  "PUT /ingredients/:id/allergens": [
+  "admin",
+  "manager"
+ ],
+ "PUT /inventory/reorder-points/:id": [
   "admin",
   "manager"
  ],

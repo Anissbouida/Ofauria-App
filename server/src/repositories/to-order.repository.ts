@@ -73,8 +73,10 @@ export const toOrderRepository = {
       const n = get(a.ingredient_id, a.ingredient_name, a.unit || 'kg');
       const current = parseFloat(a.current_quantity) || 0;
       const threshold = parseFloat(a.minimum_threshold) || 0;
-      // Ramène le stock à deux fois le seuil (au moins un seuil). Plusieurs zones : on garde le plus bas.
-      const suggested = Math.max(threshold, threshold * 2 - current);
+      // Ramène le stock au maximum de l'article (G5-02) ; sans maximum, à deux fois le point de
+      // commande (au moins un point de commande). Plusieurs zones : on garde le plus bas.
+      const max = a.max_stock != null ? parseFloat(a.max_stock) : null;
+      const suggested = max != null ? Math.max(max - current, 0) : Math.max(threshold, threshold * 2 - current);
       if (!n.low_stock || current < n.low_stock.current) n.low_stock = { current, threshold, suggested };
     }
     const ids = [...needs.keys()];

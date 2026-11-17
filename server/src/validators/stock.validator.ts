@@ -53,3 +53,12 @@ export const ingredientAllergensSchema = z.object({
   contains: z.array(z.string().max(40)).max(14),
   traces: z.array(z.string().max(40)).max(14),
 });
+
+/** Points de commande (G5-02). */
+export const reorderApplySchema = z.object({ ids: z.array(z.string().uuid()).min(1).max(5000) });
+export const reorderUpdateSchema = z.object({
+  reorderPoint: z.number().finite().min(0).optional(),
+  safetyStock: z.number().finite().min(0).optional(),
+  maxStock: z.number().finite().min(0).nullable().optional(),
+  mode: z.enum(['manuel', 'calcule']).optional(),
+});

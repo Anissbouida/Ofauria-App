@@ -10,6 +10,7 @@ import { db } from '../config/database.js';
 import { adjustIngredientStock } from '../services/stock-adjust.js';
 import { allergensSchema } from '../validators/allergens.js';
 import { stockValuationRepository } from '../repositories/stock-valuation.repository.js';
+import { reorderPointRepository } from '../repositories/reorder-point.repository.js';
 import { localIsoDate } from '../utils/local-date.js';
 
 export const inventoryController = {
@@ -276,6 +277,23 @@ export const inventoryController = {
       return;
     }
     res.json({ success: true, data });
+  },
+  // ─── Points de commande (G5-02) ───
+  async reorderPoints(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await reorderPointRepository.list(req.user!.storeId ?? null) });
+  },
+  async reorderRecalculate(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await reorderPointRepository.recalculate(req.user!.storeId ?? null) });
+  },
+  async reorderApply(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: { applied: await reorderPointRepository.applyProposals(req.body.ids) } });
+  },
+  async reorderUpdate(req: AuthRequest, res: Response) {
+    try {
+      res.json({ success: true, data: await reorderPointRepository.update(req.params.id as string, req.body) });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
   },
   /** GET /inventory/stock-journal-gaps — articles dont le journal n'explique pas le stock (G5-01). */
   async journalGaps(req: AuthRequest, res: Response) {

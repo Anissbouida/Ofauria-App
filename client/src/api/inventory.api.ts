@@ -30,6 +30,13 @@ export const inventoryApi = {
   }> => api.get('/inventory/price-health').then(r => r.data.data),
 
   /* Cloture de stock par periode (mig 381). */
+  /** Points de commande (G5-02, mig 550). */
+  reorderPoints: (): Promise<{ params: { usage_days: number; default_lead_days: number; safety_days: number }; rows: ReorderPointRow[] }> =>
+    api.get('/inventory/reorder-points').then(r => r.data.data),
+  reorderRecalculate: (): Promise<{ applied: number; proposed: number }> => api.post('/inventory/reorder-points/recalculate').then(r => r.data.data),
+  reorderApply: (ids: string[]): Promise<{ applied: number }> => api.post('/inventory/reorder-points/apply', { ids }).then(r => r.data.data),
+  reorderUpdate: (id: string, patch: { reorderPoint?: number | null; safetyStock?: number | null; maxStock?: number | null; mode?: 'manuel' | 'calcule' }) =>
+    api.put(`/inventory/reorder-points/${id}`, patch).then(r => r.data.data),
   /** Stock valorisé à la fin d'une date (G5-01, mig 549). */
   stockAt: (date: string): Promise<{ date: string; total: number; gaps: number; lines: { ingredient_id: string; ingredient_name: string; unit: string; quantity: number; unit_cost: number; value: number }[] }> =>
     api.get('/inventory/stock-at', { params: { date } }).then(r => r.data.data),
@@ -231,3 +238,12 @@ export type AllergenGridRow = {
   id: string; name: string; category: string | null; contains: string[]; traces: string[]; reviewed: boolean;
   reviewedAt: string | null; reviewedByName: string | null; proposal: string[]; usedInRecipes: number;
 };
+
+/** Ligne de point de commande (G5-02). */
+export interface ReorderPointRow {
+  id: string; ingredient_id: string; ingredient_name: string; unit: string; store_id: string | null;
+  current_quantity: number; reorder_point: number; safety_stock: number; max_stock: number | null;
+  replenish_mode: 'manuel' | 'calcule'; avg_daily_usage: number; lead_days: number; lead_from_supplier: boolean;
+  proposed_reorder_point: number | null; proposed_safety_stock: number | null; proposed_at: string | null;
+  live_reorder_point: number; live_safety_stock: number; below: boolean;
+}

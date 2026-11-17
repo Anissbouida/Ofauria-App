@@ -18,7 +18,7 @@ import {
   Clock, X, Boxes, CalendarClock, ChevronRight, ChevronDown, ChevronLeft,
   ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen,
   Plus, List, LayoutGrid, ShoppingCart, Upload, Download, BarChart3,
-  ClipboardList, ClipboardCheck, Archive, Beaker, Loader2, ListTree, Lock, ShieldAlert, MapPin, Snowflake,
+  ClipboardList, ClipboardCheck, Archive, Beaker, Loader2, ListTree, Lock, ShieldAlert, MapPin, Snowflake, Gauge,
 } from 'lucide-react';
 import IngredientImportModal from './IngredientImportModal';
 import ConsommationTab from './ConsommationTab';
@@ -27,6 +27,7 @@ import GoodsEntryRegisterTab from './GoodsEntryRegisterTab';
 import StockAgingTab from './StockAgingTab';
 import StockAnomaliesTab from './StockAnomaliesTab';
 import StockClosingTab from './StockClosingTab';
+import ReorderPointsTab from './ReorderPointsTab';
 import EmplacementsTab from './EmplacementsTab';
 import LotsThermalTab from './LotsThermalTab';
 import PackagingPage from '../packaging/PackagingPage';
@@ -85,7 +86,7 @@ function situationOf(i: InventoryItem): Situation {
 }
 
 /** Onglets du module Stock (fusion Économat + Pesage, 2026-10-11). */
-type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'aging' | 'anomalies' | 'closing' | 'registre' | 'emplacements' | 'surgeles';
+type StockTab = 'stock' | 'bons' | 'commander' | 'consumables' | 'inventaires' | 'analyse' | 'aging' | 'anomalies' | 'closing' | 'registre' | 'emplacements' | 'surgeles' | 'points';
 /** Sous-vues de l'onglet Bons de sortie (?view=). */
 type BonsView = 'queue' | 'transfers' | 'history';
 /** Zone affichee dans l'onglet Stock (?zone=) : scelle (ex-Économat) ou entame (ex-Pesage). */
@@ -108,7 +109,7 @@ export default function StockPage() {
   //   -> A commander (ruptures BSI) -> Consommables -> Analyse (admin/gerant).
   // Tout est persiste en URL (?tab=&view=&zone=&bon=) pour les deep-links
   // (notifications, liens « Ouvrir au pesage », rafraichissement).
-  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'aging', 'anomalies', 'closing', 'registre', 'emplacements', 'surgeles'];
+  const validTabs: StockTab[] = ['stock', 'bons', 'commander', 'consumables', 'inventaires', 'analyse', 'aging', 'anomalies', 'closing', 'registre', 'emplacements', 'surgeles', 'points'];
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = searchParams.get('tab') as StockTab | null;
   const [econoTab, setEconoTab] = useState<StockTab>(
@@ -370,6 +371,7 @@ export default function StockPage() {
     // Référentiel d'emplacements de stock (épic labo L1, mig 424) : chambres,
     // zones, bacs — reliés à leur sonde HACCP.
     { key: 'emplacements', label: 'Emplacements', icon: MapPin, section: 'setup', hidden: !canManageIngredients },
+    { key: 'points', label: 'Points de commande', icon: Gauge, section: 'setup', hidden: !canManageIngredients },
     // Types de contenant, catégories : tenus dans Paramètres › Référentiel.
     { key: 'referentiel', label: 'Référentiels', icon: ListTree, section: 'setup', hidden: !hasModule('settings'), href: '/settings?page=referentiel', external: true },
   ];
@@ -513,6 +515,8 @@ export default function StockPage() {
         <StockAnomaliesTab />
       ) : econoTab === 'closing' ? (
         <StockClosingTab />
+      ) : econoTab === 'points' ? (
+        <ReorderPointsTab />
       ) : econoTab === 'emplacements' ? (
         <EmplacementsTab />
       ) : econoTab === 'surgeles' ? (
