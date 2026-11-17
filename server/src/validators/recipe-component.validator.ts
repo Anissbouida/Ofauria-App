@@ -68,4 +68,7 @@ export const updateFormatSchema = z.object({
 export const formatWeightsSchema = z.object({
   poidsCruG: z.number().positive().max(1_000_000).nullable(),
   poidsCuitG: z.number().positive().max(1_000_000).nullable(),
+  // M3-04 : unité de saisie de chaque poids (défaut : gramme, comportement d'avant).
+  cruUnit: z.enum(['g', 'kg']).optional(),
+  cuitUnit: z.enum(['g', 'kg']).optional(),
 });

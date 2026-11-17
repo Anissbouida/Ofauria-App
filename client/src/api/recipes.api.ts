@@ -180,7 +180,7 @@ export interface RecipeChild {
 export const recipesApi = {
   /** G2-05 — poids cru / cuit de tous les formats actifs, et enregistrement d'une ligne (null efface). */
   formatWeights: (): Promise<FormatWeightRow[]> => api.get('/recipes/format-weights').then(r => r.data.data),
-  saveFormatWeights: (formatId: string, data: { poidsCruG: number | null; poidsCuitG: number | null }): Promise<FormatWeightRow> =>
+  saveFormatWeights: (formatId: string, data: { poidsCruG: number | null; poidsCuitG: number | null; cruUnit?: 'g' | 'kg'; cuitUnit?: 'g' | 'kg' }): Promise<FormatWeightRow> =>
     api.put(`/recipes/format-weights/${formatId}`, data).then(r => r.data.data),
   /** archived=true (strict) → uniquement les fiches archivées. Le test === true
       protège les `queryFn: recipesApi.list` : react-query passe un objet contexte
@@ -327,6 +327,8 @@ export const recipesApi = {
 };
 
 export type FormatWeightRow = {
+  /** Saisie telle qu'elle a été faite (M3-04). */
+  cru?: { qty: number | null; unit: string }; cuit?: { qty: number | null; unit: string };
   formatId: string; recipeId: string; recipeName: string; formatLabel: string; isDefault: boolean;
   poidsCruG: number | null; poidsCuitG: number | null; pertePct: number | null;
   proposal: { cruG: number | null; cuitG: number | null; samples: number } | null;

@@ -14,6 +14,8 @@ import { db } from '../config/database.js';
 export type FormatWeightRow = {
   formatId: string; recipeId: string; recipeName: string; formatLabel: string; isDefault: boolean;
   poidsCruG: number | null; poidsCuitG: number | null;
+  /** Saisie telle qu'elle a été faite (M3-04) : quantité et unité (g ou kg). */
+  cru: { qty: number | null; unit: string }; cuit: { qty: number | null; unit: string };
   /** Perte à la cuisson calculée, en % ; null s'il manque un poids. */
   pertePct: number | null;
   proposal: { cruG: number | null; cuitG: number | null; samples: number } | null;
@@ -29,6 +31,9 @@ export const formatWeightsRepository = {
       `SELECT rf.id AS "formatId", r.id AS "recipeId", r.name AS "recipeName",
               COALESCE(pc.nom, 'Sans contenant') AS "formatLabel", rf.is_default AS "isDefault",
               rf.poids_cru_g, rf.poids_cuit_g,
+              rf.poids_cru_qty, rf.poids_cuit_qty,
+              (SELECT code FROM ref_entries WHERE id = rf.poids_cru_unit_id) AS poids_cru_unit,
+              (SELECT code FROM ref_entries WHERE id = rf.poids_cuit_unit_id) AS poids_cuit_unit,
               w.cru_g, w.cuit_g, COALESCE(w.samples, 0)::int AS samples
          FROM recipe_formats rf
          JOIN recipes r ON r.id = rf.recipe_id AND r.archived_at IS NULL
@@ -54,6 +59,8 @@ export const formatWeightsRepository = {
       return {
         formatId: r.formatId, recipeId: r.recipeId, recipeName: r.recipeName, formatLabel: r.formatLabel, isDefault: r.isDefault,
         poidsCruG: cru, poidsCuitG: cuit, pertePct: lossPct(cru, cuit),
+        cru: { qty: numOrNull(r.poids_cru_qty), unit: r.poids_cru_unit ?? 'g' },
+        cuit: { qty: numOrNull(r.poids_cuit_qty), unit: r.poids_cuit_unit ?? 'g' },
         proposal: r.samples > 0 && (pCru !== null || pCuit !== null) ? { cruG: pCru, cuitG: pCuit, samples: r.samples } : null,
       };
     });
@@ -63,18 +70,26 @@ export const formatWeightsRepository = {
    * Enregistre les poids d'un format. `null` efface une valeur. Le poids cuit ne peut pas
    * dépasser le poids cru : une cuisson retire de l'eau, elle n'en ajoute pas.
    */
-  async save(formatId: string, data: { poidsCruG: number | null; poidsCuitG: number | null }, userId: string): Promise<{ error: string } | FormatWeightRow> {
-    const { poidsCruG: cru, poidsCuitG: cuit } = data;
+  async save(formatId: string, data: { poidsCruG: number | null; poidsCuitG: number | null; cruUnit?: 'g' | 'kg'; cuitUnit?: 'g' | 'kg' }, userId: string): Promise<{ error: string } | FormatWeightRow> {
+    // Quantités dans l'unité saisie (M3-04) ; les grammes servent aux contrôles.
+    const toG = (v: number | null, u?: string) => (v === null ? null : u === 'kg' ? v * 1000 : v);
+    const cru = toG(data.poidsCruG, data.cruUnit), cuit = toG(data.poidsCuitG, data.cuitUnit);
     for (const [label, v] of [['Poids cru', cru], ['Poids cuit', cuit]] as const) {
       if (v !== null && (!Number.isFinite(v) || v <= 0)) return { error: `${label} : une valeur supérieure à 0 est attendue` };
     }
     if (cru !== null && cuit !== null && cuit > cru) return { error: 'Le poids cuit ne peut pas dépasser le poids cru' };
+    // Écrit quantité + unité ; le déclencheur trg_qty_unit_sync (mig 557) tient les grammes à jour.
     const r = await db.query(
-      `UPDATE recipe_formats SET poids_cru_g = $2::numeric, poids_cuit_g = $3::numeric, updated_by = $4, updated_at = now()
-        WHERE id = $1 RETURNING id`, [formatId, cru, cuit, userId]);
+      `UPDATE recipe_formats
+          SET poids_cru_qty = $2::numeric, poids_cru_unit_id = (SELECT id FROM ref_entries WHERE table_id = 'units' AND code = $5),
+              poids_cuit_qty = $3::numeric, poids_cuit_unit_id = (SELECT id FROM ref_entries WHERE table_id = 'units' AND code = $6),
+              updated_by = $4, updated_at = now()
+        WHERE id = $1 RETURNING id`,
+      [formatId, data.poidsCruG, data.poidsCuitG, userId, data.cruUnit ?? 'g', data.cuitUnit ?? 'g']);
     if (!r.rows.length) return { error: 'Format introuvable' };
     const row = (await this.list()).find(x => x.formatId === formatId);
     // Format inactif ou fiche archivée : hors de la grille, la valeur est enregistrée quand même.
-    return row ?? { formatId, recipeId: '', recipeName: '', formatLabel: '', isDefault: false, poidsCruG: cru, poidsCuitG: cuit, pertePct: lossPct(cru, cuit), proposal: null };
+    return row ?? { formatId, recipeId: '', recipeName: '', formatLabel: '', isDefault: false, poidsCruG: cru, poidsCuitG: cuit, pertePct: lossPct(cru, cuit),
+      cru: { qty: data.poidsCruG, unit: data.cruUnit ?? 'g' }, cuit: { qty: data.poidsCuitG, unit: data.cuitUnit ?? 'g' }, proposal: null };
   },
 };

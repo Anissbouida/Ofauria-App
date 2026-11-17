@@ -11,10 +11,13 @@ import { apiErrorMessage } from '../../api/errors';
  * Poids des formats, en grille (G2-05) : une ligne par format actif, poids cru, poids cuit
  * et perte à la cuisson calculée. Quand des pesées réelles existent (saisies au rendement
  * sur les trois derniers mois), elles sont proposées ; un clic les reprend. Chaque ligne
- * s'enregistre en quittant le champ. Les poids se saisissent en grammes, tels qu'ils sont pesés.
+ * s'enregistre en quittant le champ. Chaque poids garde l'unité dans laquelle il a été saisi
+ * (g ou kg, M3-04) ; la perte et les contrôles se calculent en grammes.
  */
 
-type Draft = { cru: string; cuit: string };
+type Unit = 'g' | 'kg';
+type Draft = { cru: string; cuit: string; cruUnit: Unit; cuitUnit: Unit };
+const toG = (n: number | null, u: Unit) => (n === null || Number.isNaN(n) ? n : u === 'kg' ? n * 1000 : n);
 const parse = (s: string): number | null => {
   const t = s.trim().replace(',', '.');
   if (!t) return null;
@@ -33,7 +36,8 @@ export default function FormatWeightsGrid() {
   const [savedId, setSavedId] = useState<string | null>(null);
 
   const save = useMutation({
-    mutationFn: (v: { id: string; cru: number | null; cuit: number | null }) => recipesApi.saveFormatWeights(v.id, { poidsCruG: v.cru, poidsCuitG: v.cuit }),
+    mutationFn: (v: { id: string; cru: number | null; cuit: number | null; cruUnit: Unit; cuitUnit: Unit }) =>
+      recipesApi.saveFormatWeights(v.id, { poidsCruG: v.cru, poidsCuitG: v.cuit, cruUnit: v.cruUnit, cuitUnit: v.cuitUnit }),
     onSuccess: (row, v) => {
       qc.setQueryData<FormatWeightRow[]>(['format-weights'], old => (old ?? []).map(r => (r.formatId === v.id ? { ...r, ...row, proposal: r.proposal } : r)));
       setDrafts(d => { const { [v.id]: _done, ...rest } = d; return rest; });
@@ -43,20 +47,28 @@ export default function FormatWeightsGrid() {
     onError: e => notify.error(apiErrorMessage(e)),
   });
 
-  const draftOf = (r: FormatWeightRow): Draft => drafts[r.formatId] ?? { cru: g(r.poidsCruG), cuit: g(r.poidsCuitG) };
+  const draftOf = (r: FormatWeightRow): Draft => drafts[r.formatId] ?? {
+    cru: g(r.cru?.qty ?? r.poidsCruG), cuit: g(r.cuit?.qty ?? r.poidsCuitG),
+    cruUnit: (r.cru?.unit === 'kg' ? 'kg' : 'g'), cuitUnit: (r.cuit?.unit === 'kg' ? 'kg' : 'g'),
+  };
   const edit = (r: FormatWeightRow, patch: Partial<Draft>) => { setSavedId(null); setDrafts(d => ({ ...d, [r.formatId]: { ...draftOf(r), ...patch } })); };
   /** Enregistre la ligne si elle a changé et si elle est cohérente. */
   const commit = (r: FormatWeightRow, d: Draft = draftOf(r)) => {
     const cru = parse(d.cru), cuit = parse(d.cuit);
     if (Number.isNaN(cru) || Number.isNaN(cuit)) { notify.error('Un poids n\'est pas un nombre'); return; }
-    if (cru === r.poidsCruG && cuit === r.poidsCuitG) return;
-    if (cru !== null && cuit !== null && cuit > cru) { notify.error('Le poids cuit ne peut pas dépasser le poids cru'); return; }
-    save.mutate({ id: r.formatId, cru, cuit });
+    const cruG = toG(cru, d.cruUnit), cuitG = toG(cuit, d.cuitUnit);
+    if (cruG === r.poidsCruG && cuitG === r.poidsCuitG && d.cruUnit === (r.cru?.unit ?? 'g') && d.cuitUnit === (r.cuit?.unit ?? 'g')) return;
+    if (cruG !== null && cuitG !== null && cuitG > cruG) { notify.error('Le poids cuit ne peut pas dépasser le poids cru'); return; }
+    save.mutate({ id: r.formatId, cru, cuit, cruUnit: d.cruUnit, cuitUnit: d.cuitUnit });
   };
   const applyProposal = (r: FormatWeightRow) => {
     if (!r.proposal) return;
     const d = draftOf(r);
-    const next = { cru: r.proposal.cruG !== null ? String(r.proposal.cruG) : d.cru, cuit: r.proposal.cuitG !== null ? String(r.proposal.cuitG) : d.cuit };
+    // Les pesées sont en grammes : la proposition se reprend en grammes.
+    const next: Draft = {
+      cru: r.proposal.cruG !== null ? String(r.proposal.cruG) : d.cru, cruUnit: r.proposal.cruG !== null ? 'g' : d.cruUnit,
+      cuit: r.proposal.cuitG !== null ? String(r.proposal.cuitG) : d.cuit, cuitUnit: r.proposal.cuitG !== null ? 'g' : d.cuitUnit,
+    };
     setDrafts(x => ({ ...x, [r.formatId]: next }));
     commit(r, next);
   };
@@ -71,7 +83,7 @@ export default function FormatWeightsGrid() {
       <StatusBanner tone={missing === 0 ? 'success' : 'info'} icon={Scale} title="Poids des formats">
         {missing === 0
           ? `Les ${rows.length} formats actifs ont leur poids cuit.`
-          : `${missing} format${missing > 1 ? 's' : ''} sur ${rows.length} n'${missing > 1 ? 'ont' : 'a'} pas de poids cuit. Saisissez les poids en grammes ; chaque ligne s'enregistre en quittant le champ.`}
+          : `${missing} format${missing > 1 ? 's' : ''} sur ${rows.length} n'${missing > 1 ? 'ont' : 'a'} pas de poids cuit. Saisissez les poids (g ou kg) ; chaque ligne s'enregistre en quittant le champ.`}
       </StatusBanner>
 
       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem' }}>
@@ -87,8 +99,8 @@ export default function FormatWeightsGrid() {
             <thead><tr>
               <th style={{ textAlign: 'left' }}>Fiche</th>
               <th style={{ textAlign: 'left' }}>Format</th>
-              <th style={{ textAlign: 'right' }}>Poids cru (g)</th>
-              <th style={{ textAlign: 'right' }}>Poids cuit (g)</th>
+              <th style={{ textAlign: 'right' }}>Poids cru</th>
+              <th style={{ textAlign: 'right' }}>Poids cuit</th>
               <th style={{ textAlign: 'right' }}>Perte à la cuisson</th>
               <th style={{ textAlign: 'left' }}>Pesées réelles (3 mois)</th>
               <th style={{ textAlign: 'left' }}>État</th>
@@ -96,7 +108,13 @@ export default function FormatWeightsGrid() {
             <tbody>
               {shown.map(r => {
                 const d = draftOf(r);
-                const loss = lossPct(parse(d.cru), parse(d.cuit));
+                const loss = lossPct(toG(parse(d.cru), d.cruUnit), toG(parse(d.cuit), d.cuitUnit));
+                const unitSelect = (field: 'cruUnit' | 'cuitUnit', label: string) => (
+                  <select className="odoo-input" value={d[field]} aria-label={`Unité du ${label} de ${r.recipeName}`} style={{ width: 56, marginLeft: 4 }}
+                    onChange={e => { const next = { ...d, [field]: e.target.value as Unit }; setDrafts(x => ({ ...x, [r.formatId]: next })); commit(r, next); }}>
+                    <option value="g">g</option><option value="kg">kg</option>
+                  </select>
+                );
                 const dirty = Boolean(drafts[r.formatId]);
                 return (
                   <tr key={r.formatId}>
@@ -106,11 +124,13 @@ export default function FormatWeightsGrid() {
                       <input className="odoo-input" type="text" inputMode="decimal" aria-label={`Poids cru de ${r.recipeName}, ${r.formatLabel}`}
                         style={{ width: 90, textAlign: 'right' }} value={d.cru}
                         onChange={e => edit(r, { cru: e.target.value })} onBlur={() => commit(r)} />
+                      {unitSelect('cruUnit', 'poids cru')}
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <input className="odoo-input" type="text" inputMode="decimal" aria-label={`Poids cuit de ${r.recipeName}, ${r.formatLabel}`}
                         style={{ width: 90, textAlign: 'right' }} value={d.cuit}
                         onChange={e => edit(r, { cuit: e.target.value })} onBlur={() => commit(r)} />
+                      {unitSelect('cuitUnit', 'poids cuit')}
                     </td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{loss === null ? '—' : `${loss.toLocaleString('fr-FR')} %`}</td>
                     <td style={{ fontSize: '0.8rem' }}>
