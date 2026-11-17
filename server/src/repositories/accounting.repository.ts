@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { getUserTimezone, getLocalISODate } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
@@ -942,9 +942,8 @@ export const invoiceRepository = {
     input: { percent?: number; amount?: number },
     userId: string
   ) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const o = (await client.query(
         `SELECT id, order_number, customer_id, subtotal, tax_amount, total, advance_amount, status, store_id
            FROM orders WHERE id = $1 FOR UPDATE`, [orderId])).rows[0];
@@ -1001,14 +1000,8 @@ export const invoiceRepository = {
         if (entry) await persistEntry(client, entry, { userId });
       });
 
-      await client.query('COMMIT');
       return inv;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
@@ -1021,9 +1014,8 @@ export const invoiceRepository = {
    * commande ne se facture pas par ce chemin.
    */
   async createFromSale(saleId: string, customerId: string | undefined, userId: string) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const s = (await client.query(
         `SELECT id, sale_number, customer_id, subtotal, tax_amount, total, sale_type, store_id
            FROM sales WHERE id = $1 FOR UPDATE`, [saleId])).rows[0];
@@ -1079,14 +1071,8 @@ export const invoiceRepository = {
         );
       }
       // Pas de postOrQueue : la vente POS a déjà écrit l'encaissement et le produit.
-      await client.query('COMMIT');
       return inv;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
@@ -1573,19 +1559,12 @@ export const invoiceRepository = {
     // (reverse + regenerate). Si la periode est close, l'erreur remonte et
     // annule toute la transaction (on ne peut pas annuler une facture comptee
     // dans une periode cloturee).
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const result = await client.query(`UPDATE invoices SET status = $1 WHERE id = $2 RETURNING *`, [status, id]);
       await regenerateInvoiceEntry(client, id, result.rows[0].created_by);
-      await client.query('COMMIT');
       return result.rows[0];
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async updateCategory(id: string, categoryId: string | null) {
@@ -1608,9 +1587,8 @@ export const invoiceRepository = {
   async updateLineCategory(lineId: string, source: string, categoryId: string | null, userId?: string) {
     const isReception = source === 'reception_item';
     const table = isReception ? 'reception_voucher_items' : 'invoice_items';
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       if (userId) await client.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
       const result = await client.query(
         `UPDATE ${table} SET category_id = $1 WHERE id = $2 RETURNING *`,
@@ -1634,14 +1612,8 @@ export const invoiceRepository = {
           });
         }
       }
-      await client.query('COMMIT');
       return row ?? null;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async updateAttachment(id: string, url: string | null) {
@@ -2417,9 +2389,8 @@ export const paymentRepository = {
     if (cur.rows[0].cashed_at) {
       throw new Error('Ce moyen de paiement est deja marque encaisse');
     }
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const result = await client.query(
         `UPDATE payments
          SET cashed_at = COALESCE($1::date, CURRENT_DATE),
@@ -2435,14 +2406,8 @@ export const paymentRepository = {
       if (FLAGS.LEDGER_AUTOGEN) {
         await regeneratePaymentEntries(client, id, data.cashedBy);
       }
-      await client.query('COMMIT');
       return result.rows[0];
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
@@ -2761,9 +2726,8 @@ export const paymentRepository = {
     if (sets.length === 0) return null;
     if (userId) { sets.push(`updated_by = $${i++}`); values.push(userId); }
 
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       await withActor(client, userId);
       values.push(id);
       const result = await client.query(`UPDATE payments SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`, values);
@@ -2774,14 +2738,8 @@ export const paymentRepository = {
       }
       await recordAction(client, { documentType: 'payment', documentId: id, action: 'changed', actorId: userId ?? null,
         diff: { fields: Object.keys(data).filter(k => (data as Record<string, unknown>)[k] !== undefined) } });
-      await client.query('COMMIT');
       return result.rows[0];
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /** Suppression physique : réservée aux brouillons (trigger payments_no_delete). Sinon → void. */
