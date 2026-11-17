@@ -1,3 +1,4 @@
+import { ingredientMergeRepository } from '../repositories/ingredient-merge.repository.js';
 import type { Response } from 'express';
 import { stockAnomalyRepository } from '../services/stock-anomaly.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
@@ -210,6 +211,22 @@ export const inventoryController = {
   /** POST /inventory/stock-anomalies/:id/resolve — clôt une anomalie avec son motif. */
   async resolveAnomaly(req: AuthRequest, res: Response) {
     res.json({ success: true, data: await stockAnomalyRepository.resolve(req.params.id, req.body.note, req.user!.userId) });
+  },
+  /** POST /inventory/ingredient-merges/preview — ce que ferait la fusion de deux fiches (G2-03), sans rien écrire. */
+  async mergePreview(req: AuthRequest, res: Response) {
+    const out = await ingredientMergeRepository.preview(req.body.sourceId, req.body.targetId);
+    if ('error' in out) { res.status(400).json({ success: false, error: { message: out.error } }); return; }
+    res.json({ success: true, data: out });
+  },
+  /** POST /inventory/ingredient-merges — fusionne la fiche en trop dans la fiche gardée (G2-03). Tout ou rien. */
+  async mergeIngredients(req: AuthRequest, res: Response) {
+    const out = await ingredientMergeRepository.merge(req.body.sourceId, req.body.targetId, req.user!.userId);
+    if ('error' in out) { res.status(400).json({ success: false, error: { message: out.error } }); return; }
+    res.json({ success: true, data: out });
+  },
+  /** GET /inventory/ingredient-merges — journal des fusions. */
+  async mergeHistory(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await ingredientMergeRepository.history() });
   },
   /** GET /inventory/unit-conversion-issues — lignes de fiche dont l'unité ne se convertit pas (G0-26). */
   async unitConversionIssues(_req: AuthRequest, res: Response) {

@@ -37,3 +37,6 @@ export const stockThresholdSchema = z.object({
   ingredientId: uuid,
   threshold: z.coerce.number().finite().min(0, 'Seuil négatif refusé').max(MAX_QTY),
 }).passthrough();
+
+/** G2-03 — fusion de deux fiches d'ingrédient : la fiche en trop (source) et la fiche gardée (cible). */
+export const mergeIngredientsSchema = z.object({ sourceId: uuid, targetId: uuid });

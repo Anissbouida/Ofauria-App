@@ -5,6 +5,7 @@ import { Activity, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import { settingsApi, type DataQualityIndicator } from '../../api/settings.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
+import IngredientMergeCard from './IngredientMergeCard';
 
 /**
  * Paramètres › Qualité des données (G2-02) : complétude des fiches (formats, ingrédients,
@@ -110,6 +111,9 @@ export default function DataQualityTab() {
           </tbody>
         </table>
       </div>
+
+      {/* G2-03 : l'outil de correction du contrôle « Ingrédients en double ». */}
+      <IngredientMergeCard />
     </div>
   );
 }

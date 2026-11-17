@@ -1897,7 +1897,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 |---|---|---|---|
 | ◐ | G2-01 | Mesurer la complétude en production | non |
 | ☑ | G2-02 | Tableau de bord « Qualité des données » | non |
-| ☐ | G2-03 | Fusion des ingrédients en double | oui (coût des fiches) |
+| ◐ | G2-03 | Fusion des ingrédients en double | oui (coût des fiches) |
 | ☐ | G2-04 | Prix aberrants | oui (coût des fiches) |
 | ☐ | G2-05 | Poids cuit des formats | non |
 | ☐ | G2-06 | Allergènes des ingrédients | non |
@@ -1909,6 +1909,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 **Notes du lot 3.**
 - **G2-01** : `server/scripts/diagnose-master-data.sql` écrit (lecture seule : synthèse puis sept listes). Passé sur la base locale le 2026-11-16 : formats actifs sans poids cuit 49 / 49 ; ingrédients sans allergènes 405 / 405 ; fiches actives sans étapes 38 / 52 ; ingrédients homonymes 33 fiches en trop ; ingrédients sans prix 27 ; prix aberrants 24 sur 287 comparables ; fiches actives jamais produites 11 / 52. RESTE : le passer en production avec accord et joindre le résultat. « Prix aberrant » = plus de 5 fois la médiane des ingrédients de même catégorie et de même unité, ou moins du cinquième (catégories d'au moins 5 ingrédients valorisés).
 - **G2-02** : Paramètres › Données › Qualité des données (droit de la section Données). Sept compteurs calculés en direct (à corriger, total, complétude, état Complet / À compléter / Prioritaire) et, pour chacun, la liste à corriger (200 lignes au plus) avec un lien vers la fiche technique ou la fiche de l'ingrédient. Mêmes définitions que le script de G2-01 (`repositories/master-data-quality.repository.ts`). API `GET /settings/data/quality` et `GET /settings/data/quality/:key`, lecture seule.
+- **G2-03** : outil livré, AUCUNE fusion faite — le choix de la fiche à garder revient au responsable (étape 4). `repositories/ingredient-merge.repository.ts` : aperçu sans écriture puis fusion en une transaction ; les tables qui référencent `ingredients.id` sont lues dans le catalogue de la base (21 clés étrangères au 2026-11-16, plus deux colonnes non déclarées), donc une table ajoutée plus tard est couverte. Là où la cible existe déjà au même endroit, les quantités s'additionnent (ligne de recette de même unité, stock d'un établissement, ligne d'inventaire physique) ; coût de la fiche gardée = moyenne pondérée par les stocks ; journal `ingredient_merges` (mig 539). Écran : Paramètres › Qualité des données, bloc « Fusionner deux fiches » (deux champs de recherche, aperçu de l'impact, confirmation, dernières fusions). ÉCARTS ASSUMÉS : (1) la table `ingredients` n'a pas d'état archivé et 149 requêtes la lisent : la fiche en trop est archivée entière dans le journal puis retirée, au lieu d'être laissée en fiche fantôme ; (2) les deux fiches doivent avoir la même unité — une fiche « à l'unité » ne se fusionne pas dans une fiche « au kilo » tant que son unité n'est pas corrigée (cas de la troisième fiche « Beurre »). RESTE : faire choisir les fiches par le responsable, fusionner, puis rejouer le jeu de référence et expliquer l'écart de coût ligne par ligne (étape 5). Aperçu sur la base locale, Beurre 57 DH/kg dans Beurre 60,07 DH/kg : 1 fiche technique, 4 lots, 3 bons de commande, coût 60,0681 → 57,34.
 
 ### Lots suivants
 

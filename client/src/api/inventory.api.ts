@@ -119,6 +119,12 @@ export const ingredientLotsApi = {
 };
 
 export const ingredientsApi = {
+  /** G2-03 — fusion de deux fiches : aperçu de l'impact, fusion (tout ou rien), journal. */
+  mergePreview: (sourceId: string, targetId: string): Promise<IngredientMergePreview> =>
+    api.post('/inventory/ingredient-merges/preview', { sourceId, targetId }).then(r => r.data.data),
+  merge: (sourceId: string, targetId: string): Promise<{ mergeId: string; impact: IngredientMergeImpact }> =>
+    api.post('/inventory/ingredient-merges', { sourceId, targetId }).then(r => r.data.data),
+  mergeHistory: (): Promise<IngredientMergeEntry[]> => api.get('/inventory/ingredient-merges').then(r => r.data.data),
   list: () => api.get('/ingredients').then(r => r.data.data),
   getById: (id: string) => api.get(`/ingredients/${id}`).then(r => r.data.data),
   // Champs personnalisés (mig 369) : __cf / __cfEntity retirés du corps et enregistrés après la fiche.
@@ -179,4 +185,16 @@ export const ingredientsApi = {
     a.remove();
     URL.revokeObjectURL(url);
   },
+};
+
+export type IngredientMergeImpact = {
+  tables: Record<string, number>; recipes: number; lots: number; purchaseOrders: number;
+  stock: { storeId: string; storeName: string; source: number; target: number }[];
+  unitCostBefore: number; unitCostAfter: number;
+};
+type MergeSide = { id: string; name: string; unit: string; unit_cost: string | null };
+export type IngredientMergePreview = { source: MergeSide; target: MergeSide; blocker: string | null; impact: IngredientMergeImpact };
+export type IngredientMergeEntry = {
+  id: string; source_name: string; target_id: string; target_name: string; impact: IngredientMergeImpact;
+  unit_cost_before: string | null; unit_cost_after: string | null; merged_at: string; merged_by_name: string | null;
 };
