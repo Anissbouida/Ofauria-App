@@ -2223,6 +2223,8 @@
  ],
  "GET /stock-frigo/summary": null,
  "GET /stock-locations": null,
+ "GET /stock-locations/lots/:lotId": null,
+ "GET /stock-locations/stock": null,
  "GET /stores": null,
  "GET /stores/:id": null,
  "GET /subscriptions": [

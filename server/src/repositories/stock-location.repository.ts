@@ -98,4 +98,29 @@ export const stockLocationRepository = {
     );
     return r.rows[0] ?? null;
   },
+
+  /* ── Stock par lot et par emplacement (M6-02, mig 570) ── */
+  /** Quantités par emplacement de l'établissement : total, nombre de lots. */
+  async stockByLocation(storeId: string | null) {
+    return (await db.query(
+      `SELECT sl.id, sl.code, sl.name, sl.type, COALESCE(SUM(ll.quantity), 0)::float8 AS quantity,
+              COUNT(ll.ingredient_lot_id) FILTER (WHERE ll.quantity > 0)::int AS lots
+         FROM stock_locations sl
+         LEFT JOIN ingredient_lot_locations ll ON ll.location_id = sl.id
+        WHERE sl.is_active AND ($1::uuid IS NULL OR sl.store_id = $1)
+        GROUP BY sl.id ORDER BY sl.name`, [storeId])).rows;
+  },
+  /** Répartition d'un lot entre emplacements. */
+  async lotLocations(lotId: string) {
+    return (await db.query(
+      `SELECT ll.location_id, sl.code, sl.name, ll.quantity::float8 AS quantity
+         FROM ingredient_lot_locations ll JOIN stock_locations sl ON sl.id = ll.location_id
+        WHERE ll.ingredient_lot_id = $1 AND ll.quantity > 0 ORDER BY sl.name`, [lotId])).rows;
+  },
+  /** Contrôle M6-02 / M6-04 : lots dont Σ emplacements ≠ zones ou ≠ quantité restante. */
+  async balanceMismatches() {
+    return (await db.query(
+      `SELECT ingredient_lot_id, quantity_remaining::float8, zones_total::float8, locations_total::float8 FROM v_lot_location_balance
+        WHERE abs(locations_total - zones_total) > 0.0001 OR abs(zones_total - quantity_remaining) > 0.0001`)).rows;
+  },
 };
