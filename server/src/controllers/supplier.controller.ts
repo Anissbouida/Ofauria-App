@@ -1,3 +1,4 @@
+import { exportPersonalData } from '../services/personal-data.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { supplierRepository } from '../repositories/supplier.repository.js';
@@ -46,6 +47,12 @@ export const supplierController = {
     res.json({ success: true, data: suppliers });
   },
 
+  /** GET /suppliers/:id/personal-data — droit d'accès 09-08 : toutes les données du fournisseur (G3-11). */
+  async personalData(req: AuthRequest, res: Response) {
+    const data = await exportPersonalData('supplier', req.params.id as string, { userId: req.user?.userId });
+    if (!data) { res.status(404).json({ success: false, error: { message: 'Fournisseur introuvable' } }); return; }
+    res.json({ success: true, data });
+  },
   async getById(req: AuthRequest, res: Response) {
     const supplier = await supplierRepository.findById(req.params.id);
     if (!supplier) { res.status(404).json({ success: false, error: { message: 'Fournisseur non trouvé' } }); return; }

@@ -1,3 +1,4 @@
+import { PROCESSING_REGISTER } from '../services/personal-data.js';
 import { masterDataQualityRepository, type QualityKey } from '../repositories/master-data-quality.repository.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
@@ -24,6 +25,10 @@ function importOptions(req: AuthRequest): PreviewOptions {
 }
 
 export const dataController = {
+  /** G3-11 — registre des traitements de données personnelles (lecture seule). */
+  async processingRegister(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: PROCESSING_REGISTER });
+  },
   /** G2-02 — qualité des données maîtres : les compteurs. */
   async quality(_req: AuthRequest, res: Response) {
     res.json({ success: true, data: await masterDataQualityRepository.summary() });

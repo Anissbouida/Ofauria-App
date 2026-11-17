@@ -61,6 +61,8 @@ router.post('/settlements/:id/cancel', authenticate, authorize(ROLES.ADMIN), asy
 router.get('/documents/:docId/file', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.download));
 router.delete('/documents/:docId', authenticate, authorizeModule('employees', 'edit'), asyncHandler(hrContractController.removeDocument));
 router.get('/:id', authenticate, authorizeModule('employees', 'view'), asyncHandler(employeeController.getById));
+// G3-11 — export des données du salarié (loi 09-08) : droit de modification sur le Personnel.
+router.get('/:id/personal-data', authenticate, authorizeModule('employees', 'edit'), asyncHandler(employeeController.personalData));
 router.post('/', authenticate, authorize(ROLES.ADMIN), validate(createEmployeeSchema), asyncHandler(employeeController.create));
 router.put('/:id', authenticate, authorizeModule('employees', 'edit'), validate(updateEmployeeSchema), asyncHandler(employeeController.update));
 router.get('/:id/salary-history', authenticate, authorizeModule('employees', 'view'), asyncHandler(employeeController.salaryHistory));

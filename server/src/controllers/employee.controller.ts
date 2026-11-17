@@ -1,3 +1,4 @@
+import { exportPersonalData } from '../services/personal-data.js';
 import type { Response } from 'express';
 import { checkPayrollPeriod, monthEnd, setProvisional, provisionalRefusal } from '../services/payroll-period.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
@@ -68,6 +69,12 @@ async function loadBiweeklyPayrollInScope(id: string, userStoreId?: string) {
 }
 
 export const employeeController = {
+  /** GET /employees/:id/personal-data — droit d'accès 09-08 : toutes les données du salarié (G3-11). */
+  async personalData(req: AuthRequest, res: Response) {
+    const data = await exportPersonalData('employee', req.params.id as string, { userId: req.user?.userId });
+    if (!data) { res.status(404).json({ success: false, error: { message: 'Salarié introuvable' } }); return; }
+    res.json({ success: true, data });
+  },
   async list(req: AuthRequest, res: Response) {
     const employees = await employeeRepository.findAll(req.user!.storeId);
     res.json({ success: true, data: employees });

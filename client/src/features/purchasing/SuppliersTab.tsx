@@ -1,3 +1,4 @@
+import PersonalDataExportButton from '../../components/PersonalDataExportButton';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -798,6 +799,7 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
               <span style={{ marginRight: 'auto', fontSize: '0.75rem', color: missingIce ? '#b45309' : 'var(--theme-text-muted)' }}>
                 {missingIce ? 'ICE à compléter' : brandMode && !form.parentSupplierId ? 'Choisissez le groupe' : ''}
               </span>
+              {supplier?.id && <PersonalDataExportButton kind="supplier" id={supplier.id as string} label="Exporter les données" />}
               <button type="button" onClick={onClose} className="odoo-btn-secondary">Annuler</button>
               <button type="submit" disabled={saveMutation.isPending || (brandMode && !form.parentSupplierId)} className="odoo-btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 {saveMutation.isPending && <Loader2 size={12} className="animate-spin" />}

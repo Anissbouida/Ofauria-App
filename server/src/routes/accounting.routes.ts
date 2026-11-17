@@ -64,6 +64,8 @@ suppliersRouter.get('/board-summary', authenticate, authorize(...ROLE_GROUPS.ADM
 suppliersRouter.get('/check', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(supplierController.check));
 suppliersRouter.get('/:id', authenticate, authorize(...SUPPLIER_READERS), validateUuidParams('id'), asyncHandler(supplierController.getById));
 suppliersRouter.get('/:id/history', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(supplierController.history));
+// G3-11 — export des données du fournisseur (loi 09-08).
+suppliersRouter.get('/:id/personal-data', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(supplierController.personalData));
 suppliersRouter.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(createSupplierSchema), asyncHandler(supplierController.create));
 suppliersRouter.put('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), validate(updateSupplierSchema), asyncHandler(supplierController.update));
 suppliersRouter.delete('/:id', authenticate, authorize(ROLES.ADMIN), validateUuidParams('id'), asyncHandler(supplierController.remove));

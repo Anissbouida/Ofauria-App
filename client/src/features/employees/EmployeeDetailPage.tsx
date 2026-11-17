@@ -1,3 +1,4 @@
+import PersonalDataExportButton from '../../components/PersonalDataExportButton';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -454,7 +455,11 @@ export default function EmployeeDetailPage() {
         )}
 
         {tab === 'documents' && !isNew && (
-          <div style={{ padding: '12px 20px 0' }}><EmployeeDocuments employeeId={id!} /></div>
+          <div style={{ padding: '12px 20px 0' }}>
+            {/* G3-11 : droit d'accès (loi 09-08), réservé à qui peut modifier le Personnel. */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}><PersonalDataExportButton kind="employee" id={id!} /></div>
+            <EmployeeDocuments employeeId={id!} />
+          </div>
         )}
         {tab === 'depart' && !isNew && (
           <div style={{ padding: '12px 20px 0' }}><EmployeeDeparture employee={emp!} /></div>

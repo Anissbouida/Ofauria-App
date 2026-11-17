@@ -1,3 +1,4 @@
+import ProcessingRegisterCard from './ProcessingRegisterCard';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, Database, Loader2 } from 'lucide-react';
@@ -114,6 +115,8 @@ export default function DataTab() {
           </table>
         )}
       </section>
+      {/* G3-11 : registre des traitements de données personnelles. */}
+      <ProcessingRegisterCard />
     </div>
   );
 }

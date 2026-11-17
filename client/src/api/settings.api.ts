@@ -267,6 +267,8 @@ export const settingsApi = {
     api.post('/settings/document-sequences/preview', data).then(r => r.data.data) as Promise<{ valid: boolean; sample?: string; error?: string }>,
   updateDocumentSequence: (docType: string, data: DocumentSequenceInput) =>
     api.put(`/settings/document-sequences/${docType}`, data).then(r => r.data.data) as Promise<{ doc_type: string; next_number: string }>,
+  /** G3-11 — registre des traitements de données personnelles (loi 09-08). */
+  processingRegister: () => api.get('/settings/data/processing-register').then(r => r.data.data) as Promise<ProcessingActivity[]>,
   /** G2-02 — qualité des données maîtres : compteurs, puis liste à corriger d'un compteur. */
   dataQuality: () => api.get('/settings/data/quality').then(r => r.data.data) as Promise<DataQualityIndicator[]>,
   dataQualityItems: (key: string) => api.get(`/settings/data/quality/${key}`).then(r => r.data.data) as Promise<DataQualityItem[]>,
@@ -348,3 +350,8 @@ export const settingsApi = {
 
 export type DataQualityIndicator = { key: string; label: string; help: string; task: string; toFix: number; total: number; detailLabel: string };
 export type DataQualityItem = { id: string; kind: 'recipe' | 'ingredient'; label: string; detail: string };
+
+export type ProcessingActivity = {
+  key: string; label: string; purpose: string; data: string; recipients: string;
+  rights: { access: boolean; erasure: boolean; note: string };
+};

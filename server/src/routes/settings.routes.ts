@@ -112,6 +112,8 @@ router.delete('/webhooks/:id', authenticate, authorizeSettings('company', 'delet
 router.get('/data/status', authenticate, authorizeSettings('data'), asyncHandler(dataController.status));
 // G2-02 — qualité des données maîtres (lecture seule).
 router.get('/data/quality', authenticate, authorizeSettings('data'), asyncHandler(dataController.quality));
+// G3-11 — registre des traitements (loi 09-08).
+router.get('/data/processing-register', authenticate, authorizeSettings('data'), asyncHandler(dataController.processingRegister));
 router.get('/data/quality/:key', authenticate, authorizeSettings('data'), asyncHandler(dataController.qualityItems));
 router.get('/data/import/:entity/template', authenticate, authorizeSettings('data'), asyncHandler(dataController.template));
 router.post('/data/import/:entity/preview', authenticate, authorizeSettings('data', 'create'), importUpload.single('file'), asyncHandler(dataController.preview));
