@@ -628,11 +628,23 @@ export const productionRepository = {
         `UPDATE production_plan_items ppi
             SET bom_version_id = (
               SELECT b.id FROM bom_versions b
-               WHERE b.recipe_id = COALESCE(ppi.base_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id AND r2.archived_at IS NULL LIMIT 1))
+               WHERE b.recipe_id = COALESCE(ppi.alt_recipe_id, ppi.base_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id AND r2.archived_at IS NULL LIMIT 1))
                  AND b.status IN ('active', 'obsolete') AND b.valid_from <= pp.plan_date AND (b.valid_to IS NULL OR b.valid_to >= pp.plan_date)
                ORDER BY b.version_no DESC LIMIT 1)
            FROM production_plans pp
           WHERE pp.id = ppi.plan_id AND ppi.plan_id = $1 AND ppi.status <> 'cancelled'`, [planId]);
+
+      // M5-02 : gamme de la ligne (gamme de sa fiche, sinon du produit), sauf gamme déjà posée.
+      await client.query(
+        `UPDATE production_plan_items ppi
+            SET routing_id = (
+              SELECT ro.id FROM routings ro
+               WHERE ro.is_active
+                 AND (ro.recipe_id = COALESCE(ppi.alt_recipe_id, ppi.base_recipe_id, (SELECT r3.id FROM recipes r3 WHERE r3.product_id = ppi.product_id AND r3.archived_at IS NULL LIMIT 1))
+                      OR (ro.recipe_id IS NULL AND ro.product_id = ppi.product_id))
+                 AND EXISTS (SELECT 1 FROM routing_operations o WHERE o.routing_id = ro.id)
+               ORDER BY (ro.recipe_id IS NOT NULL) DESC, ro.created_at DESC LIMIT 1)
+          WHERE ppi.plan_id = $1 AND ppi.status <> 'cancelled' AND ppi.routing_id IS NULL`, [planId]);
 
       await client.query('COMMIT');
 
@@ -1510,6 +1522,11 @@ export const productionRepository = {
             warnings.push(`Etapes bloquantes non terminees pour l'article ${item.planItemId}`);
             continue;
           }
+        }
+        // M5-02 : une opération de gamme bloquante non terminée empêche toujours la déclaration.
+        if (!stepsBlocking && !(await productionEtapesRepository.areBlockingOperationsComplete(item.planItemId))) {
+          warnings.push(`Opérations bloquantes de la gamme non terminées pour l'article ${item.planItemId}`);
+          continue;
         }
 
         const changed = await client.query(

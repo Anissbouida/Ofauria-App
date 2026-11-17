@@ -50,7 +50,8 @@ export const productionEtapesController = {
     }
     const etape = await productionEtapesRepository.updateStatus(
       req.params.etapeId as string, parsed.data.status, req.user!.userId,
-      { checklist_resultats: parsed.data.checklist_resultats, notes: parsed.data.notes, duree_reelle_min: parsed.data.duree_reelle_min }
+      { checklist_resultats: parsed.data.checklist_resultats, notes: parsed.data.notes, duree_reelle_min: parsed.data.duree_reelle_min,
+        good_qty: parsed.data.good_qty, scrap_qty: parsed.data.scrap_qty }
     );
     if (!etape) {
       res.status(404).json({ success: false, error: { message: 'Etape non trouvee' } });

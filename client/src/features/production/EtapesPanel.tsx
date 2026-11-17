@@ -75,6 +75,12 @@ interface Etape {
   assigned_employee_name?: string | null;
   paused_at?: string | null;
   pause_accumulee_min?: number;
+  // Opération de gamme (M5-02) : temps prévus, point de contrôle, quantités déclarées.
+  routing_operation_id?: string | null;
+  planned_labor_min?: number | null;
+  control_point?: string | null;
+  good_qty?: number | null;
+  scrap_qty?: number | null;
 }
 
 const statusColors = {
@@ -92,6 +98,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
   const ccpOn = hasFeature('ccp_cuisson');
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [checklistState, setChecklistState] = useState<Record<string, { label: string; ok: boolean }[]>>({});
+  const [opQty, setOpQty] = useState<Record<string, { good: string; scrap: string }>>({});
   const currentEtapeRef = useRef<HTMLDivElement | null>(null);
   const autoScrolledRef = useRef(false);
   // Le contexte timer est monte au root de l'app → l'alarme sonne sur n'importe
@@ -303,6 +310,12 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
     if (etape.controle_qualite && checklistState[etape.id]) {
       data.checklist_resultats = checklistState[etape.id];
     }
+    const q = opQty[etape.id];
+    if (etape.routing_operation_id && q) {
+      const n = (v: string) => (v.trim() === '' ? undefined : Number(v.replace(',', '.')));
+      if (n(q.good) !== undefined) data.good_qty = n(q.good);
+      if (n(q.scrap) !== undefined) data.scrap_qty = n(q.scrap);
+    }
     updateMutation.mutate({ etapeId: etape.id, status: 'completed', data });
     notify.success(`Etape "${etape.nom}" terminee`);
   };
@@ -475,6 +488,23 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                             </div>
                           )}
                         </div>
+
+                        {/* Opération de gamme (M5-02) : point de contrôle et quantités déclarées */}
+                        {etape.routing_operation_id && (
+                          <div className="mt-1 pl-9 text-xs text-gray-600 flex items-center gap-2 flex-wrap">
+                            {etape.planned_labor_min != null && <span>Prévu {Number(etape.planned_labor_min).toLocaleString('fr-FR')} min</span>}
+                            {etape.control_point && <span className="text-indigo-700">Contrôle : {etape.control_point}</span>}
+                            {etape.status === 'completed' && (etape.good_qty != null || etape.scrap_qty != null) && (
+                              <span>Bonnes {Number(etape.good_qty ?? 0).toLocaleString('fr-FR')} · rebut {Number(etape.scrap_qty ?? 0).toLocaleString('fr-FR')}</span>
+                            )}
+                            {etape.status === 'in_progress' && isChef && <>
+                              <label>Bonnes <input className="input" style={{ width: 64, padding: '1px 4px' }} inputMode="decimal" value={opQty[etape.id]?.good ?? ''}
+                                onChange={e => setOpQty(s => ({ ...s, [etape.id]: { good: e.target.value, scrap: s[etape.id]?.scrap ?? '' } }))} /></label>
+                              <label>Rebut <input className="input" style={{ width: 64, padding: '1px 4px' }} inputMode="decimal" value={opQty[etape.id]?.scrap ?? ''}
+                                onChange={e => setOpQty(s => ({ ...s, [etape.id]: { good: s[etape.id]?.good ?? '', scrap: e.target.value } }))} /></label>
+                            </>}
+                          </div>
+                        )}
 
                         {/* QC Checklist */}
                         {etape.controle_qualite && etape.checklist_items.length > 0 && etape.status === 'in_progress' && isChef && (

@@ -9,6 +9,9 @@ export const updateEtapeStatusSchema = z.object({
   })).optional(),
   notes: z.string().optional(),
   duree_reelle_min: z.number().int().min(0).optional(),
+  /** M5-02 : quantités déclarées sur une opération de gamme. */
+  good_qty: z.number().finite().min(0).max(1_000_000).optional(),
+  scrap_qty: z.number().finite().min(0).max(1_000_000).optional(),
 });
 
 export const completeRepetitionSchema = z.object({

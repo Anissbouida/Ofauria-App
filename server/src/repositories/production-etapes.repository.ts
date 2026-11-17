@@ -1,3 +1,4 @@
+import { resolvePolicy } from '../services/policies.js';
 import { db } from '../config/database.js';
 import { readingParamMeta } from '../services/process-referentials.js';
 
@@ -113,6 +114,10 @@ export const productionEtapesRepository = {
     if (!itemResult.rows[0]) return [];
 
     const item = itemResult.rows[0];
+
+    // M5-02/M5-03 : opérations de la gamme quand l'atelier lit la gamme.
+    const fromRouting = await initializeFromRouting(q, planItemId);
+    if (fromRouting) return fromRouting;
     // Priority: product profile overrides > recipe steps
     const etapes = (item.etapes_surcharges && item.etapes_surcharges.length > 0)
       ? item.etapes_surcharges
@@ -208,7 +213,7 @@ export const productionEtapesRepository = {
     etapeId: string,
     status: 'in_progress' | 'completed' | 'skipped',
     userId: string,
-    data?: { checklist_resultats?: unknown[]; notes?: string; duree_reelle_min?: number }
+    data?: { checklist_resultats?: unknown[]; notes?: string; duree_reelle_min?: number; good_qty?: number; scrap_qty?: number }
   ) {
     const now = new Date().toISOString();
     const sets: string[] = ['status = $1', 'updated_at = NOW()'];
@@ -248,12 +253,31 @@ export const productionEtapesRepository = {
       idx++;
     }
 
+    if (data?.good_qty !== undefined) { sets.push(`good_qty = $${idx}::numeric`); params.push(data.good_qty); idx++; }
+    if (data?.scrap_qty !== undefined) { sets.push(`scrap_qty = $${idx}::numeric`); params.push(data.scrap_qty); idx++; }
+
     params.push(etapeId);
     const result = await db.query(
       `UPDATE production_item_etapes SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
       params
     );
-    return result.rows[0];
+    const row = result.rows[0];
+    // M5-02 : opération de gamme terminée par un opérateur affecté → temps de travail
+    // (production_temps_travail, coût réel de main-d'œuvre), une seule fois.
+    if (row && status === 'completed' && row.routing_operation_id && row.assigned_employee_id && !row.labor_logged && row.started_at) {
+      const planId = (await db.query(`SELECT plan_id FROM production_plan_items WHERE id = $1`, [row.plan_item_id])).rows[0]?.plan_id;
+      if (planId) {
+        const { productionCoutRepository } = await import('./production-cout.repository.js');
+        await productionCoutRepository.recordTempsTravail({
+          planId, planItemId: row.plan_item_id, employeeId: row.assigned_employee_id,
+          debut: new Date(row.started_at).toISOString(), fin: new Date(row.completed_at).toISOString(),
+          dureeMinutes: Math.round(Number(row.duree_reelle_min ?? 0)), notes: `Opération ${row.nom}`,
+        });
+        await db.query(`UPDATE production_item_etapes SET labor_logged = true WHERE id = $1`, [row.id]);
+        row.labor_logged = true;
+      }
+    }
+    return row;
   },
 
   // ─── Increment repetition counter for repeatable steps ───
@@ -293,6 +317,14 @@ export const productionEtapesRepository = {
       [planItemId]
     );
     return parseInt(result.rows[0].cnt) === 0;
+  },
+
+  /** M5-02 : opérations de gamme bloquantes toutes terminées (indépendant de production.steps_blocking). */
+  async areBlockingOperationsComplete(planItemId: string): Promise<boolean> {
+    const r = await db.query(
+      `SELECT COUNT(*)::int AS n FROM production_item_etapes
+        WHERE plan_item_id = $1 AND routing_operation_id IS NOT NULL AND est_bloquante AND status NOT IN ('completed', 'skipped')`, [planItemId]);
+    return r.rows[0].n === 0;
   },
 
   // ─── Get progress summary for a plan ───
@@ -523,3 +555,37 @@ export const productionEtapesRepository = {
   },
 
 };
+
+
+/**
+ * Opérations de la gamme de la ligne (production_plan_items.routing_id) copiées en étapes
+ * d'exécution, avec temps prévus pour la quantité planifiée (fn_routing_op_minutes).
+ * Rend null (étapes JSON) si la politique production.steps_source ne vaut pas « gamme »
+ * pour le contexte de l'ordre, si la ligne n'a pas de gamme, ou si ses étapes existent déjà.
+ */
+async function initializeFromRouting(q: { query: (text: string, params?: unknown[]) => Promise<{ rows: any[] }> }, planItemId: string) {
+  const ctx = (await q.query(
+    `SELECT ppi.routing_id, ppi.product_id, ppi.planned_quantity, pp.store_id, pp.target_role,
+            (SELECT t.code FROM production_order_types t WHERE t.id = pp.order_type_id) AS order_type
+       FROM production_plan_items ppi JOIN production_plans pp ON pp.id = ppi.plan_id WHERE ppi.id = $1`, [planItemId])).rows[0];
+  if (!ctx?.routing_id) return null;
+  const policy = await resolvePolicy('production.steps_source',
+    { productId: ctx.product_id, orderType: ctx.order_type, workshop: ctx.target_role, storeId: ctx.store_id });
+  if (policy.value.source !== 'gamme') return null;
+  const existing = await q.query(`SELECT COUNT(*)::int AS n FROM production_item_etapes WHERE plan_item_id = $1`, [planItemId]);
+  if (existing.rows[0].n > 0) return [];
+  const r = await q.query(
+    `INSERT INTO production_item_etapes
+       (plan_item_id, ordre, nom, nom_ar, duree_estimee_min, est_bloquante, timer_auto, controle_qualite,
+        checklist_items, est_repetable, nb_repetitions_cible, temperature_c, work_center_id,
+        routing_operation_id, op_type, planned_setup_min, planned_labor_min, planned_machine_min, control_point)
+     SELECT $1, o.sequence, o.operation_name, o.operation_name_ar, CEIL(m.labor_min)::int, o.is_blocking, false,
+            (o.op_type = 'controle' OR o.control_point IS NOT NULL), '[]'::jsonb, false, 1, o.temperature_c, o.work_center_id,
+            o.id, o.op_type, o.setup_min, m.labor_min, m.machine_min, o.control_point
+       FROM routing_operations o
+       JOIN LATERAL fn_routing_op_minutes(o.id, $3::numeric) m ON true
+      WHERE o.routing_id = $2
+      ORDER BY o.sequence
+     RETURNING *`, [planItemId, ctx.routing_id, ctx.planned_quantity]);
+  return r.rows;
+}

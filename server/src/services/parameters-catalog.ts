@@ -185,6 +185,14 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'company_settings', columns: { method: 'production_charges_method', loyer: 'production_charge_loyer', energie: 'production_charge_energie', autres: 'production_charge_autres' } },
   },
   {
+    key: 'production.steps_source', domain: 'production', section: 'production',
+    label: 'Source des étapes exécutées à l\'atelier',
+    help: 'Étapes de la fiche (liste JSON, comportement historique) ou opérations de la gamme (postes, temps de réglage et unitaires, quantités par opération). Se bascule atelier par atelier après validation par le chef ; sans gamme active, l\'article garde les étapes de la fiche.',
+    fields: [{ name: 'source', label: 'Source', type: 'enum', options: [{ value: 'json', label: 'Étapes de la fiche' }, { value: 'gamme', label: 'Opérations de la gamme' }] }],
+    defaults: { source: 'json' },
+    storage: { kind: 'policy' }, scopes: ['company', 'store', 'workshop', 'order_type'],
+  },
+  {
     key: 'production.steps_blocking', domain: 'production', section: 'production',
     label: 'Étapes de production bloquantes',
     help: 'Un article ne peut être déclaré produit que si toutes ses étapes sont terminées.',
