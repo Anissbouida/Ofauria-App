@@ -170,7 +170,7 @@ export const recipeComponentRepository = {
        FROM recipe_format_components c
        LEFT JOIN recipes br ON br.id = c.source_recipe_id
        LEFT JOIN ingredients ing ON ing.id = c.source_ingredient_id
-       LEFT JOIN v_recipe_component_cost cc ON cc.component_id = c.id
+       LEFT JOIN v_recipe_component_cost_v2 cc ON cc.component_id = c.id
        WHERE c.format_id = $1
        ORDER BY c.ordre, source_name`,
       [formatId]

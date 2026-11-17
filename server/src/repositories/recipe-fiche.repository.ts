@@ -92,7 +92,7 @@ export const recipeFicheRepository = {
          JOIN recipe_formats rf ON rf.id = c.format_id
          LEFT JOIN recipes br ON br.id = c.source_recipe_id
          LEFT JOIN ingredients ing ON ing.id = c.source_ingredient_id
-         LEFT JOIN v_recipe_component_cost vcc ON vcc.component_id = c.id
+         LEFT JOIN v_recipe_component_cost_v2 vcc ON vcc.component_id = c.id
         WHERE rf.recipe_id = $1
           AND ($2::uuid IS NULL OR rf.id = $2::uuid)
         ORDER BY c.ordre`,
