@@ -252,7 +252,7 @@ export const inventoryController = {
     const r = await db.query(
       `SELECT source, line_id, recipe_id, recipe_name, format_id, ingredient_id, ingredient_name,
               line_unit, stock_unit, densite_kg_l::float8 AS densite_kg_l, quantity::float8 AS quantity
-         FROM v_impossible_unit_conversions ORDER BY recipe_name, ingredient_name LIMIT 500`);
+         FROM v_impossible_unit_conversions_v2 ORDER BY recipe_name, ingredient_name LIMIT 500`);
     res.json({ success: true, data: r.rows });
   },
   /** GET /inventory/price-health — anomalies de prix catalogue (mig 406, lot prix P5). */
