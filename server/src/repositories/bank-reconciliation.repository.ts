@@ -1,3 +1,4 @@
+import { bankMatching } from '../services/bank-matching.js';
 import crypto from 'crypto';
 import { db, withTransaction } from '../config/database.js';
 import {
@@ -268,10 +269,12 @@ export const bankReconciliationRepository = {
 
     // Lignes du releve avec info de match
     const bankLines = await db.query(
-      `SELECT bsl.*, je.entry_number AS matched_entry_number
+      `SELECT bsl.*, bsl.match_confidence::float8 AS match_confidence, r.label AS match_rule_label,
+              (SELECT string_agg(je2.entry_number, ', ' ORDER BY je2.entry_number)
+                 FROM bank_statement_line_matches m JOIN journal_entry_lines l2 ON l2.id = m.entry_line_id
+                 JOIN journal_entries je2 ON je2.id = l2.journal_entry_id WHERE m.bank_line_id = bsl.id) AS matched_entry_number
        FROM bank_statement_lines bsl
-       LEFT JOIN journal_entry_lines jel ON jel.id = bsl.matched_entry_line_id
-       LEFT JOIN journal_entries je ON je.id = jel.journal_entry_id
+       LEFT JOIN bank_rules r ON r.id = bsl.match_rule_id
        WHERE bsl.bank_statement_id = $1
        ORDER BY bsl.operation_date, bsl.created_at`,
       [statementId]
@@ -293,6 +296,7 @@ export const bankReconciliationRepository = {
          AND NOT EXISTS (
            SELECT 1 FROM bank_statement_lines b WHERE b.matched_entry_line_id = jel.id
          )
+         AND NOT EXISTS (SELECT 1 FROM bank_statement_line_matches m WHERE m.entry_line_id = jel.id)
        ORDER BY je.entry_date, je.entry_number`,
       [statement.account_id, statement.statement_date]
     );
@@ -315,86 +319,107 @@ export const bankReconciliationRepository = {
   },
 
   /**
-   * Rapprochement automatique : pour chaque ligne de releve non rapprochee,
-   * cherche UNE ligne d'ecriture du compte avec montant + sens correspondant,
-   * dans une fenetre de +/- 7 jours. Si match unique -> rapproche.
+   * Rapprochement automatique (G4-02) : le moteur à règles applique toutes ses propositions
+   * de confiance ≥ 80 (référence, règle, montant unique). Les regroupements (70) restent
+   * à valider à l'écran.
    */
-  async autoMatch(statementId: string, userId: string) {
-    return withTransaction(async () => {
-      const client = await db.getClient();
-      const stmt = await client.query(`SELECT account_id FROM bank_statements WHERE id = $1`, [statementId]);
-      if (!stmt.rows[0]) throw new Error('Releve introuvable');
-      const accountId = stmt.rows[0].account_id;
-
-      const bankLines = await client.query(
-        `SELECT id, operation_date, amount, direction FROM bank_statement_lines
-         WHERE bank_statement_id = $1 AND reconciled = false`,
-        [statementId]
-      );
-
-      let matched = 0;
-      for (const bl of bankLines.rows) {
-        // 'in' -> debit, 'out' -> credit
-        const col = bl.direction === 'in' ? 'debit' : 'credit';
-        const candidates = await client.query(
-          `SELECT jel.id
-           FROM journal_entry_lines jel
-           JOIN journal_entries je ON je.id = jel.journal_entry_id
-           WHERE jel.account_id = $1
-             AND je.status = 'posted' AND je.source_kind <> 'reversal'
-             AND jel.${col} = $2
-             AND je.entry_date BETWEEN ($3::date - INTERVAL '7 days') AND ($3::date + INTERVAL '7 days')
-             AND NOT EXISTS (SELECT 1 FROM bank_statement_lines b WHERE b.matched_entry_line_id = jel.id)
-           LIMIT 2`,
-          [accountId, bl.amount, bl.operation_date]
-        );
-        if (candidates.rows.length === 1) {
-          await client.query(
-            `UPDATE bank_statement_lines
-             SET matched_entry_line_id = $1, reconciled = true, reconciled_at = NOW(), reconciled_by = $2
-             WHERE id = $3`,
-            [candidates.rows[0].id, userId, bl.id]
-          );
-          matched++;
-        }
-      }
-
-      return { matched };
-    });
+  async autoMatch(statementId: string, userId: string, storeId?: string | null) {
+    const r = await bankMatching.apply(statementId, { userId, storeId: storeId ?? null, minConfidence: 80 });
+    return { matched: r.applied, proposed: r.proposed, errors: r.errors };
   },
 
   /** Rapprochement manuel d'une ligne de releve avec une ligne d'ecriture. */
   async matchLine(bankLineId: string, entryLineId: string, userId: string) {
     // Verifie que la ligne d'ecriture n'est pas deja rapprochee.
-    const taken = await db.query(
-      `SELECT 1 FROM bank_statement_lines WHERE matched_entry_line_id = $1 AND id <> $2`,
-      [entryLineId, bankLineId]
-    );
-    if (taken.rows.length > 0) throw new Error('Cette ecriture est deja rapprochee a une autre ligne');
-
-    const result = await db.query(
-      `UPDATE bank_statement_lines
-       SET matched_entry_line_id = $1, reconciled = true, reconciled_at = NOW(), reconciled_by = $2
-       WHERE id = $3 RETURNING *`,
-      [entryLineId, userId, bankLineId]
-    );
-    if (!result.rows[0]) throw new Error('Ligne de releve introuvable');
-    return result.rows[0];
+    return withTransaction(async () => {
+      const taken = await db.query(
+        `SELECT 1 FROM bank_statement_line_matches WHERE entry_line_id = $1 AND bank_line_id <> $2
+         UNION ALL SELECT 1 FROM bank_statement_lines WHERE matched_entry_line_id = $1 AND id <> $2`,
+        [entryLineId, bankLineId]
+      );
+      if (taken.rows.length > 0) throw new Error('Cette ecriture est deja rapprochee a une autre ligne');
+      const result = await db.query(
+        `UPDATE bank_statement_lines
+         SET matched_entry_line_id = COALESCE(matched_entry_line_id, $1), reconciled = true, reconciled_at = NOW(), reconciled_by = $2,
+             match_method = 'manual', match_confidence = NULL, match_rule_id = NULL
+         WHERE id = $3 RETURNING *`,
+        [entryLineId, userId, bankLineId]
+      );
+      if (!result.rows[0]) throw new Error('Ligne de releve introuvable');
+      // G4-02 : une ligne de relevé peut solder plusieurs écritures (regroupement manuel).
+      await db.query(`INSERT INTO bank_statement_line_matches (entry_line_id, bank_line_id) VALUES ($1, $2) ON CONFLICT (entry_line_id) DO NOTHING`, [entryLineId, bankLineId]);
+      return result.rows[0];
+    });
   },
 
   /** Annule le rapprochement d'une ligne. */
   async unmatchLine(bankLineId: string) {
-    const result = await db.query(
-      `UPDATE bank_statement_lines
-       SET matched_entry_line_id = NULL, reconciled = false, reconciled_at = NULL, reconciled_by = NULL
-       WHERE id = $1 RETURNING *`,
-      [bankLineId]
-    );
-    if (!result.rows[0]) throw new Error('Ligne de releve introuvable');
-    return result.rows[0];
+    // Une écriture de frais générée par une règle reste en comptabilité (les frais sont réels) :
+    // seul le rapprochement est défait.
+    return withTransaction(async () => {
+      await db.query(`DELETE FROM bank_statement_line_matches WHERE bank_line_id = $1`, [bankLineId]);
+      const result = await db.query(
+        `UPDATE bank_statement_lines
+         SET matched_entry_line_id = NULL, reconciled = false, reconciled_at = NULL, reconciled_by = NULL,
+             match_method = NULL, match_rule_id = NULL, match_confidence = NULL
+         WHERE id = $1 RETURNING *`,
+        [bankLineId]
+      );
+      if (!result.rows[0]) throw new Error('Ligne de releve introuvable');
+      return result.rows[0];
+    });
   },
 
   async deleteStatement(id: string) {
     await db.query(`DELETE FROM bank_statements WHERE id = $1`, [id]);
+  },
+};
+
+/** Règles de rapprochement (G4-02). */
+export type BankRuleInput = {
+  priority?: number; label: string; isActive?: boolean; labelContains?: string | null; labelRegex?: string | null;
+  direction?: 'in' | 'out' | null; amountMin?: number | null; amountMax?: number | null;
+  action: 'match' | 'post_entry'; counterAccountId?: string | null; entryLabel?: string | null;
+  amountTolerance?: number; dateToleranceDays?: number;
+};
+const RULE_COLUMNS = ['id', 'priority', 'label', 'is_active', 'label_contains', 'label_regex', 'direction', 'amount_min::float8 AS amount_min',
+  'amount_max::float8 AS amount_max', 'action', 'counter_account_id', 'entry_label', 'amount_tolerance::float8 AS amount_tolerance', 'date_tolerance_days'];
+
+export const bankRuleRepository = {
+  async list() {
+    return (await db.query(
+      `SELECT ${RULE_COLUMNS.map(c => `r.${c}`).join(', ')}, a.code AS counter_account_code, a.label AS counter_account_label,
+              (SELECT COUNT(*) FROM bank_statement_lines b WHERE b.match_rule_id = r.id)::int AS uses
+         FROM bank_rules r LEFT JOIN accounts a ON a.id = r.counter_account_id
+        ORDER BY r.priority, r.created_at`)).rows;
+  },
+  async save(input: BankRuleInput, userId: string, id?: string) {
+    if (input.labelRegex) {
+      try { new RegExp(input.labelRegex, 'i'); } catch { throw Object.assign(new Error('Expression régulière invalide'), { statusCode: 400 }); }
+    }
+    if (!input.labelContains && !input.labelRegex && input.amountMin == null && input.amountMax == null) {
+      throw Object.assign(new Error('Indiquez au moins une condition : libellé, expression ou plage de montant'), { statusCode: 400 });
+    }
+    if (input.action === 'post_entry' && !input.counterAccountId) {
+      throw Object.assign(new Error('Choisissez le compte de contrepartie de l\'écriture à générer'), { statusCode: 400 });
+    }
+    const v = [input.priority ?? 100, input.label.trim(), input.isActive ?? true, input.labelContains?.trim() || null, input.labelRegex?.trim() || null,
+      input.direction ?? null, input.amountMin ?? null, input.amountMax ?? null, input.action, input.action === 'post_entry' ? input.counterAccountId : null,
+      input.entryLabel?.trim() || null, input.amountTolerance ?? 0, input.dateToleranceDays ?? 7];
+    const cols = RULE_COLUMNS.join(', ');
+    const r = id
+      ? await db.query(
+        `UPDATE bank_rules SET priority = $1, label = $2, is_active = $3, label_contains = $4, label_regex = $5, direction = $6,
+                amount_min = $7, amount_max = $8, action = $9, counter_account_id = $10, entry_label = $11, amount_tolerance = $12,
+                date_tolerance_days = $13, updated_at = now() WHERE id = $14 RETURNING ${cols}`, [...v, id])
+      : await db.query(
+        `INSERT INTO bank_rules (priority, label, is_active, label_contains, label_regex, direction, amount_min, amount_max, action,
+                                 counter_account_id, entry_label, amount_tolerance, date_tolerance_days, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING ${cols}`, [...v, userId]);
+    if (!r.rows[0]) throw Object.assign(new Error('Règle introuvable'), { statusCode: 404 });
+    return r.rows[0];
+  },
+  async remove(id: string) {
+    await db.query(`DELETE FROM bank_rules WHERE id = $1`, [id]);
   },
 };

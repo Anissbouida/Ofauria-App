@@ -1,12 +1,13 @@
 import express, { Router, type Response } from 'express';
 import { z } from 'zod';
 import { bankReconciliationController } from '../controllers/bank-reconciliation.controller.js';
-import { bankImportRepository } from '../repositories/bank-reconciliation.repository.js';
+import { bankImportRepository, bankRuleRepository } from '../repositories/bank-reconciliation.repository.js';
+import { bankMatching } from '../services/bank-matching.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { validateUuidParams } from '../middleware/validate.middleware.js';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { ROLE_GROUPS } from '@ofauria/shared';
 
 // Rapprochement bancaire : reserve a l'admin.
@@ -19,6 +20,7 @@ router.post('/statements/:id/auto-match', authenticate, authorize(...ROLE_GROUPS
 router.delete('/statements/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), bankReconciliationController.deleteStatement);
 router.post('/lines/:id/match', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), bankReconciliationController.matchLine);
 router.post('/lines/:id/unmatch', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), bankReconciliationController.unmatchLine);
+
 
 // ─── Import de fichiers de banque (mig 426) : CSV, Excel, OFX, MT940, CFONB ───
 // Le fichier arrive en base64 : parser JSON local élargi (route exclue du parser
@@ -92,6 +94,44 @@ router.put('/import/profiles/:id', ...AM, smallJson, validateUuidParams('id'), a
 }));
 router.delete('/import/profiles/:id', ...AM, validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
   await bankImportRepository.deleteProfile(req.params.id);
+  res.json({ success: true, data: null });
+}));
+
+// ─── G4-02 : moteur à règles — propositions, validation en masse, règles ───
+const ruleSchema = z.object({
+  priority: z.coerce.number().int().min(0).max(10_000).optional(),
+  label: z.string().trim().min(2, 'Nom de la règle requis').max(120),
+  isActive: z.boolean().optional(),
+  labelContains: z.string().trim().max(120).nullish(),
+  labelRegex: z.string().trim().max(200).nullish(),
+  direction: z.enum(['in', 'out']).nullish(),
+  amountMin: z.coerce.number().min(0).nullish(),
+  amountMax: z.coerce.number().min(0).nullish(),
+  action: z.enum(['match', 'post_entry']),
+  counterAccountId: z.string().uuid().nullish(),
+  entryLabel: z.string().trim().max(120).nullish(),
+  amountTolerance: z.coerce.number().min(0).max(1_000_000).optional(),
+  dateToleranceDays: z.coerce.number().int().min(0).max(60).optional(),
+});
+const applySchema = z.object({ bankLineIds: z.array(z.string().uuid()).max(2000).optional(), minConfidence: z.coerce.number().min(0).max(100).optional() });
+const id = validateUuidParams('id');
+router.get('/statements/:id/proposals', ...AM, id, asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await bankMatching.propose(req.params.id as string) });
+}));
+router.post('/statements/:id/apply', ...AM, id, smallJson, validate(applySchema), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await bankMatching.apply(req.params.id as string, { userId: req.user!.userId, storeId: req.user!.storeId ?? null, ...req.body }) });
+}));
+router.get('/rules', ...AM, asyncHandler(async (_req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await bankRuleRepository.list() });
+}));
+router.post('/rules', ...AM, smallJson, validate(ruleSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.status(201).json({ success: true, data: await bankRuleRepository.save(req.body, req.user!.userId) });
+}));
+router.put('/rules/:id', ...AM, id, smallJson, validate(ruleSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await bankRuleRepository.save(req.body, req.user!.userId, req.params.id as string) });
+}));
+router.delete('/rules/:id', ...AM, id, asyncHandler(async (req: AuthRequest, res: Response) => {
+  await bankRuleRepository.remove(req.params.id as string);
   res.json({ success: true, data: null });
 }));
 

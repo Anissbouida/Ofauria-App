@@ -57,7 +57,7 @@ export const bankReconciliationController = {
   /** POST /api/v1/bank-reconciliation/statements/:id/auto-match */
   async autoMatch(req: AuthRequest, res: Response) {
     try {
-      const result = await bankReconciliationRepository.autoMatch(req.params.id, req.user!.userId);
+      const result = await bankReconciliationRepository.autoMatch(req.params.id, req.user!.userId, req.user!.storeId ?? null);
       res.json({ success: true, data: result });
     } catch (err) {
       res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
