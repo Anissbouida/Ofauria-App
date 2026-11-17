@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { auditedQuery, setAuditUser } from '../utils/audit-context.js';
 
 export interface PermissionRow {
@@ -36,9 +36,8 @@ export const permissionRepository = {
     canDelete: boolean;
     config?: Record<string, unknown>;
   }[], actorId?: string) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       await setAuditUser(client, actorId);
       // Enregistrement differentiel (et non DELETE + INSERT de tout) : le journal
       // d'audit (mig 328) ne trace ainsi que les modules reellement modifies.
@@ -62,12 +61,6 @@ export const permissionRepository = {
         );
       }
 
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 };
