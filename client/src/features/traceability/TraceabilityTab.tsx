@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import CustomFieldsCard from '../../components/custom-fields/CustomFieldsCard';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, Loader2, ArrowLeft, Siren, Printer, Info, AlertTriangle, CheckCircle2, ShieldAlert, Lock, type LucideIcon } from 'lucide-react';
 import { format } from 'date-fns';
@@ -294,6 +295,7 @@ function BackwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () 
         <Stat label="Vendu" value={q(lot.sold_qty)} sub={`${lot.sales_count} ticket(s) tracé(s)`} />
         <Stat label="Lots d'ingrédients" value={String(data.ingredientLots.length)} sub="utilisés par la production" />
       </div>
+      <div style={{ marginTop: 12 }}><CustomFieldsCard entity="product_lot" id={id} /></div>
       {data.ingredientLots.length === 0 ? (
         <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun lot d'ingrédient rattaché">La production n'a pas enregistré de prélèvement par lot (bon de sortie non pesé).</StatusBanner>
       ) : (

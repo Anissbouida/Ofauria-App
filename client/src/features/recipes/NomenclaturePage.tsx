@@ -1,4 +1,5 @@
 import { usePermissions } from '../../context/PermissionsContext';
+import CustomFieldsCard from '../../components/custom-fields/CustomFieldsCard';
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -145,6 +146,7 @@ export default function NomenclaturePage() {
         <AlternativeOfPanel recipe={recipe} />
         <SubstitutesPanel recipeId={recipe.id} />
         <RecipeOutputsPanel recipeId={recipe.id} />
+        <CustomFieldsCard entity="recipe" id={recipe.id} />
 
         <NomenclatureEditor recipeId={recipe.id} onFinance={setKpi} onCancel={() => navigate('/recipes?tab=product')} onSaved={() => qc.invalidateQueries({ queryKey: ['recipe', id] })} />
 

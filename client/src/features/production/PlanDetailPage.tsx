@@ -1,4 +1,5 @@
 import { useProductionPolicies, shiftOf } from './usePolicies';
+import CustomFieldsCard from '../../components/custom-fields/CustomFieldsCard';
 import ItemRecipeSelect from './ItemRecipeSelect';
 import { money } from '../../utils/money';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -1734,6 +1735,7 @@ export default function PlanDetailPage() {
       )}
 
       {(showSynth || !hasTabs) && plan.order_number && <PlanLinkedOrder plan={plan} />}
+      {(showSynth || !hasTabs) && <div style={{ margin: '1rem' }}><CustomFieldsCard entity="production_order" id={id!} /></div>}
 
       {/* ══════════════ ALERTES (onglet Preparation) ══════════════
           Visibles uniquement par le magasinier : elles concernent la dispo des

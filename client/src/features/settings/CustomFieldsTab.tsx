@@ -28,6 +28,9 @@ const EXAMPLES: Record<CfEntity, string> = {
   intervention: 'kilométrage, n° d\'immatriculation, pièce remplacée…',
   project: 'référence du marché, chef de chantier, lieu…',
   opportunity: 'budget du client, nombre de convives, concurrent en lice…',
+  recipe: 'référence client, norme appliquée, température de cuisson…',
+  production_order: 'ligne de production, équipe, n° de commande client…',
+  product_lot: 'n° de palette, résultat d\'analyse, température de sortie…',
 };
 
 export default function CustomFieldsTab() {
