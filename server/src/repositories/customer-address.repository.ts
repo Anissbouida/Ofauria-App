@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import type { PoolClient } from 'pg';
 
 // Référentiel d'adresses client (phase 4.1, mig 474). La fiche client porte
@@ -63,9 +63,8 @@ export const customerAddressRepository = {
   },
 
   async create(customerId: string, data: CustomerAddressInput) {
-    const c = await db.getClient();
-    try {
-      await c.query('BEGIN');
+    return withTransaction(async () => {
+      const c = await db.getClient();
       await clearDefaults(c, customerId, null, data);
       const row = (await c.query(
         `INSERT INTO customer_addresses
@@ -75,20 +74,13 @@ export const customerAddressRepository = {
          data.postalCode ?? null, data.city ?? null, data.countryCode ?? null,
          data.isDefaultDelivery ?? false, data.isDefaultBilling ?? false]
       )).rows[0];
-      await c.query('COMMIT');
       return row;
-    } catch (err) {
-      await c.query('ROLLBACK');
-      throw err;
-    } finally {
-      c.release();
-    }
+    });
   },
 
   async update(id: string, customerId: string, data: CustomerAddressInput) {
-    const c = await db.getClient();
-    try {
-      await c.query('BEGIN');
+    return withTransaction(async () => {
+      const c = await db.getClient();
       await clearDefaults(c, customerId, id, data);
       const row = (await c.query(
         `UPDATE customer_addresses SET
@@ -103,14 +95,8 @@ export const customerAddressRepository = {
          data.postalCode ?? null, data.city ?? null, data.countryCode ?? null,
          data.isDefaultDelivery ?? null, data.isDefaultBilling ?? null]
       )).rows[0];
-      await c.query('COMMIT');
       return row ?? null;
-    } catch (err) {
-      await c.query('ROLLBACK');
-      throw err;
-    } finally {
-      c.release();
-    }
+    });
   },
 
   /** Désactivation (soft-delete) : l'historique des pièces reste intact. */
