@@ -374,7 +374,7 @@ export const mrpRepository = {
   /**
    * Besoins matière (achats) du MRP — roadmap lot 8.
    * Explose les besoins NETS à produire du jour (net_to_produce) en ingrédients
-   * élémentaires (v_recipe_explosion, mig 400), ramenés au prorata du rendement,
+   * élémentaires (v_recipe_explosion_v2, mig 400), ramenés au prorata du rendement,
    * puis défalque le stock : manquant = max(0, besoin + seuil − stock). Le seuil
    * d'alerte (inventory.minimum_threshold) sert de stock de sécurité.
    */
@@ -395,7 +395,7 @@ export const mrpRepository = {
        FROM demand
        -- G0-27 : la fiche ACTIVE de l'article (une seule par produit, index unique ; les archivées sont écartées).
        JOIN recipes r ON r.product_id = demand.product_id AND r.archived_at IS NULL
-       JOIN v_recipe_explosion e ON e.recipe_id = r.id
+       JOIN v_recipe_explosion_v2 e ON e.recipe_id = r.id
        JOIN ingredients ing ON ing.id = e.ingredient_id
        LEFT JOIN inventory inv ON inv.ingredient_id = e.ingredient_id AND inv.store_id = $1
        GROUP BY e.ingredient_id, e.ingredient_name, e.unit, inv.current_quantity, inv.minimum_threshold, ing.unit_cost`,

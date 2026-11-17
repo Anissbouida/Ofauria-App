@@ -1098,7 +1098,7 @@ export const recipeRepository = {
       `SELECT ingredient_id, ingredient_name, unit,
               ROUND(total_qty, 3)  AS total_qty,
               ROUND(rolled_cost, 4) AS rolled_cost
-       FROM v_recipe_explosion
+       FROM v_recipe_explosion_v2
        WHERE recipe_id = $1
        ORDER BY rolled_cost DESC NULLS LAST, ingredient_name`,
       [recipeId]

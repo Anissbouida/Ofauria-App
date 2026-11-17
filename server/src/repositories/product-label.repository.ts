@@ -6,7 +6,7 @@ import { ALLERGEN_CODES, normalizeAllergens, type AllergenCode } from '../valida
  *
  * `labelData()` compose ce qu'une étiquette doit porter :
  *   - la liste des ingrédients, tirée de la nomenclature ÉCLATÉE (les semi-finis sont
- *     remplacés par leurs propres ingrédients, sur tous les niveaux — v_recipe_explosion),
+ *     remplacés par leurs propres ingrédients, sur tous les niveaux — v_recipe_explosion_v2),
  *     triée par poids décroissant ;
  *   - les allergènes : « contient » mis en évidence dans la liste (en majuscules), et
  *     « peut contenir des traces de » pour ceux qui ne sont présents qu'à l'état de traces ;
@@ -71,7 +71,7 @@ export const productLabelRepository = {
         `SELECT e.ingredient_id, i.name, e.total_qty::float8 AS total_qty,
                 fn_ingredient_weight_kg(e.ingredient_id, e.total_qty)::float8 AS weight_kg,
                 i.allergens, i.allergen_traces, i.allergens_reviewed_at
-           FROM v_recipe_explosion e
+           FROM v_recipe_explosion_v2 e
            JOIN ingredients i ON i.id = e.ingredient_id
           WHERE e.recipe_id = $1 AND e.total_qty > 0`, [recipe.id])).rows;
       const total = rows.reduce((t, r) => t + (r.weight_kg ?? 0), 0);
