@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import ItemConversionsPanel from '../../components/ItemConversionsPanel';
 import { useQuery } from '@tanstack/react-query';
 import { Package, Edit3, X, Save, Tag, Boxes, ShieldAlert, Info } from 'lucide-react';
 import { suppliersApi } from '../../api/accounting.api';
@@ -230,6 +231,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                     onChange={e => set('poidsPieceKg', e.target.value)} placeholder="ex 0.25" style={{ maxWidth: 180 }} />
                 </Field>
               )}
+              {mode === 'edit' && ing.id && <ItemConversionsPanel kind="ingredient" itemId={ing.id as string} />}
             </Section>
 
             {/* ── Classement ── */}

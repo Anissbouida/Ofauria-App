@@ -105,6 +105,10 @@
   "admin",
   "manager"
  ],
+ "DELETE /ingredients/:id/conversions/:convId": [
+  "admin",
+  "manager"
+ ],
  "DELETE /inventory/closings/:id": [
   "admin",
   "manager"
@@ -204,6 +208,10 @@
  ],
  "DELETE /products/:id": [
   "admin"
+ ],
+ "DELETE /products/:id/conversions/:convId": [
+  "admin",
+  "manager"
  ],
  "DELETE /projects/:id/invoices/:invoiceId": null,
  "DELETE /projects/tasks/:taskId": null,
@@ -839,6 +847,7 @@
  "GET /ingredient-lots/stats": null,
  "GET /ingredients": null,
  "GET /ingredients/:id": null,
+ "GET /ingredients/:id/conversions": null,
  "GET /ingredients/allergen-grid": [
   "admin",
   "manager"
@@ -1594,6 +1603,7 @@
  "GET /products": null,
  "GET /products/:id": null,
  "GET /products/:id/channel-pricing": null,
+ "GET /products/:id/conversions": null,
  "GET /products/:id/effective-deadline": null,
  "GET /products/:id/label-data": null,
  "GET /products/:id/pricing-tiers": null,
@@ -2862,6 +2872,10 @@
   "admin",
   "manager"
  ],
+ "POST /ingredients/:id/conversions": [
+  "admin",
+  "manager"
+ ],
  "POST /ingredients/:id/convert-to-consumable": [
   "admin",
   "manager"
@@ -3591,6 +3605,10 @@
   "viennoiserie"
  ],
  "POST /products": [
+  "admin",
+  "manager"
+ ],
+ "POST /products/:id/conversions": [
   "admin",
   "manager"
  ],
@@ -4379,6 +4397,10 @@
   "admin",
   "manager"
  ],
+ "PUT /ingredients/:id/conversions/:convId": [
+  "admin",
+  "manager"
+ ],
  "PUT /inventory/reorder-points/:id": [
   "admin",
   "manager"
@@ -4559,6 +4581,10 @@
   "manager"
  ],
  "PUT /products/:id/channel-pricing": [
+  "admin",
+  "manager"
+ ],
+ "PUT /products/:id/conversions/:convId": [
   "admin",
   "manager"
  ],

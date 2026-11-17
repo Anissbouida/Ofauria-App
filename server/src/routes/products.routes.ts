@@ -1,3 +1,4 @@
+import { conversionHandlers, createConversionSchema, updateConversionSchema } from '../controllers/item-conversions.controller.js';
 import { Router, json as expressJson } from 'express';
 import multer from 'multer';
 import path from 'path';
@@ -22,6 +23,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 }});
 
 const router = Router();
+const productConversions = conversionHandlers('product');
 
 router.get('/', authenticate, productController.list);
 router.get('/top-selling', authenticate, productController.topSelling);
@@ -30,6 +32,11 @@ router.get('/:id/effective-deadline', authenticate, productController.effectiveD
 // G2-09 — étiquette réglementaire : données composées et mentions du produit.
 router.get('/:id/label-data', authenticate, validateUuidParams('id'), asyncHandler(productController.labelData));
 router.put('/:id/label-fields', authenticate, can('products.label_fields'), validateUuidParams('id'), validate(productLabelFieldsSchema), asyncHandler(productController.saveLabelFields));
+// Conversions propres au produit (M3-02).
+router.get('/:id/conversions', authenticate, validateUuidParams('id'), asyncHandler(productConversions.list));
+router.post('/:id/conversions', authenticate, validateUuidParams('id'), can('products.edit'), validate(createConversionSchema), asyncHandler(productConversions.create));
+router.put('/:id/conversions/:convId', authenticate, validateUuidParams('id', 'convId'), can('products.edit'), validate(updateConversionSchema), asyncHandler(productConversions.update));
+router.delete('/:id/conversions/:convId', authenticate, validateUuidParams('id', 'convId'), can('products.edit'), asyncHandler(productConversions.remove));
 router.get('/:id', authenticate, productController.getById);
 router.post('/', authenticate, can('products.create'), validate(createProductSchema), productController.create);
 // Import CSV (export Loyverse) + suppression en masse.

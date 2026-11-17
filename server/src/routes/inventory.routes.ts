@@ -8,6 +8,9 @@ import { can } from '../middleware/permission.middleware.js';
 import { requireUnits, requireStockUnitChange } from '../services/unit-referential.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { conversionHandlers, createConversionSchema, updateConversionSchema } from '../controllers/item-conversions.controller.js';
+
+const ingredientConversions = conversionHandlers('ingredient');
 import { restockSchema, adjustStockSchema, stockThresholdSchema, resolveStockAnomalySchema, mergeIngredientsSchema, correctIngredientCostSchema, ingredientAllergensSchema, reorderApplySchema, reorderUpdateSchema, reorderRecalculateSchema } from '../validators/stock.validator.js';
 
 const router = Router();
@@ -90,6 +93,11 @@ ingredientsRouter.get('/', authenticate, ingredientController.list);
 // G2-06 — grille des allergènes (déclarée avant /:id).
 ingredientsRouter.get('/allergen-grid', authenticate, can('stock.ingredients.view'), asyncHandler(ingredientController.allergenGrid));
 ingredientsRouter.put('/:id/allergens', authenticate, can('stock.ingredients.allergens'), validate(ingredientAllergensSchema), asyncHandler(ingredientController.saveAllergens));
+// Conversions propres à l'ingrédient (M3-02).
+ingredientsRouter.get('/:id/conversions', authenticate, validateUuidParams('id'), asyncHandler(ingredientConversions.list));
+ingredientsRouter.post('/:id/conversions', authenticate, validateUuidParams('id'), can('stock.ingredients.edit'), validate(createConversionSchema), asyncHandler(ingredientConversions.create));
+ingredientsRouter.put('/:id/conversions/:convId', authenticate, validateUuidParams('id', 'convId'), can('stock.ingredients.edit'), validate(updateConversionSchema), asyncHandler(ingredientConversions.update));
+ingredientsRouter.delete('/:id/conversions/:convId', authenticate, validateUuidParams('id', 'convId'), can('stock.ingredients.edit'), asyncHandler(ingredientConversions.remove));
 ingredientsRouter.get('/:id', authenticate, ingredientController.getById);
 // Unité de stock : code du référentiel `units` (mig 515).
 const stockUnitOf = requireUnits((body: { unit?: string | null }) => [{ unit: body.unit }]);

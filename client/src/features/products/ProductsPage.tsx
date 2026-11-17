@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import ItemConversionsPanel from '../../components/ItemConversionsPanel';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productsApi } from '../../api/products.api';
@@ -1566,6 +1567,11 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
             {activeTab === 'lifecycle' && (
               <>
+                {product?.id && (
+                  <FormSection title="Unités et conversions" subtitle="1 carton = 12 pièces, 1 pièce = 0,35 kg" icon={Factory} defaultOpen={false}>
+                    <ItemConversionsPanel kind="product" itemId={product.id as string} />
+                  </FormSection>
+                )}
                 <FormSection title="Paramètres de production" subtitle="plans de production automatiques" icon={Factory} defaultOpen={false}>
 
                 <div className="grid grid-cols-2 gap-4">
