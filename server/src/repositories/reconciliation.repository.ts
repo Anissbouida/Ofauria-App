@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { forecastRepository } from './forecast.repository.js';
 
 /**
@@ -219,9 +219,8 @@ export const reconciliationRepository = {
     const firstShift = shifts[0];
     if (!firstShift) return;
 
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       // Restes de J-1 eligibles au report (meme magasin).
       const prevCte = `
@@ -264,13 +263,7 @@ export const reconciliationRepository = {
           AND NOT EXISTS (SELECT 1 FROM prev p WHERE p.product_key = t.product_key)
       `, [dayId, date, storeId, firstShift.id]);
 
-      await client.query('COMMIT');
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
@@ -287,9 +280,8 @@ export const reconciliationRepository = {
     const shifts = await this.getShifts(dayId);
     if (shifts.length < 2) return;
 
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       for (let i = 1; i < shifts.length; i++) {
         const from = shifts[i - 1], to = shifts[i];
         await client.query(`
@@ -315,13 +307,7 @@ export const reconciliationRepository = {
             )
         `, [to.id, from.id]);
       }
-      await client.query('COMMIT');
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
