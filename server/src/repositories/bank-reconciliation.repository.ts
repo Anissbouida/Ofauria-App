@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import {
   parseStatementFile, netOf, type BankFormat, type CsvProfile, type DateFormat, type ParsedLine,
 } from '../services/bank-statement-import.service.js';
@@ -166,9 +166,8 @@ export const bankImportRepository = {
     const statementDate = input.statementDate || p.statementDate || a.lines[a.lines.length - 1].operationDate;
     const opening = input.openingBalance ?? p.openingBalance ?? 0;
     const closing = input.closingBalance ?? p.closingBalance ?? round2(opening + netOf(a.lines));
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const stmt = (await client.query(
         `INSERT INTO bank_statements (label, account_id, statement_date, opening_balance, closing_balance, store_id, created_by,
                 source_format, file_name, file_sha256, profile_id, treasury_account_id, duplicates_skipped)
@@ -188,14 +187,8 @@ export const bankImportRepository = {
       }
       const skipped = a.lines.length - inserted;
       await client.query(`UPDATE bank_statements SET duplicates_skipped = $2 WHERE id = $1`, [stmt.id, skipped]);
-      await client.query('COMMIT');
       return { statement: { ...stmt, duplicates_skipped: skipped }, imported: inserted, skipped };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 };
 
@@ -219,9 +212,8 @@ export const bankReconciliationRepository = {
     createdBy: string;
     lines: { operationDate: string; label?: string; reference?: string; amount: number; direction: 'in' | 'out' }[];
   }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const acc = await client.query(`SELECT id FROM accounts WHERE code = $1`, [data.accountCode]);
       if (!acc.rows[0]) throw new Error(`Compte ${data.accountCode} introuvable`);
 
@@ -241,14 +233,8 @@ export const bankReconciliationRepository = {
         );
       }
 
-      await client.query('COMMIT');
       return stmt.rows[0];
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async listStatements(opts: { storeId?: string } = {}) {
@@ -334,9 +320,8 @@ export const bankReconciliationRepository = {
    * dans une fenetre de +/- 7 jours. Si match unique -> rapproche.
    */
   async autoMatch(statementId: string, userId: string) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const stmt = await client.query(`SELECT account_id FROM bank_statements WHERE id = $1`, [statementId]);
       if (!stmt.rows[0]) throw new Error('Releve introuvable');
       const accountId = stmt.rows[0].account_id;
@@ -374,14 +359,8 @@ export const bankReconciliationRepository = {
         }
       }
 
-      await client.query('COMMIT');
       return { matched };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /** Rapprochement manuel d'une ligne de releve avec une ligne d'ecriture. */
