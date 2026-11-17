@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { applyContainerRule } from '../services/container-rule.js';
 import { receptionVoucherRepository, createInvoiceFromPo } from './reception-voucher.repository.js';
@@ -292,9 +292,8 @@ export const purchaseOrderRepository = {
     // categorie de depense (qui donne le compte comptable), mig 349.
     items: PoLineInput[];
   }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       // generateOrderNumber DOIT recevoir le client transactionnel : sans ca,
       // il emprunte une 2e connexion au pool pendant qu'on en detient deja une
@@ -343,14 +342,8 @@ export const purchaseOrderRepository = {
         );
       }
 
-      await client.query('COMMIT');
       return { ...poResult.rows[0], _roundings: roundings };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /** Montant HT du bon (lignes sans prix comptées à 0), pour les seuils d'approbation. */
@@ -418,9 +411,8 @@ export const purchaseOrderRepository = {
   },
 
   async updateItemPrices(id: string, items: { itemId: string; unitPrice: number }[]) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       for (const item of items) {
         await client.query(
@@ -464,14 +456,8 @@ export const purchaseOrderRepository = {
       // reception-voucher.repository). Les prix de ligne du BC sont déjà à jour
       // ci-dessus (purchase_order_items.unit_price).
 
-      await client.query('COMMIT');
       return { itemsUpdated: items.length, stillMissingPrices: stillMissing };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
