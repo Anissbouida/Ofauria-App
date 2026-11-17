@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { applyStockOut } from '../services/stock-anomaly.js';
 import type { PoolClient } from 'pg';
@@ -1147,9 +1147,8 @@ export const bonSortieRepository = {
     userId: string,
     options: { overrideLotId?: string; overrideQty?: number; reason?: string; containerCount?: number; containerTypeId?: string } = {},
   ) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       await setActor(client, userId);
 
       const lineResult = await client.query(
@@ -1226,14 +1225,8 @@ export const bonSortieRepository = {
          ligneId]
       );
 
-      await client.query('COMMIT');
       return updatedLine.rows[0];
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   // ─── Chef : refuser la reception (non-conformite) ───
@@ -1514,19 +1507,12 @@ export const bonSortieRepository = {
     userId: string | null,
     options: { notes?: string; tareQuantity?: number; reason?: string; source?: 'manual' | 'scale'; lotId?: string; transferQty?: number; containerCount?: number; containerTypeId?: string } = {},
   ) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       await setActor(client, userId);
       const row = await this.applyWeighing(client, ligneId, actualQuantity, userId, options);
-      await client.query('COMMIT');
       return row;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   // ─── Enregistrement groupe des pesees d'un BSI (une seule transaction) ───
@@ -1589,9 +1575,8 @@ export const bonSortieRepository = {
   //   - Le BSI passe en 'preparation_partielle' pour que le manager voie qu'il y a un blocage
   // Refuse si AUCUNE ligne n'est preleve/ecart/substitue (rien a commiter).
   async commitPartial(bonId: string, userId: string) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       await setActor(client, userId);
 
       const current = await client.query(
@@ -1637,14 +1622,8 @@ export const bonSortieRepository = {
         });
       }
 
-      await client.query('COMMIT');
       return { ...bonRow, done_count: done, pending_count: pending };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   // ─── BSI partiel : compléter les lignes en attente après réapprovisionnement ───
