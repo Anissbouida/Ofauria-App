@@ -1891,6 +1891,24 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **Constats hors tâche, relevés en passant** : (1) le bilan prenait la valeur absolue des soldes et se déséquilibrait dès qu'un compte avait son solde du côté inhabituel (486, fournisseur débiteur) : corrigé dans un commit à part ; base locale sans écart. (2) Incohérence de fuseau NON corrigée : la DLC d'un lot « du jour » est calculée tantôt en date de la base, tantôt en date de Casablanca ; les deux diffèrent entre minuit et l'heure de décalage de la base (une heure en production si la base est en UTC, cinq heures sur le poste de développement). Deux tests (`production-workflow`, `scenarios-ventes`) échouent dans cette fenêtre et passent le reste de la journée.
 - **G3-05** (étape 1, faite par nécessité) : la garde des numéros de migration tolère les six doublons historiques sur une base vierge.
 
+### Lot 3 — G2
+
+| ☐ | Tâche | Objet | Change des chiffres |
+|---|---|---|---|
+| ◐ | G2-01 | Mesurer la complétude en production | non |
+| ☐ | G2-02 | Tableau de bord « Qualité des données » | non |
+| ☐ | G2-03 | Fusion des ingrédients en double | oui (coût des fiches) |
+| ☐ | G2-04 | Prix aberrants | oui (coût des fiches) |
+| ☐ | G2-05 | Poids cuit des formats | non |
+| ☐ | G2-06 | Allergènes des ingrédients | non |
+| ☐ | G2-07 | Étapes des fiches | non |
+| ☐ | G2-08 | Fiches à désactiver et données parasites | non |
+| ☐ | G2-09 | Étiquette réglementaire | non |
+| ☐ | G2-10 | Valeurs nutritionnelles (optionnel) | non |
+
+**Notes du lot 3.**
+- **G2-01** : `server/scripts/diagnose-master-data.sql` écrit (lecture seule : synthèse puis sept listes). Passé sur la base locale le 2026-11-16 : formats actifs sans poids cuit 49 / 49 ; ingrédients sans allergènes 405 / 405 ; fiches actives sans étapes 38 / 52 ; ingrédients homonymes 33 fiches en trop ; ingrédients sans prix 27 ; prix aberrants 24 sur 287 comparables ; fiches actives jamais produites 11 / 52. RESTE : le passer en production avec accord et joindre le résultat. « Prix aberrant » = plus de 5 fois la médiane des ingrédients de même catégorie et de même unité, ou moins du cinquième (catégories d'au moins 5 ingrédients valorisés).
+
 ### Lots suivants
 
 | ☐ | Lot | Tâches |
