@@ -75,18 +75,16 @@ export const journalTemplateRepository = {
     if (err) return { error: err };
     const rec = readRecurrence(input);
     if ('error' in rec) return { error: rec.error };
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const id = (await client.query(
         `INSERT INTO journal_entry_templates (name, journal_code, description, store_id, created_by)
          VALUES ($1, $2, $3, $4, $5) RETURNING id`,
         [input.name.trim().slice(0, 160), (input.journalCode || 'OD').trim(), input.description?.trim() || null, ctx.storeId, ctx.userId])).rows[0].id;
       await this._replaceLines(client, id, input.lines);
       if (rec.set && rec.recurrence) await this._setRecurrence(client, id, rec.recurrence, rec.firstRunOn!, rec.endOn);
-      await client.query('COMMIT');
       return { id };
-    } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+    });
   },
 
   /** Pose ou retire la périodicité. Changer la périodicité ou la première échéance repart de zéro. */
