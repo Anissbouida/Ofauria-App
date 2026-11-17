@@ -3,7 +3,7 @@ import { z } from 'zod';
 import PDFDocument from 'pdfkit';
 import { ROLE_GROUPS } from '@ofauria/shared';
 import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { stockCountRepository } from '../repositories/stock-count.repository.js';
 
@@ -29,7 +29,7 @@ function present(count: Record<string, any>, req: AuthRequest) {
   };
 }
 
-stockCountsRouter.get('/', authenticate, authorize(...WAREHOUSE), asyncHandler(async (req: AuthRequest, res: Response) => {
+stockCountsRouter.get('/', authenticate, can('stock.stock_counts.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const q = z.object({ status: z.enum(['counting', 'review', 'validated', 'cancelled']).optional(),
     page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(25) }).safeParse(req.query);
   if (!q.success) { bad(res); return; }
@@ -37,7 +37,7 @@ stockCountsRouter.get('/', authenticate, authorize(...WAREHOUSE), asyncHandler(a
   res.json({ success: true, data: r.rows.map(c => isDirection(req) ? c : { ...c, gap_value: null, gain_value: null, loss_value: null }), total: r.total });
 }));
 
-stockCountsRouter.post('/', authenticate, authorize(...WAREHOUSE), asyncHandler(async (req: AuthRequest, res: Response) => {
+stockCountsRouter.post('/', authenticate, can('stock.stock_counts.create'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({
     title: z.string().trim().max(200).nullish(), itemKinds: z.enum(['ingredient', 'packaging', 'both']).optional(),
     categoryIds: z.array(z.string().uuid()).max(100).optional(), blind: z.boolean().optional(), includeInactive: z.boolean().optional(),
@@ -49,13 +49,13 @@ stockCountsRouter.post('/', authenticate, authorize(...WAREHOUSE), asyncHandler(
   res.status(201).json({ success: true, data: present(r.data!, req) });
 }));
 
-stockCountsRouter.get('/:id', authenticate, authorize(...WAREHOUSE), asyncHandler(async (req: AuthRequest, res: Response) => {
+stockCountsRouter.get('/:id', authenticate, can('stock.stock_counts.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const c = await stockCountRepository.findById(req.params.id);
   if (!c) { bad(res, 'Inventaire introuvable', 404); return; }
   res.json({ success: true, data: present(c, req) });
 }));
 
-stockCountsRouter.put('/:id/lines/:lineId', authenticate, authorize(...WAREHOUSE), asyncHandler(async (req: AuthRequest, res: Response) => {
+stockCountsRouter.put('/:id/lines/:lineId', authenticate, can('stock.stock_counts.lines'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({ countedQty: z.coerce.number().min(0).max(10_000_000).nullable(), note: z.string().trim().max(300).nullish() }).safeParse(req.body);
   if (!b.success) { bad(res, 'Quantité invalide'); return; }
   const r = await stockCountRepository.count(req.params.id, req.params.lineId, { ...b.data, userId: req.user!.userId });
@@ -65,7 +65,7 @@ stockCountsRouter.put('/:id/lines/:lineId', authenticate, authorize(...WAREHOUSE
   res.json({ success: true, data: hide ? { ...line, theoretical_at_start: null, theoretical_at_count: null } : line });
 }));
 
-stockCountsRouter.post('/:id/lines', authenticate, authorize(...WAREHOUSE), asyncHandler(async (req: AuthRequest, res: Response) => {
+stockCountsRouter.post('/:id/lines', authenticate, can('stock.stock_counts.lines'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({ ingredientId: z.string().uuid().nullish(), packagingId: z.string().uuid().nullish() })
     .refine(x => !!x.ingredientId !== !!x.packagingId, 'Un article à la fois').safeParse(req.body);
   if (!b.success) { bad(res, b.error.issues[0]?.message); return; }
@@ -74,22 +74,22 @@ stockCountsRouter.post('/:id/lines', authenticate, authorize(...WAREHOUSE), asyn
   res.status(201).json({ success: true, data: r.data });
 }));
 
-stockCountsRouter.post('/:id/submit', authenticate, authorize(...WAREHOUSE), asyncHandler(async (req: AuthRequest, res: Response) => {
+stockCountsRouter.post('/:id/submit', authenticate, can('stock.stock_counts.submit'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await stockCountRepository.setStatus(req.params.id, 'submit', req.user!.userId);
   if ('error' in r) { bad(res, r.error, 409); return; }
   res.json({ success: true, data: present(r.data!, req) });
 }));
-stockCountsRouter.post('/:id/reopen', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+stockCountsRouter.post('/:id/reopen', authenticate, can('stock.stock_counts.reopen'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await stockCountRepository.setStatus(req.params.id, 'reopen', req.user!.userId);
   if ('error' in r) { bad(res, r.error, 409); return; }
   res.json({ success: true, data: r.data });
 }));
-stockCountsRouter.post('/:id/cancel', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+stockCountsRouter.post('/:id/cancel', authenticate, can('stock.stock_counts.cancel'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await stockCountRepository.setStatus(req.params.id, 'cancel', req.user!.userId);
   if ('error' in r) { bad(res, r.error, 409); return; }
   res.json({ success: true, data: r.data });
 }));
-stockCountsRouter.post('/:id/validate', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+stockCountsRouter.post('/:id/validate', authenticate, can('stock.stock_counts.validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({ zeroUncounted: z.boolean().default(false) }).safeParse(req.body ?? {});
   if (!b.success) { bad(res); return; }
   const r = await stockCountRepository.validate(req.params.id, { zeroUncounted: b.data.zeroUncounted, userId: req.user!.userId });
@@ -98,7 +98,7 @@ stockCountsRouter.post('/:id/validate', authenticate, authorize(...DIRECTION), a
 }));
 
 /** Feuille de comptage imprimable (comptage papier puis saisie). Théorique imprimé seulement hors aveugle. */
-stockCountsRouter.get('/:id/sheet', authenticate, authorize(...WAREHOUSE), asyncHandler(async (req: AuthRequest, res: Response) => {
+stockCountsRouter.get('/:id/sheet', authenticate, can('stock.stock_counts.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const c = await stockCountRepository.findById(req.params.id);
   if (!c) { bad(res, 'Inventaire introuvable', 404); return; }
   const showTh = !c.blind;
