@@ -16,7 +16,7 @@ async function run() {
     `SELECT r.id, r.name, r.product_id, r.yield_quantity, r.yield_unit, r.piece_weight_kg,
             r.margin_multiplier, vtc.total_cost
      FROM recipes r
-     JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+     JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
      WHERE r.product_id IS NOT NULL AND r.is_base = false
      ORDER BY r.name`,
   );

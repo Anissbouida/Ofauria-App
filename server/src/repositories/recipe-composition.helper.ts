@@ -10,7 +10,7 @@ import { convertQuantity } from '../utils/units.js';
 // ne lisent que les tables legacy voient donc une recette composee comme VIDE :
 // plan confirme sans besoins, sans BSI, sans plans semi-finis.
 //
-// Semantique alignee sur v_recipe_total_cost (migration 205) :
+// Semantique alignee sur v_recipe_total_cost_v2 (migration 205) :
 // - composant ingredient : quantite * fn_unit_conv(unite, ing.unit)  → unite de base
 // - composant recette    : quantite * fn_unit_conv(unite, br.yield_unit) → net ;
 //                          brut = net / (1 - perte_standard_pct/100)
@@ -61,7 +61,7 @@ export interface RecipeComposition {
   isEmpty: boolean;
 }
 
-const MAX_DEPTH = 12; // meme plafond que v_recipe_total_cost (mig 204)
+const MAX_DEPTH = 12; // meme plafond que v_recipe_total_cost_v2 (mig 204)
 
 export async function getCompositionForNeeds(
   client: QueryClient,
@@ -288,7 +288,7 @@ async function walk(
     // La quantite consommee est exprimee en unites de rendement de l'enfant
     // (kg de creme, pieces de fond...) : nombre de lots de composition de
     // l'enfant = quantite BRUTE (la perte standard majore la matiere, comme
-    // dans v_recipe_total_cost) / yield_quantity — identique au frac de la vue
+    // dans v_recipe_total_cost_v2) / yield_quantity — identique au frac de la vue
     // et a l'ancienne recursion legacy.
     const childBatches = (sub.grossQtyPerBatch / sub.yieldQuantity) * batches;
     await walk(client, childComp, childBatches, addNeed, opts, [...path, sub.subRecipeId], warnedIngredients);

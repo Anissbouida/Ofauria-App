@@ -8,7 +8,7 @@ type Queryable = { query: (text: string, params?: unknown[]) => Promise<{ rows: 
  *
  * Source : v_product_unit_cost (mig 317) =
  *   1. cout matieres unitaire du format par defaut (cout_matiere_unitaire),
- *   2. sinon cout matieres de la recette = v_recipe_total_cost / rendement
+ *   2. sinon cout matieres de la recette = v_recipe_total_cost_v2 / rendement
  *      (ingredients + emballages + sous-recettes), SANS main-d'oeuvre ni frais
  *      indirects (ce n'est PAS le cout complet),
  *   3. sinon cost_price manuel quand il ressemble a un vrai cout.

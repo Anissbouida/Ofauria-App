@@ -39,7 +39,7 @@ export const recipeFicheRepository = {
          FROM recipes r
          LEFT JOIN recipe_categories rc ON rc.id = r.category_id
          LEFT JOIN products p ON p.id = r.product_id
-         LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+         LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
         WHERE r.id = $1`,
       [recipeId]
     );
@@ -126,7 +126,7 @@ export const recipeFicheRepository = {
                 * fn_convert_factor(COALESCE(NULLIF(ri.unit, ''), ing.unit), ing.unit, 'ingredient', ing.id) AS cout_dh
          FROM sources s
          JOIN recipes br ON br.id = s.id
-         LEFT JOIN v_recipe_total_cost vtc ON vtc.id = br.id
+         LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = br.id
          -- Besoin NET de cette preparation pour le(s) format(s) imprime(s),
          -- exprime dans SON unite de rendement. La perte de ligne majore la
          -- quantite : 450 g a poser dans le cadre avec 5 % de casse, c'est

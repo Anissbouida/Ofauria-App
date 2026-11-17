@@ -40,7 +40,7 @@ export const recipeRepository = {
   /** @param archivedOnly true = uniquement les fiches archivées (vue « Archivées ») ;
       false (défaut) = uniquement les actives. Jamais les deux mélangées. */
   async findAll(archivedOnly = false) {
-    // total_cost vient de la vue v_recipe_total_cost (recalcule a la volee).
+    // total_cost vient de la vue v_recipe_total_cost_v2 (recalcule a la volee).
     // Le champ recipes.total_cost stocke n'est jamais lu — toujours obsolete potentiel.
     // formats_nb / formats_perte_pct exposes pour badge "multi-format" et alerte perte.
     // formats : tableau JSON agrege via subquery pour les UI qui ont besoin de connaitre
@@ -99,7 +99,7 @@ export const recipeRepository = {
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
        LEFT JOIN recipe_categories rc ON rc.id = r.category_id
-       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
        LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
        LEFT JOIN v_recipe_format_summary vfs ON vfs.recipe_id = r.id
        LEFT JOIN LATERAL (
@@ -116,7 +116,7 @@ export const recipeRepository = {
   },
 
   async findById(id: string) {
-    // total_cost vient de la vue v_recipe_total_cost. On override le champ stocke.
+    // total_cost vient de la vue v_recipe_total_cost_v2. On override le champ stocke.
     // total_weight_kg : idem, calcule a la volee a partir des ingredients
     // (densite 1 pour les liquides, pieces ignorees).
     const recipeResult = await db.query(
@@ -147,7 +147,7 @@ export const recipeRepository = {
        LEFT JOIN products p ON p.id = r.product_id
        LEFT JOIN production_contenants pc ON pc.id = r.contenant_id
        LEFT JOIN recipe_categories rc ON rc.id = r.category_id
-       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
        LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
        LEFT JOIN v_recipe_format_summary vfs ON vfs.recipe_id = r.id
        LEFT JOIN v_recipe_allergens va ON va.recipe_id = r.id
@@ -297,7 +297,7 @@ export const recipeRepository = {
               p.name as product_name, p.price as product_price
        FROM recipes r
        LEFT JOIN products p ON p.id = r.product_id
-       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
        LEFT JOIN v_recipe_allergens va ON va.recipe_id = r.id
        -- Un produit est rattache a sa recette soit directement (recipes.product_id),
        -- soit par un format de la fiche (« Produit vendu au POS », mig 263). Sans la
@@ -376,13 +376,13 @@ export const recipeRepository = {
   },
 
   /** List only base recipes (for sub-recipe picker).
-   *  total_cost vient de la vue v_recipe_total_cost. */
+   *  total_cost vient de la vue v_recipe_total_cost_v2. */
   async findBaseRecipes() {
     const result = await db.query(
       `SELECT r.id, r.name, r.yield_quantity, r.yield_unit, vtc.total_cost,
               vtw.total_weight_kg
        FROM recipes r
-       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
        LEFT JOIN v_recipe_total_weight_kg vtw ON vtw.id = r.id
        WHERE r.is_base = true AND r.archived_at IS NULL
        ORDER BY r.name`
@@ -422,7 +422,7 @@ export const recipeRepository = {
       );
 
       // Calcul du cout JS pour syncProductPrice uniquement (le champ recipes.total_cost
-      // n'est plus stocke — il est calcule a la volee via v_recipe_total_cost).
+      // n'est plus stocke — il est calcule a la volee via v_recipe_total_cost_v2).
       let totalCost = 0;
       for (const ing of (data.ingredients ?? [])) {
         const ingResult = await client.query('SELECT unit_cost, unit, densite_kg_l FROM ingredients WHERE id = $1', [ing.ingredientId]);
@@ -741,7 +741,7 @@ export const recipeRepository = {
       const margin = data.marginMultiplier && data.marginMultiplier > 0
         ? data.marginMultiplier
         : parseFloat(currentRecipe?.margin_multiplier || '3');
-      // total_cost n'est plus stocke (vue v_recipe_total_cost gere) — on le force a 0.
+      // total_cost n'est plus stocke (vue v_recipe_total_cost_v2 gere) — on le force a 0.
       // Frais indirects : si data ne les fournit pas, on conserve les valeurs existantes (COALESCE).
       // Un champ ABSENT du payload (undefined -> null en parametre) est PRESERVE via
       // COALESCE : une sauvegarde partielle (edition unifiee, import xlsx en MAJ) ne
@@ -921,11 +921,11 @@ export const recipeRepository = {
   },
 
   /** Compute cost for a recipe.
-   *  Lit directement la vue v_recipe_total_cost qui inclut ingredients + sous-recettes
+   *  Lit directement la vue v_recipe_total_cost_v2 qui inclut ingredients + sous-recettes
    *  + emballages avec conversion d'unite. Plus de duplication de formule en JS. */
   async computeFullCost(recipeId: string): Promise<number> {
     const result = await db.query(
-      `SELECT total_cost FROM v_recipe_total_cost WHERE id = $1`,
+      `SELECT total_cost FROM v_recipe_total_cost_v2 WHERE id = $1`,
       [recipeId]
     );
     return parseFloat(result.rows[0]?.total_cost || '0');

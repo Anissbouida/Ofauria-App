@@ -66,7 +66,7 @@ export const productPipelineRepository = {
        LEFT JOIN users u ON u.id = pp.responsible_user_id
        LEFT JOIN users cr ON cr.id = pp.created_by
        LEFT JOIN recipes r ON r.id = pp.recipe_id
-       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
        ${where}
        ORDER BY pp.updated_at DESC
        LIMIT $${i++} OFFSET $${i}`,
@@ -95,7 +95,7 @@ export const productPipelineRepository = {
        LEFT JOIN users u ON u.id = pp.responsible_user_id
        LEFT JOIN users cr ON cr.id = pp.created_by
        LEFT JOIN recipes r ON r.id = pp.recipe_id
-       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
        LEFT JOIN users cv ON cv.id = pp.cost_validated_by
        LEFT JOIN users tv ON tv.id = pp.test_validated_by
        LEFT JOIN users tav ON tav.id = pp.tasting_validated_by

@@ -14,7 +14,7 @@ import * as XLSX from '../utils/sheets.js';
  * nom (case-insensitive) — c'est le seul moyen d'avoir un xlsx lisible par un humain.
  *
  * L'export inclut en plus (lecture seule, ignore a la re-importation) :
- *   - Cout total (DH)        — depuis la vue v_recipe_total_cost
+ *   - Cout total (DH)        — depuis la vue v_recipe_total_cost_v2
  *   - Cout par unite (DH)
  *
  * Les etapes de production (etapes) ne sont PAS exportees ni importees via xlsx

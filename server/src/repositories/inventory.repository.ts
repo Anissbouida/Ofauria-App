@@ -463,7 +463,7 @@ export const ingredientRepository = {
     const result = await db.query(`UPDATE ingredients SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`, values);
 
     // When unit cost changes, cascade product price (price-only — recipe total_cost
-    // n'est plus stocke ; il est calcule a la volee via v_recipe_total_cost).
+    // n'est plus stocke ; il est calcule a la volee via v_recipe_total_cost_v2).
     if (data.unitCost !== undefined) {
       const recipes = await db.query(
         `SELECT DISTINCT recipe_id FROM recipe_ingredients WHERE ingredient_id = $1`,

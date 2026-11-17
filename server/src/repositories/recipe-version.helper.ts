@@ -21,7 +21,7 @@ export async function snapshotRecipeVersion(
 ): Promise<number | null> {
   const rec = await q.query(
     `SELECT r.*, vtc.total_cost AS computed_total_cost
-     FROM recipes r LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+     FROM recipes r LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
      WHERE r.id = $1`,
     [recipeId]
   );

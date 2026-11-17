@@ -109,7 +109,7 @@ export const recipeComponentRepository = {
                    THEN vtc.total_cost / (r.yield_quantity * (1 - COALESCE(r.perte_standard_pct, 0) / 100))
                    ELSE 0 END AS cout_unitaire
        FROM recipes r
-       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
        WHERE r.is_base = true AND r.archived_at IS NULL
        ORDER BY r.name`
     );
@@ -194,7 +194,7 @@ export const recipeComponentRepository = {
                 0::numeric AS perte_pct
          FROM recipe_sub_recipes rsr
          JOIN recipes sr ON sr.id = rsr.sub_recipe_id
-         LEFT JOIN v_recipe_total_cost vtc ON vtc.id = rsr.sub_recipe_id
+         LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = rsr.sub_recipe_id
          WHERE rsr.recipe_id = $1 ORDER BY sr.name`,
         [recipeId]
       );
@@ -219,7 +219,7 @@ export const recipeComponentRepository = {
       componentRows = [...subs.rows, ...ings.rows].map((c, i) => ({ ...c, ordre: i }));
     }
 
-    // Matière = somme des composants DE CE FORMAT (pas v_recipe_total_cost).
+    // Matière = somme des composants DE CE FORMAT (pas v_recipe_total_cost_v2).
     const matiere = componentRows.reduce((s: number, c: { cout_dh: string | null }) => s + (c.cout_dh ? parseFloat(c.cout_dh) : 0), 0);
     // Finance par format : rendement = nb_par_defaut du format ; frais indirects niveau recette.
     const finance = computeFinance({ ...f, total_cost: matiere, pieces_par_fournee: f.nb_par_defaut, format_nb_par_defaut: f.nb_par_defaut });
@@ -287,7 +287,7 @@ export const recipeComponentRepository = {
         [formatId, data.nbParDefaut ?? null, data.nbParts ?? null, data.poidsCruG ?? null, data.poidsCuitG ?? null, userId ?? null]
       );
 
-      // Le miroir recipe_components (lu par v_recipe_total_cost) est désormais
+      // Le miroir recipe_components (lu par v_recipe_total_cost_v2) est désormais
       // reconstruit automatiquement par trigger (mig 412) depuis les composants du
       // format par défaut — plus de resynchronisation à la main ici.
       // Sur le format par défaut, on finalise la bascule legacy → composé : la compo
@@ -341,7 +341,7 @@ export const recipeComponentRepository = {
                         FROM jsonb_array_elements(COALESCE(r.etapes, '[]'::jsonb)) s), 0) AS duree_etapes_min
        FROM recipes r
        LEFT JOIN products p ON p.id = r.product_id
-       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
        WHERE r.id = $1`,
       [recipeId]
     );
@@ -419,7 +419,7 @@ export const recipeComponentRepository = {
   // (recipe_ingredients + recipe_sub_recipes) afin que les recettes de base se déplient.
   async findChildren(recipeId: string) {
     // Audit A7 : costed_on_default_format = true quand le composant est
-    // une sous-recette qui a plusieurs formats actifs. v_recipe_total_cost ne
+    // une sous-recette qui a plusieurs formats actifs. v_recipe_total_cost_v2 ne
     // developpe que la BOM du format is_default (mig 204) : le cout affiche est
     // donc une approximation si les formats divergent sur les composants. L'UI
     // ajoute un badge.
@@ -451,7 +451,7 @@ export const recipeComponentRepository = {
               ) AS costed_on_default_format
        FROM recipe_sub_recipes rsr
        JOIN recipes sr ON sr.id = rsr.sub_recipe_id
-       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = rsr.sub_recipe_id
+       LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = rsr.sub_recipe_id
        WHERE rsr.recipe_id = $1
        ORDER BY sr.name`,
       [recipeId]
@@ -473,7 +473,7 @@ export const recipeComponentRepository = {
 
   // Détection de cycle pour la composition (recipe_components) AVANT insertion.
   // Pour chaque (sous-)recette candidate, vérifie si elle atteint déjà recipeId
-  // dans le graphe de dépendances (mode-aware, comme v_recipe_total_cost) — auquel
+  // dans le graphe de dépendances (mode-aware, comme v_recipe_total_cost_v2) — auquel
   // cas l'ajouter comme composant de recipeId fermerait une boucle.
   // Renvoie les NOMS des recettes fautives (vide = pas de cycle).
   async detectComponentCycle(recipeId: string, childRecipeIds: string[], client?: { query: typeof db.query }): Promise<string[]> {

@@ -1351,7 +1351,7 @@ export const productionRepository = {
           // UPDATE n'a pas modifie de ligne (deja in_progress, annulee).
           // v_recipe_format_cost donne un cout par piece de CE format precis
           // (proration ratio_poids ou nomenclature composee) ; repli sur
-          // v_recipe_total_cost pour le mode legacy (format_id NULL), divise
+          // v_recipe_total_cost_v2 pour le mode legacy (format_id NULL), divise
           // par yield_quantity pour ramener le cout de fournee au cout piece.
           // Sous-selects necessaires : Postgres interdit de reflarger la table
           // cible (ppi) dans un LEFT JOIN de la clause FROM d'un UPDATE.
@@ -1369,7 +1369,7 @@ export const productionRepository = {
                              WHEN r.yield_quantity > 0 THEN vtc.total_cost / r.yield_quantity
                              ELSE NULL END
                  FROM recipes r
-                 LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+                 LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
                  LEFT JOIN LATERAL fn_recipe_cost(r.id, ppi.format_id) fc ON ppi.format_id IS NOT NULL
                  WHERE r.product_id = ppi.product_id
                  LIMIT 1
@@ -1379,7 +1379,7 @@ export const productionRepository = {
                              WHEN r.yield_quantity > 0 THEN vtc.total_cost / r.yield_quantity
                              ELSE NULL END
                  FROM recipes r
-                 LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+                 LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
                  LEFT JOIN LATERAL fn_recipe_cost(r.id, ppi.format_id) fc ON ppi.format_id IS NOT NULL
                  WHERE r.product_id = ppi.product_id
                  LIMIT 1
@@ -1393,7 +1393,7 @@ export const productionRepository = {
                ),
                theo_snapshot_at = $1::timestamptz,
                theo_source_view = CASE WHEN ppi.format_id IS NOT NULL THEN 'fn_recipe_cost'
-                                       ELSE 'v_recipe_total_cost' END
+                                       ELSE 'v_recipe_total_cost_v2' END
              WHERE ppi.id = $2 AND ppi.theo_snapshot_at IS NULL`,
             [startTime, result.rows[0].id]
           );

@@ -370,7 +370,7 @@ export const productionCoutRepository = {
          ) AS total_prevu_mix_reel
        FROM production_plan_items ppi
        LEFT JOIN recipes r ON r.product_id = ppi.product_id
-       LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+       LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
        WHERE ppi.plan_id = $1 AND ppi.status != 'cancelled'`,
       [planId]
     );

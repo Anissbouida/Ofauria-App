@@ -502,7 +502,7 @@ async function buildExportPayload(filter: 'all' | 'base' | 'product'): Promise<R
             vtc.total_cost
      FROM recipes r
      LEFT JOIN products p ON p.id = r.product_id
-     LEFT JOIN v_recipe_total_cost vtc ON vtc.id = r.id
+     LEFT JOIN v_recipe_total_cost_v2 vtc ON vtc.id = r.id
      ${where}
      ORDER BY r.is_base DESC, r.name`
   );
