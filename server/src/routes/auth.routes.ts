@@ -2,8 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authController } from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
+import { can } from '../middleware/permission.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { loginSchema, registerSchema, pinLoginSchema, changePasswordSchema } from '../validators/auth.validator.js';
 import { makeLimiter } from '../middleware/rate-limit.middleware.js';
@@ -49,9 +48,9 @@ router.post('/pin-login', pinLimiter, validate(pinLoginSchema), authController.p
 router.get('/pin-users', pinUsersLimiter, authController.pinUsers);
 // Liste complète (nom, prénom, rôle) : réservée aux administrateurs et gérants
 // connectés (audit Paramètres, lot 1).
-router.get('/users-list', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), authController.activeUsers);
+router.get('/users-list', authenticate, can('users.auth.view'), authController.activeUsers);
 router.post('/change-password', authenticate, validate(changePasswordSchema), authController.changePassword);
-router.post('/register', authenticate, authorize('admin'), validate(registerSchema), authController.register);
+router.post('/register', authenticate, can('users.auth.register'), validate(registerSchema), authController.register);
 router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, authController.me);
 

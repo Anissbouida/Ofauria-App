@@ -1,9 +1,8 @@
 import { Router } from 'express';
 import { refTableController, refEntryController, refDashboardController } from '../controllers/referentiel.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { authorizeSettings } from '../middleware/settings-access.middleware.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { activeUnits } from '../services/unit-referential.js';
 
@@ -26,7 +25,7 @@ router.get('/units/active', authenticate, asyncHandler(async (_req, res) => {
 // listes de valeurs non sensibles, et le magasinier a besoin de lire p.ex. les types de
 // contenant au moment du transfert Économat → Pesage. Les mutations relevent du droit
 // « Parametres » (section Referentiel).
-router.get('/:tableName', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(refEntryController.list));
+router.get('/:tableName', authenticate, can('settings.params.view'), asyncHandler(refEntryController.list));
 router.post('/:tableName', authenticate, authorizeSettings('referentiel', 'create'), asyncHandler(refEntryController.create));
 router.put('/:tableName/reorder', authenticate, authorizeSettings('referentiel', 'edit'), asyncHandler(refEntryController.reorder));
 router.get('/:tableName/audit', authenticate, authorizeSettings('referentiel'), asyncHandler(refEntryController.audit));

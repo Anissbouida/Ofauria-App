@@ -1,9 +1,8 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
 import { managementRepository as repo } from '../repositories/management.repository.js';
 
 /**
@@ -13,7 +12,6 @@ import { managementRepository as repo } from '../repositories/management.reposit
  */
 export const managementRouter = Router();
 
-const AM = [authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)];
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const uuid = z.string().uuid();
 const year = z.coerce.number().int().min(2000).max(2100);
@@ -28,17 +26,17 @@ function bad(res: Response, message = 'Paramètres invalides') {
   res.status(400).json({ success: false, error: { message } });
 }
 
-managementRouter.get('/accounts', ...AM, asyncHandler(async (_req: AuthRequest, res: Response) => {
+managementRouter.get('/accounts', authenticate, can('reports.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await repo.accounts() });
 }));
 
-managementRouter.get('/budget', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+managementRouter.get('/budget', authenticate, can('reports.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ year }).safeParse(req.query);
   if (!r.success) return bad(res);
   res.json({ success: true, data: await repo.comparison(r.data.year, storeOf(req)) });
 }));
 
-managementRouter.post('/budget', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+managementRouter.post('/budget', authenticate, can('reports.budget'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({
     year,
     name: z.string().trim().min(1).max(120),
@@ -51,7 +49,7 @@ managementRouter.post('/budget', ...AM, asyncHandler(async (req: AuthRequest, re
   res.status(201).json({ success: true, data });
 }));
 
-managementRouter.put('/budget/:id/lines', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+managementRouter.put('/budget/:id/lines', authenticate, can('reports.lines'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({
     lines: z.array(z.object({ account_id: uuid, month: z.number().int().min(1).max(12), amount: z.number().min(-1e9).max(1e9) })).max(2000),
   }).safeParse(req.body);
@@ -60,7 +58,7 @@ managementRouter.put('/budget/:id/lines', ...AM, asyncHandler(async (req: AuthRe
   res.json({ success: true });
 }));
 
-managementRouter.post('/budget/:id/status', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+managementRouter.post('/budget/:id/status', authenticate, can('reports.status'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ status: z.enum(['draft', 'approved']) }).safeParse(req.body);
   if (!uuid.safeParse(req.params.id).success || !r.success) return bad(res);
   const data = await repo.setStatus(req.params.id, r.data.status, req.user!.userId);
@@ -69,7 +67,7 @@ managementRouter.post('/budget/:id/status', ...AM, asyncHandler(async (req: Auth
 }));
 
 // Contrôle budgétaire (mig 435) : action sur dépassement et période de contrôle.
-managementRouter.put('/budget/:id/control', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+managementRouter.put('/budget/:id/control', authenticate, can('reports.control'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ action: z.enum(['none', 'warn', 'block']), period: z.enum(['annual', 'cumulative']) }).safeParse(req.body);
   if (!uuid.safeParse(req.params.id).success || !r.success) return bad(res);
   const data = await repo.setControl(req.params.id, r.data);
@@ -77,27 +75,27 @@ managementRouter.put('/budget/:id/control', ...AM, asyncHandler(async (req: Auth
   res.json({ success: true, data });
 }));
 // Disponible budgétaire d'un BC (aperçu avant envoi).
-managementRouter.get('/budget/check/purchase-order/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+managementRouter.get('/budget/check/purchase-order/:id', authenticate, can('reports.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) return bad(res);
   const po = await repo.purchaseOrderAmounts(req.params.id);
   const date = new Date().toISOString().slice(0, 10);
   res.json({ success: true, data: await repo.budgetControl({ date, storeId: po.storeId, request: po.request, excludePurchaseOrderId: req.params.id }) });
 }));
 
-managementRouter.delete('/budget/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+managementRouter.delete('/budget/:id', authenticate, can('reports.delete'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) return bad(res);
   const ok = await repo.deleteBudget(req.params.id);
   if (!ok) { res.status(409).json({ success: false, error: { message: 'Seul un budget brouillon peut être supprimé' } }); return; }
   res.json({ success: true });
 }));
 
-managementRouter.get('/result-by-store', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+managementRouter.get('/result-by-store', authenticate, can('reports.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ year }).safeParse(req.query);
   if (!r.success) return bad(res);
   res.json({ success: true, data: await repo.resultByStore(r.data.year) });
 }));
 
-managementRouter.get('/margins', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+managementRouter.get('/margins', authenticate, can('reports.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ from: isoDate, to: isoDate, groupBy: z.enum(['category', 'channel', 'product']).default('category') }).safeParse(req.query);
   if (!r.success) return bad(res);
   res.json({ success: true, data: await repo.margins({ ...r.data, storeId: storeOf(req) }) });
