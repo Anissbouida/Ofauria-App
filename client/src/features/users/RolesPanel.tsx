@@ -11,6 +11,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
+import RoleActionMatrix from './RoleActionMatrix';
 
 /**
  * Rôles éditables et contrôle des droits côté serveur (audit Paramètres, lot 3, mig 330).
@@ -38,19 +39,28 @@ function errorMessage(err: unknown, fallback: string) {
 export default function RolesPanel() {
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // Duplication (M2-07) : le formulaire de création, prérempli depuis le rôle choisi.
+  const [duplicateOf, setDuplicateOf] = useState<RoleRow | null>(null);
+  const [view, setView] = useState<'modules' | 'actions'>('modules');
   const { data: roles = [], isLoading } = useQuery({ queryKey: ['roles'], queryFn: rolesApi.list });
   const current = roles.find(r => r.code === selected) ?? null;
 
   return (
     <div className="odoo-scope" style={{ display: 'grid', gap: 16 }}>
       <SecurityModePanel />
+      <div className="odoo-tabs" role="tablist" aria-label="Droits des rôles">
+        <button type="button" role="tab" aria-selected={view === 'modules'} className={`odoo-tab ${view === 'modules' ? 'active' : ''}`} onClick={() => setView('modules')}>Rôles et droits par module</button>
+        <button type="button" role="tab" aria-selected={view === 'actions'} className={`odoo-tab ${view === 'actions' ? 'active' : ''}`} onClick={() => setView('actions')}>Permissions par action</button>
+      </div>
+      {view === 'actions' ? <RoleActionMatrix roles={roles} /> : <>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Rôles</h2>
         <button className="odoo-btn-primary" onClick={() => { setCreating(true); setSelected(null); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Plus size={13} /> Nouveau rôle
         </button>
       </div>
-      {creating && <CreateRoleForm roles={roles} onDone={(code) => { setCreating(false); if (code) setSelected(code); }} />}
+      {(creating || duplicateOf) && <CreateRoleForm key={duplicateOf?.code ?? 'new'} roles={roles} from={duplicateOf}
+        onDone={(code) => { setCreating(false); setDuplicateOf(null); if (code) setSelected(code); }} />}
       {isLoading ? <Loader2 className="animate-spin" size={18} /> : (
         <div style={{ overflowX: 'auto' }}>
           <table className="odoo-table">
@@ -73,7 +83,9 @@ export default function RolesPanel() {
           </table>
         </div>
       )}
-      {current && <RoleEditor key={current.code} role={current} onDeleted={() => setSelected(null)} />}
+      {current && <RoleEditor key={current.code} role={current} onDeleted={() => setSelected(null)}
+        onDuplicate={() => { setDuplicateOf(current); setCreating(false); }} />}
+      </>}
     </div>
   );
 }
@@ -140,11 +152,11 @@ function SecurityModePanel() {
   );
 }
 
-function CreateRoleForm({ roles, onDone }: { roles: RoleRow[]; onDone: (code?: string) => void }) {
+function CreateRoleForm({ roles, onDone, from }: { roles: RoleRow[]; onDone: (code?: string) => void; from?: RoleRow | null }) {
   const queryClient = useQueryClient();
-  const [label, setLabel] = useState('');
-  const [baseRole, setBaseRole] = useState('cashier');
-  const [copyFrom, setCopyFrom] = useState('');
+  const [label, setLabel] = useState(from ? `${from.label} (copie)` : '');
+  const [baseRole, setBaseRole] = useState(from && from.base_role !== 'admin' ? from.base_role : 'cashier');
+  const [copyFrom, setCopyFrom] = useState(from && from.code !== 'admin' ? from.code : '');
   const create = useMutation({
     mutationFn: () => rolesApi.create({ label, baseRole, copyFrom: copyFrom || undefined }),
     onSuccess: (r) => { queryClient.invalidateQueries({ queryKey: ['roles'] }); notify.success(`Rôle « ${r.label} » créé`); onDone(r.code); },
@@ -182,7 +194,7 @@ function CreateRoleForm({ roles, onDone }: { roles: RoleRow[]; onDone: (code?: s
   );
 }
 
-function RoleEditor({ role, onDeleted }: { role: RoleRow; onDeleted: () => void }) {
+function RoleEditor({ role, onDeleted, onDuplicate }: { role: RoleRow; onDeleted: () => void; onDuplicate: () => void }) {
   const queryClient = useQueryClient();
   const confirm = useConfirm();
   const { data: saved, isLoading } = useQuery({
@@ -263,8 +275,12 @@ function RoleEditor({ role, onDeleted }: { role: RoleRow; onDeleted: () => void 
             S'appliquent aux {role.user_count} utilisateur(s) du rôle qui n'ont pas de droits propres. Effet sous 30 secondes.
           </div>
         </div>
+        {role.code !== 'admin' && role.is_system && (
+          <button className="odoo-btn-secondary" onClick={onDuplicate}>Dupliquer</button>
+        )}
         {!role.is_system && (
           <div style={{ display: 'flex', gap: 8 }}>
+            <button className="odoo-btn-secondary" onClick={onDuplicate}>Dupliquer</button>
             <button className="odoo-btn-secondary" onClick={() => toggleActive.mutate()}>{role.is_active ? 'Désactiver' : 'Réactiver'}</button>
             <button className="odoo-btn-danger" disabled={role.user_count > 0} title={role.user_count > 0 ? 'Rôle attribué à des utilisateurs' : undefined}
               onClick={async () => { if (await confirm(`Supprimer le rôle « ${role.label} » ?`, { danger: true, confirmLabel: 'Supprimer' })) remove.mutate(); }}

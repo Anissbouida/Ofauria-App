@@ -2247,6 +2247,9 @@
  "GET /users/:id/access-review": [
   "admin"
  ],
+ "GET /users/:id/action-permissions": [
+  "admin"
+ ],
  "GET /users/:id/permissions": [
   "admin"
  ],
@@ -2267,6 +2270,9 @@
   "admin"
  ],
  "GET /users/roles/:code/permissions": [
+  "admin"
+ ],
+ "GET /users/roles/action-permissions": [
   "admin"
  ],
  "GET /users/security": [
@@ -4676,6 +4682,9 @@
   "admin"
  ],
  "PUT /users/roles/:code": [
+  "admin"
+ ],
+ "PUT /users/roles/:code/action-permissions": [
   "admin"
  ],
  "PUT /users/roles/:code/permissions": [

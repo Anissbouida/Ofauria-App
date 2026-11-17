@@ -6,6 +6,10 @@ import { roleController } from '../controllers/role.controller.js';
 import { governanceController } from '../controllers/governance.controller.js';
 import { accessReviewController } from '../controllers/access-review.controller.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
+import { z } from 'zod';
+
+const setActionPermissionsSchema = z.object({ keys: z.array(z.string().min(3).max(120)).max(2000) });
 
 const router = Router();
 
@@ -16,6 +20,10 @@ router.get('/roles/:code/permissions', authenticate, can('users.view'), asyncHan
 router.put('/roles/:code/permissions', authenticate, can('users.permissions'), asyncHandler(roleController.setPermissions));
 router.put('/roles/:code', authenticate, can('users.roles'), asyncHandler(roleController.update));
 router.delete('/roles/:code', authenticate, can('users.delete'), asyncHandler(roleController.remove));
+// Permissions par action (M2-07) : matrice rôle × permission, aperçu d'un utilisateur.
+router.get('/roles/action-permissions', authenticate, can('users.view'), asyncHandler(roleController.actionMatrix));
+router.put('/roles/:code/action-permissions', authenticate, can('users.permissions'), validate(setActionPermissionsSchema), asyncHandler(roleController.setActionPermissions));
+router.get('/:id/action-permissions', authenticate, validateUuidParams('id'), can('users.view'), asyncHandler(roleController.userActionPermissions));
 router.get('/security', authenticate, can('users.view'), asyncHandler(roleController.security));
 router.put('/security', authenticate, can('users.edit'), asyncHandler(roleController.setSecurityMode));
 

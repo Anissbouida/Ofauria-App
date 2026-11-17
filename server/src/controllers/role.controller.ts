@@ -3,6 +3,8 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { roleRepository } from '../repositories/role.repository.js';
 import { invalidateEnforcementMode, invalidateRolesCache } from '../services/access-rights.js';
 import { normalizePermissions, permissionView } from '../services/permission-input.js';
+import { PERMISSIONS } from '@ofauria/shared';
+import { permissionsOfRole, permissionsOfUser, setRolePermissions } from '../services/permissions.js';
 
 const BASE_ROLES = ['manager', 'cashier', 'saleswoman', 'baker', 'pastry_chef', 'viennoiserie', 'beldi_sale', 'magasinier'];
 
@@ -92,6 +94,34 @@ export const roleController = {
     await roleRepository.setPermissions(role.code, perms, req.user?.userId);
     const rows = await roleRepository.permissions(role.code);
     res.json({ success: true, data: rows.map((p) => permissionView(p as Parameters<typeof permissionView>[0])) });
+  },
+
+  // ─── Permissions par action (M2-07) ───
+  /** Référentiel des clés et clés détenues par chaque rôle (matrice rôle × permission). */
+  async actionMatrix(_req: AuthRequest, res: Response) {
+    const roles = await roleRepository.list();
+    const byRole: Record<string, string[]> = {};
+    for (const r of roles as { code: string }[]) byRole[r.code] = await permissionsOfRole(r.code);
+    const keys = Object.entries(PERMISSIONS as Record<string, { module: string; label: string }>)
+      .map(([key, d]) => ({ key, module: d.module, label: d.label }));
+    res.json({ success: true, data: { keys, byRole } });
+  },
+  /** Remplace les clés d'un rôle. Le rôle administrateur n'est pas modifiable (verrou anti-blocage). */
+  async setActionPermissions(req: AuthRequest, res: Response) {
+    const code = req.params.code as string;
+    if (code === 'admin') {
+      res.status(400).json({ success: false, error: { message: 'Le rôle administrateur garde toutes ses permissions.' } });
+      return;
+    }
+    try {
+      res.json({ success: true, data: await setRolePermissions(code, req.body.keys as string[], req.user!.userId) });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
+  /** Ce que peut faire un utilisateur : ses clés effectives (rôles, délégations, exceptions). */
+  async userActionPermissions(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: { keys: await permissionsOfUser(req.params.id as string) } });
   },
 
   async security(_req: AuthRequest, res: Response) {

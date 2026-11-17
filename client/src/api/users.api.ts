@@ -111,6 +111,14 @@ export const rolesApi = {
   permissions: (code: string) => api.get(`/users/roles/${code}/permissions`).then(r => r.data.data) as Promise<RolePermission[]>,
   setPermissions: (code: string, permissions: RolePermission[]) =>
     api.put(`/users/roles/${code}/permissions`, { permissions }).then(r => r.data.data),
+  /** Permissions par action (M2-07) : référentiel + clés détenues par rôle. */
+  actionMatrix: () => api.get('/users/roles/action-permissions').then(r => r.data.data) as Promise<{
+    keys: { key: string; module: string; label: string }[]; byRole: Record<string, string[]>;
+  }>,
+  setActionPermissions: (code: string, keys: string[]) =>
+    api.put(`/users/roles/${code}/action-permissions`, { keys }).then(r => r.data.data) as Promise<{ added: number; removed: number }>,
+  userActionPermissions: (userId: string) =>
+    api.get(`/users/${userId}/action-permissions`).then(r => r.data.data) as Promise<{ keys: string[] }>,
   security: () => api.get('/users/security').then(r => r.data.data) as Promise<{ mode: 'off' | 'log' | 'enforce'; denials: AccessDenial[] }>,
   setSecurityMode: (mode: 'off' | 'log' | 'enforce') => api.put('/users/security', { mode }).then(r => r.data.data),
 };
