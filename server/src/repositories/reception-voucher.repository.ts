@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { invoiceRepository } from './accounting.repository.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
@@ -382,9 +382,8 @@ export const receptionVoucherRepository = {
     // Une ligne porte SOIT un ingredient SOIT un consommable (packaging_items).
     items: { poItemId: string; ingredientId?: string | null; packagingId?: string | null; quantityReceived: number; unitPrice?: number | null; notes?: string; supplierLotNumber?: string; expirationDate?: string; manufacturedDate?: string; grossWeight?: number | null; tareWeight?: number | null; netWeight?: number | null }[];
   }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       // Contexte « réception » (mig 306) : seule la réception et son extourne peuvent modifier
       // quantité livrée, prix reçu et lignes d'un BC verrouillé. Portée : cette transaction.
       await client.query(`SELECT set_config('app.change_origin', 'receipt', true)`);
@@ -735,14 +734,8 @@ export const receptionVoucherRepository = {
         );
       }
 
-      await client.query('COMMIT');
       return { ...rv, status: newStatus, autoInvoice, warnings, lotNumbers };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
@@ -759,9 +752,8 @@ export const receptionVoucherRepository = {
    * été consommé — corriger la ligne à la place).
    */
   async cancelForPurchaseOrder(purchaseOrderId: string, userId: string, reason?: { reasonCodeId: string; note?: string | null }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       await client.query(`SELECT set_config('app.change_origin', 'receipt', true)`);
       await client.query(`SELECT set_config('app.user_id', $1, true)`, [userId]);
 
@@ -976,14 +968,8 @@ export const receptionVoucherRepository = {
       // GR/IR (mig 311) : les lignes miroir annulent en 4417 les réceptions comptabilisées.
       await postGoodsReceiptsForPo(client as unknown as import('pg').PoolClient, purchaseOrderId, userId);
 
-      await client.query('COMMIT');
       return { purchaseOrderId, reversedVouchers: rvs.rows.map((r: Record<string, unknown>) => r.voucher_number), reversalNumbers };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
