@@ -3,7 +3,7 @@ import type { AuthRequest } from './auth.middleware.js';
 import type { Role } from '@ofauria/shared';
 
 export function authorize(...roles: Role[]) {
-  return (req: AuthRequest, res: Response, next: NextFunction) => {
+  const guard = (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
       res.status(401).json({ success: false, error: { message: 'Non authentifié' } });
       return;
@@ -20,4 +20,6 @@ export function authorize(...roles: Role[]) {
 
     next();
   };
+  // Étiquette lue par utils/route-rights.ts (inventaire des droits par route, M2-04).
+  return Object.assign(guard, { allowedRoles: [...roles] as string[] });
 }

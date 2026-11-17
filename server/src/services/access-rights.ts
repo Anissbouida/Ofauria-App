@@ -58,7 +58,7 @@ export async function resolveRole(code: string): Promise<RoleInfo> {
  * les rôles délégués s'ajoutent à l'union le temps de la fenêtre. Repli sur
  * users.role si la table user_roles n'existe pas encore.
  */
-async function userRoleContext(userId: string): Promise<{ roleCodes: string[]; primary: string; delegated: string[] }> {
+export async function userRoleContext(userId: string): Promise<{ roleCodes: string[]; primary: string; delegated: string[] }> {
   const { userRolesExist, delegationsExist } = await loadRoles();
   let own: string[] = [];
   let primary = '';

@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { auditedQuery, setAuditUser } from '../utils/audit-context.js';
+import { invalidatePermissionCaches, replaceRolePermissionsFrom } from '../services/permissions.js';
 
 export interface RolePermissionInput {
   module: string;
@@ -71,7 +72,16 @@ export const roleRepository = {
          SELECT $1, module, can_view, can_create, can_edit, can_delete, config FROM role_permissions WHERE role_code = $2`,
         [data.code, data.copyFrom ?? data.baseRole],
       );
+      // Permissions par action (M2-04, mig 547) : mêmes droits que le rôle copié — sans
+      // elles, le nouveau rôle perdrait les routes que son rôle de base ouvre.
+      if ((await client.query(`SELECT to_regclass('public.role_action_permissions') AS t`)).rows[0]?.t) {
+        await client.query(
+          `INSERT INTO role_action_permissions (role_code, permission_key, granted_by)
+           SELECT $1, permission_key, $3 FROM role_action_permissions WHERE role_code = $2 ON CONFLICT DO NOTHING`,
+          [data.code, data.copyFrom ?? data.baseRole, actorId ?? null]);
+      }
       await client.query('COMMIT');
+      invalidatePermissionCaches();
       return r.rows[0];
     } catch (err) {
       await client.query('ROLLBACK').catch(() => undefined);
@@ -93,6 +103,12 @@ export const roleRepository = {
     set('updated_by', actorId ?? null);
     const r = await auditedQuery(actorId,
       `UPDATE roles SET ${fields.join(', ')}, updated_at = now() WHERE code = $1 RETURNING *`, values);
+    // Changement de rôle de base : les permissions par action suivent le nouveau rôle de
+    // base (même effet qu'avec les gardes authorize, qui lisaient le rôle de base).
+    if (data.baseRole !== undefined && r.rows[0] && !r.rows[0].is_system
+        && (await db.query(`SELECT to_regclass('public.role_action_permissions') AS t`)).rows[0]?.t) {
+      await replaceRolePermissionsFrom(code, data.baseRole, actorId ?? null);
+    }
     return r.rows[0] ?? null;
   },
 

@@ -9,6 +9,7 @@ export * from './constants/module-activation.js';
 export * from './constants/shifts.js';
 export * from './constants/settings-sections.js';
 export * from './constants/approvals.js';
+export * from './constants/permissions.js';
 
 // Types
 export * from './types/common.types.js';

@@ -1,0 +1,4694 @@
+{
+ "DELETE /approvals/delegations/:id": null,
+ "DELETE /attendance/:id": null,
+ "DELETE /bank-reconciliation/import/profiles/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /bank-reconciliation/rules/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /bank-reconciliation/statements/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /caisse/report-override": [
+  "admin"
+ ],
+ "DELETE /categories/:id": [
+  "admin"
+ ],
+ "DELETE /commissions/assignments/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /commissions/rules/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /commissions/schemes/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /contenants/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /contenants/products/:productId": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /cost-centers/keys/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /crm/activities/:id": null,
+ "DELETE /customers/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /customers/:id/addresses/:addressId": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "DELETE /customers/:id/portal-token": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "DELETE /customers/:id/tax-exemptions/:exemptionId": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "DELETE /debts/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /delivery-routes/stops/:stopId": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "DELETE /employees/:id": [
+  "admin"
+ ],
+ "DELETE /employees/documents/:docId": null,
+ "DELETE /employees/me/advances/:id": null,
+ "DELETE /employees/me/leaves/:id": null,
+ "DELETE /expense-categories/:id": [
+  "admin"
+ ],
+ "DELETE /fixed-assets/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /forecast/events/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /forecast/override": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /gestion/budget/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /ingredients/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /inventory/closings/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /invoices/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /invoices/:id/attachment": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /leaves/:id": null,
+ "DELETE /leaves/adjustments/entry/:id": [
+  "admin"
+ ],
+ "DELETE /leaves/holidays/:date": [
+  "admin"
+ ],
+ "DELETE /ledger/accounts/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /ledger/cash-forecast/lines/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /ledger/corporate-tax/adjustments/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /ledger/entries/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /ledger/entry-templates/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /ledger/lettrage/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /ledger/revenue-families/:family": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /orders/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /packaging-items/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /params/:tableName/:id": null,
+ "DELETE /payments/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /payroll/biweekly/:id": null,
+ "DELETE /payroll/items/:itemId": null,
+ "DELETE /pos/parked/:id": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "DELETE /pricing/lists/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /pricing/lists/:id/items/:itemId": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /printers/:id": null,
+ "DELETE /product-losses/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /production-etapes/readings/:readingId": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "DELETE /production/:id": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "DELETE /products/:id": [
+  "admin"
+ ],
+ "DELETE /projects/:id/invoices/:invoiceId": null,
+ "DELETE /projects/tasks/:taskId": null,
+ "DELETE /projects/time/entries/:id": null,
+ "DELETE /promotions/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /purchase-orders/:id": [
+  "admin"
+ ],
+ "DELETE /recipes/:id": [
+  "admin"
+ ],
+ "DELETE /recipes/:recipeId/formats/:formatId": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "DELETE /reconciliation/lines/:lineId": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /reconciliation/products": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /reconciliation/products/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /reconciliation/slots/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /recurring-charges/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /reports/custom/dashboards/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /reports/custom/definitions/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /revenue-categories/:id": [
+  "admin"
+ ],
+ "DELETE /rfqs/criteria/:cid": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /routings/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /salary-advances/:id": [
+  "admin"
+ ],
+ "DELETE /sales-channels/:id": null,
+ "DELETE /sales-targets/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /sales/special/:id": null,
+ "DELETE /schedules/:id": null,
+ "DELETE /settings/api-keys/:id": null,
+ "DELETE /settings/approval-rules/:code": null,
+ "DELETE /settings/sectors/:code": null,
+ "DELETE /settings/webhooks/:id": null,
+ "DELETE /stock-locations/:id": [
+  "admin",
+  "manager"
+ ],
+ "DELETE /stores/:id": null,
+ "DELETE /suppliers/:id": [
+  "admin"
+ ],
+ "DELETE /users/:id": [
+  "admin"
+ ],
+ "DELETE /users/approval-limits/:id": [
+  "admin"
+ ],
+ "DELETE /users/delegations/:id": [
+  "admin"
+ ],
+ "DELETE /users/roles/:code": [
+  "admin"
+ ],
+ "DELETE /users/sod/:code": [
+  "admin"
+ ],
+ "DELETE /weekly-payroll/:id": null,
+ "GET /approvals/:id": null,
+ "GET /approvals/count": null,
+ "GET /approvals/delegates": null,
+ "GET /approvals/delegations": null,
+ "GET /approvals/for/:docType/:docId": null,
+ "GET /approvals/history": [
+  "admin",
+  "manager"
+ ],
+ "GET /approvals/inbox": null,
+ "GET /approvals/mine": null,
+ "GET /attendance": null,
+ "GET /attendance/overtime-summary": null,
+ "GET /attendance/summary": null,
+ "GET /auth/me": null,
+ "GET /auth/pin-users": null,
+ "GET /auth/users-list": [
+  "admin",
+  "manager"
+ ],
+ "GET /automation/jobs": null,
+ "GET /automation/mail": null,
+ "GET /automation/mail/outbox": null,
+ "GET /bank-reconciliation/import/profiles": [
+  "admin",
+  "manager"
+ ],
+ "GET /bank-reconciliation/rules": [
+  "admin",
+  "manager"
+ ],
+ "GET /bank-reconciliation/statements": [
+  "admin",
+  "manager"
+ ],
+ "GET /bank-reconciliation/statements/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /bank-reconciliation/statements/:id/proposals": [
+  "admin",
+  "manager"
+ ],
+ "GET /bons-sortie/:id": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /bons-sortie/ligne/:ligneId/economat-lots": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /bons-sortie/ligne/:ligneId/lots": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /bons-sortie/plan/:planId": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /bons-sortie/warehouse/history": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /bons-sortie/warehouse/queue": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /bons-sortie/warehouse/rupture-requests": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /bons-sortie/warehouse/transfer-requests": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /caisse/register": [
+  "admin",
+  "manager"
+ ],
+ "GET /cash-register": [
+  "admin",
+  "cashier",
+  "manager"
+ ],
+ "GET /cash-register/:id": [
+  "admin",
+  "cashier",
+  "manager"
+ ],
+ "GET /cash-register/:id/inventory": [
+  "admin",
+  "cashier",
+  "manager"
+ ],
+ "GET /cash-register/closure-gaps": [
+  "admin"
+ ],
+ "GET /cash-register/current": [
+  "admin",
+  "cashier",
+  "manager"
+ ],
+ "GET /cash-register/last-amount": [
+  "admin",
+  "cashier",
+  "manager"
+ ],
+ "GET /categories": null,
+ "GET /commissions/assignments": [
+  "admin",
+  "manager"
+ ],
+ "GET /commissions/payouts": [
+  "admin",
+  "manager"
+ ],
+ "GET /commissions/rules": [
+  "admin",
+  "manager"
+ ],
+ "GET /commissions/schemes": [
+  "admin",
+  "manager"
+ ],
+ "GET /commissions/statement": [
+  "admin",
+  "manager"
+ ],
+ "GET /complaints": [
+  "admin",
+  "manager"
+ ],
+ "GET /complaints/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /complaints/indicators": [
+  "admin",
+  "manager"
+ ],
+ "GET /complaints/lookup/lots": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "cashier",
+  "manager",
+  "pastry_chef",
+  "saleswoman",
+  "viennoiserie"
+ ],
+ "GET /contenants": null,
+ "GET /contenants/:id": null,
+ "GET /contenants/products/:productId": null,
+ "GET /controle/losses": [
+  "admin",
+  "manager"
+ ],
+ "GET /controle/losses/summary": [
+  "admin",
+  "manager"
+ ],
+ "GET /controle/overview": [
+  "admin",
+  "manager"
+ ],
+ "GET /controle/production": [
+  "admin",
+  "manager"
+ ],
+ "GET /controle/receptions": [
+  "admin",
+  "manager"
+ ],
+ "GET /cost-centers": [
+  "admin",
+  "manager"
+ ],
+ "GET /cost-centers/axes": [
+  "admin",
+  "manager"
+ ],
+ "GET /cost-centers/balance": [
+  "admin",
+  "manager"
+ ],
+ "GET /cost-centers/balance/lines": [
+  "admin",
+  "manager"
+ ],
+ "GET /cost-centers/invoices": [
+  "admin",
+  "manager"
+ ],
+ "GET /cost-centers/keys": [
+  "admin",
+  "manager"
+ ],
+ "GET /cost-centers/ventilation/lines": [
+  "admin",
+  "manager"
+ ],
+ "GET /crm/activities": null,
+ "GET /crm/campaign-options": null,
+ "GET /crm/campaigns": null,
+ "GET /crm/opportunities": null,
+ "GET /crm/opportunities/:id": null,
+ "GET /crm/overview": null,
+ "GET /crm/owners": null,
+ "GET /currencies": null,
+ "GET /currencies/:code/rates": null,
+ "GET /currencies/revaluation": null,
+ "GET /custom-fields/defs": null,
+ "GET /custom-fields/defs/:id/usage": null,
+ "GET /custom-fields/values/:entity/:id": null,
+ "GET /customers": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /customers/:id": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /customers/:id/addresses": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /customers/:id/export": [
+  "admin",
+  "manager"
+ ],
+ "GET /customers/:id/history": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /customers/:id/portal-token": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /customers/:id/situation": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /customers/:id/statement": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /customers/:id/stats": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /customers/:id/tax-exemptions": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /customers/check": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /customers/global-stats": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /debts": [
+  "admin",
+  "manager"
+ ],
+ "GET /delivery-notes": [
+  "admin",
+  "manager"
+ ],
+ "GET /delivery-notes/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /delivery-notes/:id/pdf": [
+  "admin",
+  "manager"
+ ],
+ "GET /delivery-notes/line-defaults": [
+  "admin",
+  "manager"
+ ],
+ "GET /delivery-notes/order-lines/:orderId": [
+  "admin",
+  "manager"
+ ],
+ "GET /delivery-notes/orders/:customerId": [
+  "admin",
+  "manager"
+ ],
+ "GET /delivery-notes/picking-list": [
+  "admin",
+  "manager"
+ ],
+ "GET /delivery-notes/to-invoice": [
+  "admin",
+  "manager"
+ ],
+ "GET /delivery-routes": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /delivery-routes/:id": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /delivery-routes/available-notes": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /dunning": [
+  "admin",
+  "manager"
+ ],
+ "GET /dunning/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /dunning/:id/pdf": [
+  "admin",
+  "manager"
+ ],
+ "GET /dunning/levels": [
+  "admin",
+  "manager"
+ ],
+ "GET /dunning/overview": [
+  "admin",
+  "manager"
+ ],
+ "GET /employees": null,
+ "GET /employees/:employeeId/attestations/:kind": null,
+ "GET /employees/:employeeId/contracts": null,
+ "GET /employees/:employeeId/documents": null,
+ "GET /employees/:employeeId/settlements": null,
+ "GET /employees/:id": null,
+ "GET /employees/:id/dependencies": [
+  "admin"
+ ],
+ "GET /employees/:id/personal-data": null,
+ "GET /employees/:id/salary-history": null,
+ "GET /employees/documents/:docId/file": null,
+ "GET /employees/hr-alerts": null,
+ "GET /employees/hr-analytics": null,
+ "GET /employees/me": null,
+ "GET /employees/me/advances": null,
+ "GET /employees/me/attestations/:kind": null,
+ "GET /employees/me/leave-types": null,
+ "GET /employees/me/leaves": null,
+ "GET /employees/me/leaves/preview": null,
+ "GET /employees/me/payslips": null,
+ "GET /employees/me/payslips/:id/pdf": null,
+ "GET /employees/settlements/:id/certificate": null,
+ "GET /employees/settlements/:id/receipt": null,
+ "GET /expense-categories": [
+  "admin",
+  "manager"
+ ],
+ "GET /expense-categories/:id/children": [
+  "admin",
+  "manager"
+ ],
+ "GET /files/:id": null,
+ "GET /fixed-assets": [
+  "admin",
+  "manager"
+ ],
+ "GET /fixed-assets/:id/schedule": [
+  "admin",
+  "manager"
+ ],
+ "GET /fixed-assets/table": [
+  "admin",
+  "manager"
+ ],
+ "GET /forecast/accuracy": [
+  "admin",
+  "manager"
+ ],
+ "GET /forecast/day": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /forecast/events": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /forecast/grid": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /forecast/links/unmapped": [
+  "admin",
+  "manager"
+ ],
+ "GET /forecast/stores": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /gestion/accounts": [
+  "admin",
+  "manager"
+ ],
+ "GET /gestion/budget": [
+  "admin",
+  "manager"
+ ],
+ "GET /gestion/budget/check/purchase-order/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /gestion/margins": [
+  "admin",
+  "manager"
+ ],
+ "GET /gestion/result-by-store": [
+  "admin",
+  "manager"
+ ],
+ "GET /haccp/actions": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /haccp/cleaning-logs": [
+  "admin",
+  "manager"
+ ],
+ "GET /haccp/equipment": [
+  "admin",
+  "manager"
+ ],
+ "GET /haccp/indicators": [
+  "admin",
+  "manager"
+ ],
+ "GET /haccp/readings": [
+  "admin",
+  "manager"
+ ],
+ "GET /haccp/receptions": [
+  "admin",
+  "manager"
+ ],
+ "GET /haccp/tasks": [
+  "admin",
+  "manager"
+ ],
+ "GET /haccp/today": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /ingredient-lots": null,
+ "GET /ingredient-lots/:id": null,
+ "GET /ingredient-lots/:id/traceability": null,
+ "GET /ingredient-lots/expired": null,
+ "GET /ingredient-lots/expired-active": null,
+ "GET /ingredient-lots/expiring": null,
+ "GET /ingredient-lots/pesage-stock": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /ingredient-lots/production/:id": null,
+ "GET /ingredient-lots/production/:planId/fefo-preview": null,
+ "GET /ingredient-lots/quality-check/:id": null,
+ "GET /ingredient-lots/stats": null,
+ "GET /ingredients": null,
+ "GET /ingredients/:id": null,
+ "GET /ingredients/allergen-grid": [
+  "admin",
+  "manager"
+ ],
+ "GET /ingredients/export": [
+  "admin",
+  "manager"
+ ],
+ "GET /ingredients/import/template": [
+  "admin",
+  "manager"
+ ],
+ "GET /inventory": null,
+ "GET /inventory-checks/opening/:id": [
+  "admin",
+  "cashier",
+  "manager"
+ ],
+ "GET /inventory-checks/opening/awaiting-validation": [
+  "admin",
+  "manager"
+ ],
+ "GET /inventory-checks/opening/pending": [
+  "admin",
+  "cashier",
+  "manager"
+ ],
+ "GET /inventory/aging": [
+  "admin",
+  "manager"
+ ],
+ "GET /inventory/alerts": null,
+ "GET /inventory/closings": [
+  "admin",
+  "manager"
+ ],
+ "GET /inventory/closings/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /inventory/closings/preview": [
+  "admin",
+  "manager"
+ ],
+ "GET /inventory/consumption": [
+  "admin",
+  "manager"
+ ],
+ "GET /inventory/cost-corrections": [
+  "admin",
+  "manager"
+ ],
+ "GET /inventory/cost-corrections/suspects": [
+  "admin",
+  "manager"
+ ],
+ "GET /inventory/ingredient-merges": [
+  "admin",
+  "manager"
+ ],
+ "GET /inventory/price-health": [
+  "admin",
+  "manager"
+ ],
+ "GET /inventory/purchases": [
+  "admin",
+  "manager"
+ ],
+ "GET /inventory/stock-anomalies": [
+  "admin",
+  "manager"
+ ],
+ "GET /inventory/transactions": null,
+ "GET /inventory/unit-conversion-issues": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/:id/bad-debts": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/:id/control": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/:id/credit-notes": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/:id/disputes": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/:id/download-docx": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/:id/download-pdf": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/bad-debts/open": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/debts": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/disputes/open": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/line-expenses": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/payment-alerts": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/received-board": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/received-pipeline": [
+  "admin",
+  "manager"
+ ],
+ "GET /invoices/tax-codes": [
+  "admin",
+  "manager"
+ ],
+ "GET /landed-costs": [
+  "admin",
+  "manager"
+ ],
+ "GET /landed-costs/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /landed-costs/preview": [
+  "admin",
+  "manager"
+ ],
+ "GET /landed-costs/receptions": [
+  "admin",
+  "manager"
+ ],
+ "GET /leaves": null,
+ "GET /leaves/adjustments/:employeeId": null,
+ "GET /leaves/balance": null,
+ "GET /leaves/balances": null,
+ "GET /leaves/holidays": null,
+ "GET /leaves/preview": null,
+ "GET /ledger/accounts": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/accounts/:code": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/accounts/:id/usage": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/aged-balance": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/audit-log": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/auxiliaries": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/balance": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/balance-sheet": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/bills": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/bills/remittances": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/cash-flow": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/cash-forecast": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/cash-forecast/lines": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/consolidation/:year": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/corporate-tax/:year": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/edi/9421/:year": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/edi/liasse/:year": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/edi/tva-deductions/:year": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/editions/:kind": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/entries": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/entries/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/entry-templates": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/entry-templates/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/fec": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/fiscal-periods": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/fiscal-periods/:id/checklist": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/fiscal-periods/:id/end-operations": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/fiscal-periods/:id/events": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/fiscal-years": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/fiscal-years/:year/checklist": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/fx-revaluation/:year": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/general-ledger": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/general-ledger-full": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/grir/open-items": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/income-statement": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/integrity": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/journals": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/lettrage/accounts": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/lettrage/accounts/:id/tiers": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/lettrage/auto": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/lettrage/lines": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/liasse/:year": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/outbox": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/posting-profiles": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/reconciliation": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/revenue-families": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/tva-declaration": [
+  "admin",
+  "manager"
+ ],
+ "GET /ledger/vat-deduction-statement": [
+  "admin",
+  "manager"
+ ],
+ "GET /lot-thermal/freezable": null,
+ "GET /loyalty/customers/:id": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /loyalty/overview": [
+  "admin",
+  "manager"
+ ],
+ "GET /loyalty/tiers": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /loyalty/transactions": [
+  "admin",
+  "manager"
+ ],
+ "GET /maintenance": null,
+ "GET /maintenance/:id": null,
+ "GET /maintenance/equipment-report": null,
+ "GET /maintenance/lookup/assets": null,
+ "GET /maintenance/lookup/people": null,
+ "GET /maintenance/overview": null,
+ "GET /maintenance/plans": null,
+ "GET /manual-shift-entries": [
+  "admin",
+  "manager"
+ ],
+ "GET /notifications": null,
+ "GET /notifications/unread-count": null,
+ "GET /orders": null,
+ "GET /orders/:id": null,
+ "GET /orders/for-date": null,
+ "GET /packaging-items": null,
+ "GET /packaging-items/:id": null,
+ "GET /packaging-items/:id/transactions": null,
+ "GET /params/:tableName": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /params/:tableName/audit": null,
+ "GET /params/dashboard": null,
+ "GET /params/tables": null,
+ "GET /params/units/active": null,
+ "GET /payment-runs": [
+  "admin",
+  "manager"
+ ],
+ "GET /payment-runs/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /payment-runs/:id/order-letter": [
+  "admin",
+  "manager"
+ ],
+ "GET /payment-runs/:id/transfer-file": [
+  "admin",
+  "manager"
+ ],
+ "GET /payment-runs/candidates": [
+  "admin",
+  "manager"
+ ],
+ "GET /payment-schedules": [
+  "admin",
+  "manager"
+ ],
+ "GET /payment-schedules/by-source/:kind/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /payments": [
+  "admin",
+  "manager"
+ ],
+ "GET /payments/:id/actions": [
+  "admin",
+  "manager"
+ ],
+ "GET /payments/cash-cumul": [
+  "admin",
+  "manager"
+ ],
+ "GET /payments/cash-limit-breaches": [
+  "admin",
+  "manager"
+ ],
+ "GET /payments/checks": [
+  "admin",
+  "manager"
+ ],
+ "GET /payments/customer-receipts": [
+  "admin",
+  "manager"
+ ],
+ "GET /payments/modes": [
+  "admin",
+  "manager"
+ ],
+ "GET /payments/summary": [
+  "admin",
+  "manager"
+ ],
+ "GET /payroll": null,
+ "GET /payroll/:id/lines": null,
+ "GET /payroll/:id/pdf": null,
+ "GET /payroll/biweekly": null,
+ "GET /payroll/book": null,
+ "GET /payroll/declarations": null,
+ "GET /payroll/declarations/annual-ir": null,
+ "GET /payroll/items/employee/:employeeId": null,
+ "GET /payroll/period": null,
+ "GET /payroll/rubriques": null,
+ "GET /payroll/settings": null,
+ "GET /payroll/transfer": null,
+ "GET /pos/parked": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /prepaid-charges": [
+  "admin",
+  "manager"
+ ],
+ "GET /prepaid-charges/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /pricing/history": [
+  "admin",
+  "manager"
+ ],
+ "GET /pricing/lists": [
+  "admin",
+  "manager"
+ ],
+ "GET /pricing/lists/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /pricing/resolve": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /printers": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /printers/system": [
+  "admin",
+  "manager"
+ ],
+ "GET /pro-returns": [
+  "admin",
+  "manager"
+ ],
+ "GET /pro-returns/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /product-losses": null,
+ "GET /product-losses/stats": null,
+ "GET /product-lots/expired-active": null,
+ "GET /product-lots/vitrine-reconciliation": [
+  "admin",
+  "manager"
+ ],
+ "GET /product-pipeline": null,
+ "GET /product-pipeline/:id": null,
+ "GET /product-pipeline/:id/history": null,
+ "GET /product-pipeline/stats": null,
+ "GET /product-transfers": [
+  "admin",
+  "manager"
+ ],
+ "GET /product-transfers/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /production": null,
+ "GET /production-cout/by-day": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production-cout/by-product": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production-cout/by-product/mo-ecart": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production-cout/equipements": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production-cout/equipements/:id": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production-cout/plans-with-cost": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production-cout/plans/:planId/charge": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production-cout/plans/:planId/cout": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production-cout/plans/:planId/equipement-usage": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production-cout/plans/:planId/mo-ecart": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production-cout/plans/:planId/outputs-cost": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production-cout/plans/:planId/temps-travail": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production-cout/stats": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production-etapes/atelier/live": null,
+ "GET /production-etapes/items/:itemId/etapes": null,
+ "GET /production-etapes/items/:itemId/etapes/check-blocking": null,
+ "GET /production-etapes/items/:itemId/rendement/target": null,
+ "GET /production-etapes/plans/:planId/etapes": null,
+ "GET /production-etapes/plans/:planId/etapes/progress": null,
+ "GET /production-etapes/plans/:planId/rendement": null,
+ "GET /production-etapes/rendement/by-product": null,
+ "GET /production-etapes/rendement/stats": null,
+ "GET /production-markup": null,
+ "GET /production/:id": null,
+ "GET /production/:id/activities": null,
+ "GET /production/:id/dependencies": null,
+ "GET /production/:id/events": null,
+ "GET /production/:id/sub-recipe-analysis": null,
+ "GET /production/mrp": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production/mrp/horizon": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production/mrp/material-requirements": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production/mrp/semi-finished": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production/order-types": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production/policies": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production/process-referentials": null,
+ "GET /production/settings": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production/transfers/pending": null,
+ "GET /production/workshops": null,
+ "GET /products": null,
+ "GET /products/:id": null,
+ "GET /products/:id/channel-pricing": null,
+ "GET /products/:id/effective-deadline": null,
+ "GET /products/:id/label-data": null,
+ "GET /products/:id/pricing-tiers": null,
+ "GET /products/:id/recycle-destinations": null,
+ "GET /products/:id/stock-history": null,
+ "GET /products/alerts/low-stock": null,
+ "GET /products/top-selling": null,
+ "GET /projects": null,
+ "GET /projects/:id": null,
+ "GET /projects/:id/invoices": null,
+ "GET /projects/:id/invoices/linkable": null,
+ "GET /projects/overview": null,
+ "GET /projects/people": null,
+ "GET /projects/tasks/open": null,
+ "GET /projects/time/entries": null,
+ "GET /promotions": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /purchase-orders": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchase-orders/:id": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /purchase-orders/:id/actions": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchase-orders/:id/download-pdf": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchase-orders/:id/versions": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchase-orders/board": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchase-orders/eligible": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchase-orders/overdue": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchase-orders/pipeline": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchase-requests": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchase-requests/:id/actions": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchase-requests/:id/history": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchase-requests/count": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /purchase-requests/grouped": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchase-requests/to-order": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /purchasing-settings": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchasing-settings/sod": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchasing/reports/board": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchasing/reports/goods-entry-register": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /purchasing/reports/goods-entry-register/board": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /purchasing/reports/invoiced-not-received": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchasing/reports/invoices-without-lines": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchasing/reports/open-commitments": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchasing/reports/purchase-journal": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchasing/reports/received-not-invoiced": [
+  "admin",
+  "manager"
+ ],
+ "GET /purchasing/reports/summary": [
+  "admin",
+  "manager"
+ ],
+ "GET /quality/inspections": [
+  "admin",
+  "manager"
+ ],
+ "GET /quality/inspections/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /quality/nonconformities": [
+  "admin",
+  "manager"
+ ],
+ "GET /quality/templates": [
+  "admin",
+  "manager"
+ ],
+ "GET /quality/users": [
+  "admin",
+  "manager"
+ ],
+ "GET /quotes": [
+  "admin",
+  "manager"
+ ],
+ "GET /quotes/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /quotes/:id/pdf": [
+  "admin",
+  "manager"
+ ],
+ "GET /quotes/:id/versions": [
+  "admin",
+  "manager"
+ ],
+ "GET /quotes/overview": [
+  "admin",
+  "manager"
+ ],
+ "GET /rebates": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /rebates/:id/compute": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /reception-vouchers": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /reception-vouchers/:id": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /reception-vouchers/invoices/:invoiceId/revaluation-preview": [
+  "admin",
+  "manager"
+ ],
+ "GET /reception-vouchers/price-variances": [
+  "admin",
+  "manager"
+ ],
+ "GET /reception-vouchers/purchase-order/:poId": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /reception-vouchers/revaluation-candidates": [
+  "admin",
+  "manager"
+ ],
+ "GET /recipes": null,
+ "GET /recipes/:id": null,
+ "GET /recipes/:id/explosion": null,
+ "GET /recipes/:id/fiche-technique": null,
+ "GET /recipes/:id/versions": null,
+ "GET /recipes/:recipeId/children": null,
+ "GET /recipes/:recipeId/formats": null,
+ "GET /recipes/:recipeId/formats/:formatId/components": null,
+ "GET /recipes/base": null,
+ "GET /recipes/bulk-replace/logs": [
+  "admin",
+  "manager"
+ ],
+ "GET /recipes/by-product/:productId": null,
+ "GET /recipes/categories": null,
+ "GET /recipes/component-roles": null,
+ "GET /recipes/component-sources": null,
+ "GET /recipes/export": [
+  "admin"
+ ],
+ "GET /recipes/format-weights": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /recipes/import/template": [
+  "admin"
+ ],
+ "GET /reconciliation/carryover": [
+  "admin",
+  "manager"
+ ],
+ "GET /reconciliation/darija": [
+  "admin",
+  "manager"
+ ],
+ "GET /reconciliation/days": [
+  "admin",
+  "manager"
+ ],
+ "GET /reconciliation/days/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /reconciliation/days/:id/export.xlsx": [
+  "admin",
+  "manager"
+ ],
+ "GET /reconciliation/fiche": [
+  "admin",
+  "manager"
+ ],
+ "GET /reconciliation/products": [
+  "admin",
+  "manager"
+ ],
+ "GET /reconciliation/report": [
+  "admin",
+  "manager"
+ ],
+ "GET /reconciliation/slots": [
+  "admin",
+  "manager"
+ ],
+ "GET /reconciliation/suggest": [
+  "admin",
+  "manager"
+ ],
+ "GET /recurring-charges": [
+  "admin",
+  "manager"
+ ],
+ "GET /replenishment": null,
+ "GET /replenishment/:id": null,
+ "GET /replenishment/check-today": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /replenishment/closing-inventory": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /replenishment/pending-transfers": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /replenishment/recommendations": null,
+ "GET /reports/cost-summary": [
+  "admin",
+  "manager"
+ ],
+ "GET /reports/custom/dashboards": [
+  "admin",
+  "manager"
+ ],
+ "GET /reports/custom/dashboards/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /reports/custom/definitions": [
+  "admin",
+  "manager"
+ ],
+ "GET /reports/custom/filter-options": [
+  "admin",
+  "manager"
+ ],
+ "GET /reports/custom/sources": [
+  "admin",
+  "manager"
+ ],
+ "GET /reports/dashboard": [
+  "admin",
+  "manager"
+ ],
+ "GET /reports/finance-overview": [
+  "admin",
+  "manager"
+ ],
+ "GET /reports/finance-overview/detail": [
+  "admin",
+  "manager"
+ ],
+ "GET /reports/menu-engineering": [
+  "admin",
+  "manager"
+ ],
+ "GET /reports/products": [
+  "admin",
+  "manager"
+ ],
+ "GET /reports/sales": [
+  "admin",
+  "manager"
+ ],
+ "GET /returns": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /returns/search": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /revenue-categories": [
+  "admin",
+  "manager"
+ ],
+ "GET /revenue-categories/:id/children": [
+  "admin",
+  "manager"
+ ],
+ "GET /rfqs": [
+  "admin",
+  "manager"
+ ],
+ "GET /rfqs/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /rfqs/criteria": [
+  "admin",
+  "manager"
+ ],
+ "GET /routings": [
+  "admin",
+  "manager"
+ ],
+ "GET /routings/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /routings/work-centers": [
+  "admin",
+  "manager"
+ ],
+ "GET /routings/work-centers/:id/downtime": [
+  "admin",
+  "manager"
+ ],
+ "GET /routings/work-centers/:id/oee": [
+  "admin",
+  "manager"
+ ],
+ "GET /sachet-config": null,
+ "GET /sachet-config/report": [
+  "admin",
+  "manager"
+ ],
+ "GET /salary-advances": null,
+ "GET /salary-advances/outstanding": null,
+ "GET /salary-advances/requests": null,
+ "GET /sales": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /sales-channels": null,
+ "GET /sales-channels/active": null,
+ "GET /sales-contracts": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /sales-contracts/:id": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /sales-targets": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /sales-targets/salespeople": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /sales/:id": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /sales/deferred": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /sales/discount-policy": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /sales/pos-rules": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /sales/receivables": [
+  "admin",
+  "manager"
+ ],
+ "GET /sales/summary": [
+  "admin",
+  "manager"
+ ],
+ "GET /sales/today": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /schedules": null,
+ "GET /schedules/week": null,
+ "GET /search": null,
+ "GET /settings": null,
+ "GET /settings/api-keys": null,
+ "GET /settings/approval-rules": null,
+ "GET /settings/audit-log": null,
+ "GET /settings/audit-log/tables": null,
+ "GET /settings/auth-events": null,
+ "GET /settings/bank-accounts": null,
+ "GET /settings/data/export/base": null,
+ "GET /settings/data/export/configuration": null,
+ "GET /settings/data/import/:entity/template": null,
+ "GET /settings/data/imports": null,
+ "GET /settings/data/processing-register": null,
+ "GET /settings/data/quality": null,
+ "GET /settings/data/quality/:key": null,
+ "GET /settings/data/status": null,
+ "GET /settings/document-sequences": null,
+ "GET /settings/documents": null,
+ "GET /settings/documents/:docType/preview": null,
+ "GET /settings/modules": null,
+ "GET /settings/modules/assistant": null,
+ "GET /settings/modules/export": null,
+ "GET /settings/modules/health": null,
+ "GET /settings/modules/onboarding": null,
+ "GET /settings/modules/versions": null,
+ "GET /settings/notification-rules": null,
+ "GET /settings/parameters": null,
+ "GET /settings/sector": null,
+ "GET /settings/sector/starter": null,
+ "GET /settings/setup": null,
+ "GET /settings/tax-codes": null,
+ "GET /settings/webhooks": null,
+ "GET /shifts": null,
+ "GET /stock-counts": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /stock-counts/:id": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /stock-counts/:id/sheet": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "GET /stock-frigo": null,
+ "GET /stock-frigo/:id/transactions": null,
+ "GET /stock-frigo/available/:productId": null,
+ "GET /stock-frigo/base-recipes": null,
+ "GET /stock-frigo/recipe-lineage/:recipeId": null,
+ "GET /stock-frigo/reconciliation": [
+  "admin",
+  "manager"
+ ],
+ "GET /stock-frigo/summary": null,
+ "GET /stock-locations": null,
+ "GET /stores": null,
+ "GET /stores/:id": null,
+ "GET /subscriptions": [
+  "admin",
+  "manager"
+ ],
+ "GET /subscriptions/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /supplier-items": null,
+ "GET /supplier-items/:id/prices": null,
+ "GET /supplier-scores": [
+  "admin",
+  "manager"
+ ],
+ "GET /supplier-scores/:supplierId": [
+  "admin",
+  "manager"
+ ],
+ "GET /supplier-scores/latest": [
+  "admin",
+  "manager"
+ ],
+ "GET /suppliers": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /suppliers/:id": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /suppliers/:id/history": [
+  "admin",
+  "manager"
+ ],
+ "GET /suppliers/:id/personal-data": [
+  "admin",
+  "manager"
+ ],
+ "GET /suppliers/board": [
+  "admin",
+  "manager"
+ ],
+ "GET /suppliers/board-summary": [
+  "admin",
+  "manager"
+ ],
+ "GET /suppliers/check": [
+  "admin",
+  "manager"
+ ],
+ "GET /suppliers/identifier-types": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /traceability/ingredient-lot/:id/forward": [
+  "admin",
+  "manager"
+ ],
+ "GET /traceability/product-lot/:id/backward": [
+  "admin",
+  "manager"
+ ],
+ "GET /traceability/product-lot/:id/sales": [
+  "admin",
+  "manager"
+ ],
+ "GET /traceability/recall/ingredient-lot/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /traceability/recalls": [
+  "admin",
+  "manager"
+ ],
+ "GET /traceability/recalls/:id": [
+  "admin",
+  "manager"
+ ],
+ "GET /traceability/search": [
+  "admin",
+  "manager"
+ ],
+ "GET /unsold-decisions": null,
+ "GET /unsold-decisions/expired": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /unsold-decisions/recycle-destinations/:productId": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /unsold-decisions/session/:sessionId": null,
+ "GET /unsold-decisions/stats": null,
+ "GET /unsold-decisions/suggestions": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "GET /users": [
+  "admin"
+ ],
+ "GET /users/:id/access-history": [
+  "admin"
+ ],
+ "GET /users/:id/access-review": [
+  "admin"
+ ],
+ "GET /users/:id/permissions": [
+  "admin"
+ ],
+ "GET /users/access-overview": [
+  "admin"
+ ],
+ "GET /users/approval-limits": [
+  "admin"
+ ],
+ "GET /users/delegations": [
+  "admin"
+ ],
+ "GET /users/employees-link": [
+  "admin"
+ ],
+ "GET /users/me/permissions": null,
+ "GET /users/roles": [
+  "admin"
+ ],
+ "GET /users/roles/:code/permissions": [
+  "admin"
+ ],
+ "GET /users/security": [
+  "admin"
+ ],
+ "GET /users/sod": [
+  "admin"
+ ],
+ "GET /users/sod/mode": [
+  "admin"
+ ],
+ "GET /users/sod/violations": [
+  "admin"
+ ],
+ "GET /weekly-payroll": null,
+ "GET /withholding/to-remit": [
+  "admin",
+  "manager"
+ ],
+ "GET /withholding/types": [
+  "admin",
+  "manager"
+ ],
+ "PATCH /automation/jobs/:key": null,
+ "PATCH /complaints/:id": [
+  "admin",
+  "manager"
+ ],
+ "PATCH /currencies/:code": null,
+ "PATCH /debts/:id": [
+  "admin",
+  "manager"
+ ],
+ "PATCH /ledger/fiscal-periods/:id/status": [
+  "admin",
+  "manager"
+ ],
+ "PATCH /maintenance/:id": null,
+ "PATCH /payment-schedules/:id": [
+  "admin",
+  "manager"
+ ],
+ "PATCH /products/:id/toggle-availability": [
+  "admin",
+  "manager"
+ ],
+ "PATCH /projects/:id": null,
+ "PATCH /projects/tasks/:taskId": null,
+ "PATCH /promotions/:id/quick": [
+  "admin",
+  "manager"
+ ],
+ "PATCH /recipes/:recipeId/finance": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PATCH /recipes/:recipeId/identity": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PATCH /recurring-charges/:id": [
+  "admin",
+  "manager"
+ ],
+ "PATCH /rfqs/:id": [
+  "admin",
+  "manager"
+ ],
+ "PATCH /rfqs/criteria/:cid": [
+  "admin",
+  "manager"
+ ],
+ "PATCH /supplier-items/:id": [
+  "admin",
+  "manager"
+ ],
+ "PATCH /withholding/types/:id": [
+  "admin",
+  "manager"
+ ],
+ "POST /approvals/:id/approve": null,
+ "POST /approvals/:id/cancel": null,
+ "POST /approvals/:id/reject": null,
+ "POST /approvals/delegations": null,
+ "POST /attendance": null,
+ "POST /attendance/bulk": null,
+ "POST /auth/change-password": null,
+ "POST /auth/login": null,
+ "POST /auth/logout": null,
+ "POST /auth/pin-login": null,
+ "POST /auth/register": [
+  "admin"
+ ],
+ "POST /automation/jobs/:key/run": null,
+ "POST /automation/mail/outbox/:id/:action": null,
+ "POST /automation/mail/test": null,
+ "POST /bank-reconciliation/import": [
+  "admin",
+  "manager"
+ ],
+ "POST /bank-reconciliation/import/preview": [
+  "admin",
+  "manager"
+ ],
+ "POST /bank-reconciliation/import/profiles": [
+  "admin",
+  "manager"
+ ],
+ "POST /bank-reconciliation/lines/:id/match": [
+  "admin",
+  "manager"
+ ],
+ "POST /bank-reconciliation/lines/:id/unmatch": [
+  "admin",
+  "manager"
+ ],
+ "POST /bank-reconciliation/rules": [
+  "admin",
+  "manager"
+ ],
+ "POST /bank-reconciliation/statements": [
+  "admin",
+  "manager"
+ ],
+ "POST /bank-reconciliation/statements/:id/apply": [
+  "admin",
+  "manager"
+ ],
+ "POST /bank-reconciliation/statements/:id/auto-match": [
+  "admin",
+  "manager"
+ ],
+ "POST /bons-sortie/generate": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /bons-sortie/ligne/:ligneId/transfer-from-economat": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /bons-sortie/plan/:planId/regenerate": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /caisse-import/commit": [
+  "admin"
+ ],
+ "POST /caisse-import/preview": [
+  "admin"
+ ],
+ "POST /cash-register/:id/print-z": [
+  "admin",
+  "cashier",
+  "manager"
+ ],
+ "POST /cash-register/:id/submit": [
+  "admin",
+  "cashier",
+  "manager"
+ ],
+ "POST /cash-register/close": [
+  "admin",
+  "cashier",
+  "manager"
+ ],
+ "POST /cash-register/closure-gaps/post": [
+  "admin"
+ ],
+ "POST /cash-register/open": [
+  "admin",
+  "cashier",
+  "manager"
+ ],
+ "POST /categories": [
+  "admin",
+  "manager"
+ ],
+ "POST /commissions/assignments": [
+  "admin",
+  "manager"
+ ],
+ "POST /commissions/payout": [
+  "admin",
+  "manager"
+ ],
+ "POST /commissions/rules": [
+  "admin",
+  "manager"
+ ],
+ "POST /commissions/schemes": [
+  "admin",
+  "manager"
+ ],
+ "POST /complaints": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "cashier",
+  "manager",
+  "pastry_chef",
+  "saleswoman",
+  "viennoiserie"
+ ],
+ "POST /complaints/:id/assign": [
+  "admin",
+  "manager"
+ ],
+ "POST /complaints/:id/comments": [
+  "admin",
+  "manager"
+ ],
+ "POST /complaints/:id/priority": [
+  "admin",
+  "manager"
+ ],
+ "POST /complaints/:id/status": [
+  "admin",
+  "manager"
+ ],
+ "POST /contenants": [
+  "admin",
+  "manager"
+ ],
+ "POST /contenants/bulk-deactivate": [
+  "admin",
+  "manager"
+ ],
+ "POST /contenants/bulk-delete": [
+  "admin",
+  "manager"
+ ],
+ "POST /cost-centers": [
+  "admin",
+  "manager"
+ ],
+ "POST /cost-centers/:id/active": [
+  "admin",
+  "manager"
+ ],
+ "POST /cost-centers/assign": [
+  "admin",
+  "manager"
+ ],
+ "POST /cost-centers/axes": [
+  "admin",
+  "manager"
+ ],
+ "POST /cost-centers/keys": [
+  "admin",
+  "manager"
+ ],
+ "POST /cost-centers/ventilation": [
+  "admin",
+  "manager"
+ ],
+ "POST /cost-centers/ventilation/clear": [
+  "admin",
+  "manager"
+ ],
+ "POST /crm/activities/:id/done": null,
+ "POST /crm/campaigns": null,
+ "POST /crm/campaigns/:id/status": null,
+ "POST /crm/opportunities": null,
+ "POST /crm/opportunities/:id/activities": null,
+ "POST /crm/opportunities/:id/customer": null,
+ "POST /crm/opportunities/:id/stage": null,
+ "POST /currencies": null,
+ "POST /currencies/:code/rates": null,
+ "POST /custom-fields/defs": null,
+ "POST /customers": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /customers/:id/addresses": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /customers/:id/anonymize": [
+  "admin",
+  "manager"
+ ],
+ "POST /customers/:id/portal-token": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /customers/:id/restore": [
+  "admin",
+  "manager"
+ ],
+ "POST /customers/:id/tax-exemptions": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /debts": [
+  "admin",
+  "manager"
+ ],
+ "POST /delivery-notes": [
+  "admin",
+  "manager"
+ ],
+ "POST /delivery-notes/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "POST /delivery-notes/:id/deliver": [
+  "admin",
+  "manager"
+ ],
+ "POST /delivery-notes/:id/ship": [
+  "admin",
+  "manager"
+ ],
+ "POST /delivery-notes/from-order/:orderId": [
+  "admin",
+  "manager"
+ ],
+ "POST /delivery-notes/invoice": [
+  "admin",
+  "manager"
+ ],
+ "POST /delivery-notes/prepared": [
+  "admin",
+  "manager"
+ ],
+ "POST /delivery-routes": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /delivery-routes/:id/reorder": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /delivery-routes/:id/status": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /delivery-routes/:id/stops": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /delivery-routes/stops/:stopId/delivered": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /dunning/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "POST /dunning/:id/send": [
+  "admin",
+  "manager"
+ ],
+ "POST /dunning/create": [
+  "admin",
+  "manager"
+ ],
+ "POST /dunning/customers/:customerId/hold": [
+  "admin",
+  "manager"
+ ],
+ "POST /dunning/customers/:customerId/pause": [
+  "admin",
+  "manager"
+ ],
+ "POST /dunning/customers/:customerId/release": [
+  "admin",
+  "manager"
+ ],
+ "POST /employees": [
+  "admin"
+ ],
+ "POST /employees/:employeeId/contracts": null,
+ "POST /employees/:employeeId/contracts/avenant": null,
+ "POST /employees/:employeeId/contracts/end": null,
+ "POST /employees/:employeeId/contracts/renew": null,
+ "POST /employees/:employeeId/contracts/renew-trial": null,
+ "POST /employees/:employeeId/documents": null,
+ "POST /employees/:employeeId/settlements": [
+  "admin"
+ ],
+ "POST /employees/:employeeId/settlements/preview": null,
+ "POST /employees/me/advances": null,
+ "POST /employees/me/leaves": null,
+ "POST /employees/settlements/:id/cancel": [
+  "admin"
+ ],
+ "POST /expense-categories": [
+  "admin"
+ ],
+ "POST /fixed-assets": [
+  "admin",
+  "manager"
+ ],
+ "POST /fixed-assets/:id/cancel-disposal": [
+  "admin",
+  "manager"
+ ],
+ "POST /fixed-assets/:id/disposal/preview": [
+  "admin",
+  "manager"
+ ],
+ "POST /fixed-assets/:id/dispose": [
+  "admin",
+  "manager"
+ ],
+ "POST /fixed-assets/run-depreciation": [
+  "admin",
+  "manager"
+ ],
+ "POST /forecast/events": [
+  "admin",
+  "manager"
+ ],
+ "POST /forecast/snapshot": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /gestion/budget": [
+  "admin",
+  "manager"
+ ],
+ "POST /gestion/budget/:id/status": [
+  "admin",
+  "manager"
+ ],
+ "POST /haccp/actions": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /haccp/actions/:id/complete": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /haccp/actions/:id/validate": [
+  "admin",
+  "manager"
+ ],
+ "POST /haccp/cleaning-logs": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /haccp/equipment": [
+  "admin",
+  "manager"
+ ],
+ "POST /haccp/readings": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /haccp/receptions/:id/check": [
+  "admin",
+  "manager"
+ ],
+ "POST /haccp/tasks": [
+  "admin",
+  "manager"
+ ],
+ "POST /ingredient-lots/:id/move-location": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /ingredient-lots/:id/movement": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /ingredient-lots/:id/open-to-pesage": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /ingredient-lots/:id/pesage-waste": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /ingredient-lots/:id/quarantine": [
+  "admin",
+  "manager"
+ ],
+ "POST /ingredient-lots/:id/return-to-economat": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /ingredient-lots/:id/send-to-losses": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /ingredient-lots/quality-check/:id": [
+  "admin",
+  "manager"
+ ],
+ "POST /ingredients": [
+  "admin",
+  "manager"
+ ],
+ "POST /ingredients/:id/convert-to-consumable": [
+  "admin",
+  "manager"
+ ],
+ "POST /ingredients/import/commit": [
+  "admin",
+  "manager"
+ ],
+ "POST /ingredients/import/preview": [
+  "admin",
+  "manager"
+ ],
+ "POST /inventory-checks/opening": [
+  "admin",
+  "cashier",
+  "manager"
+ ],
+ "POST /inventory-checks/opening/:id/validate": [
+  "admin",
+  "manager"
+ ],
+ "POST /inventory/adjust": [
+  "admin",
+  "manager"
+ ],
+ "POST /inventory/closings": [
+  "admin",
+  "manager"
+ ],
+ "POST /inventory/cost-corrections": [
+  "admin",
+  "manager"
+ ],
+ "POST /inventory/ingredient-merges": [
+  "admin",
+  "manager"
+ ],
+ "POST /inventory/ingredient-merges/preview": [
+  "admin",
+  "manager"
+ ],
+ "POST /inventory/restock": [
+  "admin",
+  "manager"
+ ],
+ "POST /inventory/stock-anomalies/:id/resolve": [
+  "admin",
+  "manager"
+ ],
+ "POST /invoices": [
+  "admin",
+  "manager"
+ ],
+ "POST /invoices/:id/apply-credit": [
+  "admin",
+  "manager"
+ ],
+ "POST /invoices/:id/attachment": [
+  "admin",
+  "manager"
+ ],
+ "POST /invoices/:id/bad-debts": [
+  "admin",
+  "manager"
+ ],
+ "POST /invoices/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "POST /invoices/:id/credit-notes": [
+  "admin",
+  "manager"
+ ],
+ "POST /invoices/:id/disputes": [
+  "admin",
+  "manager"
+ ],
+ "POST /invoices/:id/holds": [
+  "admin",
+  "manager"
+ ],
+ "POST /invoices/:id/schedule": [
+  "admin",
+  "manager"
+ ],
+ "POST /invoices/:id/validate": [
+  "admin",
+  "manager"
+ ],
+ "POST /invoices/from-order/:orderId": [
+  "admin",
+  "manager"
+ ],
+ "POST /invoices/holds/:holdId/release": [
+  "admin",
+  "manager"
+ ],
+ "POST /invoices/merge": [
+  "admin",
+  "manager"
+ ],
+ "POST /landed-costs": [
+  "admin",
+  "manager"
+ ],
+ "POST /landed-costs/:id/apply": [
+  "admin",
+  "manager"
+ ],
+ "POST /landed-costs/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "POST /leaves": null,
+ "POST /leaves/:id/approve": null,
+ "POST /leaves/:id/reject": null,
+ "POST /leaves/adjustments/:employeeId": [
+  "admin"
+ ],
+ "POST /ledger/accounts": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/accounts/:id/active": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/backfill": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/bills/:id/unpaid": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/bills/remittances": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/bills/remittances/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/bills/remittances/:id/settle": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/cash-forecast/lines": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/cash-forecast/simulate": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/consolidation/transfers": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/consolidation/transfers/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/corporate-tax/:year/adjustments": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/corporate-tax/:year/book": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/corporate-tax/:year/payments": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/corporate-tax/:year/unbook": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/corporate-tax/payments/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/entries": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/entries/:id/post": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/entries/:id/reverse": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/entries/post": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/entry-templates": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/entry-templates/:id/active": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/entry-templates/:id/instantiate": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/fiscal-periods/:id/fae": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/fiscal-periods/:id/fg-stock": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/fiscal-years/:year/close": [
+  "admin"
+ ],
+ "POST /ledger/fx-revaluation/:year/book": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/fx-revaluation/:year/cancel": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/integrity/seal": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/integrity/verify": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/lettrage": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/lettrage/auto": [
+  "admin",
+  "manager"
+ ],
+ "POST /ledger/outbox/:id/replay": [
+  "admin"
+ ],
+ "POST /ledger/outbox/replay": [
+  "admin"
+ ],
+ "POST /lot-thermal/:kind/:id/freeze": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /lot-thermal/:kind/:id/thaw": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /loyalty/customers/:id/adjust": [
+  "admin",
+  "manager"
+ ],
+ "POST /maintenance": null,
+ "POST /maintenance/:id/comments": null,
+ "POST /maintenance/:id/status": null,
+ "POST /maintenance/plans": null,
+ "POST /maintenance/plans/:id/create-intervention": null,
+ "POST /orders": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /orders/:id/deliver": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /orders/:id/prepayment-invoice": [
+  "admin",
+  "manager"
+ ],
+ "POST /orders/:id/reschedule": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /packaging-items": [
+  "admin",
+  "manager"
+ ],
+ "POST /packaging-items/:id/adjust-stock": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /params/:tableName": null,
+ "POST /payment-runs": [
+  "admin",
+  "manager"
+ ],
+ "POST /payment-runs/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "POST /payment-runs/:id/execute": [
+  "admin",
+  "manager"
+ ],
+ "POST /payment-runs/:id/submit": [
+  "admin",
+  "manager"
+ ],
+ "POST /payment-runs/lines/:lineId/reject": [
+  "admin",
+  "manager"
+ ],
+ "POST /payments": [
+  "admin",
+  "manager"
+ ],
+ "POST /payments/:id/mark-cashed": [
+  "admin",
+  "manager"
+ ],
+ "POST /payments/:id/reissue": [
+  "admin",
+  "manager"
+ ],
+ "POST /payments/:id/unmark-cashed": [
+  "admin"
+ ],
+ "POST /payments/:id/void": [
+  "admin",
+  "manager"
+ ],
+ "POST /payments/customer-receipts": [
+  "admin",
+  "manager"
+ ],
+ "POST /payments/customer-receipts/:id/allocate": [
+  "admin",
+  "manager"
+ ],
+ "POST /payments/internal-transfer": [
+  "admin",
+  "manager"
+ ],
+ "POST /payroll/:id/pay": null,
+ "POST /payroll/:id/unpay": null,
+ "POST /payroll/biweekly/:id/pay": null,
+ "POST /payroll/biweekly/:id/unpay": null,
+ "POST /payroll/biweekly/generate": null,
+ "POST /payroll/declarations/declare": [
+  "admin"
+ ],
+ "POST /payroll/declarations/ebds": null,
+ "POST /payroll/declarations/settle": [
+  "admin"
+ ],
+ "POST /payroll/generate": null,
+ "POST /payroll/items/employee/:employeeId": null,
+ "POST /payroll/period/close": [
+  "admin"
+ ],
+ "POST /payroll/period/reopen": [
+  "admin"
+ ],
+ "POST /payroll/rubriques": [
+  "admin"
+ ],
+ "POST /payroll/tax-scales": [
+  "admin"
+ ],
+ "POST /pos/parked": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /prepaid-charges": [
+  "admin",
+  "manager"
+ ],
+ "POST /prepaid-charges/recognize": [
+  "admin",
+  "manager"
+ ],
+ "POST /pricing/bulk-update": [
+  "admin",
+  "manager"
+ ],
+ "POST /pricing/lists": [
+  "admin",
+  "manager"
+ ],
+ "POST /pricing/lists/:id/items": [
+  "admin",
+  "manager"
+ ],
+ "POST /printers": null,
+ "POST /printers/:id/open-drawer": [
+  "admin",
+  "manager"
+ ],
+ "POST /printers/:id/test": [
+  "admin",
+  "manager"
+ ],
+ "POST /printers/system/attach": null,
+ "POST /pro-returns": [
+  "admin",
+  "manager"
+ ],
+ "POST /product-losses": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "cashier",
+  "manager",
+  "pastry_chef",
+  "saleswoman",
+  "viennoiserie"
+ ],
+ "POST /product-lots/:id/send-to-losses": [
+  "admin",
+  "manager"
+ ],
+ "POST /product-lots/send-orphan-to-losses": [
+  "admin",
+  "manager"
+ ],
+ "POST /product-lots/vitrine-reconciliation/apply": [
+  "admin"
+ ],
+ "POST /product-pipeline": [
+  "admin",
+  "manager"
+ ],
+ "POST /product-pipeline/:id/admin-decision": [
+  "admin",
+  "manager"
+ ],
+ "POST /product-pipeline/:id/advance": [
+  "admin",
+  "manager"
+ ],
+ "POST /product-pipeline/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "POST /product-pipeline/:id/integrate": [
+  "admin",
+  "manager"
+ ],
+ "POST /product-transfers": [
+  "admin",
+  "manager"
+ ],
+ "POST /production": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production-cout/batch-calculate": [
+  "admin",
+  "manager"
+ ],
+ "POST /production-cout/equipements": [
+  "admin",
+  "manager"
+ ],
+ "POST /production-cout/plans/:planId/calculate": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production-cout/plans/:planId/equipement-usage": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production-cout/plans/:planId/temps-travail": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production-etapes/etapes/:etapeId/pause": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production-etapes/etapes/:etapeId/readings": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production-etapes/etapes/:etapeId/repetition": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production-etapes/etapes/:etapeId/resume": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production-etapes/etapes/:etapeId/timer": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production-etapes/items/:itemId/etapes/init": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production-etapes/items/:itemId/rendement": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production-etapes/plans/:planId/retro-planning": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/:id/activities": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/:id/cancel-items": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/:id/complete": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/:id/confirm": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/:id/detect-semi-finished": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/:id/needs/:ingredientId/request-verification": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/:id/produce-items": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/:id/relaunch": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/:id/restore-items": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/:id/revert-to-draft": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/:id/start": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/:id/start-items": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/:id/transfer-items": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/mrp/generate": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/mrp/generate-purchase-requests": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/order-types": null,
+ "POST /production/transfers/:transferId/receive": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /products": [
+  "admin",
+  "manager"
+ ],
+ "POST /products/:id/image": [
+  "admin",
+  "manager"
+ ],
+ "POST /products/:id/stock": [
+  "admin",
+  "manager"
+ ],
+ "POST /products/bulk-delete": [
+  "admin"
+ ],
+ "POST /products/import": [
+  "admin",
+  "manager"
+ ],
+ "POST /projects": null,
+ "POST /projects/:id/invoices": null,
+ "POST /projects/:id/status": null,
+ "POST /projects/:id/tasks": null,
+ "POST /projects/time/entries": null,
+ "POST /promotions": [
+  "admin",
+  "manager"
+ ],
+ "POST /promotions/evaluate": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /purchase-orders": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-orders/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-orders/:id/cancel-reception": [
+  "admin"
+ ],
+ "POST /purchase-orders/:id/change-orders": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-orders/:id/close-remainder": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-orders/:id/confirm-delivery": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /purchase-orders/:id/freeze": [
+  "admin"
+ ],
+ "POST /purchase-orders/:id/hold": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-orders/:id/invoice": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-orders/:id/lines/:lineId/close-remainder": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-orders/:id/lines/:lineId/correct-receipt": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-orders/:id/lines/:lineId/reopen": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-orders/:id/not-delivered": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-orders/:id/release": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-orders/:id/send": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-orders/:id/unfreeze": [
+  "admin"
+ ],
+ "POST /purchase-orders/:id/update-prices": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-requests": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /purchase-requests/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-requests/:id/close": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-requests/:id/submit": [
+  "admin",
+  "manager"
+ ],
+ "POST /purchase-requests/bulk-assign-supplier": [
+  "admin",
+  "manager"
+ ],
+ "POST /quality/inspections": [
+  "admin",
+  "manager"
+ ],
+ "POST /quality/nonconformities": [
+  "admin",
+  "manager"
+ ],
+ "POST /quality/templates": [
+  "admin",
+  "manager"
+ ],
+ "POST /quality/templates/:id/active": [
+  "admin",
+  "manager"
+ ],
+ "POST /quotes": [
+  "admin",
+  "manager"
+ ],
+ "POST /quotes/:id/:action(send|accept|refuse|reopen|cancel)": [
+  "admin",
+  "manager"
+ ],
+ "POST /quotes/:id/convert": [
+  "admin",
+  "manager"
+ ],
+ "POST /quotes/:id/duplicate": [
+  "admin",
+  "manager"
+ ],
+ "POST /quotes/:id/revise": [
+  "admin",
+  "manager"
+ ],
+ "POST /rebates": [
+  "admin",
+  "manager"
+ ],
+ "POST /reception-vouchers": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /recipes": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /recipes/:id/restore": [
+  "admin"
+ ],
+ "POST /recipes/:id/versions/:versionNumber/restore": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /recipes/:recipeId/formats": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /recipes/:recipeId/formats/:formatId/duplicate": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /recipes/bulk-archive": [
+  "admin"
+ ],
+ "POST /recipes/bulk-delete": [
+  "admin"
+ ],
+ "POST /recipes/bulk-replace/:logId/revert": [
+  "admin"
+ ],
+ "POST /recipes/bulk-replace/apply": [
+  "admin"
+ ],
+ "POST /recipes/bulk-replace/preview": [
+  "admin",
+  "manager"
+ ],
+ "POST /recipes/bulk-restore": [
+  "admin"
+ ],
+ "POST /recipes/import/commit": [
+  "admin"
+ ],
+ "POST /recipes/import/preview": [
+  "admin"
+ ],
+ "POST /reconciliation/darija": [
+  "admin",
+  "manager"
+ ],
+ "POST /reconciliation/days": [
+  "admin",
+  "manager"
+ ],
+ "POST /reconciliation/days/:id/close": [
+  "admin",
+  "manager"
+ ],
+ "POST /reconciliation/days/:id/reopen": [
+  "admin",
+  "manager"
+ ],
+ "POST /reconciliation/products": [
+  "admin",
+  "manager"
+ ],
+ "POST /reconciliation/products/bulk": [
+  "admin",
+  "manager"
+ ],
+ "POST /reconciliation/shifts/:id/bulk-appro": [
+  "admin",
+  "manager"
+ ],
+ "POST /reconciliation/shifts/:id/close": [
+  "admin",
+  "manager"
+ ],
+ "POST /reconciliation/shifts/:id/import-sales": [
+  "admin",
+  "manager"
+ ],
+ "POST /reconciliation/shifts/:id/lines": [
+  "admin",
+  "manager"
+ ],
+ "POST /reconciliation/shifts/:id/prefill-reste": [
+  "admin",
+  "manager"
+ ],
+ "POST /reconciliation/shifts/:id/reopen": [
+  "admin",
+  "manager"
+ ],
+ "POST /reconciliation/shifts/:id/reset-sales": [
+  "admin",
+  "manager"
+ ],
+ "POST /reconciliation/slots": [
+  "admin",
+  "manager"
+ ],
+ "POST /recurring-charges": [
+  "admin",
+  "manager"
+ ],
+ "POST /replenishment": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /replenishment/:id/acknowledge": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /replenishment/:id/cancel": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /replenishment/:id/confirm-reception": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /replenishment/:id/prepare": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /replenishment/:id/transfer": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /replenishment/check-items": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /replenishment/inventory-check": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /reports/custom/dashboards": [
+  "admin",
+  "manager"
+ ],
+ "POST /reports/custom/definitions": [
+  "admin",
+  "manager"
+ ],
+ "POST /reports/custom/run": [
+  "admin",
+  "manager"
+ ],
+ "POST /returns": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /revenue-categories": [
+  "admin"
+ ],
+ "POST /rfqs": [
+  "admin",
+  "manager"
+ ],
+ "POST /rfqs/:id/award": [
+  "admin",
+  "manager"
+ ],
+ "POST /rfqs/:id/send": [
+  "admin",
+  "manager"
+ ],
+ "POST /rfqs/:id/status": [
+  "admin",
+  "manager"
+ ],
+ "POST /rfqs/:id/suppliers/:supplierId/status": [
+  "admin",
+  "manager"
+ ],
+ "POST /rfqs/criteria": [
+  "admin",
+  "manager"
+ ],
+ "POST /rfqs/from-requests": [
+  "admin",
+  "manager"
+ ],
+ "POST /routings": [
+  "admin",
+  "manager"
+ ],
+ "POST /routings/:id/active": [
+  "admin",
+  "manager"
+ ],
+ "POST /routings/work-centers": [
+  "admin",
+  "manager"
+ ],
+ "POST /routings/work-centers/:id/active": [
+  "admin",
+  "manager"
+ ],
+ "POST /routings/work-centers/:id/downtime": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /routings/work-centers/:id/status": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /sachet-config/suggest": null,
+ "POST /salary-advances": null,
+ "POST /salary-advances/requests/:id/approve": null,
+ "POST /salary-advances/requests/:id/reject": null,
+ "POST /sales-channels": null,
+ "POST /sales-contracts": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /sales-contracts/:id/releases": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /sales-targets": [
+  "admin",
+  "manager"
+ ],
+ "POST /sales/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "POST /sales/:id/invoice": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /sales/:id/pay": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /sales/:id/print": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /sales/checkout": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /sales/import": [
+  "admin",
+  "manager"
+ ],
+ "POST /sales/special": null,
+ "POST /schedules": null,
+ "POST /schedules/week": null,
+ "POST /settings/api-keys": null,
+ "POST /settings/approval-rules": null,
+ "POST /settings/bank-accounts": null,
+ "POST /settings/data/import/:entity/commit": null,
+ "POST /settings/data/import/:entity/preview": null,
+ "POST /settings/data/imports/:id/undo": null,
+ "POST /settings/document-sequences/preview": null,
+ "POST /settings/modules/assistant": null,
+ "POST /settings/modules/health/:key/dismiss": null,
+ "POST /settings/modules/health/restore": null,
+ "POST /settings/modules/import/preview": null,
+ "POST /settings/modules/onboarding/:module/hide": null,
+ "POST /settings/modules/onboarding/show": null,
+ "POST /settings/modules/preview": null,
+ "POST /settings/modules/reset": null,
+ "POST /settings/modules/versions/:id/restore": null,
+ "POST /settings/sector/starter": null,
+ "POST /settings/sectors": null,
+ "POST /settings/tax-codes": null,
+ "POST /settings/webhooks": null,
+ "POST /stock-counts": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /stock-counts/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "POST /stock-counts/:id/lines": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /stock-counts/:id/reopen": [
+  "admin",
+  "manager"
+ ],
+ "POST /stock-counts/:id/submit": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "POST /stock-counts/:id/validate": [
+  "admin",
+  "manager"
+ ],
+ "POST /stock-frigo/consume": [
+  "admin",
+  "manager"
+ ],
+ "POST /stock-frigo/reconciliation/apply": [
+  "admin"
+ ],
+ "POST /stock-frigo/surplus": [
+  "admin",
+  "manager"
+ ],
+ "POST /stock-locations": [
+  "admin",
+  "manager"
+ ],
+ "POST /stores": null,
+ "POST /subscriptions": [
+  "admin",
+  "manager"
+ ],
+ "POST /subscriptions/:id/status": [
+  "admin",
+  "manager"
+ ],
+ "POST /subscriptions/generate": [
+  "admin",
+  "manager"
+ ],
+ "POST /supplier-items": [
+  "admin",
+  "manager"
+ ],
+ "POST /supplier-items/:id/archive": [
+  "admin",
+  "manager"
+ ],
+ "POST /supplier-items/:id/prefer": [
+  "admin",
+  "manager"
+ ],
+ "POST /supplier-items/:id/prices": [
+  "admin",
+  "manager"
+ ],
+ "POST /supplier-scores/snapshot": [
+  "admin",
+  "manager"
+ ],
+ "POST /suppliers": [
+  "admin",
+  "manager"
+ ],
+ "POST /traceability/recalls": [
+  "admin",
+  "manager"
+ ],
+ "POST /traceability/recalls/:id/block": [
+  "admin",
+  "manager"
+ ],
+ "POST /traceability/recalls/:id/close": [
+  "admin",
+  "manager"
+ ],
+ "POST /unsold-decisions": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /unsold-decisions/destroy-expired": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "POST /upload/complaint-photo": null,
+ "POST /upload/logo": null,
+ "POST /upload/loss-photo": null,
+ "POST /users": [
+  "admin"
+ ],
+ "POST /users/approval-limits": [
+  "admin"
+ ],
+ "POST /users/delegations": [
+  "admin"
+ ],
+ "POST /users/roles": [
+  "admin"
+ ],
+ "POST /users/sod": [
+  "admin"
+ ],
+ "POST /weekly-payroll/:id/pay": null,
+ "POST /weekly-payroll/:id/unpay": null,
+ "POST /weekly-payroll/generate": null,
+ "POST /withholding/reversement": [
+  "admin",
+  "manager"
+ ],
+ "PUT /automation/mail": null,
+ "PUT /bank-reconciliation/import/profiles/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /bank-reconciliation/rules/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /bons-sortie/:id/accept-reception": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PUT /bons-sortie/:id/cancel": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PUT /bons-sortie/:id/chef-reject": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PUT /bons-sortie/:id/commit-partial": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "PUT /bons-sortie/:id/complete-pending": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "PUT /bons-sortie/:id/peser": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "PUT /bons-sortie/:id/preparation": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "PUT /bons-sortie/:id/ready": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "PUT /bons-sortie/ligne/:ligneId": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "PUT /caisse/report-override": [
+  "admin"
+ ],
+ "PUT /categories/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /commissions/rules/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /commissions/schemes/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /contenants/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /contenants/products/:productId": [
+  "admin",
+  "manager"
+ ],
+ "PUT /crm/opportunities/:id": null,
+ "PUT /custom-fields/defs/:id": null,
+ "PUT /custom-fields/values/:entity/:id": null,
+ "PUT /customers/:id": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "PUT /customers/:id/addresses/:addressId": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "PUT /customers/:id/consent": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "PUT /dunning/levels/:level": [
+  "admin",
+  "manager"
+ ],
+ "PUT /employees/:id": null,
+ "PUT /expense-categories/:id": [
+  "admin"
+ ],
+ "PUT /forecast/events/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /forecast/links/:productKey": [
+  "admin",
+  "manager"
+ ],
+ "PUT /forecast/override": [
+  "admin",
+  "manager"
+ ],
+ "PUT /gestion/budget/:id/control": [
+  "admin",
+  "manager"
+ ],
+ "PUT /gestion/budget/:id/lines": [
+  "admin",
+  "manager"
+ ],
+ "PUT /haccp/equipment/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /haccp/tasks/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /ingredients/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /ingredients/:id/allergens": [
+  "admin",
+  "manager"
+ ],
+ "PUT /inventory/threshold": [
+  "admin",
+  "manager"
+ ],
+ "PUT /invoices/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /invoices/:id/category": [
+  "admin",
+  "manager"
+ ],
+ "PUT /invoices/:id/items": [
+  "admin",
+  "manager"
+ ],
+ "PUT /invoices/:id/payment-terms": [
+  "admin",
+  "manager"
+ ],
+ "PUT /invoices/:id/status": [
+  "admin",
+  "manager"
+ ],
+ "PUT /invoices/bad-debts/:badDebtId/revert": [
+  "admin",
+  "manager"
+ ],
+ "PUT /invoices/disputes/:disputeId/reject": [
+  "admin",
+  "manager"
+ ],
+ "PUT /invoices/disputes/:disputeId/resolve": [
+  "admin",
+  "manager"
+ ],
+ "PUT /invoices/line/:id/category": [
+  "admin",
+  "manager"
+ ],
+ "PUT /leaves/holidays": [
+  "admin"
+ ],
+ "PUT /ledger/accounts/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /ledger/cash-forecast/threshold": [
+  "admin",
+  "manager"
+ ],
+ "PUT /ledger/corporate-tax/:year/params": [
+  "admin",
+  "manager"
+ ],
+ "PUT /ledger/entries/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /ledger/entry-templates/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /ledger/revenue-families/:family": [
+  "admin",
+  "manager"
+ ],
+ "PUT /loyalty/settings": [
+  "admin",
+  "manager"
+ ],
+ "PUT /loyalty/tiers": [
+  "admin",
+  "manager"
+ ],
+ "PUT /maintenance/plans/:id": null,
+ "PUT /notifications/:id/read": null,
+ "PUT /notifications/read-all": null,
+ "PUT /orders/:id": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "PUT /orders/:id/status": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "PUT /packaging-items/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /params/:tableName/:id": null,
+ "PUT /params/:tableName/:id/reactivate": null,
+ "PUT /params/:tableName/reorder": null,
+ "PUT /payments/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /payroll/:id": null,
+ "PUT /payroll/:id/lines": null,
+ "PUT /payroll/biweekly/:id": null,
+ "PUT /payroll/items/:itemId": null,
+ "PUT /payroll/rubriques/:id": [
+  "admin"
+ ],
+ "PUT /payroll/settings": [
+  "admin"
+ ],
+ "PUT /payroll/tax-scales/:id": [
+  "admin"
+ ],
+ "PUT /pricing/lists/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /printers/:id": null,
+ "PUT /product-pipeline/:id/stage-data": [
+  "admin",
+  "manager"
+ ],
+ "PUT /production-cout/equipements/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /production-etapes/etapes/:etapeId/assign": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PUT /production-etapes/etapes/:etapeId/status": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PUT /production-markup": null,
+ "PUT /production/:id/header": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PUT /production/:id/items": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PUT /production/order-types/:typeId": null,
+ "PUT /production/policies/:key": null,
+ "PUT /production/settings": [
+  "admin",
+  "manager"
+ ],
+ "PUT /production/workshops/:code": null,
+ "PUT /products/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /products/:id/channel-pricing": [
+  "admin",
+  "manager"
+ ],
+ "PUT /products/:id/label-fields": [
+  "admin",
+  "manager"
+ ],
+ "PUT /products/:id/pricing-tiers": [
+  "admin",
+  "manager"
+ ],
+ "PUT /products/:id/recycle-destinations": [
+  "admin",
+  "manager"
+ ],
+ "PUT /promotions/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /purchase-orders/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /purchase-orders/:id/items": [
+  "admin",
+  "manager"
+ ],
+ "PUT /purchase-requests/:id/quantity": [
+  "admin",
+  "manager"
+ ],
+ "PUT /purchase-requests/:id/supplier": [
+  "admin",
+  "manager"
+ ],
+ "PUT /purchasing-settings/expense-requires-po": [
+  "admin"
+ ],
+ "PUT /quality/nonconformities/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /quality/templates/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /quotes/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /rebates/:id/cancel": [
+  "admin",
+  "manager"
+ ],
+ "PUT /rebates/:id/settle": [
+  "admin",
+  "manager"
+ ],
+ "PUT /reception-vouchers/items/:id/price-decision": [
+  "admin",
+  "manager"
+ ],
+ "PUT /recipes/:id": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PUT /recipes/:recipeId/etapes": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PUT /recipes/:recipeId/formats/:formatId": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PUT /recipes/:recipeId/formats/:formatId/components": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PUT /recipes/format-weights/:formatId": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PUT /reconciliation/carryover": [
+  "admin",
+  "manager"
+ ],
+ "PUT /reconciliation/fiche": [
+  "admin",
+  "manager"
+ ],
+ "PUT /reconciliation/lines/:lineId": [
+  "admin",
+  "manager"
+ ],
+ "PUT /reports/custom/dashboards/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /reports/custom/definitions/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /revenue-categories/:id": [
+  "admin"
+ ],
+ "PUT /rfqs/:id/quotations": [
+  "admin",
+  "manager"
+ ],
+ "PUT /routings/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /routings/work-centers/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /sachet-config": null,
+ "PUT /salary-advances/:id": [
+  "admin"
+ ],
+ "PUT /sales-channels/:id": null,
+ "PUT /sales-contracts/:id/close": [
+  "admin",
+  "cashier",
+  "manager",
+  "saleswoman"
+ ],
+ "PUT /sales/special/:id": null,
+ "PUT /schedules/:id": null,
+ "PUT /settings": null,
+ "PUT /settings/approval-rules/:code": null,
+ "PUT /settings/bank-accounts/:id": null,
+ "PUT /settings/document-sequences/:docType": null,
+ "PUT /settings/documents/:docType": null,
+ "PUT /settings/modules": null,
+ "PUT /settings/modules/:key/rollout": null,
+ "PUT /settings/notification-rules/:type": null,
+ "PUT /settings/parameters/:key": null,
+ "PUT /settings/sector": null,
+ "PUT /settings/tax-codes/:id": null,
+ "PUT /settings/webhooks/:id": null,
+ "PUT /stock-counts/:id/lines/:lineId": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
+ "PUT /stock-frigo/:id/adjust": [
+  "admin",
+  "manager"
+ ],
+ "PUT /stock-frigo/:id/loss": [
+  "admin",
+  "manager"
+ ],
+ "PUT /stock-locations/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /stores/:id": null,
+ "PUT /suppliers/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /traceability/recalls/:id/items/:itemId": [
+  "admin",
+  "manager"
+ ],
+ "PUT /users/:id": [
+  "admin"
+ ],
+ "PUT /users/:id/permissions": [
+  "admin"
+ ],
+ "PUT /users/roles/:code": [
+  "admin"
+ ],
+ "PUT /users/roles/:code/permissions": [
+  "admin"
+ ],
+ "PUT /users/security": [
+  "admin"
+ ],
+ "PUT /users/sod/:code": [
+  "admin"
+ ],
+ "PUT /users/sod/mode": [
+  "admin"
+ ],
+ "PUT /weekly-payroll/:id": null
+}
