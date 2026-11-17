@@ -5,28 +5,22 @@ import { bankImportRepository, bankRuleRepository } from '../repositories/bank-r
 import { bankMatching } from '../services/bank-matching.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
 
 // Rapprochement bancaire : reserve a l'admin.
 const router = Router();
 
-router.get('/statements', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), bankReconciliationController.listStatements);
-router.post('/statements', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), bankReconciliationController.createStatement);
-router.get('/statements/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), bankReconciliationController.getReconciliation);
-router.post('/statements/:id/auto-match', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), bankReconciliationController.autoMatch);
-router.delete('/statements/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), bankReconciliationController.deleteStatement);
-router.post('/lines/:id/match', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), bankReconciliationController.matchLine);
-router.post('/lines/:id/unmatch', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), bankReconciliationController.unmatchLine);
+router.get('/statements', authenticate, can('accounting.bank_reconciliation.view'), bankReconciliationController.listStatements);
+router.post('/statements', authenticate, can('accounting.bank_reconciliation.statements'), bankReconciliationController.createStatement);
+router.get('/statements/:id', authenticate, can('accounting.bank_reconciliation.view'), bankReconciliationController.getReconciliation);
+router.post('/statements/:id/auto-match', authenticate, can('accounting.bank_reconciliation.auto_match'), bankReconciliationController.autoMatch);
+router.delete('/statements/:id', authenticate, can('accounting.bank_reconciliation.delete'), bankReconciliationController.deleteStatement);
+router.post('/lines/:id/match', authenticate, can('accounting.bank_reconciliation.match'), bankReconciliationController.matchLine);
+router.post('/lines/:id/unmatch', authenticate, can('accounting.bank_reconciliation.unmatch'), bankReconciliationController.unmatchLine);
 
 
-// ─── Import de fichiers de banque (mig 426) : CSV, Excel, OFX, MT940, CFONB ───
-// Le fichier arrive en base64 : parser JSON local élargi (route exclue du parser
-// global de 10 Ko dans app.ts), posé APRÈS l'authentification pour qu'un appel
-// anonyme ne fasse pas lire 8 Mo.
-const AM = [authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)];
 const bigJson = express.json({ limit: '8mb' });
 const smallJson = express.json({ limit: '20kb' });   // profils : même préfixe /import, donc hors parser global
 const bad = (res: Response, m: string) => res.status(400).json({ success: false, error: { message: m } });
@@ -57,12 +51,12 @@ const toInput = (b: z.infer<typeof fileBody>) => ({
   profileId: b.profileId, profile: b.profile ?? null, treasuryAccountId: b.treasuryAccountId,
 });
 
-router.post('/import/preview', ...AM, bigJson, asyncHandler(async (req: AuthRequest, res: Response) => {
+router.post('/import/preview', authenticate, can('accounting.bank_reconciliation.preview'), bigJson, asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = fileBody.safeParse(req.body);
   if (!r.success) { bad(res, r.error.issues[0]?.message ?? 'Fichier invalide'); return; }
   res.json({ success: true, data: await bankImportRepository.preview(toInput(r.data)) });
 }));
-router.post('/import', ...AM, bigJson, asyncHandler(async (req: AuthRequest, res: Response) => {
+router.post('/import', authenticate, can('accounting.bank_reconciliation.import'), bigJson, asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = fileBody.extend({
     label: z.string().trim().max(200).nullish(),
     statementDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
@@ -79,20 +73,20 @@ router.post('/import', ...AM, bigJson, asyncHandler(async (req: AuthRequest, res
 
 // Profils d'import (correspondance de colonnes réutilisable).
 const profileBody = z.object({ name: z.string().trim().min(1).max(100), treasuryAccountId: z.string().uuid().nullish(), ...profileShape });
-router.get('/import/profiles', ...AM, asyncHandler(async (_req: AuthRequest, res: Response) => {
+router.get('/import/profiles', authenticate, can('accounting.bank_reconciliation.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await bankImportRepository.listProfiles() });
 }));
-router.post('/import/profiles', ...AM, smallJson, asyncHandler(async (req: AuthRequest, res: Response) => {
+router.post('/import/profiles', authenticate, can('accounting.bank_reconciliation.profiles'), smallJson, asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = profileBody.safeParse(req.body);
   if (!r.success) { bad(res, r.error.issues[0]?.message ?? 'Profil invalide'); return; }
   res.status(201).json({ success: true, data: await bankImportRepository.saveProfile(r.data, req.user!.userId) });
 }));
-router.put('/import/profiles/:id', ...AM, smallJson, validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+router.put('/import/profiles/:id', authenticate, can('accounting.bank_reconciliation.profiles'), smallJson, validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = profileBody.safeParse(req.body);
   if (!r.success) { bad(res, r.error.issues[0]?.message ?? 'Profil invalide'); return; }
   res.json({ success: true, data: await bankImportRepository.saveProfile(r.data, req.user!.userId, req.params.id) });
 }));
-router.delete('/import/profiles/:id', ...AM, validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+router.delete('/import/profiles/:id', authenticate, can('accounting.bank_reconciliation.delete'), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
   await bankImportRepository.deleteProfile(req.params.id);
   res.json({ success: true, data: null });
 }));
@@ -115,22 +109,22 @@ const ruleSchema = z.object({
 });
 const applySchema = z.object({ bankLineIds: z.array(z.string().uuid()).max(2000).optional(), minConfidence: z.coerce.number().min(0).max(100).optional() });
 const id = validateUuidParams('id');
-router.get('/statements/:id/proposals', ...AM, id, asyncHandler(async (req: AuthRequest, res: Response) => {
+router.get('/statements/:id/proposals', authenticate, can('accounting.bank_reconciliation.view'), id, asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await bankMatching.propose(req.params.id as string) });
 }));
-router.post('/statements/:id/apply', ...AM, id, smallJson, validate(applySchema), asyncHandler(async (req: AuthRequest, res: Response) => {
+router.post('/statements/:id/apply', authenticate, can('accounting.bank_reconciliation.apply'), id, smallJson, validate(applySchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await bankMatching.apply(req.params.id as string, { userId: req.user!.userId, storeId: req.user!.storeId ?? null, ...req.body }) });
 }));
-router.get('/rules', ...AM, asyncHandler(async (_req: AuthRequest, res: Response) => {
+router.get('/rules', authenticate, can('accounting.bank_reconciliation.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await bankRuleRepository.list() });
 }));
-router.post('/rules', ...AM, smallJson, validate(ruleSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
+router.post('/rules', authenticate, can('accounting.bank_reconciliation.rules'), smallJson, validate(ruleSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.status(201).json({ success: true, data: await bankRuleRepository.save(req.body, req.user!.userId) });
 }));
-router.put('/rules/:id', ...AM, id, smallJson, validate(ruleSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
+router.put('/rules/:id', authenticate, can('accounting.bank_reconciliation.rules'), id, smallJson, validate(ruleSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await bankRuleRepository.save(req.body, req.user!.userId, req.params.id as string) });
 }));
-router.delete('/rules/:id', ...AM, id, asyncHandler(async (req: AuthRequest, res: Response) => {
+router.delete('/rules/:id', authenticate, can('accounting.bank_reconciliation.delete'), id, asyncHandler(async (req: AuthRequest, res: Response) => {
   await bankRuleRepository.remove(req.params.id as string);
   res.json({ success: true, data: null });
 }));

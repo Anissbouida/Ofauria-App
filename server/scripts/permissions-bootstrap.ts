@@ -33,7 +33,7 @@ function mounts() {
     for (const n of m[1].split(',').map(x => x.trim()).filter(Boolean)) varFile.set(n, { file: m[2], exported: n });
   }
   const out: { prefix: string; file: string; exported: string }[] = [];
-  for (const m of index.matchAll(/router\.use\('([^']+)',\s*(?:[\w.]+\s*,\s*)*(\w+)\)/g)) {
+  for (const m of index.matchAll(/router\.use\('([^']+)',\s*(?:[\w.]+(?:\([^)]*\))?\s*,\s*)*(\w+)\)/g)) {
     const f = varFile.get(m[2]);
     if (f) out.push({ prefix: m[1], ...f });
   }
@@ -289,8 +289,8 @@ async function apply(files: string[]) {
     }
     // Constantes de garde devenues inutiles, imports.
     for (const c of guardConsts.keys()) {
-      if (!new RegExp(`\\b${c}\\b`).test(src.replace(new RegExp(`const ${c}\\s*(?::[^=]+)?=\\s*\\[[\\s\\S]*?\\];\\n?`), ''))) {
-        src = src.replace(new RegExp(`(?:\\/\\/[^\\n]*\\n)*const ${c}\\s*(?::[^=]+)?=\\s*\\[[\\s\\S]*?\\];\\n?`), '');
+      if (!new RegExp(`\\b${c}\\b`).test(src.replace(new RegExp(`const ${c}\\s*(?::[^=]+)?=\\s*\\[[\\s\\S]*?\\](?:\\s+as const)?;\\n?`), ''))) {
+        src = src.replace(new RegExp(`(?:\\/\\/[^\\n]*\\n)*const ${c}\\s*(?::[^=]+)?=\\s*\\[[\\s\\S]*?\\](?:\\s+as const)?;\\n?`), '');
       }
     }
     if (count && !/import \{ can \}/.test(src)) {
