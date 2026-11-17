@@ -1831,6 +1831,9 @@
  ],
  "GET /recipes": null,
  "GET /recipes/:id": null,
+ "GET /recipes/:id/bom-versions": null,
+ "GET /recipes/:id/bom-versions/compare": null,
+ "GET /recipes/:id/bom-versions/pending": null,
  "GET /recipes/:id/explosion": null,
  "GET /recipes/:id/fiche-technique": null,
  "GET /recipes/:id/versions": null,
@@ -3793,6 +3796,10 @@
   "manager",
   "pastry_chef",
   "viennoiserie"
+ ],
+ "POST /recipes/:id/bom-versions/activate": [
+  "admin",
+  "manager"
  ],
  "POST /recipes/:id/restore": [
   "admin"

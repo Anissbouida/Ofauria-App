@@ -1,0 +1,117 @@
+import { db, withTransaction } from '../config/database.js';
+import { localIsoDate } from '../utils/local-date.js';
+
+/**
+ * Versions de nomenclature (M4-01, mig 559).
+ *
+ * La fiche courante est la copie de travail ; une version est un instantané figé de son
+ * contenu (fn_recipe_bom_snapshot). Une seule version active par fiche. Activer fige le
+ * contenu courant en version N+1 active et rend la précédente obsolète la veille de la
+ * date d'effet. Les versions active et obsolètes ne sont jamais modifiées (déclencheur).
+ */
+type Snapshot = {
+  header: Record<string, unknown> | null;
+  ingredients: { ingredient_id: string; name: string; quantity: number; unit: string | null }[];
+  sub_recipes: { sub_recipe_id: string; name: string; quantity: number }[];
+  components: { role: string; source_recipe_id: string | null; source_ingredient_id: string | null; name: string; quantite: number; unite: string; perte_pct: number | null }[];
+  formats: { format_id: string; contenant_id: string | null; is_default: boolean; components: Snapshot['components'] }[];
+  packaging: { packaging_id: string; quantity: number; unit: string | null }[];
+};
+
+export type BomDiffLine = { section: string; name: string; before: string | null; after: string | null; change: 'ajout' | 'retrait' | 'quantite' };
+
+/** Lignes comparables d'un instantané : section, clé, libellé, valeur. */
+function lines(s: Snapshot) {
+  const out = new Map<string, { section: string; name: string; value: string }>();
+  for (const i of s.ingredients ?? []) out.set(`ing|${i.ingredient_id}`, { section: 'Ingrédients', name: i.name, value: `${Number(i.quantity)} ${i.unit ?? ''}`.trim() });
+  for (const r of s.sub_recipes ?? []) out.set(`sub|${r.sub_recipe_id}`, { section: 'Sous-recettes', name: r.name, value: String(Number(r.quantity)) });
+  for (const c of s.components ?? []) out.set(`comp|${c.source_recipe_id ?? c.source_ingredient_id}|${c.role}`, { section: 'Composants', name: c.name, value: `${Number(c.quantite)} ${c.unite}${c.perte_pct ? ` (perte ${Number(c.perte_pct)} %)` : ''}` });
+  (s.formats ?? []).forEach((f, idx) => {
+    for (const c of f.components ?? []) out.set(`fmt|${f.format_id}|${c.source_recipe_id ?? c.source_ingredient_id}|${c.role}`, { section: `Format ${idx + 1}${f.is_default ? ' (défaut)' : ''}`, name: c.name, value: `${Number(c.quantite)} ${c.unite}` });
+  });
+  for (const p of s.packaging ?? []) out.set(`pack|${p.packaging_id}`, { section: 'Emballages', name: p.packaging_id, value: `${Number(p.quantity)} ${p.unit ?? ''}`.trim() });
+  return out;
+}
+
+export function diffSnapshots(a: Snapshot, b: Snapshot): BomDiffLine[] {
+  const la = lines(a), lb = lines(b);
+  const out: BomDiffLine[] = [];
+  for (const [k, v] of la) {
+    const w = lb.get(k);
+    if (!w) out.push({ section: v.section, name: v.name, before: v.value, after: null, change: 'retrait' });
+    else if (w.value !== v.value) out.push({ section: v.section, name: v.name, before: v.value, after: w.value, change: 'quantite' });
+  }
+  for (const [k, w] of lb) if (!la.has(k)) out.push({ section: w.section, name: w.name, before: null, after: w.value, change: 'ajout' });
+  const ha = a.header ?? {}, hb = b.header ?? {};
+  for (const key of ['yield_quantity', 'yield_unit', 'perte_standard_pct', 'mode_cout', 'piece_weight_kg']) {
+    if (JSON.stringify(ha[key] ?? null) !== JSON.stringify(hb[key] ?? null)) {
+      out.push({ section: 'En-tête', name: key, before: ha[key] == null ? null : String(ha[key]), after: hb[key] == null ? null : String(hb[key]), change: 'quantite' });
+    }
+  }
+  return out.sort((x, y) => x.section.localeCompare(y.section) || x.name.localeCompare(y.name));
+}
+
+export const bomVersionRepository = {
+  /** Versions d'une fiche, et si la copie de travail diffère de la version active. */
+  async list(recipeId: string) {
+    const versions = (await db.query(
+      `SELECT b.id, b.version_no, b.status, b.valid_from::text AS valid_from, b.valid_to::text AS valid_to, b.reason,
+              b.unit_cost::float8 AS unit_cost, b.activated_at, b.created_at,
+              NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), '') AS activated_by_name
+         FROM bom_versions b LEFT JOIN users u ON u.id = b.activated_by
+        WHERE b.recipe_id = $1 ORDER BY b.version_no DESC`, [recipeId])).rows;
+    const pending = (await db.query(
+      `SELECT NOT EXISTS (SELECT 1 FROM bom_versions b WHERE b.recipe_id = $1 AND b.status = 'active' AND b.snapshot = fn_recipe_bom_snapshot($1)) AS pending`,
+      [recipeId])).rows[0].pending as boolean;
+    return { versions, pendingChanges: pending };
+  },
+
+  /** Version active d'une fiche à une date (ou aujourd'hui). */
+  async activeAt(recipeId: string, date?: string, runner: { query: typeof db.query } = db) {
+    const d = date ?? localIsoDate(new Date());
+    return (await runner.query(
+      `SELECT id, version_no FROM bom_versions
+        WHERE recipe_id = $1 AND status IN ('active', 'obsolete') AND valid_from <= $2::date AND (valid_to IS NULL OR valid_to >= $2::date)
+        ORDER BY version_no DESC LIMIT 1`, [recipeId, d])).rows[0] as { id: string; version_no: number } | undefined;
+  },
+
+  /** Écarts entre la version active et la copie de travail (ce qu'activer changerait). */
+  async pendingDiff(recipeId: string) {
+    const r = (await db.query(
+      `SELECT b.snapshot AS a, fn_recipe_bom_snapshot($1) AS b FROM bom_versions b WHERE b.recipe_id = $1 AND b.status = 'active'`, [recipeId])).rows[0];
+    return r ? diffSnapshots(r.a, r.b) : [];
+  },
+
+  async compare(recipeId: string, a: number, b: number) {
+    const rows = (await db.query(`SELECT version_no, snapshot FROM bom_versions WHERE recipe_id = $1 AND version_no = ANY($2::int[])`, [recipeId, [a, b]])).rows;
+    const sa = rows.find(r => r.version_no === a)?.snapshot, sb = rows.find(r => r.version_no === b)?.snapshot;
+    if (!sa || !sb) throw new Error('Version introuvable');
+    return diffSnapshots(sa, sb);
+  },
+
+  /**
+   * Fige la copie de travail en nouvelle version active à la date d'effet (aujourd'hui par
+   * défaut, jamais dans le futur) ; la version active devient obsolète la veille.
+   */
+  async activate(recipeId: string, input: { reason: string; validFrom?: string }, userId: string) {
+    const today = localIsoDate(new Date());
+    const validFrom = input.validFrom ?? today;
+    if (validFrom > today) throw new Error('La date d\'effet ne peut pas être dans le futur');
+    return withTransaction(async () => {
+      await db.query(`SELECT id FROM recipes WHERE id = $1 FOR UPDATE`, [recipeId]);
+      const cur = (await db.query(`SELECT id, version_no, valid_from::text AS valid_from, snapshot = fn_recipe_bom_snapshot($1) AS same
+                                     FROM bom_versions WHERE recipe_id = $1 AND status = 'active'`, [recipeId])).rows[0];
+      if (cur?.same) throw new Error('Aucune modification depuis la version active');
+      if (cur && validFrom < cur.valid_from) throw new Error(`La date d'effet précède celle de la version ${cur.version_no}`);
+      const next = Number((await db.query(`SELECT COALESCE(MAX(version_no), 0) + 1 AS n FROM bom_versions WHERE recipe_id = $1`, [recipeId])).rows[0].n);
+      if (cur) await db.query(`UPDATE bom_versions SET status = 'obsolete', valid_to = $2::date - 1 WHERE id = $1`, [cur.id, validFrom]);
+      const r = await db.query(
+        `INSERT INTO bom_versions (recipe_id, version_no, status, valid_from, reason, snapshot, unit_cost, created_by, activated_by, activated_at)
+         SELECT $1, $2, 'active', $3::date, $4, fn_recipe_bom_snapshot($1),
+                (SELECT v.total_cost / NULLIF(r.yield_quantity, 0) FROM v_recipe_total_cost_v2 v JOIN recipes r ON r.id = v.id WHERE v.id = $1),
+                $5, $5, now()
+         RETURNING id, version_no, status, valid_from::text AS valid_from`, [recipeId, next, validFrom, input.reason, userId]);
+      return r.rows[0];
+    });
+  },
+};

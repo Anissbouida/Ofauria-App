@@ -11,6 +11,14 @@ import { createRecipeSchema, updateRecipeSchema, bulkDeleteRecipesSchema, saveEt
 import { replaceComponentsSchema, financeSchema, createFormatSchema, duplicateFormatSchema, updateFormatSchema, formatWeightsSchema } from '../validators/recipe-component.validator.js';
 import { validateUuidParams } from '../middleware/validate.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { bomVersionRepository } from '../repositories/bom-version.repository.js';
+import { activateBomVersion } from '../services/bom-version-activation.js';
+import { z } from 'zod';
+
+const activateBomVersionSchema = z.object({
+  reason: z.string().trim().min(3, 'Motif requis').max(1000),
+  validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
 import { requireStepTypes } from '../services/process-referentials.js';
 import { requireUnits } from '../services/unit-referential.js';
 
@@ -89,6 +97,23 @@ router.put(
   recipeComponentController.replace
 );
 router.get('/by-product/:productId', authenticate, recipeController.getByProductId);
+// Versions de nomenclature (M4-01).
+router.get('/:id/bom-versions', authenticate, validateUuidParams('id'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await bomVersionRepository.list(req.params.id as string) });
+}));
+router.get('/:id/bom-versions/pending', authenticate, validateUuidParams('id'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await bomVersionRepository.pendingDiff(req.params.id as string) });
+}));
+router.get('/:id/bom-versions/compare', authenticate, validateUuidParams('id'), asyncHandler(async (req, res) => {
+  try {
+    res.json({ success: true, data: await bomVersionRepository.compare(req.params.id as string, Number(req.query.a), Number(req.query.b)) });
+  } catch (err) { res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } }); }
+}));
+router.post('/:id/bom-versions/activate', authenticate, validateUuidParams('id'), can('recipes.bom_versions'), validate(activateBomVersionSchema), asyncHandler(async (req, res) => {
+  try {
+    res.status(201).json({ success: true, data: await activateBomVersion(req.params.id as string, req.body, (req as never as { user: { userId: string } }).user.userId) });
+  } catch (err) { res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } }); }
+}));
 router.get('/:id', authenticate, recipeController.getById);
 router.get('/:id/versions', authenticate, recipeController.versions);
 router.post('/:id/versions/:versionNumber/restore', authenticate, can('recipes.versions.restore'), recipeController.restoreVersion);

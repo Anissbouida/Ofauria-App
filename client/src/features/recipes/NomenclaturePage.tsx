@@ -10,6 +10,7 @@ import NomenclatureEditor, { type FormatKpi } from './NomenclatureEditor';
 import EtapesSection from './EtapesSection';
 import ExplosionSection from './ExplosionSection';
 import VersionsSection from './VersionsSection';
+import BomVersionBanner from './BomVersionBanner';
 
 const dh = (v: number) => `${v.toFixed(2)} DH`;
 
@@ -136,6 +137,8 @@ export default function NomenclaturePage() {
             </div>
           );
         })()}
+
+        <BomVersionBanner recipeId={recipe.id} />
 
         <NomenclatureEditor recipeId={recipe.id} onFinance={setKpi} onCancel={() => navigate('/recipes?tab=product')} onSaved={() => qc.invalidateQueries({ queryKey: ['recipe', id] })} />
 

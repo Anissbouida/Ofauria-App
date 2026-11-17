@@ -453,6 +453,7 @@ export const PERMISSIONS = {
   "recipes.bulk_restore": { module: "recipes", label: "Recettes : en masse restaurer", defaultRoles: ["admin"] },
   "recipes.commit": { module: "recipes", label: "Recettes : commit", defaultRoles: ["admin"] },
   "recipes.components": { module: "recipes", label: "Recettes : components", defaultRoles: ["admin", "baker", "beldi_sale", "manager", "pastry_chef", "viennoiserie"] },
+  "recipes.bom_versions": { module: "recipes", label: "Versions de nomenclature : activer une nouvelle version", defaultRoles: ["admin", "manager"] },
   "recipes.create": { module: "recipes", label: "Recettes : créer", defaultRoles: ["admin", "baker", "beldi_sale", "manager", "pastry_chef", "viennoiserie"] },
   "recipes.delete": { module: "recipes", label: "Recettes : supprimer", defaultRoles: ["admin"] },
   "recipes.duplicate": { module: "recipes", label: "Recettes : dupliquer", defaultRoles: ["admin", "baker", "beldi_sale", "manager", "pastry_chef", "viennoiserie"] },
