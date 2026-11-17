@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { adjustProductStock } from './product-stock.helper.js';
 
@@ -37,9 +37,8 @@ export const productTransferRepository = {
     if (data.fromStoreId === data.toStoreId) throw fail(400, 'Le site source et le site destination doivent être différents');
     const items = data.items.filter(i => i.productId && Number(i.quantity) > 0);
     if (!items.length) throw fail(400, 'Ajoutez au moins une ligne');
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const stores = (await client.query(`SELECT id FROM stores WHERE id = ANY($1) AND is_active`, [[data.fromStoreId, data.toStoreId]])).rows;
       if (stores.length < 2) throw fail(400, 'Site source ou destination introuvable');
       const number = await nextDocumentNumber(client, 'product_transfer', data.transferDate ?? undefined);
@@ -66,13 +65,7 @@ export const productTransferRepository = {
            VALUES ($1,'transfer_out',$2,$3,$4,$5,$6), ($1,'transfer_in',$7,$8,$4,$9,$6)`,
           [it.productId, -qty, afterFrom, head.id, data.fromStoreId, data.createdBy, qty, afterTo, data.toStoreId]);
       }
-      await client.query('COMMIT');
       return head;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 };
