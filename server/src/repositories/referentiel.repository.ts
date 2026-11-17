@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 
 /* ═══ Ref Tables (registry) ═══ */
 export const refTableRepository = {
@@ -123,22 +123,15 @@ export const refEntryRepository = {
 
   /** Reorder entries within a table */
   async reorder(tableId: string, orderedIds: string[]) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       for (let i = 0; i < orderedIds.length; i++) {
         await client.query(
           'UPDATE ref_entries SET display_order = $1, updated_at = NOW() WHERE table_id = $2 AND id = $3',
           [i + 1, tableId, orderedIds[i]]
         );
       }
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 };
 
