@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { productLotRepository } from './product-lot.repository.js';
 import { removeFromVitrine } from './product-stock.helper.js';
 
@@ -85,9 +85,8 @@ export const openingInventoryCheckRepository = {
     items: OpeningCheckItemInput[];
     notes?: string;
   }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       const totalExpected = params.items.reduce((s, it) => s + it.expectedQty, 0);
       const totalFound = params.items.reduce((s, it) => s + it.foundQty, 0);
@@ -144,14 +143,8 @@ export const openingInventoryCheckRepository = {
         );
       }
 
-      await client.query('COMMIT');
       return check;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
@@ -166,9 +159,8 @@ export const openingInventoryCheckRepository = {
   }) {
     const newStatus: OpeningCheckStatus = params.action === 'approve' ? 'validated' : 'rejected';
 
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       const result = await client.query(
         `UPDATE daily_inventory_checks
@@ -259,14 +251,8 @@ export const openingInventoryCheckRepository = {
         }
       }
 
-      await client.query('COMMIT');
       return check;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async findById(id: string) {
