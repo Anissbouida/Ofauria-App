@@ -1928,7 +1928,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ☐ | G3-04 | Qualité de code en CI | non |
 | ◐ | G3-05 | Migrations | non |
 | ☐ | G3-06 | Helper de transaction | non |
-| ☐ | G3-07 | SQL hors de la couche de données | non |
+| ☑ | G3-07 | SQL hors de la couche de données | non |
 | ☐ | G3-08 | Fichiers géants | non |
 | ☐ | G3-09 | Performance | non |
 | ◐ | G3-10 | Tests du client et de bout en bout | non |
@@ -1937,6 +1937,8 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 **Notes du lot 4.**
 - **G3-01, G3-02, G3-03** : non codables depuis ce poste — ils demandent des ressources Google Cloud (second service Cloud Run et seconde instance Cloud SQL, restauration réelle, outil de suivi des erreurs). À lancer avec les accès au projet cloud.
 - **G3-05** : étapes 1 et 4 déjà en place avant cette passe (le lanceur `src/config/migrate.ts` refuse tout nouveau numéro en double hors des six historiques ; `scripts/test-db-setup.sh` joue toutes les migrations sur une base vide à chaque intégration continue). Ajouts : test statique `migrations-numbering.test.ts` (nom des fichiers, aucun nouveau doublon, liste des doublons tolérés identique à celle du lanceur) et règles écrites dans `server/migrations/README.md` (numérotation, migration appliquée = figée, migration destructive précédée d'une sauvegarde, pas de retour arrière générique, pièges de production, application à la main). ÉTAPE 2 — CONSTAT : `migrate` n'échoue plus sur la 266 en local (son empreinte est bonne) ; il s'arrête parce que SIX migrations, 460 à 465, sont enregistrées dans la base de développement avec une empreinte différente de celle des fichiers commités (les mêmes sur `main`) : elles ont été appliquées à la main avant d'être figées. Le contenu appliqué n'est plus disponible, donc l'équivalence du schéma ne peut pas être prouvée d'ici. DÉCISION à prendre : soit réaligner les six empreintes de la base locale (une requête `UPDATE _migrations`, sans effet sur le schéma), soit rejouer ces six migrations si elles sont rejouables. La production n'est pas concernée si elle les a reçues par le lanceur.
+- **G3-04** : non fait. ESLint et Prettier ne sont pas installés (le script `lint` de la racine pointe sur un outil absent) : les ajouter est une montée de dépendances de développement et un changement du fichier de verrouillage, à faire sur une branche dédiée. Les deux règles de code voulues par le plan sont tenues en attendant par des gardes de test (G0-07 validation des mutations, G3-07 SQL hors dépôts).
+- **G3-07** : règle tenue par une garde de test plutôt que par une règle de lint (pas de dépendance nouvelle), sur le modèle de G0-07. `sql-outside-repositories-guard.test.ts` compte les appels SQL directs (`db.query`, `client.query`, `pool.query`, `db.getClient`) des contrôleurs et des fichiers de routes ; `fixtures/sql-outside-repositories.json` porte l'état au 2026-11-16 : 315 appels dans 39 fichiers (le plus chargé : `product.controller.ts`, 45). Le compteur d'un fichier ne peut que baisser : une requête ajoutée, ou un nouveau fichier qui en contient, fait échouer le test ; un fichier nettoyé oblige à baisser son compteur. La résorption se fait à chaque passage sur un fichier.
 - **G3-10** : l'étape 1 est faite depuis G0-21 (Vitest côté client, test de la file hors ligne, étape d'intégration continue). Playwright et les cinq parcours demandent le staging (G3-01).
 
 ### Lots suivants
