@@ -51,7 +51,7 @@ export const recipeFicheRepository = {
               COALESCE(NULLIF(ri.unit, ''), ing.unit) AS unit,
               ri.quantity
                 * COALESCE(ing.unit_cost, 0)
-                * fn_unit_conv(COALESCE(NULLIF(ri.unit, ''), ing.unit), ing.unit, ing.densite_kg_l) AS cout_dh
+                * fn_convert_factor(COALESCE(NULLIF(ri.unit, ''), ing.unit), ing.unit, 'ingredient', ing.id) AS cout_dh
          FROM recipe_ingredients ri
          JOIN ingredients ing ON ing.id = ri.ingredient_id
         WHERE ri.recipe_id = $1
@@ -123,7 +123,7 @@ export const recipeFicheRepository = {
               COALESCE(NULLIF(ri.unit, ''), ing.unit) AS unit,
               ri.quantity
                 * COALESCE(ing.unit_cost, 0)
-                * fn_unit_conv(COALESCE(NULLIF(ri.unit, ''), ing.unit), ing.unit, ing.densite_kg_l) AS cout_dh
+                * fn_convert_factor(COALESCE(NULLIF(ri.unit, ''), ing.unit), ing.unit, 'ingredient', ing.id) AS cout_dh
          FROM sources s
          JOIN recipes br ON br.id = s.id
          LEFT JOIN v_recipe_total_cost vtc ON vtc.id = br.id
@@ -134,7 +134,7 @@ export const recipeFicheRepository = {
          LEFT JOIN LATERAL (
            SELECT SUM(
                     c.quantite
-                    * fn_unit_conv(c.unite::text, br.yield_unit::text)
+                    * fn_convert_factor(c.unite::text, br.yield_unit::text, NULL, NULL)
                     / NULLIF(1 - COALESCE(c.perte_pct, 0) / 100, 0)
                   ) AS besoin_net
              FROM recipe_format_components c
