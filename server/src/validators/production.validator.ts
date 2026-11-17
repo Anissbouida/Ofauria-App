@@ -156,3 +156,15 @@ export const updatePlanHeaderSchema = z.object({
   plannedStart: z.string().min(10).optional().nullable(),
   plannedEnd: z.string().min(10).optional().nullable(),
 });
+
+/** Validation des propositions du calcul des besoins phasé (G5-04). */
+export const mrpPhasedValidateSchema = z.object({
+  picks: z.array(z.object({
+    kind: z.enum(['product', 'ingredient']),
+    id: uuid,
+    qty: z.number().finite().positive(),
+    unit: z.string().max(20),
+    releaseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    needDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  })).min(1).max(500),
+});

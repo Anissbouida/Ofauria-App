@@ -3,6 +3,8 @@ import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productionRepository } from '../repositories/production.repository.js';
 import { hasPermission } from '../services/permissions.js';
+import { mrpPhased, mrpParams, validateProposals } from '../services/mrp-phased.js';
+import { localIsoDate } from '../utils/local-date.js';
 import { productionOrderTypeRepository } from '../repositories/production-order-type.repository.js';
 import { mrpRepository } from '../repositories/mrp.repository.js';
 import { forecastRepository } from '../repositories/forecast.repository.js';
@@ -189,6 +191,19 @@ export const productionController = {
     const out = await setPolicy(req.params.key as string, (b.scopeType ?? '') as PolicyScope, String(b.scopeId ?? ''), b.value ?? null, req.user!.userId);
     if ('error' in out) { res.status(400).json({ success: false, error: { message: out.error } }); return; }
     res.json({ success: true, data: out });
+  },
+  // ─── Calcul des besoins phasé (G5-04) ───
+  async mrpPhased(req: AuthRequest, res: Response) {
+    const storeId = req.user!.storeId;
+    if (!storeId) { res.status(400).json({ success: false, error: { message: 'Compte non rattaché à un établissement' } }); return; }
+    const from = typeof req.query.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : localIsoDate(new Date());
+    const horizon = req.query.days ? Math.min(Math.max(Number(req.query.days) || 14, 1), 60) : undefined;
+    res.json({ success: true, data: { ...(await mrpPhased(storeId, from, horizon)), params: await mrpParams() } });
+  },
+  async mrpPhasedValidate(req: AuthRequest, res: Response) {
+    const storeId = req.user!.storeId;
+    if (!storeId) { res.status(400).json({ success: false, error: { message: 'Compte non rattaché à un établissement' } }); return; }
+    res.status(201).json({ success: true, data: await validateProposals(storeId, req.user!.userId, req.body.picks) });
   },
   // ─── Types d'ordre (M2-01) ───
   async listOrderTypes(req: AuthRequest, res: Response) {

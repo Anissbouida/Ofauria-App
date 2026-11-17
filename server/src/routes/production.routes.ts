@@ -8,7 +8,7 @@ import { validate, validateQuery, validateUuidParams } from '../middleware/valid
 import {
   createPlanSchema, updateItemsSchema, itemIdsSchema, startItemsSchema, produceItemsSchema,
   completeSchema, cancelItemsSchema, relaunchSchema, addActivitySchema, requestStockVerificationSchema, listQuerySchema, setPolicySchema,
-  createOrderTypeSchema, updateOrderTypeSchema, updatePlanHeaderSchema,
+  createOrderTypeSchema, updateOrderTypeSchema, updatePlanHeaderSchema, mrpPhasedValidateSchema,
 } from '../validators/production.validator.js';
 
 const id = validateUuidParams('id');
@@ -27,6 +27,8 @@ router.get('/transfers/pending', authenticate, asyncHandler(productionController
 
 // MRP — besoins nets du jour (plan directeur). Avant /:id pour ne pas être capturé comme id.
 router.get('/mrp', authenticate, can('production.view'), asyncHandler(productionController.mrp));
+router.get('/mrp/phased', authenticate, can('production.view'), asyncHandler(productionController.mrpPhased));
+router.post('/mrp/phased/validate', authenticate, can('production.generate'), validate(mrpPhasedValidateSchema), asyncHandler(productionController.mrpPhasedValidate));
 router.get('/mrp/horizon', authenticate, can('production.view'), asyncHandler(productionController.mrpHorizon));
 router.get('/mrp/semi-finished', authenticate, can('production.view'), asyncHandler(productionController.mrpSemiFinished));
 router.post('/mrp/generate', authenticate, can('production.generate'), asyncHandler(productionController.mrpGenerate));

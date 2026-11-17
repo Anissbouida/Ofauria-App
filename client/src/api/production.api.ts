@@ -86,6 +86,10 @@ export const productionApi = {
     api.get('/production/mrp/material-requirements', { params: { date, ...(store ? { store } : {}) } }).then(r => r.data.data),
   mrpGeneratePurchaseRequests: (date: string, store?: string): Promise<{ created: number; skipped_existing: number; candidates: number }> =>
     api.post('/production/mrp/generate-purchase-requests', { date, ...(store ? { store } : {}) }).then(r => r.data.data),
+  /** Calcul des besoins phasé (G5-04). */
+  mrpPhased: (from: string): Promise<MrpPhased> => api.get('/production/mrp/phased', { params: { from } }).then(r => r.data.data),
+  mrpPhasedValidate: (picks: { kind: 'product' | 'ingredient'; id: string; qty: number; unit: string; releaseDate: string; needDate: string }[]): Promise<{ plans: string[]; requests: number }> =>
+    api.post('/production/mrp/phased/validate', { picks }).then(r => r.data.data),
   /** Types d'ordre de fabrication (M2-01). */
   orderTypes: (activeOnly = false): Promise<ProductionOrderType[]> =>
     api.get('/production/order-types', { params: activeOnly ? { active: '1' } : {} }).then(r => r.data.data),
@@ -251,4 +255,18 @@ export const PRIORITY_LABELS: Record<number, string> = { 1: 'Urgente', 2: 'Haute
 export function useOrderTypes(activeOnly = true) {
   const { data, isLoading } = useQuery({ queryKey: ['production-order-types', activeOnly], queryFn: () => productionApi.orderTypes(activeOnly), staleTime: 60_000 });
   return { types: data ?? [], isLoading };
+}
+
+/** Calcul des besoins phasé (G5-04). */
+export interface MrpPhasedProposal {
+  key: string; kind: 'product' | 'base' | 'ingredient'; id: string; name: string; unit: string;
+  qty: number; needDate: string; releaseDate: string; late: boolean;
+}
+export interface MrpPhased {
+  days: string[];
+  params: { horizon_days: number; product_lead_days: number; base_lead_days: number; default_purchase_lead_days: number };
+  items: { key: string; kind: 'product' | 'base' | 'ingredient'; id: string; name: string; unit: string; level: number; onHand: number; safety: number; leadDays: number;
+    days: { date: string; gross: number; receipts: number; planned: number; projected: number }[] }[];
+  proposals: MrpPhasedProposal[];
+  messages: { key: string; name: string; ref: string; date: string; qty: number; action: 'avancer' | 'retarder' | 'annuler'; newDate: string | null }[];
 }

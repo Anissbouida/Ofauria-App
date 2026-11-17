@@ -1540,6 +1540,14 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "GET /production/mrp/phased": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /production/mrp/semi-finished": [
   "admin",
   "baker",
@@ -3543,6 +3551,14 @@
   "viennoiserie"
  ],
  "POST /production/mrp/generate-purchase-requests": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/mrp/phased/validate": [
   "admin",
   "baker",
   "beldi_sale",

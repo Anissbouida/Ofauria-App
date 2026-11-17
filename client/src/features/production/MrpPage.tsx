@@ -9,6 +9,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import MrpPhasedView from './MrpPhasedView';
 
 const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const tomorrow = () => addDays(new Date().toISOString().slice(0, 10), 1);
@@ -23,7 +24,7 @@ const inp: React.CSSProperties = { padding: '0.4rem 0.55rem', border: '1px solid
  *   Semaine : besoins nets par jour sur un horizon (lecture seule).
  */
 export default function MrpPage() {
-  const [mode, setMode] = useState<'day' | 'week'>('day');
+  const [mode, setMode] = useState<'day' | 'week' | 'phased'>('day');
   const [date, setDate] = useState(tomorrow());
 
   return (
@@ -36,9 +37,11 @@ export default function MrpPage() {
       <div style={{ display: 'flex', gap: 8 }}>
         <button className={mode === 'day' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setMode('day')}>Jour</button>
         <button className={mode === 'week' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setMode('week')}>Semaine</button>
+        <button className={mode === 'phased' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setMode('phased')}>Besoins phasés</button>
       </div>
 
-      {mode === 'day' ? <DayView date={date} setDate={setDate} /> : <WeekView from={date} setFrom={setDate} />}
+      {mode === 'day' ? <DayView date={date} setDate={setDate} /> : mode === 'week' ? <WeekView from={date} setFrom={setDate} />
+        : <MrpPhasedView from={new Date().toLocaleDateString('sv-SE')} />}
     </div>
   );
 }
