@@ -25,6 +25,10 @@ export interface BankLine {
   matched_entry_line_id: string | null;
   matched_entry_number: string | null;
   reconciled: boolean;
+  /** G4-02 : comment la ligne a été rapprochée. */
+  match_method?: 'reference' | 'rule' | 'amount' | 'group' | 'manual' | null;
+  match_confidence?: number | null;
+  match_rule_label?: string | null;
 }
 
 export interface LedgerLine {
@@ -67,7 +71,16 @@ export const bankReconciliationApi = {
     api.post('/bank-reconciliation/statements', data).then(r => r.data.data),
   getReconciliation: (id: string): Promise<ReconciliationView> =>
     api.get(`/bank-reconciliation/statements/${id}`).then(r => r.data.data),
-  autoMatch: (id: string): Promise<{ matched: number }> =>
+  /** G4-02 — propositions du moteur à règles (rien n'est écrit) et validation d'une sélection. */
+  proposals: (id: string): Promise<{ unmatched: number; proposals: BankProposal[] }> =>
+    api.get(`/bank-reconciliation/statements/${id}/proposals`).then(r => r.data.data),
+  apply: (id: string, bankLineIds: string[]): Promise<{ applied: number; proposed: number; unmatched: number; errors: string[] }> =>
+    api.post(`/bank-reconciliation/statements/${id}/apply`, { bankLineIds }).then(r => r.data.data),
+  rules: (): Promise<BankRule[]> => api.get('/bank-reconciliation/rules').then(r => r.data.data),
+  saveRule: (data: BankRuleInput, id?: string): Promise<BankRule> =>
+    (id ? api.put(`/bank-reconciliation/rules/${id}`, data) : api.post('/bank-reconciliation/rules', data)).then(r => r.data.data),
+  deleteRule: (id: string) => api.delete(`/bank-reconciliation/rules/${id}`).then(() => undefined),
+  autoMatch: (id: string): Promise<{ matched: number; proposed?: number; errors?: string[] }> =>
     api.post(`/bank-reconciliation/statements/${id}/auto-match`).then(r => r.data.data),
   matchLine: (bankLineId: string, entryLineId: string): Promise<BankLine> =>
     api.post(`/bank-reconciliation/lines/${bankLineId}/match`, { entryLineId }).then(r => r.data.data),
@@ -111,4 +124,22 @@ export const bankImportApi = {
   profiles: (): Promise<BankImportProfile[]> => api.get('/bank-reconciliation/import/profiles').then(r => r.data.data),
   saveProfile: (p: BankCsvProfile & { name: string; treasuryAccountId?: string | null }): Promise<BankImportProfile> =>
     api.post('/bank-reconciliation/import/profiles', p).then(r => r.data.data),
+};
+
+/* ═══ G4-02 — rapprochement par règles ═══ */
+export type BankProposal = {
+  bankLineId: string; method: 'reference' | 'rule' | 'amount' | 'group'; confidence: number; entryLineIds: string[];
+  ruleId?: string; ruleLabel?: string; generate?: { counterAccountId: string; label: string }; entryNumbers: string[];
+};
+export type BankRuleInput = {
+  priority?: number; label: string; isActive?: boolean; labelContains?: string | null; labelRegex?: string | null;
+  direction?: 'in' | 'out' | null; amountMin?: number | null; amountMax?: number | null;
+  action: 'match' | 'post_entry'; counterAccountId?: string | null; entryLabel?: string | null;
+  amountTolerance?: number; dateToleranceDays?: number;
+};
+export type BankRule = {
+  id: string; priority: number; label: string; is_active: boolean; label_contains: string | null; label_regex: string | null;
+  direction: 'in' | 'out' | null; amount_min: number | null; amount_max: number | null; action: 'match' | 'post_entry';
+  counter_account_id: string | null; entry_label: string | null; amount_tolerance: number; date_tolerance_days: number;
+  counter_account_code?: string | null; counter_account_label?: string | null; uses?: number;
 };

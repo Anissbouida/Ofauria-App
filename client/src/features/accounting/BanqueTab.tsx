@@ -1,7 +1,11 @@
+import BankRulesPanel, { RuleFormModal, type RuleDraft } from './BankRulesPanel';
+import { StatusTag } from '../../components/ui/StatusTag';
+import { apiErrorMessage } from '../../api/errors';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Loader2, Lock, Plus, Trash2, Landmark, Wand2, Link2, Unlink, ArrowLeft, ChevronRight,
+  ListChecks, CheckCheck,
 } from 'lucide-react';
 import { bankReconciliationApi } from '../../api/bank-reconciliation.api';
 import type { BankStatement, BankLine, LedgerLine } from '../../api/bank-reconciliation.api';
@@ -116,6 +120,9 @@ export default function BanqueTab() {
         </div>
       )}
 
+      {/* G4-02 : règles du rapprochement automatique. */}
+      <BankRulesPanel />
+
       {showImport && <BankImportModal onClose={() => setShowImport(false)} onSaved={() => { setShowImport(false); queryClient.invalidateQueries({ queryKey: ['bank-statements'] }); }} />}
     </>
   );
@@ -124,6 +131,13 @@ export default function BanqueTab() {
 function ReconciliationView({ statementId, onBack }: { statementId: string; onBack: () => void }) {
   const queryClient = useQueryClient();
   const [selectedBank, setSelectedBank] = useState<string | null>(null);
+  // G4-02 : propositions du moteur à règles, sélection pour validation en masse, règle depuis une ligne.
+  const [showProposals, setShowProposals] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [ruleDraft, setRuleDraft] = useState<RuleDraft | null>(null);
+  const { data: prop, isFetching: loadingProposals } = useQuery({
+    queryKey: ['bank-proposals', statementId], queryFn: () => bankReconciliationApi.proposals(statementId), enabled: showProposals,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['bank-reconciliation', statementId],
@@ -133,11 +147,25 @@ function ReconciliationView({ statementId, onBack }: { statementId: string; onBa
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['bank-reconciliation', statementId] });
     queryClient.invalidateQueries({ queryKey: ['bank-statements'] });
+    queryClient.invalidateQueries({ queryKey: ['bank-proposals', statementId] });
   };
+  const applyPicked = useMutation({
+    mutationFn: () => bankReconciliationApi.apply(statementId, [...picked]),
+    onSuccess: r => {
+      invalidate(); setPicked(new Set());
+      notify.success(`${r.applied} rapprochement${r.applied > 1 ? 's' : ''} validé${r.applied > 1 ? 's' : ''}`);
+      if (r.errors.length) notify.error(r.errors.join(' — '));
+    },
+    onError: e => notify.error(apiErrorMessage(e)),
+  });
 
   const autoMatch = useMutation({
     mutationFn: () => bankReconciliationApi.autoMatch(statementId),
-    onSuccess: (r) => { invalidate(); notify.success(`${r.matched} ligne(s) rapprochée(s) automatiquement`); },
+    onSuccess: (r) => {
+      invalidate();
+      notify.success(`${r.matched} ligne(s) rapprochée(s) automatiquement${r.proposed && r.proposed > r.matched ? ` — ${r.proposed - r.matched} proposition(s) à valider` : ''}`);
+      if (r.errors?.length) notify.error(r.errors.join(' — '));
+    },
   });
   const matchLine = useMutation({
     mutationFn: ({ b, e }: { b: string; e: string }) => bankReconciliationApi.matchLine(b, e),
@@ -166,6 +194,9 @@ function ReconciliationView({ statementId, onBack }: { statementId: string; onBa
         </button>
         <strong style={{ fontSize: '0.875rem', alignSelf: 'center' }}>{data.statement.label}</strong>
         <div style={{ flex: 1 }} />
+        <button type="button" onClick={() => setShowProposals(v => !v)} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <ListChecks size={13} /> {showProposals ? 'Masquer les propositions' : 'Propositions'}
+        </button>
         <button onClick={() => autoMatch.mutate()} disabled={autoMatch.isPending} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           {autoMatch.isPending ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />} Rapprochement auto
@@ -190,9 +221,53 @@ function ReconciliationView({ statementId, onBack }: { statementId: string; onBa
         </div>
       </div>
 
+      {showProposals && (
+        <div className="odoo-section" style={{ padding: 0, marginBottom: 12 }}>
+          <div style={{ padding: '10px 14px', background: 'var(--theme-bg-secondary)', borderBottom: '1px solid var(--theme-bg-separator)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <strong style={{ fontSize: '0.85rem' }}>Propositions du rapprochement</strong>
+            <span style={{ fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>référence 100 · règle 90-95 · montant 80 · regroupement 70</span>
+            <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
+              <button type="button" className="odoo-btn-secondary" disabled={!prop?.proposals.length} onClick={() => setPicked(new Set(prop?.proposals.map(x => x.bankLineId)))}>Tout cocher</button>
+              <button type="button" className="odoo-btn-primary" disabled={!picked.size || applyPicked.isPending} onClick={() => applyPicked.mutate()}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {applyPicked.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCheck size={13} />} Valider la sélection ({picked.size})
+              </button>
+            </span>
+          </div>
+          {loadingProposals ? <div style={{ padding: 12 }}><Loader2 size={14} className="animate-spin" /></div> : !prop?.proposals.length ? (
+            <div style={{ padding: 12, fontSize: '0.82rem', color: 'var(--theme-text-muted)' }}>Aucune proposition : les lignes restantes n'ont pas de correspondance sûre.</div>
+          ) : (
+            <table className="odoo-table" style={{ margin: 0, width: '100%' }}>
+              <tbody>
+                {prop.proposals.map(x => {
+                  const bl = (data.bankLines as BankLine[]).find(b => b.id === x.bankLineId);
+                  const on = picked.has(x.bankLineId);
+                  return (
+                    <tr key={x.bankLineId}>
+                      <td style={{ width: 32 }}><input type="checkbox" checked={on} aria-label="Retenir la proposition"
+                        onChange={() => setPicked(s => { const n2 = new Set(s); if (on) n2.delete(x.bankLineId); else n2.add(x.bankLineId); return n2; })} /></td>
+                      <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', width: 70 }}>{bl ? fmtDate(bl.operation_date) : ''}</td>
+                      <td style={{ fontSize: '0.8125rem' }}>{bl?.label ?? '—'}</td>
+                      <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>{bl ? `${bl.direction === 'in' ? '+' : '−'}${n(bl.amount)}` : ''}</td>
+                      <td style={{ fontSize: '0.8rem' }}>
+                        {x.generate ? `Écriture à générer : ${x.generate.label}` : x.entryNumbers.join(' + ')}
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <StatusTag tone={x.confidence >= 90 ? 'done' : x.confidence >= 80 ? 'todo' : 'progress'}
+                          label={`${METHOD_LABEL[x.method]}${x.ruleLabel ? ` · ${x.ruleLabel}` : ''} · ${x.confidence}`} />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
       {selectedBank && (
         <div style={{ padding: '8px 12px', background: '#e8f0fe', borderRadius: 6, marginBottom: 8, fontSize: '0.8125rem', color: '#185fa5' }}>
-          Ligne de relevé sélectionnée — cliquez sur une écriture à droite pour la rapprocher, ou <button onClick={() => setSelectedBank(null)} style={{ background: 'none', border: 'none', color: '#185fa5', textDecoration: 'underline', cursor: 'pointer' }}>annuler</button>.
+          Ligne de relevé sélectionnée — cliquez sur une écriture à droite pour la rapprocher, <button type="button" onClick={() => { const bl = (data.bankLines as BankLine[]).find(b => b.id === selectedBank); if (bl) setRuleDraft(draftFromLine(bl)); }} style={{ background: 'none', border: 'none', color: '#185fa5', textDecoration: 'underline', cursor: 'pointer' }}>créer une règle pour ce libellé</button>, ou <button onClick={() => setSelectedBank(null)} style={{ background: 'none', border: 'none', color: '#185fa5', textDecoration: 'underline', cursor: 'pointer' }}>annuler</button>.
         </div>
       )}
 
@@ -218,7 +293,7 @@ function ReconciliationView({ statementId, onBack }: { statementId: string; onBa
                   </td>
                   <td style={{ width: 36, textAlign: 'center' }}>
                     {l.reconciled ? (
-                      <button onClick={(e) => { e.stopPropagation(); unmatchLine.mutate(l.id); }} title={`Rapprochée à ${l.matched_entry_number}`} className="odoo-btn-secondary" style={{ padding: '2px 4px' }}><Unlink size={11} /></button>
+                      <button onClick={(e) => { e.stopPropagation(); unmatchLine.mutate(l.id); }} title={`Rapprochée à ${l.matched_entry_number ?? '—'}${l.match_method ? ` (${METHOD_LABEL[l.match_method] ?? l.match_method}${l.match_rule_label ? ` · ${l.match_rule_label}` : ''})` : ''}`} className="odoo-btn-secondary" style={{ padding: '2px 4px' }}><Unlink size={11} /></button>
                     ) : <span style={{ color: 'var(--theme-text-tertiary)' }}>○</span>}
                   </td>
                 </tr>
@@ -258,6 +333,17 @@ function ReconciliationView({ statementId, onBack }: { statementId: string; onBa
           </table>
         </div>
       </div>
+
+      {ruleDraft && <RuleFormModal draft={ruleDraft} onClose={() => setRuleDraft(null)}
+        onSaved={() => { setRuleDraft(null); queryClient.invalidateQueries({ queryKey: ['bank-rules'] }); queryClient.invalidateQueries({ queryKey: ['bank-proposals', statementId] }); }} />}
     </>
   );
+}
+
+const METHOD_LABEL: Record<string, string> = { reference: 'Référence', rule: 'Règle', amount: 'Montant', group: 'Regroupement', manual: 'Manuel' };
+
+/** Règle proposée à partir d'une ligne de relevé : les deux premiers mots du libellé, sans chiffres. */
+function draftFromLine(l: BankLine): RuleDraft {
+  const words = (l.label ?? '').toUpperCase().replace(/[0-9/.-]+/g, ' ').split(/\s+/).filter(w => w.length > 2).slice(0, 2);
+  return { label: words.join(' ') || 'Nouvelle règle', labelContains: words.join(' ') || null, direction: l.direction, action: 'post_entry' };
 }
