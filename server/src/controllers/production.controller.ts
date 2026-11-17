@@ -2,6 +2,7 @@ import { listPolicies, setPolicy, type PolicyScope } from '../services/policies.
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productionRepository } from '../repositories/production.repository.js';
+import { hasPermission } from '../services/permissions.js';
 import { productionOrderTypeRepository } from '../repositories/production-order-type.repository.js';
 import { mrpRepository } from '../repositories/mrp.repository.js';
 import { forecastRepository } from '../repositories/forecast.repository.js';
@@ -18,11 +19,24 @@ import { declareProduction, listPlanObservations } from '../services/production-
 
 /** Charge le plan et vérifie qu'il appartient au magasin de l'utilisateur
  *  (admin sans magasin = accès global). Répond 404 / 403 et renvoie null sinon. */
-async function loadOwnedPlan(req: AuthRequest, res: Response) {
+/**
+ * Plan de la requête, vérifié : même établissement, et (M2-06) pour agir sur un ordre,
+ * appartenance à son atelier — sauf permission « tous ateliers » (admin, gérant par
+ * défaut). Un ordre sans atelier reste ouvert. La lecture (`read`) n'exige pas l'atelier.
+ */
+async function loadOwnedPlan(req: AuthRequest, res: Response, opts: { read?: boolean } = {}) {
   const plan = await productionRepository.findById(req.params.id);
   if (!plan) { res.status(404).json({ success: false, error: { message: 'Plan non trouve' } }); return null; }
   if (req.user!.storeId && plan.store_id && plan.store_id !== req.user!.storeId) {
     res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return null;
+  }
+  if (!opts.read && plan.target_role && !(await hasPermission(req.user!, 'production.all_workshops'))) {
+    const mine = await workshopsOf(req.user!);
+    if (!mine.includes(plan.target_role as string)) {
+      res.status(403).json({ success: false, error: { code: 'WORKSHOP_FORBIDDEN',
+        message: `Cet ordre relève de l'atelier ${await workshopLabel(plan.target_role as string)} : vous n'en êtes pas membre.` } });
+      return null;
+    }
   }
   return plan;
 }
@@ -228,7 +242,7 @@ export const productionController = {
   },
 
   async getById(req: AuthRequest, res: Response) {
-    const plan = await loadOwnedPlan(req, res);
+    const plan = await loadOwnedPlan(req, res, { read: true });
     if (!plan) return;
     if (req.user!.storeId && plan.store_id && plan.store_id !== req.user!.storeId) {
       res.status(403).json({ success: false, error: { message: 'Acces refuse' } }); return;
@@ -656,7 +670,7 @@ export const productionController = {
   },
 
   async analyzeSubRecipes(req: AuthRequest, res: Response) {
-    const plan = await loadOwnedPlan(req, res);
+    const plan = await loadOwnedPlan(req, res, { read: true });
     if (!plan) return;
     const analysis = await productionRepository.analyzeSubRecipes(req.params.id);
     res.json({ success: true, data: analysis });
@@ -909,7 +923,7 @@ export const productionController = {
 
   /** GET /production/:id/events — journal des transitions plan + bons (mig 299). */
   async getEvents(req: AuthRequest, res: Response) {
-    const plan = await loadOwnedPlan(req, res);
+    const plan = await loadOwnedPlan(req, res, { read: true });
     if (!plan) return;
     res.json({ success: true, data: await listPlanEvents(req.params.id) });
   },

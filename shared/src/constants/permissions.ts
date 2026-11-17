@@ -269,6 +269,7 @@ export const PERMISSIONS = {
   "production.delete": { module: "production", label: "Production : supprimer", defaultRoles: ["admin", "baker", "beldi_sale", "manager", "pastry_chef", "viennoiserie"] },
   "production.detect_semi_finished": { module: "production", label: "Production : détecter semi fini", defaultRoles: ["admin", "baker", "beldi_sale", "manager", "pastry_chef", "viennoiserie"] },
   "production.edit": { module: "production", label: "Production : modifier", defaultRoles: ["admin", "manager"] },
+  "production.all_workshops": { module: "production", label: "Agir sur les ordres de tous les ateliers (sinon : ses ateliers seulement)", defaultRoles: ["admin", "manager"] },
   "production.forecast.accuracy.view": { module: "production", label: "Prévision › accuracy : consulter", defaultRoles: ["admin", "manager"] },
   "production.forecast.day.view": { module: "production", label: "Prévision › day : consulter", defaultRoles: ["admin", "baker", "beldi_sale", "manager", "pastry_chef", "viennoiserie"] },
   "production.forecast.delete": { module: "production", label: "Prévision : supprimer", defaultRoles: ["admin", "manager"] },
