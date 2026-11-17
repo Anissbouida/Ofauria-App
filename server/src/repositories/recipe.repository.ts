@@ -1,5 +1,5 @@
 import { policyNumber } from '../services/policies.js';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { snapshotRecipeVersion } from './recipe-version.helper.js';
 import {
   yieldInSellingUnit,
@@ -409,9 +409,8 @@ export const recipeRepository = {
     packaging?: { packagingId: string; quantity: number; unit?: string | null }[];
     formats?: { contenantId: string; quantiteParFormatG: number; quantiteParFormatUnite?: string; nbParDefaut: number; coutEmballageUnitaire?: number; ordre?: number; prixVenteUnitaireOverride?: number | null; marginMultiplierOverride?: number | null }[];
   }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       // Garde-fou yield_unit vs products.sale_unit : si pas de piece_weight_kg
       // alors qu'il est requis, on refuse l'enregistrement avec un message clair.
@@ -556,14 +555,8 @@ export const recipeRepository = {
         data.salePrice ?? null,
       );
 
-      await client.query('COMMIT');
       return recipeResult.rows[0];
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /** Garde-fou : si la recette est liee a un produit dont sale_unit ne coincide
