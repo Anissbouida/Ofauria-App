@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 
 /**
@@ -108,9 +108,8 @@ export const landedCostRepository = {
     if (!lines.length) return { error: 'no_lines' as const };
     const alloc = allocate(lines.map(l => ({ id: l.id, quantity: Number(l.quantity), value: Number(l.value), weight: l.weight_kg == null ? null : Number(l.weight_kg) })), total, input.method);
     if (!alloc.length) return { error: 'no_basis' as const };
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const number = await nextDocumentNumber(client, 'landed_cost');
       const v = await client.query(
         `INSERT INTO landed_cost_vouchers (number, store_id, reception_voucher_id, allocation_method, total_amount, notes, created_by)
@@ -132,14 +131,8 @@ export const landedCostRepository = {
           [id, a.id, a.basis, a.sharePct, a.amount, a.quantity, a.unitIncrement, lines.find(l => l.id === a.id)?.ingredient_lot_id ?? null],
         );
       }
-      await client.query('COMMIT');
       return { data: await this.findById(id) };
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async findById(id: string) {
