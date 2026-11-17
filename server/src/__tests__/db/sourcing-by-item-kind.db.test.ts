@@ -42,12 +42,18 @@ describe.skipIf(!hasTestDb)("Appro selon la nature de l'article", () => {
         [`C-${RUN}`, fx.userId]);
       const orderId = order.rows[0].id;
 
+      // Vraies lignes de commande : la ligne d'ordre y est rattachée (M2-08, mig 548).
+      const line = async (productId: string) => (await client.query(
+        `INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal) VALUES ($1, $2, 3, 10, 30) RETURNING id`,
+        [orderId, productId])).rows[0].id as string;
+      const lineMade = await line(made);
+
       // Aucun stock magasin pour ces produits → tout le demandé est un manque.
       const res = await computeSourcingAndCreatePlan(client, {
         items: [
-          { itemId: 'i-made', productId: made, requestedQuantity: 3 },
-          { itemId: 'i-resale', productId: resale, requestedQuantity: 3 },
-          { itemId: 'i-service', productId: service, requestedQuantity: 3 },
+          { itemId: lineMade, productId: made, requestedQuantity: 3 },
+          { itemId: await line(resale), productId: resale, requestedQuantity: 3 },
+          { itemId: await line(service), productId: service, requestedQuantity: 3 },
         ],
         storeId: fx.storeId, createdBy: fx.userId, planLabel: 'test', targetRole: null,
         linkColumn: 'order_id', linkId: orderId, needDate: null,
@@ -66,6 +72,9 @@ describe.skipIf(!hasTestDb)("Appro selon la nature de l'article", () => {
       const planProducts = (await client.query(
         `SELECT product_id FROM production_plan_items WHERE plan_id = $1`, [res.productionPlanId])).rows.map(r => r.product_id);
       expect(planProducts).toEqual([made]);
+      // M2-08 : la ligne d'ordre connaît la ligne de commande qu'elle sert.
+      expect((await client.query(
+        `SELECT order_item_id FROM production_plan_items WHERE plan_id = $1`, [res.productionPlanId])).rows[0].order_item_id).toBe(lineMade);
 
       await client.query('ROLLBACK');
     } finally {

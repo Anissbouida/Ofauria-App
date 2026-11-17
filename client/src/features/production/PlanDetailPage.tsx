@@ -17,7 +17,7 @@ import {
   ArrowLeft, CheckCircle, CheckCircle2, Play, AlertTriangle, Factory, Printer, Package,
   User, Calendar, Box, Clock, RotateCcw, XCircle, ChefHat,
   Hash, FileText, Loader2, PackageOpen, Layers, Beaker, TrendingUp, Flame,
-  Truck, Eye, Lock, RefreshCw, BookOpen, Scale,
+  Truck, Eye, Lock, RefreshCw, BookOpen, Scale, ShoppingBag,
   MessageSquare, Send, Info, Trash2, ChevronDown, LayoutDashboard, Coins, type LucideIcon
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -856,6 +856,17 @@ export default function PlanDetailPage() {
                   <td><span className={`odoo-status-dot ${dot}`} /></td>
                   <td>
                     <span style={{ fontWeight: 600, textDecoration: isCancelled ? 'line-through' : undefined }}>{item.product_name as string}</span>
+                    {item.line_order_number && (
+                      <div style={{ marginTop: 3 }}>
+                        <a href={`/orders/${item.line_order_id as string}`} onClick={(e) => { e.preventDefault(); navigate(`/orders/${item.line_order_id as string}`); }}
+                          className="odoo-tag odoo-tag-blue" title="Ligne de commande servie par cette ligne d'ordre"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}>
+                          <ShoppingBag size={10} aria-hidden /> {item.line_order_number as string}
+                          {item.line_order_customer ? ` · ${item.line_order_customer as string}` : ''}
+                          {item.line_order_quantity ? ` · ${parseFloat(String(item.line_order_quantity))} cmd.` : ''}
+                        </a>
+                      </div>
+                    )}
                     {Array.isArray(item.outputs) && item.outputs.length > 0 && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
                         {(item.outputs as Record<string, any>[]).map((o, oi) => (

@@ -271,13 +271,15 @@ export async function computeSourcingAndCreatePlan(
       await client.query(
         `INSERT INTO production_plan_items
            (plan_id, product_id, planned_quantity, contenant_id, nb_contenants,
-            quantite_nette_cible, quantite_brute_totale, qty_from_frigo, surplus_frigo)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            quantite_nette_cible, quantite_brute_totale, qty_from_frigo, surplus_frigo, order_item_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           productionPlanId, pi.productId, effectiveQty,
           pi.contenantId || null, pi.nbContenants || null,
           pi.quantiteNetteCible || null, pi.quantiteBrute || null,
           pi.qtyFromFrigo || 0, pi.surplusFrigo || 0,
+          // M2-08 : la ligne de commande servie (contexte commande seulement).
+          linkColumn === 'order_id' ? pi.itemId : null,
         ]
       );
       // Lier la ligne resultat au plan

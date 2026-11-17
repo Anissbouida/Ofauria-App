@@ -80,6 +80,11 @@ export function orderSteps(o: Row) {
   return steps;
 }
 
+/** Statut d'une ligne d'ordre de fabrication (M2-08). */
+const PLAN_ITEM_STATUS: Record<string, string> = {
+  pending: 'à produire', in_progress: 'en production', produced: 'produit', transferred: 'transféré', received: 'reçu', cancelled: 'annulé',
+};
+
 export default function OrderRecordPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
@@ -234,7 +239,14 @@ export default function OrderRecordPage() {
                       const qty = num(it.quantity); const dl = num(it.qty_delivered); const rest = Math.max(0, qty - dl - num(it.qty_cancelled));
                       return (
                         <tr key={it.id ?? i} style={{ cursor: 'default' }}>
-                          <td><span style={{ fontWeight: 500 }}>{it.product_name || it.product_id}</span>{it.notes && <span className="sal-sub">{it.notes}</span>}</td>
+                          <td><span style={{ fontWeight: 500 }}>{it.product_name || it.product_id}</span>{it.notes && <span className="sal-sub">{it.notes}</span>}
+                            {Array.isArray(it.production_lines) && it.production_lines.map((pl: { plan_id: string; of_number: string; item_status: string; planned_quantity: number }) => (
+                              <a key={pl.plan_id} href={`/production/${pl.plan_id}`} onClick={(e) => { e.preventDefault(); navigate(`/production/${pl.plan_id}`); }}
+                                className="sal-sub" title="Ordre de fabrication qui sert cette ligne" style={{ display: 'block' }}>
+                                {pl.of_number} · {PLAN_ITEM_STATUS[pl.item_status] ?? pl.item_status} · {Number(pl.planned_quantity)} planifié(s)
+                              </a>
+                            ))}
+                          </td>
                           <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{qty}</td>
                           <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{dl}</td>
                           <td style={{ textAlign: 'right' }}>{rest > 0 && st !== 'cancelled' ? <span className="odoo-tag odoo-tag-orange">{rest}</span> : <span style={{ color: 'var(--odoo-text-muted)' }}>—</span>}</td>

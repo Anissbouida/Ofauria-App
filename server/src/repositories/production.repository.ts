@@ -122,8 +122,15 @@ export const productionRepository = {
                         'label', io.label, 'quantity', io.quantity, 'equiv_pieces', io.equiv_pieces,
                         'lot_number', pl2.lot_number) ORDER BY io.id), '[]'::jsonb)
                  FROM production_item_outputs io LEFT JOIN product_lots pl2 ON pl2.id = io.product_lot_id
-                WHERE io.plan_item_id = ppi.id) AS outputs
+                WHERE io.plan_item_id = ppi.id) AS outputs,
+              -- M2-08 : la ligne de commande client servie.
+              ord.order_number AS line_order_number, ord.id AS line_order_id,
+              NULLIF(TRIM(CONCAT_WS(' ', ordc.first_name, ordc.last_name)), '') AS line_order_customer,
+              ord.pickup_date AS line_order_pickup_date, oit.quantity AS line_order_quantity
        FROM production_plan_items ppi
+       LEFT JOIN order_items oit ON oit.id = ppi.order_item_id
+       LEFT JOIN orders ord ON ord.id = oit.order_id
+       LEFT JOIN customers ordc ON ordc.id = ord.customer_id
        LEFT JOIN products p ON p.id = ppi.product_id
        LEFT JOIN recipes br ON br.id = ppi.base_recipe_id
        LEFT JOIN categories c ON c.id = p.category_id
