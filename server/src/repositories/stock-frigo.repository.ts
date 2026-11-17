@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { applyStockOut } from '../services/stock-anomaly.js';
 
 export const stockFrigoRepository = {
@@ -45,9 +45,8 @@ export const stockFrigoRepository = {
     referenceId?: string,
     referenceType?: string
   ): Promise<{ consumed: number; lots: { stockFrigoId: string; quantity: number; lotNumber: string | null }[] }> {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       // Get available lots in FEFO order
       const lotsResult = await client.query(
@@ -83,14 +82,8 @@ export const stockFrigoRepository = {
         remaining -= take;
       }
 
-      await client.query('COMMIT');
       return { consumed: quantity - remaining, lots };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   // ─── Add surplus to frigo after production ───
@@ -105,9 +98,8 @@ export const stockFrigoRepository = {
     performedBy: string;
     notes?: string;
   }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       const result = await client.query(
         `INSERT INTO stock_semifini_frigo (product_id, store_id, quantity, lot_number, expires_at, source_plan_id, source_contenant_id, notes)
@@ -123,21 +115,14 @@ export const stockFrigoRepository = {
         [result.rows[0].id, data.quantity, data.sourcePlanId || null, data.performedBy, data.notes || null]
       );
 
-      await client.query('COMMIT');
       return result.rows[0];
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   // ─── Record loss/expired ───
   async recordLoss(stockFrigoId: string, quantity: number, type: 'loss' | 'expired', performedBy: string, notes?: string) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       const before = await client.query(
         `WITH cur AS (SELECT quantity FROM stock_semifini_frigo WHERE id = $2)
@@ -158,20 +143,13 @@ export const stockFrigoRepository = {
         [stockFrigoId, type, -quantity, performedBy, notes || null]
       );
 
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   // ─── Adjust quantity ───
   async adjust(stockFrigoId: string, newQuantity: number, performedBy: string, notes?: string) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       const current = await client.query(`SELECT quantity FROM stock_semifini_frigo WHERE id = $1`, [stockFrigoId]);
       const diff = newQuantity - parseFloat(current.rows[0].quantity);
@@ -187,13 +165,7 @@ export const stockFrigoRepository = {
         [stockFrigoId, diff, performedBy, notes || `Ajustement: ${diff > 0 ? '+' : ''}${diff}`]
       );
 
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   // ─── Get transaction history for a stock entry ───
