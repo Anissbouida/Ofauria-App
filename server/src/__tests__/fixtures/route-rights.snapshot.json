@@ -234,6 +234,14 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "DELETE /recipes/substitutes/:subId": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "DELETE /reconciliation/lines/:lineId": [
   "admin",
   "manager"
@@ -373,7 +381,21 @@
   "magasinier",
   "manager"
  ],
+ "GET /bons-sortie/ligne/:ligneId/substitutes": [
+  "admin",
+  "magasinier",
+  "manager"
+ ],
  "GET /bons-sortie/plan/:planId": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "magasinier",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /bons-sortie/plan/:planId/allergens": [
   "admin",
   "baker",
   "beldi_sale",
@@ -1836,6 +1858,7 @@
  "GET /recipes/:id/bom-versions/pending": null,
  "GET /recipes/:id/explosion": null,
  "GET /recipes/:id/fiche-technique": null,
+ "GET /recipes/:id/substitutes": null,
  "GET /recipes/:id/versions": null,
  "GET /recipes/:recipeId/children": null,
  "GET /recipes/:recipeId/formats": null,
@@ -2476,6 +2499,11 @@
   "manager",
   "pastry_chef",
   "viennoiserie"
+ ],
+ "POST /bons-sortie/ligne/:ligneId/substitute": [
+  "admin",
+  "magasinier",
+  "manager"
  ],
  "POST /bons-sortie/ligne/:ligneId/transfer-from-economat": [
   "admin",
@@ -3804,6 +3832,14 @@
  ],
  "POST /recipes/:id/restore": [
   "admin"
+ ],
+ "POST /recipes/:id/substitutes": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
  ],
  "POST /recipes/:id/versions/:versionNumber/restore": [
   "admin",

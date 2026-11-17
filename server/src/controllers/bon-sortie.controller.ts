@@ -3,6 +3,7 @@ import { db } from '../config/database.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { checkStoreOwnership } from '../middleware/tenant.middleware.js';
 import { bonSortieRepository } from '../repositories/bon-sortie.repository.js';
+import { recipeSubstituteRepository } from '../repositories/recipe-substitute.repository.js';
 import { notificationRepository } from '../repositories/notification.repository.js';
 import {
   generateBonSchema, regenerateBonSchema, updateLigneSchema, weighLignesSchema, markReadySchema,
@@ -239,6 +240,36 @@ export const bonSortieController = {
     } catch (err: unknown) {
       fail(res, err, 'Erreur lors de la recuperation des lots');
     }
+  },
+
+  /** GET /bons-sortie/ligne/:ligneId/substitutes — substituts proposés (M4-05). */
+  async listSubstitutesForLigne(req: AuthRequest, res: Response) {
+    try {
+      const ligneId = req.params.ligneId as string;
+      if (!guardStore(req, res, await ligneStoreId(ligneId), 'Ligne')) return;
+      res.json({ success: true, data: await recipeSubstituteRepository.suggestionsForLine(ligneId) });
+    } catch (err: unknown) { fail(res, err, 'Erreur lors de la recuperation des substituts'); }
+  },
+
+  /** POST /bons-sortie/ligne/:ligneId/substitute — bascule la ligne sur un substitut (M4-05). */
+  async substituteLigne(req: AuthRequest, res: Response) {
+    try {
+      const ligneId = req.params.ligneId as string;
+      if (!guardStore(req, res, await ligneStoreId(ligneId), 'Ligne')) return;
+      const data = await recipeSubstituteRepository.substituteLine(ligneId, req.body.substitutionId, req.user!.userId, req.body.reason);
+      res.json({ success: true, data });
+    } catch (err: unknown) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Substitution impossible' } });
+    }
+  },
+
+  /** GET /bons-sortie/plan/:planId/allergens — allergènes réellement consommés (M4-05). */
+  async actualAllergens(req: AuthRequest, res: Response) {
+    try {
+      const planId = req.params.planId as string;
+      if (!guardStore(req, res, await planStoreId(planId), 'Plan')) return;
+      res.json({ success: true, data: await recipeSubstituteRepository.actualAllergensForPlan(planId) });
+    } catch (err: unknown) { fail(res, err, 'Erreur lors du calcul des allergenes'); }
   },
 
   /** PUT /bons-sortie/:id/accept-reception — chef : pret -> prelevement -> verifie -> cloture. */

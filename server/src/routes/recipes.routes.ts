@@ -14,11 +14,22 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { bomVersionRepository } from '../repositories/bom-version.repository.js';
 import { activateBomVersion } from '../services/bom-version-activation.js';
 import { recipesForProduct, setAlternative } from '../services/recipe-for.js';
+import { recipeSubstituteRepository } from '../repositories/recipe-substitute.repository.js';
 import { z } from 'zod';
 
 const alternativeSchema = z.object({
   productId: z.string().uuid().nullable(),
   usage: z.enum(['alternative', 'sous_traitance']).optional(),
+});
+const substituteSchema = z.object({
+  ingredientId: z.string().uuid(),
+  substituteIngredientId: z.string().uuid(),
+  ratio: z.coerce.number().positive().max(1000).default(1),
+  priority: z.coerce.number().int().min(1).max(99).default(1),
+  allRecipes: z.boolean().optional(),
+  validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  validTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  note: z.string().max(500).nullable().optional(),
 });
 const activateBomVersionSchema = z.object({
   reason: z.string().trim().min(3, 'Motif requis').max(1000),
@@ -110,6 +121,20 @@ router.put('/:id/alternative', authenticate, validateUuidParams('id'), can('reci
   try {
     res.json({ success: true, data: await setAlternative(req.params.id as string, req.body.productId ?? null, req.body.usage ?? 'alternative') });
   } catch (err) { res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } }); }
+}));
+// Substituts d'article (M4-05).
+router.get('/:id/substitutes', authenticate, validateUuidParams('id'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await recipeSubstituteRepository.listForRecipe(req.params.id as string) });
+}));
+router.post('/:id/substitutes', authenticate, validateUuidParams('id'), can('recipes.edit'), validate(substituteSchema), asyncHandler(async (req, res) => {
+  try {
+    const b = req.body;
+    res.status(201).json({ success: true, data: await recipeSubstituteRepository.create({ ...b, recipeId: b.allRecipes ? null : req.params.id as string }, (req as never as { user: { userId: string } }).user.userId) });
+  } catch (err) { res.status(400).json({ success: false, error: { message: err instanceof Error && /uq_recipe_line_substitutes/.test(err.message) ? 'Ce substitut existe déjà' : err instanceof Error ? err.message : 'Erreur' } }); }
+}));
+router.delete('/substitutes/:subId', authenticate, validateUuidParams('subId'), can('recipes.edit'), asyncHandler(async (req, res) => {
+  const ok = await recipeSubstituteRepository.remove(req.params.subId as string);
+  res.status(ok ? 200 : 404).json({ success: ok });
 }));
 // Versions de nomenclature (M4-01).
 router.get('/:id/bom-versions', authenticate, validateUuidParams('id'), asyncHandler(async (req, res) => {

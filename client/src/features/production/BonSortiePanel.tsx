@@ -1,4 +1,5 @@
 import { useState, Fragment } from 'react';
+import LineSubstitute from './LineSubstitute';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { bonSortieApi, type WeighingPayload } from '../../api/bon-sortie.api';
 import { purchaseRequestsApi } from '../../api/purchase-requests.api';
@@ -544,6 +545,10 @@ export function BonSortiePanel({
                   </div>
                 )}
                 {isMagasinier && line.ecart_reason && <div className="bsi-sub" style={{ fontStyle: 'italic' }}>« {line.ecart_reason as string} »</div>}
+                {!!line.original_ingredient_name && <div className="bsi-sub">Substitut de {line.original_ingredient_name as string}{line.substitution_reason ? ` — « ${line.substitution_reason as string} »` : ''}</div>}
+                {isMagasinier && canPrepare && !isDone && actual === null && !!line.ingredient_id && (
+                  <div><LineSubstitute ligneId={line.id as string} onDone={invalidate} /></div>
+                )}
                 {canWeigh && ev && (
                   <div className="bsi-lot-row">
                     {entry.pickLot || entry.lotId ? (

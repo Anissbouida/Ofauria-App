@@ -3,7 +3,13 @@ import { bonSortieController } from '../controllers/bon-sortie.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { validateUuidParams } from '../middleware/validate.middleware.js';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
+import { z } from 'zod';
+
+const substituteSchema = z.object({
+  substitutionId: z.string().uuid(),
+  reason: z.string().trim().min(3, 'Motif requis').max(500),
+});
 
 const router = Router();
 const id = validateUuidParams('id');
@@ -40,6 +46,10 @@ router.put('/:id/peser', authenticate, id, can('stock.bons_sortie.peser'), async
 router.get('/ligne/:ligneId/lots', authenticate, ligneId, can('stock.bons_sortie.ligne_lots.view'), asyncHandler(bonSortieController.listLotsForLigne));
 // Lots economat pour une ligne a ouvrir (vue groupee du module Economat)
 router.get('/ligne/:ligneId/economat-lots', authenticate, ligneId, can('stock.bons_sortie.ligne_economat_lots.view'), asyncHandler(bonSortieController.listEconomatLotsForLigne));
+// Substituts d'article (M4-05) : proposés sur une ligne non pesée, bascule tracée
+router.get('/ligne/:ligneId/substitutes', authenticate, ligneId, can('stock.bons_sortie.ligne_lots.view'), asyncHandler(bonSortieController.listSubstitutesForLigne));
+router.post('/ligne/:ligneId/substitute', authenticate, ligneId, can('stock.bons_sortie.ligne'), validate(substituteSchema), asyncHandler(bonSortieController.substituteLigne));
+router.get('/plan/:planId/allergens', authenticate, planId, can('stock.bons_sortie.plan.view'), asyncHandler(bonSortieController.actualAllergens));
 // Ouvrir un contenant pour une ligne (vue groupee du module Economat)
 router.post('/ligne/:ligneId/transfer-from-economat', authenticate, ligneId, can('stock.bons_sortie.transfer_from_economat'), asyncHandler(bonSortieController.transferLineFromEconomat));
 // Apres reapprovisionnement : refait le FEFO sur les lignes en attente / rupture

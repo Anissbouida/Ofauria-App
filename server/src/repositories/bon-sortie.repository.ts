@@ -244,6 +244,7 @@ async function loadBonLines(bonId: string, storeId: string) {
     `SELECT bsl.*,
             COALESCE(ing.name, pi.name) AS ingredient_name,
             COALESCE(ing.unit, pi.unit, bsl.unit) AS ingredient_unit,
+            (SELECT io.name FROM ingredients io WHERE io.id = bsl.original_ingredient_id) AS original_ingredient_name,
             (bsl.packaging_id IS NOT NULL) AS is_packaging,
             pi.name AS packaging_name, pi.format AS packaging_format,
             ing.container_size, ing.container_type_id, ct.label AS container_type_label,
