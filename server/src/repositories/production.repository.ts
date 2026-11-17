@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { format } from 'date-fns';
 import { adjustProductStock } from './product-stock.helper.js';
 import { productMaterialsUnitCost } from './product-cost.helper.js';
@@ -276,9 +276,8 @@ export const productionRepository = {
       formats?: { formatId: string; plannedQuantity: number; notes?: string }[];
     }[];
   }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       const weekNumber = data.type === 'weekly' ? getISOWeek(new Date(data.planDate)) : null;
       const planResult = await client.query(
@@ -324,14 +323,8 @@ export const productionRepository = {
         );
       }
 
-      await client.query('COMMIT');
       return planResult.rows[0];
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async updateItems(planId: string, items: {
@@ -340,9 +333,8 @@ export const productionRepository = {
     notes?: string;
     formats?: { formatId: string; plannedQuantity: number; notes?: string }[];
   }[]) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       await client.query('DELETE FROM production_plan_items WHERE plan_id = $1', [planId]);
       for (const item of items) {
         if (item.formats && item.formats.length > 0) {
@@ -362,13 +354,7 @@ export const productionRepository = {
         }
       }
       await client.query(`UPDATE production_plans SET updated_at = NOW() WHERE id = $1`, [planId]);
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async confirm(planId: string, userId?: string) {
@@ -632,9 +618,8 @@ export const productionRepository = {
    *  confirm les re-evaluera.
    */
   async revertToDraft(planId: string, userId?: string) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       await setActor(client, userId, 'Retour en brouillon');
 
       // 1) Verifie l'etat du plan
@@ -698,14 +683,8 @@ export const productionRepository = {
       // 6) Plan -> draft, confirmed_at -> NULL, warnings nettoye
       await transitionPlan(client, planId, 'draft', { extraSet: 'confirmed_at = NULL, warnings = NULL' });
 
-      await client.query('COMMIT');
       return { reverted: true, bsiDeleted: bsiToDelete.rows.length };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /** Relance un plan bloque, quelle que soit la cause du blocage. Aucun nouveau
@@ -1304,9 +1283,8 @@ export const productionRepository = {
 
   // ═══ Start items: pending → in_progress (chef launches production) ═══
   async startItems(planId: string, itemIds: string[], userId: string, startedAt?: string) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       const planCheck = await client.query(`SELECT status FROM production_plans WHERE id = $1`, [planId]);
       if (!planCheck.rows[0] || planCheck.rows[0].status !== 'in_progress') {
@@ -1383,14 +1361,8 @@ export const productionRepository = {
         }
       }
 
-      await client.query('COMMIT');
       return { startedIds: started };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   // ═══ Partial Production: produce selected items (in_progress → produced) ═══
@@ -1907,9 +1879,8 @@ export const productionRepository = {
 
   // ═══ Partial Transfer: transfer produced items to store ═══
   async createTransfer(planId: string, itemIds: string[], userId: string, storeId?: string) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       // Get produced items to transfer
       const itemsResult = await client.query(
@@ -1944,21 +1915,14 @@ export const productionRepository = {
         );
       }
 
-      await client.query('COMMIT');
       return transferResult.rows[0];
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   // ═══ Confirm transfer reception (cashier) ═══
   async confirmTransferReception(transferId: string, items: { itemId: string; qtyReceived: number; notes?: string }[], userId: string) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       // Magasin du transfert : c'est la que le stock produit a ete incremente a la
       // production, donc la qu'un ecart de reception doit etre corrige.
@@ -2117,14 +2081,8 @@ export const productionRepository = {
         }
       }
 
-      await client.query('COMMIT');
       return { status: transferStatus, planCompleted, planId, discrepancies };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   // ═══ Get pending production transfers for cashier ═══
@@ -2253,9 +2211,8 @@ export const productionRepository = {
 
   // ═══ Point 8: Cancel individual plan items ═══
   async cancelItems(planId: string, itemIds: string[], reason?: string) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       const planResult = await client.query(`SELECT status, store_id FROM production_plans WHERE id = $1`, [planId]);
       if (!planResult.rows[0] || !['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(planResult.rows[0].status)) {
@@ -2287,14 +2244,8 @@ export const productionRepository = {
         await releaseSemiFinishedReservations(client, planId, planResult.rows[0].store_id, 'Liberee (plan annule)');
       }
 
-      await client.query('COMMIT');
       return { cancelledCount: cancelled.length };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async analyzeSubRecipes(planId: string) {
