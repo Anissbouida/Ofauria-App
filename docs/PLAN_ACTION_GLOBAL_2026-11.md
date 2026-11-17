@@ -1918,6 +1918,27 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **G2-09** : étapes 2, 3 et 5 livrées, 4 et 6 en partie. `GET /products/:id/label-data` (`repositories/product-label.repository.ts`) compose l'étiquette : ingrédients tirés de la nomenclature éclatée (`v_recipe_explosion`, semi-finis remplacés par leurs ingrédients sur tous les niveaux), triés par poids décroissant (`fn_ingredient_weight_kg` ; un ingrédient au litre sans densité ou à la pièce sans poids passe en fin de liste, avec un avertissement), ingrédients porteurs d'un allergène en majuscules, « Peut contenir des traces de » pour les allergènes présents seulement en traces, poids net (poids cuit du format), date limite (durée de conservation), conservation, mentions. `blockers` rend l'étiquette non imprimable : pas de fiche technique, aucun ingrédient, ou un ingrédient dont les allergènes ne sont pas renseignés. Mig 542 : `products.legal_name`, `storage_conditions`, `label_mentions`, enregistrés par `PUT /products/:id/label-fields`. Écran : onglet « Étiquette » de la fiche produit (blocages, mentions à compléter, saisie des trois mentions, aperçu, tableau des ingrédients avec leur part du poids, impression d'une planche A4 de huit étiquettes 99 × 67 mm, bouton inactif tant qu'un blocage subsiste). Constat sur la base locale : aucune étiquette n'est imprimable aujourd'hui (Croissant : 7 ingrédients sans allergènes) — c'est l'effet voulu de G2-06. RESTE : valider le contenu obligatoire avec le référent qualité (étape 1, ONSSA) ; petit format Niimbot (une étiquette 50 × 30 mm ne peut pas porter une liste d'ingrédients lisible : format à décider) ; version arabe (les noms d'ingrédients n'ont pas de traduction en base) ; impression depuis le lot et à la déclaration de production ; nom et adresse du fabricant sur l'étiquette.
 - **G2-10** (optionnel) : non lancé. Le plan le réserve à l'après-G2-05, et aucun poids cuit n'est encore saisi : sans eux, une valeur nutritionnelle « pour 100 g de produit fini » ne se calcule pas.
 
+### Lot 4 — G3
+
+| ☐ | Tâche | Objet | Change des chiffres |
+|---|---|---|---|
+| ☐ | G3-01 | Environnement de staging | non |
+| ☐ | G3-02 | Sauvegarde et restauration | non |
+| ☐ | G3-03 | Observabilité | non |
+| ☐ | G3-04 | Qualité de code en CI | non |
+| ◐ | G3-05 | Migrations | non |
+| ☐ | G3-06 | Helper de transaction | non |
+| ☐ | G3-07 | SQL hors de la couche de données | non |
+| ☐ | G3-08 | Fichiers géants | non |
+| ☐ | G3-09 | Performance | non |
+| ◐ | G3-10 | Tests du client et de bout en bout | non |
+| ☐ | G3-11 | Données personnelles (loi 09-08) | non |
+
+**Notes du lot 4.**
+- **G3-01, G3-02, G3-03** : non codables depuis ce poste — ils demandent des ressources Google Cloud (second service Cloud Run et seconde instance Cloud SQL, restauration réelle, outil de suivi des erreurs). À lancer avec les accès au projet cloud.
+- **G3-05** : étapes 1 et 4 déjà en place avant cette passe (le lanceur `src/config/migrate.ts` refuse tout nouveau numéro en double hors des six historiques ; `scripts/test-db-setup.sh` joue toutes les migrations sur une base vide à chaque intégration continue). Ajouts : test statique `migrations-numbering.test.ts` (nom des fichiers, aucun nouveau doublon, liste des doublons tolérés identique à celle du lanceur) et règles écrites dans `server/migrations/README.md` (numérotation, migration appliquée = figée, migration destructive précédée d'une sauvegarde, pas de retour arrière générique, pièges de production, application à la main). ÉTAPE 2 — CONSTAT : `migrate` n'échoue plus sur la 266 en local (son empreinte est bonne) ; il s'arrête parce que SIX migrations, 460 à 465, sont enregistrées dans la base de développement avec une empreinte différente de celle des fichiers commités (les mêmes sur `main`) : elles ont été appliquées à la main avant d'être figées. Le contenu appliqué n'est plus disponible, donc l'équivalence du schéma ne peut pas être prouvée d'ici. DÉCISION à prendre : soit réaligner les six empreintes de la base locale (une requête `UPDATE _migrations`, sans effet sur le schéma), soit rejouer ces six migrations si elles sont rejouables. La production n'est pas concernée si elle les a reçues par le lanceur.
+- **G3-10** : l'étape 1 est faite depuis G0-21 (Vitest côté client, test de la file hors ligne, étape d'intégration continue). Playwright et les cinq parcours demandent le staging (G3-01).
+
 ### Lots suivants
 
 | ☐ | Lot | Tâches |
