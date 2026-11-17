@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { invoiceRepository } from './accounting.repository.js';
 import { shipProduct, reverseAllocations } from '../services/product-shipment.js';
@@ -282,9 +282,8 @@ export const deliveryNoteRepository = {
     items: DeliveryLineInput[]; createdBy: string; storeId?: string | null; shipAddress?: string | null;
   }) {
     if (!data.items.length) throw fail(400, 'Ajoutez au moins une ligne');
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const cust = (await client.query(`SELECT id FROM customers WHERE id = $1`, [data.customerId])).rows[0];
       if (!cust) throw fail(400, 'Client introuvable');
       if (data.orderId && data.items.some(i => i.productId && !i.orderItemId)) {
@@ -315,14 +314,8 @@ export const deliveryNoteRepository = {
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
           [head.id, it.productId ?? null, description, it.quantity, it.unitPrice, it.tvaRate ?? null, round2(it.quantity * it.unitPrice), it.orderItemId ?? null]);
       }
-      await client.query('COMMIT');
       return head;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
@@ -331,9 +324,8 @@ export const deliveryNoteRepository = {
    * figé et le crédit contrôlé (bloquant). Statut → « expédié ».
    */
   async ship(id: string, userId: string, opts: { closeRemainder?: boolean; creditOverride?: { userId: string; reason: string } | null } = {}) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const dn = (await client.query(`SELECT * FROM delivery_notes WHERE id = $1 AND status = 'prepared' FOR UPDATE`, [id])).rows[0];
       if (!dn) throw fail(409, 'Bon de livraison introuvable ou déjà expédié');
       if (!dn.store_id) throw fail(400, 'Magasin expéditeur requis : les produits sortent du stock d\'un magasin');
@@ -365,14 +357,8 @@ export const deliveryNoteRepository = {
       });
       if (credit.decision === 'block') throw Object.assign(new Error(`${credit.message} Expédition bloquée : la direction peut déroger en motivant.`), { statusCode: 409, code: 'CREDIT_BLOCKED' });
       const head = (await client.query(`UPDATE delivery_notes SET status = 'shipped', shipped_at = now(), shipped_by = $2 WHERE id = $1 RETURNING *`, [id, userId])).rows[0];
-      await client.query('COMMIT');
       return head;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
