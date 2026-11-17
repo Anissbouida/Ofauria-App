@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 
 /**
  * Phase 10.3 — jetons d'accès au portail client.
@@ -30,22 +30,15 @@ export const customerPortalRepository = {
     const days = (PORTAL_EXPIRY_CHOICES as readonly number[]).includes(expiresInDays) ? expiresInDays : DEFAULT_EXPIRY_DAYS;
     const raw = `${PREFIX}${crypto.randomBytes(24).toString('hex')}`;
     const prefix = raw.slice(0, PREFIX_LEN);
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       await client.query(`UPDATE customer_portal_tokens SET revoked_at = now() WHERE customer_id = $1 AND revoked_at IS NULL`, [customerId]);
       const row = (await client.query(
         `INSERT INTO customer_portal_tokens (customer_id, token_prefix, token_hash, created_by, expires_at)
          VALUES ($1, $2, $3, $4, now() + make_interval(days => $5::int)) RETURNING id, expires_at`,
         [customerId, prefix, sha256(raw), createdBy ?? null, days])).rows[0];
-      await client.query('COMMIT');
       return { token: raw, id: row.id, expiresAt: new Date(row.expires_at).toISOString() };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /** Vérifie un jeton Bearer : préfixe connu, non révoqué, non expiré, hash identique. Renvoie le customer_id. */
