@@ -1,5 +1,6 @@
 import { db, withTransaction } from '../config/database.js';
 import { forecastRepository } from '../repositories/forecast.repository.js';
+import { masterScheduleRepository, mondayOf } from '../repositories/master-schedule.repository.js';
 import { getCompositionForNeeds } from '../repositories/recipe-composition.helper.js';
 import { getParameter } from './module-parameters.service.js';
 
@@ -179,9 +180,29 @@ export async function loadMrpInput(storeId: string, from: string, horizon?: numb
   const receipts: ScheduledReceipt[] = [];
   const addDemand = (key: string, d: string, q: number) => { demand[key] ??= {}; demand[key][d] = (demand[key][d] ?? 0) + q; };
 
-  // Demande indépendante : prévision + commandes fermes (reste à livrer) à leur retrait.
-  const fc = await forecastRepository.compute(storeId, from, to, { withMarkup: true });
-  for (const r of fc.rows) for (const d of days) { const q = Number(r.days[d]?.qty ?? 0); if (q > 0) addDemand(`p:${r.product_id}`, d, q); }
+  // Demande indépendante : prévision (ou plan directeur enregistré, G5-05) + commandes
+  // fermes (reste à livrer) à leur retrait. Une semaine du plan directeur remplace la
+  // prévision de ses jours, répartie selon le profil de la prévision de la semaine.
+  const wkFrom = mondayOf(from);
+  const wkTo = addDays(mondayOf(to), 6);
+  const fc = await forecastRepository.compute(storeId, wkFrom, wkTo, { withMarkup: true });
+  const mps = await masterScheduleRepository.entries(storeId, from, to);
+  const fcBy = new Map<string, Record<string, number>>();
+  for (const r of fc.rows) fcBy.set(r.product_id, Object.fromEntries(Object.entries(r.days as Record<string, { qty: number }>).map(([d, v]) => [d, Number(v?.qty ?? 0)])));
+  for (const pid of new Set([...fcBy.keys(), ...mps.keys()])) {
+    const f = fcBy.get(pid) ?? {};
+    for (const d of days) {
+      const w = mondayOf(d);
+      const planned = mps.get(pid)?.get(w);
+      let q = f[d] ?? 0;
+      if (planned != null) {
+        const week = Array.from({ length: 7 }, (_, i) => addDays(w, i));
+        const tot = week.reduce((t, x) => t + (f[x] ?? 0), 0);
+        q = tot > 0 ? planned * (f[d] ?? 0) / tot : planned / 7;
+      }
+      if (q > 0) addDemand(`p:${pid}`, d, q);
+    }
+  }
   const orders = await db.query(
     `SELECT oi.product_id, o.pickup_date::date::text AS d,
             SUM(GREATEST(oi.quantity - oi.qty_delivered - oi.qty_cancelled, 0))::float8 AS q

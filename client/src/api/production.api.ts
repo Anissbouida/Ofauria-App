@@ -86,6 +86,11 @@ export const productionApi = {
     api.get('/production/mrp/material-requirements', { params: { date, ...(store ? { store } : {}) } }).then(r => r.data.data),
   mrpGeneratePurchaseRequests: (date: string, store?: string): Promise<{ created: number; skipped_existing: number; candidates: number }> =>
     api.post('/production/mrp/generate-purchase-requests', { date, ...(store ? { store } : {}) }).then(r => r.data.data),
+  /** Plan directeur enregistré (G5-05). */
+  masterSchedule: (from: string, weeks = 8): Promise<{ weeks: string[]; rows: { product_id: string; product_name: string; category_name: string | null; weeks: Record<string, { forecast: number; planned: number | null }> }[] }> =>
+    api.get('/production/master-schedule', { params: { from, weeks } }).then(r => r.data.data),
+  saveMasterSchedule: (entries: { productId: string; weekStart: string; quantity: number | null }[]): Promise<{ saved: number; cleared: number }> =>
+    api.put('/production/master-schedule', { entries }).then(r => r.data.data),
   /** Calcul des besoins phasé (G5-04). */
   mrpPhased: (from: string): Promise<MrpPhased> => api.get('/production/mrp/phased', { params: { from } }).then(r => r.data.data),
   mrpPhasedValidate: (picks: { kind: 'product' | 'ingredient'; id: string; qty: number; unit: string; releaseDate: string; needDate: string }[]): Promise<{ plans: string[]; requests: number }> =>

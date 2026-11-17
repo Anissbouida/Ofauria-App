@@ -4,6 +4,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productionRepository } from '../repositories/production.repository.js';
 import { hasPermission } from '../services/permissions.js';
 import { mrpPhased, mrpParams, validateProposals } from '../services/mrp-phased.js';
+import { masterScheduleRepository } from '../repositories/master-schedule.repository.js';
 import { localIsoDate } from '../utils/local-date.js';
 import { productionOrderTypeRepository } from '../repositories/production-order-type.repository.js';
 import { mrpRepository } from '../repositories/mrp.repository.js';
@@ -204,6 +205,19 @@ export const productionController = {
     const storeId = req.user!.storeId;
     if (!storeId) { res.status(400).json({ success: false, error: { message: 'Compte non rattaché à un établissement' } }); return; }
     res.status(201).json({ success: true, data: await validateProposals(storeId, req.user!.userId, req.body.picks) });
+  },
+  // ─── Plan directeur enregistré (G5-05) ───
+  async masterSchedule(req: AuthRequest, res: Response) {
+    const storeId = req.user!.storeId;
+    if (!storeId) { res.status(400).json({ success: false, error: { message: 'Compte non rattaché à un établissement' } }); return; }
+    const from = typeof req.query.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : localIsoDate(new Date());
+    const weeks = Math.min(Math.max(Number(req.query.weeks) || 8, 1), 26);
+    res.json({ success: true, data: await masterScheduleRepository.grid(storeId, from, weeks) });
+  },
+  async saveMasterSchedule(req: AuthRequest, res: Response) {
+    const storeId = req.user!.storeId;
+    if (!storeId) { res.status(400).json({ success: false, error: { message: 'Compte non rattaché à un établissement' } }); return; }
+    res.json({ success: true, data: await masterScheduleRepository.save(storeId, req.body.entries, req.user!.userId) });
   },
   // ─── Types d'ordre (M2-01) ───
   async listOrderTypes(req: AuthRequest, res: Response) {

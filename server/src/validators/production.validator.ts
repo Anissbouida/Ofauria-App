@@ -168,3 +168,12 @@ export const mrpPhasedValidateSchema = z.object({
     needDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   })).min(1).max(500),
 });
+
+/** Plan directeur enregistré (G5-05) : quantity null = retour à la prévision. */
+export const masterScheduleSchema = z.object({
+  entries: z.array(z.object({
+    productId: uuid,
+    weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    quantity: z.number().finite().min(0).nullable(),
+  })).min(1).max(5000),
+});

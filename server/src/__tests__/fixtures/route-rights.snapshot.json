@@ -1516,6 +1516,14 @@
  "GET /production/:id/dependencies": null,
  "GET /production/:id/events": null,
  "GET /production/:id/sub-recipe-analysis": null,
+ "GET /production/master-schedule": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /production/mrp": [
   "admin",
   "baker",
@@ -4527,6 +4535,10 @@
   "manager",
   "pastry_chef",
   "viennoiserie"
+ ],
+ "PUT /production/master-schedule": [
+  "admin",
+  "manager"
  ],
  "PUT /production/order-types/:typeId": null,
  "PUT /production/policies/:key": null,
