@@ -225,7 +225,7 @@ export const recipeRepository = {
        FROM recipe_components c
        LEFT JOIN recipes br ON br.id = c.source_recipe_id
        LEFT JOIN ingredients ing ON ing.id = c.source_ingredient_id
-       LEFT JOIN v_rcomp_cost cc ON cc.component_id = c.id
+       LEFT JOIN v_rcomp_cost_v2 cc ON cc.component_id = c.id
        WHERE c.recipe_id = $1
        ORDER BY c.ordre`,
       [id]
