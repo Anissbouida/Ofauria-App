@@ -1,22 +1,21 @@
 import { Router } from 'express';
 import { receptionVoucherController } from '../controllers/reception-voucher.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { validateUuidParams } from '../middleware/validate.middleware.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
 
 const router = Router();
 
-router.get('/', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), receptionVoucherController.list);
+router.get('/', authenticate, can('purchasing.reception_vouchers.view'), receptionVoucherController.list);
 // Écarts de prix (lot L3 P2P) — avant '/:id' pour ne pas être capté comme un id.
 // La décision est un contrôle de gestion : réservée au gérant/admin.
-router.get('/price-variances', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), receptionVoucherController.priceVariances);
-router.put('/items/:id/price-decision', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), receptionVoucherController.decidePrice);
+router.get('/price-variances', authenticate, can('purchasing.reception_vouchers.price_variances.view'), receptionVoucherController.priceVariances);
+router.put('/items/:id/price-decision', authenticate, can('purchasing.reception_vouchers.price_decision'), validateUuidParams('id'), receptionVoucherController.decidePrice);
 // Simulation de réévaluation (lot L3 P2P, 3/5) — lecture seule, avant '/:id'.
-router.get('/revaluation-candidates', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), receptionVoucherController.revaluationCandidates);
-router.get('/invoices/:invoiceId/revaluation-preview', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('invoiceId'), receptionVoucherController.revaluationPreview);
-router.get('/:id', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), receptionVoucherController.getById);
-router.post('/', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), receptionVoucherController.create);
-router.get('/purchase-order/:poId', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), receptionVoucherController.findByPurchaseOrder);
+router.get('/revaluation-candidates', authenticate, can('purchasing.reception_vouchers.revaluation_candidates.view'), receptionVoucherController.revaluationCandidates);
+router.get('/invoices/:invoiceId/revaluation-preview', authenticate, can('purchasing.reception_vouchers.invoices_revaluation_preview.view'), validateUuidParams('invoiceId'), receptionVoucherController.revaluationPreview);
+router.get('/:id', authenticate, can('purchasing.reception_vouchers.view'), receptionVoucherController.getById);
+router.post('/', authenticate, can('purchasing.reception_vouchers.create'), receptionVoucherController.create);
+router.get('/purchase-order/:poId', authenticate, can('purchasing.reception_vouchers.purchase_order.view'), receptionVoucherController.findByPurchaseOrder);
 
 export default router;

@@ -1,14 +1,12 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
 import { rfqRepository as repo } from '../repositories/rfq.repository.js';
 
 /** Appels d'offres fournisseurs (mig 360). Admin et gérant, comme les bons de commande. */
 export const rfqRouter = Router();
-const AM = [authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)];
 
 const uuid = z.string().uuid();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -42,14 +40,14 @@ function notFound(res: Response, message = 'Appel d\'offres introuvable') { res.
 const ok = (res: Response, data: unknown) => res.json({ success: true, data });
 function conflict(res: Response, from: string | undefined) { res.status(409).json({ success: false, error: { message: `Action impossible au statut « ${from} »` } }); }
 
-rfqRouter.get('/', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+rfqRouter.get('/', authenticate, can('purchasing.rfqs.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ status: rfqStatus.optional(), view: z.enum(['open', 'history']).optional(), search: text(100).optional(), page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(25) }).safeParse(req.query);
   if (!r.success) { bad(res); return; }
   const { page, pageSize, search, status, view } = r.data;
   ok(res, { ...(await repo.list({ status, view, search: search || undefined, storeId: storeOf(req), limit: pageSize, offset: (page - 1) * pageSize })), page, pageSize });
 }));
 
-rfqRouter.post('/', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+rfqRouter.post('/', authenticate, can('purchasing.rfqs.create'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = rfqBody.safeParse(req.body);
   if (!r.success) { bad(res, r.error.issues[0]?.message); return; }
   res.status(201).json({ success: true, data: await repo.create(r.data, { userId: req.user!.userId, storeId: req.user!.storeId ?? null }) });
@@ -57,7 +55,7 @@ rfqRouter.post('/', ...AM, asyncHandler(async (req: AuthRequest, res: Response) 
 
 // Sourcing obligatoire (mig 457) : créer un appel d'offres depuis des demandes
 // d'achat approuvées. Le BC ne naîtra qu'à l'attribution de cet AO.
-rfqRouter.post('/from-requests', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+rfqRouter.post('/from-requests', authenticate, can('purchasing.rfqs.from_requests'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ requestIds: z.array(uuid).min(1).max(200) }).safeParse(req.body);
   if (!r.success) { bad(res, 'Sélectionnez au moins une demande d\'achat'); return; }
   try {
@@ -70,16 +68,16 @@ rfqRouter.post('/from-requests', ...AM, asyncHandler(async (req: AuthRequest, re
 }));
 
 // Critères de notation configurables (mig 459). Avant « /:id » pour ne pas être capturé.
-rfqRouter.get('/criteria', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+rfqRouter.get('/criteria', authenticate, can('purchasing.rfqs.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   ok(res, await repo.listCriteria(req.query.all === '1'));
 }));
-rfqRouter.post('/criteria', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+rfqRouter.post('/criteria', authenticate, can('purchasing.rfqs.criteria'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ label: text(80).min(1), type: z.enum(['price', 'supplier', 'delivery', 'manual']), weight: z.coerce.number().int().min(0).max(100).optional() }).safeParse(req.body);
   if (!r.success) { bad(res, r.error.issues[0]?.message); return; }
   try { res.status(201).json({ success: true, data: await repo.createCriterion(r.data) }); }
   catch (e) { const err = e as { statusCode?: number; message?: string }; res.status(err.statusCode ?? 400).json({ success: false, error: { message: err.message ?? 'Création impossible' } }); }
 }));
-rfqRouter.patch('/criteria/:cid', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+rfqRouter.patch('/criteria/:cid', authenticate, can('purchasing.rfqs.criteria'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.cid).success) { bad(res); return; }
   const r = z.object({ label: text(80).optional(), weight: z.coerce.number().int().min(0).max(100).optional(), active: z.boolean().optional(), position: z.coerce.number().int().optional() }).safeParse(req.body);
   if (!r.success) { bad(res); return; }
@@ -87,21 +85,21 @@ rfqRouter.patch('/criteria/:cid', ...AM, asyncHandler(async (req: AuthRequest, r
   if (!data) { notFound(res, 'Critère introuvable'); return; }
   ok(res, data);
 }));
-rfqRouter.delete('/criteria/:cid', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+rfqRouter.delete('/criteria/:cid', authenticate, can('purchasing.rfqs.delete'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.cid).success) { bad(res); return; }
   const data = await repo.deleteCriterion(req.params.cid);
   if (!data) { notFound(res, 'Critère introuvable'); return; }
   ok(res, data);
 }));
 
-rfqRouter.get('/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+rfqRouter.get('/:id', authenticate, can('purchasing.rfqs.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
   const data = await repo.findById(req.params.id);
   if (!data) { notFound(res); return; }
   ok(res, data);
 }));
 
-rfqRouter.patch('/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+rfqRouter.patch('/:id', authenticate, can('purchasing.rfqs.edit'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
   const r = rfqBody.partial().safeParse(req.body);
   if (!r.success) { bad(res, r.error.issues[0]?.message); return; }
@@ -110,7 +108,7 @@ rfqRouter.patch('/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Respon
   ok(res, data);
 }));
 
-rfqRouter.post('/:id/send', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+rfqRouter.post('/:id/send', authenticate, can('purchasing.rfqs.send'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
   const out = await repo.send(req.params.id, req.user?.userId ?? null);
   if ('error' in out) {
@@ -121,7 +119,7 @@ rfqRouter.post('/:id/send', ...AM, asyncHandler(async (req: AuthRequest, res: Re
   ok(res, { ...out.data, emailsQueued: out.emailed });
 }));
 
-rfqRouter.post('/:id/status', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+rfqRouter.post('/:id/status', authenticate, can('purchasing.rfqs.status'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
   const r = z.object({ status: z.enum(['cancelled', 'closed', 'draft']) }).safeParse(req.body);
   if (!r.success) { bad(res); return; }
@@ -130,7 +128,7 @@ rfqRouter.post('/:id/status', ...AM, asyncHandler(async (req: AuthRequest, res: 
   ok(res, out.data);
 }));
 
-rfqRouter.post('/:id/suppliers/:supplierId/status', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+rfqRouter.post('/:id/suppliers/:supplierId/status', authenticate, can('purchasing.rfqs.status'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success || !uuid.safeParse(req.params.supplierId).success) { bad(res); return; }
   const r = z.object({ status: z.enum(['invited', 'declined', 'no_response']), note: text(500).nullish() }).safeParse(req.body);
   if (!r.success) { bad(res); return; }
@@ -139,7 +137,7 @@ rfqRouter.post('/:id/suppliers/:supplierId/status', ...AM, asyncHandler(async (r
   ok(res, data);
 }));
 
-rfqRouter.put('/:id/quotations', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+rfqRouter.put('/:id/quotations', authenticate, can('purchasing.rfqs.quotations'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
   const r = quotationBody.safeParse(req.body);
   if (!r.success) { bad(res, r.error.issues[0]?.message); return; }
@@ -148,7 +146,7 @@ rfqRouter.put('/:id/quotations', ...AM, asyncHandler(async (req: AuthRequest, re
   ok(res, out.data);
 }));
 
-rfqRouter.post('/:id/award', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+rfqRouter.post('/:id/award', authenticate, can('purchasing.rfqs.award'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) { bad(res); return; }
   const r = z.object({ quotationId: uuid, expectedDeliveryDate: isoDate.nullish(), notes: text(2000).nullish() }).safeParse(req.body);
   if (!r.success) { bad(res); return; }

@@ -1,9 +1,8 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
 import { purchasingReportsRepository as repo, toCsv } from '../repositories/purchasing-reports.repository.js';
 
 /**
@@ -34,9 +33,8 @@ function sendCsv(res: Response, filename: string, csv: string) {
   res.send(csv);
 }
 
-const AM = [authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)];
 
-purchasingReportsRouter.get('/summary', ...AM, asyncHandler(async (_req: AuthRequest, res: Response) => {
+purchasingReportsRouter.get('/summary', authenticate, can('purchasing.purchasing_reports.summary.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await repo.summary() });
 }));
 
@@ -51,7 +49,7 @@ const boardFilters = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
-purchasingReportsRouter.get('/board', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+purchasingReportsRouter.get('/board', authenticate, can('purchasing.purchasing_reports.board.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = boardFilters.safeParse(req.query);
   if (!r.success) { res.status(400).json({ success: false, error: { message: 'Paramètres invalides' } }); return; }
   const { page, pageSize, search, ...f } = r.data;
@@ -59,7 +57,7 @@ purchasingReportsRouter.get('/board', ...AM, asyncHandler(async (req: AuthReques
   res.json({ success: true, data: { ...data, page, pageSize } });
 }));
 
-purchasingReportsRouter.get('/received-not-invoiced', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+purchasingReportsRouter.get('/received-not-invoiced', authenticate, can('purchasing.purchasing_reports.received_not_invoiced.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const f = parse(req, res); if (!f) return;
   const rows = await repo.receivedNotInvoiced(f);
   if (f.format === 'csv') return sendCsv(res, 'recu-non-facture.csv', toCsv([
@@ -70,17 +68,17 @@ purchasingReportsRouter.get('/received-not-invoiced', ...AM, asyncHandler(async 
   res.json({ success: true, data: rows });
 }));
 
-purchasingReportsRouter.get('/invoiced-not-received', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+purchasingReportsRouter.get('/invoiced-not-received', authenticate, can('purchasing.purchasing_reports.invoiced_not_received.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const f = parse(req, res); if (!f) return;
   res.json({ success: true, data: await repo.invoicedNotReceived(f) });
 }));
 
-purchasingReportsRouter.get('/open-commitments', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+purchasingReportsRouter.get('/open-commitments', authenticate, can('purchasing.purchasing_reports.open_commitments.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const f = parse(req, res); if (!f) return;
   res.json({ success: true, data: await repo.openCommitments(f) });
 }));
 
-purchasingReportsRouter.get('/invoices-without-lines', ...AM, asyncHandler(async (_req: AuthRequest, res: Response) => {
+purchasingReportsRouter.get('/invoices-without-lines', authenticate, can('purchasing.purchasing_reports.invoices_without_lines.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await repo.invoicesWithoutLines() });
 }));
 
@@ -93,7 +91,7 @@ const registerBoard = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
-purchasingReportsRouter.get('/goods-entry-register/board', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(async (req: AuthRequest, res: Response) => {
+purchasingReportsRouter.get('/goods-entry-register/board', authenticate, can('purchasing.purchasing_reports.goods_entry_register_board.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = registerBoard.safeParse(req.query);
   if (!r.success) { res.status(400).json({ success: false, error: { message: 'Paramètres invalides' } }); return; }
   const { page, pageSize, search, ...f } = r.data;
@@ -102,7 +100,7 @@ purchasingReportsRouter.get('/goods-entry-register/board', authenticate, authori
 }));
 
 // Registre des entrées : consultable aussi par le magasinier (économat).
-purchasingReportsRouter.get('/goods-entry-register', authenticate, authorize(...ROLE_GROUPS.WAREHOUSE), asyncHandler(async (req: AuthRequest, res: Response) => {
+purchasingReportsRouter.get('/goods-entry-register', authenticate, can('purchasing.purchasing_reports.goods_entry_register.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const f = parse(req, res); if (!f) return;
   const rows = await repo.goodsEntryRegister({ ...f, incompleteOnly: f.incompleteOnly === 'true', storeId: req.user!.storeId });
   if (f.format === 'csv') return sendCsv(res, `registre-entrees${f.from ? '-' + f.from : ''}${f.to ? '-' + f.to : ''}.csv`, toCsv([
@@ -117,7 +115,7 @@ purchasingReportsRouter.get('/goods-entry-register', authenticate, authorize(...
   res.json({ success: true, data: rows });
 }));
 
-purchasingReportsRouter.get('/purchase-journal', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+purchasingReportsRouter.get('/purchase-journal', authenticate, can('purchasing.purchasing_reports.purchase_journal.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const f = parse(req, res); if (!f) return;
   if (!f.from || !f.to) { res.status(400).json({ success: false, error: { message: 'from et to requis' } }); return; }
   const rows = await repo.purchaseJournal({ from: f.from, to: f.to });

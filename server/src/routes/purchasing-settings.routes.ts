@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 import { getParameter, listParameters, setParameter, type ExpenseRequiresPo } from '../services/module-parameters.service.js';
 import { db } from '../config/database.js';
 
@@ -20,14 +19,14 @@ const expenseRequiresPoSchema = z.object({
   currency: z.string().trim().length(3).toUpperCase().default('MAD'),
 });
 
-router.get('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(async (_req, res) => {
+router.get('/', authenticate, can('purchasing.purchasing_settings.view'), asyncHandler(async (_req, res) => {
   res.json({ success: true, data: {
     expenseRequiresPo: await getParameter<ExpenseRequiresPo>('purchasing.expense_requires_po'),
     all: await listParameters('purchasing.'),
   } });
 }));
 
-router.put('/expense-requires-po', authenticate, authorize(ROLES.ADMIN), validate(expenseRequiresPoSchema),
+router.put('/expense-requires-po', authenticate, can('purchasing.purchasing_settings.edit'), validate(expenseRequiresPoSchema),
   asyncHandler(async (req: AuthRequest, res) => {
     const saved = await setParameter('purchasing.expense_requires_po', req.body, req.user!.userId);
     res.json({ success: true, data: saved });
@@ -38,7 +37,7 @@ router.put('/expense-requires-po', authenticate, authorize(ROLES.ADMIN), validat
  * journalisés (mode « Observer »). Sert au panneau de suivi dans Réglages des achats.
  * Tables absentes (migration non appliquée) : on renvoie des listes vides.
  */
-router.get('/sod', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(async (_req, res) => {
+router.get('/sod', authenticate, can('purchasing.purchasing_settings.view'), asyncHandler(async (_req, res) => {
   const ready = (await db.query(`SELECT to_regclass('public.sod_violations') IS NOT NULL AS ok`)).rows[0]?.ok;
   if (!ready) { res.json({ success: true, data: { rules: [], violations: [] } }); return; }
   const rules = (await db.query(
