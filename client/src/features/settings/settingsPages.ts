@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Building2, Store, Paintbrush, Printer, Radio, Factory, Truck, Percent, Hash, FileText,
-  BookOpen, Database, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal, Layers, Webhook, ShoppingCart, Landmark, Bot, Activity } from 'lucide-react';
+  BookOpen, Database, Ruler, HardDrive, Bell, ShieldCheck, LayoutDashboard, ClipboardCheck, Coins, Mail, Timer, BellRing, SlidersHorizontal, Layers, Webhook, ShoppingCart, Landmark, Bot, Activity } from 'lucide-react';
 import type { AppModule, SettingsSection as SettingsSectionKey } from '@ofauria/shared';
 import { settingAnchor } from './SettingsPrimitives';
 
@@ -18,7 +18,7 @@ export type SettingsPageKey =
   | 'print' | 'channels' | 'salesRules' | 'posRules' | 'productCategories'
   | 'production' | 'purchasing'
   | 'tax' | 'currencies' | 'numbering' | 'documents' | 'ledger'
-  | 'referentiel' | 'customFields' | 'data' | 'dataQuality'
+  | 'referentiel' | 'units' | 'customFields' | 'data' | 'dataQuality'
   | 'notifications' | 'mail' | 'jobs' | 'approvals' | 'audit';
 
 export interface SettingsPageDef {
@@ -130,6 +130,8 @@ export const SETTINGS_PAGES: SettingsPageDef[] = [
     fields: ['Catégories et familles'] },
   { key: 'referentiel', group: 'Données', section: 'referentiel', label: 'Référentiel', icon: Database,
     description: 'Tables de paramétrage', keywords: 'table categorie unite motif' },
+  { key: 'units', group: 'Données', section: 'referentiel', label: 'Unités de mesure', icon: Ruler,
+    description: 'Dimensions, facteurs de conversion, fiches non rattachées' },
   { key: 'customFields', group: 'Données', section: 'custom_fields', label: 'Champs personnalisés', icon: SlidersHorizontal,
     description: 'Informations propres à votre métier sur les fiches', keywords: 'champ personnalise attribut specifique fiche formulaire colonne' },
   { key: 'data', group: 'Données', section: 'data', label: 'Import et export', icon: HardDrive,

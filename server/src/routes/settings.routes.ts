@@ -14,6 +14,7 @@ import multer from 'multer';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorizeSettings, authorizeSettingsUpdate } from '../middleware/settings-access.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { unitsRepository } from '../repositories/units.repository.js';
 
 const router = Router();
 
@@ -23,6 +24,11 @@ const router = Router();
 const jsonParser = express.json({ limit: '3mb' });
 // Import guide (lot 7) : fichier Excel ou CSV en memoire, 5 Mo maximum.
 const importUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+// Référentiel des unités (M3-01) : lecture pour tout utilisateur connecté (écrans de saisie).
+router.get('/units', authenticate, asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: await unitsRepository.overview() });
+}));
 
 // Accueil de la configuration (refonte lot B) : points filtres par section visible.
 router.get('/setup', authenticate, asyncHandler(setupController.status));

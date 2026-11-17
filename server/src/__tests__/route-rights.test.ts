@@ -45,8 +45,8 @@ describe('Droits par route : bascule authorize → can sans changement de décis
   it('pour chaque route, les rôles acceptés sont ceux de l\'instantané', () => {
     const current = Object.fromEntries(guards.map(g => [g.key, allowedBaseRoles(g, k => [...(defs[k]?.defaultRoles ?? [])])]));
     const diffs = [...new Set([...Object.keys(snapshot), ...Object.keys(current)])]
-      .filter(k => JSON.stringify(snapshot[k] ?? 'absente') !== JSON.stringify(current[k] ?? 'absente'))
-      .map(k => `${k} : instantané ${JSON.stringify(snapshot[k] ?? 'absente')}, actuel ${JSON.stringify(current[k] ?? 'absente')}`);
+      .filter(k => JSON.stringify(k in snapshot ? snapshot[k] : 'absente') !== JSON.stringify(k in current ? current[k] : 'absente'))
+      .map(k => `${k} : instantané ${JSON.stringify(k in snapshot ? snapshot[k] : 'absente')}, actuel ${JSON.stringify(k in current ? current[k] : 'absente')}`);
     expect(diffs, diffs.join('\n')).toEqual([]);
   });
 });

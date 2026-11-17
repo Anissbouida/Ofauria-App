@@ -2118,6 +2118,7 @@
  "GET /settings/sector/starter": null,
  "GET /settings/setup": null,
  "GET /settings/tax-codes": null,
+ "GET /settings/units": null,
  "GET /settings/webhooks": null,
  "GET /shifts": null,
  "GET /stock-counts": [

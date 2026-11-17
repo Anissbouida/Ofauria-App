@@ -26,8 +26,8 @@ if (process.argv.includes('--write')) {
 } else {
   const snap = JSON.parse(readFileSync(FILE, 'utf8')) as Record<string, string[] | null>;
   const diffs = [...new Set([...Object.keys(snap), ...Object.keys(current)])]
-    .filter(k => JSON.stringify(snap[k] ?? 'absente') !== JSON.stringify(current[k] ?? 'absente'))
-    .map(k => `${k}  instantané=${JSON.stringify(snap[k] ?? 'absente')}  actuel=${JSON.stringify(current[k] ?? 'absente')}`);
+    .filter(k => JSON.stringify(k in snap ? snap[k] : 'absente') !== JSON.stringify(k in current ? current[k] : 'absente'))
+    .map(k => `${k}  instantané=${JSON.stringify(k in snap ? snap[k] : 'absente')}  actuel=${JSON.stringify(k in current ? current[k] : 'absente')}`);
   console.log(diffs.length ? diffs.join('\n') : 'Aucun écart.');
 }
 process.exit(0);

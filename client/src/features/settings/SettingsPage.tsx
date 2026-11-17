@@ -37,6 +37,7 @@ import RfqCriteriaCard from './RfqCriteriaCard';
 import ReceptionQcCategoriesCard from './ReceptionQcCategoriesCard';
 import RevenueFamiliesCard from './RevenueFamiliesCard';
 import ReferentielTab from './ReferentielTab';
+import UnitsTab from './UnitsTab';
 import SettingsSearch from './SettingsSearch';
 import SetupHome from './SetupHome';
 import { tableLabel } from './AuditLogTab';
@@ -240,6 +241,7 @@ function SettingsShell() {
       </div>
     ),
     referentiel: <ReferentielTab />,
+    units: <UnitsTab />,
     data: <DataTab />,
     dataQuality: <DataQualityTab />,
     // G1-12 : les seuils des échéances du personnel se règlent avec les notifications.
