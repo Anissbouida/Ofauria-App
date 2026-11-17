@@ -1,9 +1,8 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
 import { haccpRepository as repo } from '../repositories/haccp.repository.js';
 
 /**
@@ -13,8 +12,6 @@ import { haccpRepository as repo } from '../repositories/haccp.repository.js';
  */
 export const haccpRouter = Router();
 
-const ENTRY = [authenticate, authorize(...ROLE_GROUPS.PRODUCTION)];
-const AM = [authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)];
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const uuid = z.string().uuid();
@@ -32,12 +29,12 @@ function notFound(res: Response, message = 'Introuvable') {
 }
 
 // ─── Feuille du jour ────────────────────────────────────────────────────
-haccpRouter.get('/today', ...ENTRY, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.get('/today', authenticate, can('controle.haccp.today.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await repo.today(storeOf(req)) });
 }));
 
 // ─── Relevés de température ─────────────────────────────────────────────
-haccpRouter.post('/readings', ...ENTRY, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.post('/readings', authenticate, can('controle.haccp.readings'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({
     equipmentId: uuid,
     value: z.number().min(-60).max(60),
@@ -49,14 +46,14 @@ haccpRouter.post('/readings', ...ENTRY, asyncHandler(async (req: AuthRequest, re
   res.status(201).json({ success: true, data });
 }));
 
-haccpRouter.get('/readings', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.get('/readings', authenticate, can('controle.haccp.readings.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = range.extend({ equipmentId: uuid.optional(), outOfRange: z.enum(['true', 'false']).optional() }).safeParse(req.query);
   if (!r.success) return bad(res);
   res.json({ success: true, data: await repo.readingsRegister({ ...r.data, outOfRangeOnly: r.data.outOfRange === 'true', storeId: storeOf(req) }) });
 }));
 
 // ─── Nettoyage ──────────────────────────────────────────────────────────
-haccpRouter.post('/cleaning-logs', ...ENTRY, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.post('/cleaning-logs', authenticate, can('controle.haccp.cleaning_logs'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({
     taskId: uuid,
     conforme: z.boolean(),
@@ -69,14 +66,14 @@ haccpRouter.post('/cleaning-logs', ...ENTRY, asyncHandler(async (req: AuthReques
   res.status(201).json({ success: true, data });
 }));
 
-haccpRouter.get('/cleaning-logs', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.get('/cleaning-logs', authenticate, can('controle.haccp.cleaning_logs.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = range.safeParse(req.query);
   if (!r.success) return bad(res);
   res.json({ success: true, data: await repo.cleaningRegister({ ...r.data, storeId: storeOf(req) }) });
 }));
 
 // ─── Actions correctives ────────────────────────────────────────────────
-haccpRouter.get('/actions', ...ENTRY, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.get('/actions', authenticate, can('controle.haccp.actions.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({
     status: z.string().optional(),
     from: isoDate.optional(),
@@ -87,14 +84,14 @@ haccpRouter.get('/actions', ...ENTRY, asyncHandler(async (req: AuthRequest, res:
   res.json({ success: true, data: await repo.listActions({ storeId: storeOf(req), statuses: statuses?.length ? statuses : undefined, from: r.data.from, to: r.data.to }) });
 }));
 
-haccpRouter.post('/actions', ...ENTRY, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.post('/actions', authenticate, can('controle.haccp.actions'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ problem: text(1000).min(3), actionTaken: text(1000).nullish() }).safeParse(req.body);
   if (!r.success) return bad(res, 'Décrivez le problème');
   const data = await repo.createAction({ ...r.data, storeId: storeOf(req), userId: req.user!.userId });
   res.status(201).json({ success: true, data });
 }));
 
-haccpRouter.post('/actions/:id/complete', ...ENTRY, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.post('/actions/:id/complete', authenticate, can('controle.haccp.complete'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ actionTaken: text(1000).min(3) }).safeParse(req.body);
   if (!uuid.safeParse(req.params.id).success || !r.success) return bad(res, 'Décrivez l\'action réalisée');
   const data = await repo.completeAction(req.params.id, r.data.actionTaken, req.user!.userId);
@@ -102,7 +99,7 @@ haccpRouter.post('/actions/:id/complete', ...ENTRY, asyncHandler(async (req: Aut
   res.json({ success: true, data });
 }));
 
-haccpRouter.post('/actions/:id/validate', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.post('/actions/:id/validate', authenticate, can('controle.haccp.validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ approve: z.boolean(), note: text(1000).nullish() }).safeParse(req.body);
   if (!uuid.safeParse(req.params.id).success || !r.success) return bad(res);
   if (!r.data.approve && !r.data.note?.trim()) return bad(res, 'Indiquez pourquoi l\'action est renvoyée');
@@ -112,7 +109,7 @@ haccpRouter.post('/actions/:id/validate', ...AM, asyncHandler(async (req: AuthRe
 }));
 
 // ─── Configuration ──────────────────────────────────────────────────────
-haccpRouter.get('/equipment', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.get('/equipment', authenticate, can('controle.haccp.equipment.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await repo.listEquipment(storeOf(req)) });
 }));
 
@@ -133,13 +130,13 @@ async function saveEquipment(req: AuthRequest, res: Response, id?: string) {
   if (!data) return notFound(res, 'Enceinte introuvable');
   res.json({ success: true, data });
 }
-haccpRouter.post('/equipment', ...AM, asyncHandler((req: AuthRequest, res: Response) => saveEquipment(req, res)));
-haccpRouter.put('/equipment/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.post('/equipment', authenticate, can('controle.haccp.equipment'), asyncHandler((req: AuthRequest, res: Response) => saveEquipment(req, res)));
+haccpRouter.put('/equipment/:id', authenticate, can('controle.haccp.equipment'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) return bad(res);
   await saveEquipment(req, res, req.params.id);
 }));
 
-haccpRouter.get('/tasks', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.get('/tasks', authenticate, can('controle.haccp.tasks.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await repo.listTasks(storeOf(req)) });
 }));
 
@@ -158,20 +155,20 @@ async function saveTask(req: AuthRequest, res: Response, id?: string) {
   if (!data) return notFound(res, 'Tâche introuvable');
   res.json({ success: true, data });
 }
-haccpRouter.post('/tasks', ...AM, asyncHandler((req: AuthRequest, res: Response) => saveTask(req, res)));
-haccpRouter.put('/tasks/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.post('/tasks', authenticate, can('controle.haccp.tasks'), asyncHandler((req: AuthRequest, res: Response) => saveTask(req, res)));
+haccpRouter.put('/tasks/:id', authenticate, can('controle.haccp.tasks'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) return bad(res);
   await saveTask(req, res, req.params.id);
 }));
 
 // ─── Contrôle à réception ───────────────────────────────────────────────
-haccpRouter.get('/receptions', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.get('/receptions', authenticate, can('controle.haccp.receptions.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = range.safeParse(req.query);
   if (!r.success) return bad(res);
   res.json({ success: true, data: await repo.receptions({ ...r.data, storeId: storeOf(req) }) });
 }));
 
-haccpRouter.post('/receptions/:id/check', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.post('/receptions/:id/check', authenticate, can('controle.haccp.check'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const ok = z.boolean().nullish();
   const r = z.object({
     temperatureOk: ok, temperatureValue: z.number().min(-60).max(60).nullish(),
@@ -186,7 +183,7 @@ haccpRouter.post('/receptions/:id/check', ...AM, asyncHandler(async (req: AuthRe
 }));
 
 // ─── Indicateurs ────────────────────────────────────────────────────────
-haccpRouter.get('/indicators', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.get('/indicators', authenticate, can('controle.haccp.indicators.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ from: isoDate.optional(), to: isoDate.optional() }).safeParse(req.query);
   if (!r.success) return bad(res);
   res.json({ success: true, data: await repo.indicators(storeOf(req), r.data.from, r.data.to) });

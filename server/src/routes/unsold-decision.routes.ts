@@ -1,7 +1,7 @@
 import { Router, json as expressJson } from 'express';
 import { unsoldDecisionController } from '../controllers/unsold-decision.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ROLES } from '@ofauria/shared';
 
@@ -18,16 +18,16 @@ const bigJsonParser = expressJson({ limit: '256kb' });
 const router = Router();
 
 // Suggestions auto pour l'inventaire en cours
-router.get('/suggestions', authenticate, authorize(...STORE_STAFF), asyncHandler(unsoldDecisionController.suggestions));
+router.get('/suggestions', authenticate, can('unsold.unsold_decisions.view'), asyncHandler(unsoldDecisionController.suggestions));
 
 // Items expires (DLC/DLV) — modal bloquant fermeture journee
-router.get('/expired', authenticate, authorize(...STORE_STAFF), asyncHandler(unsoldDecisionController.expired));
+router.get('/expired', authenticate, can('unsold.unsold_decisions.view'), asyncHandler(unsoldDecisionController.expired));
 
 // Destinations de recyclage configurees pour un produit
-router.get('/recycle-destinations/:productId', authenticate, authorize(...STORE_STAFF), asyncHandler(unsoldDecisionController.recycleDestinations));
+router.get('/recycle-destinations/:productId', authenticate, can('unsold.unsold_decisions.view'), asyncHandler(unsoldDecisionController.recycleDestinations));
 
 // Confirmer destruction des items expires
-router.post('/destroy-expired', bigJsonParser, authenticate, authorize(...STORE_STAFF), asyncHandler(unsoldDecisionController.destroyExpired));
+router.post('/destroy-expired', bigJsonParser, authenticate, can('unsold.unsold_decisions.destroy_expired'), asyncHandler(unsoldDecisionController.destroyExpired));
 
 // Statistiques tableau de bord
 router.get('/stats', authenticate, asyncHandler(unsoldDecisionController.stats));
@@ -39,6 +39,6 @@ router.get('/session/:sessionId', authenticate, asyncHandler(unsoldDecisionContr
 router.get('/', authenticate, asyncHandler(unsoldDecisionController.list));
 
 // Enregistrer des decisions (payload batch -> parser avec limite elargie)
-router.post('/', bigJsonParser, authenticate, authorize(...STORE_STAFF), asyncHandler(unsoldDecisionController.save));
+router.post('/', bigJsonParser, authenticate, can('unsold.unsold_decisions.create'), asyncHandler(unsoldDecisionController.save));
 
 export default router;

@@ -1,9 +1,8 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
 import { forecastRepository as repo } from '../repositories/forecast.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
 
@@ -14,8 +13,6 @@ import { getLocalISODate } from '../utils/timezone.js';
  */
 export const forecastRouter = Router();
 
-const READ = [authenticate, authorize(...ROLE_GROUPS.PRODUCTION)];
-const AM = [authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)];
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const uuid = z.string().uuid();
@@ -38,12 +35,12 @@ async function storeOr400(req: AuthRequest, res: Response): Promise<string | nul
   return storeId;
 }
 
-forecastRouter.get('/stores', ...READ, asyncHandler(async (_req: AuthRequest, res: Response) => {
+forecastRouter.get('/stores', authenticate, can('production.forecast.stores.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await repo.listStores() });
 }));
 
 // Grille produit × jour (7 jours à partir de demain par défaut).
-forecastRouter.get('/grid', ...READ, asyncHandler(async (req: AuthRequest, res: Response) => {
+forecastRouter.get('/grid', authenticate, can('production.forecast.grid.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ from: isoDate.optional(), to: isoDate.optional() }).safeParse(req.query);
   if (!r.success) return bad(res);
   const from = r.data.from ?? addDays(getLocalISODate(), 1);
@@ -55,7 +52,7 @@ forecastRouter.get('/grid', ...READ, asyncHandler(async (req: AuthRequest, res: 
 }));
 
 // Prévision d'une journée, à plat : utilisée par la modale de plan.
-forecastRouter.get('/day', ...READ, asyncHandler(async (req: AuthRequest, res: Response) => {
+forecastRouter.get('/day', authenticate, can('production.forecast.day.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ date: isoDate }).safeParse(req.query);
   if (!r.success) return bad(res);
   const storeId = await storeOr400(req, res);
@@ -66,7 +63,7 @@ forecastRouter.get('/day', ...READ, asyncHandler(async (req: AuthRequest, res: R
 }));
 
 // Instantané au moment où la prévision guide une décision (création de plan).
-forecastRouter.post('/snapshot', ...READ, asyncHandler(async (req: AuthRequest, res: Response) => {
+forecastRouter.post('/snapshot', authenticate, can('production.forecast.snapshot'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({
     date: isoDate,
     usedFor: z.enum(['plan', 'fiche', 'manual']),
@@ -89,7 +86,7 @@ const overrideSchema = z.object({
   quantity: z.number().int().min(0).max(100000),
   reason: z.string().trim().max(300).nullish(),
 });
-forecastRouter.put('/override', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+forecastRouter.put('/override', authenticate, can('production.forecast.edit'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = overrideSchema.safeParse(req.body);
   if (!r.success) return bad(res);
   const storeId = await storeOr400(req, res);
@@ -98,7 +95,7 @@ forecastRouter.put('/override', ...AM, asyncHandler(async (req: AuthRequest, res
   res.json({ success: true, data });
 }));
 
-forecastRouter.delete('/override', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+forecastRouter.delete('/override', authenticate, can('production.forecast.delete'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ productId: uuid, date: isoDate }).safeParse(req.query);
   if (!r.success) return bad(res);
   const storeId = await storeOr400(req, res);
@@ -108,7 +105,7 @@ forecastRouter.delete('/override', ...AM, asyncHandler(async (req: AuthRequest, 
 }));
 
 // ─── Calendrier ─────────────────────────────────────────────────────────
-forecastRouter.get('/events', ...READ, asyncHandler(async (req: AuthRequest, res: Response) => {
+forecastRouter.get('/events', authenticate, can('production.forecast.events.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ from: isoDate.optional() }).safeParse(req.query);
   if (!r.success) return bad(res);
   const storeId = await storeOr400(req, res);
@@ -138,23 +135,23 @@ async function saveEvent(req: AuthRequest, res: Response, id?: string) {
   res.json({ success: true, data: saved });
 }
 
-forecastRouter.post('/events', ...AM, asyncHandler((req: AuthRequest, res: Response) => saveEvent(req, res)));
-forecastRouter.put('/events/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+forecastRouter.post('/events', authenticate, can('production.forecast.events'), asyncHandler((req: AuthRequest, res: Response) => saveEvent(req, res)));
+forecastRouter.put('/events/:id', authenticate, can('production.forecast.events'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) return bad(res);
   await saveEvent(req, res, req.params.id);
 }));
-forecastRouter.delete('/events/:id', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+forecastRouter.delete('/events/:id', authenticate, can('production.forecast.delete'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) return bad(res);
   await repo.deleteEvent(req.params.id);
   res.json({ success: true });
 }));
 
 // ─── Correspondance Loyverse → catalogue ────────────────────────────────
-forecastRouter.get('/links/unmapped', ...AM, asyncHandler(async (_req: AuthRequest, res: Response) => {
+forecastRouter.get('/links/unmapped', authenticate, can('production.forecast.links_unmapped.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await repo.unmappedKeys() });
 }));
 
-forecastRouter.put('/links/:productKey', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+forecastRouter.put('/links/:productKey', authenticate, can('production.forecast.links'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ productId: uuid.nullable() }).safeParse(req.body);
   const key = String(req.params.productKey || '').slice(0, 200);
   if (!r.success || !key) return bad(res);
@@ -163,7 +160,7 @@ forecastRouter.put('/links/:productKey', ...AM, asyncHandler(async (req: AuthReq
 }));
 
 // ─── Précision ──────────────────────────────────────────────────────────
-forecastRouter.get('/accuracy', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+forecastRouter.get('/accuracy', authenticate, can('production.forecast.accuracy.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({ from: isoDate, to: isoDate }).safeParse(req.query);
   if (!r.success) return bad(res);
   const storeId = await storeOr400(req, res);

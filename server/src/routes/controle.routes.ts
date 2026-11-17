@@ -1,9 +1,8 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
 import { controleRepository as repo } from '../repositories/controle.repository.js';
 
 /**
@@ -12,19 +11,18 @@ import { controleRepository as repo } from '../repositories/controle.repository.
  */
 export const controleRouter = Router();
 
-const AM = [authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER)];
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const range = z.object({ dateFrom: isoDate.optional(), dateTo: isoDate.optional() });
 // Un utilisateur rattaché à un magasin ne voit que le sien ; l'admin global voit tout.
 const storeOf = (req: AuthRequest) => (req.user!.role === 'admin' ? undefined : req.user!.storeId);
 
-controleRouter.get('/overview', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+controleRouter.get('/overview', authenticate, can('controle.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = range.safeParse(req.query);
   if (!r.success) { res.status(400).json({ success: false, error: { message: 'Paramètres invalides' } }); return; }
   res.json({ success: true, data: await repo.overview({ ...r.data, storeId: storeOf(req) }) });
 }));
 
-controleRouter.get('/losses/summary', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+controleRouter.get('/losses/summary', authenticate, can('controle.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = range.safeParse(req.query);
   if (!r.success) { res.status(400).json({ success: false, error: { message: 'Paramètres invalides' } }); return; }
   res.json({ success: true, data: await repo.lossesSummary({ ...r.data, storeId: storeOf(req) }) });
@@ -37,7 +35,7 @@ const board = range.extend({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
-controleRouter.get('/losses', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+controleRouter.get('/losses', authenticate, can('controle.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = board.safeParse(req.query);
   if (!r.success) { res.status(400).json({ success: false, error: { message: 'Paramètres invalides' } }); return; }
   const { page, pageSize, search, ...f } = r.data;
@@ -52,7 +50,7 @@ const productionBoard = range.extend({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
-controleRouter.get('/production', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+controleRouter.get('/production', authenticate, can('controle.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = productionBoard.safeParse(req.query);
   if (!r.success) { res.status(400).json({ success: false, error: { message: 'Paramètres invalides' } }); return; }
   const { page, pageSize, search, ...f } = r.data;
@@ -67,7 +65,7 @@ const receptionBoard = range.extend({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
-controleRouter.get('/receptions', ...AM, asyncHandler(async (req: AuthRequest, res: Response) => {
+controleRouter.get('/receptions', authenticate, can('controle.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = receptionBoard.safeParse(req.query);
   if (!r.success) { res.status(400).json({ success: false, error: { message: 'Paramètres invalides' } }); return; }
   const { page, pageSize, search, ...f } = r.data;

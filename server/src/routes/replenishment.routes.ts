@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { replenishmentController } from '../controllers/replenishment.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ROLE_GROUPS, ROLES } from '@ofauria/shared';
 
@@ -15,33 +15,33 @@ const router = Router();
 // List & detail
 router.get('/', authenticate, asyncHandler(replenishmentController.list));
 router.get('/recommendations', authenticate, asyncHandler(replenishmentController.recommendations));
-router.get('/check-today', authenticate, authorize(...STORE_STAFF), asyncHandler(replenishmentController.checkToday));
-router.get('/closing-inventory', authenticate, authorize(...STORE_STAFF), asyncHandler(replenishmentController.closingInventory));
-router.get('/pending-transfers', authenticate, authorize(...STORE_STAFF), asyncHandler(replenishmentController.pendingTransfers));
+router.get('/check-today', authenticate, can('replenishment.view'), asyncHandler(replenishmentController.checkToday));
+router.get('/closing-inventory', authenticate, can('replenishment.view'), asyncHandler(replenishmentController.closingInventory));
+router.get('/pending-transfers', authenticate, can('replenishment.view'), asyncHandler(replenishmentController.pendingTransfers));
 router.get('/:id', authenticate, asyncHandler(replenishmentController.getById));
 
 // Validation — store staff
-router.post('/check-items', authenticate, authorize(...STORE_STAFF), asyncHandler(replenishmentController.checkItems));
+router.post('/check-items', authenticate, can('replenishment.check_items'), asyncHandler(replenishmentController.checkItems));
 
 // Step 1: Create — store staff only
-router.post('/', authenticate, authorize(...STORE_STAFF), asyncHandler(replenishmentController.create));
+router.post('/', authenticate, can('replenishment.create'), asyncHandler(replenishmentController.create));
 
 // Step 2: Acknowledge — responsable produit / admin / manager
-router.post('/:id/acknowledge', authenticate, authorize(...RESPONSABLE), asyncHandler(replenishmentController.acknowledge));
+router.post('/:id/acknowledge', authenticate, can('replenishment.acknowledge'), asyncHandler(replenishmentController.acknowledge));
 
 // Step 3: Start preparing — responsable produit / admin / manager
-router.post('/:id/prepare', authenticate, authorize(...RESPONSABLE), asyncHandler(replenishmentController.startPreparing));
+router.post('/:id/prepare', authenticate, can('replenishment.prepare'), asyncHandler(replenishmentController.startPreparing));
 
 // Step 4: Transfer — responsable produit / admin / manager
-router.post('/:id/transfer', authenticate, authorize(...RESPONSABLE), asyncHandler(replenishmentController.transfer));
+router.post('/:id/transfer', authenticate, can('replenishment.transfer'), asyncHandler(replenishmentController.transfer));
 
 // Step 5: Confirm reception — store staff (cashier)
-router.post('/:id/confirm-reception', authenticate, authorize(...STORE_STAFF), asyncHandler(replenishmentController.confirmReception));
+router.post('/:id/confirm-reception', authenticate, can('replenishment.confirm_reception'), asyncHandler(replenishmentController.confirmReception));
 
 // Save inventory check — store staff
-router.post('/inventory-check', authenticate, authorize(...STORE_STAFF), asyncHandler(replenishmentController.saveInventoryCheck));
+router.post('/inventory-check', authenticate, can('replenishment.inventory_check'), asyncHandler(replenishmentController.saveInventoryCheck));
 
 // Cancel — store staff + admin/manager
-router.post('/:id/cancel', authenticate, authorize(...STORE_STAFF, ...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(replenishmentController.cancel));
+router.post('/:id/cancel', authenticate, can('replenishment.cancel'), asyncHandler(replenishmentController.cancel));
 
 export default router;

@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import { productionController } from '../controllers/production.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { authorizeSettings } from '../middleware/settings-access.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
 import { validate, validateQuery, validateUuidParams } from '../middleware/validate.middleware.js';
 import {
   createPlanSchema, updateItemsSchema, itemIdsSchema, startItemsSchema, produceItemsSchema,
@@ -27,46 +26,46 @@ router.get('/process-referentials', authenticate, asyncHandler(productionControl
 router.get('/transfers/pending', authenticate, asyncHandler(productionController.pendingProductionTransfers));
 
 // MRP — besoins nets du jour (plan directeur). Avant /:id pour ne pas être capturé comme id.
-router.get('/mrp', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrp));
-router.get('/mrp/horizon', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrpHorizon));
-router.get('/mrp/semi-finished', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrpSemiFinished));
-router.post('/mrp/generate', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrpGenerate));
+router.get('/mrp', authenticate, can('production.view'), asyncHandler(productionController.mrp));
+router.get('/mrp/horizon', authenticate, can('production.view'), asyncHandler(productionController.mrpHorizon));
+router.get('/mrp/semi-finished', authenticate, can('production.view'), asyncHandler(productionController.mrpSemiFinished));
+router.post('/mrp/generate', authenticate, can('production.generate'), asyncHandler(productionController.mrpGenerate));
 // MRP — besoins matière (achats) & génération des demandes d'achat — roadmap lot 8
-router.get('/mrp/material-requirements', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrpMaterialRequirements));
-router.post('/mrp/generate-purchase-requests', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.mrpGeneratePurchaseRequests));
+router.get('/mrp/material-requirements', authenticate, can('production.view'), asyncHandler(productionController.mrpMaterialRequirements));
+router.post('/mrp/generate-purchase-requests', authenticate, can('production.generate_purchase_requests'), asyncHandler(productionController.mrpGeneratePurchaseRequests));
 // Réglages de production centralisés — roadmap lot 9. Avant /:id.
-router.get('/settings', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.getSettings));
+router.get('/settings', authenticate, can('production.view'), asyncHandler(productionController.getSettings));
 // M1-04 — politiques de production (lecture : production ; écriture : droit Paramètres › Production).
-router.get('/order-types', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.listOrderTypes));
+router.get('/order-types', authenticate, can('production.view'), asyncHandler(productionController.listOrderTypes));
 router.post('/order-types', authenticate, authorizeSettings('production', 'edit'), validate(createOrderTypeSchema), asyncHandler(productionController.createOrderType));
 router.put('/order-types/:typeId', authenticate, validateUuidParams('typeId'), authorizeSettings('production', 'edit'), validate(updateOrderTypeSchema), asyncHandler(productionController.updateOrderType));
-router.get('/policies', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.listPolicies));
+router.get('/policies', authenticate, can('production.view'), asyncHandler(productionController.listPolicies));
 router.put('/policies/:key', authenticate, authorizeSettings('production', 'edit'), validate(setPolicySchema), asyncHandler(productionController.setPolicy));
-router.put('/settings', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(productionController.updateSettings));
-router.post('/transfers/:transferId/receive', authenticate, validateUuidParams('transferId'), authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.confirmProductionTransfer));
+router.put('/settings', authenticate, can('production.edit'), asyncHandler(productionController.updateSettings));
+router.post('/transfers/:transferId/receive', authenticate, validateUuidParams('transferId'), can('production.receive'), asyncHandler(productionController.confirmProductionTransfer));
 
 router.get('/:id/sub-recipe-analysis', authenticate, id, asyncHandler(productionController.analyzeSubRecipes));
 router.get('/:id', authenticate, id, asyncHandler(productionController.getById));
-router.post('/', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(createPlanSchema), asyncHandler(productionController.create));
-router.put('/:id/header', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), validate(updatePlanHeaderSchema), asyncHandler(productionController.updateHeader));
-router.put('/:id/items', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), validate(updateItemsSchema), asyncHandler(productionController.updateItems));
-router.post('/:id/confirm', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.confirm));
-router.post('/:id/revert-to-draft', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.revertToDraft));
-router.post('/:id/relaunch', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), validate(relaunchSchema), asyncHandler(productionController.relaunch));
-router.post('/:id/start', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.start));
-router.post('/:id/start-items', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), validate(startItemsSchema), asyncHandler(productionController.startItems));
-router.post('/:id/produce-items', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), validate(produceItemsSchema), asyncHandler(productionController.produceItems));
-router.post('/:id/transfer-items', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), validate(itemIdsSchema), asyncHandler(productionController.transferItems));
-router.post('/:id/restore-items', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), validate(itemIdsSchema), asyncHandler(productionController.restoreItems));
-router.post('/:id/needs/:ingredientId/request-verification', authenticate, validateUuidParams('id', 'ingredientId'), authorize(...ROLE_GROUPS.PRODUCTION), validate(requestStockVerificationSchema), asyncHandler(productionController.requestStockVerification));
-router.post('/:id/cancel-items', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), validate(cancelItemsSchema), asyncHandler(productionController.cancelItems));
-router.post('/:id/complete', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), validate(completeSchema), asyncHandler(productionController.complete));
-router.post('/:id/detect-semi-finished', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.detectSemiFinished));
+router.post('/', authenticate, can('production.create'), validate(createPlanSchema), asyncHandler(productionController.create));
+router.put('/:id/header', authenticate, id, can('production.header'), validate(updatePlanHeaderSchema), asyncHandler(productionController.updateHeader));
+router.put('/:id/items', authenticate, id, can('production.items'), validate(updateItemsSchema), asyncHandler(productionController.updateItems));
+router.post('/:id/confirm', authenticate, id, can('production.confirm'), asyncHandler(productionController.confirm));
+router.post('/:id/revert-to-draft', authenticate, id, can('production.revert_to_draft'), asyncHandler(productionController.revertToDraft));
+router.post('/:id/relaunch', authenticate, id, can('production.relaunch'), validate(relaunchSchema), asyncHandler(productionController.relaunch));
+router.post('/:id/start', authenticate, id, can('production.start'), asyncHandler(productionController.start));
+router.post('/:id/start-items', authenticate, id, can('production.start_items'), validate(startItemsSchema), asyncHandler(productionController.startItems));
+router.post('/:id/produce-items', authenticate, id, can('production.produce_items'), validate(produceItemsSchema), asyncHandler(productionController.produceItems));
+router.post('/:id/transfer-items', authenticate, id, can('production.transfer_items'), validate(itemIdsSchema), asyncHandler(productionController.transferItems));
+router.post('/:id/restore-items', authenticate, id, can('production.restore_items'), validate(itemIdsSchema), asyncHandler(productionController.restoreItems));
+router.post('/:id/needs/:ingredientId/request-verification', authenticate, validateUuidParams('id', 'ingredientId'), can('production.request_verification'), validate(requestStockVerificationSchema), asyncHandler(productionController.requestStockVerification));
+router.post('/:id/cancel-items', authenticate, id, can('production.cancel_items'), validate(cancelItemsSchema), asyncHandler(productionController.cancelItems));
+router.post('/:id/complete', authenticate, id, can('production.complete'), validate(completeSchema), asyncHandler(productionController.complete));
+router.post('/:id/detect-semi-finished', authenticate, id, can('production.detect_semi_finished'), asyncHandler(productionController.detectSemiFinished));
 router.get('/:id/dependencies', authenticate, id, asyncHandler(productionController.getPlanDependencies));
 router.get('/:id/activities', authenticate, id, asyncHandler(productionController.getActivities));
 // Journal des transitions (plan + bons) — mig 299
 router.get('/:id/events', authenticate, id, asyncHandler(productionController.getEvents));
-router.post('/:id/activities', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), validate(addActivitySchema), asyncHandler(productionController.addActivity));
-router.delete('/:id', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.remove));
+router.post('/:id/activities', authenticate, id, can('production.activities'), validate(addActivitySchema), asyncHandler(productionController.addActivity));
+router.delete('/:id', authenticate, id, can('production.delete'), asyncHandler(productionController.remove));
 
 export default router;
