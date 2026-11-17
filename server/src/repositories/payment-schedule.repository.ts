@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import type { PoolClient } from 'pg';
 
 /**
@@ -153,9 +153,8 @@ export const paymentScheduleRepository = {
     notes?: string | null;
     createdBy: string;
   }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       const inv = await client.query(
         `SELECT id, invoice_number, invoice_type, status, total_amount, paid_amount,
@@ -214,14 +213,8 @@ export const paymentScheduleRepository = {
         [rows[rows.length - 1].due_date, invoiceId]
       );
 
-      await client.query('COMMIT');
       return rows;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /* ══════════════════════ DETTE AUTONOME ══════════════════════ */
@@ -285,9 +278,8 @@ export const paymentScheduleRepository = {
     storeId?: string | null;
     createdBy: string;
   }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const debt = await client.query(
         `INSERT INTO debts (label, supplier_id, category_id, fixed_asset_id,
                             total_amount, start_date, notes, store_id, created_by)
@@ -313,14 +305,8 @@ export const paymentScheduleRepository = {
         createdBy: data.createdBy,
       });
 
-      await client.query('COMMIT');
       return { ...debt.rows[0], schedule: echeances };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
