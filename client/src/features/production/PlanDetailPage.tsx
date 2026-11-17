@@ -1,4 +1,5 @@
 import { useProductionPolicies, shiftOf } from './usePolicies';
+import ConsumptionPanel from './ConsumptionPanel';
 import CustomFieldsCard from '../../components/custom-fields/CustomFieldsCard';
 import ItemRecipeSelect from './ItemRecipeSelect';
 import { money } from '../../utils/money';
@@ -1735,6 +1736,9 @@ export default function PlanDetailPage() {
       )}
 
       {(showSynth || !hasTabs) && plan.order_number && <PlanLinkedOrder plan={plan} />}
+      {(showSynth || !hasTabs) && ['in_progress', 'completed', 'confirmed'].includes(plan.status as string) && (
+        <ConsumptionPanel planId={id!} mode={(plan.order_type_consumption_mode as string) ?? null} canEdit={isChef} />
+      )}
       {(showSynth || !hasTabs) && <div style={{ margin: '1rem' }}><CustomFieldsCard entity="production_order" id={id!} /></div>}
 
       {/* ══════════════ ALERTES (onglet Preparation) ══════════════

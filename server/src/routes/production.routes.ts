@@ -1,4 +1,12 @@
 import { Router } from 'express';
+import { z } from 'zod';
+import { productionConsumptionRepository } from '../repositories/production-consumption.repository.js';
+
+const manualConsumptionSchema = z.object({
+  ingredientId: z.string().uuid(),
+  quantity: z.number().finite().positive().max(1_000_000),
+  note: z.string().trim().max(500).nullable().optional(),
+});
 import { productionController } from '../controllers/production.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
@@ -53,6 +61,18 @@ router.get('/:id', authenticate, id, asyncHandler(productionController.getById))
 router.post('/', authenticate, can('production.create'), validate(createPlanSchema), asyncHandler(productionController.create));
 router.put('/:id/header', authenticate, id, can('production.header'), validate(updatePlanHeaderSchema), asyncHandler(productionController.updateHeader));
 router.put('/:id/items/:itemId/recipe', authenticate, validateUuidParams('id', 'itemId'), can('production.items'), validate(itemRecipeSchema), asyncHandler(productionController.setItemRecipe));
+// M6-01 : sorties manuelles (type d'ordre en consommation « manuel ») et écart théorique / réel.
+router.post('/:id/manual-consumption', authenticate, validateUuidParams('id'), can('production.items'), validate(manualConsumptionSchema), asyncHandler(async (req, res) => {
+  try {
+    res.status(201).json({ success: true, data: await productionConsumptionRepository.manualIssue(req.params.id as string, req.body, (req as never as { user: { userId: string } }).user.userId) });
+  } catch (err) {
+    const status = (err as { statusCode?: number }).statusCode ?? 400;
+    res.status(status).json({ success: false, error: { message: err instanceof Error ? err.message : 'Sortie impossible' } });
+  }
+}));
+router.get('/:id/consumption-variance', authenticate, validateUuidParams('id'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await productionConsumptionRepository.variance(req.params.id as string) });
+}));
 router.put('/:id/items', authenticate, id, can('production.items'), validate(updateItemsSchema), asyncHandler(productionController.updateItems));
 router.post('/:id/confirm', authenticate, id, can('production.confirm'), asyncHandler(productionController.confirm));
 router.post('/:id/revert-to-draft', authenticate, id, can('production.revert_to_draft'), asyncHandler(productionController.revertToDraft));

@@ -1564,6 +1564,7 @@
  "GET /production-markup": null,
  "GET /production/:id": null,
  "GET /production/:id/activities": null,
+ "GET /production/:id/consumption-variance": null,
  "GET /production/:id/dependencies": null,
  "GET /production/:id/events": null,
  "GET /production/:id/sub-recipe-analysis": null,
@@ -3565,6 +3566,14 @@
   "viennoiserie"
  ],
  "POST /production/:id/detect-semi-finished": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "POST /production/:id/manual-consumption": [
   "admin",
   "baker",
   "beldi_sale",

@@ -50,7 +50,7 @@ export const productionRepository = {
               (SELECT COUNT(*) FROM production_plan_dependencies WHERE parent_plan_id = pp.id AND status = 'fulfilled') as dep_fulfilled,
               pw.label AS target_role_label,
               pot.code AS order_type_code, pot.label AS order_type_label,
-              pot.requires_bon_sortie AS order_type_requires_bon_sortie
+              pot.requires_bon_sortie AS order_type_requires_bon_sortie, pot.consumption_mode AS order_type_consumption_mode
        FROM production_plans pp
        JOIN users u ON u.id = pp.created_by
        LEFT JOIN orders o ON o.id = pp.order_id
@@ -75,7 +75,7 @@ export const productionRepository = {
               o.pickup_date as order_pickup_date, o.total as order_total, o.advance_amount as order_advance_amount,
               pw.label AS target_role_label,
               pot.code AS order_type_code, pot.label AS order_type_label,
-              pot.requires_bon_sortie AS order_type_requires_bon_sortie
+              pot.requires_bon_sortie AS order_type_requires_bon_sortie, pot.consumption_mode AS order_type_consumption_mode
        FROM production_plans pp
        JOIN users u ON u.id = pp.created_by
        LEFT JOIN orders o ON o.id = pp.order_id
@@ -1154,7 +1154,12 @@ export const productionRepository = {
           LIMIT 1`,
         [planId]
       );
-      const bsiAlreadyDeducted = bsiDeductedResult.rows.length > 0;
+      // M6-01 : type d'ordre en consommation « manuelle » → aucune sortie automatique
+      // (matières ni emballages, même bloc unique G0-22) : les sorties se saisissent sur l'ordre.
+      const modeRow = await client.query(
+        `SELECT t.consumption_mode FROM production_plans pp LEFT JOIN production_order_types t ON t.id = pp.order_type_id WHERE pp.id = $1`, [planId]);
+      const manualConsumption = modeRow.rows[0]?.consumption_mode === 'manuel';
+      const bsiAlreadyDeducted = bsiDeductedResult.rows.length > 0 || manualConsumption;
 
       // Deduct ingredients based on actual production — uniquement les articles produits ici
       const itemsResult = await client.query(
@@ -1583,7 +1588,10 @@ export const productionRepository = {
       // plus les bases produites separement, donc le fils doit payer ses matieres.
       // Le bsiAlreadyDeducted2 ne vaut que pour le BSI PROPRE d'un plan (rare pour
       // un semi-fini, qui n'en a pas), jamais via le parent.
-      const bsiAlreadyDeducted2 = !isSemiFinishedPlan && bsiDeductedResult2.rows.length > 0;
+      // M6-01 : type d'ordre en consommation « manuelle » → aucune sortie automatique des matières.
+      const modeRow2 = await client.query(
+        `SELECT t.consumption_mode FROM production_plans pp LEFT JOIN production_order_types t ON t.id = pp.order_type_id WHERE pp.id = $1`, [planId]);
+      const bsiAlreadyDeducted2 = (!isSemiFinishedPlan && bsiDeductedResult2.rows.length > 0) || modeRow2.rows[0]?.consumption_mode === 'manuel';
 
       // Deduct ingredients for produced items
       for (const item of producedItems.rows) {
