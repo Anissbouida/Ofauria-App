@@ -1,3 +1,4 @@
+import { cashForecast, cashForecastLines } from '../services/cash-forecast.js';
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
@@ -34,7 +35,7 @@ import {
   purchaseLedgerController,
 } from '../controllers/ledger.controller.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { validateUuidParams } from '../middleware/validate.middleware.js';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { ROLES } from '@ofauria/shared';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
@@ -559,6 +560,44 @@ ledgerRouter.get('/general-ledger-full', authenticate, authorize(...ROLE_GROUPS.
 ledgerRouter.get('/balance',          authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), financialStatementsController.balance);
 ledgerRouter.get('/income-statement', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), financialStatementsController.incomeStatement);
 ledgerRouter.get('/cash-flow',        authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), financialStatementsController.cashFlow);
+
+// G4-03 — prévision de trésorerie sur 13 semaines (lecture), lignes manuelles et seuil d'alerte.
+const forecastLineSchema = z.object({
+  flowDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide'),
+  label: z.string().trim().min(2, 'Libellé requis').max(160),
+  amount: z.coerce.number().finite().refine(v => v !== 0, 'Montant non nul requis'),
+  category: z.enum(['emprunt', 'investissement', 'apport', 'subvention', 'autre']).optional(),
+  notes: z.string().max(1000).nullish(),
+});
+const forecastPlanSchema = z.object({
+  weeks: z.coerce.number().int().min(1).max(52).optional(),
+  customerDelayDays: z.coerce.number().int().min(0).max(365).optional(),
+  planned: z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), invoiceIds: z.array(z.string().uuid()).max(500) }).optional(),
+});
+ledgerRouter.get('/cash-forecast', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const q = req.query as Record<string, string | undefined>;
+  res.json({ success: true, data: await cashForecast({
+    weeks: q.weeks ? Number(q.weeks) : undefined, customerDelayDays: q.delay ? Number(q.delay) : undefined,
+  }) });
+}));
+// Simulation (G4-01) : factures choisies payées à une date donnée.
+ledgerRouter.post('/cash-forecast/simulate', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(forecastPlanSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await cashForecast(req.body) });
+}));
+ledgerRouter.get('/cash-forecast/lines', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(async (_req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: await cashForecastLines.list() });
+}));
+ledgerRouter.post('/cash-forecast/lines', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(forecastLineSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
+  res.status(201).json({ success: true, data: await cashForecastLines.create(req.body, req.user!.userId) });
+}));
+ledgerRouter.delete('/cash-forecast/lines/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  await cashForecastLines.remove(req.params.id as string);
+  res.json({ success: true, data: null });
+}));
+ledgerRouter.put('/cash-forecast/threshold', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validate(z.object({ threshold: z.coerce.number().finite() })), asyncHandler(async (req: AuthRequest, res: Response) => {
+  await cashForecastLines.setThreshold(req.body.threshold, req.user!.userId);
+  res.json({ success: true, data: { threshold: req.body.threshold } });
+}));
 
 // Declaration TVA (CA20 Maroc)
 ledgerRouter.get('/tva-declaration',  authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), tvaDeclarationController.declaration);
