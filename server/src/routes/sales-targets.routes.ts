@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import { salesTargetController } from '../controllers/sales-target.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validateUuidParams } from '../middleware/validate.middleware.js';
 
@@ -12,9 +11,9 @@ import { validateUuidParams } from '../middleware/validate.middleware.js';
  */
 const router = Router();
 
-router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(salesTargetController.report));
-router.get('/salespeople', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(salesTargetController.salespeople));
-router.post('/', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(salesTargetController.upsert));
-router.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), validateUuidParams('id'), asyncHandler(salesTargetController.remove));
+router.get('/', authenticate, can('sales.sales_targets.view'), asyncHandler(salesTargetController.report));
+router.get('/salespeople', authenticate, can('sales.sales_targets.view'), asyncHandler(salesTargetController.salespeople));
+router.post('/', authenticate, can('sales.sales_targets.create'), asyncHandler(salesTargetController.upsert));
+router.delete('/:id', authenticate, can('sales.sales_targets.delete'), validateUuidParams('id'), asyncHandler(salesTargetController.remove));
 
 export default router;

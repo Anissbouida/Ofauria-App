@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { ROLE_GROUPS } from '@ofauria/shared';
 import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { db } from '../config/database.js';
 import { quoteRepository } from '../repositories/quote.repository.js';
@@ -57,7 +57,7 @@ async function validityDays() {
   return Math.max(1, Number(p?.validity_days) || 30);
 }
 
-quotesRouter.get('/', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+quotesRouter.get('/', authenticate, can('sales.quotes.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const q = z.object({
     status: z.string().max(20).optional(), search: z.string().max(100).optional(), customerId: z.string().uuid().optional(),
     dateFrom: isoDate.optional(), dateTo: isoDate.optional(),
@@ -68,11 +68,11 @@ quotesRouter.get('/', authenticate, authorize(...DIRECTION), asyncHandler(async 
   res.json({ success: true, data: r.rows, total: r.total });
 }));
 
-quotesRouter.get('/overview', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+quotesRouter.get('/overview', authenticate, can('sales.quotes.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: { ...(await quoteRepository.overview(req.user!.storeId ?? undefined)), validityDays: await validityDays() } });
 }));
 
-quotesRouter.get('/:id', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+quotesRouter.get('/:id', authenticate, can('sales.quotes.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const q = await quoteRepository.findById(req.params.id);
   if (!q) { bad(res, 'Devis introuvable', 404); return; }
   // Cloisonnement : un non-admin ne lit pas le devis d'un autre magasin.
@@ -81,7 +81,7 @@ quotesRouter.get('/:id', authenticate, authorize(...DIRECTION), asyncHandler(asy
   res.json({ success: true, data: q });
 }));
 
-quotesRouter.post('/', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+quotesRouter.post('/', authenticate, can('sales.quotes.create'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = body.safeParse(req.body);
   if (!b.success) { bad(res, b.error.issues[0]?.message); return; }
   const r = await quoteRepository.create(b.data, { userId: req.user!.userId, storeId: req.user!.storeId ?? null, validityDays: await validityDays(), role: req.user!.role });
@@ -89,7 +89,7 @@ quotesRouter.post('/', authenticate, authorize(...DIRECTION), asyncHandler(async
   res.status(201).json({ success: true, data: r.data });
 }));
 
-quotesRouter.put('/:id', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+quotesRouter.put('/:id', authenticate, can('sales.quotes.edit'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = body.safeParse(req.body);
   if (!b.success) { bad(res, b.error.issues[0]?.message); return; }
   const r = await quoteRepository.update(req.params.id, b.data, req.user!.userId, req.user!.role);
@@ -97,24 +97,24 @@ quotesRouter.put('/:id', authenticate, authorize(...DIRECTION), asyncHandler(asy
   res.json({ success: true, data: r.data });
 }));
 
-quotesRouter.post('/:id/duplicate', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+quotesRouter.post('/:id/duplicate', authenticate, can('sales.quotes.duplicate'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await quoteRepository.duplicate(req.params.id, { userId: req.user!.userId, storeId: req.user!.storeId ?? null, validityDays: await validityDays() });
   if ('error' in r) { r.error === 'not_found' ? bad(res, 'Devis introuvable', 404) : bad(res, r.error); return; }
   res.status(201).json({ success: true, data: r.data });
 }));
 
 // Révision (phase 11, D3-22) : nouvelle version, l'originale est figée et remplacée.
-quotesRouter.post('/:id/revise', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+quotesRouter.post('/:id/revise', authenticate, can('sales.quotes.revise'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await quoteRepository.revise(req.params.id, { userId: req.user!.userId, storeId: req.user!.storeId ?? null, validityDays: await validityDays() });
   if ('error' in r) { r.error === 'not_found' ? bad(res, 'Devis introuvable', 404) : bad(res, r.error, 409); return; }
   res.status(201).json({ success: true, data: r.data });
 }));
 
-quotesRouter.get('/:id/versions', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+quotesRouter.get('/:id/versions', authenticate, can('sales.quotes.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await quoteRepository.versions(req.params.id) });
 }));
 
-quotesRouter.post('/:id/convert', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+quotesRouter.post('/:id/convert', authenticate, can('sales.quotes.convert'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({ pickupDate: z.string().min(10).max(30), customerId: z.string().uuid().nullish() }).safeParse(req.body);
   if (!b.success) { bad(res, 'Indiquez la date de livraison ou de retrait'); return; }
   const r = await quoteRepository.convert(req.params.id, { ...b.data, userId: req.user!.userId, storeId: req.user!.storeId ?? null });
@@ -122,7 +122,7 @@ quotesRouter.post('/:id/convert', authenticate, authorize(...DIRECTION), asyncHa
   res.json({ success: true, data: r.data, order: r.order, creditWarning: r.creditWarning });
 }));
 
-quotesRouter.post('/:id/:action(send|accept|refuse|reopen|cancel)', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+quotesRouter.post('/:id/:action(send|accept|refuse|reopen|cancel)', authenticate, can('sales.quotes.create'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({ reasonCode: z.string().max(40).nullish(), note: z.string().max(1000).nullish() }).safeParse(req.body ?? {});
   if (!b.success) { bad(res); return; }
   const r = await quoteRepository.transition(req.params.id, req.params.action as 'send', { userId: req.user!.userId, ...b.data });
@@ -131,7 +131,7 @@ quotesRouter.post('/:id/:action(send|accept|refuse|reopen|cancel)', authenticate
 }));
 
 /** PDF du devis ou de la proforma (numéro PF attribué à la première édition). */
-quotesRouter.get('/:id/pdf', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+quotesRouter.get('/:id/pdf', authenticate, can('sales.quotes.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const kind = req.query.kind === 'proforma' ? 'proforma' : 'quote';
   const q = await quoteRepository.findById(req.params.id);
   if (!q) { bad(res, 'Devis introuvable', 404); return; }

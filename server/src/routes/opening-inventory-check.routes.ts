@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import { openingInventoryCheckController } from '../controllers/opening-inventory-check.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
+import { can } from '../middleware/permission.middleware.js';
 
 const router = Router();
 
@@ -10,13 +9,13 @@ const router = Router();
 router.get(
   '/opening/pending',
   authenticate,
-  authorize(...ROLE_GROUPS.CASH),
+  can('pos.inventory_checks.opening_pending.view'),
   openingInventoryCheckController.getPending
 );
 router.post(
   '/opening',
   authenticate,
-  authorize(...ROLE_GROUPS.CASH),
+  can('pos.inventory_checks.opening'),
   openingInventoryCheckController.create
 );
 
@@ -24,13 +23,13 @@ router.post(
 router.get(
   '/opening/awaiting-validation',
   authenticate,
-  authorize(...ROLE_GROUPS.ADMIN_MANAGER),
+  can('pos.inventory_checks.opening_awaiting_validation.view'),
   openingInventoryCheckController.listAwaitingValidation
 );
 router.post(
   '/opening/:id/validate',
   authenticate,
-  authorize(...ROLE_GROUPS.ADMIN_MANAGER),
+  can('pos.inventory_checks.validate'),
   openingInventoryCheckController.validate
 );
 
@@ -38,7 +37,7 @@ router.post(
 router.get(
   '/opening/:id',
   authenticate,
-  authorize(...ROLE_GROUPS.CASH),
+  can('pos.inventory_checks.opening.view'),
   openingInventoryCheckController.getById
 );
 

@@ -1,9 +1,8 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
-import { ROLE_GROUPS } from '@ofauria/shared';
 import { db } from '../config/database.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 /**
@@ -11,7 +10,6 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
  * magasin. Le contenu est le panier tel que la caisse le tient ; aucune vente n'est créée.
  */
 export const posParkedRouter = Router();
-const SELL = authorize(...ROLE_GROUPS.SALES);
 function bad(res: Response, message = 'Paramètres invalides', status = 400) { res.status(status).json({ success: false, error: { message } }); }
 
 const item = z.object({
@@ -29,7 +27,7 @@ const body = z.object({
   total: z.number().min(0),
 });
 
-posParkedRouter.get('/', authenticate, SELL, asyncHandler(async (req: AuthRequest, res: Response) => {
+posParkedRouter.get('/', authenticate, can('pos.pos_parked.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!req.user!.storeId) { res.json({ success: true, data: [] }); return; }
   const r = await db.query(
     `SELECT p.*, concat_ws(' ', u.first_name, u.last_name) AS user_name
@@ -38,7 +36,7 @@ posParkedRouter.get('/', authenticate, SELL, asyncHandler(async (req: AuthReques
   res.json({ success: true, data: r.rows });
 }));
 
-posParkedRouter.post('/', authenticate, SELL, asyncHandler(async (req: AuthRequest, res: Response) => {
+posParkedRouter.post('/', authenticate, can('pos.pos_parked.create'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!req.user!.storeId) { bad(res, 'Caissier non rattaché à un magasin'); return; }
   const b = body.safeParse(req.body);
   if (!b.success) { bad(res, b.error.issues[0]?.message); return; }
@@ -53,7 +51,7 @@ posParkedRouter.post('/', authenticate, SELL, asyncHandler(async (req: AuthReque
 }));
 
 /** Reprise ou abandon : dans les deux cas le ticket quitte la file (la caisse garde une copie pour la reprise). */
-posParkedRouter.delete('/:id', authenticate, SELL, asyncHandler(async (req: AuthRequest, res: Response) => {
+posParkedRouter.delete('/:id', authenticate, can('pos.pos_parked.delete'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await db.query(`DELETE FROM pos_parked_tickets WHERE id = $1 AND store_id = $2 RETURNING *`, [req.params.id, req.user!.storeId ?? null]);
   if (!r.rows[0]) { bad(res, 'Ticket en attente introuvable (déjà repris sur un autre poste ?)', 404); return; }
   res.json({ success: true, data: r.rows[0] });

@@ -223,6 +223,20 @@ async function apply(files: string[]) {
       const body = src.slice(open + 1, close);
       if (/\bauthorize\(/.test(body)) guardConsts.set(m[1], body.trim().replace(/,\s*$/, ''));
     }
+    // Gardes mises en variable : const SELL = authorize(...);
+    const guardVars = new Set([...src.matchAll(/const (\w+)\s*=\s*authorize\(/g)].map(m => m[1]));
+    // router.use(authenticate, authorize(...)) : la garde passe sur chaque route du routeur.
+    const usedOnRouter = new Set<string>();
+    for (const v of prefixByVar.keys()) {
+      const u = new RegExp(`\\b${v}\\.use\\(([^;]*?)\\bauthorize\\(`, 'g').exec(src);
+      if (!u) continue;
+      const open = u.index + u[0].length - 1;
+      const close = matchParen(src, open);
+      let tail = close + 1;
+      while (/[\s,]/.test(src[tail]) && src[tail] !== ')') tail++;
+      src = src.slice(0, u.index + u[0].length - 'authorize('.length).replace(/,\s*$/, '') + src.slice(tail);
+      usedOnRouter.add(v);
+    }
     let count = 0; const missing: string[] = [];
     const edits: { start: number; end: number; text: string }[] = [];
     for (const [v, prefix] of prefixByVar) {
@@ -233,31 +247,46 @@ async function apply(files: string[]) {
         const decl = src.slice(open, close + 1);
         const routeKey = `${m[1].toUpperCase()} ${(prefix + (m[2] === '/' ? '' : m[2])) || '/'}`;
         const key = (PERMISSION_ROUTES as Record<string, string>)[routeKey];
-        const usesGuard = /\bauthorize\(/.test(decl) || [...guardConsts.keys()].some(c => new RegExp(`\\.\\.\\.${c}\\b`).test(decl));
+        const usesVar = [...guardVars].some(g => new RegExp(`[(,]\\s*${g}\\s*[,)]`).test(decl));
+        const usesGuard = usedOnRouter.has(v) || usesVar || /\bauthorize\(/.test(decl) || [...guardConsts.keys()].some(c => new RegExp(`\\.\\.\\.${c}\\b`).test(decl));
         if (!usesGuard) continue;
         if (!key) { missing.push(routeKey); continue; }
         let out = '';
-        for (let i = 0; i < decl.length;) {
+        if (usedOnRouter.has(v)) {
+          // Garde de routeur : can('clé') juste après le chemin.
+          const at = m.index! + m[0].length;
+          edits.push({ start: at, end: at, text: `, can('${key}')` }); count++;
+          continue;
+        }
+        let d2 = decl;
+        for (const g of guardVars) d2 = d2.replace(new RegExp(`([(,]\\s*)${g}(\\s*[,)])`, 'g'), `$1can('${key}')$2`);
+        const decl0 = d2;
+        for (let i = 0; i < decl0.length;) {
           const a = /\bauthorize\(/y; a.lastIndex = i;
-          if (a.test(decl) && (i === 0 || !/[\w.]/.test(decl[i - 1]))) {
-            const end = matchParen(decl, i + 'authorize'.length);
+          if (a.test(decl0) && (i === 0 || !/[\w.]/.test(decl0[i - 1]))) {
+            const end = matchParen(decl0, i + 'authorize'.length);
             out += `can('${key}')`; i = end + 1; continue;
           }
           let replaced = false;
           for (const [c, body] of guardConsts) {
             const s = new RegExp(`\\.\\.\\.${c}\\b`, 'y'); s.lastIndex = i;
-            if (s.test(decl)) {
+            if (s.test(decl0)) {
               let b = body; let j = b.search(/\bauthorize\(/);
               while (j >= 0) { const e = matchParen(b, j + 'authorize'.length); b = b.slice(0, j) + `can('${key}')` + b.slice(e + 1); j = b.search(/\bauthorize\(/); }
               out += b; i = s.lastIndex; replaced = true; break;
             }
           }
-          if (!replaced) { out += decl[i]; i++; }
+          if (!replaced) { out += decl0[i]; i++; }
         }
         edits.push({ start: open, end: close + 1, text: out }); count++;
       }
     }
     for (const e of edits.sort((a, b) => b.start - a.start)) src = src.slice(0, e.start) + e.text + src.slice(e.end);
+    for (const g of guardVars) {
+      if (!new RegExp(`\\b${g}\\b`).test(src.replace(new RegExp(`const ${g}\\s*=\\s*authorize\\([^;]*\\);\\n?`), ''))) {
+        src = src.replace(new RegExp(`const ${g}\\s*=\\s*authorize\\([^;]*\\);\\n?`), '');
+      }
+    }
     // Constantes de garde devenues inutiles, imports.
     for (const c of guardConsts.keys()) {
       if (!new RegExp(`\\b${c}\\b`).test(src.replace(new RegExp(`const ${c}\\s*(?::[^=]+)?=\\s*\\[[\\s\\S]*?\\];\\n?`), ''))) {

@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import { salesContractController } from '../controllers/sales-contract.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validateUuidParams } from '../middleware/validate.middleware.js';
 
@@ -11,10 +10,10 @@ import { validateUuidParams } from '../middleware/validate.middleware.js';
  */
 const router = Router();
 
-router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(salesContractController.list));
-router.get('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), validateUuidParams('id'), asyncHandler(salesContractController.get));
-router.post('/', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(salesContractController.create));
-router.post('/:id/releases', authenticate, authorize(...ROLE_GROUPS.SALES), validateUuidParams('id'), asyncHandler(salesContractController.addRelease));
-router.put('/:id/close', authenticate, authorize(...ROLE_GROUPS.SALES), validateUuidParams('id'), asyncHandler(salesContractController.close));
+router.get('/', authenticate, can('sales.sales_contracts.view'), asyncHandler(salesContractController.list));
+router.get('/:id', authenticate, can('sales.sales_contracts.view'), validateUuidParams('id'), asyncHandler(salesContractController.get));
+router.post('/', authenticate, can('sales.sales_contracts.create'), asyncHandler(salesContractController.create));
+router.post('/:id/releases', authenticate, can('sales.sales_contracts.releases'), validateUuidParams('id'), asyncHandler(salesContractController.addRelease));
+router.put('/:id/close', authenticate, can('sales.sales_contracts.close'), validateUuidParams('id'), asyncHandler(salesContractController.close));
 
 export default router;

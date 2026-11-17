@@ -1,9 +1,8 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
-import { ROLE_GROUPS } from '@ofauria/shared';
 import { db } from '../config/database.js';
 import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { productRepository } from '../repositories/product.repository.js';
 import { salesChannelRepository } from '../repositories/sales-channel.repository.js';
@@ -17,8 +16,6 @@ import * as loyalty from '../services/loyalty.js';
  */
 export const promotionsRouter = Router();
 export const loyaltyRouter = Router();
-const SELL = authorize(...ROLE_GROUPS.SALES);
-const MANAGE = authorize(...ROLE_GROUPS.ADMIN_MANAGER);
 function bad(res: Response, message = 'Paramètres invalides', status = 400) { res.status(status).json({ success: false, error: { message } }); }
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -82,12 +79,12 @@ const SELECT_PROMO = `
               ELSE 'running' END AS state
     FROM promotions p LEFT JOIN stores s ON s.id = p.store_id LEFT JOIN loyalty_tiers t ON t.code = p.min_tier_code`;
 
-promotionsRouter.get('/', authenticate, SELL, asyncHandler(async (_req: AuthRequest, res: Response) => {
+promotionsRouter.get('/', authenticate, can('sales.promotions.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   const r = await db.query(`${SELECT_PROMO} ORDER BY p.is_active DESC, p.ends_on NULLS FIRST, p.created_at DESC`);
   res.json({ success: true, data: r.rows.map(p => ({ ...p, label: promoLabel(p) })) });
 }));
 
-promotionsRouter.post('/', authenticate, MANAGE, asyncHandler(async (req: AuthRequest, res: Response) => {
+promotionsRouter.post('/', authenticate, can('sales.promotions.create'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = promoBody.safeParse(req.body);
   if (!b.success) { bad(res, b.error.issues[0]?.message); return; }
   try {
@@ -104,7 +101,7 @@ promotionsRouter.post('/', authenticate, MANAGE, asyncHandler(async (req: AuthRe
   }
 }));
 
-promotionsRouter.put('/:id', authenticate, MANAGE, asyncHandler(async (req: AuthRequest, res: Response) => {
+promotionsRouter.put('/:id', authenticate, can('sales.promotions.edit'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = promoBody.safeParse(req.body);
   if (!b.success) { bad(res, b.error.issues[0]?.message); return; }
   try {
@@ -123,7 +120,7 @@ promotionsRouter.put('/:id', authenticate, MANAGE, asyncHandler(async (req: Auth
 }));
 
 /** Actions rapides de la liste : activer / arrêter, prolonger de N jours (à partir d'aujourd'hui si déjà finie). */
-promotionsRouter.patch('/:id/quick', authenticate, MANAGE, asyncHandler(async (req: AuthRequest, res: Response) => {
+promotionsRouter.patch('/:id/quick', authenticate, can('sales.promotions.quick'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({ isActive: z.boolean().optional(), extendDays: z.coerce.number().int().min(1).max(365).optional() })
     .refine(x => x.isActive !== undefined || x.extendDays !== undefined).safeParse(req.body);
   if (!b.success) { bad(res); return; }
@@ -138,7 +135,7 @@ promotionsRouter.patch('/:id/quick', authenticate, MANAGE, asyncHandler(async (r
 }));
 
 /** Une promotion déjà utilisée s'arrête (désactivée) ; jamais utilisée, elle se supprime. */
-promotionsRouter.delete('/:id', authenticate, MANAGE, asyncHandler(async (req: AuthRequest, res: Response) => {
+promotionsRouter.delete('/:id', authenticate, can('sales.promotions.delete'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const used = await db.query(`SELECT 1 FROM document_promotions WHERE promotion_id = $1 LIMIT 1`, [req.params.id]);
   if (used.rows.length) {
     await db.query(`UPDATE promotions SET is_active = false, updated_at = now() WHERE id = $1`, [req.params.id]);
@@ -154,7 +151,7 @@ promotionsRouter.delete('/:id', authenticate, MANAGE, asyncHandler(async (req: A
  * Aperçu pour la caisse : prix du canal, promotions applicables, et ce que le client
  * peut payer en points sur ce ticket. Le checkout refait le même calcul.
  */
-promotionsRouter.post('/evaluate', authenticate, SELL, asyncHandler(async (req: AuthRequest, res: Response) => {
+promotionsRouter.post('/evaluate', authenticate, can('sales.promotions.evaluate'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({
     items: z.array(z.object({ productId: z.string().uuid(), quantity: z.coerce.number().int().positive() })).max(200),
     customerId: z.string().uuid().nullish(), channelId: z.string().uuid().nullish(), couponCode: z.string().trim().max(40).nullish(),
@@ -193,11 +190,11 @@ promotionsRouter.post('/evaluate', authenticate, SELL, asyncHandler(async (req: 
 }));
 
 /* ─── Fidélité ─────────────────────────────────────────────────────────── */
-loyaltyRouter.get('/overview', authenticate, MANAGE, asyncHandler(async (_req: AuthRequest, res: Response) => {
+loyaltyRouter.get('/overview', authenticate, can('sales.loyalty.overview.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: { ...(await loyalty.overview()), tiersConfig: await loyalty.listTiers(db, true) } });
 }));
 
-loyaltyRouter.put('/settings', authenticate, MANAGE, asyncHandler(async (req: AuthRequest, res: Response) => {
+loyaltyRouter.put('/settings', authenticate, can('sales.loyalty.edit'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({
     enabled: z.boolean(), earnPoints: z.coerce.number().int().min(1).max(1000), earnPerAmount: z.coerce.number().positive().max(100000),
     pointValue: z.coerce.number().positive().max(1000), minRedeemPoints: z.coerce.number().int().min(1).max(10_000_000),
@@ -212,7 +209,7 @@ loyaltyRouter.put('/settings', authenticate, MANAGE, asyncHandler(async (req: Au
   res.json({ success: true, data: await loyalty.getSettings() });
 }));
 
-loyaltyRouter.put('/tiers', authenticate, MANAGE, asyncHandler(async (req: AuthRequest, res: Response) => {
+loyaltyRouter.put('/tiers', authenticate, can('sales.loyalty.edit'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.array(z.object({
     code: z.string().trim().regex(/^[a-z0-9_]{2,20}$/, 'Code de niveau : minuscules, chiffres, _'), label: z.string().trim().min(1).max(60),
     minPoints: z.coerce.number().int().min(0), earnMultiplier: z.coerce.number().min(1).max(10), color: z.string().max(20).nullish(), isActive: z.boolean().default(true),
@@ -236,17 +233,17 @@ loyaltyRouter.put('/tiers', authenticate, MANAGE, asyncHandler(async (req: AuthR
   res.json({ success: true, data: await loyalty.listTiers(db, true) });
 }));
 
-loyaltyRouter.get('/tiers', authenticate, SELL, asyncHandler(async (_req: AuthRequest, res: Response) => {
+loyaltyRouter.get('/tiers', authenticate, can('sales.loyalty.tiers.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await loyalty.listTiers() });
 }));
 
-loyaltyRouter.get('/customers/:id', authenticate, SELL, asyncHandler(async (req: AuthRequest, res: Response) => {
+loyaltyRouter.get('/customers/:id', authenticate, can('sales.loyalty.customers.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await loyalty.customerSummary(req.params.id);
   if (!r) { bad(res, 'Client introuvable', 404); return; }
   res.json({ success: true, data: r });
 }));
 
-loyaltyRouter.post('/customers/:id/adjust', authenticate, MANAGE, asyncHandler(async (req: AuthRequest, res: Response) => {
+loyaltyRouter.post('/customers/:id/adjust', authenticate, can('sales.loyalty.adjust'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({ points: z.coerce.number().int().refine(n => n !== 0, 'Indiquez un nombre de points'), note: z.string().trim().min(3).max(200) }).safeParse(req.body);
   if (!b.success) { bad(res, b.error.issues[0]?.message); return; }
   const r = await loyalty.adjust(req.params.id, b.data.points, b.data.note, req.user!.userId);
@@ -255,7 +252,7 @@ loyaltyRouter.post('/customers/:id/adjust', authenticate, MANAGE, asyncHandler(a
 }));
 
 /** Derniers mouvements de points, tous clients (contrôle de la direction). */
-loyaltyRouter.get('/transactions', authenticate, MANAGE, asyncHandler(async (req: AuthRequest, res: Response) => {
+loyaltyRouter.get('/transactions', authenticate, can('sales.loyalty.transactions.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const kind = typeof req.query.kind === 'string' && ['earn', 'redeem', 'expire', 'adjust', 'reverse'].includes(req.query.kind) ? req.query.kind : null;
   const r = await db.query(
     `SELECT t.*, s.sale_number, COALESCE(NULLIF(c.company_name, ''), concat_ws(' ', c.first_name, c.last_name)) AS customer_name,

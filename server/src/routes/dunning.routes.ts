@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 import { z } from 'zod';
 import { ROLE_GROUPS } from '@ofauria/shared';
 import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { db } from '../config/database.js';
 import { dunningRepository, dunningSettings } from '../repositories/dunning.repository.js';
@@ -17,7 +17,7 @@ const DIRECTION = ROLE_GROUPS.ADMIN_MANAGER;
 function bad(res: Response, message = 'Paramètres invalides', status = 400) { res.status(status).json({ success: false, error: { message } }); }
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-dunningRouter.get('/overview', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+dunningRouter.get('/overview', authenticate, can('sales.dunning.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const [proposals, settings, drafts, blocked] = await Promise.all([
     dunningRepository.proposals(req.user!.storeId ?? undefined),
     dunningSettings(),
@@ -32,11 +32,11 @@ dunningRouter.get('/overview', authenticate, authorize(...DIRECTION), asyncHandl
   } });
 }));
 
-dunningRouter.get('/levels', authenticate, authorize(...DIRECTION), asyncHandler(async (_req: AuthRequest, res: Response) => {
+dunningRouter.get('/levels', authenticate, can('sales.dunning.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await dunningRepository.allLevels() });
 }));
 
-dunningRouter.put('/levels/:level', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+dunningRouter.put('/levels/:level', authenticate, can('sales.dunning.levels'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const level = Number(req.params.level);
   const b = z.object({
     label: z.string().trim().min(2).max(80).optional(), daysAfterDue: z.coerce.number().int().min(0).max(3650).optional(),
@@ -48,7 +48,7 @@ dunningRouter.put('/levels/:level', authenticate, authorize(...DIRECTION), async
   res.json({ success: true, data: await dunningRepository.saveLevel(level, b.data, req.user!.userId) });
 }));
 
-dunningRouter.get('/', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+dunningRouter.get('/', authenticate, can('sales.dunning.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const q = z.object({ status: z.enum(['draft', 'sent', 'resolved', 'cancelled']).optional(), customerId: z.string().uuid().optional(),
     page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(25) }).safeParse(req.query);
   if (!q.success) { bad(res); return; }
@@ -57,7 +57,7 @@ dunningRouter.get('/', authenticate, authorize(...DIRECTION), asyncHandler(async
 }));
 
 /** Crée les lettres proposées (un client, ou tous). */
-dunningRouter.post('/create', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+dunningRouter.post('/create', authenticate, can('sales.dunning.create'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({ customerIds: z.array(z.string().uuid()).min(1).max(500), level: z.coerce.number().int().min(1).max(9).optional() }).safeParse(req.body);
   if (!b.success) { bad(res); return; }
   const created = []; const errors = [];
@@ -68,13 +68,13 @@ dunningRouter.post('/create', authenticate, authorize(...DIRECTION), asyncHandle
   res.status(201).json({ success: true, data: created, errors });
 }));
 
-dunningRouter.get('/:id', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+dunningRouter.get('/:id', authenticate, can('sales.dunning.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const d = await dunningRepository.findById(req.params.id);
   if (!d) { bad(res, 'Relance introuvable', 404); return; }
   res.json({ success: true, data: d });
 }));
 
-dunningRouter.post('/:id/send', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+dunningRouter.post('/:id/send', authenticate, can('sales.dunning.send'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({ via: z.enum(['email', 'print', 'phone', 'other']), emailTo: z.string().trim().email().nullish() }).safeParse(req.body);
   if (!b.success) { bad(res); return; }
   const r = await dunningRepository.send(req.params.id, { ...b.data, userId: req.user!.userId });
@@ -82,13 +82,13 @@ dunningRouter.post('/:id/send', authenticate, authorize(...DIRECTION), asyncHand
   res.json({ success: true, data: r.data });
 }));
 
-dunningRouter.post('/:id/cancel', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+dunningRouter.post('/:id/cancel', authenticate, can('sales.dunning.cancel'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await dunningRepository.cancel(req.params.id);
   if ('error' in r) { bad(res, r.error, 409); return; }
   res.json({ success: true, data: r.data });
 }));
 
-dunningRouter.get('/:id/pdf', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+dunningRouter.get('/:id/pdf', authenticate, can('sales.dunning.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const d = await dunningRepository.findById(req.params.id);
   if (!d) { bad(res, 'Relance introuvable', 404); return; }
   const logo = (await db.query(`SELECT logo_url FROM company_settings LIMIT 1`)).rows[0]?.logo_url ?? null;
@@ -105,17 +105,17 @@ dunningRouter.get('/:id/pdf', authenticate, authorize(...DIRECTION), asyncHandle
 }));
 
 /* ─── Blocage et pause ────────────────────────────────────────────────────── */
-dunningRouter.post('/customers/:customerId/hold', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+dunningRouter.post('/customers/:customerId/hold', authenticate, can('sales.dunning.hold'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({ reason: z.string().trim().min(3).max(300) }).safeParse(req.body);
   if (!b.success) { bad(res, 'Indiquez le motif du blocage'); return; }
   await dunningRepository.hold(req.params.customerId, { reason: b.data.reason, userId: req.user!.userId, storeId: req.user!.storeId ?? null });
   res.json({ success: true });
 }));
-dunningRouter.post('/customers/:customerId/release', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+dunningRouter.post('/customers/:customerId/release', authenticate, can('sales.dunning.release'), asyncHandler(async (req: AuthRequest, res: Response) => {
   await dunningRepository.release(req.params.customerId);
   res.json({ success: true });
 }));
-dunningRouter.post('/customers/:customerId/pause', authenticate, authorize(...DIRECTION), asyncHandler(async (req: AuthRequest, res: Response) => {
+dunningRouter.post('/customers/:customerId/pause', authenticate, can('sales.dunning.pause'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({ until: isoDate.nullable() }).safeParse(req.body);
   if (!b.success) { bad(res); return; }
   await dunningRepository.pause(req.params.customerId, b.data.until);

@@ -2,8 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { customerController } from '../controllers/customer.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 // Rate limit strict pour endpoints de lecture agregee / stats
@@ -27,36 +26,36 @@ const writeLimiter = rateLimit({
 
 const router = Router();
 
-router.get('/', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.list));
-router.get('/global-stats', authenticate, authorize(...ROLE_GROUPS.SALES), statsLimiter, asyncHandler(customerController.globalStats));
+router.get('/', authenticate, can('customers.view'), asyncHandler(customerController.list));
+router.get('/global-stats', authenticate, can('customers.global_stats.view'), statsLimiter, asyncHandler(customerController.globalStats));
 // Doublons probables (phase 4.3) — avant /:id pour ne pas être capturé comme id.
-router.get('/check', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.check));
-router.get('/:id/situation', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.situation));
-router.get('/:id/statement', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.statement));
-router.get('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.getById));
-router.get('/:id/stats', authenticate, authorize(...ROLE_GROUPS.SALES), statsLimiter, asyncHandler(customerController.stats));
+router.get('/check', authenticate, can('customers.check.view'), asyncHandler(customerController.check));
+router.get('/:id/situation', authenticate, can('customers.situation.view'), asyncHandler(customerController.situation));
+router.get('/:id/statement', authenticate, can('customers.statement.view'), asyncHandler(customerController.statement));
+router.get('/:id', authenticate, can('customers.view'), asyncHandler(customerController.getById));
+router.get('/:id/stats', authenticate, can('customers.stats.view'), statsLimiter, asyncHandler(customerController.stats));
 // Adresses multiples (phase 4.1)
-router.get('/:id/addresses', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.listAddresses));
-router.post('/:id/addresses', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.createAddress));
-router.put('/:id/addresses/:addressId', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.updateAddress));
-router.delete('/:id/addresses/:addressId', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.removeAddress));
+router.get('/:id/addresses', authenticate, can('customers.addresses.view'), asyncHandler(customerController.listAddresses));
+router.post('/:id/addresses', authenticate, can('customers.addresses'), writeLimiter, asyncHandler(customerController.createAddress));
+router.put('/:id/addresses/:addressId', authenticate, can('customers.addresses'), writeLimiter, asyncHandler(customerController.updateAddress));
+router.delete('/:id/addresses/:addressId', authenticate, can('customers.addresses.delete'), writeLimiter, asyncHandler(customerController.removeAddress));
 // Attestations d'exonération de TVA (phase 5.7).
-router.get('/:id/tax-exemptions', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.listExemptions));
-router.post('/:id/tax-exemptions', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.createExemption));
-router.delete('/:id/tax-exemptions/:exemptionId', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.removeExemption));
+router.get('/:id/tax-exemptions', authenticate, can('customers.tax_exemptions.view'), asyncHandler(customerController.listExemptions));
+router.post('/:id/tax-exemptions', authenticate, can('customers.tax_exemptions'), writeLimiter, asyncHandler(customerController.createExemption));
+router.delete('/:id/tax-exemptions/:exemptionId', authenticate, can('customers.tax_exemptions.delete'), writeLimiter, asyncHandler(customerController.removeExemption));
 // Portail client (phase 10.3) : émettre / consulter / révoquer le jeton d'accès.
-router.get('/:id/portal-token', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.portalStatus));
-router.post('/:id/portal-token', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.issuePortalToken));
-router.delete('/:id/portal-token', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.revokePortalToken));
-router.post('/', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.create));
-router.put('/:id', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.update));
-router.delete('/:id', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), writeLimiter, asyncHandler(customerController.remove));
+router.get('/:id/portal-token', authenticate, can('customers.portal_token.view'), asyncHandler(customerController.portalStatus));
+router.post('/:id/portal-token', authenticate, can('customers.portal_token'), writeLimiter, asyncHandler(customerController.issuePortalToken));
+router.delete('/:id/portal-token', authenticate, can('customers.portal_token.delete'), writeLimiter, asyncHandler(customerController.revokePortalToken));
+router.post('/', authenticate, can('customers.create'), writeLimiter, asyncHandler(customerController.create));
+router.put('/:id', authenticate, can('customers.edit'), writeLimiter, asyncHandler(customerController.update));
+router.delete('/:id', authenticate, can('customers.delete'), writeLimiter, asyncHandler(customerController.remove));
 // Archivage + audit (phase 4.4)
-router.get('/:id/history', authenticate, authorize(...ROLE_GROUPS.SALES), asyncHandler(customerController.history));
-router.post('/:id/restore', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), writeLimiter, asyncHandler(customerController.restore));
+router.get('/:id/history', authenticate, can('customers.history.view'), asyncHandler(customerController.history));
+router.post('/:id/restore', authenticate, can('customers.restore'), writeLimiter, asyncHandler(customerController.restore));
 // Protection des données — loi 09-08 (phase 4.6)
-router.put('/:id/consent', authenticate, authorize(...ROLE_GROUPS.SALES), writeLimiter, asyncHandler(customerController.consent));
-router.get('/:id/export', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(customerController.exportData));
-router.post('/:id/anonymize', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), writeLimiter, asyncHandler(customerController.anonymize));
+router.put('/:id/consent', authenticate, can('customers.consent'), writeLimiter, asyncHandler(customerController.consent));
+router.get('/:id/export', authenticate, can('customers.export.view'), asyncHandler(customerController.exportData));
+router.post('/:id/anonymize', authenticate, can('customers.anonymize'), writeLimiter, asyncHandler(customerController.anonymize));
 
 export default router;

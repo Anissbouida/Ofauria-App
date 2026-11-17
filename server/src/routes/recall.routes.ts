@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import { recallController } from '../controllers/recall.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
-import { authorize } from '../middleware/role.middleware.js';
-import { ROLE_GROUPS } from '@ofauria/shared';
+import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 const router = Router();
@@ -13,7 +12,7 @@ const router = Router();
 router.get(
   '/recall/ingredient-lot/:id',
   authenticate,
-  authorize(...ROLE_GROUPS.ADMIN_MANAGER),
+  can('controle.traceability.view'),
   asyncHandler(recallController.recallFromIngredientLot)
 );
 
