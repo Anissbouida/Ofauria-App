@@ -1,3 +1,4 @@
+import { ribKeyValid } from '../services/salary-transfer.js';
 import { z } from 'zod';
 
 /**
@@ -36,6 +37,10 @@ const supplierBase = z.object({
   address: emptyToNull(2000),
   city: emptyToNull(100),
   notes: emptyToNull(5000),
+  /** RIB marocain (G4-01) : 24 chiffres, espaces tolérés, clé contrôlée. */
+  rib: z.string().trim().max(40).transform(v => { const d = v.replace(/[\s-]/g, ''); return d === '' ? null : d; }).nullable().optional()
+    .refine(v => v == null || (/^\d{24}$/.test(v) && ribKeyValid(v)), 'RIB invalide : 24 chiffres attendus, clé contrôlée'),
+  bankName: emptyToNull(100),
   /** Liste complète des identifiants : remplace l'existant (absent = inchangé). */
   identifiers: z.array(identifierSchema).max(20).optional(),
 });

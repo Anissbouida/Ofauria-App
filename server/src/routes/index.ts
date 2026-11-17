@@ -84,6 +84,7 @@ import { rfqRouter } from './rfq.routes.js';
 import { landedCostRouter } from './landed-cost.routes.js';
 import { supplierScoreRouter } from './supplier-score.routes.js';
 import supplierItemsRoutes from './supplier-items.routes.js';
+import paymentRunsRoutes from './payment-runs.routes.js';
 import { currenciesRouter } from './currencies.routes.js';
 import { automationRouter } from './automation.routes.js';
 import { quotesRouter } from './quotes.routes.js';
@@ -135,6 +136,8 @@ router.use('/caisse', caisseRouter);
 router.use('/caisse-import', caisseImportRouter);
 router.use('/suppliers', suppliersRouter);
 router.use('/supplier-items', supplierItemsRoutes);
+// G4-01 — paiements fournisseurs en lot.
+router.use('/payment-runs', paymentRunsRoutes);
 router.use('/expense-categories', expenseCategoriesRouter);
 router.use('/revenue-categories', revenueCategoriesRouter);
 router.use('/invoices', rlsStoreScope('accounting'), invoicesRouter);

@@ -283,6 +283,8 @@ export interface TransferOrderData {
   employerRib: string;          // formate
   employerBank: string | null;
   periodLabel: string;          // « Septembre 2026 »
+  /** Objet du virement (G4-01) ; absent : « des salaires de <période> ». */
+  purpose?: string;
   lines: Array<{ name: string; rib: string; bank: string | null; amount: number }>;
   total: number;
   place: string | null;
@@ -299,12 +301,13 @@ export async function generateTransferOrderPdf(d: TransferOrderData): Promise<Bu
   doc.font('Helvetica').fontSize(10).fillColor(TEXT);
   doc.text(`À l'attention de Monsieur le Directeur${d.employerBank ? ` — ${d.employerBank}` : ''}`, M, y);
   y = doc.y + 8;
-  doc.font('Helvetica-Bold').text(`Objet : virement des salaires de ${d.periodLabel}`, M, y);
+  const purpose = d.purpose ?? `des salaires de ${d.periodLabel}`;
+  doc.font('Helvetica-Bold').text(`Objet : virement ${purpose}`, M, y);
   y = doc.y + 10;
   doc.font('Helvetica').text(
     `Par le débit de notre compte RIB n° ${d.employerRib}, nous vous prions de bien vouloir virer la somme totale de `
     + `${money(d.total).replace(/ /g, ' ')} DH (${amountInWords(d.total)}) en faveur des ${d.lines.length} bénéficiaire${d.lines.length > 1 ? 's' : ''} ci-dessous, `
-    + `au titre des salaires de ${d.periodLabel}.`,
+    + `au titre ${purpose}.`,
     M, y, { width: CW, align: 'justify', lineGap: 3 });
   y = doc.y + 12;
   y = table(doc, M, CW, y, [0.06, 0.32, 0.36, 0.08, 0.18], ['N°', 'Bénéficiaire', 'RIB', 'Banque', 'Montant (DH)'],

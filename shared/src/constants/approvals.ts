@@ -89,6 +89,14 @@ export const APPROVAL_DOC_TYPES = {
       },
     },
   },
+  payment_run: {
+    label: 'Campagne de paiement fournisseurs',
+    effect: 'La campagne est approuvée : le fichier de virement peut être édité.',
+    fields: {
+      amount: { label: 'Total de la campagne', kind: 'number', unit: 'DH' },
+      lines: { label: 'Nombre de factures', kind: 'number' },
+    },
+  },
   inventory_count: {
     label: 'Écart de contrôle d\'ouverture',
     effect: 'Le contrôle est validé et l\'écart répercuté sur le stock.',

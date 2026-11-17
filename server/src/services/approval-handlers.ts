@@ -1,4 +1,5 @@
 import { registerApprovalHandler } from './approval.service.js';
+import { paymentRunRepository } from '../repositories/payment-run.repository.js';
 import { purchaseOrderRepository } from '../repositories/purchase-order.repository.js';
 import { purchaseOrderActionsRepository } from '../repositories/purchase-order-actions.repository.js';
 import { purchaseRequestRepository } from '../repositories/purchase-request.repository.js';
@@ -11,6 +12,13 @@ import { openingInventoryCheckRepository } from '../repositories/opening-invento
  * routes/index.ts : le moteur reste indépendant des modules, les modules
  * déclarent ici ce qu'une approbation déclenche.
  */
+
+// G4-01 : campagne de paiement fournisseurs approuvée → le fichier de virement peut être édité ;
+// refusée → retour en brouillon.
+registerApprovalHandler('payment_run', {
+  async onApproved(request, actorId) { await paymentRunRepository.decide(request.doc_id, true, actorId); },
+  async onRejected(request, actorId) { await paymentRunRepository.decide(request.doc_id, false, actorId); },
+});
 
 registerApprovalHandler('purchase_request', {
   // Flux procure-to-pay (mig 456) : la décision pose approval_status sur la DA,
