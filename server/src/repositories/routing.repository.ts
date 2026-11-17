@@ -1,5 +1,5 @@
 import type { RoutingOperationInput } from '../validators/routing.validator.js';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 
 /**
  * Postes de travail & gammes (mig 388). Calcul du coût de main-d'œuvre standard
@@ -216,11 +216,20 @@ export const routingRepository = {
           WHERE b > a
        ),
        act AS (SELECT COUNT(*) AS active_days FROM days),
-       cap AS (SELECT capacity_minutes_per_day AS cap FROM work_centers WHERE id = $1)
+       cap AS (SELECT capacity_minutes_per_day AS cap FROM work_centers WHERE id = $1),
+       -- M5-04 : avec un calendrier, le temps planifié = temps d'ouverture de la période
+       -- (plages × ressources, jours fermés exclus), et non plus les seuls jours d'activité.
+       cal AS (SELECT EXISTS (SELECT 1 FROM work_center_calendar WHERE work_center_id = $1) AS has),
+       opening AS (
+         SELECT COALESCE(SUM(fn_work_center_capacity($1, g::date)), 0) AS open_min
+           FROM generate_series(($2::timestamptz AT TIME ZONE 'Africa/Casablanca')::date,
+                                (($3::timestamptz - interval '1 second') AT TIME ZONE 'Africa/Casablanca')::date, interval '1 day') g
+       )
        SELECT ROUND(dt.downtime)::int AS downtime_min, act.active_days::int AS active_days,
-              cap.cap, (cap.cap * act.active_days) AS planned_min,
+              cap.cap, CASE WHEN cal.has THEN opening.open_min ELSE cap.cap * act.active_days END AS planned_min,
+              cal.has AS from_calendar,
               perf.est::int AS standard_min, perf.reel::int AS reel_min
-       FROM dt, perf, cap, act`, [workCenterId, from, to]);
+       FROM dt, perf, cap, act, cal, opening`, [workCenterId, from, to]);
     const row = r.rows[0] || {};
     const planned = row.planned_min != null ? parseFloat(row.planned_min) : 0;
     const downtime = row.downtime_min != null ? parseInt(row.downtime_min) : 0;
@@ -233,7 +242,43 @@ export const routingRepository = {
     return {
       downtime_min: downtime, planned_min: planned, standard_min: standard, reel_min: reel,
       active_days: row.active_days != null ? parseInt(row.active_days) : 0,
+      from_calendar: !!row.from_calendar,
       availability_pct: availability, performance_pct: performance, trs_pct: trs,
     };
+  },
+
+  /* ── Calendrier des postes (M5-04) ── */
+  async getCalendar(workCenterId: string) {
+    const slots = (await db.query(
+      `SELECT id, iso_weekday, to_char(start_time, 'HH24:MI') AS start_time, to_char(end_time, 'HH24:MI') AS end_time, resources
+         FROM work_center_calendar WHERE work_center_id = $1 ORDER BY iso_weekday, start_time`, [workCenterId])).rows;
+    const closures = (await db.query(
+      `SELECT id, work_center_id, closed_on::text AS closed_on, reason FROM work_center_closures
+        WHERE (work_center_id = $1 OR work_center_id IS NULL) AND closed_on >= CURRENT_DATE - 30 ORDER BY closed_on`, [workCenterId])).rows;
+    return { slots, closures };
+  },
+  /** Remplace les plages d'un poste (tout ou rien) ; liste vide = retour à la capacité journalière. */
+  async setCalendar(workCenterId: string, slots: { isoWeekday: number; startTime: string; endTime: string; resources: number }[]) {
+    return withTransaction(async () => {
+      await db.query(`DELETE FROM work_center_calendar WHERE work_center_id = $1`, [workCenterId]);
+      for (const s of slots) {
+        await db.query(
+          `INSERT INTO work_center_calendar (work_center_id, iso_weekday, start_time, end_time, resources) VALUES ($1, $2, $3::time, $4::time, $5)`,
+          [workCenterId, s.isoWeekday, s.startTime, s.endTime, s.resources]);
+      }
+      return this.getCalendar(workCenterId);
+    });
+  },
+  async addClosure(workCenterId: string | null, closedOn: string, reason: string | null) {
+    return (await db.query(
+      `INSERT INTO work_center_closures (work_center_id, closed_on, reason) VALUES ($1, $2::date, $3) RETURNING id, closed_on::text AS closed_on, reason`,
+      [workCenterId, closedOn, reason])).rows[0];
+  },
+  async removeClosure(id: string) {
+    return (await db.query(`DELETE FROM work_center_closures WHERE id = $1`, [id])).rowCount! > 0;
+  },
+  async capacityOn(workCenterId: string, day: string): Promise<number | null> {
+    const v = (await db.query(`SELECT fn_work_center_capacity($1, $2::date) AS c`, [workCenterId, day])).rows[0]?.c;
+    return v == null ? null : Number(v);
   },
 };

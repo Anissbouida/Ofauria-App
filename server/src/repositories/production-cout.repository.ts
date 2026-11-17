@@ -919,11 +919,14 @@ export const productionCoutRepository = {
   // Minutes requises par poste pour un plan + % d'utilisation si capacite connue.
   async getChargeByPlan(planId: string) {
     const result = await db.query(
-      `SELECT work_center_id, work_center_name, capacity_minutes_per_day,
-              minutes_required
-       FROM v_production_work_center_load
-       WHERE plan_id = $1
-       ORDER BY minutes_required DESC`,
+      `SELECT l.work_center_id, l.work_center_name,
+              -- M5-04 : capacité du jour du plan (calendrier du poste, sinon capacité journalière).
+              fn_work_center_capacity(l.work_center_id, pp.plan_date) AS capacity_minutes_per_day,
+              l.minutes_required
+       FROM v_production_work_center_load l
+       JOIN production_plans pp ON pp.id = l.plan_id
+       WHERE l.plan_id = $1
+       ORDER BY l.minutes_required DESC`,
       [planId]
     );
     return result.rows.map(r => {

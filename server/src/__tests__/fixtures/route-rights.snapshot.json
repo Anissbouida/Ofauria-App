@@ -289,6 +289,10 @@
   "admin",
   "manager"
  ],
+ "DELETE /routings/work-centers/closures/:closureId": [
+  "admin",
+  "manager"
+ ],
  "DELETE /salary-advances/:id": [
   "admin"
  ],
@@ -2054,6 +2058,10 @@
   "manager"
  ],
  "GET /routings/work-centers": [
+  "admin",
+  "manager"
+ ],
+ "GET /routings/work-centers/:id/calendar": [
   "admin",
   "manager"
  ],
@@ -4090,6 +4098,10 @@
   "admin",
   "manager"
  ],
+ "POST /routings/work-centers/:id/closures": [
+  "admin",
+  "manager"
+ ],
  "POST /routings/work-centers/:id/downtime": [
   "admin",
   "baker",
@@ -4816,6 +4828,10 @@
   "manager"
  ],
  "PUT /routings/work-centers/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /routings/work-centers/:id/calendar": [
   "admin",
   "manager"
  ],

@@ -3,7 +3,7 @@ import { routingController } from '../controllers/routing.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
-import { createRoutingSchema, updateRoutingSchema } from '../validators/routing.validator.js';
+import { createRoutingSchema, updateRoutingSchema, calendarSchema, closureSchema } from '../validators/routing.validator.js';
 
 // Postes de travail & gammes (mig 388) : admin / gérant.
 const router = Router();
@@ -17,6 +17,11 @@ router.post('/work-centers/:id/status', authenticate, can('production.routings.s
 router.post('/work-centers/:id/downtime', authenticate, can('production.routings.downtime'), routingController.recordDowntime);
 router.get('/work-centers/:id/downtime', authenticate, can('production.routings.view'), routingController.listDowntime);
 router.get('/work-centers/:id/oee', authenticate, can('production.routings.view'), routingController.getOee);
+// Calendrier des postes (M5-04)
+router.get('/work-centers/:id/calendar', authenticate, validateUuidParams('id'), can('production.routings.view'), routingController.getCalendar);
+router.put('/work-centers/:id/calendar', authenticate, validateUuidParams('id'), can('production.routings.work_centers'), validate(calendarSchema), routingController.setCalendar);
+router.post('/work-centers/:id/closures', authenticate, validateUuidParams('id'), can('production.routings.work_centers'), validate(closureSchema), routingController.addClosure);
+router.delete('/work-centers/closures/:closureId', authenticate, validateUuidParams('closureId'), can('production.routings.work_centers'), routingController.removeClosure);
 router.get('/', authenticate, can('production.routings.view'), routingController.listRoutings);
 router.get('/for-recipe/:recipeId', authenticate, validateUuidParams('recipeId'), can('production.routings.view'), routingController.getRoutingForRecipe);
 router.post('/', authenticate, can('production.routings.create'), validate(createRoutingSchema), routingController.createRouting);

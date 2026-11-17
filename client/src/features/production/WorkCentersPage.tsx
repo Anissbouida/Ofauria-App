@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { money, currencySymbol } from '../../utils/money';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Cog, Plus, X, Loader2, Power, Trash2, Route, Save, Wrench, ListOrdered, Gauge } from 'lucide-react';
+import { Cog, Plus, X, Loader2, Power, Trash2, Route, Save, Wrench, ListOrdered, Gauge, CalendarDays } from 'lucide-react';
 import { routingsApi, opToInput, OP_TYPE_LABELS, type OpType, type Routing, type OperationInput } from '../../api/routings.api';
 import WorkCenterOeeModal from './WorkCenterOeeModal';
+import WorkCenterCalendarModal from './WorkCenterCalendarModal';
 
 // Statuts de poste (mig 402)
 const WC_STATUS: Record<string, { label: string; color: string }> = {
@@ -79,6 +80,7 @@ function Centers() {
   const { data: rows = [], isLoading } = useQuery({ queryKey: ['work-centers'], queryFn: routingsApi.workCenters });
   const [showForm, setShowForm] = useState(false);
   const [oeeFor, setOeeFor] = useState<{ id: string; name: string } | null>(null);
+  const [calFor, setCalFor] = useState<{ id: string; name: string } | null>(null);
   const toggle = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) => routingsApi.setWorkCenterActive(id, active),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['work-centers'] }),
@@ -115,6 +117,7 @@ function Centers() {
                 <td><StatusTag tone={w.is_active ? 'done' : 'cancelled'} label={w.is_active ? 'Actif' : 'Inactif'} /></td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', marginRight: 4 }} title="TRS & arrêts" onClick={() => setOeeFor({ id: w.id, name: w.name })}><Gauge size={12} /></button>
+                  <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', marginRight: 4 }} title="Calendrier du poste" aria-label={`Calendrier de ${w.name}`} onClick={() => setCalFor({ id: w.id, name: w.name })}><CalendarDays size={12} /></button>
                   <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem' }} title={w.is_active ? 'Désactiver' : 'Activer'} onClick={() => toggle.mutate({ id: w.id, active: !w.is_active })}><Power size={12} /></button>
                 </td>
               </tr>
@@ -124,6 +127,7 @@ function Centers() {
       </div>
       {showForm && <CenterForm onClose={() => setShowForm(false)} onSaved={() => { qc.invalidateQueries({ queryKey: ['work-centers'] }); setShowForm(false); }} />}
       {oeeFor && <WorkCenterOeeModal workCenter={oeeFor} onClose={() => setOeeFor(null)} />}
+      {calFor && <WorkCenterCalendarModal workCenter={calFor} onClose={() => setCalFor(null)} />}
     </div>
   );
 }

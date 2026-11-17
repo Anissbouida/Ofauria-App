@@ -28,3 +28,18 @@ export const updateRoutingSchema = createRoutingSchema.partial().extend({
   operations: z.array(routingOperationSchema).max(100).optional(),
 });
 export type RoutingOperationInput = z.infer<typeof routingOperationSchema>;
+
+/** Calendrier des postes (M5-04). */
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Heure HH:MM');
+export const calendarSchema = z.object({
+  slots: z.array(z.object({
+    isoWeekday: z.coerce.number().int().min(1).max(7),
+    startTime: hhmm, endTime: hhmm,
+    resources: z.coerce.number().int().min(1).max(100).default(1),
+  }).refine(s => s.endTime > s.startTime, { message: 'La fin doit suivre le début' })).max(70),
+});
+export const closureSchema = z.object({
+  closedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  reason: z.string().trim().max(160).nullable().optional(),
+  allCenters: z.boolean().optional(),
+});

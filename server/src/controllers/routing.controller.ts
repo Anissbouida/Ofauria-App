@@ -101,4 +101,23 @@ export const routingController = {
     const d = await routingRepository.getOee(req.params.id, from, to);
     res.json({ success: true, data: d });
   },
+  // Calendrier des postes (M5-04).
+  async getCalendar(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await routingRepository.getCalendar(req.params.id as string) });
+  },
+  async setCalendar(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await routingRepository.setCalendar(req.params.id as string, req.body.slots) });
+  },
+  async addClosure(req: AuthRequest, res: Response) {
+    try {
+      const b = req.body as { closedOn: string; reason?: string | null; allCenters?: boolean };
+      res.status(201).json({ success: true, data: await routingRepository.addClosure(b.allCenters ? null : req.params.id as string, b.closedOn, b.reason ?? null) });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error && /uq_wc_closures/.test(err.message) ? 'Ce jour est déjà fermé' : 'Fermeture impossible' } });
+    }
+  },
+  async removeClosure(req: AuthRequest, res: Response) {
+    const ok = await routingRepository.removeClosure(req.params.closureId as string);
+    res.status(ok ? 200 : 404).json({ success: ok });
+  },
 };
