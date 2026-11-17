@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 
 /**
@@ -120,9 +120,8 @@ function storeCond(storeId: string | undefined, col: string, add: (v: unknown) =
 export const projectRepository = {
   /* ─── Projets ─────────────────────────────────────────────────────────── */
   async create(input: ProjectInput, ctx: { userId: string; storeId: string | null }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const number = await nextDocumentNumber(client, 'project');
       const r = await client.query(
         `INSERT INTO projects (number, name, description, store_id, customer_id, order_id, priority, start_date, due_date, manager_id,
@@ -133,14 +132,8 @@ export const projectRepository = {
          input.billingType ?? 'none', input.hourlyRate ?? null, input.budgetAmount ?? null, input.estimatedHours ?? null,
          input.notes?.trim() || null, ctx.userId],
       );
-      await client.query('COMMIT');
       return this.findById(r.rows[0].id);
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async findById(id: string) {
