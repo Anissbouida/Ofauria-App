@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { purchaseOrderRepository } from './purchase-order.repository.js';
 import { enqueueEmail } from '../services/mailer.js';
@@ -137,9 +137,8 @@ async function syncStatus(client: { query: typeof db.query }, rfqId: string) {
 
 export const rfqRepository = {
   async create(input: RfqInput, ctx: { userId: string; storeId: string | null }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const number = await nextDocumentNumber(client, 'rfq');
       const r = await client.query(
         `INSERT INTO rfqs (number, store_id, title, needed_by, response_deadline, notes, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
@@ -150,14 +149,8 @@ export const rfqRepository = {
       for (const sid of input.supplierIds) {
         await client.query(`INSERT INTO rfq_suppliers (rfq_id, supplier_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [id, sid]);
       }
-      await client.query('COMMIT');
       return this.findById(id);
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
@@ -168,9 +161,8 @@ export const rfqRepository = {
    * Les fournisseurs pressentis des DA sont pré-invités.
    */
   async createFromRequests(requestIds: string[], ctx: { userId: string; storeId: string | null }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const das = (await client.query(
         `SELECT pr.id, pr.ingredient_id, pr.quantity, pr.supplier_id, ing.unit, ing.category_id
            FROM purchase_requests pr
@@ -212,14 +204,8 @@ export const rfqRepository = {
       for (const sid of new Set(das.map(d => d.supplier_id).filter(Boolean) as string[])) {
         await client.query(`INSERT INTO rfq_suppliers (rfq_id, supplier_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [rfqId, sid]);
       }
-      await client.query('COMMIT');
       return this.findById(rfqId);
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async replaceItems(client: { query: typeof db.query }, rfqId: string, items: RfqItemInput[]) {
