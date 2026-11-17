@@ -1,5 +1,5 @@
 import { policyNumber } from '../services/policies.js';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { workshopForCategorySlug } from '../services/workshops.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { transferBackroomToVitrine, removeFromVitrine } from './product-stock.helper.js';
@@ -327,9 +327,8 @@ export const replenishmentRepository = {
     requestId: string,
     items: { itemId: string; qtyToStore: number; qtyToStock: number; source: string }[]
   ) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       const reqResult = await client.query(
         `UPDATE replenishment_requests
@@ -391,14 +390,8 @@ export const replenishmentRepository = {
         );
       }
 
-      await client.query('COMMIT');
       return this.findById(requestId);
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /* ─── STEP 4: Transfer (preparing → transferred or back to acknowledged) ─── */
@@ -406,9 +399,8 @@ export const replenishmentRepository = {
      If pending items remain, request goes back to 'acknowledged' after reception. */
 
   async transfer(requestId: string, transferredBy: string) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       const reqResult = await client.query(
         `UPDATE replenishment_requests
@@ -426,14 +418,8 @@ export const replenishmentRepository = {
         [requestId]
       );
 
-      await client.query('COMMIT');
       return this.findById(requestId);
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /* ─── STEP 5: Confirm reception (transferred → closed or back to acknowledged) ─── */
@@ -593,9 +579,8 @@ export const replenishmentRepository = {
   /* ─── Cancel ─── */
 
   async cancel(requestId: string): Promise<{ cancelledPlanIds: { id: string; targetRole: string; storeId: string }[] }> {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       // 1. Cancel the replenishment request
       await client.query(
@@ -655,14 +640,8 @@ export const replenishmentRepository = {
         });
       }
 
-      await client.query('COMMIT');
       return { cancelledPlanIds };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /* ─── RULE 1: Get product IDs already requested today for this store ─── */
@@ -793,9 +772,8 @@ export const replenishmentRepository = {
     items: { productId: string; productName: string; replenishedQty: number; soldQty: number; remainingQty: number; destination?: string; displayStatus?: string; lossReason?: string }[];
     notes?: string;
   }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
 
       let totalReplenished = 0, totalSold = 0, totalRemaining = 0, totalDiscrepancy = 0;
       for (const it of data.items) {
@@ -906,14 +884,8 @@ export const replenishmentRepository = {
         }
       }
 
-      await client.query('COMMIT');
       return { id: checkId, totalReplenished, totalSold, totalRemaining, totalDiscrepancy };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /* ─── Pending transfers for cashier ─── */
