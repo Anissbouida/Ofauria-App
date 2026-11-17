@@ -1852,6 +1852,7 @@
  "GET /recipes/export": [
   "admin"
  ],
+ "GET /recipes/for-product/:productId": null,
  "GET /recipes/format-weights": [
   "admin",
   "baker",
@@ -4588,6 +4589,14 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "PUT /production/:id/items/:itemId/recipe": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "PUT /production/master-schedule": [
   "admin",
   "manager"
@@ -4671,6 +4680,14 @@
   "manager"
  ],
  "PUT /recipes/:id": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "PUT /recipes/:id/alternative": [
   "admin",
   "baker",
   "beldi_sale",

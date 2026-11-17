@@ -13,8 +13,13 @@ import { validateUuidParams } from '../middleware/validate.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { bomVersionRepository } from '../repositories/bom-version.repository.js';
 import { activateBomVersion } from '../services/bom-version-activation.js';
+import { recipesForProduct, setAlternative } from '../services/recipe-for.js';
 import { z } from 'zod';
 
+const alternativeSchema = z.object({
+  productId: z.string().uuid().nullable(),
+  usage: z.enum(['alternative', 'sous_traitance']).optional(),
+});
 const activateBomVersionSchema = z.object({
   reason: z.string().trim().min(3, 'Motif requis').max(1000),
   validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -97,6 +102,15 @@ router.put(
   recipeComponentController.replace
 );
 router.get('/by-product/:productId', authenticate, recipeController.getByProductId);
+// Nomenclatures d'un produit (M4-04) — avant /:id.
+router.get('/for-product/:productId', authenticate, validateUuidParams('productId'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await recipesForProduct(req.params.productId as string) });
+}));
+router.put('/:id/alternative', authenticate, validateUuidParams('id'), can('recipes.edit'), validate(alternativeSchema), asyncHandler(async (req, res) => {
+  try {
+    res.json({ success: true, data: await setAlternative(req.params.id as string, req.body.productId ?? null, req.body.usage ?? 'alternative') });
+  } catch (err) { res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } }); }
+}));
 // Versions de nomenclature (M4-01).
 router.get('/:id/bom-versions', authenticate, validateUuidParams('id'), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await bomVersionRepository.list(req.params.id as string) });

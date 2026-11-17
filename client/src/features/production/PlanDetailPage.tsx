@@ -1,4 +1,5 @@
 import { useProductionPolicies, shiftOf } from './usePolicies';
+import ItemRecipeSelect from './ItemRecipeSelect';
 import { money } from '../../utils/money';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useEffect } from 'react';
@@ -857,6 +858,10 @@ export default function PlanDetailPage() {
                   <td><span className={`odoo-status-dot ${dot}`} /></td>
                   <td>
                     <span style={{ fontWeight: 600, textDecoration: isCancelled ? 'line-through' : undefined }}>{item.product_name as string}</span>
+                    {Number(item.alt_recipe_count) > 0 && (
+                      <div><ItemRecipeSelect planId={plan.id as string} itemId={item.id as string} productId={item.product_id as string}
+                        value={(item.alt_recipe_id as string) ?? null} editable={plan.status === 'draft'} /></div>
+                    )}
                     {item.bom_version_no != null && (
                       <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}
                         title={item.bom_active_version_no && item.bom_active_version_no !== item.bom_version_no ? `Version ${item.bom_active_version_no} active depuis : cet ordre garde sa version` : 'Version de la fiche figée sur l\'ordre'}>

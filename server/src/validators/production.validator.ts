@@ -177,3 +177,6 @@ export const masterScheduleSchema = z.object({
     quantity: z.number().finite().min(0).nullable(),
   })).min(1).max(5000),
 });
+
+/** Nomenclature d'une ligne d'ordre (M4-04) : fiche alternative du produit, ou null. */
+export const itemRecipeSchema = z.object({ recipeId: uuid.nullable() });

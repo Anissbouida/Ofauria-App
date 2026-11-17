@@ -128,6 +128,8 @@ export const productionRepository = {
               NULLIF(TRIM(CONCAT_WS(' ', ordc.first_name, ordc.last_name)), '') AS line_order_customer,
               ord.pickup_date AS line_order_pickup_date, oit.quantity AS line_order_quantity,
               -- M4-02 : version figée et dernière version active de la fiche.
+              ppi.alt_recipe_id, (SELECT ar.name FROM recipes ar WHERE ar.id = ppi.alt_recipe_id) AS alt_recipe_name,
+              (SELECT COUNT(*)::int FROM recipes ar2 WHERE ar2.alternative_for_product_id = ppi.product_id AND ar2.archived_at IS NULL) AS alt_recipe_count,
               bv.version_no AS bom_version_no,
               (SELECT b2.version_no FROM bom_versions b2 WHERE b2.recipe_id = bv.recipe_id AND b2.status = 'active') AS bom_active_version_no
        FROM production_plan_items ppi
@@ -280,6 +282,21 @@ export const productionRepository = {
       dependency_of: depOfResult.rows,
       recipe_ingredients: recipeIngredients,
     };
+  },
+
+  /** Nomenclature d'une ligne d'un ordre en brouillon (M4-04) : alternative du produit, ou null = par défaut. */
+  async setItemRecipe(planId: string, itemId: string, recipeId: string | null) {
+    const item = (await db.query(
+      `SELECT ppi.product_id, pp.status FROM production_plan_items ppi JOIN production_plans pp ON pp.id = ppi.plan_id WHERE ppi.id = $1 AND ppi.plan_id = $2`,
+      [itemId, planId])).rows[0];
+    if (!item) throw new Error('Ligne introuvable');
+    if (item.status !== 'draft') throw new Error('La nomenclature se choisit sur un ordre en brouillon');
+    if (recipeId) {
+      const ok = (await db.query(`SELECT 1 FROM recipes WHERE id = $1 AND alternative_for_product_id = $2 AND archived_at IS NULL`, [recipeId, item.product_id])).rows.length;
+      if (!ok) throw new Error('Cette fiche n\'est pas une nomenclature de ce produit');
+    }
+    await db.query(`UPDATE production_plan_items SET alt_recipe_id = $3 WHERE id = $1 AND plan_id = $2`, [itemId, planId, recipeId]);
+    return { itemId, recipeId };
   },
 
   /** Priorité et fenêtre planifiée (M2-02). */
@@ -505,10 +522,8 @@ export const productionRepository = {
       const baseDepSet = new Set<string>(depRes.rows.map((r) => r.sub_recipe_id as string));
 
       for (const item of itemsResult.rows) {
-        const recipeResult = await client.query(
-          RECIPE_FOR_PRODUCT_SQL,
-          [item.product_id]
-        );
+        // M4-04 : la fiche alternative choisie au lancement, sinon la fiche par défaut.
+        const recipeResult = await recipeForItem(client, item);
         if (!recipeResult.rows[0]) {
           if (!(await isSemiFinishedPlanQ())) {
             warnings.push(`Le produit "${item.product_name}" n'a pas de recette, ignoré pour les besoins en ingrédients.`);
@@ -1133,10 +1148,8 @@ export const productionRepository = {
         if (!item.actual_quantity || item.actual_quantity <= 0) continue;
         if (bsiAlreadyDeducted) continue;
 
-        const recipeResult = await client.query(
-          RECIPE_FOR_PRODUCT_SQL,
-          [item.product_id]
-        );
+        // M4-04 : la fiche alternative choisie au lancement, sinon la fiche par défaut.
+        const recipeResult = await recipeForItem(client, item);
         if (!recipeResult.rows[0]) continue;
         const recipe = recipeResult.rows[0];
 
@@ -2723,6 +2736,13 @@ export async function releaseSemiFinishedReservations(
  * fiche (recipe_formats.product_id, « Produit vendu au POS »). Renvoie aussi le
  * format lie, pour calculer les besoins sur la bonne nomenclature.
  */
+/** Fiche d'une ligne d'ordre (M4-04) : l'alternative choisie au lancement, sinon la fiche par défaut. */
+async function recipeForItem(client: { query: (q: string, p?: unknown[]) => Promise<{ rows: any[] }> }, item: { product_id: string; alt_recipe_id?: string | null }) {
+  return item.alt_recipe_id
+    ? client.query(`SELECT id, yield_quantity, NULL::uuid AS linked_format_id FROM recipes WHERE id = $1 AND alternative_for_product_id = $2`, [item.alt_recipe_id, item.product_id])
+    : client.query(RECIPE_FOR_PRODUCT_SQL, [item.product_id]);
+}
+
 const RECIPE_FOR_PRODUCT_SQL = `
   SELECT r.id, r.yield_quantity,
          (SELECT rf.id FROM recipe_formats rf

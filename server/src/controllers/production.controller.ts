@@ -237,6 +237,16 @@ export const productionController = {
       res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
     }
   },
+  /** Nomenclature d'une ligne (M4-04). */
+  async setItemRecipe(req: AuthRequest, res: Response) {
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
+    try {
+      res.json({ success: true, data: await productionRepository.setItemRecipe(req.params.id, req.params.itemId as string, req.body.recipeId ?? null) });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
   /** Priorité / fenêtre planifiée d'un ordre non terminé (M2-02). */
   async updateHeader(req: AuthRequest, res: Response) {
     const plan = await loadOwnedPlan(req, res);

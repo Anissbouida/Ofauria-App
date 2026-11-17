@@ -8,7 +8,7 @@ import { validate, validateQuery, validateUuidParams } from '../middleware/valid
 import {
   createPlanSchema, updateItemsSchema, itemIdsSchema, startItemsSchema, produceItemsSchema,
   completeSchema, cancelItemsSchema, relaunchSchema, addActivitySchema, requestStockVerificationSchema, listQuerySchema, setPolicySchema,
-  createOrderTypeSchema, updateOrderTypeSchema, updatePlanHeaderSchema, mrpPhasedValidateSchema, masterScheduleSchema,
+  createOrderTypeSchema, updateOrderTypeSchema, updatePlanHeaderSchema, mrpPhasedValidateSchema, masterScheduleSchema, itemRecipeSchema,
 } from '../validators/production.validator.js';
 
 const id = validateUuidParams('id');
@@ -52,6 +52,7 @@ router.get('/:id/sub-recipe-analysis', authenticate, id, asyncHandler(production
 router.get('/:id', authenticate, id, asyncHandler(productionController.getById));
 router.post('/', authenticate, can('production.create'), validate(createPlanSchema), asyncHandler(productionController.create));
 router.put('/:id/header', authenticate, id, can('production.header'), validate(updatePlanHeaderSchema), asyncHandler(productionController.updateHeader));
+router.put('/:id/items/:itemId/recipe', authenticate, validateUuidParams('id', 'itemId'), can('production.items'), validate(itemRecipeSchema), asyncHandler(productionController.setItemRecipe));
 router.put('/:id/items', authenticate, id, can('production.items'), validate(updateItemsSchema), asyncHandler(productionController.updateItems));
 router.post('/:id/confirm', authenticate, id, can('production.confirm'), asyncHandler(productionController.confirm));
 router.post('/:id/revert-to-draft', authenticate, id, can('production.revert_to_draft'), asyncHandler(productionController.revertToDraft));
