@@ -1,8 +1,19 @@
+import { formatWeightsRepository } from '../repositories/format-weights.repository.js';
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { recipeComponentRepository } from '../repositories/recipe-component.repository.js';
 
 export const recipeComponentController = {
+  /** GET /recipes/format-weights — grille des poids cru / cuit de tous les formats actifs (G2-05). */
+  async formatWeights(_req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await formatWeightsRepository.list() });
+  },
+  /** PUT /recipes/format-weights/:formatId — enregistre les poids d'un format (G2-05). */
+  async saveFormatWeights(req: AuthRequest, res: Response) {
+    const out = await formatWeightsRepository.save(req.params.formatId as string, req.body, req.user!.userId);
+    if ('error' in out) { res.status(400).json({ success: false, error: { message: out.error } }); return; }
+    res.json({ success: true, data: out });
+  },
   async listRoles(_req: AuthRequest, res: Response) {
     const roles = await recipeComponentRepository.listRoles();
     res.json({ success: true, data: roles });

@@ -6,6 +6,8 @@ import { settingsApi, type DataQualityIndicator } from '../../api/settings.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import IngredientMergeCard from './IngredientMergeCard';
+import FormatWeightsGrid from './FormatWeightsGrid';
+import { SettingsTabs } from './SettingsPrimitives';
 
 /**
  * Paramètres › Qualité des données (G2-02) : complétude des fiches (formats, ingrédients,
@@ -54,8 +56,8 @@ export default function DataQualityTab() {
   if (isLoading || !data) return <Loader2 className="animate-spin" size={18} />;
   const remaining = data.filter(i => i.toFix > 0).length;
 
-  return (
-    <div className="odoo-scope" style={{ display: 'grid', gap: 16 }}>
+  const controls = (
+    <div style={{ display: 'grid', gap: 16 }}>
       <StatusBanner tone={remaining === 0 ? 'success' : 'info'} icon={Activity} title="Qualité des données">
         {remaining === 0
           ? 'Toutes les fiches contrôlées sont complètes.'
@@ -111,9 +113,17 @@ export default function DataQualityTab() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
 
-      {/* G2-03 : l'outil de correction du contrôle « Ingrédients en double ». */}
-      <IngredientMergeCard />
+  // Les contrôles d'un côté, les outils de correction de l'autre (G2-03, G2-05).
+  return (
+    <div className="odoo-scope">
+      <SettingsTabs label="Qualité des données" tabs={[
+        { key: 'controls', label: 'Contrôles', content: controls },
+        { key: 'duplicates', label: 'Ingrédients en double', content: <IngredientMergeCard /> },
+        { key: 'weights', label: 'Poids des formats', content: <FormatWeightsGrid /> },
+      ]} />
     </div>
   );
 }

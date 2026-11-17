@@ -8,7 +8,9 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { authorize } from '../middleware/role.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { createRecipeSchema, updateRecipeSchema, bulkDeleteRecipesSchema, saveEtapesSchema, identitySchema } from '../validators/recipe.validator.js';
-import { replaceComponentsSchema, financeSchema, createFormatSchema, duplicateFormatSchema, updateFormatSchema } from '../validators/recipe-component.validator.js';
+import { replaceComponentsSchema, financeSchema, createFormatSchema, duplicateFormatSchema, updateFormatSchema, formatWeightsSchema } from '../validators/recipe-component.validator.js';
+import { validateUuidParams } from '../middleware/validate.middleware.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
 import { requireStepTypes } from '../services/process-referentials.js';
 import { requireUnits } from '../services/unit-referential.js';
@@ -62,6 +64,9 @@ router.get('/', authenticate, recipeController.list);
 router.get('/base', authenticate, recipeController.baseRecipes);
 router.get('/categories', authenticate, recipeController.listCategories);
 // Nomenclature par format (composants) — chemins génériques déclarés AVANT /:id.
+// G2-05 — poids cru / cuit des formats, en grille.
+router.get('/format-weights', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(recipeComponentController.formatWeights));
+router.put('/format-weights/:formatId', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validateUuidParams('formatId'), validate(formatWeightsSchema), asyncHandler(recipeComponentController.saveFormatWeights));
 router.get('/component-roles', authenticate, recipeComponentController.listRoles);
 router.get('/component-sources', authenticate, recipeComponentController.listSources);
 router.patch('/:recipeId/finance', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(financeSchema), recipeComponentController.saveFinance);

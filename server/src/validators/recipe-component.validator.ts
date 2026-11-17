@@ -63,3 +63,9 @@ export const updateFormatSchema = z.object({
   // Mig 266 (audit A4) : densite kg/l de la pate/appareil. `null` explicite = defaut 1.
   densiteKgL: z.number().positive().nullable().optional(),
 });
+
+/** G2-05 — poids cru et poids cuit d'un format, saisis en grille. `null` efface la valeur. */
+export const formatWeightsSchema = z.object({
+  poidsCruG: z.number().positive().max(1_000_000).nullable(),
+  poidsCuitG: z.number().positive().max(1_000_000).nullable(),
+});
