@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { recipeRepository } from './recipe.repository.js';
 import { capitalizeFirst } from '../utils/text.js';
 
@@ -79,9 +79,8 @@ export const inventoryRepository = {
   },
 
   async restock(ingredientId: string, quantity: number, performedBy: string, note?: string, storeId?: string) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const storeFilter = storeId ? ' AND store_id = $3' : '';
       const updateParams: unknown[] = [quantity, ingredientId];
       if (storeId) updateParams.push(storeId);
@@ -95,13 +94,7 @@ export const inventoryRepository = {
          VALUES ($1, 'restock', $2, $3, $4, $5)`,
         [ingredientId, quantity, note || null, performedBy, storeId || null]
       );
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
@@ -337,9 +330,8 @@ export const inventoryRepository = {
   /** Instantané : fige la valorisation courante pour une période. */
   async createStockClosing(p: { periodLabel: string; closingDate: string; storeId?: string | null; notes?: string | null; userId: string | null }) {
     const val = await this.stockValuation(p.storeId ?? undefined);
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const c = (await client.query(
         `INSERT INTO stock_closings (period_label, closing_date, store_id, total_value, lines_count, notes, closed_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
@@ -350,14 +342,8 @@ export const inventoryRepository = {
            VALUES ($1,$2,$3,$4,$5,$6,$7)`,
           [c.id, l.ingredient_id, l.ingredient_name, l.unit, l.quantity, l.unit_cost, l.value]);
       }
-      await client.query('COMMIT');
       return await this.getStockClosing(c.id);
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async listStockClosings(storeId?: string) {
@@ -431,9 +417,8 @@ export const ingredientRepository = {
   },
 
   async create(data: { name: string; unit: string; unitCost: number; supplier?: string; allergens?: string[]; category?: string; categoryId?: string | null; storeId?: string | null; containerSize?: number | string | null; containerTypeId?: string | null; densiteKgL?: number | string | null; poidsPieceKg?: number | string | null }) {
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       // category_id (hierarchie) fait foi ; le trigger ingredients_category_sync
       // maintient la colonne texte 'category' (code) automatiquement.
       const result = await client.query(
@@ -454,14 +439,8 @@ export const ingredientRepository = {
         `INSERT INTO inventory (ingredient_id, store_id) VALUES ($1, $2)`,
         [result.rows[0].id, data.storeId || null]
       );
-      await client.query('COMMIT');
       return result.rows[0];
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async update(id: string, data: Record<string, unknown>) {
