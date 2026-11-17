@@ -13,7 +13,7 @@ describe.skipIf(!hasTestDb)('Conversion pilotée par les données et vues _v2 (M
   afterAll(async () => { await closeTestPool(); });
 
   it('chaque vue _v2 égale la vue d\'origine', async () => {
-    const { UNIT_VIEWS, diffQuery } = await import('../../../scripts/compare-unit-views.js');
+    const { UNIT_VIEWS, diffQuery } = await import('../../utils/unit-views-compare.js');
     for (const v of UNIT_VIEWS) {
       expect((await p().query(await diffQuery(p(), v, `${v}_v2`))).rows[0].n, v).toBe(0);
       expect((await p().query(await diffQuery(p(), `${v}_v2`, v))).rows[0].n, `${v}_v2`).toBe(0);
