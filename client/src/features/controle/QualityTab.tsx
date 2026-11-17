@@ -6,6 +6,7 @@ import { ListChecks, Plus, X, Loader2, CheckCircle2, XCircle, Trash2, Power, Ale
 import { qualityApi, type QualityTemplate, type QualityItem, type QualityResult, type AppliesTo,
   type NonConformity, type NonConformityInput, type NcStatus, type NcSeverity, type NcSource } from '../../api/quality.api';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
@@ -128,7 +129,7 @@ function NcForm({ nc, onClose, onSaved }: { nc: NonConformity | null; onClose: (
           <Field label="Description"><textarea value={f.description} onChange={e => set('description', e.target.value)} style={{ ...inp, minHeight: 56 }} placeholder="Qu'est-ce qui ne va pas ?" /></Field>
           <Field label="Action corrective"><textarea value={f.correctiveAction} onChange={e => set('correctiveAction', e.target.value)} style={{ ...inp, minHeight: 56 }} placeholder="Que fait-on pour corriger et éviter que ça se reproduise ?" /></Field>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <Field label="Responsable"><select value={f.responsibleId} onChange={e => set('responsibleId', e.target.value)} style={inp}><option value="">—</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></Field>
+            <Field label="Responsable"><SearchSelect value={f.responsibleId} onChange={v => set('responsibleId', v)} placeholder="—" width="100%" size="md" ariaLabel="Responsable" options={users.map(u => ({ id: String(u.id), label: u.name as string }))} /></Field>
             <Field label="Échéance"><input type="date" value={f.dueDate} onChange={e => set('dueDate', e.target.value)} style={inp} /></Field>
             {nc && <Field label="Statut"><select value={f.status} onChange={e => set('status', e.target.value)} style={inp}>{(Object.keys(NC_STATUS) as NcStatus[]).map(k => <option key={k} value={k}>{NC_STATUS[k].label}</option>)}</select></Field>}
           </div>
@@ -225,10 +226,9 @@ function InspectionForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
         <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <Field label="Modèle">
-              <select value={templateId} onChange={e => { setTemplateId(e.target.value); setVals({}); }} style={inp}>
-                <option value="">— Choisir un modèle —</option>
-                {activeTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+              <SearchSelect value={templateId} onChange={v => { setTemplateId(v); setVals({}); }}
+                placeholder="— Choisir un modèle —" width="100%" size="md" ariaLabel="Modèle"
+                options={activeTemplates.map(t => ({ id: String(t.id), label: t.name as string }))} />
             </Field>
             <Field label="Date"><input type="date" value={date} onChange={e => setDate(e.target.value)} style={inp} /></Field>
           </div>

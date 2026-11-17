@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, ListPlus } from 'lucide-react';
 import { payrollConfigApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
+import SearchSelect from '../../../components/ui/SearchSelect';
 import { apiErrorMessage, isoDate } from '../shared';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { SectionTitle, inputCls, smallBtn } from '../ui';
@@ -88,10 +89,9 @@ export default function EmployeePayrollItems({ employeeId }: { employeeId: strin
             {draft && (
               <tr>
                 <td>
-                  <select className={inputCls} value={draft.rubriqueId} onChange={e => setDraft({ ...draft, rubriqueId: e.target.value })}>
-                    <option value="">Rubrique...</option>
-                    {rubriques.map(r => <option key={r.id} value={r.id}>{r.kind === 'retenue' ? '− ' : '+ '}{r.label}</option>)}
-                  </select>
+                  <SearchSelect value={draft.rubriqueId} onChange={id => setDraft({ ...draft, rubriqueId: id })}
+                    placeholder="Rubrique…" width="100%" size="md" ariaLabel="Rubrique"
+                    options={rubriques.map(r => ({ id: String(r.id), label: `${r.kind === 'retenue' ? '− ' : '+ '}${r.label}` }))} />
                 </td>
                 <td><input className={inputCls} type="number" min="0" step="0.01" value={draft.amount} style={{ width: 90 }} onChange={e => setDraft({ ...draft, amount: e.target.value })} /></td>
                 <td>

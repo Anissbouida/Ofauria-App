@@ -6,6 +6,7 @@ import { settingsApi, type AuditLogEntry, type AuthEventEntry } from '../../api/
 import { usersApi } from '../../api/users.api';
 import { MODULE_LABELS, type AppModule } from '@ofauria/shared';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import SearchSelect from '../../components/ui/SearchSelect';
 
 /**
  * Journal des modifications du paramétrage (mig 328) et des connexions.
@@ -168,16 +169,11 @@ function ChangesView({ users }: { users: Record<string, any>[] }) {
           <input className="odoo-search-input" style={{ paddingLeft: 26, minWidth: 200 }} placeholder="Rechercher (libellé, valeur)…"
             value={q} onChange={e => reset(setQ)(e.target.value)} aria-label="Rechercher" />
         </span>
-        <select style={filterInput} value={table} onChange={e => reset(setTable)(e.target.value)} aria-label="Objet">
-          <option value="">Tous les objets</option>
-          {tables.map(t => <option key={t} value={t}>{tableLabel(t)}</option>)}
-          <option value="referentiel">Référentiel</option>
-        </select>
+        <SearchSelect value={table} onChange={reset(setTable)} ariaLabel="Objet" placeholder="Tous les objets" width={200}
+          options={[...tables.map((t: string) => ({ id: t, label: tableLabel(t) })), { id: 'referentiel', label: 'Référentiel' }]} />
         {users.length > 0 && (
-          <select style={filterInput} value={changedBy} onChange={e => reset(setChangedBy)(e.target.value)} aria-label="Auteur">
-            <option value="">Tous les auteurs</option>
-            {users.map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
-          </select>
+          <SearchSelect value={changedBy} onChange={reset(setChangedBy)} ariaLabel="Auteur" placeholder="Tous les auteurs" width={200}
+            options={users.map(u => ({ id: String(u.id), label: `${u.firstName} ${u.lastName}` }))} />
         )}
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
           Du <input type="date" style={filterInput} value={from} onChange={e => reset(setFrom)(e.target.value)} />
@@ -298,10 +294,8 @@ function LoginsView({ users }: { users: Record<string, any>[] }) {
           <option value="false">Échoués</option>
         </select>
         {users.length > 0 && (
-          <select style={filterInput} value={userId} onChange={e => reset(setUserId)(e.target.value)} aria-label="Utilisateur">
-            <option value="">Tous les utilisateurs</option>
-            {users.map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
-          </select>
+          <SearchSelect value={userId} onChange={reset(setUserId)} ariaLabel="Utilisateur" placeholder="Tous les utilisateurs" width={200}
+            options={users.map(u => ({ id: String(u.id), label: `${u.firstName} ${u.lastName}` }))} />
         )}
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
           Du <input type="date" style={filterInput} value={from} onChange={e => reset(setFrom)(e.target.value)} />

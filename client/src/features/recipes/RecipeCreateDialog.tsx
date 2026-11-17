@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChefHat, Layers, X, ArrowRight } from 'lucide-react';
 import { recipesApi } from '../../api/recipes.api';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
@@ -124,10 +125,11 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
 
           <label className="block" htmlFor="recipe-category">
             <span className="text-xs text-gray-500">Catégorie de production</span>
-            <select id="recipe-category" className={`${field} mt-1`} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">— Aucune (à classifier) —</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-            </select>
+            <div className="mt-1">
+              <SearchSelect value={categoryId} onChange={setCategoryId}
+                placeholder="— Aucune (à classifier) —" width="100%" size="md" ariaLabel="Catégorie de production"
+                options={categories.map((c) => ({ id: String(c.id), label: c.label as string }))} />
+            </div>
           </label>
 
           {!isBase && (

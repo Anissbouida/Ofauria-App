@@ -12,6 +12,7 @@ import {
 import { apiErrorMessage } from '../../api/errors';
 import { usePermissions } from '../../context/PermissionsContext';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
@@ -318,10 +319,9 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
                   {['requested', 'scheduled', 'in_progress'].includes(i.status) && <button className="odoo-btn-secondary" onClick={() => setStatus.mutate({ status: 'cancelled' })}><XCircle size={13} /> Annuler</button>}
                   {['done', 'cancelled'].includes(i.status) && <button className="odoo-btn-secondary" onClick={() => setStatus.mutate({ status: i.status === 'done' ? 'in_progress' : 'requested' })}><RotateCcw size={13} /> Rouvrir</button>}
                   {!['done', 'cancelled'].includes(i.status) && (
-                    <select className="odoo-filter-dropdown" value={i.assignee_id ?? ''} onChange={e => update.mutate({ assigneeId: e.target.value || null })} title="Intervenant">
-                      <option value="">Intervenant : à affecter</option>
-                      {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
+                    <SearchSelect value={i.assignee_id != null ? String(i.assignee_id) : ''} onChange={id => update.mutate({ assigneeId: id || null })}
+                      placeholder="Intervenant : à affecter" width={200} ariaLabel="Intervenant"
+                      options={people.map(p => ({ id: String(p.id), label: p.name as string }))} />
                   )}
                 </div>
               )}

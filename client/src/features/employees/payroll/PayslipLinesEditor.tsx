@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Save } from 'lucide-react';
 import { payrollApi, payrollConfigApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
+import SearchSelect from '../../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../shared';
 import { SectionTitle, panel, inputCls } from '../ui';
 
@@ -72,11 +73,10 @@ export default function PayslipLinesEditor({ payrollId, locked, lockReason, onRe
           ))}
           {drafts.map((d, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <select value={d.rubriqueId} disabled={locked} className={inputCls} style={{ flex: 1 }}
-                onChange={e => { const n = [...drafts]; n[i] = { ...d, rubriqueId: e.target.value }; setDrafts(n); setDirty(true); }}>
-                <option value="">Rubrique...</option>
-                {rubriques.map(r => <option key={r.id} value={r.id}>{r.kind === 'retenue' ? '− ' : '+ '}{r.label}</option>)}
-              </select>
+              <SearchSelect value={d.rubriqueId} disabled={locked} width="100%" size="md" ariaLabel="Rubrique"
+                onChange={id => { const n = [...drafts]; n[i] = { ...d, rubriqueId: id }; setDrafts(n); setDirty(true); }}
+                placeholder="Rubrique…"
+                options={rubriques.map(r => ({ id: String(r.id), label: `${r.kind === 'retenue' ? '− ' : '+ '}${r.label}` }))} />
               <input type="number" min="0" step="0.01" value={d.amount} disabled={locked} className={inputCls} style={{ width: 110 }}
                 onChange={e => { const n = [...drafts]; n[i] = { ...d, amount: e.target.value }; setDrafts(n); setDirty(true); }} />
               {!locked && (

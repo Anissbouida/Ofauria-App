@@ -11,6 +11,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage as extractErr } from '../../api/errors';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useExtraUnits } from '../../hooks/useReferentiel';
+import SearchSelect from '../../components/ui/SearchSelect';
 
 interface SourceOpt { type: 'recipe' | 'ingredient'; id: string; name: string; unit: string; cost: number; yieldQty?: number; }
 interface Row { key: string; role: string; type: '' | 'recipe' | 'ingredient'; sourceId: string; quantite: string; unite: string; pertePct?: string }
@@ -1078,15 +1079,18 @@ function PosLinkPanel({
           <div className="text-[11px] text-gray-500">Produit vendu au POS</div>
           {picking ? (
             <div className="mt-1 flex items-center gap-2 flex-wrap">
-              <select value={choice} onChange={(e) => setChoice(e.target.value)}
-                className="h-8 min-w-[240px] px-2 bg-white border border-gray-200 rounded-md text-sm">
-                <option value="">— non lié —</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} · {parseFloat(String(p.price ?? 0)).toFixed(2)} DH
-                  </option>
-                ))}
-              </select>
+              <SearchSelect
+                ariaLabel="Produit vendu au POS"
+                placeholder="— non lié —"
+                width={260}
+                size="md"
+                value={choice}
+                onChange={setChoice}
+                options={products.map((p) => ({
+                  id: String(p.id),
+                  label: `${p.name} · ${parseFloat(String(p.price ?? 0)).toFixed(2)} DH`,
+                }))}
+              />
               <button type="button" disabled={linkMut.isPending}
                 onClick={() => linkMut.mutate(choice || null)}
                 className="odoo-btn-primary text-sm px-3 py-1">Enregistrer</button>

@@ -2068,6 +2068,7 @@ function ChargesTab() {
   const { modes: payModes, byCode: payModeByCode, treasuryAccounts } = usePaymentModes();
   const [expMode, setExpMode] = useState('cash');
   const [expSupplierId, setExpSupplierId] = useState('');
+  const [expEmployeeId, setExpEmployeeId] = useState('');
   const [expAmount, setExpAmount] = useState(0);
   const [expDate, setExpDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [expOverride, setExpOverride] = useState<CashOverride>(null);
@@ -2451,7 +2452,7 @@ function ChargesTab() {
           <ArrowLeftRight size={13} /> Mouvement interne
         </button>
         <button onClick={() => {
-          setExpMode('cash'); setExpSupplierId(''); setExpAmount(0); setExpDate(format(new Date(), 'yyyy-MM-dd')); setExpOverride(null);
+          setExpMode('cash'); setExpSupplierId(''); setExpEmployeeId(''); setExpAmount(0); setExpDate(format(new Date(), 'yyyy-MM-dd')); setExpOverride(null);
           setShowForm(true);
         }} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -2650,6 +2651,8 @@ function ChargesTab() {
               fd.amount = parseFloat(fd.amount as string);
               fd.type = 'expense';
               fd.categoryId = formCategoryId || undefined;
+              fd.supplierId = expSupplierId || undefined;
+              fd.employeeId = expEmployeeId || undefined;
               if (requiresPO && formPOId) {
                 fd.purchaseOrderId = formPOId;
                 if (selectedPO) fd.supplierId = selectedPO.supplier_id as string;
@@ -2699,15 +2702,18 @@ function ChargesTab() {
                   <label className="block text-sm font-medium mb-1.5 text-amber-800">
                     <ClipboardList size={14} className="inline mr-1" /> Bon de commande (obligatoire au-delà de {poRule?.threshold} {poRule?.currency})
                   </label>
-                  <select value={formPOId} onChange={e => setFormPOId(e.target.value)}
-                    className="w-full px-3 py-2.5 border border-amber-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white">
-                    <option value="">Sélectionner un BC...</option>
-                    {(eligiblePOs as Record<string, any>[]).map(po => (
-                      <option key={po.id as string} value={po.id as string}>
-                        {po.order_number as string} — {po.supplier_name as string} — {n(parseFloat(po.total_amount as string) || 0)} DH
-                      </option>
-                    ))}
-                  </select>
+                  <SearchSelect
+                    ariaLabel="Bon de commande"
+                    placeholder="Sélectionner un BC..."
+                    width="100%"
+                    size="md"
+                    value={formPOId}
+                    onChange={setFormPOId}
+                    options={(eligiblePOs as Record<string, any>[]).map(po => ({
+                      id: po.id as string,
+                      label: `${po.order_number as string} — ${po.supplier_name as string} — ${n(parseFloat(po.total_amount as string) || 0)} DH`,
+                    }))}
+                  />
                   {selectedPO && (
                     <p className="text-xs text-amber-700 mt-2">
                       Fournisseur: <strong>{selectedPO.supplier_name as string}</strong> | Montant BC: <strong>{n(parseFloat(selectedPO.total_amount as string) || 0)} DH</strong>
@@ -2737,35 +2743,39 @@ function ChargesTab() {
                   <PaymentModeSelect value={expMode} onChange={setExpMode} /></div>
                 {!(requiresPO && formPOId) && !isPersonnelExpense && (
                   <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Fournisseur</label>
-                    <select name="supplierId" disabled={isRhManagedCategory} onChange={e => setExpSupplierId(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
-                      <option value="">Aucun</option>
-                      {(suppliers as Record<string, any>[]).filter(s => s.is_active).map(s => (
-                        <option key={s.id as string} value={s.id as string}>{s.name as string}</option>
-                      ))}
-                    </select></div>
+                    <SearchSelect
+                      ariaLabel="Fournisseur"
+                      placeholder="Aucun"
+                      width="100%"
+                      size="md"
+                      disabled={isRhManagedCategory}
+                      value={expSupplierId}
+                      onChange={setExpSupplierId}
+                      options={(suppliers as Record<string, any>[]).filter(s => s.is_active).map(s => ({ id: s.id as string, label: s.name as string }))}
+                    /></div>
                 )}
                 {/* Categorie sous "Charges de personnel" : on affiche le selecteur Employe.
                     Le champ est obligatoire (un salaire/prime doit etre rattache a une ressource). */}
                 {!(requiresPO && formPOId) && isPersonnelExpense && (
                   <div><label className="block text-sm font-medium text-gray-700 mb-1.5">Ressource / Employé *</label>
-                    <select name="employeeId" required disabled={isRhManagedCategory}
-                      className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed">
-                      <option value="">Choisir un employé...</option>
-                      {(employees as Record<string, any>[])
+                    <SearchSelect
+                      ariaLabel="Ressource / Employé"
+                      placeholder="Choisir un employé..."
+                      width="100%"
+                      size="md"
+                      disabled={isRhManagedCategory}
+                      value={expEmployeeId}
+                      onChange={setExpEmployeeId}
+                      options={(employees as Record<string, any>[])
                         .filter(emp => emp.is_active !== false)
                         .sort((a, b) => String(a.first_name || a.name || '').localeCompare(String(b.first_name || b.name || '')))
                         .map(emp => {
                           const fullName = [emp.first_name, emp.last_name].filter(Boolean).join(' ')
                             || (emp.name as string) || (emp.email as string) || 'Sans nom';
                           const role = emp.role || emp.position;
-                          return (
-                            <option key={emp.id as string} value={emp.id as string}>
-                              {fullName}{role ? ` — ${role}` : ''}
-                            </option>
-                          );
+                          return { id: emp.id as string, label: `${fullName}${role ? ` — ${role}` : ''}` };
                         })}
-                    </select></div>
+                    /></div>
                 )}
               </div>
 
@@ -3970,13 +3980,13 @@ function InternalTransferModal({ accounts, pending, onClose, onSubmit }: {
           </p>
           <div className="grid grid-cols-2 gap-3">
             <div><label style={lbl}>De *</label>
-              <select value={fromId} onChange={e => setFromId(e.target.value)} className={field}>
-                {accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
-              </select></div>
+              <SearchSelect value={fromId} onChange={setFromId} clearable={false}
+                placeholder="Compte source" width="100%" size="md" ariaLabel="Compte source"
+                options={accounts.map(a => ({ id: String(a.id), label: a.label as string }))} /></div>
             <div><label style={lbl}>Vers *</label>
-              <select value={toId} onChange={e => setToId(e.target.value)} className={field}>
-                {accounts.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
-              </select></div>
+              <SearchSelect value={toId} onChange={setToId} clearable={false}
+                placeholder="Compte destination" width="100%" size="md" ariaLabel="Compte destination"
+                options={accounts.map(a => ({ id: String(a.id), label: a.label as string }))} /></div>
           </div>
           {fromId === toId && <p style={{ margin: 0, fontSize: '0.75rem', color: '#b71c1c' }}>Choisissez deux comptes différents.</p>}
           <div className="grid grid-cols-2 gap-3">

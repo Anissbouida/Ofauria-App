@@ -14,6 +14,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { StagePipeline, StageProgress, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import SearchSelect from '../../components/ui/SearchSelect';
 
 /* ═══ Constants ═══ */
 const STAGES = [
@@ -631,13 +632,15 @@ function RecipeStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline;
         <div className="border-t border-gray-100 pt-3 space-y-3">
           <div>
             <label style={fieldLabel}>Assigner une recette</label>
-            <select value={recipeId} onChange={e => setRecipeId(e.target.value)}
-              style={fieldInput}>
-              <option value="">Choisir une recette...</option>
-              {recipes.map(r => (
-                <option key={String(r.id)} value={String(r.id)}>{String(r.name)}</option>
-              ))}
-            </select>
+            <SearchSelect
+              ariaLabel="Assigner une recette"
+              placeholder="Choisir une recette..."
+              width="100%"
+              size="md"
+              value={recipeId}
+              onChange={setRecipeId}
+              options={recipes.map(r => ({ id: String(r.id), label: String(r.name) }))}
+            />
           </div>
           <div>
             <label style={fieldLabel}>Notes de développement</label>
@@ -1113,26 +1116,31 @@ function CreatePipelineModal({ onClose, onCreated }: { onClose: () => void; onCr
 
           <div>
             <label style={fieldLabel}>Catégorie *</label>
-            <select value={categoryId} onChange={e => setCategoryId(e.target.value)} required
-              style={fieldInput}>
-              <option value="">Choisir une catégorie...</option>
-              {(categories as Pipeline[]).map(c => (
-                <option key={String(c.id)} value={String(c.id)}>{String(c.name)}</option>
-              ))}
-            </select>
+            <SearchSelect
+              ariaLabel="Catégorie"
+              placeholder="Choisir une catégorie..."
+              width="100%"
+              size="md"
+              value={categoryId}
+              onChange={setCategoryId}
+              options={(categories as Pipeline[]).map(c => ({ id: String(c.id), label: String(c.name) }))}
+            />
           </div>
 
           <div>
             <label style={fieldLabel}>Responsable *</label>
-            <select value={responsibleUserId} onChange={e => setResponsibleUserId(e.target.value)} required
-              style={fieldInput}>
-              <option value="">Choisir un responsable...</option>
-              {users.filter(u => ['baker', 'pastry_chef', 'viennoiserie'].includes(String(u.role))).map(u => (
-                <option key={String(u.id)} value={String(u.id)}>
-                  {String(u.firstName || u.first_name)} {String(u.lastName || u.last_name)}
-                </option>
-              ))}
-            </select>
+            <SearchSelect
+              ariaLabel="Responsable"
+              placeholder="Choisir un responsable..."
+              width="100%"
+              size="md"
+              value={responsibleUserId}
+              onChange={setResponsibleUserId}
+              options={users.filter(u => ['baker', 'pastry_chef', 'viennoiserie'].includes(String(u.role))).map(u => ({
+                id: String(u.id),
+                label: `${String(u.firstName || u.first_name)} ${String(u.lastName || u.last_name)}`.trim(),
+              }))}
+            />
           </div>
 
           <div>

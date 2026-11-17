@@ -8,6 +8,7 @@ import {
 import { customersApi } from '../../api/customers.api';
 import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
+import SearchSelect from '../../components/ui/SearchSelect';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
 /** Formulaires du module Maintenance : intervention, plan d'entretien. */
@@ -57,10 +58,9 @@ function EquipmentFields({ value, onChange }: {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
             <span style={label}>Immobilisation</span>
-            <select className="input" style={{ width: '100%' }} value={value.fixedAssetId ?? ''} onChange={e => onChange({ fixedAssetId: e.target.value || null })}>
-              <option value="">Hors immobilisations (libellé ci-contre)</option>
-              {assets.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
-            </select>
+            <SearchSelect value={value.fixedAssetId != null ? String(value.fixedAssetId) : ''} onChange={id => onChange({ fixedAssetId: id || null })}
+              placeholder="Hors immobilisations (libellé ci-contre)" width="100%" size="md" ariaLabel="Immobilisation"
+              options={assets.map(a => ({ id: String(a.id), label: a.label as string }))} />
           </div>
           <div>
             <span style={label}>Ou équipement (libellé)</span>
@@ -147,10 +147,9 @@ export function InterventionFormModal({ onClose, onCreated, defaults }: {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
         <div>
           <span style={label}>Intervenant</span>
-          <select className="input" style={{ width: '100%' }} value={f.assigneeId} onChange={e => set({ assigneeId: e.target.value })}>
-            <option value="">À affecter</option>
-            {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          <SearchSelect value={f.assigneeId} onChange={v => set({ assigneeId: v })}
+            placeholder="À affecter" width="100%" size="md" ariaLabel="Intervenant"
+            options={people.map(p => ({ id: String(p.id), label: p.name as string }))} />
         </div>
         <div><span style={label}>Planifiée le</span><input className="input" type="datetime-local" style={{ width: '100%' }} value={f.scheduledAt} onChange={e => set({ scheduledAt: e.target.value })} /></div>
         <div><span style={label}>Lieu</span><input className="input" style={{ width: '100%' }} value={f.location} maxLength={200} onChange={e => set({ location: e.target.value })} placeholder="Atelier, adresse…" /></div>
@@ -198,10 +197,9 @@ export function PlanFormModal({ plan, onClose }: { plan?: MaintenancePlan | null
         <div><span style={label}>Prochaine échéance</span><input className="input" type="date" style={{ width: '100%' }} value={f.nextDueOn} onChange={e => set({ nextDueOn: e.target.value })} /></div>
         <div>
           <span style={label}>Intervenant habituel</span>
-          <select className="input" style={{ width: '100%' }} value={f.assigneeId} onChange={e => set({ assigneeId: e.target.value })}>
-            <option value="">—</option>
-            {people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          <SearchSelect value={f.assigneeId} onChange={v => set({ assigneeId: v })}
+            placeholder="—" width="100%" size="md" ariaLabel="Intervenant habituel"
+            options={people.map(p => ({ id: String(p.id), label: p.name as string }))} />
         </div>
       </div>
       <div><span style={label}>Points à vérifier</span><textarea className="input" style={{ width: '100%', minHeight: 70 }} value={f.checklist} onChange={e => set({ checklist: e.target.value })} placeholder="Une ligne par point de contrôle" /></div>

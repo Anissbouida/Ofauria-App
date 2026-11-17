@@ -1367,22 +1367,17 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label style={fieldLabel}>Catégorie</label>
-                    <select style={fieldInput} value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: parseInt(e.target.value) })}>
-                      {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                    <SearchSelect value={form.categoryId != null ? String(form.categoryId) : ''} onChange={(id) => setForm({ ...form, categoryId: parseInt(id) })}
+                      clearable={false} placeholder="Catégorie" width="100%" size="md" ariaLabel="Catégorie"
+                      options={categories.map(c => ({ id: String(c.id), label: c.name as string }))} />
                   </div>
                   <div>
                     <label style={{ ...fieldLabel, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} /> Responsable
                     </label>
-                    <select style={fieldInput} value={form.responsibleUserId} onChange={(e) => setForm({ ...form, responsibleUserId: e.target.value })}>
-                      <option value="">Aucun responsable</option>
-                      {chefUsers.map((u: Record<string, any>) => (
-                        <option key={u.id as string} value={u.id as string}>
-                          {u.firstName as string} {u.lastName as string} — {ROLE_LABELS[(u.role as Role)] || u.role}
-                        </option>
-                      ))}
-                    </select>
+                    <SearchSelect value={form.responsibleUserId} onChange={(v) => setForm({ ...form, responsibleUserId: v })}
+                      placeholder="Aucun responsable" width="100%" size="md" ariaLabel="Responsable"
+                      options={chefUsers.map((u: Record<string, any>) => ({ id: u.id as string, label: `${u.firstName as string} ${u.lastName as string} — ${ROLE_LABELS[(u.role as Role)] || u.role}` }))} />
                   </div>
                 </div>
 
@@ -2002,7 +1997,7 @@ function RecycleDestinationsPanel({ productId }: { productId: string }) {
           <tbody>
             {rows.map((row, idx) => (
               <tr key={idx}>
-                <td><select value={row.ingredientId} onChange={(e) => updateRow(idx, { ingredientId: e.target.value })} style={fieldInput}><option value="">— Ingrédient cible —</option>{ingredientOptions.map(opt => (<option key={opt.id} value={opt.id}>{opt.name}{opt.unit ? ` (${opt.unit})` : ''}</option>))}</select></td>
+                <td><SearchSelect ariaLabel="Ingrédient cible" placeholder="— Ingrédient cible —" width="100%" size="md" value={row.ingredientId} onChange={(id) => updateRow(idx, { ingredientId: id })} options={ingredientOptions.map(opt => ({ id: String(opt.id), label: `${opt.name}${opt.unit ? ` (${opt.unit})` : ''}` }))} /></td>
                 <td><input type="text" value={row.label} onChange={(e) => updateRow(idx, { label: e.target.value })} placeholder="Libellé (ex: Vers chapelure)" style={fieldInput} /></td>
                 <td><input type="number" step="0.01" min="0.01" max="2" value={row.yieldRatio} onChange={(e) => updateRow(idx, { yieldRatio: e.target.value })} style={{ ...fieldInput, textAlign: 'right' }} title="Rendement : 1.0 = 100 %, 0.7 = 30 % de perte au séchage" /></td>
                 <td style={{ textAlign: 'center' }}><button type="button" onClick={() => removeRow(idx)} className="odoo-pager-btn" title="Supprimer"><Trash2 size={13} /></button></td>

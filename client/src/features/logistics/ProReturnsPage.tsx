@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Undo2, Plus, Trash2, Check } from 'lucide-react';
 import { StatusTag } from '../../components/ui/StatusTag';
+import SearchSelect from '../../components/ui/SearchSelect';
 import { proReturnsApi, type ProReturn } from '../../api/pro-returns.api';
 import { customersApi } from '../../api/customers.api';
 import { productsApi } from '../../api/products.api';
@@ -63,17 +64,15 @@ export default function ProReturnsPage() {
       {form && (
         <section className="prj-panel" style={{ padding: 14, display: 'grid', gap: 10 }}>
           <label><span style={lab}>Client</span>
-            <select style={field} value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })}>
-              <option value="">— Choisir —</option>
-              {customers.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}{c.company_name ? ` (${c.company_name})` : ''}</option>)}
-            </select></label>
+            <SearchSelect value={form.customerId} onChange={(v) => setForm({ ...form, customerId: v })}
+              placeholder="— Choisir —" width="100%" size="md" ariaLabel="Client"
+              options={customers.map(c => ({ id: String(c.id), label: `${c.first_name} ${c.last_name}${c.company_name ? ` (${c.company_name})` : ''}` }))} /></label>
           {form.lines.map((l, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
               <label style={{ flex: 2 }}><span style={lab}>Article</span>
-                <select style={field} value={l.productId} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...l, productId: e.target.value }; setForm({ ...form, lines }); }}>
-                  <option value="">— Choisir —</option>
-                  {products.map(pr => <option key={pr.id} value={pr.id}>{pr.name}</option>)}
-                </select></label>
+                <SearchSelect value={l.productId} onChange={(id) => { const lines = [...form.lines]; lines[i] = { ...l, productId: id }; setForm({ ...form, lines }); }}
+                  placeholder="— Choisir —" width="100%" size="md" ariaLabel="Article"
+                  options={products.map(pr => ({ id: String(pr.id), label: pr.name as string }))} /></label>
               <label style={{ width: 90 }}><span style={lab}>Qté</span>
                 <input type="number" style={field} value={l.quantity} onChange={(e) => { const lines = [...form.lines]; lines[i] = { ...l, quantity: e.target.value }; setForm({ ...form, lines }); }} /></label>
               <label style={{ width: 100 }}><span style={lab}>PU</span>
