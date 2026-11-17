@@ -1,5 +1,5 @@
 import type { QueryResult } from 'pg';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { vatRegimeSetting } from '../services/module-parameters.service.js';
 
 /* ═══ Plan comptable CGNC ═══ */
@@ -147,9 +147,8 @@ export const fiscalPeriodRepository = {
    */
   async updateStatus(id: string, status: 'open' | 'closed' | 'locked', userId: string, note?: string, role?: string) {
     const fail = (code: number, message: string) => Object.assign(new Error(message), { statusCode: code });
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const cur = await client.query(`SELECT status FROM fiscal_periods WHERE id = $1 FOR UPDATE`, [id]);
       if (!cur.rows[0]) throw fail(404, 'Periode introuvable');
       const from = cur.rows[0].status as string;
@@ -179,14 +178,8 @@ export const fiscalPeriodRepository = {
          RETURNING *`,
         [status, userId, note || null, id]
       );
-      await client.query('COMMIT');
       return result.rows[0];
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /** Checklist de clôture d'une période (contrôles bloquants / avertissements). */
