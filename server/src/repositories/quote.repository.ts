@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import { nextDocumentNumber } from '../utils/document-number.js';
 import { orderRepository } from './order.repository.js';
 import { crmRepository } from './crm.repository.js';
@@ -217,9 +217,8 @@ export const quoteRepository = {
     const quoteDate = input.quoteDate ?? today();
     const validUntil = input.validUntil ?? plusDays(quoteDate, ctx.validityDays);
     if (validUntil < quoteDate) return { error: 'La date de validité précède la date du devis' };
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const number = await nextDocumentNumber(client, 'quote');
       const r = await client.query(
         `INSERT INTO quotes (number, store_id, customer_id, prospect_name, prospect_company, prospect_phone, prospect_email, title,
@@ -242,14 +241,8 @@ export const quoteRepository = {
       await client.query(`UPDATE quotes SET promotion_amount = $2 WHERE id = $1`, [id, c.promotionAmount]);
       await recordApplied(client, { quoteId: id }, c.applied);
       await addEvent(client, id, { type: 'created', to: 'draft', userId: ctx.userId });
-      await client.query('COMMIT');
       return { data: await this.findById(id) };
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async _writeLines(client: Runner, quoteId: string, lines: { productId: string | null; quantity: number; unitPrice: number; subtotal: number; tvaRate: number | null; description: string | null; lineType?: 'product' | 'free' | 'section' }[]) {
@@ -271,9 +264,8 @@ export const quoteRepository = {
     const quoteDate = input.quoteDate ?? String(cur.quote_date instanceof Date ? cur.quote_date.toISOString().slice(0, 10) : cur.quote_date).slice(0, 10);
     const validUntil = input.validUntil ?? String(cur.valid_until instanceof Date ? cur.valid_until.toISOString().slice(0, 10) : cur.valid_until).slice(0, 10);
     if (validUntil < quoteDate) return { error: 'La date de validité précède la date du devis' };
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       await client.query(
         `UPDATE quotes SET customer_id = $2, prospect_name = $3, prospect_company = $4, prospect_phone = $5, prospect_email = $6, title = $7,
                 quote_date = $8, valid_until = $9, with_tax = $10, discount_pct = $11, subtotal = $12, discount_amount = $13, tax_amount = $14,
@@ -287,14 +279,8 @@ export const quoteRepository = {
       await client.query(`UPDATE quotes SET promotion_amount = $2 WHERE id = $1`, [id, c.promotionAmount]);
       await recordApplied(client, { quoteId: id }, c.applied);
       await addEvent(client, id, { type: 'edited', note: cur.status === 'sent' ? 'Modifié après envoi' : null, userId });
-      await client.query('COMMIT');
       return { data: await this.findById(id) };
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /** Transitions : send, accept, refuse (motif), reopen, cancel. */
@@ -404,23 +390,16 @@ export const quoteRepository = {
     const cur = await db.query(`SELECT proforma_number FROM quotes WHERE id = $1`, [id]);
     if (!cur.rows[0]) return null;
     if (cur.rows[0].proforma_number) return cur.rows[0].proforma_number as string;
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const locked = await client.query(`SELECT proforma_number FROM quotes WHERE id = $1 FOR UPDATE`, [id]);
       let n = locked.rows[0].proforma_number as string | null;
       if (!n) {
         n = await nextDocumentNumber(client, 'proforma');
         await client.query(`UPDATE quotes SET proforma_number = $2 WHERE id = $1`, [id, n]);
       }
-      await client.query('COMMIT');
       return n;
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   /**
