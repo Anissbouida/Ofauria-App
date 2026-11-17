@@ -69,7 +69,7 @@ export const productLabelRepository = {
     } else {
       const rows = (await db.query(
         `SELECT e.ingredient_id, i.name, e.total_qty::float8 AS total_qty,
-                fn_ingredient_weight_kg(e.ingredient_id, e.total_qty)::float8 AS weight_kg,
+                fn_ingredient_weight_kg_v2(e.ingredient_id, e.total_qty)::float8 AS weight_kg,
                 i.allergens, i.allergen_traces, i.allergens_reviewed_at
            FROM v_recipe_explosion_v2 e
            JOIN ingredients i ON i.id = e.ingredient_id

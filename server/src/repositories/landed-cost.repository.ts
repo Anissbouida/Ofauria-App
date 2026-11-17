@@ -18,7 +18,7 @@ const RECEPTION_LINES = `
          COALESCE(ing.name, pk.name) AS label, COALESCE(ing.unit, pk.unit) AS unit,
          rvi.quantity_received AS quantity, COALESCE(rvi.unit_price, rvi.po_unit_price, 0) AS unit_price,
          rvi.quantity_received * COALESCE(rvi.unit_price, rvi.po_unit_price, 0) AS value,
-         fn_ingredient_weight_kg(rvi.ingredient_id, rvi.quantity_received) AS weight_kg,
+         fn_ingredient_weight_kg_v2(rvi.ingredient_id, rvi.quantity_received) AS weight_kg,
          il.id AS ingredient_lot_id, il.lot_number, il.unit_cost AS lot_unit_cost,
          COALESCE(ing.unit_cost, pk.unit_cost) AS standard_cost
     FROM reception_voucher_items rvi
