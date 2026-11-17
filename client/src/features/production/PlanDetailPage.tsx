@@ -857,6 +857,12 @@ export default function PlanDetailPage() {
                   <td><span className={`odoo-status-dot ${dot}`} /></td>
                   <td>
                     <span style={{ fontWeight: 600, textDecoration: isCancelled ? 'line-through' : undefined }}>{item.product_name as string}</span>
+                    {item.bom_version_no != null && (
+                      <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}
+                        title={item.bom_active_version_no && item.bom_active_version_no !== item.bom_version_no ? `Version ${item.bom_active_version_no} active depuis : cet ordre garde sa version` : 'Version de la fiche figée sur l\'ordre'}>
+                        v{item.bom_version_no as number}{item.bom_active_version_no && item.bom_active_version_no !== item.bom_version_no ? ` · v${item.bom_active_version_no} disponible` : ''}
+                      </span>
+                    )}
                     {item.line_order_number && (
                       <div style={{ marginTop: 3 }}>
                         <a href={`/orders/${item.line_order_id as string}`} onClick={(e) => { e.preventDefault(); navigate(`/orders/${item.line_order_id as string}`); }}

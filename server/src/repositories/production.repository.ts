@@ -126,8 +126,12 @@ export const productionRepository = {
               -- M2-08 : la ligne de commande client servie.
               ord.order_number AS line_order_number, ord.id AS line_order_id,
               NULLIF(TRIM(CONCAT_WS(' ', ordc.first_name, ordc.last_name)), '') AS line_order_customer,
-              ord.pickup_date AS line_order_pickup_date, oit.quantity AS line_order_quantity
+              ord.pickup_date AS line_order_pickup_date, oit.quantity AS line_order_quantity,
+              -- M4-02 : version figée et dernière version active de la fiche.
+              bv.version_no AS bom_version_no,
+              (SELECT b2.version_no FROM bom_versions b2 WHERE b2.recipe_id = bv.recipe_id AND b2.status = 'active') AS bom_active_version_no
        FROM production_plan_items ppi
+       LEFT JOIN bom_versions bv ON bv.id = ppi.bom_version_id
        LEFT JOIN order_items oit ON oit.id = ppi.order_item_id
        LEFT JOIN orders ord ON ord.id = oit.order_id
        LEFT JOIN customers ordc ON ordc.id = ord.customer_id
@@ -576,6 +580,18 @@ export const productionRepository = {
       // La verification de disponibilite des ingredients est faite par le magasinier
       // au moment du pesage (bon de sortie), pas a la confirmation du plan.
 
+      // Versions de nomenclature (M4-02) : une fiche modifiée sans nouvelle version active
+      // est signalée — les besoins sont calculés sur la fiche courante.
+      const pendingFiches = await client.query(
+        `SELECT DISTINCT r.name FROM production_plan_items ppi
+           JOIN recipes r ON r.id = COALESCE(ppi.base_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id AND r2.archived_at IS NULL LIMIT 1))
+          WHERE ppi.plan_id = $1 AND ppi.status <> 'cancelled'
+            AND EXISTS (SELECT 1 FROM bom_versions b WHERE b.recipe_id = r.id AND b.status = 'active' AND b.snapshot <> fn_recipe_bom_snapshot(r.id))`,
+        [planId]);
+      if (pendingFiches.rows.length) {
+        warnings.push(`Fiche(s) modifiée(s) sans nouvelle version active : ${pendingFiches.rows.map(r => r.name).join(', ')}. Les besoins suivent la fiche courante.`);
+      }
+
       // Update plan status and persist warnings
       await transitionPlan(client, planId, 'confirmed', { extraSet: 'confirmed_at = NOW(), warnings = $2', params: [warnings] });
 
@@ -584,6 +600,17 @@ export const productionRepository = {
       if (planDateResult.rows[0]) {
         await assignLotNumbersInternal(client, planId, planDateResult.rows[0].plan_date);
       }
+
+      // M4-02 : chaque ligne garde la version de sa fiche en vigueur à la date du plan.
+      await client.query(
+        `UPDATE production_plan_items ppi
+            SET bom_version_id = (
+              SELECT b.id FROM bom_versions b
+               WHERE b.recipe_id = COALESCE(ppi.base_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id AND r2.archived_at IS NULL LIMIT 1))
+                 AND b.status IN ('active', 'obsolete') AND b.valid_from <= pp.plan_date AND (b.valid_to IS NULL OR b.valid_to >= pp.plan_date)
+               ORDER BY b.version_no DESC LIMIT 1)
+           FROM production_plans pp
+          WHERE pp.id = ppi.plan_id AND ppi.plan_id = $1 AND ppi.status <> 'cancelled'`, [planId]);
 
       await client.query('COMMIT');
 
