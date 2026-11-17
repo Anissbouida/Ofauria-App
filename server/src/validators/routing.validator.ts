@@ -43,3 +43,11 @@ export const closureSchema = z.object({
   reason: z.string().trim().max(160).nullable().optional(),
   allCenters: z.boolean().optional(),
 });
+
+/** Référentiel équipement (M5-05) : lien poste / immobilisation, validé à la main. */
+export const equipmentLinkSchema = z.object({
+  workCenterId: z.string().uuid().nullable().optional(),
+  fixedAssetId: z.string().uuid().nullable().optional(),
+}).refine(b => b.workCenterId !== undefined || b.fixedAssetId !== undefined, { message: 'Rien à rattacher' });
+/** Action sans corps (ouverture d'une intervention depuis un arrêt). */
+export const emptyBodySchema = z.object({}).passthrough();

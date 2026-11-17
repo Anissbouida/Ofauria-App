@@ -5,6 +5,7 @@ import { Cog, Plus, X, Loader2, Power, Trash2, Route, Save, Wrench, ListOrdered,
 import { routingsApi, opToInput, OP_TYPE_LABELS, type OpType, type Routing, type OperationInput } from '../../api/routings.api';
 import WorkCenterOeeModal from './WorkCenterOeeModal';
 import WorkCenterCalendarModal from './WorkCenterCalendarModal';
+import EquipmentLinksPanel from './EquipmentLinksPanel';
 
 // Statuts de poste (mig 402)
 const WC_STATUS: Record<string, { label: string; color: string }> = {
@@ -128,6 +129,7 @@ function Centers() {
       {showForm && <CenterForm onClose={() => setShowForm(false)} onSaved={() => { qc.invalidateQueries({ queryKey: ['work-centers'] }); setShowForm(false); }} />}
       {oeeFor && <WorkCenterOeeModal workCenter={oeeFor} onClose={() => setOeeFor(null)} />}
       {calFor && <WorkCenterCalendarModal workCenter={calFor} onClose={() => setCalFor(null)} />}
+      <EquipmentLinksPanel workCenters={rows} />
     </div>
   );
 }

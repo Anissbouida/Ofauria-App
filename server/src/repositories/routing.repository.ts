@@ -157,12 +157,18 @@ export const routingRepository = {
     return r.rows[0] ? { ...r.rows[0], hourly_cost: Number(r.rows[0].hourly_cost) } : null;
   },
 
-  async recordDowntime(input: { workCenterId: string; fromTime: string; toTime?: string | null; reason: string; notes?: string | null }, userId: string | null) {
+  async recordDowntime(input: { workCenterId: string; fromTime: string; toTime?: string | null; reason: string; notes?: string | null; createIntervention?: boolean }, userId: string | null, storeId: string | null = null) {
     const r = await db.query(
       `INSERT INTO work_center_downtime (work_center_id, from_time, to_time, reason, operator_id, notes)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [input.workCenterId, input.fromTime, input.toTime || null, input.reason, userId, input.notes?.trim() || null]
     );
+    // M5-05 : un arrêt peut ouvrir une demande d'intervention de maintenance.
+    if (input.createIntervention && userId) {
+      const { equipmentLinkRepository } = await import('./equipment-link.repository.js');
+      const i = await equipmentLinkRepository.interventionFromDowntime(r.rows[0].id, { userId, storeId });
+      r.rows[0].intervention_id = i.id;
+    }
     return r.rows[0];
   },
 
@@ -194,7 +200,9 @@ export const routingRepository = {
        dt AS (SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (b - a)) / 60), 0) AS downtime FROM stops WHERE b > a),
        perf AS (
          SELECT COALESCE(SUM(pie.duree_estimee_min), 0) AS est,
-                COALESCE(SUM(pie.duree_reelle_min), 0)  AS reel
+                COALESCE(SUM(pie.duree_reelle_min), 0)  AS reel,
+                -- M5-05 : qualité = pièces bonnes / pièces produites (quantités déclarées par opération).
+                SUM(pie.good_qty) AS good, SUM(pie.scrap_qty) AS scrap
          FROM production_item_etapes pie
          JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
          JOIN production_plans pp ON pp.id = ppi.plan_id
@@ -228,7 +236,7 @@ export const routingRepository = {
        SELECT ROUND(dt.downtime)::int AS downtime_min, act.active_days::int AS active_days,
               cap.cap, CASE WHEN cal.has THEN opening.open_min ELSE cap.cap * act.active_days END AS planned_min,
               cal.has AS from_calendar,
-              perf.est::int AS standard_min, perf.reel::int AS reel_min
+              perf.est::int AS standard_min, perf.reel::int AS reel_min, perf.good, perf.scrap
        FROM dt, perf, cap, act, cal, opening`, [workCenterId, from, to]);
     const row = r.rows[0] || {};
     const planned = row.planned_min != null ? parseFloat(row.planned_min) : 0;
@@ -238,12 +246,17 @@ export const routingRepository = {
     // Division en JS : duree_*_min sont des entiers (division entière en SQL).
     const availability = planned > 0 ? Math.max(0, Math.round((planned - downtime) / planned * 1000) / 10) : null;
     const performance = reel > 0 ? Math.round(standard / reel * 1000) / 10 : null;
-    const trs = availability != null && performance != null ? Math.round(availability * performance / 100 * 10) / 10 : null;
+    // M5-05 : qualité, quand des quantités ont été déclarées sur les opérations du poste.
+    const good = row.good != null ? Number(row.good) : null;
+    const scrap = row.scrap != null ? Number(row.scrap) : 0;
+    const quality = good != null && good + scrap > 0 ? Math.round(good / (good + scrap) * 1000) / 10 : null;
+    const trs = availability != null && performance != null
+      ? Math.round(availability * performance * (quality ?? 100) / 10000 * 10) / 10 : null;
     return {
       downtime_min: downtime, planned_min: planned, standard_min: standard, reel_min: reel,
       active_days: row.active_days != null ? parseInt(row.active_days) : 0,
       from_calendar: !!row.from_calendar,
-      availability_pct: availability, performance_pct: performance, trs_pct: trs,
+      availability_pct: availability, performance_pct: performance, quality_pct: quality, trs_pct: trs,
     };
   },
 

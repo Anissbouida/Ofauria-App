@@ -3,7 +3,7 @@ import { routingController } from '../controllers/routing.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
-import { createRoutingSchema, updateRoutingSchema, calendarSchema, closureSchema } from '../validators/routing.validator.js';
+import { createRoutingSchema, updateRoutingSchema, calendarSchema, closureSchema, equipmentLinkSchema, emptyBodySchema } from '../validators/routing.validator.js';
 
 // Postes de travail & gammes (mig 388) : admin / gérant.
 const router = Router();
@@ -17,6 +17,10 @@ router.post('/work-centers/:id/status', authenticate, can('production.routings.s
 router.post('/work-centers/:id/downtime', authenticate, can('production.routings.downtime'), routingController.recordDowntime);
 router.get('/work-centers/:id/downtime', authenticate, can('production.routings.view'), routingController.listDowntime);
 router.get('/work-centers/:id/oee', authenticate, can('production.routings.view'), routingController.getOee);
+// Référentiel équipement (M5-05)
+router.get('/equipments', authenticate, can('production.routings.view'), routingController.equipmentOverview);
+router.put('/equipments/:equipmentId/link', authenticate, validateUuidParams('equipmentId'), can('production.routings.work_centers'), validate(equipmentLinkSchema), routingController.linkEquipment);
+router.post('/downtime/:downtimeId/intervention', authenticate, validateUuidParams('downtimeId'), can('production.routings.downtime'), validate(emptyBodySchema), routingController.interventionFromDowntime);
 // Calendrier des postes (M5-04)
 router.get('/work-centers/:id/calendar', authenticate, validateUuidParams('id'), can('production.routings.view'), routingController.getCalendar);
 router.put('/work-centers/:id/calendar', authenticate, validateUuidParams('id'), can('production.routings.work_centers'), validate(calendarSchema), routingController.setCalendar);

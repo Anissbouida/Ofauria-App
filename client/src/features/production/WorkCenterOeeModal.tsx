@@ -32,6 +32,7 @@ export default function WorkCenterOeeModal({ workCenter, onClose }: { workCenter
   const [toTime, setToTime] = useState('');
   const [reason, setReason] = useState('panne');
   const [notes, setNotes] = useState('');
+  const [withIntervention, setWithIntervention] = useState(false);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['oee', workCenter.id] });
@@ -41,9 +42,9 @@ export default function WorkCenterOeeModal({ workCenter, onClose }: { workCenter
     mutationFn: () => routingsApi.recordDowntime(workCenter.id, {
       fromTime: new Date(fromTime).toISOString(),
       toTime: toTime ? new Date(toTime).toISOString() : null,
-      reason, notes: notes.trim() || null,
+      reason, notes: notes.trim() || null, createIntervention: withIntervention,
     }),
-    onSuccess: () => { notify.success('Arrêt enregistré'); setNotes(''); setToTime(''); invalidate(); },
+    onSuccess: () => { notify.success(withIntervention ? 'Arrêt enregistré, demande d\'intervention ouverte' : 'Arrêt enregistré'); setNotes(''); setToTime(''); setWithIntervention(false); invalidate(); },
     onError: e => notify.error(apiErrorMessage(e)),
   });
 
@@ -72,6 +73,7 @@ export default function WorkCenterOeeModal({ workCenter, onClose }: { workCenter
                 <Tile label="TRS" value={pct(oee.trs_pct)} color={trsColor} />
                 <Tile label="Disponibilité" value={pct(oee.availability_pct)} />
                 <Tile label="Performance" value={pct(oee.performance_pct)} />
+                <Tile label="Qualité" value={pct(oee.quality_pct)} />
               </div>
               <div style={{ fontSize: '0.76rem', color: 'var(--theme-text-muted)', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
                 <span>Planifié : {oee.planned_min} min</span>
@@ -106,7 +108,10 @@ export default function WorkCenterOeeModal({ workCenter, onClose }: { workCenter
                 <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optionnel" style={inp} />
               </label>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12, marginTop: 8 }}>
+              <label style={{ fontSize: '0.78rem', display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                <input type="checkbox" checked={withIntervention} onChange={e => setWithIntervention(e.target.checked)} /> Ouvrir une demande d'intervention
+              </label>
               <button className="odoo-btn-primary" disabled={record.isPending || !fromTime} onClick={() => record.mutate()}>
                 {record.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Ajouter l'arrêt
               </button>

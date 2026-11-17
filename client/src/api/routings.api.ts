@@ -3,7 +3,7 @@ import api from './client';
 export interface WorkCenter { id: string; name: string; hourly_cost: number; is_active: boolean; operations_count: number; capacity_minutes_per_day: number | null; status?: string }
 export interface Oee {
   downtime_min: number; planned_min: number; standard_min: number; reel_min: number; active_days: number;
-  availability_pct: number | null; performance_pct: number | null; trs_pct: number | null;
+  availability_pct: number | null; performance_pct: number | null; quality_pct?: number | null; trs_pct: number | null; from_calendar?: boolean;
 }
 export interface Downtime { id: string; from_time: string; to_time: string | null; reason: string; notes: string | null; operator_name: string | null; minutes: number }
 export interface RoutingRow {
@@ -52,7 +52,7 @@ export const routingsApi = {
   // Statut & arrêts machine / TRS (mig 402) — roadmap lot 7
   setWorkCenterStatus: (id: string, status: string): Promise<WorkCenter> =>
     api.post(`/routings/work-centers/${id}/status`, { status }).then(r => r.data.data),
-  recordDowntime: (id: string, data: { fromTime: string; toTime?: string | null; reason: string; notes?: string | null }) =>
+  recordDowntime: (id: string, data: { fromTime: string; toTime?: string | null; reason: string; notes?: string | null; createIntervention?: boolean }) =>
     api.post(`/routings/work-centers/${id}/downtime`, data).then(r => r.data.data),
   listDowntime: (id: string, from?: string, to?: string): Promise<Downtime[]> =>
     api.get(`/routings/work-centers/${id}/downtime`, { params: { from, to } }).then(r => r.data.data),

@@ -55,7 +55,7 @@ const PLAN_SELECT = `
     LEFT JOIN employees e ON e.id = pl.assignee_id`;
 
 export type InterventionInput = {
-  kind?: InterventionKind; priority?: Priority; title: string;
+  kind?: InterventionKind; priority?: Priority; title: string; equipmentId?: string | null;
   fixedAssetId?: string | null; customerId?: string | null; equipmentLabel?: string | null; serialNo?: string | null; location?: string | null;
   planId?: string | null; complaintId?: string | null; projectId?: string | null; reportedProblem?: string | null;
   assigneeId?: string | null; scheduledAt?: string | null; underWarranty?: boolean; billable?: boolean; photoUrl?: string | null;
@@ -108,6 +108,8 @@ export const maintenanceRepository = {
          input.assigneeId ?? null, input.scheduledAt ?? null, input.underWarranty ?? false, input.billable ?? false, input.photoUrl ?? null, ctx.userId],
       );
       const id = r.rows[0].id as string;
+      // M5-05 : équipement du référentiel (production_equipements).
+      if (input.equipmentId) await client.query(`UPDATE maintenance_interventions SET equipment_id = $2 WHERE id = $1`, [id, input.equipmentId]);
       await addEvent(client, id, { type: 'created', to: input.kind ?? 'corrective', userId: ctx.userId });
       await client.query('COMMIT');
       if (input.assigneeId) await notifyAssignee(id, input.assigneeId, ctx.userId);
@@ -233,6 +235,11 @@ export const maintenanceRepository = {
         `UPDATE maintenance_plans SET last_done_on = CURRENT_DATE, next_due_on = CURRENT_DATE + frequency_days WHERE id = $1`,
         [row.plan_id],
       );
+    }
+    // M5-05 : intervention terminée sur l'équipement d'un poste → arrêt du poste.
+    if (to === 'done') {
+      const { equipmentLinkRepository } = await import('./equipment-link.repository.js');
+      await equipmentLinkRepository.downtimeFromIntervention(id, p.userId);
     }
     return { data: await this.findById(id) };
   },

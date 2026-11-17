@@ -22,6 +22,8 @@ const status = z.enum(['requested', 'scheduled', 'in_progress', 'done', 'cancell
 
 const equipment = {
   fixedAssetId: uuid.nullish(), customerId: uuid.nullish(), equipmentLabel: text(200).nullish(), serialNo: text(80).nullish(),
+  // M5-05 : équipement du référentiel de production.
+  equipmentId: uuid.nullish(),
 };
 const interventionFields = z.object({
   kind: kind.optional(), priority: priority.optional(), title: text(200).min(1), ...equipment, location: text(200).nullish(),

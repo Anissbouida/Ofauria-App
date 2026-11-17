@@ -88,8 +88,26 @@ export const routingController = {
     const d = await routingRepository.recordDowntime({
       workCenterId: req.params.id, fromTime: String(b.fromTime),
       toTime: b.toTime ? String(b.toTime) : null, reason: String(b.reason), notes: b.notes ? String(b.notes) : null,
-    }, req.user!.userId);
+      createIntervention: b.createIntervention === true,
+    }, req.user!.userId, req.user!.storeId ?? null);
     res.status(201).json({ success: true, data: d });
+  },
+  // Référentiel équipement (M5-05).
+  async equipmentOverview(req: AuthRequest, res: Response) {
+    const { equipmentLinkRepository } = await import('../repositories/equipment-link.repository.js');
+    res.json({ success: true, data: await equipmentLinkRepository.overview(req.user!.storeId ?? null) });
+  },
+  async linkEquipment(req: AuthRequest, res: Response) {
+    const { equipmentLinkRepository } = await import('../repositories/equipment-link.repository.js');
+    const r = await equipmentLinkRepository.link(req.params.equipmentId as string, req.body);
+    if (!r) { res.status(404).json({ success: false, error: { message: 'Équipement introuvable' } }); return; }
+    res.json({ success: true, data: r });
+  },
+  async interventionFromDowntime(req: AuthRequest, res: Response) {
+    const { equipmentLinkRepository } = await import('../repositories/equipment-link.repository.js');
+    try {
+      res.status(201).json({ success: true, data: await equipmentLinkRepository.interventionFromDowntime(req.params.downtimeId as string, { userId: req.user!.userId, storeId: req.user!.storeId ?? null }) });
+    } catch (err) { res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } }); }
   },
   async listDowntime(req: AuthRequest, res: Response) {
     const d = await routingRepository.listDowntime(req.params.id, req.query.from as string | undefined, req.query.to as string | undefined);

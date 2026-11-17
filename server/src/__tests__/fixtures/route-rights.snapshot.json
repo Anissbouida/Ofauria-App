@@ -2053,6 +2053,10 @@
   "admin",
   "manager"
  ],
+ "GET /routings/equipments": [
+  "admin",
+  "manager"
+ ],
  "GET /routings/for-recipe/:recipeId": [
   "admin",
   "manager"
@@ -4090,6 +4094,14 @@
   "admin",
   "manager"
  ],
+ "POST /routings/downtime/:downtimeId/intervention": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "POST /routings/work-centers": [
   "admin",
   "manager"
@@ -4824,6 +4836,10 @@
   "manager"
  ],
  "PUT /routings/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /routings/equipments/:equipmentId/link": [
   "admin",
   "manager"
  ],
