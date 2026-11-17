@@ -1,4 +1,4 @@
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 import type { PoolClient } from 'pg';
 
 /**
@@ -104,9 +104,8 @@ export const withholdingRepository = {
     if (!type) throw new Error(`Type de RAS ${params.typeCode} introuvable`);
     if (params.amount <= 0) throw new Error('Montant invalide');
 
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const result = await persistReversement(client, {
         rasAccountCode: type.account_code,
         treasuryCode: params.method === 'cash' ? '5161' : '5141',
@@ -116,14 +115,8 @@ export const withholdingRepository = {
         storeId: params.storeId,
         userId: params.userId,
       });
-      await client.query('COMMIT');
       return result;
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    });
   },
 };
 
