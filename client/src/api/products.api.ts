@@ -1,6 +1,10 @@
 import api from './client';
 
 export const productsApi = {
+  /** G2-09 — données de l'étiquette réglementaire, et mentions du produit. */
+  labelData: (id: string): Promise<ProductLabelData> => api.get(`/products/${id}/label-data`).then(r => r.data.data),
+  saveLabelFields: (id: string, data: { legalName: string; storageConditions: string; labelMentions: string }): Promise<ProductLabelData> =>
+    api.put(`/products/${id}/label-fields`, data).then(r => r.data.data),
   list: (params?: Record<string, string>) => api.get('/products', { params }).then(r => r.data),
   topSelling: (params?: Record<string, string>) => api.get('/products/top-selling', { params }).then(r => r.data.data),
   getById: (id: string) => api.get(`/products/${id}`).then(r => r.data.data),
@@ -82,3 +86,10 @@ export interface PricingTier {
   created_at?: string;
   updated_at?: string;
 }
+
+export type ProductLabelData = {
+  product: { id: string; name: string; legalName: string; storageConditions: string | null; mentions: string | null; shelfLifeDays: number | null; netWeightG: number | null };
+  ingredients: { ingredientId: string; name: string; weightKg: number | null; sharePct: number | null; contains: string[]; traces: string[]; reviewed: boolean }[];
+  allergens: { contains: string[]; traces: string[] };
+  ingredientsText: string; tracesText: string; blockers: string[]; warnings: string[]; printable: boolean;
+};

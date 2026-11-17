@@ -10,7 +10,7 @@ import { usersApi } from '../../api/users.api';
 import { recipesApi } from '../../api/recipes.api';
 import { usePermissions } from '../../context/PermissionsContext';
 import { invoicesApi } from '../../api/accounting.api';
-import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays, Coins, Target, ChevronDown, ChevronRight, Recycle, Wrench, Repeat, type LucideIcon } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Upload, X, Camera, ChefHat, Package, AlertTriangle, Factory, Clock, Eye, EyeOff, ShoppingBag, TrendingUp, LayoutGrid, List, Filter, BookOpen, GitBranch, Layers, ArrowUp, ArrowDown, ArrowUpDown, ClipboardList, Sun, CalendarDays, Coins, Target, ChevronDown, ChevronRight, Recycle, Wrench, Repeat, Tag, type LucideIcon } from 'lucide-react';
 import { ROLE_LABELS } from '@ofauria/shared';
 import type { Role } from '@ofauria/shared';
 import { notify } from '../../components/ui/InlineNotification';
@@ -22,6 +22,7 @@ import { customFieldsApi, useCustomFieldsForm, type CfValues } from '../../api/c
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import ProductPipelineTab from '../pipeline/ProductPipelinePage';
 import ProductionProfileTab from './ProductionProfileTab';
+import ProductLabelTab from './ProductLabelTab';
 import SemiFinisTab from './SemiFinisTab';
 import ExpiredProductLotsBanner from './ExpiredProductLotsBanner';
 import type { ProfileFormData } from './ProductionProfileTab';
@@ -681,7 +682,7 @@ function CatalogueTab() {
    Product Form Modal — Redesigned with tabs
    ═══════════════════════════════════════════════════════════════════════════ */
 
-type FormTab = 'general' | 'pricing' | 'lifecycle';
+type FormTab = 'general' | 'pricing' | 'lifecycle' | 'label';
 
 const fieldLabel: React.CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
 const fieldInput: React.CSSProperties = { width: '100%', fontSize: '0.875rem', padding: '9px 11px', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', boxSizing: 'border-box' };
@@ -840,7 +841,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
   // L'onglet Cycle de vie disparaît pour un service/abonnement : si on y était,
   // on revient au Général pour ne pas afficher un onglet actif sans bouton.
   useEffect(() => {
-    if (isIntangible && activeTab === 'lifecycle') setActiveTab('general');
+    if (isIntangible && (activeTab === 'lifecycle' || activeTab === 'label')) setActiveTab('general');
   }, [isIntangible, activeTab]);
 
   // Fetch all recipes (pas de fiches techniques sans le module, ex. secteur négoce)
@@ -1095,6 +1096,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     { key: 'pricing', label: 'Tarifs', icon: <Coins size={16} /> },
     // Production & cycle de vie n'a de sens que pour un bien stockable.
     ...(isIntangible ? [] : [{ key: 'lifecycle' as FormTab, label: 'Production & cycle de vie', icon: <Clock size={16} /> }]),
+    // G2-09 : l'étiquette se compose depuis la fiche technique d'un produit déjà enregistré.
+    ...(isIntangible || !product?.id ? [] : [{ key: 'label' as FormTab, label: 'Étiquette', icon: <Tag size={16} /> }]),
   ];
 
   return (
@@ -1564,6 +1567,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
             )}
 
             {/* ═══ Tab: Cycle de vie ═══ */}
+            {activeTab === 'label' && product?.id && <ProductLabelTab productId={product.id as string} />}
+
             {activeTab === 'lifecycle' && (
               <>
                 <FormSection title="Paramètres de production" subtitle="plans de production automatiques" icon={Factory} defaultOpen={false}>
