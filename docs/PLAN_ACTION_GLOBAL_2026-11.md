@@ -1996,6 +1996,25 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **G5-05** : mig 553 `master_schedule_entries` (article × semaine × établissement). Écran Production › Plan directeur › Plan par semaine : la prévision s'affiche en indication, une case saisie la remplace dans le calcul phasé (répartie selon le profil de la prévision, à parts égales si elle est nulle), une case vidée y revient ; commandes fermes comptées en plus. Permission `production.master_schedule`.
 - **G5-06** : `services/promise-date.ts` : stock libre (stock − réservé, mig 389) + production planifiée non affectée à une commande (M2-08), jour par jour ; sinon « à produire » à J + délai pour un produit fabriqué (la commande déclenche sa production), « à approvisionner » pour un produit acheté. Saisie de commande : la date s'affiche sous chaque article, en rouge si elle dépasse le retrait. LIMITE : capacité des ateliers non modélisée ; la production planifiée pour la boutique est promise aux commandes.
 
+### Lot 8 — M3 : unités et mesures
+
+| ☐ | Tâche | Objet | Change des chiffres |
+|---|---|---|---|
+| ☑ | M3-01 | Référentiel des unités par dimension | non (jeu de référence : zéro écart) |
+| ☑ | M3-02 | Conversions propres à l'article | non (zéro écart) |
+| ◐ | M3-03 | Nouvelle fonction de conversion et bascule des appelants | non (zéro écart) |
+| ◐ | M3-04 | Quantité + unité à la place des colonnes _g / _kg | non (zéro écart) |
+| ☑ | M3-05 | Clé de répartition du coût au choix | non (zéro écart) |
+| ◐ | M3-06 | Devise par helper | non |
+
+**Notes du lot 8.** Jeu de référence rejoué à chaque tâche : zéro écart (apres-g402 → apres-m305). Suite complète en base verte à la fin du lot (579 tests).
+- **M3-01** : mig 554. Les unités vivaient déjà dans `ref_entries` (table « units », mig 515) : complétées plutôt que dupliquées dans une seconde table — mg, cl, dl (que `fn_unit_conv` convertissait sans les connaître), minute et heure, décimales, marque « système », douzaine = 12 pièces. Vue `v_units` (dimension en français, facteur vers l'unité de base). `unit_id` sur ingrédients, emballages, fiches (rendement) et les trois tables de lignes de composition, rattrapés par code et tenus par déclencheur ; `v_unit_unmatched`. Base locale : aucune ligne de composition non rattachée ; base de test : 41 emballages de test portent « piece » (hors référentiel, à corriger à la main). Écran Paramètres › Unités de mesure (lecture ; ajout d'unité dans Référentiels). Test : chaque couple d'unités système a exactement le facteur de `fn_unit_conv`.
+- **M3-02** : mig 555 `item_unit_conversions` (« 1 source = facteur cible » par article, source = unité ou contenant ; origines saisie, densité, contenant, poids par pièce). Reprise des colonnes d'origine (404 contenants et 27 densités en dev), tenue à jour par déclencheur ; conversion inverse incohérente refusée. Panneau « Unités et conversions » sur la fiche ingrédient et la fiche produit.
+- **M3-03** : mig 556. `fn_convert_factor` / `fn_convert_qty` : même dimension → référentiel ; entre dimensions → conversion de l'article ; inconnu → NULL, jamais 1. Facteurs en table indexée (`unit_factor_cache`, rafraîchie quand le référentiel change). Vues `_v2` générées depuis les définitions actuelles (15 appels remplacés) et `fn_ingredient_weight_kg_v2`. Comparaison `_v1`/`_v2` (scripts/compare-unit-views.ts, test unit-views-v2) : zéro écart en test et en dev (177 fiches, 1 166 lignes d'explosion). Bascule du code un appelant par commit : 3 dépôts à appel direct puis 7 vues/fonction. Plus aucun appel à `fn_unit_conv` dans `server/src`. COÛT : la nouvelle fonction ne peut pas être « inlinée » par PostgreSQL ; lecture complète des vues 6 à 20 fois plus lente (100-140 ms au lieu de 6-17 ms sur la base locale), négligeable sur une fiche. RESTE (étape 6) : `fn_unit_conv` et les vues d'origine restent un cycle de mise en production, puis à retirer ; `fn_unit_conv_ok` (indicateurs « conversion incertaine ») est encore lu par deux requêtes.
+- **M3-04** : mig 557. `_qty` + `_unit_id` à côté de 8 colonnes de poids (formats : poids cru/cuit ; fiches et versions : poids de pièce ; contenants ; relevés de rendement). Rattrapage à l'identique ; double écriture par un déclencheur générique dans les deux sens (l'ancien code écrit l'ancienne colonne, le nouveau la quantité + unité ; conversion impossible refusée) ; anciennes colonnes marquées obsolètes. Écran basculé : grille des poids des formats (l'unité saisie, g ou kg, est conservée et affichée). RESTE : basculer les autres écrans (fiche, rendement, contenants) avant tout retrait des colonnes `_g` / `_kg`.
+- **M3-05** : mig 558 + politique `production.cost_allocation_key` (poids par défaut, quantité, valeur de vente, parts saisies), réglable société / établissement / atelier / type d'ordre. CONSTAT : le code ne répartissait pas le coût d'un plan entre ses articles (seule la coupe répartit, au prorata des pièces équivalentes) ; la répartition est donc ajoutée (`allocate`, appelée par `computePlanCost`) ; une clé inapplicable (poids manquant, parts ≠ 100 %, aucun prix) retombe sur la quantité et le signale — c'est le cas de tous les plans locaux, faute de poids unitaires. Parts manuelles sur les articles du plan (total 100 %). Le niveau « type d'ordre » des politiques lisait `plan.type` (quotidien/hebdomadaire) : il lit maintenant le code du type d'ordre (aucune valeur n'était posée à ce niveau). Écrans : section « Répartition du coût entre les articles » du coût réel ; types d'ordre dans Paramétrage › Politiques.
+- **M3-06** : `formatMoney` dans `shared` (devise de base de la table `currencies`, repli DH) ; côté client `money()` / `currencySymbol()` ; côté serveur `services/currency.ts`, utilisé par le PDF de fiche technique. Les 43 occurrences du module Production remplacées (montants désormais au format français « 1 234,50 DH »). Garde de test : aucun « DH » ni « MAD » en dur dans le module Production (vérifiée : la même règle trouve 86 occurrences dans Ventes). RESTE : les autres modules (≈ 930 occurrences), en étendant la garde à chaque module converti.
+
 ### Lots suivants
 
 | ☐ | Lot | Tâches |
@@ -2007,7 +2026,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ☐ | G4 | G4-01 à G4-03 |
 | ☑ | M2 | M2-01 à M2-08 |
 | ◐ | G5 | G5-01 à G5-06 |
-| ☐ | M3 | M3-01 à M3-06 |
+| ◐ | M3 | M3-01 à M3-06 |
 | ☐ | M4 | M4-01 à M4-07 |
 | ☐ | M5 | M5-01 à M5-05 |
 | ☐ | M6 | M6-01 à M6-04 |
