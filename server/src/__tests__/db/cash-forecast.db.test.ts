@@ -7,7 +7,8 @@
  *    campagne de paiement (lien G4-01) ;
  *  - une ligne manuelle (emprunt de 5 000 DH à J+20) entre à sa date ;
  *  - le solde jour par jour suit : ouverture + flux cumulés ; la semaine porte le détail
- *    par catégorie ; le minimum et le passage sous le seuil sont repérés.
+ *    par catégorie ; le minimum et le passage sous le seuil sont repérés ;
+ *  - les ventes au comptoir sont estimées par jour de la semaine sur 8 semaines.
  * Les autres sources réelles de la base de test (salaires, autres factures…) ajoutent leurs
  * flux : le test raisonne en écarts entre deux prévisions, pas en totaux absolus.
  */
@@ -77,6 +78,22 @@ describe.skipIf(!hasTestDb)('Prévision de trésorerie (G4-03)', () => {
     // Entre J+5 et J+29, le solde simulé est supérieur de 400 DH ; ensuite, identique.
     expect(sim.days[10].balance - base.days[10].balance).toBeCloseTo(400, 2);
     expect(sim.days[40].balance - base.days[40].balance).toBeCloseTo(0, 2);
+  });
+
+  it('ventes au comptoir : la moyenne du même jour de la semaine sur 8 semaines', async () => {
+    // Une vente de 700 DH sept jours avant le départ : le même jour de la semaine est crédité de 700 / nombre de jours vendus ce jour-là.
+    const sale = (await p().query(
+      `INSERT INTO sales (sale_number, user_id, subtotal, total, payment_method, created_at) VALUES ($1, $2, 700, 700, 'cash', $3::date + time '10:00') RETURNING id`,
+      [`T-G403-${RUN}`, actor, day(-7)])).rows[0].id;
+    try {
+      const r = await fc.cashForecast({ from });
+      const v = r.flows.filter(f => f.category === 'ventes' && f.date === from);
+      expect(v).toHaveLength(1);
+      expect(v[0].amount).toBeGreaterThan(0);
+      expect(r.flows.filter(f => f.category === 'ventes' && f.date === day(7))[0].amount).toBeCloseTo(v[0].amount, 2);
+    } finally {
+      await p().query(`DELETE FROM sales WHERE id = $1`, [sale]);
+    }
   });
 
   it('seuil d\'alerte : premier jour sous le seuil repéré', async () => {

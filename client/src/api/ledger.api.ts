@@ -694,3 +694,25 @@ export const consolidationApi = {
     api.post('/ledger/consolidation/transfers', body).then(r => r.data.data as { transfer_id: string; entries: string[] }),
   cancel: (id: string, reason: string) => api.post(`/ledger/consolidation/transfers/${id}/cancel`, { reason }).then(r => r.data),
 };
+
+/* ═══ G4-03 — prévision de trésorerie ═══ */
+export type CashForecastFlow = { date: string; amount: number; category: string; label: string; ref?: string };
+export type CashForecast = {
+  from: string; to: string; opening: number; threshold: number; customerDelayDays: number;
+  days: { date: string; inflow: number; outflow: number; balance: number }[];
+  weeks: { start: string; end: string; inflow: number; outflow: number; closing: number; byCategory: Record<string, number> }[];
+  flows: CashForecastFlow[];
+  minimum: { date: string; balance: number }; firstBelowThreshold: { date: string; balance: number } | null;
+  categories: Record<string, string>;
+};
+export type CashForecastLine = { id: string; flow_date: string; label: string; amount: number; category: string; notes: string | null };
+export const cashForecastApi = {
+  get: (delay = 0): Promise<CashForecast> => api.get('/ledger/cash-forecast', { params: { delay } }).then(r => r.data.data),
+  simulate: (body: { customerDelayDays?: number; planned?: { date: string; invoiceIds: string[] } }): Promise<CashForecast> =>
+    api.post('/ledger/cash-forecast/simulate', body).then(r => r.data.data),
+  lines: (): Promise<CashForecastLine[]> => api.get('/ledger/cash-forecast/lines').then(r => r.data.data),
+  addLine: (data: { flowDate: string; label: string; amount: number; category: string }): Promise<CashForecastLine> =>
+    api.post('/ledger/cash-forecast/lines', data).then(r => r.data.data),
+  deleteLine: (id: string) => api.delete(`/ledger/cash-forecast/lines/${id}`).then(() => undefined),
+  setThreshold: (threshold: number) => api.put('/ledger/cash-forecast/threshold', { threshold }).then(r => r.data.data),
+};

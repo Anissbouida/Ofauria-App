@@ -1,3 +1,4 @@
+import { cashForecastApi } from '../../api/ledger.api';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Banknote, CheckCircle2, Download, FileText, Loader2, Play, Plus, Send, X, AlertTriangle } from 'lucide-react';
@@ -102,6 +103,15 @@ function PrepareRun({ onBack, onCreated }: { onBack: () => void; onCreated: (id:
     return had !== undefined ? rest : { ...p, [c.invoice_id]: String(c.remaining) };
   });
 
+  // G4-03 : effet de la sélection sur le solde prévu (factures choisies payées à la date du virement).
+  const selectedIds = selected.map(c => c.invoice_id).sort();
+  const { data: forecast } = useQuery({
+    queryKey: ['cash-forecast-sim', paymentDate, selectedIds.join(',')],
+    queryFn: () => cashForecastApi.simulate({ planned: { date: paymentDate, invoiceIds: selectedIds } }),
+    enabled: selectedIds.length > 0,
+  });
+  const atDate = forecast?.days.find(d => d.date === paymentDate) ?? null;
+
   const create = useMutation({
     mutationFn: () => paymentRunsApi.create({
       paymentDate, treasuryAccountId: bankId,
@@ -170,6 +180,13 @@ function PrepareRun({ onBack, onCreated }: { onBack: () => void; onCreated: (id:
 
       <div style={{ position: 'sticky', bottom: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)' }}>
         <span>{selected.length} facture{selected.length > 1 ? 's' : ''} · <strong>{money(total)}</strong></span>
+        {forecast && (
+          <span style={{ fontSize: '0.8rem', color: forecast.firstBelowThreshold ? '#c62828' : 'var(--theme-text-muted)' }}
+            title="Prévision de trésorerie avec ces factures payées à la date du virement (les autres à leur échéance)">
+            {atDate ? `Solde prévu le ${dmy(paymentDate)} : ${money(atDate.balance)} · ` : ''}point bas sur 13 semaines : {money(forecast.minimum.balance)} le {dmy(forecast.minimum.date)}
+            {forecast.firstBelowThreshold ? ' — sous le seuil d\'alerte' : ''}
+          </span>
+        )}
         <button type="button" className="odoo-btn-primary" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}
           disabled={!selected.length || !bankId || create.isPending} onClick={() => create.mutate()}>
           {create.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Créer la campagne

@@ -22,6 +22,7 @@ import {
   ArrowLeftRight, Ban, Clock, CalendarClock, CheckCircle2, Filter,
   Target, NotebookPen, Link2, Hourglass, Percent, ArrowRightLeft, FileStack,
   Banknote,
+  TrendingUp,
 } from 'lucide-react';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
@@ -53,6 +54,7 @@ import BilanTab from './BilanTab';
 import BudgetTab from './BudgetTab';
 import PrepaidChargesTab from './PrepaidChargesTab';
 import CashFlowTab from './CashFlowTab';
+import CashForecastTab from './CashForecastTab';
 import CostCentersTab from './CostCentersTab';
 import RetenuesSourceTab from './RetenuesSourceTab';
 import EcheancierView from './EcheancierView';
@@ -65,7 +67,7 @@ import {
   periodLabel as periodLabelOf, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 
-type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance' | 'is' | 'fx' | 'liasse' | 'effets' | 'consolidation' | 'paiements_lot';
+type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance' | 'is' | 'fx' | 'liasse' | 'effets' | 'consolidation' | 'paiements_lot' | 'prevision';
 
 const PAYMENT_TYPE_LABELS: Record<string, string> = { invoice: 'Facture', salary: 'Salaire', expense: 'Dépense', income: 'Revenu' };
 const INVOICE_STATUS_LABELS: Record<string, string> = { pending: 'En attente', partial: 'Partiel', paid: 'Payée', overdue: 'En retard', cancelled: 'Annulée' };
@@ -315,6 +317,7 @@ const TAB_META: (Omit<ModuleView<AccTab>, 'hidden'> & { adminOnly?: boolean })[]
   { key: 'consolidation', label: 'Consolidation', icon: Building2, section: 'reports', adminOnly: true },
   { key: 'budget', label: 'Budget', icon: Target, section: 'reports', adminOnly: true },
   { key: 'cashflow', label: 'Flux de trésorerie', icon: ArrowLeftRight, section: 'reports', adminOnly: true },
+  { key: 'prevision', label: 'Prévision de trésorerie', icon: TrendingUp, section: 'reports', adminOnly: true },
   { key: 'costcenters', label: 'Analytique', icon: Target, section: 'reports', adminOnly: true },
   // ─── Paramétrage ───
   { key: 'plan_comptable', label: 'Plan comptable', icon: ListTree, section: 'setup', adminOnly: true },
@@ -368,6 +371,7 @@ export default function AccountingPage() {
       {tab === 'cloture' && <ClotureTab />}
       {tab === 'cca' && <PrepaidChargesTab />}
       {tab === 'cashflow' && <CashFlowTab />}
+      {tab === 'prevision' && <CashForecastTab />}
       {tab === 'costcenters' && <CostCentersTab />}
       </div>
     </ModuleShell>

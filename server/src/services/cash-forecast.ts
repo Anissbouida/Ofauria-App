@@ -7,6 +7,8 @@ import { localIsoDate } from '../utils/local-date.js';
  *
  * Point de départ : le solde au grand livre des comptes de trésorerie (banque et caisse,
  * comptes de treasury_accounts). Puis chaque flux attendu, daté :
+ *   - ventes au comptoir : moyenne des ventes payées comptant des 8 dernières semaines,
+ *     par jour de la semaine (estimation ; absente si aucune vente sur la période) ;
  *   - créances clients ouvertes, à leur échéance décalée du retard moyen du client
  *     (constaté sur ses factures payées des 12 derniers mois) et du scénario ;
  *   - effets clients en portefeuille (chèques, traites non encaissés), à leur échéance ;
@@ -25,10 +27,10 @@ import { localIsoDate } from '../utils/local-date.js';
  * Rien n'est écrit. Analogie Oracle : le « Cash Forecasting » de Cash Management, avec ses
  * sources (AR, AP, payroll, GL).
  */
-export type Category = 'clients' | 'effets' | 'fournisseurs' | 'echeancier' | 'salaires' | 'social' | 'tva' | 'is' | 'recurrent' | 'manuel';
+export type Category = 'ventes' | 'clients' | 'effets' | 'fournisseurs' | 'echeancier' | 'salaires' | 'social' | 'tva' | 'is' | 'recurrent' | 'manuel';
 export type ForecastFlow = { date: string; amount: number; category: Category; label: string; ref?: string };
 export const CATEGORY_LABELS: Record<Category, string> = {
-  clients: 'Créances clients', effets: 'Effets en portefeuille', fournisseurs: 'Factures fournisseurs', echeancier: 'Échéancier',
+  ventes: 'Ventes au comptoir (estimation)', clients: 'Créances clients', effets: 'Effets en portefeuille', fournisseurs: 'Factures fournisseurs', echeancier: 'Échéancier',
   salaires: 'Salaires', social: 'CNSS', tva: 'TVA', is: 'Impôt sur les sociétés', recurrent: 'Écritures récurrentes', manuel: 'Lignes manuelles',
 };
 export type ForecastOptions = {
@@ -76,6 +78,22 @@ export async function cashForecast(opts: ForecastOptions = {}) {
   const opening = r2(Number((await db.query(
     `SELECT COALESCE(SUM(l.debit - l.credit), 0)::float8 AS b FROM journal_entry_lines l JOIN journal_entries e ON e.id = l.journal_entry_id
       WHERE e.status = 'posted' AND e.entry_date < $2::date AND l.account_id = ANY($1)`, [accIds, from])).rows[0].b));
+
+  // Ventes au comptoir : moyenne par jour de la semaine sur les 8 dernières semaines (ventes payées,
+  // non annulées). Une vente à crédit devient une créance : elle est comptée avec les factures.
+  const avgByDow = new Map((await db.query(
+    `SELECT EXTRACT(DOW FROM d)::int AS dow, AVG(total)::float8 AS avg
+       FROM (SELECT s.created_at::date AS d, SUM(s.total) AS total FROM sales s
+              WHERE s.cancelled_at IS NULL AND COALESCE(s.payment_status, 'paid') = 'paid'
+                AND s.created_at >= $1::date - 56 AND s.created_at < $1::date
+              GROUP BY 1) x
+      GROUP BY 1`, [from])).rows.map(r => [Number(r.dow), Number(r.avg)]));
+  if (avgByDow.size) {
+    for (let d = from; d <= to; d = addDays(d, 1)) {
+      const v = avgByDow.get(new Date(`${d}T12:00:00Z`).getUTCDay()) ?? 0;
+      if (v > 0) push({ date: d, amount: v, category: 'ventes', label: 'Ventes au comptoir (moyenne du même jour, 8 semaines)' });
+    }
+  }
 
   // Créances clients, à l'échéance + retard moyen du client + scénario.
   for (const r of (await db.query(
