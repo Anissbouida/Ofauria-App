@@ -2,6 +2,7 @@ import { listPolicies, setPolicy, type PolicyScope } from '../services/policies.
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { productionRepository } from '../repositories/production.repository.js';
+import { productionOrderTypeRepository } from '../repositories/production-order-type.repository.js';
 import { mrpRepository } from '../repositories/mrp.repository.js';
 import { forecastRepository } from '../repositories/forecast.repository.js';
 import { orderRepository } from '../repositories/order.repository.js';
@@ -175,6 +176,38 @@ export const productionController = {
     if ('error' in out) { res.status(400).json({ success: false, error: { message: out.error } }); return; }
     res.json({ success: true, data: out });
   },
+  // ─── Types d'ordre (M2-01) ───
+  async listOrderTypes(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await productionOrderTypeRepository.list(req.query.active !== '1') });
+  },
+  async createOrderType(req: AuthRequest, res: Response) {
+    try {
+      res.status(201).json({ success: true, data: await productionOrderTypeRepository.create(req.body, req.user!.userId) });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
+  async updateOrderType(req: AuthRequest, res: Response) {
+    try {
+      res.json({ success: true, data: await productionOrderTypeRepository.update(req.params.typeId as string, req.body, req.user!.userId) });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
+  /** Priorité / fenêtre planifiée d'un ordre non terminé (M2-02). */
+  async updateHeader(req: AuthRequest, res: Response) {
+    const plan = await loadOwnedPlan(req, res);
+    if (!plan) return;
+    if (['completed', 'cancelled'].includes(plan.status)) {
+      res.status(409).json({ success: false, error: { message: 'Ordre terminé ou annulé : en-tête figé' } });
+      return;
+    }
+    try {
+      res.json({ success: true, data: await productionRepository.updateHeader(req.params.id, req.body) });
+    } catch (err) {
+      res.status(400).json({ success: false, error: { message: err instanceof Error ? err.message : 'Erreur' } });
+    }
+  },
   async getSettings(_req: AuthRequest, res: Response) {
     res.json({ success: true, data: await settingsRepository.getProductionSettings() });
   },
@@ -205,7 +238,13 @@ export const productionController = {
   },
 
   async create(req: AuthRequest, res: Response) {
-    const { planDate, type, notes, items, targetRole } = req.body;
+    const { planDate, type, notes, items, targetRole, orderTypeId, priority, plannedStart, plannedEnd } = req.body;
+    // Type d'ordre (M2-01) : actif, sinon refus ; il peut porter l'atelier par défaut.
+    const orderType = orderTypeId ? await productionOrderTypeRepository.get(orderTypeId) : null;
+    if (orderTypeId && (!orderType || !orderType.is_active)) {
+      res.status(400).json({ success: false, error: { message: 'Type d\'ordre inconnu ou inactif' } });
+      return;
+    }
     if (!planDate || !items || items.length === 0) {
       res.status(400).json({ success: false, error: { message: 'Date et articles requis' } });
       return;
@@ -248,11 +287,13 @@ export const productionController = {
     const known = new Set((await listWorkshops()).map(w => w.code));
     const effectiveTargetRole = isChef
       ? (targetRole && mine.includes(targetRole) ? targetRole : mine[0])
-      : (targetRole && known.has(targetRole) ? targetRole : null);
+      : (targetRole && known.has(targetRole) ? targetRole
+        : (orderType?.default_target_role && known.has(orderType.default_target_role) ? orderType.default_target_role : null));
 
     const plan = await productionRepository.create({
       planDate, type: type || 'daily', notes, createdBy: req.user!.userId,
       targetRole: effectiveTargetRole, storeId: req.user!.storeId, items,
+      orderTypeId: orderType?.id ?? null, priority: priority ?? null, plannedStart: plannedStart ?? null, plannedEnd: plannedEnd ?? null,
     });
 
     // Notify the target chef role about new production plan

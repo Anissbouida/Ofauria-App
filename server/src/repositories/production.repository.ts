@@ -4,6 +4,7 @@ import { adjustProductStock } from './product-stock.helper.js';
 import { productMaterialsUnitCost } from './product-cost.helper.js';
 import { ingredientLotRepository } from './ingredient-lot.repository.js';
 import { bonSortieRepository } from './bon-sortie.repository.js';
+import { productionOrderTypeRepository } from './production-order-type.repository.js';
 import { notificationRepository } from './notification.repository.js';
 import { getLocalNow } from '../utils/timezone.js';
 import { productionEtapesRepository } from './production-etapes.repository.js';
@@ -47,12 +48,15 @@ export const productionRepository = {
                 WHERE plan_id = pp.id AND (status = 'cancelled' OR waiting_status = 'waiting')) as relaunchable_count,
               (SELECT COUNT(*) FROM production_plan_dependencies WHERE parent_plan_id = pp.id) as dep_total,
               (SELECT COUNT(*) FROM production_plan_dependencies WHERE parent_plan_id = pp.id AND status = 'fulfilled') as dep_fulfilled,
-              pw.label AS target_role_label
+              pw.label AS target_role_label,
+              pot.code AS order_type_code, pot.label AS order_type_label,
+              pot.requires_bon_sortie AS order_type_requires_bon_sortie
        FROM production_plans pp
        JOIN users u ON u.id = pp.created_by
        LEFT JOIN orders o ON o.id = pp.order_id
        LEFT JOIN customers oc ON oc.id = o.customer_id
        LEFT JOIN production_workshops pw ON pw.code = pp.target_role
+       LEFT JOIN production_order_types pot ON pot.id = pp.order_type_id
        ${where}
        ORDER BY pp.plan_date DESC, pp.created_at DESC
        LIMIT $${i++} OFFSET $${i}`,
@@ -69,12 +73,15 @@ export const productionRepository = {
               oc.first_name as order_customer_first_name, oc.last_name as order_customer_last_name,
               oc.phone as order_customer_phone,
               o.pickup_date as order_pickup_date, o.total as order_total, o.advance_amount as order_advance_amount,
-              pw.label AS target_role_label
+              pw.label AS target_role_label,
+              pot.code AS order_type_code, pot.label AS order_type_label,
+              pot.requires_bon_sortie AS order_type_requires_bon_sortie
        FROM production_plans pp
        JOIN users u ON u.id = pp.created_by
        LEFT JOIN orders o ON o.id = pp.order_id
        LEFT JOIN customers oc ON oc.id = o.customer_id
        LEFT JOIN production_workshops pw ON pw.code = pp.target_role
+       LEFT JOIN production_order_types pot ON pot.id = pp.order_type_id
        WHERE pp.id = $1`,
       [id]
     );
@@ -264,9 +271,28 @@ export const productionRepository = {
     };
   },
 
+  /** Priorité et fenêtre planifiée (M2-02). */
+  async updateHeader(planId: string, data: { priority?: number; plannedStart?: string | null; plannedEnd?: string | null }) {
+    const r = await db.query(
+      `UPDATE production_plans
+          SET priority = COALESCE($2::smallint, priority),
+              planned_start = CASE WHEN $3::boolean THEN $4::timestamptz ELSE planned_start END,
+              planned_end   = CASE WHEN $5::boolean THEN $6::timestamptz ELSE planned_end END,
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, of_number, priority, planned_start, planned_end`,
+      [planId, data.priority ?? null, data.plannedStart !== undefined, data.plannedStart ?? null,
+       data.plannedEnd !== undefined, data.plannedEnd ?? null]);
+    if (!r.rows[0]) throw new Error('Plan introuvable');
+    return r.rows[0];
+  },
+
   async create(data: {
     planDate: string; type: string; notes?: string; createdBy: string; targetRole?: string; storeId?: string;
     orderId?: string;
+    // En-tête d'ordre (M2-02, mig 546). Absents : type par défaut, priorité 3, dates = date du plan
+    // (posés par le déclencheur trg_production_plan_order_defaults).
+    orderTypeId?: string | null; priority?: number | null; plannedStart?: string | null; plannedEnd?: string | null;
     // Multi-format : un item peut avoir formats[] (chaque entry = 1 plan_item avec son format_id).
     // Si pas de formats fournis, on cree 1 ligne legacy avec format_id NULL (compat descendante).
     items: {
@@ -281,9 +307,11 @@ export const productionRepository = {
 
       const weekNumber = data.type === 'weekly' ? getISOWeek(new Date(data.planDate)) : null;
       const planResult = await client.query(
-        `INSERT INTO production_plans (plan_date, type, week_number, notes, created_by, target_role, store_id, order_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-        [data.planDate, data.type, weekNumber, data.notes || null, data.createdBy, data.targetRole || null, data.storeId || null, data.orderId || null]
+        `INSERT INTO production_plans (plan_date, type, week_number, notes, created_by, target_role, store_id, order_id,
+                                       order_type_id, priority, planned_start, planned_end)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10::smallint, 3), $11::timestamptz, $12::timestamptz) RETURNING *`,
+        [data.planDate, data.type, weekNumber, data.notes || null, data.createdBy, data.targetRole || null, data.storeId || null, data.orderId || null,
+         data.orderTypeId || null, data.priority ?? null, data.plannedStart || null, data.plannedEnd || null]
       );
       const planId = planResult.rows[0].id;
 
@@ -558,7 +586,13 @@ export const productionRepository = {
       // Le chef suit l'avancement dans le sous-onglet "Gestion du bon de sortie".
       try {
         const storeId = planDateResult.rows[0]?.store_id as string | undefined;
-        if (storeId && userId && needsMap.size > 0) {
+        // Type d'ordre sans bon de sortie (M2-03) : pas de BSI, l'ordre reste « confirmé »
+        // et pourra démarrer directement ; les matières seront consommées à la déclaration.
+        const orderType = await productionOrderTypeRepository.forPlan(planId);
+        if (!orderType.requires_bon_sortie && needsMap.size > 0) {
+          warnings.push(`Type d'ordre « ${orderType.label} » : pas de bon de sortie, les matières seront consommées à la déclaration.`);
+        }
+        if (orderType.requires_bon_sortie && storeId && userId && needsMap.size > 0) {
           const bsi = await bonSortieRepository.generate(planId, storeId, userId);
           if (bsi?.id) {
             // Transition cycle de vie (delta v1 point 1) : BSI genere -> le plan
@@ -977,7 +1011,9 @@ export const productionRepository = {
 
       // Check BSI status — production cannot start until ingredients are delivered (BSI clôturé)
       // Semi-finished plans don't have their own BSI, so skip this check for them
-      if (!planInfo.rows[0].is_semi_finished_plan) {
+      // Type d'ordre sans bon de sortie (M2-03) : le démarrage n'attend pas de BSI clôturé.
+      const orderType = await productionOrderTypeRepository.forPlan(planId);
+      if (!planInfo.rows[0].is_semi_finished_plan && orderType.requires_bon_sortie) {
         // Cas "plan sans ingredients" : aucun produit n'a de recette, donc rien a prelever.
         // On bypass la verification BSI (sinon impossible de demarrer un plan legitime).
         const needsResult = await db.query(

@@ -86,6 +86,16 @@ export const productionApi = {
     api.get('/production/mrp/material-requirements', { params: { date, ...(store ? { store } : {}) } }).then(r => r.data.data),
   mrpGeneratePurchaseRequests: (date: string, store?: string): Promise<{ created: number; skipped_existing: number; candidates: number }> =>
     api.post('/production/mrp/generate-purchase-requests', { date, ...(store ? { store } : {}) }).then(r => r.data.data),
+  /** Types d'ordre de fabrication (M2-01). */
+  orderTypes: (activeOnly = false): Promise<ProductionOrderType[]> =>
+    api.get('/production/order-types', { params: activeOnly ? { active: '1' } : {} }).then(r => r.data.data),
+  createOrderType: (data: ProductionOrderTypeInput & { code: string; label: string }): Promise<ProductionOrderType> =>
+    api.post('/production/order-types', data).then(r => r.data.data),
+  updateOrderType: (id: string, data: ProductionOrderTypeInput): Promise<ProductionOrderType> =>
+    api.put(`/production/order-types/${id}`, data).then(r => r.data.data),
+  /** Priorité et fenêtre planifiée d'un ordre (M2-02). */
+  updateHeader: (id: string, data: { priority?: number; plannedStart?: string | null; plannedEnd?: string | null }) =>
+    api.put(`/production/${id}/header`, data).then(r => r.data.data),
   /** Politiques de production (M1-03 / M1-04) : valeurs effectives pour un contexte et valeurs posées. */
   listPolicies: (ctx: { store?: string; workshop?: string; orderType?: string; product?: string; exact?: '1' } = {}): Promise<ProductionPolicies> =>
     api.get('/production/policies', { params: Object.fromEntries(Object.entries(ctx).filter(([, v]) => v)) }).then(r => r.data.data),
@@ -199,3 +209,46 @@ export type ProductionPolicies = {
   policies: ProductionPolicy[];
   levels: { stores: { id: string; label: string }[]; workshops: { id: string; label: string }[] };
 };
+
+/** Type d'ordre de fabrication (M2-01, mig 546). */
+export interface ProductionOrderType {
+  id: string;
+  code: string;
+  label: string;
+  description: string | null;
+  requires_bon_sortie: boolean;
+  requires_weighing: boolean;
+  requires_quality_check: boolean;
+  consumption_mode: 'au_bon_de_sortie' | 'a_la_declaration' | 'manuel';
+  default_target_role: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  display_order: number;
+  plan_count?: number;
+}
+export interface ProductionOrderTypeInput {
+  code?: string;
+  label?: string;
+  description?: string | null;
+  requiresBonSortie?: boolean;
+  requiresWeighing?: boolean;
+  requiresQualityCheck?: boolean;
+  consumptionMode?: ProductionOrderType['consumption_mode'];
+  defaultTargetRole?: string | null;
+  isDefault?: boolean;
+  isActive?: boolean;
+  displayOrder?: number;
+}
+export const CONSUMPTION_MODE_LABELS: Record<ProductionOrderType['consumption_mode'], string> = {
+  au_bon_de_sortie: 'Au bon de sortie',
+  a_la_declaration: 'À la déclaration',
+  manuel: 'Manuelle',
+};
+/** Priorité d'un ordre : 1 = urgente … 5 = basse (3 par défaut). */
+export const PRIORITY_LABELS: Record<number, string> = { 1: 'Urgente', 2: 'Haute', 3: 'Normale', 4: 'Basse', 5: 'Très basse' };
+
+/** Types d'ordre actifs (sélecteur de création). */
+export function useOrderTypes(activeOnly = true) {
+  const { data, isLoading } = useQuery({ queryKey: ['production-order-types', activeOnly], queryFn: () => productionApi.orderTypes(activeOnly), staleTime: 60_000 });
+  return { types: data ?? [], isLoading };
+}

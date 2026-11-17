@@ -8,6 +8,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { SettingsTabs } from '../settings/SettingsPrimitives';
 import ProductionPoliciesPanel from './ProductionPoliciesPanel';
+import ProductionOrderTypesPanel from './ProductionOrderTypesPanel';
 
 const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit', width: 120, textAlign: 'right' };
 
@@ -134,6 +135,7 @@ export default function ProductionSettingsPage() {
       <SettingsTabs label="Paramétrage de la production" tabs={[
         { key: 'general', label: 'Réglages', content: general },
         { key: 'policies', label: 'Politiques', content: <ProductionPoliciesPanel /> },
+        { key: 'order-types', label: 'Types d\'ordre', content: <ProductionOrderTypesPanel /> },
       ]} />
     </div>
   );

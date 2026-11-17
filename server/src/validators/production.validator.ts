@@ -28,6 +28,11 @@ export const createPlanSchema = z.object({
   type: z.enum(['daily', 'weekly']).optional(),
   notes: z.string().max(2000).optional().nullable(),
   targetRole: z.string().max(40).optional().nullable(),
+  // En-tête d'ordre (M2-02).
+  orderTypeId: uuid.optional().nullable(),
+  priority: z.number().int().min(1).max(5).optional().nullable(),
+  plannedStart: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/)).optional().nullable(),
+  plannedEnd: z.string().datetime({ offset: true }).or(z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/)).optional().nullable(),
   items: z.array(z.object({
     productId: uuid,
     plannedQuantity: quantity,
@@ -127,4 +132,27 @@ export const setPolicySchema = z.object({
   scopeType: z.enum(['company', 'store', 'workshop', 'order_type', 'product']),
   scopeId: z.string().max(80).default(''),
   value: z.record(z.string(), z.union([z.number(), z.string().max(40), z.boolean()])).nullable(),
+});
+
+/** Types d'ordre de fabrication (M2-01). */
+const orderTypeFields = {
+  label: z.string().trim().min(1).max(80),
+  description: z.string().max(1000).optional().nullable(),
+  requiresBonSortie: z.boolean().optional(),
+  requiresWeighing: z.boolean().optional(),
+  requiresQualityCheck: z.boolean().optional(),
+  consumptionMode: z.enum(['au_bon_de_sortie', 'a_la_declaration', 'manuel']).optional(),
+  defaultTargetRole: z.string().max(30).optional().nullable(),
+  isDefault: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+  displayOrder: z.number().int().min(0).max(9999).optional(),
+};
+export const createOrderTypeSchema = z.object({ code: z.string().trim().regex(/^[A-Za-z][A-Za-z0-9_]{1,29}$/, 'Code invalide'), ...orderTypeFields });
+export const updateOrderTypeSchema = z.object({ ...orderTypeFields, label: orderTypeFields.label.optional() });
+
+/** Priorité et fenêtre planifiée d'un ordre (M2-02). */
+export const updatePlanHeaderSchema = z.object({
+  priority: z.number().int().min(1).max(5).optional(),
+  plannedStart: z.string().min(10).optional().nullable(),
+  plannedEnd: z.string().min(10).optional().nullable(),
 });

@@ -3,7 +3,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { productionApi, useWorkshops } from '../../api/production.api';
+import { productionApi, useWorkshops, PRIORITY_LABELS } from '../../api/production.api';
 import { replenishmentApi } from '../../api/replenishment.api';
 import { ingredientLotsApi } from '../../api/inventory.api';
 import { bonSortieApi } from '../../api/bon-sortie.api';
@@ -1235,7 +1235,7 @@ export default function PlanDetailPage() {
           <span style={{ cursor: 'pointer' }} onClick={() => navigate('/production')}>Production</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">
-            Plan du {format(new Date(plan.plan_date), 'dd MMM yyyy', { locale: fr })}
+            {plan.of_number ? `${plan.of_number} · ` : ''}Plan du {format(new Date(plan.plan_date), 'dd MMM yyyy', { locale: fr })}
           </span>
         </div>
         <StatusTag tone={planTag.tone} icon={planTag.icon} label={planStatusBadge || planTag.label} />
@@ -1249,6 +1249,7 @@ export default function PlanDetailPage() {
             Plan du {format(new Date(plan.plan_date), 'EEEE dd MMMM yyyy', { locale: fr })}
           </h1>
           {isSemiFini && <span className="odoo-tag odoo-tag-purple"><Beaker size={10} /> Semi-fini</span>}
+          <PlanHeaderTags plan={plan} />
           {!isSemiFini && items.length > 0 && (
             <span style={{ fontSize: '0.875rem', color: 'var(--theme-text-muted)' }}>
               · {items.length === 1
@@ -2109,3 +2110,32 @@ function RequestStockVerificationModal({ need, isPending, onClose, onConfirm }: 
   );
 }
 
+
+/** En-tête d'ordre (M2-02) : numéro OF, type d'ordre, priorité modifiable tant que l'ordre n'est pas terminé. */
+function PlanHeaderTags({ plan }: { plan: Record<string, any> }) {
+  const queryClient = useQueryClient();
+  const prio = Number(plan.priority ?? 3);
+  const locked = ['completed', 'cancelled'].includes(plan.status as string);
+  const m = useMutation({
+    mutationFn: (priority: number) => productionApi.updateHeader(plan.id as string, { priority }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['production'] }); notify.success('Priorité modifiée'); },
+    onError: (e) => notify.error(apiErrorMessage(e)),
+  });
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      {plan.of_number && <span className="odoo-tag odoo-tag-grey" style={{ fontFamily: 'monospace' }}>{plan.of_number as string}</span>}
+      {plan.order_type_label && plan.order_type_code !== 'PLAN_JOUR' && (
+        <span className="odoo-tag odoo-tag-blue" title={plan.order_type_requires_bon_sortie ? undefined : 'Sans bon de sortie : matières consommées à la déclaration'}>
+          {plan.order_type_label as string}
+        </span>
+      )}
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>
+        Priorité
+        <select value={prio} disabled={locked || m.isPending} onChange={(e) => m.mutate(Number(e.target.value))}
+          className="input" style={{ padding: '2px 6px', fontSize: '0.8125rem', width: 'auto' }} aria-label="Priorité de l'ordre">
+          {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{PRIORITY_LABELS[n]}</option>)}
+        </select>
+      </label>
+    </span>
+  );
+}

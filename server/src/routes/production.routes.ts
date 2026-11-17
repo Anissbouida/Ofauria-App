@@ -9,6 +9,7 @@ import { validate, validateQuery, validateUuidParams } from '../middleware/valid
 import {
   createPlanSchema, updateItemsSchema, itemIdsSchema, startItemsSchema, produceItemsSchema,
   completeSchema, cancelItemsSchema, relaunchSchema, addActivitySchema, requestStockVerificationSchema, listQuerySchema, setPolicySchema,
+  createOrderTypeSchema, updateOrderTypeSchema, updatePlanHeaderSchema,
 } from '../validators/production.validator.js';
 
 const id = validateUuidParams('id');
@@ -36,6 +37,9 @@ router.post('/mrp/generate-purchase-requests', authenticate, authorize(...ROLE_G
 // Réglages de production centralisés — roadmap lot 9. Avant /:id.
 router.get('/settings', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.getSettings));
 // M1-04 — politiques de production (lecture : production ; écriture : droit Paramètres › Production).
+router.get('/order-types', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.listOrderTypes));
+router.post('/order-types', authenticate, authorizeSettings('production', 'edit'), validate(createOrderTypeSchema), asyncHandler(productionController.createOrderType));
+router.put('/order-types/:typeId', authenticate, validateUuidParams('typeId'), authorizeSettings('production', 'edit'), validate(updateOrderTypeSchema), asyncHandler(productionController.updateOrderType));
 router.get('/policies', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.listPolicies));
 router.put('/policies/:key', authenticate, authorizeSettings('production', 'edit'), validate(setPolicySchema), asyncHandler(productionController.setPolicy));
 router.put('/settings', authenticate, authorize(...ROLE_GROUPS.ADMIN_MANAGER), asyncHandler(productionController.updateSettings));
@@ -44,6 +48,7 @@ router.post('/transfers/:transferId/receive', authenticate, validateUuidParams('
 router.get('/:id/sub-recipe-analysis', authenticate, id, asyncHandler(productionController.analyzeSubRecipes));
 router.get('/:id', authenticate, id, asyncHandler(productionController.getById));
 router.post('/', authenticate, authorize(...ROLE_GROUPS.PRODUCTION), validate(createPlanSchema), asyncHandler(productionController.create));
+router.put('/:id/header', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), validate(updatePlanHeaderSchema), asyncHandler(productionController.updateHeader));
 router.put('/:id/items', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), validate(updateItemsSchema), asyncHandler(productionController.updateItems));
 router.post('/:id/confirm', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.confirm));
 router.post('/:id/revert-to-draft', authenticate, id, authorize(...ROLE_GROUPS.PRODUCTION), asyncHandler(productionController.revertToDraft));

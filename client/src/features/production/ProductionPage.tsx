@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { productionApi, useWorkshops } from '../../api/production.api';
+import { productionApi, useWorkshops, useOrderTypes, PRIORITY_LABELS } from '../../api/production.api';
 import { planStatusTag, PLAN_STATUS_ORDER } from './status';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -133,6 +133,7 @@ function ProductionPlansView() {
     const q = searchQuery.toLowerCase();
     return plans.filter((p: Record<string, any>) =>
       (p.order_number as string)?.toLowerCase().includes(q) ||
+      (p.of_number as string)?.toLowerCase().includes(q) ||
       (p.order_customer_name as string)?.toLowerCase().includes(q) ||
       (p.created_by_name as string)?.toLowerCase().includes(q) ||
       (ws.label(p.target_role as string) || '').toLowerCase().includes(q) ||
@@ -317,7 +318,8 @@ function ProductionPlansView() {
                   const status = p.status as string;
                   const hasOrder = !!p.order_number;
                   const planDate = new Date(p.plan_date as string);
-                  const planNumber = (p.id as string).slice(0, 8).toUpperCase();
+                  const planNumber = (p.of_number as string) || (p.id as string).slice(0, 8).toUpperCase();
+                  const prio = Number(p.priority ?? 3);
 
                   const dotClass = status === 'completed' ? 'ok'
                     : status === 'in_progress' ? 'warning'
@@ -331,6 +333,9 @@ function ProductionPlansView() {
                         <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>{planNumber}</span>
                         {p.is_semi_finished_plan && (
                           <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 6 }}>Semi-fini</span>
+                        )}
+                        {prio < 3 && (
+                          <span className={`odoo-tag ${prio === 1 ? 'odoo-tag-red' : 'odoo-tag-orange'}`} style={{ marginLeft: 6 }}>{PRIORITY_LABELS[prio]}</span>
                         )}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
@@ -357,6 +362,9 @@ function ProductionPlansView() {
                         <span className="odoo-tag odoo-tag-grey">
                           {PRODUCTION_TYPE_LABELS[(p.type as string) as keyof typeof PRODUCTION_TYPE_LABELS]}
                         </span>
+                        {p.order_type_code && p.order_type_code !== 'PLAN_JOUR' && (
+                          <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 4 }}>{p.order_type_label as string}</span>
+                        )}
                       </td>
                       {isAdmin && (
                         <td>
@@ -531,6 +539,10 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
   const { sectorLabel } = usePermissions();
   const [planDate, setPlanDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [type, setType] = useState<'daily' | 'weekly'>('daily');
+  // En-tête d'ordre (M2-01 / M2-02) : type d'ordre (le défaut si vide) et priorité.
+  const orderTypes = useOrderTypes(true);
+  const [orderTypeId, setOrderTypeId] = useState<string>('');
+  const [priority, setPriority] = useState<number>(3);
   const [notes, setNotes] = useState('');
   const [activeCategory, setActiveCategory] = useState('');
   const [search, setSearch] = useState('');
@@ -748,7 +760,8 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
       return { productId, plannedQuantity };
     });
     if (items.length === 0) { notify.error('Sélectionnez au moins un produit'); return; }
-    createMutation.mutate({ planDate, type, notes: notes || undefined, targetRole: selectedRole || undefined, items });
+    createMutation.mutate({ planDate, type, notes: notes || undefined, targetRole: selectedRole || undefined, items,
+      ...(orderTypeId ? { orderTypeId } : {}), ...(priority !== 3 ? { priority } : {}) });
   };
 
   return (
@@ -792,6 +805,22 @@ function PlanFormModal({ onClose, onCreated, prefillItems, prefillRole }: {
                 className="input text-base py-2.5">
                 <option value="daily">Quotidien</option>
                 <option value="weekly">Hebdomadaire</option>
+              </select>
+            </div>
+            {orderTypes.types.length > 1 && (
+              <div className="w-48">
+                <label className="block text-xs font-medium text-gray-500 mb-1">Type d'ordre</label>
+                <select value={orderTypeId} onChange={(e) => setOrderTypeId(e.target.value)} className="input text-base py-2.5">
+                  {orderTypes.types.map(t => (
+                    <option key={t.id} value={t.is_default ? '' : t.id}>{t.label}{t.requires_bon_sortie ? '' : ' (sans bon de sortie)'}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="w-36">
+              <label className="block text-xs font-medium text-gray-500 mb-1">Priorité</label>
+              <select value={priority} onChange={(e) => setPriority(Number(e.target.value))} className="input text-base py-2.5">
+                {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{PRIORITY_LABELS[n]}</option>)}
               </select>
             </div>
             <div className="flex-1 min-w-[140px]">
