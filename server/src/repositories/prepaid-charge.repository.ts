@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { db } from '../config/database.js';
+import { db, withTransaction } from '../config/database.js';
 
 type PoolClient = pg.PoolClient;
 
@@ -108,9 +108,8 @@ export const prepaidChargeRepository = {
     if (!accRow) return { error: 'Compte de charge introuvable' };
     if (Number(accRow.account_class) !== 6) return { error: 'Le compte doit être un compte de charge (classe 6)' };
 
-    const client = await db.getClient();
-    try {
-      await client.query('BEGIN');
+    return withTransaction(async () => {
+      const client = await db.getClient();
       const row = (await client.query(
         `INSERT INTO prepaid_charges (label, charge_account_code, total_amount, start_date, end_date, months, source_invoice_id, store_id, notes, created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
@@ -123,14 +122,8 @@ export const prepaidChargeRepository = {
         storeId: input.storeId ?? null, userId: input.userId,
       });
       await client.query(`UPDATE prepaid_charges SET init_entry_id = $2 WHERE id = $1`, [row.id, initId]);
-      await client.query('COMMIT');
       return { data: await this.getById(row.id) };
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
-    } finally {
-      client.release();
-    }
+    });
   },
 
   async list(storeId?: string) {
