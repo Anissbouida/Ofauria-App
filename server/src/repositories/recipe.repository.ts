@@ -165,7 +165,7 @@ export const recipeRepository = {
     );
 
     // sub_total_cost / sub_total_weight_kg : valeurs directes de la sous-recette
-    // (vues v_recipe_direct_cost / v_recipe_direct_weight_kg). Le frontend divise
+    // (vues v_recipe_direct_cost_v2 / v_recipe_direct_weight_kg). Le frontend divise
     // par sub_yield_quantity pour obtenir cout/poids par unite de rendement.
     const subRecipesResult = await db.query(
       `SELECT rsr.id, rsr.sub_recipe_id, rsr.quantity,
@@ -175,7 +175,7 @@ export const recipeRepository = {
               vdw.direct_weight_kg AS sub_total_weight_kg
        FROM recipe_sub_recipes rsr
        JOIN recipes sr ON sr.id = rsr.sub_recipe_id
-       LEFT JOIN v_recipe_direct_cost vdc ON vdc.id = sr.id
+       LEFT JOIN v_recipe_direct_cost_v2 vdc ON vdc.id = sr.id
        LEFT JOIN v_recipe_direct_weight_kg vdw ON vdw.id = sr.id
        WHERE rsr.recipe_id = $1`,
       [id]
@@ -326,7 +326,7 @@ export const recipeRepository = {
               vdc.direct_cost AS sub_total_cost
        FROM recipe_sub_recipes rsr
        JOIN recipes sr ON sr.id = rsr.sub_recipe_id
-       LEFT JOIN v_recipe_direct_cost vdc ON vdc.id = sr.id
+       LEFT JOIN v_recipe_direct_cost_v2 vdc ON vdc.id = sr.id
        WHERE rsr.recipe_id = $1`,
       [recipeId]
     );
@@ -440,7 +440,7 @@ export const recipeRepository = {
         for (const sr of data.subRecipes) {
           const srResult = await client.query(
             `SELECT vdc.direct_cost AS total_cost, vdc.yield_quantity
-             FROM v_recipe_direct_cost vdc WHERE vdc.id = $1`, [sr.subRecipeId]
+             FROM v_recipe_direct_cost_v2 vdc WHERE vdc.id = $1`, [sr.subRecipeId]
           );
           if (srResult.rows[0]) {
             const costPerUnit = parseFloat(srResult.rows[0].total_cost) / (srResult.rows[0].yield_quantity || 1);
@@ -719,7 +719,7 @@ export const recipeRepository = {
         for (const sr of data.subRecipes) {
           const srResult = await client.query(
             `SELECT vdc.direct_cost AS total_cost, vdc.yield_quantity
-             FROM v_recipe_direct_cost vdc WHERE vdc.id = $1`, [sr.subRecipeId]
+             FROM v_recipe_direct_cost_v2 vdc WHERE vdc.id = $1`, [sr.subRecipeId]
           );
           if (srResult.rows[0]) {
             const costPerUnit = parseFloat(srResult.rows[0].total_cost) / (srResult.rows[0].yield_quantity || 1);
