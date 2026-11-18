@@ -55,4 +55,29 @@ describe.skipIf(!hasTestDb)('Numéros de série en fabrication (M9)', () => {
     const found = await repo.lookup('CH-0042');
     expect(found[0]).toMatchObject({ product_name: `Chaise ${RUN}`, lot_number: `S${RUN}`, plan_id: ids.plan });
   });
+
+  it('vente → « vendu » (les plus anciens numéros) ; retour → remis en stock ; ligne supprimée → tout revient (mig 587)', async () => {
+    const lot = (await p().query(`SELECT id FROM product_lots WHERE production_plan_id = $1 AND product_id = $2`, [ids.plan, ids.serialProduct])).rows[0].id;
+    const sale = (await p().query(
+      `INSERT INTO sales (sale_number, user_id, store_id, subtotal, total, payment_method) VALUES ($1, $2, $3, 200, 200, 'cash') RETURNING id`,
+      [`SN${RUN}`.slice(0, 20), fx.userId, fx.storeId])).rows[0].id;
+    try {
+      const item = (await p().query(
+        `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal) VALUES ($1, $2, 2, 100, 200) RETURNING id`,
+        [sale, ids.serialProduct])).rows[0].id;
+      await p().query(`INSERT INTO sale_item_lots (sale_item_id, product_lot_id, quantity) VALUES ($1, $2, 2)`, [item, lot]);
+      const status = async () => (await p().query(`SELECT serial_number, status, sale_item_id IS NOT NULL AS linked FROM product_serials WHERE product_lot_id = $1 ORDER BY serial_number`, [lot])).rows;
+      expect(await status()).toEqual([
+        { serial_number: 'CH-0042', status: 'sold', linked: true },
+        { serial_number: `S${RUN}-0001`, status: 'sold', linked: true },
+        { serial_number: `S${RUN}-0002`, status: 'in_stock', linked: false },
+      ]);
+      await p().query(`UPDATE sale_item_lots SET returned_qty = 1 WHERE sale_item_id = $1`, [item]);
+      expect((await status()).filter(s => s.status === 'sold')).toHaveLength(1);
+      await p().query(`DELETE FROM sale_item_lots WHERE sale_item_id = $1`, [item]);
+      expect((await status()).every(s => s.status === 'in_stock' && !s.linked)).toBe(true);
+    } finally {
+      await p().query(`DELETE FROM sales WHERE id = $1`, [sale]).catch(() => undefined);
+    }
+  });
 });
