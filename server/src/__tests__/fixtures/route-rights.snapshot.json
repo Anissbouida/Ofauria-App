@@ -1603,6 +1603,22 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "GET /production/disassembly": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production/disassembly/candidates": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /production/master-schedule": [
   "admin",
   "baker",
@@ -3753,6 +3769,10 @@
   "manager",
   "pastry_chef",
   "viennoiserie"
+ ],
+ "POST /production/disassembly": [
+  "admin",
+  "manager"
  ],
  "POST /production/mrp/generate": [
   "admin",

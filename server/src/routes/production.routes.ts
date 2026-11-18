@@ -13,6 +13,7 @@ import { planSummaryRepository } from '../repositories/plan-summary.repository.j
 import { productionImpactRepository } from '../repositories/production-impact.repository.js';
 import { subcontractingRepository, SubcontractError } from '../repositories/subcontracting.repository.js';
 import { productSerialRepository } from '../repositories/product-serial.repository.js';
+import { disassemblyRepository, DisassemblyError } from '../repositories/disassembly.repository.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
@@ -22,7 +23,7 @@ import { validate, validateQuery, validateUuidParams } from '../middleware/valid
 import {
   createPlanSchema, updateItemsSchema, itemIdsSchema, startItemsSchema, produceItemsSchema,
   completeSchema, cancelItemsSchema, relaunchSchema, addActivitySchema, requestStockVerificationSchema, listQuerySchema, setPolicySchema,
-  createOrderTypeSchema, updateOrderTypeSchema, printTemplateSchema, subcontractSetupSchema, subcontractShipSchema, updatePlanHeaderSchema, mrpPhasedValidateSchema, masterScheduleSchema, itemRecipeSchema,
+  createOrderTypeSchema, updateOrderTypeSchema, printTemplateSchema, subcontractSetupSchema, subcontractShipSchema, disassemblySchema, updatePlanHeaderSchema, mrpPhasedValidateSchema, masterScheduleSchema, itemRecipeSchema,
 } from '../validators/production.validator.js';
 
 const id = validateUuidParams('id');
@@ -66,6 +67,21 @@ router.delete('/print-templates/:docType/variants/:orderTypeId', authenticate, v
 router.get('/serials/lookup', authenticate, can('production.view'), asyncHandler(async (req, res) => {
   const sn = typeof req.query.serial === 'string' ? req.query.serial.slice(0, 80) : '';
   res.json({ success: true, data: sn.trim() ? await productSerialRepository.lookup(sn) : [] });
+}));
+// M9 — désassemblage : lots candidats, historique, désassembler (avant /:id).
+router.get('/disassembly/candidates', authenticate, can('production.view'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await disassemblyRepository.candidates((req as AuthRequest).user?.storeId ?? null) });
+}));
+router.get('/disassembly', authenticate, can('production.view'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await disassemblyRepository.list((req as AuthRequest).user?.storeId ?? null) });
+}));
+router.post('/disassembly', authenticate, can('production.edit'), validate(disassemblySchema), asyncHandler(async (req, res) => {
+  try {
+    res.status(201).json({ success: true, data: await disassemblyRepository.disassemble(req.body, (req as AuthRequest).user!.userId) });
+  } catch (e) {
+    if (e instanceof DisassemblyError) { res.status(400).json({ success: false, error: { message: e.message } }); return; }
+    throw e;
+  }
 }));
 router.get('/subcontracting', authenticate, can('production.view'), asyncHandler(async (_req, res) => { res.json({ success: true, data: await subcontractingRepository.listOpen() }); }));
 // C-09 — aperçu d'impact : ordres ouverts touchés par un changement de type d'ordre ou de politique.

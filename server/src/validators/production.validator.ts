@@ -187,6 +187,14 @@ export const masterScheduleSchema = z.object({
 /** Nomenclature d'une ligne d'ordre (M4-04) : fiche alternative du produit, ou null. */
 export const itemRecipeSchema = z.object({ recipeId: uuid.nullable() });
 
+/** Désassemblage (M9) : pièces d'un lot de produit fini défaites, matières remises en stock. */
+export const disassemblySchema = z.object({
+  productLotId: uuid,
+  quantity: z.number().finite().positive().max(100000),
+  recoveryPct: z.number().finite().min(0.01).max(100).optional(),
+  notes: z.string().trim().max(1000).optional().nullable(),
+});
+
 /** Sous-traitance (M9) : sous-traitant et prix de façon par unité. */
 export const subcontractSetupSchema = z.object({
   supplierId: uuid,
