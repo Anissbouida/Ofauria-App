@@ -286,6 +286,73 @@ export const payrollPeriodRepository = {
   },
 };
 
+// ─── Pointage du mois : une seule source pour le bulletin et le récapitulatif (M8-05) ───
+/**
+ * Pointage REEL uniquement (is_expected = false) : une ligne pré-remplie par le planning ne
+ * compte pas. 'repos' couvre le jour (repos hebdo inclus dans le mensuel) ; 'double' couvre
+ * 1 jour et en paie 1 de plus (extraShiftAmount) ; demi-journée = 0,5. Congés payés approuvés
+ * et fériés non travaillés : jours couverts.
+ */
+export async function monthAttendanceFacts(emp: Record<string, any>, start: string, end: string, time: TimeRules) {
+  const att = await db.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE status IN ('present', 'late', 'repos'))::int AS present_days,
+       COUNT(*) FILTER (WHERE status = 'present')::int AS present_only,
+       COUNT(*) FILTER (WHERE status = 'late')::int AS late_days,
+       COUNT(*) FILTER (WHERE status = 'repos')::int AS repos_days,
+       COUNT(*) FILTER (WHERE status = 'absent')::int AS absent_marked,
+       COUNT(*) FILTER (WHERE status = 'double')::int AS double_days,
+       COUNT(*) FILTER (WHERE status = 'half_day')::int AS half_days,
+       COALESCE(SUM(overtime_minutes), 0)::int AS total_overtime
+      FROM attendance
+     WHERE employee_id = $1 AND date BETWEEN $2 AND $3 AND is_expected = false`,
+    [emp.id, start, end]
+  );
+  const a = att.rows[0];
+  const paidLeaveDays = await leaveBalanceRepository.paidLeaveDays(emp.id, start, end);
+  // Heures sup ventilées et jours fériés : un férié non travaillé est payé (couvert).
+  const tf = await periodTimeFacts(emp.id, start, end, time, emp.hire_date);
+  const coveredDays = a.present_days + a.double_days + 0.5 * a.half_days + paidLeaveDays + tf.holidayPaid;
+  return { a, paidLeaveDays, tf, coveredDays };
+}
+
+/**
+ * Récapitulatif mensuel du pointage (Personnel › Pointage), calculé comme le bulletin :
+ * jours couverts, jours retenus sur la base (26 par défaut), shifts doubles payés en plus.
+ * « Salaire au pointage » = base − absences + shifts doubles (hors ancienneté, heures sup, primes).
+ */
+export async function monthlyAttendanceRecap(month: number, year: number, storeId?: string | null) {
+  const { start, end } = monthBounds(month, year);
+  const settings = await payrollSettingsRepository.get();
+  const baseDays = parseInt(String(settings.monthly_base_days ?? 26), 10) || 26;
+  const time = await loadTimeRules();
+  const emps = (await db.query(
+    `SELECT e.id, e.hire_date, e.monthly_salary FROM employees e
+      WHERE e.is_active AND ($1::uuid IS NULL OR e.store_id = $1::uuid)`, [storeId ?? null])).rows;
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  const rows: { employeeId: string; workedDays: number; baseSalary: number; attendanceSalary: number | null; [k: string]: unknown }[] = [];
+  for (const emp of emps) {
+    const { a, paidLeaveDays, tf, coveredDays } = await monthAttendanceFacts(emp, start, end, time);
+    const base = Number(emp.monthly_salary) || 0;
+    const dailyRate = base / baseDays;
+    const absentDays = Math.max(0, baseDays - coveredDays);
+    rows.push({
+      employeeId: emp.id as string,
+      present: a.present_only, late: a.late_days, repos: a.repos_days, halfDay: a.half_days,
+      double: a.double_days, absentMarked: a.absent_marked, overtimeMin: a.total_overtime,
+      paidLeaveDays, holidayPaid: tf.holidayPaid,
+      coveredDays: r2(coveredDays), workedDays: r2(Math.min(coveredDays, baseDays)), absentDays: r2(absentDays),
+      baseSalary: base, dailyRate: r2(dailyRate),
+      attendanceSalary: base > 0 ? r2(base - absentDays * dailyRate + a.double_days * dailyRate) : null,
+    });
+  }
+  const sum = (k: 'workedDays' | 'baseSalary') => r2(rows.reduce((s, r) => s + r[k], 0));
+  return {
+    baseDays, rows,
+    totals: { workedDays: sum('workedDays'), baseSalary: sum('baseSalary'), attendanceSalary: r2(rows.reduce((s, r) => s + (r.attendanceSalary ?? 0), 0)) },
+  };
+}
+
 // ─── Calcul et enregistrement d'un bulletin ─────────────────────────────
 export async function loadPayrollContext(month: number, year: number): Promise<PayrollContext> {
   const { start } = monthBounds(month, year);
@@ -326,27 +393,7 @@ export async function computeAndSavePayslip(
   stc?: ManualLine[],
 ): Promise<Record<string, unknown>> {
   const { start, end } = monthBounds(month, year);
-
-  // Pointage REEL uniquement (is_expected = false) : une ligne pre-remplie
-  // par le planning ne compte pas. 'repos' couvre le jour (repos hebdo inclus
-  // dans le mensuel) ; 'double' couvre 1 jour et en paie 1 de plus.
-  const att = await db.query(
-    `SELECT
-       COUNT(*) FILTER (WHERE status IN ('present', 'late', 'repos'))::int AS present_days,
-       COUNT(*) FILTER (WHERE status = 'double')::int AS double_days,
-       COUNT(*) FILTER (WHERE status = 'half_day')::int AS half_days,
-       COALESCE(SUM(overtime_minutes), 0)::int AS total_overtime
-      FROM attendance
-     WHERE employee_id = $1 AND date BETWEEN $2 AND $3 AND is_expected = false`,
-    [emp.id, start, end]
-  );
-  const a = att.rows[0];
-  // Conges payes approuves (hors jours deja pointes) : jours couverts, pas d'absence retenue.
-  const paidLeaveDays = await leaveBalanceRepository.paidLeaveDays(emp.id, start, end);
-  // Heures sup ventilees (jour/nuit, ouvrable/repos) et jours feries : un
-  // ferie non travaille est paye (couvert) ; travaille, il ouvre une indemnite.
-  const tf = await periodTimeFacts(emp.id, start, end, ctx.time, emp.hire_date);
-  const coveredDays = a.present_days + a.double_days + 0.5 * a.half_days + paidLeaveDays + tf.holidayPaid;
+  const { a, paidLeaveDays, tf, coveredDays } = await monthAttendanceFacts(emp, start, end, ctx.time);
 
   // Elements fixes actifs sur le mois.
   const fixed = await db.query(

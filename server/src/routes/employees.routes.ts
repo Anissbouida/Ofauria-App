@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { authorizeModule } from '../middleware/module.middleware.js';
 import { payrollConfigController } from '../controllers/payroll-config.controller.js';
+import { monthlyAttendanceRecap } from '../repositories/payroll-config.repository.js';
 import { hrContractController } from '../controllers/hr-contract.controller.js';
 import { finalSettlementController } from '../controllers/final-settlement.controller.js';
 import { employeeSelfController, advanceRequestController } from '../controllers/employee-self.controller.js';
@@ -118,6 +119,12 @@ export const attendanceRouter = Router();
 attendanceRouter.get('/', authenticate, authorizeModule('employees', 'view'), asyncHandler(attendanceController.list));
 attendanceRouter.get('/overtime-summary', authenticate, authorizeModule('employees', 'view'), asyncHandler(attendanceController.overtimeSummary));
 attendanceRouter.get('/summary', authenticate, authorizeModule('employees', 'view'), asyncHandler(attendanceController.monthlySummary));
+// M8-05 — récapitulatif mensuel calculé comme le bulletin (jours couverts, base, shifts doubles).
+attendanceRouter.get('/monthly-recap', authenticate, authorizeModule('employees', 'view'), asyncHandler(async (req, res) => {
+  const month = Number(req.query.month), year = Number(req.query.year);
+  if (!(month >= 1 && month <= 12) || !(year >= 2000 && year <= 2100)) { res.status(400).json({ success: false, error: { message: 'Mois ou année invalide' } }); return; }
+  res.json({ success: true, data: await monthlyAttendanceRecap(month, year, (req as unknown as { user?: { storeId?: string | null } }).user?.storeId ?? null) });
+}));
 attendanceRouter.post('/', authenticate, authorizeModule('employees', 'create'), validate(upsertAttendanceSchema), asyncHandler(attendanceController.upsert));
 attendanceRouter.post('/bulk', authenticate, authorizeModule('employees', 'edit'), validate(bulkAttendanceSchema), asyncHandler(attendanceController.bulkUpsert));
 attendanceRouter.delete('/:id', authenticate, authorizeModule('employees', 'edit'), asyncHandler(attendanceController.remove));

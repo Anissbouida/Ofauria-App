@@ -349,6 +349,7 @@
  "GET /approvals/inbox": null,
  "GET /approvals/mine": null,
  "GET /attendance": null,
+ "GET /attendance/monthly-recap": null,
  "GET /attendance/overtime-summary": null,
  "GET /attendance/summary": null,
  "GET /auth/me": null,

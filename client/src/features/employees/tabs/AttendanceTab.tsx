@@ -52,16 +52,6 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
   };
 
   // Monthly records - get all records for the month
-  const monthStart = `${summaryYear}-${String(summaryMonth).padStart(2, '0')}-01`;
-  const monthEndDate = new Date(summaryYear, summaryMonth, 0);
-  const monthEnd = `${summaryYear}-${String(summaryMonth).padStart(2, '0')}-${String(monthEndDate.getDate()).padStart(2, '0')}`;
-
-  const { data: monthlyRecords = [], isLoading: monthlyLoading } = useQuery({
-    queryKey: ['attendance-monthly', summaryMonth, summaryYear],
-    queryFn: () => attendanceApi.list(monthStart, monthEnd),
-    enabled: attView === 'monthly',
-  });
-
   const upsertMutation = useMutation({
     mutationFn: (data: Record<string, any>) => attendanceApi.upsert(data),
     onSuccess: () => {
@@ -73,28 +63,16 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
 
   const getRecord = (empId: string) => (records as Record<string, any>[]).find(r => r.employee_id === empId);
 
-  // Recap mensuel — formule STRICTEMENT alignee sur payrollRepository.generate
-  // cote serveur (employee.repository.ts:785-797). Sinon la colonne "Salaire
-  // calcule" divergerait du bulletin reellement genere :
-  //   * 'repos' est PAYE (jour de repos hebdo inclus dans le salaire mensuel)
-  //     -> comptabilise avec present + late
-  //   * 'double' = deux shifts le meme jour -> 2 jours travailles
-  //   * 'half_day' -> 1 demi-jour (Math.floor(halfDay/2) = 0 si un seul, 1 si deux, etc.)
-  //   * 'absent' -> deduction (non compte dans worked)
-  const getEmployeeMonthlySummary = (empId: string) => {
-    const empRecords = (monthlyRecords as Record<string, any>[]).filter(r => r.employee_id === empId);
-    const present = empRecords.filter(r => r.status === 'present').length;
-    const late = empRecords.filter(r => r.status === 'late').length;
-    const repos = empRecords.filter(r => r.status === 'repos').length;
-    const double = empRecords.filter(r => r.status === 'double').length;
-    const absent = empRecords.filter(r => r.status === 'absent').length;
-    const halfDay = empRecords.filter(r => r.status === 'half_day').length;
-    const overtimeMin = empRecords.reduce((s, r) => s + (parseInt(r.overtime_minutes as string) || 0), 0);
-    // Meme formule que server: present+late+repos comme "jours payes normaux",
-    // double compte 2 jours, half_day/2 pour les demi-journees.
-    const workedDays = present + late + repos + 2 * double + Math.floor(halfDay / 2);
-    return { present, late, repos, double, absent, halfDay, overtimeMin, workedDays };
-  };
+  // M8-05 : récapitulatif calculé au serveur, avec la même fonction que le bulletin
+  // (pointage réel seulement, demi-journée = 0,5, shift double payé en plus, congés et fériés couverts).
+  const { data: recap, isLoading: monthlyLoading } = useQuery({
+    queryKey: ['attendance', 'recap', summaryMonth, summaryYear], // rafraîchi par chaque pointage enregistré
+    queryFn: () => attendanceApi.monthlyRecap(summaryMonth, summaryYear),
+    enabled: attView === 'monthly',
+  });
+  const EMPTY = { present: 0, late: 0, repos: 0, double: 0, absentMarked: 0, halfDay: 0, overtimeMin: 0, workedDays: 0, absentDays: 0, baseSalary: 0, dailyRate: 0, attendanceSalary: null as number | null };
+  const getEmployeeMonthlySummary = (empId: string) => recap?.rows.find(r => r.employeeId === empId) ?? EMPTY;
+  const baseDays = recap?.baseDays ?? 26;
 
   return (
     <>
@@ -171,15 +149,15 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                   <th style={{ textAlign: 'center' }}>J. Travaillés</th>
                   <th style={{ textAlign: 'right' }}>Salaire base</th>
                   <th style={{ textAlign: 'right' }}>Taux/jour</th>
-                  <th style={{ textAlign: 'right' }}>Salaire calculé</th>
+                  <th style={{ textAlign: 'right' }} title="Base − absences + shifts doubles, comme le bulletin (hors ancienneté, heures sup et primes)">Salaire au pointage</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredEmployees.map((emp: Record<string, any>) => {
                   const s = getEmployeeMonthlySummary(emp.id as string);
-                  const baseSalary = emp.monthly_salary ? parseFloat(emp.monthly_salary as string) : 0;
-                  const dailyRate = baseSalary / 26;
-                  const calculatedSalary = dailyRate * s.workedDays;
+                  const baseSalary = s.baseSalary;
+                  const dailyRate = s.dailyRate;
+                  const calculatedSalary = s.attendanceSalary ?? 0;
                   return (
                     <tr key={emp.id as string}>
                       <td>
@@ -192,13 +170,13 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                       <td style={{ textAlign: 'center' }}><span style={{ color: '#28a745', fontWeight: 500 }}>{s.present}</span></td>
                       <td style={{ textAlign: 'center' }}><span style={{ color: s.late > 0 ? '#b08504' : 'var(--odoo-text-light)' }}>{s.late}</span></td>
                       <td style={{ textAlign: 'center' }}><span style={{ color: s.halfDay > 0 ? '#1f6391' : 'var(--odoo-text-light)' }}>{s.halfDay}</span></td>
-                      <td style={{ textAlign: 'center' }}><span style={{ color: s.absent > 0 ? '#dc3545' : 'var(--odoo-text-light)' }}>{s.absent}</span></td>
+                      <td style={{ textAlign: 'center' }}><span style={{ color: s.absentMarked > 0 ? '#dc3545' : 'var(--odoo-text-light)' }}>{s.absentMarked}</span></td>
                       <td style={{ textAlign: 'center', color: s.overtimeMin > 0 ? 'var(--odoo-text)' : 'var(--odoo-text-light)' }}>
                         {s.overtimeMin > 0 ? `${Math.floor(s.overtimeMin / 60)}h${String(s.overtimeMin % 60).padStart(2, '0')}` : '0'}
                       </td>
                       <td style={{ textAlign: 'center', fontWeight: 600 }}>
                         <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#155724' }}>{s.workedDays}</span>
-                        <span style={{ color: 'var(--odoo-text-light)', fontSize: '0.6875rem' }}> / 26</span>
+                        <span style={{ color: 'var(--odoo-text-light)', fontSize: '0.6875rem' }}> / {baseDays}</span>
                       </td>
                       <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
                         {baseSalary > 0 ? `${baseSalary.toFixed(2)} DH` : '—'}
@@ -221,18 +199,14 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                 <tr>
                   <td style={{ fontWeight: 700, padding: '0.5rem 0.75rem' }} colSpan={6}>Total</td>
                   <td style={{ textAlign: 'center', fontWeight: 700, padding: '0.5rem 0.75rem' }}>
-                    {filteredEmployees.reduce((sum, emp) => sum + getEmployeeMonthlySummary(emp.id as string).workedDays, 0)}
+                    {Math.round(filteredEmployees.reduce((sum, emp) => sum + getEmployeeMonthlySummary(emp.id as string).workedDays, 0) * 100) / 100}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700, padding: '0.5rem 0.75rem' }}>
-                    {filteredEmployees.reduce((sum, emp) => sum + (emp.monthly_salary ? parseFloat(emp.monthly_salary as string) : 0), 0).toFixed(2)} DH
+                    {filteredEmployees.reduce((sum, emp) => sum + getEmployeeMonthlySummary(emp.id as string).baseSalary, 0).toFixed(2)} DH
                   </td>
                   <td></td>
                   <td style={{ textAlign: 'right', fontWeight: 700, padding: '0.5rem 0.75rem' }}>
-                    {filteredEmployees.reduce((sum, emp) => {
-                      const s = getEmployeeMonthlySummary(emp.id as string);
-                      const base = emp.monthly_salary ? parseFloat(emp.monthly_salary as string) : 0;
-                      return sum + (base / 26) * s.workedDays;
-                    }, 0).toFixed(2)} DH
+                    {filteredEmployees.reduce((sum, emp) => sum + (getEmployeeMonthlySummary(emp.id as string).attendanceSalary ?? 0), 0).toFixed(2)} DH
                   </td>
                 </tr>
               </tfoot>

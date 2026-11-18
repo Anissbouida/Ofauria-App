@@ -37,11 +37,21 @@ export const shiftsApi = {
   list: () => api.get('/shifts').then(r => r.data.data),
 };
 
+export interface AttendanceRecapRow {
+  employeeId: string; present: number; late: number; repos: number; halfDay: number; double: number; absentMarked: number;
+  overtimeMin: number; paidLeaveDays: number; holidayPaid: number; coveredDays: number; workedDays: number; absentDays: number;
+  baseSalary: number; dailyRate: number; attendanceSalary: number | null;
+}
+export interface AttendanceRecap { baseDays: number; rows: AttendanceRecapRow[]; totals: { workedDays: number; baseSalary: number; attendanceSalary: number } }
+
 export const attendanceApi = {
   list: (startDate: string, endDate: string, employeeId?: string) =>
     api.get('/attendance', { params: { startDate, endDate, employeeId } }).then(r => r.data.data),
   upsert: (data: Record<string, any>) => api.post('/attendance', data).then(r => r.data.data),
   bulkUpsert: (records: Record<string, any>[]) => api.post('/attendance/bulk', { records }).then(r => r.data.data),
+  /** Récapitulatif mensuel calculé comme le bulletin (M8-05). */
+  monthlyRecap: (month: number, year: number): Promise<AttendanceRecap> =>
+    api.get('/attendance/monthly-recap', { params: { month, year } }).then(r => r.data.data),
   monthlySummary: (employeeId: string, month: number, year: number) =>
     api.get('/attendance/summary', { params: { employeeId, month, year } }).then(r => r.data.data),
   remove: (id: string) => api.delete(`/attendance/${id}`),
