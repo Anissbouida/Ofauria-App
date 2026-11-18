@@ -3,6 +3,7 @@ import { setAuditUser } from '../utils/audit-context.js';
 import { invalidateWorkshops } from './workshops.js';
 import { invalidateProcessRefs } from './process-referentials.js';
 import { applyLayers, cleanLayers, describeLayers, type ProfileLayers } from './industry-profile.js';
+import { invalidatePolicies } from './policies.js';
 
 /**
  * Données de départ par secteur (phase 9.3, enrichi au lot P7 du plan Production générique).
@@ -211,6 +212,8 @@ export async function loadSectorStarter(sectorCode: string, userId?: string): Pr
     client.release();
     invalidateWorkshops();
     invalidateProcessRefs();
+    // Politiques du profil écrites hors de setPolicy (applyLayers) : vider le cache des politiques.
+    invalidatePolicies();
   }
   return result;
 }
