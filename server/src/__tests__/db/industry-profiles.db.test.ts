@@ -18,6 +18,8 @@ describe.skipIf(!hasTestDb)('Profils d\'industrie (C-01, C-05)', () => {
     types: string[]; policies: string[]; fiche: { title: string | null; layout: object; footer_note: string | null };
     /** Données de départ de « Fabrication » (secteur de base du profil) déjà présentes avant le test. */
     demo: boolean; refs: string[]; categories: string[]; workshop: boolean; ingredients: string[];
+    /** Postes et emplacements (couches C-01) déjà présents. */
+    centers: string[]; locations: string[];
   };
 
   beforeAll(async () => {
@@ -34,6 +36,8 @@ describe.skipIf(!hasTestDb)('Profils d\'industrie (C-01, C-05)', () => {
       categories: (await p().query(`SELECT slug FROM categories WHERE slug LIKE 'starter-%'`)).rows.map(r => r.slug),
       workshop: (await p().query(`SELECT 1 FROM production_workshops WHERE code = 'atelier_principal'`)).rows.length > 0,
       ingredients: (await p().query(`SELECT name FROM ingredients WHERE name LIKE '%(démo)'`)).rows.map(r => r.name),
+      centers: (await p().query(`SELECT id FROM work_centers`)).rows.map(r => r.id),
+      locations: (await p().query(`SELECT id FROM stock_locations`)).rows.map(r => r.id),
     };
   });
 
@@ -56,6 +60,8 @@ describe.skipIf(!hasTestDb)('Profils d\'industrie (C-01, C-05)', () => {
     await run(`DELETE FROM ref_entries WHERE table_id IN ('production_step_types', 'production_equipment_types') AND NOT ((table_id || ':' || code) = ANY($1::text[]))`, [before.refs]);
     if (!before.workshop) await run(`DELETE FROM production_workshops WHERE code = 'atelier_principal'`, []);
     await run(`DELETE FROM categories WHERE slug LIKE 'starter-%' AND NOT (slug = ANY($1::text[]))`, [before.categories]);
+    await run(`DELETE FROM work_centers WHERE NOT (id = ANY($1::uuid[]))`, [before.centers]);
+    await run(`DELETE FROM stock_locations WHERE NOT (id = ANY($1::uuid[]))`, [before.locations]);
     await closeTestPool();
   });
 
@@ -99,8 +105,16 @@ describe.skipIf(!hasTestDb)('Profils d\'industrie (C-01, C-05)', () => {
     ]);
     // La base de test a des ordres sur le type par défaut : il reste en place.
     expect((await p().query(`SELECT code FROM production_order_types WHERE is_default`)).rows[0].code).toBe(defBefore);
+    // Couches C-01 : postes ajoutés s'ils manquent, emplacements dans chaque établissement actif.
+    const centers = (await p().query(`SELECT name FROM work_centers WHERE name = ANY($1::text[])`, [['Débit', 'Assemblage', 'Finition']])).rows.map(r => r.name).sort();
+    expect(centers).toEqual(['Assemblage', 'Débit', 'Finition']);
+    const missing = (await p().query(
+      `SELECT COUNT(*)::int AS n FROM stores s WHERE s.is_active AND NOT EXISTS (SELECT 1 FROM stock_locations l WHERE l.store_id = s.id AND l.code = 'EXPEDITION')`)).rows[0].n;
+    expect(missing).toBe(0);
+    const nCenters = (await p().query(`SELECT COUNT(*)::int AS n FROM work_centers`)).rows[0].n;
     const r2 = await starter.loadSectorStarter('discret');
     expect([r2.orderTypes, r2.policies, r2.printTemplates]).toEqual([0, 0, 0]);
+    expect((await p().query(`SELECT COUNT(*)::int AS n FROM work_centers`)).rows[0].n).toBe(nCenters); // rejeu : rien de neuf
   });
 
   it('modèle v2 : export → import conserve les couches ; v1 accepté ; couche invalide filtrée', async () => {

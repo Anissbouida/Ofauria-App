@@ -22,8 +22,15 @@ export interface ProfileLayers {
   order_types: ProfileOrderType[];
   policies: { key: string; value: Record<string, unknown> }[];
   print_templates: { doc_type: ProductionPrintDoc; title: string | null; layout: { columns?: string[]; signatures?: string[] }; footer_note: string | null }[];
+  /** Postes de charge types, repérés par leur nom (C-01). */
+  work_centers?: { name: string; hourly_cost: number; capacity_minutes_per_day: number | null }[];
+  /** Emplacements types, recréés dans chaque établissement qui n'a pas ce code (C-01). */
+  locations?: { code: string; name: string; type: string; temp_min: number | null; temp_max: number | null }[];
 }
 export const EMPTY_LAYERS: ProfileLayers = { order_types: [], policies: [], print_templates: [] };
+/** Types d'emplacement acceptés par stock_locations (mig 424). */
+const LOCATION_TYPES = ['sec', 'positif', 'negatif', 'pesage', 'vitrine', 'labo'];
+const numOrNull = (v: unknown) => { const n = Number(v); return v === null || v === undefined || v === '' || !Number.isFinite(n) ? null : n; };
 
 type Runner = { query: (text: string, params?: unknown[]) => Promise<{ rows: any[] }> };
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -42,7 +49,14 @@ export async function exportLayers(runner: Runner = db): Promise<ProfileLayers> 
   const prints = tpl.rows[0].ok ? (await runner.query(
     `SELECT doc_type, title, layout, footer_note FROM document_templates
       WHERE category = 'production' AND (title IS NOT NULL OR layout <> '{}'::jsonb OR footer_note IS NOT NULL) ORDER BY doc_type`)).rows : [];
-  return { order_types: types, policies, print_templates: prints };
+  const centers = (await runner.query(
+    `SELECT DISTINCT ON (lower(name)) name, hourly_cost::float8 AS hourly_cost, capacity_minutes_per_day::float8 AS capacity_minutes_per_day
+       FROM work_centers WHERE is_active ORDER BY lower(name), created_at`)).rows;
+  // Un code d'emplacement par modèle (le premier établissement qui le porte fait foi).
+  const locations = (await runner.query(
+    `SELECT DISTINCT ON (code) code, name, type, temp_min::float8 AS temp_min, temp_max::float8 AS temp_max
+       FROM stock_locations WHERE is_active AND parent_id IS NULL ORDER BY code, created_at`)).rows;
+  return { order_types: types, policies, print_templates: prints, work_centers: centers, locations };
 }
 
 /** Valide des couches venues d'un fichier (donnée non fiable) ; avertissements lisibles. */
@@ -93,7 +107,26 @@ export function cleanLayers(raw: unknown, warnings: string[]): ProfileLayers {
       footer_note: typeof t.footer_note === 'string' ? t.footer_note.trim().slice(0, 300) : null,
     });
   }
-  return { order_types, policies, print_templates };
+  const work_centers: NonNullable<ProfileLayers['work_centers']> = [];
+  const seenWc = new Set<string>();
+  for (const w of Array.isArray(raw.work_centers) ? raw.work_centers.slice(0, 50) : []) {
+    if (!isObj(w)) continue;
+    const name = str(w.name, 120);
+    if (!name || seenWc.has(name.toLowerCase())) continue;
+    seenWc.add(name.toLowerCase());
+    const cost = numOrNull(w.hourly_cost); const cap = numOrNull(w.capacity_minutes_per_day);
+    work_centers.push({ name, hourly_cost: cost !== null && cost >= 0 ? cost : 0, capacity_minutes_per_day: cap !== null && cap > 0 ? cap : null });
+  }
+  const locations: NonNullable<ProfileLayers['locations']> = [];
+  const seenLoc = new Set<string>();
+  for (const l of Array.isArray(raw.locations) ? raw.locations.slice(0, 50) : []) {
+    if (!isObj(l)) continue;
+    const code = str(l.code, 30)?.toUpperCase(); const name = str(l.name, 120); const type = String(l.type ?? '');
+    if (!code || !/^[A-Z0-9_-]{1,30}$/.test(code) || !name || !LOCATION_TYPES.includes(type) || seenLoc.has(code)) { warnings.push(`Emplacement ignoré : ${String(l.code)}`); continue; }
+    seenLoc.add(code);
+    locations.push({ code, name, type, temp_min: numOrNull(l.temp_min), temp_max: numOrNull(l.temp_max) });
+  }
+  return { order_types, policies, print_templates, work_centers, locations };
 }
 
 /**
@@ -101,7 +134,7 @@ export function cleanLayers(raw: unknown, warnings: string[]): ProfileLayers {
  * seulement si le type par défaut actuel n'a encore aucun ordre (société qui démarre).
  */
 export async function applyLayers(client: Runner, layers: ProfileLayers, userId?: string | null) {
-  const out = { orderTypes: 0, policies: 0, printTemplates: 0, defaultType: false };
+  const out = { orderTypes: 0, policies: 0, printTemplates: 0, defaultType: false, workCenters: 0, locations: 0 };
   for (const t of layers.order_types) {
     const r = await client.query(
       `INSERT INTO production_order_types (code, label, description, requires_bon_sortie, requires_weighing, requires_quality_check,
@@ -135,6 +168,22 @@ export async function applyLayers(client: Runner, layers: ProfileLayers, userId?
         RETURNING doc_type`, [t.doc_type, t.title, JSON.stringify(t.layout), t.footer_note, userId ?? null]);
     if (r.rows[0]) out.printTemplates++;
   }
+  for (const w of layers.work_centers ?? []) {
+    const r = await client.query(
+      `INSERT INTO work_centers (name, hourly_cost, capacity_minutes_per_day, is_active, created_by)
+       SELECT $1::text, $2::numeric, $3::numeric, true, $4::uuid
+        WHERE NOT EXISTS (SELECT 1 FROM work_centers WHERE lower(name) = lower($1::text)) RETURNING id`,
+      [w.name, w.hourly_cost, w.capacity_minutes_per_day, userId ?? null]);
+    if (r.rows[0]) out.workCenters++;
+  }
+  for (const l of layers.locations ?? []) {
+    const r = await client.query(
+      `INSERT INTO stock_locations (store_id, code, name, type, temp_min, temp_max, is_active)
+       SELECT s.id, $1::text, $2::text, $3::text, $4::numeric, $5::numeric, true FROM stores s
+        WHERE s.is_active AND NOT EXISTS (SELECT 1 FROM stock_locations x WHERE x.store_id = s.id AND x.code = $1::text)
+       RETURNING id`, [l.code, l.name, l.type, l.temp_min, l.temp_max]);
+    out.locations += r.rows.length;
+  }
   return out;
 }
 
@@ -144,5 +193,7 @@ export function describeLayers(l: ProfileLayers): string[] {
   if (l.order_types.length) items.push(`Types d'ordre : ${l.order_types.map(t => t.label + (t.is_default ? ' (par défaut)' : '')).join(', ')}`);
   if (l.policies.length) items.push(`Politiques : ${l.policies.map(p => parameterByKey(p.key)?.label ?? p.key).join(', ')}`);
   if (l.print_templates.length) items.push(`Impressions : ${l.print_templates.map(t => t.title ?? PRODUCTION_PRINT_DOCS[t.doc_type].label).join(', ')}`);
+  if (l.work_centers?.length) items.push(`Postes de charge : ${l.work_centers.map(w => w.name).join(', ')} (ajoutés s'ils manquent)`);
+  if (l.locations?.length) items.push(`Emplacements : ${l.locations.map(x => x.name).join(', ')} (dans chaque établissement qui ne les a pas)`);
   return items;
 }
