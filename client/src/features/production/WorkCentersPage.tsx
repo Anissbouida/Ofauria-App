@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { routingOpMinutes, routingOpCost } from '@ofauria/shared';
 import { money, currencySymbol } from '../../utils/money';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Cog, Plus, X, Loader2, Power, Trash2, Route, Save, Wrench, ListOrdered, Gauge, CalendarDays } from 'lucide-react';
@@ -233,10 +234,10 @@ export function RoutingEditor({ id, onClose, onSaved, recipeId, defaultName }: {
   if (!id && !loaded) { setOps([{ operationName: '', workCenterId: null, durationMin: 0 }]); setLoaded(true); }
 
   const wcCost = (wid: string | null | undefined) => activeCenters.find(c => c.id === wid)?.hourly_cost ?? (centers.find(c => c.id === wid)?.hourly_cost ?? 0);
-  // Temps main-d'œuvre prévu pour une fournée (M5-01) : réglage + durée fixe + fournée / qté de base × MO unitaire.
-  const opMinutes = (o: OperationInput) => (Number(o.setupMin) || 0) + (Number(o.durationMin) || 0)
-    + (Number(batchSize) > 0 ? Number(batchSize) : 1) / (Number(o.baseQuantity) > 0 ? Number(o.baseQuantity) : 1) * (Number(o.laborMinPerUnit) || 0);
-  const opCost = (o: OperationInput) => round2(wcCost(o.workCenterId) * opMinutes(o) / 60);
+  // Temps main-d'œuvre prévu pour une fournée (M5-01) : même calcul que fn_routing_op_minutes
+  // côté serveur (formule partagée, M8-05) ; la gamme enregistrée relit les valeurs du serveur.
+  const opMinutes = (o: OperationInput) => routingOpMinutes(o, Number(batchSize) > 0 ? Number(batchSize) : 1).labor;
+  const opCost = (o: OperationInput) => routingOpCost(wcCost(o.workCenterId), opMinutes(o));
   const liveCost = round2(ops.reduce((s, o) => s + opCost(o), 0));
   const liveMinutes = Math.round(ops.reduce((s, o) => s + opMinutes(o), 0) * 10) / 10;
 
