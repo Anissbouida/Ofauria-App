@@ -1,4 +1,5 @@
 import api from './client';
+import { WEBHOOK_EVENT_CATALOG } from '@ofauria/shared';
 
 /**
  * Phase 10.2 — API publique : clés d'accès et webhooks (Paramètres › Intégrations).
@@ -34,6 +35,5 @@ export const API_SCOPES: [string, string][] = [
 ];
 
 /** Événements auxquels un webhook peut s'abonner. */
-export const WEBHOOK_EVENTS: [string, string][] = [
-  ['order.created', 'Commande créée'],
-];
+/** G6-08 : catalogue unique des événements (shared), réellement émis par le serveur. */
+export const WEBHOOK_EVENTS: [string, string][] = WEBHOOK_EVENT_CATALOG.map(e => [e.event, e.label]);

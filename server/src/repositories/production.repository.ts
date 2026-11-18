@@ -646,6 +646,10 @@ export const productionRepository = {
                ORDER BY (ro.recipe_id IS NOT NULL) DESC, ro.created_at DESC LIMIT 1)
           WHERE ppi.plan_id = $1 AND ppi.status <> 'cancelled' AND ppi.routing_id IS NULL`, [planId]);
 
+      // G6-08 : webhook « ordre de fabrication confirmé », dans la transaction.
+      const { emitEvent } = await import('../services/events.js');
+      await emitEvent('production.order_confirmed', { plan_id: planId }, client);
+
       await client.query('COMMIT');
 
       // ═══ Phase 3: auto-generation du BSI + notification magasinier ═══
@@ -1987,6 +1991,17 @@ export const productionRepository = {
       const { qualityControlPlanRepository } = await import('./quality-control-plan.repository.js');
       const inspections = await qualityControlPlanRepository.generateFinal(client, planId, changedItemIds);
       if (inspections.length) warnings.push(`${inspections.length} contrôle(s) final(aux) à réaliser (plan de contrôle).`);
+
+      // G6-08 : webhooks « lot produit » et « ordre terminé », dans la transaction.
+      const { emitEvent } = await import('../services/events.js');
+      if (changedItemIds.length) {
+        const newLots = (await client.query(
+          `SELECT pl.id, pl.lot_number, pl.product_id, p.name AS product_name, pl.quantity_total::float8 AS quantity, pl.status
+             FROM product_lots pl JOIN products p ON p.id = pl.product_id
+            WHERE pl.production_plan_id = $1 AND pl.plan_item_id = ANY($2::uuid[])`, [planId, changedItemIds])).rows;
+        for (const l of newLots) await emitEvent('production.lot_created', { plan_id: planId, lot_id: l.id, lot_number: l.lot_number, product_id: l.product_id, product_name: l.product_name, quantity: l.quantity, status: l.status }, client);
+      }
+      if (autoCompleted) await emitEvent('production.order_completed', { plan_id: planId }, client);
 
       await client.query('COMMIT');
       return { warnings, autoCompleted };

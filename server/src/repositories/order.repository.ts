@@ -355,6 +355,11 @@ export const orderRepository = {
           }
         }
       }
+      // G6-08 : webhook « statut de commande modifié ».
+      if (order) {
+        const { emitEvent } = await import('../services/events.js');
+        await emitEvent('order.status_changed', { order_id: order.id, order_number: order.order_number, status }, client);
+      }
       return order ? { ...order, plan_warnings: warnings } : order;
     });
   },

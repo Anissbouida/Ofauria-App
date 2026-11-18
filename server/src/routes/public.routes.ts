@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { buildOpenApi, renderDocsHtml } from '../services/openapi.js';
 import express from 'express';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { requireApiKey } from '../middleware/api-key.middleware.js';
@@ -17,6 +18,9 @@ const router = Router();
 const jsonParser = express.json({ limit: '256kb' });
 
 // Vérifie la clé et renvoie sa portée.
+// G6-08 : description OpenAPI générée et documentation publique (sans clé).
+router.get('/openapi.json', validateQuery(publicEmptyQuerySchema), (_req, res) => { res.json(buildOpenApi()); });
+router.get('/docs', validateQuery(publicEmptyQuerySchema), (_req, res) => { res.type('html').send(renderDocsHtml(buildOpenApi())); });
 router.get('/v1/ping', requireApiKey(), validateQuery(publicEmptyQuerySchema), asyncHandler(c.ping));
 // Catalogue des articles vendables.
 router.get('/v1/products', requireApiKey('products:read'), validateQuery(publicEmptyQuerySchema), asyncHandler(c.listProducts));
