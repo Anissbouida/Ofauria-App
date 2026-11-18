@@ -3,6 +3,7 @@ import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { settingsAccess } from '../middleware/settings-access.middleware.js';
 import { DOMAIN_LABELS, PARAMETERS, parameterByKey, validateParameter } from '../services/parameters-catalog.js';
 import { history, readAll, write } from '../services/settings-center.js';
+import { withCurrency } from '../services/currency.js';
 
 /** Paramètres métier (Paramètres › Paramètres métier, lot 4). */
 export const parametersController = {
@@ -16,9 +17,9 @@ export const parametersController = {
       key: p.key,
       domain: p.domain,
       domainLabel: DOMAIN_LABELS[p.domain],
-      label: p.label,
-      help: p.help,
-      fields: p.fields,
+      label: withCurrency(p.label),
+      help: withCurrency(p.help),
+      fields: withCurrency(p.fields),
       defaults: p.defaults,
       value: values.get(p.key) ?? null,
       // Stockage absent de cette base (migration non appliquée) : affiché grisé.

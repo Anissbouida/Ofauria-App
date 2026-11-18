@@ -1,4 +1,5 @@
 import type { SettingsSection } from '@ofauria/shared';
+import { baseCurrencyCode } from './currency.js';
 
 /**
  * Catalogue des paramètres métier (audit Paramètres, lot 4).
@@ -108,7 +109,7 @@ export const PARAMETERS: ParamDef[] = [
     key: 'production.kwh_price', domain: 'production', section: 'production',
     label: 'Prix du kWh',
     help: 'Prix proposé à la création d\'un équipement ; chaque équipement garde ensuite le sien.',
-    fields: [{ name: 'price', label: 'Prix du kWh', type: 'number', unit: 'DH / kWh', min: 0, max: 100 }],
+    fields: [{ name: 'price', label: 'Prix du kWh', type: 'number', unit: '¤ / kWh', min: 0, max: 100 }],
     defaults: { price: 1.5 },
     storage: { kind: 'policy' }, scopes: ['company', 'store'],
   },
@@ -177,9 +178,9 @@ export const PARAMETERS: ParamDef[] = [
     help: 'Charges indirectes du coût de revient d\'un plan. Taux sur les matières : un pourcentage du coût matière (réglage « Charges fixes » de la production). Charges mensuelles : loyer, énergie et autres charges saisis ici, répartis sur les plans du mois au prorata de leurs matières ; ne saisissez pas ici l\'énergie déjà comptée par les usages d\'équipement.',
     fields: [
       { name: 'method', label: 'Mode de calcul', type: 'enum', options: [{ value: 'rate', label: 'Taux sur les matières' }, { value: 'monthly', label: 'Charges mensuelles' }] },
-      { name: 'loyer', label: 'Loyer de l\'atelier', type: 'number', unit: 'DH / mois', min: 0, max: 10_000_000 },
-      { name: 'energie', label: 'Énergie (eau, électricité, gaz)', type: 'number', unit: 'DH / mois', min: 0, max: 10_000_000 },
-      { name: 'autres', label: 'Autres charges fixes', type: 'number', unit: 'DH / mois', min: 0, max: 10_000_000 },
+      { name: 'loyer', label: 'Loyer de l\'atelier', type: 'number', unit: '¤ / mois', min: 0, max: 10_000_000 },
+      { name: 'energie', label: 'Énergie (eau, électricité, gaz)', type: 'number', unit: '¤ / mois', min: 0, max: 10_000_000 },
+      { name: 'autres', label: 'Autres charges fixes', type: 'number', unit: '¤ / mois', min: 0, max: 10_000_000 },
     ],
     defaults: { method: 'rate', loyer: 0, energie: 0, autres: 0 },
     storage: { kind: 'company_settings', columns: { method: 'production_charges_method', loyer: 'production_charge_loyer', energie: 'production_charge_energie', autres: 'production_charge_autres' } },
@@ -214,8 +215,8 @@ export const PARAMETERS: ParamDef[] = [
     help: 'Appliqué au prix calculé (coût × marge) des fiches techniques et formats. La caisse affiche toujours 2 décimales.',
     fields: [
       { name: 'strategie', label: 'Pas de l\'arrondi', type: 'enum', options: [
-        { value: 'aucun', label: 'Aucun (décimales brutes)' }, { value: 'au_demi_dh', label: 'Au 0,5 DH' },
-        { value: 'au_dh', label: 'Au DH' }, { value: 'au_5dh', label: 'Aux 5 DH' },
+        { value: 'aucun', label: 'Aucun (décimales brutes)' }, { value: 'au_demi_dh', label: 'Au 0,5 ¤' },
+        { value: 'au_dh', label: 'À 1 ¤' }, { value: 'au_5dh', label: 'Aux 5 ¤' },
       ] },
       { name: 'sens', label: 'Sens', type: 'enum', options: [
         { value: 'superieur', label: 'Vers le haut (protège la marge)' }, { value: 'inferieur', label: 'Vers le bas' },
@@ -248,7 +249,7 @@ export const PARAMETERS: ParamDef[] = [
     fields: [
       { name: 'enabled', label: 'Relances actives', type: 'boolean' },
       { name: 'auto_send', label: 'Envoyer les e-mails sans validation', type: 'boolean' },
-      { name: 'min_amount', label: 'Montant échu minimal', type: 'number', unit: 'DH', min: 0, max: 1_000_000 },
+      { name: 'min_amount', label: 'Montant échu minimal', type: 'number', unit: '¤', min: 0, max: 1_000_000 },
       { name: 'credit_control', label: 'Plafond de crédit', type: 'enum', options: [{ value: 'warn', label: 'Alerte seulement' }, { value: 'block', label: 'Bloquant' }] },
       { name: 'auto_release', label: 'Débloquer un client dès qu\'il est à jour', type: 'boolean' },
     ],
@@ -270,7 +271,7 @@ export const PARAMETERS: ParamDef[] = [
     fields: [
       { name: 'enabled', label: 'Encadrer les retours', type: 'boolean' },
       { name: 'max_days', label: 'Délai maximal', type: 'integer', unit: 'jours', min: 0, max: 365 },
-      { name: 'max_amount_without_approval', label: 'Seuil sans approbation', type: 'number', unit: 'DH', min: 0, max: 1_000_000 },
+      { name: 'max_amount_without_approval', label: 'Seuil sans approbation', type: 'number', unit: '¤', min: 0, max: 1_000_000 },
     ],
     defaults: { enabled: false, max_days: 14, max_amount_without_approval: 500 },
     storage: { kind: 'module_parameters' },
@@ -334,7 +335,7 @@ export const PARAMETERS: ParamDef[] = [
     fields: [
       { name: 'enabled', label: 'Appliquer le droit de timbre', type: 'boolean' },
       { name: 'rate_pct', label: 'Taux', type: 'percent', min: 0, max: 100 },
-      { name: 'min_dh', label: 'Minimum', type: 'number', unit: 'DH', min: 0, max: 1000 },
+      { name: 'min_dh', label: 'Minimum', type: 'number', unit: '¤', min: 0, max: 1000 },
       { name: 'cash_only', label: 'Espèces uniquement', type: 'boolean' },
     ],
     defaults: { enabled: false, rate_pct: 0.25, min_dh: 1, cash_only: true },
@@ -374,9 +375,9 @@ export const PARAMETERS: ParamDef[] = [
     help: 'Une dépense d\'une catégorie « BC requis » à partir du seuil doit être rattachée à un bon de commande engagé.',
     fields: [
       { name: 'enabled', label: 'Exiger un bon de commande', type: 'boolean' },
-      { name: 'threshold', label: 'À partir de', type: 'number', unit: 'DH', min: 0, max: 10_000_000 },
+      { name: 'threshold', label: 'À partir de', type: 'number', unit: '¤', min: 0, max: 10_000_000 },
     ],
-    defaults: { enabled: false, threshold: 2000, currency: 'MAD' },
+    defaults: { enabled: false, threshold: 2000, get currency() { return baseCurrencyCode(); } },
     storage: { kind: 'module_parameters' },
   },
   {
@@ -479,7 +480,7 @@ export const PARAMETERS: ParamDef[] = [
   {
     key: 'accounting.card_commission', domain: 'accounting', section: 'business',
     label: 'Commission sur paiement par carte',
-    help: 'Retenue par le prestataire du terminal sur chaque transaction : à 2 %, une vente carte de 100 DH crédite 98 DH en banque. Appliquée au solde carte de la Caisse et aux écritures de vente (6147 Services bancaires).',
+    help: 'Retenue par le prestataire du terminal sur chaque transaction : à 2 %, une vente carte de 100 ¤ crédite 98 ¤ en banque. Appliquée au solde carte de la Caisse et aux écritures de vente (6147 Services bancaires).',
     fields: [{ name: 'pct', label: 'Taux', type: 'percent', min: 0, max: 20 }],
     defaults: { pct: 0 },
     storage: { kind: 'module_parameters' },

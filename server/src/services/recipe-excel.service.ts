@@ -1,4 +1,5 @@
 import * as XLSX from '../utils/sheets.js';
+import { currencySymbol } from './currency.js';
 
 /**
  * Parser/generateur xlsx pour les recettes (recettes produits + recettes de base).
@@ -399,7 +400,7 @@ export async function generateRecipeWorkbook(payload: RecipeExportPayload, opts:
 
   // === Feuille 1 : Recettes ===
   const recipeHeader = ['Nom', 'Base?', 'Produit', 'Rendement', 'Unite rendement', 'Marge', 'Instructions'];
-  if (includeCost) recipeHeader.push('Cout total (DH)', 'Cout par unite (DH)');
+  if (includeCost) recipeHeader.push(`Cout total (${currencySymbol()})`, `Cout par unite (${currencySymbol()})`);
 
   const recipeData: (string | number | null)[][] = [recipeHeader];
   for (const r of payload.recipes) {

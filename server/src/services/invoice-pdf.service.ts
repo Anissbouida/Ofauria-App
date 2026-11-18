@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'fs';
 import { resolve, join } from 'path';
 import { loadDocumentTemplate, legalFooterLines, formatRib } from '../utils/document-template.js';
 import { arabicFontPath, containsArabic, drawArabicLineRight, numberToWordsAR } from '../utils/arabic-pdf.js';
+import { baseCurrencyCode, currencySymbol } from './currency.js';
 
 // Resolve logo — try multiple possible locations
 function findDefaultLogo(): string {
@@ -133,6 +134,8 @@ const CURRENCY_WORDS: Record<string, [string, string]> = {
   MAD: ['dirhams', 'centimes'], EUR: ['euros', 'centimes'], USD: ['dollars américains', 'cents'],
   GBP: ['livres sterling', 'pence'], CHF: ['francs suisses', 'centimes'], CAD: ['dollars canadiens', 'cents'],
 };
+/** Mots de la devise de base de la société (montant en lettres d'une facture non libellée en devise). */
+const baseCurrencyWords = (): [string, string] => CURRENCY_WORDS[baseCurrencyCode()] ?? [baseCurrencyCode(), 'centièmes'];
 
 const KIND_TEXT = {
   invoice:  { title: 'FACTURE',          number: 'N\u00B0 FACTURE',  due: 'DATE D\u2019\u00C9CH\u00C9ANCE', to: 'FACTURER \u00C0', words: 'ARRETE LA PRESENTE FACTURE A LA SOMME DE :', meta: 'Facture' },
@@ -161,7 +164,7 @@ function n(val: number): string {
     .replace(/[\u202F\u00A0]/g, ' ');
 }
 
-function numberToWordsFR(num: number, words: [string, string] = CURRENCY_WORDS.MAD): string {
+function numberToWordsFR(num: number, words: [string, string] = baseCurrencyWords()): string {
   const units = ['', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf',
     'dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize', 'dix-sept', 'dix-huit', 'dix-neuf'];
   const tens = ['', '', 'vingt', 'trente', 'quarante', 'cinquante', 'soixante', 'soixante', 'quatre-vingt', 'quatre-vingt'];
@@ -383,7 +386,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   // ITEMS TABLE
   // ════════════════════════════════════════════════════════════
   const colWidths = [CW * 0.45, CW * 0.12, CW * 0.20, CW * 0.23];
-  const CUR = data.currency?.code ?? 'DH';
+  const CUR = data.currency?.code ?? currencySymbol();
   const colHeaders = AR && arFont
     ? [LABELS_AR.designation, LABELS_AR.qty, `${LABELS_AR.unitPrice} (${CUR})`, `${LABELS_AR.amount} (${CUR})`]
     : ['DESIGNATION', 'QTE', `PRIX U. (${CUR})`, `MONTANT (${CUR})`];
@@ -464,7 +467,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   const amountWords = data.amountInWords
     || (AR && arFont
       ? numberToWordsAR(data.totalTTC)
-      : numberToWordsFR(data.totalTTC, data.currency ? CURRENCY_WORDS[data.currency.code] ?? [data.currency.code, 'centièmes'] : CURRENCY_WORDS.MAD));
+      : numberToWordsFR(data.totalTTC, data.currency ? CURRENCY_WORDS[data.currency.code] ?? [data.currency.code, 'centièmes'] : baseCurrencyWords()));
 
   drawRect(doc, M, y, notesW, 18, BEIGE);
   doc.rect(M, y, notesW, 18).lineWidth(0.3).stroke(BORDER);
@@ -545,7 +548,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     data.kind === 'proforma' && 'Document sans valeur comptable : ne vaut pas facture. La facture définitive sera émise à la livraison.',
     data.kind === 'credit_note' ? null : tpl.paymentTerms && (data.kind && data.kind !== 'invoice' ? tpl.paymentTerms : `Conditions de paiement : ${tpl.paymentTerms}`),
     data.extraNotes,
-    data.currency && `Facture établie en ${data.currency.code} au taux de ${String(data.currency.rate).replace('.', ',')} DH pour 1 ${data.currency.code} : contre-valeur ${n(data.currency.totalDh)} DH TTC.`,
+    data.currency && `Facture établie en ${data.currency.code} au taux de ${String(data.currency.rate).replace('.', ',')} ${currencySymbol()} pour 1 ${data.currency.code} : contre-valeur ${n(data.currency.totalDh)} ${currencySymbol()} TTC.`,
     data.kind && data.kind !== 'invoice' ? null : tpl.latePenalty,
   ].filter((x): x is string => !!x);
   if (terms.length) {

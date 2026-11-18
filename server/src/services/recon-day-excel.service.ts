@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { currencySymbol } from './currency.js';
 
 // Rapport xlsx d'une journée du module Contrôle des ventes, au format
 // « document papier » : une seule feuille — bandeau entreprise, légende,
@@ -152,7 +153,7 @@ export async function generateReconDayWorkbook(day: ReconDayRow, companyName: st
   ws.addRow([]);
 
   // ── En-têtes du tableau
-  const hdr = ws.addRow(['N°', 'Article', 'Reste veille (J-1)', 'Appro', 'Reçu', 'Vendu (caisse)', 'Reste soir (vitrine)', 'ÉCART', 'PU (DH)', 'Val. Écart (DH)']);
+  const hdr = ws.addRow(['N°', 'Article', 'Reste veille (J-1)', 'Appro', 'Reçu', 'Vendu (caisse)', 'Reste soir (vitrine)', 'ÉCART', `PU (${currencySymbol()})`, `Val. Écart (${currencySymbol()})`]);
   hdr.height = 24;
   hdr.eachCell(cell => {
     cell.style = {
@@ -235,8 +236,8 @@ export async function generateReconDayWorkbook(day: ReconDayRow, companyName: st
     // Sous-total catégorie (taux de vente et CA intégrés au libellé)
     const taux = sub.base > 0 ? Math.round((sub.vendu / sub.base) * 100) : 0;
     const stLabel = sub.base > 0
-      ? `Sous-total ${cat} — vente ${taux}% · CA ${Math.round(sub.ca)} DH`
-      : `Sous-total ${cat} — CA ${Math.round(sub.ca)} DH`;
+      ? `Sous-total ${cat} — vente ${taux}% · CA ${Math.round(sub.ca)} ${currencySymbol()}`
+      : `Sous-total ${cat} — CA ${Math.round(sub.ca)} ${currencySymbol()}`;
     const st = ws.addRow([
       null, stLabel, sub.report > 0 ? sub.report : '—', sub.appro, sub.recu, sub.vendu, sub.invendu, sub.ecart, null,
       sub.ecartVal !== 0 ? sub.ecartVal : null,
@@ -271,7 +272,7 @@ export async function generateReconDayWorkbook(day: ReconDayRow, companyName: st
     ['Total vendu (caisse enregistreuse)', String(g.vendu), {}],
     ['Reste du soir (compté en vitrine)', String(g.invendu), {}],
     ['ÉCART TOTAL (Vendu + Reste soir − Disponible)', `${g.ecart > 0 ? '+' : ''}${g.ecart}`, { labelFill: C.ecartNeg, valueFill: C.ecartNeg, valueColor: C.red, valueSize: 12 }],
-    ["Valeur de l'écart (DH)", `${g.ecartVal > 0 ? '+' : ''}${g.ecartVal.toFixed(2)} DH`, {}],
+    [`Valeur de l'écart (${currencySymbol()})`, `${g.ecartVal > 0 ? '+' : ''}${g.ecartVal.toFixed(2)} ${currencySymbol()}`, {}],
   ];
   // Style appliqué à TOUTES les cellules des plages fusionnées (l'ancre seule
   // laisse les bordures/remplissages incomplets sur le reste de la plage).
@@ -297,7 +298,7 @@ export async function generateReconDayWorkbook(day: ReconDayRow, companyName: st
   }
   ws.addRow([]);
   {
-    const row = ws.addRow(['CA total caisse enregistreuse du jour', null, null, null, null, `${(g.ca + caAnterieur).toFixed(2)} DH`]);
+    const row = ws.addRow(['CA total caisse enregistreuse du jour', null, null, null, null, `${(g.ca + caAnterieur).toFixed(2)} ${currencySymbol()}`]);
     styleRange(row, 1, 5, {
       font: { name: 'Arial', size: 10, bold: true },
       fill: fillOf(C.yellow),

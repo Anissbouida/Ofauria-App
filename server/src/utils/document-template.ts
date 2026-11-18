@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { loadCompanyLegal, type CompanyLegal } from './company-legal.js';
+import { currencySymbol } from '../services/currency.js';
 
 /**
  * Mise en page commune des pièces envoyées aux tiers (audit Paramètres, lot 6,
@@ -70,7 +71,7 @@ export function legalFooterLines(t: Pick<DocumentTemplate, 'legal' | 'showLegalF
   if (t.showLegalForm && l.legalForm) {
     const form = LEGAL_FORM_LABELS[l.legalForm] ?? l.legalForm;
     const capital = l.capital
-      ? `au capital de ${l.capital.toLocaleString('fr-FR', { maximumFractionDigits: 2 }).replace(/[  ]/g, ' ')} DH`
+      ? `au capital de ${l.capital.toLocaleString('fr-FR', { maximumFractionDigits: 2 }).replace(/[  ]/g, ' ')} ${currencySymbol()}`
       : '';
     // Forme déjà dans la raison sociale (« … SARL ») : on ne la répète pas.
     const formInName = !!form && l.name.toUpperCase().split(/[^A-Z0-9]+/).includes(form.toUpperCase());

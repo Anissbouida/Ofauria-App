@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { currencySymbol } from './currency.js';
 
 /**
  * Documents RH en PDF.
@@ -261,13 +262,13 @@ export async function generateSalaryAttestationPdf(d: SalaryAttestationData): Pr
     + `${d.employee.cnss ? `, immatriculé(e) à la CNSS sous le n° ${d.employee.cnss}` : ''}, `
     + `est employé(e) au sein de notre établissement depuis le ${d.hireDate} en qualité de ${d.jobTitle}`
     + `${d.contractLabel ? ` (${d.contractLabel})` : ''}`
-    + `${d.monthlySalary ? `, et perçoit un salaire mensuel de base brut de ${money(d.monthlySalary).replace(/ /g, ' ')} DH (${amountInWords(d.monthlySalary)})` : ''}.`,
+    + `${d.monthlySalary ? `, et perçoit un salaire mensuel de base brut de ${money(d.monthlySalary).replace(/ /g, ' ')} ${currencySymbol()} (${amountInWords(d.monthlySalary)})` : ''}.`,
     M, y, { width: CW, align: 'justify', lineGap: 4 });
   y = doc.y + 14;
   if (n) {
     doc.text(`Rémunération ${n > 1 ? `des ${n} derniers mois` : 'du dernier mois'} de paie :`, M, y);
     y = doc.y + 8;
-    y = table(doc, M, CW, y, [0.5, 0.25, 0.25], ['Mois', 'Salaire brut (DH)', 'Net versé (DH)'],
+    y = table(doc, M, CW, y, [0.5, 0.25, 0.25], ['Mois', `Salaire brut (${currencySymbol()})`, `Net versé (${currencySymbol()})`],
       d.months.map(m => [m.label, money(m.gross), money(m.net)]),
       { alignRight: [1, 2], total: [n > 1 ? `Moyenne mensuelle (${n} mois)` : 'Total', money(avgGross), money(avgNet)] });
     y += 10;
@@ -306,11 +307,11 @@ export async function generateTransferOrderPdf(d: TransferOrderData): Promise<Bu
   y = doc.y + 10;
   doc.font('Helvetica').text(
     `Par le débit de notre compte RIB n° ${d.employerRib}, nous vous prions de bien vouloir virer la somme totale de `
-    + `${money(d.total).replace(/ /g, ' ')} DH (${amountInWords(d.total)}) en faveur des ${d.lines.length} bénéficiaire${d.lines.length > 1 ? 's' : ''} ci-dessous, `
+    + `${money(d.total).replace(/ /g, ' ')} ${currencySymbol()} (${amountInWords(d.total)}) en faveur des ${d.lines.length} bénéficiaire${d.lines.length > 1 ? 's' : ''} ci-dessous, `
     + `au titre ${purpose}.`,
     M, y, { width: CW, align: 'justify', lineGap: 3 });
   y = doc.y + 12;
-  y = table(doc, M, CW, y, [0.06, 0.32, 0.36, 0.08, 0.18], ['N°', 'Bénéficiaire', 'RIB', 'Banque', 'Montant (DH)'],
+  y = table(doc, M, CW, y, [0.06, 0.32, 0.36, 0.08, 0.18], ['N°', 'Bénéficiaire', 'RIB', 'Banque', `Montant (${currencySymbol()})`],
     d.lines.map((l, i) => [String(i + 1), l.name, l.rib, l.bank ?? '', money(l.amount)]),
     { alignRight: [4], total: ['', `${d.lines.length} virement${d.lines.length > 1 ? 's' : ''}`, '', '', money(d.total)] });
   y += 14;

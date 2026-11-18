@@ -1,5 +1,6 @@
 import * as XLSX from '../utils/sheets.js';
 import { ALLERGEN_CODES, normalizeAllergens } from '../validators/allergens.js';
+import { currencySymbol } from './currency.js';
 
 /**
  * Parser/generateur xlsx pour le module Economat — ingredients.
@@ -220,7 +221,7 @@ export async function parseIngredientWorkbook(buffer: Buffer, extraUnits: Readon
       continue;
     }
     if (unitCost > 1_000_000) {
-      warnings.push(`Ligne ${sourceRow} : cout unitaire tres eleve (${unitCost} DH/${unit}) — verifier`);
+      warnings.push(`Ligne ${sourceRow} : cout unitaire tres eleve (${unitCost} ${currencySymbol()}/${unit}) — verifier`);
     }
 
     rows.push({ sourceRow, name, category, unit, unitCost, supplier, allergens });
@@ -250,7 +251,7 @@ export interface IngredientExportRow {
 export async function generateIngredientWorkbook(items: IngredientExportRow[], opts: { includeStock?: boolean } = {}): Promise<Buffer> {
   const includeStock = opts.includeStock !== false;
 
-  const header = ['Nom', 'Categorie', 'Unite', 'Cout unitaire (DH)', 'Fournisseur', 'Allergenes'];
+  const header = ['Nom', 'Categorie', 'Unite', `Cout unitaire (${currencySymbol()})`, 'Fournisseur', 'Allergenes'];
   if (includeStock) {
     header.push('Stock total', 'Economat', 'Pesage', 'Lots actifs', 'DLC plus proche');
   }

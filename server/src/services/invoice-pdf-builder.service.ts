@@ -3,6 +3,7 @@ import { invoiceRepository } from '../repositories/accounting.repository.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
 import { generateInvoicePdf } from './invoice-pdf.service.js';
+import { baseCurrencyCode } from './currency.js';
 
 /**
  * Phase 10.3 — construction du PDF d'une facture à partir de son identifiant.
@@ -125,10 +126,10 @@ export async function invoicePdfById(
     .sort((a, b) => a[0] - b[0])
     .map(([rate, amt]) => ({ rate, amount: Math.round(amt * 100) / 100 }));
 
-  const curCode = String(inv.currency_code ?? 'MAD').trim();
-  const fxRate = curCode !== 'MAD' ? Number(inv.exchange_rate) || 1 : 1;
+  const curCode = String(inv.currency_code ?? baseCurrencyCode()).trim();
+  const fxRate = curCode !== baseCurrencyCode() ? Number(inv.exchange_rate) || 1 : 1;
   const toCur = (v: number) => Math.round((v / fxRate) * 100) / 100;
-  const ttcCur = curCode !== 'MAD' && inv.foreign_total_amount != null ? Number(inv.foreign_total_amount) : toCur(totalAmount);
+  const ttcCur = curCode !== baseCurrencyCode() && inv.foreign_total_amount != null ? Number(inv.foreign_total_amount) : toCur(totalAmount);
   const htCur = toCur(amount);
 
   const legal = await loadCompanyLegal();
@@ -146,7 +147,7 @@ export async function invoicePdfById(
       description: (it.description as string) || '',
       category: (it.category_name as string) || '',
       quantity: parseFloat(it.quantity as string) || 1,
-      unit_price: curCode !== 'MAD' ? Math.round(((parseFloat(it.unit_price as string) || 0) / fxRate) * 10000) / 10000 : parseFloat(it.unit_price as string) || 0,
+      unit_price: curCode !== baseCurrencyCode() ? Math.round(((parseFloat(it.unit_price as string) || 0) / fxRate) * 10000) / 10000 : parseFloat(it.unit_price as string) || 0,
       subtotal: toCur(parseFloat(it.subtotal as string) || 0),
     })),
     totalHT: htCur,
@@ -154,7 +155,7 @@ export async function invoicePdfById(
     totalTVA: Math.round((ttcCur - htCur) * 100) / 100,
     totalTTC: ttcCur,
     tvaBreakdown: tvaBreakdown.map(b => ({ rate: b.rate, amount: toCur(b.amount) })),
-    currency: curCode !== 'MAD' ? { code: curCode, rate: fxRate, totalDh: totalAmount } : undefined,
+    currency: curCode !== baseCurrencyCode() ? { code: curCode, rate: fxRate, totalDh: totalAmount } : undefined,
     companyName: legal.name,
     companyAddress: legal.address,
     companyPhone: legal.phone,

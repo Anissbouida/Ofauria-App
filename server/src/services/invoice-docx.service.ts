@@ -4,6 +4,7 @@ import {
   VerticalAlign, ImageRun, HeightRule, TableLayoutType,
 } from 'docx';
 import { readFileSync, existsSync } from 'fs';
+import { currencySymbol } from './currency.js';
 
 interface InvoiceItem {
   description: string;
@@ -299,8 +300,8 @@ export async function generateInvoiceDocx(data: InvoiceData): Promise<Buffer> {
       c([mk([t('DESIGNATION', { sz: 18, b: true, color: C.white })], AlignmentType.LEFT)], { w: CD, bg: C.brown }),
       c([mk([t('CATEGORIE', { sz: 18, b: true, color: C.white })], AlignmentType.CENTER)], { w: CC, bg: C.brown }),
       c([mk([t('QTE', { sz: 18, b: true, color: C.white })], AlignmentType.CENTER)], { w: CQ, bg: C.brown }),
-      c([mk([t('PRIX U. (DH)', { sz: 18, b: true, color: C.white })], AlignmentType.CENTER)], { w: CP, bg: C.brown }),
-      c([mk([t('MONTANT (DH)', { sz: 18, b: true, color: C.white })], AlignmentType.CENTER)], { w: CM, bg: C.brown }),
+      c([mk([t(`PRIX U. (${currencySymbol()})`, { sz: 18, b: true, color: C.white })], AlignmentType.CENTER)], { w: CP, bg: C.brown }),
+      c([mk([t(`MONTANT (${currencySymbol()})`, { sz: 18, b: true, color: C.white })], AlignmentType.CENTER)], { w: CM, bg: C.brown }),
     ],
   });
 
@@ -372,14 +373,14 @@ export async function generateInvoiceDocx(data: InvoiceData): Promise<Buffer> {
         height: { value: 380, rule: HeightRule.ATLEAST },
         children: [
           c([mk([t(`TVA (${b.rate} %)`, { sz: 18, b: true })], AlignmentType.LEFT)], { w: TLW }),
-          c([mk([t(`${n(b.amount)} DH`, { sz: 20 })], AlignmentType.RIGHT)], { w: TVW }),
+          c([mk([t(`${n(b.amount)} ${currencySymbol()}`, { sz: 20 })], AlignmentType.RIGHT)], { w: TVW }),
         ],
       }))
     : [new TableRow({
         height: { value: 380, rule: HeightRule.ATLEAST },
         children: [
           c([mk([t(`TVA (${data.tvaRate} %)`, { sz: 18, b: true })], AlignmentType.LEFT)], { w: TLW }),
-          c([mk([t(`${n(data.totalTVA)} DH`, { sz: 20 })], AlignmentType.RIGHT)], { w: TVW }),
+          c([mk([t(`${n(data.totalTVA)} ${currencySymbol()}`, { sz: 20 })], AlignmentType.RIGHT)], { w: TVW }),
         ],
       })];
   // Notes occupe toute la hauteur : HT + REMISE + lignes TVA + TTC.
@@ -396,7 +397,7 @@ export async function generateInvoiceDocx(data: InvoiceData): Promise<Buffer> {
         children: [
           c(notesContent, { w: NW, bg: C.beige, rowSpan: totalsRowSpan }),
           c([mk([t('SOUS-TOTAL HT', { sz: 18, b: true })], AlignmentType.LEFT)], { w: TLW }),
-          c([mk([t(`${n(data.totalHT)} DH`, { sz: 20, b: true })], AlignmentType.RIGHT)], { w: TVW }),
+          c([mk([t(`${n(data.totalHT)} ${currencySymbol()}`, { sz: 20, b: true })], AlignmentType.RIGHT)], { w: TVW }),
         ],
       }),
       // Row 2: REMISE
@@ -414,7 +415,7 @@ export async function generateInvoiceDocx(data: InvoiceData): Promise<Buffer> {
         height: { value: 460, rule: HeightRule.ATLEAST },
         children: [
           c([mk([t('TOTAL TTC', { sz: 22, b: true, color: C.white })], AlignmentType.LEFT)], { w: TLW, bg: C.brown }),
-          c([mk([t(`${n(data.totalTTC)} DH`, { sz: 24, b: true, color: C.white })], AlignmentType.RIGHT)], { w: TVW, bg: C.brown }),
+          c([mk([t(`${n(data.totalTTC)} ${currencySymbol()}`, { sz: 24, b: true, color: C.white })], AlignmentType.RIGHT)], { w: TVW, bg: C.brown }),
         ],
       }),
     ],

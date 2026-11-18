@@ -5,6 +5,7 @@ import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
 import { listDefs, coerce, mergeValues, type CfEntity, type FieldDef } from './custom-fields.js';
+import { withCurrency } from './currency.js';
 
 /**
  * Import générique de données (lot 7 étendu, mig 370).
@@ -91,7 +92,7 @@ export const IMPORT_ENTITIES: EntityDef[] = [
     columns: [
       { header: 'Nom', field: 'name', type: 'text', required: true, max: 200, example: 'Farine T55' },
       { header: 'Unité', field: 'unit', type: 'enum', required: true, options: UNITS.filter(u => u !== 'piece'), example: 'kg' },
-      { header: 'Coût unitaire', field: 'unit_cost', type: 'number', example: '6.50', help: 'En DH par unité' },
+      { header: 'Coût unitaire', field: 'unit_cost', type: 'number', example: '6.50', help: 'En ¤ par unité' },
       { header: 'Catégorie', field: 'category_id', type: 'expense_category', example: 'Farines', help: 'Nom d\'une catégorie du référentiel' },
       { header: 'Fournisseur habituel', field: 'supplier', type: 'text', max: 150, example: 'Moulins du Maghreb' },
       { header: 'Taille du contenant', field: 'container_size', type: 'number', example: '25', help: 'Quantité par sac, seau, carton…' },
@@ -155,7 +156,7 @@ export async function buildTemplate(def: EntityDef): Promise<Buffer> {
   const help = XLSX.utils.aoa_to_sheet([
     ['Colonne', 'Obligatoire à la création', 'Format'],
     ...cols.map(c => [c.header, c.required ? 'Oui' : 'Non',
-      c.options && c.type !== 'custom' ? `Une de : ${c.options.join(', ')}` : c.help ?? (c.type === 'email' ? 'Adresse e-mail' : c.type === 'integer' ? 'Nombre entier' : c.type === 'number' ? 'Nombre' : c.type === 'boolean' ? 'oui ou non' : 'Texte')]),
+      c.options && c.type !== 'custom' ? `Une de : ${c.options.join(', ')}` : withCurrency(c.help) ?? (c.type === 'email' ? 'Adresse e-mail' : c.type === 'integer' ? 'Nombre entier' : c.type === 'number' ? 'Nombre' : c.type === 'boolean' ? 'oui ou non' : 'Texte')]),
     [],
     ['La ligne 2 est un exemple : remplacez-la. Une cellule vide ne modifie pas une fiche existante.'],
     [`Fiche existante retrouvée par : ${def.matchOn.map(f => cols.find(c => c.field === f)?.header ?? f).join(', puis ')}.`],

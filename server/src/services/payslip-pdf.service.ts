@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { currencySymbol } from './currency.js';
 
 /**
  * Bulletin de paie mensuel (PDF, A4 portrait).
@@ -148,15 +149,15 @@ export async function generatePayslipPdf(d: PayslipPdfData): Promise<Buffer> {
   doc.rect(M, y, CW, 26).fill(GREEN);
   doc.font('Helvetica-Bold').fontSize(12).fillColor('#FFFFFF');
   t('NET À PAYER', M + 10, y + 8);
-  t(`${money(d.netSalary)} DH`, M, y + 8, { width: CW - 10, align: 'right' });
+  t(`${money(d.netSalary)} ${currencySymbol()}`, M, y + 8, { width: CW - 10, align: 'right' });
   y += 30;
   const acomptes = d.acomptes ?? 0;
   if (acomptes > 0 || d.advanceDeduction > 0) {
     doc.font('Helvetica').fontSize(8).fillColor(TEXT_DARK);
     const parts = [
-      acomptes > 0 ? `Acomptes versés : ${money(acomptes)} DH` : null,
-      d.advanceDeduction > 0 ? `Retenue sur avance(s) : ${money(d.advanceDeduction)} DH` : null,
-      `${acomptes > 0 ? 'Reste versé' : 'Net versé'} : ${money(d.netSalary - acomptes - d.advanceDeduction)} DH`,
+      acomptes > 0 ? `Acomptes versés : ${money(acomptes)} ${currencySymbol()}` : null,
+      d.advanceDeduction > 0 ? `Retenue sur avance(s) : ${money(d.advanceDeduction)} ${currencySymbol()}` : null,
+      `${acomptes > 0 ? 'Reste versé' : 'Net versé'} : ${money(d.netSalary - acomptes - d.advanceDeduction)} ${currencySymbol()}`,
     ].filter(Boolean);
     t(parts.join('   ·   '), M, y, { width: CW, align: 'right' });
     y += 12;

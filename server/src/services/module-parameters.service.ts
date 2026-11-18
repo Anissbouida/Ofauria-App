@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { FLAGS } from '../config/feature-flags.js';
+import { baseCurrencyCode } from './currency.js';
 
 /**
  * Paramètres métier en table (mig 306) : remplacent les constantes de code et les
@@ -10,7 +11,7 @@ import { FLAGS } from '../config/feature-flags.js';
 export type ExpenseRequiresPo = { enabled: boolean; threshold: number; currency: string };
 
 const DEFAULTS: Record<string, unknown> = {
-  'purchasing.expense_requires_po': { enabled: false, threshold: 2000, currency: 'MAD' } satisfies ExpenseRequiresPo,
+  'purchasing.expense_requires_po': { enabled: false, threshold: 2000, get currency() { return baseCurrencyCode(); } } satisfies ExpenseRequiresPo,
   'sales.quotes': { validity_days: 30 },
   'sales.dunning': { enabled: true, auto_send: false, min_amount: 50, credit_control: 'warn', auto_release: true },
   'sales.pos_stock': { mode: 'block' } satisfies PosStockRule,

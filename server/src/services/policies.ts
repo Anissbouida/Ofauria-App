@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg';
 import { db, withTransaction } from '../config/database.js';
 import { parameterByKey, validateParameter, PARAMETERS, type ParamDef } from './parameters-catalog.js';
 import { listWorkshops } from './workshops.js';
+import { withCurrency } from './currency.js';
 
 /**
  * Politiques à héritage (M1-02, mig 538).
@@ -229,7 +230,7 @@ export async function listPolicies(ctx: PolicyContext = {}) {
     const effective = await resolvePolicy(def.key, ctx);
     const company = await resolvePolicy(def.key, {});
     return {
-      key: def.key, label: def.label, help: def.help, fields: def.fields, defaults: def.defaults,
+      key: def.key, label: withCurrency(def.label), help: withCurrency(def.help), fields: withCurrency(def.fields), defaults: def.defaults,
       scopes: def.scopes ?? ['company'],
       // Niveau société tenu par un autre écran (colonne historique) : affiché, non modifiable ici.
       companyManagedElsewhere: Boolean(def.companyColumns),

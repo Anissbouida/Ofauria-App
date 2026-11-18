@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { currencySymbol } from './currency.js';
 const nodeRequire = createRequire(import.meta.url);
 // pngjs (dep transitive de node-thermal-printer) : decode/encode PNG en JS pur,
 // evite d'ajouter sharp/jimp juste pour redimensionner le logo du ticket.
@@ -399,15 +400,15 @@ export const printerService = {
           } else {
             left = `  ${item.quantity} x ${item.unit_price.toFixed(2)}`;
           }
-          const right = `${item.subtotal.toFixed(2)} DH`;
+          const right = `${item.subtotal.toFixed(2)} ${currencySymbol()}`;
           printer.leftRight(left, right);
         }
         printer.drawLine();
 
         // ─── Totaux ───
-        printer.leftRight('Sous-total', `${params.sale.subtotal.toFixed(2)} DH`);
+        printer.leftRight('Sous-total', `${params.sale.subtotal.toFixed(2)} ${currencySymbol()}`);
         if (params.sale.discount_amount > 0) {
-          printer.leftRight('Remise', `-${params.sale.discount_amount.toFixed(2)} DH`);
+          printer.leftRight('Remise', `-${params.sale.discount_amount.toFixed(2)} ${currencySymbol()}`);
         }
         // Ventilation de la TVA incluse (mig 480), regroupée par taux. Rien n'est
         // imprimé sans code TVA (cas Ofauria) : le ticket reste identique.
@@ -417,11 +418,11 @@ export const printerService = {
           if (t > 0) vatByRate.set(Number(it.tax_rate ?? 0), (vatByRate.get(Number(it.tax_rate ?? 0)) ?? 0) + t);
         }
         for (const [rate, amount] of [...vatByRate.entries()].sort((a, b) => a[0] - b[0])) {
-          printer.leftRight(`dont TVA ${rate.toFixed(0)}%`, `${amount.toFixed(2)} DH`);
+          printer.leftRight(`dont TVA ${rate.toFixed(0)}%`, `${amount.toFixed(2)} ${currencySymbol()}`);
         }
         printer.bold(true);
         printer.setTextDoubleHeight();
-        printer.leftRight('TOTAL', `${params.sale.total.toFixed(2)} DH`);
+        printer.leftRight('TOTAL', `${params.sale.total.toFixed(2)} ${currencySymbol()}`);
         printer.setTextNormal();
         printer.bold(false);
         printer.newLine();
@@ -434,15 +435,15 @@ export const printerService = {
         printer.println(`Paye par : ${payLabel[params.sale.payment_method] || params.sale.payment_method}`);
         // Paiement mixte (mig 250) : detail des deux parts.
         if (params.sale.payment_method === 'mixed') {
-          if (params.sale.cash_part != null) printer.println(`  Especes : ${params.sale.cash_part.toFixed(2)} DH`);
-          if (params.sale.card_part != null) printer.println(`  Carte   : ${params.sale.card_part.toFixed(2)} DH`);
+          if (params.sale.cash_part != null) printer.println(`  Especes : ${params.sale.cash_part.toFixed(2)} ${currencySymbol()}`);
+          if (params.sale.card_part != null) printer.println(`  Carte   : ${params.sale.card_part.toFixed(2)} ${currencySymbol()}`);
         }
 
         if (params.sale.payment_method === 'cash' && params.sale.cash_given != null) {
-          printer.println(`Donne    : ${params.sale.cash_given.toFixed(2)} DH`);
+          printer.println(`Donne    : ${params.sale.cash_given.toFixed(2)} ${currencySymbol()}`);
           if (params.sale.change_amount != null) {
             printer.bold(true);
-            printer.println(`Monnaie  : ${params.sale.change_amount.toFixed(2)} DH`);
+            printer.println(`Monnaie  : ${params.sale.change_amount.toFixed(2)} ${currencySymbol()}`);
             printer.bold(false);
           }
         }
@@ -528,7 +529,7 @@ export const printerService = {
         const d = new Date(v);
         return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
       };
-      const dh = (v: number) => `${(v || 0).toFixed(2)} DH`;
+      const dh = (v: number) => `${(v || 0).toFixed(2)} ${currencySymbol()}`;
 
       printer.alignCenter();
       printer.bold(true);
@@ -559,7 +560,7 @@ export const printerService = {
         printer.leftRight('Especes comptees', dh(s.actual_amount));
         const diff = s.difference ?? (s.actual_amount - s.expected_cash);
         printer.bold(true);
-        printer.leftRight('ECART', `${diff > 0 ? '+' : ''}${diff.toFixed(2)} DH`);
+        printer.leftRight('ECART', `${diff > 0 ? '+' : ''}${diff.toFixed(2)} ${currencySymbol()}`);
         printer.bold(false);
       }
       printer.drawLine();

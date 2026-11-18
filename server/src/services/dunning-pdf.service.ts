@@ -2,6 +2,7 @@ import PDFDocument from 'pdfkit';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { loadDocumentTemplate, legalFooterLines } from '../utils/document-template.js';
+import { currencySymbol } from './currency.js';
 
 /**
  * Lettre de relance client (mig 366) : en-tête société, bloc client, objet, texte du
@@ -67,7 +68,7 @@ export async function generateDunningPdf(d: DunningLetter): Promise<Buffer> {
 
   // Tableau des pièces
   const cols = [CW * 0.26, CW * 0.17, CW * 0.17, CW * 0.14, CW * 0.26];
-  const heads = ['PIÈCE', 'DATE', 'ÉCHÉANCE', 'RETARD', 'RESTE DÛ (DH)'];
+  const heads = ['PIÈCE', 'DATE', 'ÉCHÉANCE', 'RETARD', `RESTE DÛ (${currencySymbol()})`];
   let x = M;
   doc.rect(M, y, CW, 18).fill(BROWN);
   heads.forEach((h, i) => { doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#FFFFFF').text(h, x + 5, y + 5, { width: cols[i] - 10, align: i >= 3 ? 'right' : 'left', lineBreak: false }); x += cols[i]; });
@@ -85,7 +86,7 @@ export async function generateDunningPdf(d: DunningLetter): Promise<Buffer> {
   const tot = (label: string, v: number, bold = false) => {
     doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 10 : 9).fillColor(TEXT)
       .text(label, M + CW * 0.45, y, { width: CW * 0.3, align: 'right', lineBreak: false })
-      .text(`${n(v)} DH`, M + CW * 0.75, y, { width: CW * 0.25, align: 'right', lineBreak: false });
+      .text(`${n(v)} ${currencySymbol()}`, M + CW * 0.75, y, { width: CW * 0.25, align: 'right', lineBreak: false });
     y += bold ? 16 : 13;
   };
   tot('Montant échu', d.amountDue);

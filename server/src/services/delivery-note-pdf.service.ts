@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { loadDocumentTemplate, legalFooterLines } from '../utils/document-template.js';
 import { settingsRepository } from '../repositories/settings.repository.js';
+import { currencySymbol } from './currency.js';
 
 /**
  * Bon de livraison client (mig 354) : pièce remise avec la marchandise et signée
@@ -125,7 +126,7 @@ export async function generateDeliveryNotePdf(note: Record<string, any>): Promis
   [['TOTAL HT', n(ht)], ['TVA', n(tva)], ['TOTAL TTC', n(ht + tva)]].forEach(([l, v], i) => {
     fill(tx, y, tw / 2, 20, i === 2 ? BROWN : BEIGE); box(tx, y, tw, 20);
     doc.font('Helvetica-Bold').fontSize(8).fillColor(i === 2 ? WHITE : BROWN); txt(l, tx + 6, y + 6);
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(TEXT_DARK); txt(`${v} DH`, tx + tw / 2, y + 6, { width: tw / 2 - 6, align: 'right' });
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(TEXT_DARK); txt(`${v} ${currencySymbol()}`, tx + tw / 2, y + 6, { width: tw / 2 - 6, align: 'right' });
     y += 20;
   });
   y += 12;

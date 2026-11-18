@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit';
-import { companyCurrency } from './currency.js';
+import { companyCurrency, currencySymbol } from './currency.js';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 
@@ -286,7 +286,7 @@ function n(val: number | null, dec = 2): string {
 }
 
 /** Symbole de la devise de la société (M3-06), posé au début de chaque génération. */
-let CUR = 'DH';
+let CUR = currencySymbol();
 /** Montant : « — » seul quand la valeur est absente, pas « — DH ». */
 function dh(v: number | null): string {
   return v === null || !Number.isFinite(v) ? '\u2014' : `${n(v)} ${CUR}`;

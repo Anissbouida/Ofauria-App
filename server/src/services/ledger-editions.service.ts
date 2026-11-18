@@ -24,6 +24,7 @@ import { corporateTaxRepository } from '../repositories/corporate-tax.repository
 import { fxRevaluationRepository } from '../repositories/fx-revaluation.repository.js';
 import { liasseRepository } from '../repositories/liasse.repository.js';
 import type { LiasseModel } from './liasse.rules.js';
+import { currencySymbol } from './currency.js';
 
 /* ─── Modèle ────────────────────────────────────────────────────────── */
 
@@ -218,9 +219,9 @@ export async function buildBilan(p: { endDate: string; storeId?: string | null }
   rows.push({ kind: 'total', cells: { label: 'TOTAL PASSIF', amount: b.passif.total } });
   return {
     key: `bilan_${p.endDate}`, title: 'Bilan', period: periodLabel(undefined, p.endDate), orientation: 'portrait',
-    columns: [{ key: 'code', label: 'Compte', width: 14 }, { key: 'label', label: 'Rubrique', width: 61 }, { key: 'amount', label: 'Montant (DH)', width: 25, align: 'right', amount: true }],
+    columns: [{ key: 'code', label: 'Compte', width: 14 }, { key: 'label', label: 'Rubrique', width: 61 }, { key: 'amount', label: `Montant (${currencySymbol()})`, width: 25, align: 'right', amount: true }],
     rows,
-    notes: b.ecart ? [`Écart actif − passif : ${fmtAmount(b.ecart)} DH`] : undefined,
+    notes: b.ecart ? [`Écart actif − passif : ${fmtAmount(b.ecart)} ${currencySymbol()}`] : undefined,
   };
 }
 
@@ -238,7 +239,7 @@ export async function buildCpc(p: { startDate: string; endDate: string; storeId?
   rows.push({ kind: 'total', cells: { label: c.resultat_net >= 0 ? 'RÉSULTAT NET (bénéfice)' : 'RÉSULTAT NET (perte)', amount: r2(c.resultat_net) } });
   return {
     key: `cpc_${p.startDate}_${p.endDate}`, title: 'Compte de produits et charges (CPC)', period: periodLabel(p.startDate, p.endDate), orientation: 'portrait',
-    columns: [{ key: 'code', label: 'Compte', width: 14 }, { key: 'label', label: 'Poste', width: 61 }, { key: 'amount', label: 'Montant (DH)', width: 25, align: 'right', amount: true }],
+    columns: [{ key: 'code', label: 'Compte', width: 14 }, { key: 'label', label: 'Poste', width: 61 }, { key: 'amount', label: `Montant (${currencySymbol()})`, width: 25, align: 'right', amount: true }],
     rows,
   };
 }
@@ -258,7 +259,7 @@ export async function buildBalanceAgee(p: { side: AgedSide; asOf: string }): Pro
       { key: 'total', label: 'Total', width: 11, align: 'right', amount: true },
     ],
     rows,
-    notes: [`Total égal au solde comptable des comptes de tiers : ${fmtAmount(a.ledger_balance)} DH.`],
+    notes: [`Total égal au solde comptable des comptes de tiers : ${fmtAmount(a.ledger_balance)} ${currencySymbol()}.`],
   };
 }
 
@@ -356,7 +357,7 @@ export async function buildIs(p: { year: number }): Promise<Edition> {
   if (s.credit_after) line('Crédit d\'acomptes à imputer sur l\'exercice suivant', s.credit_after, 'total');
   return {
     key: `is_${p.year}`, title: `Impôt sur les sociétés ${p.year}`, period: `Exercice ${p.year}`, orientation: 'portrait',
-    columns: [{ key: 'label', label: 'Élément', width: 72 }, { key: 'amount', label: 'Montant (DH)', width: 28, align: 'right', amount: true }],
+    columns: [{ key: 'label', label: 'Élément', width: 72 }, { key: 'amount', label: `Montant (${currencySymbol()})`, width: 28, align: 'right', amount: true }],
     rows,
     notes: [s.status === 'booked' ? `Charge d'IS comptabilisée (${s.charge_entry_number}) : calcul figé.` : 'Calcul provisoire : la charge d\'IS n\'est pas encore comptabilisée.'],
   };
@@ -396,7 +397,7 @@ export async function buildEcartsConversion(p: { year: number }): Promise<Editio
     ],
     rows,
     notes: [
-      rates ? `Taux de clôture (DH pour 1 unité) : ${rates}.` : 'Aucune créance ni dette en devise ouverte.',
+      rates ? `Taux de clôture (${currencySymbol()} pour 1 unité) : ${rates}.` : 'Aucune créance ni dette en devise ouverte.',
       s.status === 'booked'
         ? `Réévaluation comptabilisée (${s.reval_entry_number}${s.reopen_entry_number ? `, contre-passée par ${s.reopen_entry_number}` : ''}).`
         : 'Calcul provisoire : la réévaluation n\'est pas encore comptabilisée.',
@@ -441,7 +442,7 @@ export async function buildLiasse(p: { year: number; model: LiasseModel; table: 
     for (const x of l.caf) rows.push({ kind: kindOf(x.kind), cells: { label: x.label, n: nz(x.amount), n1: nz(x.previous) } });
   } else {
     title = 'Passage du résultat net comptable au résultat net fiscal';
-    columns = [{ key: 'label', label: 'Intitulé', width: 75 }, { key: 'n', label: 'Montant (DH)', width: 25, align: 'right', amount: true }];
+    columns = [{ key: 'label', label: 'Intitulé', width: 75 }, { key: 'n', label: `Montant (${currencySymbol()})`, width: 25, align: 'right', amount: true }];
     const pa = l.passage;
     rows.push({ kind: 'line', cells: { label: pa.net_result >= 0 ? 'I. Résultat net comptable — bénéfice' : 'I. Résultat net comptable — perte', n: pa.net_result } });
     rows.push({ kind: 'group', cells: { label: 'II. Réintégrations fiscales' } });
