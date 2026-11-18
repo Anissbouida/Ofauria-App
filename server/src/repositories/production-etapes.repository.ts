@@ -574,7 +574,27 @@ async function initializeFromRouting(q: { query: (text: string, params?: unknown
   if (policy.value.source !== 'gamme') return null;
   const existing = await q.query(`SELECT COUNT(*)::int AS n FROM production_item_etapes WHERE plan_item_id = $1`, [planItemId]);
   if (existing.rows[0].n > 0) return [];
-  const r = await q.query(
+  // M5-01 : gamme figée avec la version de nomenclature de la ligne (opérations de l'instantané,
+  // mêmes formules de temps que fn_routing_op_minutes), sinon la gamme vivante.
+  const frozen = (await q.query(
+    `SELECT b.routing_snapshot FROM production_plan_items ppi JOIN bom_versions b ON b.id = ppi.bom_version_id
+      WHERE ppi.id = $1 AND b.routing_id = $2 AND b.routing_snapshot IS NOT NULL`, [planItemId, ctx.routing_id])).rows[0];
+  const r = frozen ? await q.query(
+    `INSERT INTO production_item_etapes
+       (plan_item_id, ordre, nom, nom_ar, duree_estimee_min, est_bloquante, timer_auto, controle_qualite,
+        checklist_items, est_repetable, nb_repetitions_cible, temperature_c, work_center_id,
+        routing_operation_id, op_type, planned_setup_min, planned_labor_min, planned_machine_min, control_point)
+     SELECT $1, (o->>'sequence')::int, o->>'operation_name', o->>'operation_name_ar', CEIL(m.labor_min)::int, (o->>'is_blocking')::boolean, false,
+            (o->>'op_type' = 'controle' OR o->>'control_point' IS NOT NULL), '[]'::jsonb, false, 1, (o->>'temperature_c')::numeric,
+            (SELECT wc.id FROM work_centers wc WHERE wc.id = (o->>'work_center_id')::uuid),
+            (SELECT ro.id FROM routing_operations ro WHERE ro.id = (o->>'operation_id')::uuid),
+            o->>'op_type', (o->>'setup_min')::numeric, m.labor_min, m.machine_min, o->>'control_point'
+       FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY x(o, ord)
+       JOIN LATERAL (SELECT
+              ROUND((o->>'setup_min')::numeric + COALESCE((o->>'duration_min')::numeric, 0) + $3::numeric / (o->>'base_quantity')::numeric * (o->>'labor_min_per_unit')::numeric, 2) AS labor_min,
+              ROUND((o->>'setup_min')::numeric + $3::numeric / (o->>'base_quantity')::numeric * (o->>'machine_min_per_unit')::numeric, 2) AS machine_min) m ON true
+      ORDER BY ord
+     RETURNING *`, [planItemId, JSON.stringify(frozen.routing_snapshot), ctx.planned_quantity]) : await q.query(
     `INSERT INTO production_item_etapes
        (plan_item_id, ordre, nom, nom_ar, duree_estimee_min, est_bloquante, timer_auto, controle_qualite,
         checklist_items, est_repetable, nb_repetitions_cible, temperature_c, work_center_id,

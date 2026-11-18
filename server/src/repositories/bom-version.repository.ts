@@ -61,7 +61,8 @@ export const bomVersionRepository = {
          FROM bom_versions b LEFT JOIN users u ON u.id = b.activated_by
         WHERE b.recipe_id = $1 ORDER BY b.version_no DESC`, [recipeId])).rows;
     const pending = (await db.query(
-      `SELECT NOT EXISTS (SELECT 1 FROM bom_versions b WHERE b.recipe_id = $1 AND b.status = 'active' AND b.snapshot = fn_recipe_bom_snapshot($1)) AS pending`,
+      `SELECT NOT EXISTS (SELECT 1 FROM bom_versions b WHERE b.recipe_id = $1 AND b.status = 'active' AND b.snapshot = fn_recipe_bom_snapshot($1)
+                            AND fn_routing_content(b.routing_snapshot) IS NOT DISTINCT FROM fn_routing_content(fn_routing_snapshot(fn_recipe_routing($1)))) AS pending`,
       [recipeId])).rows[0].pending as boolean;
     return { versions, pendingChanges: pending };
   },
@@ -102,15 +103,19 @@ export const bomVersionRepository = {
       if ((await db.query(`SELECT 1 FROM bom_versions WHERE recipe_id = $1 AND status = 'brouillon'`, [recipeId])).rows.length) {
         throw new Error('Une nouvelle version est déjà en attente d\'approbation pour cette fiche');
       }
-      const cur = (await db.query(`SELECT version_no, valid_from::text AS valid_from, snapshot = fn_recipe_bom_snapshot($1) AS same
+      // M5-01 : une gamme modifiée est une modification de la fiche, comme sa composition.
+      const cur = (await db.query(`SELECT version_no, valid_from::text AS valid_from,
+                                          snapshot = fn_recipe_bom_snapshot($1)
+                                          AND fn_routing_content(routing_snapshot) IS NOT DISTINCT FROM fn_routing_content(fn_routing_snapshot(fn_recipe_routing($1))) AS same
                                      FROM bom_versions WHERE recipe_id = $1 AND status = 'active'`, [recipeId])).rows[0];
       if (cur?.same) throw new Error('Aucune modification depuis la version active');
       if (cur && validFrom < cur.valid_from) throw new Error(`La date d'effet précède celle de la version ${cur.version_no}`);
       const next = Number((await db.query(`SELECT COALESCE(MAX(version_no), 0) + 1 AS n FROM bom_versions WHERE recipe_id = $1`, [recipeId])).rows[0].n);
       return (await db.query(
-        `INSERT INTO bom_versions (recipe_id, version_no, status, valid_from, reason, snapshot, unit_cost, created_by)
+        `INSERT INTO bom_versions (recipe_id, version_no, status, valid_from, reason, snapshot, unit_cost, created_by, routing_id, routing_snapshot)
          SELECT $1, $2, 'brouillon', $3::date, $4, fn_recipe_bom_snapshot($1),
-                (SELECT v.total_cost / NULLIF(r.yield_quantity, 0) FROM v_recipe_total_cost_v2 v JOIN recipes r ON r.id = v.id WHERE v.id = $1), $5
+                (SELECT v.total_cost / NULLIF(r.yield_quantity, 0) FROM v_recipe_total_cost_v2 v JOIN recipes r ON r.id = v.id WHERE v.id = $1), $5,
+                fn_recipe_routing($1), fn_routing_snapshot(fn_recipe_routing($1))
          RETURNING id, recipe_id, version_no, status, valid_from::text AS valid_from, unit_cost::float8 AS unit_cost`,
         [recipeId, next, validFrom, input.reason, userId])).rows[0] as { id: string; recipe_id: string; version_no: number; status: string; valid_from: string; unit_cost: number | null };
     });

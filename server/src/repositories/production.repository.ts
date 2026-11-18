@@ -640,15 +640,16 @@ export const productionRepository = {
           WHERE pp.id = ppi.plan_id AND ppi.plan_id = $1 AND ppi.status <> 'cancelled'`, [planId]);
 
       // M5-02 : gamme de la ligne (gamme de sa fiche, sinon du produit), sauf gamme déjà posée.
+      // M5-01 : la gamme figée avec la version de nomenclature de la ligne passe en premier.
       await client.query(
         `UPDATE production_plan_items ppi
-            SET routing_id = (
+            SET routing_id = COALESCE((SELECT b.routing_id FROM bom_versions b WHERE b.id = ppi.bom_version_id AND b.routing_snapshot IS NOT NULL), (
               SELECT ro.id FROM routings ro
                WHERE ro.is_active
                  AND (ro.recipe_id = COALESCE(ppi.alt_recipe_id, ppi.base_recipe_id, (SELECT r3.id FROM recipes r3 WHERE r3.product_id = ppi.product_id AND r3.archived_at IS NULL LIMIT 1))
                       OR (ro.recipe_id IS NULL AND ro.product_id = ppi.product_id))
                  AND EXISTS (SELECT 1 FROM routing_operations o WHERE o.routing_id = ro.id)
-               ORDER BY (ro.recipe_id IS NOT NULL) DESC, ro.created_at DESC LIMIT 1)
+               ORDER BY (ro.recipe_id IS NOT NULL) DESC, ro.created_at DESC LIMIT 1))
           WHERE ppi.plan_id = $1 AND ppi.status <> 'cancelled' AND ppi.routing_id IS NULL`, [planId]);
 
       // G6-08 : webhook « ordre de fabrication confirmé », dans la transaction.
