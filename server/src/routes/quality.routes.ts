@@ -7,8 +7,14 @@ import { validate, validateUuidParams } from '../middleware/validate.middleware.
 import { qualityControlPlanRepository } from '../repositories/quality-control-plan.repository.js';
 import { qualityRepository } from '../repositories/quality.repository.js';
 import { lotReleaseRepository } from '../repositories/lot-release.repository.js';
+import { nonconformityRepository } from '../repositories/nonconformity.repository.js';
 
 const releaseSchema = z.object({ note: z.string().trim().min(3, 'Motif requis').max(500) });
+const uuidN = z.string().uuid().nullable().optional();
+const ncDetailsSchema = z.object({ causeCode: z.string().max(40).nullable().optional(), supplierId: uuidN, productLotId: uuidN, ingredientLotId: uuidN, planId: uuidN, complaintId: uuidN });
+const ncDecisionSchema = z.object({ decision: z.enum(['accepte', 'retouche', 'declasse', 'detruit', 'retour_fournisseur']), note: z.string().trim().max(500).nullable().optional() });
+const ncActionSchema = z.object({ actionType: z.enum(['corrective', 'preventive']), description: z.string().trim().min(3).max(2000), responsibleId: uuidN, dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional() });
+const ncActionUpdateSchema = z.object({ status: z.enum(['a_faire', 'en_cours', 'faite']).optional(), effectivenessResult: z.enum(['efficace', 'inefficace']).nullable().optional(), effectivenessNote: z.string().trim().max(1000).nullable().optional() });
 import { z } from 'zod';
 
 const controlPlanLineSchema = z.object({
@@ -42,6 +48,28 @@ router.get('/users', authenticate, can('controle.quality.view'), qualityControll
 // Consultation unique d'un ordre : relevés de procédé et inspections (M7-03).
 router.get('/records/plan/:planId', authenticate, validateUuidParams('planId'), can('controle.quality.view'), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await qualityRepository.recordsForPlan(req.params.planId as string) });
+}));
+// Non-conformités structurées (M7-05).
+const userOf = (req: unknown) => (req as { user: { userId: string; storeId?: string | null } }).user;
+router.get('/nc-dashboard', authenticate, can('controle.quality.view'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await nonconformityRepository.dashboard(userOf(req).storeId ?? null) });
+}));
+router.get('/nonconformities/:id/detail', authenticate, validateUuidParams('id'), can('controle.quality.view'), asyncHandler(async (req, res) => {
+  const d = await nonconformityRepository.get(req.params.id as string);
+  res.status(d ? 200 : 404).json({ success: !!d, data: d });
+}));
+router.put('/nonconformities/:id/details', authenticate, validateUuidParams('id'), can('controle.quality.nonconformities'), validate(ncDetailsSchema), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await nonconformityRepository.setDetails(req.params.id as string, req.body) });
+}));
+router.post('/nonconformities/:id/decision', authenticate, validateUuidParams('id'), can('controle.quality.nonconformities'), validate(ncDecisionSchema), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await nonconformityRepository.decideLot(req.params.id as string, req.body.decision, userOf(req).userId, req.body.note ?? null) });
+}));
+router.post('/nonconformities/:id/actions', authenticate, validateUuidParams('id'), can('controle.quality.nonconformities'), validate(ncActionSchema), asyncHandler(async (req, res) => {
+  res.status(201).json({ success: true, data: await nonconformityRepository.addAction(req.params.id as string, req.body, userOf(req).userId) });
+}));
+router.put('/nc-actions/:actionId', authenticate, validateUuidParams('actionId'), can('controle.quality.nonconformities'), validate(ncActionUpdateSchema), asyncHandler(async (req, res) => {
+  const a = await nonconformityRepository.updateAction(req.params.actionId as string, req.body);
+  res.status(a ? 200 : 404).json({ success: !!a, data: a });
 }));
 // Libération des lots (M7-04).
 router.get('/lots/pending', authenticate, can('controle.quality.view'), asyncHandler(async (req, res) => {

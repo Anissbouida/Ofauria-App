@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import ControlPlanSection from './ControlPlanSection';
 import LotReleaseSection from './LotReleaseSection';
+import NcDetailPanel from './NcDetailPanel';
+import api from '../../api/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -50,6 +52,11 @@ function NonConformities() {
   const [filter, setFilter] = useState<'' | NcStatus>('');
   const { data: rows = [], isLoading } = useQuery({ queryKey: ['quality', 'nc', filter], queryFn: () => qualityApi.nonconformities(filter || undefined) });
   const [editing, setEditing] = useState<NonConformity | 'new' | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  // M7-05 : tableau de bord des non-conformités.
+  const { data: dash } = useQuery({ queryKey: ['quality', 'nc-dashboard'], queryFn: () => api.get('/quality/nc-dashboard').then(r => r.data.data as {
+    total: number; open: number; avg_close_days: number | null; by_cause: { label: string; count: number }[]; by_supplier: { label: string; count: number }[]; overdue_actions: unknown[];
+  }) });
   const setStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: NcStatus }) => qualityApi.updateNonConformity(id, { status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['quality', 'nc'] }),
@@ -64,6 +71,15 @@ function NonConformities() {
           <button key={k} className={filter === k ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem' }} onClick={() => setFilter(k)}>{l}</button>
         ))}
       </div>
+      {dash && (
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.8125rem' }}>
+          <span><strong>{dash.open}</strong> ouvertes / {dash.total}</span>
+          <span>Délai moyen de clôture : <strong>{dash.avg_close_days != null ? `${dash.avg_close_days} j` : '—'}</strong></span>
+          <span style={{ color: dash.overdue_actions.length ? '#dc2626' : undefined }}>Actions en retard : <strong>{dash.overdue_actions.length}</strong></span>
+          {dash.by_cause.length > 0 && <span>Par cause : {dash.by_cause.map(c => `${c.label} ${c.count}`).join(' · ')}</span>}
+          {dash.by_supplier.length > 0 && <span>Par fournisseur : {dash.by_supplier.map(c => `${c.label} ${c.count}`).join(' · ')}</span>}
+        </div>
+      )}
       <div style={{ overflowX: 'auto' }}>
         <table className="odoo-table">
           <thead><tr><th>Détectée</th><th>Non-conformité</th><th>Source</th><th>Gravité</th><th>Responsable</th><th>Échéance</th><th>Statut</th><th /></tr></thead>
@@ -85,6 +101,7 @@ function NonConformities() {
                   {nc.status !== 'closed'
                     ? <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => setStatus.mutate({ id: nc.id, status: 'closed' })}>Clôturer</button>
                     : <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => setStatus.mutate({ id: nc.id, status: 'in_progress' })}>Rouvrir</button>}
+                  <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', marginLeft: 4 }} onClick={() => setDetailId(nc.id)}>Fiche</button>
                 </td>
               </tr>
             ))}
@@ -92,6 +109,7 @@ function NonConformities() {
         </table>
       </div>
       {editing && <NcForm nc={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { qc.invalidateQueries({ queryKey: ['quality', 'nc'] }); setEditing(null); }} />}
+      {detailId && <NcDetailPanel ncId={detailId} onClose={() => setDetailId(null)} />}
     </>
   );
 }

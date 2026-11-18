@@ -77,11 +77,18 @@ export const supplierScoreRepository = {
            FROM pos GROUP BY supplier_id
        ),
        quality AS (
-         SELECT po.supplier_id, COUNT(*) AS total, COUNT(*) FILTER (WHERE qc.overall_conformity) AS ok
-           FROM reception_quality_checks qc
-           JOIN reception_vouchers rv ON rv.id = qc.reception_voucher_id
-           JOIN pos po ON po.id = rv.purchase_order_id
-          GROUP BY po.supplier_id
+         SELECT supplier_id, SUM(total) AS total, SUM(ok) AS ok FROM (
+           SELECT po.supplier_id, COUNT(*) AS total, COUNT(*) FILTER (WHERE qc.overall_conformity) AS ok
+             FROM reception_quality_checks qc
+             JOIN reception_vouchers rv ON rv.id = qc.reception_voucher_id
+             JOIN pos po ON po.id = rv.purchase_order_id
+            GROUP BY po.supplier_id
+           UNION ALL
+           -- M7-05 : une non-conformité fournisseur de la période compte comme un contrôle non conforme.
+           SELECT nc.supplier_id, COUNT(*), 0 FROM quality_nonconformities nc
+            WHERE nc.supplier_id IS NOT NULL AND nc.detected_on BETWEEN $1::date AND $2::date
+            GROUP BY nc.supplier_id
+         ) x GROUP BY supplier_id
        ),
        prices AS (
          SELECT po.supplier_id,

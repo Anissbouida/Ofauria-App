@@ -40,7 +40,9 @@ const LINK_COLUMNS: [keyof InspectionLinks, string][] = [
  */
 async function afterInspection(inspectionId: string): Promise<void> {
   const i = (await db.query(
-    `SELECT id, title, conformity, results, store_id, inspected_by, control_stage FROM quality_inspections WHERE id = $1`, [inspectionId])).rows[0];
+    `SELECT qi.id, qi.title, qi.conformity, qi.results, qi.store_id, qi.inspected_by, qi.control_stage,
+            qi.product_lot_id, qi.ingredient_lot_id, qi.plan_id, il.supplier_id
+       FROM quality_inspections qi LEFT JOIN ingredient_lots il ON il.id = qi.ingredient_lot_id WHERE qi.id = $1`, [inspectionId])).rows[0];
   if (!i) return;
   // M7-04 : libération ou blocage du lot rattaché.
   const { lotReleaseRepository } = await import('./lot-release.repository.js');
@@ -48,11 +50,14 @@ async function afterInspection(inspectionId: string): Promise<void> {
   if (i.conformity) return;
   const failed = (Array.isArray(i.results) ? i.results : []).filter((r: QualityResult) => r.ok === false).map((r: QualityResult) => r.label);
   await db.query(
-    `INSERT INTO quality_nonconformities (title, source, reference_note, description, severity, status, detected_on, detected_by, store_id)
-     SELECT $1, $2, $3::text, $4, 'medium', 'open', CURRENT_DATE, $5, $6
+    `INSERT INTO quality_nonconformities (title, source, reference_note, description, severity, status, detected_on, detected_by, store_id,
+                                          inspection_id, product_lot_id, ingredient_lot_id, plan_id, supplier_id)
+     SELECT $1, $2, $3::text, $4, 'medium', 'open', CURRENT_DATE, $5, $6, $7, $8, $9, $10, $11
       WHERE NOT EXISTS (SELECT 1 FROM quality_nonconformities WHERE reference_note = $3::text)`,
     [`Inspection non conforme : ${i.title}`.slice(0, 200), i.control_stage === 'reception' ? 'reception' : 'inspection',
-     `inspection:${i.id}`, failed.length ? `Points non conformes : ${failed.join(', ')}` : null, i.inspected_by, i.store_id]);
+     `inspection:${i.id}`, failed.length ? `Points non conformes : ${failed.join(', ')}` : null, i.inspected_by, i.store_id,
+     // M7-05 : non-conformité structurée (inspection d'origine, lot, ordre, fournisseur de la matière).
+     i.id, i.product_lot_id, i.ingredient_lot_id, i.plan_id, i.supplier_id]);
 }
 
 export const qualityRepository = {

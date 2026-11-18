@@ -638,8 +638,10 @@ export const productLotRepository = {
         other: 'Autre',
       };
       const reasonLabel = reasonLabels[reason] || reasonLabels.other;
+      // M7-05 : une destruction décidée sur non-conformité est une perte « qualité non conforme ».
       const lossDbReason = reason === 'dlv_expired' ? 'dlv_expiree' :
-                            reason === 'dlc_expired' ? 'dlc_expiree' : 'perime';
+                            reason === 'dlc_expired' ? 'dlc_expiree' :
+                            reason === 'quarantine_failed' ? 'qualite_non_conforme' : 'perime';
 
       await client.query(
         `UPDATE product_store_stock
@@ -724,8 +726,10 @@ export const productLotRepository = {
         other: 'Autre',
       };
       const reasonLabel = reasonLabels[reason] || reasonLabels.other;
+      // M7-05 : une destruction décidée sur non-conformité est une perte « qualité non conforme ».
       const lossDbReason = reason === 'dlv_expired' ? 'dlv_expiree' :
-                            reason === 'dlc_expired' ? 'dlc_expiree' : 'perime';
+                            reason === 'dlc_expired' ? 'dlc_expiree' :
+                            reason === 'quarantine_failed' ? 'qualite_non_conforme' : 'perime';
 
       // Mise a jour product_store_stock (sync vitrine + backroom)
       if (totalLost > 0) {

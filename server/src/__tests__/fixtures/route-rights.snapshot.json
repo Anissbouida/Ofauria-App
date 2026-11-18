@@ -1805,7 +1805,15 @@
   "admin",
   "manager"
  ],
+ "GET /quality/nc-dashboard": [
+  "admin",
+  "manager"
+ ],
  "GET /quality/nonconformities": [
+  "admin",
+  "manager"
+ ],
+ "GET /quality/nonconformities/:id/detail": [
   "admin",
   "manager"
  ],
@@ -3841,6 +3849,14 @@
   "admin",
   "manager"
  ],
+ "POST /quality/nonconformities/:id/actions": [
+  "admin",
+  "manager"
+ ],
+ "POST /quality/nonconformities/:id/decision": [
+  "admin",
+  "manager"
+ ],
  "POST /quality/templates": [
   "admin",
   "manager"
@@ -4771,7 +4787,15 @@
  "PUT /purchasing-settings/expense-requires-po": [
   "admin"
  ],
+ "PUT /quality/nc-actions/:actionId": [
+  "admin",
+  "manager"
+ ],
  "PUT /quality/nonconformities/:id": [
+  "admin",
+  "manager"
+ ],
+ "PUT /quality/nonconformities/:id/details": [
   "admin",
   "manager"
  ],
