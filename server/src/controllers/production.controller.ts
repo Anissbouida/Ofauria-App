@@ -7,6 +7,7 @@ import { mrpPhased, mrpParams, validateProposals } from '../services/mrp-phased.
 import { masterScheduleRepository } from '../repositories/master-schedule.repository.js';
 import { localIsoDate } from '../utils/local-date.js';
 import { productionOrderTypeRepository } from '../repositories/production-order-type.repository.js';
+import { subcontractingRepository } from '../repositories/subcontracting.repository.js';
 import { mrpRepository } from '../repositories/mrp.repository.js';
 import { forecastRepository } from '../repositories/forecast.repository.js';
 import { orderRepository } from '../repositories/order.repository.js';
@@ -540,10 +541,14 @@ export const productionController = {
       res.status(400).json({ success: false, error: { message: 'Aucun article a produire' } });
       return;
     }
+    // M9 : un ordre sous-traité se reçoit après l'envoi des composants.
+    const subcontractBlock = await subcontractingRepository.receptionBlocker(req.params.id as string);
+    if (subcontractBlock) { res.status(409).json({ success: false, error: { message: subcontractBlock } }); return; }
     try {
       // G0-24 : production, pertes et observations du lancement dans une seule transaction.
       const { warnings, autoCompleted } = await declareProduction(req.params.id, { items, producedAt, observations, bases, losses },
         { userId: req.user!.userId, storeId: req.user!.storeId });
+      await subcontractingRepository.markReceived(req.params.id as string);
       const updated = await productionRepository.findById(req.params.id);
 
       // If plan auto-completed, notify manager

@@ -144,6 +144,7 @@ const orderTypeFields = {
   requiresBonSortie: z.boolean().optional(),
   requiresWeighing: z.boolean().optional(),
   requiresQualityCheck: z.boolean().optional(),
+  isSubcontracting: z.boolean().optional(),
   consumptionMode: z.enum(['au_bon_de_sortie', 'a_la_declaration', 'manuel']).optional(),
   defaultTargetRole: z.string().max(30).optional().nullable(),
   isDefault: z.boolean().optional(),
@@ -183,6 +184,13 @@ export const masterScheduleSchema = z.object({
 
 /** Nomenclature d'une ligne d'ordre (M4-04) : fiche alternative du produit, ou null. */
 export const itemRecipeSchema = z.object({ recipeId: uuid.nullable() });
+
+/** Sous-traitance (M9) : sous-traitant et prix de façon par unité. */
+export const subcontractSetupSchema = z.object({
+  supplierId: uuid,
+  unitFee: z.number().finite().min(0).max(1_000_000).nullable(),
+});
+export const subcontractShipSchema = z.object({ notes: z.string().trim().max(1000).optional().nullable() });
 
 /** Gabarit d'impression du module (M8-04) : null = revenir à l'héritage pour ce champ. */
 export const printTemplateSchema = z.object({

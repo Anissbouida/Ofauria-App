@@ -1579,6 +1579,14 @@
  "GET /production/:id/dependencies": null,
  "GET /production/:id/events": null,
  "GET /production/:id/sub-recipe-analysis": null,
+ "GET /production/:id/subcontract": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /production/:id/summary": [
   "admin",
   "baker",
@@ -1662,6 +1670,14 @@
  "GET /production/print-templates/settings": null,
  "GET /production/process-referentials": null,
  "GET /production/settings": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production/subcontracting": [
   "admin",
   "baker",
   "beldi_sale",
@@ -3693,6 +3709,10 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "POST /production/:id/subcontract/ship": [
+  "admin",
+  "manager"
+ ],
  "POST /production/:id/transfer-items": [
   "admin",
   "baker",
@@ -4758,6 +4778,10 @@
   "manager",
   "pastry_chef",
   "viennoiserie"
+ ],
+ "PUT /production/:id/subcontract": [
+  "admin",
+  "manager"
  ],
  "PUT /production/master-schedule": [
   "admin",

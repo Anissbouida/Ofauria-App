@@ -25,6 +25,10 @@ describe('Registre des panneaux de l\'ordre (M8-01)', () => {
     expect(visible({ plan: { status: 'confirmed' }, activeBon: false } as never, 'preparation' as never)).toEqual([]);
     expect(visible({ plan: { status: 'completed' }, productionSettings: { production_cost_enabled: false } } as never, 'couts' as never)).toEqual([]);
   });
+  it('sous-traitance : ordre d\'un type « sous-traité » seulement (M9)', () => {
+    expect(visible({ plan: { status: 'draft', order_type_is_subcontracting: true } }, 'synthese')).toEqual(['subcontract', 'custom-fields', 'history']);
+    expect(visible({ plan: { status: 'draft' } }, 'synthese')).not.toContain('subcontract');
+  });
   it('alertes de l\'onglet Ingrédients', () => {
     const prep = (c: Partial<PlanPanelCtx>) => visible({ plan: { status: 'confirmed' }, ...c } as never, 'preparation' as never);
     expect(prep({ isMagasinier: true, warnings: ['Farine insuffisante'] })).toEqual(['stock-warnings']);

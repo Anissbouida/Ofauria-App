@@ -50,7 +50,7 @@ export const productionRepository = {
               (SELECT COUNT(*) FROM production_plan_dependencies WHERE parent_plan_id = pp.id AND status = 'fulfilled') as dep_fulfilled,
               pw.label AS target_role_label,
               pot.code AS order_type_code, pot.label AS order_type_label,
-              pot.requires_bon_sortie AS order_type_requires_bon_sortie, pot.consumption_mode AS order_type_consumption_mode
+              pot.requires_bon_sortie AS order_type_requires_bon_sortie, pot.consumption_mode AS order_type_consumption_mode, COALESCE(pot.is_subcontracting, false) AS order_type_is_subcontracting
        FROM production_plans pp
        JOIN users u ON u.id = pp.created_by
        LEFT JOIN orders o ON o.id = pp.order_id
@@ -75,7 +75,7 @@ export const productionRepository = {
               o.pickup_date as order_pickup_date, o.total as order_total, o.advance_amount as order_advance_amount,
               pw.label AS target_role_label,
               pot.code AS order_type_code, pot.label AS order_type_label,
-              pot.requires_bon_sortie AS order_type_requires_bon_sortie, pot.consumption_mode AS order_type_consumption_mode
+              pot.requires_bon_sortie AS order_type_requires_bon_sortie, pot.consumption_mode AS order_type_consumption_mode, COALESCE(pot.is_subcontracting, false) AS order_type_is_subcontracting
        FROM production_plans pp
        JOIN users u ON u.id = pp.created_by
        LEFT JOIN orders o ON o.id = pp.order_id

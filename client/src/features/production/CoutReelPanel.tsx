@@ -43,6 +43,8 @@ interface CoutReel {
   ecart_mix?: Money;
   /** G0-23 : emballages consommés par le plan, et revient calculé par le serveur (seule définition). */
   cout_emballages?: Money;
+  /** Façon du sous-traitant (M9, mig 584). */
+  cout_sous_traitance?: Money;
   detail_emballages?: { packaging_id: string; name: string; unit: string | null; qty: Money; unit_cost: Money; total: Money }[];
   detail_matieres: { ingredient_id: string; name: string; qty: Money; unit_cost: Money; total: Money }[];
   detail_main_oeuvre: { employee_id: string; name: string; minutes: Money; hourly_rate: Money; total: Money }[];
@@ -160,12 +162,13 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
   const coutEnergie = toNum(cout?.cout_energie);
   const coutCharges = toNum(cout?.cout_charges_fixes);
   const coutEmballages = toNum(cout?.cout_emballages);
+  const coutFacon = toNum(cout?.cout_sous_traitance);
   // G0-23 : le revient est celui du serveur (cout_total = matieres + emballages + MO +
   // energie + charges) ; l'ecran ne refait plus l'addition. Les pertes (cout_pertes) sont
   // une valorisation de matiere DEJA comptee dans cout_matieres : un « dont » (mig 339).
   const coutRevient = cout?.cout_total != null
     ? toNum(cout.cout_total)
-    : coutMat + coutEmballages + coutMO + coutEnergie + coutCharges;
+    : coutMat + coutEmballages + coutMO + coutEnergie + coutCharges + coutFacon;
   const coutPertes = toNum(cout?.cout_pertes);
 
   return (
@@ -232,6 +235,14 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
               </div>
               <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{fmtMoney(coutCharges)}</div>
             </div>
+            {coutFacon > 0 && (
+              <div className="odoo-stat-card" style={{ cursor: 'default' }}>
+                <div className="odoo-stat-card-label">
+                  <Building2 size={11} style={{ display: 'inline', marginRight: 4 }} />Façon
+                </div>
+                <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{fmtMoney(coutFacon)}</div>
+              </div>
+            )}
             <div className="odoo-stat-card" style={{ cursor: 'default', backgroundColor: 'var(--theme-bg-secondary)' }}>
               <div className="odoo-stat-card-label">
                 <DollarSign size={11} style={{ display: 'inline', marginRight: 4, color: '#28a745' }} />Revient

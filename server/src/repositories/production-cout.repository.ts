@@ -1,4 +1,5 @@
 import { policyNumber, resolvePolicy } from '../services/policies.js';
+import { subcontractingRepository } from './subcontracting.repository.js';
 import { db, withTransaction } from '../config/database.js';
 
 
@@ -379,9 +380,13 @@ export const productionCoutRepository = {
     const ecartMix = coutPrevu != null && coutPrevuMixReel != null
       ? Math.round((coutPrevu - coutPrevuMixReel) * 100) / 100
       : null;
-    // Revient = matieres + emballages + MO + energie + charges (les pertes sont un « dont »).
-    // Meme somme que la colonne calculee production_cout_reel.cout_total (mig 527).
-    const coutTotal = coutMatieres + coutEmballages + coutMO + coutEnergie + coutCharges;
+    // M9 : façon du sous-traitant (prix unitaire × quantité reçue), 0 hors sous-traitance.
+    const facon = await subcontractingRepository.feeCost(planId);
+    const coutSousTraitance = facon.amount;
+    const detailSousTraitance = facon.detail;
+    // Revient = matieres + emballages + MO + energie + charges + façon (les pertes sont un « dont »).
+    // Meme somme que la colonne calculee production_cout_reel.cout_total (mig 527, 584).
+    const coutTotal = coutMatieres + coutEmballages + coutMO + coutEnergie + coutCharges + coutSousTraitance;
     const ecartPct = coutPrevu && coutPrevu > 0
       ? Math.round((coutTotal - coutPrevu) / coutPrevu * 10000) / 100
       : null;
@@ -389,7 +394,8 @@ export const productionCoutRepository = {
     const allocation = await this.allocate(planId, coutTotal);
 
     return {
-      coutMatieres, coutEmballages, coutMO, coutEnergie, coutPertes, coutCharges, coutTotal,
+      coutMatieres, coutEmballages, coutMO, coutEnergie, coutPertes, coutCharges, coutSousTraitance, coutTotal,
+      detailSousTraitance,
       coutPrevu, coutPrevuMixReel, ecartMix, ecartPct, chargesMethod: charges.method,
       detailMatieres, detailEmballages, detailMO, detailEnergie, detailPertes, detailCharges,
       allocation,
@@ -497,7 +503,7 @@ export const productionCoutRepository = {
   async calculateAndSave(planId: string, userId: string) {
     const c = await this.computePlanCost(planId);
     const { coutMatieres, coutEmballages, coutMO, coutEnergie, coutPertes, coutCharges, coutPrevu, coutPrevuMixReel, ecartMix, ecartPct,
-      detailMatieres, detailEmballages, detailMO, detailEnergie, detailPertes, detailCharges } = c;
+      detailMatieres, detailEmballages, detailMO, detailEnergie, detailPertes, detailCharges, coutSousTraitance, detailSousTraitance } = c;
 
     // Upsert (mig 268 : + cout_prevu_mix_reel, ecart_mix ; mig 339 : energie/pertes reels ; mig 527 : emballages)
     const result = await db.query(
@@ -506,11 +512,13 @@ export const productionCoutRepository = {
         cout_charges_fixes, detail_charges_fixes,
         cout_prevu, ecart_pct, cout_prevu_mix_reel, ecart_mix,
         detail_matieres, detail_main_oeuvre, detail_energie, detail_pertes,
-        calculated_by, calculated_at, cout_emballages, detail_emballages)
-       VALUES ($1, $2, $3, $13, $14, $4, $5, $6, $7, $11, $12, $8, $9, $15, $16, $10, NOW(), $17, $18)
+        calculated_by, calculated_at, cout_emballages, detail_emballages, cout_sous_traitance, detail_sous_traitance)
+       VALUES ($1, $2, $3, $13, $14, $4, $5, $6, $7, $11, $12, $8, $9, $15, $16, $10, NOW(), $17, $18, $19, $20)
        ON CONFLICT (plan_id)
        DO UPDATE SET
          cout_emballages = EXCLUDED.cout_emballages,
+         cout_sous_traitance = EXCLUDED.cout_sous_traitance,
+         detail_sous_traitance = EXCLUDED.detail_sous_traitance,
          detail_emballages = EXCLUDED.detail_emballages,
          cout_matieres = EXCLUDED.cout_matieres,
          cout_main_oeuvre = EXCLUDED.cout_main_oeuvre,
@@ -537,7 +545,7 @@ export const productionCoutRepository = {
        coutPrevuMixReel, ecartMix,
        coutEnergie, coutPertes,
        JSON.stringify(detailEnergie), JSON.stringify(detailPertes),
-       coutEmballages, JSON.stringify(detailEmballages)]
+       coutEmballages, JSON.stringify(detailEmballages), coutSousTraitance, detailSousTraitance ? JSON.stringify(detailSousTraitance) : null]
     );
     // Charges mensuelles : ce plan change la base de repartition du mois. Les autres plans
     // du mois sont re-repartis, pour que la somme des parts egale les charges saisies.

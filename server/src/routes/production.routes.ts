@@ -10,6 +10,8 @@ const manualConsumptionSchema = z.object({
 import { productionController } from '../controllers/production.controller.js';
 import { printTemplateController } from '../controllers/print-template.controller.js';
 import { planSummaryRepository } from '../repositories/plan-summary.repository.js';
+import { subcontractingRepository, SubcontractError } from '../repositories/subcontracting.repository.js';
+import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { authorizeSettings } from '../middleware/settings-access.middleware.js';
@@ -18,7 +20,7 @@ import { validate, validateQuery, validateUuidParams } from '../middleware/valid
 import {
   createPlanSchema, updateItemsSchema, itemIdsSchema, startItemsSchema, produceItemsSchema,
   completeSchema, cancelItemsSchema, relaunchSchema, addActivitySchema, requestStockVerificationSchema, listQuerySchema, setPolicySchema,
-  createOrderTypeSchema, updateOrderTypeSchema, printTemplateSchema, updatePlanHeaderSchema, mrpPhasedValidateSchema, masterScheduleSchema, itemRecipeSchema,
+  createOrderTypeSchema, updateOrderTypeSchema, printTemplateSchema, subcontractSetupSchema, subcontractShipSchema, updatePlanHeaderSchema, mrpPhasedValidateSchema, masterScheduleSchema, itemRecipeSchema,
 } from '../validators/production.validator.js';
 
 const id = validateUuidParams('id');
@@ -59,11 +61,29 @@ router.get('/print-templates/settings', authenticate, authorizeSettings('product
 router.put('/print-templates/:docType', authenticate, authorizeSettings('production', 'edit'), validate(printTemplateSchema), asyncHandler(printTemplateController.updateBase));
 router.put('/print-templates/:docType/variants/:orderTypeId', authenticate, validateUuidParams('orderTypeId'), authorizeSettings('production', 'edit'), validate(printTemplateSchema), asyncHandler(printTemplateController.upsertVariant));
 router.delete('/print-templates/:docType/variants/:orderTypeId', authenticate, validateUuidParams('orderTypeId'), authorizeSettings('production', 'edit'), asyncHandler(printTemplateController.deleteVariant));
+router.get('/subcontracting', authenticate, can('production.view'), asyncHandler(async (_req, res) => { res.json({ success: true, data: await subcontractingRepository.listOpen() }); }));
 router.get('/policies', authenticate, can('production.view'), asyncHandler(productionController.listPolicies));
 router.put('/policies/:key', authenticate, authorizeSettings('production', 'edit'), validate(setPolicySchema), asyncHandler(productionController.setPolicy));
 router.put('/settings', authenticate, can('production.edit'), asyncHandler(productionController.updateSettings));
 router.post('/transfers/:transferId/receive', authenticate, validateUuidParams('transferId'), can('production.receive'), asyncHandler(productionController.confirmProductionTransfer));
 
+// M9 — sous-traitance : suivi, sous-traitant et façon, bon d'envoi des composants.
+const subcontractError = (res: import('express').Response, e: unknown) => {
+  if (e instanceof SubcontractError) { res.status(e.status).json({ success: false, error: { message: e.message } }); return; }
+  throw e;
+};
+router.get('/:id/subcontract', authenticate, id, can('production.view'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await subcontractingRepository.get(req.params.id as string) });
+}));
+router.put('/:id/subcontract', authenticate, id, can('production.edit'), validate(subcontractSetupSchema), asyncHandler(async (req, res) => {
+  try { res.json({ success: true, data: await subcontractingRepository.setup(req.params.id as string, req.body) }); } catch (e) { subcontractError(res, e); }
+}));
+router.post('/:id/subcontract/ship', authenticate, id, can('production.edit'), validate(subcontractShipSchema), asyncHandler(async (req, res) => {
+  try {
+    const r = await subcontractingRepository.ship(req.params.id as string, (req as AuthRequest).user!.userId, req.body?.notes);
+    res.status(201).json({ success: true, data: r });
+  } catch (e) { subcontractError(res, e); }
+}));
 router.get('/:id/sub-recipe-analysis', authenticate, id, asyncHandler(productionController.analyzeSubRecipes));
 // M8-05 — synthèse chiffrée de l'ordre (quantités, rendement, pertes, coût par pièce), calculée au serveur.
 router.get('/:id/summary', authenticate, id, can('production.view'), asyncHandler(async (req, res) => {

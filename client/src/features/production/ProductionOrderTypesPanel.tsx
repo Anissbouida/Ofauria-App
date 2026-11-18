@@ -46,14 +46,16 @@ export default function ProductionOrderTypesPanel() {
   const edit = (t: ProductionOrderType) => setDraft({
     id: t.id, code: t.code, label: t.label, description: t.description,
     requiresBonSortie: t.requires_bon_sortie, requiresWeighing: t.requires_weighing,
-    requiresQualityCheck: t.requires_quality_check, consumptionMode: t.consumption_mode,
+    requiresQualityCheck: t.requires_quality_check, isSubcontracting: !!t.is_subcontracting, consumptionMode: t.consumption_mode,
     defaultTargetRole: t.default_target_role, isDefault: t.is_default, isActive: t.is_active, displayOrder: t.display_order,
   });
 
   const set = (patch: Partial<Draft>) => setDraft(d => {
     if (!d) return d;
     const next = { ...d, ...patch };
-    // Mêmes règles que le serveur : sans bon de sortie, ni pesage ni consommation au bon.
+    // Mêmes règles que le serveur : sous-traité = ni bon de sortie, ni pesage, matières à la réception.
+    if (next.isSubcontracting) { next.requiresBonSortie = false; next.requiresWeighing = false; next.consumptionMode = 'a_la_declaration'; }
+    // Sans bon de sortie, ni pesage ni consommation au bon.
     if (next.requiresBonSortie === false) {
       next.requiresWeighing = false;
       if (next.consumptionMode === 'au_bon_de_sortie') next.consumptionMode = 'a_la_declaration';
@@ -86,7 +88,7 @@ export default function ProductionOrderTypesPanel() {
             <thead>
               <tr>
                 <th>Code</th><th>Libellé</th><th>Bon de sortie</th><th>Pesage</th><th>Contrôle</th>
-                <th>Consommation</th><th>Atelier par défaut</th><th style={{ textAlign: 'right' }}>Ordres</th><th>État</th>
+                <th>Consommation</th><th>Sous-traité</th><th>Atelier par défaut</th><th style={{ textAlign: 'right' }}>Ordres</th><th>État</th>
                 {canEdit && <th />}
               </tr>
             </thead>
@@ -102,6 +104,7 @@ export default function ProductionOrderTypesPanel() {
                   <td>{yesNo(t.requires_weighing)}</td>
                   <td>{yesNo(t.requires_quality_check)}</td>
                   <td>{CONSUMPTION_MODE_LABELS[t.consumption_mode]}</td>
+                  <td>{yesNo(!!t.is_subcontracting)}</td>
                   <td>{t.default_target_role ? ws.label(t.default_target_role) : '—'}</td>
                   <td style={{ textAlign: 'right' }}>{(t.plan_count ?? 0).toLocaleString('fr-FR')}</td>
                   <td><StatusTag tone={t.is_active ? 'done' : 'draft'} label={t.is_active ? 'Actif' : 'Inactif'} /></td>
@@ -150,7 +153,8 @@ export default function ProductionOrderTypesPanel() {
               </label>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem 1.25rem', fontSize: '0.875rem' }}>
-              <label><input type="checkbox" checked={draft.requiresBonSortie !== false} onChange={(e) => set({ requiresBonSortie: e.target.checked })} /> Bon de sortie</label>
+              <label title="Fabrication confiée à un tiers : envoi des composants, réception du produit fini, coût de façon"><input type="checkbox" checked={!!draft.isSubcontracting} onChange={(e) => set({ isSubcontracting: e.target.checked })} /> Sous-traité</label>
+              <label style={{ opacity: draft.isSubcontracting ? 0.5 : 1 }}><input type="checkbox" disabled={!!draft.isSubcontracting} checked={draft.requiresBonSortie !== false} onChange={(e) => set({ requiresBonSortie: e.target.checked })} /> Bon de sortie</label>
               <label style={{ opacity: draft.requiresBonSortie === false ? 0.5 : 1 }}>
                 <input type="checkbox" disabled={draft.requiresBonSortie === false} checked={!!draft.requiresWeighing} onChange={(e) => set({ requiresWeighing: e.target.checked })} /> Pesage
               </label>

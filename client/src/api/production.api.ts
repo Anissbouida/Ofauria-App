@@ -257,6 +257,8 @@ export interface ProductionOrderType {
   requires_bon_sortie: boolean;
   requires_weighing: boolean;
   requires_quality_check: boolean;
+  /** Sous-traité (M9, mig 584). */
+  is_subcontracting?: boolean;
   consumption_mode: 'au_bon_de_sortie' | 'a_la_declaration' | 'manuel';
   default_target_role: string | null;
   is_default: boolean;
@@ -271,6 +273,7 @@ export interface ProductionOrderTypeInput {
   requiresBonSortie?: boolean;
   requiresWeighing?: boolean;
   requiresQualityCheck?: boolean;
+  isSubcontracting?: boolean;
   consumptionMode?: ProductionOrderType['consumption_mode'];
   defaultTargetRole?: string | null;
   isDefault?: boolean;

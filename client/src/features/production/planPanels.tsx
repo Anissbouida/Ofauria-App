@@ -9,6 +9,7 @@ import QualityPanel from '../controle/QualityPanel';
 import RetroPlanningPanel from './RetroPlanningPanel';
 import EtapesPanel from './EtapesPanel';
 import RendementPanel from './RendementPanel';
+import SubcontractPanel from './SubcontractPanel';
 import { AlertTriangle } from 'lucide-react';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { visiblePanels, type PanelTab, type PlanPanelCtx } from './planPanelRules';
@@ -39,6 +40,7 @@ const RENDER: Record<string, (c: PlanPanelCtx) => ReactNode> = {
   'lot-traceability': c => <PlanLotTraceability usage={c.lotUsage ?? []} />,
   cost: c => <CoutReelPanel planId={c.id} planStatus={c.plan.status} isChef={c.isChef}
     totalQuantity={c.summary?.cost.unitBase} perUnit={c.summary?.cost.perUnit ?? null} />,
+  subcontract: c => <SubcontractPanel planId={c.id} planStatus={c.plan.status as string} canEdit={c.isChef} />,
   'linked-order': c => <PlanLinkedOrder plan={c.plan} />,
   consumption: c => <ConsumptionPanel planId={c.id} mode={(c.plan.order_type_consumption_mode as string) ?? null} canEdit={c.isChef} />,
   'custom-fields': c => <div style={{ margin: '1rem' }}><CustomFieldsCard entity="production_order" id={c.id} /></div>,

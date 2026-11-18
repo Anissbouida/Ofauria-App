@@ -23,6 +23,8 @@ export const PLAN_PANEL_RULES: { id: string; tab: PanelTab; when: (c: PlanPanelC
   // Aucun besoin calculé (produits sans nomenclature) : préparation bloquée.
   { id: 'no-needs', tab: 'preparation', when: c => !!c.hasTabs && c.needsCount === 0 && !c.bonNotNeeded },
   { id: 'lot-traceability', tab: 'preparation', when: c => ['completed', 'in_progress'].includes(c.plan.status as string) },
+  // M9 : sous-traitance, pour un ordre d'un type « sous-traité ».
+  { id: 'subcontract', tab: 'synthese', when: c => !!c.plan.order_type_is_subcontracting },
   { id: 'linked-order', tab: 'synthese', when: c => !!c.plan.order_number },
   { id: 'consumption', tab: 'synthese', when: started },
   { id: 'custom-fields', tab: 'synthese', when: () => true },
