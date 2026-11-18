@@ -2098,6 +2098,18 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **M8-05** : `GET /production/:id/summary` (quantités, rendement moyen et seuil résolu au serveur, pertes, vers frigo, coût par pièce à partir du coût enregistré). En-tête de l'ordre, panneau Rendement et panneau Coûts n'additionnent plus rien. Quantité produite d'une coupe : une formule partagée `cutProducedQuantity` (le serveur recalcule et fait foi, l'aperçu l'emploie). Éditeur de gamme : aperçu de temps et de coût sur une formule partagée `routingOpMinutes`, parité vérifiée en base avec `fn_routing_op_minutes`. Récapitulatif de pointage (Personnel › Pointage) : `GET /attendance/monthly-recap`, même fonction que le bulletin (`monthAttendanceFacts`, extraite de `computeAndSavePayslip`) ; l'écran comptait les doubles 2×, les demi-journées par paires et les lignes prévues, et ignorait congés et fériés — colonne renommée « Salaire au pointage » ; test de parité récapitulatif = bulletin.
 - **M8-06** : option `mode_fournee` (boulangerie) ; paramètres de pâte, coupe et rétro-planning réservés ; rôles pâtisserie réservés à la boulangerie (mig 581) ; pâtons et termes de cuisson du bilan massique sous l'option fournée, « vitrine » du calcul des besoins sous l'option vitrine. Darija déjà sous l'option fiche bilingue.
 
+### M9 — Sous-traitance et numéros de série
+
+| ☐ | Tâche | Objet | Change des chiffres |
+|---|---|---|---|
+| ☑ | M9-01 | Sous-traitance de production | non (façon = 0 hors ordres sous-traités) |
+| ☑ | M9-02 | Numéros de série en fabrication | non |
+| ☐ | M9-03 | Nomenclature fantôme, désassemblage | — |
+
+**Notes M9.** Migrations 584-585. Jeu de référence : zéro écart apres-m8c → apres-m9. Suites : 475 tests unitaires et 650 / 650 en base.
+- **M9-01** : mig 584. Type d'ordre « sous-traité » (`is_subcontracting` : ni bon de sortie ni pesage, matières consommées à la réception) ; l'ordre porte le sous-traitant et le prix de façon par unité ; bon d'envoi des composants numéroté `BES-AAAA-NNNN` (besoins de l'ordre figés à l'envoi) ; réception = déclaration de production habituelle, refusée tant que les composants ne sont pas envoyés, statut à envoyer → envoyé → reçu ; coût de façon = prix × quantité reçue, `production_cout_reel.cout_sous_traitance` inclus dans `cout_total` (colonne calculée redéfinie, valeurs existantes identiques). Panneau Sous-traitance sur l'ordre, case « Sous-traité » des types d'ordre, ligne Façon des coûts. Restent : facture du sous-traitant (passe par les factures fournisseurs ; les demandes d'achat ne portent que des ingrédients), stock physiquement chez le sous-traitant (pas d'emplacement externe).
+- **M9-02** : mig 585. `products.tracking_mode` (lot | serial) ; à la déclaration, un numéro par pièce des lots d'un article suivi par série (saisis, puis `numéro de lot-0001…`), quantité entière exigée, dans la transaction de la déclaration ; `GET /production/:id/serials`, `GET /production/serials/lookup`. Champ Traçabilité de la fiche article, panneau Numéros de série de l'ordre. Restent : saisie des numéros dans la fenêtre de lancement (aujourd'hui générés), statut vendu à la vente.
+
 ### Lots suivants
 
 | ☐ | Lot | Tâches |
@@ -2116,7 +2128,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ☑ | M7 | M7-01 à M7-05 |
 | ◐ | G6 | G6-01 à G6-08 |
 | ☑ | M8 | M8-01 à M8-06 |
-| ☐ | M9 | Sous-traitance, numéros de série |
+| ◐ | M9 | Sous-traitance, numéros de série (M9-01, M9-02 faits) |
 | ☐ | C | C-01 à C-10 (configuration par industrie, au fil des lots M1 à M8) |
 
 ### Jalons d'ouverture par industrie
