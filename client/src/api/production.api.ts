@@ -1,6 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import api from './client';
-import type { ProductionPlanEvent } from '@ofauria/shared';
+import type { ProductionPlanEvent, ProductionPrintDoc, ResolvedPrintTemplate } from '@ofauria/shared';
+
+/** Réglage enregistré d'un gabarit d'impression (M8-04) ; null = hérité. */
+export interface PrintTemplateRow {
+  doc_type: ProductionPrintDoc; label?: string; title: string | null;
+  layout: { columns?: string[]; signatures?: string[] }; footer_note: string | null; updated_at?: string; updated_by_name?: string;
+}
+export interface PrintTemplateInput { title?: string | null; columns?: string[] | null; signatures?: string[] | null; footer?: string | null }
 
 /** Atelier de production (mig 511) : son code est le target_role des plans. */
 export interface Workshop {
@@ -102,6 +109,15 @@ export const productionApi = {
     api.post('/production/order-types', data).then(r => r.data.data),
   updateOrderType: (id: string, data: ProductionOrderTypeInput): Promise<ProductionOrderType> =>
     api.put(`/production/order-types/${id}`, data).then(r => r.data.data),
+  /** Gabarits d'impression résolus pour un type d'ordre (M8-04). */
+  printTemplates: (orderTypeId?: string | null): Promise<Record<ProductionPrintDoc, ResolvedPrintTemplate>> =>
+    api.get('/production/print-templates', { params: orderTypeId ? { orderTypeId } : {} }).then(r => r.data.data),
+  printTemplateSettings: (): Promise<{ base: PrintTemplateRow[]; variants: (PrintTemplateRow & { order_type_id: string; order_type_label: string })[] }> =>
+    api.get('/production/print-templates/settings').then(r => r.data.data),
+  updatePrintTemplate: (docType: ProductionPrintDoc, data: PrintTemplateInput, orderTypeId?: string | null) =>
+    api.put(orderTypeId ? `/production/print-templates/${docType}/variants/${orderTypeId}` : `/production/print-templates/${docType}`, data).then(r => r.data.data),
+  deletePrintTemplateVariant: (docType: ProductionPrintDoc, orderTypeId: string) =>
+    api.delete(`/production/print-templates/${docType}/variants/${orderTypeId}`).then(r => r.data.data),
   /** Priorité et fenêtre planifiée d'un ordre (M2-02). */
   updateHeader: (id: string, data: { priority?: number; plannedStart?: string | null; plannedEnd?: string | null }) =>
     api.put(`/production/${id}/header`, data).then(r => r.data.data),

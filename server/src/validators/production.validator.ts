@@ -183,3 +183,11 @@ export const masterScheduleSchema = z.object({
 
 /** Nomenclature d'une ligne d'ordre (M4-04) : fiche alternative du produit, ou null. */
 export const itemRecipeSchema = z.object({ recipeId: uuid.nullable() });
+
+/** Gabarit d'impression du module (M8-04) : null = revenir à l'héritage pour ce champ. */
+export const printTemplateSchema = z.object({
+  title: z.string().trim().max(120).optional().nullable(),
+  columns: z.array(z.string().max(40)).max(30).optional().nullable(),
+  signatures: z.array(z.string().trim().max(60)).max(6).optional().nullable(),
+  footer: z.string().max(300).optional().nullable(),
+});

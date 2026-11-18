@@ -8,6 +8,7 @@ const manualConsumptionSchema = z.object({
   note: z.string().trim().max(500).nullable().optional(),
 });
 import { productionController } from '../controllers/production.controller.js';
+import { printTemplateController } from '../controllers/print-template.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { authorizeSettings } from '../middleware/settings-access.middleware.js';
@@ -16,7 +17,7 @@ import { validate, validateQuery, validateUuidParams } from '../middleware/valid
 import {
   createPlanSchema, updateItemsSchema, itemIdsSchema, startItemsSchema, produceItemsSchema,
   completeSchema, cancelItemsSchema, relaunchSchema, addActivitySchema, requestStockVerificationSchema, listQuerySchema, setPolicySchema,
-  createOrderTypeSchema, updateOrderTypeSchema, updatePlanHeaderSchema, mrpPhasedValidateSchema, masterScheduleSchema, itemRecipeSchema,
+  createOrderTypeSchema, updateOrderTypeSchema, printTemplateSchema, updatePlanHeaderSchema, mrpPhasedValidateSchema, masterScheduleSchema, itemRecipeSchema,
 } from '../validators/production.validator.js';
 
 const id = validateUuidParams('id');
@@ -51,6 +52,12 @@ router.get('/settings', authenticate, can('production.view'), asyncHandler(produ
 router.get('/order-types', authenticate, can('production.view'), asyncHandler(productionController.listOrderTypes));
 router.post('/order-types', authenticate, authorizeSettings('production', 'edit'), validate(createOrderTypeSchema), asyncHandler(productionController.createOrderType));
 router.put('/order-types/:typeId', authenticate, validateUuidParams('typeId'), authorizeSettings('production', 'edit'), validate(updateOrderTypeSchema), asyncHandler(productionController.updateOrderType));
+// M8-04 — gabarits d'impression (lecture : production ; écriture : droit Paramètres › Production). Avant /:id.
+router.get('/print-templates', authenticate, can('production.view'), asyncHandler(printTemplateController.resolved));
+router.get('/print-templates/settings', authenticate, authorizeSettings('production'), asyncHandler(printTemplateController.settings));
+router.put('/print-templates/:docType', authenticate, authorizeSettings('production', 'edit'), validate(printTemplateSchema), asyncHandler(printTemplateController.updateBase));
+router.put('/print-templates/:docType/variants/:orderTypeId', authenticate, validateUuidParams('orderTypeId'), authorizeSettings('production', 'edit'), validate(printTemplateSchema), asyncHandler(printTemplateController.upsertVariant));
+router.delete('/print-templates/:docType/variants/:orderTypeId', authenticate, validateUuidParams('orderTypeId'), authorizeSettings('production', 'edit'), asyncHandler(printTemplateController.deleteVariant));
 router.get('/policies', authenticate, can('production.view'), asyncHandler(productionController.listPolicies));
 router.put('/policies/:key', authenticate, authorizeSettings('production', 'edit'), validate(setPolicySchema), asyncHandler(productionController.setPolicy));
 router.put('/settings', authenticate, can('production.edit'), asyncHandler(productionController.updateSettings));

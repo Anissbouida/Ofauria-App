@@ -1,5 +1,6 @@
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { defaultPrintTemplate, type ResolvedPrintTemplate } from '@ofauria/shared';
 
 /**
  * Gabarits d'impression du plan de production (ticket de lot, bon de sortie
@@ -11,7 +12,16 @@ export interface PrintSettings {
   subtitle?: string | null;
 }
 
-export function buildTicketHtml(plan: Record<string, any>, item: Record<string, any>, settings: PrintSettings): string {
+/**
+ * M8-04 : titre, colonnes, signatures et mention viennent du gabarit résolu par le serveur
+ * (modèle général ou variante du type d'ordre) ; sans gabarit, impression historique.
+ */
+const esc = (v: unknown) => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+const shows = (t: ResolvedPrintTemplate) => (k: string) => t.columns.includes(k);
+
+export function buildTicketHtml(plan: Record<string, any>, item: Record<string, any>, settings: PrintSettings,
+  tpl: ResolvedPrintTemplate = defaultPrintTemplate('production_ticket')): string {
+  const on = shows(tpl);
   const prodTs = item.production_timestamp || item.produced_at;
   const prodDate = prodTs ? new Date(prodTs as string) : new Date(plan.plan_date);
   const sld = item.shelf_life_days as number;
@@ -58,42 +68,41 @@ body { font-family: Arial, sans-serif; padding: 15px; color: #333; font-size: 12
 
 <div class="product-name">${item.product_name}</div>
 
-<div class="row">
+${on('quantity') ? `<div class="row">
   <span class="label">Quantite produite</span>
   <span class="value">${item.actual_quantity ?? item.planned_quantity}</span>
-</div>
-<div class="row">
+</div>` : ''}
+${on('production_date') ? `<div class="row">
   <span class="label">Date de production</span>
   <span class="value">${format(prodDate, 'dd/MM/yyyy HH:mm')}</span>
-</div>
-<div class="row">
+</div>` : ''}
+${on('produced_by') ? `<div class="row">
   <span class="label">Produit par</span>
   <span class="value">${prodBy}</span>
-</div>
-<div class="row">
+</div>` : ''}
+${on('expiry') ? `<div class="row">
   <span class="label">Date d'expiration</span>
   <span class="value">${dlcDate ? format(dlcDate, 'dd/MM/yyyy') : 'Vente du jour'}</span>
-</div>
-<div class="row">
-  <span class="label">N° Plan</span>
-  <span class="value">${plan.is_semi_finished_plan && (plan.dependency_of as Record<string, any>[])?.length > 0
+</div>` : ''}
+${on('plan_number') ? `<div class="row">
+  <span class="label">N° Ordre</span>
+  <span class="value">${(plan.of_number as string) || (plan.is_semi_finished_plan && (plan.dependency_of as Record<string, any>[])?.length > 0
     ? ((plan.dependency_of as Record<string, any>[])[0].parent_short_id as string || '').toUpperCase()
-    : (plan.id as string).slice(0, 8).toUpperCase()}</span>
-</div>
-<div class="row">
-  <span class="label">Role</span>
+    : (plan.id as string).slice(0, 8).toUpperCase())}</span>
+</div>` : ''}
+${on('workshop') ? `<div class="row">
+  <span class="label">Atelier</span>
   <span class="value">${plan.target_role_label || plan.target_role || '—'}</span>
-</div>
+</div>` : ''}
 
-<div class="cycle ${saleType === 'dlv' ? 'dlv' : saleType === 'commande' ? 'recyclable' : 'vdj'}">
+${on('cycle') ? `<div class="cycle ${saleType === 'dlv' ? 'dlv' : saleType === 'commande' ? 'recyclable' : 'vdj'}">
   ${cycleVie}
-</div>
+</div>` : ''}
 
-<div class="barcode">${lotNumber}</div>
+${on('barcode') ? `<div class="barcode">${lotNumber}</div>` : ''}
 
 <div class="footer">
-  Imprime le ${now}<br/>
-  Conservez ce ticket pour la tracabilite
+  ${esc(tpl.title)} — imprime le ${now}${tpl.footer ? `<br/>${esc(tpl.footer)}` : ''}
 </div>
 </div>
 </body></html>`);
@@ -101,7 +110,9 @@ body { font-family: Arial, sans-serif; padding: 15px; color: #333; font-size: 12
 
 
 /** `shift` : équipe du moment (« Matin » / « Après-midi »), calculée par l'appelant d'après la politique « Coupure d'équipe ». */
-export function buildBsiHtml(plan: Record<string, any>, needs: Record<string, any>[], settings: PrintSettings, planLotPrefix: string, bonNumber: string, shift: string): string {
+export function buildBsiHtml(plan: Record<string, any>, needs: Record<string, any>[], settings: PrintSettings, planLotPrefix: string, bonNumber: string, shift: string,
+  tpl: ResolvedPrintTemplate = defaultPrintTemplate('production_bon_sortie')): string {
+  const on = shows(tpl);
   const dateStr = format(new Date(plan.plan_date as string), 'dd/MM/yyyy');
   const now = format(new Date(), 'dd/MM/yyyy HH:mm');
   const planDate = new Date(plan.plan_date as string);
@@ -197,7 +208,7 @@ tbody tr:nth-child(even) { background: #f9f9f9; }
 <div class="header">
 <h1>${settings.companyName}</h1>
 <h2>${settings.subtitle || ''}</h2>
-<div class="doc-title">Bon de Sortie Ingredients</div>
+<div class="doc-title">${esc(tpl.title)}</div>
 <div class="doc-number">${bsiNumber}</div>
 </div>
 
@@ -217,13 +228,13 @@ tbody tr:nth-child(even) { background: #f9f9f9; }
 <table>
 <thead>
   <tr>
-    <th style="width:28px">#</th>
-    <th style="width:200px">Ingredient</th>
-    <th class="text-right" style="width:75px">Qte requise</th>
-    <th class="text-center" style="width:50px">Unite</th>
-    <th style="width:140px">Lot a utiliser</th>
-    <th class="text-center" style="width:95px">Date d'exp.</th>
-    <th class="text-center" style="width:45px">Servi</th>
+    ${on('index') ? '<th style="width:28px">#</th>' : ''}
+    ${on('ingredient') ? '<th style="width:200px">Article</th>' : ''}
+    ${on('quantity') ? '<th class="text-right" style="width:75px">Qte requise</th>' : ''}
+    ${on('unit') ? '<th class="text-center" style="width:50px">Unite</th>' : ''}
+    ${on('lot') ? '<th style="width:140px">Lot a utiliser</th>' : ''}
+    ${on('expiry') ? '<th class="text-center" style="width:95px">Date d\'exp.</th>' : ''}
+    ${on('served') ? '<th class="text-center" style="width:45px">Servi</th>' : ''}
   </tr>
 </thead>
 <tbody>
@@ -236,48 +247,45 @@ tbody tr:nth-child(even) { background: #f9f9f9; }
         : '';
     return `
     <tr class="${rowClass}">
-      <td class="text-center bold">${idx + 1}</td>
-      <td>${row.ingredientName}${urgencyTag}</td>
-      <td class="text-right bold">${row.neededQty.toFixed(2)}</td>
-      <td class="text-center">${row.unit}</td>
-      <td><span class="lot-badge">${row.lotNumber}</span></td>
-      <td class="text-center">${row.expirationDate}${row.daysUntilExpiry !== null && row.daysUntilExpiry <= 7 ? ' <small>(' + row.daysUntilExpiry + 'j)</small>' : ''}</td>
-      <td class="text-center"><span class="checkbox"></span></td>
+      ${on('index') ? `<td class="text-center bold">${idx + 1}</td>` : ''}
+      ${on('ingredient') ? `<td>${row.ingredientName}${urgencyTag}</td>` : ''}
+      ${on('quantity') ? `<td class="text-right bold">${row.neededQty.toFixed(2)}</td>` : ''}
+      ${on('unit') ? `<td class="text-center">${row.unit}</td>` : ''}
+      ${on('lot') ? `<td><span class="lot-badge">${row.lotNumber}</span></td>` : ''}
+      ${on('expiry') ? `<td class="text-center">${row.expirationDate}${row.daysUntilExpiry !== null && row.daysUntilExpiry <= 7 ? ' <small>(' + row.daysUntilExpiry + 'j)</small>' : ''}</td>` : ''}
+      ${on('served') ? '<td class="text-center"><span class="checkbox"></span></td>' : ''}
     </tr>`;
   }).join('')}
 </tbody>
 </table>
 
-<div class="observations">
+${on('observations') ? `<div class="observations">
 <div class="title">Observations / Ecarts / Substitutions</div>
 <div class="lines">
   <div class="line-row"></div>
   <div class="line-row"></div>
   <div class="line-row"></div>
 </div>
-</div>
+</div>` : ''}
 
-<div class="signatures">
-<div class="sig-block">
-  <div class="title">Chef de production</div>
+${tpl.signatures.length ? `<div class="signatures">
+${tpl.signatures.map((sig, i) => `<div class="sig-block">
+  <div class="title">${esc(sig)}</div>
   <div class="line"></div>
-  <div class="sub">Nom : ${roleLabel}<br/>Signature</div>
-</div>
-<div class="sig-block">
-  <div class="title">Magasinier</div>
-  <div class="line"></div>
-  <div class="sub">Nom : ___________________<br/>Signature & date de remise</div>
-</div>
-</div>
+  <div class="sub">Nom : ${i === 0 ? roleLabel : '___________________'}<br/>Signature${i === tpl.signatures.length - 1 && i > 0 ? ' & date de remise' : ''}</div>
+</div>`).join('')}
+</div>` : ''}
 
 <div class="footer">
-${settings.companyName} — Bon de Sortie Ingredients — ${bsiNumber} — Imprime le ${now}
+${settings.companyName} — ${esc(tpl.title)} — ${bsiNumber} — Imprime le ${now}${tpl.footer ? `<br/>${esc(tpl.footer)}` : ''}
 </div>
 
 </body></html>`);
 }
 
-export function buildFicheHtml(p: Record<string, any>, planItems: Record<string, any>[], settings: PrintSettings, planLotPrefix: string): string {
+export function buildFicheHtml(p: Record<string, any>, planItems: Record<string, any>[], settings: PrintSettings, planLotPrefix: string,
+  tpl: ResolvedPrintTemplate = defaultPrintTemplate('production_fiche')): string {
+  const on = shows(tpl);
   const dateStr = format(new Date(p.plan_date as string), 'dd/MM/yyyy');
   const now = format(new Date(), 'dd/MM/yyyy HH:mm');
 
@@ -332,7 +340,7 @@ td { padding: 6px 10px; border-bottom: 1px solid #eee; }
 <div class="header">
 <h1>${settings.companyName}</h1>
 <h2>${settings.subtitle}</h2>
-<div class="subtitle">Fiche de production</div>
+<div class="subtitle">${esc(tpl.title)}</div>
 </div>
 
 <div class="info">
@@ -367,14 +375,14 @@ td { padding: 6px 10px; border-bottom: 1px solid #eee; }
 <h3>Detail de la production — Tracabilite</h3>
 <table>
   <thead><tr>
-    <th>Produit</th>
-    <th class="text-right">Planifie</th>
-    <th class="text-right">Produit</th>
-    <th class="text-right">Ecart</th>
-    <th class="text-center">Produit par</th>
-    <th class="text-center">Date production</th>
-    <th class="text-center">Date expiration</th>
-    <th class="text-center">Statut</th>
+    ${on('product') ? '<th>Produit</th>' : ''}
+    ${on('planned') ? '<th class="text-right">Planifie</th>' : ''}
+    ${on('produced') ? '<th class="text-right">Produit</th>' : ''}
+    ${on('gap') ? '<th class="text-right">Ecart</th>' : ''}
+    ${on('produced_by') ? '<th class="text-center">Produit par</th>' : ''}
+    ${on('production_date') ? '<th class="text-center">Date production</th>' : ''}
+    ${on('expiry') ? '<th class="text-center">Date expiration</th>' : ''}
+    ${on('status') ? '<th class="text-center">Statut</th>' : ''}
   </tr></thead>
   <tbody>
     ${planItems.map((it: Record<string, any>) => {
@@ -392,23 +400,23 @@ td { padding: 6px 10px; border-bottom: 1px solid #eee; }
       const dlcStr = dlcD ? format(dlcD, 'dd/MM/yyyy', { locale: fr }) : '-';
       return `
       <tr>
-        <td class="bold">${it.product_name}${(it.is_reexposable as boolean) === false ? ' <span style="color:#c05621;font-size:10px">(Non reexp.)</span>' : ''}</td>
-        <td class="text-right">${planned}</td>
-        <td class="text-right bold">${actual}</td>
-        <td class="text-right ${diff > 0 ? 'over' : diff < 0 ? 'warning' : ''}">${diff > 0 ? '+' : ''}${diff}</td>
-        <td class="text-center" style="font-size:11px">${producedByStr}</td>
-        <td class="text-center" style="font-size:11px">${prodDateStr}</td>
-        <td class="text-center" style="font-size:11px">${dlcStr}</td>
-        <td class="text-center"><span class="${statusClass}">${statusLabel}</span></td>
+        ${on('product') ? `<td class="bold">${it.product_name}${(it.is_reexposable as boolean) === false ? ' <span style="color:#c05621;font-size:10px">(Non reexp.)</span>' : ''}</td>` : ''}
+        ${on('planned') ? `<td class="text-right">${planned}</td>` : ''}
+        ${on('produced') ? `<td class="text-right bold">${actual}</td>` : ''}
+        ${on('gap') ? `<td class="text-right ${diff > 0 ? 'over' : diff < 0 ? 'warning' : ''}">${diff > 0 ? '+' : ''}${diff}</td>` : ''}
+        ${on('produced_by') ? `<td class="text-center" style="font-size:11px">${producedByStr}</td>` : ''}
+        ${on('production_date') ? `<td class="text-center" style="font-size:11px">${prodDateStr}</td>` : ''}
+        ${on('expiry') ? `<td class="text-center" style="font-size:11px">${dlcStr}</td>` : ''}
+        ${on('status') ? `<td class="text-center"><span class="${statusClass}">${statusLabel}</span></td>` : ''}
       </tr>`;
     }).join('')}
     <tr style="border-top:2px solid #333; font-weight:bold; background:#f7fafc">
-      <td>TOTAL</td>
-      <td class="text-right">${totalPlanned}</td>
-      <td class="text-right">${totalProduced}</td>
-      <td class="text-right ${totalProduced - totalPlanned >= 0 ? 'ok' : 'warning'}">${totalProduced - totalPlanned > 0 ? '+' : ''}${totalProduced - totalPlanned}</td>
-      <td colspan="3" class="text-center">Taux: ${globalRate}%</td>
-      <td></td>
+      ${tpl.columns.map((k, i) => k === 'planned' ? `<td class="text-right">${totalPlanned}</td>`
+        : k === 'produced' ? `<td class="text-right">${totalProduced}</td>`
+        : k === 'gap' ? `<td class="text-right ${totalProduced - totalPlanned >= 0 ? 'ok' : 'warning'}">${totalProduced - totalPlanned > 0 ? '+' : ''}${totalProduced - totalPlanned}</td>`
+        : i === 0 ? '<td>TOTAL</td>'
+        : k === 'production_date' ? `<td class="text-center">Taux: ${globalRate}%</td>`
+        : '<td></td>').join('')}
     </tr>
   </tbody>
 </table>
@@ -416,23 +424,15 @@ td { padding: 6px 10px; border-bottom: 1px solid #eee; }
 
 ${p.notes ? `<div class="section"><h3>Observations</h3><p style="padding:5px 10px">${p.notes}</p></div>` : ''}
 
-<div class="signatures">
-<div class="sig-block">
+${tpl.signatures.length ? `<div class="signatures">
+${tpl.signatures.map(sig => `<div class="sig-block">
   <div class="line"></div>
-  <p><strong>Chef de production</strong><br/>Signature</p>
-</div>
-<div class="sig-block">
-  <div class="line"></div>
-  <p><strong>Responsable qualite</strong><br/>Signature</p>
-</div>
-<div class="sig-block">
-  <div class="line"></div>
-  <p><strong>Direction</strong><br/>Visa</p>
-</div>
-</div>
+  <p><strong>${esc(sig)}</strong><br/>Signature</p>
+</div>`).join('')}
+</div>` : ''}
 
 <div class="footer">
-${settings.companyName} - Fiche de production - Imprime le ${now}
+${settings.companyName} - ${esc(tpl.title)} - Imprime le ${now}${tpl.footer ? `<br/>${esc(tpl.footer)}` : ''}
 </div>
 
 </body></html>`);

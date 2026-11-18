@@ -10,6 +10,14 @@ import { recipeFicheRepository } from '../repositories/recipe-fiche.repository.j
 import { generateRecipeFichePdf, type FicheFormat } from '../services/recipe-fiche-pdf.service.js';
 import { db } from '../config/database.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
+import { printTemplateRepository } from '../repositories/print-template.repository.js';
+import { loadCompanyLegal } from '../utils/company-legal.js';
+
+/** Gabarit « Fiche technique » (M8-04) : titre et mention paramétrables, raison sociale de la fiche société. */
+async function ficheTemplate() {
+  const [tpl, legal] = await Promise.all([printTemplateRepository.resolve('recipe_fiche'), loadCompanyLegal()]);
+  return { title: tpl.title, footer: tpl.footer, companyName: legal.name };
+}
 
 const num = (v: unknown): number => (v === null || v === undefined ? 0 : parseFloat(String(v)) || 0);
 const numOrNull = (v: unknown): number | null =>
@@ -325,6 +333,7 @@ export const recipeController = {
         })),
         editedAt: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
         logoPath: await resolveLogo(),
+        ...await ficheTemplate(),
       });
 
       const filename = `Fiche technique - ${r.name}.pdf`.replace(/[/\\]/g, '-');

@@ -206,6 +206,7 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "DELETE /production/print-templates/:docType/variants/:orderTypeId": null,
  "DELETE /products/:id": [
   "admin"
  ],
@@ -1640,6 +1641,15 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "GET /production/print-templates": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production/print-templates/settings": null,
  "GET /production/process-referentials": null,
  "GET /production/settings": [
   "admin",
@@ -4744,6 +4754,8 @@
  ],
  "PUT /production/order-types/:typeId": null,
  "PUT /production/policies/:key": null,
+ "PUT /production/print-templates/:docType": null,
+ "PUT /production/print-templates/:docType/variants/:orderTypeId": null,
  "PUT /production/settings": [
   "admin",
   "manager"

@@ -102,6 +102,12 @@ export default function PlanDetailPage() {
   });
   // G1-05 : fonctions de production activées (étapes, rendement, coût de revient).
   const { data: productionSettings } = useQuery({ queryKey: ['production-settings'], queryFn: productionApi.getSettings, staleTime: 5 * 60_000 });
+  // M8-04 : gabarits d'impression du type d'ordre (titre, colonnes, signatures, mention).
+  const { data: printTpl } = useQuery({
+    queryKey: ['production-print-templates', plan?.order_type_id ?? null],
+    queryFn: () => productionApi.printTemplates((plan?.order_type_id as string) ?? null),
+    enabled: !!plan, staleTime: 5 * 60_000,
+  });
   // M1-03 : seuils et coupure d'équipe lus dans les politiques de production (atelier du plan).
   const policies = useProductionPolicies({ workshop: plan?.target_role as string | undefined, store: plan?.store_id as string | undefined });
   const [newNote, setNewNote] = useState('');
@@ -387,7 +393,7 @@ export default function PlanDetailPage() {
   const printProductionTicket = (item: Record<string, any>) => {
     if (!plan) return;
     if (!item.lot_number) { notify.error(NO_LOT_NUMBER); return; }
-    setPrintHtml(buildTicketHtml(plan, item, settings));
+    setPrintHtml(buildTicketHtml(plan, item, settings, printTpl?.production_ticket));
   };
   const printBonSortieIngredients = () => {
     if (!plan) return;
@@ -396,7 +402,7 @@ export default function PlanDetailPage() {
       notify.error("Impression refusée : ce plan n'a pas encore de bon de sortie. Générez le bon de sortie, son numéro est attribué par le serveur.");
       return;
     }
-    setPrintHtml(buildBsiHtml(plan, needs, settings, getPlanLotPrefix(), bonNumber, shiftOf(new Date(), policies.num('production.shift_cutoff', 'hour'))));
+    setPrintHtml(buildBsiHtml(plan, needs, settings, getPlanLotPrefix(), bonNumber, shiftOf(new Date(), policies.num('production.shift_cutoff', 'hour')), printTpl?.production_bon_sortie));
   };
   const printFicheProduction = (planData?: Record<string, any>) => {
     const p = planData || plan;
@@ -405,7 +411,7 @@ export default function PlanDetailPage() {
     const planItems = allowedSlugs
       ? allPrintItems.filter((it) => allowedSlugs.includes(it.category_slug as string))
       : allPrintItems;
-    setPrintHtml(buildFicheHtml(p, planItems, settings, getPlanLotPrefix(p)));
+    setPrintHtml(buildFicheHtml(p, planItems, settings, getPlanLotPrefix(p), printTpl?.production_fiche));
   };
 
   const startMutation = useMutation({

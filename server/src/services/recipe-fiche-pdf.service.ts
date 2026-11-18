@@ -113,6 +113,10 @@ export interface FicheData {
   etapes: FicheEtape[];
   editedAt: string;
   logoPath?: string;
+  /** Gabarit d'impression (M8-04) : titre, mention de pied de page, raison sociale. */
+  title?: string;
+  footer?: string | null;
+  companyName?: string;
 }
 
 function resolveLogoInput(logoPath?: string): string | Buffer | null {
@@ -305,7 +309,7 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
     // Requis pour repasser sur chaque page a la fin et y poser le pied de page
     // avec « n / total » — le total n'est connu qu'une fois tout dessine.
     bufferPages: true,
-    info: { Title: `Fiche technique — ${safe(data.name)}`, Author: 'Ôfauria' },
+    info: { Title: `${safe(data.title || 'Fiche technique')} — ${safe(data.name)}`, Author: safe(data.companyName || '') },
   });
 
   const chunks: Buffer[] = [];
@@ -341,7 +345,7 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
     try { doc.image(logo, M, y, { width: 150, height: 60 }); } catch { /* logo illisible */ }
   }
   doc.font('Helvetica-BoldOblique').fontSize(18).fillColor(BROWN);
-  txt('FICHE TECHNIQUE', M, y + 10, { align: 'right', width: CW });
+  txt((data.title || 'Fiche technique').toUpperCase(), M, y + 10, { align: 'right', width: CW });
   doc.font('Helvetica').fontSize(7.5).fillColor(TEXT_MUTED);
   txt(`Éditée le ${data.editedAt}`, M, y + 34, { align: 'right', width: CW });
   y += 70;
@@ -760,8 +764,9 @@ export async function generateRecipeFichePdf(data: FicheData): Promise<Buffer> {
     doc.switchToPage(range.start + i);
     doc.moveTo(M, PH - 42).lineTo(PW - M, PH - 42).lineWidth(0.5).stroke(BORDER);
     doc.font('Helvetica').fontSize(6.5).fillColor(TEXT_MUTED);
-    doc.text(safe(`Ôfauria — fiche technique « ${data.name} » — éditée le ${data.editedAt}`),
-             M, PH - 35, { width: CW - 60, lineBreak: false });
+    const foot = [data.companyName, `${(data.title || 'Fiche technique').toLowerCase()} « ${data.name} » — éditée le ${data.editedAt}`, data.footer]
+      .filter(Boolean).join(' — ');
+    doc.text(safe(foot), M, PH - 35, { width: CW - 60, lineBreak: false });
     doc.text(`${i + 1} / ${range.count}`, PW - M - 60, PH - 35, { width: 60, align: 'right', lineBreak: false });
   }
   doc.flushPages();
