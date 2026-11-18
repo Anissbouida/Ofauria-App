@@ -40,6 +40,23 @@ const recipeOutputSchema = z.object({
   fixedUnitValue: z.coerce.number().min(0).nullable().optional(),
   sortOrder: z.coerce.number().int().min(0).max(999).optional(),
 });
+// Remplacement en masse (mig 401), outil de mise à jour des substituts et des versions (M4-05).
+const bulkReplacePreviewSchema = z.object({
+  sourceIngredientId: z.string().uuid(),
+  targetIngredientId: z.string().uuid(),
+}).refine(b => b.sourceIngredientId !== b.targetIngredientId, { message: 'La source et la cible doivent être différentes' });
+const bulkReplaceApplySchema = z.object({
+  sourceIngredientId: z.string().uuid(),
+  targetIngredientId: z.string().uuid(),
+  mode: z.enum(['replace', 'substitute']).default('replace'),
+  ratio: z.coerce.number().positive().max(1000).default(1),
+  recipeIds: z.array(z.string().uuid()).max(2000).nullable().optional(),
+  priority: z.coerce.number().int().min(1).max(99).default(1),
+  validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  validTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  activateVersions: z.boolean().optional(),
+  reason: z.string().trim().max(1000).optional(),
+}).refine(b => b.sourceIngredientId !== b.targetIngredientId, { message: 'La source et la cible doivent être différentes' });
 const activateBomVersionSchema = z.object({
   reason: z.string().trim().min(3, 'Motif requis').max(1000),
   validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -196,8 +213,8 @@ router.post('/bulk-restore', authenticate, can('recipes.bulk_restore'), validate
 
 // Remplacement de composant en masse A→B, annulable (mig 401) — roadmap lot 6
 router.get('/bulk-replace/logs', authenticate, can('recipes.bulk_replace_logs.view'), recipeController.bulkReplaceLogs);
-router.post('/bulk-replace/preview', authenticate, can('recipes.bulk_replace.preview'), recipeController.bulkReplacePreview);
-router.post('/bulk-replace/apply', authenticate, can('recipes.apply'), recipeController.bulkReplaceApply);
-router.post('/bulk-replace/:logId/revert', authenticate, can('recipes.revert'), recipeController.bulkReplaceRevert);
+router.post('/bulk-replace/preview', authenticate, can('recipes.bulk_replace.preview'), validate(bulkReplacePreviewSchema), recipeController.bulkReplacePreview);
+router.post('/bulk-replace/apply', authenticate, can('recipes.apply'), validate(bulkReplaceApplySchema), asyncHandler(recipeController.bulkReplaceApply));
+router.post('/bulk-replace/:logId/revert', authenticate, can('recipes.revert'), validateUuidParams('logId'), recipeController.bulkReplaceRevert);
 
 export default router;

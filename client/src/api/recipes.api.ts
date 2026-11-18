@@ -195,22 +195,30 @@ export const recipesApi = {
     total_cost: number;
   }),
 
-  // Remplacement de composant en masse A→B, annulable (mig 401) — roadmap lot 6
+  // Remplacement de composant en masse A→B, annulable (mig 401) ; outil de mise à jour des
+  // substituts et des versions de nomenclature (M4-05, mig 594).
   bulkReplacePreview: (sourceIngredientId: string, targetIngredientId: string) =>
     api.post('/recipes/bulk-replace/preview', { sourceIngredientId, targetIngredientId }).then(r => r.data.data as {
       source: { id: string; name: string; unit: string } | null;
       target: { id: string; name: string; unit: string } | null;
       unit_mismatch: boolean;
-      recipes: { id: string; name: string; occurrences: number }[];
+      recipes: { id: string; name: string; occurrences: number; active_version: number | null }[];
       recipes_count: number; rows_count: number;
     }),
-  bulkReplaceApply: (sourceIngredientId: string, targetIngredientId: string) =>
-    api.post('/recipes/bulk-replace/apply', { sourceIngredientId, targetIngredientId }).then(r => r.data.data as { rows_count: number; recipes_count: number; log_id: string | null }),
+  bulkReplaceApply: (input: {
+    sourceIngredientId: string; targetIngredientId: string; mode: 'replace' | 'substitute'; ratio: number;
+    recipeIds: string[] | null; priority?: number; activateVersions?: boolean; reason?: string;
+  }) =>
+    api.post('/recipes/bulk-replace/apply', input).then(r => r.data.data as {
+      rows_count: number; recipes_count: number; log_id: string | null; mode: 'replace' | 'substitute';
+      versions: { recipe_id: string; version_no?: number; pending?: boolean; error?: string }[];
+    }),
   bulkReplaceRevert: (logId: string) =>
     api.post(`/recipes/bulk-replace/${logId}/revert`).then(r => r.data.data as { ok: boolean; restored: number }),
   bulkReplaceLogs: () =>
     api.get('/recipes/bulk-replace/logs').then(r => r.data.data as {
       id: string; recipes_count: number; rows_count: number; performed_at: string; reverted_at: string | null;
+      mode: 'replace' | 'substitute'; ratio: number; activated_versions: number;
       source_name: string; target_name: string; performed_by_name: string | null;
     }[]),
   getByProductId: (productId: string) => api.get(`/recipes/by-product/${productId}`).then(r => r.data.data),

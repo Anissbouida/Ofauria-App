@@ -4,6 +4,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { recipeRepository } from '../repositories/recipe.repository.js';
+import { activateBomVersion } from '../services/bom-version-activation.js';
 import { restoreRecipeVersion, RecipeRestoreError } from '../repositories/recipe-restore.helper.js';
 
 import { recipeFicheRepository } from '../repositories/recipe-fiche.repository.js';
@@ -153,17 +154,30 @@ export const recipeController = {
 
   // ─── Remplacement de composant en masse A→B, annulable (mig 401) — lot 6 ───
   async bulkReplacePreview(req: AuthRequest, res: Response) {
-    const b = req.body as Record<string, unknown>;
-    if (!b.sourceIngredientId || !b.targetIngredientId) { res.status(400).json({ success: false, error: { message: 'Ingrédient source et cible requis' } }); return; }
-    if (b.sourceIngredientId === b.targetIngredientId) { res.status(400).json({ success: false, error: { message: 'La source et la cible doivent être différentes' } }); return; }
-    const data = await recipeRepository.previewBulkReplace(String(b.sourceIngredientId), String(b.targetIngredientId));
+    const b = req.body as { sourceIngredientId: string; targetIngredientId: string };
+    const data = await recipeRepository.previewBulkReplace(b.sourceIngredientId, b.targetIngredientId);
     res.json({ success: true, data });
   },
   async bulkReplaceApply(req: AuthRequest, res: Response) {
-    const b = req.body as Record<string, unknown>;
-    if (!b.sourceIngredientId || !b.targetIngredientId) { res.status(400).json({ success: false, error: { message: 'Ingrédient source et cible requis' } }); return; }
-    const data = await recipeRepository.applyBulkReplace(String(b.sourceIngredientId), String(b.targetIngredientId), req.user!.userId);
-    res.json({ success: true, data });
+    const b = req.body as { sourceIngredientId: string; targetIngredientId: string; mode: 'replace' | 'substitute'; ratio: number;
+      recipeIds?: string[] | null; priority: number; validFrom?: string | null; validTo?: string | null; activateVersions?: boolean; reason?: string };
+    const data = await recipeRepository.applyBulkReplace(b.sourceIngredientId, b.targetIngredientId, req.user!.userId,
+      { mode: b.mode, ratio: b.ratio, recipeIds: b.recipeIds ?? null, priority: b.priority, validFrom: b.validFrom, validTo: b.validTo });
+    // M4-05 : nouvelle version des fiches modifiées, par le circuit d'approbation (M4-03).
+    const versions: { recipe_id: string; version_no?: number; pending?: boolean; error?: string }[] = [];
+    if (b.activateVersions && data.mode === 'replace' && data.log_id) {
+      const reason = b.reason?.trim() || 'Remplacement en masse';
+      for (const recipeId of data.recipe_ids) {
+        try {
+          const v = await activateBomVersion(recipeId, { reason }, req.user!.userId) as { version_no?: number; pending?: boolean };
+          versions.push({ recipe_id: recipeId, version_no: v.version_no, pending: !!v.pending });
+        } catch (e) {
+          versions.push({ recipe_id: recipeId, error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      await recipeRepository.markBulkReplaceVersions(data.log_id, versions.filter(v => v.version_no && !v.pending && !v.error).length);
+    }
+    res.json({ success: true, data: { ...data, versions } });
   },
   async bulkReplaceRevert(req: AuthRequest, res: Response) {
     const result = await recipeRepository.revertBulkReplace(req.params.logId as string, req.user!.userId);

@@ -179,8 +179,6 @@
  "POST recipes /:id/restore",
  "POST recipes /:id/versions/:versionNumber/restore",
  "POST recipes /bulk-replace/:logId/revert",
- "POST recipes /bulk-replace/apply",
- "POST recipes /bulk-replace/preview",
  "POST recipes /import/commit",
  "POST recipes /import/preview",
  "POST reconciliation /darija",
