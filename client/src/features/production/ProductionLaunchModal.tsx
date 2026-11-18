@@ -211,6 +211,9 @@ export default function ProductionLaunchModal({
   const confirmDialog = useConfirm();
   const [cutMode, setCutMode] = useState<Record<string, boolean>>({});
   const [cutLines, setCutLines] = useState<Record<string, CutLine[]>>({});
+  // M9 : numéros de série saisis (articles suivis par série) ; le reste est numéroté d'après le lot.
+  const [serialInputs, setSerialInputs] = useState<Record<string, string>>({});
+  const serialsOf = (itemId: string) => (serialInputs[itemId] ?? '').split(/[\n,;]+/).map(x => x.trim()).filter(Boolean);
   // Catalogue pour choisir le produit d'une sortie de coupe (charge seulement si besoin).
   const { data: cutProductsData } = useQuery({
     queryKey: ['products', 'cut-outputs'],
@@ -384,6 +387,7 @@ export default function ProductionLaunchModal({
             planItemId: itemId,
             actualQuantity: actuals[itemId] || 0,
             ...(outputs.length > 0 ? { outputs } : {}),
+            ...(serialsOf(itemId).length > 0 ? { serials: serialsOf(itemId) } : {}),
           };
         })
         .filter((i) => i.actualQuantity > 0);
@@ -1582,6 +1586,27 @@ export default function ProductionLaunchModal({
   // pieces chacun prend dans le cadre ; la quantite produite devient la somme
   // en pieces equivalentes. Les sorties deja utilisees pour ce produit sont
   // proposees d'un clic.
+  /** M9 : saisie facultative des numéros de série (article suivi par série). */
+  const renderSerialSection = (item: Record<string, any>) => {
+    if (item.tracking_mode !== 'serial') return null;
+    const id = item.id as string;
+    const qty = actuals[id] ?? (item.planned_quantity as number) ?? 0;
+    const typed = serialsOf(id).length;
+    return (
+      <div className="mt-3 rounded-xl border border-gray-200 p-3">
+        <label className="block text-xs font-medium text-gray-600" htmlFor={`serials-${id}`}>
+          Numéros de série (facultatif, un par ligne)
+        </label>
+        <textarea id={`serials-${id}`} rows={3} className="w-full mt-1 px-2 py-1 border border-gray-200 rounded text-sm font-mono"
+          value={serialInputs[id] ?? ''} onChange={(e) => setSerialInputs(prev => ({ ...prev, [id]: e.target.value }))}
+          placeholder="Laisser vide : numérotation automatique d'après le lot" />
+        <p className={`text-[11px] mt-1 ${typed > qty ? 'text-red-600' : 'text-gray-400'}`}>
+          {typed} saisi(s) pour {qty} pièce(s){typed < qty ? ` — ${qty - typed} numéroté(s) automatiquement` : typed > qty ? ' — trop de numéros' : ''}
+        </p>
+      </div>
+    );
+  };
+
   const renderCutSection = (item: Record<string, any>) => {
     if (!item.product_id) return null;
     // M8-06 : coupe d'un cadre (pâtisserie) seulement avec l'option « fournée » ; les sorties
@@ -2172,6 +2197,7 @@ export default function ProductionLaunchModal({
                     </div>
 
                     {renderCutSection(item)}
+                    {renderSerialSection(item)}
 
 
                     {hasLoss && (
@@ -2296,6 +2322,7 @@ export default function ProductionLaunchModal({
                     </div>
 
                     {renderCutSection(item)}
+                    {renderSerialSection(item)}
 
 
                     {hasLoss && (
