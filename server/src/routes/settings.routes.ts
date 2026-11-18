@@ -6,6 +6,7 @@ import { auditLogController } from '../controllers/audit-log.controller.js';
 import { documentSequenceController } from '../controllers/document-sequence.controller.js';
 import { parametersController } from '../controllers/parameters.controller.js';
 import { companyController } from '../controllers/company.controller.js';
+import { vocabularyController, vocabularySchema } from '../controllers/vocabulary.controller.js';
 import { documentsNotificationsController as docs } from '../controllers/documents-notifications.controller.js';
 import { dataController } from '../controllers/data.controller.js';
 import { approvalRulesController } from '../controllers/approval-rules.controller.js';
@@ -15,6 +16,7 @@ import multer from 'multer';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { authorizeSettings, authorizeSettingsUpdate } from '../middleware/settings-access.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { validate } from '../middleware/validate.middleware.js';
 import { unitsRepository } from '../repositories/units.repository.js';
 
 const router = Router();
@@ -63,6 +65,10 @@ router.put('/parameters/:key', authenticate, jsonParser, asyncHandler(parameters
 // hors secteur côté client) ; PUT réservé à la direction (droit « Société »).
 router.get('/sector', authenticate, asyncHandler(companyController.sector));
 router.put('/sector', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.setSector));
+// M8-03 — vocabulaire : termes du secteur renommés par la société (mig 583).
+router.get('/vocabulary', authenticate, authorizeSettings('company', 'view'), asyncHandler(vocabularyController.list));
+router.put('/vocabulary/:key', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(vocabularySchema), asyncHandler(vocabularyController.set));
+router.delete('/vocabulary/:key', authenticate, authorizeSettings('company', 'edit'), asyncHandler(vocabularyController.reset));
 // Activation des modules et options (mig 507) : secteur = préréglage + ajustements.
 router.get('/modules', authenticate, authorizeSettings('company', 'view'), asyncHandler(companyController.modules));
 router.put('/modules', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.saveModules));

@@ -311,6 +311,7 @@
  "DELETE /settings/api-keys/:id": null,
  "DELETE /settings/approval-rules/:code": null,
  "DELETE /settings/sectors/:code": null,
+ "DELETE /settings/vocabulary/:key": null,
  "DELETE /settings/webhooks/:id": null,
  "DELETE /stock-locations/:id": [
   "admin",
@@ -2237,6 +2238,7 @@
  "GET /settings/setup": null,
  "GET /settings/tax-codes": null,
  "GET /settings/units": null,
+ "GET /settings/vocabulary": null,
  "GET /settings/webhooks": null,
  "GET /shifts": null,
  "GET /stock-counts": [
@@ -4963,6 +4965,7 @@
  "PUT /settings/parameters/:key": null,
  "PUT /settings/sector": null,
  "PUT /settings/tax-codes/:id": null,
+ "PUT /settings/vocabulary/:key": null,
  "PUT /settings/webhooks/:id": null,
  "PUT /stock-counts/:id/lines/:lineId": [
   "admin",

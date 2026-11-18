@@ -191,8 +191,35 @@ export const sectorRepository = {
     return def[0] ? mapPack(def[0]) : { code: 'boulangerie', label: 'Boulangerie / Pâtisserie', modules: [], is_default: true, features: [] };
   },
 
-  /** Libellés d'un secteur (phase 9.1) : clé neutre → valeur affichée. */
+  /** Termes effectifs (phase 9.1) : ceux du secteur, puis ceux renommés par la société (mig 583). */
   async labels(code: string): Promise<Record<string, string>> {
+    const [sector, company] = await Promise.all([this.sectorLabels(code), this.labelOverrides()]);
+    return { ...sector, ...Object.fromEntries(company.map(o => [o.label_key, o.label_value])) };
+  },
+
+  /** Termes renommés par la société (vide si la migration 583 n'est pas passée). */
+  async labelOverrides(): Promise<{ label_key: string; label_value: string; updated_at: string; updated_by_name: string | null }[]> {
+    const ok = (await db.query(`SELECT to_regclass('public.company_label_overrides') IS NOT NULL AS ok`)).rows[0].ok;
+    if (!ok) return [];
+    return (await db.query(
+      `SELECT o.label_key, o.label_value, o.updated_at, NULLIF(concat_ws(' ', u.first_name, u.last_name), '') AS updated_by_name
+         FROM company_label_overrides o LEFT JOIN users u ON u.id = o.updated_by ORDER BY o.label_key`)).rows;
+  },
+
+  async setLabelOverride(key: string, value: string, userId: string) {
+    return (await db.query(
+      `INSERT INTO company_label_overrides (label_key, label_value, updated_by) VALUES ($1::text, $2::text, $3::uuid)
+       ON CONFLICT (label_key) DO UPDATE SET label_value = EXCLUDED.label_value, updated_by = EXCLUDED.updated_by, updated_at = now()
+       RETURNING label_key, label_value`, [key, value.trim(), userId])).rows[0];
+  },
+
+  /** Retour au terme du secteur. */
+  async resetLabelOverride(key: string): Promise<boolean> {
+    return (await db.query(`DELETE FROM company_label_overrides WHERE label_key = $1::text RETURNING 1`, [key])).rows.length > 0;
+  },
+
+  /** Termes du secteur seul (préréglage), sans les renommages de la société. */
+  async sectorLabels(code: string): Promise<Record<string, string>> {
     // M8-03 : un secteur personnalisé hérite des libellés de son secteur de base, puis les surcharge.
     const { rows } = await db.query(
       `SELECT l.label_key, l.label_value, (l.sector_pack = $1) AS own

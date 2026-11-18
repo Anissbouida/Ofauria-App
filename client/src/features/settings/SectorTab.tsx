@@ -10,6 +10,7 @@ import { settingsApi, type HealthRecommendation, type HealthReport, type ConfigM
 import { OdooToggle, SettingItem, SettingsSection, SettingsTabs } from './SettingsPrimitives';
 import { useDirtyForm } from './DirtyForms';
 import RolloutDialog from './RolloutDialog';
+import VocabularyPanel from './VocabularyPanel';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -42,7 +43,7 @@ function mergeOverrides(base: Record<string, boolean>, changes: Record<string, b
 export default function SectorTab() {
   const qc = useQueryClient();
   const confirm = useConfirm();
-  const { reload } = usePermissions();
+  const { reload, canEdit } = usePermissions();
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [keepAdjustments, setKeepAdjustments] = useState(true);
   const [rolloutFor, setRolloutFor] = useState<AppModule | null>(null);
@@ -592,6 +593,7 @@ export default function SectorTab() {
       ))}
           </>
         ) },
+        { key: 'vocabulary', label: 'Vocabulaire', content: <VocabularyPanel canEdit={canEdit('settings')} /> },
         { key: 'templates', label: 'Modèles et assistant', content: (
           <>
       <SettingsSection
