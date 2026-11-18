@@ -2110,6 +2110,30 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **M9-01** : mig 584. Type d'ordre « sous-traité » (`is_subcontracting` : ni bon de sortie ni pesage, matières consommées à la réception) ; l'ordre porte le sous-traitant et le prix de façon par unité ; bon d'envoi des composants numéroté `BES-AAAA-NNNN` (besoins de l'ordre figés à l'envoi) ; réception = déclaration de production habituelle, refusée tant que les composants ne sont pas envoyés, statut à envoyer → envoyé → reçu ; coût de façon = prix × quantité reçue, `production_cout_reel.cout_sous_traitance` inclus dans `cout_total` (colonne calculée redéfinie, valeurs existantes identiques). Panneau Sous-traitance sur l'ordre, case « Sous-traité » des types d'ordre, ligne Façon des coûts. Restent : facture du sous-traitant (passe par les factures fournisseurs ; les demandes d'achat ne portent que des ingrédients), stock physiquement chez le sous-traitant (pas d'emplacement externe).
 - **M9-02** : mig 585. `products.tracking_mode` (lot | serial) ; à la déclaration, un numéro par pièce des lots d'un article suivi par série (saisis, puis `numéro de lot-0001…`), quantité entière exigée, dans la transaction de la déclaration ; `GET /production/:id/serials`, `GET /production/serials/lookup`. Champ Traçabilité de la fiche article, panneau Numéros de série de l'ordre. Restent : saisie des numéros dans la fenêtre de lancement (aujourd'hui générés), statut vendu à la vente.
 
+### C — Configuration par industrie
+
+| ☐ | Tâche | Objet | Change des chiffres |
+|---|---|---|---|
+| ◐ | C-01 | Modèle de configuration étendu | non |
+| ☐ | C-02 | « Exportable et livré dans un profil » dans la définition de fini | — (règle, voir guide) |
+| ◐ | C-03 | Écran « Profil d'industrie » | non |
+| ◐ | C-04 | Bilan de santé enrichi | non |
+| ☑ | C-05 | Trois profils de référence | non (données de départ à la demande) |
+| ◐ | C-06 | Test d'acceptation par profil | non |
+| ☑ | C-07 | Garde « jamais le secteur » | non |
+| ☐ | C-08 | Mise en route guidée étendue | — |
+| ☐ | C-09 | Aperçu d'impact étendu | — |
+| ☑ | C-10 | Guide « Configurer une industrie » | non |
+
+**Notes C.** Migration 586. Jeu de référence : zéro écart apres-m9 → apres-c. Suites : 477 tests unitaires serveur, 23 client, 654 / 654 en base.
+- **C-01** : modèle `kalum.config` version 2 (v1 accepté) avec les couches production (`services/industry-profile.ts`) : types d'ordre, politiques société, gabarits d'impression ; import filtré (codes, règles bon de sortie / sous-traitance, politiques validées par le catalogue, colonnes du catalogue) ; `sector_packs.profile`, appliqué par « Charger les données de départ » sans rien écraser. Restent les couches unités, gammes types, emplacements, plans de contrôle, panneaux.
+- **C-05** : mig 586, profils `process`, `discret`, `atelier` bâtis sur Fabrication (modules, options, vocabulaire neutre hérités ; données de départ de Fabrication) avec types d'ordre, politiques, impressions et vocabulaire propres selon la matrice 2 ter.5. Valeurs proposées, à relire avec une personne du métier.
+- **C-03** : la confirmation de bascule montre ce que le profil apporte ; aperçu des données de départ de n'importe quel profil. Restent les tuiles par couche et l'indicateur d'avancement.
+- **C-04** : contrôles type d'ordre ↔ modules masqués, sous-traitance sans fournisseur, étapes « par gamme » sans gamme, termes de boulangerie affichés hors boulangerie.
+- **C-06** : test en base : aucun terme ni option de boulangerie dans les profils livrés, couches valides, un type par défaut. Restent le déroulé complet d'un ordre par profil et le test d'écran.
+- **C-07** : `never-sector-guard.test.ts`, aucune exception.
+- **C-10** : `docs/GUIDE_CONFIGURATION_INDUSTRIE.md`.
+
 ### Lots suivants
 
 | ☐ | Lot | Tâches |
@@ -2129,7 +2153,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ◐ | G6 | G6-01 à G6-08 |
 | ☑ | M8 | M8-01 à M8-06 |
 | ◐ | M9 | Sous-traitance, numéros de série (M9-01, M9-02 faits) |
-| ☐ | C | C-01 à C-10 (configuration par industrie, au fil des lots M1 à M8) |
+| ◐ | C | C-01 à C-10 (C-05, C-07, C-10 faits ; C-01, C-03, C-04, C-06 partiels) |
 
 ### Jalons d'ouverture par industrie
 
