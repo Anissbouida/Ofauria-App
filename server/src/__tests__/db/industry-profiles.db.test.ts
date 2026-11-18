@@ -49,6 +49,24 @@ describe.skipIf(!hasTestDb)('Profils d\'industrie (C-01, C-05)', () => {
     expect(def.atelier).toMatchObject({ code: 'ORDRE_AFFAIRE', consumption_mode: 'manuel' });
   });
 
+  it('acceptation (C-06) : aucun terme ni option de boulangerie dans les profils livrés', async () => {
+    const sector = (await import('../../repositories/sector.repository.js')).sectorRepository;
+    const BAKERY = /fournée|recette|plan de production|préparation de base|vitrine|pâton/i;
+    for (const code of ['process', 'discret', 'atelier']) {
+      const labels = await sector.labels(code);
+      for (const k of ['production_plan', 'production_plans', 'new_plan', 'recipe', 'recipes', 'batch', 'base_preps', 'yield']) {
+        expect(labels[k], `${code}.${k}`).toBeTruthy();
+        expect(labels[k], `${code}.${k}`).not.toMatch(BAKERY);
+      }
+      const pack = (await p().query(`SELECT features, profile FROM sector_packs WHERE code = $1`, [code])).rows[0];
+      expect(pack.features.filter((f: string) => ['mode_fournee', 'vitrine', 'dlc_jour', 'fiche_masterclass', 'ccp_cuisson'].includes(f)), code).toEqual([]);
+      const warnings: string[] = [];
+      const layers = prof.cleanLayers(pack.profile, warnings);
+      expect(warnings, code).toEqual([]);
+      expect(layers.order_types.filter(t => t.is_default)).toHaveLength(1);
+    }
+  });
+
   it('chargement du profil « discret » : couches créées une fois, rien d\'écrasé', async () => {
     const preview = await starter.sectorStarterPreview('discret');
     expect(preview.items.join(' | ')).toMatch(/Types d'ordre : Ordre de série \(par défaut\), Sous-traitance/);
