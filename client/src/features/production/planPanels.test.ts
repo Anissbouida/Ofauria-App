@@ -20,6 +20,11 @@ describe('Registre des panneaux de l\'ordre (M8-01)', () => {
     expect(visible({ plan: { status: 'draft' } }, 'synthese')).toEqual(['custom-fields', 'history']);
     expect(visible({ plan: { status: 'completed', order_number: 'C-1' } }, 'synthese')).toEqual(['linked-order', 'consumption', 'custom-fields', 'history', 'quality']);
   });
+  it('préparation et coûts', () => {
+    expect(visible({ plan: { status: 'in_progress' }, activeBon: true } as never, 'preparation' as never)).toEqual(['bon-sortie', 'lot-traceability']);
+    expect(visible({ plan: { status: 'confirmed' }, activeBon: false } as never, 'preparation' as never)).toEqual([]);
+    expect(visible({ plan: { status: 'completed' }, productionSettings: { production_cost_enabled: false } } as never, 'couts' as never)).toEqual([]);
+  });
   it('étapes et rendement selon le paramétrage', () => {
     expect(visible({ plan: { status: 'completed' } }, 'production')).toEqual(['steps', 'yield']);
     expect(visible({ plan: { status: 'completed' }, productionSettings: { production_steps_enabled: false, production_yield_enabled: false } }, 'production')).toEqual([]);

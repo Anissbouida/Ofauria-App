@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
-import { PlanLinkedOrder } from './plan-sections';
+import { PlanLinkedOrder, PlanLotTraceability } from './plan-sections';
+import { BonSortiePanel } from './BonSortiePanel';
+import CoutReelPanel from './CoutReelPanel';
 import ConsumptionPanel from './ConsumptionPanel';
 import CustomFieldsCard from '../../components/custom-fields/CustomFieldsCard';
 import HistoryPanel from '../../components/audit/HistoryPanel';
@@ -15,6 +17,10 @@ import { visiblePanels, type PanelTab, type PlanPanelCtx } from './planPanelRule
  * règle + un rendu.
  */
 const RENDER: Record<string, (c: PlanPanelCtx) => ReactNode> = {
+  'bon-sortie': c => <div style={{ margin: '1rem' }}><BonSortiePanel planId={c.id} isChef={c.isChef} isMagasinier={!!c.isMagasinier} variant="inline" /></div>,
+  'lot-traceability': c => <PlanLotTraceability usage={c.lotUsage ?? []} />,
+  cost: c => <CoutReelPanel planId={c.id} planStatus={c.plan.status} isChef={c.isChef}
+    totalQuantity={c.items.reduce((s: number, it) => s + ((it.actual_quantity as number) || (it.planned_quantity as number) || 0), 0)} />,
   'linked-order': c => <PlanLinkedOrder plan={c.plan} />,
   consumption: c => <ConsumptionPanel planId={c.id} mode={(c.plan.order_type_consumption_mode as string) ?? null} canEdit={c.isChef} />,
   'custom-fields': c => <div style={{ margin: '1rem' }}><CustomFieldsCard entity="production_order" id={c.id} /></div>,
@@ -25,6 +31,8 @@ const RENDER: Record<string, (c: PlanPanelCtx) => ReactNode> = {
   yield: c => <div id="plan-rendement"><RendementPanel planId={c.id} planStatus={c.plan.status} items={c.items as never} isChef={c.isChef} workshop={c.plan.target_role as string | null} storeId={c.plan.store_id as string | null} /></div>,
 };
 
-export function PlanPanels({ tab, ctx }: { tab: PanelTab; ctx: PlanPanelCtx }) {
-  return <>{visiblePanels(tab, ctx).map(id => <div key={id} data-panel={id}>{RENDER[id]?.(ctx)}</div>)}</>;
+/** `only` : sous-ensemble des panneaux de l'onglet, quand la page intercale d'autres blocs. */
+export function PlanPanels({ tab, ctx, only }: { tab: PanelTab; ctx: PlanPanelCtx; only?: string[] }) {
+  const ids = visiblePanels(tab, ctx).filter(id => !only || only.includes(id));
+  return <>{ids.map(id => <div key={id} data-panel={id}>{RENDER[id]?.(ctx)}</div>)}</>;
 }

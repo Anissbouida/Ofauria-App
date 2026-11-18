@@ -5,12 +5,16 @@
 export type PlanPanelCtx = {
   plan: Record<string, any>; id: string; isChef: boolean; items: Record<string, any>[];
   productionSettings?: Record<string, any> | null; hasFeature: (k: string) => boolean;
+  isMagasinier?: boolean; isSemiFini?: boolean; activeBon?: boolean; lotUsage?: Record<string, any>[];
 };
-export type PanelTab = 'synthese' | 'production';
+export type PanelTab = 'preparation' | 'synthese' | 'production' | 'couts';
 
 const started = (c: PlanPanelCtx) => ['in_progress', 'completed', 'confirmed'].includes(c.plan.status as string);
 
 export const PLAN_PANEL_RULES: { id: string; tab: PanelTab; when: (c: PlanPanelCtx) => boolean }[] = [
+  // Bon de sortie : seulement quand l'ordre en a un (type d'ordre avec bon de sortie, M2-03).
+  { id: 'bon-sortie', tab: 'preparation', when: c => !c.isSemiFini && !!c.activeBon },
+  { id: 'lot-traceability', tab: 'preparation', when: c => ['completed', 'in_progress'].includes(c.plan.status as string) },
   { id: 'linked-order', tab: 'synthese', when: c => !!c.plan.order_number },
   { id: 'consumption', tab: 'synthese', when: started },
   { id: 'custom-fields', tab: 'synthese', when: () => true },
@@ -20,6 +24,7 @@ export const PLAN_PANEL_RULES: { id: string; tab: PanelTab; when: (c: PlanPanelC
   { id: 'retro-planning', tab: 'production', when: c => c.plan.status === 'in_progress' && c.hasFeature('vitrine') },
   { id: 'steps', tab: 'production', when: c => c.productionSettings?.production_steps_enabled !== false },
   { id: 'yield', tab: 'production', when: c => c.productionSettings?.production_yield_enabled !== false },
+  { id: 'cost', tab: 'couts', when: c => c.productionSettings?.production_cost_enabled !== false },
 ];
 
 export const visiblePanels = (tab: PanelTab, c: PlanPanelCtx) => PLAN_PANEL_RULES.filter(p => p.tab === tab && p.when(c)).map(p => p.id);

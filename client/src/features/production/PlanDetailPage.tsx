@@ -13,7 +13,6 @@ import { ingredientLotsApi } from '../../api/inventory.api';
 import { bonSortieApi } from '../../api/bon-sortie.api';
 import { productionEtapesApi } from '../../api/production-etapes.api';
 import { productionCoutApi } from '../../api/production-cout.api';
-import { BonSortiePanel } from './BonSortiePanel';
 import { useAuth } from '../../context/AuthContext';
 import { useSettings } from '../../context/SettingsContext';
 import { PRODUCTION_STATUS_LABELS, type ProductionPlanEvent } from '@ofauria/shared';
@@ -31,7 +30,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { planStatusTag, bonStatusTag } from './status';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { buildTicketHtml, buildBsiHtml, buildFicheHtml } from './plan-print';
-import { PlanJournal, PlanLotTraceability } from './plan-sections';
+import { PlanJournal } from './plan-sections';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage } from '../../api/errors';
 import { smartFormatQuantity, formatQty } from '../../utils/units';
@@ -40,7 +39,6 @@ import LossDeclarationModal from '../pos/LossDeclarationModal';
 import PrintOverlay from '../../components/PrintOverlay';
 import PrintModeSelectorModal from './PrintModeSelectorModal';
 import type { LotLabelData } from '../../lib/niimbot';
-import CoutReelPanel from './CoutReelPanel';
 
 type PlanTab = 'synthese' | 'ingredients' | 'production' | 'couts';
 
@@ -568,7 +566,7 @@ export default function PlanDetailPage() {
   const showIngr = !hasTabs || effectiveTab === 'ingredients';
   const showProd = !hasTabs || effectiveTab === 'production';
   const showCosts = !hasTabs || effectiveTab === 'couts';
-  const panelCtx = { plan, id: id!, isChef, items, productionSettings, hasFeature };
+  const panelCtx = { plan, id: id!, isChef, items, productionSettings, hasFeature, isMagasinier, isSemiFini: !!isSemiFini, activeBon: !!activeBon, lotUsage: productionLotUsage as Record<string, any>[] };
   // Aucun BSI generable : aucun besoin ingredient (produits sans recette) ou generate()
   // a repondu "rien a prelever". Ne debloque PAS la production : la preparation reste
   // bloquee tant que les besoins ne sont pas recalcules (recette + relance du plan).
@@ -1728,11 +1726,8 @@ export default function PlanDetailPage() {
 
       {/* Panneau de prelevement inline : il porte lui-meme son en-tete (numero) et
           ses bandeaux de statut. */}
-      {showIngr && !isSemiFini && activeBon && (
-        <div style={{ margin: '1rem' }}>
-          <BonSortiePanel planId={id!} isChef={isChef} isMagasinier={isMagasinier} variant="inline" />
-        </div>
-      )}
+      {/* M8-01 : bon de sortie inscrit au registre. */}
+      {showIngr && <PlanPanels tab="preparation" ctx={panelCtx} only={['bon-sortie']} />}
 
       {/* M8-01 : panneaux de synthèse inscrits au registre (planPanels.tsx). */}
       {(showSynth || !hasTabs) && <PlanPanels tab="synthese" ctx={panelCtx} />}
@@ -1895,9 +1890,7 @@ export default function PlanDetailPage() {
         );
       })()}
 
-      {showIngr && (plan.status === 'completed' || plan.status === 'in_progress') && (
-        <PlanLotTraceability usage={productionLotUsage as Record<string, any>[]} />
-      )}
+      {showIngr && <PlanPanels tab="preparation" ctx={panelCtx} only={['lot-traceability']} />}
 
       {/* ══════════════ PROCEDE + RENDEMENT (onglet Production) ══════════════
           Le retro-planning sert a caler le demarrage : inutile une fois le plan termine. */}
@@ -1909,10 +1902,7 @@ export default function PlanDetailPage() {
       )}
 
       {/* ══════════════ COUT DE REVIENT (onglet Couts) ══════════════ */}
-      {showCosts && hasResults && productionSettings?.production_cost_enabled !== false && (
-        <CoutReelPanel planId={id!} planStatus={plan.status} isChef={isChef}
-          totalQuantity={items.reduce((s: number, it: any) => s + ((it.actual_quantity as number) || (it.planned_quantity as number) || 0), 0)} />
-      )}
+      {showCosts && hasResults && <PlanPanels tab="couts" ctx={panelCtx} />}
 
       </div>{/* /plan-main */}
 
