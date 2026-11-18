@@ -1,6 +1,7 @@
 import { env } from './config/env.js';
 import app from './app.js';
 import { startScheduler } from './services/scheduler.js';
+import { loadCompanyCurrency } from './services/currency.js';
 
 // Prevent server crash on unhandled async errors
 process.on('uncaughtException', (err) => {
@@ -14,4 +15,5 @@ app.listen(env.PORT, () => {
   console.log(`🥐 Kalum API running on http://localhost:${env.PORT}`);
   console.log(`   Environment: ${env.NODE_ENV}`);
   startScheduler();
+  void loadCompanyCurrency(); // devise de la société pour documents et messages (G6-06)
 });
