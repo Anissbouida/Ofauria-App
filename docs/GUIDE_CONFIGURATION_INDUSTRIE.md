@@ -69,4 +69,9 @@ Le type d'ordre par défaut du profil ne remplace l'actuel que si celui-ci n'a e
 
 - Le code ne compare jamais le code du secteur : il lit une option, une politique ou un attribut du type d'ordre. Le test `never-sector-guard.test.ts` échoue sinon.
 - Tout réglage a une valeur par défaut égale au comportement de la boulangerie.
-- Un nouveau réglage n'est terminé que s'il est exporté dans le modèle de configuration (`services/industry-profile.ts`) et a une valeur dans au moins un profil autre que la boulangerie.
+- **Définition de fini d'un réglage (C-02).** Un réglage de production n'est terminé que si les trois critères sont remplis :
+  1. il est dans le modèle de configuration (`services/industry-profile.ts` : exporté, filtré à l'import, appliqué sans écraser) ;
+  2. sa valeur boulangerie est le comportement actuel (valeur par défaut) ;
+  3. il a une valeur différente dans au moins un profil de référence (`process`, `discret`, `atelier`), ou il est inscrit avec sa raison dans la liste des exceptions de `profile-coverage.db.test.ts` (chiffre propre à chaque société, réglage réservé à la boulangerie…).
+  Le test `profile-coverage.db.test.ts` échoue si une politique de production n'est ni livrée dans un profil ni justifiée, ou si une exception est devenue inutile.
+- Couches exportées dans un profil : types d'ordre, politiques, impressions, postes de charge, emplacements, plus modules, options, vocabulaire et données de départ. Les gammes (rattachées à un article) et les plans de contrôle (rattachés à un article, une matière ou une catégorie de la société) ne s'exportent pas.
