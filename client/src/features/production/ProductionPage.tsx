@@ -173,12 +173,12 @@ function ProductionPlansView() {
 
   const tabs = [
     { key: '', label: 'Tous', count: stats.total, icon: Factory },
-    { key: 'draft', label: 'Brouillon', count: stats.draft, icon: FileText },
-    { key: 'confirmed', label: 'Confirmé', count: stats.confirmed, icon: CheckCircle2 },
-    { key: 'awaiting_ingredients', label: 'En attente ingr.', count: stats.awaiting_ingredients, icon: Clock },
-    { key: 'ready_to_produce', label: 'Prêt à produire', count: stats.ready_to_produce, icon: AlertCircle },
-    { key: 'in_progress', label: 'En cours', count: stats.in_progress, icon: Play },
-    { key: 'completed', label: 'Terminé', count: stats.completed, icon: Flag },
+    { key: 'draft', label: PRODUCTION_STATUS_LABELS.draft, count: stats.draft, icon: FileText },
+    { key: 'confirmed', label: PRODUCTION_STATUS_LABELS.confirmed, count: stats.confirmed, icon: CheckCircle2 },
+    { key: 'awaiting_ingredients', label: PRODUCTION_STATUS_LABELS.awaiting_ingredients, count: stats.awaiting_ingredients, icon: Clock },
+    { key: 'ready_to_produce', label: PRODUCTION_STATUS_LABELS.ready_to_produce, count: stats.ready_to_produce, icon: AlertCircle },
+    { key: 'in_progress', label: PRODUCTION_STATUS_LABELS.in_progress, count: stats.in_progress, icon: Play },
+    { key: 'completed', label: PRODUCTION_STATUS_LABELS.completed, count: stats.completed, icon: Flag },
   ];
 
   return (
