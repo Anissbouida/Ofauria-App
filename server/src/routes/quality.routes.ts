@@ -5,6 +5,7 @@ import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { qualityControlPlanRepository } from '../repositories/quality-control-plan.repository.js';
+import { qualityRepository } from '../repositories/quality.repository.js';
 import { z } from 'zod';
 
 const controlPlanLineSchema = z.object({
@@ -35,6 +36,10 @@ router.get('/inspections', authenticate, can('controle.quality.view'), asyncHand
 router.post('/inspections', authenticate, can('controle.quality.inspections'), asyncHandler(qualityController.createInspection));
 router.get('/inspections/:id', authenticate, can('controle.quality.view'), qualityController.getInspection);
 router.get('/users', authenticate, can('controle.quality.view'), qualityController.users);
+// Consultation unique d'un ordre : relevés de procédé et inspections (M7-03).
+router.get('/records/plan/:planId', authenticate, validateUuidParams('planId'), can('controle.quality.view'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await qualityRepository.recordsForPlan(req.params.planId as string) });
+}));
 // Plan de contrôle par article (M7-02).
 router.get('/control-plan', authenticate, can('controle.quality.view'), asyncHandler(async (req, res) => {
   const q = req.query as Record<string, string | undefined>;

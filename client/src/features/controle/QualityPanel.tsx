@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, Plus } from 'lucide-react';
 import { qualityApi, type InspectionLinks, type QualityItem } from '../../api/quality.api';
 import { StatusTag } from '../../components/ui/StatusTag';
+import api from '../../api/client';
 import { InspectionForm } from './QualityTab';
 
 /**
@@ -18,6 +19,13 @@ export default function QualityPanel({ filter, links, title, canInspect = true }
   const key = ['quality', 'inspections', filter];
   const { data = [] } = useQuery({ queryKey: key, queryFn: () => qualityApi.inspections(undefined, filter) as Promise<Row[]> });
   const [form, setForm] = useState<{ pendingId?: string; items?: QualityItem[] | null; title?: string } | null>(null);
+  // M7-03 : sur un ordre, les relevés de procédé (CCP compris) dans le même écran.
+  type Reading = { id: string; at: string; step: string; parametre: string; consigne: number | null; tolerance: number | null; mesure: number; conforme: boolean | null; est_ccp: boolean; by_name: string | null };
+  const { data: records } = useQuery({
+    queryKey: ['quality', 'records', filter.planId], enabled: !!filter.planId,
+    queryFn: () => api.get(`/quality/records/plan/${filter.planId}`).then(r => r.data.data as { readings: Reading[] }),
+  });
+  const readings = records?.readings ?? [];
   const day = (d: string) => d.slice(0, 10).split('-').reverse().join('/');
 
   return (
@@ -44,6 +52,20 @@ export default function QualityPanel({ filter, links, title, canInspect = true }
                       onClick={() => setForm({ pendingId: r.id, items: r.pending_items ?? null, title: r.title })}>Réaliser</button>
                   )}
                 </td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+        {readings.length > 0 && (
+          <table className="w-full text-xs" style={{ marginTop: 10 }}>
+            <thead><tr className="text-gray-500"><th className="text-left px-2 py-1">Relevé</th><th className="text-left px-2">Étape</th><th className="text-right px-2">Mesure</th><th className="text-right px-2">Consigne</th><th className="text-left px-2">Résultat</th></tr></thead>
+            <tbody>{readings.map(r => (
+              <tr key={r.id} className="border-t border-gray-100">
+                <td className="px-2 py-1">{r.parametre}{r.est_ccp ? ' · CCP' : ''}<div className="text-gray-500">{new Date(r.at).toLocaleString('fr-FR')}{r.by_name ? ` · ${r.by_name}` : ''}</div></td>
+                <td className="px-2">{r.step}</td>
+                <td className="text-right px-2">{r.mesure}</td>
+                <td className="text-right px-2">{r.consigne != null ? `${r.consigne}${r.tolerance != null ? ` ± ${r.tolerance}` : ''}` : '—'}</td>
+                <td className="px-2">{r.conforme == null ? '—' : r.conforme ? <StatusTag tone="done" label="Conforme" /> : <StatusTag tone="blocked" label="Hors tolérance" />}</td>
               </tr>
             ))}</tbody>
           </table>

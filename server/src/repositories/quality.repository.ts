@@ -117,6 +117,20 @@ export const qualityRepository = {
     return r.rows;
   },
 
+  /** M7-03 : consultation unique d'un ordre — relevés de procédé (CCP compris) et inspections. */
+  async recordsForPlan(planId: string) {
+    const readings = (await db.query(
+      `SELECT r.id, 'releve' AS kind, r.mesure_a AS at, pie.nom AS step, r.parametre, r.consigne::float8, r.tolerance::float8,
+              r.mesure::float8, r.conforme, r.est_ccp, r.note, u.first_name || ' ' || u.last_name AS by_name
+         FROM production_step_readings r
+         JOIN production_item_etapes pie ON pie.id = r.etape_id
+         JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
+         LEFT JOIN users u ON u.id = r.mesure_par
+        WHERE ppi.plan_id = $1 ORDER BY r.mesure_a`, [planId])).rows;
+    const inspections = await this.listInspections({ planId, limit: 300 });
+    return { readings, inspections };
+  },
+
   async getInspection(id: string) {
     return (await db.query(
       `SELECT i.*, u.first_name || ' ' || u.last_name AS inspected_by_name

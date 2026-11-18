@@ -1805,6 +1805,10 @@
   "admin",
   "manager"
  ],
+ "GET /quality/records/plan/:planId": [
+  "admin",
+  "manager"
+ ],
  "GET /quality/templates": [
   "admin",
   "manager"
