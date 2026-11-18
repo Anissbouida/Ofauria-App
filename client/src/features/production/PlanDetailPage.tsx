@@ -1,4 +1,5 @@
 import { useProductionPolicies, shiftOf } from './usePolicies';
+import QualityPanel from '../controle/QualityPanel';
 import ConsumptionPanel from './ConsumptionPanel';
 import CustomFieldsCard from '../../components/custom-fields/CustomFieldsCard';
 import ItemRecipeSelect from './ItemRecipeSelect';
@@ -1740,6 +1741,9 @@ export default function PlanDetailPage() {
         <ConsumptionPanel planId={id!} mode={(plan.order_type_consumption_mode as string) ?? null} canEdit={isChef} />
       )}
       {(showSynth || !hasTabs) && <div style={{ margin: '1rem' }}><CustomFieldsCard entity="production_order" id={id!} /></div>}
+      {(showSynth || !hasTabs) && ['in_progress', 'completed', 'confirmed'].includes(plan.status as string) && (
+        <QualityPanel filter={{ planId: id! }} links={{ planId: id! }} title={`Contrôle ${(plan.of_number as string) || 'ordre'}`} />
+      )}
 
       {/* ══════════════ ALERTES (onglet Preparation) ══════════════
           Visibles uniquement par le magasinier : elles concernent la dispo des

@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ListChecks, Plus, X, Loader2, CheckCircle2, XCircle, Trash2, Power, AlertTriangle } from 'lucide-react';
 import { qualityApi, type QualityTemplate, type QualityItem, type QualityResult, type AppliesTo,
-  type NonConformity, type NonConformityInput, type NcStatus, type NcSeverity, type NcSource } from '../../api/quality.api';
+  type NonConformity, type NonConformityInput, type NcStatus, type NcSeverity, type NcSource, type InspectionLinks } from '../../api/quality.api';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
@@ -181,12 +181,20 @@ function Inspections() {
   );
 }
 
-function InspectionForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+export function InspectionForm({ onClose, onSaved, links = {}, defaultTitle = '', pendingId = null, items = null }: {
+  onClose: () => void; onSaved: () => void;
+  /** M7-01 : rattachements (ordre, opération, lot, réception). */
+  links?: InspectionLinks; defaultTitle?: string;
+  /** M7-02 : inspection « à faire » à réaliser, avec ses points (plan de contrôle). */
+  pendingId?: string | null; items?: QualityItem[] | null;
+}) {
   const { data: templates = [] } = useQuery({ queryKey: ['quality', 'templates'], queryFn: qualityApi.templates });
   const activeTemplates = templates.filter(t => t.is_active);
   const [templateId, setTemplateId] = useState('');
-  const tpl = activeTemplates.find(t => t.id === templateId) || null;
-  const [title, setTitle] = useState('');
+  const tplFound = activeTemplates.find(t => t.id === templateId) || null;
+  // Points imposés par le plan de contrôle (M7-02) : un modèle implicite.
+  const tpl = items ? { id: '', name: 'Plan de contrôle', items } as unknown as typeof tplFound : tplFound;
+  const [title, setTitle] = useState(defaultTitle);
   const [reference, setReference] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
@@ -209,7 +217,7 @@ function InspectionForm({ onClose, onSaved }: { onClose: () => void; onSaved: ()
   const conform = results.length > 0 && results.every(r => r.ok);
 
   const save = useMutation({
-    mutationFn: () => qualityApi.createInspection({ templateId: templateId || null, title: title.trim(), referenceNote: reference || null, inspectedOn: date, results, notes: notes || null }),
+    mutationFn: () => qualityApi.createInspection({ templateId: templateId || null, title: title.trim(), referenceNote: reference || null, inspectedOn: date, results, notes: notes || null, pendingId, ...links }),
     onSuccess: () => { notify.success('Inspection enregistrée'); onSaved(); },
     onError: e => notify.error(apiErrorMessage(e)),
   });

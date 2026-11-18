@@ -11,6 +11,12 @@ export interface QualityTemplate {
 export interface QualityInspectionRow {
   id: string; template_name: string; title: string; reference_note: string | null; inspected_on: string;
   conformity: boolean; notes: string | null; inspected_by_name: string | null; items: number; failed: number;
+  status?: 'a_faire' | 'faite'; plan_id?: string | null; product_lot_id?: string | null; ingredient_lot_id?: string | null;
+}
+/** M7-01 : rattachements d'une inspection. */
+export interface InspectionLinks {
+  planId?: string | null; planItemId?: string | null; etapeId?: string | null;
+  ingredientLotId?: string | null; productLotId?: string | null; receptionVoucherId?: string | null;
 }
 export interface QualityInspection extends QualityInspectionRow { results: QualityResult[]; template_id: string | null }
 
@@ -21,10 +27,10 @@ export const qualityApi = {
   updateTemplate: (id: string, data: { name?: string; appliesTo?: AppliesTo; items?: QualityItem[] }): Promise<QualityTemplate> =>
     api.put(`/quality/templates/${id}`, data).then(r => r.data.data),
   setTemplateActive: (id: string, active: boolean) => api.post(`/quality/templates/${id}/active`, { active }).then(r => r.data.data),
-  inspections: (conformity?: boolean): Promise<QualityInspectionRow[]> =>
-    api.get('/quality/inspections', { params: conformity === undefined ? {} : { conformity } }).then(r => r.data.data),
+  inspections: (conformity?: boolean, filter: InspectionLinks & { status?: 'a_faire' | 'faite' } = {}): Promise<QualityInspectionRow[]> =>
+    api.get('/quality/inspections', { params: { ...(conformity === undefined ? {} : { conformity }), ...filter } }).then(r => r.data.data),
   getInspection: (id: string): Promise<QualityInspection> => api.get(`/quality/inspections/${id}`).then(r => r.data.data),
-  createInspection: (data: { templateId?: string | null; title: string; referenceNote?: string | null; inspectedOn?: string | null; results: QualityResult[]; notes?: string | null }): Promise<QualityInspection> =>
+  createInspection: (data: { templateId?: string | null; title: string; referenceNote?: string | null; inspectedOn?: string | null; results: QualityResult[]; notes?: string | null; pendingId?: string | null } & InspectionLinks): Promise<QualityInspection> =>
     api.post('/quality/inspections', data).then(r => r.data.data),
   users: (): Promise<{ id: string; name: string }[]> => api.get('/quality/users').then(r => r.data.data),
   nonconformities: (status?: string): Promise<NonConformity[]> =>

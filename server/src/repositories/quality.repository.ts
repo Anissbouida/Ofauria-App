@@ -24,6 +24,19 @@ function sanitizeItems(raw: unknown): QualityItem[] {
   }).filter(i => i.label.length > 0);
 }
 
+/** M7-01 : rattachements d'une inspection (clé de saisie → colonne). */
+export type InspectionLinks = {
+  planId?: string | null; planItemId?: string | null; etapeId?: string | null;
+  ingredientLotId?: string | null; productLotId?: string | null; receptionVoucherId?: string | null;
+};
+const LINK_COLUMNS: [keyof InspectionLinks, string][] = [
+  ['planId', 'plan_id'], ['planItemId', 'plan_item_id'], ['etapeId', 'etape_id'],
+  ['ingredientLotId', 'ingredient_lot_id'], ['productLotId', 'product_lot_id'], ['receptionVoucherId', 'reception_voucher_id'],
+];
+
+/** Suite d'une inspection réalisée (verdict, libération du lot) — complétée par M7-02/M7-04. */
+async function afterInspection(_inspectionId: string): Promise<void> { /* M7-02 / M7-04 */ }
+
 export const qualityRepository = {
   async listTemplates(storeId?: string | null) {
     const params: unknown[] = [];
@@ -65,14 +78,21 @@ export const qualityRepository = {
     return r.rows[0] || null;
   },
 
-  async listInspections(p: { storeId?: string | null; conformity?: boolean; limit: number }) {
+  async listInspections(p: { storeId?: string | null; conformity?: boolean; limit: number } & InspectionLinks & { status?: 'a_faire' | 'faite' }) {
     const params: unknown[] = [];
     const cond: string[] = ['true'];
     if (p.storeId) { params.push(p.storeId); cond.push(`(i.store_id IS NULL OR i.store_id = $${params.length})`); }
     if (p.conformity !== undefined) { params.push(p.conformity); cond.push(`i.conformity = $${params.length}`); }
+    // M7-01 : inspections d'un ordre, d'un lot, d'une réception, d'une opération.
+    for (const [key, col] of LINK_COLUMNS) {
+      const v = p[key];
+      if (v) { params.push(v); cond.push(`i.${col} = $${params.length}`); }
+    }
+    if (p.status) { params.push(p.status); cond.push(`i.status = $${params.length}`); }
     params.push(p.limit);
     const r = await db.query(
       `SELECT i.id, i.template_name, i.title, i.reference_note, i.inspected_on, i.conformity, i.notes,
+              i.status, i.plan_id, i.plan_item_id, i.etape_id, i.ingredient_lot_id, i.product_lot_id, i.reception_voucher_id,
               u.first_name || ' ' || u.last_name AS inspected_by_name,
               jsonb_array_length(i.results) AS items,
               (SELECT COUNT(*) FROM jsonb_array_elements(i.results) x WHERE (x->>'ok')::boolean IS FALSE)::int AS failed
@@ -91,17 +111,34 @@ export const qualityRepository = {
   async createInspection(input: {
     templateId?: string | null; title: string; referenceNote?: string | null; inspectedOn?: string | null;
     results: QualityResult[]; notes?: string | null; storeId?: string | null; userId: string | null;
-  }) {
+    /** M7-02 : réalise une inspection « à faire » au lieu d'en créer une. */
+    pendingId?: string | null;
+  } & InspectionLinks) {
     const tpl = input.templateId ? await this.getTemplate(input.templateId) : null;
     const templateName = tpl?.name ?? 'Inspection libre';
     const results = Array.isArray(input.results) ? input.results : [];
     // Conformité = tous les points conformes.
     const conformity = results.length > 0 && results.every(r => r.ok === true);
+    if (input.pendingId) {
+      const done = await db.query(
+        `UPDATE quality_inspections SET results = $2::jsonb, conformity = $3, notes = COALESCE($4, notes), inspected_by = $5,
+                inspected_on = COALESCE($6::date, CURRENT_DATE), status = 'faite', created_at = created_at
+          WHERE id = $1 AND status = 'a_faire' RETURNING id`,
+        [input.pendingId, JSON.stringify(results), conformity, input.notes?.trim() || null, input.userId, input.inspectedOn || null]);
+      if (!done.rows[0]) throw Object.assign(new Error('Inspection à faire introuvable ou déjà réalisée'), { statusCode: 409 });
+      await afterInspection(done.rows[0].id);
+      return this.getInspection(done.rows[0].id);
+    }
+    const linkVals = LINK_COLUMNS.map(([key]) => input[key] ?? null);
     const r = await db.query(
-      `INSERT INTO quality_inspections (template_id, template_name, title, reference_note, inspected_on, results, conformity, notes, store_id, inspected_by)
-       VALUES ($1,$2,$3,$4,COALESCE($5::date, CURRENT_DATE),$6::jsonb,$7,$8,$9,$10) RETURNING id`,
+      `INSERT INTO quality_inspections (template_id, template_name, title, reference_note, inspected_on, results, conformity, notes, store_id, inspected_by,
+                                        ${LINK_COLUMNS.map(([, col]) => col).join(', ')})
+       VALUES ($1,$2,$3,$4,COALESCE($5::date, CURRENT_DATE),$6::jsonb,$7,$8,$9,$10,
+               ${LINK_COLUMNS.map((_, i) => `$${11 + i}`).join(', ')}) RETURNING id`,
       [input.templateId ?? null, templateName, input.title.trim().slice(0, 200), input.referenceNote?.trim()?.slice(0, 200) || null,
-       input.inspectedOn || null, JSON.stringify(results), conformity, input.notes?.trim() || null, input.storeId ?? null, input.userId]);
+       input.inspectedOn || null, JSON.stringify(results), conformity, input.notes?.trim() || null, input.storeId ?? null, input.userId,
+       ...linkVals]);
+    await afterInspection(r.rows[0].id);
     return this.getInspection(r.rows[0].id);
   },
 

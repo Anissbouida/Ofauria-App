@@ -32,10 +32,16 @@ export const qualityController = {
   },
   async listInspections(req: AuthRequest, res: Response) {
     const conf = req.query.conformity;
+    const q = req.query as Record<string, string | undefined>;
+    const uuidOrUndef = (v?: string) => (v && /^[0-9a-f-]{36}$/i.test(v) ? v : undefined);
     res.json({ success: true, data: await qualityRepository.listInspections({
       storeId: req.user!.storeId ?? null,
       conformity: conf === 'true' ? true : conf === 'false' ? false : undefined,
       limit: Math.min(Number(req.query.limit) || 100, 300),
+      // M7-01 : filtres de rattachement.
+      planId: uuidOrUndef(q.planId), productLotId: uuidOrUndef(q.productLotId), ingredientLotId: uuidOrUndef(q.ingredientLotId),
+      receptionVoucherId: uuidOrUndef(q.receptionVoucherId), etapeId: uuidOrUndef(q.etapeId),
+      status: q.status === 'a_faire' || q.status === 'faite' ? q.status : undefined,
     }) });
   },
   async getInspection(req: AuthRequest, res: Response) {
@@ -52,6 +58,10 @@ export const qualityController = {
       inspectedOn: b.inspectedOn ? String(b.inspectedOn) : null,
       results: b.results as QualityResult[], notes: b.notes ? String(b.notes) : null,
       storeId: req.user!.storeId ?? null, userId: req.user!.userId,
+      // M7-01 : rattachements ; M7-02 : réalisation d'une inspection à faire.
+      planId: (b.planId as string) || null, planItemId: (b.planItemId as string) || null, etapeId: (b.etapeId as string) || null,
+      ingredientLotId: (b.ingredientLotId as string) || null, productLotId: (b.productLotId as string) || null,
+      receptionVoucherId: (b.receptionVoucherId as string) || null, pendingId: (b.pendingId as string) || null,
     }) });
   },
 

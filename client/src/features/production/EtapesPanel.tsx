@@ -1,4 +1,5 @@
 import { usePermissions } from '../../context/PermissionsContext';
+import { InspectionForm } from '../controle/QualityTab';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionEtapesApi } from '../../api/production-etapes.api';
@@ -77,6 +78,7 @@ interface Etape {
   pause_accumulee_min?: number;
   // Opération de gamme (M5-02) : temps prévus, point de contrôle, quantités déclarées.
   routing_operation_id?: string | null;
+  op_type?: string | null;
   planned_labor_min?: number | null;
   control_point?: string | null;
   good_qty?: number | null;
@@ -99,6 +101,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
   const [checklistState, setChecklistState] = useState<Record<string, { label: string; ok: boolean }[]>>({});
   const [opQty, setOpQty] = useState<Record<string, { good: string; scrap: string }>>({});
+  const [controlFor, setControlFor] = useState<Etape | null>(null);
   const currentEtapeRef = useRef<HTMLDivElement | null>(null);
   const autoScrolledRef = useRef(false);
   // Le contexte timer est monte au root de l'app → l'alarme sonne sur n'importe
@@ -322,6 +325,12 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
 
   return (
     <div className="odoo-section">
+      {controlFor && (
+        <InspectionForm defaultTitle={`Contrôle — ${controlFor.nom}`}
+          links={{ planId, planItemId: controlFor.plan_item_id, etapeId: controlFor.id }}
+          onClose={() => setControlFor(null)}
+          onSaved={() => { setControlFor(null); queryClient.invalidateQueries({ queryKey: ['quality'] }); }} />
+      )}
       <div className="odoo-section-header">
         <ListChecks size={12} />
         <span>Étapes de production</span>
@@ -496,6 +505,9 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                             {etape.control_point && <span className="text-indigo-700">Contrôle : {etape.control_point}</span>}
                             {etape.status === 'completed' && (etape.good_qty != null || etape.scrap_qty != null) && (
                               <span>Bonnes {Number(etape.good_qty ?? 0).toLocaleString('fr-FR')} · rebut {Number(etape.scrap_qty ?? 0).toLocaleString('fr-FR')}</span>
+                            )}
+                            {(etape.op_type === 'controle' || etape.controle_qualite) && etape.status !== 'skipped' && isChef && (
+                              <button type="button" className="bsi-link-btn" onClick={() => setControlFor(etape)}>Contrôler</button>
                             )}
                             {etape.status === 'in_progress' && isChef && <>
                               <label>Bonnes <input className="input" style={{ width: 64, padding: '1px 4px' }} inputMode="decimal" value={opQty[etape.id]?.good ?? ''}
