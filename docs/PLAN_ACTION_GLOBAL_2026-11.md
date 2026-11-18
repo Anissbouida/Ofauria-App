@@ -2027,10 +2027,10 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ☑ | M2 | M2-01 à M2-08 |
 | ◐ | G5 | G5-01 à G5-06 |
 | ◐ | M3 | M3-01 à M3-06 |
-| ☐ | M4 | M4-01 à M4-07 |
-| ☐ | M5 | M5-01 à M5-05 |
-| ☐ | M6 | M6-01 à M6-04 |
-| ☐ | M7 | M7-01 à M7-05 |
+| ◐ | M4 | M4-01 à M4-07 |
+| ◐ | M5 | M5-01 à M5-05 |
+| ◐ | M6 | M6-01 à M6-04 |
+| ☑ | M7 | M7-01 à M7-05 |
 | ☐ | G6 | G6-01 à G6-08 |
 | ☐ | M8 | M8-01 à M8-06 |
 | ☐ | M9 | Sous-traitance, numéros de série |
