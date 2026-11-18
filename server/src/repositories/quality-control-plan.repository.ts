@@ -104,6 +104,8 @@ export const qualityControlPlanRepository = {
       if (!due.length) continue;
       created.push(await createPending(q, 'final', `Contrôle final — ${lot.name} (lot ${lot.lot_number ?? '—'})`, toItems(due, lot.qty),
         { plan_id: planId, plan_item_id: lot.plan_item_id, product_lot_id: lot.id }, lot.store_id));
+      // M7-04 : lot retenu jusqu'à libération (ni vendable, ni livrable, ni transférable).
+      await q.query(`UPDATE product_lots SET status = 'pending_release' WHERE id = $1 AND status = 'active'`, [lot.id]);
     }
     return created;
   },

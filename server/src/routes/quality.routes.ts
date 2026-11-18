@@ -6,6 +6,9 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { qualityControlPlanRepository } from '../repositories/quality-control-plan.repository.js';
 import { qualityRepository } from '../repositories/quality.repository.js';
+import { lotReleaseRepository } from '../repositories/lot-release.repository.js';
+
+const releaseSchema = z.object({ note: z.string().trim().min(3, 'Motif requis').max(500) });
 import { z } from 'zod';
 
 const controlPlanLineSchema = z.object({
@@ -39,6 +42,15 @@ router.get('/users', authenticate, can('controle.quality.view'), qualityControll
 // Consultation unique d'un ordre : relevés de procédé et inspections (M7-03).
 router.get('/records/plan/:planId', authenticate, validateUuidParams('planId'), can('controle.quality.view'), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await qualityRepository.recordsForPlan(req.params.planId as string) });
+}));
+// Libération des lots (M7-04).
+router.get('/lots/pending', authenticate, can('controle.quality.view'), asyncHandler(async (req, res) => {
+  const user = (req as never as { user: { storeId?: string | null } }).user;
+  res.json({ success: true, data: await lotReleaseRepository.listPending(user.storeId ?? null) });
+}));
+router.post('/lots/:lotId/release', authenticate, validateUuidParams('lotId'), can('controle.quality.inspections'), validate(releaseSchema), asyncHandler(async (req, res) => {
+  const user = (req as never as { user: { userId: string } }).user;
+  res.json({ success: true, data: await lotReleaseRepository.releaseProductLot(req.params.lotId as string, user.userId, req.body.note ?? null) });
 }));
 // Plan de contrôle par article (M7-02).
 router.get('/control-plan', authenticate, can('controle.quality.view'), asyncHandler(async (req, res) => {

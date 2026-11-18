@@ -70,6 +70,16 @@ export async function shipProduct(c: PoolClient, p: {
       ORDER BY COALESCE(dlc_effective, expires_at::timestamptz) ASC NULLS LAST, produced_at ASC, id
       FOR UPDATE`, [p.productId, p.storeId])).rows as LotStock[];
   const plan = allocateFefo(lots, qty);
+  // M7-04 : ce qui manque est retenu en attente de libération qualité → expédition refusée.
+  if (plan.missing > 0) {
+    const pending = (await c.query(
+      `SELECT COALESCE(SUM(backroom_qty + vitrine_qty), 0)::float8 AS q FROM product_lots
+        WHERE product_id = $1 AND store_id = $2 AND status = 'pending_release'`, [p.productId, p.storeId])).rows[0].q as number;
+    if (pending > 0) {
+      const name = (await c.query(`SELECT name FROM products WHERE id = $1`, [p.productId])).rows[0]?.name ?? p.productId;
+      throw fail(409, `« ${name} » : ${pending} en attente de libération qualité, non expédiable avant libération du lot`, 'LOT_EN_ATTENTE_LIBERATION');
+    }
+  }
   if (req && p.strict && plan.missing > 0) {
     const name = (await c.query(`SELECT name FROM products WHERE id = $1`, [p.productId])).rows[0]?.name ?? p.productId;
     throw fail(409, `« ${name} » : ${r3(qty - plan.missing)} disponible(s) en lots valides sur ${qty} à expédier (lots expirés et surgelés exclus)`, 'LOTS_INSUFFISANTS');

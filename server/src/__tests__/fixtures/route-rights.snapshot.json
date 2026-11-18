@@ -1801,6 +1801,10 @@
   "admin",
   "manager"
  ],
+ "GET /quality/lots/pending": [
+  "admin",
+  "manager"
+ ],
  "GET /quality/nonconformities": [
   "admin",
   "manager"
@@ -3826,6 +3830,10 @@
   "manager"
  ],
  "POST /quality/inspections": [
+  "admin",
+  "manager"
+ ],
+ "POST /quality/lots/:lotId/release": [
   "admin",
   "manager"
  ],

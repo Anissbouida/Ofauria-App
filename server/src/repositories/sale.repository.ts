@@ -284,7 +284,9 @@ export const saleRepository = {
           // les lots disponibles. Le check est defensif (en plus du masquage UI).
           const saleabilityIssue = await productLotRepository.checkSaleability(item.productId, data.storeId);
           if (saleabilityIssue) {
-            const reasonLabel = saleabilityIssue.reason === 'DDE_EXPIREE'
+            const reasonLabel = saleabilityIssue.reason === 'LOT_EN_ATTENTE_LIBERATION'
+              ? 'lots en attente de liberation qualite (controle final non libere)'
+              : saleabilityIssue.reason === 'DDE_EXPIREE'
               ? 'duree d\'exposition vitrine (DDE)'
               : saleabilityIssue.reason === 'LOT_SURGELE'
                 ? 'lots encore surgeles (a decongeler avant la vente)'

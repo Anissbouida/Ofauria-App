@@ -419,7 +419,7 @@ export const traceabilityRepository = {
         } else {
           await client.query(
             `UPDATE product_lots SET status = 'recalled', notes = concat_ws(E'\\n', NULLIF(notes, ''), 'Rappel ' || $2::text), updated_at = NOW()
-              WHERE id = $1 AND status IN ('active', 'expired')`,
+              WHERE id = $1 AND status IN ('active', 'expired', 'pending_release')`,
             [it.lot_id, recall.reference],
           );
         }

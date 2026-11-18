@@ -41,7 +41,11 @@ const LINK_COLUMNS: [keyof InspectionLinks, string][] = [
 async function afterInspection(inspectionId: string): Promise<void> {
   const i = (await db.query(
     `SELECT id, title, conformity, results, store_id, inspected_by, control_stage FROM quality_inspections WHERE id = $1`, [inspectionId])).rows[0];
-  if (!i || i.conformity) return;
+  if (!i) return;
+  // M7-04 : libération ou blocage du lot rattaché.
+  const { lotReleaseRepository } = await import('./lot-release.repository.js');
+  await lotReleaseRepository.afterInspection(inspectionId);
+  if (i.conformity) return;
   const failed = (Array.isArray(i.results) ? i.results : []).filter((r: QualityResult) => r.ok === false).map((r: QualityResult) => r.label);
   await db.query(
     `INSERT INTO quality_nonconformities (title, source, reference_note, description, severity, status, detected_on, detected_by, store_id)

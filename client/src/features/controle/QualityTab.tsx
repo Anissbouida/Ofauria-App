@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import ControlPlanSection from './ControlPlanSection';
+import LotReleaseSection from './LotReleaseSection';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -17,7 +18,7 @@ const APPLIES: Record<AppliesTo, string> = { general: 'Général', reception: 'R
 const day = (d: string) => format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr });
 
 export default function QualityTab() {
-  const [view, setView] = useState<'inspections' | 'templates' | 'nonconformities' | 'plan'>('inspections');
+  const [view, setView] = useState<'inspections' | 'templates' | 'nonconformities' | 'plan' | 'release'>('inspections');
   return (
     <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <StatusBanner tone="info" icon={ListChecks} title="Contrôle qualité paramétrable">
@@ -28,8 +29,9 @@ export default function QualityTab() {
         <button className={view === 'nonconformities' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('nonconformities')}>Non-conformités</button>
         <button className={view === 'templates' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('templates')}>Modèles</button>
         <button className={view === 'plan' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('plan')}>Plan de contrôle</button>
+        <button className={view === 'release' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('release')}>Lots à libérer</button>
       </div>
-      {view === 'inspections' ? <Inspections /> : view === 'nonconformities' ? <NonConformities /> : view === 'plan' ? <ControlPlanSection /> : <Templates />}
+      {view === 'inspections' ? <Inspections /> : view === 'nonconformities' ? <NonConformities /> : view === 'plan' ? <ControlPlanSection /> : view === 'release' ? <LotReleaseSection /> : <Templates />}
     </div>
   );
 }

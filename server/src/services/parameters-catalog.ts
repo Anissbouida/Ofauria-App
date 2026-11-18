@@ -185,6 +185,14 @@ export const PARAMETERS: ParamDef[] = [
     storage: { kind: 'company_settings', columns: { method: 'production_charges_method', loyer: 'production_charge_loyer', energie: 'production_charge_energie', autres: 'production_charge_autres' } },
   },
   {
+    key: 'quality.auto_release', domain: 'production', section: 'production',
+    label: 'Libération automatique des lots contrôlés',
+    help: 'Un lot retenu par le plan de contrôle est libéré dès que toutes ses inspections sont réalisées et conformes. Désactivé : un rôle qualité libère chaque lot à la main.',
+    fields: [{ name: 'enabled', label: 'Libérer automatiquement', type: 'boolean' }],
+    defaults: { enabled: true },
+    storage: { kind: 'policy' }, scopes: ['company', 'store'],
+  },
+  {
     key: 'production.steps_source', domain: 'production', section: 'production',
     label: 'Source des étapes exécutées à l\'atelier',
     help: 'Étapes de la fiche (liste JSON, comportement historique) ou opérations de la gamme (postes, temps de réglage et unitaires, quantités par opération). Se bascule atelier par atelier après validation par le chef ; sans gamme active, l\'article garde les étapes de la fiche.',

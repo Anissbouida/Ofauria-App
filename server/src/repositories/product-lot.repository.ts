@@ -339,6 +339,11 @@ export const productLotRepository = {
     const r = result.rows[0];
     if (!r) return null;
     if (r.has_valid_lot) return null;  // Au moins un lot vendable
+    // M7-04 : stock retenu en attente de libération qualité → vente refusée.
+    const pending = await db.query(
+      `SELECT 1 FROM product_lots WHERE product_id = $1 AND store_id = $2 AND status = 'pending_release' AND vitrine_qty + backroom_qty > 0 LIMIT 1`,
+      [productId, storeId]);
+    if (pending.rows[0]) return { reason: 'LOT_EN_ATTENTE_LIBERATION', deadline: r.effective_deadline };
     if (r.dde_expired) return { reason: 'DDE_EXPIREE', deadline: r.effective_deadline };
     if (r.dlv_expired) return { reason: 'DLV_EXPIREE', deadline: r.effective_deadline };
     if (r.all_frozen) return { reason: 'LOT_SURGELE', deadline: r.effective_deadline };
