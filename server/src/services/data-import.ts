@@ -32,9 +32,11 @@ interface Column {
   example: string;
   help?: string;
   cf?: FieldDef;
+  /** Sert seulement à retrouver la fiche : jamais écrit (pas de renommage par l'import). */
+  matchOnly?: boolean;
 }
 interface EntityDef {
-  key: 'suppliers' | 'customers' | 'ingredients' | 'packaging_items' | 'products';
+  key: 'suppliers' | 'customers' | 'ingredients' | 'packaging_items' | 'products' | 'recipes' | 'production_plans' | 'product_lots';
   label: string;
   table: string;
   cfEntity: CfEntity;
@@ -46,6 +48,8 @@ interface EntityDef {
   /** Valeurs posées à la création si la colonne est vide. */
   createDefaults?: Record<string, unknown>;
   note?: string;
+  /** Prédicat SQL fixe (registre, jamais saisi) limitant les fiches candidates au rapprochement. */
+  scopeWhere?: string;
 }
 
 const UNITS = ['kg', 'g', 'l', 'ml', 'unit', 'piece'];
@@ -122,6 +126,29 @@ export const IMPORT_ENTITIES: EntityDef[] = [
       { header: 'Catégorie', field: 'category_id', type: 'product_category', example: 'Viennoiseries' },
       { header: 'Disponible', field: 'is_available', type: 'boolean', example: 'oui' },
       { header: 'Description', field: 'description', type: 'text', max: 1000, example: '' },
+    ],
+  },
+  // M4-07 : champs personnalisés des fiches techniques, ordres de fabrication et lots produits.
+  {
+    key: 'recipes', label: 'Fiches techniques (champs personnalisés)', table: 'recipes', cfEntity: 'recipe', matchOn: ['name'], modes: ['update'],
+    scopeWhere: 'archived_at IS NULL',
+    note: 'Mise à jour des champs personnalisés seulement : la composition se modifie sur la fiche ou par l\'import des recettes.',
+    columns: [
+      { header: 'Nom de la fiche', field: 'name', type: 'text', max: 200, example: 'Croissant au beurre', help: 'Sert à retrouver la fiche (non archivée)', matchOnly: true },
+    ],
+  },
+  {
+    key: 'production_plans', label: 'Ordres de fabrication (champs personnalisés)', table: 'production_plans', cfEntity: 'production_order', matchOn: ['of_number'], modes: ['update'],
+    note: 'Mise à jour des champs personnalisés seulement.',
+    columns: [
+      { header: 'N° d\'ordre', field: 'of_number', type: 'text', max: 40, example: 'OF-2026-0001', help: 'Sert à retrouver l\'ordre', matchOnly: true },
+    ],
+  },
+  {
+    key: 'product_lots', label: 'Lots produits (champs personnalisés)', table: 'product_lots', cfEntity: 'product_lot', matchOn: ['lot_number'], modes: ['update'],
+    note: 'Mise à jour des champs personnalisés seulement.',
+    columns: [
+      { header: 'N° de lot', field: 'lot_number', type: 'text', max: 60, example: 'LOT-261118-001', help: 'Sert à retrouver le lot', matchOnly: true },
     ],
   },
 ];
@@ -286,10 +313,16 @@ export async function previewImport(def: EntityDef, buffer: Buffer, opts: Previe
 
   // Fiches existantes pour le rapprochement (et leurs champs personnalisés).
   const matchCols = def.matchOn.filter(f => cols.some(c => c.field === f));
-  const existing = (await db.query(`SELECT id, custom_fields, ${matchCols.join(', ')} FROM ${def.table}`)).rows as Record<string, any>[];
+  const existing = (await db.query(`SELECT id, custom_fields, ${matchCols.join(', ')} FROM ${def.table}${def.scopeWhere ? ` WHERE ${def.scopeWhere}` : ''}`)).rows as Record<string, any>[];
   const byId = new Map(existing.map(r => [r.id as string, r]));
   const keyOf = (f: string, v: unknown) => (f === 'phone' ? String(v ?? '').replace(/\D/g, '').slice(-9) : f === 'name' ? norm(String(v ?? '')) : String(v ?? '').toLowerCase().trim());
   const index = new Map<string, Map<string, string>>(matchCols.map(f => [f, new Map(existing.filter(r => r[f]).map(r => [keyOf(f, r[f]), r.id as string]))]));
+  // Clé portée par plusieurs fiches : rapprochement refusé plutôt que de mettre à jour l'une au hasard.
+  const ambiguous = new Map<string, Set<string>>(matchCols.map(f => {
+    const count = new Map<string, number>();
+    for (const r of existing) if (r[f]) { const k = keyOf(f, r[f]); count.set(k, (count.get(k) ?? 0) + 1); }
+    return [f, new Set([...count].filter(([, n]) => n > 1).map(([k]) => k))];
+  }));
   const seen = new Map<string, number>();
   const cfDefs = cols.filter(c => c.type === 'custom').map(c => c.cf!);
 
@@ -314,6 +347,10 @@ export async function previewImport(def: EntityDef, buffer: Buffer, opts: Previe
       const dup = seen.get(`${f}:${k}`);
       if (dup) errors.push({ column: cols.find(c => c.field === f)!.header, message: `en double avec la ligne ${dup}` });
       seen.set(`${f}:${k}`, i + 1);
+      if (!matchedId && ambiguous.get(f)?.has(k)) {
+        errors.push({ column: cols.find(c => c.field === f)!.header, message: 'plusieurs fiches portent cette valeur : précisez-la' });
+        continue;
+      }
       matchedId = matchedId ?? index.get(f)?.get(k) ?? null;
     }
     // Mode : une fiche retrouvée en « créer seulement », ou introuvable en « mettre à jour seulement », est ignorée.
@@ -373,6 +410,9 @@ export async function commitImport(def: EntityDef, buffer: Buffer, ctx: { actorI
         await client.query(`INSERT INTO data_import_rows (import_id, line, record_id, action) VALUES ($1, $2, $3, 'create')`, [importId, r.line, id]);
         created++;
       } else {
+        // Colonne de rapprochement seule (matchOnly) : jamais réécrite.
+        const matchOnly = new Set(def.columns.filter(c => c.matchOnly).map(c => c.field));
+        dbFields.splice(0, dbFields.length, ...dbFields.filter(([k]) => !matchOnly.has(k)));
         const cols = dbFields.map(e => e[0]);
         const before = (await client.query(`SELECT ${[...cols, 'custom_fields'].join(', ')} FROM ${def.table} WHERE id = $1 FOR UPDATE`, [r.matchedId])).rows[0];
         const sets = dbFields.map((e, i) => `${e[0]} = $${i + 2}`);

@@ -22,7 +22,7 @@ const storeOf = (req: AuthRequest) => (req.user!.role === 'admin' ? null : req.u
 const bad = (res: Response, m: string) => res.status(400).json({ success: false, error: { message: m } });
 
 router.get('/custom/sources', authenticate, can('reports.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
-  res.json({ success: true, data: rb.listSources() });
+  res.json({ success: true, data: await rb.listSources() });
 }));
 
 router.get('/custom/filter-options', authenticate, can('reports.view'), asyncHandler(async (req: AuthRequest, res: Response) => {

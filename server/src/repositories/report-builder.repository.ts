@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { CF_ENTITIES, type CfEntity } from '../services/custom-fields.js';
 
 /**
  * Générateur de rapports configurables (mig 394).
@@ -21,6 +22,8 @@ type DataSource = {
   dimensions: Dimension[];
   measures: Measure[];
   filters: FilterDef[];
+  /** Champs personnalisés exposés (M4-07) : entité du moteur 369 + colonne JSONB dans le FROM. */
+  customFields?: { entity: CfEntity; column: string; label: string }[];
 };
 
 const SOURCES: Record<string, DataSource> = {
@@ -61,9 +64,17 @@ const SOURCES: Record<string, DataSource> = {
     from: `production_plan_items pi
            JOIN production_plans pl ON pl.id = pi.plan_id
            JOIN products p ON p.id = pi.product_id
-           LEFT JOIN categories c ON c.id = p.category_id`,
+           LEFT JOIN categories c ON c.id = p.category_id
+           LEFT JOIN LATERAL (SELECT r.custom_fields FROM recipes r
+                               WHERE r.id = COALESCE(pi.alt_recipe_id, pi.base_recipe_id)
+                                  OR (pi.alt_recipe_id IS NULL AND pi.base_recipe_id IS NULL AND r.product_id = pi.product_id AND r.archived_at IS NULL)
+                               ORDER BY (r.id = COALESCE(pi.alt_recipe_id, pi.base_recipe_id)) DESC NULLS LAST, r.created_at LIMIT 1) rcp ON true`,
     dateColumn: 'pl.plan_date',
     storeColumn: 'pl.store_id',
+    customFields: [
+      { entity: 'production_order', column: 'pl.custom_fields', label: 'Ordre' },
+      { entity: 'recipe', column: 'rcp.custom_fields', label: 'Fiche' },
+    ],
     dimensions: [
       { key: 'date_day', label: 'Jour', sql: `pl.plan_date`, type: 'date' },
       { key: 'date_month', label: 'Mois', sql: `to_char(pl.plan_date, 'YYYY-MM')`, type: 'text' },
@@ -129,6 +140,35 @@ const SOURCES: Record<string, DataSource> = {
       { key: 'category', label: 'Catégorie', sql: `c.name`, type: 'enum', optionsSql: `SELECT DISTINCT name AS v FROM categories WHERE name IS NOT NULL ORDER BY 1` },
     ],
   },
+  lots: {
+    key: 'lots', label: 'Lots produits',
+    from: `product_lots lo
+           JOIN products p ON p.id = lo.product_id
+           LEFT JOIN categories c ON c.id = p.category_id`,
+    dateColumn: 'COALESCE(lo.produced_at, lo.created_at)',
+    storeColumn: 'lo.store_id',
+    dimensions: [
+      { key: 'date_day', label: 'Jour de production', sql: `COALESCE(lo.produced_at, lo.created_at)::date`, type: 'date' },
+      { key: 'date_month', label: 'Mois', sql: `to_char(COALESCE(lo.produced_at, lo.created_at), 'YYYY-MM')`, type: 'text' },
+      { key: 'category', label: 'Catégorie', sql: `COALESCE(c.name, 'Sans catégorie')`, type: 'text' },
+      { key: 'product', label: 'Produit', sql: `p.name`, type: 'text' },
+      { key: 'lot', label: 'Lot', sql: `lo.lot_number`, type: 'text' },
+      { key: 'status', label: 'Statut', sql: `COALESCE(lo.status, '—')`, type: 'text' },
+    ],
+    measures: [
+      { key: 'produced', label: 'Produit', sql: `SUM(COALESCE(lo.quantity_total, 0))`, format: 'number' },
+      { key: 'sold', label: 'Vendu', sql: `SUM(COALESCE(lo.sold_qty, 0))`, format: 'number' },
+      { key: 'wasted', label: 'Perdu', sql: `SUM(COALESCE(lo.wasted_qty, 0))`, format: 'number' },
+      { key: 'remaining', label: 'Restant', sql: `SUM(COALESCE(lo.backroom_qty, 0) + COALESCE(lo.vitrine_qty, 0))`, format: 'number' },
+      { key: 'value', label: 'Valeur produite', sql: `SUM(COALESCE(lo.quantity_total, 0) * COALESCE(lo.unit_cost, 0))`, format: 'currency' },
+      { key: 'count', label: 'Nb lots', sql: `COUNT(*)`, format: 'integer' },
+    ],
+    filters: [
+      { key: 'status', label: 'Statut', sql: `lo.status`, type: 'enum', optionsSql: `SELECT DISTINCT status AS v FROM product_lots WHERE status IS NOT NULL ORDER BY 1` },
+      { key: 'category', label: 'Catégorie', sql: `c.name`, type: 'enum', optionsSql: `SELECT DISTINCT name AS v FROM categories WHERE name IS NOT NULL ORDER BY 1` },
+    ],
+    customFields: [{ entity: 'product_lot', column: 'lo.custom_fields', label: 'Lot' }],
+  },
   paie: {
     key: 'paie', label: 'Paie',
     from: `payroll p JOIN employees e ON e.id = p.employee_id`,
@@ -155,6 +195,38 @@ const SOURCES: Record<string, DataSource> = {
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const CF_CODE = /^[a-z][a-z0-9_]{1,39}$/;
+const NUMERIC = `'^-?[0-9]+([.][0-9]+)?$'`;
+
+/**
+ * Source complétée de ses champs personnalisés actifs (M4-07). Sécurité : le code d'un champ
+ * vient de custom_field_defs (contrainte ^[a-z][a-z0-9_]{1,39}$, revérifiée ici) et la colonne
+ * JSONB du registre ; aucune valeur saisie n'entre dans le SQL. Clés : cf.<entité>.<code>.
+ */
+async function withCustomFields(src: DataSource): Promise<DataSource> {
+  if (!src.customFields?.length) return src;
+  const defs = (await db.query(
+    `SELECT entity, code, label, field_type FROM custom_field_defs
+      WHERE is_active AND entity = ANY($1::text[]) ORDER BY entity, display_order, label`,
+    [src.customFields.map(c => c.entity)])).rows as { entity: CfEntity; code: string; label: string; field_type: string }[];
+  const dimensions = [...src.dimensions];
+  const measures = [...src.measures];
+  const filters = [...src.filters];
+  for (const d of defs) {
+    const at = src.customFields.find(c => c.entity === d.entity);
+    if (!at || !CF_CODE.test(d.code)) continue;
+    const key = `cf.${d.entity}.${d.code}`;
+    const val = `(${at.column}->>'${d.code}')`;
+    const label = `${at.label} › ${d.label}`;
+    dimensions.push({ key, label, sql: `COALESCE(NULLIF(${val}, ''), '—')`, type: 'text' });
+    filters.push({ key, label, sql: val, type: 'enum',
+      optionsSql: `SELECT DISTINCT custom_fields->>'${d.code}' AS v FROM ${CF_ENTITIES[d.entity].table} WHERE custom_fields ? '${d.code}' ORDER BY 1 LIMIT 500` });
+    if (d.field_type === 'number') {
+      measures.push({ key: `${key}.sum`, label: `${label} (somme)`, sql: `SUM(CASE WHEN ${val} ~ ${NUMERIC} THEN ${val}::numeric END)`, format: 'number' });
+    }
+  }
+  return { ...src, dimensions, measures, filters };
+}
 
 export type RunConfig = {
   sourceKey: string;
@@ -169,8 +241,9 @@ export type RunConfig = {
 
 export const reportBuilderRepository = {
   /** Catalogue des sources (métadonnées pour le constructeur) — sans les expressions SQL. */
-  listSources() {
-    return Object.values(SOURCES).map(s => ({
+  async listSources() {
+    const all = await Promise.all(Object.values(SOURCES).map(withCustomFields));
+    return all.map(s => ({
       key: s.key, label: s.label, hasDate: !!s.dateColumn,
       dimensions: s.dimensions.map(d => ({ key: d.key, label: d.label, type: d.type })),
       measures: s.measures.map(m => ({ key: m.key, label: m.label, format: m.format })),
@@ -180,7 +253,7 @@ export const reportBuilderRepository = {
 
   /** Valeurs possibles d'un filtre enum (pour alimenter la liste déroulante). */
   async filterOptions(sourceKey: string, filterKey: string) {
-    const src = SOURCES[sourceKey];
+    const src = SOURCES[sourceKey] ? await withCustomFields(SOURCES[sourceKey]) : undefined;
     const f = src?.filters.find(x => x.key === filterKey);
     if (!f?.optionsSql) return [];
     const { rows } = await db.query(f.optionsSql);
@@ -193,8 +266,8 @@ export const reportBuilderRepository = {
    * paramétrées. Retourne les colonnes (ordre dimensions puis indicateurs) et les lignes.
    */
   async run(cfg: RunConfig, ctx: { storeId: string | null }) {
-    const src = SOURCES[cfg.sourceKey];
-    if (!src) return { error: 'Source inconnue' as const };
+    if (!SOURCES[cfg.sourceKey]) return { error: 'Source inconnue' as const };
+    const src = await withCustomFields(SOURCES[cfg.sourceKey]);
 
     const dims = (cfg.dimensions ?? []).map(k => src.dimensions.find(d => d.key === k)).filter((d): d is Dimension => !!d);
     const meas = (cfg.measures ?? []).map(k => src.measures.find(m => m.key === k)).filter((m): m is Measure => !!m);

@@ -53,4 +53,37 @@ describe.skipIf(!hasTestDb)('Champs personnalisés production (M4-07)', () => {
     expect((await cf.saveValues('product_lot', lot, { [code]: '17/11/2026' })).data?.[code]).toBe('2026-11-17');
     expect(cf.isCfEntity('product_lot')).toBe(true);
   });
+
+  it('générateur de rapports : regrouper et sommer par champ personnalisé de l\'ordre', async () => {
+    const { reportBuilderRepository: rb } = await import('../../repositories/report-builder.repository.js');
+    const src = (await rb.listSources()).find(s => s.key === 'production')!;
+    expect(src.dimensions.map(d => d.key)).toContain(`cf.production_order.${code}`);
+    expect(src.dimensions.map(d => d.key)).toContain(`cf.recipe.${code}`);
+    const today = new Date().toISOString().slice(0, 10);
+    const out = await rb.run({ sourceKey: 'production', dimensions: [`cf.production_order.${code}`, `cf.recipe.${code}`],
+      measures: ['planned', `cf.production_order.${code}.sum`], filters: { [`cf.production_order.${code}`]: '12.5' }, dateFrom: today, dateTo: today }, { storeId: fx.storeId });
+    expect('error' in out).toBe(false);
+    const rows = (out as { rows: Record<string, unknown>[] }).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ [`cf.production_order.${code}`]: '12.5', [`cf.recipe.${code}`]: 'Norme ISO 22000' });
+    expect(Number(rows[0][`cf.production_order.${code}.sum`])).toBeCloseTo(12.5, 3);
+    expect((await rb.listSources()).find(s => s.key === 'lots')!.dimensions.map(d => d.key)).toContain(`cf.product_lot.${code}`);
+  });
+
+  it('import : champs personnalisés d\'un lot mis à jour par son numéro ; nom de fiche ambigu refusé', async () => {
+    const di = await import('../../services/data-import.js');
+    const csv = Buffer.from(`N° de lot;Champ product_lot\nL-M407-${RUN};18/11/2026\n`, 'utf8');
+    const res = await di.commitImport(di.entityByKey('product_lots')!, csv, { actorId: fx.userId, mode: 'update', fileName: 'lots.csv' });
+    expect(res).toMatchObject({ ok: true, updated: 1, created: 0 });
+    expect((await p().query(`SELECT custom_fields->>$2 AS v, lot_number FROM product_lots WHERE lot_number = $1`, [`L-M407-${RUN}`, code])).rows[0])
+      .toMatchObject({ v: '2026-11-18', lot_number: `L-M407-${RUN}` });
+
+    const twin = `Doublon M407 ${RUN}`;
+    const a = await createProductWithRecipe(fx, { name: 'Twin A M407', price: 1, ingredients: [] });
+    const b = await createProductWithRecipe(fx, { name: 'Twin B M407', price: 1, ingredients: [] });
+    await p().query(`UPDATE recipes SET name = $1 WHERE id = ANY($2::uuid[])`, [twin, [a.recipeId, b.recipeId]]);
+    const prev = await di.previewImport(di.entityByKey('recipes')!, Buffer.from(`Nom de la fiche;Champ recipe\n${twin};Lot de test\n`, 'utf8'), { mode: 'update' });
+    expect(prev.rows[0].action).toBe('error');
+    expect(prev.rows[0].errors.map(e => e.message).join(' ')).toMatch(/plusieurs fiches/);
+  });
 });
