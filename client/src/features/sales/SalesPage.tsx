@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
@@ -60,7 +61,7 @@ function exportCSV(filename: string, headers: string[], rows: string[][]) {
 }
 
 function formatCurrency(value: number) {
-  return new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + ' DH';
+  return money(value);
 }
 
 function parseCSVFiles(files: FileList): Promise<{ date: string; items: { sku: string; productName: string; quantity: number; unitPrice: number; netSales: number; costOfGoods: number }[] }[]> {
@@ -418,7 +419,7 @@ export default function SalesPage() {
     }
     if (view === 'receipt') {
       exportCSV(`ventes_recus_${date}.csv`,
-        ['N° Vente', 'Client', 'Caissier', 'Paiement', 'Total (DH)', 'Date/Heure'],
+        ['N° Vente', 'Client', 'Caissier', 'Paiement', `Total (${currencySymbol()})`, 'Date/Heure'],
         sales.map((s: Record<string, any>) => [
           s.sale_number as string,
           s.customer_first_name ? `${s.customer_first_name} ${s.customer_last_name}` : 'Client de passage',
@@ -430,7 +431,7 @@ export default function SalesPage() {
       );
     } else if (view === 'category') {
       exportCSV(`ventes_categories_${date}.csv`,
-        ['Catégorie', 'Articles vendus', 'Nb ventes', 'CA (DH)', '% du CA'],
+        ['Catégorie', 'Articles vendus', 'Nb ventes', `CA (${currencySymbol()})`, '% du CA'],
         summary.map((r: Record<string, any>) => {
           const rev = parseFloat(r.total_revenue as string);
           return [r.label as string, r.total_quantity as string, r.sale_count as string, rev.toFixed(2), totalRevenue > 0 ? (rev / totalRevenue * 100).toFixed(1) + '%' : '0%'];
@@ -438,7 +439,7 @@ export default function SalesPage() {
       );
     } else if (view === 'product') {
       exportCSV(`ventes_articles_${date}.csv`,
-        ['Article', 'Catégorie', 'Qté vendue', 'Nb ventes', 'CA (DH)', '% du CA'],
+        ['Article', 'Catégorie', 'Qté vendue', 'Nb ventes', `CA (${currencySymbol()})`, '% du CA'],
         summary.map((r: Record<string, any>) => {
           const rev = parseFloat(r.total_revenue as string);
           return [r.label as string, (r.category_name as string) || '', r.total_quantity as string, r.sale_count as string, rev.toFixed(2), totalRevenue > 0 ? (rev / totalRevenue * 100).toFixed(1) + '%' : '0%'];
@@ -446,7 +447,7 @@ export default function SalesPage() {
       );
     } else if (view === 'cashier') {
       exportCSV(`ventes_vendeuses_${date}.csv`,
-        ['Vendeuse / Caissier', 'Rôle', 'Nb ventes', 'CA (DH)', '% du CA'],
+        ['Vendeuse / Caissier', 'Rôle', 'Nb ventes', `CA (${currencySymbol()})`, '% du CA'],
         summary.map((r: Record<string, any>) => {
           const rev = parseFloat(r.total_revenue as string);
           return [r.label as string, ROLE_LABELS[r.role as string] || (r.role as string), r.sale_count as string, rev.toFixed(2), totalRevenue > 0 ? (rev / totalRevenue * 100).toFixed(1) + '%' : '0%'];
@@ -454,7 +455,7 @@ export default function SalesPage() {
       );
     } else if (view === 'payment') {
       exportCSV(`ventes_paiement_${date}.csv`,
-        ['Mode de paiement', 'Nb ventes', 'CA (DH)', '% du CA'],
+        ['Mode de paiement', 'Nb ventes', `CA (${currencySymbol()})`, '% du CA'],
         summary.map((r: Record<string, any>) => {
           const rev = parseFloat(r.total_revenue as string);
           return [PAYMENT_LABELS[r.label as string] || (r.label as string), r.sale_count as string, rev.toFixed(2), totalRevenue > 0 ? (rev / totalRevenue * 100).toFixed(1) + '%' : '0%'];
@@ -588,7 +589,7 @@ export default function SalesPage() {
                     {r.created ? (
                       <>
                         <p className="text-xs text-gray-600">
-                          {r.saleNumber as string} - {r.matchedCount as number} articles - {new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2 }).format(r.total as number)} DH
+                          {r.saleNumber as string} - {r.matchedCount as number} articles - {money(r.total as number)}
                         </p>
                         {(r.unmatchedItems as string[])?.length > 0 && (
                           <p className="text-xs text-amber-600 mt-1">

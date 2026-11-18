@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -28,7 +29,6 @@ const BUCKETS: Array<{ key: AgingBucket; label: string; tone: string }> = [
   { key: 'd90', label: '61-90 j', tone: '#dc2626' },
   { key: 'over90', label: '+ 90 j', tone: '#991b1b' },
 ];
-const money = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 const day = (d: string) => format(new Date(d + 'T00:00:00'), 'dd MMM yyyy', { locale: fr });
 
 type Filter = 'all' | 'overdue' | 'over60';

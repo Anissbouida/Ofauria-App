@@ -9,6 +9,7 @@ import { reconciliationApi, type ReconLine, type ReconShift, type ReconProduct, 
 import { parseLoyverseFiles, parseLoyverseCatalogFiles, parseLoyverseReceiptFiles, type ParsedReceiptItem } from './loyverseParser';
 import { makeDarijaLookup, normalizeDarijaKey } from './darijaDictionary';
 import { notify } from '../../components/ui/InlineNotification';
+import { currencySymbol } from '../../utils/money';
 import { useAuth } from '../../context/AuthContext';
 
 /** Rapprochement PAR SHIFT (ISOLE, TEMPORAIRE) : vendu + invendu - (recu + ouverture) = ecart (negatif = manque ; l'appro n'entre pas dans le calcul). */
@@ -1752,7 +1753,7 @@ function FicheAddProductModal({ products, categories, onClose, onSave }: {
                 </datalist>
               </div>
               <div>
-                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Prix unitaire (DH)</label>
+                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Prix unitaire ({currencySymbol()})</label>
                 <input type="number" step="0.01" min="0" className="input" value={f.price}
                   onChange={e => setF({ ...f, price: e.target.value })} />
               </div>
@@ -2333,9 +2334,9 @@ export function DayView() {
                     </>
                   );
                 })()}
-                <th style={{ textAlign: 'right' }}>Prix (DH)</th>
+                <th style={{ textAlign: 'right' }}>Prix ({currencySymbol()})</th>
                 <th style={{ textAlign: 'right' }}>Écart (u)</th>
-                <th style={{ textAlign: 'right' }}>Écart (DH)</th>
+                <th style={{ textAlign: 'right' }}>Écart ({currencySymbol()})</th>
                 <th style={{ width: 32 }}></th>
               </tr>
             </thead>
@@ -2383,7 +2384,7 @@ export function DayView() {
                       <EcartBadge value={catEcartQty} format={qf} strong={Math.abs(catEcartVal) >= 50} minWidth={54} />
                     </td>
                     <td style={{ ...catCellBase }}>
-                      <EcartBadge value={catEcartVal} format={v => `${nf(v)} DH`} strong={Math.abs(catEcartVal) >= 50} minWidth={90} />
+                      <EcartBadge value={catEcartVal} format={v => `${nf(v)} ${currencySymbol()}`} strong={Math.abs(catEcartVal) >= 50} minWidth={90} />
                     </td>
                     <td style={{ background: catBg }}></td>
                   </tr>
@@ -2453,12 +2454,12 @@ export function DayView() {
                     <EcartBadge value={totals.ecartQty} format={qf} strong minWidth={62} />
                   </td>
                   <td style={{ textAlign: 'right', padding: '4px 8px' }}>
-                    <EcartBadge value={totals.ecartVal} format={v => `${nf(v)} DH`} strong minWidth={96} />
+                    <EcartBadge value={totals.ecartVal} format={v => `${nf(v)} ${currencySymbol()}`} strong minWidth={96} />
                   </td>
                   <td></td>
                 </tr>
                 <tr style={{ fontWeight: 600, color: 'var(--theme-text-muted)', background: 'var(--theme-bg-sidebar, #f5f5f5)' }}>
-                  <td>Montants (DH)</td>
+                  <td>Montants ({currencySymbol()})</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.report.bg, color: COL_TINTS.report.text }}>{totals.report > 0 ? nf(totals.reportVal) : '—'}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.appro.bg, color: COL_TINTS.appro.text }}>{nf(totals.approVal)}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', background: COL_TINTS.recu.bg, color: COL_TINTS.recu.text }}>{nf(totals.recuVal)}</td>
@@ -2551,7 +2552,7 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
   const box = (label: string, s: { net: number; qty: number }, color: string) => (
     <div style={{ flex: 1, border: '1px solid var(--theme-bg-separator)', borderRadius: 6, padding: '10px 14px' }}>
       <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--theme-text-muted)' }}>{label}</div>
-      <div style={{ fontSize: '1.35rem', fontWeight: 700, fontFamily: 'ui-monospace, monospace', color }}>{nf(s.net)} <span style={{ fontSize: '0.8rem' }}>DH</span></div>
+      <div style={{ fontSize: '1.35rem', fontWeight: 700, fontFamily: 'ui-monospace, monospace', color }}>{nf(s.net)} <span style={{ fontSize: '0.8rem' }}>{currencySymbol()}</span></div>
       <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{qf(s.qty)} article{s.qty > 1 ? 's' : ''}</div>
     </div>
   );
@@ -2602,7 +2603,7 @@ function ReceiptImportModal({ receipts, isLoading, onClose, onImport }: {
             {box('Soir', stats.soir, '#2e7d32')}
           </div>
           <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-            Total : <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{nf(total)} DH</strong>
+            Total : <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{nf(total)} {currencySymbol()}</strong>
           </div>
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 6, borderTop: '1px solid var(--theme-bg-separator)' }}>
@@ -2817,7 +2818,7 @@ function AddLineModal({ onClose, onSave, isLoading }: {
                 onChange={e => setF({ ...f, recuQty: e.target.value })} />
             </div>
             <div>
-              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Prix (DH)</label>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Prix ({currencySymbol()})</label>
               <input type="text" inputMode="decimal" className="input" value={f.unitPrice}
                 placeholder="0"
                 onChange={e => setF({ ...f, unitPrice: e.target.value })} />
@@ -3382,7 +3383,7 @@ export function CatalogView() {
                   <th>Produit</th>
                   <th style={{ width: 120 }}>SKU</th>
                   <th style={{ width: 200, textAlign: 'right' }}>Darija</th>
-                  <th style={{ width: 100, textAlign: 'right' }}>Prix (DH)</th>
+                  <th style={{ width: 100, textAlign: 'right' }}>Prix ({currencySymbol()})</th>
                   <th style={{ width: 130 }}></th>
                 </tr>
               </thead>
@@ -3443,7 +3444,7 @@ export function CatalogView() {
                     onChange={e => setEditing(p => ({ ...p!, sku: e.target.value }))} />
                 </div>
                 <div>
-                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Prix unitaire (DH)</label>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)' }}>Prix unitaire ({currencySymbol()})</label>
                   <input type="number" step="0.01" min="0" className="input" value={editing.unit_price ?? ''}
                     onChange={e => setEditing(p => ({ ...p!, unit_price: e.target.value }))} />
                 </div>
@@ -3496,7 +3497,7 @@ export function ReportView() {
   }, { appro: 0, vendu: 0, invendu: 0, ecartVal: 0 }), [rows]);
 
   const handleExport = () => {
-    const headers = ['Produit', 'Categorie', 'Appro', 'Vendu', 'Reste', 'Ecart (u)', 'Ecart (DH)', 'Jours'];
+    const headers = ['Produit', 'Categorie', 'Appro', 'Vendu', 'Reste', 'Ecart (u)', `Ecart (${currencySymbol()})`, 'Jours'];
     const data = (rows as ReconReportRow[]).map(r => [
       r.product_name, r.category || '', qf(num(r.appro_qty)), qf(num(r.vendu_qty)),
       qf(num(r.invendu_qty)), qf(num(r.ecart_qty)), nf(num(r.ecart_value)), r.days_count,
@@ -3523,7 +3524,7 @@ export function ReportView() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
           {([
             ['Appro (u)', qf(totals.appro)], ['Vendu (u)', qf(totals.vendu)],
-            ['Reste (u)', qf(totals.invendu)], ['Écart total (DH)', nf(totals.ecartVal)],
+            ['Reste (u)', qf(totals.invendu)], [`Écart total (${currencySymbol()})`, nf(totals.ecartVal)],
           ] as [string, string][]).map(([lbl, val], i) => (
             <div key={lbl} style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
               <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{lbl}</div>
@@ -3552,7 +3553,7 @@ export function ReportView() {
                 <th style={{ textAlign: 'right' }}>Vendu</th>
                 <th style={{ textAlign: 'right' }}>Reste</th>
                 <th style={{ textAlign: 'right' }}>Écart (u)</th>
-                <th style={{ textAlign: 'right' }}>Écart (DH)</th>
+                <th style={{ textAlign: 'right' }}>Écart ({currencySymbol()})</th>
                 <th style={{ textAlign: 'right' }}>Jours</th>
               </tr>
             </thead>

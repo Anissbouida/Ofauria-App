@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo, type CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ordersApi } from '../../api/orders.api';
@@ -208,7 +209,7 @@ export default function OrdersPage() {
   const cancelOrder = async (o: OrderRow) => {
     const adv = num(o.advance_amount);
     const msg = adv > 0
-      ? `Annuler la commande ${o.order_number} ? L'avance de ${n(adv)} DH reste acquise : elle n'est pas remboursée.`
+      ? `Annuler la commande ${o.order_number} ? L'avance de ${money(adv)} reste acquise : elle n'est pas remboursée.`
       : `Annuler la commande ${o.order_number} ?`;
     if (await confirm(msg, { title: 'Annuler la commande', confirmLabel: 'Annuler la commande', cancelLabel: 'Retour', danger: true })) {
       updateStatusMutation.mutate({ id: o.id as string, status: 'cancelled' });
@@ -300,9 +301,9 @@ export default function OrdersPage() {
       const b = proBilling(o);
       return <><StatusTag tone={b.tone} icon={b.icon} label={b.label} />{b.doc && <span className="sal-sub sal-mono">{b.doc}</span>}</>;
     }
-    if (status === 'cancelled') return <span className="sal-sub">{advanceAmt > 0 ? `avance de ${n(advanceAmt)} DH conservée` : '—'}</span>;
+    if (status === 'cancelled') return <span className="sal-sub">{advanceAmt > 0 ? `avance de ${money(advanceAmt)} conservée` : '—'}</span>;
     if (status === 'completed') return <StatusTag tone="done" label="Soldée" />;
-    if (advanceAmt > 0) return <><StatusTag tone="progress" icon={Banknote} label={`Avance ${n(advanceAmt)}`} /><span className="sal-sub">reste {n(remaining)} DH</span></>;
+    if (advanceAmt > 0) return <><StatusTag tone="progress" icon={Banknote} label={`Avance ${n(advanceAmt)}`} /><span className="sal-sub">reste {money(remaining)}</span></>;
     return <span className="sal-sub">au retrait</span>;
   };
 
@@ -326,13 +327,13 @@ export default function OrdersPage() {
 
   return (
     <SalesPageShell icon={ClipboardList} parent="Ventes" title="Commandes" list
-      summary={`${openCount} en cours · ${n(openTotal)} DH`}
+      summary={`${openCount} en cours · ${money(openTotal)}`}
       actions={<button onClick={() => setShowForm(true)} className="odoo-btn-primary"><Plus size={13} /> Nouvelle commande</button>}>
         {view !== 'split' && <section className="prj-kpis" aria-label="Indicateurs">
-          <ListKpi label="Commandes en cours" value={String(openCount)} sub={`${n(openTotal)} DH`} />
+          <ListKpi label="Commandes en cours" value={String(openCount)} sub={`${money(openTotal)}`} />
           <ListKpi label="À retirer aujourd'hui" value={String(kpis.todayCount)} sub={`${kpis.weekCount} d'ici 7 jours`} />
-          <ListKpi label="Reste à encaisser" value={`${n(kpis.toCollect)} DH`} sub={`avances reçues ${n(kpis.advances)} DH`} />
-          <ListKpi label="Livrées à facturer" value={String(kpis.toInvoiceCount)} sub={`${n(kpis.toInvoice)} DH`} tone={kpis.toInvoiceCount ? 'orange' : undefined} />
+          <ListKpi label="Reste à encaisser" value={`${money(kpis.toCollect)}`} sub={`avances reçues ${money(kpis.advances)}`} />
+          <ListKpi label="Livrées à facturer" value={String(kpis.toInvoiceCount)} sub={`${money(kpis.toInvoice)}`} tone={kpis.toInvoiceCount ? 'orange' : undefined} />
         </section>}
 
         <div className="prj-toolbar">
@@ -375,7 +376,7 @@ export default function OrdersPage() {
         {view !== 'split' && selectedOrders.length > 0 && (
           <div className="sal-bulk" role="region" aria-label="Actions sur la sélection">
             <strong>
-              {selectedOrders.length} commande{selectedOrders.length > 1 ? 's sélectionnées' : ' sélectionnée'} · {n(selectedOrders.reduce((s, o) => s + num(o.total), 0))} DH
+              {selectedOrders.length} commande{selectedOrders.length > 1 ? 's sélectionnées' : ' sélectionnée'} · {money(selectedOrders.reduce((s, o) => s + num(o.total), 0))}
             </strong>
             {BULK_STEPS.map(b => {
               const eligible = selectedOrders.filter(o => o.status === b.from).map(o => o.id as string);
@@ -428,7 +429,7 @@ export default function OrdersPage() {
                   onDrop={e => { e.preventDefault(); setDragOver(null); dropOn(st.key, e.dataTransfer.getData('text/plain')); }}>
                   <div className="prj-lane-head">
                     <span className={`prj-dot ${LANE_TONE[st.key] ?? ''}`} /><strong>{st.label}</strong>
-                    <small className="sal-lane-sum">{cards.length} · {n(sum)} DH</small>
+                    <small className="sal-lane-sum">{cards.length} · {money(sum)}</small>
                   </div>
                   {!cards.length && <div className="prj-lane-empty">Aucune commande</div>}
                   {cards.map(o => {
@@ -441,7 +442,7 @@ export default function OrdersPage() {
                         <span className="prj-task-title">{customerName(o)}</span>
                         <span className="prj-task-meta">
                           <span style={{ flex: 1 }}>Retrait <span className={late ? 'late' : ''}>{fmtDate(o.pickup_date, 'd MMM')}</span>{late ? ` · ${daysLate(o, today)} j de retard` : ''}</span>
-                          <span className="sal-amount">{n(num(o.total))} DH</span>
+                          <span className="sal-amount">{money(num(o.total))}</span>
                         </span>
                       </button>
                     );
@@ -517,7 +518,7 @@ export default function OrdersPage() {
                             <td><OrderStatusTag status={status} /></td>
                             <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                               <strong>{n(num(o.total))}</strong>
-                              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginLeft: 3 }}>DH</span>
+                              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginLeft: 3 }}>{currencySymbol()}</span>
                             </td>
                             <td style={{ whiteSpace: 'nowrap' }}>{paymentCell(o)}</td>
                             <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
@@ -538,7 +539,7 @@ export default function OrdersPage() {
                 </div>
                 <div className="sal-foot">
                   <span>{filteredOrders.length} commande{filteredOrders.length > 1 ? 's' : ''}{hasFilters ? ' (filtrées)' : ''}</span>
-                  <span>Total affiché <strong>{n(filteredTotal)} DH TTC</strong></span>
+                  <span>Total affiché <strong>{money(filteredTotal)} TTC</strong></span>
                 </div>
               </>
             )}
@@ -615,7 +616,7 @@ export function PrepaymentModal({ order, onClose, onDone }: { order: OrderRow; o
           <Banknote size={18} />
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Facture d'acompte</div>
-            <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · total {n(total)} DH</div>
+            <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>{order.order_number as string} · total {money(total)}</div>
           </div>
           <button onClick={onClose} aria-label="Fermer" style={{ color: '#fff', opacity: 0.85, padding: 4 }}><X size={16} /></button>
         </div>
@@ -627,7 +628,7 @@ export function PrepaymentModal({ order, onClose, onDone }: { order: OrderRow; o
             <label style={labelStyle}>Pourcentage de l'acompte</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <input type="number" min={1} max={100} value={percent} onChange={e => setPercent(e.target.value)} style={{ ...fieldStyle, width: 120 }} />
-              <span style={{ color: 'var(--theme-text-muted)' }}>% → <strong>{n(amount)} DH</strong> TTC</span>
+              <span style={{ color: 'var(--theme-text-muted)' }}>% → <strong>{money(amount)}</strong> TTC</span>
             </div>
           </div>
         </div>
@@ -684,17 +685,17 @@ export function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow;
           <div style={sectionStyle}>
             <div className="odoo-section-header"><Banknote size={11} /> Solde de la commande</div>
             <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total commande</span><span style={{ fontWeight: 600 }}>{n(totalAmt)} DH</span></div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}><span>Avance déjà versée</span><span style={{ fontWeight: 600 }}>{n(advanceAmt)} DH</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total commande</span><span style={{ fontWeight: 600 }}>{money(totalAmt)}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}><span>Avance déjà versée</span><span style={{ fontWeight: 600 }}>{money(advanceAmt)}</span></div>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4, marginTop: 2 }}>
-                <span>Reste à encaisser</span><span style={{ color: '#b85d1a' }}>{n(remaining)} DH</span>
+                <span>Reste à encaisser</span><span style={{ color: '#b85d1a' }}>{money(remaining)}</span>
               </div>
             </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
-              <label style={labelStyle}>Montant reçu (DH)</label>
+              <label style={labelStyle}>Montant reçu ({currencySymbol()})</label>
               <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} min={remaining} step="0.01" autoFocus
                 style={{ ...fieldStyle, textAlign: 'right', fontWeight: 700, fontSize: '1rem' }} />
             </div>
@@ -712,11 +713,11 @@ export function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow;
           </div>
 
           {short ? (
-            <StatusBanner tone="danger" icon={AlertTriangle} title={`Il manque ${n(remaining - paid)} DH`}>
+            <StatusBanner tone="danger" icon={AlertTriangle} title={`Il manque ${money(remaining - paid)}`}>
               Le reste doit être réglé en totalité pour remettre la commande.
             </StatusBanner>
           ) : change > 0.004 ? (
-            <StatusBanner tone="info" icon={Banknote} title={`Monnaie à rendre : ${n(change)} DH`} />
+            <StatusBanner tone="info" icon={Banknote} title={`Monnaie à rendre : ${money(change)}`} />
           ) : null}
         </div>
 
@@ -724,7 +725,7 @@ export function DeliverModal({ order, onClose, onDelivered }: { order: OrderRow;
           <button onClick={onClose} className="odoo-btn-secondary" disabled={deliverMutation.isPending}>Annuler</button>
           <button onClick={() => deliverMutation.mutate()} disabled={deliverMutation.isPending || short} className="odoo-btn-primary">
             {deliverMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
-            Encaisser {n(remaining)} DH et remettre
+            Encaisser {money(remaining)} et remettre
           </button>
         </div>
       </div>
@@ -883,9 +884,9 @@ export function ProDeliverModal({ order, onClose, onDelivered }: { order: OrderR
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16, fontSize: '0.8125rem' }}>
-            <span>HT <strong>{n(totals.ht)} DH</strong></span>
-            <span>TVA <strong>{n(totals.tva)} DH</strong></span>
-            <span>TTC <strong>{n(totals.ht + totals.tva)} DH</strong></span>
+            <span>HT <strong>{money(totals.ht)}</strong></span>
+            <span>TVA <strong>{money(totals.tva)}</strong></span>
+            <span>TTC <strong>{money(totals.ht + totals.tva)}</strong></span>
           </div>
         </div>
 

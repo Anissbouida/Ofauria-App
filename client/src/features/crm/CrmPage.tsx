@@ -1,3 +1,4 @@
+import { money as moneyFmt, currencySymbol } from '../../utils/money';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -79,7 +80,7 @@ export default function CrmPage() {
 
   return (
     <SalesPageShell icon={Target} parent="Ventes" title="Pipeline" list
-      summary={ov ? `${openCount} affaire${openCount > 1 ? 's' : ''} en cours · ${n0(openAmount)} DH` : undefined}
+      summary={ov ? `${openCount} affaire${openCount > 1 ? 's' : ''} en cours · ${moneyFmt(openAmount, { decimals: 0 })}` : undefined}
       actions={<>
         <button className="odoo-btn-secondary" onClick={() => setShowCampaigns(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Megaphone size={14} /> Campagnes</button>
         <button className="odoo-btn-primary" onClick={() => setEditing('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouvelle opportunité</button>
@@ -87,9 +88,9 @@ export default function CrmPage() {
 
       {ov && (
         <section className="prj-kpis" aria-label="Indicateurs">
-          <ListKpi label="Affaires en cours" value={String(openCount)} sub={`${n0(openAmount)} DH espérés`} />
-          <ListKpi label="Prévision pondérée" value={`${n0(weighted)} DH`} sub="montant × probabilité" />
-          <ListKpi label="Gagné ce mois" value={`${n0(ov.month.wonAmount)} DH`} sub={`${ov.month.won} affaire(s) · ${ov.month.lost} perdue(s)`} tone={ov.month.wonAmount > 0 ? 'green' : undefined} />
+          <ListKpi label="Affaires en cours" value={String(openCount)} sub={`${moneyFmt(openAmount, { decimals: 0 })} espérés`} />
+          <ListKpi label="Prévision pondérée" value={`${moneyFmt(weighted, { decimals: 0 })}`} sub="montant × probabilité" />
+          <ListKpi label="Gagné ce mois" value={`${moneyFmt(ov.month.wonAmount, { decimals: 0 })}`} sub={`${ov.month.won} affaire(s) · ${ov.month.lost} perdue(s)`} tone={ov.month.wonAmount > 0 ? 'green' : undefined} />
           <ListKpi label="Taux de transformation" value={ov.conversion.rate != null ? `${ov.conversion.rate} %` : '—'} sub={`90 j : ${ov.conversion.won} gagnée(s), ${ov.conversion.lost} perdue(s)`} />
           <ListKpi label="Activités en retard" value={String(ov.overdueActivities)} sub="appels, rendez-vous, tâches" tone={ov.overdueActivities > 0 ? 'red' : undefined} />
         </section>
@@ -120,7 +121,7 @@ export default function CrmPage() {
                   <td><strong>{o.title}</strong>{o.source_label && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{o.source_label}</div>}</td>
                   <td>{o.client_label}{!o.customer_id && <span className="odoo-tag odoo-tag-yellow" style={{ marginLeft: 6 }}>prospect</span>}</td>
                   <td><StatusTag tone={STAGE_TONE[o.stage]?.tone ?? 'draft'} icon={STAGE_TONE[o.stage]?.icon} label={STAGE_LABEL[o.stage]} /></td>
-                  <td style={{ textAlign: 'right' }}>{o.expected_amount ? `${n0(o.expected_amount)} DH` : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{o.expected_amount ? `${moneyFmt(o.expected_amount, { decimals: 0 })}` : '—'}</td>
                   <td style={{ textAlign: 'right' }}>{o.probability} %</td>
                   <td>{fr(o.expected_close_date)}</td>
                   <td style={{ color: o.activity_overdue ? '#dc3545' : undefined, fontSize: '0.8125rem' }}>{o.next_activity_subject ? `${frt(o.next_activity_due)} ${o.next_activity_subject}` : '—'}</td>
@@ -143,7 +144,7 @@ export default function CrmPage() {
                   <div className="prj-lane-head">
                     <span className="prj-dot" style={{ background: STAGE_COLOR[s.key] }} />
                     <strong>{s.label}{s.key === 'won' || s.key === 'lost' ? ' (30 j)' : ''}</strong>
-                    <small className="sal-lane-sum">{cards.length} · {n0(total)} DH</small>
+                    <small className="sal-lane-sum">{cards.length} · {moneyFmt(total, { decimals: 0 })}</small>
                   </div>
                   {!cards.length && <div className="prj-lane-empty">Aucune affaire</div>}
                   {cards.map(o => (
@@ -151,7 +152,7 @@ export default function CrmPage() {
                       style={{ gap: 3, fontSize: '0.8125rem' }}>
                       <span className="prj-task-title">{o.title}</span>
                       <span style={{ color: 'var(--theme-text-muted)' }}>{o.client_label}{!o.customer_id ? ' · prospect' : ''}</span>
-                      <span>{o.expected_amount ? `${n0(o.expected_amount)} DH` : 'montant à estimer'}{o.expected_close_date ? ` · ${fr(o.expected_close_date)}` : ''}</span>
+                      <span>{o.expected_amount ? `${moneyFmt(o.expected_amount, { decimals: 0 })}` : 'montant à estimer'}{o.expected_close_date ? ` · ${fr(o.expected_close_date)}` : ''}</span>
                       {o.next_activity_subject && (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: o.activity_overdue ? '#dc3545' : 'var(--theme-text-muted)', fontSize: '0.75rem' }}>
                           {o.activity_overdue && <AlertTriangle size={11} />}{ACTIVITY_LABEL[o.next_activity_kind!]} {frt(o.next_activity_due)} : {o.next_activity_subject}
@@ -269,7 +270,7 @@ function OpportunityForm({ opp, onClose, onSaved }: { opp: Opportunity | null; o
             </div>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-            <label style={lab}>Montant espéré (DH)<input style={field} type="number" min={0} step="1" value={f.expectedAmount} onChange={e => set('expectedAmount', e.target.value)} /></label>
+            <label style={lab}>Montant espéré ({currencySymbol()})<input style={field} type="number" min={0} step="1" value={f.expectedAmount} onChange={e => set('expectedAmount', e.target.value)} /></label>
             <label style={lab}>Probabilité (%)<input style={field} type="number" min={0} max={100} value={f.probability} onChange={e => set('probability', e.target.value)} placeholder="selon l'étape" /></label>
             <label style={lab}>Conclusion prévue<input style={field} type="date" value={f.expectedCloseDate} onChange={e => set('expectedCloseDate', e.target.value)} /></label>
             <label style={lab}>Source<select style={field} value={f.sourceCode} onChange={e => set('sourceCode', e.target.value)}><option value="">—</option>{sources.map(s => <option key={s.code} value={s.code}>{s.label}</option>)}</select></label>
@@ -349,7 +350,7 @@ function OpportunityDetail({ id, onClose, onEdit, onLose }: { id: string; onClos
                 <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{[o.customer_phone ?? o.prospect_phone, o.customer_email ?? o.prospect_email, o.prospect_city].filter(Boolean).join(' · ')}</div>
                 {!o.customer_id && <button className="odoo-btn-secondary" style={{ padding: '2px 8px', marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={toCustomer.isPending} onClick={() => toCustomer.mutate()}><UserPlus size={12} /> Créer la fiche client</button>}
               </div>
-              <div><div style={lab}>Montant espéré · probabilité</div>{o.expected_amount ? `${n0(o.expected_amount)} DH` : '—'} · {o.probability} %<div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>pondéré {n0(o.weighted_amount)} DH</div></div>
+              <div><div style={lab}>Montant espéré · probabilité</div>{o.expected_amount ? `${moneyFmt(o.expected_amount, { decimals: 0 })}` : '—'} · {o.probability} %<div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>pondéré {moneyFmt(o.weighted_amount, { decimals: 0 })}</div></div>
               <div><div style={lab}>Conclusion prévue</div>{fr(o.expected_close_date)}</div>
               <div><div style={lab}>Responsable · source</div>{o.owner_name ?? '—'}<div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{o.source_label ?? 'source non renseignée'}</div></div>
             </div>
@@ -361,7 +362,7 @@ function OpportunityDetail({ id, onClose, onEdit, onLose }: { id: string; onClos
                 <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Devis</div>
                 <table className="odoo-table"><tbody>{o.quotes!.map(q => (
                   <tr key={q.id} onClick={() => navigate('/quotes')} style={{ cursor: 'pointer' }}>
-                    <td className="font-mono">{q.number}</td><td>{fr(q.quote_date)}</td><td>{q.status}</td><td style={{ textAlign: 'right' }}>{n0(q.total)} DH</td>
+                    <td className="font-mono">{q.number}</td><td>{fr(q.quote_date)}</td><td>{q.status}</td><td style={{ textAlign: 'right' }}>{moneyFmt(q.total, { decimals: 0 })}</td>
                   </tr>
                 ))}</tbody></table>
               </div>
@@ -439,7 +440,7 @@ function CampaignsModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const { data: campaigns = [], isLoading } = useQuery({ queryKey: ['crm', 'campaigns'], queryFn: crmApi.campaigns });
   const [showForm, setShowForm] = useState(false);
-  const money = (v: number | null) => v == null ? '—' : `${v.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} DH`;
+  const money = (v: number | null) => moneyFmt(v, { decimals: 0 });
   const status = useMutation({
     mutationFn: ({ id, s }: { id: string; s: 'active' | 'closed' }) => crmApi.setCampaignStatus(id, s),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['crm'] }),
@@ -467,7 +468,7 @@ function CampaignsModal({ onClose }: { onClose: () => void }) {
               <label style={lab}>Nom *<input style={field} maxLength={160} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ex. Salon pro 2026" /></label>
               <label style={lab}>Début<input style={field} type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} /></label>
               <label style={lab}>Fin<input style={field} type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} /></label>
-              <label style={lab}>Budget (DH)<input style={field} type="number" min={0} value={form.budget} onChange={e => setForm(f => ({ ...f, budget: e.target.value }))} /></label>
+              <label style={lab}>Budget ({currencySymbol()})<input style={field} type="number" min={0} value={form.budget} onChange={e => setForm(f => ({ ...f, budget: e.target.value }))} /></label>
               <button className="odoo-btn-primary" disabled={form.name.trim().length < 2 || create.isPending} onClick={() => create.mutate()}>Créer</button>
             </div>
           )}

@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useState, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { productsApi } from '../../api/products.api';
@@ -314,7 +315,7 @@ export default function LossDeclarationModal({
               <div className="flex-1">
                 <div className="font-semibold text-gray-900">{selectedProduct.name as string}</div>
                 <div className="text-xs text-gray-500">
-                  {(selectedProduct.category_name as string)} — {parseFloat(String(selectedProduct.price || 0)).toFixed(2)} DH
+                  {(selectedProduct.category_name as string)} — {money(parseFloat(String(selectedProduct.price || 0)))}
                 </div>
               </div>
               <button onClick={() => { setStep('product'); setSelectedProduct(null); setSelectedItem(null); }}
@@ -456,7 +457,7 @@ export default function LossDeclarationModal({
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex justify-between items-center">
                 <span className="text-sm text-red-700 font-medium">Cout estime de la perte</span>
                 <span className="text-lg font-bold text-red-800">
-                  {(quantity * (parseFloat(String(selectedProduct.cost_price || selectedProduct.price || 0)))).toFixed(2)} DH
+                  {money(quantity * (parseFloat(String(selectedProduct.cost_price || selectedProduct.price || 0))))}
                 </span>
               </div>
             )}

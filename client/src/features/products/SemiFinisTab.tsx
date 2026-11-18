@@ -1,3 +1,4 @@
+import { currencySymbol } from '../../utils/money';
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -416,7 +417,7 @@ function SemiFiniRow({
           {cost != null ? (
             <>
               <span style={{ fontWeight: 600 }}>{cost.toFixed(2)}</span>
-              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+              <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{currencySymbol()}</span>
             </>
           ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
         </td>

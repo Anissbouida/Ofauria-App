@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Camera, Loader2, MessageSquareWarning, Search, X } from 'lucide-react';
@@ -246,7 +247,7 @@ export default function ComplaintFormModal({ mode, onClose, onCreated, defaults 
                       <button key={s.id} type="button" onClick={() => { setSaleId(s.id); setSaleQuery(s.sale_number); if (s.customer_id && !customerId) setCustomerId(s.customer_id); }}
                         style={{ display: 'flex', width: '100%', justifyContent: 'space-between', padding: '6px 10px', fontSize: '0.8125rem', background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }}>
                         <span className="font-mono">{s.sale_number}</span>
-                        <span style={{ color: 'var(--theme-text-muted)' }}>{new Date(s.created_at).toLocaleDateString('fr-FR')} · {Number(s.total).toFixed(2)} DH</span>
+                        <span style={{ color: 'var(--theme-text-muted)' }}>{new Date(s.created_at).toLocaleDateString('fr-FR')} · {money(Number(s.total))}</span>
                       </button>
                     ))}
                   </div>

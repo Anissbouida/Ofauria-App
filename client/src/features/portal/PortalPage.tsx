@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useCallback, useEffect, useState } from 'react';
 
 /**
@@ -16,7 +17,6 @@ interface Invoice { id: string; invoice_number: string; invoice_date: string; to
 interface Order { id: string; order_number: string; type: string; status: string; total: string; created_at: string }
 interface StatementLine { invoice_number: string; invoice_date: string; total_amount: string; paid_amount: string; outstanding: string }
 
-const money = (v: string | number) => `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 const day = (d: string) => (d ? new Date(d).toLocaleDateString('fr-FR') : '—');
 
 export default function PortalPage() {

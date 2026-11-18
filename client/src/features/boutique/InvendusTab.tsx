@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -199,7 +200,7 @@ function DecisionPanel() {
         <>
           <StagePipeline
             title="Destination des invendus"
-            summary={`${n0(summary.all.qty)} unités · ${n2(summary.all.cost)} DH au coût de revient`}
+            summary={`${n0(summary.all.qty)} unités · ${money(summary.all.cost)} au coût de revient`}
             stages={stages}
             stats={Object.fromEntries(stages.map(s => [s.key, { count: summary[s.key].qty, sub: `${summary[s.key].n} produit${summary[s.key].n > 1 ? 's' : ''}` }]))}
             isActive={k => filterDest === k}
@@ -320,7 +321,7 @@ function DecisionPanel() {
                               <Detail label="Exposition max" value={`${p.display_life_hours || '—'} h`} />
                               <Detail label="Remises en vitrine" value={`${p.reexposition_count || 0} / ${p.max_reexpositions || 0}`} />
                               <Detail label="Valorisable" value={p.is_recyclable ? `Oui → ${p.recycle_ingredient_name || 'ingrédient'}` : 'Non'} />
-                              <Detail label="Coût unitaire" value={`${n2(unitCost)} DH`} />
+                              <Detail label="Coût unitaire" value={`${money(unitCost)}`} />
                               {p.expires_at && <Detail label="Expiration" value={format(new Date(p.expires_at), 'dd MMM yyyy HH:mm', { locale: fr })}
                                 danger={new Date(p.expires_at) <= new Date()} />}
                             </div>
@@ -491,7 +492,7 @@ export function InvendusDashboard() {
               <div key={d} className="odoo-stat-card" style={{ cursor: 'default' }}>
                 <div className="odoo-stat-card-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Dot color={DEST[d].dot} /> {destLabel(d)}</div>
                 <div className="odoo-stat-card-value">{pct(d)} %</div>
-                <div className="odoo-stat-card-sub">{n0(totals[d].qty)} unités{d === 'waste' ? ` · ${n2(totals[d].cost)} DH perdus` : ''}</div>
+                <div className="odoo-stat-card-sub">{n0(totals[d].qty)} unités{d === 'waste' ? ` · ${money(totals[d].cost)} perdus` : ''}</div>
               </div>
             ))}
           </div>
@@ -507,7 +508,7 @@ export function InvendusDashboard() {
               <h3 style={sectionTitle}>Surproduction : destructions répétées</h3>
               <div style={tableWrap}>
                 <table className="odoo-table" style={{ margin: 0 }}>
-                  <thead><tr><th>Produit</th><th style={{ textAlign: 'right' }}>Jours détruits</th><th style={{ textAlign: 'right' }}>Unités</th><th style={{ textAlign: 'right' }}>Perte (DH)</th></tr></thead>
+                  <thead><tr><th>Produit</th><th style={{ textAlign: 'right' }}>Jours détruits</th><th style={{ textAlign: 'right' }}>Unités</th><th style={{ textAlign: 'right' }}>Perte ({currencySymbol()})</th></tr></thead>
                   <tbody>
                     {stats.recurringWaste.map((p: Product) => (
                       <tr key={p.product_id}>
@@ -545,7 +546,7 @@ export function InvendusDashboard() {
               <h3 style={{ ...sectionTitle, display: 'flex', alignItems: 'center', gap: 6 }}><TrendingDown size={12} /> Produits les plus détruits (coût)</h3>
               <div style={{ ...tableWrap, marginTop: 6 }}>
                 <table className="odoo-table" style={{ margin: 0 }}>
-                  <thead><tr><th>Produit</th><th style={{ textAlign: 'right' }}>Fois</th><th style={{ textAlign: 'right' }}>Unités</th><th style={{ textAlign: 'right' }}>Perte (DH)</th></tr></thead>
+                  <thead><tr><th>Produit</th><th style={{ textAlign: 'right' }}>Fois</th><th style={{ textAlign: 'right' }}>Unités</th><th style={{ textAlign: 'right' }}>Perte ({currencySymbol()})</th></tr></thead>
                   <tbody>
                     {(stats.topWasteProducts || []).length === 0 && <EmptyRow colSpan={4}>Aucune destruction.</EmptyRow>}
                     {(stats.topWasteProducts || []).map((p: Product) => (
@@ -567,7 +568,7 @@ export function InvendusDashboard() {
               <h3 style={sectionTitle}>Jour par jour</h3>
               <div style={{ ...tableWrap, maxHeight: 320, overflowY: 'auto' }}>
                 <table className="odoo-table" style={{ margin: 0 }}>
-                  <thead><tr><th>Date</th><th>Destination</th><th style={{ textAlign: 'right' }}>Unités</th><th style={{ textAlign: 'right' }}>Coût (DH)</th><th style={{ textAlign: 'right' }}>Décisions</th></tr></thead>
+                  <thead><tr><th>Date</th><th>Destination</th><th style={{ textAlign: 'right' }}>Unités</th><th style={{ textAlign: 'right' }}>Coût ({currencySymbol()})</th><th style={{ textAlign: 'right' }}>Décisions</th></tr></thead>
                   <tbody>
                     {stats.daily.map((d: Product, i: number) => (
                       <tr key={i}>

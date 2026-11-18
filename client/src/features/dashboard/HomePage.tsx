@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -106,11 +107,11 @@ export default function HomePage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">CA du jour</p>
-                  <p className="text-lg font-bold text-gray-900 truncate">{d.todayRevenue.toFixed(0)} <span className="text-xs font-normal text-gray-400">DH</span></p>
+                  <p className="text-lg font-bold text-gray-900 truncate">{d.todayRevenue.toFixed(0)} <span className="text-xs font-normal text-gray-400">{currencySymbol()}</span></p>
                 </div>
               </div>
               <div className="mt-2 flex items-center gap-2 text-[10px] text-gray-400">
-                <TrendingUp size={10} /> {d.todaySales} vente{d.todaySales > 1 ? 's' : ''} — moy. {d.avgSaleValue.toFixed(0)} DH
+                <TrendingUp size={10} /> {d.todaySales} vente{d.todaySales > 1 ? 's' : ''} — moy. {money(d.avgSaleValue, { decimals: 0 })}
               </div>
             </div>
 

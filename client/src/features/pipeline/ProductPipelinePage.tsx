@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -415,8 +416,8 @@ function PipelineDetail({ id, onBack }: { id: string; onBack: () => void }) {
               <InfoRow label="Créé par" value={p.creator_first_name ? `${String(p.creator_first_name)} ${String(p.creator_last_name)}` : '—'} />
               <InfoRow label="Créé le" value={p.created_at ? format(new Date(String(p.created_at)), 'dd/MM/yyyy HH:mm', { locale: fr }) : '—'} />
               {Boolean(p.recipe_name) && <InfoRow label="Recette" value={String(p.recipe_name)} />}
-              {Boolean(p.estimated_cost) && <InfoRow label="Coût estimé" value={`${Number(p.estimated_cost).toFixed(2)} DH`} />}
-              {Boolean(p.target_price) && <InfoRow label="Prix cible" value={`${Number(p.target_price).toFixed(2)} DH`} />}
+              {Boolean(p.estimated_cost) && <InfoRow label="Coût estimé" value={`${money(Number(p.estimated_cost))}`} />}
+              {Boolean(p.target_price) && <InfoRow label="Prix cible" value={`${money(Number(p.target_price))}`} />}
               {Boolean(p.target_margin) && <InfoRow label="Marge cible" value={`${Number(p.target_margin).toFixed(1)}%`} />}
             </div>
           </div>
@@ -618,7 +619,7 @@ function RecipeStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline;
       {p.recipe_name ? (
         <div className="text-sm">
           <p><span className="text-gray-500">Recette assignée:</span> <span className="font-medium">{String(p.recipe_name)}</span></p>
-          {Boolean(p.recipe_total_cost) && <p><span className="text-gray-500">Coût recette:</span> <span className="font-medium">{Number(p.recipe_total_cost).toFixed(2)} DH</span></p>}
+          {Boolean(p.recipe_total_cost) && <p><span className="text-gray-500">Coût recette:</span> <span className="font-medium">{money(Number(p.recipe_total_cost))}</span></p>}
         </div>
       ) : (
         <p className="text-sm text-gray-400">Aucune recette assignée</p>
@@ -686,11 +687,11 @@ function CostStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline; e
       <div className="grid grid-cols-3 gap-3">
         <div style={{ ...odooTile, textAlign: 'center' }}>
           <p className="text-xs text-gray-500">Coût estimé</p>
-          <p className="text-lg font-bold text-gray-900">{cost.toFixed(2)} DH</p>
+          <p className="text-lg font-bold text-gray-900">{money(cost)}</p>
         </div>
         <div style={{ ...odooTile, textAlign: 'center' }}>
           <p className="text-xs text-gray-500">Prix cible</p>
-          <p className="text-lg font-bold text-gray-900">{price.toFixed(2)} DH</p>
+          <p className="text-lg font-bold text-gray-900">{money(price)}</p>
         </div>
         <div className={`rounded-lg p-3 text-center ${calculatedMargin >= 30 ? 'bg-green-50' : calculatedMargin >= 15 ? 'bg-amber-50' : 'bg-red-50'}`}>
           <p className="text-xs text-gray-500">Marge</p>
@@ -715,12 +716,12 @@ function CostStage({ pipeline: p, editable, onRefresh }: { pipeline: Pipeline; e
         <div className="border-t border-gray-100 pt-3 space-y-3">
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label style={fieldLabel}>Coût estimé (DH) *</label>
+              <label style={fieldLabel}>Coût estimé ({currencySymbol()}) *</label>
               <input type="number" step="0.01" value={estimatedCost} onChange={e => setEstimatedCost(e.target.value)}
                 style={fieldInput} />
             </div>
             <div>
-              <label style={fieldLabel}>Prix cible (DH) *</label>
+              <label style={fieldLabel}>Prix cible ({currencySymbol()}) *</label>
               <input type="number" step="0.01" value={targetPrice} onChange={e => setTargetPrice(e.target.value)}
                 style={fieldInput} />
             </div>
@@ -940,7 +941,7 @@ function ValidationSummary({ pipeline: p }: { pipeline: Pipeline }) {
         <div style={odooTile}>
           <p className="text-xs text-gray-500 font-medium">Coût / Prix / Marge</p>
           <p className="font-medium">
-            {p.estimated_cost ? `${Number(p.estimated_cost).toFixed(2)} DH` : '—'} / {p.target_price ? `${Number(p.target_price).toFixed(2)} DH` : '—'} / {p.target_margin ? `${Number(p.target_margin).toFixed(1)}%` : '—'}
+            {p.estimated_cost ? `${money(Number(p.estimated_cost))}` : '—'} / {p.target_price ? `${money(Number(p.target_price))}` : '—'} / {p.target_margin ? `${Number(p.target_margin).toFixed(1)}%` : '—'}
           </p>
         </div>
         <div style={odooTile}>

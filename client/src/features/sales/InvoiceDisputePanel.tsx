@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Loader2, Check, X } from 'lucide-react';
@@ -45,7 +46,7 @@ export default function InvoiceDisputePanel({ invoiceId, remaining, editable }: 
                 {data.map(d => (
                   <tr key={d.id}>
                     <td>{d.reason}</td>
-                    <td>{Number(d.disputed_amount).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH</td>
+                    <td>{money(d.disputed_amount)}</td>
                     <td>{d.status === 'open' ? 'Ouvert' : d.status === 'resolved' ? 'Résolu' : 'Rejeté'}</td>
                     <td>{editable && d.status === 'open' && (
                       <span style={{ display: 'inline-flex', gap: 4 }}>

@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Handshake, Loader2, Plus, Lock, Archive } from 'lucide-react';
@@ -24,7 +25,6 @@ function arr<T>(resp: unknown): T[] {
   return r?.data ?? r?.items ?? [];
 }
 
-const money = (v: number | string) => `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 const num = (v: number | string) => Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 3 });
 
 export default function SalesContractsPage() {
@@ -93,7 +93,7 @@ export default function SalesContractsPage() {
             </label>
             <label style={{ display: 'grid', gap: 2 }}>Base
               <select className="odoo-input" value={f.basis} onChange={e => setF({ ...f, basis: e.target.value as 'quantity' | 'value' })}>
-                <option value="value">Valeur (DH)</option>
+                <option value="value">Valeur ({currencySymbol()})</option>
                 <option value="quantity">Volume (article)</option>
               </select>
             </label>
@@ -109,7 +109,7 @@ export default function SalesContractsPage() {
                 </label>
               </>
             ) : (
-              <label style={{ display: 'grid', gap: 2 }}>Montant engagé (DH)
+              <label style={{ display: 'grid', gap: 2 }}>Montant engagé ({currencySymbol()})
                 <input className="odoo-input" type="number" value={f.committedValue ?? ''} onChange={e => setF({ ...f, committedValue: Number(e.target.value) })} style={{ width: 150 }} />
               </label>
             )}

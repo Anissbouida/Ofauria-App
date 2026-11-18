@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -12,7 +13,6 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 
-const money = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 const day = (d: string | null) => d ? format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr }) : '—';
 const FREQ: Record<SubFrequency, string> = { monthly: 'Mensuel', quarterly: 'Trimestriel', yearly: 'Annuel' };
 

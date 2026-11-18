@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Trash2, X, HelpCircle } from 'lucide-react';
@@ -19,7 +20,7 @@ export default function ExpiredProductLotsBanner() {
   const handleSuccess = (data: unknown) => {
     const d = data as { lostQuantity: number; lostValue: number; reasonLabel: string };
     notify.success(
-      `Envoyé aux pertes : ${d.lostQuantity.toFixed(2)} u (${d.lostValue.toFixed(2)} DH) — ${d.reasonLabel}`
+      `Envoyé aux pertes : ${d.lostQuantity.toFixed(2)} u (${money(d.lostValue)}) — ${d.reasonLabel}`
     );
     qc.invalidateQueries({ queryKey: ['product-lots-expired-active'] });
     qc.invalidateQueries({ queryKey: ['products'] });
@@ -122,7 +123,7 @@ export default function ExpiredProductLotsBanner() {
                 </div>
                 <div className="text-right shrink-0">
                   <div className="text-sm font-bold text-red-700">{totalQty.toFixed(0)} u</div>
-                  <div className="text-[10px] text-gray-500">{lostValue.toFixed(2)} DH perdus</div>
+                  <div className="text-[10px] text-gray-500">{money(lostValue)} perdus</div>
                 </div>
                 <button
                   onClick={() => setDialogItem(item)}
@@ -225,7 +226,7 @@ function SendToLossesDialog({ item, isPending, onClose, onConfirm }: {
             </div>
             <div className="flex items-center justify-between pt-1 border-t border-gray-200">
               <span className="text-gray-500">Valeur perdue</span>
-              <span className="font-bold text-red-700">{lostValue.toFixed(2)} DH</span>
+              <span className="font-bold text-red-700">{money(lostValue)}</span>
             </div>
           </div>
 

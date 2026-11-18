@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -290,14 +291,14 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
                           {item.unit === 'g'
                             ? `${item.displayUnit === 'kg'
                                 ? `${Number((item.quantity / 1000).toFixed(3))} kg`
-                                : `${item.quantity} g`} @ ${item.unitPrice.toFixed(2)} DH/kg`
+                                : `${item.quantity} g`} @ ${money(item.unitPrice)}/kg`
                             : item.unit === 'person'
-                            ? `${item.quantity} pers @ ${item.unitPrice.toFixed(2)} DH/personne`
-                            : `${item.quantity} x ${item.unitPrice.toFixed(2)} DH`}
+                            ? `${item.quantity} pers @ ${money(item.unitPrice)}/personne`
+                            : `${item.quantity} x ${money(item.unitPrice)}`}
                         </div>
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: 'bold', padding: '2px 0', fontSize: `${fs - 1}px`, verticalAlign: 'bottom' }}>
-                        {item.subtotal.toFixed(2)} DH
+                        {money(item.subtotal)}
                       </td>
                     </tr>
                   ))}
@@ -315,12 +316,12 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
                       {/* Advance receipt: show order total, advance paid, remaining */}
                       <tr>
                         <td style={{ fontSize: `${fs}px`, padding: '2px 0' }}>Total commande</td>
-                        <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>{(receipt.orderTotal ?? receipt.subtotal).toFixed(2)} DH</td>
+                        <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>{money(receipt.orderTotal ?? receipt.subtotal)}</td>
                       </tr>
                       {receipt.discountAmount > 0 && (
                         <tr>
                           <td style={{ fontSize: `${fs}px`, padding: '2px 0' }}>Remise</td>
-                          <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>-{receipt.discountAmount.toFixed(2)} DH</td>
+                          <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>-{money(receipt.discountAmount)}</td>
                         </tr>
                       )}
                       <tr>
@@ -328,7 +329,7 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
                       </tr>
                       <tr>
                         <td style={{ fontSize: `${fs + 2}px`, fontWeight: 'bold', padding: '2px 0' }}>AVANCE PAYEE</td>
-                        <td style={{ fontSize: `${fs + 2}px`, fontWeight: 'bold', padding: '2px 0', textAlign: 'right' }}>{receipt.total.toFixed(2)} DH</td>
+                        <td style={{ fontSize: `${fs + 2}px`, fontWeight: 'bold', padding: '2px 0', textAlign: 'right' }}>{money(receipt.total)}</td>
                       </tr>
                       <tr>
                         <td colSpan={2} style={{ borderTop: '1px dashed #000', paddingTop: '4px' }} />
@@ -336,7 +337,7 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
                       <tr>
                         <td style={{ fontSize: `${fs + 1}px`, fontWeight: 'bold', padding: '2px 0' }}>RESTE A PAYER</td>
                         <td style={{ fontSize: `${fs + 1}px`, fontWeight: 'bold', padding: '2px 0', textAlign: 'right' }}>
-                          {((receipt.orderTotal ?? receipt.subtotal) - receipt.discountAmount - receipt.total).toFixed(2)} DH
+                          {money((receipt.orderTotal ?? receipt.subtotal) - receipt.discountAmount - receipt.total)}
                         </td>
                       </tr>
                     </>
@@ -345,24 +346,24 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
                       {/* Normal / delivery receipt */}
                       <tr>
                         <td style={{ fontSize: `${fs}px`, padding: '2px 0' }}>Sous-total</td>
-                        <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>{receipt.subtotal.toFixed(2)} DH</td>
+                        <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>{money(receipt.subtotal)}</td>
                       </tr>
                       {(receipt.promotions ?? []).map((p, i) => (
                         <tr key={`promo-${i}`}>
                           <td style={{ fontSize: `${fs}px`, padding: '2px 0' }}>{p.label}</td>
-                          <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>-{p.amount.toFixed(2)} DH</td>
+                          <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>-{money(p.amount)}</td>
                         </tr>
                       ))}
                       {receipt.discountAmount > 0 && (
                         <tr>
                           <td style={{ fontSize: `${fs}px`, padding: '2px 0' }}>Remise</td>
-                          <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>-{receipt.discountAmount.toFixed(2)} DH</td>
+                          <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>-{money(receipt.discountAmount)}</td>
                         </tr>
                       )}
                       {receipt.loyaltyAmount != null && receipt.loyaltyAmount > 0 && (
                         <tr>
                           <td style={{ fontSize: `${fs}px`, padding: '2px 0' }}>Points fidélité ({receipt.loyaltyPoints})</td>
-                          <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>-{receipt.loyaltyAmount.toFixed(2)} DH</td>
+                          <td style={{ fontSize: `${fs}px`, padding: '2px 0', textAlign: 'right' }}>-{money(receipt.loyaltyAmount)}</td>
                         </tr>
                       )}
                       <tr>
@@ -370,7 +371,7 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
                       </tr>
                       <tr>
                         <td style={{ fontSize: `${fs + 4}px`, fontWeight: 'bold', padding: '2px 0' }}>TOTAL</td>
-                        <td style={{ fontSize: `${fs + 4}px`, fontWeight: 'bold', padding: '2px 0', textAlign: 'right' }}>{receipt.total.toFixed(2)} DH</td>
+                        <td style={{ fontSize: `${fs + 4}px`, fontWeight: 'bold', padding: '2px 0', textAlign: 'right' }}>{money(receipt.total)}</td>
                       </tr>
                       {/* Advance breakdown on delivery receipt */}
                       {receipt.advanceAmount != null && receipt.advanceAmount > 0 && !receipt.isAdvanceReceipt && (
@@ -383,13 +384,13 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
                               Avance{receipt.advanceDate ? ` (${format(new Date(receipt.advanceDate), 'dd/MM/yyyy', { locale: fr })})` : ''}
                             </td>
                             <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', textAlign: 'right' }}>
-                              {receipt.advanceAmount.toFixed(2)} DH
+                              {money(receipt.advanceAmount)}
                             </td>
                           </tr>
                           <tr>
                             <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', fontWeight: 'bold' }}>Reste paye</td>
                             <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', textAlign: 'right', fontWeight: 'bold' }}>
-                              {(receipt.total - receipt.advanceAmount).toFixed(2)} DH
+                              {money(receipt.total - receipt.advanceAmount)}
                             </td>
                           </tr>
                         </>
@@ -409,11 +410,11 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
                   <tbody>
                     <tr>
                       <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0' }}>Especes</td>
-                      <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', textAlign: 'right' }}>{receipt.cashPart.toFixed(2)} DH</td>
+                      <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', textAlign: 'right' }}>{money(receipt.cashPart)}</td>
                     </tr>
                     <tr>
                       <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0' }}>Carte</td>
-                      <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', textAlign: 'right' }}>{receipt.cardPart.toFixed(2)} DH</td>
+                      <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', textAlign: 'right' }}>{money(receipt.cardPart)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -423,11 +424,11 @@ export default function ReceiptModal({ receipt, onClose, autoPrintTriggered }: {
                   <tbody>
                     <tr>
                       <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0' }}>Montant donne</td>
-                      <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', textAlign: 'right' }}>{receipt.cashGiven.toFixed(2)} DH</td>
+                      <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', textAlign: 'right' }}>{money(receipt.cashGiven)}</td>
                     </tr>
                     <tr>
                       <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', fontWeight: 'bold' }}>Monnaie rendue</td>
-                      <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', textAlign: 'right', fontWeight: 'bold' }}>{(receipt.changeAmount ?? 0).toFixed(2)} DH</td>
+                      <td style={{ fontSize: `${fs - 1}px`, padding: '2px 0', textAlign: 'right', fontWeight: 'bold' }}>{money(receipt.changeAmount ?? 0)}</td>
                     </tr>
                   </tbody>
                 </table>

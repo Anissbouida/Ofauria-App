@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useState } from 'react';
 import { AlertTriangle, RotateCcw, Trash2, X } from 'lucide-react';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
@@ -44,7 +45,7 @@ export default function OfflineRejectedModal({ onClose, onChanged }: {
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <div className="text-sm font-semibold text-gray-900">
                     Vente du {when(r.meta.queuedAt)}
-                    {r.meta.total != null && <span className="ml-2 tabular-nums">{r.meta.total.toFixed(2)} DH</span>}
+                    {r.meta.total != null && <span className="ml-2 tabular-nums">{money(r.meta.total)}</span>}
                   </div>
                   <div className="text-xs text-gray-500">Réf. provisoire {key.slice(0, 8).toUpperCase()}</div>
                 </div>

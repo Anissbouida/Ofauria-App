@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Target, Loader2, Save, Trash2 } from 'lucide-react';
@@ -15,7 +16,6 @@ import { ListPanel, ListEmpty, ListKpi } from './ListTemplate';
  * Ventes › Objectifs (phase 11, D3-13). Objectif de CA par commercial et par
  * période ; le réalisé se lit sur les factures émises du vendeur, net des avoirs.
  */
-const money = (v: number) => `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 
 function monthStart() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10); }
 function monthEnd() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10); }
@@ -80,9 +80,9 @@ export default function SalesTargetsPage() {
               </span>
             </div>
             <div className="kl-rb-row">
-              <span className="k">Objectif<small>en DH sur la période</small></span>
+              <span className="k">Objectif<small>en {currencySymbol()} sur la période</small></span>
               <span className="v">
-                <input aria-label="Objectif en DH" type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} style={{ width: 160 }} />
+                <input aria-label={`Objectif en ${currencySymbol()}`} type="number" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} style={{ width: 160 }} />
                 <span style={{ flex: 1 }} />
                 <button className="odoo-btn-primary" disabled={!sellerId || !(Number(amount) >= 0) || save.isPending} onClick={() => save.mutate()}>
                   {save.isPending ? <Loader2 size={13} className="spin" /> : <Save size={13} />} Enregistrer

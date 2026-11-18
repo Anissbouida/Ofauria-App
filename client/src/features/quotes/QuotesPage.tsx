@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -114,17 +115,17 @@ export default function QuotesPage() {
 
   return (
     <SalesPageShell icon={FileSignature} parent="Ventes" title="Devis" list
-      summary={ov ? `${open.count} en cours · ${n2(open.amount)} DH` : undefined}
+      summary={ov ? `${open.count} en cours · ${money(open.amount)}` : undefined}
       actions={
         <button className="odoo-btn-primary" onClick={() => setEditing('new')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={14} /> Nouveau devis</button>
       }>
 
       {ov && (
         <section className="prj-kpis" aria-label="Indicateurs">
-          <ListKpi label="Devis en cours" value={String(open.count)} sub={`${n2(open.amount)} DH`} />
-          <ListKpi label="Acceptés à commander" value={String(by.accepted?.count ?? 0)} sub={`${n2(by.accepted?.amount)} DH`} />
+          <ListKpi label="Devis en cours" value={String(open.count)} sub={`${money(open.amount)}`} />
+          <ListKpi label="Acceptés à commander" value={String(by.accepted?.count ?? 0)} sub={`${money(by.accepted?.amount ?? 0)}`} />
           <ListKpi label="Taux de transformation" value={ov.conversion.rate != null ? `${ov.conversion.rate} %` : '—'} sub={`90 j : ${ov.conversion.won} gagné(s), ${ov.conversion.lost} perdu(s)`} />
-          <ListKpi label="Montant perdu (90 j)" value={`${n2(ov.conversion.lostAmount)} DH`} sub={ov.lostByReason[0] ? `1er motif : ${ov.lostByReason[0].label}` : undefined} />
+          <ListKpi label="Montant perdu (90 j)" value={`${money(ov.conversion.lostAmount)}`} sub={ov.lostByReason[0] ? `1er motif : ${ov.lostByReason[0].label}` : undefined} />
         </section>
       )}
 
@@ -171,7 +172,7 @@ export default function QuotesPage() {
                   {q.order_number && <span className="sal-sub sal-mono">{q.order_number}</span>}
                 </td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                  <strong>{n2(q.total)}</strong> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>DH</span>
+                  <strong>{n2(q.total)}</strong> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>{currencySymbol()}</span>
                   <span className="sal-sub">{q.with_tax ? 'TTC (HT + TVA)' : 'TTC'}</span>
                 </td>
                 <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
@@ -232,7 +233,7 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
 
   const { data: productsResp } = useQuery({ queryKey: ['products-quotes'], queryFn: () => productsApi.list({ limit: '1000' }) });
   const products = ((productsResp as { data?: Record<string, any>[] } | undefined)?.data ?? []) as Record<string, any>[];
-  const productOptions = useMemo(() => products.map(p => ({ id: String(p.id), label: String(p.name), detail: p.price ? `${n2(p.price)} DH` : undefined })), [products]);
+  const productOptions = useMemo(() => products.map(p => ({ id: String(p.id), label: String(p.name), detail: p.price ? `${money(p.price)}` : undefined })), [products]);
 
   const setLine = (i: number, patch: Partial<Line>) => setLines(prev => prev.map((l, k) => (k === i ? { ...l, ...patch } : l)));
   const pickProduct = async (i: number, productId: string) => {
@@ -373,10 +374,10 @@ function QuoteFormModal({ quote, opportunity, validityDays, onClose, onSaved }: 
             <button type="button" className="odoo-btn-secondary" onClick={() => setLines([...lines, sectionLine()])} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Section</button>
             <table style={{ fontSize: '0.875rem', minWidth: 280 }}>
               <tbody>
-                <tr><td>Sous-total {withTax ? 'HT' : 'TTC'}</td><td style={{ textAlign: 'right' }}>{n2(subtotal)} DH</td></tr>
-                {pct > 0 && <tr><td>Remise {pct} %</td><td style={{ textAlign: 'right' }}>−{n2(discount)} DH</td></tr>}
-                {withTax && <tr><td>TVA</td><td style={{ textAlign: 'right' }}>{n2(tax)} DH</td></tr>}
-                <tr style={{ fontWeight: 700 }}><td>Total TTC</td><td style={{ textAlign: 'right' }}>{n2(total)} DH</td></tr>
+                <tr><td>Sous-total {withTax ? 'HT' : 'TTC'}</td><td style={{ textAlign: 'right' }}>{money(subtotal)}</td></tr>
+                {pct > 0 && <tr><td>Remise {pct} %</td><td style={{ textAlign: 'right' }}>−{money(discount)}</td></tr>}
+                {withTax && <tr><td>TVA</td><td style={{ textAlign: 'right' }}>{money(tax)}</td></tr>}
+                <tr style={{ fontWeight: 700 }}><td>Total TTC</td><td style={{ textAlign: 'right' }}>{money(total)}</td></tr>
               </tbody>
             </table>
           </div>
@@ -466,7 +467,7 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
                 <span style={{ opacity: 0.7 }}>Versions :</span>
                 {versions.map(v => (
                   <button key={v.id} className={`odoo-tag ${v.id === id ? 'odoo-tag-blue' : 'odoo-tag-grey'}`}
-                    style={{ cursor: 'pointer', border: 0 }} title={`${v.number} · ${Number(v.total).toLocaleString('fr-FR')} DH`}
+                    style={{ cursor: 'pointer', border: 0 }} title={`${v.number} · ${money(v.total)}`}
                     onClick={() => v.id !== id && onOpen(v.id)}>v{v.version}{v.superseded_by ? '' : ' (actuelle)'}</button>
                 ))}
               </div>
@@ -516,7 +517,7 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
                 )}
                 <button className="odoo-btn-secondary" onClick={() => setConverting(null)}>Annuler</button>
                 <button className="odoo-btn-primary" disabled={!converting.pickupDate || convert.isPending}
-                  onClick={async () => { if (await confirm(`Créer la commande depuis le devis ${q.number} (${n2(q.total)} DH) ?`)) convert.mutate(); }}>
+                  onClick={async () => { if (await confirm(`Créer la commande depuis le devis ${q.number} (${money(q.total)}) ?`)) convert.mutate(); }}>
                   {convert.isPending ? <Loader2 size={13} className="animate-spin" /> : <ShoppingCart size={13} />} Créer la commande
                 </button>
               </div>
@@ -554,7 +555,7 @@ function QuoteDetailModal({ id, onClose, onEdit, onOpen }: { id: string; onClose
                 {Number(q.promotion_amount) > 0 && <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Promotions</td><td style={{ textAlign: 'right' }}>−{n2(q.promotion_amount)}</td></tr>}
                 {Number(q.discount_pct) > 0 && <tr><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Remise {Number(q.discount_pct)} %</td><td style={{ textAlign: 'right' }}>−{n2(Number(q.discount_amount) - Number(q.promotion_amount ?? 0))}</td></tr>}
                 {q.with_tax && <tr><td colSpan={4} style={{ textAlign: 'right' }}>TVA</td><td style={{ textAlign: 'right' }}>{n2(q.tax_amount)}</td></tr>}
-                <tr style={{ fontWeight: 700 }}><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Total TTC</td><td style={{ textAlign: 'right' }}>{n2(q.total)} DH</td></tr>
+                <tr style={{ fontWeight: 700 }}><td colSpan={q.with_tax ? 4 : 3} style={{ textAlign: 'right' }}>Total TTC</td><td style={{ textAlign: 'right' }}>{money(q.total)}</td></tr>
               </tfoot>
             </table>
             {(q.delivery_terms || q.notes || q.internal_notes) && (

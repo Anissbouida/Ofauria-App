@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -1366,7 +1367,7 @@ export default function POSPage() {
     onSuccess: (t) => {
       queryClient.invalidateQueries({ queryKey: ['pos-parked'] });
       resetTicket();
-      notify.success(`Ticket mis en attente${t.customer_label ? ` · ${t.customer_label}` : ''} (${Number(t.total).toFixed(2)} DH)`);
+      notify.success(`Ticket mis en attente${t.customer_label ? ` · ${t.customer_label}` : ''} (${money(Number(t.total))})`);
     },
     onError: (e) => notify.error(apiErrorMessage(e)),
   });
@@ -1404,7 +1405,7 @@ export default function POSPage() {
     takeMutation.mutate(t.id);
   };
   const dropParked = async (t: ParkedTicket) => {
-    const ok = await confirmDialog(`Le panier de ${Number(t.total).toFixed(2)} DH sera perdu ; aucune vente n'a été enregistrée.`,
+    const ok = await confirmDialog(`Le panier de ${money(Number(t.total))} sera perdu ; aucune vente n'a été enregistrée.`,
       { title: `Supprimer le ticket${t.customer_label ? ` de ${t.customer_label}` : ' en attente'} ?`, confirmLabel: 'Supprimer', danger: true });
     if (ok) dropMutation.mutate(t.id);
   };
@@ -1627,7 +1628,7 @@ export default function POSPage() {
           )}
         </div>
         <span className="font-medium text-xs line-clamp-2 leading-tight mt-1.5">{p.name as string}</span>
-        <span className={`font-bold text-sm mt-0.5 ${blocked ? 'text-gray-400' : 'text-primary-600'}`}>{parseFloat(p.price as string).toFixed(2)} DH</span>
+        <span className={`font-bold text-sm mt-0.5 ${blocked ? 'text-gray-400' : 'text-primary-600'}`}>{money(parseFloat(p.price as string))}</span>
       </button>
     );
   };
@@ -1691,7 +1692,7 @@ export default function POSPage() {
             <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
               <h2 className="text-xl font-bold mb-2">Ouverture de caisse</h2>
               <p className="text-sm text-gray-500 mb-4">Saisissez le montant du fond de caisse.</p>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Fond de caisse (DH)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Fond de caisse ({currencySymbol()})</label>
               <input type="number" value={openingAmount} onChange={(e) => setOpeningAmount(e.target.value)}
                 className="input text-center text-2xl font-bold mb-6" min="0" step="0.01" placeholder="0.00" autoFocus />
               <div className="flex gap-3">
@@ -2018,15 +2019,15 @@ export default function POSPage() {
                           <p className="font-semibold text-sm text-gray-800 truncate">{item.name}</p>
                           <p className="text-[11px] text-gray-400">
                             {isWeight
-                              ? `${item.displayUnit === 'kg' ? (item.quantity / 1000).toFixed(3).replace(/\.?0+$/, '') + ' kg' : item.quantity + ' g'} · ${item.price.toFixed(2)} DH/kg`
+                              ? `${item.displayUnit === 'kg' ? (item.quantity / 1000).toFixed(3).replace(/\.?0+$/, '') + ' kg' : item.quantity + ' g'} · ${money(item.price)}/kg`
                               : isPerson
-                              ? `${item.quantity} pers · ${item.price.toFixed(2)} DH/personne`
-                              : `${item.quantity} × ${item.price.toFixed(2)} DH`}
+                              ? `${item.quantity} pers · ${money(item.price)}/personne`
+                              : `${item.quantity} × ${money(item.price)}`}
                           </p>
                           {promoLine && promoLine.discount > 0 && (
                             <p className="text-[11px] text-emerald-700 flex items-center gap-1 truncate">
                               <BadgePercent size={11} className="shrink-0" />
-                              {freeUnits ? `${freeUnits} offert${freeUnits > 1 ? 's' : ''}` : `−${promoLine.discount.toFixed(2)} DH`} · {promoLine.label}
+                              {freeUnits ? `${freeUnits} offert${freeUnits > 1 ? 's' : ''}` : `−${money(promoLine.discount)}`} · {promoLine.label}
                             </p>
                           )}
                           {isItemAlerted && <p className="text-amber-600 text-[10px] font-semibold animate-pulse">{stockAlert?.message}</p>}
@@ -2129,7 +2130,7 @@ export default function POSPage() {
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setShowDiscountRow(false); }}
                     className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400" />
                   <div className="inline-flex rounded-lg bg-gray-100 p-0.5">
-                    <button type="button" onClick={() => setDiscountType('amount')} className={`px-2.5 py-1 text-xs font-semibold rounded-md ${discountType === 'amount' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500'}`}>DH</button>
+                    <button type="button" onClick={() => setDiscountType('amount')} className={`px-2.5 py-1 text-xs font-semibold rounded-md ${discountType === 'amount' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500'}`}>{currencySymbol()}</button>
                     <button type="button" onClick={() => setDiscountType('percent')} className={`px-2.5 py-1 text-xs font-semibold rounded-md ${discountType === 'percent' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500'}`}>%</button>
                   </div>
                   <button onClick={() => { setDiscountInput(''); setShowDiscountRow(false); }} title="Annuler la remise" className="text-gray-400 hover:text-red-500"><XCircle size={16} /></button>
@@ -2175,7 +2176,7 @@ export default function POSPage() {
                     )}
                     <div className="flex justify-between items-baseline pt-1.5 mt-1 border-t border-gray-100">
                       <span className="text-base font-bold text-gray-800">Total</span>
-                      <span className="text-2xl font-bold text-primary-600 tabular-nums">{total.toFixed(2)} DH</span>
+                      <span className="text-2xl font-bold text-primary-600 tabular-nums">{money(total)}</span>
                     </div>
                   </div>
                   <div className="px-3 pb-1.5 grid grid-cols-4 gap-1.5">
@@ -2205,7 +2206,7 @@ export default function POSPage() {
                         <ShoppingCart size={20} /> {checkoutMutation.isPending ? 'En cours…' : 'Encaisser'}
                         <kbd className="hidden md:inline-block text-[9px] font-bold bg-white/20 border border-white/30 rounded px-1 py-px">F9</kbd>
                       </span>
-                      <span className="text-xl font-bold tabular-nums">{total.toFixed(2)} DH</span>
+                      <span className="text-xl font-bold tabular-nums">{money(total)}</span>
                     </button>
                   </div>
                 </>
@@ -2270,7 +2271,7 @@ export default function POSPage() {
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="font-bold">{totalAmt.toFixed(2)} DH</p>
+                    <p className="font-bold">{money(totalAmt)}</p>
                     {advanceAmt > 0 && (
                       <p className="text-xs text-gray-400">Avance: {advanceAmt.toFixed(2)} | Reste: {remaining.toFixed(2)}</p>
                     )}
@@ -2316,7 +2317,7 @@ export default function POSPage() {
             <div className="text-right">
               <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">Total impayés</p>
               <p className="text-lg font-bold text-amber-600">
-                {unpaidSales.reduce((sum, r) => sum + parseFloat(r.total as string), 0).toFixed(2)} DH
+                {money(unpaidSales.reduce((sum, r) => sum + parseFloat(r.total as string), 0))}
               </p>
             </div>
           </div>
@@ -2351,7 +2352,7 @@ export default function POSPage() {
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="font-bold text-lg">{parseFloat(s.total as string).toFixed(2)} DH</p>
+                    <p className="font-bold text-lg">{money(parseFloat(s.total as string))}</p>
                   </div>
                   <button onClick={(e) => { e.stopPropagation(); setUnpaidPayMethod('cash'); setUnpaidPayTarget(s); }}
                     className="flex flex-col items-center gap-0.5 px-4 py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors shrink-0">
@@ -2400,7 +2401,7 @@ export default function POSPage() {
                   </p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="font-bold text-lg tabular-nums">{Number(t.total).toFixed(2)} DH</p>
+                  <p className="font-bold text-lg tabular-nums">{money(Number(t.total))}</p>
                   <p className="text-xs text-gray-400">{t.item_count} article{t.item_count > 1 ? 's' : ''}</p>
                 </div>
                 <button onClick={() => resumeParked(t)} disabled={takeMutation.isPending}
@@ -2429,7 +2430,7 @@ export default function POSPage() {
             <div className="p-5">
               <div className="bg-gray-50 rounded-lg p-3 mb-4 flex items-center justify-between">
                 <span className="text-sm text-gray-500">Montant à encaisser</span>
-                <span className="text-xl font-bold text-primary-700">{parseFloat(unpaidPayTarget.total as string).toFixed(2)} DH</span>
+                <span className="text-xl font-bold text-primary-700">{money(parseFloat(unpaidPayTarget.total as string))}</span>
               </div>
               <label className="block text-xs font-semibold text-gray-600 mb-2">Mode de paiement</label>
               <div className="flex items-center bg-gray-100 rounded-lg p-0.5 mb-2">
@@ -2543,7 +2544,7 @@ export default function POSPage() {
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm text-gray-500">Total dû</span>
                   <span className="text-xl font-bold text-primary-700">
-                    {parseFloat(unpaidDetails.total as string).toFixed(2)} DH
+                    {money(parseFloat(unpaidDetails.total as string))}
                   </span>
                 </div>
                 <div className="flex gap-2 justify-end">
@@ -2610,19 +2611,19 @@ export default function POSPage() {
                 <p className="text-gray-500">N° {returnResult.return_number as string}</p>
                 {returnResult.type === 'return' && (
                   <p className="text-lg font-semibold text-red-600">
-                    Remboursement : {parseFloat(returnResult.refund_amount as string).toFixed(2)} DH
+                    Remboursement : {money(parseFloat(returnResult.refund_amount as string))}
                   </p>
                 )}
                 {returnResult.type === 'exchange' && returnResult.price_difference !== undefined && (
                   <div className="space-y-1">
                     {(returnResult.price_difference as number) > 0 && (
                       <p className="text-lg font-semibold text-orange-600">
-                        Le client a paye : {(returnResult.price_difference as number).toFixed(2)} DH en plus
+                        Le client a paye : {money(returnResult.price_difference as number)} en plus
                       </p>
                     )}
                     {(returnResult.price_difference as number) < 0 && (
                       <p className="text-lg font-semibold text-blue-600">
-                        Rendu au client : {Math.abs(returnResult.price_difference as number).toFixed(2)} DH
+                        Rendu au client : {money(Math.abs(returnResult.price_difference as number))}
                       </p>
                     )}
                     {(returnResult.price_difference as number) === 0 && (
@@ -2682,7 +2683,7 @@ export default function POSPage() {
                         {format(new Date(returnSale.created_at as string), "dd MMM yyyy 'a' HH:mm", { locale: fr })}
                         {' — '}{returnSale.cashier_first_name as string} {returnSale.cashier_last_name as string}
                       </p>
-                      <p className="text-sm font-semibold text-primary-600 mt-1">Total: {parseFloat(returnSale.total as string).toFixed(2)} DH</p>
+                      <p className="text-sm font-semibold text-primary-600 mt-1">Total: {money(parseFloat(returnSale.total as string))}</p>
                     </div>
                     <button onClick={() => { setReturnStep('search'); setReturnSale(null); setReturnItems({}); setExchangeProducts({}); }}
                       className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
@@ -2739,7 +2740,7 @@ export default function POSPage() {
                                 <div className="flex-1 min-w-0">
                                   <p className="font-medium text-sm">{item.product_name as string}</p>
                                   <p className="text-xs text-gray-400">
-                                    {parseFloat(item.unit_price as string).toFixed(2)} DH x {item.quantity as number}
+                                    {money(parseFloat(item.unit_price as string))} x {item.quantity as number}
                                     {alreadyReturned > 0 && (
                                       <span className="text-orange-500 ml-1">({alreadyReturned} deja retourne{alreadyReturned > 1 ? 's' : ''})</span>
                                     )}
@@ -2766,7 +2767,7 @@ export default function POSPage() {
                                     <div className="flex items-center justify-between bg-white rounded-lg p-2 border border-blue-200">
                                       <div>
                                         <p className="text-sm font-medium">{newProd.name as string}</p>
-                                        <p className="text-xs text-gray-500">{parseFloat(newProd.price as string).toFixed(2)} DH</p>
+                                        <p className="text-xs text-gray-500">{money(parseFloat(newProd.price as string))}</p>
                                       </div>
                                       <button onClick={() => setExchangeProducts(prev => { const n = { ...prev }; delete n[itemId]; return n; })}
                                         className="text-xs text-red-500 hover:text-red-700 font-medium">Changer</button>
@@ -2789,7 +2790,7 @@ export default function POSPage() {
                                               onClick={() => { setExchangeProducts(prev => ({ ...prev, [itemId]: p.id as string })); setExchangeSearch(''); }}
                                               className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-blue-100 flex justify-between items-center">
                                               <span className="truncate">{p.name as string}</span>
-                                              <span className="font-semibold text-primary-600 shrink-0 ml-2">{parseFloat(p.price as string).toFixed(2)} DH</span>
+                                              <span className="font-semibold text-primary-600 shrink-0 ml-2">{money(parseFloat(p.price as string))}</span>
                                             </button>
                                           ))}
                                       </div>
@@ -2823,7 +2824,7 @@ export default function POSPage() {
                         <div>
                           <p className="text-sm text-gray-500">{selectedCount} article(s) selectionne(s)</p>
                           {returnType === 'return' && refundTotal > 0 && (
-                            <p className="text-lg font-bold text-red-600">Rembourser : {refundTotal.toFixed(2)} DH</p>
+                            <p className="text-lg font-bold text-red-600">Rembourser : {money(refundTotal)}</p>
                           )}
                           {returnType === 'exchange' && exchangeReady && (
                             <>
@@ -2831,10 +2832,10 @@ export default function POSPage() {
                                 <p className="text-lg font-bold text-green-600">Echange sans ecart</p>
                               )}
                               {exchangeDiff > 0 && (
-                                <p className="text-lg font-bold text-orange-600">Le client doit payer : {exchangeDiff.toFixed(2)} DH</p>
+                                <p className="text-lg font-bold text-orange-600">Le client doit payer : {money(exchangeDiff)}</p>
                               )}
                               {exchangeDiff < 0 && (
-                                <p className="text-lg font-bold text-blue-600">Rendre au client : {Math.abs(exchangeDiff).toFixed(2)} DH</p>
+                                <p className="text-lg font-bold text-blue-600">Rendre au client : {money(Math.abs(exchangeDiff))}</p>
                               )}
                             </>
                           )}
@@ -2986,18 +2987,18 @@ export default function POSPage() {
               <div className="bg-gray-50 rounded-xl p-4 mb-5 space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Total commande</span>
-                  <span className="font-semibold">{totalAmt.toFixed(2)} DH</span>
+                  <span className="font-semibold">{money(totalAmt)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Avance versee</span>
-                  <span className="font-semibold text-green-600">{advanceAmt.toFixed(2)} DH</span>
+                  <span className="font-semibold text-green-600">{money(advanceAmt)}</span>
                 </div>
                 <div className="flex justify-between font-bold border-t pt-2 text-base">
                   <span>Reste a payer</span>
-                  <span className="text-primary-600">{remaining.toFixed(2)} DH</span>
+                  <span className="text-primary-600">{money(remaining)}</span>
                 </div>
               </div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Montant encaisse (DH)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Montant encaisse ({currencySymbol()})</label>
               <input type="number" value={deliverAmount} onChange={(e) => setDeliverAmount(e.target.value)}
                 className="input text-center text-xl font-bold mb-2" min={remaining} step="0.01" autoFocus />
               {deliverShort && (
@@ -3116,7 +3117,7 @@ export default function POSPage() {
                           <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium text-center">
                             {reason === 'dlc_expiree' ? 'DLC expiree' : 'Exposition depassee'}
                           </span>
-                          <span className="text-right text-gray-700">{(qty * cost).toFixed(2)} DH</span>
+                          <span className="text-right text-gray-700">{money(qty * cost)}</span>
                         </div>
                       );
                     })}
@@ -3904,7 +3905,7 @@ export default function POSPage() {
                 {closeInputMode === 'direct' ? (
                   <>
                     {/* Direct amount input */}
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Montant total trouve (DH)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Montant total trouve ({currencySymbol()})</label>
                     <input type="number" value={actualAmount} onChange={(e) => setActualAmount(e.target.value)}
                       className="input text-center text-2xl font-bold mb-4" min="0" step="0.01" placeholder="0.00" autoFocus />
                   </>
@@ -3924,7 +3925,7 @@ export default function POSPage() {
                             const subtotal = d.value * count;
                             return (
                               <div key={d.value} className="flex flex-col items-center gap-1 bg-white rounded-lg py-2 px-1 ring-1 ring-amber-100">
-                                <img src={d.img} alt={`${d.label} DH`} className="w-12 h-12 object-contain" />
+                                <img src={d.img} alt={`${d.label} ${currencySymbol()}`} className="w-12 h-12 object-contain" />
                                 <div className="flex items-center gap-0.5">
                                   <button onClick={() => setDenomCounts(prev => ({ ...prev, [d.value]: Math.max(0, (prev[d.value] || 0) - 1) }))}
                                     className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors">
@@ -3940,7 +3941,7 @@ export default function POSPage() {
                                   </button>
                                 </div>
                                 <span className={`text-[10px] font-medium ${subtotal > 0 ? 'text-amber-800' : 'text-gray-300'}`}>
-                                  {subtotal.toFixed(2)} DH
+                                  {money(subtotal)}
                                 </span>
                               </div>
                             );
@@ -3960,7 +3961,7 @@ export default function POSPage() {
                             const subtotal = d.value * count;
                             return (
                               <div key={d.value} className="flex flex-col items-center gap-1 bg-white rounded-lg py-2 px-1 ring-1 ring-green-100">
-                                <img src={d.img} alt={`${d.label} DH`} className="w-16 h-10 object-contain" />
+                                <img src={d.img} alt={`${d.label} ${currencySymbol()}`} className="w-16 h-10 object-contain" />
                                 <div className="flex items-center gap-0.5">
                                   <button onClick={() => setDenomCounts(prev => ({ ...prev, [d.value]: Math.max(0, (prev[d.value] || 0) - 1) }))}
                                     className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors">
@@ -3976,7 +3977,7 @@ export default function POSPage() {
                                   </button>
                                 </div>
                                 <span className={`text-[10px] font-medium ${subtotal > 0 ? 'text-green-800' : 'text-gray-300'}`}>
-                                  {subtotal.toFixed(2)} DH
+                                  {money(subtotal)}
                                 </span>
                               </div>
                             );
@@ -3988,7 +3989,7 @@ export default function POSPage() {
                     {/* Counting total */}
                     <div className="bg-gray-900 text-white rounded-xl p-3 mb-3 flex justify-between items-center">
                       <span className="text-sm font-medium">Total trouve dans la caisse</span>
-                      <span className="text-2xl font-bold">{denomTotal.toFixed(2)} DH</span>
+                      <span className="text-2xl font-bold">{money(denomTotal)}</span>
                     </div>
                   </>
                 )}
@@ -3996,7 +3997,7 @@ export default function POSPage() {
 
                 {reasonRequired && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
-                    <p className="text-sm font-semibold text-amber-800 mb-1">Ecart superieur a 5 DH</p>
+                    <p className="text-sm font-semibold text-amber-800 mb-1">Ecart superieur a {money(5, { decimals: 0 })}</p>
                     <p className="text-xs text-amber-700 mb-2">Le comptage est enregistre. Indiquez le motif de l'ecart pour cloturer.</p>
                     <select value={differenceReason} onChange={(e) => setDifferenceReason(e.target.value)}
                       className="input" autoFocus>
@@ -4024,7 +4025,7 @@ export default function POSPage() {
                   )}
                   {cardReasonRequired && (
                     <div className="mt-2">
-                      <p className="text-xs text-amber-700 mb-1">Ecart carte superieur a 5 DH. Indiquez le motif.</p>
+                      <p className="text-xs text-amber-700 mb-1">Ecart carte superieur a {money(5, { decimals: 0 })}. Indiquez le motif.</p>
                       <select value={cardDifferenceReason} onChange={(e) => setCardDifferenceReason(e.target.value)}
                         className="input">
                         <option value="">— Choisir un motif —</option>
@@ -4065,36 +4066,36 @@ export default function POSPage() {
                   <div className="bg-gray-50 rounded-xl p-4 space-y-3 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-500">Fond de caisse</span>
-                      <span className="font-medium">{parseFloat(closeResult!.opening_amount as string).toFixed(2)} DH</span>
+                      <span className="font-medium">{money(parseFloat(closeResult!.opening_amount as string))}</span>
                     </div>
 
                     {/* Breakdown by sale type */}
                     {(closeResult!.standard_count as number) > 0 && (
                       <div className="flex justify-between">
                         <span className="text-gray-500">Ventes directes ({closeResult!.standard_count as number})</span>
-                        <span className="font-medium">{parseFloat(String(closeResult!.standard_revenue || 0)).toFixed(2)} DH</span>
+                        <span className="font-medium">{money(parseFloat(String(closeResult!.standard_revenue || 0)))}</span>
                       </div>
                     )}
                     {(closeResult!.advance_count as number) > 0 && (
                       <div className="flex justify-between">
                         <span className="text-gray-500">Avances commandes ({closeResult!.advance_count as number})</span>
-                        <span className="font-medium text-orange-600">+{parseFloat(String(closeResult!.advance_revenue || 0)).toFixed(2)} DH</span>
+                        <span className="font-medium text-orange-600">+{money(parseFloat(String(closeResult!.advance_revenue || 0)))}</span>
                       </div>
                     )}
                     {(closeResult!.delivery_count as number) > 0 && (
                       <div className="flex justify-between">
                         <span className="text-gray-500">Soldes livraisons ({closeResult!.delivery_count as number})</span>
-                        <span className="font-medium text-blue-600">+{parseFloat(String(closeResult!.delivery_revenue || 0)).toFixed(2)} DH</span>
+                        <span className="font-medium text-blue-600">+{money(parseFloat(String(closeResult!.delivery_revenue || 0)))}</span>
                       </div>
                     )}
 
                     <div className="flex justify-between font-semibold border-t pt-2">
                       <span>Montant attendu</span>
-                      <span>{parseFloat(closeResult!.expected_cash as string).toFixed(2)} DH</span>
+                      <span>{money(parseFloat(closeResult!.expected_cash as string))}</span>
                     </div>
                     <div className="flex justify-between font-semibold">
                       <span>Montant trouve</span>
-                      <span>{parseFloat(closeResult!.actual_amount as string).toFixed(2)} DH</span>
+                      <span>{money(parseFloat(closeResult!.actual_amount as string))}</span>
                     </div>
 
                     {/* Mig 467 — Rapprochement carte (TPE vs ventes carte POS) */}
@@ -4102,17 +4103,17 @@ export default function POSPage() {
                       <>
                         <div className="flex justify-between border-t pt-2">
                           <span className="text-gray-500 flex items-center gap-1.5"><CreditCard size={14} /> Carte — ventes POS</span>
-                          <span className="font-medium">{parseFloat(String(closeResult!.card_revenue || 0)).toFixed(2)} DH</span>
+                          <span className="font-medium">{money(parseFloat(String(closeResult!.card_revenue || 0)))}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-500">Carte — ticket TPE</span>
-                          <span className="font-medium">{parseFloat(String(closeResult!.actual_card_amount)).toFixed(2)} DH</span>
+                          <span className="font-medium">{money(parseFloat(String(closeResult!.actual_card_amount)))}</span>
                         </div>
                         {parseFloat(String(closeResult!.card_difference || 0)) !== 0 && (
                           <div className="flex justify-between">
                             <span className="text-gray-500">Ecart carte</span>
                             <span className={`font-semibold ${parseFloat(String(closeResult!.card_difference)) < 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                              {parseFloat(String(closeResult!.card_difference)) > 0 ? '+' : ''}{parseFloat(String(closeResult!.card_difference)).toFixed(2)} DH
+                              {parseFloat(String(closeResult!.card_difference)) > 0 ? '+' : ''}{money(parseFloat(String(closeResult!.card_difference)))}
                             </span>
                           </div>
                         )}
@@ -4136,7 +4137,7 @@ export default function POSPage() {
                         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3">
                           <AlertTriangle size={24} className="text-blue-500 shrink-0" />
                           <div>
-                            <p className="font-semibold text-blue-800">Excedent de +{diff.toFixed(2)} DH</p>
+                            <p className="font-semibold text-blue-800">Excedent de +{money(diff)}</p>
                             <p className="text-sm text-blue-600">Il y a plus d'argent que prevu dans la caisse.</p>
                           </div>
                         </div>
@@ -4146,7 +4147,7 @@ export default function POSPage() {
                         <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
                           <XCircle size={24} className="text-red-500 shrink-0" />
                           <div>
-                            <p className="font-semibold text-red-800">Deficit de {diff.toFixed(2)} DH</p>
+                            <p className="font-semibold text-red-800">Deficit de {money(diff)}</p>
                             <p className="text-sm text-red-600">Il manque de l'argent dans la caisse.</p>
                           </div>
                         </div>
@@ -4160,7 +4161,7 @@ export default function POSPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-500">CA total (tous moyens)</span>
-                      <span className="font-semibold text-green-600">{parseFloat(closeResult!.total_revenue as string).toFixed(2)} DH</span>
+                      <span className="font-semibold text-green-600">{money(parseFloat(closeResult!.total_revenue as string))}</span>
                     </div>
                   </div>
 
@@ -4625,7 +4626,7 @@ export default function POSPage() {
 
             <div className="bg-gray-50 rounded-lg p-3 mb-4 flex items-center justify-between">
               <span className="text-sm text-gray-600">Total dû</span>
-              <span className="text-xl font-bold text-primary-700">{total.toFixed(2)} DH</span>
+              <span className="text-xl font-bold text-primary-700">{money(total)}</span>
             </div>
 
             <UnpaidCustomerPicker
@@ -4667,13 +4668,13 @@ export default function POSPage() {
             {/* Total en tete */}
             <div className="px-6 pt-6 pb-4 border-b border-gray-100">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Total à encaisser</p>
-              <p className="text-4xl font-bold text-primary-600">{total.toFixed(2)} <span className="text-2xl">DH</span></p>
+              <p className="text-4xl font-bold text-primary-600">{total.toFixed(2)} <span className="text-2xl">{currencySymbol()}</span></p>
               {(discountAmount > 0 || promotionAmount > 0 || loyaltyAmount > 0) && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Sous-total {subtotal.toFixed(2)} DH
-                  {promotionAmount > 0 && <> — promotions <span className="font-semibold text-emerald-700">−{promotionAmount.toFixed(2)} DH</span></>}
-                  {discountAmount > 0 && <> — remise <span className="font-semibold text-amber-600">−{discountAmount.toFixed(2)} DH</span></>}
-                  {loyaltyAmount > 0 && <> — points <span className="font-semibold text-violet-700">−{loyaltyAmount.toFixed(2)} DH</span></>}
+                  Sous-total {money(subtotal)}
+                  {promotionAmount > 0 && <> — promotions <span className="font-semibold text-emerald-700">−{money(promotionAmount)}</span></>}
+                  {discountAmount > 0 && <> — remise <span className="font-semibold text-amber-600">−{money(discountAmount)}</span></>}
+                  {loyaltyAmount > 0 && <> — points <span className="font-semibold text-violet-700">−{money(loyaltyAmount)}</span></>}
                 </p>
               )}
             </div>
@@ -4701,7 +4702,7 @@ export default function POSPage() {
             {loyaltyInfo?.enabled && (
               <div className="px-6 pt-4">
                 <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1">
-                  <Star size={11} /> Fidélité · {loyaltyInfo.balance.toLocaleString('fr-FR')} pts ({loyaltyInfo.value.toFixed(2)} DH){loyaltyInfo.tier ? ` · ${loyaltyInfo.tier.label}` : ''}
+                  <Star size={11} /> Fidélité · {loyaltyInfo.balance.toLocaleString('fr-FR')} pts ({money(loyaltyInfo.value)}){loyaltyInfo.tier ? ` · ${loyaltyInfo.tier.label}` : ''}
                 </p>
                 {loyaltyInfo.maxPoints > 0 ? (
                   <>
@@ -4713,7 +4714,7 @@ export default function POSPage() {
                     </div>
                     {loyaltyPointsError
                       ? <p className="text-xs mt-1 text-red-600">{loyaltyPointsError}</p>
-                      : loyaltyAmount > 0 && <p className="text-xs mt-1 text-violet-700">−{loyaltyAmount.toFixed(2)} DH payés en points</p>}
+                      : loyaltyAmount > 0 && <p className="text-xs mt-1 text-violet-700">−{money(loyaltyAmount)} payés en points</p>}
                   </>
                 ) : (
                   <p className="text-xs text-gray-500">Utilisable dès {loyaltyInfo.minRedeemPoints.toLocaleString('fr-FR')} points, jusqu'à {loyaltyInfo.maxRedeemPct} % du ticket.</p>
@@ -4734,7 +4735,7 @@ export default function POSPage() {
                 />
                 <div className="inline-flex rounded-lg bg-gray-100 p-0.5">
                   <button type="button" onClick={() => setDiscountType('amount')}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${discountType === 'amount' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>DH</button>
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${discountType === 'amount' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>{currencySymbol()}</button>
                   <button type="button" onClick={() => setDiscountType('percent')}
                     className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${discountType === 'percent' ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>%</button>
                 </div>
@@ -4807,19 +4808,19 @@ export default function POSPage() {
                     className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
                     autoFocus
                   />
-                  <span className="text-sm font-semibold text-gray-500">DH</span>
+                  <span className="text-sm font-semibold text-gray-500">{currencySymbol()}</span>
                 </div>
                 {/* Rendu monnaie / alerte insuffisant */}
                 {cashGiven !== null && cashGiven >= total && (
                   <div className="mt-3 flex items-center justify-between bg-green-50 rounded-xl py-3 px-4 ring-1 ring-green-200">
                     <span className="text-sm font-semibold text-green-700">Monnaie à rendre</span>
-                    <span className="text-xl font-bold text-green-700">{(cashGiven - total).toFixed(2)} DH</span>
+                    <span className="text-xl font-bold text-green-700">{money(cashGiven - total)}</span>
                   </div>
                 )}
                 {cashGiven !== null && cashGiven < total && (
                   <div className="mt-3 flex items-center gap-2 bg-red-50 rounded-xl py-2.5 px-3 ring-1 ring-red-200">
                     <AlertTriangle size={16} className="text-red-500 flex-shrink-0" />
-                    <p className="text-xs font-semibold text-red-600">Insuffisant — il manque {(total - cashGiven).toFixed(2)} DH</p>
+                    <p className="text-xs font-semibold text-red-600">Insuffisant — il manque {money(total - cashGiven)}</p>
                   </div>
                 )}
               </div>
@@ -4855,7 +4856,7 @@ export default function POSPage() {
                     }}
                     className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
                   />
-                  <span className="text-sm font-semibold text-gray-500 w-8">DH</span>
+                  <span className="text-sm font-semibold text-gray-500 w-8">{currencySymbol()}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <CreditCard size={16} className="text-blue-600 flex-shrink-0" />
@@ -4872,18 +4873,18 @@ export default function POSPage() {
                     }}
                     className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200 focus:border-primary-400"
                   />
-                  <span className="text-sm font-semibold text-gray-500 w-8">DH</span>
+                  <span className="text-sm font-semibold text-gray-500 w-8">{currencySymbol()}</span>
                 </div>
                 {mixedOk ? (
                   <div className="flex items-center justify-between bg-sky-50 rounded-xl py-2.5 px-3 ring-1 ring-sky-200">
                     <span className="text-xs font-semibold text-sky-700">Espèces {mixedCash.toFixed(2)} + Carte {mixedCard.toFixed(2)}</span>
-                    <span className="text-sm font-bold text-sky-700">= {total.toFixed(2)} DH</span>
+                    <span className="text-sm font-bold text-sky-700">= {money(total)}</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 bg-amber-50 rounded-xl py-2.5 px-3 ring-1 ring-amber-200">
                     <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" />
                     <p className="text-xs font-semibold text-amber-700">
-                      La somme doit égaler {total.toFixed(2)} DH (actuel : {(mixedCash + mixedCard).toFixed(2)} DH)
+                      La somme doit égaler {money(total)} (actuel : {money(mixedCash + mixedCard)})
                     </p>
                   </div>
                 )}
@@ -4944,7 +4945,7 @@ export default function POSPage() {
             <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[95vw] overflow-hidden" onClick={e => e.stopPropagation()}>
               <div className="px-5 py-3 border-b bg-gradient-to-r from-primary-50 to-white">
                 <h3 className="font-semibold text-gray-800">{p.name as string}</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Prix : {pricePerKg.toFixed(2)} DH/kg — Stock vitrine : {stockDisplay}</p>
+                <p className="text-xs text-gray-500 mt-0.5">Prix : {money(pricePerKg)}/kg — Stock vitrine : {stockDisplay}</p>
               </div>
               <div className="p-5">
                 {/* Toggle kg/g */}
@@ -4974,7 +4975,7 @@ export default function POSPage() {
                 )}
                 <div className="flex justify-between items-center px-1 mb-3">
                   <span className="text-xs text-gray-500">Total ligne</span>
-                  <span className="text-xl font-bold text-primary-700">{computedTotal.toFixed(2)} DH</span>
+                  <span className="text-xl font-bold text-primary-700">{money(computedTotal)}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-1.5">
                   {[1,2,3,4,5,6,7,8,9].map(n => (
@@ -5020,7 +5021,7 @@ export default function POSPage() {
             <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-[95vw] overflow-hidden" onClick={e => e.stopPropagation()}>
               <div className="px-5 py-3 border-b bg-gradient-to-r from-primary-50 to-white">
                 <h3 className="font-semibold text-gray-800">{p.name as string}</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Prix : {pricePerPerson.toFixed(2)} DH/personne — choisissez le nombre de parts</p>
+                <p className="text-xs text-gray-500 mt-0.5">Prix : {money(pricePerPerson)}/personne — choisissez le nombre de parts</p>
               </div>
               <div className="p-5">
                 <div className="grid grid-cols-3 gap-2">
@@ -5029,7 +5030,7 @@ export default function POSPage() {
                       className="flex flex-col items-center justify-center gap-0.5 h-20 bg-gray-50 hover:bg-primary-50 border border-gray-200 hover:border-primary-300 rounded-lg transition-colors">
                       <span className="text-2xl font-bold text-gray-800">{n}</span>
                       <span className="text-[11px] text-gray-500">personnes</span>
-                      <span className="text-xs font-semibold text-primary-700">{(pricePerPerson * n).toFixed(0)} DH</span>
+                      <span className="text-xs font-semibold text-primary-700">{money((pricePerPerson * n), { decimals: 0 })}</span>
                     </button>
                   ))}
                 </div>

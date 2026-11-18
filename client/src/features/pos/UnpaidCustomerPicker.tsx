@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, User, UserPlus, X, AlertTriangle } from 'lucide-react';
@@ -65,16 +66,16 @@ export default function UnpaidCustomerPicker({ customerId, customerLabel, saleTo
         </div>
         {situation && (
           <div className="text-xs text-gray-600 bg-gray-50 rounded-lg p-2 space-y-0.5">
-            <div className="flex justify-between"><span>Doit déjà</span><span className="font-semibold">{situation.total.toFixed(2)} DH</span></div>
+            <div className="flex justify-between"><span>Doit déjà</span><span className="font-semibold">{money(situation.total)}</span></div>
             {situation.overdue > 0 && (
-              <div className="flex justify-between text-red-600"><span>dont en retard</span><span className="font-semibold">{situation.overdue.toFixed(2)} DH</span></div>
+              <div className="flex justify-between text-red-600"><span>dont en retard</span><span className="font-semibold">{money(situation.overdue)}</span></div>
             )}
             {situation.creditLimit != null && (
-              <div className="flex justify-between"><span>Plafond de crédit</span><span>{situation.creditLimit.toFixed(2)} DH</span></div>
+              <div className="flex justify-between"><span>Plafond de crédit</span><span>{money(situation.creditLimit)}</span></div>
             )}
             {overLimit && (
               <div className="flex items-center gap-1 text-red-600 font-medium pt-1">
-                <AlertTriangle size={12} /> Avec cette vente : {after!.toFixed(2)} DH, au-dessus du plafond
+                <AlertTriangle size={12} /> Avec cette vente : {money(after!)}, au-dessus du plafond
               </div>
             )}
           </div>

@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -177,18 +178,18 @@ export default function CustomerRecordPage() {
       )}
 
       <section className="prj-kpis" aria-label="Indicateurs du client">
-        <ListKpi label="CA cumulé" value={`${n2(num(c.total_spent))} DH`} sub={`${purchases} achat${purchases > 1 ? 's' : ''}${last ? ` · dernier le ${day(last, 'd MMM')}` : ''}`} />
+        <ListKpi label="CA cumulé" value={`${money(num(c.total_spent))}`} sub={`${purchases} achat${purchases > 1 ? 's' : ''}${last ? ` · dernier le ${day(last, 'd MMM')}` : ''}`} />
         {situation && (
           <div className="prj-kpi">
             <div className="prj-kpi-head"><span>{limit != null ? 'Encours / plafond' : 'Encours'}</span>{limit ? <span>{Math.round(owed / limit * 100)} %</span> : null}</div>
-            <div className="prj-kpi-value">{n0(owed)} DH</div>
+            <div className="prj-kpi-value">{money(owed, { decimals: 0 })}</div>
             {limit != null && limit > 0 && <div className={`prj-bar ${owed > limit ? 'red' : owed > limit * 0.85 ? 'orange' : 'green'}`}><span style={{ width: `${Math.min(100, owed / limit * 100)}%` }} /></div>}
-            <div className="prj-kpi-sub">{limit != null ? `plafond ${n0(limit)} DH` : 'sans plafond'}</div>
+            <div className="prj-kpi-sub">{limit != null ? `plafond ${money(limit, { decimals: 0 })}` : 'sans plafond'}</div>
           </div>
         )}
-        {situation && <ListKpi label="Échu" value={`${n0(situation.overdue)} DH`} sub={situation.overdue > 0 ? `plus ancien retard ${situation.maxDaysLate} j` : 'rien d\'échu'} tone={situation.overdue > 0 ? 'red' : undefined} />}
+        {situation && <ListKpi label="Échu" value={`${money(situation.overdue, { decimals: 0 })}`} sub={situation.overdue > 0 ? `plus ancien retard ${situation.maxDaysLate} j` : 'rien d\'échu'} tone={situation.overdue > 0 ? 'red' : undefined} />}
         {situation && moral && <ListKpi label="Conditions de paiement" value={situation.paymentTermDays ? `${situation.paymentTermDays} j` : 'Comptant'} sub={c.billing_frequency === 'per_delivery' ? 'facture à chaque livraison' : 'facture mensuelle (BL regroupés)'} />}
-        <ListKpi label="Fidélité" value={`${n0(num(c.loyalty_points))} pts`} sub={loyalty?.tier ? `niveau ${loyalty.tier.label}${loyalty.value ? ` · ${n0(loyalty.value)} DH de remise` : ''}` : 'aucun niveau'} />
+        <ListKpi label="Fidélité" value={`${n0(num(c.loyalty_points))} pts`} sub={loyalty?.tier ? `niveau ${loyalty.tier.label}${loyalty.value ? ` · ${money(loyalty.value, { decimals: 0 })} de remise` : ''}` : 'aucun niveau'} />
       </section>
 
       <div className="prj-columns">
@@ -269,7 +270,7 @@ export default function CustomerRecordPage() {
               <div className="prj-panel-body">
                 <div className="sal-months" role="img" aria-label="Achats mensuels du client sur 12 mois">
                   {monthly.map((m, i) => (
-                    <div key={m.month} className={`sal-month${i === monthly.length - 1 ? ' cur' : ''}`} title={`${format(new Date(`${m.month}-01T00:00:00`), 'MMMM yyyy', { locale: fr })} : ${n2(m.amount)} DH`}>
+                    <div key={m.month} className={`sal-month${i === monthly.length - 1 ? ' cur' : ''}`} title={`${format(new Date(`${m.month}-01T00:00:00`), 'MMMM yyyy', { locale: fr })} : ${money(m.amount)}`}>
                       <span style={{ height: `${m.amount / monthMax * 100}%` }} />
                     </div>
                   ))}
@@ -287,7 +288,7 @@ export default function CustomerRecordPage() {
             <section className="prj-panel">
               <h2>Balance âgée</h2>
               {buckets && bucketTotal > 0 ? (<>
-                <div className="sal-stack" role="img" aria-label={BUCKETS.filter(b => buckets[b.key] > 0).map(b => `${b.label} ${n0(buckets[b.key])} DH`).join(', ')}>
+                <div className="sal-stack" role="img" aria-label={BUCKETS.filter(b => buckets[b.key] > 0).map(b => `${b.label} ${money(buckets[b.key], { decimals: 0 })}`).join(', ')}>
                   {BUCKETS.map(b => (buckets[b.key] > 0 ? <span key={b.key} style={{ width: `${buckets[b.key] / bucketTotal * 100}%`, background: b.color }} /> : null))}
                 </div>
                 <dl className="sal-legend">
@@ -306,7 +307,7 @@ export default function CustomerRecordPage() {
               {c.rc && <><dt>RC</dt><dd>{c.rc}{c.rc_ville ? ` · ${c.rc_ville}` : ''}</dd></>}
               {c.forme_juridique && <><dt>Forme</dt><dd>{c.forme_juridique}</dd></>}
               {moral && <><dt>Paiement</dt><dd>{c.delai_paiement_jours ? `${c.delai_paiement_jours} jours` : 'comptant'}</dd></>}
-              {c.credit_limit && <><dt>Plafond</dt><dd>{n0(num(c.credit_limit))} DH</dd></>}
+              {c.credit_limit && <><dt>Plafond</dt><dd>{money(num(c.credit_limit), { decimals: 0 })}</dd></>}
               {c.remise_pct && <><dt>Remise</dt><dd>{num(c.remise_pct)} %</dd></>}
               {moral && <><dt>TVA</dt><dd>{c.tva_exonere ? 'Exonérée' : 'Assujettie'}</dd></>}
               {type === 'particulier' && c.birthday && <><dt>Naissance</dt><dd>{day(c.birthday, 'd MMMM yyyy')}</dd></>}

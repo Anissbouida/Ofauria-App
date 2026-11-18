@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customersApi } from '../../api/customers.api';
@@ -302,7 +303,7 @@ export default function CustomersPage() {
           <span className="odoo-breadcrumb-separator">/</span>
           <span className="odoo-breadcrumb-current">Clients</span>
           <span className="spsh-summary" style={{ marginLeft: 8, color: 'var(--theme-text-muted)', fontSize: '0.8125rem' }}>
-            {base.length} client{base.length > 1 ? 's' : ''} · {n(totalCa)} DH de CA
+            {base.length} client{base.length > 1 ? 's' : ''} · {money(totalCa)} de CA
           </span>
         </div>
         <div style={{ flex: 1 }} />
@@ -313,7 +314,7 @@ export default function CustomersPage() {
 
       <div className="sal-page" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* Style Apple (2026-11) : grand titre, résumé dessous. */}
-        <header className="kl-largetitle"><h1>Clients</h1><p>{base.length} client{base.length > 1 ? 's' : ''} · {n(totalCa)} DH de CA</p></header>
+        <header className="kl-largetitle"><h1>Clients</h1><p>{base.length} client{base.length > 1 ? 's' : ''} · {money(totalCa)} de CA</p></header>
         {noIceCount > 0 && (
           <StatusBanner tone="warning" icon={AlertTriangle}
             title={`${noIceCount} client${noIceCount > 1 ? 's' : ''} professionnel${noIceCount > 1 ? 's' : ''} sans ICE`}
@@ -326,11 +327,11 @@ export default function CustomersPage() {
 
         <StagePipeline
           title="Où en sont mes clients"
-          summary={`${base.length} client${base.length > 1 ? 's' : ''} · ${n(totalCa)} DH de CA · ${totalPoints.toLocaleString('fr-FR')} points`}
+          summary={`${base.length} client${base.length > 1 ? 's' : ''} · ${money(totalCa)} de CA · ${totalPoints.toLocaleString('fr-FR')} points`}
           stages={CUS_STAGES}
           stats={Object.fromEntries(CUS_STAGES.map(s => {
             const st = stageStats[s.key];
-            const sub = s.key === 'active' || s.key === 'dormant' ? `${n(st.ca)} DH` : '';
+            const sub = s.key === 'active' || s.key === 'dormant' ? `${money(st.ca)}` : '';
             return [s.key, { count: st.count, sub, late: s.key === 'incomplete' ? st.noIce : 0, alertLabel: 'sans ICE' }];
           }))}
           isActive={k => stage === k}
@@ -455,7 +456,7 @@ export default function CustomersPage() {
                         {tier && <div><span className={`odoo-tag ${tier.tag}`}>{tier.label}</span></div>}
                       </td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {spent > 0 ? <><span style={{ fontWeight: 600 }}>{n(spent)}</span> <span style={{ ...muted, fontSize: '0.6875rem' }}>DH</span></>
+                        {spent > 0 ? <><span style={{ fontWeight: 600 }}>{n(spent)}</span> <span style={{ ...muted, fontSize: '0.6875rem' }}>{currencySymbol()}</span></>
                           : <span style={muted}>—</span>}
                       </td>
                       {cfColumns.map(d => <td key={d.id} style={muted}>{formatCfValue(d, (c.custom_fields as CfValues | undefined)?.[d.code]) || '—'}</td>)}
@@ -724,7 +725,7 @@ function CustomerFormModal({ editing, onClose, onSubmit, isPending }: {
               <>
                 <div style={sectionTitle}><CreditCard size={12} /> Conditions commerciales{!direction && ' (fixées par la direction)'}</div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div><label style={fieldLabel}>Plafond de crédit (DH)</label>
+                  <div><label style={fieldLabel}>Plafond de crédit ({currencySymbol()})</label>
                     <input name="creditLimit" disabled={!direction} type="number" step="0.01" min="0" defaultValue={editing?.credit_limit} className={inputCls} placeholder="10000" /></div>
                   <div><label style={fieldLabel}>Remise (%)</label>
                     <input name="remisePct" disabled={!direction} type="number" step="0.01" min="0" max="100" defaultValue={editing?.remise_pct} className={inputCls} placeholder="5" /></div>

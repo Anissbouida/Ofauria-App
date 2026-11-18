@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -47,7 +48,7 @@ export default function VentesIndicators({ onManquants }: { onManquants: () => v
               <Dot color={DOT[i.severity]} /> {i.label} <ArrowRight size={11} style={{ marginLeft: 'auto' }} />
             </div>
             <div className="odoo-stat-card-value">{i.count ?? '—'}</div>
-            <div className="odoo-stat-card-sub">{i.value ? `${n2(i.value)} DH · ` : ''}{i.hint}</div>
+            <div className="odoo-stat-card-sub">{i.value ? `${money(i.value)} · ` : ''}{i.hint}</div>
           </button>
         ))}
       </div>

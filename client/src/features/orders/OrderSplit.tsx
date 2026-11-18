@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { startOfDay } from 'date-fns';
@@ -49,7 +50,7 @@ export function OrderList({ orders, activeId, onPick }: { orders: Row[]; activeI
           <button key={id} type="button" className={`ord-row${id === activeId ? ' sel' : ''}`} aria-current={id === activeId ? 'true' : undefined} onClick={() => onPick(id)}>
             <span className={`ord-dot${late ? ' late' : dayDiff === 0 && st !== 'completed' && st !== 'cancelled' ? ' today' : ''}`} aria-hidden="true" />
             <span className="ord-l1"><span className="ord-nm">{customerName(o)}</span><span className="ord-when">{when}</span></span>
-            <span className="ord-l2"><span className="sal-num">{o.order_number as string}</span> · <b>{n(num(o.total))} DH</b></span>
+            <span className="ord-l2"><span className="sal-num">{o.order_number as string}</span> · <b>{money(num(o.total))}</b></span>
             <span className="ord-l3">
               {late
                 ? <StatusTag tone="late" label={`En retard de ${daysLate(o, today)} j`} />
@@ -100,8 +101,8 @@ export function OrderPane({ row, next, menu, busy }: {
             {d.type && TYPE_LABELS[d.type] ? ` · ${TYPE_LABELS[d.type]}` : ''}{pro && credit?.delai_paiement_jours ? ` · ${credit.delai_paiement_jours} jours` : ''}</p>
         </div>
         <div className="ord-amt">
-          <b>{n(total)} DH</b>
-          <small>{st === 'cancelled' ? 'annulée' : due > 0.004 ? `reste à encaisser ${n(due)} DH` : 'soldée'}</small>
+          <b>{money(total)}</b>
+          <small>{st === 'cancelled' ? 'annulée' : due > 0.004 ? `reste à encaisser ${money(due)}` : 'soldée'}</small>
         </div>
       </header>
 
@@ -115,7 +116,7 @@ export function OrderPane({ row, next, menu, busy }: {
         <div className="kl-widget kl-empty"><Loader2 className="animate-spin" size={20} /><span>Chargement…</span></div>
       ) : st === 'cancelled' ? (
         <div className="kl-widget"><div className="ord-state">Commande annulée</div>
-          <div className="ord-state-sub">{advance > 0 ? `L'avance de ${n(advance)} DH reste acquise.` : 'Aucune somme versée.'}</div></div>
+          <div className="ord-state-sub">{advance > 0 ? `L'avance de ${money(advance)} reste acquise.` : 'Aucune somme versée.'}</div></div>
       ) : (
         <div className="kl-widget">
           <div className="ord-state">{st === 'completed' ? 'Terminée' : current?.label ?? (ORDER_STATUS_LABELS[st as keyof typeof ORDER_STATUS_LABELS] || st)}</div>
@@ -148,7 +149,7 @@ export function OrderPane({ row, next, menu, busy }: {
             );
           }) : <div className="kl-empty">{isLoading ? 'Chargement…' : 'Aucune ligne.'}</div>}
           {items.length > 0 && (
-            <div className="ord-line tot"><span className="ord-pn">Total{pro ? ' TTC' : ''}</span><span className="ord-pv">{n(total)} DH</span></div>
+            <div className="ord-line tot"><span className="ord-pn">Total{pro ? ' TTC' : ''}</span><span className="ord-pv">{money(total)}</span></div>
           )}
         </div>
       </section>
@@ -158,8 +159,8 @@ export function OrderPane({ row, next, menu, busy }: {
         <div className="kl-group">
           <div className="ord-kv"><span>Date</span><b>{fmtDate(d.pickup_date, 'EEEE d MMMM yyyy')}</b></div>
           {d.customer_phone && <div className="ord-kv"><span>Téléphone</span><b style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Phone size={12} /> {d.customer_phone as string}</b></div>}
-          {!pro && advance > 0 && <div className="ord-kv"><span>Avance versée</span><b>{n(advance)} DH</b></div>}
-          {pro && credit && credit.credit_limit != null && <div className="ord-kv"><span>Encours / plafond</span><b>{n(num(credit.exposure))} / {n(num(credit.credit_limit))} DH</b></div>}
+          {!pro && advance > 0 && <div className="ord-kv"><span>Avance versée</span><b>{money(advance)}</b></div>}
+          {pro && credit && credit.credit_limit != null && <div className="ord-kv"><span>Encours / plafond</span><b>{n(num(credit.exposure))} / {money(num(credit.credit_limit))}</b></div>}
           {d.notes && <div className="ord-kv"><span>Note</span><b style={{ whiteSpace: 'pre-line', textAlign: 'right' }}>{d.notes as string}</b></div>}
         </div>
       </section>

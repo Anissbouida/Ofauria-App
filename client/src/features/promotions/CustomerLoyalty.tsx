@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Award, Loader2, Hourglass } from 'lucide-react';
@@ -33,7 +34,7 @@ export default function CustomerLoyalty({ customerId }: { customerId: string }) 
         <div className="odoo-stat-card" style={{ cursor: 'default' }}>
           <div className="odoo-stat-card-label">Solde</div>
           <div className="odoo-stat-card-value">{n0(l.balance)}</div>
-          <div className="odoo-stat-card-sub">points · {n2(l.value)} DH</div>
+          <div className="odoo-stat-card-sub">points · {money(l.value)}</div>
         </div>
         <div className="odoo-stat-card" style={{ cursor: 'default' }}>
           <div className="odoo-stat-card-label">Niveau</div>

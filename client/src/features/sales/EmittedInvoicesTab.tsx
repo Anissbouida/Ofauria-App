@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo, type CSSProperties } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoicesApi, paymentsApi } from '../../api/accounting.api';
@@ -188,7 +189,7 @@ export default function EmittedInvoicesTab() {
     setEditingInvoiceId(null);
   };
   const foreign = manualCurrency !== BASE_CURRENCY;
-  const curLabel = foreign ? manualCurrency : 'DH';
+  const curLabel = foreign ? manualCurrency : currencySymbol();
   const rateValue = parseFloat(manualRate.replace(',', '.')) || 0;
   /** Lignes envoyées au serveur : prix convertis en DH (prix unitaire à 4 décimales) quand la facture est en devise. */
   const linesInDh = () => manualItems.map(it => {
@@ -231,7 +232,7 @@ export default function EmittedInvoicesTab() {
     if (!manualCustomerId) { notify.error('Veuillez sélectionner un client'); return; }
     if (manualItems.some(it => !it.description || it.unitPrice <= 0)) { notify.error('Veuillez remplir tous les articles'); return; }
     if (!manualDate) { notify.error('Veuillez saisir la date de facturation'); return; }
-    if (foreign && !(rateValue > 0)) { notify.error(`Indiquez le taux du ${manualCurrency} (DH pour 1 ${manualCurrency})`); return; }
+    if (foreign && !(rateValue > 0)) { notify.error(`Indiquez le taux du ${manualCurrency} (${currencySymbol()} pour 1 ${manualCurrency})`); return; }
     const lines = linesInDh();
     const ht = Math.round(lines.reduce((s, l) => s + l.subtotal, 0) * 100) / 100;
     const tva = Math.round(lines.reduce((s, l) => s + (l.tvaRate == null ? 0 : l.subtotal * l.tvaRate / 100), 0) * 100) / 100;
@@ -381,9 +382,9 @@ export default function EmittedInvoicesTab() {
   return (
     <div className="prj">
       {layout !== 'split' && <section className="prj-kpis" aria-label="Indicateurs">
-        <ListKpi label="À encaisser" value={`${n(toCollect)} DH`} sub={`${openInvoices.length} facture${openInvoices.length > 1 ? 's' : ''}${overdue.length ? ` · ${n(overdueAmount)} DH échus` : ''}`} tone={overdue.length ? 'orange' : undefined} />
-        <ListKpi label="Facturé" value={`${n(totalBilled)} DH`} sub={`${billed.length} facture${billed.length > 1 ? 's' : ''} hors annulées`} />
-        <ListKpi label="Taux d'encaissement" value={`${rate} %`} sub={`${n(totalPaid)} DH encaissés`} tone={rate >= 100 ? 'green' : undefined} />
+        <ListKpi label="À encaisser" value={`${money(toCollect)}`} sub={`${openInvoices.length} facture${openInvoices.length > 1 ? 's' : ''}${overdue.length ? ` · ${money(overdueAmount)} échus` : ''}`} tone={overdue.length ? 'orange' : undefined} />
+        <ListKpi label="Facturé" value={`${money(totalBilled)}`} sub={`${billed.length} facture${billed.length > 1 ? 's' : ''} hors annulées`} />
+        <ListKpi label="Taux d'encaissement" value={`${rate} %`} sub={`${money(totalPaid)} encaissés`} tone={rate >= 100 ? 'green' : undefined} />
       </section>}
 
       <ListToolbar search={searchQuery} onSearch={setSearchQuery} placeholder="N° de facture, client, commande ou bon de livraison…">
@@ -420,8 +421,8 @@ export default function EmittedInvoicesTab() {
                   <button key={inv.id as string} type="button" className={`ord-row${sel ? ' sel' : ''}`} aria-current={sel ? 'true' : undefined} onClick={() => setActiveId(inv.id as string)}>
                     <span className={`ord-dot${late ? ' late' : ''}`} aria-hidden="true" />
                     <span className="ord-l1"><span className="ord-nm">{customerLabel(inv)}</span><span className="ord-when">{fmtDate(inv.invoice_date, 'd MMM yyyy')}</span></span>
-                    <span className="ord-l2"><span className="sal-num">{inv.invoice_number as string}</span> · <b>{isCredit(inv) ? '−' : ''}{n(num(inv.total_amount))} DH</b></span>
-                    <span className="ord-l3"><StatusTag tone={late ? 'late' : STATUS_TONE[st] ?? 'draft'} label={late ? 'En retard' : STATUS_LABEL[st] || st} />{(st === 'pending' || st === 'partial') && rest > 0.004 ? ` reste ${n(rest)} DH` : ''}</span>
+                    <span className="ord-l2"><span className="sal-num">{inv.invoice_number as string}</span> · <b>{isCredit(inv) ? '−' : ''}{money(num(inv.total_amount))}</b></span>
+                    <span className="ord-l3"><StatusTag tone={late ? 'late' : STATUS_TONE[st] ?? 'draft'} label={late ? 'En retard' : STATUS_LABEL[st] || st} />{(st === 'pending' || st === 'partial') && rest > 0.004 ? ` reste ${money(rest)}` : ''}</span>
                   </button>
                 );
               })}
@@ -436,7 +437,7 @@ export default function EmittedInvoicesTab() {
         <ListPanel footer={
           <div className="sal-foot">
             <span>{filteredInvoices.length} facture{filteredInvoices.length > 1 ? 's' : ''}{hasFilters ? ' (filtrées)' : ''}</span>
-            <span>Total <strong>{n(filteredTotal)} DH</strong> · reste à encaisser <strong style={{ color: 'var(--prj-orange)' }}>{n(filteredRemaining)} DH</strong></span>
+            <span>Total <strong>{money(filteredTotal)}</strong> · reste à encaisser <strong style={{ color: 'var(--prj-orange)' }}>{money(filteredRemaining)}</strong></span>
           </div>
         }>
           <table className="odoo-table">
@@ -502,7 +503,7 @@ export default function EmittedInvoicesTab() {
                     </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                       <strong style={{ color: isCredit(inv) ? '#5B3A9E' : undefined }}>{isCredit(inv) ? '−' : ''}{n(total)}</strong>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginLeft: 3 }}>DH</span>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem', marginLeft: 3 }}>{currencySymbol()}</span>
                       {inv.foreign_total_amount != null && String(inv.currency_code).trim() !== BASE_CURRENCY && (
                         <span className="sal-sub">{n(num(inv.foreign_total_amount))} {String(inv.currency_code).trim()}</span>
                       )}
@@ -510,9 +511,9 @@ export default function EmittedInvoicesTab() {
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                       {status === 'cancelled' ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span>
                         : isCredit(inv) ? (remaining > 0.004
-                          ? <span style={{ color: '#5B3A9E', fontWeight: 600 }} title="Crédit du client, à imputer sur une facture">{n(remaining)} DH</span>
+                          ? <span style={{ color: '#5B3A9E', fontWeight: 600 }} title="Crédit du client, à imputer sur une facture">{money(remaining)}</span>
                           : <span className="sal-sub" style={{ margin: 0 }}>imputé</span>)
-                        : remaining > 0.004 ? <span style={{ color: late ? 'var(--prj-red)' : 'var(--prj-orange)', fontWeight: 600 }}>{n(remaining)} DH</span>
+                        : remaining > 0.004 ? <span style={{ color: late ? 'var(--prj-red)' : 'var(--prj-orange)', fontWeight: 600 }}>{money(remaining)}</span>
                         : <span style={{ color: 'var(--prj-green)', fontSize: '0.8125rem' }}>soldée</span>}
                     </td>
                     <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
@@ -587,13 +588,13 @@ export default function EmittedInvoicesTab() {
                           options={currencies.map(c => ({ id: c.code.trim(), label: c.code.trim() }))} />
                         {foreign && (
                           <input value={manualRate} onChange={e => setManualRate(e.target.value)} disabled={!!editingInvoiceId} inputMode="decimal"
-                            placeholder="taux" title={`DH pour 1 ${manualCurrency}`} style={{ ...fieldStyle, textAlign: 'right', minWidth: 0 }} />
+                            placeholder="taux" title={`${currencySymbol()} pour 1 ${manualCurrency}`} style={{ ...fieldStyle, textAlign: 'right', minWidth: 0 }} />
                         )}
                       </div>
                     </div>
                   </div>
                   {foreign && (
-                    <StatusBanner tone="info" icon={Coins} title={`Facture en ${manualCurrency} au taux de ${manualRate || '…'} DH`}>
+                    <StatusBanner tone="info" icon={Coins} title={`Facture en ${manualCurrency} au taux de ${manualRate || '…'} ${currencySymbol()}`}>
                       Prix saisis en {manualCurrency}. La facture est comptabilisée en dirhams à ce taux ; l'écart avec le taux du jour de l'encaissement sera un gain ou une perte de change.
                     </StatusBanner>
                   )}
@@ -653,7 +654,7 @@ export default function EmittedInvoicesTab() {
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>TVA</span><span>{n(manualTva)} {curLabel}</span></div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4 }}><span>Total TTC</span><span>{n(manualTtc)} {curLabel}</span></div>
                       {foreign && rateValue > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}><span>Contre-valeur</span><span>{n(manualTtc * rateValue)} DH</span></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--odoo-text-muted)', fontSize: '0.75rem' }}><span>Contre-valeur</span><span>{money(manualTtc * rateValue)}</span></div>
                       )}
                     </div>
                   </div>
@@ -706,7 +707,7 @@ export default function EmittedInvoicesTab() {
               } else {
                 amount = parseFloat(fd.get('amount') as string);
                 if (!amount || amount <= 0) { notify.error('Montant invalide'); return; }
-                if (amount > remaining + 0.004) { notify.error(`Le montant dépasse le reste à encaisser (${n(remaining)} DH)`); return; }
+                if (amount > remaining + 0.004) { notify.error(`Le montant dépasse le reste à encaisser (${money(remaining)})`); return; }
               }
               const reference = (fd.get('reference') as string || '').trim();
               payMutation.mutate({
@@ -729,12 +730,12 @@ export default function EmittedInvoicesTab() {
                 <div style={sectionStyle}>
                   <div className="odoo-section-header"><Banknote size={11} /> Solde de la facture</div>
                   <div style={{ padding: '10px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total TTC</span><span style={{ fontWeight: 600 }}>{n(total)} DH</span></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}><span>Déjà encaissé</span><span style={{ fontWeight: 600 }}>{n(paid)} DH</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Total TTC</span><span style={{ fontWeight: 600 }}>{money(total)}</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#155724' }}><span>Déjà encaissé</span><span style={{ fontWeight: 600 }}>{money(paid)}</span></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, borderTop: '1px solid var(--odoo-border)', paddingTop: 4, marginTop: 2 }}>
-                      <span>Reste à encaisser</span><span style={{ color: '#b85d1a' }}>{n(remaining)} DH{payInFx ? ` · ${n(remainingFx)} ${payCur}` : ''}</span>
+                      <span>Reste à encaisser</span><span style={{ color: '#b85d1a' }}>{money(remaining)}{payInFx ? ` · ${n(remainingFx)} ${payCur}` : ''}</span>
                     </div>
-                    {payInFx && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Facture en {payCur} au taux de {num(inv.exchange_rate)} DH</div>}
+                    {payInFx && <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>Facture en {payCur} au taux de {num(inv.exchange_rate)} {currencySymbol()}</div>}
                   </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: payInFx ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
@@ -746,13 +747,13 @@ export default function EmittedInvoicesTab() {
                           style={{ ...fieldStyle, textAlign: 'right', fontWeight: 700, fontSize: '1rem' }} />
                       </div>
                       <div>
-                        <label style={labelStyle}>Taux du jour (DH)</label>
+                        <label style={labelStyle}>Taux du jour ({currencySymbol()})</label>
                         <input value={payRate} onChange={e => setPayRate(e.target.value)} inputMode="decimal" style={{ ...fieldStyle, textAlign: 'right' }} />
                       </div>
                     </>
                   ) : (
                     <div>
-                      <label style={labelStyle}>Montant (DH)</label>
+                      <label style={labelStyle}>Montant ({currencySymbol()})</label>
                       <input name="amount" type="number" step="0.01" defaultValue={remaining.toFixed(2)} max={remaining} autoFocus
                         style={{ ...fieldStyle, textAlign: 'right', fontWeight: 700, fontSize: '1rem' }} />
                     </div>
@@ -764,11 +765,11 @@ export default function EmittedInvoicesTab() {
                 </div>
                 {payInFx && fxAmount > 0 && fxRate > 0 && (
                   <div style={{ ...sectionStyle, padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Reçu en trésorerie</span><span>{n(fxDh)} DH</span></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Créance soldée (taux de la facture)</span><span>{n(fxSettled)} DH</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Reçu en trésorerie</span><span>{money(fxDh)}</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--odoo-text-muted)' }}>Créance soldée (taux de la facture)</span><span>{money(fxSettled)}</span></div>
                     {Math.abs(fxGain) >= 0.01 && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, color: fxGain > 0 ? '#155724' : '#721c24' }}>
-                        <span>{fxGain > 0 ? 'Gain de change (7331)' : 'Perte de change (6331)'}</span><span>{n(Math.abs(fxGain))} DH</span>
+                        <span>{fxGain > 0 ? 'Gain de change (7331)' : 'Perte de change (6331)'}</span><span>{money(Math.abs(fxGain))}</span>
                       </div>
                     )}
                   </div>
@@ -841,7 +842,7 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
     mutationFn: (creditNoteId: string) => invoicesApi.applyCredit(inv.id as string, { creditNoteId }),
     onSuccess: (r) => {
       ['invoices', 'invoice-detail', 'invoice-credit-notes', 'receivables'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
-      notify.success(`${n(r.applied)} DH d'avoir imputés`);
+      notify.success(`${money(r.applied)} d'avoir imputés`);
       onClose();
     },
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Imputation refusée'),
@@ -861,7 +862,7 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
   const steps = [
     { label: 'Émise', sub: fmtDate(inv.invoice_date, 'd MMM yyyy'), tone: 'done' },
     { label: 'Échéance', sub: inv.due_date ? fmtDate(inv.due_date, 'd MMM yyyy') + (late ? ` · ${lateDays} j de retard` : '') : 'non fixée', tone: status === 'paid' ? 'done' : late ? 'warn' : 'current' },
-    { label: 'Encaissée', sub: status === 'paid' ? 'soldée' : paid > 0.004 ? `${n(paid)} DH reçus` : 'rien reçu', tone: status === 'paid' ? 'done' : '' },
+    { label: 'Encaissée', sub: status === 'paid' ? 'soldée' : paid > 0.004 ? `${money(paid)} reçus` : 'rien reçu', tone: status === 'paid' ? 'done' : '' },
   ];
   const name = customerLabel(inv);
   const initials = name.split(/\s+/).filter(w => /[A-Za-zÀ-ÿ]/.test(w[0] ?? '')).slice(0, 2).map(w => w[0].toUpperCase()).join('') || '·';
@@ -879,8 +880,8 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
               : `émise le ${fmtDate(inv.invoice_date, 'dd/MM/yyyy')}`}</p>
           </div>
           <div className="ord-amt">
-            <b>{credit ? '−' : ''}{n(total)} DH</b>
-            <small>{status === 'cancelled' ? 'annulée' : credit ? (remaining > 0.004 ? `${n(remaining)} DH à imputer` : 'imputé') : remaining > 0.004 ? `reste ${n(remaining)} DH` : 'soldée'}</small>
+            <b>{credit ? '−' : ''}{money(total)}</b>
+            <small>{status === 'cancelled' ? 'annulée' : credit ? (remaining > 0.004 ? `${money(remaining)} à imputer` : 'imputé') : remaining > 0.004 ? `reste ${money(remaining)}` : 'soldée'}</small>
           </div>
           <button type="button" className="kl-sheet-close" onClick={onClose} aria-label="Fermer"><X size={16} /></button>
         </header>
@@ -889,7 +890,7 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
           {status === 'cancelled' ? (
             <div className="kl-widget"><div className="ord-state">Facture annulée</div><div className="ord-state-sub">{inv.cancelled_by_credit ? 'Annulée par avoir : ses bons de livraison sont redevenus « à facturer ».' : 'Facture annulée.'}</div></div>
           ) : credit ? (
-            <div className="kl-widget"><div className="ord-state">Avoir</div><div className="ord-state-sub">{remaining > 0.004 ? `${n(remaining)} DH au crédit du client, à imputer sur une facture.` : 'Avoir entièrement imputé.'}</div></div>
+            <div className="kl-widget"><div className="ord-state">Avoir</div><div className="ord-state-sub">{remaining > 0.004 ? `${money(remaining)} au crédit du client, à imputer sur une facture.` : 'Avoir entièrement imputé.'}</div></div>
           ) : (
             <div className="kl-widget">
               <div className="ord-state">{late ? 'En retard' : STATUS_LABEL[status]}</div>
@@ -932,13 +933,13 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
                     <span className="ord-pv">{n(num(it.subtotal))}</span>
                   </div>
                 ))}
-              <div className="ord-kv"><span>Total HT</span><b>{n(ht)} DH</b></div>
-              <div className="ord-kv"><span>TVA</span><b>{n(tva)} DH</b></div>
-              <div className="ord-line tot"><span className="ord-pn">Total TTC</span><span className="ord-pv">{n(total)} DH</span></div>
-              <div className="ord-kv"><span>{credit ? 'Imputé' : 'Encaissé'}</span><b style={{ color: 'var(--prj-green, #15803D)' }}>{n(paid)} DH</b></div>
+              <div className="ord-kv"><span>Total HT</span><b>{money(ht)}</b></div>
+              <div className="ord-kv"><span>TVA</span><b>{money(tva)}</b></div>
+              <div className="ord-line tot"><span className="ord-pn">Total TTC</span><span className="ord-pv">{money(total)}</span></div>
+              <div className="ord-kv"><span>{credit ? 'Imputé' : 'Encaissé'}</span><b style={{ color: 'var(--prj-green, #15803D)' }}>{money(paid)}</b></div>
               <div className="ord-kv"><span>{credit ? 'À imputer' : 'Reste à encaisser'}</span>
                 <b style={{ fontWeight: 700, color: remaining > 0.004 && status !== 'cancelled' ? 'var(--prj-orange, #B45309)' : undefined }}>
-                  {status === 'cancelled' ? 'Annulée' : remaining > 0.004 ? `${n(remaining)} DH` : credit ? 'Imputé' : 'Soldée'}</b></div>
+                  {status === 'cancelled' ? 'Annulée' : remaining > 0.004 ? `${money(remaining)}` : credit ? 'Imputé' : 'Soldée'}</b></div>
             </div>
           </section>
 
@@ -947,10 +948,10 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
               <div className="kl-sec"><h2>Avoirs</h2></div>
               <div className="kl-group">
                 {credits?.creditNotes.map(c => (
-                  <div key={c.id} className="ord-kv"><span><span className="sal-num">{c.invoice_number}</span> · {fmtDate(c.invoice_date, 'dd/MM/yyyy')} · {CREDIT_REASON_LABEL[c.credit_reason] ?? c.credit_reason}</span><b>−{n(c.total_amount)} DH</b></div>
+                  <div key={c.id} className="ord-kv"><span><span className="sal-num">{c.invoice_number}</span> · {fmtDate(c.invoice_date, 'dd/MM/yyyy')} · {CREDIT_REASON_LABEL[c.credit_reason] ?? c.credit_reason}</span><b>−{money(c.total_amount)}</b></div>
                 ))}
                 {open && credits?.openCredits.map(c => (
-                  <div key={c.id} className="ord-kv"><span>Crédit du client : avoir <span className="sal-num">{c.invoice_number}</span>, {n(c.unapplied)} DH à imputer</span>
+                  <div key={c.id} className="ord-kv"><span>Crédit du client : avoir <span className="sal-num">{c.invoice_number}</span>, {money(c.unapplied)} à imputer</span>
                     <button className="odoo-btn-secondary" disabled={applyMutation.isPending} onClick={() => applyMutation.mutate(c.id)}>Imputer</button></div>
                 ))}
               </div>
@@ -959,15 +960,15 @@ function InvoiceDetailModal({ invoice: inv, late, onClose, onPdf, onEdit, onPay,
 
           {!credit && (
             <section>
-              <div className="kl-sec"><h2>Encaissements</h2><small>{payments.length ? `${n(paid)} DH reçus` : ''}</small></div>
+              <div className="kl-sec"><h2>Encaissements</h2><small>{payments.length ? `${money(paid)} reçus` : ''}</small></div>
               <div className="kl-group">
                 {payments.length === 0 ? <div className="kl-empty">Aucun encaissement</div> : payments.map(p => (
                   <div key={p.id as string} className="ord-kv" style={{ opacity: p.voided_at ? 0.5 : 1 }}>
                     <span>{fmtDate(p.payment_date, 'dd/MM/yyyy')} · {payLabel(getPaymentLabel, (p.payment_method as string) || '')}{p.reference ? ` · ${p.reference as string}` : ''}</span>
                     {/* Règlement réparti sur plusieurs factures (O2C L5) : la part de cette facture. */}
                     <b style={{ textDecoration: p.voided_at ? 'line-through' : undefined }}
-                      title={p.allocated_amount != null && num(p.allocated_amount) !== num(p.amount) ? `Règlement de ${n(num(p.amount))} DH réparti sur plusieurs factures` : undefined}>
-                      {n(num(p.allocated_amount ?? p.amount))} DH</b>
+                      title={p.allocated_amount != null && num(p.allocated_amount) !== num(p.amount) ? `Règlement de ${money(num(p.amount))} réparti sur plusieurs factures` : undefined}>
+                      {money(num(p.allocated_amount ?? p.amount))}</b>
                   </div>
                 ))}
               </div>
@@ -1033,7 +1034,7 @@ function CreditNoteModal({ invoice: inv, onClose, onDone }: {
     }),
     onSuccess: (r) => {
       ['invoices', 'invoice-detail', 'invoice-credit-notes', 'receivables'].forEach(k => queryClient.invalidateQueries({ queryKey: [k] }));
-      notify.success(`Avoir ${r.creditNote.invoice_number} émis${r.unapplied > 0.004 ? ` · ${n(r.unapplied)} DH au crédit du client` : ''}`);
+      notify.success(`Avoir ${r.creditNote.invoice_number} émis${r.unapplied > 0.004 ? ` · ${money(r.unapplied)} au crédit du client` : ''}`);
       onDone();
     },
     onError: (e: any) => notify.error(e?.response?.data?.error?.message || 'Avoir refusé'),
@@ -1073,7 +1074,7 @@ function CreditNoteModal({ invoice: inv, onClose, onDone }: {
                 <tr key={it.id as string} style={{ cursor: 'default' }}>
                   <td style={{ fontWeight: 500 }}>{(it.description as string) || (it.product_name as string)}</td>
                   <td style={{ textAlign: 'right' }}>{num(it.quantity)}</td>
-                  <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{n(num(it.subtotal))} DH</td>
+                  <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{money(num(it.subtotal))}</td>
                   <td>
                     <input inputMode="decimal" value={values[it.id as string] ?? ''} placeholder="0"
                       onChange={e => setValues(v => ({ ...v, [it.id as string]: e.target.value }))}
@@ -1089,7 +1090,7 @@ function CreditNoteModal({ invoice: inv, onClose, onDone }: {
               <input type="text" value={note} onChange={e => setNote(e.target.value)} style={fieldStyle} placeholder="ex. 12 baguettes rendues le 03/11" />
             </div>
             <div style={{ ...sectionStyle, padding: '8px 12px', fontSize: '0.8125rem', display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--odoo-text-muted)' }}>Avoir HT</span><strong>{n(totalHt)} DH</strong>
+              <span style={{ color: 'var(--odoo-text-muted)' }}>Avoir HT</span><strong>{money(totalHt)}</strong>
             </div>
           </div>
         </div>
@@ -1132,7 +1133,7 @@ function InvoicePane({ inv, late, menu, onPay, onPdf, onFull }: {
   const steps = [
     { label: 'Émise', sub: fmtDate(inv.invoice_date, 'd MMM yyyy'), tone: 'done' },
     { label: 'Échéance', sub: inv.due_date ? fmtDate(inv.due_date, 'd MMM yyyy') + (late ? ` · ${lateDays} j de retard` : '') : 'non fixée', tone: status === 'paid' ? 'done' : late ? 'warn' : 'current' },
-    { label: 'Encaissée', sub: status === 'paid' ? 'soldée' : paid > 0.004 ? `${n(paid)} DH reçus` : 'rien reçu', tone: status === 'paid' ? 'done' : '' },
+    { label: 'Encaissée', sub: status === 'paid' ? 'soldée' : paid > 0.004 ? `${money(paid)} reçus` : 'rien reçu', tone: status === 'paid' ? 'done' : '' },
   ];
 
   return (
@@ -1144,8 +1145,8 @@ function InvoicePane({ inv, late, menu, onPay, onPdf, onFull }: {
           <p><span className="sal-num">{inv.invoice_number as string}</span> · {origin}</p>
         </div>
         <div className="ord-amt">
-          <b>{credit ? '−' : ''}{n(total)} DH</b>
-          <small>{status === 'cancelled' ? 'annulée' : credit ? (remaining > 0.004 ? `${n(remaining)} DH à imputer` : 'imputé') : remaining > 0.004 ? `reste à encaisser ${n(remaining)} DH` : 'soldée'}</small>
+          <b>{credit ? '−' : ''}{money(total)}</b>
+          <small>{status === 'cancelled' ? 'annulée' : credit ? (remaining > 0.004 ? `${money(remaining)} à imputer` : 'imputé') : remaining > 0.004 ? `reste à encaisser ${money(remaining)}` : 'soldée'}</small>
         </div>
       </header>
 
@@ -1159,7 +1160,7 @@ function InvoicePane({ inv, late, menu, onPay, onPdf, onFull }: {
       {status === 'cancelled' ? (
         <div className="kl-widget"><div className="ord-state">Facture annulée</div><div className="ord-state-sub">{inv.cancelled_by_credit ? 'Annulée par avoir : ses bons de livraison sont redevenus « à facturer ».' : 'Facture annulée.'}</div></div>
       ) : credit ? (
-        <div className="kl-widget"><div className="ord-state">Avoir</div><div className="ord-state-sub">{remaining > 0.004 ? `${n(remaining)} DH au crédit du client, à imputer sur une facture.` : 'Avoir entièrement imputé.'}</div></div>
+        <div className="kl-widget"><div className="ord-state">Avoir</div><div className="ord-state-sub">{remaining > 0.004 ? `${money(remaining)} au crédit du client, à imputer sur une facture.` : 'Avoir entièrement imputé.'}</div></div>
       ) : (
         <div className="kl-widget">
           <div className="ord-state">{late ? 'En retard' : STATUS_LABEL[status]}</div>
@@ -1181,20 +1182,20 @@ function InvoicePane({ inv, late, menu, onPay, onPdf, onFull }: {
               <span className="ord-pv">{n(num(it.subtotal))}</span>
             </div>
           )) : <div className="kl-empty">{isLoading ? 'Chargement…' : 'Aucun article.'}</div>}
-          <div className="ord-kv"><span>Total HT</span><b>{n(num(inv.amount))} DH</b></div>
-          <div className="ord-kv"><span>TVA</span><b>{n(num(inv.tax_amount))} DH</b></div>
-          <div className="ord-line tot"><span className="ord-pn">Total TTC</span><span className="ord-pv">{n(total)} DH</span></div>
+          <div className="ord-kv"><span>Total HT</span><b>{money(num(inv.amount))}</b></div>
+          <div className="ord-kv"><span>TVA</span><b>{money(num(inv.tax_amount))}</b></div>
+          <div className="ord-line tot"><span className="ord-pn">Total TTC</span><span className="ord-pv">{money(total)}</span></div>
         </div>
       </section>
 
       {!credit && (
         <section>
-          <div className="kl-sec"><h2>Encaissements</h2><small>{payments.length ? `${n(paid)} DH reçus` : ''}</small></div>
+          <div className="kl-sec"><h2>Encaissements</h2><small>{payments.length ? `${money(paid)} reçus` : ''}</small></div>
           <div className="kl-group">
             {payments.length ? payments.map(p => (
               <div key={p.id as string} className="ord-kv" style={{ opacity: p.voided_at ? 0.5 : 1 }}>
                 <span>{fmtDate(p.payment_date, 'd MMM yyyy')} · {payLabel(getPaymentLabel, (p.payment_method as string) || '')}{p.reference ? ` · ${p.reference as string}` : ''}</span>
-                <b style={{ textDecoration: p.voided_at ? 'line-through' : undefined }}>{n(num(p.allocated_amount ?? p.amount))} DH</b>
+                <b style={{ textDecoration: p.voided_at ? 'line-through' : undefined }}>{money(num(p.allocated_amount ?? p.amount))}</b>
               </div>
             )) : <div className="kl-empty">{isLoading ? 'Chargement…' : 'Aucun encaissement.'}</div>}
           </div>
@@ -1229,7 +1230,7 @@ function InvoiceKanban({ invoices, today, onOpen }: { invoices: Inv[]; today: Da
         const sum = cards.reduce((s, inv) => s + (l.key === 'paid' ? num(inv.total_amount) : remainingOf(inv)), 0);
         return (
           <section key={l.key} aria-label={l.label} className="prj-lane">
-            <div className="prj-lane-head"><span className={`prj-dot ${l.tone}`} /><strong>{l.label}</strong><small className="sal-lane-sum">{cards.length} · {n(sum)} DH</small></div>
+            <div className="prj-lane-head"><span className={`prj-dot ${l.tone}`} /><strong>{l.label}</strong><small className="sal-lane-sum">{cards.length} · {money(sum)}</small></div>
             {!cards.length && <div className="prj-lane-empty">Aucune facture</div>}
             {cards.slice(0, 60).map(inv => (
               <button key={inv.id as string} type="button" className="prj-task" onClick={() => onOpen(inv)} style={{ cursor: 'pointer' }}>
@@ -1237,7 +1238,7 @@ function InvoiceKanban({ invoices, today, onOpen }: { invoices: Inv[]; today: Da
                 <span className="prj-task-title">{customerLabel(inv)}</span>
                 <span className="prj-task-meta">
                   <span style={{ flex: 1 }}>{inv.due_date ? `échéance ${fmtDate(inv.due_date, 'd MMM')}` : fmtDate(inv.invoice_date, 'd MMM')}</span>
-                  <span className="sal-amount">{n(l.key === 'paid' ? num(inv.total_amount) : remainingOf(inv))} DH</span>
+                  <span className="sal-amount">{money(l.key === 'paid' ? num(inv.total_amount) : remainingOf(inv))}</span>
                 </span>
               </button>
             ))}

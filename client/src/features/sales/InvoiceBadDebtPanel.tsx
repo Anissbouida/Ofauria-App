@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { HandCoins, Loader2, RotateCcw } from 'lucide-react';
@@ -33,7 +34,7 @@ export default function InvoiceBadDebtPanel({ invoiceId, remaining, editable }: 
       <h4 style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 6px' }}><HandCoins size={14} /> Créance douteuse / irrécouvrable</h4>
       {isLoading ? <Loader2 className="spin" size={14} /> : active ? (
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 13 }}>
-          <span>{active.status === 'written_off' ? 'Irrécouvrable' : 'Douteuse'} · {Number(active.amount).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH</span>
+          <span>{active.status === 'written_off' ? 'Irrécouvrable' : 'Douteuse'} · {money(active.amount)}</span>
           {active.reason && <span style={{ opacity: 0.7 }}>— {active.reason}</span>}
           {active.status === 'written_off' && <span style={{ opacity: 0.6 }}>(exclue des relances ; passez l'OD de perte à la main)</span>}
           {editable && (

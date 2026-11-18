@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import ItemConversionsPanel from '../../components/ItemConversionsPanel';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -484,7 +485,7 @@ function CatalogueTab() {
                       <h3 className="text-sm font-semibold text-gray-900 truncate" title={p.name as string}>{p.name as string}</h3>
                       <p className="text-xs text-gray-400 mt-0.5 truncate">{p.category_name as string}</p>
                     </div>
-                    <span className="text-sm font-bold whitespace-nowrap" style={{ color: 'var(--theme-accent)' }}>{parseFloat(p.price as string).toFixed(2)} <span className="text-xs font-normal">{p.sale_unit === 'weight' ? 'DH/kg' : p.sale_unit === 'person' ? 'DH/pers' : 'DH'}</span></span>
+                    <span className="text-sm font-bold whitespace-nowrap" style={{ color: 'var(--theme-accent)' }}>{parseFloat(p.price as string).toFixed(2)} <span className="text-xs font-normal">{currencySymbol()}{p.sale_unit === 'weight' ? '/kg' : p.sale_unit === 'person' ? '/pers' : ''}</span></span>
                   </div>
                   {/* Bottom row: stock + responsible */}
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
@@ -581,7 +582,7 @@ function CatalogueTab() {
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <span style={{ fontWeight: 600 }}>{parseFloat(p.price as string).toFixed(2)}</span>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{p.sale_unit === 'weight' ? 'DH/kg' : p.sale_unit === 'person' ? 'DH/pers' : 'DH'}</span>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{currencySymbol()}{p.sale_unit === 'weight' ? '/kg' : p.sale_unit === 'person' ? '/pers' : ''}</span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       {isOut ? (
@@ -719,8 +720,8 @@ function ProductPreview({ form, imagePreview, categories, chefUsers }: {
   const catName = categories.find(c => c.id === form.categoryId)?.name;
   const resp = chefUsers.find(u => (u.id as string) === form.responsibleUserId);
   const priceStr = form.saleUnit === 'person'
-    ? (form.pricePerPerson ? `${parseFloat(String(form.pricePerPerson)).toFixed(2)} DH` : '—')
-    : (form.price ? `${parseFloat(String(form.price)).toFixed(2)} DH` : '—');
+    ? (form.pricePerPerson ? `${money(parseFloat(String(form.pricePerPerson)))}` : '—')
+    : (form.price ? `${money(parseFloat(String(form.price)))}` : '—');
   const priceUnit = form.saleUnit === 'weight' ? '/kg' : form.saleUnit === 'person' ? '/personne' : '';
   const modeLabel = form.saleUnit === 'weight' ? 'Au poids' : form.saleUnit === 'person' ? 'Par personne' : 'À la pièce';
   const saleTypeLabel = form.saleType === 'dlv' ? 'Multi-jours' : form.saleType === 'commande' ? 'Sur commande' : 'Vente du jour';
@@ -1316,7 +1317,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                                           <p className="text-sm font-medium text-gray-700 truncate">{r.name as string}</p>
                                           <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
                                             {r.is_base && <span className="px-1.5 py-0.5 rounded bg-violet-100 text-violet-600 text-[10px] font-bold">BASE</span>}
-                                            {cost > 0 && <span>Cout: {cost.toFixed(2)} DH</span>}
+                                            {cost > 0 && <span>Cout: {money(cost)}</span>}
                                             {r.yield_quantity && <span>Rend: {r.yield_quantity as number} unite{(r.yield_quantity as number) > 1 ? 's' : ''}</span>}
                                           </div>
                                         </div>
@@ -1349,7 +1350,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                                           <p className="text-sm font-medium text-gray-500 truncate">{r.name as string}</p>
                                           <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
                                             <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-500 text-[10px] font-bold">Liee a: {r.product_name as string}</span>
-                                            {cost > 0 && <span>Cout: {cost.toFixed(2)} DH</span>}
+                                            {cost > 0 && <span>Cout: {money(cost)}</span>}
                                           </div>
                                         </div>
                                       </div>
@@ -1432,7 +1433,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label style={fieldLabel}>Prix de vente (DH)</label>
+                    <label style={fieldLabel}>Prix de vente ({currencySymbol()})</label>
                     {isManufactured ? (
                       <>
                         <input type="number" step="0.01" readOnly tabIndex={-1} style={{ ...fieldInputRO, fontWeight: 700 }} value={form.price} placeholder="0.00" />
@@ -1448,7 +1449,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                   </div>
                   {!isIntangible && (
                   <div>
-                    <label style={fieldLabel}>{isManufactured ? 'Prix de revient (DH)' : "Prix d'achat (DH)"}</label>
+                    <label style={fieldLabel}>{isManufactured ? 'Prix de revient' : "Prix d'achat"} ({currencySymbol()})</label>
                     {isManufactured ? (
                       <>
                         <input type="number" step="0.01" readOnly tabIndex={-1} style={fieldInputRO} value={form.costPrice} placeholder="Auto" />
@@ -1461,7 +1462,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                         <p className="text-xs text-gray-400 mt-1">Coût d'achat unitaire (négoce).</p>
                       </>
                     )}
-                    <label style={{ ...fieldLabel, marginTop: 10 }}>Prix plancher (DH)</label>
+                    <label style={{ ...fieldLabel, marginTop: 10 }}>Prix plancher ({currencySymbol()})</label>
                     <input type="number" step="0.01" min={0} style={fieldInput}
                       value={form.floorPrice} onChange={(e) => setForm({ ...form, floorPrice: e.target.value })} placeholder="—" />
                     <p className="text-xs text-gray-400 mt-1">En dessous, une vente ou un devis exige l'approbation de la direction (phase 6.4). Vide = pas de plancher.</p>
@@ -1537,7 +1538,7 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
 
                 {form.saleUnit === 'person' && (
                   <div>
-                    <label style={fieldLabel}>Prix par personne (DH)</label>
+                    <label style={fieldLabel}>Prix par personne ({currencySymbol()})</label>
                     <input type="number" step="0.01" min={0} style={{ ...fieldInput, fontWeight: 600 }}
                       value={form.pricePerPerson} onChange={e => setForm({ ...form, pricePerPerson: e.target.value })}
                       placeholder="Ex : 30" />
@@ -1892,7 +1893,7 @@ function PricingTiersPanel({ productId }: { productId: string }) {
         <StatusBanner tone="info" icon={Coins} title="Aucun palier">Le POS utilisera le prix unique du produit.</StatusBanner>
       ) : (
         <table className="odoo-table" style={{ margin: 0 }}>
-          <thead><tr><th style={{ textAlign: 'right' }}>À partir de (g)</th><th style={{ textAlign: 'right' }}>Jusqu'à (g)</th><th style={{ textAlign: 'right' }}>Prix au kg (DH)</th><th style={{ width: 36 }}></th></tr></thead>
+          <thead><tr><th style={{ textAlign: 'right' }}>À partir de (g)</th><th style={{ textAlign: 'right' }}>Jusqu'à (g)</th><th style={{ textAlign: 'right' }}>Prix au kg ({currencySymbol()})</th><th style={{ width: 36 }}></th></tr></thead>
           <tbody>
             {rows.map((row, idx) => (
               <tr key={idx}>
@@ -1910,7 +1911,7 @@ function PricingTiersPanel({ productId }: { productId: string }) {
         <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg-alt)', padding: '6px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ color: 'var(--theme-text-muted)' }}>Aperçu pour <strong>{previewWeight} g</strong> :</span>
           {matchingRow ? (
-            <span style={{ fontWeight: 600 }}>{((previewWeight / 1000) * parseFloat(matchingRow.prix)).toFixed(2)} DH <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, marginLeft: 6 }}>({matchingRow.prix} DH/kg)</span></span>
+            <span style={{ fontWeight: 600 }}>{money((previewWeight / 1000) * parseFloat(matchingRow.prix))} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, marginLeft: 6 }}>({matchingRow.prix} {currencySymbol()}/kg)</span></span>
           ) : (
             <span style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>Aucun palier — repli sur le prix produit</span>
           )}
@@ -2120,7 +2121,7 @@ function ChannelPricingPanel({ productId, saleUnit }: { productId: string; saleU
                       value={saleUnit === 'weight' ? row.priceKg : row.price}
                       onChange={e => updateField(c.id, saleUnit === 'weight' ? 'priceKg' : 'price', e.target.value)}
                       placeholder={saleUnit === 'weight' ? 'auto (produit / palier)' : 'auto (prix produit)'} />
-                    <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{saleUnit === 'weight' ? 'DH/kg' : 'DH/pièce'}</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{currencySymbol()}{saleUnit === 'weight' ? '/kg' : '/pièce'}</span>
                   </span>
                 </td>
               </tr>

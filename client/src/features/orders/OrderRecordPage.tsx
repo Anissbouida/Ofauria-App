@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -75,7 +76,7 @@ export function orderSteps(o: Row) {
   if (pro) steps.push({ label: 'Facture', sub: invoices.length ? invoices.map(i => i.invoice_number).join(', ') : 'à émettre', tone: invoices.length ? 'done' : '', href: invoices.length ? '/sales?tab=invoices' : undefined });
   steps.push(pro
     ? { label: 'Encaissement', sub: invoicePaid ? 'soldée' : invoices.length ? `échéance ${invoices[0].due_date ? fmtDate(invoices[0].due_date, 'dd MMM') : 'non fixée'}` : credit?.delai_paiement_jours ? `à ${credit.delai_paiement_jours} jours` : 'à la facture', tone: invoicePaid ? 'done' : invoices.some(i => i.status === 'partial') ? 'warn' : '' }
-    : { label: 'Encaissement', sub: st === 'completed' ? 'soldée' : advance > 0 ? `avance ${n(advance)} DH` : 'au retrait', tone: st === 'completed' ? 'done' : advance > 0 ? 'warn' : '' });
+    : { label: 'Encaissement', sub: st === 'completed' ? 'soldée' : advance > 0 ? `avance ${money(advance)}` : 'au retrait', tone: st === 'completed' ? 'done' : advance > 0 ? 'warn' : '' });
 
   return steps;
 }
@@ -155,7 +156,7 @@ export default function OrderRecordPage() {
     : st === 'ready' ? { label: pro ? 'Livrer' : 'Remettre au client', icon: Check, run: () => setModal('deliver') }
     : st === 'partially_delivered' && pro ? { label: 'Livrer le reliquat', icon: Check, run: () => setModal('deliver') } : null;
   const cancel = async () => {
-    const msg = advance > 0 ? `Annuler la commande ${o.order_number} ? L'avance de ${n(advance)} DH reste acquise : elle n'est pas remboursée.` : `Annuler la commande ${o.order_number} ?`;
+    const msg = advance > 0 ? `Annuler la commande ${o.order_number} ? L'avance de ${money(advance)} reste acquise : elle n'est pas remboursée.` : `Annuler la commande ${o.order_number} ?`;
     if (await confirm(msg, { title: 'Annuler la commande', confirmLabel: 'Annuler la commande', cancelLabel: 'Retour', danger: true })) status.mutate('cancelled');
   };
   const more: RowMenuItem[] = [];
@@ -202,7 +203,7 @@ export default function OrderRecordPage() {
           </div>
         </div>
         {st === 'cancelled' ? (
-          <p className="prj-note" style={{ color: 'var(--prj-red)', fontWeight: 600 }}>Commande annulée{advance > 0 ? ` · avance de ${n(advance)} DH conservée` : ''}.</p>
+          <p className="prj-note" style={{ color: 'var(--prj-red)', fontWeight: 600 }}>Commande annulée{advance > 0 ? ` · avance de ${money(advance)} conservée` : ''}.</p>
         ) : (
           <ol className="sal-steps" aria-label="Avancement de la commande">
             {steps.map(s => (
@@ -262,7 +263,7 @@ export default function OrderRecordPage() {
               <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', padding: 16 }}>
                 <div style={{ flex: '1 1 280px', display: 'grid', gap: 8 }}>
                   {o.notes && <p className="prj-note" style={{ whiteSpace: 'pre-line' }}><strong style={{ color: 'var(--odoo-text)' }}>Note : </strong>{o.notes}</p>}
-                  {pro && restHt > 0.004 && st !== 'cancelled' && <p className="prj-note">Reste à livrer : <strong style={{ color: 'var(--prj-orange)' }}>{n(restHt)} DH HT</strong>.</p>}
+                  {pro && restHt > 0.004 && st !== 'cancelled' && <p className="prj-note">Reste à livrer : <strong style={{ color: 'var(--prj-orange)' }}>{money(restHt)} HT</strong>.</p>}
                   {!pro && advance > 0 && st !== 'completed' && <p className="prj-note">Avance non remboursable · le solde est encaissé au retrait.</p>}
                 </div>
                 <dl className="sal-totals">
@@ -270,7 +271,7 @@ export default function OrderRecordPage() {
                   {promo > 0 && <><dt>Promotions</dt><dd>−{n(promo)}</dd></>}
                   {discount - promo > 0.004 && <><dt>Remise{o.discount_pct != null ? ` (${num(o.discount_pct)} %)` : ''}</dt><dd>−{n(discount - promo)}</dd></>}
                   {pro && <><dt>TVA</dt><dd>{n(tax)}</dd></>}
-                  <dt className="big">Total{pro ? ' TTC' : ''}</dt><dd className="big">{n(total)} DH</dd>
+                  <dt className="big">Total{pro ? ' TTC' : ''}</dt><dd className="big">{money(total)}</dd>
                   {pro && deliveredHt > 0 && <><dt>Déjà livré</dt><dd>{n(deliveredHt)} HT</dd></>}
                   {!pro && advance > 0 && <><dt>Avance versée</dt><dd>{n(advance)}</dd><dt>Reste à payer</dt><dd><strong>{n(st === 'completed' ? 0 : Math.max(0, total - advance))}</strong></dd></>}
                 </dl>
@@ -330,7 +331,7 @@ export default function OrderRecordPage() {
             </dl>
             {credit && (exposure > 0 || limit != null) && (
               <div className="prj-meter">
-                <div className="prj-meter-head"><span>{limit != null ? 'Encours / plafond' : 'Encours'}</span><strong>{n(exposure)}{limit != null ? ` / ${n(limit)}` : ''} DH</strong></div>
+                <div className="prj-meter-head"><span>{limit != null ? 'Encours / plafond' : 'Encours'}</span><strong>{n(exposure)}{limit != null ? ` / ${n(limit)}` : ''} {currencySymbol()}</strong></div>
                 {limit != null && limit > 0 && (
                   <div className={`prj-bar ${exposure > limit ? 'red' : exposure > limit * 0.85 ? 'orange' : 'green'}`} role="progressbar" aria-label="Encours du client" aria-valuenow={Math.round(exposure / limit * 100)} aria-valuemin={0} aria-valuemax={100}>
                     <span style={{ width: `${Math.min(100, exposure / limit * 100)}%` }} />

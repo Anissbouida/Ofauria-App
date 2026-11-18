@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -34,7 +35,6 @@ async function printNote(id: string) {
  * Le BL ne passe aucune écriture ; CA, TVA et créance naissent à la facture.
  */
 
-const money = (v: number | string) => `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 const day = (d: string) => format(new Date(String(d).slice(0, 10) + 'T00:00:00'), 'dd MMM yyyy', { locale: fr });
 const TVA_RATES = [0, 7, 10, 14, 20];
 /** Cycle différé (mig 489) : brouillon, préparé, expédié — avant la livraison. */

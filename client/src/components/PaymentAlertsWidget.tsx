@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../utils/money';
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -155,7 +156,7 @@ export default function PaymentAlertsWidget({
               {(invoiceCount > 0 || scheduleCount > 0) && checkCount > 0 && ' · '}
               {checkCount > 0 && `${checkCount} chèque${checkCount > 1 ? 's' : ''}/traite${checkCount > 1 ? 's' : ''} à encaisser`}
               {overdueCount > 0 && ` · ${overdueCount} en retard`}
-              {' · À décaisser : '}{totalDue.toFixed(2)} DH
+              {' · À décaisser : '}{money(totalDue)}
             </p>
           </div>
         </div>
@@ -197,7 +198,7 @@ export default function PaymentAlertsWidget({
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-sm font-bold text-red-700">{it.total.toFixed(2)} <span className="text-[10px] font-normal text-gray-400">DH</span></p>
+                    <p className="text-sm font-bold text-red-700">{it.total.toFixed(2)} <span className="text-[10px] font-normal text-gray-400">{currencySymbol()}</span></p>
                     <p className="text-[10px] text-gray-400">À encaisser</p>
                   </div>
                 </div>
@@ -211,7 +212,7 @@ export default function PaymentAlertsWidget({
                       </span>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-xs font-semibold text-red-700">{parseFloat((r.remaining_amount as string) || '0').toFixed(2)} <span className="text-[10px] font-normal text-gray-400">DH</span></p>
+                      <p className="text-xs font-semibold text-red-700">{parseFloat((r.remaining_amount as string) || '0').toFixed(2)} <span className="text-[10px] font-normal text-gray-400">{currencySymbol()}</span></p>
                     </div>
                   </div>
                 ))}
@@ -265,7 +266,7 @@ export default function PaymentAlertsWidget({
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <p className="text-sm font-bold text-red-700">{remaining.toFixed(2)} <span className="text-[10px] font-normal text-gray-400">DH</span></p>
+                <p className="text-sm font-bold text-red-700">{remaining.toFixed(2)} <span className="text-[10px] font-normal text-gray-400">{currencySymbol()}</span></p>
                 <p className="text-[10px] text-gray-400">{STATUS_LABELS[a.status as string] || (a.status as string)}</p>
               </div>
             </div>

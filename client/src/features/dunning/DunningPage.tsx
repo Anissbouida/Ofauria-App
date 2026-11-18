@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BellRing, Loader2, Mail, Printer, Phone, Ban, Lock, Unlock, PauseCircle, ChevronDown, ChevronUp, Settings2, CheckCircle2, Plus, Send, type LucideIcon } from 'lucide-react';
@@ -83,8 +84,8 @@ function Letters() {
     <>
       {!ov.settings.enabled && <StatusBanner tone="warning" icon={BellRing} title="Relances désactivées">Activez-les dans Paramètres › Ventes › Relances clients.</StatusBanner>}
       <section className="prj-kpis" aria-label="Indicateurs">
-        <ListKpi label="Clients à relancer" value={String(ov.proposals.length)} sub={`${n2(toRemind)} DH échus`} tone={ov.proposals.length > 0 ? 'red' : undefined} />
-        <ListKpi label="Lettres à envoyer" value={String(ov.drafts.count)} sub={`${n2(ov.drafts.amount)} DH`} />
+        <ListKpi label="Clients à relancer" value={String(ov.proposals.length)} sub={`${money(toRemind)} échus`} tone={ov.proposals.length > 0 ? 'red' : undefined} />
+        <ListKpi label="Lettres à envoyer" value={String(ov.drafts.count)} sub={`${money(ov.drafts.amount)}`} />
         <ListKpi label="Clients bloqués" value={String(held.length)} sub="achats à crédit suspendus" tone={held.length > 0 ? 'red' : undefined} />
         <ListKpi label="Contrôle du plafond" value={ov.settings.credit_control === 'block' ? 'Bloquant' : 'Alerte'} sub={ov.settings.auto_send ? 'e-mails envoyés automatiquement' : 'e-mails validés à la main'} />
       </section>
@@ -107,7 +108,7 @@ function Letters() {
                     onChange={e => { const s = new Set(selected); if (e.target.checked) s.add(p.customerId); else s.delete(p.customerId); setSelected(s); }} /></td>
                   <td><strong>{p.customerName}</strong>{p.creditHold && <>{' '}<StatusTag tone="blocked" icon={Lock} label="bloqué" /></>}
                     <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{p.email || <span style={{ color: '#b85d1a' }}>pas d'e-mail</span>}{p.phone ? ` · ${p.phone}` : ''}</div></td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{n2(p.overdue)} DH</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(p.overdue)}</td>
                   <td style={{ textAlign: 'right', color: p.maxDaysLate > 60 ? '#dc3545' : undefined }}>{p.maxDaysLate} j</td>
                   <td style={{ fontSize: '0.8125rem' }}>{p.docs.map(d => d.number).join(', ')}</td>
                   <td>{p.lastLevel ? `Niveau ${p.lastLevel} · ${fr(p.lastDunningAt)}` : '—'}</td>
@@ -144,7 +145,7 @@ function Letters() {
                     <td>{d.customer_name}{d.credit_hold && <>{' '}<StatusTag tone="blocked" icon={Lock} label="bloqué" /></>}</td>
                     <td>{d.level} · {d.level_label}</td>
                     <td>{fr(d.dunning_date)}<div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{d.created_by_name ?? 'proposée automatiquement'}</div></td>
-                    <td style={{ textAlign: 'right' }}>{n2(d.amount_due)} DH{Number(d.fee_amount) + Number(d.interest_amount) > 0 && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>+ {n2(Number(d.fee_amount) + Number(d.interest_amount))} frais et pénalités</div>}</td>
+                    <td style={{ textAlign: 'right' }}>{money(d.amount_due)}{Number(d.fee_amount) + Number(d.interest_amount) > 0 && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>+ {n2(Number(d.fee_amount) + Number(d.interest_amount))} frais et pénalités</div>}</td>
                     <td><StatusTag tone={DUNNING_TONE[d.status]?.tone ?? 'draft'} icon={DUNNING_TONE[d.status]?.icon} label={DUNNING_STATUS_LABELS[d.status]} />
                       {d.sent_at && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>{format(new Date(d.sent_at), 'dd/MM HH:mm')} · {VIA[d.sent_via ?? ''] ?? ''}</div>}</td>
                     <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
@@ -230,7 +231,7 @@ function Levels() {
         <tbody>{levels.map(l => (
           <tr key={l.level} style={{ opacity: l.is_active ? 1 : 0.55 }}>
             <td>{l.level}</td><td><strong>{l.label}</strong><div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{l.subject}</div></td>
-            <td style={{ textAlign: 'right' }}>{l.days_after_due} j</td><td style={{ textAlign: 'right' }}>{n2(l.fee_amount)} DH</td>
+            <td style={{ textAlign: 'right' }}>{l.days_after_due} j</td><td style={{ textAlign: 'right' }}>{money(l.fee_amount)}</td>
             <td style={{ textAlign: 'right' }}>{Number(l.interest_rate)} %</td>
             <td>{l.send_email ? 'oui' : 'non'}</td><td>{l.credit_hold ? <span className="odoo-tag odoo-tag-red">oui</span> : 'non'}</td><td>{l.is_active ? 'oui' : 'non'}</td>
             <td style={{ textAlign: 'right' }}><button className="odoo-btn-secondary" style={{ padding: '2px 8px' }} onClick={() => setEditing({ ...l })}>Modifier</button></td>
@@ -240,7 +241,7 @@ function Levels() {
       {levels.length < 9 && !editing && (
         <div><button className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
           onClick={() => setEditing({ level: nextLevel, label: `Niveau ${nextLevel}`, days_after_due: (levels.at(-1)?.days_after_due ?? 0) + 30, fee_amount: '0', interest_rate: '0',
-            subject: 'Relance', body: '{client},\n\n{pieces}\n\nMontant dû : {montant} DH.\n\n{societe}', send_email: true, credit_hold: false, is_active: true })}>
+            subject: 'Relance', body: `{client},\n\n{pieces}\n\nMontant dû : {montant} ${currencySymbol()}.\n\n{societe}`, send_email: true, credit_hold: false, is_active: true })}>
           <Plus size={13} /> Ajouter un niveau</button></div>
       )}
       {editing && (
@@ -249,7 +250,7 @@ function Levels() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
             <label style={lab}>Libellé<input style={field} maxLength={80} value={editing.label} onChange={e => setEditing({ ...editing, label: e.target.value })} /></label>
             <label style={lab}>Jours après l'échéance<input style={field} type="number" min={0} value={editing.days_after_due} onChange={e => setEditing({ ...editing, days_after_due: Number(e.target.value) })} /></label>
-            <label style={lab}>Frais de relance (DH)<input style={field} type="number" min={0} step="0.01" value={editing.fee_amount} onChange={e => setEditing({ ...editing, fee_amount: e.target.value })} /></label>
+            <label style={lab}>Frais de relance ({currencySymbol()})<input style={field} type="number" min={0} step="0.01" value={editing.fee_amount} onChange={e => setEditing({ ...editing, fee_amount: e.target.value })} /></label>
             <label style={lab}>Pénalités (% par an)<input style={field} type="number" min={0} max={100} step="0.01" value={editing.interest_rate} onChange={e => setEditing({ ...editing, interest_rate: e.target.value })} /></label>
           </div>
           <label style={lab}>Objet<input style={field} maxLength={200} value={editing.subject} onChange={e => setEditing({ ...editing, subject: e.target.value })} /></label>

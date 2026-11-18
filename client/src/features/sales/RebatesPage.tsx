@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BadgePercent, Loader2, Plus, Lock, X } from 'lucide-react';
@@ -24,7 +25,6 @@ function arr<T>(resp: unknown): T[] {
   const r = resp as { data?: T[]; items?: T[] };
   return r?.data ?? r?.items ?? [];
 }
-const money = (v: number | string) => `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 
 export default function RebatesPage() {
   const qc = useQueryClient();
@@ -91,7 +91,7 @@ export default function RebatesPage() {
             placeholder="Client…" width={240} size="md" ariaLabel="Client"
             options={customers.map(c => ({ id: String(c.id), label: c.company_name || `${c.first_name || ''} ${c.last_name || ''}`.trim() }))} />
           <input className="odoo-input" aria-label="Taux en %" type="number" step="0.1" placeholder="Taux %" value={form.ratePercent} onChange={e => setForm({ ...form, ratePercent: e.target.value })} style={{ width: 90 }} />
-          <input className="odoo-input" aria-label="Seuil de CA en DH" type="number" placeholder="Seuil CA (DH)" value={form.minTurnover} onChange={e => setForm({ ...form, minTurnover: e.target.value })} style={{ width: 130 }} />
+          <input className="odoo-input" aria-label={`Seuil de CA en ${currencySymbol()}`} type="number" placeholder={`Seuil CA (${currencySymbol()})`} value={form.minTurnover} onChange={e => setForm({ ...form, minTurnover: e.target.value })} style={{ width: 130 }} />
           <button className="odoo-btn-primary" disabled={!form.customerId || !(Number(form.ratePercent) >= 0) || create.isPending} onClick={() => create.mutate()}>
             {create.isPending ? <Loader2 size={13} className="spin" /> : <Plus size={13} />} Créer l'accord
           </button>
@@ -129,7 +129,7 @@ export default function RebatesPage() {
                     <td style={{ textAlign: 'right' }}>{isDirection && r.status === 'active' && (
                       <div className="sal-actions">
                         <NextStep icon={Lock} label="Clôturer" disabled={settle.isPending} onClick={async () => {
-                          if (await confirm(`Clôturer l'accord de ${custName(r)} ? La ristourne est figée à ${r.current_amount > 0 ? money(r.current_amount) : '0 DH'}.`, { title: 'Clôturer la ristourne', confirmLabel: 'Clôturer' })) settle.mutate(r.id);
+                          if (await confirm(`Clôturer l'accord de ${custName(r)} ? La ristourne est figée à ${r.current_amount > 0 ? money(r.current_amount) : money(0, { decimals: 0 })}.`, { title: 'Clôturer la ristourne', confirmLabel: 'Clôturer' })) settle.mutate(r.id);
                         }} />
                         <RowMenu items={[{ label: "Annuler l'accord", icon: X, danger: true, onSelect: async () => {
                           if (await confirm(`Annuler l'accord de ristourne de ${custName(r)} ?`, { title: "Annuler l'accord", confirmLabel: 'Annuler l\'accord', cancelLabel: 'Retour', danger: true })) cancel.mutate(r.id);

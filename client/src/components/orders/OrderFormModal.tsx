@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { ordersApi } from '../../api/orders.api';
@@ -752,7 +753,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                         <div className="flex items-center gap-1.5 mb-2">
                           <span className="text-xs text-gray-400 truncate">{p.category_name as string || ''}</span>
                           {!isSelected ? (
-                            <span className="text-xs font-semibold text-primary-600 ml-auto">{defaultPrice.toFixed(2)} DH</span>
+                            <span className="text-xs font-semibold text-primary-600 ml-auto">{money(defaultPrice)}</span>
                           ) : (
                             <div className="ml-auto flex items-center gap-1">
                               <input
@@ -762,14 +763,14 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                                 value={linePrice}
                                 onChange={e => setItemPrice(pid, parseFloat(e.target.value) || 0)}
                                 onFocus={e => e.target.select()}
-                                title={priceChanged ? `Prix par defaut: ${defaultPrice.toFixed(2)} DH` : 'Modifier le prix'}
+                                title={priceChanged ? `Prix par defaut: ${money(defaultPrice)}` : 'Modifier le prix'}
                                 className={`w-16 text-xs font-semibold text-right border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 ${
                                   priceChanged
                                     ? 'border-amber-300 bg-amber-50 text-amber-700 focus:ring-amber-400'
                                     : 'border-primary-200 text-primary-600 focus:ring-primary-400'
                                 }`}
                               />
-                              <span className="text-xs text-primary-600">DH</span>
+                              <span className="text-xs text-primary-600">{currencySymbol()}</span>
                             </div>
                           )}
                         </div>
@@ -795,7 +796,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                               </button>
                             </div>
                             <div className="text-xs text-gray-500 text-center mt-1">
-                              {linePrice.toFixed(2)} x {qty} = <span className="font-bold text-gray-700">{(linePrice * qty).toFixed(2)} DH</span>
+                              {linePrice.toFixed(2)} x {qty} = <span className="font-bold text-gray-700">{money((linePrice * qty))}</span>
                             </div>
                             {priceChanged && (
                               <button type="button" onClick={() => setItemPrice(pid, defaultPrice)}
@@ -836,7 +837,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-500">{validItems.length} produit(s)</span>
-                    <span className="text-lg font-bold">{subtotal.toFixed(2)} DH</span>
+                    <span className="text-lg font-bold">{money(subtotal)}</span>
                   </div>
                 </div>
               )}
@@ -887,7 +888,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                           {prod?.name as string} <span className="text-gray-400">x{item.quantity}</span>
                           {priceChanged && (
                             <span className="ml-2 text-[10px] text-amber-600 font-medium">
-                              ({item.unitPrice.toFixed(2)} DH · defaut {defaultPrice.toFixed(2)})
+                              ({money(item.unitPrice)} · defaut {defaultPrice.toFixed(2)})
                             </span>
                           )}
                         </span>
@@ -898,7 +899,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                               {TVA_RATES.map(r => <option key={r} value={r}>TVA {r} %</option>)}
                             </select>
                           )}
-                          <span className="font-medium">{lineTotal.toFixed(2)} DH{isPro ? ' HT' : ''}</span>
+                          <span className="font-medium">{money(lineTotal)}{isPro ? ' HT' : ''}</span>
                         </span>
                       </div>
                     );
@@ -906,7 +907,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                 </div>
                 <div className="flex items-center justify-between mt-3 pt-3 border-t font-semibold">
                   <span>Sous-total{isPro ? ' HT' : ''}</span>
-                  <span>{subtotal.toFixed(2)} DH</span>
+                  <span>{money(subtotal)}</span>
                 </div>
               </div>
 
@@ -940,8 +941,8 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                   {overLimit && situation && (
                     <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex gap-2">
                       <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-                      <span>Plafond de crédit dépassé : encours {situation.total.toFixed(2)} DH + cette commande {total.toFixed(2)} DH
-                        pour un plafond de {situation.creditLimit!.toFixed(2)} DH{situation.overdue > 0 ? ` (dont ${situation.overdue.toFixed(2)} DH en retard)` : ''}.</span>
+                      <span>Plafond de crédit dépassé : encours {money(situation.total)} + cette commande {money(total)}
+                        pour un plafond de {money(situation.creditLimit!)}{situation.overdue > 0 ? ` (dont ${money(situation.overdue)} en retard)` : ''}.</span>
                     </div>
                   )}
                   <div>
@@ -952,7 +953,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                         className="input py-3 w-full text-base pr-10" />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
                     </div>
-                    {effectiveDiscount > 0 && <p className="text-xs text-gray-500 mt-1">Soit {effectiveDiscount.toFixed(2)} DH HT, en plus de la remise client déjà dans les prix.</p>}
+                    {effectiveDiscount > 0 && <p className="text-xs text-gray-500 mt-1">Soit {money(effectiveDiscount)} HT, en plus de la remise client déjà dans les prix.</p>}
                   </div>
                 </>
               ) : (
@@ -976,7 +977,7 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                       )}
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Avance (DH) — facultative</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Avance ({currencySymbol()}) — facultative</label>
                       <input type="number" min="0" step="0.01" value={advanceAmount} disabled={isEdit}
                         title={isEdit ? 'L\'avance a été encaissée à la prise de commande' : undefined}
                         onChange={(e) => setAdvanceAmount(parseFloat(e.target.value) || 0)}
@@ -1019,23 +1020,23 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
               <div className="bg-primary-50 rounded-xl p-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>Sous-total{isPro ? ' HT' : ''}</span>
-                  <span className="font-medium">{subtotal.toFixed(2)} DH</span>
+                  <span className="font-medium">{money(subtotal)}</span>
                 </div>
                 {effectiveDiscount > 0 && (
                   <div className="flex justify-between text-sm text-red-600">
                     <span>Remise{type === 'staff' ? ' personnel' : ''} ({appliedPct} %)</span>
-                    <span>-{effectiveDiscount.toFixed(2)} DH</span>
+                    <span>-{money(effectiveDiscount)}</span>
                   </div>
                 )}
                 {isPro && (
                   <div className="flex justify-between text-sm">
                     <span>TVA</span>
-                    <span className="font-medium">{taxAmount.toFixed(2)} DH</span>
+                    <span className="font-medium">{money(taxAmount)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-lg font-bold border-t border-primary-200 pt-2">
                   <span>Total{isPro ? ' TTC' : ''}</span>
-                  <span>{total.toFixed(2)} DH</span>
+                  <span>{money(total)}</span>
                 </div>
                 {isPro ? (
                   <div className="flex justify-between text-sm pt-1 text-emerald-700 font-medium">
@@ -1047,12 +1048,12 @@ export default function OrderFormModal({ order, onClose, onSaved }: {
                     {advanceAmount > 0 && (
                       <div className="flex justify-between text-sm pt-1">
                         <span className="text-green-600 font-medium">Avance {isEdit ? 'versée' : 'à encaisser'} (non remboursable)</span>
-                        <span className="text-green-600 font-medium">{advanceAmount.toFixed(2)} DH</span>
+                        <span className="text-green-600 font-medium">{money(advanceAmount)}</span>
                       </div>
                     )}
                     <div className="flex justify-between text-sm font-semibold">
                       <span>Reste à payer au retrait</span>
-                      <span>{Math.max(0, total - advanceAmount).toFixed(2)} DH</span>
+                      <span>{money(Math.max(0, total - advanceAmount))}</span>
                     </div>
                   </>
                 )}

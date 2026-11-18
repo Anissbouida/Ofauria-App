@@ -1,3 +1,4 @@
+import { money as moneyFmt, currencySymbol } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -123,10 +124,10 @@ export default function SalesDashboard() {
 
   /* ── À traiter : seulement ce qui demande une action ── */
   const todo: Array<{ tone: 'r' | 'o' | 'b' | 'x'; icon: LucideIcon; title: string; sub: string; amount?: string; action: string; href: string }> = [];
-  if (lateOrders.length) todo.push({ tone: 'r', icon: AlertTriangle, title: `${lateOrders.length} commande${lateOrders.length > 1 ? 's' : ''} en retard de retrait`, sub: 'Date de retrait dépassée sans remise au client', amount: `${n2(sum(lateOrders, 'total'))} DH`, action: 'Traiter', href: '/orders?filter=late' });
-  if (t && t.overdue > 0) todo.push({ tone: 'o', icon: Clock, title: 'Créances échues', sub: `${overdueCustomers.length} client${overdueCustomers.length > 1 ? 's' : ''} · plus ancien retard ${Math.max(0, ...overdueCustomers.map(c => c.maxDaysLate))} j`, amount: `${n2(t.overdue)} DH`, action: 'Relancer', href: '/sales?tab=unpaid&filter=overdue' });
+  if (lateOrders.length) todo.push({ tone: 'r', icon: AlertTriangle, title: `${lateOrders.length} commande${lateOrders.length > 1 ? 's' : ''} en retard de retrait`, sub: 'Date de retrait dépassée sans remise au client', amount: `${moneyFmt(sum(lateOrders, 'total'))}`, action: 'Traiter', href: '/orders?filter=late' });
+  if (t && t.overdue > 0) todo.push({ tone: 'o', icon: Clock, title: 'Créances échues', sub: `${overdueCustomers.length} client${overdueCustomers.length > 1 ? 's' : ''} · plus ancien retard ${Math.max(0, ...overdueCustomers.map(c => c.maxDaysLate))} j`, amount: `${moneyFmt(t.overdue)}`, action: 'Relancer', href: '/sales?tab=unpaid&filter=overdue' });
   if (followQuotes) todo.push({ tone: 'o', icon: FileSignature, title: `${followQuotes} devis à relancer`, sub: 'Validité proche ou dépassée, sans réponse du client', action: 'Relancer', href: '/quotes?status=follow' });
-  if (blCount) todo.push({ tone: 'b', icon: PackageCheck, title: `${blCount} bon${blCount > 1 ? 's' : ''} de livraison à facturer`, sub: `${toInvoice.length} client${toInvoice.length > 1 ? 's' : ''} · livrés, pas encore facturés`, amount: `${n2(blAmount)} DH`, action: 'Facturer', href: '/delivery-notes' });
+  if (blCount) todo.push({ tone: 'b', icon: PackageCheck, title: `${blCount} bon${blCount > 1 ? 's' : ''} de livraison à facturer`, sub: `${toInvoice.length} client${toInvoice.length > 1 ? 's' : ''} · livrés, pas encore facturés`, amount: `${moneyFmt(blAmount)}`, action: 'Facturer', href: '/delivery-notes' });
   if (noIce.length) todo.push({ tone: 'b', icon: UserPlus, title: `${noIce.length} client${noIce.length > 1 ? 's' : ''} professionnel${noIce.length > 1 ? 's' : ''} sans ICE`, sub: 'Leurs factures ne seraient pas conformes', action: 'Compléter', href: '/customers' });
   if (openSessions.length) todo.push({ tone: 'x', icon: Lock, title: `${openSessions.length} session${openSessions.length > 1 ? 's' : ''} de caisse ouverte${openSessions.length > 1 ? 's' : ''}`, sub: openSessions.map(s => `${s.first_name ?? ''} ${s.last_name ?? ''}`.trim() + (s.opened_at ? ` depuis ${format(new Date(s.opened_at), 'HH:mm')}` : '')).join(' · '), action: 'Voir', href: '/sales?tab=sessions' });
 
@@ -191,8 +192,8 @@ export default function SalesDashboard() {
       <section className="kl-hero" aria-label="Chiffres de la période">
         <div className="kl-widget kl-wide">
           <div className="kl-wlabel"><span className="kl-sq"><TrendingUp size={13} /></span>Chiffre d'affaires · {PERIODS.find(p => p.key === period)?.label.toLowerCase()}</div>
-          <div className="kl-big">{n0(revenue)}<small>DH</small></div>
-          <div className="kl-sub"><Delta d={delta(revenue, prevRevenue)} /> {r.label} · {n0(tickets)} tickets · panier moyen {n2(basket)} DH <Delta d={delta(basket, prevBasket)} /></div>
+          <div className="kl-big">{n0(revenue)}<small>{currencySymbol()}</small></div>
+          <div className="kl-sub"><Delta d={delta(revenue, prevRevenue)} /> {r.label} · {n0(tickets)} tickets · panier moyen {moneyFmt(basket)} <Delta d={delta(basket, prevBasket)} /></div>
           <div style={{ height: 190, marginTop: 14 }}>
             {chart.length ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -200,7 +201,7 @@ export default function SalesDashboard() {
                   <CartesianGrid vertical={false} stroke="var(--kl-hair)" />
                   <XAxis dataKey="date" tick={{ fontSize: 12, fill: 'var(--kl-muted)' }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={24} />
                   <YAxis tick={{ fontSize: 12, fill: 'var(--kl-muted)' }} tickLine={false} axisLine={false} width={48} tickFormatter={(v: number) => n0(v)} />
-                  <Tooltip formatter={(v: number) => [`${n2(v)} DH`, "Chiffre d'affaires"]} />
+                  <Tooltip formatter={(v: number) => [`${moneyFmt(v)}`, "Chiffre d'affaires"]} />
                   <Area type="monotone" dataKey="revenue" stroke="var(--theme-accent)" strokeWidth={2.5} fill="var(--theme-accent-light)" fillOpacity={0.7} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -224,7 +225,7 @@ export default function SalesDashboard() {
       </section>
 
       <section aria-label="Où est votre argent">
-        <div className="kl-sec"><h2>Où est votre argent</h2><small><b style={{ color: 'var(--kl-ink)' }}>{n0(moneyTotal)} DH</b> en circulation</small></div>
+        <div className="kl-sec"><h2>Où est votre argent</h2><small><b style={{ color: 'var(--kl-ink)' }}>{moneyFmt(moneyTotal, { decimals: 0 })}</b> en circulation</small></div>
         <div className="kl-widget">
           <div className="kl-store" aria-hidden="true">
             {money.filter(m => m.amount > 0).map(m => <span key={m.label} style={{ width: `${moneyTotal ? m.amount / moneyTotal * 100 : 0}%`, background: m.color }} />)}
@@ -267,7 +268,7 @@ export default function SalesDashboard() {
                 <ul className="kl-bars" style={{ paddingTop: 14 }}>
                   {byCategory.map(c => (
                     <li key={c.name}>
-                      <span className="h"><span>{c.name}</span><b>{n0(c.value)} DH</b></span>
+                      <span className="h"><span>{c.name}</span><b>{moneyFmt(c.value, { decimals: 0 })}</b></span>
                       <span className="bar"><span style={{ width: `${Math.max(2, c.pct)}%` }} /></span>
                     </li>
                   ))}
@@ -284,7 +285,7 @@ export default function SalesDashboard() {
               {topCustomers.length ? topCustomers.map(c => (
                 <button key={c.id} type="button" className="kl-cell av" onClick={() => navigate(`/customers/${c.id}`)}>
                   <span className="kl-mono">{initials(c.name)}</span>
-                  <span className="tx"><span className="t1">{c.name}</span><span className="t2">{c.purchases} achat{c.purchases > 1 ? 's' : ''}{c.owed > 0 ? ` · reste dû ${n0(c.owed)} DH` : ''}</span></span>
+                  <span className="tx"><span className="t1">{c.name}</span><span className="t2">{c.purchases} achat{c.purchases > 1 ? 's' : ''}{c.owed > 0 ? ` · reste dû ${moneyFmt(c.owed, { decimals: 0 })}` : ''}</span></span>
                   <span className="tr">{n0(c.spent)}</span>
                   <ChevronRight size={15} className="chev" />
                 </button>
@@ -297,7 +298,7 @@ export default function SalesDashboard() {
               {topDebtors.length ? topDebtors.map(c => (
                 <button key={c.customerId ?? c.name} type="button" className="kl-cell" onClick={() => navigate(c.customerId ? `/customers/${c.customerId}` : '/sales?tab=unpaid')}>
                   <span className="tx"><span className="t1">{c.name}</span>
-                    <span className="t2">{c.overdue > 0 ? `${n0(c.overdue)} DH échus · retard ${c.maxDaysLate} j` : 'rien d\'échu'}{c.creditLimit ? ` · plafond ${n0(c.creditLimit)} DH` : ''}</span></span>
+                    <span className="t2">{c.overdue > 0 ? `${moneyFmt(c.overdue, { decimals: 0 })} échus · retard ${c.maxDaysLate} j` : 'rien d\'échu'}{c.creditLimit ? ` · plafond ${moneyFmt(c.creditLimit, { decimals: 0 })}` : ''}</span></span>
                   <span className={`tr${c.overdue > 0 ? ' red' : ''}`}>{n0(c.total)}</span>
                   <ChevronRight size={15} className="chev" />
                 </button>

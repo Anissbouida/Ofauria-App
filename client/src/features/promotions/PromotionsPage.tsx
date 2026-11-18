@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
@@ -153,8 +154,8 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
       <section className="prj-kpis" aria-label="Indicateurs">
         <ListKpi label="En cours" value={String(count('running'))} sub={`dont ${data.filter(p => p.state === 'running' && p.coupon_code).length} avec code promo`} />
         <ListKpi label="Se terminent sous 7 j" value={String(count('ending'))} sub="à prolonger ou laisser finir" tone={count('ending') ? 'orange' : undefined} />
-        <ListKpi label="Remises accordées (30 j)" value={`${n2(granted30)} DH`} sub="toutes promotions confondues" />
-        <ListKpi label="Remises accordées (total)" value={`${n2(data.reduce((a, p) => a + Number(p.granted_amount ?? 0), 0))} DH`} sub={`${n0(data.reduce((a, p) => a + Number(p.uses_count ?? 0), 0))} utilisation(s)`} />
+        <ListKpi label="Remises accordées (30 j)" value={`${money(granted30)}`} sub="toutes promotions confondues" />
+        <ListKpi label="Remises accordées (total)" value={`${money(data.reduce((a, p) => a + Number(p.granted_amount ?? 0), 0))}`} sub={`${n0(data.reduce((a, p) => a + Number(p.uses_count ?? 0), 0))} utilisation(s)`} />
       </section>
 
       <ListToolbar search={search} onSearch={setSearch} placeholder="Nom ou code promo…">
@@ -205,7 +206,7 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
                     </td>
                     <td>
                       <span className={`odoo-tag ${KIND_TAG[p.kind]}`} style={{ fontWeight: 600 }}>{ruleText(p)}</span>
-                      <div style={{ ...muted, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{scopeShort(p)}{p.min_amount ? ` · dès ${n2(p.min_amount)} DH` : ''}</div>
+                      <div style={{ ...muted, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{scopeShort(p)}{p.min_amount ? ` · dès ${money(p.min_amount)}` : ''}</div>
                     </td>
                     <td style={{ fontSize: '0.8125rem' }}>
                       <div style={{ whiteSpace: 'nowrap' }}>{periodText(p)}</div>
@@ -224,7 +225,7 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
                       {p.max_uses ? <div style={{ height: 3, borderRadius: 2, background: 'var(--odoo-border)', overflow: 'hidden', marginTop: 4, width: 70, marginLeft: 'auto' }}>
                         <div style={{ width: `${Math.min(100, p.uses_count / p.max_uses * 100)}%`, height: '100%', background: 'var(--odoo-purple)' }} /></div> : null}
                     </td>
-                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{n2(p.granted_amount)} DH</td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{money(p.granted_amount)}</td>
                     <td onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
                       {canEdit ? <OdooToggle checked={p.is_active} disabled={quick.isPending} onChange={v => quick.mutate({ id: p.id, isActive: v })} />
                         : <StatusTag tone={PROMO_STATE[p.state].tone} icon={PROMO_STATE[p.state].icon} label={PROMO_STATE[p.state].label} />}
@@ -249,7 +250,7 @@ function PromotionsTab({ canEdit, creating, onCreated }: { canEdit: boolean; cre
                           <div><div style={muted}>Articles</div>{p.target === 'cart' ? 'Tout le panier' : targets(p).length ? targets(p).join(', ') : 'Tout le catalogue'}</div>
                           <div><div style={muted}>Pour qui, où</div>{conditions.length ? conditions.join(' · ') : 'Tous les clients, tous les magasins'}</div>
                           <div><div style={muted}>Quand</div>{periodText(p)}{when ? ` · ${when}` : ''}</div>
-                          <div><div style={muted}>Résultats</div>{n0(p.uses_count)} utilisation(s) · {n2(p.granted_amount)} DH accordés<div style={muted}>dont {n2(p.granted_30d)} DH sur 30 jours</div></div>
+                          <div><div style={muted}>Résultats</div>{n0(p.uses_count)} utilisation(s) · {money(p.granted_amount)} accordés<div style={muted}>dont {money(p.granted_30d)} sur 30 jours</div></div>
                         </div>
                         {p.description && <div style={{ ...muted, marginTop: 8 }}>{p.description}</div>}
                         {canEdit && (
@@ -290,9 +291,9 @@ function sentence(p: Promotion, names: string[]) {
   const g = Number(p.get_qty);
   const what = p.kind === 'buy_x_get_y' ? `${p.buy_qty} achetés parmi ${on} = ${g} offert${g > 1 ? 's' : ''} (${g > 1 ? 'les moins chers' : 'le moins cher'})`
     : p.kind === 'percent' ? `${String(v).replace('.', ',')} % de remise sur ${on}`
-    : p.kind === 'fixed_price' ? `${on} au prix spécial de ${n2(v)} DH`
-    : p.target === 'cart' ? `${n2(v)} DH de remise sur le panier` : `${n2(v)} DH de remise par article sur ${on}`;
-  const extra = [p.min_amount && `dès ${n2(p.min_amount)} DH d'achat`, p.coupon_code && `avec le code ${p.coupon_code}`].filter(Boolean).join(', ');
+    : p.kind === 'fixed_price' ? `${on} au prix spécial de ${money(v)}`
+    : p.target === 'cart' ? `${money(v)} de remise sur le panier` : `${money(v)} de remise par article sur ${on}`;
+  const extra = [p.min_amount && `dès ${money(p.min_amount)} d'achat`, p.coupon_code && `avec le code ${p.coupon_code}`].filter(Boolean).join(', ');
   const where = [p.on_pos && 'en caisse', p.on_orders && 'sur les commandes', p.on_quotes && 'sur les devis'].filter(Boolean).join(', ');
   return `${what}${extra ? `, ${extra}` : ''} — ${where}.`;
 }
@@ -302,15 +303,15 @@ function ruleText(p: Promotion) {
   const v = Number(p.value);
   switch (p.kind) {
     case 'percent': return `−${String(v).replace('.', ',')} %`;
-    case 'amount': return p.target === 'cart' ? `−${n2(v)} DH` : `−${n2(v)} DH par article`;
-    case 'fixed_price': return `Prix spécial ${n2(v)} DH`;
+    case 'amount': return p.target === 'cart' ? `−${money(v)}` : `−${money(v)} par article`;
+    case 'fixed_price': return `Prix spécial ${money(v)}`;
     default: return `${p.buy_qty} achetés = ${p.get_qty} offert${Number(p.get_qty) > 1 ? 's' : ''}`;
   }
 }
 function conditionsList(p: Promotion) {
   const scope: Record<CustomerScope, string | null> = { all: null, identified: 'Client identifié', particulier: 'Particuliers', professionnel: 'Professionnels', tier: `Niveau ${p.min_tier_label ?? p.min_tier_code} et plus` };
   return [
-    p.min_amount && `Dès ${n2(p.min_amount)} DH`, p.min_quantity && `Dès ${Number(p.min_quantity)} article(s)`,
+    p.min_amount && `Dès ${money(p.min_amount)}`, p.min_quantity && `Dès ${Number(p.min_quantity)} article(s)`,
     scope[p.customer_scope], p.store_name && `Magasin ${p.store_name}`,
   ].filter(Boolean) as string[];
 }
@@ -362,7 +363,7 @@ function PromotionForm({ promo, copyOf, onClose, onSaved, onGone }: { promo: Pro
     // Promotion supprimée entre-temps (autre poste, autre onglet) : on recharge la liste et on ferme.
     onError: e => { notify.error(apiErrorMessage(e)); if ((e as { response?: { status?: number } })?.response?.status === 404) onGone(); },
   });
-  const valueLabel = f.kind === 'percent' ? 'Remise (%)' : f.kind === 'amount' ? (isCart ? 'Remise (DH)' : 'Remise par article (DH, par kg au poids)') : 'Prix spécial (DH, par kg au poids)';
+  const valueLabel = f.kind === 'percent' ? 'Remise (%)' : f.kind === 'amount' ? (isCart ? `Remise (${currencySymbol()})` : `Remise par article (${currencySymbol()}, par kg au poids)`) : `Prix spécial (${currencySymbol()}, par kg au poids)`;
 
   return (
     <ModalBackdrop onClose={onClose} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
@@ -408,7 +409,7 @@ function PromotionForm({ promo, copyOf, onClose, onSaved, onGone }: { promo: Pro
 
           <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Conditions</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-            <label style={lab}>{isCart ? 'Panier minimum (DH)' : 'Montant minimum des articles (DH)'}<input style={field} type="number" min={0} step="0.01" value={f.minAmount} onChange={e => set('minAmount', e.target.value)} /></label>
+            <label style={lab}>{isCart ? 'Panier minimum' : 'Montant minimum des articles'} ({currencySymbol()})<input style={field} type="number" min={0} step="0.01" value={f.minAmount} onChange={e => set('minAmount', e.target.value)} /></label>
             <label style={lab}>Quantité minimum<input style={field} type="number" min={0} step="1" value={f.minQuantity} onChange={e => set('minQuantity', e.target.value)} /></label>
             <label style={lab}>Clients<select style={field} value={f.customerScope} onChange={e => set('customerScope', e.target.value as CustomerScope)}>
               <option value="all">Tous, même sans fiche</option><option value="identified">Client identifié (fiche choisie)</option>
@@ -568,10 +569,10 @@ function LoyaltyTab() {
   return (
     <>
       <div className="odoo-stat-grid" style={{ border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
-        {kpi('Points en circulation', n0(ov.outstandingPoints), `${n2(ov.outstandingValue)} DH dus aux clients`, Coins)}
+        {kpi('Points en circulation', n0(ov.outstandingPoints), `${money(ov.outstandingValue)} dus aux clients`, Coins)}
         {kpi('Clients avec des points', n0(ov.members), undefined, Star)}
-        {kpi('Gagnés sur 30 j', n0(ov.last30.earn?.points ?? 0), `${n2(ov.last30.earn?.amount ?? 0)} DH`, Gift)}
-        {kpi('Utilisés sur 30 j', n0(Math.abs(ov.last30.redeem?.points ?? 0)), `${n2(ov.last30.redeem?.amount ?? 0)} DH de remises`, BadgePercent)}
+        {kpi('Gagnés sur 30 j', n0(ov.last30.earn?.points ?? 0), `${money(ov.last30.earn?.amount ?? 0)}`, Gift)}
+        {kpi('Utilisés sur 30 j', n0(Math.abs(ov.last30.redeem?.points ?? 0)), `${money(ov.last30.redeem?.amount ?? 0)} de remises`, BadgePercent)}
         {kpi('Expirés sur 30 j', n0(Math.abs(ov.last30.expire?.points ?? 0)), undefined, Hourglass)}
       </div>
 
@@ -587,13 +588,13 @@ function LoyaltyTab() {
         <div className="odoo-section" style={{ margin: 0 }}>
           <div className="odoo-section-header"><Award size={13} /> Barème</div>
           <div style={{ padding: '0 16px' }}>
-            <SettingRow label="Part rendue au client" hint={`${n0(pts)} point par ${n2(per)} DH payé · 1 point = ${pv.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} DH`}>
+            <SettingRow label="Part rendue au client" hint={`${n0(pts)} point par ${money(per)} payé · 1 point = ${pv.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} ${currencySymbol()}`}>
               <SliderControl label="Part rendue au client" value={Math.round(backPct * 2) / 2} min={0.5} max={20} step={0.5} onChange={setBack} display={pctTxt(backPct)} />
             </SettingRow>
             <SettingRow label="Part maximum du ticket" hint="payable en points">
               <SliderControl label="Part maximum du ticket" value={cap} min={10} max={100} step={5} onChange={v => set('maxRedeemPct', String(v))} display={`${cap} %`} />
             </SettingRow>
-            <SettingRow label="Utilisable dès" hint={`soit ${n2(minPts * pv)} DH de remise`}>
+            <SettingRow label="Utilisable dès" hint={`soit ${money(minPts * pv)} de remise`}>
               <UnitInput value={s.minRedeemPoints} onChange={v => set('minRedeemPoints', v)} unit="pts" min={1} />
             </SettingRow>
             <SettingRow label="Validité des points" hint="les points les plus anciens partent en premier" last={!details}>
@@ -603,8 +604,8 @@ function LoyaltyTab() {
             </SettingRow>
             {details && <>
               <SettingRow label="Points gagnés" hint="par tranche payée"><UnitInput value={s.earnPoints} onChange={v => set('earnPoints', v)} unit="pts" min={1} /></SettingRow>
-              <SettingRow label="Tranche" hint="montant payé, après remises"><UnitInput value={s.earnPerAmount} onChange={v => set('earnPerAmount', v)} unit="DH" step="0.01" min={0.01} /></SettingRow>
-              <SettingRow label="Valeur d'un point" hint="remise accordée par point" last><UnitInput value={s.pointValue} onChange={v => set('pointValue', v)} unit="DH" step="0.0001" min={0.0001} /></SettingRow>
+              <SettingRow label="Tranche" hint="montant payé, après remises"><UnitInput value={s.earnPerAmount} onChange={v => set('earnPerAmount', v)} unit={currencySymbol()} step="0.01" min={0.01} /></SettingRow>
+              <SettingRow label="Valeur d'un point" hint="remise accordée par point" last><UnitInput value={s.pointValue} onChange={v => set('pointValue', v)} unit={currencySymbol()} step="0.0001" min={0.0001} /></SettingRow>
             </>}
           </div>
           <button type="button" onClick={() => setDetails(!details)}
@@ -617,24 +618,24 @@ function LoyaltyTab() {
           <div className="odoo-section-header"><Coins size={13} /> Essayer sur un ticket</div>
           <div style={{ padding: '0 16px' }}>
             <SettingRow label="Montant payé" hint="après remises" last>
-              <UnitInput value={ticket} onChange={setTicket} unit="DH" step="0.01" />
+              <UnitInput value={ticket} onChange={setTicket} unit={currencySymbol()} step="0.01" />
             </SettingRow>
           </div>
           <table className="odoo-table" style={{ tableLayout: 'fixed' }}>
             <colgroup><col /><col style={{ width: 140 }} /><col style={{ width: 140 }} /></colgroup>
             <thead><tr><th>Client</th><th style={{ textAlign: 'right' }}>Points gagnés</th><th style={{ textAlign: 'right' }}>Valeur</th></tr></thead>
             <tbody>
-              <tr><td style={muted}>Sans niveau</td><td style={{ textAlign: 'right', fontWeight: 600 }}>{n0(baseEarn)}</td><td style={{ textAlign: 'right' }}>{n2(baseEarn * pv)} DH</td></tr>
+              <tr><td style={muted}>Sans niveau</td><td style={{ textAlign: 'right', fontWeight: 600 }}>{n0(baseEarn)}</td><td style={{ textAlign: 'right' }}>{money(baseEarn * pv)}</td></tr>
               {sorted.map(x => { const e = Math.floor(baseEarn * dec(x.earnMultiplier)); return (
                 <tr key={x.i}>
                   <td><span className={`odoo-tag ${tierColor(x, x.i).tag}`}>{x.label || 'Nouveau niveau'}</span> <span style={muted}>{fmtMult(x.earnMultiplier)}</span></td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{n0(e)}</td><td style={{ textAlign: 'right' }}>{n2(e * pv)} DH</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{n0(e)}</td><td style={{ textAlign: 'right' }}>{money(e * pv)}</td>
                 </tr>
               ); })}
             </tbody>
           </table>
           <div style={{ marginTop: 'auto', padding: '10px 16px', borderTop: '1px solid var(--odoo-border)', background: 'var(--odoo-bg-alt)', fontSize: '0.8125rem' }}>
-            Payable en points sur ce ticket : <strong>{n2(t * cap / 100)} DH</strong>{pv > 0 && <> ({n0(Math.floor(t * cap / 100 / pv))} points)</>}, dès {n0(minPts)} points.
+            Payable en points sur ce ticket : <strong>{money(t * cap / 100)}</strong>{pv > 0 && <> ({n0(Math.floor(t * cap / 100 / pv))} points)</>}, dès {n0(minPts)} points.
           </div>
         </div>
       </div>
@@ -751,7 +752,7 @@ function HistoryTab() {
                 <td>{t.customer_name}</td>
                 <td><Dot color={KIND_DOT[t.kind]}>{LOYALTY_KIND_LABEL[t.kind]}</Dot></td>
                 <td style={{ textAlign: 'right', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: t.points < 0 ? '#721c24' : '#155724' }}>{t.points > 0 ? '+' : '−'}{n0(Math.abs(t.points))}</td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{n2(t.amount)} DH</td>
+                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{money(t.amount)}</td>
                 <td style={{ fontSize: '0.8125rem' }}>{t.note}{t.created_by_name && <div style={muted}>{t.created_by_name}</div>}</td>
                 <td style={{ whiteSpace: 'nowrap' }}>{t.remaining && t.expires_at ? <>{fr(t.expires_at)}{t.remaining < t.points && <div style={muted}>{n0(t.remaining)} restants</div>}</> : <span style={muted}>—</span>}</td>
               </tr>
