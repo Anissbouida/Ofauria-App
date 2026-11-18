@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authController } from '../controllers/auth.controller.js';
+import { oidcController } from '../controllers/oidc.controller.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
@@ -50,6 +51,10 @@ const router = Router();
 router.post('/login', loginLimiter, validate(loginSchema), authController.login);
 // G6-01 : double authentification (second facteur limité comme le mot de passe).
 router.post('/mfa/verify', loginLimiter, validate(mfaVerifySchema), asyncHandler(authController.mfaVerify));
+// G6-02 : connexion d'entreprise (OpenID Connect) — actifs seulement si configurés.
+router.get('/oidc/providers', asyncHandler(async (req, res) => oidcController.providers(req, res)));
+router.get('/oidc/:provider/start', loginLimiter, asyncHandler(oidcController.start));
+router.get('/oidc/:provider/callback', loginLimiter, asyncHandler(oidcController.callback));
 router.get('/mfa/status', authenticate, asyncHandler(authController.mfaStatus));
 router.post('/mfa/setup', authenticate, validate(mfaEmptySchema), asyncHandler(authController.mfaSetup));
 router.post('/mfa/enable', authenticate, validate(mfaCodeSchema), asyncHandler(authController.mfaEnable));

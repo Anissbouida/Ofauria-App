@@ -351,6 +351,9 @@
  "GET /attendance/summary": null,
  "GET /auth/me": null,
  "GET /auth/mfa/status": null,
+ "GET /auth/oidc/:provider/callback": null,
+ "GET /auth/oidc/:provider/start": null,
+ "GET /auth/oidc/providers": null,
  "GET /auth/pin-users": null,
  "GET /auth/users-list": [
   "admin",

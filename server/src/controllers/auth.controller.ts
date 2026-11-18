@@ -48,7 +48,7 @@ function parseDurationMs(v: string): number {
   }
 }
 
-function setAuthCookie(res: Response, token: string) {
+export function setAuthCookie(res: Response, token: string) {
   res.cookie(AUTH_COOKIE_NAME, token, {
     httpOnly: true,
     secure: IS_PROD, // HTTPS only en prod ; en dev HTTP accepte le cookie
@@ -419,7 +419,7 @@ async function mfaSetupRequired(userId: string, ctx: RoleCtx): Promise<boolean> 
   return s.required && !s.enabled;
 }
 const mfaKey = () => `${env.JWT_SECRET}:mfa`;
-function signMfaToken(userId: string, mustChange: boolean) {
+export function signMfaToken(userId: string, mustChange: boolean) {
   return jwt.sign({ uid: userId, mc: mustChange, purpose: 'mfa' }, mfaKey(), { expiresIn: '5m' });
 }
 function readMfaToken(token: string): { uid: string; mc: boolean } | null {

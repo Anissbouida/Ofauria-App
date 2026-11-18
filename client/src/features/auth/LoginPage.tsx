@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import api, { serverUrl } from '../../api/client';
 import { useSettings } from '../../context/SettingsContext';
 import { notify } from '../../components/ui/InlineNotification';
 import { ArrowLeft, Delete, Eye, EyeOff, Lock, Mail } from 'lucide-react';
@@ -15,6 +16,16 @@ export default function LoginPage() {
   const { user, loginWithPin, login, verifyMfa } = useAuth();
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState('');
+  // G6-02 : fournisseurs d'entreprise configurés ; retour de connexion (?mfa= / ?sso_error=).
+  const [ssoProviders, setSsoProviders] = useState<{ provider: string; label: string }[]>([]);
+  useEffect(() => {
+    api.get('/auth/oidc/providers').then(r => setSsoProviders(r.data.data ?? [])).catch(() => setSsoProviders([]));
+    const params = new URLSearchParams(window.location.search);
+    const mfa = params.get('mfa');
+    if (mfa) setMfaToken(mfa);
+    const err = params.get('sso_error');
+    if (err) notify.error(err === 'compte_inconnu' ? 'Aucun compte actif ne correspond à cette adresse : demandez à un administrateur de créer votre compte.' : 'Connexion d\'entreprise impossible, réessayez.');
+  }, []);
   const { settings } = useSettings();
   const [searchParams, setSearchParams] = useSearchParams();
   const mode = searchParams.get('mode') === 'email' ? 'email' : 'pin';
@@ -174,6 +185,17 @@ export default function LoginPage() {
               {loading ? 'Connexion...' : 'Se connecter'}
             </button>
           </form>
+
+          {/* G6-02 : connexion d'entreprise (fournisseurs configurés seulement). */}
+          {ssoProviders.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {ssoProviders.map(p => (
+                <a key={p.provider} href={serverUrl(`/api/v1/auth/oidc/${p.provider}/start`)} className="btn-secondary w-full py-2 block text-center">
+                  Continuer avec {p.label}
+                </a>
+              ))}
+            </div>
+          )}
 
           <div className="text-center mt-6">
             <button type="button" onClick={() => setSearchParams({})}
