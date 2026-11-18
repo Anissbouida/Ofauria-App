@@ -76,7 +76,7 @@ router.get('/policies/impact', authenticate, can('production.view'), asyncHandle
   const type = String(req.query.scopeType ?? 'company');
   const sid = String(req.query.scopeId ?? '');
   if (!['company', 'store', 'workshop', 'order_type', 'product'].includes(type)) { res.status(400).json({ success: false, error: { message: 'Niveau inconnu' } }); return; }
-  if (['store', 'order_type', 'product'].includes(type) && !/^[0-9a-f-]{36}$/i.test(sid)) { res.status(400).json({ success: false, error: { message: 'Identifiant invalide' } }); return; }
+  if (['store', 'product'].includes(type) && !/^[0-9a-f-]{36}$/i.test(sid)) { res.status(400).json({ success: false, error: { message: 'Identifiant invalide' } }); return; }
   res.json({ success: true, data: await productionImpactRepository.forPolicyScope(type as never, sid.slice(0, 60)) });
 }));
 router.get('/policies', authenticate, can('production.view'), asyncHandler(productionController.listPolicies));

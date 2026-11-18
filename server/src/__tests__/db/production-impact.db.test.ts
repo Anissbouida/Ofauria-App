@@ -50,7 +50,8 @@ describe.skipIf(!hasTestDb)('Aperçu d\'impact des réglages de production (C-09
   });
 
   it('politique : ordres non terminés du niveau', async () => {
-    const byType = await impact.forPolicyScope('order_type', ids.type);
+    const code = (await p().query(`SELECT code FROM production_order_types WHERE id = $1`, [ids.type])).rows[0].code;
+    const byType = await impact.forPolicyScope('order_type', code); // niveau rangé sous le code du type
     expect(byType).toEqual({ draft: 1, underway: 1 });
     const byStore = await impact.forPolicyScope('store', fx.storeId);
     expect(byStore.draft + byStore.underway).toBe(2);

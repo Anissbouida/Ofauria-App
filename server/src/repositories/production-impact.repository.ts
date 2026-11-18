@@ -25,7 +25,8 @@ export const productionImpactRepository = {
   async forPolicyScope(scopeType: PolicyScope, scopeId: string): Promise<{ draft: number; underway: number }> {
     const cond = scopeType === 'store' ? `AND p.store_id = $2::uuid`
       : scopeType === 'workshop' ? `AND p.target_role = $2::text`
-      : scopeType === 'order_type' ? `AND p.order_type_id = $2::uuid`
+      // Niveau « type d'ordre » : rangé sous le CODE du type (policies.ts, levels.orderTypes).
+      : scopeType === 'order_type' ? `AND p.order_type_id = (SELECT t.id FROM production_order_types t WHERE t.code = $2::text)`
       : scopeType === 'product' ? `AND EXISTS (SELECT 1 FROM production_plan_items i WHERE i.plan_id = p.id AND i.product_id = $2::uuid)`
       : '';
     const r = await db.query(
