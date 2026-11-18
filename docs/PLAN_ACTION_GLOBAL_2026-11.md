@@ -2015,6 +2015,50 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **M3-05** : mig 558 + politique `production.cost_allocation_key` (poids par défaut, quantité, valeur de vente, parts saisies), réglable société / établissement / atelier / type d'ordre. CONSTAT : le code ne répartissait pas le coût d'un plan entre ses articles (seule la coupe répartit, au prorata des pièces équivalentes) ; la répartition est donc ajoutée (`allocate`, appelée par `computePlanCost`) ; une clé inapplicable (poids manquant, parts ≠ 100 %, aucun prix) retombe sur la quantité et le signale — c'est le cas de tous les plans locaux, faute de poids unitaires. Parts manuelles sur les articles du plan (total 100 %). Le niveau « type d'ordre » des politiques lisait `plan.type` (quotidien/hebdomadaire) : il lit maintenant le code du type d'ordre (aucune valeur n'était posée à ce niveau). Écrans : section « Répartition du coût entre les articles » du coût réel ; types d'ordre dans Paramétrage › Politiques.
 - **M3-06** : `formatMoney` dans `shared` (devise de base de la table `currencies`, repli DH) ; côté client `money()` / `currencySymbol()` ; côté serveur `services/currency.ts`, utilisé par le PDF de fiche technique. Les 43 occurrences du module Production remplacées (montants désormais au format français « 1 234,50 DH »). Garde de test : aucun « DH » ni « MAD » en dur dans le module Production (vérifiée : la même règle trouve 86 occurrences dans Ventes). RESTE : les autres modules (≈ 930 occurrences), en étendant la garde à chaque module converti.
 
+### Lot 9 — M4 à M7 : production industrielle
+
+| ☐ | Tâche | Objet | Change des chiffres |
+|---|---|---|---|
+| ☑ | M4-01 | Versions de nomenclature avec statut et date d'effet | non |
+| ☑ | M4-02 | Version figée sur la ligne d'ordre | non |
+| ☑ | M4-03 | Activation d'une version soumise à approbation | non |
+| ◐ | M4-04 | Plusieurs nomenclatures par article | non |
+| ◐ | M4-05 | Substituts d'article | non |
+| ☑ | M4-06 | Co-produits déclarés (coupe généralisée) | non (zéro écart sur la coupe) |
+| ◐ | M4-07 | Champs personnalisés sur fiches, ordres, lots | non |
+| ☑ | M5-01 | Opérations de gamme complètes | non |
+| ☑ | M5-02 | Opérations instanciées sur l'ordre | non (politique « json » par défaut) |
+| ◐ | M5-03 | Reprise des étapes JSON | non (rapport seul) |
+| ◐ | M5-04 | Calendrier des postes | non |
+| ◐ | M5-05 | Référentiel équipement unique | non |
+| ☑ | M6-01 | Mode de consommation par type d'ordre | non |
+| ◐ | M6-02 | Stock par lot et par emplacement | non (zéro écart lot par lot) |
+| ☑ | M6-03 | Référentiel unique des motifs de rebut | non |
+| ☑ | M6-04 | Contrôle de reprise | — (zéro écart avant-m602 → apres-m6) |
+| ☑ | M7-01 | Inspections rattachées | non |
+| ☑ | M7-02 | Plan de contrôle par article | non (aucun plan déclaré en base) |
+| ☑ | M7-03 | Le CCP comme cas particulier | non (garde identique) |
+| ☑ | M7-04 | Libération du lot | non (aucun article avec contrôle final) |
+| ☑ | M7-05 | Non-conformités structurées | non |
+
+**Notes du lot 9.** Migrations 559-576. Jeu de référence : zéro écart apres-m305 → apres-lot9 (sept familles, dont stock-lots lot par lot). Suite complète en base : 630 tests verts sur 632 ; les 2 échecs restants tiennent à la fenêtre de minuit (machine en heure de New York, base en UTC, métier en heure de Casablanca : DLC et « aujourd'hui » calculés dans des fuseaux différents ; même cause pour production-workflow et stock-at-date, verts en journée), pas au lot.
+- **M4-01** : mig 559 `bom_versions` (instantané JSON figé de la composition), statut brouillon / active / obsolète, date d'effet, motif, comparaison, bandeau sur la fiche. ÉCART : version = instantané plutôt qu'un `version_id` sur chaque ligne de composition (30 requêtes lisent la composition vivante).
+- **M4-02** : mig 560 `bom_version_id` sur la ligne d'ordre à la confirmation, avertissement si la fiche a été modifiée sans nouvelle version. RESTE : calculer les besoins depuis l'instantané quand la fiche vivante diffère.
+- **M4-03** : mig 561, approbation `bom_change` (écart de coût, ordres ouverts, allergènes ajoutés) ; brouillon promu ou retiré par le circuit.
+- **M4-04** : mig 562, fiches alternative / sous-traitance rattachées par `alternative_for_product_id` (la fiche par défaut reste celle liée par `product_id`), choix sur la ligne d'un ordre en brouillon, `getRecipeFor`. ÉCART : pas de colonne `is_default`.
+- **M4-05** : mig 563 `recipe_line_substitutes` (ratio, priorité, validité, par fiche ou général) ; au bon de sortie, une ligne non pesée bascule sur le substitut (lot FEFO, article d'origine et motif gardés) ; allergènes réellement consommés. RESTE : remplacement en masse (mig 401) comme outil de mise à jour.
+- **M4-06** : mig 564, type de sortie (principal, co-produit, sous-produit, déchet valorisé), sorties déclarées sur la fiche, vue `v_production_output_cost_v2` ; sans sous-produit, identique à la vue 397.
+- **M4-07** : mig 565, entités recipe / production_order / product_lot dans le moteur de champs personnalisés, bloc sur les trois fiches. RESTE : générateur de rapports et import.
+- **M5-01** : mig 566, opérations de gamme (type, réglage, temps machine et MO, contrôle, bloquante), gamme rattachée à la fiche, éditeur sur la fiche technique ; coût MO standard inchangé pour les gammes existantes. RESTE : rattacher la gamme à la version de nomenclature.
+- **M5-02** : mig 567. ÉCART : les opérations d'ordre réutilisent `production_item_etapes` (lues par l'Atelier) au lieu d'une table parallèle. `routing_id` écrit à la confirmation ; instanciation au lancement si `production.steps_source` = « gamme » (défaut « json » : rien ne change) ; quantités bonnes / rebutées ; temps → `production_temps_travail` ; opération bloquante = déclaration refusée.
+- **M5-03** : `scripts/etapes-to-routings.ts` (rapport ; `--apply` crée les gammes). Base de dev : 14 fiches, 33 étapes, aucune n'a de poste, 1 sans durée ; `--apply` NON lancé (validation du chef, puis bascule par atelier). RESTE : ne plus écrire le JSON une fois l'atelier basculé.
+- **M5-04** : mig 568 calendrier (plages × ressources, jours fermés), `fn_work_center_capacity` ; charge par plan et TRS lisent le calendrier. RESTE : le rétro-planning (mig 432).
+- **M5-05** : mig 569. Référence physique = `production_equipements` (la maintenance pointait `fixed_assets` ou un libellé) : équipement → poste et immobilisation (rapprochement par noms proposé, lien validé à la main), arrêt → demande d'intervention, intervention terminée → arrêt du poste, qualité dans le TRS.
+- **M6-01** : le mode du type d'ordre (stocké depuis M2-01, jamais lu) est appliqué : « manuel » = aucune sortie automatique, sorties saisies sur l'ordre ; écart théorique / réel par matière.
+- **M6-02** : mig 570 `ingredient_lot_locations`, reflétée par déclencheur depuis les zones (le code existant reste la source), transferts tracés en mouvements entre emplacements, emplacements Magasin et Frigo. PIÈGE : reprise par INSERT, jamais par UPDATE sur `ingredient_lots` (déclencherait `trg_inventory_sync_lots`, qui recalcule l'inventaire). RESTE : destinations magasin / frigo côté produits finis.
+- **M6-03** : mig 571 `scrap_reasons` (domaines d'usage, anciens codes repris) ; la contrainte figée de `product_losses` devient un contrôle par le référentiel ; écrans et registre des pertes sur le référentiel.
+- **M7-01 à M7-05** : mig 572-576. Inspections rattachées (ordre, opération, lot, réception), onglet Qualité, bouton Contrôler ; plan de contrôle (réception, en cours, final ; fréquences ; échantillon) générant les inspections à faire ; CCP = ligne bloquante sur un type d'étape (garde inchangée), consultation unique relevés + inspections ; lot `pending_release` refusé en caisse et au BL, libéré à la main ou automatiquement (`quality.auto_release`) ; non-conformités structurées (causes, décision sur le lot, actions avec efficacité, note fournisseur, tableau de bord).
+
 ### Lots suivants
 
 | ☐ | Lot | Tâches |
