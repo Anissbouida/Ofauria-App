@@ -2059,6 +2059,26 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **M6-03** : mig 571 `scrap_reasons` (domaines d'usage, anciens codes repris) ; la contrainte figée de `product_losses` devient un contrôle par le référentiel ; écrans et registre des pertes sur le référentiel.
 - **M7-01 à M7-05** : mig 572-576. Inspections rattachées (ordre, opération, lot, réception), onglet Qualité, bouton Contrôler ; plan de contrôle (réception, en cours, final ; fréquences ; échantillon) générant les inspections à faire ; CCP = ligne bloquante sur un type d'étape (garde inchangée), consultation unique relevés + inspections ; lot `pending_release` refusé en caisse et au BL, libéré à la main ou automatiquement (`quality.auto_release`) ; non-conformités structurées (causes, décision sur le lot, actions avec efficacité, note fournisseur, tableau de bord).
 
+### Lot 10 — G6 : socle multi-client
+
+| ☐ | Tâche | Objet | Change des chiffres |
+|---|---|---|---|
+| ☑ | G6-01 | Double authentification | non |
+| ◐ | G6-02 | Connexion d'entreprise (OpenID Connect) | non (inactive sans identifiants) |
+| ☐ | G6-03 | Multi-société | — (session dédiée) |
+| ☒ | G6-04 | Multi-client (tenant) | — bloquée : prérequis G1-02 (staging) et G3 (projet Google Cloud) |
+| ☐ | G6-05 | Traductions | — (session dédiée) |
+| ☐ | G6-06 | Devise et pays | — (session dédiée ; Production déjà convertie en M3-06) |
+| ☑ | G6-07 | Piste d'audit générique | non |
+| ◐ | G6-08 | API ouverte | non |
+
+**Notes du lot 10.** Migrations 577-579. Jeu de référence : zéro écart apres-lot9 → apres-lot10. Suites : 462 tests unitaires verts ; en base 639 / 640 (seul échec : scénario de vente FEFO dans la fenêtre de minuit, voir lot 9).
+- **G6-01** : mig 577. TOTP (RFC 6238) codé avec `node:crypto` (vecteurs de la RFC en test), secret chiffré AES-256-GCM, 10 codes de secours hachés à usage unique. Connexion en deux temps : le mot de passe rend un jeton intermédiaire (clé distincte, 5 min, n'ouvre aucune route), le code ouvre la session. Paramètre `security.mfa.requiredRoles` (défaut admin, comptable, finance) : un compte de ces rôles sans double authentification doit l'activer (écran imposé, QR code, codes de secours) ; il ne peut pas la désactiver. La connexion par PIN est refusée aux comptes protégés ou soumis. IMPACT : un administrateur qui se connecte à l'application doit activer la double authentification. RESTE : écran « Sécurité » du profil (désactivation, régénération des codes) pour les rôles non soumis.
+- **G6-02** : mig 579 `user_identities`. Code d'autorisation avec PKCE ; tentative (state, nonce, vérificateur) dans un cookie signé 10 min ; id_token vérifié (clés JWKS, émetteur — locataire réel pour Microsoft —, audience, nonce, expiration, RS256 seul, e-mail vérifié) ; rattachement par e-mail à un compte ACTIF, jamais de création ; double authentification conservée (retour `/login?mfa=`). Inactive tant que `OIDC_GOOGLE_*` / `OIDC_MICROSOFT_*` et `OIDC_REDIRECT_BASE` / `OIDC_FRONT_URL` ne sont pas configurés : à enregistrer chez Google / Microsoft avant mise en service. Testé avec un faux fournisseur, pas avec les vrais.
+- **G6-07** : mig 578 `audit_trail` (ajout seul) + déclencheur générique `trg_audit_trail` sur 278 tables métier (33 avant) : modifications champ par champ et suppressions, auteur (`app.user_id`), colonnes sensibles masquées ; créations non tracées (la ligne les porte). Exclusions : journaux, compteurs de stock, caches, miroirs, sessions, files. Une nouvelle table se rattache par `SELECT fn_audit_attach_all()`. Onglet « Historique » sur la fiche technique et l'ordre (profils qui voient le journal d'audit). RESTE : l'auteur n'est connu que sur les écritures qui posent `app.user_id` (23 chemins) ; monter l'onglet sur les autres fiches.
+- **G6-08** : description OpenAPI 3.1 générée (`/api/v1/public/openapi.json`, corps des requêtes tirés des schémas zod) et page `/api/v1/public/docs` ; catalogue unique des événements dans `shared` ; webhooks émis : commande créée, statut de commande, ordre confirmé, lot produit, ordre terminé (dans la transaction, sans jamais bloquer l'action). RESTE : événements factures et stock (non émis, donc non listés).
+- **G6-03, G6-05, G6-06** : refontes transversales (24 lectures de `company_settings`, extraction des libellés en trois langues, ≈ 930 « DH » et pack pays) proposées en sessions dédiées.
+
 ### Lots suivants
 
 | ☐ | Lot | Tâches |
@@ -2075,7 +2095,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ◐ | M5 | M5-01 à M5-05 |
 | ◐ | M6 | M6-01 à M6-04 |
 | ☑ | M7 | M7-01 à M7-05 |
-| ☐ | G6 | G6-01 à G6-08 |
+| ◐ | G6 | G6-01 à G6-08 |
 | ☐ | M8 | M8-01 à M8-06 |
 | ☐ | M9 | Sous-traitance, numéros de série |
 | ☐ | C | C-01 à C-10 (configuration par industrie, au fil des lots M1 à M8) |
