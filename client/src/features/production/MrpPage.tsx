@@ -1,4 +1,5 @@
 import { useState, Fragment } from 'react';
+import { usePermissions } from '../../context/PermissionsContext';
 import { money } from '../../utils/money';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -54,6 +55,8 @@ export default function MrpPage() {
 
 /* ─── Vue Jour : besoins nets + génération + semi-finis ────────────────── */
 function DayView({ date, setDate }: { date: string; setDate: (d: string) => void }) {
+  // M8-06 : « vitrine » réservé à l'option du même nom (boulangerie).
+  const showcase = usePermissions().hasFeature('vitrine');
   const qc = useQueryClient();
   const confirm = useConfirm();
   const navigate = useNavigate();
@@ -215,7 +218,7 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
       })()}
 
       <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-        Demande = prévision de vente (majorée) + commandes fermes dues ce jour. Stock = arrière-boutique + vitrine (planché à 0). Déjà planifié = plans ouverts du jour, hors lignes produites.
+        Demande = prévision de vente (majorée) + commandes fermes dues ce jour. Stock = {showcase ? 'arrière-boutique + vitrine' : 'stock disponible'} (planché à 0). Déjà planifié = plans ouverts du jour, hors lignes produites.
       </p>
     </>
   );

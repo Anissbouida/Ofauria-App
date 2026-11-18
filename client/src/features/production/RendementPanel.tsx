@@ -1,5 +1,6 @@
 import { useProductionPolicies, yieldLevel, YIELD_PILL, YIELD_TEXT } from './usePolicies';
 import { useState } from 'react';
+import { usePermissions } from '../../context/PermissionsContext';
 import { apiErrorMessage } from '../../api/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionEtapesApi } from '../../api/production-etapes.api';
@@ -58,6 +59,8 @@ interface RendementTarget {
 
 export default function RendementPanel({ planId, planStatus, items, isChef, workshop, storeId }: RendementPanelProps) {
   const queryClient = useQueryClient();
+  // M8-06 : pâtons et termes de cuisson réservés à l'option « saisie par fournée » (boulangerie).
+  const batchMode = usePermissions().hasFeature('mode_fournee');
   const { data: summary } = usePlanSummary(planId, ['in_progress', 'completed'].includes(planStatus));
   // M1-03 : seuils lus dans les politiques de production, plus en dur.
   const policies = useProductionPolicies({ workshop, store: storeId });
@@ -280,30 +283,30 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
                     </div>
                   )}
 
-                  {/* Bilan massique et pâtons (épic labo L3) */}
+                  {/* Bilan massique (épic labo L3) ; pâtons réservés à l'option « saisie par fournée » (M8-06). */}
                   <div>
                     <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Bilan massique (optionnel)</label>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       <div>
-                        <label className="text-[10px] text-gray-500">Masse pétrie (kg)</label>
+                        <label className="text-[10px] text-gray-500">{batchMode ? 'Masse pétrie' : 'Masse mise en œuvre'} (kg)</label>
                         <input type="number" min={0} step="0.001" value={formData.masse_petrie_kg || ''} placeholder="0"
                           onChange={e => setFormData(f => ({ ...f, masse_petrie_kg: parseFloat(e.target.value) || 0 }))}
                           className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-xs" />
                       </div>
-                      <div>
+                      {batchMode && <div>
                         <label className="text-[10px] text-gray-500">Pâtons (nb)</label>
                         <input type="number" min={0} value={formData.patons_nombre || ''} placeholder="0"
                           onChange={e => setFormData(f => ({ ...f, patons_nombre: parseInt(e.target.value) || 0 }))}
                           className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-xs" />
-                      </div>
-                      <div>
+                      </div>}
+                      {batchMode && <div>
                         <label className="text-[10px] text-gray-500">Poids/pâton (g)</label>
                         <input type="number" min={0} value={formData.patons_poids_unitaire_g || ''} placeholder="0"
                           onChange={e => setFormData(f => ({ ...f, patons_poids_unitaire_g: parseFloat(e.target.value) || 0 }))}
                           className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-xs" />
-                      </div>
+                      </div>}
                       <div>
-                        <label className="text-[10px] text-gray-500">Masse cuite (kg)</label>
+                        <label className="text-[10px] text-gray-500">{batchMode ? 'Masse cuite' : 'Masse obtenue'} (kg)</label>
                         <input type="number" min={0} step="0.001" value={formData.masse_cuite_kg || ''} placeholder="0"
                           onChange={e => setFormData(f => ({ ...f, masse_cuite_kg: parseFloat(e.target.value) || 0 }))}
                           className="w-full mt-0.5 px-2 py-1 border border-gray-200 rounded text-xs" />
@@ -311,7 +314,7 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
                     </div>
                     {formData.masse_petrie_kg > 0 && formData.masse_cuite_kg > 0 && (
                       <div className="text-xs text-gray-500 mt-1">
-                        Freinte réelle : <span className="font-bold text-gray-800">{((formData.masse_petrie_kg - formData.masse_cuite_kg) / formData.masse_petrie_kg * 100).toFixed(2)} %</span>
+                        {batchMode ? 'Freinte réelle' : 'Perte de masse'} : <span className="font-bold text-gray-800">{((formData.masse_petrie_kg - formData.masse_cuite_kg) / formData.masse_petrie_kg * 100).toFixed(2)} %</span>
                       </div>
                     )}
                   </div>
@@ -359,9 +362,9 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
                 return (
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-600">
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-100">
-                      <Scale size={10} /> {parseFloat(String(existing.masse_petrie_kg))} kg pétrie
-                      {existing.patons_nombre ? ` · ${existing.patons_nombre} pâtons` : ''}
-                      {existing.masse_cuite_kg != null ? ` → ${parseFloat(String(existing.masse_cuite_kg))} kg cuit` : ''}
+                      <Scale size={10} /> {parseFloat(String(existing.masse_petrie_kg))} kg {batchMode ? 'pétrie' : 'mise en œuvre'}
+                      {batchMode && existing.patons_nombre ? ` · ${existing.patons_nombre} pâtons` : ''}
+                      {existing.masse_cuite_kg != null ? ` → ${parseFloat(String(existing.masse_cuite_kg))} kg ${batchMode ? 'cuit' : 'obtenue'}` : ''}
                     </span>
                     {reelle != null && (
                       <span className="inline-flex items-center gap-1">
