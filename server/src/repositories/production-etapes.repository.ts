@@ -1,6 +1,7 @@
 import { resolvePolicy } from '../services/policies.js';
 import { db } from '../config/database.js';
 import { readingParamMeta } from '../services/process-referentials.js';
+import { placeBackward, type Window } from '../services/retro-calendar.js';
 
 // Relevés de procédé (mig 422) agrégés par étape : évite un appel par étape sur
 // l'écran d'atelier. Fragment SQL corrélé réutilisé par findByPlan/findByPlanItem.
@@ -466,6 +467,32 @@ export const productionEtapesRepository = {
         planned_start: string; planned_end: string; duree_min: number;
       }> = [];
 
+      // M5-04 : plages ouvertes des postes dotés d'un calendrier (7 jours avant le plan → lendemain),
+      // jours fermés retirés ; même convention de fuseau que l'heure de vitrine (date + heure).
+      const windowRows = (await client.query(
+        `SELECT c.work_center_id, (d::date + c.start_time)::timestamptz AS s, (d::date + c.end_time)::timestamptz AS e
+           FROM work_center_calendar c
+          CROSS JOIN generate_series($2::date - 7, $2::date + 1, interval '1 day') d
+          WHERE c.work_center_id IN (SELECT DISTINCT pie.work_center_id FROM production_item_etapes pie
+                                       JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
+                                      WHERE ppi.plan_id = $1 AND pie.work_center_id IS NOT NULL)
+            AND c.iso_weekday = EXTRACT(ISODOW FROM d)
+            AND NOT EXISTS (SELECT 1 FROM work_center_closures x
+                             WHERE x.closed_on = d::date AND (x.work_center_id = c.work_center_id OR x.work_center_id IS NULL))`,
+        [planId, plan.rows[0].plan_date])).rows as { work_center_id: string; s: Date; e: Date }[];
+      // Un poste qui a un calendrier mais aucune plage ouverte sur l'horizon (jours fermés) n'a
+      // AUCUNE plage : il ne retombe pas dans le cas « sans calendrier ».
+      const windowsByCenter = new Map<string, Window[]>((await client.query(
+        `SELECT DISTINCT work_center_id FROM work_center_calendar WHERE work_center_id IN
+           (SELECT pie.work_center_id FROM production_item_etapes pie JOIN production_plan_items ppi ON ppi.id = pie.plan_item_id
+             WHERE ppi.plan_id = $1 AND pie.work_center_id IS NOT NULL)`, [planId])).rows.map(r => [r.work_center_id as string, [] as Window[]]));
+      for (const w of windowRows) {
+        const arr = windowsByCenter.get(w.work_center_id) ?? [];
+        arr.push({ s: new Date(w.s).getTime(), e: new Date(w.e).getTime() });
+        windowsByCenter.set(w.work_center_id, arr);
+      }
+      const outsideCalendar: string[] = [];
+
       for (const item of items.rows) {
         const steps = await client.query(
           `SELECT id, ordre, nom, type_etape, duree_estimee_min,
@@ -483,8 +510,12 @@ export const productionEtapesRepository = {
           const s = steps.rows[i];
           const reps = s.est_repetable ? Math.max(1, s.nb_repetitions_cible || 1) : 1;
           const dureeMin = (s.duree_estimee_min || 0) * reps;
-          const endMs = cursor;
-          const startMs = endMs - dureeMin * 60_000;
+          // Poste avec calendrier : l'étape tient dans ses plages ouvertes (M5-04) ; sinon, continu.
+          const windows = s.work_center_id ? windowsByCenter.get(s.work_center_id) ?? null : null;
+          const placed = placeBackward(cursor, dureeMin, windows);
+          if (!placed) outsideCalendar.push(s.nom);
+          const endMs = placed?.endMs ?? cursor;
+          const startMs = placed?.startMs ?? endMs - dureeMin * 60_000;
           const planned_start = new Date(startMs).toISOString();
           const planned_end = new Date(endMs).toISOString();
           await client.query(
@@ -545,7 +576,7 @@ export const productionEtapesRepository = {
         (min, s) => (min === null || s.planned_start < min ? s.planned_start : min), null
       );
 
-      return { scheduled_count: scheduled.length, earliest_start: earliest, conflicts };
+      return { scheduled_count: scheduled.length, earliest_start: earliest, conflicts, outside_calendar: outsideCalendar };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

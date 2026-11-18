@@ -27,6 +27,8 @@ export const productionEtapesApi = {
       scheduled_count: number;
       earliest_start: string | null;
       conflicts: { work_center_id: string; work_center_name: string; a: string; b: string; overlap_start: string; overlap_end: string }[];
+      /** M5-04 : étapes sans place dans les heures d'ouverture de leur poste (7 jours avant le plan). */
+      outside_calendar: string[];
     }),
 
   // Exécution d'atelier (mig 399) — roadmap lot 4

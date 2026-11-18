@@ -54,7 +54,7 @@ export default function RetroPlanningPanel({ planId, planStatus, isChef, worksho
   const policies = useProductionPolicies({ workshop, store: storeId });
   const [typedHeure, setHeureVitrine] = useState('');
   const heureVitrine = typedHeure || policies.text('production.showcase_time', 'time') || '';
-  const [lastResult, setLastResult] = useState<{ earliest_start: string | null; conflicts: Conflict[] } | null>(null);
+  const [lastResult, setLastResult] = useState<{ earliest_start: string | null; conflicts: Conflict[]; outside_calendar: string[] } | null>(null);
 
   const { data: etapes = [], isLoading } = useQuery<Etape[]>({
     queryKey: ['plan-etapes', planId],
@@ -65,7 +65,7 @@ export default function RetroPlanningPanel({ planId, planStatus, isChef, worksho
   const compute = useMutation({
     mutationFn: () => productionEtapesApi.computeRetroPlanning(planId, heureVitrine || undefined),
     onSuccess: (res) => {
-      setLastResult({ earliest_start: res.earliest_start, conflicts: res.conflicts });
+      setLastResult({ earliest_start: res.earliest_start, conflicts: res.conflicts, outside_calendar: res.outside_calendar ?? [] });
       queryClient.invalidateQueries({ queryKey: ['plan-etapes', planId] });
       notify.success(
         res.conflicts.length > 0
@@ -152,6 +152,13 @@ export default function RetroPlanningPanel({ planId, planStatus, isChef, worksho
           <div className="flex items-center gap-2 text-sm bg-amber-50 border border-amber-200 text-amber-800 rounded px-3 py-2">
             <Clock size={15} />
             <span>Démarrage au plus tôt : <strong>{hhmm(lastResult.earliest_start)}</strong> le {format(new Date(lastResult.earliest_start), 'EEEE d MMMM', { locale: fr })}</span>
+          </div>
+        )}
+
+        {(lastResult?.outside_calendar.length ?? 0) > 0 && (
+          <div role="alert" className="flex items-center gap-2 text-sm bg-red-50 border border-red-200 text-red-700 rounded px-3 py-2">
+            <AlertTriangle size={15} />
+            <span>Hors des heures d'ouverture du poste : {lastResult!.outside_calendar.map(n => `« ${n} »`).join(', ')}. Vérifiez le calendrier du poste ou l'heure de vitrine.</span>
           </div>
         )}
 
