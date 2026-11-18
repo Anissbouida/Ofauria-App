@@ -30,6 +30,13 @@ export default function ProductionOrderTypesPanel() {
   const ws = useWorkshops();
   const { data: types = [], isLoading } = useQuery({ queryKey: ['production-order-types', false], queryFn: () => productionApi.orderTypes(false) });
   const [draft, setDraft] = useState<Draft | null>(null);
+  // C-09 : ordres ouverts du type édité (les étapes ne changent pas sous des ordres en cours).
+  const { data: impact } = useQuery({
+    queryKey: ['production-order-type-impact', draft?.id],
+    queryFn: () => productionApi.orderTypeImpact(draft!.id!),
+    enabled: !!draft?.id,
+  });
+  const stepsLocked = !!impact?.underway;
 
   const save = useMutation({
     mutationFn: (d: Draft) => d.id
@@ -139,7 +146,7 @@ export default function ProductionOrderTypesPanel() {
                 <input className="input" value={draft.label ?? ''} onChange={(e) => set({ label: e.target.value })} />
               </label>
               <label className="block text-xs font-medium text-gray-500">Consommation des matières
-                <select className="input" value={draft.consumptionMode} onChange={(e) => set({ consumptionMode: e.target.value as Draft['consumptionMode'] })}>
+                <select className="input" disabled={stepsLocked} value={draft.consumptionMode} onChange={(e) => set({ consumptionMode: e.target.value as Draft['consumptionMode'] })}>
                   {(Object.keys(CONSUMPTION_MODE_LABELS) as (keyof typeof CONSUMPTION_MODE_LABELS)[])
                     .filter(k => draft.requiresBonSortie !== false || k !== 'au_bon_de_sortie')
                     .map(k => <option key={k} value={k}>{CONSUMPTION_MODE_LABELS[k]}</option>)}
@@ -152,11 +159,18 @@ export default function ProductionOrderTypesPanel() {
                 </select>
               </label>
             </div>
+            {impact && impact.draft + impact.underway > 0 && (
+              <StatusBanner tone={impact.underway ? 'warning' : 'info'} icon={Workflow} title={`${impact.draft + impact.underway} ordre(s) de ce type non terminé(s)`}>
+                {impact.underway
+                  ? `${impact.underway} en cours : les étapes (bon de sortie, pesage, consommation, sous-traitance) ne peuvent pas changer avant leur fin. Le libellé, le contrôle et l'atelier restent modifiables.`
+                  : `${impact.draft} brouillon(s) : ils prendront le nouveau réglage à leur confirmation.`}
+              </StatusBanner>
+            )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem 1.25rem', fontSize: '0.875rem' }}>
-              <label title="Fabrication confiée à un tiers : envoi des composants, réception du produit fini, coût de façon"><input type="checkbox" checked={!!draft.isSubcontracting} onChange={(e) => set({ isSubcontracting: e.target.checked })} /> Sous-traité</label>
-              <label style={{ opacity: draft.isSubcontracting ? 0.5 : 1 }}><input type="checkbox" disabled={!!draft.isSubcontracting} checked={draft.requiresBonSortie !== false} onChange={(e) => set({ requiresBonSortie: e.target.checked })} /> Bon de sortie</label>
+              <label title="Fabrication confiée à un tiers : envoi des composants, réception du produit fini, coût de façon"><input type="checkbox" disabled={stepsLocked} checked={!!draft.isSubcontracting} onChange={(e) => set({ isSubcontracting: e.target.checked })} /> Sous-traité</label>
+              <label style={{ opacity: draft.isSubcontracting ? 0.5 : 1 }}><input type="checkbox" disabled={!!draft.isSubcontracting || stepsLocked} checked={draft.requiresBonSortie !== false} onChange={(e) => set({ requiresBonSortie: e.target.checked })} /> Bon de sortie</label>
               <label style={{ opacity: draft.requiresBonSortie === false ? 0.5 : 1 }}>
-                <input type="checkbox" disabled={draft.requiresBonSortie === false} checked={!!draft.requiresWeighing} onChange={(e) => set({ requiresWeighing: e.target.checked })} /> Pesage
+                <input type="checkbox" disabled={draft.requiresBonSortie === false || stepsLocked} checked={!!draft.requiresWeighing} onChange={(e) => set({ requiresWeighing: e.target.checked })} /> Pesage
               </label>
               <label><input type="checkbox" checked={!!draft.requiresQualityCheck} onChange={(e) => set({ requiresQualityCheck: e.target.checked })} /> Contrôle à la déclaration</label>
               <label><input type="checkbox" checked={!!draft.isDefault} onChange={(e) => set({ isDefault: e.target.checked, ...(e.target.checked ? { isActive: true } : {}) })} /> Par défaut</label>

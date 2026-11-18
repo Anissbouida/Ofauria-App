@@ -120,6 +120,11 @@ export const productionApi = {
     api.post('/production/order-types', data).then(r => r.data.data),
   updateOrderType: (id: string, data: ProductionOrderTypeInput): Promise<ProductionOrderType> =>
     api.put(`/production/order-types/${id}`, data).then(r => r.data.data),
+  /** Aperçu d'impact (C-09) : ordres ouverts touchés par un type d'ordre ou une politique. */
+  orderTypeImpact: (id: string): Promise<{ draft: number; underway: number }> =>
+    api.get(`/production/order-types/${id}/impact`).then(r => r.data.data),
+  policyImpact: (scopeType: string, scopeId: string): Promise<{ draft: number; underway: number }> =>
+    api.get('/production/policies/impact', { params: { scopeType, scopeId } }).then(r => r.data.data),
   /** Synthèse chiffrée de l'ordre, calculée au serveur (M8-05). */
   summary: (id: string): Promise<PlanSummary> => api.get(`/production/${id}/summary`).then(r => r.data.data),
   /** Gabarits d'impression résolus pour un type d'ordre (M8-04). */

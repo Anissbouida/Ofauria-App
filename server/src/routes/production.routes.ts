@@ -10,6 +10,7 @@ const manualConsumptionSchema = z.object({
 import { productionController } from '../controllers/production.controller.js';
 import { printTemplateController } from '../controllers/print-template.controller.js';
 import { planSummaryRepository } from '../repositories/plan-summary.repository.js';
+import { productionImpactRepository } from '../repositories/production-impact.repository.js';
 import { subcontractingRepository, SubcontractError } from '../repositories/subcontracting.repository.js';
 import { productSerialRepository } from '../repositories/product-serial.repository.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
@@ -67,6 +68,17 @@ router.get('/serials/lookup', authenticate, can('production.view'), asyncHandler
   res.json({ success: true, data: sn.trim() ? await productSerialRepository.lookup(sn) : [] });
 }));
 router.get('/subcontracting', authenticate, can('production.view'), asyncHandler(async (_req, res) => { res.json({ success: true, data: await subcontractingRepository.listOpen() }); }));
+// C-09 — aperçu d'impact : ordres ouverts touchés par un changement de type d'ordre ou de politique.
+router.get('/order-types/:typeId/impact', authenticate, validateUuidParams('typeId'), can('production.view'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await productionImpactRepository.forOrderType(req.params.typeId as string) });
+}));
+router.get('/policies/impact', authenticate, can('production.view'), asyncHandler(async (req, res) => {
+  const type = String(req.query.scopeType ?? 'company');
+  const sid = String(req.query.scopeId ?? '');
+  if (!['company', 'store', 'workshop', 'order_type', 'product'].includes(type)) { res.status(400).json({ success: false, error: { message: 'Niveau inconnu' } }); return; }
+  if (['store', 'order_type', 'product'].includes(type) && !/^[0-9a-f-]{36}$/i.test(sid)) { res.status(400).json({ success: false, error: { message: 'Identifiant invalide' } }); return; }
+  res.json({ success: true, data: await productionImpactRepository.forPolicyScope(type as never, sid.slice(0, 60)) });
+}));
 router.get('/policies', authenticate, can('production.view'), asyncHandler(productionController.listPolicies));
 router.put('/policies/:key', authenticate, authorizeSettings('production', 'edit'), validate(setPolicySchema), asyncHandler(productionController.setPolicy));
 router.put('/settings', authenticate, can('production.edit'), asyncHandler(productionController.updateSettings));

@@ -1,4 +1,5 @@
 import { db, withTransaction } from '../config/database.js';
+import { productionImpactRepository } from './production-impact.repository.js';
 
 /**
  * Types d'ordre de fabrication (M2-01, mig 546).
@@ -108,6 +109,16 @@ export const productionOrderTypeRepository = {
       if (cur.is_default && input.isActive === false) throw new Error('Le type par défaut ne peut pas être désactivé : choisissez d\'abord un autre type par défaut');
       if (cur.is_default && input.isDefault === false) throw new Error('Un type doit rester par défaut : cochez « par défaut » sur un autre type');
       const { requiresBon, weighing, mode, subcontracting } = normalize(cur, input);
+      // C-09 : les étapes d'un type ne changent pas sous des ordres déjà engagés (bon de sortie
+      // généré, consommation choisie à la confirmation) ; un brouillon prendra le nouveau réglage.
+      const stepsChanged = requiresBon !== cur.requires_bon_sortie || weighing !== cur.requires_weighing
+        || mode !== cur.consumption_mode || subcontracting !== !!cur.is_subcontracting;
+      if (stepsChanged) {
+        const impact = await productionImpactRepository.forOrderType(id);
+        if (impact.underway > 0) {
+          throw new Error(`${impact.underway} ordre(s) de ce type sont en cours : terminez-les, ou créez un nouveau type avec ces étapes.`);
+        }
+      }
       if (input.isDefault) await db.query(`UPDATE production_order_types SET is_default = false WHERE is_default AND id <> $1`, [id]);
       const r = await db.query(
         `UPDATE production_order_types

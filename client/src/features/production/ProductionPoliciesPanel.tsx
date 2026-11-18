@@ -78,6 +78,12 @@ export default function ProductionPoliciesPanel() {
     onError: e => notify.error(apiErrorMessage(e)),
   });
 
+  // C-09 : ordres non terminés concernés par une valeur posée à ce niveau.
+  const { data: impact } = useQuery({
+    queryKey: ['production-policy-impact', scopeType, scopeId],
+    queryFn: () => productionApi.policyImpact(scopeType, scopeId),
+    enabled: !!editing,
+  });
   const startEdit = (p: ProductionPolicy) => setEditing({
     key: p.key,
     draft: Object.fromEntries(p.fields.map(f => [f.name, String(p.effective.value[f.name] ?? '')])),
@@ -184,6 +190,12 @@ export default function ProductionPoliciesPanel() {
                             {save.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Enregistrer
                           </button>
                           <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(null)}><X size={13} /> Annuler</button>
+                          {impact && (impact.draft + impact.underway > 0) && (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', alignSelf: 'center' }}
+                              title="Les ordres en cours gardent ce qui a déjà été calculé ; le nouveau réglage s'applique aux calculs à venir.">
+                              S'applique à {impact.draft + impact.underway} ordre(s) non terminé(s){impact.underway ? `, dont ${impact.underway} en cours` : ''}
+                            </span>
+                          )}
                         </span>
                       ) : !allowed ? (
                         scopeType === 'company' && p.companyManagedElsewhere

@@ -1659,7 +1659,23 @@
   "pastry_chef",
   "viennoiserie"
  ],
+ "GET /production/order-types/:typeId/impact": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /production/policies": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
+ "GET /production/policies/impact": [
   "admin",
   "baker",
   "beldi_sale",
