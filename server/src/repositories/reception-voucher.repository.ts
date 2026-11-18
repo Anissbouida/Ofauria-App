@@ -734,6 +734,11 @@ export const receptionVoucherRepository = {
         );
       }
 
+      // M7-02 : contrôle à réception du plan de contrôle → inspections à faire sur les lots reçus.
+      const { qualityControlPlanRepository } = await import('./quality-control-plan.repository.js');
+      const toInspect = await qualityControlPlanRepository.generateForReception(db, rv.id as string);
+      if (toInspect.length) warnings.push(`${toInspect.length} contrôle(s) à réception à réaliser (plan de contrôle).`);
+
       return { ...rv, status: newStatus, autoInvoice, warnings, lotNumbers };
     });
   },

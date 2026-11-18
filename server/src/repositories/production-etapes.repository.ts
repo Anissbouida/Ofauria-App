@@ -587,5 +587,8 @@ async function initializeFromRouting(q: { query: (text: string, params?: unknown
       WHERE o.routing_id = $2
       ORDER BY o.sequence
      RETURNING *`, [planItemId, ctx.routing_id, ctx.planned_quantity]);
+  // M7-02 : opération de contrôle → inspection à faire du plan de contrôle (étape « en cours »).
+  const { qualityControlPlanRepository } = await import('./quality-control-plan.repository.js');
+  for (const row of r.rows) if (row.op_type === 'controle') await qualityControlPlanRepository.generateForOperation(q, row.id);
   return r.rows;
 }

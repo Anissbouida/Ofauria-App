@@ -223,6 +223,10 @@
  "DELETE /purchase-orders/:id": [
   "admin"
  ],
+ "DELETE /quality/control-plan/:id": [
+  "admin",
+  "manager"
+ ],
  "DELETE /recipes/:id": [
   "admin"
  ],
@@ -1782,6 +1786,10 @@
   "manager"
  ],
  "GET /purchasing/reports/summary": [
+  "admin",
+  "manager"
+ ],
+ "GET /quality/control-plan": [
   "admin",
   "manager"
  ],
@@ -3806,6 +3814,10 @@
   "manager"
  ],
  "POST /purchase-requests/bulk-assign-supplier": [
+  "admin",
+  "manager"
+ ],
+ "POST /quality/control-plan": [
   "admin",
   "manager"
  ],

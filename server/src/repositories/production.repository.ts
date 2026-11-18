@@ -1983,6 +1983,11 @@ export const productionRepository = {
         );
       }
 
+      // M7-02 : contrôle final du plan de contrôle → inspections à faire sur les lots produits.
+      const { qualityControlPlanRepository } = await import('./quality-control-plan.repository.js');
+      const inspections = await qualityControlPlanRepository.generateFinal(client, planId, changedItemIds);
+      if (inspections.length) warnings.push(`${inspections.length} contrôle(s) final(aux) à réaliser (plan de contrôle).`);
+
       await client.query('COMMIT');
       return { warnings, autoCompleted };
     } catch (err) {

@@ -34,8 +34,22 @@ const LINK_COLUMNS: [keyof InspectionLinks, string][] = [
   ['ingredientLotId', 'ingredient_lot_id'], ['productLotId', 'product_lot_id'], ['receptionVoucherId', 'reception_voucher_id'],
 ];
 
-/** Suite d'une inspection réalisée (verdict, libération du lot) — complétée par M7-02/M7-04. */
-async function afterInspection(_inspectionId: string): Promise<void> { /* M7-02 / M7-04 */ }
+/**
+ * Suite d'une inspection réalisée. M7-02 : non conforme → non-conformité proposée (ouverte,
+ * rattachée à l'inspection). M7-04 complète avec la libération du lot.
+ */
+async function afterInspection(inspectionId: string): Promise<void> {
+  const i = (await db.query(
+    `SELECT id, title, conformity, results, store_id, inspected_by, control_stage FROM quality_inspections WHERE id = $1`, [inspectionId])).rows[0];
+  if (!i || i.conformity) return;
+  const failed = (Array.isArray(i.results) ? i.results : []).filter((r: QualityResult) => r.ok === false).map((r: QualityResult) => r.label);
+  await db.query(
+    `INSERT INTO quality_nonconformities (title, source, reference_note, description, severity, status, detected_on, detected_by, store_id)
+     SELECT $1, $2, $3::text, $4, 'medium', 'open', CURRENT_DATE, $5, $6
+      WHERE NOT EXISTS (SELECT 1 FROM quality_nonconformities WHERE reference_note = $3::text)`,
+    [`Inspection non conforme : ${i.title}`.slice(0, 200), i.control_stage === 'reception' ? 'reception' : 'inspection',
+     `inspection:${i.id}`, failed.length ? `Points non conformes : ${failed.join(', ')}` : null, i.inspected_by, i.store_id]);
+}
 
 export const qualityRepository = {
   async listTemplates(storeId?: string | null) {
@@ -93,6 +107,7 @@ export const qualityRepository = {
     const r = await db.query(
       `SELECT i.id, i.template_name, i.title, i.reference_note, i.inspected_on, i.conformity, i.notes,
               i.status, i.plan_id, i.plan_item_id, i.etape_id, i.ingredient_lot_id, i.product_lot_id, i.reception_voucher_id,
+              i.pending_items, i.control_stage,
               u.first_name || ' ' || u.last_name AS inspected_by_name,
               jsonb_array_length(i.results) AS items,
               (SELECT COUNT(*) FROM jsonb_array_elements(i.results) x WHERE (x->>'ok')::boolean IS FALSE)::int AS failed
