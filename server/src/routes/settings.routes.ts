@@ -7,6 +7,7 @@ import { documentSequenceController } from '../controllers/document-sequence.con
 import { parametersController } from '../controllers/parameters.controller.js';
 import { companyController } from '../controllers/company.controller.js';
 import { vocabularyController, vocabularySchema } from '../controllers/vocabulary.controller.js';
+import { profileStatus } from '../services/profile-status.js';
 import { documentsNotificationsController as docs } from '../controllers/documents-notifications.controller.js';
 import { dataController } from '../controllers/data.controller.js';
 import { approvalRulesController } from '../controllers/approval-rules.controller.js';
@@ -66,6 +67,8 @@ router.put('/parameters/:key', authenticate, jsonParser, asyncHandler(parameters
 router.get('/sector', authenticate, asyncHandler(companyController.sector));
 router.put('/sector', authenticate, jsonParser, authorizeSettings('company', 'edit'), asyncHandler(companyController.setSector));
 // M8-03 — vocabulaire : termes du secteur renommés par la société (mig 583).
+// C-03 — état de configuration du profil d'industrie (une tuile par couche).
+router.get('/profile-status', authenticate, authorizeSettings('company', 'view'), asyncHandler(async (_req, res) => { res.json({ success: true, data: await profileStatus() }); }));
 router.get('/vocabulary', authenticate, authorizeSettings('company', 'view'), asyncHandler(vocabularyController.list));
 router.put('/vocabulary/:key', authenticate, jsonParser, authorizeSettings('company', 'edit'), validate(vocabularySchema), asyncHandler(vocabularyController.set));
 router.delete('/vocabulary/:key', authenticate, authorizeSettings('company', 'edit'), asyncHandler(vocabularyController.reset));

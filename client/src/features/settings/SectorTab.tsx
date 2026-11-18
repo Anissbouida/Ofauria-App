@@ -11,6 +11,7 @@ import { OdooToggle, SettingItem, SettingsSection, SettingsTabs } from './Settin
 import { useDirtyForm } from './DirtyForms';
 import RolloutDialog from './RolloutDialog';
 import VocabularyPanel from './VocabularyPanel';
+import ProfileStatusPanel from './ProfileStatusPanel';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -332,6 +333,7 @@ export default function SectorTab() {
       <SettingsTabs label="Secteur et modules" value={tab} onChange={setTab} tabs={[
         { key: 'sector', label: 'Secteur', content: (
           <>
+      <ProfileStatusPanel />
       <SettingsSection
         title="Secteur d'activité"
         description="Le secteur est un préréglage : il choisit les modules et options de départ. Vous ajustez ensuite chaque module dans l'onglet « Modules et options ». Changer de secteur ne supprime aucune donnée."

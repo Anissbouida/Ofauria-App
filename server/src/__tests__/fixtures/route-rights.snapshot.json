@@ -2266,6 +2266,7 @@
  "GET /settings/modules/versions": null,
  "GET /settings/notification-rules": null,
  "GET /settings/parameters": null,
+ "GET /settings/profile-status": null,
  "GET /settings/sector": null,
  "GET /settings/sector/starter": null,
  "GET /settings/setup": null,
