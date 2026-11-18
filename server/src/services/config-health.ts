@@ -86,6 +86,75 @@ const usageChecks: Check[] = USAGE.map(u => ({
   },
 }));
 
+/**
+ * Contrôles des profils d'industrie (C-04) : incohérences entre types d'ordre, modules,
+ * politiques et vocabulaire, qui bloqueraient un ordre ou afficheraient des termes d'un autre métier.
+ */
+const profileChecks: Check[] = [
+  {
+    key: 'profile.order_type.module_off',
+    run: async ({ act }) => {
+      if (!act.modules.has('production')) return null;
+      const { rows } = await db.query(
+        `SELECT label, requires_bon_sortie, requires_weighing, requires_quality_check FROM production_order_types WHERE is_active`);
+      const issues: string[] = [];
+      for (const t of rows) {
+        if ((t.requires_bon_sortie || t.requires_weighing) && !act.modules.has('stock')) issues.push(`« ${t.label} » exige un bon de sortie mais le module Stock est masqué`);
+        if (t.requires_quality_check && !act.modules.has('controle')) issues.push(`« ${t.label} » exige un contrôle mais le module Contrôle est masqué`);
+      }
+      if (!issues.length) return null;
+      return {
+        tone: 'warning', module: 'production', title: 'Type d\'ordre incompatible avec les modules actifs',
+        detail: `${issues.join(' ; ')}. Les ordres de ce type resteront bloqués à cette étape.`,
+        action: { kind: 'link', label: 'Voir les types d\'ordre', to: '/production/settings' },
+      };
+    },
+  },
+  {
+    key: 'profile.subcontracting.no_supplier',
+    run: async ({ act, count }) => {
+      if (!act.modules.has('production')) return null;
+      const types = await count(`SELECT count(*) FROM production_order_types WHERE is_active AND is_subcontracting`);
+      if (!types) return null;
+      if (await count(`SELECT count(*) FROM suppliers WHERE is_active`)) return null;
+      return {
+        tone: 'warning', module: 'production', title: 'Sous-traitance sans sous-traitant',
+        detail: 'Un type d\'ordre « sous-traité » est actif, mais aucun fournisseur actif ne peut être choisi comme sous-traitant.',
+        action: { kind: 'link', label: 'Ajouter un fournisseur', to: '/purchasing' },
+      };
+    },
+  },
+  {
+    key: 'profile.steps_source.no_routing',
+    run: async ({ act, count }) => {
+      if (!act.modules.has('production')) return null;
+      const gamme = await count(`SELECT count(*) FROM policy_values WHERE key = 'production.steps_source' AND value->>'source' = 'gamme'`);
+      if (!gamme) return null;
+      if (await count(`SELECT count(*) FROM routings WHERE is_active`)) return null;
+      return {
+        tone: 'warning', module: 'production', title: 'Étapes « par gamme » sans aucune gamme',
+        detail: 'La politique « Source des étapes » vaut « Opérations de la gamme », mais aucune gamme active n\'existe : les articles gardent les étapes de leur fiche.',
+        action: { kind: 'link', label: 'Créer une gamme', to: '/production/work-centers' },
+      };
+    },
+  },
+  {
+    key: 'profile.vocabulary.bakery_terms',
+    run: async ({ act }) => {
+      // Hors option « saisie par fournée », un terme absent du secteur s'affiche avec sa valeur de repli (boulangerie).
+      if (!act.modules.has('production') || featureOn(act, 'mode_fournee')) return null;
+      const labels = await sectorRepository.labels(act.sector.code);
+      const missing = ['production_plan', 'recipe', 'batch', 'base_preps'].filter(k => !labels[k]);
+      if (!missing.length) return null;
+      return {
+        tone: 'suggestion', module: 'production', title: 'Termes de boulangerie encore affichés',
+        detail: `${missing.length} terme(s) de production n'ont pas de valeur pour ce secteur et s'affichent avec le terme de boulangerie (plan de production, recette, fournée…).`,
+        action: { kind: 'link', label: 'Ajuster le vocabulaire', to: '/settings?page=sector' },
+      };
+    },
+  },
+];
+
 const CHECKS: Check[] = [
   {
     key: 'production.no_workshop',
@@ -192,6 +261,7 @@ const CHECKS: Check[] = [
     },
   },
   ...usageChecks,
+  ...profileChecks,
 ];
 
 export const CHECK_KEYS = CHECKS.map(c => c.key);
