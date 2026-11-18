@@ -23,7 +23,10 @@ export type OnboardingTask = {
 
 export type ModuleOnboarding = { module: string; label: string; tasks: OnboardingTask[]; done: number; total: number };
 
-type TaskDef = { key: string; label: string; to: string; sql: string; params?: (ctx: { sector: string }) => unknown[]; when?: (ctx: { sector: string }) => boolean };
+type Ctx = { sector: string; features: Set<string> };
+type TaskDef = { key: string; label: string; to: string; sql: string; params?: (ctx: Ctx) => unknown[]; when?: (ctx: Ctx) => boolean };
+/** Métiers hors boulangerie (C-08) : on lit une option, jamais le code du secteur (C-07). */
+const configurable = (c: Ctx) => !c.features.has('mode_fournee');
 
 /** Les modules socle (« settings ») portent l'identité de la société. */
 const TASKS: Partial<Record<AppModule, TaskDef[]>> = {
@@ -62,7 +65,17 @@ const TASKS: Partial<Record<AppModule, TaskDef[]>> = {
       sql: `SELECT count(*) FROM production_workshops WHERE is_active` },
     { key: 'first_recipe', label: 'Créer une première fiche technique (nomenclature)', to: '/recipes',
       sql: `SELECT count(*) FROM recipes WHERE archived_at IS NULL` },
+    // C-08 : configuration propre au métier (types d'ordre, politiques, gamme, contrôle).
+    { key: 'order_types', label: 'Définir ses types d\'ordre (étapes requises, consommation des matières)', to: '/production/settings',
+      sql: `SELECT count(*) FROM production_order_types WHERE is_active AND (code <> 'PLAN_JOUR' OR updated_by IS NOT NULL)`, when: configurable },
+    { key: 'policies', label: 'Régler les politiques de production (rendement, clé de répartition du coût…)', to: '/production/settings',
+      sql: `SELECT count(*) FROM policy_values WHERE key LIKE 'production.%' OR key LIKE 'quality.%'`, when: configurable },
+    { key: 'routing', label: 'Créer une première gamme (postes et opérations)', to: '/production/work-centers',
+      sql: `SELECT count(*) FROM routings WHERE is_active`, when: configurable },
     { key: 'first_plan', label: 'Lancer un premier plan de production', to: '/production', sql: `SELECT count(*) FROM production_plans` },
+  ],
+  controle: [
+    { key: 'control_plan', label: 'Définir un premier plan de contrôle', to: '/controle', sql: `SELECT count(*) FROM quality_control_plan_lines` },
   ],
   employees: [
     { key: 'first_employee', label: 'Créer une première fiche employé', to: '/employees', sql: `SELECT count(*) FROM employees` },
@@ -89,6 +102,7 @@ const dismissKey = (m: string) => `onboarding.${m}`;
 export async function onboardingReport(): Promise<{ modules: ModuleOnboarding[]; hidden: number }> {
   const act = await sectorRepository.activation();
   const sector = act.sector.code;
+  const ctx: Ctx = { sector, features: act.features };
   const { rows } = await db.query(
     `SELECT check_key FROM config_health_dismissals WHERE check_key LIKE 'onboarding.%' AND dismissed_until > now()`);
   const hiddenKeys = new Set(rows.map(r => r.check_key as string));
@@ -99,10 +113,10 @@ export async function onboardingReport(): Promise<{ modules: ModuleOnboarding[];
 
   const active = ONBOARDING_MODULES.filter(m => m === 'settings' || act.modules.has(m as AppModule));
   const lists = await Promise.all(active.map(async (m): Promise<ModuleOnboarding | null> => {
-    const defs = (TASKS[m as AppModule] ?? []).filter(t => !t.when || t.when({ sector }));
+    const defs = (TASKS[m as AppModule] ?? []).filter(t => !t.when || t.when(ctx));
     const tasks = await Promise.all(defs.map(async (t): Promise<OnboardingTask | null> => {
       try {
-        const r = await db.query(t.sql, t.params ? t.params({ sector }) : []);
+        const r = await db.query(t.sql, t.params ? t.params(ctx) : []);
         return { key: `${m}.${t.key}`, label: t.label, to: t.to, done: Number(r.rows[0].count) > 0 };
       } catch (err) {
         console.warn(`[onboarding] tâche ${m}.${t.key} ignorée :`, (err as Error).message);
