@@ -32,6 +32,8 @@ export const PLAN_PANEL_RULES: { id: string; tab: PanelTab; when: (c: PlanPanelC
   { id: 'quality', tab: 'synthese', when: started },
   // Rétro-planning calé sur l'heure de mise en vitrine : option « vitrine » (boulangerie).
   { id: 'retro-planning', tab: 'production', when: c => c.plan.status === 'in_progress' && c.hasFeature('vitrine') },
+  // M9 : numéros de série, dès qu'une ligne suit un article par série.
+  { id: 'serials', tab: 'production', when: c => c.items.some(it => it.tracking_mode === 'serial') },
   { id: 'steps', tab: 'production', when: c => c.productionSettings?.production_steps_enabled !== false },
   { id: 'yield', tab: 'production', when: c => c.productionSettings?.production_yield_enabled !== false },
   { id: 'cost', tab: 'couts', when: c => c.productionSettings?.production_cost_enabled !== false },

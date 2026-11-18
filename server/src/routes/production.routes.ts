@@ -11,6 +11,7 @@ import { productionController } from '../controllers/production.controller.js';
 import { printTemplateController } from '../controllers/print-template.controller.js';
 import { planSummaryRepository } from '../repositories/plan-summary.repository.js';
 import { subcontractingRepository, SubcontractError } from '../repositories/subcontracting.repository.js';
+import { productSerialRepository } from '../repositories/product-serial.repository.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
@@ -61,6 +62,10 @@ router.get('/print-templates/settings', authenticate, authorizeSettings('product
 router.put('/print-templates/:docType', authenticate, authorizeSettings('production', 'edit'), validate(printTemplateSchema), asyncHandler(printTemplateController.updateBase));
 router.put('/print-templates/:docType/variants/:orderTypeId', authenticate, validateUuidParams('orderTypeId'), authorizeSettings('production', 'edit'), validate(printTemplateSchema), asyncHandler(printTemplateController.upsertVariant));
 router.delete('/print-templates/:docType/variants/:orderTypeId', authenticate, validateUuidParams('orderTypeId'), authorizeSettings('production', 'edit'), asyncHandler(printTemplateController.deleteVariant));
+router.get('/serials/lookup', authenticate, can('production.view'), asyncHandler(async (req, res) => {
+  const sn = typeof req.query.serial === 'string' ? req.query.serial.slice(0, 80) : '';
+  res.json({ success: true, data: sn.trim() ? await productSerialRepository.lookup(sn) : [] });
+}));
 router.get('/subcontracting', authenticate, can('production.view'), asyncHandler(async (_req, res) => { res.json({ success: true, data: await subcontractingRepository.listOpen() }); }));
 router.get('/policies', authenticate, can('production.view'), asyncHandler(productionController.listPolicies));
 router.put('/policies/:key', authenticate, authorizeSettings('production', 'edit'), validate(setPolicySchema), asyncHandler(productionController.setPolicy));
@@ -72,6 +77,9 @@ const subcontractError = (res: import('express').Response, e: unknown) => {
   if (e instanceof SubcontractError) { res.status(e.status).json({ success: false, error: { message: e.message } }); return; }
   throw e;
 };
+router.get('/:id/serials', authenticate, id, can('production.view'), asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await productSerialRepository.listForPlan(req.params.id as string) });
+}));
 router.get('/:id/subcontract', authenticate, id, can('production.view'), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await subcontractingRepository.get(req.params.id as string) });
 }));

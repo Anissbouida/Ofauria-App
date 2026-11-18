@@ -73,6 +73,8 @@ export const produceItemsSchema = z.object({
       outputType: z.enum(['principal', 'co_produit', 'sous_produit', 'dechet_valorise']).optional(),
       fixedUnitValue: z.number().finite().min(0).max(1000000).nullable().optional(),
     })).max(20).optional(),
+    /** M9 : numéros de série saisis (article suivi par série) ; le reste est numéroté d'après le lot. */
+    serials: z.array(z.string().trim().min(1).max(80)).max(5000).optional(),
   })).min(1, 'Aucun article à produire'),
   producedAt: clientTimestamp.optional(),
   // G0-24 : saisies de la fenêtre de lancement, enregistrées avec la déclaration.

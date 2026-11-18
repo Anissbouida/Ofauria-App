@@ -785,6 +785,8 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
     // realite is_reexposable). Alignement stricte avec le champ DB.
     isReexposable: (product?.is_reexposable as boolean) || false,
     isRecyclable: (product?.is_recyclable as boolean) || false,
+    // M9 (mig 585) : traçabilité par lot (défaut) ou par numéro de série.
+    trackingMode: ((product?.tracking_mode as string) || 'lot') as 'lot' | 'serial',
     // Audit P1.4 : plafond editable, defaut 1 quand reexposable.
     maxReexpositions: String((product?.max_reexpositions as number | undefined) ?? ''),
     saleType: (product?.sale_type as string) || 'jour',
@@ -1677,6 +1679,20 @@ function ProductFormModal({ product, categories, onClose, onSave, isLoading }: {
                       </div>
                     </div>
 
+                    {/* M9 : traçabilité — lot (défaut) ou un numéro de série par pièce fabriquée. */}
+                    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 14, background: 'var(--odoo-bg)' }}>
+                      <label className="flex items-center justify-between gap-3">
+                        <span className="min-w-0">
+                          <span className="text-sm font-semibold text-gray-900">Traçabilité</span>
+                          <span className="block text-xs text-gray-400">Par série : un numéro unique par pièce, créé à la déclaration de production.</span>
+                        </span>
+                        <select style={{ ...fieldInput, width: 180 }} value={form.trackingMode}
+                          onChange={(e) => setForm({ ...form, trackingMode: e.target.value as 'lot' | 'serial' })} aria-label="Traçabilité">
+                          <option value="lot">Par lot</option>
+                          <option value="serial">Par numéro de série</option>
+                        </select>
+                      </label>
+                    </div>
                     {/* Re-exposable toggle + durée de remise en vente (audit P1.4).
                         max_reexpositions = nombre de jours où le produit reste vendable
                         après J (J+1…J+N) : on l'exprime donc comme une PÉRIODE en jours,

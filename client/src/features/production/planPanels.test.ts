@@ -29,6 +29,10 @@ describe('Registre des panneaux de l\'ordre (M8-01)', () => {
     expect(visible({ plan: { status: 'draft', order_type_is_subcontracting: true } }, 'synthese')).toEqual(['subcontract', 'custom-fields', 'history']);
     expect(visible({ plan: { status: 'draft' } }, 'synthese')).not.toContain('subcontract');
   });
+  it('numéros de série : ligne d\'un article suivi par série (M9)', () => {
+    expect(visible({ plan: { status: 'completed' }, items: [{ tracking_mode: 'serial' }] }, 'production')).toEqual(['serials', 'steps', 'yield']);
+    expect(visible({ plan: { status: 'completed' }, items: [{ tracking_mode: 'lot' }] }, 'production')).not.toContain('serials');
+  });
   it('alertes de l\'onglet Ingrédients', () => {
     const prep = (c: Partial<PlanPanelCtx>) => visible({ plan: { status: 'confirmed' }, ...c } as never, 'preparation' as never);
     expect(prep({ isMagasinier: true, warnings: ['Farine insuffisante'] })).toEqual(['stock-warnings']);

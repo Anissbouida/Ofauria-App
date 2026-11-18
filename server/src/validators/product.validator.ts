@@ -31,6 +31,8 @@ const lifecycleFields = {
   shelfLifeDays: positiveInt(365, 'DLV: 0 à 365 jours').optional().nullable(),
   displayLifeHours: positiveInt(24 * 30, 'DDE: 0 à 720 heures').optional().nullable(),
   isReexposable: z.coerce.boolean().optional(),
+  /** Traçabilité (M9, mig 585) : lot, ou un numéro de série par pièce fabriquée. */
+  trackingMode: z.enum(['lot', 'serial']).optional(),
   isRecyclable: z.coerce.boolean().optional(),
   recycleIngredientId: uuid.nullable().optional(),
   maxReexpositions: positiveInt(10, 'Max ré-expositions: 0 à 10').optional().nullable(),

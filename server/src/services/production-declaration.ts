@@ -8,11 +8,12 @@
 import { db, withTransaction } from '../config/database.js';
 import { productionRepository } from '../repositories/production.repository.js';
 import { declareProductLoss } from './product-loss.service.js';
+import { productSerialRepository } from '../repositories/product-serial.repository.js';
 
 type ProduceItem = Parameters<typeof productionRepository.produceItems>[1][number];
 
 export interface ProductionDeclaration {
-  items: ProduceItem[];
+  items: (ProduceItem & { serials?: string[] })[];
   producedAt?: string;
   observations?: string;
   bases?: { subRecipeId: string; actualQuantity: number; alreadyProduced?: boolean }[];
@@ -22,6 +23,8 @@ export interface ProductionDeclaration {
 export async function declareProduction(planId: string, input: ProductionDeclaration, actor: { userId: string; storeId?: string }) {
   return withTransaction(async () => {
     const result = await productionRepository.produceItems(planId, input.items, actor.userId, actor.storeId, input.producedAt);
+    // M9 : numéros de série des articles suivis par série, dans la même transaction.
+    await productSerialRepository.assignForPlan(planId, input.items, actor.userId);
 
     for (const loss of input.losses ?? []) {
       const item = (await db.query(

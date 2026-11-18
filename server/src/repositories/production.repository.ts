@@ -90,7 +90,7 @@ export const productionRepository = {
     const itemsResult = await db.query(
       `SELECT ppi.*, COALESCE(p.name, br.name) as product_name, p.image_url as product_image,
               c.slug as category_slug, c.name as category_name,
-              p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable,
+              p.shelf_life_days, p.display_life_hours, p.is_reexposable, p.is_recyclable, p.tracking_mode,
               p.sale_type, p.sale_unit, p.cost_price,
               pdt.produced_at, pdt.expires_at, pdt.display_expires_at,
               pst.created_at as production_timestamp,

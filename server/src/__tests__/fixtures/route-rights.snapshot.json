@@ -1578,6 +1578,14 @@
  "GET /production/:id/consumption-variance": null,
  "GET /production/:id/dependencies": null,
  "GET /production/:id/events": null,
+ "GET /production/:id/serials": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /production/:id/sub-recipe-analysis": null,
  "GET /production/:id/subcontract": [
   "admin",
@@ -1669,6 +1677,14 @@
  ],
  "GET /production/print-templates/settings": null,
  "GET /production/process-referentials": null,
+ "GET /production/serials/lookup": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /production/settings": [
   "admin",
   "baker",
