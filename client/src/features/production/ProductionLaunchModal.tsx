@@ -1,4 +1,5 @@
 import { useProductionPolicies, shiftOf } from './usePolicies';
+import { cutProducedQuantity } from '@ofauria/shared';
 import { visibleLaunchSteps, nextLaunchStep, prevLaunchStep, showCutSection } from './launchStepRules';
 import { useProdTerms } from '../../hooks/useProdTerms';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -1593,13 +1594,14 @@ export default function ProductionLaunchModal({
     const presets = (Array.isArray(item.cut_presets) ? item.cut_presets : []) as Record<string, any>[];
     const num = (v: string) => parseFloat(String(v ?? '').replace(',', '.')) || 0;
     const lines: CutLine[] = cutLines[id] || [];
-    const totalOf = (ls: CutLine[]) => ls.reduce((sum, l) => sum + (l.kind ? 0 : num(l.qty) * (l.base ? 1 : num(l.equiv))), 0);
+    // M8-05 : même formule que le serveur (qui recalcule et fait foi à la déclaration).
+    const totalOf = (ls: CutLine[]) => cutProducedQuantity(ls.map(l => ({ quantity: num(l.qty), equiv: l.base ? 1 : num(l.equiv), outputType: l.kind ?? null })));
     const declared = (Array.isArray(item.declared_outputs) ? item.declared_outputs : []) as Record<string, any>[];
     const total = totalOf(lines);
     const apply = (next: CutLine[]) => {
       setCutLines((prev) => ({ ...prev, [id]: next }));
       // Quantités décimales (mig 512) : même arrondi au millième que le serveur.
-      setActuals((prev) => ({ ...prev, [id]: Math.round(totalOf(next) * 1000) / 1000 }));
+      setActuals((prev) => ({ ...prev, [id]: totalOf(next) }));
     };
     const edit = (key: string, patch: Partial<CutLine>) => apply(lines.map((l) => (l.key === key ? { ...l, ...patch } : l)));
     const toggle = (on: boolean) => {

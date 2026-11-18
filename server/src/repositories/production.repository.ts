@@ -12,7 +12,7 @@ import { productLotRepository } from './product-lot.repository.js';
 import { packagingItemRepository } from './packaging-item.repository.js';
 import { setActor, setReason, transitionPlan, transitionBon, withActor } from '../services/production-state.js';
 import { collectIngredientNeedsForUnits, getCompositionForNeeds } from './recipe-composition.helper.js';
-import { roundQty } from '../utils/quantity.js';
+import { cutProducedQuantity } from '@ofauria/shared';
 import { sectorRepository } from './sector.repository.js';
 import { applyStockOut } from '../services/stock-anomaly.js';
 
@@ -1519,7 +1519,7 @@ export const productionRepository = {
           if (resolved.length > 0) {
             cutByItem.set(item.planItemId, resolved);
             // Sous-produits / déchets valorisés (M4-06) : hors quantité produite de l'article.
-            item.actualQuantity = roundQty(resolved.filter(o => o.outputType === 'principal' || o.outputType === 'co_produit').reduce((sum, o) => sum + o.quantity * o.equiv, 0));
+            item.actualQuantity = cutProducedQuantity(resolved); // M8-05 : formule partagée avec l'aperçu de la fenêtre de lancement
           }
         }
         if (item.actualQuantity <= 0) continue;

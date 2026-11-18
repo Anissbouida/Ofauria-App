@@ -6,6 +6,7 @@ export * from './constants/units.js';
 export * from './constants/production-status.js';
 export * from './constants/print-templates.js';
 export * from './constants/vocabulary.js';
+export * from './constants/production-cut.js';
 export * from './constants/production-contenant.js';
 export * from './constants/modules.js';
 export * from './constants/module-activation.js';
