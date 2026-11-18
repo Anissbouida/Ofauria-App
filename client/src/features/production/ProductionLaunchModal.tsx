@@ -1,4 +1,5 @@
 import { useProductionPolicies, shiftOf } from './usePolicies';
+import { usePermissions } from '../../context/PermissionsContext';
 import { money } from '../../utils/money';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -146,6 +147,8 @@ export default function ProductionLaunchModal({
   onClose,
   onCompleted,
 }: ProductionLaunchModalProps) {
+  const { hasFeature } = usePermissions();
+  const batchMode = hasFeature('mode_fournee');
   // Dynamic loss reasons from referentiel
   // M6-03 : référentiel unique des motifs de rebut, domaine production.
   const { entries: prodLossReasonEntries } = useReferentiel('scrap_reasons');
@@ -1569,6 +1572,10 @@ export default function ProductionLaunchModal({
   // proposees d'un clic.
   const renderCutSection = (item: Record<string, any>) => {
     if (!item.product_id) return null;
+    // M8-06 : coupe d'un cadre (pâtisserie) seulement avec l'option « fournée » ; les sorties
+    // déclarées sur la fiche (M4-06) restent proposées dans tous les secteurs.
+    const declaredOnly = !batchMode;
+    if (declaredOnly && !(Array.isArray(item.declared_outputs) && item.declared_outputs.length)) return null;
     const id = item.id as string;
     const planned = (item.planned_quantity as number) || 0;
     const active = !!cutMode[id];

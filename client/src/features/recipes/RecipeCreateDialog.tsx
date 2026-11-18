@@ -25,7 +25,12 @@ export interface RecipeIdentity { id: string; name: string; category_id?: string
 export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onClose }: { defaultIsBase?: boolean; recipe?: RecipeIdentity; onClose: () => void }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { sectorLabel } = usePermissions();
+  const { sectorLabel, hasFeature } = usePermissions();
+  // M8-03 / M8-06 : termes du secteur ; saisie par fournée seulement avec l'option boulangerie.
+  const batchMode = hasFeature('mode_fournee');
+  const tFinished = sectorLabel('finished_product', 'Produit fini');
+  const tBase = sectorLabel('base_prep', 'Préparation de base');
+  const tBatch = sectorLabel('batch', 'Fournée');
   const isEdit = !!recipe;
   const [isBase, setIsBase] = useState(recipe ? !!recipe.is_base : defaultIsBase);
   const [name, setName] = useState(recipe?.name ?? '');
@@ -33,7 +38,7 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
   // Mode de saisie des quantités de composition, décidé ici une fois pour toutes :
   // par fournée (lot découpé) ou par pièce (unité). Modifiable ensuite via cette
   // même fenêtre, mais plus pendant la composition.
-  const [compoParPiece, setCompoParPiece] = useState<boolean>(recipe?.compo_par_piece ?? false);
+  const [compoParPiece, setCompoParPiece] = useState<boolean>(recipe?.compo_par_piece ?? !hasFeature('mode_fournee'));
   // Parametres de pate (mig 342) : temperature de pate cible en fin de petrissage,
   // hydratation en % boulanger. Edites ici pour les preparations de base (pates).
   const [tempPate, setTempPate] = useState<string>(recipe?.temperature_pate_cible_c != null ? String(recipe.temperature_pate_cible_c) : '');
@@ -95,7 +100,7 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
             {isBase ? <Layers size={14} style={{ color: 'var(--theme-accent)' }} /> : <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />}
             <span>{sectorLabel('recipes', 'Fiches techniques')}</span>
             <span className="odoo-breadcrumb-separator">›</span>
-            <span className="odoo-breadcrumb-current">{isEdit ? recipe!.name : isBase ? 'Nouvelle préparation' : 'Nouvelle recette'}</span>
+            <span className="odoo-breadcrumb-current">{isEdit ? recipe!.name : batchMode ? (isBase ? 'Nouvelle préparation' : 'Nouvelle recette') : (isBase ? `Nouveau : ${tBase.toLowerCase()}` : `Nouvelle ${sectorLabel('recipe', 'recette').toLowerCase()}`)}</span>
           </div>
           <div style={{ flex: 1 }} />
           <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
@@ -106,21 +111,23 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
             <div className="text-xs text-gray-500 mb-1" id="recipe-type-label">Type</div>
             <div className="flex rounded-md border border-gray-200 overflow-hidden" role="group" aria-labelledby="recipe-type-label">
               <button type="button" aria-pressed={!isBase} onClick={() => setIsBase(false)} className={typeBtn(!isBase)}>
-                <ChefHat size={15} /> Produit fini
+                <ChefHat size={15} /> {tFinished}
               </button>
               <button type="button" aria-pressed={isBase} onClick={() => setIsBase(true)} className={`${typeBtn(isBase)} border-l border-gray-200`}>
-                <Layers size={15} /> Préparation de base
+                <Layers size={15} /> {tBase}
               </button>
             </div>
             <p className="text-[11px] text-gray-400 mt-1">
-              {isBase ? 'Réutilisable dans d\'autres recettes (pâte, crème, glaçage…).' : 'Produit vendu, composé d\'ingrédients et de préparations de base.'}
+              {batchMode
+                ? (isBase ? 'Réutilisable dans d\'autres recettes (pâte, crème, glaçage…).' : 'Produit vendu, composé d\'ingrédients et de préparations de base.')
+                : (isBase ? `${tBase} réutilisable dans d'autres nomenclatures.` : `${tFinished} composé de composants et de ${tBase.toLowerCase()}s.`)}
             </p>
           </div>}
 
           <label className="block" htmlFor="recipe-name">
             <span className="text-xs text-gray-500">Nom</span>
             <input id="recipe-name" autoFocus className={`${field} mt-1`} value={name} onChange={(e) => setName(e.target.value)}
-              maxLength={200} placeholder={isBase ? 'ex : Crème pâtissière' : 'ex : Croissant'} />
+              maxLength={200} placeholder={batchMode ? (isBase ? 'ex : Crème pâtissière' : 'ex : Croissant') : (isBase ? 'ex : Sous-ensemble châssis' : 'ex : Article fini')} />
           </label>
 
           <label className="block" htmlFor="recipe-category">
@@ -132,12 +139,12 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
             </div>
           </label>
 
-          {!isBase && (
+          {!isBase && batchMode && (
             <div>
               <div className="text-xs text-gray-500 mb-1" id="recipe-mode-label">Mode de saisie des quantités</div>
               <div className="flex rounded-md border border-gray-200 overflow-hidden" role="group" aria-labelledby="recipe-mode-label">
                 <button type="button" aria-pressed={!compoParPiece} onClick={() => setCompoParPiece(false)} className={typeBtn(!compoParPiece)}>
-                  Par fournée (lot)
+                  Par {tBatch.toLowerCase()} (lot)
                 </button>
                 <button type="button" aria-pressed={compoParPiece} onClick={() => setCompoParPiece(true)} className={`${typeBtn(compoParPiece)} border-l border-gray-200`}>
                   Par pièce (unité)

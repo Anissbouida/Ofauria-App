@@ -46,6 +46,17 @@ export default function RecipesPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { sectorLabel } = usePermissions();
+  // M8-03 : termes du secteur (défaut = boulangerie).
+  const T = {
+    finishedTab: sectorLabel('finished_products_tab', 'Recettes produits finis'),
+    baseTab: sectorLabel('base_preps', 'Préparations de base'),
+    base: sectorLabel('base_prep', 'Préparation de base'),
+    formatsTab: sectorLabel('formats_tab', 'Formats de production'),
+    yield: sectorLabel('yield', 'Rendement'),
+    batchCost: sectorLabel('batch_cost', 'Coût fournée'),
+    searchRecipes: sectorLabel('search_recipes', 'Rechercher une recette ou un produit...'),
+    searchBase: sectorLabel('search_base_preps', 'Rechercher une préparation de base...'),
+  };
   const isAdmin = user?.role === 'admin';
   // Vue « Archivées » : fiches retirées des listes (retenues par l'historique de
   // production, ou mises de côté) — consultables et restaurables, jamais mélangées
@@ -329,9 +340,9 @@ export default function RecipesPage() {
           <span>{sectorLabel('recipes', 'Fiches techniques')}</span>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">
-            {activeTab === 'contenants' ? 'Formats de production'
-              : activeTab === 'base' ? 'Préparations de base'
-              : 'Recettes produits finis'}
+            {activeTab === 'contenants' ? T.formatsTab
+              : activeTab === 'base' ? T.baseTab
+              : T.finishedTab}
             {showArchived && activeTab !== 'contenants' && ' — archivées'}
           </span>
         </div>
@@ -405,21 +416,21 @@ export default function RecipesPage() {
       <div className="odoo-tabs">
         <button onClick={() => switchTab('product')}
           className={`odoo-tab ${activeTab === 'product' ? 'active' : ''}`}>
-          <ChefHat size={13} /> Recettes produits finis
+          <ChefHat size={13} /> {T.finishedTab}
           {productCount > 0 && (
             <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{productCount}</span>
           )}
         </button>
         <button onClick={() => switchTab('base')}
           className={`odoo-tab ${activeTab === 'base' ? 'active' : ''}`}>
-          <Layers size={13} /> Préparations de base
+          <Layers size={13} /> {T.baseTab}
           {baseCount > 0 && (
             <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{baseCount}</span>
           )}
         </button>
         <button onClick={() => switchTab('contenants')}
           className={`odoo-tab ${activeTab === 'contenants' ? 'active' : ''}`}>
-          <Package size={13} /> Formats de production
+          <Package size={13} /> {T.formatsTab}
         </button>
       </div>
 
@@ -430,7 +441,7 @@ export default function RecipesPage() {
       <div className="odoo-search-panel">
         <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
         <input type="text"
-          placeholder={activeTab === 'base' ? 'Rechercher une préparation de base...' : 'Rechercher une recette ou un produit...'}
+          placeholder={activeTab === 'base' ? T.searchBase : T.searchRecipes}
           value={search} onChange={(e) => setSearch(e.target.value)}
           className="odoo-search-input" />
         <div style={{ marginLeft: 8 }}>
@@ -539,7 +550,7 @@ export default function RecipesPage() {
                     </span>
                   </div>
                   <div className="odoo-kanban-card-supplier">
-                    {r.is_base ? 'Préparation de base' : (r.product_name as string || 'Aucun produit')}
+                    {r.is_base ? T.base : (r.product_name as string || 'Aucun produit')}
                   </div>
                   <div className="odoo-kanban-card-stock">
                     <span className="odoo-kanban-card-stock-value" style={{ color: 'var(--theme-accent)' }}>
@@ -548,7 +559,7 @@ export default function RecipesPage() {
                     <span className="odoo-kanban-card-stock-unit">DH coût matière</span>
                   </div>
                   <div className="odoo-kanban-card-split">
-                    <span>Rendement <strong>{yieldQty} {r.yield_unit as string || 'u.'}</strong></span>
+                    <span>{T.yield} <strong>{yieldQty} {r.yield_unit as string || 'u.'}</strong></span>
                     <span style={{ color: 'var(--theme-bg-separator)' }}>·</span>
                     <span>Coût mat./u. <strong>{costPerUnit.toFixed(2)} DH</strong></span>
                   </div>
@@ -593,12 +604,12 @@ export default function RecipesPage() {
                     colonnes à ce qui manque vraiment — la perte et le net. */}
                 {!isBaseTab && <SortHeader label="Type" sortKey="is_base" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />}
                 <SortHeader label="Format" sortKey="contenant_nom" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
-                <SortHeader label={isBaseTab ? 'Rendement brut' : 'Rendement'} sortKey="yield_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
+                <SortHeader label={isBaseTab ? `${T.yield} brut` : T.yield} sortKey="yield_quantity" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right" />
                 {isBaseTab && (
                   <>
                     <SortHeader label="Perte" sortKey="perte" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                       title="Perte de transformation (cuisson, réduction). Elle sépare le poids engagé du poids réellement utilisable." />
-                    <SortHeader label="Rendement net" sortKey="net" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                    <SortHeader label={`${T.yield} net`} sortKey="net" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                       title="Poids brut moins la perte de transformation." />
                   </>
                 )}
@@ -606,7 +617,7 @@ export default function RecipesPage() {
                     (ingrédients + emballages + sous-recettes). Main d'œuvre, énergie et
                     frais de structure ne sont ajoutés que dans l'éditeur de composition.
                     Les libellés le disent, sinon la marge d'ici contredit celle de là-bas. */}
-                <SortHeader label={isBaseTab ? 'Coût fournée' : 'Coût matière'} sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
+                <SortHeader label={isBaseTab ? T.batchCost : 'Coût matière'} sortKey="total_cost" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                   title="Ingrédients, emballages et préparations de base. Hors main d'œuvre, énergie et frais de structure." />
                 <SortHeader label={isBaseTab ? 'Coût / kg net' : 'Coût mat./u.'} sortKey="cost_per_unit" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} align="right"
                   title={isBaseTab
@@ -655,7 +666,7 @@ export default function RecipesPage() {
                   : r.compo_vide ? 'danger'
                   : r.rendement_a_definir ? 'warning'
                   : 'ok';
-                const dotTitle = r.is_base ? 'Préparation de base'
+                const dotTitle = r.is_base ? T.base
                   : r.compo_vide ? 'À corriger : composition vide'
                   : r.rendement_a_definir ? 'Rendement à définir (contenant non assigné)'
                   : 'OK';

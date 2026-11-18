@@ -193,7 +193,12 @@ export const sectorRepository = {
 
   /** Libellés d'un secteur (phase 9.1) : clé neutre → valeur affichée. */
   async labels(code: string): Promise<Record<string, string>> {
-    const { rows } = await db.query(`SELECT label_key, label_value FROM sector_labels WHERE sector_pack = $1`, [code]);
+    // M8-03 : un secteur personnalisé hérite des libellés de son secteur de base, puis les surcharge.
+    const { rows } = await db.query(
+      `SELECT l.label_key, l.label_value, (l.sector_pack = $1) AS own
+         FROM sector_labels l
+        WHERE l.sector_pack = $1 OR l.sector_pack = (SELECT base_sector FROM sector_packs WHERE code = $1)
+        ORDER BY own`, [code]);
     const map: Record<string, string> = {};
     for (const r of rows) map[r.label_key] = r.label_value;
     return map;
