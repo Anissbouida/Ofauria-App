@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { auditTrailRepository } from '../repositories/audit-trail.repository.js';
 import express from 'express';
 import { settingsController } from '../controllers/settings.controller.js';
 import { auditLogController } from '../controllers/audit-log.controller.js';
@@ -35,6 +36,14 @@ router.get('/setup', authenticate, asyncHandler(setupController.status));
 
 // Journal des modifications (mig 328) et des connexions : section « audit ».
 router.get('/audit-log', authenticate, authorizeSettings('audit'), asyncHandler(auditLogController.list));
+// G6-07 : historique d'une fiche (piste d'audit générique) — tables suivies seulement.
+router.get('/audit-trail/:table/:id', authenticate, authorizeSettings('audit'), asyncHandler(async (req, res) => {
+  const table = String(req.params.table);
+  if (!/^[a-z_][a-z0-9_]{0,62}$/.test(table) || !(await auditTrailRepository.isTracked(table))) {
+    res.status(404).json({ success: false, error: { message: 'Table non suivie' } }); return;
+  }
+  res.json({ success: true, data: await auditTrailRepository.history(table, String(req.params.id)) });
+}));
 router.get('/audit-log/tables', authenticate, authorizeSettings('audit'), asyncHandler(auditLogController.tables));
 router.get('/auth-events', authenticate, authorizeSettings('audit'), asyncHandler(auditLogController.authEvents));
 

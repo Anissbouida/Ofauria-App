@@ -1,4 +1,5 @@
 import { usePermissions } from '../../context/PermissionsContext';
+import HistoryPanel from '../../components/audit/HistoryPanel';
 import CustomFieldsCard from '../../components/custom-fields/CustomFieldsCard';
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -149,6 +150,7 @@ export default function NomenclaturePage() {
         <RecipeOutputsPanel recipeId={recipe.id} />
         <RecipeRoutingPanel recipeId={recipe.id} recipeName={recipe.name} />
         <CustomFieldsCard entity="recipe" id={recipe.id} />
+        <HistoryPanel table="recipes" id={recipe.id} />
 
         <NomenclatureEditor recipeId={recipe.id} onFinance={setKpi} onCancel={() => navigate('/recipes?tab=product')} onSaved={() => qc.invalidateQueries({ queryKey: ['recipe', id] })} />
 

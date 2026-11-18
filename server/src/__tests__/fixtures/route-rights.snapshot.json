@@ -2189,6 +2189,7 @@
  "GET /settings/approval-rules": null,
  "GET /settings/audit-log": null,
  "GET /settings/audit-log/tables": null,
+ "GET /settings/audit-trail/:table/:id": null,
  "GET /settings/auth-events": null,
  "GET /settings/bank-accounts": null,
  "GET /settings/data/export/base": null,
