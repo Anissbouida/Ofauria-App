@@ -6,6 +6,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { useReferentiel } from '../../hooks/useReferentiel';
+import { money } from '../../utils/money';
 
 /** Ce que la modale a besoin de connaitre d'un lot, quel que soit l'ecran d'origine. */
 export interface LotMovementLot {
@@ -199,7 +200,7 @@ export function LotMovementModal({ lot, initialType, lockType = false, only, onC
                 <AlertTriangle size={14} style={{ marginTop: 2, flexShrink: 0 }} />
                 <div>
                   <span className="odoo-alert-title">Action irréversible</span> — {fmt(scelle + entame)} {lot.unit} retirés du stock
-                  {lostValue != null && lostValue > 0 ? ` (${lostValue.toFixed(2)} DH)` : ''}.
+                  {lostValue != null && lostValue > 0 ? ` (${money(lostValue)})` : ''}.
                 </div>
               </div>
             </>

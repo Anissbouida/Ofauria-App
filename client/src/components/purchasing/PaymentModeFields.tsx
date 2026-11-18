@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Banknote, ShieldAlert, ShieldCheck, Undo2 } from 'lucide-react';
@@ -101,7 +102,7 @@ export function CashLimitGauge({ supplierId, date, amount, modeCode, override, o
             ? <button type="button" className="odoo-btn-secondary" onClick={() => onOverrideChange(null)}>Retirer la dérogation</button>
             : <button type="button" className="odoo-btn-danger" onClick={() => setAskOverride(true)}>Dérogation admin</button>
         ) : undefined}>
-        <div>Ce jour : {fmt(c.dayAfter)} / {fmt(c.dayLimit)} DH ({c.pctDay ?? 0} %) · Ce mois : {fmt(c.monthAfter)} / {fmt(c.monthLimit)} DH</div>
+        <div>Ce jour : {fmt(c.dayAfter)} / {money(c.dayLimit)} ({c.pctDay ?? 0} %) · Ce mois : {fmt(c.monthAfter)} / {money(c.monthLimit)}</div>
         {c.exceeded && !c.agriException && !c.blocked && (
           <div>Le règlement passera mais sera marqué <strong>non déductible</strong> (IS et TVA). Préférez chèque barré, effet ou virement.</div>
         )}
@@ -143,7 +144,7 @@ export function ReissuePaymentDialog({ payment, pending, onClose, onSubmit }: {
       <div className="odoo-scope" onClick={(e) => e.stopPropagation()}
         style={{ width: '100%', maxWidth: 440, borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
         <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">Ré-émettre le règlement de {fmt(amount)} DH</span></div>
+          <div className="odoo-breadcrumb"><span className="odoo-breadcrumb-current">Ré-émettre le règlement de {money(amount)}</span></div>
         </div>
         <form onSubmit={(e) => {
           e.preventDefault();

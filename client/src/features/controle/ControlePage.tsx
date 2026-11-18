@@ -30,6 +30,7 @@ import HaccpManagerTab from '../haccp/HaccpManagerTab';
 import TraceabilityTab from '../traceability/TraceabilityTab';
 import ComplaintsTab from './ComplaintsTab';
 import QualityTab from './QualityTab';
+import { money, currencySymbol } from '../../utils/money';
 
 /**
  * Contrôle & Qualité (décision du 2026-10-18) : un seul endroit pour tous les
@@ -136,7 +137,7 @@ function Overview({ range, onTab }: { range: Record<string, string>; onTab: (t: 
           const items = byDomain(d.key);
           const value = items.reduce((s, i) => s + Math.abs(i.value ?? 0), 0);
           const danger = items.filter(i => i.severity === 'danger').length;
-          return [d.key, { count: items.length, sub: value > 0 ? `${n(value)} DH` : '', late: danger, alertLabel: 'urgent' }];
+          return [d.key, { count: items.length, sub: value > 0 ? `${money(value)}` : '', late: danger, alertLabel: 'urgent' }];
         }))}
         isActive={() => false}
         onPick={k => (k === 'ventes' ? navigate('/boutique') : onTab(k as Tab))}
@@ -180,7 +181,7 @@ function Overview({ range, onTab }: { range: Record<string, string>; onTab: (t: 
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{i.count === null ? '—' : i.count}</td>
                       <td style={{ textAlign: 'right', color: (i.value ?? 0) < 0 ? '#dc3545' : 'var(--odoo-text)' }}>
-                        {i.value === null || i.value === 0 ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span> : <>{n(i.value)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>DH</span></>}
+                        {i.value === null || i.value === 0 ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span> : <>{n(i.value)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{currencySymbol()}</span></>}
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         {i.severity !== 'ok' && i.severity !== 'unknown' && (
@@ -219,7 +220,7 @@ function DomainIndicators({ range, domain }: { range: Record<string, string>; do
             <Dot color={DOT[i.severity]} /> {i.label}
           </div>
           <div className="odoo-stat-card-value">{i.count ?? '—'}</div>
-          <div className="odoo-stat-card-sub">{i.value ? `${n(i.value)} DH · ` : ''}{i.hint}</div>
+          <div className="odoo-stat-card-sub">{i.value ? `${money(i.value)} · ` : ''}{i.hint}</div>
         </div>
       ))}
     </div>
@@ -337,11 +338,11 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
     <>
       <StagePipeline
         title="Registre des pertes"
-        summary={`${n(total)} DH au coût de revient${delta !== null ? ` · ${delta > 0 ? '+' : ''}${delta} % vs période précédente` : ''}`}
+        summary={`${money(total)} au coût de revient${delta !== null ? ` · ${delta > 0 ? '+' : ''}${delta} % vs période précédente` : ''}`}
         stages={FAMILIES}
         stats={Object.fromEntries(FAMILIES.map(f => {
           const x = (fam as Record<string, { count: number; value: number; missing: number } | undefined>)[f.key];
-          return [f.key, x ? { count: x.count, sub: `${n(x.value)} DH`, late: x.missing, alertLabel: 'sans coût' } : { count: 0, sub: '' }];
+          return [f.key, x ? { count: x.count, sub: `${money(x.value)}`, late: x.missing, alertLabel: 'sans coût' } : { count: 0, sub: '' }];
         }))}
         isActive={k => family === k}
         onPick={k => setFamily(family === k && k !== 'all' ? 'all' : (k as 'all' | LossFamily))}
@@ -364,7 +365,7 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
               <span key={`${t.item_name}-${t.source}`}>
                 <strong>{t.item_name}</strong>
                 <span style={{ color: 'var(--theme-text-muted)' }}> · {Number(t.quantity).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} {t.source === 'produit' ? 'u' : t.unit} · </span>
-                <strong>{n(Number(t.value))} DH</strong>
+                <strong>{money(Number(t.value))}</strong>
               </span>
             ))}
           </div>
@@ -434,7 +435,7 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
                   <td style={{ textAlign: 'right' }}>
                     {r.cost_missing
                       ? <span style={{ color: '#b85d1a', fontSize: '0.75rem', fontWeight: 600 }}>coût manquant</span>
-                      : <strong>{n(Number(r.value))} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></strong>}
+                      : <strong>{n(Number(r.value))} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></strong>}
                   </td>
                   <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{r.declared_by_name ?? '—'}</td>
                   <td style={{ textAlign: 'right' }}>
@@ -450,7 +451,7 @@ function LossRegister({ range, periodText }: { range: Record<string, string>; pe
             <tfoot>
               <tr style={{ fontWeight: 700, borderTop: '2px solid var(--theme-bg-separator)' }}>
                 <td colSpan={6} style={{ color: 'var(--theme-text-muted)' }}>Total du filtre — {data?.total ?? 0} perte{(data?.total ?? 0) > 1 ? 's' : ''}{(data?.missingCost ?? 0) > 0 ? ` (dont ${data!.missingCost} sans coût)` : ''}</td>
-                <td style={{ textAlign: 'right' }}>{n(data?.sumValue ?? 0)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></td>
+                <td style={{ textAlign: 'right' }}>{n(data?.sumValue ?? 0)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></td>
                 <td colSpan={2}></td>
               </tr>
             </tfoot>

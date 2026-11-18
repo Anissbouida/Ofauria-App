@@ -10,10 +10,10 @@ import { ListKpi } from '../sales/ListTemplate';
 import { ViewSwitch, PeriodFilter, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import { usePurLayout, LayoutSwitch, SplitView, KanbanView, POPane, pdate, pmoney } from './PurLayouts';
 import { StatusTag } from '../../components/ui/StatusTag';
+import { money, currencySymbol } from '../../utils/money';
 
 const fmt = (v: number | string | null | undefined) =>
   v == null ? '—' : Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const money = (v: number) => `${fmt(v)} DH`;
 const date = (v: string | null | undefined) => (v ? String(v).slice(0, 10).split('-').reverse().join('/') : '—');
 const monthKey = (v: string | null | undefined) => (v ? String(v).slice(0, 7) : '');
 const monthLabel = (v: string | null | undefined) =>
@@ -41,7 +41,7 @@ type ReceptionRow = {
 /** BC en attente de réception (board, étapes « envoyé » et « réception partielle »). */
 type PendingPO = Record<string, any>;
 
-const Dh = () => <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', fontWeight: 400 }}>DH</span>;
+const Dh = () => <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', fontWeight: 400 }}>{currencySymbol()}</span>;
 
 /**
  * Étape 6 du cycle d'achat — Réception. Deux vues (ViewSwitch) :

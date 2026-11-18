@@ -11,6 +11,7 @@ import { useStockCategories, STOCKABLE_ROOT_IDS } from './useStockCategories';
 import CustomFieldsEditor from '../../components/custom-fields/CustomFieldsEditor';
 import { useCustomFieldsForm } from '../../api/custom-fields.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { currencySymbol } from '../../utils/money';
 
 /*
  * Formulaire unique de creation / modification d'un ingredient.
@@ -211,7 +212,7 @@ export default function IngredientFormModal({ mode, ingredient, threshold, onClo
                   )}
                 </Field>
                 <Field label="Coût unitaire">
-                  <Suffixed suffix={`DH / ${u}`}>
+                  <Suffixed suffix={`${currencySymbol()} / ${u}`}>
                     <input type="number" step="0.01" min="0" className="input" value={form.unitCost}
                       onChange={e => set('unitCost', e.target.value)} placeholder="0,00" />
                   </Suffixed>

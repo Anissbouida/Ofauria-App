@@ -5,6 +5,7 @@ import { fr } from 'date-fns/locale';
 import { Loader2, Clock, AlertTriangle, Search } from 'lucide-react';
 import { inventoryApi, type StockAgingLot } from '../../api/inventory.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { money } from '../../utils/money';
 
 /**
  * Age du stock matiere (rapport, lot P1 ERPNext « stock aging »). Lit les lots
@@ -14,7 +15,6 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
  * RESUME par tranche agrege la valeur (DH), pas les quantites.
  */
 
-const DH = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' DH';
 const qty = (n: number, unit: string) => `${n.toLocaleString('fr-FR', { maximumFractionDigits: 3 })}${unit ? ' ' + unit : ''}`;
 
 export default function StockAgingTab() {
@@ -53,14 +53,14 @@ export default function StockAgingTab() {
                 <Clock size={11} style={{ display: 'inline', marginRight: 4, color: danger ? '#dc3545' : 'var(--theme-accent)' }} />
                 {b.label}
               </div>
-              <div className="odoo-stat-card-value" style={{ color: danger && b.value > 0 ? '#dc3545' : undefined }}>{DH(b.value)}</div>
+              <div className="odoo-stat-card-value" style={{ color: danger && b.value > 0 ? '#dc3545' : undefined }}>{money(b.value)}</div>
               <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{b.lots} lot{b.lots > 1 ? 's' : ''}</div>
             </div>
           );
         })}
         <div className="odoo-stat-card" style={{ background: 'var(--theme-bg-secondary)' }}>
           <div className="odoo-stat-card-label">Valeur totale en stock</div>
-          <div className="odoo-stat-card-value">{DH(total)}</div>
+          <div className="odoo-stat-card-value">{money(total)}</div>
           <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{data?.lots.length ?? 0} lot{(data?.lots.length ?? 0) > 1 ? 's' : ''} actif{(data?.lots.length ?? 0) > 1 ? 's' : ''}</div>
         </div>
       </div>
@@ -115,7 +115,7 @@ export default function StockAgingTab() {
                       </span>
                     ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                   </td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{DH(l.value)}</td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>{money(l.value)}</td>
                 </tr>
               );
             })}

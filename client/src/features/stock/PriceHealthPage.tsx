@@ -5,8 +5,8 @@ import { ShieldAlert, ArrowLeft, Loader2, ChevronRight, CheckCircle } from 'luci
 import { StatusTag } from '../../components/ui/StatusTag';
 import { inventoryApi } from '../../api/inventory.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { money } from '../../utils/money';
 
-const money = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 
 /**
  * Santé des prix (mig 406, Achats lot prix P5) : anomalies de prix catalogue

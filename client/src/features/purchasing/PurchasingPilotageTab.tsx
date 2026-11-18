@@ -14,6 +14,7 @@ import {
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
 import { ListKpi } from '../sales/ListTemplate';
+import { money, currencySymbol } from '../../utils/money';
 
 const fmt = (v: number | string | null | undefined) =>
   v == null ? '—' : Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -57,7 +58,7 @@ const COLUMNS: Record<PilotageKind, Array<{ label: string; right?: boolean }>> =
   nolines: [{ label: 'Facture' }, { label: 'Date' }, { label: 'Règlement' }, { label: 'TTC', right: true }],
 };
 
-const Dh = () => <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', fontWeight: 400 }}>DH</span>;
+const Dh = () => <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', fontWeight: 400 }}>{currencySymbol()}</span>;
 
 /** Ancienneté : discrète sous 30 j, orange au-delà, rouge au-delà de 90 j. */
 function AgeTag({ days }: { days: number }) {
@@ -151,10 +152,10 @@ export default function PurchasingPilotageTab({ onOpenInvoice }: {
   const drillSupplier = (supplierId: string) => { setSupplierFilter(supplierId); setGroup('detail'); };
 
   const stats = s ? {
-    commitments: { count: s.open_commitments.pos, sub: `${fmt(s.open_commitments.amount)} DH` },
-    rni: { count: s.received_not_invoiced.lines, sub: `${fmt(s.received_not_invoiced.amount)} DH`, late: s.received_not_invoiced.aged, alertLabel: '> 30 j' },
-    inr: { count: s.invoiced_not_received.lines, sub: `${fmt(s.invoiced_not_received.amount)} DH`, late: s.invoiced_not_received.lines, alertLabel: 'à vérifier' },
-    nolines: { count: s.invoices_without_lines.count, sub: `${fmt(s.invoices_without_lines.amount)} DH` },
+    commitments: { count: s.open_commitments.pos, sub: `${money(s.open_commitments.amount)}` },
+    rni: { count: s.received_not_invoiced.lines, sub: `${money(s.received_not_invoiced.amount)}`, late: s.received_not_invoiced.aged, alertLabel: '> 30 j' },
+    inr: { count: s.invoiced_not_received.lines, sub: `${money(s.invoiced_not_received.amount)}`, late: s.invoiced_not_received.lines, alertLabel: 'à vérifier' },
+    nolines: { count: s.invoices_without_lines.count, sub: `${money(s.invoices_without_lines.amount)}` },
   } : {};
   const unit = kind === 'commitments' ? 'BC' : kind === 'nolines' ? 'facture' : 'ligne';
   const plural = (k: number, w: string) => `${k} ${w}${k > 1 ? 's' : ''}`;
@@ -171,12 +172,12 @@ export default function PurchasingPilotageTab({ onOpenInvoice }: {
       {/* Montants des 4 contrôles (au prix du BC) ; les pastilles dessous choisissent la liste affichée. */}
       {s && (
         <section className="prj-kpis" aria-label="Indicateurs">
-          <ListKpi label="Commandé, non reçu" value={`${fmt(s.open_commitments.amount)} DH`} sub={plural(s.open_commitments.pos, 'BC envoyé')} />
-          <ListKpi label="Reçu, non facturé" value={`${fmt(s.received_not_invoiced.amount)} DH`} sub={`${plural(s.received_not_invoiced.lines, 'ligne')} · ${s.received_not_invoiced.aged} > 30 j`}
+          <ListKpi label="Commandé, non reçu" value={`${money(s.open_commitments.amount)}`} sub={plural(s.open_commitments.pos, 'BC envoyé')} />
+          <ListKpi label="Reçu, non facturé" value={`${money(s.received_not_invoiced.amount)}`} sub={`${plural(s.received_not_invoiced.lines, 'ligne')} · ${s.received_not_invoiced.aged} > 30 j`}
             tone={s.received_not_invoiced.aged ? 'orange' : undefined} />
-          <ListKpi label="Facturé, non reçu" value={`${fmt(s.invoiced_not_received.amount)} DH`} sub={plural(s.invoiced_not_received.lines, 'ligne') + ' à vérifier'}
+          <ListKpi label="Facturé, non reçu" value={`${money(s.invoiced_not_received.amount)}`} sub={plural(s.invoiced_not_received.lines, 'ligne') + ' à vérifier'}
             tone={s.invoiced_not_received.lines ? 'red' : undefined} />
-          <ListKpi label="Factures sans lignes" value={`${fmt(s.invoices_without_lines.amount)} DH`} sub={plural(s.invoices_without_lines.count, 'facture') + ' hors contrôle'} />
+          <ListKpi label="Factures sans lignes" value={`${money(s.invoices_without_lines.amount)}`} sub={plural(s.invoices_without_lines.count, 'facture') + ' hors contrôle'} />
         </section>
       )}
 

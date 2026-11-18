@@ -10,6 +10,7 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import { getApiErrorMessage } from '../../utils/api-error';
 import SalesPageShell from '../sales/SalesPageShell';
 import { ListKpi } from '../sales/ListTemplate';
+import { BASE_CURRENCY } from '../../api/currencies.api';
 
 // Listes de prix (phase 6.1–6.3) : par canal, type/groupe de clients ou client précis,
 // avec validité et devise ; lignes à paliers de quantité. Le prix applicable est résolu
@@ -145,7 +146,7 @@ export default function PriceListsPage() {
               <input style={field} defaultValue={detail.price_group ?? ''} placeholder="Hôtels…" onBlur={(e) => updateList.mutate({ priceGroup: e.target.value || null })} />
             </label>
             <label><span style={lab}>Devise</span>
-              <input style={{ ...field, textTransform: 'uppercase' }} maxLength={3} defaultValue={detail.currency} onBlur={(e) => updateList.mutate({ currency: e.target.value.toUpperCase() || 'MAD' })} />
+              <input style={{ ...field, textTransform: 'uppercase' }} maxLength={3} defaultValue={detail.currency} onBlur={(e) => updateList.mutate({ currency: e.target.value.toUpperCase() || BASE_CURRENCY })} />
             </label>
             <label><span style={lab}>Valide du</span>
               <input type="date" style={field} defaultValue={detail.valid_from ?? ''} onChange={(e) => updateList.mutate({ validFrom: e.target.value || null })} />

@@ -26,6 +26,7 @@ import SupplierItemsSection from './SupplierItemsSection';
 import { StatusTag } from '../../components/ui/StatusTag';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { planStatusTag } from '../production/status';
+import { money, currencySymbol } from '../../utils/money';
 
 const CATEGORY_COLORS: Record<string, string> = {
   farines: 'bg-amber-100 text-amber-700',
@@ -422,7 +423,7 @@ export default function IngredientDetailPage() {
         </div>
         <div className="odoo-smart-button">
           <div className="odoo-smart-button-value">{unitCost.toFixed(2)}</div>
-          <div className="odoo-smart-button-label">DH / {unit}</div>
+          <div className="odoo-smart-button-label">{currencySymbol()} / {unit}</div>
         </div>
       </div>
 
@@ -1021,7 +1022,7 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
             )}
             {lot.unit_cost && parseFloat(lot.unit_cost) > 0 && (
               <span style={{ fontWeight: 500 }}>
-                {parseFloat(lot.unit_cost).toFixed(2)} DH/{lot.ingredient_unit}
+                {money(parseFloat(lot.unit_cost))}/{lot.ingredient_unit}
               </span>
             )}
           </div>
@@ -1033,7 +1034,7 @@ function LotRow({ lot, isExpanded, onToggle, traceability, onQuarantine, onWaste
           </div>
           {lot.unit_cost && parseFloat(lot.unit_cost) > 0 && remaining > 0 && (
             <div style={{ fontSize: '0.625rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>
-              Valeur : {(remaining * parseFloat(lot.unit_cost)).toFixed(2)} DH
+              Valeur : {money(remaining * parseFloat(lot.unit_cost))}
             </div>
           )}
           <div style={{ width: 64, height: 4, backgroundColor: '#e9ecef', borderRadius: 2, overflow: 'hidden', marginTop: 4, marginLeft: 'auto' }}>

@@ -6,6 +6,7 @@ import { Columns3, List, SquareKanban, Maximize2 } from 'lucide-react';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import '../sales/sales.css';
+import { money } from '../../utils/money';
 
 /**
  * Achats — vues Colonnes / Liste / Kanban (style Apple, 2026-11), sur le modèle des
@@ -110,7 +111,7 @@ export function KanbanView<T>({ items, lanes, getId, card, onOpen, sum, empty = 
 }
 
 export const pn = (v: unknown) => parseFloat(String(v ?? '0')) || 0;
-export const pmoney = (v: unknown) => `${pn(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
+export const pmoney = (v: unknown) => money(pn(v));
 export const pdate = (v: unknown, f = 'd MMM yyyy') => {
   if (!v) return '—';
   const d = new Date(String(v).length <= 10 ? `${v}T00:00:00` : String(v));

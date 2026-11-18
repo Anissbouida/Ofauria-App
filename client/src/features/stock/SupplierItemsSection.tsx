@@ -7,6 +7,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { StatusTag } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
+import { money, currencySymbol } from '../../utils/money';
 
 const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit', fontSize: '0.85rem', width: '100%' };
 const field: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4 };
@@ -38,7 +39,6 @@ export default function SupplierItemsSection({ kind, purchasableId, unit }: { ki
 
   const used = new Set(items.map(i => i.supplier_id));
   const avail = (suppliers as { id: string; name: string }[]).filter(s => !used.has(s.id));
-  const money = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 
   return (
     <div className="odoo-scope" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -165,7 +165,7 @@ function AddSupplierModal({ kind, purchasableId, unit, avail, onClose, onSaved }
             <label style={field}><span style={lbl}>Prix d'achat{unit ? ` / ${unit}` : ''} <span style={{ fontWeight: 400 }}>(optionnel)</span></span>
               <div style={{ position: 'relative' }}>
                 <input type="number" step="0.01" min="0" value={price} onChange={e => setPrice(e.target.value)} placeholder="0.00" style={{ ...inp, paddingRight: 40 }} />
-                <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '0.76rem', color: 'var(--theme-text-muted)' }}>DH</span>
+                <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: '0.76rem', color: 'var(--theme-text-muted)' }}>{currencySymbol()}</span>
               </div>
             </label>
             <label style={field}><span style={lbl}>Réf. fournisseur <span style={{ fontWeight: 400 }}>(optionnel)</span></span>

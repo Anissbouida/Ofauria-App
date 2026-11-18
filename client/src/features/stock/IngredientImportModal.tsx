@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { ingredientsApi } from '../../api/inventory.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { currencySymbol } from '../../utils/money';
 
 interface PreviewRow {
   sourceRow: number;
@@ -142,7 +143,7 @@ export default function IngredientImportModal({ onClose }: { onClose: () => void
               </div>
 
               <p className="text-xs text-gray-500">
-                Colonnes attendues : <code>Nom | Categorie | Unite | Cout (DH) | Fournisseur | Allergenes</code>.
+                Colonnes attendues : <code>Nom | Categorie | Unite | Cout ({currencySymbol()}) | Fournisseur | Allergenes</code>.
                 Les ingredients existants (meme nom) seront mis a jour, les nouveaux crees.
                 Toute modification du cout cascade automatiquement sur les recettes liees.
               </p>

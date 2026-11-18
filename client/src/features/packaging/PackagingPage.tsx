@@ -7,6 +7,7 @@ import { expenseCategoriesApi } from '../../api/accounting.api';
 import CategoryCascadeSelector, { CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
 import { notify } from '../../components/ui/InlineNotification';
 import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { currencySymbol } from '../../utils/money';
 
 /** Situation d'un consommable (exclusive) : mêmes cartes que le stock des ingrédients. */
 const PKG_SITUATIONS: StageDef[] = [
@@ -239,7 +240,7 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
                   </td>
                   <td className="hidden md:table-cell" style={{ color: 'var(--theme-text-muted)' }}>{it.format || '—'}</td>
                   <td className="hidden md:table-cell" style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
-                    {parseFloat(String(it.unit_cost)).toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>DH/{it.unit}</span>
+                    {parseFloat(String(it.unit_cost)).toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{currencySymbol()}/{it.unit}</span>
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     <button onClick={() => setStockDialog(it)}
@@ -395,7 +396,7 @@ function PackagingFormModal({ item, onClose, onSaved }: { item: PackagingItem | 
               </select>
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Cout unitaire (DH)</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Cout unitaire ({currencySymbol()})</label>
               <input type="number" step="0.01" min="0" required value={form.unit_cost}
                 onChange={(e) => setForm({ ...form, unit_cost: e.target.value })}
                 placeholder="0.30"

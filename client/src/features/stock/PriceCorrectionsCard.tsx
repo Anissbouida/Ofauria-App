@@ -6,6 +6,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { currencySymbol } from '../../utils/money';
 
 /**
  * Prix à revoir (G2-04) : ingrédients sans prix, ou dont le prix s'écarte fortement de la
@@ -74,12 +75,12 @@ export default function PriceCorrectionsCard() {
                       </div>
                     </td>
                     <td><StatusTag tone={s.reason === 'sans_prix' ? 'todo' : 'late'} label={s.reason === 'sans_prix' ? 'Sans prix' : 'Prix aberrant'} /></td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{price(s.unitCost)} DH / {s.unit}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{s.median !== null ? `${price(Math.round(s.median * 100) / 100)} DH / ${s.unit}` : '—'}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{price(s.unitCost)} {currencySymbol()} / {s.unit}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--theme-text-muted)' }}>{s.median !== null ? `${price(Math.round(s.median * 100) / 100)} ${currencySymbol()} / ${s.unit}` : '—'}</td>
                     <td style={{ fontSize: '0.78rem' }}>
                       {s.receptions.length === 0 && <span style={{ color: 'var(--theme-text-muted)' }}>Aucune réception</span>}
                       {s.receptions.map((r, n) => (
-                        <div key={n} style={{ fontVariantNumeric: 'tabular-nums' }}>{shortDate(r.date)} · {price(r.quantity)} {s.unit} à {price(r.unitPrice)} DH</div>
+                        <div key={n} style={{ fontVariantNumeric: 'tabular-nums' }}>{shortDate(r.date)} · {price(r.quantity)} {s.unit} à {price(r.unitPrice)} {currencySymbol()}</div>
                       ))}
                     </td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
@@ -88,12 +89,12 @@ export default function PriceCorrectionsCard() {
                           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 400 }}>
                             <input className="odoo-input" type="number" step="any" min="0" aria-label="Nouveau coût" style={{ width: 110, textAlign: 'right' }}
                               value={editing!.cost} onChange={e => setEditing(ed => ed && { ...ed, cost: e.target.value })} />
-                            <span style={{ color: 'var(--theme-text-muted)' }}>DH / {s.unit}</span>
+                            <span style={{ color: 'var(--theme-text-muted)' }}>{currencySymbol()} / {s.unit}</span>
                           </label>
                           <input className="odoo-input" type="text" aria-label="Motif de la correction" placeholder="Motif de la correction" style={{ width: 240, fontWeight: 400 }}
                             value={editing!.reason} onChange={e => setEditing(ed => ed && { ...ed, reason: e.target.value })} />
                         </div>
-                      ) : s.proposal !== null ? `${price(s.proposal)} DH / ${s.unit}` : '—'}
+                      ) : s.proposal !== null ? `${price(s.proposal)} ${currencySymbol()} / ${s.unit}` : '—'}
                     </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       {isEditing ? (
@@ -127,7 +128,7 @@ export default function PriceCorrectionsCard() {
                     <td>{new Date(h.corrected_at).toLocaleDateString('fr-FR')}</td>
                     <td>{h.ingredient_name}</td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{price(h.old_cost)}</td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{price(h.new_cost)} DH / {h.unit}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{price(h.new_cost)} {currencySymbol()} / {h.unit}</td>
                     <td>{h.reason}</td>
                     <td>{h.corrected_by_name ?? '—'}</td>
                   </tr>

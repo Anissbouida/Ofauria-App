@@ -1,4 +1,5 @@
 import api from './client';
+import { currencySymbol } from '../utils/money';
 
 /** Devises et taux de change (mig 363). Taux = DH pour 1 unité de devise ; MAD = devise de base. */
 export type Currency = {
@@ -30,5 +31,5 @@ export const currenciesApi = {
 /** Montant formaté dans sa devise : « 1 250,00 € », « 3 685,00 DH ». */
 export function fmtMoney(v: number | string | null | undefined, code: string = BASE_CURRENCY, symbol?: string | null) {
   const n = Number(v ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `${n} ${symbol ?? (code === BASE_CURRENCY ? 'DH' : code)}`;
+  return `${n} ${symbol ?? (code === BASE_CURRENCY ? currencySymbol() : code)}`;
 }

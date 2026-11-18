@@ -16,6 +16,7 @@ import { PODetailModal } from '../accounting/PurchaseOrdersTab';
 import { Kpi } from '../projects/shared';
 import { PurHeaderActions } from './PurHeaderActions';
 import './purchasing.css';
+import { money } from '../../utils/money';
 
 /**
  * Poste de travail des achats (refonte 2026-11, style Apple) : le circuit d'achat en 8 étapes avec ce
@@ -28,7 +29,7 @@ type Kind = 'po' | 'inv' | 'req' | 'rfq' | 'appr';
 type Item = { key: string; kind: Kind; kindLabel: string; title: string; ref?: string; who?: string; amount?: number | null; due?: string; late?: boolean; urgent?: boolean; gap?: boolean; approval?: boolean; action: string; run: () => void };
 type Filter = 'all' | 'urgent' | 'approval' | 'gap';
 
-const dh = (v: number | string | null | undefined) => `${Math.round(Number(v ?? 0)).toLocaleString('fr-FR')} DH`;
+const dh = (v: number | string | null | undefined) => money(Math.round(Number(v ?? 0)), { decimals: 0 });
 const day = (v: string | null | undefined) => (v ? format(new Date(v), 'd MMM', { locale: fr }) : '');
 const quiet = { retry: false, staleTime: 60_000 } as const;
 

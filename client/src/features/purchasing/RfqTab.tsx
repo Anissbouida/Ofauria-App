@@ -13,7 +13,7 @@ import { ingredientsApi } from '../../api/inventory.api';
 import { packagingApi } from '../../api/packaging.api';
 import { suppliersApi } from '../../api/accounting.api';
 import { apiErrorMessage } from '../../api/errors';
-import { currenciesApi } from '../../api/currencies.api';
+import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -21,6 +21,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StagePipeline, ViewSwitch, SelectFilter, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { money, currencySymbol } from '../../utils/money';
 
 /**
  * Achats › Appels d'offres (mig 360) : articles à acheter envoyés à plusieurs
@@ -361,7 +362,7 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
                             <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>/ 100</span>
                           </div>
                           <div style={{ fontSize: '0.8125rem' }}>
-                            <strong>{n2(q.total_ht)} DH HT</strong>
+                            <strong>{money(q.total_ht)} HT</strong>
                             {q.total_foreign && <span style={{ color: 'var(--theme-text-muted)' }}> · {n2(q.total_foreign)} {String(q.currency_code).trim()}</span>}
                             {!q.complete && <div style={{ fontSize: '0.75rem', color: 'var(--prj-orange)' }}>{q.covered}/{items.length} lignes chiffrées</div>}
                           </div>
@@ -403,7 +404,7 @@ function RfqDrawer({ id, onClose, onOpenOrder }: { id: string; onClose: () => vo
                       {quotes.map(q => (
                         <div key={q.id} className={`col${q.id === r.recommended_quotation_id ? ' best' : ''}`} style={{ borderBottom: 0 }}>
                           <button className={q.id === r.recommended_quotation_id ? 'odoo-btn-primary' : 'odoo-btn-secondary'} disabled={award.isPending} style={{ alignSelf: 'flex-start' }}
-                            onClick={async () => { if (await confirm(`Retenir le devis de ${q.supplier_name} (note ${q.score ?? '—'}/100${q.id === r.recommended_quotation_id ? ', recommandé' : ''}) et créer le bon de commande (${n2(q.total_ht)} DH HT) ?`)) award.mutate(q.id); }}>
+                            onClick={async () => { if (await confirm(`Retenir le devis de ${q.supplier_name} (note ${q.score ?? '—'}/100${q.id === r.recommended_quotation_id ? ', recommandé' : ''}) et créer le bon de commande (${money(q.total_ht)} HT) ?`)) award.mutate(q.id); }}>
                             <Award size={12} /> Attribuer
                           </button>
                         </div>
@@ -482,14 +483,14 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
   })));
   // Devise du devis (mig 363) : prix et port saisis dans la devise du fournisseur, comparés en DH.
   const { data: currencies = [] } = useQuery({ queryKey: ['currencies'], queryFn: () => currenciesApi.list(), staleTime: 60_000 });
-  const [currency, setCurrency] = useState(String(existing?.currency_code ?? supplier.supplier_currency ?? 'MAD').trim());
-  const [rateInput, setRateInput] = useState(existing?.exchange_rate && currency !== 'MAD' ? String(Number(existing.exchange_rate)) : '');
-  const rate = currency === 'MAD' ? 1 : (parseFloat(rateInput) || 0);
+  const [currency, setCurrency] = useState(String(existing?.currency_code ?? supplier.supplier_currency ?? BASE_CURRENCY).trim());
+  const [rateInput, setRateInput] = useState(existing?.exchange_rate && currency !== BASE_CURRENCY ? String(Number(existing.exchange_rate)) : '');
+  const rate = currency === BASE_CURRENCY ? 1 : (parseFloat(rateInput) || 0);
   useEffect(() => {
-    if (currency !== 'MAD' && !rateInput) { const c = currencies.find(x => x.code === currency); if (c?.rate) setRateInput(String(Number(c.rate))); }
+    if (currency !== BASE_CURRENCY && !rateInput) { const c = currencies.find(x => x.code === currency); if (c?.rate) setRateInput(String(Number(c.rate))); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currency, currencies]);
-  const cur = currency === 'MAD' ? 'DH' : currency;
+  const cur = currency === BASE_CURRENCY ? currencySymbol() : currency;
   const [lines, setLines] = useState<Record<string, { price: string; qty: string; note: string; available: boolean }>>(() => Object.fromEntries(items.map(it => {
     const { size, hasContainer } = packOf(it);
     const l = existing?.lines.find(x => x.rfq_item_id === it.id);
@@ -506,7 +507,7 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
       deliveryDays: head.deliveryDays === '' ? null : Number(head.deliveryDays), paymentTerms: head.paymentTerms || null,
       shippingCost: Number(head.shippingCost) || 0, discountPct: Number(head.discountPct) || 0, notes: head.notes || null,
       criteriaScores: Object.fromEntries(manualCriteria.map(c => [c.code, critScores[c.code] === '' || critScores[c.code] == null ? null : Number(critScores[c.code])])),
-      currencyCode: currency, ...(currency !== 'MAD' ? { exchangeRate: rate } : {}),
+      currencyCode: currency, ...(currency !== BASE_CURRENCY ? { exchangeRate: rate } : {}),
       // Conversion saisie (par contenant) → unité de base pour le stockage.
       items: items.map(it => {
         const l = lines[it.id]; const available = l.available && l.price !== '';
@@ -547,8 +548,8 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
             <div><span style={label}>Conditions de paiement</span><input className="input" style={{ width: '100%' }} value={head.paymentTerms} onChange={e => set('paymentTerms', e.target.value)} placeholder="30 j fin de mois…" /></div>
             <div><span style={label}>Devise</span><SearchSelect value={currency} onChange={v => { setCurrency(v); setRateInput(''); }}
               placeholder="Devise" width="100%" size="md" ariaLabel="Devise" clearable={false}
-              options={(currencies.length ? currencies : [{ code: 'MAD', label: 'Dirham marocain' }]).map(c => ({ id: c.code, label: `${c.code} — ${c.label}` }))} /></div>
-            <div><span style={label}>{currency === 'MAD' ? 'Taux' : `1 ${currency} = … DH`}</span>{currency === 'MAD'
+              options={(currencies.length ? currencies : [{ code: BASE_CURRENCY, label: 'Dirham marocain' }]).map(c => ({ id: c.code, label: `${c.code} — ${c.label}` }))} /></div>
+            <div><span style={label}>{currency === BASE_CURRENCY ? 'Taux' : `1 ${currency} = … ${currencySymbol()}`}</span>{currency === BASE_CURRENCY
               ? <div style={{ paddingTop: 6, color: 'var(--theme-text-muted)' }}>—</div>
               : <input className="input" type="number" min="0" step="0.0001" style={{ width: '100%' }} value={rateInput} onChange={e => setRateInput(e.target.value)} />}</div>
             <div><span style={label}>Frais de port ({cur})</span><input className="input" type="number" min="0" step="0.01" style={{ width: '100%' }} value={head.shippingCost} onChange={e => set('shippingCost', e.target.value)} /></div>
@@ -558,7 +559,7 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
                 value={critScores[c.code] ?? ''} onChange={e => setCritScores(s => ({ ...s, [c.code]: e.target.value }))} placeholder="ex. 80" title={`Note « ${c.label} » — critère de la notation`} /></div>
             ))}
             <div><span style={label}>Total HT</span><div style={{ fontSize: '1.125rem', fontWeight: 700, paddingTop: 4 }}>{n2(total)} {cur}</div>
-              {currency !== 'MAD' && rate > 0 && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>≈ {n2(total * rate)} DH</div>}</div>
+              {currency !== BASE_CURRENCY && rate > 0 && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>≈ {money(total * rate)}</div>}</div>
           </div>
           <table className="odoo-table">
             <thead><tr><th>Article</th><th style={{ textAlign: 'right' }}>Qté demandée</th><th style={{ width: 130 }}>Prix unitaire HT ({cur})</th><th style={{ width: 110 }}>Qté proposée</th><th>Remarque</th><th style={{ width: 70 }}>Proposé</th></tr></thead>
@@ -570,7 +571,7 @@ function QuotationModal({ rfq, supplier, onClose }: { rfq: Rfq; supplier: RfqSup
               <tr key={it.id} style={{ opacity: l.available ? 1 : 0.5 }}>
                 <td>{it.label}
                   {hasContainer && <div style={{ fontSize: '0.7rem', color: 'var(--theme-accent)' }}>acheté par {pack} de {Number(size).toLocaleString('fr-FR')} {it.unit_label ?? ''}</div>}
-                  {it.last_price && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>dernier prix {n4(Number(it.last_price) * (hasContainer ? size : 1))} DH{hasContainer ? ` / ${pack}` : ''}</div>}</td>
+                  {it.last_price && <div style={{ fontSize: '0.7rem', color: 'var(--theme-text-muted)' }}>dernier prix {n4(Number(it.last_price) * (hasContainer ? size : 1))} {currencySymbol()}{hasContainer ? ` / ${pack}` : ''}</div>}</td>
                 <td style={{ textAlign: 'right' }}>{demandedEntry.toLocaleString('fr-FR', { maximumFractionDigits: 3 })} {entryUnit}{hasContainer ? <div style={{ fontSize: '0.65rem', color: 'var(--theme-text-muted)' }}>= {Number(it.quantity).toLocaleString('fr-FR')} {it.unit_label ?? ''}</div> : null}</td>
                 <td>
                   <input className="input" type="number" min="0" step="0.0001" style={{ width: '100%' }} value={l.price} disabled={!l.available} onChange={e => upd({ price: e.target.value })} />

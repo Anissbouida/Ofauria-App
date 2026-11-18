@@ -15,6 +15,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useStockCategories } from './useStockCategories';
+import { money } from '../../utils/money';
 
 /** Statut d'une campagne d'inventaire en étiquette commune : à vérifier = action attendue. */
 const COUNT_TONE: Record<StockCountStatus, StatusTone> = { counting: 'progress', review: 'todo', validated: 'done', cancelled: 'cancelled' };
@@ -72,7 +73,7 @@ export default function StockCountsTab() {
                 <td>{format(new Date(`${String(c.count_date).slice(0, 10)}T00:00:00`), 'dd/MM/yyyy')}</td>
                 <td>{c.lines_counted}/{c.lines_total}</td>
                 <td><StatusTag tone={COUNT_TONE[c.status] ?? 'draft'} label={STOCK_COUNT_STATUS_LABELS[c.status]} /></td>
-                {isDirection && <td style={{ textAlign: 'right', color: Number(c.gap_value) < 0 ? '#dc3545' : undefined }}>{c.gap_value != null ? `${n2(c.gap_value)} DH` : '—'}</td>}
+                {isDirection && <td style={{ textAlign: 'right', color: Number(c.gap_value) < 0 ? '#dc3545' : undefined }}>{c.gap_value != null ? `${money(c.gap_value)}` : '—'}</td>}
                 <td>{c.validated_by_name ?? '—'}</td>
               </tr>
             ))}</tbody>
@@ -155,7 +156,7 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
   });
   const validate = useMutation({
     mutationFn: () => stockCountsApi.validate(id, zeroUncounted),
-    onSuccess: r => { refresh(); notify.success(`Inventaire validé : écart net ${n2(r.gap_value)} DH`); },
+    onSuccess: r => { refresh(); notify.success(`Inventaire validé : écart net ${money(r.gap_value)}`); },
     onError: e => notify.error(apiErrorMessage(e)),
   });
 
@@ -218,9 +219,9 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
         <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, display: 'grid', gap: 10, background: 'var(--odoo-bg-alt)' }}>
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: '0.875rem' }}>
             <span>Écarts : <strong>{totals.gaps}</strong></span>
-            <span>Excédents : <strong style={{ color: '#198754' }}>+{n2(totals.gain)} DH</strong></span>
-            <span>Manquants : <strong style={{ color: '#dc3545' }}>{n2(totals.loss)} DH</strong></span>
-            <span>Net : <strong style={{ color: totals.gain + totals.loss < 0 ? '#dc3545' : undefined }}>{n2(totals.gain + totals.loss)} DH</strong></span>
+            <span>Excédents : <strong style={{ color: '#198754' }}>+{money(totals.gain)}</strong></span>
+            <span>Manquants : <strong style={{ color: '#dc3545' }}>{money(totals.loss)}</strong></span>
+            <span>Net : <strong style={{ color: totals.gain + totals.loss < 0 ? '#dc3545' : undefined }}>{money(totals.gain + totals.loss)}</strong></span>
             <span>Non comptés : <strong>{totals.uncounted}</strong></span>
           </div>
           {totals.uncounted > 0 && (
@@ -233,7 +234,7 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
             <button className="odoo-btn-secondary" disabled={act.isPending} onClick={async () => { if (await confirm(`Annuler l'inventaire ${c.number} ? Aucun stock ne sera modifié.`)) act.mutate('cancel'); }}><Ban size={13} /> Annuler</button>
             {c.status === 'review' && <button className="odoo-btn-secondary" disabled={act.isPending} onClick={() => act.mutate('reopen')}><RotateCcw size={13} /> Rouvrir le comptage</button>}
             <button className="odoo-btn-primary" disabled={validate.isPending || !c.lines_counted}
-              onClick={async () => { if (await confirm(`Valider l'inventaire ? Le stock de ${totals.gaps + (zeroUncounted ? totals.uncounted : 0)} article(s) sera ajusté (net ${n2(totals.gain + totals.loss)} DH). Cette opération ne s'annule pas.`)) validate.mutate(); }}>
+              onClick={async () => { if (await confirm(`Valider l'inventaire ? Le stock de ${totals.gaps + (zeroUncounted ? totals.uncounted : 0)} article(s) sera ajusté (net ${money(totals.gain + totals.loss)}). Cette opération ne s'annule pas.`)) validate.mutate(); }}>
               {validate.isPending ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} Valider l'inventaire
             </button>
           </div>
@@ -241,7 +242,7 @@ function CountSheet({ id, isDirection, onBack }: { id: string; isDirection: bool
       )}
       {c.status === 'validated' && (
         <StatusBanner tone="success" icon={CheckCircle2} title={`Validé le ${c.validated_at ? format(new Date(c.validated_at), 'dd/MM/yyyy HH:mm') : ''}${c.validated_by_name ? ` par ${c.validated_by_name}` : ''}`}>
-          {isDirection ? <>Excédents +{n2(c.gain_value)} DH · manquants {n2(c.loss_value)} DH · net {n2(c.gap_value)} DH (au coût moyen du jour).</> : 'Le stock a été ajusté.'}
+          {isDirection ? <>Excédents +{money(c.gain_value)} · manquants {money(c.loss_value)} · net {money(c.gap_value)} (au coût moyen du jour).</> : 'Le stock a été ajusté.'}
           {c.zero_uncounted && ' Les articles non comptés ont été mis à zéro.'}
         </StatusBanner>
       )}
@@ -358,7 +359,7 @@ function CycleCountPanel({ canOpen, onOpened }: { canOpen: boolean; onOpened: (i
           <tr key={c.class}>
             <td><strong>{c.class}</strong></td>
             <td style={{ textAlign: 'right' }}>{c.items}</td>
-            <td style={{ textAlign: 'right' }}>{c.value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH</td>
+            <td style={{ textAlign: 'right' }}>{money(c.value)}</td>
             <td style={{ textAlign: 'right' }}>{c.due ? <StatusTag tone="todo" label={String(c.due)} /> : '0'}</td>
           </tr>
         ))}</tbody>

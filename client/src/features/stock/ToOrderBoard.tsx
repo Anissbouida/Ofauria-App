@@ -12,6 +12,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { fmtQty } from './types';
+import { money, currencySymbol } from '../../utils/money';
 
 /**
  * Stock › « À commander » : l'unique écran des besoins d'achat (remplace la Liste
@@ -344,7 +345,7 @@ export function ToOrderBoard() {
                     <td style={{ textAlign: 'right', fontSize: '0.8125rem' }}>
                       {r.unit_price != null && qty > 0 && !r.covered ? (
                         <>
-                          <div style={{ fontWeight: 600 }}>{n2(qty * r.unit_price)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+                          <div style={{ fontWeight: 600 }}>{n2(qty * r.unit_price)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
                           <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{n2(r.unit_price)} / {r.unit}</div>
                         </>
                       ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
@@ -366,7 +367,7 @@ export function ToOrderBoard() {
         }}>
           <span style={{ fontSize: '0.8125rem' }}>
             <strong>{selectedRows.length}</strong> article{selectedRows.length > 1 ? 's' : ''}
-            {estimated > 0 && <> · estimé <strong>{n2(estimated)} DH</strong></>}
+            {estimated > 0 && <> · estimé <strong>{money(estimated)}</strong></>}
           </span>
           <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
             Fournisseur facultatif · soumis à approbation selon les règles

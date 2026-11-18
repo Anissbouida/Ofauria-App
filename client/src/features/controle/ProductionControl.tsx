@@ -7,6 +7,7 @@ import { fr } from 'date-fns/locale';
 import { controleApi, type ProductionIssue } from '../../api/controle.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { money } from '../../utils/money';
 
 /**
  * Contrôle & Qualité › Production : toutes les anomalies de fabrication au même
@@ -123,7 +124,7 @@ export default function ProductionControl({ range, periodText }: { range: Record
                   </td>
                   <td style={{ fontSize: '0.8125rem', color: r.kind === 'qc' ? '#b71c1c' : 'var(--odoo-text)', maxWidth: 380 }}>
                     {r.detail ?? '—'}
-                    {r.value && Number(r.value) !== 0 && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>écart de coût estimé {Number(r.value).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH</div>}
+                    {r.value && Number(r.value) !== 0 && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>écart de coût estimé {money(Number(r.value))}</div>}
                   </td>
                   <td style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{r.by_name ?? '—'}</td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>

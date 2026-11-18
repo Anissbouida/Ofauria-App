@@ -16,6 +16,7 @@ import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
 import { usePurLayout, LayoutSwitch, SplitView, KanbanView, PaneHead, PaneState, pdate, pmoney, KANBAN_ALL } from './PurLayouts';
+import { money, currencySymbol } from '../../utils/money';
 
 /**
  * Achats › Frais d'approche (mig 361) : transport, douane, assurance répartis sur les
@@ -53,7 +54,7 @@ export default function LandedCostTab() {
           <option value="">Tous statuts</option>
           {Object.entries(LANDED_STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        {data && <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{n2(data.appliedTotal)} DH appliqués</span>}
+        {data && <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>{money(data.appliedTotal)} appliqués</span>}
         <div style={{ flex: 1 }} />
         <LayoutSwitch value={layout} onChange={setLayout} />
         <button className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouveaux frais</button>
@@ -128,7 +129,7 @@ function LandedCostFormModal({ onClose, onSaved }: { onClose: () => void; onSave
     queryKey: ['landed-preview', receptionId, total, method], queryFn: () => landedCostApi.preview(receptionId, total, method), enabled: !!receptionId,
   });
   const weightGaps = method === 'weight' ? preview.filter(l => l.weight_kg == null) : [];
-  const options = receptions.map(r => ({ id: r.id, label: `${r.voucher_number} · ${r.supplier_name ?? '—'}`, sublabel: `${format(new Date(r.reception_date), 'dd/MM/yyyy')} · ${r.line_count} ligne(s) · ${n2(r.total_value)} DH${Number(r.landed_applied) > 0 ? ` · frais déjà appliqués ${n2(r.landed_applied)}` : ''}`, detail: r.order_number ?? undefined }));
+  const options = receptions.map(r => ({ id: r.id, label: `${r.voucher_number} · ${r.supplier_name ?? '—'}`, sublabel: `${format(new Date(r.reception_date), 'dd/MM/yyyy')} · ${r.line_count} ligne(s) · ${money(r.total_value)}${Number(r.landed_applied) > 0 ? ` · frais déjà appliqués ${n2(r.landed_applied)}` : ''}`, detail: r.order_number ?? undefined }));
   const save = useMutation({
     mutationFn: () => landedCostApi.create({ receptionVoucherId: receptionId, method, notes: notes.trim() || null, charges: charges.map(({ key: _k, ...c }) => ({ ...c, amount: Number(c.amount), label: c.label.trim() })) }),
     onSuccess: v => { qc.invalidateQueries({ queryKey: ['landed-costs'] }); notify.success(`Frais ${v.number} enregistrés en brouillon`); onSaved?.(v.id); onClose(); },
@@ -162,7 +163,7 @@ function LandedCostFormModal({ onClose, onSaved }: { onClose: () => void; onSave
           <div>
             <span style={label}>Frais</span>
             <table className="odoo-table">
-              <thead><tr><th>Libellé</th><th style={{ width: 240 }}>Catégorie de charge</th><th style={{ width: 140, textAlign: 'right' }}>Montant HT (DH)</th><th style={{ width: 40 }} /></tr></thead>
+              <thead><tr><th>Libellé</th><th style={{ width: 240 }}>Catégorie de charge</th><th style={{ width: 140, textAlign: 'right' }}>Montant HT ({currencySymbol()})</th><th style={{ width: 40 }} /></tr></thead>
               <tbody>{charges.map(c => (
                 <tr key={c.key}>
                   <td><input className="input" style={{ width: '100%' }} value={c.label} onChange={e => upd(c.key, { label: e.target.value })} placeholder="Transport, douane, assurance…" /></td>
@@ -237,7 +238,7 @@ function LandedCostPane({ id, onFull }: { id: string; onFull: () => void }) {
       <div className="ord-actions">
         {v.status === 'draft' && <>
           <button className="odoo-btn-primary" disabled={apply.isPending} onClick={async () => {
-            if (await confirm(`Appliquer ${n2(v.total_amount)} DH de frais sur ${v.line_count} ligne(s) ? Les coûts des lots et les coûts standard seront augmentés ; l'opération ne se défait pas.`)) apply.mutate();
+            if (await confirm(`Appliquer ${money(v.total_amount)} de frais sur ${v.line_count} ligne(s) ? Les coûts des lots et les coûts standard seront augmentés ; l'opération ne se défait pas.`)) apply.mutate();
           }}><CheckCircle2 size={13} /> Appliquer aux coûts</button>
           <button className="odoo-btn-secondary" onClick={async () => { if (await confirm('Annuler ce brouillon ?', { danger: true })) cancel.mutate(); }}><XCircle size={13} /> Annuler</button>
         </>}
@@ -302,7 +303,7 @@ function LandedCostDrawer({ id, onClose }: { id: string; onClose: () => void }) 
               {v.status === 'draft' && <>
                 <button className="odoo-btn-secondary" onClick={async () => { if (await confirm('Annuler ce brouillon ?', { danger: true })) cancel.mutate(); }}><XCircle size={13} /> Annuler</button>
                 <button className="odoo-btn-primary" disabled={apply.isPending} onClick={async () => {
-                  if (await confirm(`Appliquer ${n2(v.total_amount)} DH de frais sur ${v.line_count} ligne(s) ? Les coûts des lots et les coûts standard seront augmentés ; l'opération ne se défait pas.`)) apply.mutate();
+                  if (await confirm(`Appliquer ${money(v.total_amount)} de frais sur ${v.line_count} ligne(s) ? Les coûts des lots et les coûts standard seront augmentés ; l'opération ne se défait pas.`)) apply.mutate();
                 }}><CheckCircle2 size={13} /> Appliquer aux coûts</button>
               </>}
               <button type="button" className="odoo-btn-secondary" onClick={onClose} aria-label="Fermer"><X size={14} /></button>

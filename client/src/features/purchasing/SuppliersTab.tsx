@@ -12,7 +12,7 @@ import { fr } from 'date-fns/locale';
 import { suppliersApi, type SupplierIdentifierInput, type IdentifierType } from '../../api/accounting.api';
 import { supplierScoreApi, STANDING_TAG } from '../../api/supplier-score.api';
 import { apiErrorMessage } from '../../api/errors';
-import { currenciesApi } from '../../api/currencies.api';
+import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
 import CustomFieldsEditor, { useCustomListColumns } from '../../components/custom-fields/CustomFieldsEditor';
 import { useCustomFieldsForm, formatCfValue, type CfValues } from '../../api/custom-fields.api';
 import { notify } from '../../components/ui/InlineNotification';
@@ -26,6 +26,7 @@ import {
 } from '../../components/purchasing/ProcessBoard';
 import { ListKpi } from '../sales/ListTemplate';
 import { PurHeaderActions } from './PurHeaderActions';
+import { money, currencySymbol } from '../../utils/money';
 
 /**
  * Onglet Fournisseurs (refonte Achats D1, lot 1 — mig 304).
@@ -75,7 +76,7 @@ type FormState = {
 function emptyForm(): FormState {
   return {
     name: '', legalName: '', legalForm: '', vatRegime: 'assujetti', parentSupplierId: '',
-    contactName: '', phone: '', email: '', address: '', city: '', notes: '', currencyCode: 'MAD', rib: '', bankName: '', identifiers: {},
+    contactName: '', phone: '', email: '', address: '', city: '', notes: '', currencyCode: BASE_CURRENCY, rib: '', bankName: '', identifiers: {},
   };
 }
 
@@ -85,7 +86,7 @@ function formFromSupplier(s: Supplier): FormState {
   return {
     name: s.name, legalName: s.legal_name ?? '', legalForm: s.legal_form ?? '', vatRegime: s.vat_regime,
     parentSupplierId: s.parent_supplier_id ?? '', contactName: s.contact_name ?? '', phone: s.phone ?? '',
-    email: s.email ?? '', address: s.address ?? '', city: s.city ?? '', notes: s.notes ?? '', currencyCode: (s.currency_code ?? 'MAD').trim(),
+    email: s.email ?? '', address: s.address ?? '', city: s.city ?? '', notes: s.notes ?? '', currencyCode: (s.currency_code ?? BASE_CURRENCY).trim(),
     rib: (s as Supplier & { rib?: string | null }).rib ?? '', bankName: (s as Supplier & { bank_name?: string | null }).bank_name ?? '', identifiers,
   };
 }
@@ -270,7 +271,7 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
    */
   const stageDetail = (s: Record<string, any>): string | null => {
     const k = Number(s.open_po_count) || 0;
-    const openPo = k > 0 ? `${k} BC ouvert${k > 1 ? 's' : ''} · ${n(parseFloat(s.open_po_amount) || 0)} DH` : null;
+    const openPo = k > 0 ? `${k} BC ouvert${k > 1 ? 's' : ''} · ${money(parseFloat(s.open_po_amount) || 0)}` : null;
     switch (s.stage as string) {
       case 'incomplete': return openPo;
       case 'ordering': return openPo;
@@ -306,9 +307,9 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
       )}
 
       <section className="prj-kpis" aria-label="Indicateurs">
-        <ListKpi label="Restant dû" value={`${n(openDue)} DH`} sub={`${stageStats.due?.count ?? 0} fournisseur(s) à régler`} tone={openDue > 0 ? 'orange' : undefined} />
-        <ListKpi label="Commandes ouvertes" value={`${n(SUP_OPEN_STAGES.reduce((a, k) => a + (stageStats[k]?.openPo ?? 0), 0))} DH`} sub={`${stageStats.ordering?.count ?? 0} fournisseur(s) avec BC en cours`} />
-        <ListKpi label="Achats 12 mois" value={`${n(SUP_OPEN_STAGES.reduce((a, k) => a + (stageStats[k]?.p12 ?? 0), 0))} DH`} sub={`${openCount} fournisseur(s) actif(s)`} />
+        <ListKpi label="Restant dû" value={`${money(openDue)}`} sub={`${stageStats.due?.count ?? 0} fournisseur(s) à régler`} tone={openDue > 0 ? 'orange' : undefined} />
+        <ListKpi label="Commandes ouvertes" value={`${money(SUP_OPEN_STAGES.reduce((a, k) => a + (stageStats[k]?.openPo ?? 0), 0))}`} sub={`${stageStats.ordering?.count ?? 0} fournisseur(s) avec BC en cours`} />
+        <ListKpi label="Achats 12 mois" value={`${money(SUP_OPEN_STAGES.reduce((a, k) => a + (stageStats[k]?.p12 ?? 0), 0))}`} sub={`${openCount} fournisseur(s) actif(s)`} />
         <ListKpi label="Fiches sans ICE" value={String(incompleteCount)} sub="facture non probante" tone={incompleteCount ? 'red' : undefined} />
       </section>
 
@@ -341,14 +342,14 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
       {/* Situation de la relation : une pastille numérotée par étape, clic = filtre */}
       <StagePipeline
         title="Où en sont mes fournisseurs"
-        summary={`${openCount} actif${openCount > 1 ? 's' : ''} · ${n(openDue)} DH restant dus`}
+        summary={`${openCount} actif${openCount > 1 ? 's' : ''} · ${money(openDue)} restant dus`}
         stages={SUP_STAGES}
         stats={Object.fromEntries(SUP_STAGES.map(s => {
           const st = stageStats[s.key];
           if (!st) return [s.key, undefined];
-          const sub = s.key === 'ordering' ? `${n(st.openPo)} DH`
-            : s.key === 'due' || s.key === 'incomplete' ? (st.due > 0 ? `${n(st.due)} DH dus` : '')
-            : s.key === 'ok' ? `${n(st.p12)} DH` : '';
+          const sub = s.key === 'ordering' ? `${money(st.openPo)}`
+            : s.key === 'due' || s.key === 'incomplete' ? (st.due > 0 ? `${money(st.due)} dus` : '')
+            : s.key === 'ok' ? `${money(st.p12)}` : '';
           return [s.key, { count: st.count, sub, late: st.late }];
         }))}
         isActive={k => (k === 'inactive' ? view === 'history' : view === 'open' && stage === k)}
@@ -453,11 +454,11 @@ export default function SuppliersTab({ onOpenOrders, onOpenInvoices }: {
                       {fmtDate(s.last_order_date as string) ?? <span style={{ fontStyle: 'italic' }}>jamais</span>}
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      {p12 > 0 ? <><span style={{ fontWeight: 600 }}>{n(p12)}</span> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>DH</span></>
+                      {p12 > 0 ? <><span style={{ fontWeight: 600 }}>{n(p12)}</span> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{currencySymbol()}</span></>
                         : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      {due > 0.005 ? <><span style={{ fontWeight: 700, color: overdue > 0 ? '#dc3545' : undefined }}>{n(due)}</span> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>DH</span></>
+                      {due > 0.005 ? <><span style={{ fontWeight: 700, color: overdue > 0 ? '#dc3545' : undefined }}>{n(due)}</span> <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{currencySymbol()}</span></>
                         : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                     </td>
                     {cfColumns.map(d => <td key={d.id} style={{ color: 'var(--theme-text-muted)' }}>{formatCfValue(d, s.custom_fields?.[d.code]) || '—'}</td>)}
@@ -722,8 +723,8 @@ function SupplierFormModal({ supplier, suppliers, onClose, onSaved }: {
                   <div><label style={fieldLabel}>Devise des achats</label>
                     <SearchSelect value={form.currencyCode} onChange={v => set('currencyCode', v)}
                       placeholder="Devise" width="100%" size="md" ariaLabel="Devise des achats" clearable={false}
-                      options={(currencies.length ? currencies : [{ code: 'MAD', label: 'Dirham marocain' }]).map(c => ({ id: c.code, label: `${c.code} — ${c.label}` }))} />
-                    {form.currencyCode !== 'MAD' && <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>Proposée sur ses BC et devis ; le stock reste valorisé en DH.</span>}
+                      options={(currencies.length ? currencies : [{ code: BASE_CURRENCY, label: 'Dirham marocain' }]).map(c => ({ id: c.code, label: `${c.code} — ${c.label}` }))} />
+                    {form.currencyCode !== BASE_CURRENCY && <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>Proposée sur ses BC et devis ; le stock reste valorisé en {currencySymbol()}.</span>}
                   </div>
                 </div>
               </div>

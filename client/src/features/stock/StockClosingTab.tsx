@@ -9,6 +9,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { money } from '../../utils/money';
 
 /**
  * Clôture de stock par période (mig 381) : fige la valorisation du stock matière
@@ -16,7 +17,6 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
  * servant de valeur de stock pour le bilan et de référence historique.
  */
 
-const money = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 const day = (d: string) => format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr });
 const qty = (n: number, unit: string | null) => `${n.toLocaleString('fr-FR', { maximumFractionDigits: 3 })}${unit ? ' ' + unit : ''}`;
 

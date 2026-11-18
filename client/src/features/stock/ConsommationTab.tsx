@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { inventoryApi } from '../../api/inventory.api';
 import SearchSelect from '../../components/ui/SearchSelect';
+import { money } from '../../utils/money';
 
 /**
  * Deux vues complementaires sur les matieres, basculables :
@@ -364,14 +365,14 @@ export default function ConsommationTab() {
             <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 4 }}>
               <ShoppingCart size={11} /> Total acheté
             </div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--theme-accent)', marginTop: 4 }}>{n(purchTotals.total)} DH</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--theme-accent)', marginTop: 4 }}>{money(purchTotals.total)}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{purchData.length} ligne{purchData.length > 1 ? 's' : ''}</div>
           </div>
           <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid #cfe2ff', background: '#f0f6ff' }}>
             <div style={{ fontSize: '0.6875rem', color: '#0a58ca', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 4 }}>
               <FileText size={11} /> Via bons de commande
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0a58ca', marginTop: 4 }}>{n(purchTotals.bon_commande)} DH</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0a58ca', marginTop: 4 }}>{money(purchTotals.bon_commande)}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
               {purchTotals.total > 0 ? Math.round((purchTotals.bon_commande / purchTotals.total) * 100) : 0}% du total
             </div>
@@ -380,7 +381,7 @@ export default function ConsommationTab() {
             <div style={{ fontSize: '0.6875rem', color: '#b26a00', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 4 }}>
               <PackagePlus size={11} /> Achat direct
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#b26a00', marginTop: 4 }}>{n(purchTotals.achat_direct)} DH</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#b26a00', marginTop: 4 }}>{money(purchTotals.achat_direct)}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
               {purchTotals.total > 0 ? Math.round((purchTotals.achat_direct / purchTotals.total) * 100) : 0}% du total
             </div>
@@ -390,14 +391,14 @@ export default function ConsommationTab() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
           <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
             <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Total consommé</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--theme-accent)', marginTop: 4 }}>{n(consTotalAll)} DH</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--theme-accent)', marginTop: 4 }}>{money(consTotalAll)}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{consData.length} mouvements</div>
           </div>
           <div style={{ padding: '12px 16px', borderRadius: 4, border: '1px solid #d4edda', background: '#f0f9f4' }}>
             <div style={{ fontSize: '0.6875rem', color: '#0e7c3a', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 4 }}>
               <Factory size={11} /> Production
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0e7c3a', marginTop: 4 }}>{n(totalsByType.production.cost)} DH</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0e7c3a', marginTop: 4 }}>{money(totalsByType.production.cost)}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
               {consTotalAll > 0 ? Math.round((totalsByType.production.cost / consTotalAll) * 100) : 0}% du total
             </div>
@@ -406,7 +407,7 @@ export default function ConsommationTab() {
             <div style={{ fontSize: '0.6875rem', color: '#b71c1c', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 4 }}>
               <Trash2 size={11} /> Pertes
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#b71c1c', marginTop: 4 }}>{n(totalsByType.waste.cost)} DH</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#b71c1c', marginTop: 4 }}>{money(totalsByType.waste.cost)}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
               {consTotalAll > 0 ? Math.round((totalsByType.waste.cost / consTotalAll) * 100) : 0}% du total
             </div>
@@ -415,7 +416,7 @@ export default function ConsommationTab() {
             <div style={{ fontSize: '0.6875rem', color: '#6c757d', textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 4 }}>
               <Sliders size={11} /> Ajustements
             </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#6c757d', marginTop: 4 }}>{n(totalsByType.adjustment.cost)} DH</div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#6c757d', marginTop: 4 }}>{money(totalsByType.adjustment.cost)}</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
               {consTotalAll > 0 ? Math.round((totalsByType.adjustment.cost / consTotalAll) * 100) : 0}% du total
             </div>
@@ -464,7 +465,7 @@ export default function ConsommationTab() {
                   <strong style={{ textTransform: 'capitalize' }}>{cat.name}</strong>
                   <span style={{ color: 'var(--theme-text-muted)' }}>({cat.ingredients.length} article{cat.ingredients.length > 1 ? 's' : ''})</span>
                   <div style={{ flex: 1 }} />
-                  <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(cat.total)} DH</strong>
+                  <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{money(cat.total)}</strong>
                   <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>
                     {grandTotal > 0 ? Math.round((cat.total / grandTotal) * 100) : 0}%
                   </span>
@@ -501,7 +502,7 @@ export default function ConsommationTab() {
                               {direct > 0 ? n(direct) : '—'}
                             </td>
                             <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700 }}>
-                              {n(it.total_cost)} DH
+                              {money(it.total_cost)}
                             </td>
                           </tr>
                         );
@@ -545,7 +546,7 @@ export default function ConsommationTab() {
                               {adj > 0 ? n(adj) : '—'}
                             </td>
                             <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700 }}>
-                              {n(ing.total_cost)} DH
+                              {money(ing.total_cost)}
                             </td>
                           </tr>
                         );

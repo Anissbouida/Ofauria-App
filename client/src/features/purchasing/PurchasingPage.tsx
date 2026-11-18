@@ -40,7 +40,7 @@ import InvoiceControlModal from '../../components/purchasing/InvoiceControlModal
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
 import { usePaymentModes, modeFromLegacy, PaymentModeSelect, CashLimitGauge, paymentModeLabel, PaymentStatusTag, ReissuePaymentDialog, type CashOverride } from '../../components/purchasing/PaymentModeFields';
 import { apiErrorMessage } from '../../api/errors';
-import { currenciesApi } from '../../api/currencies.api';
+import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
 import { ShieldAlert, ShieldCheck, ClipboardCheck } from 'lucide-react';
 import { useReferentiel } from '../../hooks/useReferentiel';
 import { RotateCcw, FilePenLine } from 'lucide-react';
@@ -51,6 +51,7 @@ import {
   StagePipeline, StageProgress, ViewSwitch, PeriodFilter, SelectFilter, Pager, ProcessBoardVariant,
   PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
+import { money, currencySymbol } from '../../utils/money';
 
 type PurchasingTab = 'suppliers' | 'purchase_orders' | 'invoices' | 'pilotage' | 'rfq' | 'landed' | 'scores'
   | 'identification' | 'purchase_requests' | 'reception' | 'approvals' | 'price_variances' | 'workbench';
@@ -215,8 +216,8 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
   // Facture en devise (mig 368) : montant réglé en devise et taux du jour du paiement.
   const [payForeign, setPayForeign] = useState('');
   const [payRate, setPayRate] = useState('');
-  const payCurrency = String(showPayForm?.currency_code ?? 'MAD').trim();
-  const payIsForeign = !!showPayForm && payCurrency !== 'MAD';
+  const payCurrency = String(showPayForm?.currency_code ?? BASE_CURRENCY).trim();
+  const payIsForeign = !!showPayForm && payCurrency !== BASE_CURRENCY;
   const { data: payCurrencies = [] } = useQuery({ queryKey: ['currencies', 'at', payDate, 'all'], queryFn: () => currenciesApi.list({ date: payDate, all: true }), enabled: payIsForeign }); // devise désactivée : ses factures restent payables
   useEffect(() => {
     if (!payIsForeign) return;
@@ -343,7 +344,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
     if (!confirm(baseMsg)) return;
     if (hasPayments) {
       const force = confirm(
-        `Cette facture a ${parseFloat(String(inv.paid_amount || '0')).toFixed(2)} DH de paiements enregistres.\n\n` +
+        `Cette facture a ${money(parseFloat(String(inv.paid_amount || '0')))} de paiements enregistres.\n\n` +
         `OK = supprimer AUSSI les paiements (perte de tracabilite comptable)\n` +
         `Annuler = abandonner la suppression (utilisez plutot "Annuler la facture")`
       );
@@ -502,7 +503,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
         const d = daysTo(inv.due_date as string);
         return d < 0 ? `échue depuis ${-d} j` : d === 0 ? 'échéance aujourd\'hui' : `échéance dans ${d} j`;
       }
-      case 'partial': return `reste ${n(remaining)} DH`;
+      case 'partial': return `reste ${money(remaining)}`;
       case 'paid': return 'réglée';
       default: return 'annulée';
     }
@@ -565,7 +566,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
             <span key={l.id}>
               {i > 0 && ' · '}
               <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{l.invoice_number}</span>
-              {' '}{l.supplier_name} — {n(parseFloat(l.remaining))} DH, échue le {fmtDate(l.due_date)} ({l.days_late} j)
+              {' '}{l.supplier_name} — {money(parseFloat(l.remaining))}, échue le {fmtDate(l.due_date)} ({l.days_late} j)
             </span>
           ))}
           {lateList.length > 3 && <span> · et d'autres en tête de liste</span>}
@@ -574,13 +575,13 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
 
       {/* Tuiles : reste dû, bloqué, échu, réglé (montants que les pastilles ne donnent pas). */}
       {layout !== 'split' && <section className="prj-kpis" aria-label="Indicateurs">
-        <ListKpi label="Reste à payer" value={`${n(openStats.remaining)} DH`} sub={`${openStats.count} facture${openStats.count > 1 ? 's' : ''} à traiter`} />
-        <ListKpi label="Bloqué / litige" value={`${n(stageStats.blocked?.remaining ?? 0)} DH`} sub={`${stageStats.blocked?.count ?? 0} paiement(s) suspendu(s)`}
+        <ListKpi label="Reste à payer" value={`${money(openStats.remaining)}`} sub={`${openStats.count} facture${openStats.count > 1 ? 's' : ''} à traiter`} />
+        <ListKpi label="Bloqué / litige" value={`${money(stageStats.blocked?.remaining ?? 0)}`} sub={`${stageStats.blocked?.count ?? 0} paiement(s) suspendu(s)`}
           tone={(stageStats.blocked?.count ?? 0) > 0 ? 'orange' : undefined} />
         <ListKpi label="Échéance dépassée" value={String(lateList.length >= 5 ? '5+' : lateList.length)}
-          sub={lateList.length ? `${n(lateList.reduce((a, l) => a + (parseFloat(l.remaining) || 0), 0))} DH en tête de liste` : 'aucune facture échue'}
+          sub={lateList.length ? `${money(lateList.reduce((a, l) => a + (parseFloat(l.remaining) || 0), 0))} en tête de liste` : 'aucune facture échue'}
           tone={lateList.length ? 'red' : undefined} />
-        <ListKpi label="Réglé" value={`${n(stageStats.paid?.amount ?? 0)} DH`} sub={`${stageStats.paid?.count ?? 0} facture(s) soldée(s)`} />
+        <ListKpi label="Réglé" value={`${money(stageStats.paid?.amount ?? 0)}`} sub={`${stageStats.paid?.count ?? 0} facture(s) soldée(s)`} />
       </section>}
 
       {/* Barre d'outils unique : recherche, filtres, bascule À traiter / Historique */}
@@ -615,13 +616,13 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
       {/* Circuit de la facture : une pastille numérotée par étape, clic = filtre */}
       <StagePipeline
         title="Où en sont mes factures"
-        summary={`${openStats.count} facture${openStats.count > 1 ? 's' : ''} à traiter · ${n(openStats.remaining)} DH restant dus`}
+        summary={`${openStats.count} facture${openStats.count > 1 ? 's' : ''} à traiter · ${money(openStats.remaining)} restant dus`}
         stages={INV_STAGES}
         stats={Object.fromEntries(INV_STAGES.map(s => {
           const st = stageStats[s.key];
           if (!st) return [s.key, undefined];
           const amount = s.key === 'paid' ? st.amount : st.remaining;
-          return [s.key, { count: st.count, sub: `${n(amount)} DH`, late: st.late }];
+          return [s.key, { count: st.count, sub: `${money(amount)}`, late: st.late }];
         }))}
         isActive={k => (k === 'paid' ? view === 'history' : view === 'open' && stage === k)}
         onPick={pickStage}
@@ -774,8 +775,8 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <span style={{ fontWeight: 700 }}>{n(total)}</span>
-                        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
-                        {inv.foreign_total_amount != null && String(inv.currency_code).trim() !== 'MAD' && (
+                        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{currencySymbol()}</span>
+                        {inv.foreign_total_amount != null && String(inv.currency_code).trim() !== BASE_CURRENCY && (
                           <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{n(parseFloat(inv.foreign_total_amount as string))} {String(inv.currency_code).trim()}</div>
                         )}
                         {remaining > 0 && invStage !== 'cancelled' && paid > 0 && (
@@ -878,7 +879,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
                 </td>
                 <td style={{ textAlign: 'right' }}>
                   <span style={{ fontWeight: 700 }}>{n(board?.sumTotal ?? 0)}</span>
-                  <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+                  <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{currencySymbol()}</span>
                   {(board?.sumRemaining ?? 0) > 0.005 && (
                     <div style={{ color: '#dc3545', fontSize: '0.6875rem', marginTop: 2 }}>Reste {n(board?.sumRemaining ?? 0)}</div>
                   )}
@@ -964,7 +965,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
               <div style={{ flex: 1 }} />
               <span className="odoo-tag odoo-tag-orange">Reste {payIsForeign
                 ? `${n(parseFloat(showPayForm.foreign_total_amount as string) - parseFloat((showPayForm.foreign_paid_amount as string) || '0'))} ${payCurrency}`
-                : `${n(parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string))} DH`}</span>
+                : `${money(parseFloat(showPayForm.total_amount as string) - parseFloat(showPayForm.paid_amount as string))}`}</span>
               <button onClick={() => setShowPayForm(null)} className="odoo-pager-btn" title="Fermer"><X size={14} /></button>
             </div>
             <form onSubmit={e => {
@@ -1009,16 +1010,16 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
                       <div><label style={lab}>Montant réglé ({payCurrency}) *</label>
                         <input type="number" step="0.01" min="0.01" max={remainingF.toFixed(2)} required value={payForeign} onChange={e => setPayForeign(e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
-                      <div><label style={lab}>Taux du jour : 1 {payCurrency} = … DH *</label>
+                      <div><label style={lab}>Taux du jour : 1 {payCurrency} = … {currencySymbol()} *</label>
                         <input type="number" step="0.0001" min="0.0001" required value={payRate} onChange={e => setPayRate(e.target.value)}
                           className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
                     </div>
                     <input type="hidden" name="amount" value={dh.toFixed(2)} />
                     <div className="odoo-alert" style={{ fontSize: '0.75rem', display: 'grid', gap: 2 }}>
-                      <span>Sortie de trésorerie : <strong>{n(dh)} DH</strong> ({n(foreign)} {payCurrency} × {rate || '—'})</span>
-                      <span>Dette soldée au taux de la facture ({invRate}) : <strong>{n(settled)} DH</strong></span>
+                      <span>Sortie de trésorerie : <strong>{money(dh)}</strong> ({n(foreign)} {payCurrency} × {rate || '—'})</span>
+                      <span>Dette soldée au taux de la facture ({invRate}) : <strong>{money(settled)}</strong></span>
                       {rate > 0 && Math.abs(diff) >= 0.01 && <span style={{ color: diff > 0 ? '#dc3545' : '#198754' }}>
-                        {diff > 0 ? 'Perte' : 'Gain'} de change : <strong>{n(Math.abs(diff))} DH</strong> ({diff > 0 ? '6331' : '7331'})</span>}
+                        {diff > 0 ? 'Perte' : 'Gain'} de change : <strong>{money(Math.abs(diff))}</strong> ({diff > 0 ? '6331' : '7331'})</span>}
                     </div>
                   </>);
                 })() : (
@@ -1048,7 +1049,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
                         <input name="checkDate" type="date" className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" defaultValue={(showPayForm.due_date as string)?.slice(0, 10) || format(new Date(), 'yyyy-MM-dd')} /></div>
                     </div>
                     {!payIsForeign && <div className="grid grid-cols-2 gap-3" style={{ marginTop: 4 }}>
-                      <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Avoir fournisseur (DH)</label>
+                      <div><label style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginBottom: 4 }}>Avoir fournisseur ({currencySymbol()})</label>
                         <input name="avoirAmount" type="number" step="0.01" min="0" placeholder="0.00"
                           value={payAvoir} onChange={e => {
                             const av = parseFloat(e.target.value) || 0;
@@ -1060,7 +1061,7 @@ function ReceivedInvoicesSection({ initialSupplierId = '', initialSearch = '', i
                       {parseFloat(payAvoir) > 0 && (
                         <div style={{ display: 'flex', alignItems: 'flex-end' }}>
                           <p style={{ fontSize: '0.6875rem', color: '#2563eb', fontWeight: 600, margin: 0, paddingBottom: 6 }}>
-                            Avoir {n(parseFloat(payAvoir))} + {payLegacy === 'traite' ? 'traite' : 'chèque'} {n(parseFloat(payAmount))} = {n(parseFloat(payAvoir) + parseFloat(payAmount))} DH
+                            Avoir {n(parseFloat(payAvoir))} + {payLegacy === 'traite' ? 'traite' : 'chèque'} {n(parseFloat(payAmount))} = {money(parseFloat(payAvoir) + parseFloat(payAmount))}
                           </p>
                         </div>
                       )}
@@ -1164,7 +1165,7 @@ function ValidateInvoiceModal({ invoice, pending, onClose, onSubmit }: {
             </div>
             {declared > 0 && Math.abs(diff) > 0.01 && (
               <div style={{ fontSize: '0.75rem', color: diff > 0 ? '#dc3545' : '#b7791f' }}>
-                Écart avec le total calculé ({n(computed)} DH) : {diff > 0 ? '+' : ''}{n(diff)} DH
+                Écart avec le total calculé ({money(computed)}) : {money(diff, { signed: true })}
               </div>
             )}
           </div>
@@ -1379,7 +1380,7 @@ function ReceivedInvoiceFormModal({
             </div>
             {ttcBelowPaid && (
               <div style={{ padding: '6px 10px', fontSize: '0.75rem', color: '#b71c1c', backgroundColor: '#fff5f5', border: '1px solid #f5c6cb', borderRadius: 4 }}>
-                ⚠ Le montant TTC ({n(ttcNum)} DH) est inférieur au montant déjà payé ({n(paidAmount)} DH). Ajustez avant d'enregistrer.
+                ⚠ Le montant TTC ({money(ttcNum)}) est inférieur au montant déjà payé ({money(paidAmount)}). Ajustez avant d'enregistrer.
               </div>
             )}
             <div className="grid grid-cols-3 gap-3">
@@ -1418,7 +1419,7 @@ function ReceivedInvoiceFormModal({
                 className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></div>
             {isEdit && paidAmount > 0 && (
               <div style={{ padding: '6px 10px', fontSize: '0.6875rem', color: 'var(--theme-text-muted)', backgroundColor: 'var(--theme-bg-page)', borderRadius: 4 }}>
-                💡 Déjà payé : <strong>{n(paidAmount)} DH</strong>. Le statut sera recalculé automatiquement après modification.
+                💡 Déjà payé : <strong>{money(paidAmount)}</strong>. Le statut sera recalculé automatiquement après modification.
               </div>
             )}
           </div>
@@ -1543,7 +1544,7 @@ function InvoiceScheduleModal({ invoice, onClose, onSuccess }: {
         <form onSubmit={(e) => { e.preventDefault(); create.mutate(); }} className="p-5 space-y-4">
           <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600 flex justify-between">
             <span>Reste à échelonner</span>
-            <strong style={{ fontFamily: 'ui-monospace, monospace', color: '#b71c1c' }}>{n(reste)} DH</strong>
+            <strong style={{ fontFamily: 'ui-monospace, monospace', color: '#b71c1c' }}>{money(reste)}</strong>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1583,7 +1584,7 @@ function InvoiceScheduleModal({ invoice, onClose, onSuccess }: {
                 {apercu.map((e, i) => (
                   <div key={i} className="px-3 py-1.5 flex justify-between text-xs border-t border-gray-100">
                     <span className="text-gray-600">Échéance {i + 1} · {e.date}</span>
-                    <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(e.montant)} DH</strong>
+                    <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{money(e.montant)}</strong>
                   </div>
                 ))}
               </div>
@@ -1814,8 +1815,8 @@ function InvoiceLinesEditorModal({
                         </button>
                       </>
                     ) : undefined}>
-                    Montant enregistré : <strong>{n(currentHt)} DH HT</strong> · TVA {n(headerTax)} DH · <strong>{n(currentTtc)} DH TTC</strong>
-                    {paidAmount > 0 && <> · déjà payé {n(paidAmount)} DH</>}.
+                    Montant enregistré : <strong>{money(currentHt)} HT</strong> · TVA {money(headerTax)} · <strong>{money(currentTtc)} TTC</strong>
+                    {paidAmount > 0 && <> · déjà payé {money(paidAmount)}</>}.
                     {' '}Détaillez-la pour qu'elle entre dans le rapprochement avec les réceptions
                     {poId ? ' : partez des lignes reçues du BC, puis ajustez quantités et prix selon la facture papier.' : '.'}
                   </StatusBanner>
@@ -1910,16 +1911,16 @@ function InvoiceLinesEditorModal({
               <div style={{ marginTop: 16, padding: '10px 14px', background: 'var(--theme-bg-page)', borderRadius: 4, display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8125rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--theme-text-muted)' }}>Montant HT enregistré</span>
-                  <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(currentHt)} DH</span>
+                  <span style={{ fontFamily: 'ui-monospace, monospace' }}>{money(currentHt)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--theme-text-muted)' }}>Nouveau total HT (somme des lignes)</span>
-                  <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(newTotal)} DH</strong>
+                  <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{money(newTotal)}</strong>
                 </div>
                 {lines.length > 0 && Math.abs(htGap) >= 0.01 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#b85d1a' }}>
                     <span>Écart avec le montant enregistré</span>
-                    <span style={{ fontFamily: 'ui-monospace, monospace' }}>{htGap > 0 ? '+' : ''}{n(htGap)} DH</span>
+                    <span style={{ fontFamily: 'ui-monospace, monospace' }}>{money(htGap, { signed: true })}</span>
                   </div>
                 )}
                 {hasAnyRate ? (
@@ -1927,34 +1928,34 @@ function InvoiceLinesEditorModal({
                     {[...tvaByRate.entries()].sort((a, b) => parseFloat(a[0]) - parseFloat(b[0])).map(([rate, amt]) => (
                       <div key={rate} style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: 'var(--theme-text-muted)' }}>TVA {rate} %</span>
-                        <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(amt)} DH</span>
+                        <span style={{ fontFamily: 'ui-monospace, monospace' }}>{money(amt)}</span>
                       </div>
                     ))}
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: 'var(--theme-text-muted)' }}>Total TVA</span>
-                      <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(taxAmount)} DH</strong>
+                      <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{money(taxAmount)}</strong>
                     </div>
                   </>
                 ) : (
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--theme-text-muted)' }}>TVA (en-tete, inchangee)</span>
-                    <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(taxAmount)} DH</span>
+                    <span style={{ fontFamily: 'ui-monospace, monospace' }}>{money(taxAmount)}</span>
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--theme-bg-separator)', paddingTop: 6, marginTop: 2 }}>
                   <strong>Nouveau total TTC</strong>
-                  <strong style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--theme-accent)' }}>{n(newTtc)} DH</strong>
+                  <strong style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--theme-accent)' }}>{money(newTtc)}</strong>
                 </div>
                 {paidAmount > 0 && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
                     <span>Deja paye</span>
-                    <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(paidAmount)} DH</span>
+                    <span style={{ fontFamily: 'ui-monospace, monospace' }}>{money(paidAmount)}</span>
                   </div>
                 )}
                 {ttcBelowPaid && (
                   <div style={{ padding: '8px 12px', fontSize: '0.75rem', color: '#b71c1c', backgroundColor: '#fff5f5', border: '1px solid #f5c6cb', borderRadius: 4, marginTop: 4, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                     <span style={{ flex: 1, minWidth: 250 }}>
-                      ⚠ Le nouveau total TTC ({n(newTtc)} DH) est inferieur au deja paye ({n(paidAmount)} DH).
+                      ⚠ Le nouveau total TTC ({money(newTtc)}) est inferieur au deja paye ({money(paidAmount)}).
                       Supprime ou ajuste les paiements pour pouvoir baisser le total.
                     </span>
                     <button type="button" onClick={() => setShowPayments(true)}
@@ -2083,15 +2084,15 @@ function InvoicePaymentsModal({
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
                 <div style={{ padding: '8px 12px', borderRadius: 4, border: '1px solid var(--theme-bg-separator)', background: 'var(--theme-bg-card)' }}>
                   <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', textTransform: 'uppercase' }}>Total facture</div>
-                  <div style={{ fontSize: '1.125rem', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>{n(totalAmount)} DH</div>
+                  <div style={{ fontSize: '1.125rem', fontWeight: 700, fontFamily: 'ui-monospace, monospace' }}>{money(totalAmount)}</div>
                 </div>
                 <div style={{ padding: '8px 12px', borderRadius: 4, border: '1px solid #d4edda', background: '#f0f9f4' }}>
                   <div style={{ fontSize: '0.6875rem', color: '#0e7c3a', textTransform: 'uppercase' }}>Deja paye</div>
-                  <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#0e7c3a', fontFamily: 'ui-monospace, monospace' }}>{n(paidAmount)} DH</div>
+                  <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#0e7c3a', fontFamily: 'ui-monospace, monospace' }}>{money(paidAmount)}</div>
                 </div>
                 <div style={{ padding: '8px 12px', borderRadius: 4, border: remaining > 0 ? '1px solid #ffeaa7' : '1px solid #d4edda', background: remaining > 0 ? '#fff9e6' : '#f0f9f4' }}>
                   <div style={{ fontSize: '0.6875rem', color: remaining > 0 ? '#856404' : '#0e7c3a', textTransform: 'uppercase' }}>Reste a payer</div>
-                  <div style={{ fontSize: '1.125rem', fontWeight: 700, color: remaining > 0 ? '#856404' : '#0e7c3a', fontFamily: 'ui-monospace, monospace' }}>{n(Math.max(0, remaining))} DH</div>
+                  <div style={{ fontSize: '1.125rem', fontWeight: 700, color: remaining > 0 ? '#856404' : '#0e7c3a', fontFamily: 'ui-monospace, monospace' }}>{money(Math.max(0, remaining))}</div>
                 </div>
               </div>
 
@@ -2178,7 +2179,7 @@ function InvoicePaymentsModal({
         </div>
       </div>
       {voidTarget && (
-        <ReasonCodeDialog title={`Annuler le paiement de ${n(parseFloat(voidTarget.amount as string))} DH`} scope="void_payment"
+        <ReasonCodeDialog title={`Annuler le paiement de ${money(parseFloat(voidTarget.amount as string))}`} scope="void_payment"
           description="Le paiement reste dans l'historique : une contre-pièce négative le neutralise et son écriture est extournée. Un chèque déjà encaissé ou un paiement rapproché en banque ne peut pas être annulé."
           confirmLabel="Annuler le paiement" danger pending={voidMutation.isPending}
           onClose={() => setVoidTarget(null)}
@@ -2212,13 +2213,13 @@ function ReceivedInvoicePane({ inv, detail, action, onControl, onEdit, onLines, 
     { label: 'Reçue', sub: pdate(inv.invoice_date), tone: 'done' as const },
     { label: 'Validée', sub: st === 'draft' ? 'à valider' : 'oui', tone: (st === 'draft' ? 'current' : 'done') as 'current' | 'done' },
     { label: 'Échéance', sub: inv.due_date ? pdate(inv.due_date) : 'non fixée', tone: (st === 'paid' ? 'done' : late ? 'warn' : st === 'draft' ? '' : 'current') as 'done' | 'warn' | 'current' | '' },
-    { label: 'Réglée', sub: st === 'paid' ? 'soldée' : paid > 0.004 ? `${n(paid)} DH payés` : 'rien payé', tone: (st === 'paid' ? 'done' : '') as 'done' | '' },
+    { label: 'Réglée', sub: st === 'paid' ? 'soldée' : paid > 0.004 ? `${money(paid)} payés` : 'rien payé', tone: (st === 'paid' ? 'done' : '') as 'done' | '' },
   ];
   return (
     <section className="ord-pane" aria-label={`Facture ${inv.invoice_number as string}`}>
       <PaneHead name={String(inv.supplier_name ?? '—')}
         sub={<><span className="sal-num">{inv.invoice_number as string}</span>{inv.supplier_invoice_number ? ` · réf. ${inv.supplier_invoice_number as string}` : ''}{inv.purchase_order_number ? ` · ${inv.purchase_order_number as string}` : ''}</>}
-        amount={pmoney(total)} amountSub={st === 'cancelled' ? 'annulée' : remaining > 0.004 ? `reste à payer ${n(remaining)} DH` : 'réglée'} />
+        amount={pmoney(total)} amountSub={st === 'cancelled' ? 'annulée' : remaining > 0.004 ? `reste à payer ${money(remaining)}` : 'réglée'} />
       <div className="ord-actions">
         {action && <button type="button" className={action.cls} onClick={action.run} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{(st === 'to_pay' || st === 'partial') && <Banknote size={14} />}{action.label}</button>}
         <button type="button" className="odoo-btn-secondary" onClick={onControl} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{Number(inv.blocking_holds) > 0 ? <ShieldAlert size={13} /> : <ShieldCheck size={13} />} Contrôle</button>
@@ -2245,18 +2246,18 @@ function ReceivedInvoicePane({ inv, detail, action, onControl, onEdit, onLines, 
               <span className="ord-pv">{n(pn(it.subtotal ?? pn(it.quantity) * pn(it.unit_price)))}</span>
             </div>
           )) : <div className="kl-empty">{isLoading ? 'Chargement…' : 'Aucune ligne.'}</div>}
-          <div className="ord-kv"><span>Total HT</span><b>{n(pn(inv.amount ?? full?.amount))} DH</b></div>
-          <div className="ord-kv"><span>TVA</span><b>{n(pn(inv.tax_amount ?? full?.tax_amount))} DH</b></div>
-          <div className="ord-line tot"><span className="ord-pn">Total TTC</span><span className="ord-pv">{n(total)} DH</span></div>
+          <div className="ord-kv"><span>Total HT</span><b>{money(pn(inv.amount ?? full?.amount))}</b></div>
+          <div className="ord-kv"><span>TVA</span><b>{money(pn(inv.tax_amount ?? full?.tax_amount))}</b></div>
+          <div className="ord-line tot"><span className="ord-pn">Total TTC</span><span className="ord-pv">{money(total)}</span></div>
         </div>
       </section>
       <section>
-        <div className="kl-sec"><h2>Paiements</h2><small>{payments.length ? `${n(paid)} DH payés` : ''}</small></div>
+        <div className="kl-sec"><h2>Paiements</h2><small>{payments.length ? `${money(paid)} payés` : ''}</small></div>
         <div className="kl-group">
           {payments.length ? payments.map(p => (
             <div key={p.id as string} className="ord-kv" style={{ opacity: p.voided_at ? 0.5 : 1 }}>
               <span>{pdate(p.payment_date)} · {paymentModeLabel(p, payModes)}{p.reference ? ` · ${p.reference as string}` : ''}</span>
-              <b style={{ textDecoration: p.voided_at ? 'line-through' : undefined }}>{n(pn(p.allocated_amount ?? p.amount))} DH</b>
+              <b style={{ textDecoration: p.voided_at ? 'line-through' : undefined }}>{money(pn(p.allocated_amount ?? p.amount))}</b>
             </div>
           )) : <div className="kl-empty">{isLoading ? 'Chargement…' : 'Aucun paiement.'}</div>}
         </div>

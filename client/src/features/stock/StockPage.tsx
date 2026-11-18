@@ -43,6 +43,7 @@ import { fmtQty, type InventoryItem } from './types';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { money, currencySymbol } from '../../utils/money';
 
 type SortKey = 'name' | 'category' | 'supplier' | 'scelle' | 'entame' | 'quantity' | 'lots' | 'dlc' | 'days_stock' | 'price' | 'value';
 type SortDir = 'asc' | 'desc';
@@ -577,7 +578,7 @@ export default function StockPage() {
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
                         <div style={{ fontWeight: 600, color: '#721c24' }}>{totalQty.toFixed(1)} {lot.ingredient_unit as string}</div>
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{lostValue.toFixed(2)} DH</div>
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{money(lostValue)}</div>
                       </div>
                       <button onClick={() => setLossDialogLot(lot)} className="odoo-btn-danger" style={{ flexShrink: 0 }}>
                         <Trash2 size={11} /> Pertes
@@ -767,7 +768,7 @@ export default function StockPage() {
                     {(() => {
                       const cost = parseFloat(item.unit_cost || '0');
                       return cost > 0 ? (
-                        <span style={{ fontWeight: 500 }}>{cost.toFixed(2)} <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>DH/{item.unit}</span></span>
+                        <span style={{ fontWeight: 500 }}>{cost.toFixed(2)} <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>{currencySymbol()}/{item.unit}</span></span>
                       ) : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>;
                     })()}
                   </td>
@@ -1004,7 +1005,7 @@ function KanbanView({ items, onSelect }: {
                             {daysUntilDlc < 0 ? `${Math.abs(daysUntilDlc)}j!` : `${daysUntilDlc}j`}
                           </span>
                         ) : cost > 0 ? (
-                          <span>{cost.toFixed(2)} DH/{item.unit}</span>
+                          <span>{money(cost)}/{item.unit}</span>
                         ) : null}
                       </span>
                     </div>

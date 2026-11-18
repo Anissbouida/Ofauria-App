@@ -18,6 +18,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { PeriodFilter, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import { FilterChips } from '../sales/ListTemplate';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
+import { currencySymbol } from '../../utils/money';
 
 /** Statuts calculés par la base depuis la couverture des lignes de BC (mig 305). */
 const STATUS_INFO: Record<string, { label: string; tone: StatusTone; dot: string }> = {
@@ -228,7 +229,7 @@ export default function PurchaseRequestsPage() {
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><Coins size={11} style={{ display: 'inline', marginRight: 4 }} />Estimé</div>
-          <div className="odoo-stat-card-value">{totalEstimated.toFixed(0)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-value">{totalEstimated.toFixed(0)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
           <div className="odoo-stat-card-sub">à dépenser</div>
         </div>
       </div>
@@ -285,7 +286,7 @@ export default function PurchaseRequestsPage() {
                     </span>
                   )}
                   <span style={{ flex: 1 }} />
-                  <span style={{ fontWeight: 700 }}>{parseFloat(group.estimated_total || '0').toFixed(2)} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.6875rem' }}>DH estimé</span></span>
+                  <span style={{ fontWeight: 700 }}>{parseFloat(group.estimated_total || '0').toFixed(2)} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.6875rem' }}>{currencySymbol()} estimé</span></span>
                   {isExpanded ? <ChevronDown size={13} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronRight size={13} style={{ color: 'var(--theme-text-muted)' }} />}
                 </div>
 
@@ -383,7 +384,7 @@ export default function PurchaseRequestsPage() {
                               <td style={{ textAlign: 'right' }}>
                                 {req.ingredient_unit_cost ? (
                                   <span style={{ color: 'var(--theme-text-muted)' }}>
-                                    {(parseFloat(req.quantity) * parseFloat(req.ingredient_unit_cost)).toFixed(2)} <span style={{ fontSize: '0.6875rem' }}>DH</span>
+                                    {(parseFloat(req.quantity) * parseFloat(req.ingredient_unit_cost)).toFixed(2)} <span style={{ fontSize: '0.6875rem' }}>{currencySymbol()}</span>
                                   </span>
                                 ) : <span style={{ color: 'var(--theme-bg-separator)' }}>—</span>}
                               </td>

@@ -23,6 +23,7 @@ import { InterventionFormModal } from '../maintenance/forms';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useNavigate } from 'react-router-dom';
 import { Wrench } from 'lucide-react';
+import { money, currencySymbol } from '../../utils/money';
 
 /**
  * Contrôle & Qualité › Réclamations (SAV, mig 357). Même squelette que les autres
@@ -251,7 +252,7 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                       <select className="input" value={resolutionCode} onChange={e => setResolutionCode(e.target.value as ResolutionCode)}>
                         {(Object.entries(RESOLUTION_LABELS) as [ResolutionCode, string][]).filter(([k]) => k !== 'not_founded').map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                       </select>
-                      <input className="input" type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Montant (DH)" />
+                      <input className="input" type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder={`Montant (${currencySymbol()})`} />
                     </div>
                   )}
                   <textarea className="input" style={{ minHeight: 70 }} value={resolution} onChange={e => setResolution(e.target.value)}
@@ -294,7 +295,7 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 
               {c.resolution_code && (
                 <StatusBanner tone={c.status === 'rejected' ? 'neutral' : 'success'} icon={c.status === 'rejected' ? XCircle : CheckCircle2}
-                  title={`${RESOLUTION_LABELS[c.resolution_code]}${c.resolution_amount ? ` · ${Number(c.resolution_amount).toFixed(2)} DH` : ''}`}>
+                  title={`${RESOLUTION_LABELS[c.resolution_code]}${c.resolution_amount ? ` · ${money(Number(c.resolution_amount))}` : ''}`}>
                   {c.resolution || '—'}{c.resolved_by_name ? ` — ${c.resolved_by_name}, ${format(new Date(c.resolved_at!), 'dd/MM/yyyy')}` : ''}
                 </StatusBanner>
               )}
