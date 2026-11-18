@@ -7,7 +7,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { productionApi, useWorkshops, PRIORITY_LABELS, usePlanSummary } from '../../api/production.api';
+import { productionApi, useWorkshops, PRIORITY_LABELS, usePlanSummary, useScreenHidden } from '../../api/production.api';
 import { replenishmentApi } from '../../api/replenishment.api';
 import { ingredientLotsApi } from '../../api/inventory.api';
 import { bonSortieApi } from '../../api/bon-sortie.api';
@@ -200,6 +200,8 @@ export default function PlanDetailPage() {
   // M8-05 : synthèse chiffrée calculée au serveur ; clé sous ['production', id], rafraîchie
   // avec l'ordre et par les panneaux Rendement / Coûts après saisie.
   const { data: summary } = usePlanSummary(id, !!plan);
+  // Écrans de fabrication (mig 591) : éléments masqués pour la société ou le type de l'ordre.
+  const screenHidden = useScreenHidden(plan?.order_type_id as string | undefined);
 
   const prepareBonMutation = useMutation({
     mutationFn: () => bonSortieApi.generate(id!, plan!.store_id as string),
@@ -579,7 +581,7 @@ export default function PlanDetailPage() {
   // a repondu "rien a prelever". Ne debloque PAS la production : la preparation reste
   // bloquee tant que les besoins ne sont pas recalcules (recette + relance du plan).
   const bonNotNeeded = !isSemiFini && plan.status !== 'draft' && !activeBon && (noIngredientNeeds || !!bonNotNeededReason);
-  const panelCtx = { summary, warnings: (plan.warnings as string[] | undefined) ?? [], needsCount: needs.length, bonNotNeeded, hasTabs, recipeLc: T.recipeLc, plan, id: id!, isChef, items, productionSettings, hasFeature, isMagasinier, isSemiFini: !!isSemiFini, activeBon: !!activeBon, lotUsage: productionLotUsage as Record<string, any>[] };
+  const panelCtx = { summary, hidden: screenHidden, warnings: (plan.warnings as string[] | undefined) ?? [], needsCount: needs.length, bonNotNeeded, hasTabs, recipeLc: T.recipeLc, plan, id: id!, isChef, items, productionSettings, hasFeature, isMagasinier, isSemiFini: !!isSemiFini, activeBon: !!activeBon, lotUsage: productionLotUsage as Record<string, any>[] };
 
   // Bloc Besoins en ingredients extrait en JSX pour pouvoir le placer au-dessus de
   // l'apercu FEFO (demande UX : besoins en haut, FEFO en bas dans le sous-onglet "Besoins").

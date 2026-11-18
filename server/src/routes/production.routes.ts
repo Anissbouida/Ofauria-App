@@ -14,6 +14,7 @@ import { productionImpactRepository } from '../repositories/production-impact.re
 import { subcontractingRepository, SubcontractError } from '../repositories/subcontracting.repository.js';
 import { productSerialRepository } from '../repositories/product-serial.repository.js';
 import { disassemblyRepository, DisassemblyError } from '../repositories/disassembly.repository.js';
+import { productionScreensRepository, ScreenSettingError } from '../repositories/production-screens.repository.js';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
@@ -23,7 +24,7 @@ import { validate, validateQuery, validateUuidParams } from '../middleware/valid
 import {
   createPlanSchema, updateItemsSchema, itemIdsSchema, startItemsSchema, produceItemsSchema,
   completeSchema, cancelItemsSchema, relaunchSchema, addActivitySchema, requestStockVerificationSchema, listQuerySchema, setPolicySchema,
-  createOrderTypeSchema, updateOrderTypeSchema, printTemplateSchema, subcontractSetupSchema, subcontractShipSchema, disassemblySchema, updatePlanHeaderSchema, mrpPhasedValidateSchema, masterScheduleSchema, itemRecipeSchema,
+  createOrderTypeSchema, updateOrderTypeSchema, printTemplateSchema, subcontractSetupSchema, subcontractShipSchema, disassemblySchema, screenSettingSchema, updatePlanHeaderSchema, mrpPhasedValidateSchema, masterScheduleSchema, itemRecipeSchema,
 } from '../validators/production.validator.js';
 
 const id = validateUuidParams('id');
@@ -69,6 +70,18 @@ router.get('/serials/lookup', authenticate, can('production.view'), asyncHandler
   res.json({ success: true, data: sn.trim() ? await productSerialRepository.lookup(sn) : [] });
 }));
 // M9 — désassemblage : lots candidats, historique, désassembler (avant /:id).
+// Écrans de fabrication (mig 591) : éléments masqués (lecture : production ; écriture : Paramètres › Production).
+router.get('/screen-settings', authenticate, can('production.view'), asyncHandler(async (_req, res) => {
+  res.json({ success: true, data: await productionScreensRepository.list() });
+}));
+router.put('/screen-settings', authenticate, authorizeSettings('production', 'edit'), validate(screenSettingSchema), asyncHandler(async (req, res) => {
+  try {
+    res.json({ success: true, data: await productionScreensRepository.setHidden(req.body.orderTypeId, req.body.key, req.body.hidden, (req as AuthRequest).user!.userId) });
+  } catch (e) {
+    if (e instanceof ScreenSettingError) { res.status(400).json({ success: false, error: { message: e.message } }); return; }
+    throw e;
+  }
+}));
 router.get('/disassembly/candidates', authenticate, can('production.view'), asyncHandler(async (req, res) => {
   res.json({ success: true, data: await disassemblyRepository.candidates((req as AuthRequest).user?.storeId ?? null) });
 }));

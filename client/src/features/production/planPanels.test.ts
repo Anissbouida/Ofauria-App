@@ -33,6 +33,15 @@ describe('Registre des panneaux de l\'ordre (M8-01)', () => {
     expect(visible({ plan: { status: 'completed' }, items: [{ tracking_mode: 'serial' }] }, 'production')).toEqual(['serials', 'steps', 'yield']);
     expect(visible({ plan: { status: 'completed' }, items: [{ tracking_mode: 'lot' }] }, 'production')).not.toContain('serials');
   });
+  it('Écrans de fabrication : un panneau masqué disparaît, même si sa règle l\'afficherait (mig 591)', () => {
+    expect(visible({ plan: { status: 'completed' }, hidden: new Set(['yield']) } as never, 'production')).toEqual(['steps']);
+    expect(visible({ plan: { status: 'draft' }, hidden: new Set(['history']) } as never, 'synthese')).toEqual(['custom-fields']);
+  });
+  it('chaque panneau du registre figure au catalogue des écrans (onglet Écrans complet)', async () => {
+    const { PLAN_PANEL_RULES } = await import('./planPanelRules');
+    const { PRODUCTION_SCREEN_KEYS } = await import('@ofauria/shared');
+    expect(PLAN_PANEL_RULES.map(r => r.id).filter(id => !PRODUCTION_SCREEN_KEYS.has(id))).toEqual([]);
+  });
   it('alertes de l\'onglet Ingrédients', () => {
     const prep = (c: Partial<PlanPanelCtx>) => visible({ plan: { status: 'confirmed' }, ...c } as never, 'preparation' as never);
     expect(prep({ isMagasinier: true, warnings: ['Farine insuffisante'] })).toEqual(['stock-warnings']);

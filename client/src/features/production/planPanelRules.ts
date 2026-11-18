@@ -10,6 +10,8 @@ export type PlanPanelCtx = {
   warnings?: string[]; needsCount?: number; bonNotNeeded?: boolean; hasTabs?: boolean; recipeLc?: string;
   /** Synthèse chiffrée calculée au serveur (M8-05). */
   summary?: import('../../api/production.api').PlanSummary | null;
+  /** Éléments masqués par Production › Paramétrage › Écrans (mig 591). */
+  hidden?: Set<string>;
 };
 export type PanelTab = 'preparation' | 'synthese' | 'production' | 'couts';
 
@@ -39,4 +41,6 @@ export const PLAN_PANEL_RULES: { id: string; tab: PanelTab; when: (c: PlanPanelC
   { id: 'cost', tab: 'couts', when: c => c.productionSettings?.production_cost_enabled !== false },
 ];
 
-export const visiblePanels = (tab: PanelTab, c: PlanPanelCtx) => PLAN_PANEL_RULES.filter(p => p.tab === tab && p.when(c)).map(p => p.id);
+/** Règle du registre, puis masquage éventuel (Écrans de fabrication). */
+export const visiblePanels = (tab: PanelTab, c: PlanPanelCtx) =>
+  PLAN_PANEL_RULES.filter(p => p.tab === tab && p.when(c) && !c.hidden?.has(p.id)).map(p => p.id);

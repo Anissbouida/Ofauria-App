@@ -11,6 +11,9 @@ describe('Fenêtre de lancement (M8-01)', () => {
     expect(visibleLaunchSteps({ loadingBases: true, basesCount: 0 })).toEqual([1, 2, 3, 4]);
     expect(visibleLaunchSteps({ loadingBases: false, basesCount: 0 })).toEqual([2, 3, 4]);
   });
+  it('étape « Pertes et observations » masquable (Écrans de fabrication, mig 591)', () => {
+    expect(visibleLaunchSteps({ loadingBases: false, basesCount: 1, hidden: new Set(['launch.losses']) })).toEqual([1, 2, 4]);
+  });
   it('navigation sur les seules étapes visibles', () => {
     const v = [2, 3, 4];
     expect(nextLaunchStep(2, v)).toBe(3);

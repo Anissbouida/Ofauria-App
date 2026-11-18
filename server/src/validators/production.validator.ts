@@ -187,6 +187,13 @@ export const masterScheduleSchema = z.object({
 /** Nomenclature d'une ligne d'ordre (M4-04) : fiche alternative du produit, ou null. */
 export const itemRecipeSchema = z.object({ recipeId: uuid.nullable() });
 
+/** Écrans de fabrication (mig 591) : masquer un élément pour la société (null) ou un type d'ordre. */
+export const screenSettingSchema = z.object({
+  orderTypeId: uuid.nullable(),
+  key: z.string().min(1).max(40),
+  hidden: z.boolean(),
+});
+
 /** Désassemblage (M9) : pièces d'un lot de produit fini défaites, matières remises en stock. */
 export const disassemblySchema = z.object({
   productLotId: uuid,

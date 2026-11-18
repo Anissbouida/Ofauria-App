@@ -13,6 +13,11 @@ export interface PlanSummary {
   yield: { average: number | null; recorded: number; missing: number; threshold: number | null; belowThreshold: boolean; lossesTotal: number; toFridgeTotal: number };
   cost: { total: number | null; perUnit: number | null; unitBase: number; variancePct: number | null };
 }
+/** Éléments masqués pour un ordre : réglages société ∪ réglages de son type (mig 591). */
+export function useScreenHidden(orderTypeId: string | null | undefined): Set<string> {
+  const { data = [] } = useQuery({ queryKey: ['production-screen-settings'], queryFn: productionApi.screenSettings, staleTime: 60_000 });
+  return new Set(data.filter(h => h.orderTypeId === null || h.orderTypeId === orderTypeId).map(h => h.key));
+}
 /** Clé partagée : invalider ['production', id] la rafraîchit aussi. */
 export const planSummaryKey = (id: string) => ['production', id, 'summary'] as const;
 export function usePlanSummary(id: string | undefined, enabled = true) {
@@ -120,6 +125,11 @@ export const productionApi = {
     api.post('/production/order-types', data).then(r => r.data.data),
   updateOrderType: (id: string, data: ProductionOrderTypeInput): Promise<ProductionOrderType> =>
     api.put(`/production/order-types/${id}`, data).then(r => r.data.data),
+  /** Écrans de fabrication (mig 591) : éléments masqués (société = orderTypeId null). */
+  screenSettings: (): Promise<{ orderTypeId: string | null; key: string }[]> =>
+    api.get('/production/screen-settings').then(r => r.data.data),
+  setScreenSetting: (orderTypeId: string | null, key: string, hidden: boolean): Promise<{ orderTypeId: string | null; key: string }[]> =>
+    api.put('/production/screen-settings', { orderTypeId, key, hidden }).then(r => r.data.data),
   /** Aperçu d'impact (C-09) : ordres ouverts touchés par un type d'ordre ou une politique. */
   orderTypeImpact: (id: string): Promise<{ draft: number; underway: number }> =>
     api.get(`/production/order-types/${id}/impact`).then(r => r.data.data),

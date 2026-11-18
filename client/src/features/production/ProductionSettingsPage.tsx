@@ -10,6 +10,7 @@ import { SettingsTabs } from '../settings/SettingsPrimitives';
 import ProductionPoliciesPanel from './ProductionPoliciesPanel';
 import ProductionOrderTypesPanel from './ProductionOrderTypesPanel';
 import ProductionPrintTemplatesPanel from './ProductionPrintTemplatesPanel';
+import ProductionScreensPanel from './ProductionScreensPanel';
 
 const inp: React.CSSProperties = { padding: '0.45rem 0.6rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit', width: 120, textAlign: 'right' };
 
@@ -138,6 +139,7 @@ export default function ProductionSettingsPage() {
         { key: 'policies', label: 'Politiques', content: <ProductionPoliciesPanel /> },
         { key: 'order-types', label: 'Types d\'ordre', content: <ProductionOrderTypesPanel /> },
         { key: 'print', label: 'Impressions', content: <ProductionPrintTemplatesPanel /> },
+        { key: 'screens', label: 'Écrans', content: <ProductionScreensPanel /> },
       ]} />
     </div>
   );

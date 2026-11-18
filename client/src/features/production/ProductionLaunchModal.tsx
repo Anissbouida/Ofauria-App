@@ -1,5 +1,6 @@
 import { useProductionPolicies, shiftOf } from './usePolicies';
 import { cutProducedQuantity } from '@ofauria/shared';
+import { useScreenHidden } from '../../api/production.api';
 import { visibleLaunchSteps, nextLaunchStep, prevLaunchStep, showCutSection } from './launchStepRules';
 import { useProdTerms } from '../../hooks/useProdTerms';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -289,7 +290,8 @@ export default function ProductionLaunchModal({
   // M8-03 : libellé de la 1re étape selon le secteur.
   const STEPS_ALL = STEPS.map(s => (s.num === 1 && !T.batchMode ? { ...s, label: T.basePreps } : s));
   // M8-01 : étapes affichées selon le registre (sans base partagée, l'étape 1 disparaît).
-  const visibleSteps = visibleLaunchSteps({ loadingBases: loadingSubRecipes, basesCount: subRecipes.length });
+  const screenHidden = useScreenHidden((plan as Record<string, any> | undefined)?.order_type_id as string | undefined);
+  const visibleSteps = visibleLaunchSteps({ loadingBases: loadingSubRecipes, basesCount: subRecipes.length, hidden: screenHidden });
   const STEPS_T = STEPS_ALL.filter(s => visibleSteps.includes(s.num));
   useEffect(() => {
     if (!visibleSteps.includes(step)) setStep(visibleSteps.find(n => n > step) ?? visibleSteps[0]);

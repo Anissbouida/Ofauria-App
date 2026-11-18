@@ -8,6 +8,7 @@ export * from './constants/print-templates.js';
 export * from './constants/vocabulary.js';
 export * from './constants/production-cut.js';
 export * from './constants/routing-time.js';
+export * from './constants/production-screens.js';
 export * from './constants/production-contenant.js';
 export * from './constants/modules.js';
 export * from './constants/module-activation.js';
