@@ -1,4 +1,5 @@
 import { useProductionPolicies, shiftOf } from './usePolicies';
+import { visibleLaunchSteps, nextLaunchStep, prevLaunchStep, showCutSection } from './launchStepRules';
 import { useProdTerms } from '../../hooks/useProdTerms';
 import { usePermissions } from '../../context/PermissionsContext';
 import { money } from '../../utils/money';
@@ -282,8 +283,14 @@ export default function ProductionLaunchModal({
   const detectShift = (dateStr: string) => shiftOf(new Date(dateStr), policies.num('production.shift_cutoff', 'hour'));
   const shift = detectShift(producedAt);
   // M8-03 : libellé de la 1re étape selon le secteur.
-  const STEPS_T = STEPS.map(s => (s.num === 1 && !T.batchMode ? { ...s, label: T.basePreps } : s));
-  const currentStepDef = STEPS_T[step - 1];
+  const STEPS_ALL = STEPS.map(s => (s.num === 1 && !T.batchMode ? { ...s, label: T.basePreps } : s));
+  // M8-01 : étapes affichées selon le registre (sans base partagée, l'étape 1 disparaît).
+  const visibleSteps = visibleLaunchSteps({ loadingBases: loadingSubRecipes, basesCount: subRecipes.length });
+  const STEPS_T = STEPS_ALL.filter(s => visibleSteps.includes(s.num));
+  useEffect(() => {
+    if (!visibleSteps.includes(step)) setStep(visibleSteps.find(n => n > step) ?? visibleSteps[0]);
+  }, [visibleSteps.join(','), step]); // eslint-disable-line react-hooks/exhaustive-deps
+  const currentStepDef = STEPS_ALL[step - 1];
   const colors = stepColorMap[currentStepDef.color];
 
   // Loss detection
@@ -342,11 +349,11 @@ export default function ProductionLaunchModal({
       // auto-set declareLosses based on discrepancies when entering step 3
       setDeclareLosses(hasDiscrepancies);
     }
-    setStep((s) => Math.min(s + 1, 4));
+    setStep((s) => nextLaunchStep(s, visibleSteps));
   }
 
   function goPrev() {
-    setStep((s) => Math.max(s - 1, 1));
+    setStep((s) => prevLaunchStep(s, visibleSteps));
   }
 
   // -----------------------------------------------------------------------
@@ -479,7 +486,7 @@ export default function ProductionLaunchModal({
                       : 'bg-gray-200 text-gray-500'
                 }`}
               >
-                {done ? <Check size={16} /> : s.num}
+                {done ? <Check size={16} /> : idx + 1}
               </div>
               <span
                 className={`text-[10px] sm:text-xs font-medium text-center leading-tight max-w-[70px] sm:max-w-[90px] ${
@@ -1578,8 +1585,8 @@ export default function ProductionLaunchModal({
     if (!item.product_id) return null;
     // M8-06 : coupe d'un cadre (pâtisserie) seulement avec l'option « fournée » ; les sorties
     // déclarées sur la fiche (M4-06) restent proposées dans tous les secteurs.
+    if (!showCutSection(batchMode, item.declared_outputs)) return null;
     const declaredOnly = !batchMode;
-    if (declaredOnly && !(Array.isArray(item.declared_outputs) && item.declared_outputs.length)) return null;
     const id = item.id as string;
     const planned = (item.planned_quantity as number) || 0;
     const active = !!cutMode[id];
@@ -2439,7 +2446,7 @@ export default function ProductionLaunchModal({
       <div className="sticky bottom-0 bg-white border-t border-gray-100 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
         <div className="flex items-center justify-between px-4 py-3 max-w-2xl mx-auto w-full">
           <div>
-            {step === 1 ? (
+            {step === visibleSteps[0] ? (
               <button
                 onClick={onClose}
                 className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
