@@ -2117,8 +2117,8 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 
 | ☐ | Tâche | Objet | Change des chiffres |
 |---|---|---|---|
-| ◐ | C-01 | Modèle de configuration étendu | non |
-| ☐ | C-02 | « Exportable et livré dans un profil » dans la définition de fini | — (règle, voir guide) |
+| ☑ | C-01 | Modèle de configuration étendu | non |
+| ☑ | C-02 | « Exportable et livré dans un profil » dans la définition de fini | non |
 | ☑ | C-03 | Écran « Profil d'industrie » | non |
 | ◐ | C-04 | Bilan de santé enrichi | non |
 | ☑ | C-05 | Trois profils de référence | non (données de départ à la demande) |
@@ -2128,7 +2128,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ☑ | C-09 | Aperçu d'impact étendu | non |
 | ☑ | C-10 | Guide « Configurer une industrie » | non |
 
-**Notes C.** Migration 586. Jeu de référence : zéro écart apres-m9 → apres-c. Suites : 477 tests unitaires serveur, 23 client, 654 / 654 en base.
+**Notes C.** Migrations 586, 590. Jeu de référence : zéro écart apres-m9 → apres-c. Suites : 477 tests unitaires serveur, 23 client, 654 / 654 en base.
 - **C-01** : modèle `kalum.config` version 2 (v1 accepté) avec les couches production (`services/industry-profile.ts`) : types d'ordre, politiques société, gabarits d'impression ; import filtré (codes, règles bon de sortie / sous-traitance, politiques validées par le catalogue, colonnes du catalogue) ; `sector_packs.profile`, appliqué par « Charger les données de départ » sans rien écraser. Restent les couches unités, gammes types, emplacements, plans de contrôle, panneaux.
 - **C-05** : mig 586, profils `process`, `discret`, `atelier` bâtis sur Fabrication (modules, options, vocabulaire neutre hérités ; données de départ de Fabrication) avec types d'ordre, politiques, impressions et vocabulaire propres selon la matrice 2 ter.5. Valeurs proposées, à relire avec une personne du métier.
 - **C-03** : la confirmation de bascule montre ce que le profil apporte ; aperçu des données de départ de n'importe quel profil. Restent les tuiles par couche et l'indicateur d'avancement.
@@ -2136,6 +2136,8 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **C-06** : test en base : aucun terme ni option de boulangerie dans les profils livrés, couches valides, un type par défaut. Restent le déroulé complet d'un ordre par profil et le test d'écran.
 - **C-07** : `never-sector-guard.test.ts`, aucune exception.
 - **C-10** : `docs/GUIDE_CONFIGURATION_INDUSTRIE.md`.
+- **C-01 (fin)** : mig 590, couches postes de charge (par nom) et emplacements types (par établissement) exportées, filtrées, appliquées sans écraser ; profils de référence complétés. Non exportables : gammes (rattachées à un article) et plans de contrôle (contrainte chk_qcp_target : article, matière ou catégorie de la société).
+- **C-02** : `profile-coverage.db.test.ts` — chaque politique de production société a une valeur dans un profil de référence ou une exception justifiée ; règle écrite dans le guide.
 - **Suite (2026-11-18)** : C-08 tâches de mise en route (types d'ordre, politiques, gamme hors option fournée, plan de contrôle) ; C-03 tuiles par couche avec état et avancement (`GET /settings/profile-status`, panneau en tête de l'onglet Secteur) ; C-09 `production-impact.repository.ts` (ordres touchés par un type d'ordre ou une politique ; étapes d'un type verrouillées et refusées au serveur tant que des ordres sont en cours ; niveau « type d'ordre » rangé sous le code) ; C-06 déroulé d'un ordre par profil (`industry-profile-flow.db.test.ts`). Fix : le chargement des données de départ vide le cache des politiques qu'il écrit.
 
 ### Lots suivants
@@ -2157,7 +2159,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ◐ | G6 | G6-01 à G6-08 |
 | ☑ | M8 | M8-01 à M8-06 |
 | ☑ | M9 | Sous-traitance, numéros de série, fantôme, désassemblage |
-| ◐ | C | C-01 à C-10 (tout fait sauf C-02 règle d'équipe, C-01 couches unités/gammes/emplacements/contrôle) |
+| ☑ | C | C-01 à C-10 |
 
 ### Jalons d'ouverture par industrie
 
