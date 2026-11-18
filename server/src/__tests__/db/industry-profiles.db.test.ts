@@ -14,7 +14,11 @@ describe.skipIf(!hasTestDb)('Profils d\'industrie (C-01, C-05)', () => {
   let tpl: typeof import('../../services/config-templates.js');
   let prof: typeof import('../../services/industry-profile.js');
   const p = () => testPool();
-  let before: { types: string[]; policies: string[]; fiche: { title: string | null; layout: object; footer_note: string | null } };
+  let before: {
+    types: string[]; policies: string[]; fiche: { title: string | null; layout: object; footer_note: string | null };
+    /** Données de départ de « Fabrication » (secteur de base du profil) déjà présentes avant le test. */
+    demo: boolean; refs: string[]; categories: string[]; workshop: boolean; ingredients: string[];
+  };
 
   beforeAll(async () => {
     await importRepositories();
@@ -25,6 +29,11 @@ describe.skipIf(!hasTestDb)('Profils d\'industrie (C-01, C-05)', () => {
       types: (await p().query(`SELECT code FROM production_order_types WHERE code IN ('ORDRE_SERIE', 'SOUS_TRAITANCE')`)).rows.map(r => r.code),
       policies: (await p().query(`SELECT key FROM policy_values WHERE scope_type = 'company' AND key IN ('production.cost_allocation_key', 'production.steps_source')`)).rows.map(r => r.key),
       fiche: (await p().query(`SELECT title, layout, footer_note FROM document_templates WHERE doc_type = 'production_fiche'`)).rows[0],
+      demo: (await p().query(`SELECT 1 FROM products WHERE slug = 'starter-demo-etagere'`)).rows.length > 0,
+      refs: (await p().query(`SELECT table_id || ':' || code AS k FROM ref_entries WHERE table_id IN ('production_step_types', 'production_equipment_types')`)).rows.map(r => r.k),
+      categories: (await p().query(`SELECT slug FROM categories WHERE slug LIKE 'starter-%'`)).rows.map(r => r.slug),
+      workshop: (await p().query(`SELECT 1 FROM production_workshops WHERE code = 'atelier_principal'`)).rows.length > 0,
+      ingredients: (await p().query(`SELECT name FROM ingredients WHERE name LIKE '%(démo)'`)).rows.map(r => r.name),
     };
   });
 
@@ -37,6 +46,16 @@ describe.skipIf(!hasTestDb)('Profils d\'industrie (C-01, C-05)', () => {
       [['production.cost_allocation_key', 'production.steps_source'], before.policies]);
     if (before.fiche) await run(`UPDATE document_templates SET title = $1, layout = $2, footer_note = $3 WHERE doc_type = 'production_fiche'`,
       [before.fiche.title, JSON.stringify(before.fiche.layout), before.fiche.footer_note]);
+    // Données de départ de « Fabrication » chargées avec le profil : seulement ce que le test a créé.
+    if (!before.demo) {
+      await run(`DELETE FROM recipe_ingredients WHERE recipe_id IN (SELECT r.id FROM recipes r JOIN products pr ON pr.id = r.product_id WHERE pr.slug = 'starter-demo-etagere')`, []);
+      await run(`DELETE FROM recipes WHERE product_id IN (SELECT id FROM products WHERE slug = 'starter-demo-etagere')`, []);
+      await run(`DELETE FROM products WHERE slug = 'starter-demo-etagere'`, []);
+    }
+    await run(`DELETE FROM ingredients WHERE name LIKE '%(démo)' AND NOT (name = ANY($1::text[]))`, [before.ingredients]);
+    await run(`DELETE FROM ref_entries WHERE table_id IN ('production_step_types', 'production_equipment_types') AND NOT ((table_id || ':' || code) = ANY($1::text[]))`, [before.refs]);
+    if (!before.workshop) await run(`DELETE FROM production_workshops WHERE code = 'atelier_principal'`, []);
+    await run(`DELETE FROM categories WHERE slug LIKE 'starter-%' AND NOT (slug = ANY($1::text[]))`, [before.categories]);
     await closeTestPool();
   });
 
