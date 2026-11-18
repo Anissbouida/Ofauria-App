@@ -159,7 +159,8 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
             </div>
           )}
 
-          {isBase && (
+          {/* M8-06 : paramètres de pâte (température, hydratation) — boulangerie seulement. */}
+          {isBase && batchMode && (
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
                 <span className="text-xs text-gray-500">Température de pâte cible (°C)</span>

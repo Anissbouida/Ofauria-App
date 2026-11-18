@@ -1,4 +1,5 @@
 import { useProductionPolicies, shiftOf } from './usePolicies';
+import { useProdTerms } from '../../hooks/useProdTerms';
 import { usePermissions } from '../../context/PermissionsContext';
 import { money } from '../../utils/money';
 import { useState, useMemo, useRef, useEffect } from 'react';
@@ -149,6 +150,7 @@ export default function ProductionLaunchModal({
 }: ProductionLaunchModalProps) {
   const { hasFeature } = usePermissions();
   const batchMode = hasFeature('mode_fournee');
+  const T = useProdTerms();
   // Dynamic loss reasons from referentiel
   // M6-03 : référentiel unique des motifs de rebut, domaine production.
   const { entries: prodLossReasonEntries } = useReferentiel('scrap_reasons');
@@ -279,7 +281,9 @@ export default function ProductionLaunchModal({
   const policies = useProductionPolicies({ workshop: plan?.target_role as string | undefined, store: plan?.store_id as string | undefined });
   const detectShift = (dateStr: string) => shiftOf(new Date(dateStr), policies.num('production.shift_cutoff', 'hour'));
   const shift = detectShift(producedAt);
-  const currentStepDef = STEPS[step - 1];
+  // M8-03 : libellé de la 1re étape selon le secteur.
+  const STEPS_T = STEPS.map(s => (s.num === 1 && !T.batchMode ? { ...s, label: T.basePreps } : s));
+  const currentStepDef = STEPS_T[step - 1];
   const colors = stepColorMap[currentStepDef.color];
 
   // Loss detection
@@ -459,7 +463,7 @@ export default function ProductionLaunchModal({
 
   const renderStepIndicator = () => (
     <div className="flex items-center justify-center gap-1 sm:gap-2 py-4 px-4">
-      {STEPS.map((s, idx) => {
+      {STEPS_T.map((s, idx) => {
         const done = step > s.num;
         const active = step === s.num;
         const sc = stepColorMap[s.color];
@@ -485,7 +489,7 @@ export default function ProductionLaunchModal({
                 {s.label}
               </span>
             </div>
-            {idx < STEPS.length - 1 && (
+            {idx < STEPS_T.length - 1 && (
               <div
                 className={`w-6 sm:w-12 h-0.5 mx-1 sm:mx-2 mt-[-18px] ${
                   step > s.num ? sc.bg : 'bg-gray-200'
@@ -507,7 +511,7 @@ export default function ProductionLaunchModal({
       return (
         <div className="flex items-center justify-center py-20">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" />
-          <span className="ml-3 text-gray-500">Analyse des sous-recettes...</span>
+          <span className="ml-3 text-gray-500">Analyse des {T.batchMode ? 'sous-recettes' : T.basePreps.toLowerCase()}...</span>
         </div>
       );
     }
@@ -674,7 +678,7 @@ export default function ProductionLaunchModal({
               type="button"
               onClick={(e) => { e.stopPropagation(); setRecipeProductId(recipeProductId === (item.product_id as string) ? null : (item.product_id as string)); }}
               className={`p-1.5 rounded-lg transition-colors ${recipeProductId === (item.product_id as string) ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500 hover:bg-blue-50 hover:text-blue-600'}`}
-              title="Voir la recette"
+              title={`Voir la ${T.recipeLc}`}
             >
               <BookOpen size={14} />
             </button>
@@ -1059,7 +1063,7 @@ export default function ProductionLaunchModal({
           ) : !recipeData ? (
             <div className="text-center py-12 text-gray-500">
               <BookOpen className="mx-auto mb-3 text-gray-300" size={40} />
-              <p>Aucune recette enregistree.</p>
+              <p>Aucune {T.recipeLc} enregistrée.</p>
             </div>
           ) : (
             <>
@@ -1165,7 +1169,7 @@ export default function ProductionLaunchModal({
         <div className="mt-4 bg-blue-50/50 border border-blue-200 rounded-2xl p-6">
           <div className="flex items-center justify-center py-4">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500" />
-            <span className="ml-2 text-gray-500 text-sm">Chargement de la recette...</span>
+            <span className="ml-2 text-gray-500 text-sm">Chargement de la {T.recipeLc}...</span>
           </div>
         </div>
       );
@@ -2242,8 +2246,8 @@ export default function ProductionLaunchModal({
               {/* ─── Generic Step 2: Recette ─── */}
               {singleStep === 2 && (
                 <div className="space-y-4">
-                  <h2 className="text-lg font-bold text-blue-700 flex items-center gap-2"><BookOpen size={18} /> Recette & Instructions</h2>
-                  <p className="text-sm text-gray-500">Suivez la recette. Vous pouvez sauvegarder et quitter a tout moment.</p>
+                  <h2 className="text-lg font-bold text-blue-700 flex items-center gap-2"><BookOpen size={18} /> {T.recipe} &amp; instructions</h2>
+                  <p className="text-sm text-gray-500">Suivez la {T.recipeLc}. Vous pouvez sauvegarder et quitter à tout moment.</p>
 
                   <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm">
                     <Package size={16} className="text-blue-600" />

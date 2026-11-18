@@ -1,4 +1,5 @@
 import { usePermissions } from '../../context/PermissionsContext';
+import { useProdTerms } from '../../hooks/useProdTerms';
 import HistoryPanel from '../../components/audit/HistoryPanel';
 import CustomFieldsCard from '../../components/custom-fields/CustomFieldsCard';
 import { useState } from 'react';
@@ -21,6 +22,7 @@ import RecipeRoutingPanel from './RecipeRoutingPanel';
 const dh = (v: number) => `${v.toFixed(2)} DH`;
 
 export default function NomenclaturePage() {
+  const T = useProdTerms();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -37,7 +39,7 @@ export default function NomenclaturePage() {
     return (
       <div className="odoo-scope">
         <div style={{ padding: '1.5rem' }} className="text-sm">
-          Recette introuvable. <button onClick={() => navigate('/recipes?tab=product')} className="text-amber-600 hover:underline">Retour aux recettes</button>
+          {T.recipe} introuvable. <button onClick={() => navigate('/recipes?tab=product')} className="text-amber-600 hover:underline">Retour aux {T.recipesLc}</button>
         </div>
       </div>
     );
@@ -48,8 +50,8 @@ export default function NomenclaturePage() {
   return (
     <div className="odoo-scope">
       <div className="odoo-control-bar">
-        <button onClick={() => navigate('/recipes?tab=product')} className="odoo-btn-secondary inline-flex items-center gap-1.5" title="Retour aux recettes">
-          <ArrowLeft size={15} /> Retour aux recettes
+        <button onClick={() => navigate('/recipes?tab=product')} className="odoo-btn-secondary inline-flex items-center gap-1.5" title={`Retour aux ${T.recipesLc}`}>
+          <ArrowLeft size={15} /> Retour aux {T.recipesLc}
         </button>
         <div className="odoo-breadcrumb" style={{ marginLeft: '0.75rem' }}>
           <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />
@@ -67,7 +69,7 @@ export default function NomenclaturePage() {
       <div className="odoo-smart-button-row" style={{ position: 'sticky', top: 46, zIndex: 9 }}>
         <div className="odoo-smart-button">
           <div className="odoo-smart-button-value">{kpi ? kpi.rendement : '—'}</div>
-          <div className="odoo-smart-button-label"><Layers size={11} /> Rendement {kpi?.contenantNom ? `(${kpi.contenantNom})` : '(pièces/fournée)'}</div>
+          <div className="odoo-smart-button-label"><Layers size={11} /> Rendement {kpi?.contenantNom ? `(${kpi.contenantNom})` : `(pièces/${T.batch.toLowerCase()})`}</div>
         </div>
         <div className="odoo-smart-button" title="Matière + main d'œuvre + énergie + frais de structure, ramenés à une pièce.">
           <div className="odoo-smart-button-value">{kpi ? dh(kpi.coutProd) : '—'}</div>

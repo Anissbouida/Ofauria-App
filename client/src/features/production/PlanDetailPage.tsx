@@ -1,4 +1,5 @@
 import { useProductionPolicies, shiftOf } from './usePolicies';
+import { useProdTerms } from '../../hooks/useProdTerms';
 import HistoryPanel from '../../components/audit/HistoryPanel';
 import QualityPanel from '../controle/QualityPanel';
 import ConsumptionPanel from './ConsumptionPanel';
@@ -50,6 +51,7 @@ import CoutReelPanel from './CoutReelPanel';
 type PlanTab = 'synthese' | 'ingredients' | 'production' | 'couts';
 
 export default function PlanDetailPage() {
+  const T = useProdTerms();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -213,7 +215,7 @@ export default function PlanDetailPage() {
           notify(`${skipped.length} lot(s) a DLC depassee ecarte(s) : ${liste}. Derogation possible depuis le bon de sortie.`, { icon: '⚠️', duration: 9000 });
         }
       } else {
-        const reason = result?.reason || 'Aucun ingredient a prelever pour ce plan (produits sans recette).';
+        const reason = result?.reason || `Aucun ingrédient à prélever pour ce plan (produits sans ${T.recipeLc}).`;
         setBonNotNeededReason(reason);
         notify(reason, { icon: '\u2139\ufe0f', duration: 6000 });
       }
@@ -1090,7 +1092,7 @@ export default function PlanDetailPage() {
     ].filter(Boolean).join(' + ');
     const lignes = [
       total > 0 ? `• ${total} article(s) (${detail}) repassent en production` : null,
-      canRecompute ? '• besoins en ingredients et bon de sortie recalcules depuis les recettes actuelles' : null,
+      canRecompute ? `• besoins en ingrédients et bon de sortie recalculés depuis les ${T.recipesLc} actuelles` : null,
     ].filter(Boolean).join('\n');
     menuItems.push({
       key: 'relaunch', sep: menuItems.length > 0 && !menuItems.some(m => m.key === 'revert'),
@@ -1208,7 +1210,7 @@ export default function PlanDetailPage() {
   const todos: Todo[] = [];
   if (bonNotNeeded || (plan.status !== 'draft' && !isSemiFini && needs.length === 0)) {
     todos.push({ tone: 'danger', icon: AlertTriangle, title: 'Préparation bloquée : aucun besoin en ingrédients calculé',
-      text: 'Ajoutez une recette aux produits concernés, puis « Relancer le plan » (menu Plus) pour recalculer les besoins.' });
+      text: `Ajoutez une ${T.recipeLc} aux produits concernés, puis « Relancer » (menu Plus) pour recalculer les besoins.` });
   } else if (['confirmed', 'awaiting_ingredients'].includes(plan.status) && activeBon && !['pret', 'cloture'].includes(activeBon.status as string)) {
     todos.push({ tone: 'info', icon: Truck, title: `Préparation des ingrédients par le magasinier — ${bsiTag?.label}`,
       text: `Bon de sortie ${activeBon.numero as string}. Vous serez notifié quand les ingrédients seront prêts.`,
@@ -1564,7 +1566,7 @@ export default function PlanDetailPage() {
           production deja demarree) ; Couts qu'une fois la production demarree. */}
       {hasTabs && (() => {
         const nextStepHint = bonNotNeeded
-          ? 'Production bloquée : aucun besoin en ingrédients calculé (recette manquante)'
+          ? `Production bloquée : aucun besoin en ingrédients calculé (${T.recipeLc} manquante)`
           : !activeBon
           ? 'Production : après la génération et la clôture du bon de sortie'
           : activeBon.status === 'pret'
@@ -1701,7 +1703,7 @@ export default function PlanDetailPage() {
       {showIngr && bonNotNeeded && ['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && (
         <div style={{ margin: '1rem' }}>
           <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun bon de sortie à préparer — préparation bloquée">
-            {bonNotNeededReason || 'Aucun ingrédient à prélever pour ce plan (produits sans recette ou sans composition).'}
+            {bonNotNeededReason || `Aucun ingrédient à prélever (produits sans ${T.recipeLc} ou sans composition).`}
             <div style={{ marginTop: 4 }}>
               La production ne peut pas démarrer sans transfert d'ingrédients. Ajoutez une recette aux produits
               de ce plan, puis utilisez « Relancer le plan » pour recalculer les besoins et générer le bon de sortie.
@@ -1769,7 +1771,7 @@ export default function PlanDetailPage() {
           <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun besoin en ingrédients calculé — préparation bloquée">
             Les produits de ce plan n'ont pas de recette (ou leur composition est vide) : aucun bon de sortie
             ne peut être généré et l'étape Production reste fermée.
-            {isChef && ' Ajoutez une recette aux produits concernés, puis utilisez « Relancer le plan » pour recalculer les besoins (ou revenez en brouillon pour retirer le produit).'}
+            {isChef && ` Ajoutez une ${T.recipeLc} aux produits concernés, puis utilisez « Relancer » pour recalculer les besoins (ou revenez en brouillon pour retirer le produit).`}
           </StatusBanner>
         </div>
       )}

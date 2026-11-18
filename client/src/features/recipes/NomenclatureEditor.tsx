@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useProdTerms } from '../../hooks/useProdTerms';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Save, Layers, Search, AlertTriangle, ChevronDown, ChevronRight, CornerDownRight, Camera, SlidersHorizontal, Box, GripVertical, HelpCircle, Copy, X, Printer } from 'lucide-react';
 import { recipesApi } from '../../api/recipes.api';
@@ -176,6 +177,8 @@ export interface FormatKpi {
 }
 
 export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCancel }: { recipeId: string; onSaved?: () => void; onFinance?: (k: FormatKpi | null) => void; onCancel?: () => void }) {
+  // M8-03 : terme du lot de fabrication selon le secteur (« fournée » en boulangerie).
+  const bLc = useProdTerms().batch.toLowerCase();
   const qc = useQueryClient();
   const confirm = useConfirm();
   // Cru / cuit : option « Contenants cru / cuit » (mig 507). Éteinte, la perte reste
@@ -623,13 +626,13 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           </div>
           <div>
             <input type="number" step="any" min="0"
-              aria-label={compoParPiece ? 'Quantité par pièce' : 'Quantité par fournée'}
+              aria-label={compoParPiece ? 'Quantité par pièce' : `Quantité par ${bLc}`}
               className={`h-8 w-full px-2 rounded-md text-sm text-right tabular-nums border focus:outline-none focus:ring-2 ${aberrant ? 'border-red-300 bg-red-50 text-red-700 focus:ring-red-100' : 'border-gray-200 bg-white focus:ring-primary-200 focus:border-primary-400'}`}
               value={r.quantite} onChange={(e) => setRow(r.key, { quantite: e.target.value })} placeholder="0" />
             {pp != null ? (
               <div className={`text-[10px] mt-0.5 text-right ${pp >= 1 ? 'text-red-500' : 'text-gray-400'}`} title="Fournées de la recette de base consommées par pièce">
                 {pp >= 1 && <AlertTriangle size={9} className="inline mr-0.5 -mt-0.5" />}
-                {pp >= 1 ? `${pp.toFixed(pp >= 10 ? 0 : 1)} fournée/pièce` : `≈ ${Math.round(pp * 100)}% fournée/pièce`}
+                {pp >= 1 ? `${pp.toFixed(pp >= 10 ? 0 : 1)} ${bLc}/pièce` : `≈ ${Math.round(pp * 100)}% ${bLc}/pièce`}
               </div>
             ) : eqLabel ? (
               <div className="text-[10px] mt-0.5 text-right text-gray-400">≈ {eqLabel}</div>
@@ -819,7 +822,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                   </span>
                   <div className="h-9 w-full flex items-center gap-1.5 px-2 rounded-md border border-gray-200 bg-gray-50 text-sm text-gray-700">
                     <Box size={13} className="text-gray-400 shrink-0" />
-                    <span className="truncate">{compoParPiece ? 'Par pièce' : 'Par fournée'}</span>
+                    <span className="truncate">{compoParPiece ? 'Par pièce' : `Par ${bLc}`}</span>
                   </div>
                 </div>
               </div>
@@ -839,7 +842,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             {aberrantCount > 0 && (
               <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-md bg-red-50 border border-red-200 text-[13px] text-red-700">
                 <AlertTriangle size={15} className="shrink-0" />
-                <span><strong>{aberrantCount} ligne{aberrantCount > 1 ? 's' : ''} à corriger</strong> — dosage par pièce improbable (≥ 1 fournée). Saisis la quantité réelle par pièce.</span>
+                <span><strong>{aberrantCount} ligne{aberrantCount > 1 ? 's' : ''} à corriger</strong> — dosage par pièce improbable (≥ 1 {bLc}). Saisis la quantité réelle par pièce.</span>
               </div>
             )}
 
@@ -860,7 +863,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             <div className="rounded-lg border border-gray-200" style={{ overflowX: 'auto' }}>
               <div className="grid items-center gap-2 px-3 py-2 bg-gray-50 rounded-t-lg text-[11px] font-medium uppercase tracking-wide text-gray-500" style={{ gridTemplateColumns: COLS, minWidth: 910 }}>
                 <span /><span>Rôle</span><span>Composant</span>
-                <span className="text-right">{compoParPiece ? 'Qté / pièce' : 'Qté / fournée'}</span><span>Unité</span>
+                <span className="text-right">{compoParPiece ? 'Qté / pièce' : `Qté / ${bLc}`}</span><span>Unité</span>
                 <span className="text-right" title="Perte sur la ligne (%) : majore la matière et le coût">Perte</span>
                 <span>% coût</span><span className="text-right">Coût</span><span />
               </div>
@@ -873,7 +876,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
                 return (
                   <div className="grid items-center gap-2 px-3 py-2 border-t border-gray-200 bg-gray-50 text-sm font-semibold tabular-nums" style={{ gridTemplateColumns: COLS, minWidth: 910 }}>
                     <span /><span />
-                    <span className="text-gray-600">Total {compoParPiece ? 'pièce' : 'fournée'}</span>
+                    <span className="text-gray-600">Total {compoParPiece ? 'pièce' : bLc}</span>
                     <span className="text-right">{tv}</span><span className="text-xs font-normal text-gray-400">{tu}</span>
                     <span />
                     <span className="text-right">{dh(coutMatiere)}</span><span />
@@ -915,7 +918,7 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {[
                   { id: 'fin-mo', lbl: "Main d'œuvre", sfx: 'DH/h', val: tauxMO, set: setTauxMO, ph: 'ex 30', step: 'any' },
-                  { id: 'fin-temps', lbl: 'Temps / fournée', sfx: 'min', val: moMin, set: setMoMin, ph: dureeEtapes > 0 ? `étapes ${dureeEtapes}` : 'ex 90', step: '1' },
+                  { id: 'fin-temps', lbl: `Temps / ${bLc}`, sfx: 'min', val: moMin, set: setMoMin, ph: dureeEtapes > 0 ? `étapes ${dureeEtapes}` : 'ex 90', step: '1' },
                   { id: 'fin-energie', lbl: 'Énergie', sfx: 'DH/four.', val: energie, set: setEnergie, ph: 'ex 15', step: 'any' },
                   { id: 'fin-structure', lbl: 'Structure', sfx: '%', val: structPct, set: setStructPct, ph: 'ex 15', step: 'any' },
                   { id: 'fin-mult', lbl: 'Multiplicateur', sfx: '×', val: mult, set: setMult, ph: 'ex 3', step: 'any' },
@@ -980,9 +983,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
           <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 flex-wrap px-3 py-2 bg-white border border-gray-200 rounded-md"
             style={{ boxShadow: '0 -2px 6px rgba(0,0,0,0.08)' }}>
             <p className="text-xs text-gray-400">
-              Format <strong>{f.contenant_nom}</strong> · saisie <strong>{compoParPiece ? 'par pièce' : 'par fournée'}</strong>
+              Format <strong>{f.contenant_nom}</strong> · saisie <strong>{compoParPiece ? 'par pièce' : `par ${bLc}`}</strong>
               {!compoParPiece && <> (coût/pièce = total ÷ {rendementNum})</>}.
-              Coût/fournée : <strong>{dh(coutFournee)}</strong>.
+              Coût/{bLc} : <strong>{dh(coutFournee)}</strong>.
             </p>
             <div className="inline-flex items-center gap-2">
               {isDirty && (

@@ -598,7 +598,7 @@ export default function RecipesPage() {
                     style={{ cursor: 'pointer', verticalAlign: 'middle' }} />
                 </th>
                 <th style={{ width: 24 }}></th>
-                <SortHeader label="Recette" sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
+                <SortHeader label={sectorLabel("recipe", "Recette")} sortKey="name" currentKey={sortKey} currentDir={sortDir} onSort={toggleSort} />
                 {/* Onglet Bases : « Type » ne dit rien (tout est Base) et « Marge »
                     est vide (une préparation ne se vend pas). On rend ces deux
                     colonnes à ce qui manque vraiment — la perte et le net. */}
