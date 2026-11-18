@@ -619,6 +619,8 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             value={r.role} onChange={(e) => setRow(r.key, { role: e.target.value })} title="Rôle du composant" aria-label="Rôle du composant">
             <option value="">Sans rôle</option>
             {roles.map((ro) => <option key={ro.code} value={ro.code}>{ro.label}</option>)}
+            {/* M8-06 : rôle d'un autre secteur déjà saisi sur la ligne — conservé et affiché. */}
+            {r.role && !roles.some(ro => ro.code === r.role) && <option value={r.role}>{r.role}</option>}
           </select>
           <div className="min-w-0">
             <SourcePicker options={sourceOpts} value={src ?? null}

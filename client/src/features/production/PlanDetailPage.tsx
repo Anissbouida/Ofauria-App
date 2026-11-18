@@ -1,9 +1,6 @@
 import { useProductionPolicies, shiftOf } from './usePolicies';
+import { PlanPanels } from './planPanels';
 import { useProdTerms } from '../../hooks/useProdTerms';
-import HistoryPanel from '../../components/audit/HistoryPanel';
-import QualityPanel from '../controle/QualityPanel';
-import ConsumptionPanel from './ConsumptionPanel';
-import CustomFieldsCard from '../../components/custom-fields/CustomFieldsCard';
 import ItemRecipeSelect from './ItemRecipeSelect';
 import { money } from '../../utils/money';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -34,7 +31,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { planStatusTag, bonStatusTag } from './status';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { buildTicketHtml, buildBsiHtml, buildFicheHtml } from './plan-print';
-import { PlanJournal, PlanLotTraceability, PlanLinkedOrder } from './plan-sections';
+import { PlanJournal, PlanLotTraceability } from './plan-sections';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage } from '../../api/errors';
 import { smartFormatQuantity, formatQty } from '../../utils/units';
@@ -43,9 +40,6 @@ import LossDeclarationModal from '../pos/LossDeclarationModal';
 import PrintOverlay from '../../components/PrintOverlay';
 import PrintModeSelectorModal from './PrintModeSelectorModal';
 import type { LotLabelData } from '../../lib/niimbot';
-import EtapesPanel from './EtapesPanel';
-import RetroPlanningPanel from './RetroPlanningPanel';
-import RendementPanel from './RendementPanel';
 import CoutReelPanel from './CoutReelPanel';
 
 type PlanTab = 'synthese' | 'ingredients' | 'production' | 'couts';
@@ -56,7 +50,7 @@ export default function PlanDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const { sectorLabel } = usePermissions();
+  const { sectorLabel, hasFeature } = usePermissions();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showProductionLaunch, setShowProductionLaunch] = useState(false);
   const [launchTargetItemId, setLaunchTargetItemId] = useState<string | null>(null);
@@ -574,6 +568,7 @@ export default function PlanDetailPage() {
   const showIngr = !hasTabs || effectiveTab === 'ingredients';
   const showProd = !hasTabs || effectiveTab === 'production';
   const showCosts = !hasTabs || effectiveTab === 'couts';
+  const panelCtx = { plan, id: id!, isChef, items, productionSettings, hasFeature };
   // Aucun BSI generable : aucun besoin ingredient (produits sans recette) ou generate()
   // a repondu "rien a prelever". Ne debloque PAS la production : la preparation reste
   // bloquee tant que les besoins ne sont pas recalcules (recette + relance du plan).
@@ -1739,15 +1734,8 @@ export default function PlanDetailPage() {
         </div>
       )}
 
-      {(showSynth || !hasTabs) && plan.order_number && <PlanLinkedOrder plan={plan} />}
-      {(showSynth || !hasTabs) && ['in_progress', 'completed', 'confirmed'].includes(plan.status as string) && (
-        <ConsumptionPanel planId={id!} mode={(plan.order_type_consumption_mode as string) ?? null} canEdit={isChef} />
-      )}
-      {(showSynth || !hasTabs) && <div style={{ margin: '1rem' }}><CustomFieldsCard entity="production_order" id={id!} /></div>}
-      {(showSynth || !hasTabs) && <HistoryPanel table="production_plans" id={id!} />}
-      {(showSynth || !hasTabs) && ['in_progress', 'completed', 'confirmed'].includes(plan.status as string) && (
-        <QualityPanel filter={{ planId: id! }} links={{ planId: id! }} title={`Contrôle ${(plan.of_number as string) || 'ordre'}`} />
-      )}
+      {/* M8-01 : panneaux de synthèse inscrits au registre (planPanels.tsx). */}
+      {(showSynth || !hasTabs) && <PlanPanels tab="synthese" ctx={panelCtx} />}
 
       {/* ══════════════ ALERTES (onglet Preparation) ══════════════
           Visibles uniquement par le magasinier : elles concernent la dispo des
@@ -1915,14 +1903,8 @@ export default function PlanDetailPage() {
           Le retro-planning sert a caler le demarrage : inutile une fois le plan termine. */}
       {showProd && hasResults && (
         <>
-          {plan.status === 'in_progress' && <RetroPlanningPanel planId={id!} planStatus={plan.status} isChef={isChef} workshop={plan.target_role as string | null} storeId={plan.store_id as string | null} />}
-          {/* G1-05 : panneaux masqués quand la fonction est coupée (Production › Paramétrage). */}
-          {productionSettings?.production_steps_enabled !== false && <EtapesPanel planId={id!} planStatus={plan.status} isChef={isChef} />}
-          {productionSettings?.production_yield_enabled !== false && (
-            <div id="plan-rendement">
-              <RendementPanel planId={id!} planStatus={plan.status} items={items} isChef={isChef} workshop={plan.target_role as string | null} storeId={plan.store_id as string | null} />
-            </div>
-          )}
+          {/* M8-01 : panneaux de production inscrits au registre (planPanels.tsx). */}
+          <PlanPanels tab="production" ctx={panelCtx} />
         </>
       )}
 
