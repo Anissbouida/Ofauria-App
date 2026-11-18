@@ -2534,7 +2534,9 @@ export const productionRepository = {
         const batches = Number(item.planned_quantity) / comp.batchDivisor;
 
         for (const sub of comp.subRecipes) {
-          if (!sub.isBase) continue;
+          // M9 : un sous-ensemble fantôme (mig 588) n'est ni stocké ni fabriqué à part : pas de dépendance,
+          // ses composants restent dans les besoins de l'ordre parent.
+          if (!sub.isBase || sub.isPhantom) continue;
           // Besoin NET (utilisable) : le stock semi-finis est deja net de perte ;
           // le brut est gere a la production du plan enfant (rendement/pertes).
           const qtyNeeded = sub.netQtyPerBatch * batches;

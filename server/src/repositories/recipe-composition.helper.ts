@@ -40,6 +40,8 @@ export interface CompositionSubRecipe {
   subRecipeId: string;
   name: string;
   isBase: boolean;
+  /** Sous-ensemble fantôme (mig 588) : jamais stocké, composants tirés dans l'ordre parent. */
+  isPhantom: boolean;
   yieldUnit: string;
   yieldQuantity: number;
   /** Quantite utilisable par lot de composition, en unite de rendement de la sous-recette. */
@@ -134,6 +136,7 @@ export async function getCompositionForNeeds(
           subRecipeId: r.source_recipe_id,
           name: r.sub_name,
           isBase: r.sub_is_base === true,
+          isPhantom: r.sub_is_phantom === true,
           yieldUnit: r.sub_yield_unit || 'unit',
           yieldQuantity: parseFloat(r.sub_yield_quantity) > 0 ? parseFloat(r.sub_yield_quantity) : 1,
           netQtyPerBatch: parseFloat(r.qty_sub_net),
@@ -157,7 +160,7 @@ export async function getCompositionForNeeds(
     [recipeId]
   );
   const subs = await client.query(
-    `SELECT rsr.sub_recipe_id, rsr.quantity, r.name, r.is_base, r.yield_quantity, r.yield_unit
+    `SELECT rsr.sub_recipe_id, rsr.quantity, r.name, r.is_base, COALESCE(r.is_phantom, false) AS is_phantom, r.yield_quantity, r.yield_unit
        FROM recipe_sub_recipes rsr
        JOIN recipes r ON r.id = rsr.sub_recipe_id
       WHERE rsr.recipe_id = $1`,
@@ -182,6 +185,7 @@ export async function getCompositionForNeeds(
       subRecipeId: sub.sub_recipe_id,
       name: sub.name,
       isBase: sub.is_base === true,
+      isPhantom: sub.is_phantom === true,
       yieldUnit: sub.yield_unit || 'unit',
       yieldQuantity: parseFloat(sub.yield_quantity) > 0 ? parseFloat(sub.yield_quantity) : 1,
       // Le legacy ne modelise pas la perte : net = brut.
@@ -206,7 +210,7 @@ function componentQuery(table: string, keyColumn: string): string {
            (((lower(c.unite) IN ('mg','g','kg') AND lower(ing.unit::text) IN ('ml','cl','dl','l'))
               OR (lower(c.unite) IN ('ml','cl','dl','l') AND lower(ing.unit::text) IN ('mg','g','kg')))
              AND ing.densite_kg_l IS NULL) AS conv_incertaine,
-           br.name AS sub_name, br.is_base AS sub_is_base,
+           br.name AS sub_name, br.is_base AS sub_is_base, COALESCE(br.is_phantom, false) AS sub_is_phantom,
            br.yield_unit AS sub_yield_unit, br.yield_quantity AS sub_yield_quantity,
            c.quantite * fn_convert_factor(c.unite, br.yield_unit, NULL, NULL) AS qty_sub_net,
            COALESCE(

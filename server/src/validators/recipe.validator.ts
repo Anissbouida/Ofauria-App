@@ -41,6 +41,8 @@ export const identitySchema = z.object({
   // Lus par updateIdentity via COALESCE (non fournis => inchanges).
   temperaturePateCibleC: z.number().min(-10).max(60, 'Température de pâte invalide').nullable().optional(),
   hydratationPct: z.number().min(0).max(200, 'Hydratation invalide (0-200 %)').nullable().optional(),
+  /** M9 (mig 588) : sous-ensemble fantôme, jamais stocké (préparations de base seulement). */
+  isPhantom: z.boolean().optional(),
 });
 
 export const saveEtapesSchema = z.object({ etapes: z.array(etapeSchema.passthrough()) });
@@ -72,6 +74,8 @@ export const createRecipeSchema = z.object({
   // de base. Borne a <100 : une perte totale rendrait le rendement net nul.
   perteStandardPct: z.number().min(0).max(99.99).optional(),
   isBase: z.boolean().default(false),
+  /** M9 (mig 588) : sous-ensemble fantôme (ignoré si ce n'est pas une base). */
+  isPhantom: z.boolean().optional(),
   // Mode de saisie de la composition (cf. identitySchema). Lu par le repository a la creation.
   compoParPiece: z.boolean().optional(),
   // passthrough() : conserve les cles non declarees de l'etape — notamment

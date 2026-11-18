@@ -756,7 +756,7 @@ export default function RecipesPage() {
                           title={r.is_base ? 'Ouvrir la préparation' : 'Ouvrir la composition'}>
                           <Layers size={13} />
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); setIdentityEdit({ id: r.id as string, name: r.name as string, category_id: r.category_id ?? null, is_base: !!r.is_base }); }}
+                        <button onClick={(e) => { e.stopPropagation(); setIdentityEdit({ id: r.id as string, name: r.name as string, category_id: r.category_id ?? null, is_base: !!r.is_base, is_phantom: !!r.is_phantom }); }}
                           className="odoo-pager-btn" title="Modifier le nom ou la catégorie">
                           <Pencil size={13} />
                         </button>

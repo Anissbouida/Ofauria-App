@@ -100,6 +100,7 @@ export default function NomenclaturePage() {
         {editIdentity && (
           <RecipeCreateDialog recipe={{ id: recipe.id, name: recipe.name, category_id: recipe.category_id ?? null,
             is_base: (recipe as { is_base?: boolean }).is_base ?? false,
+            is_phantom: (recipe as { is_phantom?: boolean }).is_phantom ?? false,
             compo_par_piece: (recipe as { compo_par_piece?: boolean }).compo_par_piece ?? false,
             temperature_pate_cible_c: (recipe as { temperature_pate_cible_c?: number | null }).temperature_pate_cible_c ?? null,
             hydratation_pct: (recipe as { hydratation_pct?: number | null }).hydratation_pct ?? null }}

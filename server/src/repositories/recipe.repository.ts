@@ -46,7 +46,7 @@ export const recipeRepository = {
     // formats : tableau JSON agrege via subquery pour les UI qui ont besoin de connaitre
     // les formats par recette (ex: ProductionPage — Phase B multi-format).
     const result = await db.query(
-      `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
+      `SELECT r.id, r.name, r.is_base, COALESCE(r.is_phantom, false) AS is_phantom, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
               r.temperature_pate_cible_c, r.hydratation_pct,
               r.category_id, r.mode_cout, r.compo_par_piece, r.perte_standard_pct,
@@ -120,7 +120,7 @@ export const recipeRepository = {
     // total_weight_kg : idem, calcule a la volee a partir des ingredients
     // (densite 1 pour les liquides, pieces ignorees).
     const recipeResult = await db.query(
-      `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
+      `SELECT r.id, r.name, r.is_base, COALESCE(r.is_phantom, false) AS is_phantom, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
               r.temperature_pate_cible_c, r.hydratation_pct,
               r.category_id,
@@ -288,7 +288,7 @@ export const recipeRepository = {
   /** Find recipe by product ID (with ingredients & sub-recipes & packaging) */
   async findByProductId(productId: string) {
     const recipeResult = await db.query(
-      `SELECT r.id, r.name, r.is_base, r.product_id, r.contenant_id, r.instructions,
+      `SELECT r.id, r.name, r.is_base, COALESCE(r.is_phantom, false) AS is_phantom, r.product_id, r.contenant_id, r.instructions,
               r.yield_quantity, r.yield_unit, r.piece_weight_kg, r.margin_multiplier, r.etapes,
               r.temperature_pate_cible_c, r.hydratation_pct,
               r.created_at, r.updated_at,
@@ -485,6 +485,10 @@ export const recipeRepository = {
       );
 
       const recipeId = recipeResult.rows[0].id;
+      // M9 (mig 588) : sous-ensemble fantôme, pour une base seulement.
+      if (data.isBase && (data as { isPhantom?: boolean }).isPhantom) {
+        await client.query(`UPDATE recipes SET is_phantom = true WHERE id = $1`, [recipeId]);
+      }
 
       for (const ing of data.ingredients) {
         await client.query(

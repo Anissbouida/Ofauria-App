@@ -309,7 +309,7 @@ export const mrpRepository = {
       if (!compCache.has(key)) compCache.set(key, await getCompositionForNeeds(db as any, recipeId, formatId));
       return compCache.get(key) ?? null;
     };
-    const bases = (comp: Comp) => comp.subRecipes.filter(sub => sub.isBase);
+    const bases = (comp: Comp) => comp.subRecipes.filter(sub => sub.isBase && !sub.isPhantom);
 
     // 1. Parcours du graphe : profondeur de chaque base = plus long chemin depuis un produit fini.
     //    Une base n'est traitée qu'après tous ses parents ; un cycle est coupé (profondeur bornée).

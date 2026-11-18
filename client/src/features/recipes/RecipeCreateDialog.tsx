@@ -15,7 +15,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
  * formats, frais et étapes s'y saisissent ; les demander ici dans un second
  * formulaire donnait deux interfaces différentes pour une même fiche.
  */
-export interface RecipeIdentity { id: string; name: string; category_id?: string | null; is_base?: boolean; compo_par_piece?: boolean; temperature_pate_cible_c?: number | null; hydratation_pct?: number | null }
+export interface RecipeIdentity { id: string; name: string; category_id?: string | null; is_base?: boolean; is_phantom?: boolean; compo_par_piece?: boolean; temperature_pate_cible_c?: number | null; hydratation_pct?: number | null }
 
 /**
  * Avec `recipe`, la même fenêtre sert à MODIFIER l'identité d'une fiche existante
@@ -34,6 +34,8 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
   const isEdit = !!recipe;
   const [isBase, setIsBase] = useState(recipe ? !!recipe.is_base : defaultIsBase);
   const [name, setName] = useState(recipe?.name ?? '');
+  // M9 (mig 588) : sous-ensemble fantôme — jamais stocké, composants tirés dans l'ordre parent.
+  const [isPhantom, setIsPhantom] = useState<boolean>(!!recipe?.is_phantom);
   const [categoryId, setCategoryId] = useState(recipe?.category_id ?? '');
   // Mode de saisie des quantités de composition, décidé ici une fois pour toutes :
   // par fournée (lot découpé) ou par pièce (unité). Modifiable ensuite via cette
@@ -56,6 +58,7 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
       compoParPiece: isBase ? false : compoParPiece,
       temperaturePateCibleC: isBase ? numOrNull(tempPate) : undefined,
       hydratationPct: isBase ? numOrNull(hydr) : undefined,
+      isPhantom: isBase ? isPhantom : undefined,
       ingredients: [],
     }),
     onSuccess: (r: { id: string }) => {
@@ -72,6 +75,7 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
       compoParPiece: isBase ? undefined : compoParPiece,
       temperaturePateCibleC: isBase ? numOrNull(tempPate) : undefined,
       hydratationPct: isBase ? numOrNull(hydr) : undefined,
+      isPhantom: isBase ? isPhantom : undefined,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['recipes'] });
@@ -129,6 +133,18 @@ export default function RecipeCreateDialog({ defaultIsBase = false, recipe, onCl
             <input id="recipe-name" autoFocus className={`${field} mt-1`} value={name} onChange={(e) => setName(e.target.value)}
               maxLength={200} placeholder={batchMode ? (isBase ? 'ex : Crème pâtissière' : 'ex : Croissant') : (isBase ? 'ex : Sous-ensemble châssis' : 'ex : Article fini')} />
           </label>
+
+          {isBase && (
+            <label className="flex items-start gap-2 text-sm" htmlFor="recipe-phantom">
+              <input id="recipe-phantom" type="checkbox" className="mt-0.5" checked={isPhantom} onChange={(e) => setIsPhantom(e.target.checked)} />
+              <span>
+                <span className="font-medium">Fantôme (jamais stocké)</span>
+                <span className="block text-[11px] text-gray-400">
+                  Pas d'ordre ni de stock propre : ses composants sont tirés directement dans l'ordre qui l'utilise.
+                </span>
+              </span>
+            </label>
+          )}
 
           <label className="block" htmlFor="recipe-category">
             <span className="text-xs text-gray-500">Catégorie de production</span>
