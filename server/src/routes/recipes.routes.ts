@@ -120,7 +120,8 @@ router.get('/component-roles', authenticate, recipeComponentController.listRoles
 router.get('/component-sources', authenticate, recipeComponentController.listSources);
 router.patch('/:recipeId/finance', authenticate, can('recipes.finance'), validate(financeSchema), recipeComponentController.saveFinance);
 router.patch('/:recipeId/identity', authenticate, can('recipes.identity'), validate(identitySchema), recipeComponentController.saveIdentity);
-router.put('/:recipeId/etapes', authenticate, can('recipes.etapes'), validate(saveEtapesSchema), stepTypesOf, recipeComponentController.saveEtapes);
+router.get('/:recipeId/etapes-status', authenticate, validateUuidParams('recipeId'), asyncHandler(recipeComponentController.etapesStatus));
+router.put('/:recipeId/etapes', authenticate, can('recipes.etapes'), validate(saveEtapesSchema), stepTypesOf, asyncHandler(recipeComponentController.saveEtapes));
 router.get('/:recipeId/children', authenticate, recipeComponentController.children);
 // Explosion à plat (mig 400) — roadmap lot 5
 router.get('/:id/explosion', authenticate, recipeController.getExplosion);

@@ -1995,6 +1995,7 @@
  "GET /recipes/:id/substitutes": null,
  "GET /recipes/:id/versions": null,
  "GET /recipes/:recipeId/children": null,
+ "GET /recipes/:recipeId/etapes-status": null,
  "GET /recipes/:recipeId/formats": null,
  "GET /recipes/:recipeId/formats/:formatId/components": null,
  "GET /recipes/base": null,

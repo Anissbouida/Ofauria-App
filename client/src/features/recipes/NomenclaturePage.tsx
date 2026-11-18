@@ -32,6 +32,7 @@ export default function NomenclaturePage() {
   const [editIdentity, setEditIdentity] = useState(false);
 
   const { data: recipe, isLoading } = useQuery({ queryKey: ['recipe', id], queryFn: () => recipesApi.getById(id!), enabled: !!id });
+  const { data: etapesStatus } = useQuery({ queryKey: ['recipe-etapes-status', id], queryFn: () => recipesApi.etapesStatus(id!), enabled: !!id });
 
   if (isLoading) {
     return <div className="odoo-scope"><div style={{ padding: '1.5rem' }} className="text-sm text-gray-400">Chargement…</div></div>;
@@ -162,7 +163,7 @@ export default function NomenclaturePage() {
         <ExplosionSection recipeId={recipe.id} />
 
         {/* Mode opératoire : il n'apparaissait jusqu'ici que sur la fiche PDF. */}
-        <EtapesSection etapes={recipe.etapes || []} recipeId={recipe.id} />
+        <EtapesSection etapes={recipe.etapes || []} recipeId={recipe.id} editBlockedReason={etapesStatus?.frozen ? etapesStatus.reason : null} />
 
         {/* Historique des versions + restauration (réintégré, L3). */}
         <VersionsSection recipeId={recipe.id} />

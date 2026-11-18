@@ -37,6 +37,35 @@ const instructionsOf = (s: JsonStep) => {
 };
 
 export const routingRepriseRepository = {
+  /**
+   * M5-03 (reste) — les étapes JSON d'une fiche sont-elles figées ? Oui quand la fiche a une
+   * gamme active avec opérations ET que tous les ateliers qui l'ont produite ces 90 derniers
+   * jours lisent la gamme (production.steps_source = « gamme ») ; sans production récente, le
+   * réglage de la société décide. Un atelier encore sur les étapes de la fiche les garde modifiables.
+   */
+  async jsonStepsStatus(recipeId: string): Promise<{ frozen: boolean; reason: string | null; workshops: string[] }> {
+    const head = (await db.query(
+      `SELECT fn_recipe_routing($1) AS routing_id,
+              ARRAY(SELECT DISTINCT COALESCE(pp.target_role, '') FROM production_plan_items ppi
+                      JOIN production_plans pp ON pp.id = ppi.plan_id
+                     WHERE pp.plan_date >= CURRENT_DATE - 90 AND ppi.status <> 'cancelled'
+                       AND (ppi.alt_recipe_id = $1 OR ppi.base_recipe_id = $1
+                            OR (ppi.alt_recipe_id IS NULL AND ppi.base_recipe_id IS NULL
+                                AND ppi.product_id = (SELECT r.product_id FROM recipes r WHERE r.id = $1)))) AS workshops`,
+      [recipeId])).rows[0] as { routing_id: string | null; workshops: string[] } | undefined;
+    if (!head?.routing_id) return { frozen: false, reason: null, workshops: [] };
+    const { resolvePolicy } = await import('../services/policies.js');
+    const sources = head.workshops.length ? head.workshops : [''];
+    for (const w of sources) {
+      const p = await resolvePolicy('production.steps_source', { workshop: w || null });
+      if ((p.value as { source?: string }).source !== 'gamme') return { frozen: false, reason: null, workshops: head.workshops };
+    }
+    return {
+      frozen: true, workshops: head.workshops,
+      reason: 'Les ateliers exécutent la gamme de cette fiche : modifiez les opérations de la gamme (les étapes ci-dessous ne sont plus lues).',
+    };
+  },
+
   async report(recipeIds?: string[]): Promise<RepriseLine[]> {
     return (await candidates(recipeIds)).map(r => ({
       recipe_id: r.id, recipe_name: r.name, steps: r.etapes.length,

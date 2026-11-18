@@ -270,6 +270,9 @@ export const recipesApi = {
     api.patch(`/recipes/${recipeId}/identity`, payload).then(r => r.data.data),
   saveEtapes: (recipeId: string, etapes: Record<string, any>[]) =>
     api.put(`/recipes/${recipeId}/etapes`, { etapes }).then(r => r.data.data),
+  /** M5-03 : étapes JSON figées quand les ateliers exécutent la gamme de la fiche. */
+  etapesStatus: (recipeId: string) =>
+    api.get(`/recipes/${recipeId}/etapes-status`).then(r => r.data.data as { frozen: boolean; reason: string | null; workshops: string[] }),
   recipeChildren: (recipeId: string) =>
     api.get(`/recipes/${recipeId}/children`).then(r => r.data.data as RecipeChild[]),
 

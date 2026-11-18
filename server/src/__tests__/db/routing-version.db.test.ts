@@ -73,4 +73,14 @@ describe.skipIf(!hasTestDb)('Gamme figée avec la version (M5-01)', () => {
     expect(await plannedLabor()).toEqual([30]);
     await expect(p().query(`UPDATE bom_versions SET routing_snapshot = '[]'::jsonb WHERE recipe_id = $1 AND status = 'active'`, [recipeId])).rejects.toThrow(/VERSION_FIGEE/);
   });
+
+  it('M5-03 : étapes JSON figées tant que les ateliers exécutent la gamme, modifiables sinon', async () => {
+    const { routingRepriseRepository: rep } = await import('../../repositories/routing-reprise.repository.js');
+    const frozen = await rep.jsonStepsStatus(recipeId);
+    expect(frozen.frozen).toBe(true);
+    expect(frozen.reason).toMatch(/gamme/);
+    await pol.setPolicy('production.steps_source', 'company', '', null, fx.userId);
+    pol.invalidatePolicies();
+    expect((await rep.jsonStepsStatus(recipeId)).frozen).toBe(false);
+  });
 });

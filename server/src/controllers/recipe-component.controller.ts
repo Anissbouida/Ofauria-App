@@ -2,6 +2,7 @@ import { formatWeightsRepository } from '../repositories/format-weights.reposito
 import type { Response } from 'express';
 import type { AuthRequest } from '../middleware/auth.middleware.js';
 import { recipeComponentRepository } from '../repositories/recipe-component.repository.js';
+import { routingRepriseRepository } from '../repositories/routing-reprise.repository.js';
 
 export const recipeComponentController = {
   /** GET /recipes/format-weights — grille des poids cru / cuit de tous les formats actifs (G2-05). */
@@ -67,7 +68,14 @@ export const recipeComponentController = {
     res.json({ success: true, data: row });
   },
 
+  /** M5-03 : étapes JSON figées quand les ateliers exécutent la gamme de la fiche. */
+  async etapesStatus(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await routingRepriseRepository.jsonStepsStatus(req.params.recipeId as string) });
+  },
+
   async saveEtapes(req: AuthRequest, res: Response) {
+    const status = await routingRepriseRepository.jsonStepsStatus(req.params.recipeId as string);
+    if (status.frozen) { res.status(409).json({ success: false, error: { message: status.reason } }); return; }
     const etapes = await recipeComponentRepository.updateEtapes(req.params.recipeId, req.body.etapes);
     if (!etapes) { res.status(404).json({ success: false, error: { message: 'Recette introuvable' } }); return; }
     res.json({ success: true, data: etapes });

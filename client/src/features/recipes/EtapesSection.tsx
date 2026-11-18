@@ -275,13 +275,18 @@ export default function EtapesSection({ etapes, recipeId, editBlockedReason }: {
             </button>
           )}
           {recipeId && (
-            <button type="button" onClick={startEdit} title="Modifier les étapes"
+            <button type="button" onClick={startEdit} title={editBlockedReason ?? 'Modifier les étapes'} aria-disabled={!!editBlockedReason}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] bg-white text-gray-600 border-gray-200 hover:bg-gray-50">
               <Pencil size={11} /> Modifier
             </button>
           )}
         </span>
       </div>
+      {recipeId && editBlockedReason && (
+        <div role="note" style={{ padding: '0.5rem 1rem', fontSize: '0.75rem', color: 'var(--theme-text-muted)', borderBottom: '1px solid var(--theme-bg-separator)' }}>
+          {editBlockedReason}
+        </div>
+      )}
 
       <div style={{ padding: '0.5rem 0' }}>
         {etapes.slice().sort((a, b) => a.ordre - b.ordre).map((e) => {
