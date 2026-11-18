@@ -281,7 +281,7 @@ export const settingsApi = {
   sector: () => api.get('/settings/sector').then(r => r.data.data) as Promise<SectorInfo>,
   setSector: (code: string, keepAdjustments = true) =>
     api.put('/settings/sector', { code, keepAdjustments }).then(r => r.data.data) as Promise<{ code: string; label: string; modules: string[] }>,
-  sectorStarter: () => api.get('/settings/sector/starter').then(r => r.data.data) as Promise<{ sector: string; preview: { categories: string[]; items: string[] } }>,
+  sectorStarter: (sector?: string) => api.get('/settings/sector/starter', { params: sector ? { sector } : {} }).then(r => r.data.data) as Promise<{ sector: string; preview: { categories: string[]; items: string[] } }>,
   loadSectorStarter: () => api.post('/settings/sector/starter').then(r => r.data.data) as Promise<Record<string, number>>,
   modules: () => api.get('/settings/modules').then(r => r.data.data) as Promise<ModuleActivation>,
   saveModules: (changes: { modules?: Record<string, boolean | null>; features?: Record<string, boolean | null> }) =>

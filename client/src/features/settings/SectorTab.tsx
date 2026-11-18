@@ -53,7 +53,7 @@ export default function SectorTab() {
   const { data: act, isLoading: loadingAct } = useQuery({ queryKey: ['module-activation'], queryFn: settingsApi.modules });
 
   const { data: versions = [] } = useQuery({ queryKey: ['module-versions'], queryFn: settingsApi.moduleVersions });
-  const { data: starter } = useQuery({ queryKey: ['sector-starter'], queryFn: settingsApi.sectorStarter });
+  const { data: starter } = useQuery({ queryKey: ['sector-starter'], queryFn: () => settingsApi.sectorStarter() });
   const { data: health } = useQuery({ queryKey: ['module-health'], queryFn: settingsApi.moduleHealth });
   const { data: onboarding } = useQuery({ queryKey: ['module-onboarding'], queryFn: settingsApi.moduleOnboarding });
   const navigate = useNavigate();
@@ -276,8 +276,12 @@ export default function SectorTab() {
         ? ` Vos ${savedAdjustments} ajustement(s) de modules et d'options sont conservés.`
         : ` Vos ${savedAdjustments} ajustement(s) seront effacés : vous repartez du préréglage.`)
       : '';
+    // C-03 : ce que le profil apporte (types d'ordre, politiques, impressions…), chargé ensuite
+    // par « Données de départ » sans rien écraser.
+    const brings = await settingsApi.sectorStarter(code).then(r => r.preview.items).catch(() => [] as string[]);
+    const bringsNote = brings.length ? ` Données de départ proposées ensuite : ${brings.join(' · ')}.` : '';
     const ok = await confirm(
-      `Les modules et menus seront adaptés à ce secteur. Aucune donnée n'est supprimée.${adjustNote}`,
+      `Les modules et menus seront adaptés à ce secteur. Aucune donnée n'est supprimée.${adjustNote}${bringsNote}`,
       { title: `Basculer sur « ${label} » ?`, confirmLabel: 'Changer de secteur' });
     if (ok) sectorMut.mutate({ code, keep: keepAdjustments });
   };

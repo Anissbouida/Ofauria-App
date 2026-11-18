@@ -225,9 +225,11 @@ export const companyController = {
   },
 
   /** Données de départ du secteur courant (phase 9.3) : aperçu, et chargement à la demande. */
-  async sectorStarter(_req: AuthRequest, res: Response) {
-    const current = await sectorRepository.current();
-    res.json({ success: true, data: { sector: current.code, preview: await sectorStarterPreview(current.code) } });
+  /** Aperçu des données de départ : secteur courant, ou ?sector=code (profil envisagé, C-03). */
+  async sectorStarter(req: AuthRequest, res: Response) {
+    const asked = typeof req.query.sector === 'string' ? req.query.sector.slice(0, 40) : '';
+    const code = asked && await sectorRepository.pack(asked) ? asked : (await sectorRepository.current()).code;
+    res.json({ success: true, data: { sector: code, preview: await sectorStarterPreview(code) } });
   },
   async loadSectorStarter(req: AuthRequest, res: Response) {
     const current = await sectorRepository.current();
