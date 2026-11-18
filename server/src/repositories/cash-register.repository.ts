@@ -4,6 +4,7 @@ import { getUserTimezone } from '../utils/timezone.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { fromClosureDiff, persistEntry } from '../services/journal-generator.service.js';
 import { postOrQueue } from '../services/ledger-posting.service.js';
+import { currencySymbol } from '../services/currency.js';
 
 /**
  * Z-report — numerotation sequentielle inviolable (section 4.3).
@@ -436,7 +437,7 @@ export const cashRegisterRepository = {
     // absorbe silencieusement dans le CA -> impossible de tracer les manques.
     const DISCREPANCY_THRESHOLD = 5;
     if (Math.abs(difference) > DISCREPANCY_THRESHOLD && !differenceReason) {
-      const err = new Error(`Motif d'ecart obligatoire (ecart de ${difference.toFixed(2)} DH > seuil ${DISCREPANCY_THRESHOLD} DH)`);
+      const err = new Error(`Motif d'ecart obligatoire (ecart de ${difference.toFixed(2)} ${currencySymbol()} > seuil ${DISCREPANCY_THRESHOLD} ${currencySymbol()})`);
       (err as Error & { code?: string }).code = 'DIFFERENCE_REASON_REQUIRED';
       throw err;
     }
@@ -468,7 +469,7 @@ export const cashRegisterRepository = {
       cardAmountToStore = round2(actualCardAmount);
       cardDifference = round2(actualCardAmount - cardRevenue);
       if (Math.abs(cardDifference) > DISCREPANCY_THRESHOLD && !cardDifferenceReason) {
-        const err = new Error(`Motif d'ecart carte obligatoire (ecart de ${cardDifference.toFixed(2)} DH > seuil ${DISCREPANCY_THRESHOLD} DH)`);
+        const err = new Error(`Motif d'ecart carte obligatoire (ecart de ${cardDifference.toFixed(2)} ${currencySymbol()} > seuil ${DISCREPANCY_THRESHOLD} ${currencySymbol()})`);
         (err as Error & { code?: string }).code = 'CARD_DIFFERENCE_REASON_REQUIRED';
         throw err;
       }

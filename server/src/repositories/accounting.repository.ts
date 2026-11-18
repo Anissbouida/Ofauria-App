@@ -8,6 +8,7 @@ import { fromInvoice, fromPaymentEmission, fromSale, persistEntry, autoLettrer, 
 import { round2, lineTvaAmount, headerTotalsFromLines } from '../utils/tva.js';
 import { legalMentionsRules } from '../services/module-parameters.service.js';
 import { withActor, assertReasonCode, recordAction } from '../services/document-actions.service.js';
+import { baseCurrencyCode, currencySymbol } from '../services/currency.js';
 
 /**
  * Règle d'édition d'une facture reçue (mig 309, G-D6-08) : annulée = jamais ; réglée même
@@ -873,8 +874,8 @@ export const invoiceRepository = {
          data.notes || null, data.createdBy, data.storeId || null,
          data.expectedPaymentMode || null, data.receptionDate || null,
          data.checkNumber || null,
-         data.currencyCode && /^[A-Z]{3}$/.test(data.currencyCode) ? data.currencyCode : 'MAD',
-         data.currencyCode && data.currencyCode !== 'MAD' && Number(data.exchangeRate) > 0 ? Number(data.exchangeRate) : 1,
+         data.currencyCode && /^[A-Z]{3}$/.test(data.currencyCode) ? data.currencyCode : baseCurrencyCode(),
+         data.currencyCode && data.currencyCode !== baseCurrencyCode() && Number(data.exchangeRate) > 0 ? Number(data.exchangeRate) : 1,
          isCreditNote ? 'credit_note' : 'invoice', isCreditNote ? data.creditNote!.creditedInvoiceId : null, isCreditNote ? data.creditNote!.reason : null]
       );
 
@@ -966,7 +967,7 @@ export const invoiceRepository = {
         : round2(orderTotal * ((input.percent ?? 0) / 100));
       if (!(ttc > 0)) throw Object.assign(new Error('Montant d\'acompte invalide'), { statusCode: 400 });
       if (ttc > remaining + 0.005) {
-        throw Object.assign(new Error(`Acompte (${ttc.toFixed(2)} DH) supérieur au reste à acompter (${remaining.toFixed(2)} DH)`), { statusCode: 400 });
+        throw Object.assign(new Error(`Acompte (${ttc.toFixed(2)} ${currencySymbol()}) supérieur au reste à acompter (${remaining.toFixed(2)} ${currencySymbol()})`), { statusCode: 400 });
       }
 
       // TVA au taux moyen de la commande ; acompte réputé TTC (TVA incluse).
@@ -1689,7 +1690,7 @@ export const invoiceRepository = {
       if (newTotal < paidAmount - 0.001) {
         await client.query('ROLLBACK');
         throw new Error(
-          `Le nouveau total (${newTotal.toFixed(2)} DH) est inferieur au deja paye (${paidAmount.toFixed(2)} DH). ` +
+          `Le nouveau total (${newTotal.toFixed(2)} ${currencySymbol()}) est inferieur au deja paye (${paidAmount.toFixed(2)} ${currencySymbol()}). ` +
           `Rembourse ou supprime des paiements avant de baisser le montant.`
         );
       }
@@ -1790,7 +1791,7 @@ export const invoiceRepository = {
 
       if (nextTotal !== undefined && nextTotal < paidAmount) {
         await client.query('ROLLBACK');
-        throw new Error(`Le montant total (${nextTotal.toFixed(2)} DH) ne peut etre inferieur au deja paye (${paidAmount.toFixed(2)} DH).`);
+        throw new Error(`Le montant total (${nextTotal.toFixed(2)} ${currencySymbol()}) ne peut etre inferieur au deja paye (${paidAmount.toFixed(2)} ${currencySymbol()}).`);
       }
 
       const sets: string[] = []; const values: unknown[] = []; let i = 1;
@@ -2501,8 +2502,8 @@ export const paymentRepository = {
       if (dejaPaye + data.amount > due + 0.01) {
         const reste = Math.max(0, due - dejaPaye);
         const e: Error & { statusCode?: number } = new Error(
-          `Le règlement de ${data.amount.toFixed(2)} DH dépasse le reste à payer `
-          + `(${reste.toFixed(2)} DH) de l'échéance « ${sched.rows[0].label} ».`
+          `Le règlement de ${data.amount.toFixed(2)} ${currencySymbol()} dépasse le reste à payer `
+          + `(${reste.toFixed(2)} ${currencySymbol()}) de l'échéance « ${sched.rows[0].label} ».`
         );
         e.statusCode = 409;
         throw e;
@@ -2575,9 +2576,9 @@ export const paymentRepository = {
       // Facture en devise (mig 368) : le règlement se saisit en devise au taux du jour.
       // amount = trésorerie réelle en DH ; settled = part de la facture soldée au taux de
       // la facture ; fx = différence (perte > 0, gain < 0), passée en 6331 / 7331.
-      const invCurrency = String(inv.rows[0].currency_code ?? 'MAD').trim();
+      const invCurrency = String(inv.rows[0].currency_code ?? baseCurrencyCode()).trim();
       let fx: { currency: string; rate: number; foreign: number; settled: number; diff: number } | null = null;
-      if (invCurrency !== 'MAD') {
+      if (invCurrency !== baseCurrencyCode()) {
         const foreign = Math.round(Number(data.foreignAmount ?? 0) * 100) / 100;
         const rate = Number(data.exchangeRate ?? 0);
         if (!(foreign > 0) || !(rate > 0)) {
@@ -2606,8 +2607,8 @@ export const paymentRepository = {
       if (currentPaid + effectiveAmount > totalAmount + 0.01) {
         const remaining = Math.max(0, totalAmount - currentPaid);
         const e: Error & { statusCode?: number } = new Error(
-          `Le paiement de ${data.amount.toFixed(2)} DH dépasse le reste à payer ` +
-          `(${remaining.toFixed(2)} DH sur ${totalAmount.toFixed(2)} DH) pour la facture ${invoiceNumber}.`
+          `Le paiement de ${data.amount.toFixed(2)} ${currencySymbol()} dépasse le reste à payer ` +
+          `(${remaining.toFixed(2)} ${currencySymbol()} sur ${totalAmount.toFixed(2)} ${currencySymbol()}) pour la facture ${invoiceNumber}.`
         );
         e.statusCode = 409;
         throw e;
@@ -2644,7 +2645,7 @@ export const paymentRepository = {
          data.withholdingTypeId || null, data.withholdingAmount ?? null,
          data.scheduledPaymentId || null,
          data.paymentMode || null, data.treasuryAccountId || null, data.replacesPaymentId || null,
-         fx?.currency ?? 'MAD', fx?.rate ?? 1, fx?.foreign ?? null, fx?.settled ?? null, fx?.diff ?? null]
+         fx?.currency ?? baseCurrencyCode(), fx?.rate ?? 1, fx?.foreign ?? null, fx?.settled ?? null, fx?.diff ?? null]
       );
 
       // Sync invoice.check_number avec le N° reellement utilise au paiement.

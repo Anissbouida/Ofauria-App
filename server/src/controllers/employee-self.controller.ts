@@ -7,6 +7,7 @@ import { salaryAdvanceRepository } from '../repositories/salary-advance.reposito
 import { notificationRepository } from '../repositories/notification.repository.js';
 import { loadPayrollForPdf, sendPayslipPdf } from './payroll-config.controller.js';
 import { sendAttestation } from './payroll-compliance.controller.js';
+import { currencySymbol } from '../services/currency.js';
 
 /**
  * Espace employe (lot 8, mig 324) : un utilisateur lie a une fiche employe
@@ -201,7 +202,7 @@ export const employeeSelfController = {
     const outstanding = parseFloat((await salaryAdvanceRepository.outstandingByEmployee(emp.id))[0]?.outstanding ?? '0') || 0;
     const cap = Math.max(0, Math.round((monthly - outstanding) * 100) / 100);
     if (amount > cap + 0.001) {
-      res.status(409).json({ success: false, error: { message: `Montant trop élevé : ${cap.toFixed(2)} DH au plus (salaire mensuel moins avances en cours).` } });
+      res.status(409).json({ success: false, error: { message: `Montant trop élevé : ${cap.toFixed(2)} ${currencySymbol()} au plus (salaire mensuel moins avances en cours).` } });
       return;
     }
     try {
@@ -210,7 +211,7 @@ export const employeeSelfController = {
          VALUES ($1,$2,$3,$4,$5) RETURNING *`,
         [emp.id, amount, monthlyDeduction, req.body.reason || null, req.user!.userId]
       );
-      await notifyManagers(emp, 'Demande d\'avance', `${emp.first_name} ${emp.last_name} demande une avance de ${amount.toFixed(2)} DH.`,
+      await notifyManagers(emp, 'Demande d\'avance', `${emp.first_name} ${emp.last_name} demande une avance de ${amount.toFixed(2)} ${currencySymbol()}.`,
         'advance_request', emp.id, req.user!.userId);
       res.status(201).json({ success: true, data: r.rows[0] });
     } catch (err) {

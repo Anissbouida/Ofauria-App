@@ -1,3 +1,4 @@
+import { currencySymbol } from './currency.js';
 /**
  * Solde de tout compte — fonctions PURES (lot 6, mig 323).
  *
@@ -106,9 +107,9 @@ export function computeSettlement(i: SettlementInput): SettlementResult {
   // ─── Conges acquis non pris (ou pris par anticipation) ───
   const leaveAmount = r2(Math.abs(i.leaveBalanceDays) * daily);
   if (i.leaveBalanceDays > 0.004) {
-    lines.push({ code: 'IND_CONGES', label: 'Indemnité compensatrice de congés payés', amount: leaveAmount, kind: 'gain', detail: `${f(i.leaveBalanceDays)} j × ${f(daily)} DH` });
+    lines.push({ code: 'IND_CONGES', label: 'Indemnité compensatrice de congés payés', amount: leaveAmount, kind: 'gain', detail: `${f(i.leaveBalanceDays)} j × ${f(daily)} ${currencySymbol()}` });
   } else if (i.leaveBalanceDays < -0.004) {
-    lines.push({ code: 'RET_CONGES', label: 'Congés pris par anticipation', amount: leaveAmount, kind: 'retenue', detail: `${f(-i.leaveBalanceDays)} j × ${f(daily)} DH` });
+    lines.push({ code: 'RET_CONGES', label: 'Congés pris par anticipation', amount: leaveAmount, kind: 'retenue', detail: `${f(-i.leaveBalanceDays)} j × ${f(daily)} ${currencySymbol()}` });
   }
 
   // ─── Preavis : du par l'employeur s'il dispense le salarie (licenciement hors
@@ -129,13 +130,13 @@ export function computeSettlement(i: SettlementInput): SettlementResult {
   else { eligible = true; severanceReason = 'Art. 53 : 96 h / an (≤ 5 ans), 144 h (6-10), 192 h (11-15), 240 h (> 15).'; }
   const hours = eligible ? r2(severanceHours(sen.years)) : 0;
   const severanceAmount = r2(hours * hourly);
-  if (severanceAmount > 0) lines.push({ code: 'IND_LICENCIEMENT', label: 'Indemnité de licenciement', amount: severanceAmount, kind: 'gain', detail: `${f(hours)} h × ${f(hourly)} DH (${sen.label})` });
+  if (severanceAmount > 0) lines.push({ code: 'IND_LICENCIEMENT', label: 'Indemnité de licenciement', amount: severanceAmount, kind: 'gain', detail: `${f(hours)} h × ${f(hourly)} ${currencySymbol()} (${sen.label})` });
 
   // ─── Dommages-interets (licenciement abusif, sur decision) ───
   const maxDamages = Math.min(36, 1.5 * sen.years);
   const damagesMonths = Math.min(Math.max(0, i.damagesMonths ?? 0), maxDamages);
   const damagesAmount = r2(damagesMonths * ref);
-  if (damagesAmount > 0) lines.push({ code: 'DOMMAGES_INTERETS', label: 'Dommages-intérêts', amount: damagesAmount, kind: 'gain', detail: `${f(damagesMonths)} mois × ${f(ref)} DH (plafond ${f(maxDamages)} mois)` });
+  if (damagesAmount > 0) lines.push({ code: 'DOMMAGES_INTERETS', label: 'Dommages-intérêts', amount: damagesAmount, kind: 'gain', detail: `${f(damagesMonths)} mois × ${f(ref)} ${currencySymbol()} (plafond ${f(maxDamages)} mois)` });
 
   const totalGains = r2(lines.filter(l => l.kind === 'gain').reduce((s, l) => s + l.amount, 0));
   const totalDeductions = r2(lines.filter(l => l.kind === 'retenue').reduce((s, l) => s + l.amount, 0));

@@ -22,6 +22,7 @@ import crypto from 'crypto';
 import { db } from '../config/database.js';
 import { letterCode } from '../services/fec.service.js';
 import { autoLettrer } from '../services/journal-generator.service.js';
+import { currencySymbol } from '../services/currency.js';
 
 type Actor = { userId: string };
 export type LettrageStatus = 'open' | 'lettered' | 'all';
@@ -211,7 +212,7 @@ export const lettrageRepository = {
       const ecart = rows.reduce((s, r) => s + cents(r.debit) - cents(r.credit), 0);
       const partialIds = partialGroupsOf(rows);
       if (ecart !== 0) {
-        if (!opts.partial) throw fail(`Sélection non soldée : écart de ${(Math.abs(ecart) / 100).toFixed(2)} DH au ${ecart > 0 ? 'débit' : 'crédit'}`);
+        if (!opts.partial) throw fail(`Sélection non soldée : écart de ${(Math.abs(ecart) / 100).toFixed(2)} ${currencySymbol()} au ${ecart > 0 ? 'débit' : 'crédit'}`);
         assertNotClosed(rows, await closedUntil(c));
         // Un seul groupe déjà présent : on l'étend ; plusieurs : on les fond en un nouveau.
         const partialId = partialIds.length === 1 ? partialIds[0] : crypto.randomUUID();

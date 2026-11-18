@@ -91,7 +91,7 @@ async function openInvoices(c: PoolClient | typeof db, date: string): Promise<Op
        LEFT JOIN LATERAL (
          SELECT sum(foreign_amount) AS foreign_paid, sum(COALESCE(settled_amount, amount)) AS settled
            FROM payments WHERE invoice_id = i.id AND payment_date <= $1::date) p ON true
-      WHERE i.currency_code <> 'MAD' AND i.status <> 'cancelled' AND i.invoice_date <= $1::date
+      WHERE i.currency_code <> fn_base_currency() AND i.status <> 'cancelled' AND i.invoice_date <= $1::date
         AND i.invoice_type IN ('received', 'emitted') AND i.foreign_total_amount IS NOT NULL
         AND i.foreign_total_amount - COALESCE(p.foreign_paid, 0) > 0.005
       ORDER BY i.invoice_type DESC, i.currency_code, i.invoice_date, i.invoice_number`, [date]);

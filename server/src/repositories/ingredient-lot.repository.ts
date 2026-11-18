@@ -2,6 +2,7 @@ import { scrapReasonAllowed } from '../services/process-referentials.js';
 import { db, withTransaction } from '../config/database.js';
 import { strictContainerQty } from '../services/container-rule.js';
 import type { PoolClient } from 'pg';
+import { currencySymbol } from '../services/currency.js';
 
 export const ingredientLotRepository = {
   /** List lots with filters */
@@ -722,7 +723,7 @@ export const ingredientLotRepository = {
           [
             lot.ingredient_id,
             -totalLost,
-            `${reasonLabel} — Lot ${lot.lot_number} : ${totalLost.toFixed(3)} ${lot.ingredient_unit} (${lostValue.toFixed(2)} DH)${note ? ' — ' + note : ''}`,
+            `${reasonLabel} — Lot ${lot.lot_number} : ${totalLost.toFixed(3)} ${lot.ingredient_unit} (${lostValue.toFixed(2)} ${currencySymbol()})${note ? ' — ' + note : ''}`,
             userId,
             lot.store_id,
             lotId,

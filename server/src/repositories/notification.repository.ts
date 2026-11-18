@@ -1,4 +1,5 @@
 import { db } from '../config/database.js';
+import { currencySymbol } from '../services/currency.js';
 
 const toArray = (role: string | string[]) => [...new Set(Array.isArray(role) ? role : [role])];
 
@@ -222,7 +223,7 @@ export const notificationRepository = {
             storeId || null,
             'order_confirmed',
             'Commande a preparer',
-            `Commande ${order.order_number} pour le ${order.pickup_date?.toString().slice(0, 10)} — ${parseFloat(order.total).toFixed(2)} DH`,
+            `Commande ${order.order_number} pour le ${order.pickup_date?.toString().slice(0, 10)} — ${parseFloat(order.total).toFixed(2)} ${currencySymbol()}`,
             order.id,
             order.user_id,
           ],

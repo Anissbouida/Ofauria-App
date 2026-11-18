@@ -17,6 +17,7 @@ import { getParameter, type ExpenseRequiresPo } from '../services/module-paramet
 import { loadCompanyLegal } from '../utils/company-legal.js';
 import { storeFile, FileRejectedError, DOCUMENT_MIMES } from '../services/storage.service.js';
 import { tvaRatesOf } from '../validators/invoice.validator.js';
+import { currencySymbol } from '../services/currency.js';
 
 // Valide un code de mode de reglement contre le referentiel payment_methods
 // (table de reference) plutot que contre une liste figee en dur.
@@ -787,7 +788,7 @@ export const paymentController = {
           if (!data.purchaseOrderId) {
             res.status(400).json({
               success: false,
-              error: { message: `La catégorie « ${category.name} » exige un bon de commande engagé au-delà de ${rule.threshold} ${rule.currency}. Sélectionnez un BC.` },
+              error: { message: `La catégorie « ${category.name} » exige un bon de commande engagé au-delà de ${rule.threshold} ${currencySymbol()}. Sélectionnez un BC.` },
             });
             return;
           }

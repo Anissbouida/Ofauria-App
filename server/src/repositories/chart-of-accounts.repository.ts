@@ -17,6 +17,7 @@
  */
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
+import { currencySymbol } from '../services/currency.js';
 
 type Actor = { userId: string };
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense' | 'result';
@@ -171,7 +172,7 @@ export const chartOfAccountsRepository = {
     return withTx(actor.userId, async c => {
       if (!active) {
         const u = await usage(c, id);
-        if (u.balance) throw fail(`Solde non nul (${u.balance.toFixed(2)} DH) : soldez le compte avant de le désactiver`, 409);
+        if (u.balance) throw fail(`Solde non nul (${u.balance.toFixed(2)} ${currencySymbol()}) : soldez le compte avant de le désactiver`, 409);
         if (u.references.length) throw fail(`Encore utilisé par : ${u.references.map(r => `${r.what} (${r.n})`).join(', ')}`, 409);
       }
       const r = (await c.query(`UPDATE accounts SET is_active = $2 WHERE id = $1 RETURNING *`, [id, active])).rows[0];

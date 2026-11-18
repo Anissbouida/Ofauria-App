@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { invoiceRepository } from './accounting.repository.js';
 import { autoLettrer } from '../services/journal-generator.service.js';
+import { currencySymbol } from '../services/currency.js';
 
 /**
  * Avoirs clients (O2C L4, mig 450). Une facture client émise ne se modifie
@@ -111,7 +112,7 @@ export const creditNoteRepository = {
             lines.push({ ...base(it), description: `Retour · ${it.description ?? ''}`, quantity: q, unitPrice: Number(it.unit_price), subtotal });
           } else {
             const amount = r2(Number(l.amount));
-            if (!(amount > 0) || amount > restAmount + 0.005) throw fail(400, `Montant invalide pour « ${it.description} » (reste créditable : ${restAmount.toFixed(2)} DH HT)`);
+            if (!(amount > 0) || amount > restAmount + 0.005) throw fail(400, `Montant invalide pour « ${it.description} » (reste créditable : ${restAmount.toFixed(2)} ${currencySymbol()} HT)`);
             // Montant porté sur la quantité facturée : seul le prix est corrigé.
             const qty = Number(it.quantity) || 1;
             lines.push({ ...base(it), description: `${LABEL[p.reason]} · ${it.description ?? ''}`, quantity: qty,

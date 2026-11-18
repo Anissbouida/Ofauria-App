@@ -3,6 +3,7 @@ import { nextDocumentNumber } from '../utils/document-number.js';
 import { purchaseOrderRepository } from './purchase-order.repository.js';
 import { enqueueEmail } from '../services/mailer.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
+import { baseCurrencyCode } from '../services/currency.js';
 
 type HttpError = Error & { statusCode: number; code?: string };
 function httpError(statusCode: number, message: string, code?: string): HttpError {
@@ -428,8 +429,8 @@ export const rfqRepository = {
          RETURNING id`,
         [rfqId, input.supplierId, input.quotationRef?.trim() || null, input.receivedAt ?? null, input.validUntil ?? null, input.deliveryDays ?? null,
          input.paymentTerms?.trim() || null, input.shippingCost ?? 0, input.discountPct ?? 0, input.notes?.trim() || null, userId,
-         input.currencyCode && input.currencyCode !== 'MAD' ? input.currencyCode : 'MAD',
-         input.currencyCode && input.currencyCode !== 'MAD' && input.exchangeRate ? input.exchangeRate : 1,
+         input.currencyCode && input.currencyCode !== baseCurrencyCode() ? input.currencyCode : baseCurrencyCode(),
+         input.currencyCode && input.currencyCode !== baseCurrencyCode() && input.exchangeRate ? input.exchangeRate : 1,
          legacyQuality, JSON.stringify(critScores)],
       );
       const qid = q.rows[0].id as string;
@@ -466,7 +467,7 @@ export const rfqRepository = {
         return {
           lineType: it.line_type, ingredientId: it.ingredient_id, packagingId: it.packaging_id, description: it.description, categoryId: it.category_id,
           unit: it.unit, quantityOrdered: Number(l.quantity ?? it.quantity), unitPrice: Math.round(Number(l.unit_price) * 10000) / 10000,
-          foreignUnitPrice: q.currency_code !== 'MAD' ? Number(l.foreign_unit_price) : null,
+          foreignUnitPrice: q.currency_code !== baseCurrencyCode() ? Number(l.foreign_unit_price) : null,
         };
       })
       .filter(Boolean);

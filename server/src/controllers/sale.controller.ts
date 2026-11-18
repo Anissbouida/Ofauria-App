@@ -17,6 +17,7 @@ import { taxCodeRepository } from '../repositories/tax-code.repository.js';
 import { invoiceRepository } from '../repositories/accounting.repository.js';
 import { netFromGross, round2 } from '../utils/tva.js';
 import { exceededCeiling, approveDiscountByPin, discountCeiling, discountApprovers } from '../services/discount-policy.js';
+import { currencySymbol } from '../services/currency.js';
 
 export const saleController = {
   async list(req: AuthRequest, res: Response) {
@@ -242,7 +243,7 @@ export const saleController = {
       if (Math.abs(mixedSum - totalRounded) >= 0.01) {
         res.status(400).json({
           success: false,
-          error: { message: `Ventilation mixte incoherente : especes + carte = ${mixedSum.toFixed(2)} DH, total = ${totalRounded.toFixed(2)} DH` },
+          error: { message: `Ventilation mixte incoherente : especes + carte = ${mixedSum.toFixed(2)} ${currencySymbol()}, total = ${totalRounded.toFixed(2)} ${currencySymbol()}` },
         });
         return;
       }

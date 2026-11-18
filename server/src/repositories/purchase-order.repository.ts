@@ -5,6 +5,7 @@ import { receptionVoucherRepository, createInvoiceFromPo } from './reception-vou
 import { packagingItemRepository } from './packaging-item.repository.js';
 import type { PoolClient } from 'pg';
 import { closePurchaseRequestsForOrder } from './purchase-request.helper.js';
+import { baseCurrencyCode } from '../services/currency.js';
 
 /** Ligne de BC en entrée : article (ingrédient / consommable) ou ligne libre (service / immobilisation). */
 export type PoLineType = 'ingredient' | 'consumable' | 'service' | 'asset';
@@ -305,8 +306,8 @@ export const purchaseOrderRepository = {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
         [orderNumber, data.supplierId, data.expectedDeliveryDate || null,
          data.notes || null, data.createdBy, data.storeId || null,
-         data.currencyCode && data.currencyCode !== 'MAD' ? data.currencyCode : 'MAD',
-         data.currencyCode && data.currencyCode !== 'MAD' && data.exchangeRate ? data.exchangeRate : 1]
+         data.currencyCode && data.currencyCode !== baseCurrencyCode() ? data.currencyCode : baseCurrencyCode(),
+         data.currencyCode && data.currencyCode !== baseCurrencyCode() && data.exchangeRate ? data.exchangeRate : 1]
       );
 
       // F-012 — L'arrondi au contenant (210 kg -> 225 = 9 sacs) etait silencieux :
@@ -338,7 +339,7 @@ export const purchaseOrderRepository = {
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [poResult.rows[0].id, item.ingredientId ?? null, item.packagingId ?? null, qty, item.unitPrice ?? null,
            lineTypeOf(item), free.description, free.categoryId, free.unit,
-           data.currencyCode && data.currencyCode !== 'MAD' ? (item.foreignUnitPrice ?? null) : null]
+           data.currencyCode && data.currencyCode !== baseCurrencyCode() ? (item.foreignUnitPrice ?? null) : null]
         );
       }
 

@@ -17,6 +17,7 @@ import { deliveryNoteRepository } from '../repositories/delivery-note.repository
 import { toOrderRepository } from '../repositories/to-order.repository.js';
 import { purchaseRequestRepository } from '../repositories/purchase-request.repository.js';
 import { webhookRepository } from '../repositories/webhook.repository.js';
+import { currencySymbol } from './currency.js';
 
 /**
  * Tâches planifiées (mig 364).
@@ -140,7 +141,7 @@ async function quotesExpire(): Promise<JobResult> {
       `INSERT INTO notifications (target_role, target_user_id, store_id, type, title, message, reference_type, reference_id)
        VALUES ($1, $2, $3, 'quote_expired', $4, $5, 'quote', $6)`,
       [q.created_by ? 'all' : 'manager', q.created_by, q.store_id, `Devis expiré · ${q.number}`,
-       `${q.customer_label ?? q.prospect_label ?? ''} — ${Number(q.total).toFixed(2)} DH : relancer le client ou classer le devis`, q.id]);
+       `${q.customer_label ?? q.prospect_label ?? ''} — ${Number(q.total).toFixed(2)} ${currencySymbol()} : relancer le client ou classer le devis`, q.id]);
   }
   return { items: r.rowCount ?? 0, message: r.rowCount ? `${r.rowCount} devis expiré(s)` : 'Aucun devis expiré' };
 }
@@ -279,7 +280,7 @@ async function depreciationMonthly(): Promise<JobResult> {
     }
   }
   return { items: created, message: created
-    ? `${created} dotation(s) comptabilisée(s) jusqu'à ${String(month).padStart(2, '0')}/${year}, ${total.toFixed(2)} DH`
+    ? `${created} dotation(s) comptabilisée(s) jusqu'à ${String(month).padStart(2, '0')}/${year}, ${total.toFixed(2)} ${currencySymbol()}`
     : `Dotations à jour jusqu'à ${String(month).padStart(2, '0')}/${year}` };
 }
 

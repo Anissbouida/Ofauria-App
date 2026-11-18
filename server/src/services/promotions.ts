@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { getUserTimezone } from '../utils/timezone.js';
 import { tierFor } from './loyalty.js';
+import { currencySymbol } from './currency.js';
 
 /**
  * Moteur de promotions (mig 372). Entrée : lignes déjà chiffrées (prix du canal, palier…).
@@ -131,8 +132,8 @@ function missingFree(p: Promo, lines: PromoLine[]) {
 export function promoLabel(p: Promo) {
   const v = Number(p.value);
   const dh = (n: number) => n.toFixed(2).replace('.', ',');
-  const what = p.kind === 'percent' ? `−${String(v).replace('.', ',')} %` : p.kind === 'amount' ? `−${dh(v)} DH${p.target === 'items' ? '/u' : ''}`
-    : p.kind === 'fixed_price' ? `à ${dh(v)} DH` : `${p.buy_qty} + ${p.get_qty} offert${Number(p.get_qty) > 1 ? 's' : ''}`;
+  const what = p.kind === 'percent' ? `−${String(v).replace('.', ',')} %` : p.kind === 'amount' ? `−${dh(v)} ${currencySymbol()}${p.target === 'items' ? '/u' : ''}`
+    : p.kind === 'fixed_price' ? `à ${dh(v)} ${currencySymbol()}` : `${p.buy_qty} + ${p.get_qty} offert${Number(p.get_qty) > 1 ? 's' : ''}`;
   return `${p.name} (${what})`.slice(0, 160);
 }
 

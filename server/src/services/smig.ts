@@ -1,3 +1,4 @@
+import { currencySymbol } from './currency.js';
 /**
  * G0-11 (plan d'action 2026-11) — contrôle du salaire minimum (SMIG).
  *
@@ -42,13 +43,13 @@ export function checkSmig(emp: SmigEmployee, scale: SmigScale): SmigFinding | nu
     if (asMonthly + 0.005 >= scale.smigMonthly) return null;
     const gap = r2(scale.smigMonthly - asMonthly);
     return { basis: 'mensuel', actual: asMonthly, minimum: scale.smigMonthly, gap,
-      message: `Salaire de base ${dh(asMonthly)} DH sous le SMIG mensuel (${dh(scale.smigMonthly)} DH) : écart de ${dh(gap)} DH.` };
+      message: `Salaire de base ${dh(asMonthly)} ${currencySymbol()} sous le SMIG mensuel (${dh(scale.smigMonthly)} ${currencySymbol()}) : écart de ${dh(gap)} ${currencySymbol()}.` };
   }
   if (hourly !== null && scale.smigHourly !== null) {
     if (hourly + 0.00005 >= scale.smigHourly) return null;
     const gap = Math.round((scale.smigHourly - hourly) * 10000) / 10000;
     return { basis: 'horaire', actual: hourly, minimum: scale.smigHourly, gap,
-      message: `Taux horaire ${dh(hourly)} DH sous le SMIG horaire (${dh(scale.smigHourly)} DH).` };
+      message: `Taux horaire ${dh(hourly)} ${currencySymbol()} sous le SMIG horaire (${dh(scale.smigHourly)} ${currencySymbol()}).` };
   }
   return null;
 }

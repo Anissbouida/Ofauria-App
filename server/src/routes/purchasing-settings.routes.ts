@@ -6,6 +6,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { getParameter, listParameters, setParameter, type ExpenseRequiresPo } from '../services/module-parameters.service.js';
 import { db } from '../config/database.js';
+import { baseCurrencyCode } from '../services/currency.js';
 
 /**
  * Paramètres du module Achats (mig 306). Lecture : gérant/admin (l'écran Charges en a besoin).
@@ -16,7 +17,7 @@ const router = Router();
 const expenseRequiresPoSchema = z.object({
   enabled: z.boolean(),
   threshold: z.coerce.number().finite().min(0).max(10_000_000),
-  currency: z.string().trim().length(3).toUpperCase().default('MAD'),
+  currency: z.string().trim().length(3).toUpperCase().default(() => baseCurrencyCode()),
 });
 
 router.get('/', authenticate, can('purchasing.purchasing_settings.view'), asyncHandler(async (_req, res) => {

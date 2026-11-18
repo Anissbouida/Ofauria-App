@@ -1,5 +1,6 @@
 import { db, withTransaction } from '../config/database.js';
 import type { PoolClient } from 'pg';
+import { currencySymbol } from '../services/currency.js';
 
 /**
  * Echeancier des sorties d'argent : dettes echelonnees + charges fixes.
@@ -171,8 +172,8 @@ export const paymentScheduleRepository = {
       if (montant <= 0) throw httpError('Cette facture est déjà réglée', 400);
       if (montant > remaining + 0.01) {
         throw httpError(
-          `Le montant à échelonner (${montant.toFixed(2)} DH) dépasse le reste à payer ` +
-          `(${remaining.toFixed(2)} DH) de la facture ${invoice.invoice_number}.`, 400
+          `Le montant à échelonner (${montant.toFixed(2)} ${currencySymbol()}) dépasse le reste à payer ` +
+          `(${remaining.toFixed(2)} ${currencySymbol()}) de la facture ${invoice.invoice_number}.`, 400
         );
       }
 
@@ -487,7 +488,7 @@ export const paymentScheduleRepository = {
       const cur = await db.query('SELECT amount_paid FROM scheduled_payments WHERE id = $1', [id]);
       if (cur.rows[0] && data.amountDue < parseFloat(cur.rows[0].amount_paid) - 0.01) {
         throw httpError(
-          `Montant inférieur au déjà réglé (${parseFloat(cur.rows[0].amount_paid).toFixed(2)} DH).`, 400
+          `Montant inférieur au déjà réglé (${parseFloat(cur.rows[0].amount_paid).toFixed(2)} ${currencySymbol()}).`, 400
         );
       }
     }

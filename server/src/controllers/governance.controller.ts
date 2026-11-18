@@ -5,6 +5,7 @@ import { governanceRepository } from '../repositories/governance.repository.js';
 import { roleRepository } from '../repositories/role.repository.js';
 import { userRepository } from '../repositories/user.repository.js';
 import { sodEnforcementMode, invalidateSodMode, invalidateSodCache, scanSodViolations } from '../services/governance.js';
+import { baseCurrencyCode } from '../services/currency.js';
 
 const bad = (res: Response, message: string, status = 400) =>
   res.status(status).json({ success: false, error: { message } });
@@ -94,7 +95,7 @@ export const governanceController = {
     if (!isApprovalDocumentType(b.documentType)) { bad(res, 'Type de document invalide'); return; }
     const maxAmount = Number(b.maxAmount);
     if (!Number.isFinite(maxAmount) || maxAmount < 0) { bad(res, 'Montant invalide'); return; }
-    const currency = typeof b.currency === 'string' && b.currency.length === 3 ? b.currency.toUpperCase() : 'MAD';
+    const currency = typeof b.currency === 'string' && b.currency.length === 3 ? b.currency.toUpperCase() : baseCurrencyCode();
     const row = await governanceRepository.setApprovalLimit(roleCode, b.documentType, maxAmount, currency, req.user?.userId);
     res.json({ success: true, data: row });
   },

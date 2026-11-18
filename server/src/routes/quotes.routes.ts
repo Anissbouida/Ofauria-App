@@ -9,6 +9,7 @@ import { quoteRepository } from '../repositories/quote.repository.js';
 import { getParameter } from '../services/module-parameters.service.js';
 import { generateInvoicePdf } from '../services/invoice-pdf.service.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
+import { currencySymbol } from '../services/currency.js';
 
 /**
  * Devis clients et proforma (mig 365). Réservés à la direction, comme les commandes de
@@ -171,7 +172,7 @@ quotesRouter.get('/:id/pdf', authenticate, can('sales.quotes.view'), asyncHandle
       subtotal: it.subtotal != null ? Number(it.subtotal) : 0,
     })),
     totalHT: Number(q.subtotal),
-    discountLabel: pct > 0 ? `${pct} % (-${n2(Number(q.discount_amount))} DH)` : '0 %',
+    discountLabel: pct > 0 ? `${pct} % (-${n2(Number(q.discount_amount))} ${currencySymbol()})` : '0 %',
     tvaRate: q.with_tax ? (breakdown.length === 1 ? breakdown[0].rate : 0) : 0,
     totalTVA: Number(q.tax_amount),
     totalTTC: Number(q.total),

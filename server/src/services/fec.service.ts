@@ -84,10 +84,10 @@ async function fecRows(start: string, end: string): Promise<FecRow[]> {
             lett.rk::text AS let_rank, COALESCE((la.at AT TIME ZONE '${TZ}')::date, lett.last_date)::text AS date_let,
             (COALESCE(e.posted_at, e.created_at) AT TIME ZONE '${TZ}')::date::text AS valid_date,
             -- Dette ou créance en devise : montant d'origine sur la ligne de tiers.
-            CASE WHEN a.is_collective AND COALESCE(inv.currency_code, pay.currency_code, 'MAD') <> 'MAD'
+            CASE WHEN a.is_collective AND COALESCE(inv.currency_code, pay.currency_code, fn_base_currency()) <> fn_base_currency()
                       AND COALESCE(inv.exchange_rate, pay.exchange_rate, 0) > 0
                  THEN round((jel.debit + jel.credit) / COALESCE(inv.exchange_rate, pay.exchange_rate), 2)::text END AS montant_devise,
-            CASE WHEN a.is_collective AND COALESCE(inv.currency_code, pay.currency_code, 'MAD') <> 'MAD'
+            CASE WHEN a.is_collective AND COALESCE(inv.currency_code, pay.currency_code, fn_base_currency()) <> fn_base_currency()
                       AND COALESCE(inv.exchange_rate, pay.exchange_rate, 0) > 0
                  THEN COALESCE(inv.currency_code, pay.currency_code) END AS idevise
        FROM e

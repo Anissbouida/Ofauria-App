@@ -8,6 +8,7 @@ import { FLAGS } from '../config/feature-flags.js';
 import { fromSale, fromSaleReturn, persistEntry } from '../services/journal-generator.service.js';
 import { postOrQueue } from '../services/ledger-posting.service.js';
 import { returnRules } from '../services/module-parameters.service.js';
+import { currencySymbol } from '../services/currency.js';
 
 export const returnRepository = {
   async findAll(params: { dateFrom?: string; dateTo?: string; storeId?: string; limit?: number; offset?: number }) {
@@ -126,7 +127,7 @@ export const returnRepository = {
             throw Object.assign(new Error(`Retour hors délai : au-delà de ${rules.max_days} jours après la vente.`), { statusCode: 409 });
           }
           if (rules.max_amount_without_approval > 0 && Number(data.refundAmount) > rules.max_amount_without_approval && !data.approvedBy) {
-            throw Object.assign(new Error(`Remboursement de ${Number(data.refundAmount).toFixed(2)} DH au-delà du seuil (${rules.max_amount_without_approval} DH) : approbation d'un responsable requise.`), { statusCode: 409 });
+            throw Object.assign(new Error(`Remboursement de ${Number(data.refundAmount).toFixed(2)} ${currencySymbol()} au-delà du seuil (${rules.max_amount_without_approval} ${currencySymbol()}) : approbation d'un responsable requise.`), { statusCode: 409 });
           }
         }
       }
@@ -180,7 +181,7 @@ export const returnRepository = {
             saleTotal,
             saleTotal,
             paymentMethod,
-            `Echange - Retour ${returnNumber} - Articles neufs ${exchangeTotal.toFixed(2)} DH, avoir retour ${data.refundAmount.toFixed(2)} DH${priceDiff > 0 ? ` - Client paie ${priceDiff.toFixed(2)} DH` : priceDiff < 0 ? ` - Rendre ${Math.abs(priceDiff).toFixed(2)} DH au client` : ''}`,
+            `Echange - Retour ${returnNumber} - Articles neufs ${exchangeTotal.toFixed(2)} ${currencySymbol()}, avoir retour ${data.refundAmount.toFixed(2)} ${currencySymbol()}${priceDiff > 0 ? ` - Client paie ${priceDiff.toFixed(2)} ${currencySymbol()}` : priceDiff < 0 ? ` - Rendre ${Math.abs(priceDiff).toFixed(2)} ${currencySymbol()} au client` : ''}`,
             data.sessionId || null,
             data.storeId || null,
           ]

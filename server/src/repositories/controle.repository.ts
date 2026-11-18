@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { haccpRepository } from './haccp.repository.js';
 import { complaintRepository } from './complaint.repository.js';
+import { currencySymbol } from '../services/currency.js';
 
 /**
  * Contrôle & Qualité (mig 313) : lectures transverses, rien n'est saisi ici.
@@ -293,7 +294,7 @@ export const controleRepository = {
     return [
       { key: 'ventes_ecart', domain: 'ventes', label: 'Manquants de ventes', hint: 'écart vendu + invendu − reçu < 0',
         count: num(ventes, 'count'), value: num(ventes, 'value'), severity: sev(num(ventes, 'count'), true), target: 'ventes' },
-      { key: 'caisse_ecart', domain: 'ventes', label: 'Écarts de caisse', hint: 'sessions avec plus de 5 DH d\'écart',
+      { key: 'caisse_ecart', domain: 'ventes', label: 'Écarts de caisse', hint: `sessions avec plus de 5 ${currencySymbol()} d'écart`,
         count: num(caisse, 'count'), value: num(caisse, 'value'), severity: sev(num(caisse, 'count')), target: 'ventes' },
       { key: 'factures_bloquees', domain: 'achats', label: 'Factures bloquées', hint: 'paiement suspendu par un contrôle',
         count: num(holds, 'count'), value: null, severity: sev(num(holds, 'count'), true), target: 'achats' },

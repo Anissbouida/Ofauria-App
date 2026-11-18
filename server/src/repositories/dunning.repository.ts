@@ -4,6 +4,7 @@ import { loadCompanyLegal } from '../utils/company-legal.js';
 import { getParameter } from '../services/module-parameters.service.js';
 import { enqueueEmail } from '../services/mailer.js';
 import { openDocuments, type ReceivableDoc } from './receivables.repository.js';
+import { currencySymbol } from '../services/currency.js';
 
 /**
  * Relances clients (mig 366).
@@ -133,7 +134,7 @@ export const dunningRepository = {
     const rate = Number(level.interest_rate) || 0;
     const interest = round2(docs.reduce((s, d) => s + d.remaining * rate / 100 * d.days_late / 365, 0));
     const fee = Number(level.fee_amount) || 0;
-    const pieces = docs.map(d => `- ${d.kind === 'invoice' ? 'Facture' : 'Ticket'} ${d.number} du ${frDate(d.doc_date)}, échue le ${frDate(d.due_date)} (${d.days_late} j de retard) : ${n2(d.remaining)} DH`).join('\n');
+    const pieces = docs.map(d => `- ${d.kind === 'invoice' ? 'Facture' : 'Ticket'} ${d.number} du ${frDate(d.doc_date)}, échue le ${frDate(d.due_date)} (${d.days_late} j de retard) : ${n2(d.remaining)} ${currencySymbol()}`).join('\n');
     const vars = {
       client: c.name, montant: n2(amount), pieces, jours: String(maxDaysLate), frais: n2(fee), penalites: n2(interest),
       total: n2(amount + fee + interest), societe: legal.name || '', date: new Date().toLocaleDateString('fr-FR'),

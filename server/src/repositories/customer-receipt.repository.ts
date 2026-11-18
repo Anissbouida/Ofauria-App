@@ -5,6 +5,7 @@ import { invoiceRepository } from './accounting.repository.js';
 import { postOrQueue } from '../services/ledger-posting.service.js';
 import { fromPaymentEmission, fromAllocation, persistEntry, autoLettrer } from '../services/journal-generator.service.js';
 import { withActor } from '../services/document-actions.service.js';
+import { baseCurrencyCode, currencySymbol } from '../services/currency.js';
 
 /**
  * Encaissements clients (O2C L5, mig 451). Un règlement — un chèque, un
@@ -26,7 +27,7 @@ async function openInvoice(c: PoolClient, invoiceId: string, customerId: string)
   if (!inv || inv.invoice_type !== 'emitted' || inv.kind === 'credit_note') throw fail(404, 'Facture client introuvable');
   if (inv.customer_id !== customerId) throw fail(400, `La facture ${inv.invoice_number} n'est pas à ce client`);
   if (inv.status === 'cancelled') throw fail(409, `Facture ${inv.invoice_number} annulée`);
-  if (String(inv.currency_code ?? 'MAD').trim() !== 'MAD') throw fail(400, `Facture ${inv.invoice_number} en devise : réglez-la depuis la facture (taux du jour)`);
+  if (String(inv.currency_code ?? baseCurrencyCode()).trim() !== baseCurrencyCode()) throw fail(400, `Facture ${inv.invoice_number} en devise : réglez-la depuis la facture (taux du jour)`);
   return { inv, open: r2(Number(inv.total_amount) - Number(inv.paid_amount ?? 0)) };
 }
 
@@ -42,7 +43,7 @@ export const customerReceiptRepository = {
     const allocations = (p.allocations ?? []).map(a => ({ invoiceId: a.invoiceId, amount: r2(Number(a.amount)) })).filter(a => a.amount > 0);
     if (new Set(allocations.map(a => a.invoiceId)).size !== allocations.length) throw fail(400, 'Une facture apparaît deux fois');
     const allocated = r2(allocations.reduce((s, a) => s + a.amount, 0));
-    if (allocated > amount + 0.005) throw fail(400, `Affecté (${allocated.toFixed(2)} DH) supérieur au règlement (${amount.toFixed(2)} DH)`);
+    if (allocated > amount + 0.005) throw fail(400, `Affecté (${allocated.toFixed(2)} ${currencySymbol()}) supérieur au règlement (${amount.toFixed(2)} ${currencySymbol()})`);
     if ((p.paymentMethod === 'check' || p.paymentMethod === 'traite') && !p.checkNumber?.trim()) throw fail(400, 'Numéro du chèque ou de l\'effet requis');
 
     const c = await db.getClient();
@@ -53,7 +54,7 @@ export const customerReceiptRepository = {
       if (!cust) throw fail(400, 'Client introuvable');
       for (const a of allocations) {
         const { inv, open } = await openInvoice(c, a.invoiceId, p.customerId);
-        if (a.amount > open + 0.005) throw fail(409, `${a.amount.toFixed(2)} DH sur la facture ${inv.invoice_number} : il n'en reste que ${open.toFixed(2)} DH à régler`);
+        if (a.amount > open + 0.005) throw fail(409, `${a.amount.toFixed(2)} ${currencySymbol()} sur la facture ${inv.invoice_number} : il n'en reste que ${open.toFixed(2)} ${currencySymbol()} à régler`);
       }
       const pay = (await c.query(
         `INSERT INTO payments (reference, type, customer_id, amount, payment_method, payment_date, description, created_by, store_id,

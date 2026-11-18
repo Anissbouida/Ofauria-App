@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { persistEntry, postingAccount } from './journal-generator.service.js';
+import { currencySymbol } from './currency.js';
 
 /**
  * Fidélité (mig 372). Les points sont des mouvements (loyalty_transactions) ; le solde de
@@ -152,7 +153,7 @@ export async function checkRedeem(runner: Runner, customerId: string, points: nu
   if (points > bal.rows[0].n) return { error: `Solde insuffisant : ${bal.rows[0].n} points` } as const;
   const amount = round2(points * Number(s.point_value));
   const cap = round2(ticketAmount * Number(s.max_redeem_pct) / 100);
-  if (amount > cap + 0.001) return { error: `Les points couvrent au plus ${Number(s.max_redeem_pct)} % du ticket (${cap.toFixed(2)} DH)` } as const;
+  if (amount > cap + 0.001) return { error: `Les points couvrent au plus ${Number(s.max_redeem_pct)} % du ticket (${cap.toFixed(2)} ${currencySymbol()})` } as const;
   return { amount };
 }
 

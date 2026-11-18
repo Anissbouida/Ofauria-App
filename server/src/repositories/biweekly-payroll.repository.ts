@@ -8,6 +8,7 @@ import { salaryAdvanceRepository } from './salary-advance.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
 import { loadPayrollContext } from './payroll-config.repository.js';
 import { provisionalWithholding, periodMonth } from '../services/payroll-engine.js';
+import { currencySymbol } from '../services/currency.js';
 
 /**
  * Paie par quinzaine (biweekly).
@@ -227,7 +228,7 @@ export const biweeklyPayrollRepository = {
       const outstandingRes = await salaryAdvanceRepository.outstandingByEmployee(row.employee_id as string);
       const outstanding = parseFloat(outstandingRes[0]?.outstanding || '0');
       if (deduction > Math.min(net, outstanding) + 0.005) {
-        throw new Error(`Retenue ${deduction.toFixed(2)} DH superieure au net a payer (${net.toFixed(2)} DH) ou au solde d'avances (${outstanding.toFixed(2)} DH)`);
+        throw new Error(`Retenue ${deduction.toFixed(2)} ${currencySymbol()} superieure au net a payer (${net.toFixed(2)} ${currencySymbol()}) ou au solde d'avances (${outstanding.toFixed(2)} ${currencySymbol()})`);
       }
     }
 
@@ -267,7 +268,7 @@ export const biweeklyPayrollRepository = {
           paymentMethod,
           paymentDate: getLocalISODate(),
           description: `Salaire quinzaine du ${periodStartStr} au ${periodEndStr} - ${empName}`
-            + (deduction > 0 ? ` (retenue avance ${deduction.toFixed(2)} DH)` : ''),
+            + (deduction > 0 ? ` (retenue avance ${deduction.toFixed(2)} ${currencySymbol()})` : ''),
           createdBy: createdBy || bp.employee_id,
           storeId,
         });
@@ -285,7 +286,7 @@ export const biweeklyPayrollRepository = {
         });
         if (Math.abs(applied - deduction) > 0.005) {
           throw new Error(
-            `Retenue partielle : ${applied.toFixed(2)} DH imputes sur ${deduction.toFixed(2)} DH demandes ` +
+            `Retenue partielle : ${applied.toFixed(2)} ${currencySymbol()} imputes sur ${deduction.toFixed(2)} ${currencySymbol()} demandes ` +
             `(solde d'avances insuffisant, probablement une paie concurrente).`
           );
         }

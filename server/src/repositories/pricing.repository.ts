@@ -49,7 +49,7 @@ export const priceListRepository = {
     return (await db.query(
       `INSERT INTO price_lists (name, currency, channel_id, customer_type, price_group, customer_id,
          valid_from, valid_to, priority, is_active, created_by)
-       VALUES ($1, COALESCE($2,'MAD'), $3, $4, $5, $6, $7, $8, COALESCE($9,0), COALESCE($10,true), $11) RETURNING *`,
+       VALUES ($1, COALESCE($2,fn_base_currency()), $3, $4, $5, $6, $7, $8, COALESCE($9,0), COALESCE($10,true), $11) RETURNING *`,
       [data.name, data.currency ?? null, data.channelId ?? null, data.customerType ?? null,
        data.priceGroup ?? null, data.customerId ?? null, data.validFrom ?? null, data.validTo ?? null,
        data.priority ?? null, data.isActive ?? null, userId ?? null]

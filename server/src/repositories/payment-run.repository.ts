@@ -3,6 +3,7 @@ import { paymentRepository } from './accounting.repository.js';
 import { approvalService } from '../services/approval.service.js';
 import { buildTransferCsv, formatRib, normalizeRib, ribKeyValid, type TransferLine } from '../services/salary-transfer.js';
 import { enqueueEmail } from '../services/mailer.js';
+import { currencySymbol } from '../services/currency.js';
 
 /**
  * Paiements fournisseurs en lot (G4-01, mig 543).
@@ -37,7 +38,7 @@ const OPEN = `('draft', 'pending_approval', 'approved', 'file_generated')`;
 const PAYABLE = `
   i.invoice_type = 'received' AND i.validation_status = 'validated'
   AND i.status NOT IN ('paid', 'cancelled', 'disputed')
-  AND COALESCE(i.currency_code, 'MAD') = 'MAD'
+  AND COALESCE(i.currency_code, fn_base_currency()) = fn_base_currency()
   AND i.total_amount - COALESCE(i.paid_amount, 0) > 0.005
   AND NOT EXISTS (SELECT 1 FROM invoice_holds h WHERE h.invoice_id = i.id AND h.released_at IS NULL AND h.blocks_payment)`;
 
@@ -124,7 +125,7 @@ export const paymentRunRepository = {
         if (taken.has(l.invoiceId)) throw conflict(`La facture ${inv.invoice_number} est déjà dans la campagne ${taken.get(l.invoiceId)}`);
         const amount = round2(Number(l.amount));
         if (!(amount > 0)) throw bad(`Montant invalide pour la facture ${inv.invoice_number}`);
-        if (amount > inv.remaining + 0.005) throw conflict(`Le montant dépasse le reste à payer de la facture ${inv.invoice_number} (${inv.remaining.toFixed(2)} DH)`);
+        if (amount > inv.remaining + 0.005) throw conflict(`Le montant dépasse le reste à payer de la facture ${inv.invoice_number} (${inv.remaining.toFixed(2)} ${currencySymbol()})`);
       }
 
       const day = input.paymentDate.replace(/-/g, '');
@@ -231,7 +232,7 @@ export const paymentRunRepository = {
       await enqueueEmail({
         to: a.email, toName: a.name, type: 'payment_advice', referenceType: 'payment_run', referenceId: id, createdBy: user.userId,
         subject: `Avis de paiement — ${executed.runNumber}`,
-        text: `Bonjour,\n\nNous vous informons du virement de ${a.amount.toFixed(2)} DH émis le ${day} en règlement de : ${a.invoices}.\n\n`
+        text: `Bonjour,\n\nNous vous informons du virement de ${a.amount.toFixed(2)} ${currencySymbol()} émis le ${day} en règlement de : ${a.invoices}.\n\n`
           + `Référence : ${executed.runNumber}\n\nCordialement.`,
       }).then(() => { queued++; }).catch(() => undefined);
     }

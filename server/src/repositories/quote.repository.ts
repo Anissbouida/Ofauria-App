@@ -5,6 +5,7 @@ import { crmRepository } from './crm.repository.js';
 import { loadCustomer, isProCustomer, priceLines, taxAfterDiscount, creditWarning, creditGate, notifyProductionChefs, documentDiscount } from '../controllers/order.controller.js';
 import { recordApplied } from '../services/promotions.js';
 import { getParameter, type PricingRules } from '../services/module-parameters.service.js';
+import { currencySymbol } from '../services/currency.js';
 
 /**
  * Devis clients (mig 365).
@@ -312,7 +313,7 @@ export const quoteRepository = {
       await db.query(
         `INSERT INTO notifications (target_role, target_user_id, store_id, type, title, message, reference_type, reference_id, created_by)
          VALUES ('all', $1, $2, 'quote_accepted', $3, $4, 'quote', $5, $6)`,
-        [cur.created_by, cur.store_id, `Devis accepté · ${cur.number}`, `${cur.client_label} — ${Number(cur.total).toFixed(2)} DH`, id, p.userId]);
+        [cur.created_by, cur.store_id, `Devis accepté · ${cur.number}`, `${cur.client_label} — ${Number(cur.total).toFixed(2)} ${currencySymbol()}`, id, p.userId]);
     }
     return { data: await this.findById(id) };
   },

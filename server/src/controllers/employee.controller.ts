@@ -13,6 +13,7 @@ import { leaveBalanceRepository, holidayRepository, leaveAdjustmentRepository, l
 import { salaryAdvanceRepository } from '../repositories/salary-advance.repository.js';
 import { checkStoreOwnership } from '../middleware/tenant.middleware.js';
 import { biweeklyBounds } from '../utils/payroll-periods.js';
+import { currencySymbol } from '../services/currency.js';
 
 /**
  * Verifie qu'un employe appartient au store du user connecte.
@@ -750,7 +751,7 @@ export const salaryAdvanceController = {
     const outstanding = parseFloat((await salaryAdvanceRepository.outstandingByEmployee(employeeId))[0]?.outstanding ?? '0') || 0;
     const cap = Math.max(0, Math.round((monthlyEq - outstanding) * 100) / 100);
     if (parsed > cap + 0.001) {
-      res.status(409).json({ success: false, error: { message: `Montant trop élevé : ${cap.toFixed(2)} DH au plus (salaire mensuel moins avances en cours).` } });
+      res.status(409).json({ success: false, error: { message: `Montant trop élevé : ${cap.toFixed(2)} ${currencySymbol()} au plus (salaire mensuel moins avances en cours).` } });
       return;
     }
     // Plan d'etalement optionnel : retenue par paie, entre 0 exclu et le

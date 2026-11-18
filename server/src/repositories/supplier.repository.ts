@@ -278,7 +278,7 @@ export const supplierRepository = {
         `INSERT INTO suppliers
            (name, legal_name, legal_form, vat_regime, parent_supplier_id,
             contact_name, phone, email, address, city, notes, created_by, updated_by, currency_code, rib, bank_name)
-         VALUES ($1,$2,$3,COALESCE($4,'assujetti'),$5,$6,$7,$8,$9,$10,$11,$12,$12,COALESCE($13,'MAD'),$14,$15)
+         VALUES ($1,$2,$3,COALESCE($4,'assujetti'),$5,$6,$7,$8,$9,$10,$11,$12,$12,COALESCE($13,fn_base_currency()),$14,$15)
          RETURNING id`,
         [data.name, data.legalName ?? null, data.legalForm ?? null, data.vatRegime ?? null, data.parentSupplierId ?? null,
          data.contactName ?? null, data.phone ?? null, data.email ?? null, data.address ?? null, data.city ?? null,

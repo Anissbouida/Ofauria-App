@@ -19,6 +19,7 @@ import { evaluate as evaluatePromotions, recordApplied } from '../services/promo
 import { checkCredit, customerExposure } from '../services/credit-control.js';
 import { getParameter, type PricingRules } from '../services/module-parameters.service.js';
 import { exceededCeiling } from '../services/discount-policy.js';
+import { currencySymbol } from '../services/currency.js';
 
 /** Atelier qui fabrique une catégorie (mig 511), sinon l'atelier par défaut. Remplace
  *  l'ancienne table catégorie → rôle recopiée ici (qui divergeait de celle des plans :
@@ -176,7 +177,7 @@ export async function creditWarning(customer: Record<string, unknown>, orderTota
   const exposure = round2(outstanding + orderTotal);
   if (exposure <= limit + 0.005) return null;
   return { creditLimit: limit, outstanding, exposure,
-    message: `Plafond de crédit dépassé : ${exposure.toFixed(2)} DH engagés pour un plafond de ${limit.toFixed(2)} DH.` };
+    message: `Plafond de crédit dépassé : ${exposure.toFixed(2)} ${currencySymbol()} engagés pour un plafond de ${limit.toFixed(2)} ${currencySymbol()}.` };
 }
 
 /** Prévient les chefs concernés quand une commande a déclenché un plan de production. */
@@ -317,7 +318,7 @@ export const orderController = {
     // F-040 : l'avance ne peut etre ni negative ni superieure au total.
     if (advance < 0) { fail(res, 400, 'Avance invalide (négative).'); return; }
     if (advance > total + 0.005) {
-      fail(res, 400, `Avance (${advance.toFixed(2)} DH) supérieure au total de la commande (${total.toFixed(2)} DH).`); return;
+      fail(res, 400, `Avance (${advance.toFixed(2)} ${currencySymbol()}) supérieure au total de la commande (${total.toFixed(2)} ${currencySymbol()}).`); return;
     }
 
     // L'avance est comptée dans la session de la caissière qui prend la commande.
@@ -353,7 +354,7 @@ export const orderController = {
           discountAmount: 0,
           total: advance,
           paymentMethod,
-          notes: `Avance commande ${orderNumber} — Total: ${total.toFixed(2)} DH, Reste: ${(total - advance).toFixed(2)} DH`,
+          notes: `Avance commande ${orderNumber} — Total: ${total.toFixed(2)} ${currencySymbol()}, Reste: ${(total - advance).toFixed(2)} ${currencySymbol()}`,
           sessionId: activeSession.id,
           storeId: req.user!.storeId,
           orderId: order.id,
@@ -440,7 +441,7 @@ export const orderController = {
     const discountAmount = promo.discount, discountPct = disc.pct;
     const taxAmount = taxAfterDiscount(orderItems, subtotal, discountAmount);
     const total = round2(subtotal - discountAmount + taxAmount);
-    if (total + 0.005 < advance) { fail(res, 400, `Le total (${total.toFixed(2)} DH) ne peut pas descendre sous l'avance encaissée (${advance.toFixed(2)} DH)`); return; }
+    if (total + 0.005 < advance) { fail(res, 400, `Le total (${total.toFixed(2)} ${currencySymbol()}) ne peut pas descendre sous l'avance encaissée (${advance.toFixed(2)} ${currencySymbol()})`); return; }
     const paymentMethod = pro ? 'deferred' : (existing.payment_method === 'deferred' ? 'cash' : existing.payment_method);
 
     const order = await orderRepository.update(req.params.id, {
@@ -579,7 +580,7 @@ export const orderController = {
     const remaining = round2(Math.max(0, total - advanceAmount));
     const paid = round2(parseFloat(amountPaid) || 0);
     if (paid + 0.005 < remaining) {
-      fail(res, 400, `Le client doit régler l'intégralité du reste (${remaining.toFixed(2)} DH) pour retirer sa commande`); return;
+      fail(res, 400, `Le client doit régler l'intégralité du reste (${remaining.toFixed(2)} ${currencySymbol()}) pour retirer sa commande`); return;
     }
 
     // Vente du RESTE uniquement : l'avance a deja ete comptee le jour de la commande.
@@ -604,7 +605,7 @@ export const orderController = {
       total: remaining,
       paymentMethod,
       notes: hasAdvance
-        ? `Livraison commande ${order.order_number} — Reste apres avance de ${advanceAmount.toFixed(2)} DH`
+        ? `Livraison commande ${order.order_number} — Reste apres avance de ${advanceAmount.toFixed(2)} ${currencySymbol()}`
         : `Livraison commande ${order.order_number}`,
       sessionId: activeSession.id,
       storeId: req.user!.storeId,

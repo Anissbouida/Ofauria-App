@@ -4,6 +4,7 @@ import { getUserTimezone } from '../utils/timezone.js';
 import { productMaterialsUnitCost } from './product-cost.helper.js';
 import { sectorRepository } from './sector.repository.js';
 import { removeFromStoreStock } from './product-stock.helper.js';
+import { currencySymbol } from '../services/currency.js';
 
 /**
  * Date civile (YYYY-MM-DD) d'un instant, dans le fuseau du magasin.
@@ -657,7 +658,7 @@ export const productLotRepository = {
            (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
          VALUES ($1, 'waste', $2, 0, $3, $4, $5)`,
         [productId, -total,
-         `${reasonLabel} — Stock orphelin (sans lot) : ${total.toFixed(2)} u (${lostValue.toFixed(2)} DH)${note ? ' — ' + note : ''}`,
+         `${reasonLabel} — Stock orphelin (sans lot) : ${total.toFixed(2)} u (${lostValue.toFixed(2)} ${currencySymbol()})${note ? ' — ' + note : ''}`,
          userId, storeId]
       );
 
@@ -743,7 +744,7 @@ export const productLotRepository = {
              (product_id, type, quantity_change, stock_after, note, performed_by, store_id)
            VALUES ($1, 'waste', $2, 0, $3, $4, $5)`,
           [lot.product_id, -totalLost,
-           `${reasonLabel} — Lot ${lot.lot_number} : ${totalLost.toFixed(2)} u (${lostValue.toFixed(2)} DH)${note ? ' — ' + note : ''}`,
+           `${reasonLabel} — Lot ${lot.lot_number} : ${totalLost.toFixed(2)} u (${lostValue.toFixed(2)} ${currencySymbol()})${note ? ' — ' + note : ''}`,
            userId, lot.store_id]
         );
 

@@ -3,6 +3,7 @@ import { db } from '../config/database.js';
 import { FLAGS } from '../config/feature-flags.js';
 import { paymentRepository } from '../repositories/accounting.repository.js';
 import { persistEntry, reverseEntriesForSource, type GeneratedEntry, type GeneratedLine } from './journal-generator.service.js';
+import { currencySymbol } from './currency.js';
 
 /**
  * Comptabilisation de la paie mensuelle (lot 5, mig 319).
@@ -72,7 +73,7 @@ export function buildAccrualEntry(p: Row, retenues: Array<{ amount: unknown; acc
   if (debit === 0) return null;
   // Ecart d'arrondi (centimes) : porte sur le net a payer, jamais silencieux au-dela.
   const gap = r2(debit - credit);
-  if (Math.abs(gap) > 0.05) throw new Error(`Ecriture de paie desequilibree (${gap} DH) pour ${name}`);
+  if (Math.abs(gap) > 0.05) throw new Error(`Ecriture de paie desequilibree (${gap} ${currencySymbol()}) pour ${name}`);
   if (gap !== 0) {
     const net = lines.find(l => l.account_code === '4432');
     if (net) net.credit = r2(net.credit + gap);

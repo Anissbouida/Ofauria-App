@@ -6,6 +6,7 @@ import {
   APPROVAL_DOC_TYPES, approvalConditionMatches, describeApprovalCondition,
   type ApprovalCondition, type ApprovalDocType,
 } from '@ofauria/shared';
+import { currencySymbol } from './currency.js';
 
 /**
  * Moteur d'approbation (lot 8 Paramètres, mig 350).
@@ -119,7 +120,7 @@ async function attachSteps(rows: ApprovalRequestRow[]): Promise<ApprovalRequestR
 
 async function notifyStepApprovers(client: Runner, request: ApprovalRequestRow, step: ApprovalStepRow, requesterName: string) {
   const def = APPROVAL_DOC_TYPES[request.doc_type];
-  const amount = request.amount ? ` · ${Number(request.amount).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} DH` : '';
+  const amount = request.amount ? ` · ${Number(request.amount).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} ${currencySymbol()}` : '';
   const base = {
     type: 'approval_requested',
     title: `À approuver : ${request.doc_label}`,

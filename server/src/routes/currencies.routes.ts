@@ -49,7 +49,7 @@ currenciesRouter.get('/revaluation', authenticate, authorizeSettings('currencies
             (i.foreign_total_amount - i.foreign_paid_amount) AS foreign_remaining,
             fn_exchange_rate(i.currency_code, $1::date) AS current_rate
        FROM invoices i LEFT JOIN suppliers s ON s.id = i.supplier_id
-      WHERE i.invoice_type = 'received' AND i.currency_code <> 'MAD' AND i.status NOT IN ('paid', 'cancelled')
+      WHERE i.invoice_type = 'received' AND i.currency_code <> fn_base_currency() AND i.status NOT IN ('paid', 'cancelled')
         AND i.foreign_total_amount - i.foreign_paid_amount > 0.005
       ORDER BY i.currency_code, i.invoice_date`, [date]);
   const rows = r.rows.map(x => {

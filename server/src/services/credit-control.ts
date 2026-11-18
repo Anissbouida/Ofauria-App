@@ -12,6 +12,7 @@
 import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { dunningSettings } from '../repositories/dunning.repository.js';
+import { currencySymbol } from './currency.js';
 
 type Runner = PoolClient | typeof db;
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -29,7 +30,7 @@ export function decide(p: { exposureAfter: number; limit: number | null; onHold:
   let message: string | null = null;
   if (p.onHold) message = `Client bloqué : achats à crédit suspendus${p.holdReason ? ` (${p.holdReason})` : ''}.`;
   else if (p.limit != null && p.limit > 0 && p.exposureAfter > p.limit + 0.005) {
-    message = `Plafond de crédit dépassé : ${n2(p.exposureAfter)} DH engagés pour un plafond de ${n2(p.limit)} DH.`;
+    message = `Plafond de crédit dépassé : ${n2(p.exposureAfter)} ${currencySymbol()} engagés pour un plafond de ${n2(p.limit)} ${currencySymbol()}.`;
   }
   if (!message) return { decision: 'pass', message: null };
   if (p.override) return { decision: 'override', message };

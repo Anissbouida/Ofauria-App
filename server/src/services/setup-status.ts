@@ -1,5 +1,6 @@
 import type { SettingsSection } from '@ofauria/shared';
 import { db } from '../config/database.js';
+import { currencySymbol } from './currency.js';
 
 /**
  * Accueil de la configuration (refonte lot B) : état du paramétrage domaine par
@@ -102,7 +103,7 @@ export async function setupStatus(): Promise<SetupCheck[]> {
   const charges = Number(cs.production_charge_loyer ?? 0) + Number(cs.production_charge_energie ?? 0) + Number(cs.production_charge_autres ?? 0);
   add({ key: 'production.charges', page: 'production', section: 'production', required: true,
     label: 'Charges fixes de production', status: charges > 0 ? 'ok' : 'todo',
-    detail: charges > 0 ? `${charges.toLocaleString('fr-FR')} DH par mois répartis dans les coûts` : 'Coûts de revient calculés sans loyer ni énergie' });
+    detail: charges > 0 ? `${charges.toLocaleString('fr-FR')} ${currencySymbol()} par mois répartis dans les coûts` : 'Coûts de revient calculés sans loyer ni énergie' });
   add({ key: 'production.markup', page: 'production', section: 'production', required: false, anchor: anchor('Majoration globale'),
     label: 'Majoration des prix', status: Number(cs.production_markup_percent) > 0 ? 'ok' : 'warn',
     detail: Number(cs.production_markup_percent) > 0 ? `${cs.production_markup_percent} % appliqués au coût` : 'Aucune majoration : prix suggéré = coût' });

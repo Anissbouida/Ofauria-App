@@ -8,6 +8,7 @@ import { payrollPeriodRepository, loadPayrollContext, computeAndSavePayslip, loa
 import { checkSmig, smigScaleFromRow, smigBlockMessage } from '../services/smig.js';
 import { loadTimeRules } from './time-rules.repository.js';
 import { nightOvertimeMinutes } from '../services/overtime-engine.js';
+import { currencySymbol } from '../services/currency.js';
 
 /**
  * Vue interne : compte les repayments d'avance rattaches a un employe.
@@ -977,14 +978,14 @@ export const payrollRepository = {
     const ACOMPTES_ROUNDING_TOLERANCE = 0.05;
     if (net < -ACOMPTES_ROUNDING_TOLERANCE) {
       // Typiquement des semaines payees avant la retenue provisoire (transition).
-      throw new Error(`Acomptes versés supérieurs au net du mois : trop-perçu de ${(-net).toFixed(2)} DH (paies périodiques versées sans retenue provisoire). Récupérez-le avant de régler ce bulletin.`);
+      throw new Error(`Acomptes versés supérieurs au net du mois : trop-perçu de ${(-net).toFixed(2)} ${currencySymbol()} (paies périodiques versées sans retenue provisoire). Récupérez-le avant de régler ce bulletin.`);
     }
     const deduction = Math.max(0, Math.round((advanceDeduction || 0) * 100) / 100);
     if (deduction > 0) {
       const outstandingRes = await salaryAdvanceRepository.outstandingByEmployee(current.employee_id);
       const outstanding = parseFloat(outstandingRes[0]?.outstanding || '0');
       if (deduction > Math.min(net, outstanding) + 0.005) {
-        throw new Error(`Retenue ${deduction.toFixed(2)} DH superieure au net a payer (${net.toFixed(2)} DH) ou au solde d'avances (${outstanding.toFixed(2)} DH)`);
+        throw new Error(`Retenue ${deduction.toFixed(2)} ${currencySymbol()} superieure au net a payer (${net.toFixed(2)} ${currencySymbol()}) ou au solde d'avances (${outstanding.toFixed(2)} ${currencySymbol()})`);
       }
     }
 
@@ -1035,8 +1036,8 @@ export const payrollRepository = {
           paymentMethod: paymentMethod,
           paymentDate: getLocalISODate(),
           description: `Salaire ${payroll.month}/${payroll.year} - ${empName}`
-            + (acomptes > 0 ? ` (solde après acomptes ${acomptes.toFixed(2)} DH)` : '')
-            + (deduction > 0 ? ` (retenue avance ${deduction.toFixed(2)} DH)` : ''),
+            + (acomptes > 0 ? ` (solde après acomptes ${acomptes.toFixed(2)} ${currencySymbol()})` : '')
+            + (deduction > 0 ? ` (retenue avance ${deduction.toFixed(2)} ${currencySymbol()})` : ''),
           createdBy: createdBy || payroll.employee_id,
           storeId,
         });
@@ -1059,7 +1060,7 @@ export const payrollRepository = {
         // tout et l'operateur retente avec la bonne retenue.
         if (Math.abs(applied - deduction) > 0.005) {
           throw new Error(
-            `Retenue partielle : ${applied.toFixed(2)} DH imputes sur ${deduction.toFixed(2)} DH demandes ` +
+            `Retenue partielle : ${applied.toFixed(2)} ${currencySymbol()} imputes sur ${deduction.toFixed(2)} ${currencySymbol()} demandes ` +
             `(solde d'avances insuffisant, probablement une paie concurrente).`
           );
         }

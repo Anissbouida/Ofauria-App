@@ -133,7 +133,7 @@ export const supplierItemRepository = {
          WHERE supplier_item_id=$1 AND valid_to IS NULL`, [supplierItemId, input.validFrom ?? null]);
       await client.query(
         `INSERT INTO supplier_item_prices (supplier_item_id, price, currency, price_unit, valid_from, source, created_by)
-         VALUES ($1,$2,COALESCE($3,'MAD'),COALESCE($4,'base'),COALESCE($5::date,CURRENT_DATE),'manual',$6)`,
+         VALUES ($1,$2,COALESCE($3,fn_base_currency()),COALESCE($4,'base'),COALESCE($5::date,CURRENT_DATE),'manual',$6)`,
         [supplierItemId, input.price, input.currency ?? null, input.priceUnit ?? null, input.validFrom ?? null, userId]);
       await client.query('COMMIT');
       return this.getById(supplierItemId);

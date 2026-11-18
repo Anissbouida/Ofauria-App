@@ -19,6 +19,7 @@ import type { PoolClient } from 'pg';
 import { db } from '../config/database.js';
 import { extourneEntryById } from '../services/journal-generator.service.js';
 import { DEFAULTS, rateFor, computeTax, type TaxParams } from '../services/corporate-tax.rules.js';
+import { currencySymbol } from '../services/currency.js';
 
 export { rateFor, computeTax, type TaxParams };
 
@@ -213,7 +214,7 @@ export const corporateTaxRepository = {
       } else {
         if (row.status !== 'booked') throw fail('Comptabilisez d\'abord l\'IS de l\'exercice : le solde se calcule sur la charge constatée', 409);
         const s = await corporateTaxRepository.summary(year);
-        if (amount > s.balance_due + 0.004) throw fail(`Le solde restant dû est de ${s.balance_due.toFixed(2)} DH`);
+        if (amount > s.balance_due + 0.004) throw fail(`Le solde restant dû est de ${s.balance_due.toFixed(2)} ${currencySymbol()}`);
       }
       const label = p.kind === 'acompte' ? `IS ${year} — acompte n° ${p.quarter}` : `IS ${year} — solde`;
       const e = await postEntry(c, {
