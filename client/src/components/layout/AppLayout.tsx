@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import MfaSetup from '../../features/auth/MfaSetup';
 import { Outlet, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
@@ -83,7 +84,7 @@ function TimeoutWarningModal() {
 }
 
 export default function AppLayout() {
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, mfaConfigured } = useAuth();
   const { hasModule, isLoading: permsLoading } = usePermissions();
   const isLoading = authLoading || permsLoading;
   const [showApps, setShowApps] = useState(false);
@@ -125,6 +126,8 @@ export default function AppLayout() {
   // G0-06 : mot de passe antérieur à la politique — rien d'autre n'est accessible
   // tant qu'il n'est pas changé.
   if (user.mustChangePassword) return <ForcePasswordChange />;
+  // G6-01 : rôle soumis à la double authentification, pas encore activée.
+  if ((user as { mfaSetupRequired?: boolean }).mfaSetupRequired) return <MfaSetup forced onDone={mfaConfigured} />;
 
   // Cashier/saleswoman: full-screen POS without header/menu
   if (isCashierRole) {

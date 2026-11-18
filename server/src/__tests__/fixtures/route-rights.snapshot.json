@@ -350,6 +350,7 @@
  "GET /attendance/overtime-summary": null,
  "GET /attendance/summary": null,
  "GET /auth/me": null,
+ "GET /auth/mfa/status": null,
  "GET /auth/pin-users": null,
  "GET /auth/users-list": [
   "admin",
@@ -2501,6 +2502,10 @@
  "POST /auth/change-password": null,
  "POST /auth/login": null,
  "POST /auth/logout": null,
+ "POST /auth/mfa/disable": null,
+ "POST /auth/mfa/enable": null,
+ "POST /auth/mfa/setup": null,
+ "POST /auth/mfa/verify": null,
  "POST /auth/pin-login": null,
  "POST /auth/register": [
   "admin"

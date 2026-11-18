@@ -8,6 +8,8 @@ export interface UserRow {
   pin_code: string | null;
   pin_length?: number | null;
   must_change_password?: boolean;
+  /** G6-01 : double authentification activée. */
+  totp_enabled?: boolean;
   first_name: string;
   last_name: string;
   role: string;

@@ -25,6 +25,9 @@ export type AuthEventType =
   | 'pin_login_failed'
   | 'account_locked'
   | 'logout'
+  // G6-01 : second facteur.
+  | 'mfa_success'
+  | 'mfa_failed'
   | 'user_created'
   | 'user_updated'
   | 'permission_changed'

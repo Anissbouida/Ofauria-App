@@ -12,7 +12,9 @@ const PIN_MAX = 10;
 type PinUser = { id: string; firstName: string; lastInitial: string };
 
 export default function LoginPage() {
-  const { user, loginWithPin, login } = useAuth();
+  const { user, loginWithPin, login, verifyMfa } = useAuth();
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
   const { settings } = useSettings();
   const [searchParams, setSearchParams] = useSearchParams();
   const mode = searchParams.get('mode') === 'email' ? 'email' : 'pin';
@@ -91,8 +93,9 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await login({ email, password });
-      // login success — no notification needed
+      const r = await login({ email, password });
+      // G6-01 : second facteur exigé → étape du code.
+      if (r?.mfaToken) setMfaToken(r.mfaToken);
     } catch (err: unknown) {
       const axiosErr = err as { response?: { status?: number; data?: { error?: { message?: string } } }; code?: string; message?: string };
       const status = axiosErr?.response?.status;
@@ -110,6 +113,34 @@ export default function LoginPage() {
   };
 
   if (user) return <Navigate to="/" replace />;
+
+  // ═══════ G6-01 : SECOND FACTEUR ═══════
+  if (mfaToken) {
+    const submitCode = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setLoading(true);
+      try { await verifyMfa(mfaToken, mfaCode.trim()); }
+      catch (err: unknown) {
+        const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+        notify.error(msg || 'Code invalide');
+        if (/expirée/.test(msg ?? '')) { setMfaToken(null); setMfaCode(''); }
+      } finally { setLoading(false); }
+    };
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: 'var(--theme-bg-page)' }}>
+        <div className="rounded-2xl shadow-xl w-full max-w-md p-8" style={{ backgroundColor: 'var(--theme-bg-card)' }}>
+          <h1 className="text-xl font-bold mb-2" style={{ color: 'var(--theme-accent)' }}>Double authentification</h1>
+          <p className="text-sm mb-4" style={{ color: 'var(--theme-text-muted)' }}>Saisissez le code à 6 chiffres de votre application d'authentification, ou un code de secours.</p>
+          <form onSubmit={submitCode} className="space-y-4">
+            <input className="input" autoFocus autoComplete="one-time-code" inputMode="text" maxLength={12} placeholder="123456"
+              aria-label="Code de double authentification" value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} />
+            <button type="submit" disabled={loading || mfaCode.trim().length < 6} className="btn-primary w-full py-3">{loading ? 'Vérification...' : 'Valider'}</button>
+            <button type="button" className="text-sm w-full" style={{ color: 'var(--theme-accent)' }} onClick={() => { setMfaToken(null); setMfaCode(''); }}>Retour</button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   // ═══════ EMAIL MODE ═══════
   if (mode === 'email') {

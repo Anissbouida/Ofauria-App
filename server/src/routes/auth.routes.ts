@@ -6,6 +6,13 @@ import { can } from '../middleware/permission.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { loginSchema, registerSchema, pinLoginSchema, changePasswordSchema } from '../validators/auth.validator.js';
 import { makeLimiter } from '../middleware/rate-limit.middleware.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
+import { z } from 'zod';
+
+const mfaCodeSchema = z.object({ code: z.string().trim().min(6).max(12) });
+const mfaVerifySchema = mfaCodeSchema.extend({ mfaToken: z.string().min(20).max(2000) });
+const mfaDisableSchema = mfaCodeSchema.extend({ password: z.string().min(1).max(200) });
+const mfaEmptySchema = z.object({}).passthrough();
 import { ipKeyGenerator } from 'express-rate-limit';
 
 // G0-06 : la liste des tuiles est publique → 60 lectures / minute par IP.
@@ -41,6 +48,12 @@ const pinLimiter = IS_PROD
 const router = Router();
 
 router.post('/login', loginLimiter, validate(loginSchema), authController.login);
+// G6-01 : double authentification (second facteur limité comme le mot de passe).
+router.post('/mfa/verify', loginLimiter, validate(mfaVerifySchema), asyncHandler(authController.mfaVerify));
+router.get('/mfa/status', authenticate, asyncHandler(authController.mfaStatus));
+router.post('/mfa/setup', authenticate, validate(mfaEmptySchema), asyncHandler(authController.mfaSetup));
+router.post('/mfa/enable', authenticate, validate(mfaCodeSchema), asyncHandler(authController.mfaEnable));
+router.post('/mfa/disable', authenticate, validate(mfaDisableSchema), asyncHandler(authController.mfaDisable));
 router.post('/pin-login', pinLimiter, validate(pinLoginSchema), authController.pinLogin);
 // G0-06 : tuiles de l'écran PIN. Publique par nécessité (avant connexion), donc
 // réduite au strict nécessaire — prénom + initiale du nom des seuls comptes

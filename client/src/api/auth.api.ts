@@ -3,6 +3,8 @@ import type { LoginRequest, LoginResponse } from '@ofauria/shared';
 
 export const authApi = {
   login: (data: LoginRequest) => api.post<{ success: boolean; data: LoginResponse }>('/auth/login', data).then(r => r.data.data!),
+  /** G6-01 : second facteur. */
+  verifyMfa: (mfaToken: string, code: string) => api.post<{ success: boolean; data: LoginResponse }>('/auth/mfa/verify', { mfaToken, code }).then(r => r.data.data!),
   // G0-06 : le compte est choisi sur une tuile, puis le PIN est saisi.
   pinUsers: () => api.get('/auth/pin-users').then(r => r.data.data) as Promise<{ id: string; firstName: string; lastInitial: string }[]>,
   pinLogin: (userId: string, pinCode: string) => api.post<{ success: boolean; data: LoginResponse }>('/auth/pin-login', { userId, pinCode }).then(r => r.data.data!),

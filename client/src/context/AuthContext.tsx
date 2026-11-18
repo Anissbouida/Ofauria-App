@@ -10,7 +10,10 @@ const WARNING_BEFORE = 2; // Show warning 2 minutes before auto-logout
 
 interface AuthContextType {
   user: User | null;
-  login: (data: LoginRequest) => Promise<void>;
+  /** G6-01 : rend { mfaToken } quand un second facteur est exigé. */
+  login: (data: LoginRequest) => Promise<{ mfaToken?: string }>;
+  verifyMfa: (mfaToken: string, code: string) => Promise<void>;
+  mfaConfigured: () => void;
   loginWithPin: (userId: string, pinCode: string) => Promise<void>;
   /** G0-06 : le mot de passe vient d'être changé, l'obligation est levée. */
   passwordChanged: (token?: string) => void;
@@ -128,13 +131,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Le backend pose le cookie HttpOnly. On garde le user en memoire,
     // pas de token stocke cote client.
     const result = await authApi.login(data);
+    const mfa = result as unknown as { mfaRequired?: boolean; mfaToken?: string };
+    if (mfa.mfaRequired) return { mfaToken: mfa.mfaToken };
     if (IS_MOBILE_BUILD && result.token) {
       localStorage.setItem('ofauria_token', result.token);
     }
     setUser(result.user as User);
     queryClient.clear();
     refreshSettings();
+    return {};
   };
+
+  const verifyMfa = async (mfaToken: string, code: string) => {
+    const result = await authApi.verifyMfa(mfaToken, code);
+    if (IS_MOBILE_BUILD && result.token) localStorage.setItem('ofauria_token', result.token);
+    setUser(result.user as User);
+    queryClient.clear();
+    refreshSettings();
+  };
+  const mfaConfigured = () => setUser(u => (u ? { ...u, mfaSetupRequired: false } as User : u));
 
   const loginWithPin = async (userId: string, pinCode: string) => {
     const result = await authApi.pinLogin(userId, pinCode);
@@ -156,7 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, loginWithPin, passwordChanged, logout, isLoading, timeoutWarning, extendSession }}>
+    <AuthContext.Provider value={{ user, login, verifyMfa, mfaConfigured, loginWithPin, passwordChanged, logout, isLoading, timeoutWarning, extendSession }}>
       {children}
     </AuthContext.Provider>
   );

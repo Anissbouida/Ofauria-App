@@ -8,6 +8,8 @@ import { authEventRepository } from '../repositories/auth-event.repository.js';
 import { hashPassword, comparePassword, comparePin } from '../utils/hash.js';
 import { meetsPasswordPolicy } from '../validators/auth.validator.js';
 import { generateToken } from '../utils/jwt.js';
+import jwt from 'jsonwebtoken';
+import { mfaRepository } from '../repositories/mfa.repository.js';
 
 // OWASP A07-4 : hash bcrypt factice (reel, parsable) utilise pour uniformiser
 // le temps de reponse entre un email inexistant et un password incorrect.
@@ -135,30 +137,57 @@ export const authController = {
       ...(mustChange ? { details: { mustChangePassword: true } } : {}),
     });
 
-    // Le jeton porte le role de BASE (perimetre technique des routes) ; un role cree
-    // dans Utilisateurs > Roles garde ses propres droits par module (mig 330).
-    const roleCtx = await loginRoleContext(user.id);
-    const token = generateToken({ userId: user.id, role: roleCtx.primaryBaseRole, baseRoles: roleCtx.baseRoles, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 });
-    setAuthCookie(res, token);
-    res.json({
-      success: true,
-      data: {
-        token,
-        user: {
-          id: user.id,
-          email: user.email,
-          firstName: user.first_name,
-          lastName: user.last_name,
-          role: roleCtx.primaryBaseRole,
-          roleCode: roleCtx.roleCode,
-          roleLabel: roleCtx.roleLabel,
-          roles: roleCtx.roles,
-          isActive: user.is_active,
-          storeId: user.store_id || null,
-          mustChangePassword: mustChange,
-        },
-      },
+    // G6-01 : double authentification activée → code exigé avant d'ouvrir la session.
+    // Le jeton intermédiaire est signé avec une clé distincte : il n'ouvre aucune route.
+    if (user.totp_enabled) {
+      res.json({ success: true, data: { mfaRequired: true, mfaToken: signMfaToken(user.id, mustChange) } });
+      return;
+    }
+    await issueSession(res, user, mustChange);
+  },
+
+  /** G6-01 : second facteur — code de l'application ou code de secours. */
+  async mfaVerify(req: AuthRequest, res: Response) {
+    const { mfaToken, code } = req.body as { mfaToken: string; code: string };
+    const claim = readMfaToken(mfaToken);
+    if (!claim) { res.status(401).json({ success: false, error: { message: 'Session de connexion expirée, recommencez' } }); return; }
+    const user = await userRepository.findById(claim.uid);
+    if (!user || !user.is_active) { res.status(401).json({ success: false, error: { message: 'Compte indisponible' } }); return; }
+    const r = await mfaRepository.verify(user.id, code);
+    await authEventRepository.recordFromRequest(req, {
+      eventType: r.ok ? 'mfa_success' : 'mfa_failed', userId: user.id, email: user.email, success: r.ok,
+      ...(r.usedBackup ? { details: { backupCode: true } } : {}),
     });
+    if (!r.ok) { res.status(401).json({ success: false, error: { message: 'Code invalide' } }); return; }
+    await issueSession(res, user, claim.mc);
+  },
+
+  async mfaStatus(req: AuthRequest, res: Response) {
+    const roleCtx = await loginRoleContext(req.user!.userId);
+    res.json({ success: true, data: await mfaRepository.state(req.user!.userId, roleCodesOf(roleCtx)) });
+  },
+  async mfaSetup(req: AuthRequest, res: Response) {
+    const user = await userRepository.findById(req.user!.userId);
+    res.json({ success: true, data: await mfaRepository.startSetup(req.user!.userId, user?.email ?? 'compte') });
+  },
+  async mfaEnable(req: AuthRequest, res: Response) {
+    res.json({ success: true, data: await mfaRepository.enable(req.user!.userId, String(req.body.code ?? '')) });
+  },
+  /** Désactivation : mot de passe et code exigés ; refusée si le rôle impose la double authentification. */
+  async mfaDisable(req: AuthRequest, res: Response) {
+    const user = await userRepository.findById(req.user!.userId);
+    if (!user || !(await comparePassword(String(req.body.password ?? ''), user.password_hash))) {
+      res.status(401).json({ success: false, error: { message: 'Mot de passe incorrect' } }); return;
+    }
+    const roleCtx = await loginRoleContext(user.id);
+    if ((await mfaRepository.state(user.id, roleCodesOf(roleCtx))).required) {
+      res.status(403).json({ success: false, error: { message: 'Votre rôle impose la double authentification' } }); return;
+    }
+    if (!(await mfaRepository.verify(user.id, String(req.body.code ?? ''))).ok) {
+      res.status(401).json({ success: false, error: { message: 'Code invalide' } }); return;
+    }
+    await mfaRepository.disable(user.id);
+    res.json({ success: true, data: null });
   },
 
   /**
@@ -280,6 +309,14 @@ export const authController = {
       return;
     }
 
+    // G6-01 : le PIN ne contourne pas le second facteur — compte protégé ou rôle soumis →
+    // connexion par e-mail, puis code.
+    const pinRoleCtx = await loginRoleContext(user.id);
+    if (user.totp_enabled || (await mfaRepository.state(user.id, roleCodesOf(pinRoleCtx))).required) {
+      res.status(403).json({ success: false, error: { message: 'Double authentification requise : connectez-vous par e-mail' } });
+      return;
+    }
+
     // Reset sur login PIN reussi ; on apprend la longueur d'un PIN antérieur.
     await userRepository.resetFailedLogins(user.id);
     await userRepository.learnPinLength(user.id, pinCode.length);
@@ -365,7 +402,58 @@ export const authController = {
         isActive: user.is_active,
         storeId: user.store_id || null,
         mustChangePassword: !!user.must_change_password,
+        // G6-01 : rôle soumis à la double authentification, pas encore activée → configuration imposée.
+        mfaSetupRequired: await mfaSetupRequired(user.id, roleCtx),
       },
     });
   },
 };
+
+/* ── G6-01 : double authentification ── */
+type RoleCtx = Awaited<ReturnType<typeof loginRoleContext>>;
+const roleCodesOf = (ctx: RoleCtx) => [...new Set([ctx.roleCode, ctx.primaryBaseRole, ...(ctx.baseRoles ?? []),
+  ...((ctx.roles ?? []) as unknown[]).map(r => (typeof r === 'string' ? r : (r as { code?: string })?.code)).filter((x): x is string => !!x)])]
+  .filter((x): x is string => !!x);
+async function mfaSetupRequired(userId: string, ctx: RoleCtx): Promise<boolean> {
+  const s = await mfaRepository.state(userId, roleCodesOf(ctx));
+  return s.required && !s.enabled;
+}
+const mfaKey = () => `${env.JWT_SECRET}:mfa`;
+function signMfaToken(userId: string, mustChange: boolean) {
+  return jwt.sign({ uid: userId, mc: mustChange, purpose: 'mfa' }, mfaKey(), { expiresIn: '5m' });
+}
+function readMfaToken(token: string): { uid: string; mc: boolean } | null {
+  try {
+    const p = jwt.verify(String(token ?? ''), mfaKey()) as { uid: string; mc: boolean; purpose?: string };
+    return p.purpose === 'mfa' ? p : null;
+  } catch { return null; }
+}
+
+/** Ouvre la session (jeton + cookie) et renvoie le profil — commun au mot de passe et au second facteur. */
+async function issueSession(res: Response, user: { id: string; email: string; first_name: string; last_name: string; is_active: boolean; store_id?: string | null; token_version?: number | null }, mustChange: boolean) {
+  // Le jeton porte le role de BASE (perimetre technique des routes) ; un role cree
+  // dans Utilisateurs > Roles garde ses propres droits par module (mig 330).
+  const roleCtx = await loginRoleContext(user.id);
+  const token = generateToken({ userId: user.id, role: roleCtx.primaryBaseRole, baseRoles: roleCtx.baseRoles, storeId: user.store_id || undefined, tokenVersion: user.token_version ?? 0 });
+  setAuthCookie(res, token);
+  res.json({
+    success: true,
+    data: {
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: roleCtx.primaryBaseRole,
+        roleCode: roleCtx.roleCode,
+        roleLabel: roleCtx.roleLabel,
+        roles: roleCtx.roles,
+        isActive: user.is_active,
+        storeId: user.store_id || null,
+        mustChangePassword: mustChange,
+        mfaSetupRequired: await mfaSetupRequired(user.id, roleCtx),
+      },
+    },
+  });
+}
