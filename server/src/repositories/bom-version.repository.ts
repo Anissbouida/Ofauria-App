@@ -172,4 +172,57 @@ export const bomVersionRepository = {
     const draft = await this.createDraft(recipeId, input, userId);
     return this.promote(draft.id, userId);
   },
+
+  /**
+   * M4-02 (reste) — exécute `fn` (un calcul de besoins en LECTURE) comme si chaque fiche de
+   * l'arborescence (`rootIds` et leurs bases, composants, formats) avait le contenu de sa
+   * version en vigueur à `date`. Les fiches modifiées sans nouvelle version active sont
+   * rejouées (fn_bom_snapshot_apply, mig 593) dans un point de sauvegarde, annulé après `fn` :
+   * la fiche courante n'est jamais modifiée. `fn` ne doit rien écrire (ses écritures seraient
+   * annulées) : les sorties de stock se font après, à partir de son résultat.
+   * Sans fiche modifiée, aucun point de sauvegarde. `notReplayable` : versions dont un format
+   * a été supprimé — le calcul garde alors la fiche courante.
+   */
+  async withVersionsInForce<T>(client: { query: typeof db.query }, rootIds: string[], date: string, fn: () => Promise<T>):
+    Promise<{ result: T; replayed: string[]; notReplayable: string[] }> {
+    const replayed: string[] = [];
+    const notReplayable: string[] = [];
+    const seen = new Set<string>();
+    let frontier = [...new Set(rootIds.filter(Boolean))];
+    let opened = false;
+    const sp = 'm4_02_bom_versions';
+    try {
+      while (frontier.length) {
+        frontier.forEach(id => seen.add(id));
+        const inForce = (await client.query(
+          `SELECT DISTINCT ON (b.recipe_id) b.recipe_id, b.version_no, r.name, b.snapshot,
+                  b.snapshot = fn_recipe_bom_snapshot(b.recipe_id) AS same
+             FROM bom_versions b JOIN recipes r ON r.id = b.recipe_id
+            WHERE b.recipe_id = ANY($1::uuid[]) AND b.status IN ('active', 'obsolete')
+              AND b.valid_from <= $2::date AND (b.valid_to IS NULL OR b.valid_to >= $2::date)
+            ORDER BY b.recipe_id, b.version_no DESC`, [frontier, date])).rows;
+        for (const v of inForce) {
+          if (v.same) continue;
+          if (!opened) { await client.query(`SAVEPOINT ${sp}`); opened = true; }
+          const ok = (await client.query(`SELECT fn_bom_snapshot_apply($1, $2::jsonb) AS ok`, [v.recipe_id, JSON.stringify(v.snapshot)])).rows[0].ok;
+          (ok ? replayed : notReplayable).push(`${String(v.name).trim()} v${v.version_no}`);
+        }
+        // Bases et sous-ensembles de ces fiches (contenu rejoué compris), pas encore vus.
+        const children = (await client.query(
+          `SELECT sub_recipe_id AS id FROM recipe_sub_recipes WHERE recipe_id = ANY($1::uuid[])
+           UNION SELECT source_recipe_id FROM recipe_components WHERE recipe_id = ANY($1::uuid[]) AND source_recipe_id IS NOT NULL
+           UNION SELECT fc.source_recipe_id FROM recipe_format_components fc JOIN recipe_formats f ON f.id = fc.format_id
+                  WHERE f.recipe_id = ANY($1::uuid[]) AND fc.source_recipe_id IS NOT NULL`, [frontier])).rows
+          .map(r => r.id as string);
+        frontier = [...new Set(children)].filter(id => !seen.has(id));
+      }
+      const result = await fn();
+      return { result, replayed, notReplayable };
+    } finally {
+      if (opened) {
+        await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+        await client.query(`RELEASE SAVEPOINT ${sp}`);
+      }
+    }
+  },
 };

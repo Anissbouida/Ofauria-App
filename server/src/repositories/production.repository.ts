@@ -15,6 +15,7 @@ import { collectIngredientNeedsForUnits, getCompositionForNeeds } from './recipe
 import { cutProducedQuantity } from '@ofauria/shared';
 import { sectorRepository } from './sector.repository.js';
 import { applyStockOut } from '../services/stock-anomaly.js';
+import { bomVersionRepository } from './bom-version.repository.js';
 
 export const productionRepository = {
   async findAll(params: { status?: string; type?: string; dateFrom?: string; dateTo?: string; targetRoles?: string[]; storeId?: string; limit: number; offset: number }) {
@@ -528,30 +529,46 @@ export const productionRepository = {
       );
       const baseDepSet = new Set<string>(depRes.rows.map((r) => r.sub_recipe_id as string));
 
+      // M4-02 : les besoins suivent la version de nomenclature en vigueur à la date du plan ;
+      // une fiche modifiée sans nouvelle version active est rejouée le temps du calcul.
+      const planDateRow = (await client.query(`SELECT plan_date::text AS d FROM production_plans WHERE id = $1`, [planId])).rows[0];
+      const rootIds: string[] = [];
       for (const item of itemsResult.rows) {
-        // M4-04 : la fiche alternative choisie au lancement, sinon la fiche par défaut.
-        const recipeResult = await recipeForItem(client, item);
-        if (!recipeResult.rows[0]) {
-          if (!(await isSemiFinishedPlanQ())) {
-            warnings.push(`Le produit "${item.product_name}" n'a pas de recette, ignoré pour les besoins en ingrédients.`);
+        const r = await recipeForItem(client, item);
+        if (r.rows[0]) rootIds.push(r.rows[0].id as string);
+      }
+      const { replayed, notReplayable } = await bomVersionRepository.withVersionsInForce(client, rootIds, planDateRow.d, async () => {
+        for (const item of itemsResult.rows) {
+          // M4-04 : la fiche alternative choisie au lancement, sinon la fiche par défaut.
+          const recipeResult = await recipeForItem(client, item);
+          if (!recipeResult.rows[0]) {
+            if (!(await isSemiFinishedPlanQ())) {
+              warnings.push(`Le produit "${item.product_name}" n'a pas de recette, ignoré pour les besoins en ingrédients.`);
+            }
+            continue;
           }
-          continue;
+          const productId = item.product_id as string;
+          await collectIngredientNeedsForUnits(
+            client, recipeResult.rows[0].id, Number(item.planned_quantity),
+            (ingredientId, qty) => {
+              const key = `${ingredientId}::${productId}`;
+              const existing = needsMap.get(key);
+              if (existing) existing.quantity += qty;
+              else needsMap.set(key, { ingredientId, productId, quantity: qty });
+            },
+            {
+              formatId: item.format_id ?? recipeResult.rows[0].linked_format_id ?? null,
+              skipSubRecipe: (subRecipeId) => baseDepSet.has(subRecipeId),
+              warnings,
+            }
+          );
         }
-        const productId = item.product_id as string;
-        await collectIngredientNeedsForUnits(
-          client, recipeResult.rows[0].id, Number(item.planned_quantity),
-          (ingredientId, qty) => {
-            const key = `${ingredientId}::${productId}`;
-            const existing = needsMap.get(key);
-            if (existing) existing.quantity += qty;
-            else needsMap.set(key, { ingredientId, productId, quantity: qty });
-          },
-          {
-            formatId: item.format_id ?? recipeResult.rows[0].linked_format_id ?? null,
-            skipSubRecipe: (subRecipeId) => baseDepSet.has(subRecipeId),
-            warnings,
-          }
-        );
+      });
+      if (replayed.length) {
+        warnings.push(`Fiche(s) modifiée(s) sans nouvelle version active : besoins calculés sur la version en vigueur (${replayed.join(', ')}).`);
+      }
+      if (notReplayable.length) {
+        warnings.push(`Version non rejouable (format supprimé depuis) : besoins calculés sur la fiche courante (${notReplayable.join(', ')}).`);
       }
 
       // Un plan semi-fini n'a pas de besoins propres (ils sont portes par le BSI du
@@ -601,18 +618,6 @@ export const productionRepository = {
 
       // La verification de disponibilite des ingredients est faite par le magasinier
       // au moment du pesage (bon de sortie), pas a la confirmation du plan.
-
-      // Versions de nomenclature (M4-02) : une fiche modifiée sans nouvelle version active
-      // est signalée — les besoins sont calculés sur la fiche courante.
-      const pendingFiches = await client.query(
-        `SELECT DISTINCT r.name FROM production_plan_items ppi
-           JOIN recipes r ON r.id = COALESCE(ppi.base_recipe_id, (SELECT r2.id FROM recipes r2 WHERE r2.product_id = ppi.product_id AND r2.archived_at IS NULL LIMIT 1))
-          WHERE ppi.plan_id = $1 AND ppi.status <> 'cancelled'
-            AND EXISTS (SELECT 1 FROM bom_versions b WHERE b.recipe_id = r.id AND b.status = 'active' AND b.snapshot <> fn_recipe_bom_snapshot(r.id))`,
-        [planId]);
-      if (pendingFiches.rows.length) {
-        warnings.push(`Fiche(s) modifiée(s) sans nouvelle version active : ${pendingFiches.rows.map(r => r.name).join(', ')}. Les besoins suivent la fiche courante.`);
-      }
 
       // Update plan status and persist warnings
       await transitionPlan(client, planId, 'confirmed', { extraSet: 'confirmed_at = NOW(), warnings = $2', params: [warnings] });
@@ -1181,13 +1186,15 @@ export const productionRepository = {
         if (!recipeResult.rows[0]) continue;
         const recipe = recipeResult.rows[0];
 
-        // Besoins resolus par le helper (legacy OU compose), en unite de base.
+        // Besoins resolus par le helper (legacy OU compose), en unite de base, sur la version
+        // de nomenclature en vigueur à la date du plan (M4-02) ; sorties de stock ensuite.
         const ingredientNeeds = new Map<string, number>();
-        await collectIngredientNeedsForUnits(
+        const planDay = (await client.query(`SELECT plan_date::text AS d FROM production_plans WHERE id = $1`, [planId])).rows[0].d as string;
+        await bomVersionRepository.withVersionsInForce(client, [recipe.id], planDay, () => collectIngredientNeedsForUnits(
           client, recipe.id, item.actual_quantity,
           (ingredientId, qty) => ingredientNeeds.set(ingredientId, (ingredientNeeds.get(ingredientId) || 0) + qty),
           { formatId: item.format_id ?? recipe.linked_format_id ?? null, warnings }
-        );
+        ));
 
         for (const [ingredientId, consumption] of ingredientNeeds) {
           const storeFilter = storeId ? ' AND store_id = $3' : '';
@@ -1628,7 +1635,9 @@ export const productionRepository = {
 
           // Besoins resolus par le helper (legacy OU compose) — on saute les
           // sous-recettes deja couvertes par le stock semi-finis.
-          await collectIngredientNeedsForUnits(
+          // M4-02 : sur la version de nomenclature en vigueur à la date du plan.
+          const planDay = (await client.query(`SELECT plan_date::text AS d FROM production_plans WHERE id = $1`, [planId])).rows[0].d as string;
+          await bomVersionRepository.withVersionsInForce(client, [recipe.id], planDay, () => collectIngredientNeedsForUnits(
             client, recipe.id, item.actual_quantity,
             (ingredientId, qty) => ingredientNeeds.set(ingredientId, (ingredientNeeds.get(ingredientId) || 0) + qty),
             {
@@ -1636,7 +1645,7 @@ export const productionRepository = {
               skipSubRecipe: (subRecipeId) => fulfilledSubRecipes.has(subRecipeId),
               warnings,
             }
-          );
+          ));
 
           for (const [ingredientId, consumption] of ingredientNeeds) {
             const storeFilter = storeId ? ' AND store_id = $3' : '';

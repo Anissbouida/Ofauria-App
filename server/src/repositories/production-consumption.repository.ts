@@ -3,6 +3,7 @@ import type { PoolClient } from 'pg';
 import { applyStockOut } from '../services/stock-anomaly.js';
 import { ingredientLotRepository } from './ingredient-lot.repository.js';
 import { collectIngredientNeedsForUnits } from './recipe-composition.helper.js';
+import { bomVersionRepository } from './bom-version.repository.js';
 
 /**
  * Consommation des matières d'un ordre (M6-01).
@@ -55,10 +56,24 @@ export const productionConsumptionRepository = {
               COALESCE(ppi.alt_recipe_id, (SELECT r.id FROM recipes r WHERE r.product_id = ppi.product_id LIMIT 1)) AS recipe_id
          FROM production_plan_items ppi WHERE ppi.plan_id = $1 AND ppi.actual_quantity > 0`, [planId])).rows;
     const theo = new Map<string, number>();
-    for (const it of items) {
-      if (!it.recipe_id) continue;
-      await collectIngredientNeedsForUnits(db as never, it.recipe_id, Number(it.actual_quantity),
-        (id, q) => theo.set(id, (theo.get(id) ?? 0) + q), { formatId: it.format_id ?? null });
+    // M4-02 : théorique sur la version de nomenclature en vigueur à la date du plan, dans une
+    // transaction en lecture annulée (le rejeu des versions se fait dans un point de sauvegarde).
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const planDay = (await client.query(`SELECT plan_date::text AS d FROM production_plans WHERE id = $1`, [planId])).rows[0]?.d as string | undefined;
+      const roots = items.map(it => it.recipe_id as string).filter(Boolean);
+      const run = async () => {
+        for (const it of items) {
+          if (!it.recipe_id) continue;
+          await collectIngredientNeedsForUnits(client as never, it.recipe_id, Number(it.actual_quantity),
+            (id, q) => theo.set(id, (theo.get(id) ?? 0) + q), { formatId: it.format_id ?? null });
+        }
+      };
+      if (planDay) await bomVersionRepository.withVersionsInForce(client, roots, planDay, run); else await run();
+    } finally {
+      await client.query('ROLLBACK').catch(() => undefined);
+      client.release();
     }
     const real = new Map<string, number>((await db.query(
       `SELECT ingredient_id, -SUM(quantity_change) AS q FROM inventory_transactions

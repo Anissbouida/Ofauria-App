@@ -3,7 +3,8 @@
  *  - à la confirmation, la ligne d'ordre reçoit la version active de sa fiche ;
  *  - la fiche passe en version 2 : l'ordre garde les besoins de la version 1 et affiche
  *    qu'une version plus récente existe ;
- *  - une fiche modifiée sans nouvelle version active est signalée à la confirmation.
+ *  - une fiche modifiée sans nouvelle version active : les besoins suivent la version en vigueur
+ *    (rejouée dans un point de sauvegarde, mig 593) et la fiche courante reste intacte.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { hasTestDb, testPool, closeTestPool, importRepositories, createBaseFixtures, createIngredient, createLot, createProductWithRecipe, cleanupFixtures, num, type Fixtures } from './helpers.js';
@@ -56,10 +57,14 @@ describe.skipIf(!hasTestDb)('Version figée sur l\'ordre (M4-02)', () => {
     expect(plan!.items[0]).toMatchObject({ bom_version_no: 1, bom_active_version_no: 2 });
   });
 
-  it('fiche modifiée sans activation : signalée à la confirmation', async () => {
+  it('fiche modifiée sans activation : besoins de la version en vigueur, fiche courante intacte', async () => {
     await p().query(`UPDATE recipe_ingredients SET quantity = 0.7 WHERE recipe_id = $1`, [recipeId]);
     const id = await newPlan();
     const { warnings } = await repos.productionRepository.confirm(id, fx.userId);
-    expect(warnings.join(' ')).toMatch(/sans nouvelle version active : .*Pain M402/);
+    expect(warnings.join(' ')).toMatch(/sans nouvelle version active : besoins calculés sur la version en vigueur \([^)]*Pain M402[^)]* v2\)/);
+    // Version 2 = 0,6 kg/pièce → 6 kg pour 10, pas 7 kg (copie de travail).
+    expect(num((await p().query(`SELECT needed_quantity FROM production_ingredient_needs WHERE plan_id = $1 AND ingredient_id = $2`, [id, flour])).rows[0].needed_quantity)).toBeCloseTo(6, 3);
+    expect(num((await p().query(`SELECT quantity FROM recipe_ingredients WHERE recipe_id = $1`, [recipeId])).rows[0].quantity)).toBeCloseTo(0.7, 3);
+    expect((await bom.list(recipeId)).pendingChanges).toBe(true);
   });
 });
