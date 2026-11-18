@@ -32,6 +32,10 @@ CREATE OR REPLACE FUNCTION fn_sync_lot_locations() RETURNS trigger LANGUAGE plpg
 DECLARE v_store UUID := NEW.store_id; v_pes UUID; v_eco UUID;
 BEGIN
   IF v_store IS NULL THEN RETURN NEW; END IF;
+  -- Établissement créé après la migration : ses emplacements de base naissent ici.
+  INSERT INTO stock_locations (store_id, code, name, type)
+  VALUES (v_store, 'ECONOMAT', 'Économat (sec)', 'sec'), (v_store, 'PESAGE', 'Zone de pesage', 'pesage')
+  ON CONFLICT (store_id, code) DO NOTHING;
   SELECT id INTO v_pes FROM stock_locations WHERE store_id = v_store AND code = 'PESAGE';
   SELECT COALESCE(
            (SELECT l.id FROM stock_locations l WHERE l.id = NEW.location_id AND l.code <> 'PESAGE'),
