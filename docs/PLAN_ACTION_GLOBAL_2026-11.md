@@ -2083,19 +2083,19 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 
 | ☐ | Tâche | Objet | Change des chiffres |
 |---|---|---|---|
-| ◐ | M8-01 | Registre de panneaux de l'ordre | non |
+| ☑ | M8-01 | Registre de panneaux de l'ordre et de la fenêtre de lancement | non |
 | ☑ | M8-02 | Une seule source de statuts | non |
-| ◐ | M8-03 | Vocabulaire complet | non |
+| ☑ | M8-03 | Vocabulaire complet | non |
 | ☑ | M8-04 | Gabarits d'impression | non |
 | ◐ | M8-05 | Calculs remontés au serveur | non |
 | ◐ | M8-06 | Extensions boulangerie | non |
 
-**Notes M8.** Migrations 580-582. Jeu de référence : zéro écart apres-lot10 → apres-m8. Suites : 471 tests unitaires serveur verts ; en base 643 / 644 (seul échec : scénario de vente FEFO dans la fenêtre de minuit).
-- **M8-03** : mig 580, clés `sector_labels` des écrans de nomenclature et de l'ordre (repli dans le code = terme boulangerie), hook `useProdTerms` ; libellés hérités du secteur de base. Reste : écran d'édition Paramètres › Vocabulaire avec aperçu.
-- **M8-01** : registre `planPanelRules.ts` (conditions, testées sans navigateur) + `planPanels.tsx` (rendu) pour les quatre onglets de l'ordre. Restent : la fenêtre de lancement et les alertes de l'onglet Ingrédients (actions locales nombreuses).
+**Notes M8.** Migrations 580-583. Jeu de référence : zéro écart apres-lot10 → apres-m8 → apres-m8b. Suites : 471 tests unitaires serveur verts ; en base 643 / 644 (seul échec : scénario de vente FEFO dans la fenêtre de minuit).
+- **M8-03** : mig 580, clés `sector_labels` des écrans de nomenclature et de l'ordre (repli dans le code = terme boulangerie), hook `useProdTerms` ; libellés hérités du secteur de base. Écran Paramètres › Secteur et modules › Vocabulaire (mig 583 `company_label_overrides`, appliquée après le secteur ; catalogue `shared/constants/vocabulary.ts` ; aperçu en direct ; « Rétablir » = terme du secteur).
+- **M8-01** : registre `planPanelRules.ts` (conditions, testées sans navigateur) + `planPanels.tsx` (rendu) pour les quatre onglets de l'ordre. Alertes de l'onglet Ingrédients (disponibilité, aucun besoin calculé) au registre. Fenêtre de lancement : `launchStepRules.ts` (étape « sous-ensembles » seulement avec des bases partagées, navigation qui saute les étapes masquées, rubrique coupe).
 - **M8-02** : onglets de la liste sur les libellés partagés ; gardes serveur (machine à états ↔ libellés) et client (libellés ↔ couleurs, tons, ordre).
 - **M8-04** : mig 582. `document_templates` gagne `category` ('tiers' | 'production'), `title`, `layout` ; variantes par type d'ordre (`document_template_variants`). Catalogue figé `shared/constants/print-templates.ts` (colonnes, signatures, mentions par défaut). Résolution défaut ← modèle général ← variante, champ par champ. Paramètres › Production › Impressions. Ticket de lot, bon de sortie, fiche de production et fiche technique PDF suivent le gabarit ; la fiche technique prend la raison sociale de la fiche société (plus de nom en dur). Numéros toujours fournis par le serveur.
-- **M8-05** : `GET /production/:id/summary` (quantités, rendement moyen et seuil résolu au serveur, pertes, vers frigo, coût par pièce à partir du coût enregistré). En-tête de l'ordre, panneau Rendement et panneau Coûts n'additionnent plus rien. Restent : aides de saisie en direct de la fenêtre de lancement (totaux de coupe), aperçu de coût des postes de charge, récapitulatif de pointage RH.
+- **M8-05** : `GET /production/:id/summary` (quantités, rendement moyen et seuil résolu au serveur, pertes, vers frigo, coût par pièce à partir du coût enregistré). En-tête de l'ordre, panneau Rendement et panneau Coûts n'additionnent plus rien. Quantité produite d'une coupe : une formule partagée `cutProducedQuantity` (le serveur recalcule et fait foi, l'aperçu l'emploie). Restent : aperçu de coût des postes de charge, récapitulatif de pointage RH.
 - **M8-06** : option `mode_fournee` (boulangerie) ; paramètres de pâte, coupe et rétro-planning réservés ; rôles pâtisserie réservés à la boulangerie (mig 581).
 
 ### Lots suivants
