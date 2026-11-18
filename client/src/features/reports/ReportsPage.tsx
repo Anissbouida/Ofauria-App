@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useState, useMemo } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery } from '@tanstack/react-query';
@@ -71,7 +72,7 @@ function getPresetDates(preset: DatePreset): { start: string; end: string } {
 }
 
 function formatCurrency(value: number) {
-  return new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + ' DH';
+  return money(value);
 }
 
 function ChangeIndicator({ value, suffix = '' }: { value: number; suffix?: string }) {
@@ -362,7 +363,7 @@ function MenuEngineeringTab({ costData, costLoading, menuData, menuLoading }: {
                   <YAxis type="number" dataKey="y" name="Contribution" width={56}
                     tick={{ fontSize: 12, fill: 'var(--theme-text-muted)' }} axisLine={false} tickLine={false}
                     tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
-                    label={{ value: 'Contribution (DH)', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: 'var(--theme-text-muted)' } }} />
+                    label={{ value: `Contribution (${currencySymbol()})`, angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: 'var(--theme-text-muted)' } }} />
                   <ZAxis range={[90, 90]} />
                   <ReferenceLine x={median.medianQty} stroke="var(--theme-text-muted)" strokeOpacity={0.4} strokeDasharray="4 4" />
                   <ReferenceLine y={median.medianContribution} stroke="var(--theme-text-muted)" strokeOpacity={0.4} strokeDasharray="4 4" />

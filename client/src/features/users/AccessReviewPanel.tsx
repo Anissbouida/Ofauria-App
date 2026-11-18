@@ -1,3 +1,4 @@
+import { currencySymbol } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, ScanSearch, ShieldAlert, Check, Minus, History, Lock } from 'lucide-react';
@@ -98,7 +99,7 @@ export function AccessReviewModal({ userId, name, onClose }: { userId: string; n
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {data.approvalLimits.filter(l => l.configured).map(l => (
                       <span key={l.documentType} className="odoo-tag odoo-tag-grey">
-                        {APPROVAL_DOCUMENT_LABELS[l.documentType as ApprovalDocumentType] ?? l.documentType} : {l.limit === null ? 'illimité' : `${l.limit.toLocaleString('fr-FR')} MAD`}
+                        {APPROVAL_DOCUMENT_LABELS[l.documentType as ApprovalDocumentType] ?? l.documentType} : {l.limit === null ? 'illimité' : `${l.limit.toLocaleString('fr-FR')} ${currencySymbol()}`}
                       </span>
                     ))}
                   </div>

@@ -1,3 +1,4 @@
+import { money } from '../../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { LogOut, FileText, Award, RotateCcw, AlertTriangle } from 'lucide-react';
@@ -91,7 +92,7 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
           {current.payroll_id && <div>Porté sur le bulletin {String(current.month).padStart(2, '0')}/{current.year} {current.payroll_paid ? '(payé)' : '(à payer depuis la Paie)'}</div>}
           <div>
             Congés {fmt(parseFloat(current.leave_indemnity))} · Préavis {fmt(parseFloat(current.notice_indemnity))} ·
-            Licenciement {fmt(parseFloat(current.severance_indemnity))} · Dommages {fmt(parseFloat(current.damages))} · Retenues {fmt(parseFloat(current.deductions))} DH
+            Licenciement {fmt(parseFloat(current.severance_indemnity))} · Dommages {fmt(parseFloat(current.damages))} · Retenues {money(parseFloat(current.deductions))}
           </div>
         </StatusBanner>
       )}
@@ -127,7 +128,7 @@ export default function EmployeeDeparture({ employee }: { employee: Record<strin
           ) : !preview || isFetching ? <p style={muted}>Calcul...</p> : (
             <>
               <p style={hint}>
-                Ancienneté {preview.seniorityLabel} · salaire de référence {fmt(preview.referenceSalary)} DH
+                Ancienneté {preview.seniorityLabel} · salaire de référence {money(preview.referenceSalary)}
                 {preview.referenceMonths < 3 && ' (salaire de base : moins de 3 bulletins)'} · préavis légal {preview.notice.label}
                 {preview.notice.owedByEmployee && ' — dû par le salarié'} · indemnité de licenciement : {preview.severance.reason}
               </p>

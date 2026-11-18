@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, X } from 'lucide-react';
@@ -44,8 +45,8 @@ export const projectCost = (p: Project) => Number(p.cost_spent) + Number(p.exter
  */
 export function consumption(p: Project): { label: string; used: string; of: string; pct: number } | null {
   const cost = projectCost(p);
-  if (p.billing_type === 'fixed' && Number(p.budget_amount) > 0) return { label: 'Coûts / forfait', used: n0(cost), of: `${n0(p.budget_amount)} DH`, pct: cost / Number(p.budget_amount) * 100 };
-  if (Number(p.budget_amount) > 0) return { label: 'Coûts / budget', used: n0(cost), of: `${n0(p.budget_amount)} DH`, pct: cost / Number(p.budget_amount) * 100 };
+  if (p.billing_type === 'fixed' && Number(p.budget_amount) > 0) return { label: 'Coûts / forfait', used: n0(cost), of: money(p.budget_amount, { decimals: 0 }), pct: cost / Number(p.budget_amount) * 100 };
+  if (Number(p.budget_amount) > 0) return { label: 'Coûts / budget', used: n0(cost), of: money(p.budget_amount, { decimals: 0 }), pct: cost / Number(p.budget_amount) * 100 };
   if (Number(p.estimated_hours) > 0) return { label: 'Heures / prévu', used: h1(p.hours_spent), of: `${h1(p.estimated_hours)} h`, pct: Number(p.hours_spent) / Number(p.estimated_hours) * 100 };
   return null;
 }
@@ -273,11 +274,11 @@ export function ProjectFormModal({ project, onClose, onSaved }: { project?: Proj
           </select>
         </div>
         <div>
-          <span style={label}>{f.billingType === 'fixed' ? 'Forfait (DH)' : 'Budget (DH)'}</span>
+          <span style={label}>{f.billingType === 'fixed' ? `Forfait (${currencySymbol()})` : `Budget (${currencySymbol()})`}</span>
           <input className="input" type="number" min="0" step="0.01" style={{ width: '100%' }} value={f.budgetAmount ?? ''} onChange={e => set('budgetAmount', num(e.target.value))} />
         </div>
         <div>
-          <span style={label}>Taux horaire facturé (DH)</span>
+          <span style={label}>Taux horaire facturé ({currencySymbol()})</span>
           <input className="input" type="number" min="0" step="0.01" style={{ width: '100%' }} value={f.hourlyRate ?? ''} disabled={f.billingType !== 'time'}
             onChange={e => set('hourlyRate', num(e.target.value))} placeholder={f.billingType === 'time' ? 'Sinon taux de l\'activité' : '—'} />
         </div>

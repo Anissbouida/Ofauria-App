@@ -1,3 +1,4 @@
+import { money as fmtMoney } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, XCircle, Clock, Inbox, Send, History, UserCheck, Trash2, Loader2, ChevronDown, ChevronRight, FileDown, Truck } from 'lucide-react';
@@ -19,7 +20,7 @@ import { StagePipeline, type StageDef } from '../../components/purchasing/Proces
  */
 
 const DOC_TYPES = APPROVAL_DOC_TYPES as Record<string, ApprovalDocTypeDef>;
-const money = (v: string | number | null | undefined) => v === null || v === undefined ? '' : `${Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
+const money = (v: string | number | null | undefined) => v === null || v === undefined ? '' : fmtMoney(Number(v));
 const when = (d: string) => format(new Date(d), 'dd MMM yyyy à HH:mm', { locale: fr });
 const statusTag: Record<string, string> = { pending: 'odoo-tag-orange', approved: 'odoo-tag-green', rejected: 'odoo-tag-red', cancelled: 'odoo-tag-grey' };
 const STATUS_TONE: Record<string, StatusTone> = { pending: 'todo', approved: 'done', rejected: 'blocked', cancelled: 'cancelled' };

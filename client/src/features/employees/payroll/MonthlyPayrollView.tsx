@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../../utils/money';
 import PayrollPayDialog from './PayrollPayDialog';
 import { useMemo, useState } from 'react';
 import SearchSelect from '../../../components/ui/SearchSelect';
@@ -211,9 +212,9 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
   const allRows = payrolls as Record<string, any>[];
   const toPayRows = allRows.filter(p => !p.paid);
   const stageStats = {
-    generated: { count: allRows.length, sub: `${totalGross.toFixed(0)} DH brut` },
-    topay: { count: toPayRows.length, sub: `${toPayRows.reduce((s, p) => s + dueOf(p), 0).toFixed(0)} DH` },
-    paid: { count: totalPaid, sub: `${allRows.filter(p => p.paid).reduce((s, p) => s + pn(p.net_salary), 0).toFixed(0)} DH` },
+    generated: { count: allRows.length, sub: `${money(totalGross, { decimals: 0 })} brut` },
+    topay: { count: toPayRows.length, sub: money(toPayRows.reduce((s, p) => s + dueOf(p), 0), { decimals: 0 }) },
+    paid: { count: totalPaid, sub: money(allRows.filter(p => p.paid).reduce((s, p) => s + pn(p.net_salary), 0), { decimals: 0 }) },
   };
 
   const generateAllPDF = async () => {
@@ -221,7 +222,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
     notify.success(`${sortedPayrolls.length} bulletins PDF générés`);
   };
 
-  const dh = <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span>;
+  const dh = <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>;
 
   return (
     <>
@@ -381,7 +382,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                       <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {getRoleLabel(p.employee_role as string)}</span>
                       {p.is_declared === false && <span className="odoo-tag odoo-tag-grey" title="Ni cotisations ni IR">Non déclaré</span>}
                       {p.pay_frequency && p.pay_frequency !== 'monthly' && (
-                        <span className="odoo-tag odoo-tag-blue" title={`Payé ${p.pay_frequency === 'weekly' ? 'à la semaine' : 'à la quinzaine'} : brut cumulé des paies du mois, acomptes versés ${pf(p.acomptes_amount)} DH déduits du net`}>
+                        <span className="odoo-tag odoo-tag-blue" title={`Payé ${p.pay_frequency === 'weekly' ? 'à la semaine' : 'à la quinzaine'} : brut cumulé des paies du mois, acomptes versés ${money(pf(p.acomptes_amount))} déduits du net`}>
                           {p.pay_frequency === 'weekly' ? 'Hebdo' : 'Quinzaine'}
                         </span>
                       )}
@@ -498,7 +499,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
         const steps = [
           { label: 'Généré', detail: `${MONTH_NAMES[month - 1]} ${year}`, done: true },
           { label: 'Mois clôturé', detail: isClosed ? (period?.closed_at ? new Date(period.closed_at).toLocaleDateString('fr-FR') : 'comptabilisé') : 'en saisie', done: isClosed },
-          { label: 'Payé', detail: p.paid ? (pn(p.advance_deduction) > 0 ? `retenue ${pf(p.advance_deduction)} DH` : 'versé') : 'à payer', done: !!p.paid },
+          { label: 'Payé', detail: p.paid ? (pn(p.advance_deduction) > 0 ? `retenue ${money(pf(p.advance_deduction))}` : 'versé') : 'à payer', done: !!p.paid },
         ];
         const currentIdx = steps.findIndex(s => !s.done);
         const otLabel = [
@@ -527,7 +528,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
           <table className="odoo-table">
             <tbody>
               {lines.filter((l): l is [string, string] => !!l).map(([k, v]) => (
-                <tr key={k}><td>{k}</td><td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{v} DH</td></tr>
+                <tr key={k}><td>{k}</td><td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{v} {currencySymbol()}</td></tr>
               ))}
             </tbody>
           </table>
@@ -550,7 +551,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 12px', fontSize: '0.8125rem' }}>
               <span style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--odoo-text)' }}>{p.first_name as string} {p.last_name as string}</span>
               <span style={{ color: 'var(--odoo-text-muted)' }}>
-                {getRoleLabel(p.employee_role as string)} · <strong style={{ color: 'var(--odoo-text)' }}>{pf(p.net_salary)} DH</strong> net
+                {getRoleLabel(p.employee_role as string)} · <strong style={{ color: 'var(--odoo-text)' }}>{money(pf(p.net_salary))}</strong> net
               </span>
             </div>
 
@@ -610,16 +611,16 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
               <tfoot>
                 <tr style={{ fontWeight: 700 }}>
                   <td>Net à payer</td>
-                  <td colSpan={2} style={{ textAlign: 'right', color: '#155724', fontSize: '0.9375rem' }}>{pf(p.net_salary)} DH</td>
+                  <td colSpan={2} style={{ textAlign: 'right', color: '#155724', fontSize: '0.9375rem' }}>{money(pf(p.net_salary))}</td>
                 </tr>
                 {pn(p.acomptes_amount) > 0 && (<>
                   <tr>
                     <td>Acomptes {p.pay_frequency === 'weekly' ? 'hebdomadaires' : 'de quinzaine'} versés</td>
-                    <td colSpan={2} style={{ textAlign: 'right', color: '#dc3545' }}>− {pf(p.acomptes_amount)} DH</td>
+                    <td colSpan={2} style={{ textAlign: 'right', color: '#dc3545' }}>− {money(pf(p.acomptes_amount))}</td>
                   </tr>
                   <tr style={{ fontWeight: 700 }}>
                     <td>Reste à payer</td>
-                    <td colSpan={2} style={{ textAlign: 'right', color: '#155724' }}>{pf(dueOf(p))} DH</td>
+                    <td colSpan={2} style={{ textAlign: 'right', color: '#155724' }}>{money(pf(dueOf(p)))}</td>
                   </tr>
                 </>)}
               </tfoot>
@@ -638,7 +639,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                 ])}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <SectionTitle>Charges patronales — {pf(p.total_charges_patron)} DH</SectionTitle>
+                <SectionTitle>Charges patronales — {money(pf(p.total_charges_patron))}</SectionTitle>
                 {twoCol([
                   ['CNSS patronale', pf(p.cnss_employer)],
                   ['AMO patronale', pf(p.amo_employer)],

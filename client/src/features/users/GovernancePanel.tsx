@@ -1,3 +1,4 @@
+import { currencySymbol } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, ShieldAlert, ShieldCheck, Eye, Trash2, Scale, GitBranch, UserCog } from 'lucide-react';
@@ -243,7 +244,7 @@ function ApprovalLimitsSection() {
             {APPROVAL_DOCUMENT_TYPES.map(d => <option key={d} value={d}>{APPROVAL_DOCUMENT_LABELS[d]}</option>)}
           </select>
         </label>
-        <label style={{ ...lab, width: 160 }}>Plafond (MAD)
+        <label style={{ ...lab, width: 160 }}>Plafond ({currencySymbol()})
           <input style={field} type="number" min={0} step="0.01" value={f.maxAmount} onChange={e => setF(s => ({ ...s, maxAmount: e.target.value }))} placeholder="50000" />
         </label>
         <button className="odoo-btn-primary" disabled={!f.roleCode || f.maxAmount === '' || save.isPending} onClick={() => save.mutate()}>Enregistrer</button>

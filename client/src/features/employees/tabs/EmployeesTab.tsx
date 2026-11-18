@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../../utils/money';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -245,7 +246,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
         <div className="odoo-stat-card" title="Somme des salaires mensuels des employés actifs mensuels + équivalent mensuel des hebdos (salaire hebdo × 52/12 semaines)">
           <div className="odoo-stat-card-label"><Banknote size={11} style={{ display: 'inline', marginRight: 4 }} />Masse salariale</div>
           <div className="odoo-stat-card-value" style={{ color: '#155724' }}>
-            {formatMoney(massMonthlyEquiv)} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--odoo-text-muted)' }}>DH/mois</span>
+            {formatMoney(massMonthlyEquiv)} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--odoo-text-muted)' }}>{currencySymbol()}/mois</span>
           </div>
           <div className="odoo-stat-card-sub">
             {formatMoney(massMonthly)} mensuel
@@ -255,10 +256,10 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
         <div className="odoo-stat-card" title="Coût annuel projeté = masse salariale mensuelle × 12 (indicatif, hors primes/cotisations)">
           <div className="odoo-stat-card-label"><Banknote size={11} style={{ display: 'inline', marginRight: 4 }} />Coût annuel projeté</div>
           <div className="odoo-stat-card-value" style={{ color: '#155724' }}>
-            {formatMoney(massMonthlyEquiv * 12)} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--odoo-text-muted)' }}>DH</span>
+            {formatMoney(massMonthlyEquiv * 12)} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--odoo-text-muted)' }}>{currencySymbol()}</span>
           </div>
           <div className="odoo-stat-card-sub">
-            {withSalaryCount > 0 ? <>salaire moyen {formatMoney(avgSalary)} DH/mois</> : 'aucun salaire renseigné'}
+            {withSalaryCount > 0 ? <>salaire moyen {money(avgSalary, { decimals: 0 })}/mois</> : 'aucun salaire renseigné'}
           </div>
         </div>
         <div className="odoo-stat-card" title="Répartition par type de contrat des employés actifs">
@@ -356,14 +357,14 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                       const val = parseFloat(sal as string);
                       const eqMonth = isWeekly ? val * WEEKS_PER_MONTH : val;
                       return (
-                        <span title={isWeekly ? `Salaire hebdo × 52/12 ≈ ${eqMonth.toFixed(0)} DH/mois equivalent` : 'Salaire mensuel'}>
+                        <span title={isWeekly ? `Salaire hebdo × 52/12 ≈ ${money(eqMonth, { decimals: 0 })}/mois equivalent` : 'Salaire mensuel'}>
                           <span style={{ fontWeight: 600 }}>{val.toFixed(0)}</span>
                           <span style={{ color: 'var(--odoo-text-muted)', fontWeight: 400, fontSize: '0.6875rem', marginLeft: 3 }}>
-                            DH/{isWeekly ? 'sem' : 'mois'}
+                            {currencySymbol()}/{isWeekly ? 'sem' : 'mois'}
                           </span>
                           {isWeekly && (
                             <div style={{ fontSize: '0.625rem', color: 'var(--odoo-text-light)' }}>
-                              ≈ {eqMonth.toFixed(0)} DH/mois
+                              ≈ {money(eqMonth, { decimals: 0 })}/mois
                             </div>
                           )}
                         </span>

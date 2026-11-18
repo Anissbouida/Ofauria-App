@@ -1,3 +1,4 @@
+import { money } from '../../../utils/money';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Download, FileText, AlertTriangle, X } from 'lucide-react';
@@ -70,7 +71,7 @@ export default function SalaryTransferDialog({ month, year, onClose }: { month: 
             {!lines.length && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
               {isLoading ? 'Chargement…' : 'Aucun salaire à virer : bulletins payés en espèces, ou RIB manquants.'}</td></tr>}
           </tbody>
-          {lines.length > 0 && <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={3}>{lines.length} virement(s)</td><td style={{ textAlign: 'right' }}>{fmt(data!.total)} DH</td></tr></tfoot>}
+          {lines.length > 0 && <tfoot><tr style={{ fontWeight: 700 }}><td colSpan={3}>{lines.length} virement(s)</td><td style={{ textAlign: 'right' }}>{money(data!.total)}</td></tr></tfoot>}
         </table>
         <div className="flex justify-end gap-2">
           <button className="odoo-btn-secondary" disabled={!lines.length} onClick={() => download('csv')}

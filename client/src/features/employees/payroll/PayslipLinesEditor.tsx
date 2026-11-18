@@ -1,3 +1,4 @@
+import { money } from '../../../utils/money';
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Save } from 'lucide-react';
@@ -68,7 +69,7 @@ export default function PayslipLinesEditor({ payrollId, locked, lockReason, onRe
               <span style={{ color: 'var(--odoo-text)' }}>{l.label} <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 4 }}>fixe</span>
                 {parseFloat(l.exempt_amount || '0') > 0 && <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}> · dont {fmt(l.exempt_amount!)} exonérés</span>}
               </span>
-              <span style={l.kind === 'retenue' ? { color: '#dc3545' } : undefined}>{l.kind === 'retenue' ? '−' : '+'} {fmt(l.amount)} DH</span>
+              <span style={l.kind === 'retenue' ? { color: '#dc3545' } : undefined}>{l.kind === 'retenue' ? '−' : '+'} {money(l.amount)}</span>
             </div>
           ))}
           {drafts.map((d, i) => (

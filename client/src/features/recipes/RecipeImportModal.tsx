@@ -1,3 +1,4 @@
+import { currencySymbol } from '../../utils/money';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -186,7 +187,7 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
                   </summary>
                   <div className="p-2 bg-white text-xs">
                     <p className="text-blue-800 mb-2">
-                      Cout = 0 DH, categorie = "autre", unite = celle du fichier.
+                      Cout = 0 {currencySymbol()}, categorie = "autre", unite = celle du fichier.
                       A completer apres dans l'economat.
                     </p>
                     <div className="overflow-x-auto max-h-48 overflow-y-auto">
@@ -220,7 +221,7 @@ export default function RecipeImportModal({ onClose }: { onClose: () => void }) 
                   </summary>
                   <div className="p-2 bg-white text-xs">
                     <p className="text-blue-800 mb-2">
-                      Prix = 0 DH, categorie par defaut, marque disponible.
+                      Prix = 0 {currencySymbol()}, categorie par defaut, marque disponible.
                       A completer apres dans le catalogue produits.
                     </p>
                     <div className="overflow-x-auto max-h-48 overflow-y-auto">

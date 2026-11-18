@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, History, Search, RotateCcw, SlidersHorizontal, HelpCircle } from 'lucide-react';
@@ -63,11 +64,11 @@ function hintFor(key: string, v: Record<string, unknown>): string | null {
     const pas = v.strategie === 'au_dh' ? 1 : v.strategie === 'au_demi_dh' ? 0.5 : v.strategie === 'au_5dh' ? 5 : 0;
     const arrondi = !pas ? brut : v.sens === 'inferieur' ? Math.floor(brut / pas) * pas
       : v.sens === 'superieur' ? Math.ceil(brut / pas) * pas : Math.round(brut / pas) * pas;
-    return `Exemple : un prix calculé de ${brut.toFixed(2)} DH devient ${arrondi.toFixed(2)} DH.`;
+    return `Exemple : un prix calculé de ${money(brut)} devient ${money(arrondi)}.`;
   }
   if (key === 'production.fixed_charges') {
     const total = ['loyer', 'energie', 'autres'].reduce((s, k) => s + (Number(v[k]) || 0), 0);
-    return `Total : ${total.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH par mois.`;
+    return `Total : ${money(total)} par mois.`;
   }
   return null;
 }

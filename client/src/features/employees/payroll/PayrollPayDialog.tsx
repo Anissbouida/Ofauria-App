@@ -1,3 +1,4 @@
+import { money } from '../../../utils/money';
 import { useState } from 'react';
 import { Check, HandCoins, Wallet, Banknote } from 'lucide-react';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
@@ -42,7 +43,7 @@ export default function PayrollPayDialog({ employeeName, periodLabel, net, outst
       </>}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: '0.8125rem' }}>
         <span style={{ color: 'var(--odoo-text-muted)' }}>Net dû</span>
-        <strong style={{ fontSize: '0.9375rem', color: 'var(--odoo-text)' }}>{net.toFixed(2)} DH</strong>
+        <strong style={{ fontSize: '0.9375rem', color: 'var(--odoo-text)' }}>{money(net)}</strong>
       </div>
 
       <Field label="Mode de paiement">
@@ -54,9 +55,9 @@ export default function PayrollPayDialog({ employeeName, periodLabel, net, outst
       </Field>
 
       {outstanding > 0 ? (
-        <StatusBanner tone="warning" icon={HandCoins} title={`Avances en cours : ${outstanding.toFixed(2)} DH`}>
+        <StatusBanner tone="warning" icon={HandCoins} title={`Avances en cours : ${money(outstanding)}`}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-            <Field label={`Retenue sur cette paie (max ${maxDeduction.toFixed(2)} DH)${hasPlan ? ` — plan d'étalement : ${proposed.toFixed(2)} DH proposés` : ''}`}
+            <Field label={`Retenue sur cette paie (max ${money(maxDeduction)})${hasPlan ? ` — plan d'étalement : ${money(proposed)} proposés` : ''}`}
               hint="Montant modifiable — mettre 0 pour ne rien retenir sur cette paie.">
               <input type="number" step="0.01" min="0" max={maxDeduction} value={deduction}
                 onChange={e => setDeduction(e.target.value)} className={inputCls}
@@ -70,7 +71,7 @@ export default function PayrollPayDialog({ employeeName, periodLabel, net, outst
       )}
 
       <StatusBanner tone={cashOut > 0 ? 'success' : 'neutral'} icon={Banknote}
-        title={`À verser (${method === 'cash' ? 'espèces' : method === 'bank' ? 'virement' : 'chèque'}) : ${cashOut.toFixed(2)} DH`} />
+        title={`À verser (${method === 'cash' ? 'espèces' : method === 'bank' ? 'virement' : 'chèque'}) : ${money(cashOut)}`} />
     </HrModal>
   );
 }

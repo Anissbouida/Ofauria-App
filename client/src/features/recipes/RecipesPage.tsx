@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useMemo, useEffect } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
@@ -556,12 +557,12 @@ export default function RecipesPage() {
                     <span className="odoo-kanban-card-stock-value" style={{ color: 'var(--theme-accent)' }}>
                       {totalCost.toFixed(2)}
                     </span>
-                    <span className="odoo-kanban-card-stock-unit">DH coût matière</span>
+                    <span className="odoo-kanban-card-stock-unit">{currencySymbol()} coût matière</span>
                   </div>
                   <div className="odoo-kanban-card-split">
                     <span>{T.yield} <strong>{yieldQty} {r.yield_unit as string || 'u.'}</strong></span>
                     <span style={{ color: 'var(--theme-bg-separator)' }}>·</span>
-                    <span>Coût mat./u. <strong>{costPerUnit.toFixed(2)} DH</strong></span>
+                    <span>Coût mat./u. <strong>{money(costPerUnit)}</strong></span>
                   </div>
                   <div className="odoo-kanban-card-footer">
                     <span>
@@ -729,11 +730,11 @@ export default function RecipesPage() {
                     )}
                     <td style={{ textAlign: 'right' }}>
                       <span style={{ fontWeight: 600 }}>{totalCost.toFixed(2)}</span>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{currencySymbol()}</span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <span style={{ fontWeight: 500 }}>{costPerUnit.toFixed(2)}</span>
-                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{isBaseTab ? 'DH/kg' : 'DH'}</span>
+                      <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{isBaseTab ? `${currencySymbol()}/kg` : currencySymbol()}</span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       {isBaseTab ? (

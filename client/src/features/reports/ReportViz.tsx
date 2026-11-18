@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import type { ReportColumn } from '../../api/reports.api';
 
 export type VizType = 'table' | 'bar' | 'line' | 'kpi';
@@ -6,7 +7,7 @@ export function fmtVal(v: any, col?: ReportColumn): string {
   if (v == null) return '—';
   if (col?.kind === 'measure') {
     const n = Number(v) || 0;
-    if (col.format === 'currency') return `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
+    if (col.format === 'currency') return money(n);
     if (col.format === 'integer') return n.toLocaleString('fr-FR', { maximumFractionDigits: 0 });
     return n.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
   }

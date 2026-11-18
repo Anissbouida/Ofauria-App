@@ -1,3 +1,4 @@
+import { money } from '../../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check, X, HandCoins } from 'lucide-react';
@@ -41,22 +42,22 @@ export default function AdvanceRequestsPanel() {
             <tr key={r.id}>
               <td style={{ fontWeight: 500 }}>{r.first_name} {r.last_name}</td>
               <td>{new Date(r.created_at).toLocaleDateString('fr-FR')}</td>
-              <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(r.amount)} DH</td>
-              <td style={{ textAlign: 'right' }}>{r.monthly_deduction ? `${fmt(r.monthly_deduction)} DH` : 'tout'}</td>
+              <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(r.amount)}</td>
+              <td style={{ textAlign: 'right' }}>{r.monthly_deduction ? money(r.monthly_deduction) : 'tout'}</td>
               <td>{r.reason ?? '—'}</td>
               <td>
                 <div style={{ display: 'inline-flex', gap: 4 }}>
                   <button className="odoo-btn-primary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.6875rem', display: 'inline-flex', alignItems: 'center', gap: 3 }}
                     disabled={approve.isPending}
                     onClick={async () => {
-                      if (!(await confirm(`Verser ${fmt(r.amount)} DH en espèces à ${r.first_name} ${r.last_name} ?`, { title: 'Accorder l\'avance', confirmLabel: 'Verser' }))) return;
+                      if (!(await confirm(`Verser ${money(r.amount)} en espèces à ${r.first_name} ${r.last_name} ?`, { title: 'Accorder l\'avance', confirmLabel: 'Verser' }))) return;
                       approve.mutate({ id: r.id, method: 'cash' });
                     }}>
                     <Check size={11} /> Espèces
                   </button>
                   <button className="odoo-btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.6875rem' }} disabled={approve.isPending}
                     onClick={async () => {
-                      if (!(await confirm(`Verser ${fmt(r.amount)} DH par virement à ${r.first_name} ${r.last_name} ?`, { title: 'Accorder l\'avance', confirmLabel: 'Verser' }))) return;
+                      if (!(await confirm(`Verser ${money(r.amount)} par virement à ${r.first_name} ${r.last_name} ?`, { title: 'Accorder l\'avance', confirmLabel: 'Verser' }))) return;
                       approve.mutate({ id: r.id, method: 'bank' });
                     }}>
                     Virement

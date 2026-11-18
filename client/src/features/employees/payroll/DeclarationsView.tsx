@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../../utils/money';
 import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Download, FileCheck2, Banknote, Lock, AlertTriangle, Landmark, Upload } from 'lucide-react';
@@ -138,7 +139,7 @@ export default function DeclarationsView() {
                 <div key={k} className={`odoo-stat-card ${detail === k ? 'active' : ''}`} style={{ cursor: k !== 'cimr' ? 'pointer' : undefined }}
                   onClick={() => k !== 'cimr' && setDetail(k)}>
                   <div className="odoo-stat-card-label">{KIND_LABEL[k]} <span style={{ color: 'var(--odoo-text-light)' }}>· {KIND_ACCOUNT[k]}</span></div>
-                  <div className="odoo-stat-card-value">{fmt(d ? parseFloat(d.amount) : due[k])} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
+                  <div className="odoo-stat-card-value">{fmt(d ? parseFloat(d.amount) : due[k])} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
                   <div className="odoo-stat-card-sub" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     {d?.status === 'paid' ? <StatusTag tone="done" label={`Réglée le ${new Date(d.paid_at).toLocaleDateString('fr-FR')}`} />
                       : d ? <StatusTag tone="progress" icon={FileCheck2} label={`Déclarée${d.reference ? ` · ${d.reference}` : ''}`} />
@@ -180,7 +181,7 @@ export default function DeclarationsView() {
               {ebdsResult && (
                 <div className={`odoo-alert ${ebdsResult.warnings.length ? 'warning' : 'info'}`} style={{ padding: '0.625rem 0.875rem', fontSize: '0.75rem' }}>
                   <strong>{ebdsResult.fileName}</strong> : {ebdsResult.totals.salaries} salarié(s) dont {ebdsResult.totals.entrants} entrant(s) et {ebdsResult.totals.sortants} sortant(s),
-                  {' '}{ebdsResult.totals.jours} jours, salaire réel {fmt(ebdsResult.totals.salaireReel)} DH, plafonné {fmt(ebdsResult.totals.salairePlafonne)} DH.
+                  {' '}{ebdsResult.totals.jours} jours, salaire réel {money(ebdsResult.totals.salaireReel)}, plafonné {money(ebdsResult.totals.salairePlafonne)}.
                   {ebdsResult.warnings.length > 0 && (
                     <ul style={{ margin: '4px 0 0 16px', listStyle: 'disc' }}>{ebdsResult.warnings.map(w => <li key={w}>{w}</li>)}</ul>
                   )}
@@ -285,7 +286,7 @@ export default function DeclarationsView() {
           </>}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: '0.8125rem' }}>
             <span style={{ color: 'var(--odoo-text-muted)' }}>Montant</span>
-            <strong style={{ fontSize: '0.9375rem', color: 'var(--odoo-text)' }}>{fmt(parseFloat(declared(settleKind)?.amount ?? '0'))} DH</strong>
+            <strong style={{ fontSize: '0.9375rem', color: 'var(--odoo-text)' }}>{money(parseFloat(declared(settleKind)?.amount ?? '0'))}</strong>
           </div>
           <Field label="Mode">
             <select className={inputCls} value={settleForm.paymentMethod} onChange={e => setSettleForm({ ...settleForm, paymentMethod: e.target.value })}>

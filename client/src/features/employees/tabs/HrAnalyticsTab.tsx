@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../../utils/money';
 import { useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -90,21 +91,21 @@ export default function HrAnalyticsTab() {
           <div className="odoo-stat-grid" style={{ borderBottom: 'none' }}>
             {card(<Users size={11} />, 'Effectif', String(t.headcount), `moyen ${t.averageHeadcount} · +${t.entries} / −${t.exits}`)}
             {card(<TrendingDown size={11} />, 'Turnover', pct(t.turnoverRate), `rotation ${pct(t.rotationRate)}`, 'Sorties de l\'année / effectif moyen')}
-            {card(<Banknote size={11} />, 'Coût de main-d\'œuvre', `${dh(t.laborCost)} DH`, `brut ${dh(t.grossPayroll)} · charges ${dh(t.employerCharges)}`)}
-            {card(<Percent size={11} />, 'Masse salariale / CA', pct(t.laborCostRatio), t.revenue ? `CA ${dh(t.revenue)} DH` : 'CA comptable indisponible', 'Coût de main-d\'œuvre / chiffre d\'affaires comptable HT (comptes 71)')}
+            {card(<Banknote size={11} />, 'Coût de main-d\'œuvre', money(t.laborCost, { decimals: 0 }), `brut ${dh(t.grossPayroll)} · charges ${dh(t.employerCharges)}`)}
+            {card(<Percent size={11} />, 'Masse salariale / CA', pct(t.laborCostRatio), t.revenue ? `CA ${money(t.revenue, { decimals: 0 })}` : 'CA comptable indisponible', 'Coût de main-d\'œuvre / chiffre d\'affaires comptable HT (comptes 71)')}
             {card(<Activity size={11} />, 'Absentéisme', pct(t.absenteeismRate), `${t.absenceDays} j / ${t.theoreticalDays} j ouvrables pointés`)}
-            {card(<Clock size={11} />, 'Coût horaire', t.costPerHour ? `${t.costPerHour.toLocaleString('fr-FR')} DH/h` : '—', `${dh(t.hoursWorked)} h travaillées · HS ${dh(t.overtimeCost)} DH`)}
+            {card(<Clock size={11} />, 'Coût horaire', t.costPerHour ? `${t.costPerHour.toLocaleString("fr-FR")} ${currencySymbol()}/h` : '—', `${dh(t.hoursWorked)} h travaillées · HS ${money(t.overtimeCost, { decimals: 0 })}`)}
           </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 12 }}>
-            <Section title="Coût de main-d'œuvre mensuel" summary="DH">
+            <Section title="Coût de main-d'œuvre mensuel" summary={currencySymbol()}>
               <ResponsiveContainer width="100%" height={230}>
                 <BarChart data={months} barCategoryGap="25%">
                   <CartesianGrid vertical={false} stroke={GRID} />
                   <XAxis dataKey="label" tick={TICK} axisLine={false} tickLine={false} />
                   <YAxis tick={TICK} axisLine={false} tickLine={false} tickFormatter={v => dh(Number(v))} width={60} />
-                  <Tooltip formatter={(v: number) => `${dh(v)} DH`} />
+                  <Tooltip formatter={(v: number) => money(v, { decimals: 0 })} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   <Bar dataKey="grossPayroll" name="Brut (mensuels)" stackId="c" fill={SERIES.s1} stroke="#fff" strokeWidth={1} />
                   <Bar dataKey="employerCharges" name="Charges patronales" stackId="c" fill={SERIES.s2} stroke="#fff" strokeWidth={1} />

@@ -1,3 +1,4 @@
+import { money as fmtMoney } from '../../../utils/money';
 import { useQuery } from '@tanstack/react-query';
 import { History } from 'lucide-react';
 import { employeesApi } from '../../../api/employees.api';
@@ -5,7 +6,7 @@ import { SectionTitle } from '../ui';
 
 const FREQ_LABELS: Record<string, string> = { monthly: 'mensuelle', biweekly: 'quinzaine', weekly: 'hebdo' };
 
-const money = (v: unknown) => (v === null || v === undefined ? '—' : `${parseFloat(String(v)).toFixed(2)} DH`);
+const money = (v: unknown) => (v === null || v === undefined ? "—" : fmtMoney(parseFloat(String(v))));
 
 /**
  * Historique des changements de salaire / frequence de paie d'un employe

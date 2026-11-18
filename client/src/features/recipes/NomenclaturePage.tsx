@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useProdTerms } from '../../hooks/useProdTerms';
 import HistoryPanel from '../../components/audit/HistoryPanel';
@@ -19,7 +20,7 @@ import SubstitutesPanel from './SubstitutesPanel';
 import RecipeOutputsPanel from './RecipeOutputsPanel';
 import RecipeRoutingPanel from './RecipeRoutingPanel';
 
-const dh = (v: number) => `${v.toFixed(2)} DH`;
+const dh = (v: number) => money(v);
 
 export default function NomenclaturePage() {
   const T = useProdTerms();

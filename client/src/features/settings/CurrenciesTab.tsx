@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Loader2 } from 'lucide-react';
@@ -45,8 +46,8 @@ export default function CurrenciesTab() {
 
   return (
     <div className="odoo-scope" style={{ display: 'grid', gap: 12 }}>
-      <PageNote help="Stock, coût matière et comptabilité restent en DH. Un bon de commande ou un devis fournisseur saisi dans une autre devise fige le taux du jour, et chaque ligne garde son prix d'origine. Un taux est daté : les pièces passées gardent le leur.">
-        Taux = nombre de DH pour 1 unité de la devise. La tenue reste en DH.
+      <PageNote help={`Stock, coût matière et comptabilité restent en ${currencySymbol()}. Un bon de commande ou un devis fournisseur saisi dans une autre devise fige le taux du jour, et chaque ligne garde son prix d'origine. Un taux est daté : les pièces passées gardent le leur.`}>
+        Taux = nombre de {currencySymbol()} pour 1 unité de la devise. La tenue reste en {currencySymbol()}.
       </PageNote>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         {!newCur && canCreate('settings') && (
@@ -71,7 +72,7 @@ export default function CurrenciesTab() {
                 <td style={{ fontFamily: 'ui-monospace, monospace' }}>{c.code}</td>
                 <td>{c.label}{c.symbol ? ` (${c.symbol})` : ''}{c.is_base && <span className="odoo-tag odoo-tag-blue" style={{ marginLeft: 6 }}>devise de base</span>}</td>
                 <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                  {c.is_base ? '1' : c.rate ? <>1 {c.code} = <strong>{Number(c.rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })}</strong> DH</> : <span style={{ color: '#b85d1a' }}>aucun taux</span>}
+                  {c.is_base ? '1' : c.rate ? <>1 {c.code} = <strong>{Number(c.rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })}</strong> {currencySymbol()}</> : <span style={{ color: '#b85d1a' }}>aucun taux</span>}
                 </td>
                 <td>{c.is_base ? '—' : d(c.rate_date)}</td>
                 <td style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>{c.rate_source ?? ''}</td>
@@ -91,7 +92,7 @@ export default function CurrenciesTab() {
       {rateFor && (
         <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', background: 'var(--odoo-bg-alt)' }}>
           <div style={{ fontWeight: 600, width: '100%' }}>Nouveau taux pour {rateFor.code}</div>
-          <label style={{ ...lab, width: 200 }}>1 {rateFor.code} = … DH<input type="number" min={0} step="0.000001" style={field} value={rateFor.rate} onChange={e => setRateFor({ ...rateFor, rate: e.target.value })} autoFocus /></label>
+          <label style={{ ...lab, width: 200 }}>1 {rateFor.code} = … {currencySymbol()}<input type="number" min={0} step="0.000001" style={field} value={rateFor.rate} onChange={e => setRateFor({ ...rateFor, rate: e.target.value })} autoFocus /></label>
           <label style={{ ...lab, width: 170 }}>À partir du<input type="date" style={field} value={rateFor.validOn} onChange={e => setRateFor({ ...rateFor, validOn: e.target.value })} /></label>
           <label style={{ ...lab, flex: '1 1 220px' }}>Source<input style={field} maxLength={80} value={rateFor.source} onChange={e => setRateFor({ ...rateFor, source: e.target.value })} placeholder="Bank Al-Maghrib, banque, facture…" /></label>
           <button className="odoo-btn-secondary" onClick={() => setRateFor(null)}>Annuler</button>
@@ -106,7 +107,7 @@ export default function CurrenciesTab() {
             <table className="odoo-table">
               <thead><tr><th>Date</th><th style={{ textAlign: 'right' }}>1 {historyFor} =</th><th>Source</th><th>Saisi par</th></tr></thead>
               <tbody>{history.map(h => (
-                <tr key={h.id}><td>{d(h.valid_on)}</td><td style={{ textAlign: 'right' }}>{Number(h.rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })} DH</td><td style={{ color: 'var(--odoo-text-muted)' }}>{h.source ?? ''}</td><td style={{ color: 'var(--odoo-text-muted)' }}>{h.created_by_name ?? ''}</td></tr>
+                <tr key={h.id}><td>{d(h.valid_on)}</td><td style={{ textAlign: 'right' }}>{Number(h.rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })} {currencySymbol()}</td><td style={{ color: 'var(--odoo-text-muted)' }}>{h.source ?? ''}</td><td style={{ color: 'var(--odoo-text-muted)' }}>{h.created_by_name ?? ''}</td></tr>
               ))}</tbody>
             </table>
           )}
@@ -144,11 +145,11 @@ function Revaluation() {
                 <td style={{ textAlign: 'right' }}>{Number(r.exchange_rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })}</td>
                 <td style={{ textAlign: 'right' }}>{r.current_rate != null ? Number(r.current_rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 }) : '—'}</td>
                 <td style={{ textAlign: 'right', fontWeight: 600, color: (r.latent ?? 0) > 0 ? '#dc3545' : (r.latent ?? 0) < 0 ? '#198754' : undefined }}>
-                  {r.latent == null ? '—' : `${r.latent > 0 ? 'perte ' : r.latent < 0 ? 'gain ' : ''}${n2(Math.abs(r.latent))} DH`}</td>
+                  {r.latent == null ? '—' : `${r.latent > 0 ? 'perte ' : r.latent < 0 ? 'gain ' : ''}${money(Math.abs(r.latent))}`}</td>
               </tr>
             ))}</tbody>
             <tfoot><tr><td colSpan={5} style={{ textAlign: 'right' }}>Pertes latentes / gains latents</td>
-              <td style={{ textAlign: 'right', fontWeight: 700 }}><span style={{ color: '#dc3545' }}>{n2(data.latentLoss)}</span> / <span style={{ color: '#198754' }}>{n2(data.latentGain)}</span> DH</td></tr></tfoot>
+              <td style={{ textAlign: 'right', fontWeight: 700 }}><span style={{ color: '#dc3545' }}>{n2(data.latentLoss)}</span> / <span style={{ color: '#198754' }}>{n2(data.latentGain)}</span> {currencySymbol()}</td></tr></tfoot>
           </table>
         </div>
       )}

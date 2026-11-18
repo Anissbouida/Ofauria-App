@@ -1,3 +1,4 @@
+import { currencySymbol } from '../../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FilePlus2, RefreshCw, Hourglass, CircleStop, Plus, FileSignature, type LucideIcon } from 'lucide-react';
@@ -137,7 +138,7 @@ export default function EmployeeContracts({ employeeId, onChanged }: { employeeI
               </div>
               {form.contractType !== 'cdi' && field('endDate', 'Fin du contrat *', 'date')}
               {field('jobTitle', 'Poste')}
-              {field('monthlySalary', 'Salaire mensuel (DH)', 'number', { step: '0.01' })}
+              {field('monthlySalary', `Salaire mensuel (${currencySymbol()})`, 'number', { step: '0.01' })}
               {field('weeklyHours', 'Heures / semaine', 'number', { step: '0.5' })}
               {action === 'create' && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', marginTop: 20 }}>

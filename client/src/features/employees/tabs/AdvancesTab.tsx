@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../../utils/money';
 import { Fragment, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, advancesApi } from '../../../api/employees.api';
@@ -135,7 +136,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><HandCoins size={11} style={{ display: 'inline', marginRight: 4 }} />Avances en cours</div>
           <div className="odoo-stat-card-value" style={{ color: totalOutstanding > 0 ? '#b85d1a' : undefined }}>
-            {totalOutstanding.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span>
+            {totalOutstanding.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
           </div>
           <div className="odoo-stat-card-sub">à récupérer sur les paies</div>
         </div>
@@ -145,12 +146,12 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label">Total accordé{statusFilter === 'open' ? ' (en cours)' : ''}</div>
-          <div className="odoo-stat-card-value">{totalGranted.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-value">{totalGranted.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label">Déjà remboursé</div>
           <div className="odoo-stat-card-value" style={{ color: totalRepaid > 0 ? '#28a745' : undefined }}>
-            {totalRepaid.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span>
+            {totalRepaid.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
           </div>
         </div>
       </div>
@@ -228,7 +229,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                             {reps.length === 0 && (
                               <button onClick={async ev => {
                                 ev.stopPropagation();
-                                if (!(await confirm(`Supprimer l'avance de ${pn(a.amount).toFixed(2)} DH pour ${a.first_name} ${a.last_name} ?\n\nLe décaissement lié sera annulé (écriture comptable reversée).`,
+                                if (!(await confirm(`Supprimer l'avance de ${money(pn(a.amount))} pour ${a.first_name} ${a.last_name} ?\n\nLe décaissement lié sera annulé (écriture comptable reversée).`,
                                   { title: 'Supprimer l\'avance', confirmLabel: 'Supprimer', danger: true }))) return;
                                 deleteMutation.mutate(a.id as string);
                               }} className="odoo-pager-btn" title="Supprimer (aucun remboursement)" style={{ color: '#dc3545' }}>
@@ -298,7 +299,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                 options={(employees as Record<string, any>[]).filter(e2 => e2.is_active).map(e2 => ({ id: e2.id as string, label: `${e2.first_name as string} ${e2.last_name as string}` }))} />
             </Field>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <Field label="Montant (DH) *">
+              <Field label={`Montant (${currencySymbol()}) *`}>
                 <input name="amount" type="number" step="0.01" min="0.01" required
                   value={formAmount} onChange={e => setFormAmount(e.target.value)} className={inputCls} />
               </Field>
@@ -329,8 +330,8 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                 const lastAmount = Math.round((amountNum - monthlyNum * (nbMonths - 1)) * 100) / 100;
                 return (
                   <p style={{ ...HINT, color: 'var(--odoo-purple)' }}>
-                    Étalement : {nbMonths} paie{nbMonths > 1 ? 's' : ''} — {nbMonths > 1 ? `${nbMonths - 1} × ${monthlyNum.toFixed(2)} DH` : `${monthlyNum.toFixed(2)} DH`}
-                    {lastAmount !== monthlyNum && nbMonths > 1 ? ` + 1 × ${lastAmount.toFixed(2)} DH` : ''}
+                    Étalement : {nbMonths} paie{nbMonths > 1 ? 's' : ''} — {nbMonths > 1 ? `${nbMonths - 1} × ${money(monthlyNum)}` : money(monthlyNum)}
+                    {lastAmount !== monthlyNum && nbMonths > 1 ? ` + 1 × ${money(lastAmount)}` : ''}
                   </p>
                 );
               })()}
@@ -386,7 +387,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                 </StatusBanner>
               )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <Field label="Montant (DH) *">
+                <Field label={`Montant (${currencySymbol()}) *`}>
                   <input type="number" step="0.01" min="0.01" required disabled={hasReps}
                     value={editAmount} onChange={e => setEditAmount(e.target.value)} className={inputCls} />
                 </Field>
@@ -407,7 +408,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                 {(() => {
                   const monthlyNum = parseFloat(editMonthly) || 0;
                   if (monthlyNum <= 0) return (
-                    <p style={HINT}>Sans plan, tout le solde ({remaining.toFixed(2)} DH) sera proposé à la prochaine paie.</p>
+                    <p style={HINT}>Sans plan, tout le solde ({money(remaining)}) sera proposé à la prochaine paie.</p>
                   );
                   const refAmount = hasReps ? pn(editingAdvance.amount) : (parseFloat(editAmount) || 0);
                   if (monthlyNum > refAmount) return (
@@ -417,7 +418,7 @@ export default function AdvancesTab({ queryClient }: { queryClient: ReturnType<t
                   const nbLeft = Math.ceil(remaining / monthlyNum);
                   return (
                     <p style={{ ...HINT, color: 'var(--odoo-purple)' }}>
-                      Solde restant {remaining.toFixed(2)} DH → {nbLeft} paie{nbLeft > 1 ? 's' : ''} de {monthlyNum.toFixed(2)} DH max.
+                      Solde restant {money(remaining)} → {nbLeft} paie{nbLeft > 1 ? 's' : ''} de {money(monthlyNum)} max.
                     </p>
                   );
                 })()}

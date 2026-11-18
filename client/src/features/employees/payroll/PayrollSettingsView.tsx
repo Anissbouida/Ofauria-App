@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../../utils/money';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Save, Pencil, Info, Building2, Scale, ListChecks, CalendarDays, Clock } from 'lucide-react';
@@ -232,7 +233,7 @@ export default function PayrollSettingsView() {
             </span>
           </SectionTitle>
           <div style={grid}>
-            {field('cnssPlafond', 'Plafond CNSS mensuel', 'DH')}
+            {field('cnssPlafond', 'Plafond CNSS mensuel', currencySymbol())}
             {field('cnssRateEmployee', 'CNSS salarié', '%')}
             {field('cnssRateEmployer', 'CNSS patronal', '%')}
             {field('amoRateEmployee', 'AMO salarié', '%')}
@@ -241,17 +242,17 @@ export default function PayrollSettingsView() {
             {field('taxeFpRate', 'Taxe formation professionnelle', '%')}
             {field('fraisProRateBas', 'Frais pro (sous le seuil)', '%')}
             {field('fraisProRateHaut', 'Frais pro (au-dessus)', '%')}
-            {field('fraisProSeuilAnnuel', 'Seuil frais pro (brut annuel)', 'DH')}
-            {field('fraisProPlafondAnnuel', 'Plafond frais pro annuel', 'DH')}
-            {field('deductionFamilleAnnuelle', 'Charges de famille / personne / an', 'DH')}
+            {field('fraisProSeuilAnnuel', 'Seuil frais pro (brut annuel)', currencySymbol())}
+            {field('fraisProPlafondAnnuel', 'Plafond frais pro annuel', currencySymbol())}
+            {field('deductionFamilleAnnuelle', 'Charges de famille / personne / an', currencySymbol())}
             {field('maxPersonnesCharge', 'Personnes à charge max')}
-            {field('smigMonthly', 'SMIG mensuel (vide = non contrôlé)', 'DH')}
-            {field('smigHourly', 'SMIG horaire (vide = non contrôlé)', 'DH')}
+            {field('smigMonthly', 'SMIG mensuel (vide = non contrôlé)', currencySymbol())}
+            {field('smigHourly', 'SMIG horaire (vide = non contrôlé)', currencySymbol())}
           </div>
           <div>
             <span style={fieldLabel}>Barème IR annuel (IR = revenu net imposable × taux − somme à déduire)</span>
             <table className="odoo-table" style={{ maxWidth: 520 }}>
-              <thead><tr><th>Jusqu'à (DH/an)</th><th style={{ textAlign: 'right' }}>Taux</th><th style={{ textAlign: 'right' }}>Somme à déduire</th></tr></thead>
+              <thead><tr><th>Jusqu'à ({currencySymbol()}/an)</th><th style={{ textAlign: 'right' }}>Taux</th><th style={{ textAlign: 'right' }}>Somme à déduire</th></tr></thead>
               <tbody>
                 {brackets.map((b, i) => (
                   <tr key={i}>
@@ -329,7 +330,7 @@ export default function PayrollSettingsView() {
                 <td><span className={`odoo-tag ${r.kind === 'gain' ? 'odoo-tag-green' : 'odoo-tag-orange'}`}>{r.kind === 'gain' ? 'Gain' : 'Retenue'}</span></td>
                 <td style={{ textAlign: 'center' }}>{r.kind === 'gain' ? (r.soumis_cnss ? 'Soumis' : 'Exonéré') : '—'}</td>
                 <td style={{ textAlign: 'center' }}>{r.kind === 'gain' ? (r.soumis_ir ? 'Soumis' : 'Exonéré') : '—'}</td>
-                <td style={{ textAlign: 'right' }}>{r.plafond_exoneration_mensuel != null ? `${parseFloat(r.plafond_exoneration_mensuel).toFixed(2)} DH/mois` : '—'}</td>
+                <td style={{ textAlign: 'right' }}>{r.plafond_exoneration_mensuel != null ? `${money(parseFloat(r.plafond_exoneration_mensuel))}/mois` : '—'}</td>
                 <td><StatusTag tone={r.is_active ? 'done' : 'cancelled'} label={r.is_active ? 'Active' : 'Inactive'} /></td>
                 {isAdmin && <td><button className="odoo-pager-btn" title="Modifier" onClick={() => setEditRub({ ...r })}><Pencil size={13} /></button></td>}
               </tr>
@@ -369,7 +370,7 @@ export default function PayrollSettingsView() {
                 <label style={checkLabel}><input type="checkbox" checked={!!editRub.soumis_cnss} onChange={e => setEditRub({ ...editRub, soumis_cnss: e.target.checked })} /> Soumis CNSS/AMO</label>
                 <label style={checkLabel}><input type="checkbox" checked={!!editRub.soumis_ir} onChange={e => setEditRub({ ...editRub, soumis_ir: e.target.checked })} /> Soumis IR</label>
               </div>
-              <Field label="Exonéré jusqu'à (DH/mois, vide = pas de plafond)">
+              <Field label={`Exonéré jusqu'à (${currencySymbol()}/mois, vide = pas de plafond)`}>
                 <input className={inputCls} type="number" min="0" step="0.01" value={editRub.plafond_exoneration_mensuel ?? ''}
                   onChange={e => setEditRub({ ...editRub, plafond_exoneration_mensuel: e.target.value })} />
               </Field>

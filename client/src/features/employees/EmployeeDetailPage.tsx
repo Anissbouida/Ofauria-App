@@ -1,3 +1,4 @@
+import { money as fmtMoney, currencySymbol } from '../../utils/money';
 import PersonalDataExportButton from '../../components/PersonalDataExportButton';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -39,7 +40,7 @@ const str = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 const frDate = (s: string) => (s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : '');
 const money = (v: string | number) => {
   const n = typeof v === 'number' ? v : parseFloat(v);
-  return Number.isFinite(n) && n > 0 ? `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH` : '';
+  return Number.isFinite(n) && n > 0 ? fmtMoney(n) : '';
 };
 
 function toForm(e: Record<string, any> | null): Form {
@@ -416,10 +417,10 @@ export default function EmployeeDetailPage() {
               </Section>
               <Section icon={Banknote} title="Rémunération">
                 <Row {...p} label="Fréquence de paie" name="payFrequency" options={Object.entries(FREQ_LABELS).map(([value, label]) => ({ value, label }))} />
-                <Row {...p} label="Salaire mensuel" name="monthlySalary" type="number" suffix="DH"
+                <Row {...p} label="Salaire mensuel" name="monthlySalary" type="number" suffix={currencySymbol()}
                   hint={form.payFrequency === 'biweekly' ? 'Quinzaine : base mensuelle ÷ 26 par jour pointé' : undefined} />
                 {(isWeekly || (!editing && form.weeklySalary)) && (
-                  <Row {...p} label="Salaire hebdomadaire" name="weeklySalary" type="number" suffix="DH" hint="Proposé : mensuel × 12 ÷ 52, modifiable" />
+                  <Row {...p} label="Salaire hebdomadaire" name="weeklySalary" type="number" suffix={currencySymbol()} hint="Proposé : mensuel × 12 ÷ 52, modifiable" />
                 )}
                 <Row {...p} label="Personnes à charge" name="nbDependents" type="number" />
                 <Row {...p} label="Taux CIMR" name="cimrRate" type="number" suffix="%" />

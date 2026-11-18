@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileText, CalendarOff, HandCoins, Plus, X, Loader2, UserX, CalendarDays } from 'lucide-react';
@@ -111,7 +112,7 @@ export default function MySpace() {
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label">Avance à rembourser</div>
-          <div className="odoo-stat-card-value">{fmt(profile.advanceOutstanding)} DH</div>
+          <div className="odoo-stat-card-value">{money(profile.advanceOutstanding)}</div>
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label">Contrat</div>
@@ -214,7 +215,7 @@ export default function MySpace() {
         ) : undefined}>Mes avances sur salaire</SectionTitle>
         {advForm && (
           <div style={formBox}>
-            <Field label="Montant (DH)">
+            <Field label={`Montant (${currencySymbol()})`}>
               <input className={inputCls} type="number" min="0" step="10" value={advForm.amount} onChange={ev => setAdvForm({ ...advForm, amount: ev.target.value })} /></Field>
             <Field label="Retenue par paie (facultatif)">
               <input className={inputCls} type="number" min="0" step="10" value={advForm.monthlyDeduction} onChange={ev => setAdvForm({ ...advForm, monthlyDeduction: ev.target.value })} /></Field>

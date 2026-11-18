@@ -1,3 +1,4 @@
+import { money as fmtMoney, currencySymbol } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Percent, Plus, X, Loader2, Trash2, Pencil, Layers, Banknote, Link2 } from 'lucide-react';
@@ -15,7 +16,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 
-const money = (v: number | string) => `${(Number(v) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
+const money = (v: number | string) => fmtMoney(Number(v) || 0);
 const inp: React.CSSProperties = { padding: '0.4rem 0.55rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit' };
 const firstOfMonth = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10); };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -246,7 +247,7 @@ function Schemes() {
   const delScheme = useMutation({ mutationFn: (id: string) => commissionsApi.deleteScheme(id), onSuccess: invSchemes, onError: e => notify.error(apiErrorMessage(e)) });
   const delAssign = useMutation({ mutationFn: (id: string) => commissionsApi.unassign(id), onSuccess: invAssign, onError: e => notify.error(apiErrorMessage(e)) });
 
-  const tiersLabel = (s: CommissionScheme) => s.tiers.map(t => `≥${money(t.from_amount).replace(' DH', '')} → ${Number(t.rate_percent)}%`).join(' · ');
+  const tiersLabel = (s: CommissionScheme) => s.tiers.map(t => `≥${(Number(t.from_amount) || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} → ${Number(t.rate_percent)}%`).join(' · ');
 
   return (
     <>
@@ -346,7 +347,7 @@ function SchemeModal({ scheme, onClose, onSaved }: { scheme?: CommissionScheme; 
           <div>
             <span style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>Paliers progressifs (la tranche de CA au-delà du seuil est au taux indiqué)</span>
             <table className="odoo-table" style={{ marginTop: 6 }}>
-              <thead><tr><th>À partir de (DH de CA)</th><th style={{ width: 120 }}>Taux (%)</th><th style={{ width: 40 }} /></tr></thead>
+              <thead><tr><th>À partir de ({currencySymbol()} de CA)</th><th style={{ width: 120 }}>Taux (%)</th><th style={{ width: 40 }} /></tr></thead>
               <tbody>
                 {tiers.map((t, i) => (
                   <tr key={i}>

@@ -1,3 +1,4 @@
+import { currencySymbol } from '../../utils/money';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -608,7 +609,7 @@ function AppearanceTab() {
                     style={{ background: theme.themeBgCard, border: `1px solid ${theme.themeBgSeparator}` }}>
                     <div className="text-center text-2xl mb-2">{name === 'Pain complet' ? '🥖' : name === 'Croissant' ? '🥐' : '🧁'}</div>
                     <p className="text-sm font-semibold" style={{ color: theme.themeTextStrong }}>{name}</p>
-                    <p className="text-sm font-bold" style={{ color: theme.themeAccent }}>8.00 DH</p>
+                    <p className="text-sm font-bold" style={{ color: theme.themeAccent }}>8.00 {currencySymbol()}</p>
                     <p className="text-xs" style={{ color: theme.themeTextMuted }}>Stock: 24</p>
                   </div>
                 ))}
@@ -647,7 +648,7 @@ function AppearanceTab() {
                 </div>
                 <div className="pt-2 flex justify-between font-bold text-sm"
                   style={{ borderTop: `1px solid ${theme.themeBgSeparator}`, color: theme.themeAccent }}>
-                  <span>Total</span><span>26.50 DH</span>
+                  <span>Total</span><span>26.50 {currencySymbol()}</span>
                 </div>
               </div>
               <div className="p-2">
@@ -895,13 +896,13 @@ function PrintTab() {
                 <div>
                   <div style={{ fontWeight: 'bold' }}>Pain complet</div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '6px' }}>
-                    <span>2 x 8.00 DH</span>
-                    <span style={{ fontWeight: 'bold' }}>16.00 DH</span>
+                    <span>2 x 8.00 {currencySymbol()}</span>
+                    <span style={{ fontWeight: 'bold' }}>16.00 {currencySymbol()}</span>
                   </div>
                   <div style={{ fontWeight: 'bold', marginTop: '2px' }}>Croissant beurre</div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '6px' }}>
-                    <span>3 x 5.00 DH</span>
-                    <span style={{ fontWeight: 'bold' }}>15.00 DH</span>
+                    <span>3 x 5.00 {currencySymbol()}</span>
+                    <span style={{ fontWeight: 'bold' }}>15.00 {currencySymbol()}</span>
                   </div>
                 </div>
 
@@ -910,12 +911,12 @@ function PrintTab() {
                 {/* Totals */}
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Sous-total</span>
-                  <span>31.00 DH</span>
+                  <span>31.00 {currencySymbol()}</span>
                 </div>
                 <div style={{ borderTop: '2px solid #000', margin: '3px 0' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: `${receiptFontSize}px` }}>
                   <span>TOTAL</span>
-                  <span>31.00 DH</span>
+                  <span>31.00 {currencySymbol()}</span>
                 </div>
 
                 <div style={{ borderTop: '1px dashed #000', margin: '4px 0' }} />
@@ -927,10 +928,10 @@ function PrintTab() {
                 {receiptShowPaymentDetail && (
                   <div style={{ fontSize: `${Math.max(receiptFontSize - 2, 8)}px` }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Montant donne</span><span>50.00 DH</span>
+                      <span>Montant donne</span><span>50.00 {currencySymbol()}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                      <span>Monnaie rendue</span><span>19.00 DH</span>
+                      <span>Monnaie rendue</span><span>19.00 {currencySymbol()}</span>
                     </div>
                   </div>
                 )}

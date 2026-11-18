@@ -1,3 +1,4 @@
+import { currencySymbol } from '../../utils/money';
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Building2, MapPin, IdCard, CheckCircle2, AlertTriangle, Eye, HelpCircle, ExternalLink } from 'lucide-react';
@@ -232,7 +233,7 @@ export default function CompanyPage({ onOpen, onLeave }: {
                   <div>
                     {formLabel(d.legalForm)}
                     {capitalRequired && (d.legalCapital && !capitalInvalid
-                      ? <> au capital de {Number(d.legalCapital).toLocaleString('fr-FR')} DH</>
+                      ? <> au capital de {Number(d.legalCapital).toLocaleString('fr-FR')} {currencySymbol()}</>
                       : <> au capital de <span className="miss">à compléter</span></>)}
                   </div>
                 )}

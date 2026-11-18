@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { Fragment, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -80,7 +81,7 @@ export default function ProjectDetailPage() {
   const feed = [
     ...tasks.filter(t => t.completed_at).map(t => ({ at: t.completed_at!, text: `${t.assignee_name ? `${t.assignee_name} a terminé` : 'Terminé :'} « ${t.title} »` })),
     ...(time?.rows ?? []).map(t => ({ at: t.created_at, text: `${t.employee_name} : ${h1(t.hours)} h${t.task_title ? ` sur « ${t.task_title} »` : ''}` })),
-    ...purchases.map(i => ({ at: i.invoice_date, text: `Facture ${i.invoice_number} rattachée (${n0(i.amount)} DH)` })),
+    ...purchases.map(i => ({ at: i.invoice_date, text: `Facture ${i.invoice_number} rattachée (${money(i.amount, { decimals: 0 })})` })),
     { at: p.created_at, text: `Projet créé${p.created_by_name ? ` par ${p.created_by_name}` : ''}` },
   ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6);
 
@@ -157,15 +158,15 @@ export default function ProjectDetailPage() {
           </div>
           <div className="prj-kpi">
             <div className="prj-kpi-head"><span>Coûts engagés</span><span>{use && use.label !== 'Heures / prévu' ? `sur ${use.of}` : 'MO + achats'}</span></div>
-            <div className="prj-kpi-value">{n0(totalCost)} DH</div>
+            <div className="prj-kpi-value">{money(totalCost, { decimals: 0 })}</div>
             {use && use.label !== 'Heures / prévu'
               ? <div className={`prj-bar ${usageTone(use.pct)}`}><span style={{ width: `${Math.min(use.pct, 100)}%` }} /></div>
               : <div className="prj-kpi-sub">MO {n0(laborCost)} · achats {n0(externalCost)}</div>}
           </div>
           <div className="prj-kpi">
             <div className="prj-kpi-head"><span>Marge</span><span>{BILLING_LABELS[p.billing_type]}</span></div>
-            <div className="prj-kpi-value" style={{ color: revenue ? (margin < 0 ? 'var(--prj-red)' : 'var(--prj-green)') : undefined }}>{revenue ? `${n0(margin)} DH` : '—'}</div>
-            <div className="prj-kpi-sub">{revenue ? `${Math.round((margin / revenue) * 100)} % de ${n0(revenue)} DH` : 'projet non facturé'}</div>
+            <div className="prj-kpi-value" style={{ color: revenue ? (margin < 0 ? 'var(--prj-red)' : 'var(--prj-green)') : undefined }}>{revenue ? money(margin, { decimals: 0 }) : '—'}</div>
+            <div className="prj-kpi-sub">{revenue ? `${Math.round((margin / revenue) * 100)} % de ${money(revenue, { decimals: 0 })}` : 'projet non facturé'}</div>
           </div>
         </section>
 
@@ -286,16 +287,16 @@ export default function ProjectDetailPage() {
                 {margin > 0 && <span style={{ width: seg(margin), background: 'var(--prj-green)' }} />}
               </div>
               <dl className="prj-legend">
-                <dt><span className="prj-swatch" style={{ background: 'var(--odoo-purple)' }} />Achats rattachés</dt><dd>{n0(externalCost)} DH</dd>
-                <dt><span className="prj-swatch" style={{ background: 'color-mix(in srgb, var(--odoo-purple) 45%, transparent)' }} />Main-d’œuvre ({h1(p.hours_spent)} h)</dt><dd>{n0(laborCost)} DH</dd>
+                <dt><span className="prj-swatch" style={{ background: 'var(--odoo-purple)' }} />Achats rattachés</dt><dd>{money(externalCost, { decimals: 0 })}</dd>
+                <dt><span className="prj-swatch" style={{ background: 'color-mix(in srgb, var(--odoo-purple) 45%, transparent)' }} />Main-d’œuvre ({h1(p.hours_spent)} h)</dt><dd>{money(laborCost, { decimals: 0 })}</dd>
                 {revenue > 0 && <>
                   <dt><span className="prj-swatch" style={{ background: margin < 0 ? 'var(--prj-red)' : 'var(--prj-green)' }} />{margin < 0 ? 'Perte' : 'Marge'}</dt>
-                  <dd style={{ color: margin < 0 ? 'var(--prj-red)' : 'var(--prj-green)' }}>{n0(margin)} DH</dd>
+                  <dd style={{ color: margin < 0 ? 'var(--prj-red)' : 'var(--prj-green)' }}>{money(margin, { decimals: 0 })}</dd>
                 </>}
               </dl>
               <div style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', borderTop: '1px solid var(--odoo-border)', paddingTop: 10 }}>
-                {revenue > 0 ? `${p.billing_type === 'fixed' ? 'Forfait' : 'Facturable'} ${n0(revenue)} DH` : 'Projet non facturé'}
-                {p.billing_type === 'time' && Number(p.unbilled_amount) > 0 ? ` · reste à facturer ${n0(p.unbilled_amount)} DH` : ''}
+                {revenue > 0 ? `${p.billing_type === 'fixed' ? 'Forfait' : 'Facturable'} ${money(revenue, { decimals: 0 })}` : 'Projet non facturé'}
+                {p.billing_type === 'time' && Number(p.unbilled_amount) > 0 ? ` · reste à facturer ${money(p.unbilled_amount, { decimals: 0 })}` : ''}
               </div>
             </section>
 
@@ -303,8 +304,8 @@ export default function ProjectDetailPage() {
               <h2>Informations</h2>
               <dl className="prj-dl">
                 <dt>Dates</dt><dd>{fmtDay(p.start_date) ?? '…'} → {fmtDay(p.due_date) ?? '…'}</dd>
-                <dt>Facturation</dt><dd>{BILLING_LABELS[p.billing_type]}{p.billing_type === 'time' && p.hourly_rate ? ` · ${n2(p.hourly_rate)} DH/h` : ''}</dd>
-                {p.billing_type !== 'fixed' && p.budget_amount && <><dt>Budget</dt><dd>{n0(p.budget_amount)} DH</dd></>}
+                <dt>Facturation</dt><dd>{BILLING_LABELS[p.billing_type]}{p.billing_type === 'time' && p.hourly_rate ? ` · ${money(p.hourly_rate)}/h` : ''}</dd>
+                {p.billing_type !== 'fixed' && p.budget_amount && <><dt>Budget</dt><dd>{money(p.budget_amount, { decimals: 0 })}</dd></>}
                 <dt>Responsable</dt><dd>{p.manager_name || '—'}</dd>
                 <dt>Créé le</dt><dd>{fmtDay(p.created_at)}{p.created_by_name ? ` par ${p.created_by_name}` : ''}</dd>
               </dl>

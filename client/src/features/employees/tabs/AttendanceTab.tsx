@@ -1,3 +1,4 @@
+import { money } from '../../../utils/money';
 import { useState } from 'react';
 import SearchSelect from '../../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -179,15 +180,15 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                         <span style={{ color: 'var(--odoo-text-light)', fontSize: '0.6875rem' }}> / {baseDays}</span>
                       </td>
                       <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
-                        {baseSalary > 0 ? `${baseSalary.toFixed(2)} DH` : '—'}
+                        {baseSalary > 0 ? money(baseSalary) : '—'}
                       </td>
                       <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
-                        {baseSalary > 0 ? `${dailyRate.toFixed(2)} DH` : '—'}
+                        {baseSalary > 0 ? money(dailyRate) : '—'}
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>
                         {baseSalary > 0 ? (
                           <span style={{ fontWeight: 700, color: calculatedSalary < baseSalary ? '#dc3545' : '#155724' }}>
-                            {calculatedSalary.toFixed(2)} DH
+                            {money(calculatedSalary)}
                           </span>
                         ) : '—'}
                       </td>
@@ -202,11 +203,11 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                     {Math.round(filteredEmployees.reduce((sum, emp) => sum + getEmployeeMonthlySummary(emp.id as string).workedDays, 0) * 100) / 100}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700, padding: '0.5rem 0.75rem' }}>
-                    {filteredEmployees.reduce((sum, emp) => sum + getEmployeeMonthlySummary(emp.id as string).baseSalary, 0).toFixed(2)} DH
+                    {money(filteredEmployees.reduce((sum, emp) => sum + getEmployeeMonthlySummary(emp.id as string).baseSalary, 0))}
                   </td>
                   <td></td>
                   <td style={{ textAlign: 'right', fontWeight: 700, padding: '0.5rem 0.75rem' }}>
-                    {filteredEmployees.reduce((sum, emp) => sum + (getEmployeeMonthlySummary(emp.id as string).attendanceSalary ?? 0), 0).toFixed(2)} DH
+                    {money(filteredEmployees.reduce((sum, emp) => sum + (getEmployeeMonthlySummary(emp.id as string).attendanceSalary ?? 0), 0))}
                   </td>
                 </tr>
               </tfoot>

@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -9,8 +10,8 @@ import { reportsApi } from '../../api/reports.api';
 import { ListKpi } from '../sales/ListTemplate';
 
 type DatePreset = 'today' | '7d' | '30d' | '90d' | 'custom';
-const dh = (v: number) => new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v || 0) + ' DH';
-const dh2 = (v: number) => new Intl.NumberFormat('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0) + ' DH';
+const dh = (v: number) => money(v || 0, { decimals: 0 });
+const dh2 = (v: number) => money(v || 0);
 const int = (v: number) => new Intl.NumberFormat('fr-FR').format(Math.round(v || 0));
 const pct = (v: number) => `${(v || 0).toFixed(1)} %`;
 const addDays = (d: string, n: number) => new Date(Date.parse(d + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);

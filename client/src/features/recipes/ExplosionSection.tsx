@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Layers, Loader2 } from 'lucide-react';
@@ -15,7 +16,7 @@ export default function ExplosionSection({ recipeId }: { recipeId: string }) {
     queryFn: () => recipesApi.explosion(recipeId),
     enabled: open,
   });
-  const dh = (n: number) => `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
+  const dh = (n: number) => money(n);
   const total = data?.total_cost ?? 0;
 
   return (

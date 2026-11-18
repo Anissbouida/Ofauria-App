@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useProdTerms } from '../../hooks/useProdTerms';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -41,7 +42,7 @@ const ROLE_COLOR: Record<string, string> = {
   nappage: 'bg-teal-100 text-teal-800', glacage: 'bg-blue-100 text-blue-800',
   decor: 'bg-pink-100 text-pink-800', emballage: 'bg-gray-100 text-gray-700',
 };
-const dh = (v: number | null | undefined) => (v == null ? '—' : `${v.toFixed(2)} DH`);
+const dh = (v: number | null | undefined) => (v == null ? '—' : money(v));
 const DIACRITICS = new RegExp('[\\u0300-\\u036f]', 'g');
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(DIACRITICS, '');
 let seq = 0;
@@ -96,14 +97,14 @@ function SourcePicker({ options, value, onPick }: {
           {recipes.map((o) => (
             <button key={`recipe:${o.id}`} type="button" onClick={() => { onPick(o); setOpen(false); setQ(''); }}
               className="w-full px-3 py-1.5 text-left text-sm hover:bg-primary-50 flex justify-between gap-2">
-              <span>{o.name}</span><span className="text-gray-400 shrink-0">{o.cost.toFixed(2)} DH/{o.unit}</span>
+              <span>{o.name}</span><span className="text-gray-400 shrink-0">{money(o.cost)}/{o.unit}</span>
             </button>
           ))}
           {ingredients.length > 0 && <div className="px-3 pt-2 pb-1 text-[11px] uppercase text-gray-400">Ingrédients</div>}
           {ingredients.map((o) => (
             <button key={`ingredient:${o.id}`} type="button" onClick={() => { onPick(o); setOpen(false); setQ(''); }}
               className="w-full px-3 py-1.5 text-left text-sm hover:bg-primary-50 flex justify-between gap-2">
-              <span>{o.name}</span><span className="text-gray-400 shrink-0">{o.cost.toFixed(2)} DH/{o.unit}</span>
+              <span>{o.name}</span><span className="text-gray-400 shrink-0">{money(o.cost)}/{o.unit}</span>
             </button>
           ))}
           {filtered.length === 0 && <div className="px-3 py-3 text-sm text-gray-400">Aucun résultat</div>}
@@ -919,9 +920,9 @@ export default function NomenclatureEditor({ recipeId, onSaved, onFinance, onCan
             <div className="p-3">
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 {[
-                  { id: 'fin-mo', lbl: "Main d'œuvre", sfx: 'DH/h', val: tauxMO, set: setTauxMO, ph: 'ex 30', step: 'any' },
+                  { id: 'fin-mo', lbl: "Main d'œuvre", sfx: `${currencySymbol()}/h`, val: tauxMO, set: setTauxMO, ph: 'ex 30', step: 'any' },
                   { id: 'fin-temps', lbl: `Temps / ${bLc}`, sfx: 'min', val: moMin, set: setMoMin, ph: dureeEtapes > 0 ? `étapes ${dureeEtapes}` : 'ex 90', step: '1' },
-                  { id: 'fin-energie', lbl: 'Énergie', sfx: 'DH/four.', val: energie, set: setEnergie, ph: 'ex 15', step: 'any' },
+                  { id: 'fin-energie', lbl: 'Énergie', sfx: `${currencySymbol()}/four.`, val: energie, set: setEnergie, ph: 'ex 15', step: 'any' },
                   { id: 'fin-structure', lbl: 'Structure', sfx: '%', val: structPct, set: setStructPct, ph: 'ex 15', step: 'any' },
                   { id: 'fin-mult', lbl: 'Multiplicateur', sfx: '×', val: mult, set: setMult, ph: 'ex 3', step: 'any' },
                 ].map((fld) => (
@@ -1093,7 +1094,7 @@ function PosLinkPanel({
                 onChange={setChoice}
                 options={products.map((p) => ({
                   id: String(p.id),
-                  label: `${p.name} · ${parseFloat(String(p.price ?? 0)).toFixed(2)} DH`,
+                  label: `${p.name} · ${money(parseFloat(String(p.price ?? 0)))}`,
                 }))}
               />
               <button type="button" disabled={linkMut.isPending}
@@ -1127,18 +1128,18 @@ function PosLinkPanel({
         <div className={`mt-3 grid grid-cols-3 gap-2 rounded-md border px-3 py-2 text-sm ${gapBg}`}>
           <div>
             <div className="text-[11px] text-gray-500">Prix calculé</div>
-            <div className="tabular-nums font-medium text-gray-800">{priceCalc.toFixed(2)} DH</div>
+            <div className="tabular-nums font-medium text-gray-800">{money(priceCalc)}</div>
           </div>
           <div>
             <div className="text-[11px] text-gray-500">Prix POS</div>
-            <div className="tabular-nums font-medium text-gray-800">{posPrice.toFixed(2)} DH</div>
+            <div className="tabular-nums font-medium text-gray-800">{money(posPrice)}</div>
           </div>
           <div>
             <div className="text-[11px] text-gray-500">Écart</div>
             <div className={`tabular-nums font-semibold ${gapColor}`}>
               {gap == null ? '—'
-                : Math.abs(gap!) < 0.01 ? '0,00 DH · 0 %'
-                : `${gap! > 0 ? '+' : ''}${gap!.toFixed(2)} DH · ${gapPct! > 0 ? '+' : ''}${gapPct!.toFixed(1)} %`}
+                : Math.abs(gap!) < 0.01 ? `${money(0)} · 0 %`
+                : `${gap! > 0 ? '+' : ''}${money(gap!)} · ${gapPct! > 0 ? '+' : ''}${gapPct!.toFixed(1)} %`}
             </div>
           </div>
         </div>

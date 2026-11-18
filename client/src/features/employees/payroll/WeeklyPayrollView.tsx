@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../../utils/money';
 import PayrollPayDialog from './PayrollPayDialog';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -167,8 +168,8 @@ export default function WeeklyPayrollView({ queryClient }: { queryClient: Return
       : stageFilter === 'paid' ? !!r.paid : true);
   const stageStats = {
     togenerate: { count: ungenerated.length, sub: '' },
-    topay: { count: generated.length - paidCount, sub: `${totalDue.toFixed(2)} DH` },
-    paid: { count: paidCount, sub: `${totalPaid.toFixed(2)} DH` },
+    topay: { count: generated.length - paidCount, sub: money(totalDue) },
+    paid: { count: paidCount, sub: money(totalPaid) },
   };
 
   const isCurrentWeek = weekOffset === 0;
@@ -218,11 +219,11 @@ export default function WeeklyPayrollView({ queryClient }: { queryClient: Return
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><Check size={11} style={{ display: 'inline', marginRight: 4 }} />Versé</div>
-          <div className="odoo-stat-card-value" style={{ color: totalPaid > 0 ? '#28a745' : undefined }}>{totalPaid.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-value" style={{ color: totalPaid > 0 ? '#28a745' : undefined }}>{totalPaid.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><Banknote size={11} style={{ display: 'inline', marginRight: 4 }} />Reste dû</div>
-          <div className="odoo-stat-card-value" style={{ color: totalDue > 0 ? '#dc3545' : undefined }}>{totalDue.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-value" style={{ color: totalDue > 0 ? '#dc3545' : undefined }}>{totalDue.toFixed(2)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
         </div>
       </div>
 
@@ -271,7 +272,7 @@ export default function WeeklyPayrollView({ queryClient }: { queryClient: Return
                       </span>
                     </td>
                     <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
-                      {r.weekly_salary ? `${parseFloat(r.weekly_salary).toFixed(2)} DH` : <span style={{ color: '#dc3545' }}>Non défini</span>}
+                      {r.weekly_salary ? money(parseFloat(r.weekly_salary)) : <span style={{ color: '#dc3545' }}>Non défini</span>}
                     </td>
                     {generated ? (
                       <>
@@ -297,7 +298,7 @@ export default function WeeklyPayrollView({ queryClient }: { queryClient: Return
                               ? <span style={{ color: '#b85d1a', fontWeight: 500 }} title="Retenue d'avance sur cette paie">− {parseFloat(r.advance_deduction || '0').toFixed(2)}</span>
                               : <span style={{ color: 'var(--odoo-text-light)' }}>—</span>
                           ) : (outstandingByEmp.get(r.employee_id) || 0) > 0 ? (
-                            <span className="odoo-tag odoo-tag-orange" title={`Avance en cours : ${(outstandingByEmp.get(r.employee_id) || 0).toFixed(2)} DH — retenue proposée au paiement`}>
+                            <span className="odoo-tag odoo-tag-orange" title={`Avance en cours : ${money((outstandingByEmp.get(r.employee_id) || 0))} — retenue proposée au paiement`}>
                               <HandCoins size={10} style={{ marginRight: 2 }} />
                               {(outstandingByEmp.get(r.employee_id) || 0).toFixed(2)}
                             </span>
@@ -319,12 +320,12 @@ export default function WeeklyPayrollView({ queryClient }: { queryClient: Return
                                 brut {parseFloat(r.gross_amount || '0').toFixed(2)} − retenue prov. {wh.toFixed(2)}
                               </div>
                             );
-                            if (ded <= 0.005) return <>{net.toFixed(2)} DH{whNote}</>;
+                            if (ded <= 0.005) return <>{money(net)}{whNote}</>;
                             return (
                               <span title={paid
                                 ? `Net ${net.toFixed(2)} − retenue avance ${ded.toFixed(2)} = versé ${verse.toFixed(2)}`
                                 : `Net dû ${net.toFixed(2)} − retenue proposée ${ded.toFixed(2)} (modifiable au paiement)`}>
-                                {verse.toFixed(2)} DH
+                                {money(verse)}
                                 <div style={{ fontSize: '0.625rem', fontWeight: 400, color: 'var(--odoo-text-muted)' }}>
                                   net {net.toFixed(2)}
                                 </div>
@@ -382,20 +383,20 @@ export default function WeeklyPayrollView({ queryClient }: { queryClient: Return
                 <tr>
                   <td colSpan={6} style={{ padding: '0.5rem 0.75rem', fontWeight: 700 }}>Total semaine</td>
                   <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700 }}>
-                    {generated.reduce((s, r) => s + parseFloat(r.base_amount || '0'), 0).toFixed(2)} DH
+                    {money(generated.reduce((s, r) => s + parseFloat(r.base_amount || '0'), 0))}
                   </td>
                   <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#b85d1a' }}>
-                    {generated.reduce((s, r) => s + parseFloat(r.overtime_amount || '0'), 0).toFixed(2)} DH
+                    {money(generated.reduce((s, r) => s + parseFloat(r.overtime_amount || '0'), 0))}
                   </td>
                   <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#b85d1a' }} title="Retenues d'avance effectuées sur les paies payées">
                     {(() => {
                       const t = generated.reduce((s, r) => s + parseFloat(r.advance_deduction || '0'), 0);
-                      return t > 0 ? `− ${t.toFixed(2)} DH` : '—';
+                      return t > 0 ? `− ${money(t)}` : '—';
                     })()}
                   </td>
                   <td style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: '#155724' }}
                     title="Total à verser (net moins retenues d'avance)">
-                    {generated.reduce((s, r) => s + cashOutOf(r), 0).toFixed(2)} DH
+                    {money(generated.reduce((s, r) => s + cashOutOf(r), 0))}
                   </td>
                   <td></td>
                 </tr>

@@ -1,3 +1,4 @@
+import { currencySymbol } from '../../utils/money';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { GitMerge, Loader2, AlertTriangle, Info } from 'lucide-react';
@@ -36,7 +37,7 @@ export default function IngredientMergeCard() {
     queryKey: ['ingredients'], queryFn: ingredientsApi.list,
   });
   const options = useMemo(() => ingredients.map(i => ({
-    id: i.id, label: i.name, detail: `${fmt(Number(i.unit_cost) || 0, 4)} DH / ${i.unit}`,
+    id: i.id, label: i.name, detail: `${fmt(Number(i.unit_cost) || 0, 4)} ${currencySymbol()} / ${i.unit}`,
   })), [ingredients]);
 
   const ready = Boolean(sourceId && targetId && sourceId !== targetId);
@@ -101,7 +102,7 @@ export default function IngredientMergeCard() {
             <StatusBanner tone="info" icon={Info} title="Ce que fera la fusion">
               {preview.impact.recipes} fiche{preview.impact.recipes > 1 ? 's' : ''} technique{preview.impact.recipes > 1 ? 's' : ''},{' '}
               {preview.impact.lots} lot{preview.impact.lots > 1 ? 's' : ''} et {preview.impact.purchaseOrders} bon{preview.impact.purchaseOrders > 1 ? 's' : ''} de commande
-              {' '}passeront sur « {preview.target.name} ». Coût unitaire : {fmt(preview.impact.unitCostBefore, 4)} → <strong>{fmt(preview.impact.unitCostAfter, 4)} DH / {preview.target.unit}</strong>.
+              {' '}passeront sur « {preview.target.name} ». Coût unitaire : {fmt(preview.impact.unitCostBefore, 4)} → <strong>{fmt(preview.impact.unitCostAfter, 4)} {currencySymbol()} / {preview.target.unit}</strong>.
             </StatusBanner>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 12, alignItems: 'start' }}>
               <table className="odoo-table" style={{ width: '100%' }}>

@@ -1,3 +1,4 @@
+import { money } from '../../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, ListPlus } from 'lucide-react';
@@ -69,7 +70,7 @@ export default function EmployeePayrollItems({ employeeId }: { employeeId: strin
               return (
                 <tr key={i.id} style={{ opacity: ended ? 0.5 : 1 }}>
                   <td>{i.kind === 'retenue' ? '− ' : '+ '}{i.rubrique_label}</td>
-                  <td style={{ textAlign: 'right' }}>{parseFloat(i.amount).toFixed(2)} DH</td>
+                  <td style={{ textAlign: 'right' }}>{money(parseFloat(i.amount))}</td>
                   <td style={{ fontSize: '0.75rem' }}>{fr(i.start_date)} → {i.end_date ? fr(i.end_date) : 'en cours'}</td>
                   <td>
                     <div style={{ display: 'inline-flex', gap: 2 }}>

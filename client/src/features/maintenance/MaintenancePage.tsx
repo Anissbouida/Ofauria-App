@@ -1,3 +1,4 @@
+import { money, currencySymbol } from '../../utils/money';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -157,7 +158,7 @@ function Overview({ onOpen }: { onOpen: (id: string) => void }) {
         {kpi('Planifiées / en cours', String(data.interventions.scheduled + data.interventions.in_progress), `${data.interventions.overdue} en retard`, data.interventions.overdue > 0)}
         {kpi('Entretiens à échéance', String(data.plans.overdue + data.plans.due_soon), `${data.plans.overdue} dépassé(s) · ${data.plans.active} plans actifs`, data.plans.overdue > 0)}
         {kpi('Terminées sur la période', String(data.done.count), `${data.done.preventive} préventives · ${data.done.corrective} dépannages`)}
-        {kpi('Coût sur la période', `${n2(data.done.cost)} DH`, 'pièces + main-d\'œuvre')}
+        {kpi('Coût sur la période', money(data.done.cost), 'pièces + main-d\'œuvre')}
         {kpi('Arrêt matériel', `${Number(data.done.downtime).toLocaleString('fr-FR')} h`, 'temps d\'indisponibilité')}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16 }}>
@@ -248,7 +249,7 @@ function EquipmentReport() {
       </div>
       {isLoading ? <Loading /> : data.length === 0 ? <StatusBanner tone="info" icon={BarChart3} title="Aucune intervention sur la période">Le coût par équipement apparaît dès la première intervention terminée.</StatusBanner> : (
         <table className="odoo-table">
-          <thead><tr><th>Équipement</th><th>Client</th><th style={{ textAlign: 'right' }}>Interventions</th><th style={{ textAlign: 'right' }}>Dépannages</th><th style={{ textAlign: 'right' }}>Ouvertes</th><th style={{ textAlign: 'right' }}>Arrêt (h)</th><th style={{ textAlign: 'right' }}>Coût (DH)</th><th>Dernière</th></tr></thead>
+          <thead><tr><th>Équipement</th><th>Client</th><th style={{ textAlign: 'right' }}>Interventions</th><th style={{ textAlign: 'right' }}>Dépannages</th><th style={{ textAlign: 'right' }}>Ouvertes</th><th style={{ textAlign: 'right' }}>Arrêt (h)</th><th style={{ textAlign: 'right' }}>Coût ({currencySymbol()})</th><th>Dernière</th></tr></thead>
           <tbody>{data.map((r, i) => (
             <tr key={i}>
               <td><strong>{r.equipment_name}</strong>{r.fixed_asset_id ? <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>immobilisation</span> : null}</td>
@@ -339,7 +340,7 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
                   <strong style={{ fontSize: '0.875rem' }}>Compte rendu</strong>
                   <textarea className="input" style={{ minHeight: 70 }} value={done.workDone} onChange={e => setDone({ ...done, workDone: e.target.value })} placeholder="Travail réalisé, pièces changées, état constaté…" />
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-                    {([['laborHours', 'Heures main-d\'œuvre'], ['laborRate', 'Taux horaire (DH)'], ['partsCost', 'Pièces (DH)'], ['downtimeHours', 'Arrêt matériel (h)']] as const).map(([k, l]) => (
+                    {([['laborHours', 'Heures main-d\'œuvre'], ['laborRate', `Taux horaire (${currencySymbol()})`], ['partsCost', `Pièces (${currencySymbol()})`], ['downtimeHours', 'Arrêt matériel (h)']] as const).map(([k, l]) => (
                       <div key={k}><span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', display: 'block', marginBottom: 4 }}>{l}</span><input className="input" type="number" min="0" step="0.25" style={{ width: '100%' }} value={done[k]} onChange={e => setDone({ ...done, [k]: e.target.value })} /></div>
                     ))}
                   </div>
@@ -373,9 +374,9 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
               </div>
 
               {i.status === 'done' && (
-                <StatusBanner tone="success" icon={CheckCircle2} title={`Terminée · coût ${n2(i.total_cost)} DH`}>
+                <StatusBanner tone="success" icon={CheckCircle2} title={`Terminée · coût ${money(i.total_cost)}`}>
                   {i.work_done}<br />
-                  <span style={{ fontSize: '0.75rem' }}>{Number(i.labor_hours ?? 0).toLocaleString('fr-FR')} h × {n2(i.labor_rate)} DH + pièces {n2(i.parts_cost)} DH{i.downtime_hours ? ` · arrêt ${Number(i.downtime_hours).toLocaleString('fr-FR')} h` : ''}</span>
+                  <span style={{ fontSize: '0.75rem' }}>{Number(i.labor_hours ?? 0).toLocaleString('fr-FR')} h × {money(i.labor_rate)} + pièces {money(i.parts_cost)}{i.downtime_hours ? ` · arrêt ${Number(i.downtime_hours).toLocaleString('fr-FR')} h` : ''}</span>
                 </StatusBanner>
               )}
 

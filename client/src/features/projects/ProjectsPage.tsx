@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -169,7 +170,7 @@ function ProjectList({ onPlanning }: { onPlanning: () => void }) {
         <div className="prj-kpi"><div className="prj-kpi-head">En cours</div><div className="prj-kpi-value">{running}</div><div className="prj-kpi-sub">{drafts} brouillon{drafts > 1 ? 's' : ''} à lancer</div></div>
         <div className="prj-kpi"><div className="prj-kpi-head">À surveiller</div><div className="prj-kpi-value" style={{ color: attention.length ? 'var(--prj-red)' : undefined }}>{attention.length}</div>
           <div className="prj-kpi-sub">{attention.length ? `${lateCount} en retard · ${attention.length - lateCount} autre${attention.length - lateCount > 1 ? 's' : ''}` : 'rien à signaler'}</div></div>
-        <div className="prj-kpi"><div className="prj-kpi-head">Heures ce mois</div><div className="prj-kpi-value">{ov ? `${h1(ov.time.hours)} h` : '…'}</div><div className="prj-kpi-sub">{ov ? `coût ${n0(ov.time.cost)} DH` : ''}</div></div>
+        <div className="prj-kpi"><div className="prj-kpi-head">Heures ce mois</div><div className="prj-kpi-value">{ov ? `${h1(ov.time.hours)} h` : '…'}</div><div className="prj-kpi-sub">{ov ? `coût ${money(ov.time.cost, { decimals: 0 })}` : ''}</div></div>
         <div className="prj-kpi"><div className="prj-kpi-head">Marge des projets terminés</div>
           <div className="prj-kpi-value" style={{ color: doneMargin === null ? undefined : doneMargin < 0 ? 'var(--prj-red)' : 'var(--prj-green)' }}>{doneMargin === null ? '—' : `${doneMargin} %`}</div>
           <div className="prj-kpi-sub">{done.length} projet{done.length > 1 ? 's' : ''} facturé{done.length > 1 ? 's' : ''}</div></div>
@@ -231,9 +232,9 @@ function Overview() {
         <Kpi label="Projets en cours" value={String(data.projects.active + data.projects.on_hold)} sub={`${data.projects.draft} brouillon${data.projects.draft > 1 ? 's' : ''} à lancer`} />
         <Kpi label="Projets en retard" value={String(data.projects.overdue)} sub="échéance dépassée" tone={data.projects.overdue > 0 ? 'red' : undefined} />
         <Kpi label="Tâches ouvertes" value={String(data.tasks.open)} sub={`${data.tasks.overdue} en retard`} tone={data.tasks.overdue > 0 ? 'red' : undefined} />
-        <Kpi label="Heures sur la période" value={`${h1(data.time.hours)} h`} sub={`coût ${n0(data.time.cost)} DH`} />
-        <Kpi label="Facturable sur la période" value={`${n0(data.time.amount)} DH`} sub={`marge ${n0(margin)} DH`} tone={margin < 0 ? 'red' : undefined} />
-        <Kpi label="Reste à facturer" value={`${n0(data.time.unbilled)} DH`} sub="temps facturable non facturé" />
+        <Kpi label="Heures sur la période" value={`${h1(data.time.hours)} h`} sub={`coût ${money(data.time.cost, { decimals: 0 })}`} />
+        <Kpi label="Facturable sur la période" value={money(data.time.amount, { decimals: 0 })} sub={`marge ${money(margin, { decimals: 0 })}`} tone={margin < 0 ? 'red' : undefined} />
+        <Kpi label="Reste à facturer" value={money(data.time.unbilled, { decimals: 0 })} sub="temps facturable non facturé" />
       </section>
       <div className="prj-columns">
         <section className="prj-main" style={{ display: 'grid', gap: 12 }} aria-label="Projets en cours">
@@ -354,9 +355,9 @@ function TimeSheet() {
       </div>
       <section className="prj-kpis" aria-label="Indicateurs">
         <Kpi label="Heures" value={data ? `${h1(data.hours)} h` : '…'} sub={data ? `${data.total} saisie${data.total > 1 ? 's' : ''}` : undefined} />
-        <Kpi label="Coût" value={data ? `${n0(data.cost)} DH` : '…'} sub="heures × coût horaire" />
-        <Kpi label="Facturable" value={data ? `${n0(data.amount)} DH` : '…'} sub="heures facturables × taux" />
-        <Kpi label="Marge sur le temps" value={data ? `${n0(margin)} DH` : '…'} tone={data ? (margin < 0 ? 'red' : 'green') : undefined} />
+        <Kpi label="Coût" value={data ? money(data.cost, { decimals: 0 }) : '…'} sub="heures × coût horaire" />
+        <Kpi label="Facturable" value={data ? money(data.amount, { decimals: 0 }) : '…'} sub="heures facturables × taux" />
+        <Kpi label="Marge sur le temps" value={data ? money(margin, { decimals: 0 }) : '…'} tone={data ? (margin < 0 ? 'red' : 'green') : undefined} />
       </section>
       {canEdit('projects') && (
         <section className="prj-panel">
@@ -406,9 +407,9 @@ function Profitability() {
   return (
     <div className="prj">
       <section className="prj-kpis" aria-label="Indicateurs">
-        <Kpi label="Recette attendue" value={`${n0(rev)} DH`} sub={`${billed.length} projet${billed.length > 1 ? 's' : ''} facturé${billed.length > 1 ? 's' : ''}`} />
-        <Kpi label="Coûts engagés" value={`${n0(cost)} DH`} sub="main-d’œuvre + achats rattachés" />
-        <Kpi label="Marge" value={`${n0(m)} DH`} tone={rev ? (m < 0 ? 'red' : 'green') : undefined} />
+        <Kpi label="Recette attendue" value={money(rev, { decimals: 0 })} sub={`${billed.length} projet${billed.length > 1 ? 's' : ''} facturé${billed.length > 1 ? 's' : ''}`} />
+        <Kpi label="Coûts engagés" value={money(cost, { decimals: 0 })} sub="main-d’œuvre + achats rattachés" />
+        <Kpi label="Marge" value={money(m, { decimals: 0 })} tone={rev ? (m < 0 ? 'red' : 'green') : undefined} />
         <Kpi label="Marge moyenne" value={rev ? `${Math.round(m / rev * 100)} %` : '—'} tone={rev ? (m < 0 ? 'red' : 'green') : undefined} />
       </section>
       <p className="prj-note">Recette = forfait, ou heures facturables × taux. Coûts = heures × coût horaire + factures fournisseurs rattachées.</p>

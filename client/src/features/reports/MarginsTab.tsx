@@ -1,3 +1,4 @@
+import { money } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, AlertTriangle, Info } from 'lucide-react';
@@ -37,9 +38,9 @@ export default function MarginsTab({ from, to }: { from: string; to: string }) {
   return (
     <>
       <section className="prj-kpis" aria-label="Indicateurs">
-        <ListKpi label="Chiffre d'affaires" value={`${dh(t.revenue)} DH`} sub="toutes ventes de la période" />
-        <ListKpi label="CA dont le coût est connu" value={pct(t.coverage_pct)} sub={`${dh(t.revenue_costed)} DH`} tone={lowCoverage && t.revenue > 0 ? 'orange' : undefined} />
-        <ListKpi label="Marge sur coût de revient" value={`${dh(t.margin)} DH`} sub="sur le CA couvert" />
+        <ListKpi label="Chiffre d'affaires" value={money(t.revenue, { decimals: 0 })} sub="toutes ventes de la période" />
+        <ListKpi label="CA dont le coût est connu" value={pct(t.coverage_pct)} sub={money(t.revenue_costed, { decimals: 0 })} tone={lowCoverage && t.revenue > 0 ? 'orange' : undefined} />
+        <ListKpi label="Marge sur coût de revient" value={money(t.margin, { decimals: 0 })} sub="sur le CA couvert" />
         <ListKpi label="Taux de marge" value={pct(t.margin_pct)} sub="marge / CA couvert" />
       </section>
 
