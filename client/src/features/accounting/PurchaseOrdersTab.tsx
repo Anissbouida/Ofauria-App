@@ -41,9 +41,10 @@ import { apiErrorMessage } from '../../api/errors';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import type { BudgetControl } from '../../api/management.api';
 
-const fmtDh = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
+const fmtDh = (v: number) => money(v);
 import { currenciesApi, BASE_CURRENCY } from '../../api/currencies.api';
 import { Lock, PauseCircle, PlayCircle, Snowflake, FilePenLine, Scissors, Undo2, Scale } from 'lucide-react';
+import { money, currencySymbol } from '../../utils/money';
 
 /** Actions motivées sur un BC (mig 306) : un code motif du référentiel est obligatoire. */
 type PoReasonAction = { kind: 'cancel' | 'not_delivered' | 'hold'; poId: string; orderNumber: string };
@@ -536,10 +537,10 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
 
       {/* Tuiles : les montants que les pastilles ne donnent pas (engagé, à recevoir, à facturer, retards). */}
       {layout !== 'split' && <section className="prj-kpis" aria-label="Indicateurs">
-        <ListKpi label="Engagé en cours" value={`${n(openStats.amount)} DH`} sub={`${openStats.count} BC ouverts`} />
-        <ListKpi label="À recevoir" value={`${n((stageStats.sent?.amount ?? 0) + (stageStats.partial?.amount ?? 0))} DH`}
+        <ListKpi label="Engagé en cours" value={`${money(openStats.amount)}`} sub={`${openStats.count} BC ouverts`} />
+        <ListKpi label="À recevoir" value={`${money((stageStats.sent?.amount ?? 0) + (stageStats.partial?.amount ?? 0))}`}
           sub={`${(stageStats.sent?.count ?? 0) + (stageStats.partial?.count ?? 0)} BC envoyés ou en partie reçus`} />
-        <ListKpi label="À facturer" value={`${n(stageStats.invoice?.amount ?? 0)} DH`} sub={`${stageStats.invoice?.count ?? 0} BC reçus sans facture`}
+        <ListKpi label="À facturer" value={`${money(stageStats.invoice?.amount ?? 0)}`} sub={`${stageStats.invoice?.count ?? 0} BC reçus sans facture`}
           tone={(stageStats.invoice?.count ?? 0) > 0 ? 'orange' : undefined} />
         <ListKpi label="Livraisons en retard" value={String(lateList.length >= 5 ? '5+' : lateList.length)} sub="date de livraison dépassée"
           tone={lateList.length ? 'red' : undefined} />
@@ -578,11 +579,11 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
       {/* Circuit du BC : une pastille numérotée par étape, clic = filtre */}
       <StagePipeline
         title="Où en sont mes commandes"
-        summary={`${openStats.count} BC en cours · ${n(openStats.amount)} DH engagés`}
+        summary={`${openStats.count} BC en cours · ${money(openStats.amount)} engagés`}
         stages={PO_STAGES}
         stats={Object.fromEntries(PO_STAGES.map(s => {
           const st = stageStats[s.key];
-          return [s.key, st ? { count: st.count, sub: `${n(st.amount)} DH`, late: st.late } : undefined];
+          return [s.key, st ? { count: st.count, sub: `${money(st.amount)}`, late: st.late } : undefined];
         }))}
         isActive={k => (k === 'closed' ? view === 'history' : view === 'open' && stage === k)}
         onPick={pickStage}
@@ -738,7 +739,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                           {isExpanded ? <ChevronUp size={13} style={{ color: 'var(--theme-text-muted)' }} /> : <ChevronDown size={13} style={{ color: 'var(--theme-text-muted)' }} />}
                           <span className="sal-num">{po.order_number as string}</span>
-                          {po.currency_code && String(po.currency_code).trim() !== 'MAD' && <span className="odoo-tag odoo-tag-blue" title={`Négocié en ${String(po.currency_code).trim()} · taux ${po.exchange_rate}`}>{String(po.currency_code).trim()}</span>}
+                          {po.currency_code && String(po.currency_code).trim() !== BASE_CURRENCY && <span className="odoo-tag odoo-tag-blue" title={`Négocié en ${String(po.currency_code).trim()} · taux ${po.exchange_rate}`}>{String(po.currency_code).trim()}</span>}
                         </span>
                         <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginLeft: 17 }}>
                           créé le {fmtDate(po.order_date as string)}
@@ -790,7 +791,7 @@ export default function PurchaseOrdersTab({ initialSupplierId = '', onGoToRecept
                       </td>
                       <td style={{ textAlign: 'right' }}>
                         <span style={{ fontWeight: 700 }}>{n(totalAmount)}</span>
-                        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>DH</span>
+                        <span style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem', marginLeft: 2 }}>{currencySymbol()}</span>
                         {poStage === 'partial' && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', marginTop: 2 }}>
                             <span style={{ width: 50, height: 3, background: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden' }}>
@@ -1075,8 +1076,8 @@ function ExpandedPORow({ poId, status, isAdmin, onSend, onDelivery, onNotDeliver
                       </span>
                     ) : <span className="text-gray-400">—</span>}
                   </td>
-                  <td className="px-3 py-2 text-right text-gray-600">{price != null ? `${n(price)} DH` : <span className="text-amber-500 text-xs">À définir</span>}</td>
-                  <td className="px-3 py-2 text-right font-medium">{price != null ? `${n(ordered * price)} DH` : <span className="text-gray-400">—</span>}</td>
+                  <td className="px-3 py-2 text-right text-gray-600">{price != null ? `${money(price)}` : <span className="text-amber-500 text-xs">À définir</span>}</td>
+                  <td className="px-3 py-2 text-right font-medium">{price != null ? `${money(ordered * price)}` : <span className="text-gray-400">—</span>}</td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2 justify-end">
                       <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -1369,7 +1370,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
   const [currency, setCurrency] = useState(BASE_CURRENCY);
   const [rateInput, setRateInput] = useState('1');
   const rate = currency === BASE_CURRENCY ? 1 : (parseFloat(rateInput) || 0);
-  const curLabel = currency === BASE_CURRENCY ? 'DH' : currency;
+  const curLabel = currency === BASE_CURRENCY ? currencySymbol() : currency;
   /** Change la devise : les prix déjà saisis sont convertis au taux du jour (prix en DH inchangé). */
   const changeCurrency = (code: string) => {
     if (code === currency) return;
@@ -1667,11 +1668,11 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                   <label style={odooLabelStyle}>Taux : 1 {currency} =</label>
                   <div className="flex items-center gap-1">
                     <input type="number" min={0} step="0.0001" value={rateInput} onChange={e => setRateInput(e.target.value)} style={odooNumFieldStyle} />
-                    <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>DH</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)' }}>{currencySymbol()}</span>
                   </div>
                 </div>
                 <p style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', margin: 0, flex: '1 1 260px' }}>
-                  Prix saisis en {currency}. Le taux est figé sur le bon ; stock, coût matière et facture restent en DH.
+                  Prix saisis en {currency}. Le taux est figé sur le bon ; stock, coût matière et facture restent en {currencySymbol()}.
                 </p>
               </>)}
             </div>
@@ -1713,7 +1714,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                               {catPath || 'Sans catégorie'}{cont ? ` · ${containerLabel(cont, p.unit as string)}` : ''}
                             </span>
                           </span>
-                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', whiteSpace: 'nowrap' }}>{n(parseFloat(p.unit_cost as string) || 0)} DH/{p.unit as string}</span>
+                          <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', whiteSpace: 'nowrap' }}>{n(parseFloat(p.unit_cost as string) || 0)} {currencySymbol()}/{p.unit as string}</span>
                         </button>
                       );
                     })}
@@ -1885,7 +1886,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
                   {items.length} article{items.length > 1 ? 's' : ''}
                   {hasMissingPrices && <span style={{ marginLeft: 8, color: '#b85d1a', fontSize: '0.6875rem' }}>(prix à définir par le fournisseur)</span>}
                 </span>
-                <span style={{ fontWeight: 700, color: 'var(--theme-accent)' }}>{totalAmount > 0 ? `Total: ${n(totalAmount)} ${curLabel}${currency !== BASE_CURRENCY && rate > 0 ? ` ≈ ${n(totalAmount * rate)} DH` : ''}` : 'Prix à définir'}</span>
+                <span style={{ fontWeight: 700, color: 'var(--theme-accent)' }}>{totalAmount > 0 ? `Total: ${n(totalAmount)} ${curLabel}${currency !== BASE_CURRENCY && rate > 0 ? ` ≈ ${money(totalAmount * rate)}` : ''}` : 'Prix à définir'}</span>
               </div>
             </div>
           )}
@@ -1909,7 +1910,7 @@ function CreatePOModal({ onClose }: { onClose: () => void }) {
           style={{ backgroundColor: 'var(--odoo-bg)', borderTop: '1px solid var(--odoo-border)', padding: '0.75rem 1.25rem' }}>
           <div>
             {items.length > 0 && (
-              <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{items.length} article{items.length > 1 ? 's' : ''} — <span style={{ fontWeight: 700, color: 'var(--odoo-text)' }}>{n(totalAmount)} {curLabel}</span>{currency !== BASE_CURRENCY && rate > 0 && <> ≈ {n(totalAmount * rate)} DH</>}</p>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{items.length} article{items.length > 1 ? 's' : ''} — <span style={{ fontWeight: 700, color: 'var(--odoo-text)' }}>{n(totalAmount)} {curLabel}</span>{currency !== BASE_CURRENCY && rate > 0 && <> ≈ {money(totalAmount * rate)}</>}</p>
             )}
           </div>
           <div className="flex gap-2">
@@ -1975,7 +1976,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
   const totalOrdered = items.reduce((s, it) => s + num(it.quantity_ordered) * price(it), 0);
   const totalReceived = items.reduce((s, it) => s + num(it.quantity_delivered) * price(it), 0);
   // Devise du BC (mig 363) : prix DH = référence ; prix devise affiché en regard.
-  const poCur = String(po.currency_code ?? 'MAD').trim();
+  const poCur = String(po.currency_code ?? BASE_CURRENCY).trim();
   const totalForeign = items.reduce((s, it) => s + num(it.quantity_ordered) * (it.foreign_unit_price != null ? num(it.foreign_unit_price) : price(it) / (num(po.exchange_rate) || 1)), 0);
   const totalInvoiced = invoices.reduce((s, i) => s + num(i.total_amount), 0);
   const linesDone = items.filter(it => num(it.qty_remaining_base ?? Math.max(0, num(it.quantity_ordered) - num(it.quantity_delivered))) <= 0).length;
@@ -2039,7 +2040,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
     { kind: 'Commande', ref: po.order_number, sub: cancelled ? (status === 'annule' ? 'annulée' : 'non livrée') : stage === 0 ? 'brouillon' : `envoyée${d(po.locked_at) ? ` le ${d(po.locked_at)}` : ''}`, state: 'current' },
     { kind: 'Réception', ref: receptions.length ? receptions[receptions.length - 1].voucher_number : '—', sub: receptions.length ? (stage === 2 ? `partielle · ${receptions.length} bon(s)` : `${receptions.length} bon(s)`) : isLate ? 'en retard' : 'à venir', state: receptions.length ? (stage === 2 ? 'warn' : 'done') : isLate ? 'warn' : 'todo' },
     { kind: 'Facture', ref: invoices.length ? (invoices[0].supplier_invoice_number || invoices[0].invoice_number) : '—', sub: invoices.length ? `${invoices.length} facture(s)` : stage >= 3 ? 'attendue' : 'à venir', state: invoices.length ? 'done' : stage >= 3 ? 'warn' : 'todo' },
-    { kind: 'Paiement', ref: invoices.length ? `${n(totalPaid)} DH` : '—', sub: allPaid ? 'réglé' : invoices.length ? `reste ${n(totalInvoiced - totalPaid)}` : 'à venir', state: allPaid ? 'done' : 'todo' },
+    { kind: 'Paiement', ref: invoices.length ? `${money(totalPaid)}` : '—', sub: allPaid ? 'réglé' : invoices.length ? `reste ${n(totalInvoiced - totalPaid)}` : 'à venir', state: allPaid ? 'done' : 'todo' },
   ];
   const receivedPct = totalOrdered > 0 ? Math.min(100, (totalReceived / totalOrdered) * 100) : 0;
   const invoicedPct = totalOrdered > 0 ? Math.min(100, (totalInvoiced / totalOrdered) * 100) : 0;
@@ -2084,8 +2085,8 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
           <div style={{ padding: '16px 20px 0', display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 12px', fontSize: 14 }}>
             <span style={{ fontWeight: 700, fontSize: 21, letterSpacing: '-.02em', color: 'var(--theme-text-strong)' }}>{po.supplier_name}</span>
             <span style={{ color: 'var(--odoo-text-muted)' }}>
-              {items.length} article{items.length > 1 ? 's' : ''} · <strong style={{ color: 'var(--odoo-text)' }}>{n(totalOrdered)} DH</strong>
-              {poCur !== 'MAD' && <> · <strong style={{ color: 'var(--odoo-text)' }}>{n(totalForeign)} {poCur}</strong> <span className="odoo-tag odoo-tag-blue">1 {poCur} = {num(po.exchange_rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })} DH</span></>}
+              {items.length} article{items.length > 1 ? 's' : ''} · <strong style={{ color: 'var(--odoo-text)' }}>{money(totalOrdered)}</strong>
+              {poCur !== BASE_CURRENCY && <> · <strong style={{ color: 'var(--odoo-text)' }}>{n(totalForeign)} {poCur}</strong> <span className="odoo-tag odoo-tag-blue">1 {poCur} = {num(po.exchange_rate).toLocaleString('fr-FR', { maximumFractionDigits: 6 })} {currencySymbol()}</span></>}
               {po.created_by_name && <> · créé par {po.created_by_name}</>}
             </span>
           </div>
@@ -2122,12 +2123,12 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
               <div className="prj-kpi"><div className="prj-kpi-head"><span>Reçu</span><span>{linesDone} / {items.length} lignes</span></div>
                 <div className="prj-kpi-value">{Math.round(receivedPct)} %</div><div className="prj-bar"><span style={{ width: `${receivedPct}%` }} /></div></div>
               <div className="prj-kpi"><div className="prj-kpi-head"><span>Facturé</span><span>{invoices.length} facture(s)</span></div>
-                <div className="prj-kpi-value">{n(totalInvoiced)} DH</div><div className="prj-bar green"><span style={{ width: `${invoicedPct}%` }} /></div></div>
+                <div className="prj-kpi-value">{money(totalInvoiced)}</div><div className="prj-bar green"><span style={{ width: `${invoicedPct}%` }} /></div></div>
               <div className="prj-kpi"><div className="prj-kpi-head"><span>Contrôle des lignes</span><span>prix · quantités</span></div>
                 <div className="prj-kpi-value" style={{ color: lineGaps ? 'var(--prj-orange)' : 'var(--prj-green)' }}>{lineGaps ? `${lineGaps} écart${lineGaps > 1 ? 's' : ''}` : 'Aucun écart'}</div>
                 <div className="prj-kpi-sub">{missingPrices ? `${missingPrices} prix à définir` : 'prix renseignés'}</div></div>
-              <div className="prj-kpi"><div className="prj-kpi-head"><span>Total commandé HT</span><span>{poCur !== 'MAD' ? poCur : 'DH'}</span></div>
-                <div className="prj-kpi-value">{n(totalOrdered)} DH</div><div className="prj-kpi-sub">réglé {n(totalPaid)} DH</div></div>
+              <div className="prj-kpi"><div className="prj-kpi-head"><span>Total commandé HT</span><span>{poCur !== BASE_CURRENCY ? poCur : currencySymbol()}</span></div>
+                <div className="prj-kpi-value">{money(totalOrdered)}</div><div className="prj-kpi-sub">réglé {money(totalPaid)}</div></div>
             </div>
 
             <StatusBanner tone={next.tone} icon={next.tone === 'success' ? CheckCircle2 : next.tone === 'neutral' ? Ban : next.tone === 'danger' ? AlertTriangle : Clock}
@@ -2181,7 +2182,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
                           <td style={{ textAlign: 'right', color: remaining > 0 ? '#b85d1a' : 'var(--odoo-text-muted)', fontWeight: remaining > 0 ? 600 : 400 }}>{remaining > 0 ? trimQty(remaining) : '—'}</td>
                           <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
                             {it.unit_price != null ? n(num(it.unit_price)) : <span style={{ color: '#b85d1a', fontWeight: 600, fontSize: '0.75rem' }}>à définir</span>}
-                            {poCur !== 'MAD' && it.foreign_unit_price != null && <div style={{ fontSize: '0.6875rem' }}>{n(num(it.foreign_unit_price))} {poCur}</div>}
+                            {poCur !== BASE_CURRENCY && it.foreign_unit_price != null && <div style={{ fontSize: '0.6875rem' }}>{n(num(it.foreign_unit_price))} {poCur}</div>}
                           </td>
                           <td style={{ textAlign: 'right', fontWeight: 600 }}>{it.unit_price != null ? n(ordered * num(it.unit_price)) : '—'}</td>
                           <td>{(() => { const c = lineCheck(it); return <span className={`pur-check ${c.cls}`}>{c.label}</span>; })()}</td>
@@ -2192,7 +2193,7 @@ export function PODetailModal({ poId, onClose, onSend, onDelivery, onCompletePri
                   <tfoot>
                     <tr style={{ fontWeight: 700, borderTop: '2px solid var(--odoo-border)' }}>
                       <td colSpan={5}>Total</td>
-                      <td style={{ textAlign: 'right' }}>{n(totalOrdered)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>DH</span></td>
+                      <td style={{ textAlign: 'right' }}>{n(totalOrdered)} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></td>
                       <td />
                     </tr>
                   </tfoot>
@@ -2490,7 +2491,7 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
               <div style={{ marginTop: 10, border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.75rem', backgroundColor: 'var(--odoo-bg-alt)' }}>
                 <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
                   <strong style={{ fontSize: '0.8125rem' }}>Frais annexes de cette réception</strong>
-                  <span style={{ fontSize: '0.8125rem' }}>Total <strong>{feesTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH</strong></span>
+                  <span style={{ fontSize: '0.8125rem' }}>Total <strong>{feesTotal.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currencySymbol()}</strong></span>
                 </div>
                 {fees.map(f => (
                   <div key={f.key} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end" style={{ marginBottom: 8 }}>
@@ -2505,7 +2506,7 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
                         onChange={id => setFees(fs => fs.map(x => x.key === f.key ? { ...x, categoryId: id } : x))} placeholder="Transport, livraison…" />
                     </div>
                     <div className="md:col-span-2">
-                      <label style={odooLabelStyle}>Montant HT (DH)</label>
+                      <label style={odooLabelStyle}>Montant HT ({currencySymbol()})</label>
                       <input type="number" min={0} step="0.01" value={f.amount} style={odooNumFieldStyle}
                         onChange={e => setFees(fs => fs.map(x => x.key === f.key ? { ...x, amount: e.target.value } : x))} />
                     </div>
@@ -2707,7 +2708,7 @@ export function DeliveryModal({ poId, onClose }: { poId: string; onClose: () => 
                 <ArrowRight size={14} />
                 Valeur de cette réception
               </span>
-              <span style={{ fontWeight: 700, color: 'var(--theme-accent)' }}>{n(totalDelivering)} DH</span>
+              <span style={{ fontWeight: 700, color: 'var(--theme-accent)' }}>{money(totalDelivering)}</span>
             </div>
           )}
         </div>
@@ -3080,7 +3081,7 @@ function EditPOModal({ poId, onClose }: { poId: string; onClose: () => void }) {
                 padding: '0.625rem 0.875rem', borderRadius: 4,
                 backgroundColor: 'var(--theme-accent-light, rgba(0,0,0,0.04))', border: '1px solid var(--odoo-border)' }}>
                 <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--theme-accent)' }}>Nouveau total BC (qté commandée × prix)</span>
-                <span style={{ fontWeight: 700, fontFamily: 'ui-monospace, monospace', fontSize: '1.0625rem', color: 'var(--theme-accent)' }}>{n(newTotalOrdered)} DH</span>
+                <span style={{ fontWeight: 700, fontFamily: 'ui-monospace, monospace', fontSize: '1.0625rem', color: 'var(--theme-accent)' }}>{money(newTotalOrdered)}</span>
               </div>
             </>
           )}
@@ -3148,12 +3149,12 @@ function MergeInvoicesModal({
               {selectedPOs.map(po => (
                 <div key={po.id as string} className="flex justify-between" style={{ fontSize: '0.75rem' }}>
                   <span style={{ fontFamily: 'ui-monospace, monospace' }}>{po.order_number as string}</span>
-                  <span style={{ fontWeight: 600 }}>{n(parseFloat(po.total_amount as string))} DH</span>
+                  <span style={{ fontWeight: 600 }}>{money(parseFloat(po.total_amount as string))}</span>
                 </div>
               ))}
               <div className="flex justify-between" style={{ fontSize: '0.8125rem', fontWeight: 700, paddingTop: 8, marginTop: 8, borderTop: '1px solid var(--odoo-border)' }}>
                 <span>Total fusionné</span>
-                <span>{n(totalAmount)} DH</span>
+                <span>{money(totalAmount)}</span>
               </div>
             </div>
           </div>

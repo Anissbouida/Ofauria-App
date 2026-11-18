@@ -8,6 +8,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { fixedAssetsApi } from '../../api/fixed-assets.api';
 import type { FixedAsset, DisposalInput, AssetTableAmounts } from '../../api/fixed-assets.api';
 import EditionButtons from './EditionButtons';
+import { money } from '../../utils/money';
 
 /**
  * Sortie d'une immobilisation (mig 427) — cession ou mise au rebut — et
@@ -200,7 +201,7 @@ export function AssetsTableView() {
           </div>
           <div className="odoo-section" style={{ padding: 0 }}>
             <div style={{ padding: '10px 14px', fontWeight: 600, fontSize: '0.8125rem', borderBottom: '1px solid var(--theme-bg-separator)' }}>
-              Sorties de l'exercice {data.disposals.length ? `· ${data.gain_total >= 0 ? 'plus-value nette' : 'moins-value nette'} ${n(data.gain_total)} DH` : ''}
+              Sorties de l'exercice {data.disposals.length ? `· ${data.gain_total >= 0 ? 'plus-value nette' : 'moins-value nette'} ${money(data.gain_total)}` : ''}
             </div>
             {data.disposals.length === 0 ? (
               <p style={{ padding: '1rem', margin: 0, fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune cession ni mise au rebut sur l'exercice.</p>

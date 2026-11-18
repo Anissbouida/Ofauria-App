@@ -6,6 +6,7 @@ import { managementApi, type BudgetComparison, type BudgetRow } from '../../api/
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
+import { money, currencySymbol } from '../../utils/money';
 
 /**
  * Comptabilité › Budget (mig 317) : budget annuel par compte du CPC et par mois,
@@ -167,7 +168,7 @@ function EditGrid({ budgetId, rows, locked, onSaved }: { budgetId: string; rows:
         <StatusBanner tone="neutral" icon={Lock} title="Budget approuvé : saisie verrouillée">Repassez-le en brouillon pour le modifier.</StatusBanner>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Montants en DH HT. « ÷12 » répartit un montant annuel.</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Montants en {currencySymbol()} HT. « ÷12 » répartit un montant annuel.</span>
           <button type="button" className="odoo-btn-primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}
             style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Save size={13} /> Enregistrer{dirty ? ` (${dirty})` : ''}</button>
         </div>
@@ -252,14 +253,14 @@ function Comparison({ data }: { data: BudgetComparison }) {
         </p>
       )}
       <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '12px 12px 4px' }}>
-        <div style={{ fontSize: '0.8125rem', fontWeight: 600, marginBottom: 6 }}>Résultat mensuel (DH) — budget et réel</div>
+        <div style={{ fontSize: '0.8125rem', fontWeight: 600, marginBottom: 6 }}>Résultat mensuel ({currencySymbol()}) — budget et réel</div>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={chart} barGap={2} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
             <CartesianGrid vertical={false} stroke="#e9ecef" />
             <XAxis dataKey="mois" tick={{ fontSize: 11, fill: '#6c757d' }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fontSize: 11, fill: '#6c757d' }} axisLine={false} tickLine={false} tickFormatter={v => dh(Number(v))} width={70} />
             <ReferenceLine y={0} stroke="#adb5bd" />
-            <Tooltip formatter={(v: number) => `${dh(v)} DH`} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+            <Tooltip formatter={(v: number) => money(v, { decimals: 0 })} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Bar dataKey="Budget" fill={COLORS.budget} radius={[4, 4, 0, 0]} maxBarSize={18} />
             <Bar dataKey="Réel" fill={COLORS.actual} radius={[4, 4, 0, 0]} maxBarSize={18} />

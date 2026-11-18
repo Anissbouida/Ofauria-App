@@ -9,6 +9,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { currencySymbol } from '../../utils/money';
 
 /**
  * Règles de rapprochement bancaire (G4-02). Une règle reconnaît des lignes de relevé par
@@ -97,7 +98,7 @@ export function RuleFormModal({ rule, draft, onClose, onSaved }: { rule?: BankRu
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div><label style={lbl} htmlFor="r-tol">Écart de montant toléré (DH)</label><input id="r-tol" style={field} inputMode="decimal" value={f.amountTolerance} onChange={e => set('amountTolerance', e.target.value)} /></div>
+              <div><label style={lbl} htmlFor="r-tol">Écart de montant toléré ({currencySymbol()})</label><input id="r-tol" style={field} inputMode="decimal" value={f.amountTolerance} onChange={e => set('amountTolerance', e.target.value)} /></div>
               <div><label style={lbl} htmlFor="r-days">Écart de date toléré (jours)</label><input id="r-days" style={field} inputMode="numeric" value={f.dateToleranceDays} onChange={e => set('dateToleranceDays', e.target.value)} /></div>
             </div>
           )}
@@ -130,7 +131,7 @@ export default function BankRulesPanel() {
   const condition = (r: BankRule) => [
     r.label_contains ? `libellé contient « ${r.label_contains} »` : '', r.label_regex ? `expression ${r.label_regex}` : '',
     r.direction ? (r.direction === 'out' ? 'sortie' : 'entrée') : '',
-    r.amount_min != null || r.amount_max != null ? `montant ${r.amount_min ?? 0} à ${r.amount_max ?? '∞'} DH` : '',
+    r.amount_min != null || r.amount_max != null ? `montant ${r.amount_min ?? 0} à ${r.amount_max ?? '∞'} ${currencySymbol()}` : '',
   ].filter(Boolean).join(' · ');
 
   return (
@@ -154,7 +155,7 @@ export default function BankRulesPanel() {
                 <td style={{ textAlign: 'right' }}>{r.priority}</td>
                 <td style={{ fontWeight: 500 }}>{r.label}{!r.is_active && <> <StatusTag tone="draft" label="Inactive" /></>}</td>
                 <td style={{ fontSize: '0.8rem' }}>{condition(r)}</td>
-                <td style={{ fontSize: '0.8rem' }}>{r.action === 'post_entry' ? `Écriture sur ${r.counter_account_code ?? '—'}` : `Rapprocher (± ${r.amount_tolerance} DH, ± ${r.date_tolerance_days} j)`}</td>
+                <td style={{ fontSize: '0.8rem' }}>{r.action === 'post_entry' ? `Écriture sur ${r.counter_account_code ?? '—'}` : `Rapprocher (± ${r.amount_tolerance} ${currencySymbol()}, ± ${r.date_tolerance_days} j)`}</td>
                 <td style={{ textAlign: 'right' }}>{r.uses ?? 0}</td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <button type="button" className="odoo-btn-secondary" onClick={() => setEditing(r)}>Modifier</button>{' '}

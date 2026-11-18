@@ -9,6 +9,7 @@ import { apiErrorMessage } from '../../api/errors';
 import {
   integrityApi, type IntegrityVerifyResult, type LedgerAuditEvent, type LedgerAuditRow,
 } from '../../api/ledger.api';
+import { currencySymbol } from '../../utils/money';
 
 const EVENT_LABEL: Record<LedgerAuditEvent, string> = {
   post: 'Validation',
@@ -45,7 +46,7 @@ function copy(hash: string) {
 function detailOf(r: LedgerAuditRow): string {
   const d = (r.details ?? {}) as Record<string, any>;
   switch (r.event) {
-    case 'post': return `${d.source_kind ?? ''} · ${fmt(d.total)} DH`;
+    case 'post': return `${d.source_kind ?? ''} · ${fmt(d.total)} ${currencySymbol()}`;
     case 'reverse': return d.reversed_by_number ? `par ${d.reversed_by_number}` : '';
     case 'letter': case 'unletter': case 'reletter':
       return Number(d.debit) > 0 ? `débit ${fmt(d.debit)}` : `crédit ${fmt(d.credit)}`;
@@ -54,7 +55,7 @@ function detailOf(r: LedgerAuditRow): string {
     case 'outbox_replay': return `${d.posted} comptabilisée(s), ${d.failed} en échec`;
     case 'draft_delete': return d.source_kind ?? '';
     case 'fec_export': return `${d.filename} · ${d.entries} écriture(s) · SHA-256 ${String(d.sha256 ?? '').slice(0, 12)}…`;
-    case 'year_close': return `Exercice ${d.year} · résultat ${fmt(d.result)} DH · ${(d.opening_entries ?? []).length} écriture(s) d'à-nouveaux`;
+    case 'year_close': return `Exercice ${d.year} · résultat ${fmt(d.result)} ${currencySymbol()} · ${(d.opening_entries ?? []).length} écriture(s) d'à-nouveaux`;
     default: return '';
   }
 }

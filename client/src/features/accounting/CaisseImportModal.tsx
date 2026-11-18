@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileSpreadsheet, Upload, X, AlertTriangle, Check, Loader2, ArrowRight } from 'lucide-react';
 import { caisseImportApi } from '../../api/accounting.api';
 import { notify } from '../../components/ui/InlineNotification';
+import { money } from '../../utils/money';
 
 const MONTHS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
@@ -147,13 +148,13 @@ export default function CaisseImportModal({ onClose }: { onClose: () => void }) 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Kpi label="Opérations" value={String(preview.summary.nbOperations)} />
                 <Kpi label="Recettes (jours)" value={String(preview.summary.nbRecettes)} />
-                <Kpi label="Total dépenses" value={fmt(preview.summary.totalExpenses) + ' DH'} />
-                <Kpi label="Total recettes" value={fmt(preview.summary.totalRecettesCash + preview.summary.totalRecettesCard) + ' DH'} />
+                <Kpi label="Total dépenses" value={money(preview.summary.totalExpenses)} />
+                <Kpi label="Total recettes" value={money(preview.summary.totalRecettesCash + preview.summary.totalRecettesCard)} />
               </div>
 
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="p-2 bg-gray-50 rounded">Recettes espèces : <b>{fmt(preview.summary.totalRecettesCash)} DH</b></div>
-                <div className="p-2 bg-gray-50 rounded">Recettes carte : <b>{fmt(preview.summary.totalRecettesCard)} DH</b></div>
+                <div className="p-2 bg-gray-50 rounded">Recettes espèces : <b>{money(preview.summary.totalRecettesCash)}</b></div>
+                <div className="p-2 bg-gray-50 rounded">Recettes carte : <b>{money(preview.summary.totalRecettesCard)}</b></div>
               </div>
 
               {preview.alreadyImported > 0 && (

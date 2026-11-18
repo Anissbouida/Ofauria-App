@@ -7,6 +7,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { fiscalYearsApi, type CloseCheck, type FiscalYear } from '../../api/ledger.api';
+import { money } from '../../utils/money';
 
 const fmt = (v: number | string | null | undefined) =>
   v == null ? '—' : Number(v).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -154,7 +155,7 @@ function ClosedYear({ fy }: { fy: FiscalYear }) {
   return (
     <StatusBanner tone="success" icon={ShieldCheck} title={`Exercice ${fy.year} clôturé définitivement`}>
       Le {fy.closed_at ? new Date(fy.closed_at).toLocaleString('fr-FR') : '—'}
-      {fy.closed_by_name ? ` par ${fy.closed_by_name}` : ''}. Résultat {fmt(fy.result_amount)} DH reporté en instance
+      {fy.closed_by_name ? ` par ${fy.closed_by_name}` : ''}. Résultat {money(fy.result_amount)} reporté en instance
       d'affectation (1181) par {fy.opening_entries.join(', ') || 'aucune écriture'}.
       {fy.chain_hash && (
         <>
@@ -183,7 +184,7 @@ function YearChecks({ year }: { year: number }) {
       {blocking.length > 0
         ? <StatusBanner tone="danger" icon={AlertTriangle} title={`${blocking.length} contrôle(s) bloquant(s)`}>L'exercice ne peut pas être clôturé tant qu'ils ne sont pas résolus.</StatusBanner>
         : <StatusBanner tone="success" icon={CheckCircle2} title="Aucun point bloquant">
-            Les mois sans écriture encore ouverts seront fermés d'office ; les à-nouveaux reprendront le résultat de {fmt(result?.amount)} DH.
+            Les mois sans écriture encore ouverts seront fermés d'office ; les à-nouveaux reprendront le résultat de {money(result?.amount)}.
           </StatusBanner>}
       <table className="odoo-table" style={{ margin: 0 }}>
         <thead><tr><th>Contrôle</th><th style={{ width: 90, textAlign: 'right' }}>Nombre</th><th style={{ width: 130, textAlign: 'right' }}>Montant</th><th style={{ width: 120 }}>Effet</th></tr></thead>

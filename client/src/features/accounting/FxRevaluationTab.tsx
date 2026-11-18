@@ -7,6 +7,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { fxRevaluationApi } from '../../api/ledger.api';
 import type { FxRevaluation, FxRevaluationLine } from '../../api/ledger.api';
 import EditionButtons from './EditionButtons';
+import { currencySymbol } from '../../utils/money';
 
 /**
  * Écarts de change (mig 431) : réévaluation au 31/12 des créances et dettes en
@@ -118,7 +119,7 @@ function Rates({ s, draft, setDraft, dirty, onApply }: {
                   onChange={e => setDraft({ ...draft, [code]: e.target.value })} placeholder="taux"
                   style={{ ...inp, width: 90, textAlign: 'right', borderColor: r.rate == null ? '#c62828' : undefined }} />
               )}
-              <span>DH</span>
+              <span>{currencySymbol()}</span>
               {!booked && <span style={{ color: r.rate == null ? '#c62828' : 'var(--theme-text-muted)', fontSize: '0.75rem' }}>
                 {r.source === 'table' ? `taux du ${fmtDate(r.valid_on!)}` : r.source === 'saisi' ? 'saisi' : 'manquant'}
               </span>}

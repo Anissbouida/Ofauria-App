@@ -8,6 +8,7 @@ import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { lettrageApi } from '../../api/ledger.api';
 import type { LettrageLine, LettrageStatus } from '../../api/ledger.api';
+import { currencySymbol } from '../../utils/money';
 
 /**
  * Lettrage manuel (mig 420) : sur un compte de tiers (et un tiers pour un
@@ -221,12 +222,12 @@ export default function LettrageTab() {
             <div className="odoo-stat-card">
               <div className="odoo-stat-card-label">Non lettré débit</div>
               <div className="odoo-stat-card-value" style={{ color: '#1565c0' }}>{n(t!.open_debit) || '0,00'}</div>
-              <div className="odoo-stat-card-sub">DH</div>
+              <div className="odoo-stat-card-sub">{currencySymbol()}</div>
             </div>
             <div className="odoo-stat-card">
               <div className="odoo-stat-card-label">Non lettré crédit</div>
               <div className="odoo-stat-card-value" style={{ color: '#c62828' }}>{n(t!.open_credit) || '0,00'}</div>
-              <div className="odoo-stat-card-sub">DH</div>
+              <div className="odoo-stat-card-sub">{currencySymbol()}</div>
             </div>
             <div className="odoo-stat-card">
               <div className="odoo-stat-card-label">Groupes lettrés</div>

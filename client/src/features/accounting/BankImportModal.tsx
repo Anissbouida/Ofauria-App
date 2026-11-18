@@ -8,6 +8,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { paymentsApi } from '../../api/accounting.api';
 import { bankImportApi } from '../../api/bank-reconciliation.api';
 import type { BankCsvProfile, BankDateFormat, BankFormat, BankImportProfile } from '../../api/bank-reconciliation.api';
+import { money } from '../../utils/money';
 
 /**
  * Import d'un relevé bancaire (mig 426) : fichier de la banque (CSV, Excel,
@@ -295,7 +296,7 @@ export default function BankImportModal({ onClose, onSaved }: { onClose: () => v
               </div>
               {check != null && (check === 0
                 ? <StatusBanner tone="success" icon={CheckCircle2} title="Soldes cohérents">Ouverture + opérations du fichier = solde de clôture.</StatusBanner>
-                : <StatusBanner tone="danger" icon={AlertTriangle} title={`Écart de ${n(check)} DH entre les soldes et les opérations`}>Vérifiez les soldes saisis ou les colonnes débit/crédit.</StatusBanner>)}
+                : <StatusBanner tone="danger" icon={AlertTriangle} title={`Écart de ${money(check)} entre les soldes et les opérations`}>Vérifiez les soldes saisis ou les colonnes débit/crédit.</StatusBanner>)}
 
               <div style={{ fontSize: '0.8125rem', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
                 <span><strong>{pv.stats.count}</strong> opération(s) lue(s){pv.accountNumber ? ` · compte ${pv.accountNumber}` : ''}</span>

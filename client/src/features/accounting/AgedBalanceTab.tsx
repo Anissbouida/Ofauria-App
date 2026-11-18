@@ -7,6 +7,7 @@ import { StatusTag } from '../../components/ui/StatusTag';
 import { agedBalanceApi } from '../../api/ledger.api';
 import type { AgedBucket, AgedItem, AgedSide } from '../../api/ledger.api';
 import EditionButtons from './EditionButtons';
+import { currencySymbol } from '../../utils/money';
 
 /**
  * Balance âgée comptable : par tiers, les lignes non lettrées des comptes
@@ -131,17 +132,17 @@ export default function AgedBalanceTab() {
             <div className="odoo-stat-card">
               <div className="odoo-stat-card-label">{isCustomers ? 'Total à recevoir' : 'Total dû'}</div>
               <div className="odoo-stat-card-value">{n(t.total) || '0,00'}</div>
-              <div className="odoo-stat-card-sub">{t.tiers} tiers · DH</div>
+              <div className="odoo-stat-card-sub">{t.tiers} tiers · {currencySymbol()}</div>
             </div>
             <div className="odoo-stat-card">
               <div className="odoo-stat-card-label">Échu</div>
               <div className="odoo-stat-card-value" style={{ color: t.overdue > 0 ? '#c62828' : undefined }}>{n(t.overdue) || '0,00'}</div>
-              <div className="odoo-stat-card-sub">{t.total > 0 ? `${Math.round((t.overdue / t.total) * 100)} % du total` : 'DH'}</div>
+              <div className="odoo-stat-card-sub">{t.total > 0 ? `${Math.round((t.overdue / t.total) * 100)} % du total` : currencySymbol()}</div>
             </div>
             <div className="odoo-stat-card">
               <div className="odoo-stat-card-label">Plus de 90 jours</div>
               <div className="odoo-stat-card-value" style={{ color: t.buckets.over90 > 0 ? '#c62828' : undefined }}>{n(t.buckets.over90) || '0,00'}</div>
-              <div className="odoo-stat-card-sub">DH</div>
+              <div className="odoo-stat-card-sub">{currencySymbol()}</div>
             </div>
           </div>
 
@@ -151,7 +152,7 @@ export default function AgedBalanceTab() {
             </StatusBanner>
           ) : (
             <StatusBanner tone="danger" icon={AlertTriangle} title="Écart avec la comptabilité">
-              Total {n(t.total)} DH, solde comptable {n(data.ledger_balance)} DH.
+              Total {n(t.total)} {currencySymbol()}, solde comptable {n(data.ledger_balance)} {currencySymbol()}.
             </StatusBanner>
           )}
           {isCustomers && (

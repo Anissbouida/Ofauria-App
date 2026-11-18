@@ -13,6 +13,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { apiErrorMessage } from '../../api/errors';
 import IntegrityPanel from './IntegrityPanel';
 import FiscalYearsPanel from './FiscalYearsPanel';
+import { money } from '../../utils/money';
 
 const MONTH_NAMES = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
@@ -233,7 +234,7 @@ export default function ClotureTab() {
       {/* Réceptions à facturer : compte d'attente 4417 lettré par ligne de BC (G-D8-05). */}
       <div style={{ marginTop: 16 }}>
         <StatusBanner tone={grirAged.length ? 'warning' : 'neutral'} icon={PackageOpen}
-          title={`Réceptions à facturer : ${fmt(grirTotal)} DH sur ${grir.length} ligne(s) de BC`}>
+          title={`Réceptions à facturer : ${money(grirTotal)} sur ${grir.length} ligne(s) de BC`}>
           Marchandise reçue et comptabilisée au prix du BC, en attente de la facture fournisseur.
           {grirAged.length > 0 && ` ${grirAged.length} ligne(s) attendent depuis plus de 30 jours.`}
         </StatusBanner>
@@ -353,12 +354,12 @@ function SalesPeriodEnd({ periodId, open }: { periodId: string; open: boolean })
   };
   const fae = useMutation({
     mutationFn: () => fiscalPeriodsApi.postFae(periodId),
-    onSuccess: (r) => { done(); notify.success(r.amount > 0 ? `Factures à établir passées : ${fmt(r.amount)} DH` : 'Aucun BL à facturer en fin de période'); },
+    onSuccess: (r) => { done(); notify.success(r.amount > 0 ? `Factures à établir passées : ${money(r.amount)}` : 'Aucun BL à facturer en fin de période'); },
     onError: (e) => notify.error(apiErrorMessage(e, 'Opération refusée')),
   });
   const fg = useMutation({
     mutationFn: () => fiscalPeriodsApi.postFgStock(periodId),
-    onSuccess: (r) => { done(); notify.success(`Stock de produits finis : ${fmt(r.amount)} DH (variation ${fmt(r.detail?.delta ?? 0)} DH)`); },
+    onSuccess: (r) => { done(); notify.success(`Stock de produits finis : ${money(r.amount)} (variation ${money(r.detail?.delta ?? 0)})`); },
     onError: (e) => notify.error(apiErrorMessage(e, 'Opération refusée')),
   });
   const active = (k: 'fae' | 'fg_stock') => (data?.operations ?? []).find((o: PeriodEndOperation) => o.kind === k && !o.superseded_at);
@@ -377,9 +378,9 @@ function SalesPeriodEnd({ periodId, open }: { periodId: string; open: boolean })
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ flex: 1, minWidth: 260 }}>
             <strong>Factures à établir</strong> — {unbilled.length
-              ? `${unbilled.length} BL livré(s) non facturé(s) à la fin de la période, ${fmt(unbilledHt)} DH HT`
+              ? `${unbilled.length} BL livré(s) non facturé(s) à la fin de la période, ${money(unbilledHt)} HT`
               : 'aucun BL livré non facturé à la fin de la période'}
-            {faeOp && <span style={{ color: 'var(--theme-text-muted)' }}> · passées : {fmt(faeOp.amount)} DH (extournées le 1er du mois suivant)</span>}
+            {faeOp && <span style={{ color: 'var(--theme-text-muted)' }}> · passées : {money(faeOp.amount)} (extournées le 1er du mois suivant)</span>}
           </span>
           {open && (
             <button type="button" className="odoo-btn-secondary" disabled={fae.isPending} onClick={() => run('fae', !!faeOp)}>
@@ -390,7 +391,7 @@ function SalesPeriodEnd({ periodId, open }: { periodId: string; open: boolean })
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ flex: 1, minWidth: 260 }}>
             <strong>Stock de produits finis</strong> — {fgOp
-              ? <>valorisé à {fmt(fgOp.amount)} DH (variation {fmt(fgOp.detail?.delta ?? 0)} DH){fgOp.detail?.products_without_cost
+              ? <>valorisé à {money(fgOp.amount)} (variation {money(fgOp.detail?.delta ?? 0)}){fgOp.detail?.products_without_cost
                   ? <span style={{ color: '#b45309' }}> · {fgOp.detail.products_without_cost} produit(s) sans coût</span> : null}</>
               : 'non valorisé pour cette période'}
             <span style={{ display: 'block', fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>

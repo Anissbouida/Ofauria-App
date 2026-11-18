@@ -8,8 +8,9 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
+import { money as fmtMoney } from '../../utils/money';
 
-const money = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
+const money = (v: number) => fmtMoney(v);
 const inp: React.CSSProperties = { padding: '0.4rem 0.55rem', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'inherit', font: 'inherit' };
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 

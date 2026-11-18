@@ -15,6 +15,7 @@ import { useReferentiel } from '../../hooks/useReferentiel';
 import CategoryCascadeSelector from '../../components/CategoryCascadeSelector';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { StatusTag } from '../../components/ui/StatusTag';
+import { money, currencySymbol } from '../../utils/money';
 
 /**
  * ECHEANCIER — le calendrier des sorties d'argent (migration 258).
@@ -182,7 +183,7 @@ export default function EcheancierView() {
             <AlertTriangle size={11} style={{ display: 'inline', marginRight: 4 }} />En retard
           </div>
           <div className="odoo-stat-card-value" style={{ color: stats.retard > 0 ? '#dc3545' : 'var(--theme-text-muted)' }}>
-            {n(stats.retard)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
+            {n(stats.retard)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
           </div>
           <div className="odoo-stat-card-sub">{stats.nbRetard} échéance{stats.nbRetard > 1 ? 's' : ''} dépassée{stats.nbRetard > 1 ? 's' : ''}</div>
         </div>
@@ -190,14 +191,14 @@ export default function EcheancierView() {
           <div className="odoo-stat-card-label">
             <CalendarClock size={11} style={{ display: 'inline', marginRight: 4 }} />Reste ce mois
           </div>
-          <div className="odoo-stat-card-value">{n(stats.ceMois)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-value">{n(stats.ceMois)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
           <div className="odoo-stat-card-sub">Échéances non encore dépassées</div>
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label">
             <Coins size={11} style={{ display: 'inline', marginRight: 4 }} />À venir
           </div>
-          <div className="odoo-stat-card-value">{n(stats.aVenir)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-value">{n(stats.aVenir)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
           <div className="odoo-stat-card-sub">
             {stats.nbIndefinis > 0
               ? `${stats.nbIndefinis} montant${stats.nbIndefinis > 1 ? 's' : ''} à renseigner`
@@ -247,7 +248,7 @@ export default function EcheancierView() {
             <div className="odoo-section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ textTransform: 'capitalize' }}>{moisLabel(g.periode)}</span>
               <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 700 }}>
-                {n(g.total)} DH
+                {money(g.total)}
                 {g.indefinis > 0 && (
                   <span style={{ fontWeight: 400, fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginLeft: 8 }}>
                     + {g.indefinis} à chiffrer
@@ -306,7 +307,7 @@ export default function EcheancierView() {
                         {n(parseFloat(e.amount_paid) || 0)}
                       </td>
                       <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: solde ? '#0e7c3a' : '#b71c1c' }}>
-                        {solde ? 'Réglée' : e.amount_pending ? '—' : `${n(reste)} DH`}
+                        {solde ? 'Réglée' : e.amount_pending ? '—' : `${money(reste)}`}
                       </td>
                       <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                         {!solde && (
@@ -401,7 +402,7 @@ function PayEcheanceModal({ echeance, pending, onClose, onSubmit }: {
           const montant = parseFloat(amount);
           if (!Number.isFinite(montant) || montant <= 0) { notify.error('Montant invalide'); return; }
           if (montant > reste + 0.01) {
-            notify.error(`Le montant dépasse le reste à payer (${n(reste)} DH)`); return;
+            notify.error(`Le montant dépasse le reste à payer (${money(reste)})`); return;
           }
           const payload: Record<string, unknown> = {
             scheduledPaymentId: echeance.id,
@@ -428,7 +429,7 @@ function PayEcheanceModal({ echeance, pending, onClose, onSubmit }: {
         }} className="p-5 space-y-4">
           <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600 flex justify-between">
             <span>Reste à payer sur cette échéance</span>
-            <strong style={{ fontFamily: 'ui-monospace, monospace', color: '#b71c1c' }}>{n(reste)} DH</strong>
+            <strong style={{ fontFamily: 'ui-monospace, monospace', color: '#b71c1c' }}>{money(reste)}</strong>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -527,7 +528,7 @@ function EditEcheanceModal({ echeance, pending, onClose, onSubmit }: {
           )}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant dû (DH)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant dû ({currencySymbol()})</label>
               <input type="number" step="0.01" min="0" value={amount}
                 onChange={e => setAmount(e.target.value)} placeholder="À chiffrer"
                 className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-400" />
@@ -667,8 +668,8 @@ function DebtFormModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           </div>
           {montant > 0 && nbEch > 1 && (
             <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600">
-              {nbEch} échéances d'environ <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(mensualite)} DH</strong>,
-              la dernière ajustée pour tomber juste sur {n(montant)} DH.
+              {nbEch} échéances d'environ <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{money(mensualite)}</strong>,
+              la dernière ajustée pour tomber juste sur {money(montant)}.
             </div>
           )}
           <div className="flex gap-2 pt-1">
@@ -773,7 +774,7 @@ function RecurringChargesPanel({ onClose, onChanged }: { onClose: () => void; on
                   <div style={{ fontSize: '0.6875rem' }}>le {c.due_day} du mois</div>
                 </td>
                 <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace' }}>
-                  {c.amount ? `${n(parseFloat(c.amount))} DH` : <span className="odoo-tag odoo-tag-orange">Variable</span>}
+                  {c.amount ? `${money(parseFloat(c.amount))}` : <span className="odoo-tag odoo-tag-orange">Variable</span>}
                 </td>
                 <td style={{ fontSize: '0.8125rem' }}>
                   {fmtDate(c.next_due_date)}
@@ -910,7 +911,7 @@ function RecurringChargeForm({ charge, onClose, onSaved }: {
               </p>
             ) : (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant (DH) *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Montant ({currencySymbol()}) *</label>
                 <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)}
                   className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
               </div>

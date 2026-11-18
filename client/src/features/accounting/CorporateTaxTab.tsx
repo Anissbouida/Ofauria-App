@@ -7,6 +7,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { corporateTaxApi } from '../../api/ledger.api';
 import type { CorporateTax, TaxParams } from '../../api/ledger.api';
 import EditionButtons from './EditionButtons';
+import { money, currencySymbol } from '../../utils/money';
 
 /**
  * Impôt sur les sociétés (mig 430) : résultat fiscal, IS / cotisation
@@ -129,8 +130,8 @@ function TaxCalc({ s, draft, refresh, onErr }: P) {
           <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', alignItems: 'center' }}>Régime
             <select value={p.regime} onChange={e => setP({ ...p, regime: e.target.value as TaxParams['regime'] })} style={inp}><option value="standard">Droit commun</option><option value="credit">Établissement de crédit</option></select>
           </label>
-          {field('rate_standard', 'Taux (%)')}{field('rate_high', 'Taux au-delà du seuil (%)')}{field('high_threshold', 'Seuil de bénéfice (DH)')}
-          {field('cm_rate', 'Taux de cotisation minimale (%)')}{field('cm_minimum', 'Minimum de CM (DH)')}{field('cm_base_override', 'Base de CM saisie (vide = calculée)')}
+          {field('rate_standard', 'Taux (%)')}{field('rate_high', 'Taux au-delà du seuil (%)')}{field('high_threshold', `Seuil de bénéfice (${currencySymbol()})`)}
+          {field('cm_rate', 'Taux de cotisation minimale (%)')}{field('cm_minimum', `Minimum de CM (${currencySymbol()})`)}{field('cm_base_override', 'Base de CM saisie (vide = calculée)')}
           <label style={{ fontSize: '0.75rem' }}><input type="checkbox" checked={p.cm_exempt} onChange={e => setP({ ...p, cm_exempt: e.target.checked })} /> Exonéré de CM (36 premiers mois d'exploitation)</label>
           <button type="button" className="odoo-btn-primary" disabled={save.isPending} onClick={() => save.mutate()} style={{ alignSelf: 'flex-end' }}>Enregistrer</button>
         </div>
@@ -171,7 +172,7 @@ function Installments({ s, draft, refresh, onErr }: P) {
     <Section title={`Acomptes provisionnels ${s.year}`} aside={<span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
       {s.basis.source === 'previous' ? `Base : impôt ${s.year - 1} aux taux ${s.year} = ${n(s.basis.tax ?? 0)}` : `Pas d'IS ${s.year - 1} comptabilisé : saisissez les montants`}
     </span>}>
-      {s.prior_credit > 0 && <p style={{ margin: '0 0 6px', fontSize: '0.75rem' }}>Crédit d'acomptes de {s.year - 1} : {n(s.prior_credit)} DH, imputé d'abord sur les premiers acomptes.</p>}
+      {s.prior_credit > 0 && <p style={{ margin: '0 0 6px', fontSize: '0.75rem' }}>Crédit d'acomptes de {s.year - 1} : {money(s.prior_credit)}, imputé d'abord sur les premiers acomptes.</p>}
       <table className="odoo-table" style={{ margin: 0 }}>
         <thead><tr><th>N°</th><th>Échéance</th><th style={{ textAlign: 'right' }}>Théorique</th><th style={{ textAlign: 'right' }}>Crédit imputé</th><th style={{ textAlign: 'right' }}>À verser</th><th>Versement</th></tr></thead>
         <tbody>
@@ -235,7 +236,7 @@ function Booking({ s, refresh, onErr }: Omit<P, 'draft'>) {
             </div>
           ))}
           <Line label="Reste à payer" value={s.balance_due} strong />
-          {s.credit_after > 0 && <StatusBanner tone="info" icon={Info} title={`Crédit d'acomptes de ${n(s.credit_after)} DH`}>Il reste au compte 3453 et s'imputera sur les acomptes de {s.year + 1}.</StatusBanner>}
+          {s.credit_after > 0 && <StatusBanner tone="info" icon={Info} title={`Crédit d'acomptes de ${money(s.credit_after)}`}>Il reste au compte 3453 et s'imputera sur les acomptes de {s.year + 1}.</StatusBanner>}
           {s.balance_due > 0 && <div style={{ fontSize: '0.8125rem' }}>Verser le solde (avant le {fmtDate(s.solde_deadline)}) : <PayForm defaultAmount={s.balance_due} defaultDate={today()} pending={paySolde.isPending} onPay={b => paySolde.mutate(b)} /></div>}
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', borderTop: '1px solid var(--theme-bg-separator)', paddingTop: 8 }}>
             <AlertTriangle size={13} style={{ color: '#856404' }} />

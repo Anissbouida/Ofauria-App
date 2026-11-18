@@ -13,6 +13,7 @@ import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { money, currencySymbol } from '../../utils/money';
 
 function n(v: string | number): string {
   const num = typeof v === 'string' ? parseFloat(v) : v;
@@ -71,7 +72,7 @@ export default function ImmobilisationsTab() {
     onSuccess: (r) => {
       queryClient.invalidateQueries({ queryKey: ['fixed-assets'] });
       queryClient.invalidateQueries({ queryKey: ['ledger-entries'] });
-      notify.success(`${r.created} dotation(s) générée(s) · ${n(r.totalAmount)} DH${r.skipped ? ` · ${r.skipped} ignorée(s)` : ''}`);
+      notify.success(`${r.created} dotation(s) générée(s) · ${money(r.totalAmount)}${r.skipped ? ` · ${r.skipped} ignorée(s)` : ''}`);
     },
     onError: (err: unknown) => {
       const msg = err && typeof err === 'object' && 'response' in err
@@ -333,7 +334,7 @@ function AssetForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => v
               <input type="date" value={form.acquisitionDate} onChange={e => setForm({ ...form, acquisitionDate: e.target.value })} style={inputStyle} />
             </div>
             <div>
-              <label style={labelStyle}>Coût d'acquisition (DH) *</label>
+              <label style={labelStyle}>Coût d'acquisition ({currencySymbol()}) *</label>
               <input type="number" step="0.01" value={form.acquisitionCost} onChange={e => setForm({ ...form, acquisitionCost: e.target.value })} style={inputStyle} />
             </div>
           </div>

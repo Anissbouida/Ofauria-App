@@ -6,6 +6,7 @@ import { cashForecastApi } from '../../api/ledger.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { money as fmtMoney, currencySymbol } from '../../utils/money';
 
 /**
  * Prévision de trésorerie sur 13 semaines (G4-03) : courbe du solde prévu, seuil d'alerte,
@@ -13,7 +14,7 @@ import { apiErrorMessage } from '../../api/errors';
  * (emprunt, investissement). Lecture seule, sauf les lignes manuelles et le seuil.
  */
 
-const money = (n: number) => `${n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} DH`;
+const money = (n: number) => fmtMoney(n, { decimals: 0 });
 const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 const dmy = (d: string) => d.split('-').reverse().join('/');
 const field: React.CSSProperties = { fontSize: '0.85rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' };
@@ -57,7 +58,7 @@ export default function CashForecastTab() {
           <select style={field} value={delay} onChange={e => setDelay(Number(e.target.value))} aria-label="Retard supplémentaire des clients">
             {[0, 7, 15, 30, 45, 60].map(d => <option key={d} value={d}>{d === 0 ? 'Aucun' : `${d} jours`}</option>)}
           </select></label>
-        <label style={{ display: 'grid', gap: 4 }}><span style={{ fontWeight: 500 }}>Seuil d'alerte (DH)</span>
+        <label style={{ display: 'grid', gap: 4 }}><span style={{ fontWeight: 500 }}>Seuil d'alerte ({currencySymbol()})</span>
           <span style={{ display: 'inline-flex', gap: 6 }}>
             <input style={{ ...field, width: 130, textAlign: 'right' }} inputMode="decimal" aria-label="Seuil d'alerte"
               value={thresholdInput ?? String(data.threshold)} onChange={e => setThresholdInput(e.target.value)} />

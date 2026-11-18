@@ -5,6 +5,7 @@ import { financialStatementsApi } from '../../api/ledger.api';
 import type { BalanceSheet, BilanLine } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import EditionButtons from './EditionButtons';
+import { money } from '../../utils/money';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -120,8 +121,8 @@ export default function BilanTab() {
           }}>
             <Scale size={15} />
             <strong>{Math.abs(data.ecart) < 0.01 ? 'Bilan équilibré' : 'Bilan déséquilibré'}</strong>
-            <span>Total actif {n(data.actif.total)} = Total passif {n(data.passif.total)} DH</span>
-            {Math.abs(data.ecart) >= 0.01 && <span style={{ marginLeft: 'auto' }}>écart : {n(data.ecart)} DH</span>}
+            <span>Total actif {n(data.actif.total)} = Total passif {money(data.passif.total)}</span>
+            {Math.abs(data.ecart) >= 0.01 && <span style={{ marginLeft: 'auto' }}>écart : {money(data.ecart)}</span>}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

@@ -11,6 +11,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { money as fmtMoney, currencySymbol } from '../../utils/money';
 
 /**
  * Charges constatées d'avance (compte 486). On enregistre une dépense qui couvre
@@ -19,7 +20,7 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
  * passe les écritures des mois échus.
  */
 
-const money = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
+const money = (v: number) => fmtMoney(v);
 const day = (d: string) => format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr });
 
 export default function PrepaidChargesTab() {
@@ -151,7 +152,7 @@ function PrepaidForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
               placeholder="— Choisir —" width="100%" size="md" ariaLabel="Compte de charge"
               options={chargeAccounts.map(a => ({ id: String(a.code), label: `${a.code} — ${a.label}` }))} />
           </Field>
-          <Field label="Montant total (DH)">
+          <Field label={`Montant total (${currencySymbol()})`}>
             <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" style={inp} />
           </Field>
           <div style={{ display: 'flex', gap: 12 }}>

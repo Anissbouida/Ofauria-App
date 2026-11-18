@@ -16,6 +16,7 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel, type PeriodKey } from '../../components/purchasing/ProcessBoard';
 import type { JournalEntryStatus, JournalEntrySummary, JournalEntryDetail } from '@ofauria/shared';
 import EditionButtons from './EditionButtons';
+import { currencySymbol } from '../../utils/money';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -204,7 +205,7 @@ export default function EcrituresTab() {
             <>
               {reconciliation.summary.divergent > 0 && `${reconciliation.summary.divergent} divergente${reconciliation.summary.divergent > 1 ? 's' : ''} · `}
               {reconciliation.summary.missing_entries > 0 && `${reconciliation.summary.missing_entries} sans écriture · `}
-              écart total {reconciliation.summary.total_delta} DH
+              écart total {reconciliation.summary.total_delta} {currencySymbol()}
             </>
           )}
         </StatusBanner>
@@ -296,12 +297,12 @@ export default function EcrituresTab() {
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label">Debit (page)</div>
           <div className="odoo-stat-card-value" style={{ color: '#1565c0' }}>{n(totals.debit)}</div>
-          <div className="odoo-stat-card-sub">DH</div>
+          <div className="odoo-stat-card-sub">{currencySymbol()}</div>
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label">Credit (page)</div>
           <div className="odoo-stat-card-value" style={{ color: '#c62828' }}>{n(totals.credit)}</div>
-          <div className="odoo-stat-card-sub">DH</div>
+          <div className="odoo-stat-card-sub">{currencySymbol()}</div>
         </div>
       </div>
 
@@ -528,7 +529,7 @@ function JournalEntryViewer({ id, onClose, onEdit }: { id: string; onClose: () =
                 {Math.abs(totalD - totalC) > 0.01 && (
                   <tr style={{ background: '#FCEBEB' }}>
                     <td colSpan={4} style={{ padding: '8px 14px', fontSize: '0.75rem', color: '#A32D2D' }}>
-                      ⚠ Ecriture desequilibree : delta = {n(Math.abs(totalD - totalC))} DH
+                      ⚠ Ecriture desequilibree : delta = {n(Math.abs(totalD - totalC))} {currencySymbol()}
                     </td>
                   </tr>
                 )}

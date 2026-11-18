@@ -10,6 +10,7 @@ import {
   planComptableApi, accountAuxiliariesApi, journalsApi, manualEntriesApi,
   type ManualEntryInput, type JournalEntryDetailEx,
 } from '../../api/ledger.api';
+import { currencySymbol } from '../../utils/money';
 
 type Line = { key: number; accountId: string; auxiliaryId: string; label: string; debit: string; credit: string };
 
@@ -86,7 +87,7 @@ export default function ManualEntryEditor({ draft, onClose }: { draft?: JournalE
     else if (accountById.get(l.accountId)?.is_collective && !l.auxiliaryId) problems.push(`Ligne ${i + 1} : tiers manquant`);
     if (!toCents(l.debit) && !toCents(l.credit)) problems.push(`Ligne ${i + 1} : montant manquant`);
   });
-  if (totals.diff !== 0) problems.push(`Écart de ${fmt(Math.abs(totals.diff))} DH`);
+  if (totals.diff !== 0) problems.push(`Écart de ${fmt(Math.abs(totals.diff))} ${currencySymbol()}`);
 
   const payload = (): ManualEntryInput => ({
     journalCode, date, description: description.trim(),
@@ -219,7 +220,7 @@ export default function ManualEntryEditor({ draft, onClose }: { draft?: JournalE
             ? <StatusBanner tone="warning" icon={Scale} title={problems.length === 1 ? problems[0] : `${problems.length} points à compléter`}>
                 {problems.length > 1 ? problems.join(' · ') : 'Le brouillon peut être enregistré en l\'état ; la comptabilisation exige une écriture complète et équilibrée.'}
               </StatusBanner>
-            : <StatusBanner tone="success" icon={CheckCircle2} title={`Écriture équilibrée : ${fmt(totals.d)} DH`}>
+            : <StatusBanner tone="success" icon={CheckCircle2} title={`Écriture équilibrée : ${fmt(totals.d)} ${currencySymbol()}`}>
                 À la comptabilisation, elle reçoit son numéro de journal et ne se modifie plus (correction par extourne).
               </StatusBanner>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Loader2, Lock, ArrowDownToLine, ArrowUpFromLine, Wallet } from 'lucide-react';
 import { financialStatementsApi } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
+import { money as fmtMoney } from '../../utils/money';
 
 /**
  * État de flux de trésorerie (comptes classe 5). Encaissements et décaissements
@@ -10,7 +11,7 @@ import { useAuth } from '../../context/AuthContext';
  * d'ouverture et de clôture, puis ventilation par nature des contreparties.
  */
 
-const money = (v: number) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
+const money = (v: number) => fmtMoney(v);
 
 export default function CashFlowTab() {
   const { user } = useAuth();

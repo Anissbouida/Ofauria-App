@@ -66,6 +66,7 @@ import {
   StagePipeline, ViewSwitch, PeriodFilter, SelectFilter, Pager, PAGE_SIZE, periodParams, periodLabel,
   periodLabel as periodLabelOf, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
+import { money, currencySymbol } from '../../utils/money';
 
 type AccTab = 'budget' | 'pilotage' | 'caisse' | 'charges' | 'cheques' | 'dettes' | 'resume' | 'losses' | 'plan_comptable' | 'ecritures' | 'grand_livre' | 'balance' | 'cpc' | 'bilan' | 'tva' | 'ras' | 'cloture' | 'immobilisations' | 'banque' | 'cca' | 'cashflow' | 'costcenters' | 'entry_templates' | 'lettrage' | 'aged_balance' | 'is' | 'fx' | 'liasse' | 'effets' | 'consolidation' | 'paiements_lot' | 'prevision';
 
@@ -166,7 +167,7 @@ function DayMovements({ payments }: { payments: Record<string, any>[] }) {
           {g.rows.map((p, idx) => (
             <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', padding: '2px 0' }}>
               <span style={{ color: 'var(--theme-text-muted)' }}>{g.label(p)}</span>
-              <span style={{ fontWeight: 600, color: g.sign > 0 ? '#28a745' : '#b02a37' }}>{g.sign > 0 ? '+' : '−'}{n(parseFloat(p.amount as string) || 0)} DH</span>
+              <span style={{ fontWeight: 600, color: g.sign > 0 ? '#28a745' : '#b02a37' }}>{g.sign > 0 ? '+' : '−'}{money(parseFloat(p.amount as string) || 0)}</span>
             </div>
           ))}
         </div>
@@ -608,7 +609,7 @@ function DettesTab() {
       }
     }
     exportCSV(`${isReceivable ? 'creances' : 'dettes'}_${format(new Date(), 'yyyy-MM-dd')}.csv`,
-      ['TIERS', 'N FACTURE', 'DATE', 'ECHEANCE', 'TOTAL', 'PAYE', 'RESTE (DH)', 'STATUT'], rows);
+      ['TIERS', 'N FACTURE', 'DATE', 'ECHEANCE', 'TOTAL', 'PAYE', `RESTE (${currencySymbol()})`, 'STATUT'], rows);
   };
 
   const accent = isReceivable ? '#0e7c3a' : '#b71c1c';
@@ -620,8 +621,8 @@ function DettesTab() {
       <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
         <div className="odoo-view-switcher" role="tablist" aria-label="Sens">
           {([
-            { key: 'receivables' as const, label: `Ils nous doivent · ${n(sideTotals.receivables)} DH` },
-            { key: 'payables' as const, label: `Nous leur devons · ${n(sideTotals.payables)} DH` },
+            { key: 'receivables' as const, label: `Ils nous doivent · ${money(sideTotals.receivables)}` },
+            { key: 'payables' as const, label: `Nous leur devons · ${money(sideTotals.payables)}` },
             { key: 'schedule' as const, label: 'Échéancier' },
           ]).map(opt => (
             <button key={opt.key} type="button" role="tab" aria-selected={side === opt.key}
@@ -637,7 +638,7 @@ function DettesTab() {
           ))}
         </div>
         {side === 'payables' && sideTotals.credits > 0 && (
-          <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>dont {n(sideTotals.credits)} DH de crédits sans facture (voir Échéancier)</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>dont {money(sideTotals.credits)} de crédits sans facture (voir Échéancier)</span>
         )}
       </div>
 
@@ -648,16 +649,16 @@ function DettesTab() {
       {/* Situation des tiers : une carte par situation (clic = filtre) */}
       <StagePipeline
         title={isReceivable ? 'Où en sont mes créances' : 'Où en sont mes dettes'}
-        summary={`${totals.tierCount} ${isReceivable ? 'client' : 'fournisseur'}${totals.tierCount > 1 ? 's' : ''} · ${totals.invoiceCount} facture${totals.invoiceCount > 1 ? 's' : ''} · ${n(totals.totalDue)} DH`}
+        summary={`${totals.tierCount} ${isReceivable ? 'client' : 'fournisseur'}${totals.tierCount > 1 ? 's' : ''} · ${totals.invoiceCount} facture${totals.invoiceCount > 1 ? 's' : ''} · ${money(totals.totalDue)}`}
         stages={[
           { key: 'overdue', label: 'Échues', hint: 'échéance dépassée', icon: AlertTriangle },
           { key: 'soon', label: 'Échéance ≤ 7 j', hint: isReceivable ? 'à relancer' : 'à préparer', icon: Clock },
           { key: 'later', label: 'À venir', hint: 'pas encore échues', icon: Calendar },
         ]}
         stats={{
-          overdue: { count: situationCounts.overdue.n, sub: `${n(situationCounts.overdue.amount)} DH`, late: situationCounts.overdue.n, alertLabel: isReceivable ? 'à relancer' : 'à régler' },
-          soon: { count: situationCounts.soon.n, sub: `${n(situationCounts.soon.amount)} DH` },
-          later: { count: situationCounts.later.n, sub: `${n(situationCounts.later.amount)} DH` },
+          overdue: { count: situationCounts.overdue.n, sub: `${money(situationCounts.overdue.amount)}`, late: situationCounts.overdue.n, alertLabel: isReceivable ? 'à relancer' : 'à régler' },
+          soon: { count: situationCounts.soon.n, sub: `${money(situationCounts.soon.amount)}` },
+          later: { count: situationCounts.later.n, sub: `${money(situationCounts.later.amount)}` },
         }}
         isActive={k => situation === k}
         onPick={k => setSituation(situation === k ? '' : (k as 'overdue' | 'soon' | 'later'))}
@@ -746,7 +747,7 @@ function DettesTab() {
                         {t.overdueDue > 0 ? <span style={{ color: '#dc3545', fontWeight: 600 }}>{n(t.overdueDue)}</span> : <span style={{ color: 'var(--theme-text-muted)' }}>—</span>}
                       </td>
                       <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 700, color: accent }}>
-                        {n(t.totalDue)} DH
+                        {money(t.totalDue)}
                       </td>
                       <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
                         {nextInv && (
@@ -816,7 +817,7 @@ function DettesTab() {
                   {totals.overdueDue > 0 ? `${n(totals.overdueDue)}` : '—'}
                 </td>
                 <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: accent, fontFamily: 'ui-monospace, monospace' }}>
-                  {n(totals.totalDue)} DH
+                  {money(totals.totalDue)}
                 </td>
                 <td></td>
               </tr>
@@ -852,7 +853,7 @@ function DettesTab() {
                 const amount = parseFloat(payAmount);
                 if (!Number.isFinite(amount) || amount <= 0) { notify.error('Montant invalide'); return; }
                 const avoir = parseFloat(avoirAmount) || 0;
-                if (amount + avoir > remaining + 0.01) { notify.error(`Le total (${n(amount + avoir)} DH) dépasse le reste à payer (${n(remaining)} DH)`); return; }
+                if (amount + avoir > remaining + 0.01) { notify.error(`Le total (${money(amount + avoir)}) dépasse le reste à payer (${money(remaining)})`); return; }
                 const retenue = parseFloat(rasAmount) || 0;
                 if (!isReceivable && rasTypeId && retenue >= amount) {
                   notify.error('La retenue doit être inférieure au montant brut'); return;
@@ -882,7 +883,7 @@ function DettesTab() {
               }} className="p-5 space-y-4">
                 <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600 flex justify-between">
                   <span>Reste à payer</span>
-                  <strong style={{ fontFamily: 'ui-monospace, monospace', color: accent }}>{n(remaining)} DH</strong>
+                  <strong style={{ fontFamily: 'ui-monospace, monospace', color: accent }}>{money(remaining)}</strong>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -946,18 +947,18 @@ function DettesTab() {
                         <>
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="block text-xs text-gray-600 mb-1">Montant retenu (DH)</label>
+                              <label className="block text-xs text-gray-600 mb-1">Montant retenu ({currencySymbol()})</label>
                               <input type="number" step="0.01" min="0" value={rasAmount}
                                 onChange={e => setRasAmount(e.target.value)}
                                 className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
                             </div>
                             <div>
                               <label className="block text-xs text-gray-600 mb-1">Net versé</label>
-                              <div className="px-3 py-2 rounded-xl bg-white border border-gray-200 text-sm font-semibold" style={{ fontFamily: 'ui-monospace, monospace' }}>{n(net)} DH</div>
+                              <div className="px-3 py-2 rounded-xl bg-white border border-gray-200 text-sm font-semibold" style={{ fontFamily: 'ui-monospace, monospace' }}>{money(net)}</div>
                             </div>
                           </div>
                           <p className="text-xs text-gray-500">
-                            La retenue de <strong>{n(retenue)} DH</strong> sera déclarée à l'État (compte <strong>{selRas?.account_code}</strong>) et apparaîtra dans <strong>Retenues source → À reverser</strong>. Le bénéficiaire reçoit le net.
+                            La retenue de <strong>{money(retenue)}</strong> sera déclarée à l'État (compte <strong>{selRas?.account_code}</strong>) et apparaîtra dans <strong>Retenues source → À reverser</strong>. Le bénéficiaire reçoit le net.
                           </p>
                         </>
                       )}
@@ -985,7 +986,7 @@ function DettesTab() {
                         <label className="block text-sm font-medium text-gray-700">Avoir fournisseur</label>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-xs text-gray-600 mb-1">Montant avoir (DH)</label>
+                            <label className="block text-xs text-gray-600 mb-1">Montant avoir ({currencySymbol()})</label>
                             <input type="number" step="0.01" min="0" value={avoirAmount}
                               onChange={e => setAvoirAmount(e.target.value)}
                               placeholder="0.00"
@@ -994,13 +995,13 @@ function DettesTab() {
                           {av > 0 && (
                             <div>
                               <label className="block text-xs text-gray-600 mb-1">Total réglé</label>
-                              <div className="px-3 py-2 rounded-xl bg-white border border-gray-200 text-sm font-semibold" style={{ fontFamily: 'ui-monospace, monospace' }}>{n(chk + av)} DH</div>
+                              <div className="px-3 py-2 rounded-xl bg-white border border-gray-200 text-sm font-semibold" style={{ fontFamily: 'ui-monospace, monospace' }}>{money(chk + av)}</div>
                             </div>
                           )}
                         </div>
                         {av > 0 && (
                           <p className="text-xs text-gray-500">
-                            L'avoir de <strong>{n(av)} DH</strong> sera déduit de la dette. {payLegacy === 'traite' ? 'La traite' : 'Le chèque'} émis sera de <strong>{n(chk)} DH</strong>.
+                            L'avoir de <strong>{money(av)}</strong> sera déduit de la dette. {payLegacy === 'traite' ? 'La traite' : 'Le chèque'} émis sera de <strong>{money(chk)}</strong>.
                           </p>
                         )}
                       </div>
@@ -1063,7 +1064,7 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
       { label: 'Fournisseur', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
       { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
       { label: 'Statut', render: r => INVOICE_STATUS_LABELS[r.status || ''] || r.status || '—', sortValue: r => INVOICE_STATUS_LABELS[r.status || ''] || r.status || '' },
-      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span>, sortValue: r => r.amount },
+      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{money(r.amount)}</span>, sortValue: r => r.amount },
     ],
   },
   treasury: {
@@ -1074,7 +1075,7 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
       { label: 'Bénéficiaire', render: r => r.supplierName || r.label || '—', sortValue: r => r.supplierName || r.label || '' },
       { label: 'Méthode', render: r => PAYMENT_METHOD_LABELS[r.method || ''] || r.method || '—', sortValue: r => PAYMENT_METHOD_LABELS[r.method || ''] || r.method || '' },
       { label: 'Réf', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
-      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span>, sortValue: r => r.amount },
+      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{money(r.amount)}</span>, sortValue: r => r.amount },
     ],
   },
   remainingToPay: {
@@ -1086,7 +1087,7 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
       { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—'), sortValue: r => r.dueDate || '' },
       { label: 'Total', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(r.total ?? 0)}</span>, sortValue: r => r.total ?? 0 },
       { label: 'Payé', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{n(r.paid ?? 0)}</span>, sortValue: r => r.paid ?? 0 },
-      { label: 'Reste', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: '#856404' }}>{n(r.amount)} DH</span>, sortValue: r => r.amount },
+      { label: 'Reste', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, color: '#856404' }}>{money(r.amount)}</span>, sortValue: r => r.amount },
     ],
   },
   receivedNotInvoiced: {
@@ -1095,7 +1096,7 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
       { label: 'N° BC', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
       { label: 'Fournisseur', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
       { label: 'Date livraison', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
-      { label: 'Montant estimé', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span>, sortValue: r => r.amount },
+      { label: 'Montant estimé', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{money(r.amount)}</span>, sortValue: r => r.amount },
     ],
   },
   unpaidInvoices: {
@@ -1106,7 +1107,7 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
       { label: 'Fournisseur', render: r => r.supplierName || '—', sortValue: r => r.supplierName || '' },
       { label: 'Date', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
       { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—'), sortValue: r => r.dueDate || '' },
-      { label: 'Reste', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span>, sortValue: r => r.amount },
+      { label: 'Reste', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{money(r.amount)}</span>, sortValue: r => r.amount },
     ],
   },
   uncashedChecks: {
@@ -1116,7 +1117,7 @@ const DETAIL_CONFIG: Record<FinanceDetailKind, {
       { label: 'Réf', render: r => <span style={{ fontFamily: 'ui-monospace, monospace' }}>{r.ref || '—'}</span>, sortValue: r => r.ref || '' },
       { label: 'Émis le', render: r => (r.date ? fmtPaymentDate(r.date, 'fr') : '—'), sortValue: r => r.date || '' },
       { label: 'Échéance', render: r => (r.dueDate ? fmtPaymentDate(r.dueDate, 'fr') : '—'), sortValue: r => r.dueDate || '' },
-      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.amount)} DH</span>, sortValue: r => r.amount },
+      { label: 'Montant', align: 'right', render: r => <span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{money(r.amount)}</span>, sortValue: r => r.amount },
     ],
   },
 };
@@ -1203,7 +1204,7 @@ function FinanceDetailPanel({ kind, dateFrom, dateTo, onClose }: {
           <span className="odoo-breadcrumb-current">{cfg.title}</span>
         </div>
         <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-          {rows.length} ligne{rows.length > 1 ? 's' : ''}{rows.length !== allRows.length && <> sur {allRows.length}</>} · <strong style={{ color: 'var(--odoo-text)' }}>{n(total)} DH</strong>
+          {rows.length} ligne{rows.length > 1 ? 's' : ''}{rows.length !== allRows.length && <> sur {allRows.length}</>} · <strong style={{ color: 'var(--odoo-text)' }}>{money(total)}</strong>
         </span>
         <div style={{ flex: 1 }} />
         <button type="button" onClick={onClose} className="odoo-pager-btn" aria-label="Fermer le détail" title="Fermer le détail"><X size={14} /></button>
@@ -1352,7 +1353,7 @@ function PilotageTab() {
       {/* 1. Flux de la période : engagé → payé → reste à payer (+ reçu non facturé) */}
       <StagePipeline
         title={`Flux de la période · ${periodLabel}`}
-        summary={`${n(kpis.engagement.total)} DH engagés · ${n(kpis.treasury.total)} DH payés`}
+        summary={`${money(kpis.engagement.total)} engagés · ${money(kpis.treasury.total)} payés`}
         stages={[
           { key: 'engagement', label: 'Engagé', hint: 'factures fournisseur reçues', icon: ClipboardList },
           { key: 'treasury', label: 'Payé', hint: 'cash réellement sorti', icon: ArrowDownRight },
@@ -1360,10 +1361,10 @@ function PilotageTab() {
           { key: 'receivedNotInvoiced', label: 'Reçu non facturé', hint: 'BC livrés sans facture', icon: FileWarning },
         ]}
         stats={{
-          engagement: { count: kpis.engagement.count, sub: `${n(kpis.engagement.total)} DH` },
-          treasury: { count: kpis.treasury.byMethod.cash.count + kpis.treasury.byMethod.check.count + kpis.treasury.byMethod.transfer.count + kpis.treasury.byMethod.bank.count, sub: `${n(kpis.treasury.total)} DH` },
-          remainingToPay: { count: kpis.remainingToPay.count, sub: `${n(kpis.remainingToPay.total)} DH` },
-          receivedNotInvoiced: { count: kpis.receivedNotInvoiced.count, sub: `${n(kpis.receivedNotInvoiced.total)} DH`, late: kpis.receivedNotInvoiced.count, alertLabel: 'facture à saisir' },
+          engagement: { count: kpis.engagement.count, sub: `${money(kpis.engagement.total)}` },
+          treasury: { count: kpis.treasury.byMethod.cash.count + kpis.treasury.byMethod.check.count + kpis.treasury.byMethod.transfer.count + kpis.treasury.byMethod.bank.count, sub: `${money(kpis.treasury.total)}` },
+          remainingToPay: { count: kpis.remainingToPay.count, sub: `${money(kpis.remainingToPay.total)}` },
+          receivedNotInvoiced: { count: kpis.receivedNotInvoiced.count, sub: `${money(kpis.receivedNotInvoiced.total)}`, late: kpis.receivedNotInvoiced.count, alertLabel: 'facture à saisir' },
         }}
         isActive={k => detailKind === k}
         onPick={toggleDetail}
@@ -1371,32 +1372,32 @@ function PilotageTab() {
 
       {/* Équation de trésorerie, en clair */}
       <StatusBanner tone={kpis.receivedNotInvoiced.total > 0 ? 'warning' : 'info'} icon={Scale}
-        title={`Engagé ${n(kpis.engagement.total)} DH · payé ${n(kpis.treasury.total)} DH · reste à payer ${n(kpis.remainingToPay.total)} DH`}>
+        title={`Engagé ${money(kpis.engagement.total)} · payé ${money(kpis.treasury.total)} · reste à payer ${money(kpis.remainingToPay.total)}`}>
         {deltaToPay < 0
-          ? `Les paiements de la période (${n(kpis.treasury.total)} DH) dépassent ce qui y a été engagé : ils règlent aussi des factures des périodes précédentes.`
+          ? `Les paiements de la période (${money(kpis.treasury.total)}) dépassent ce qui y a été engagé : ils règlent aussi des factures des périodes précédentes.`
           : kpis.remainingToPay.total > 0
-            ? `${n(kpis.remainingToPay.total)} DH des factures de la période ne sont pas encore payés.`
+            ? `${money(kpis.remainingToPay.total)} des factures de la période ne sont pas encore payés.`
             : 'Toutes les factures de la période sont payées.'}
-        {kpis.receivedNotInvoiced.total > 0 && ` Attention : ${n(kpis.receivedNotInvoiced.total)} DH de marchandises reçues n'ont pas encore de facture saisie — l'engagement est sous-estimé.`}
+        {kpis.receivedNotInvoiced.total > 0 && ` Attention : ${money(kpis.receivedNotInvoiced.total)} de marchandises reçues n'ont pas encore de facture saisie — l'engagement est sous-estimé.`}
       </StatusBanner>
 
       {/* 2. À date : ce qui va peser sur la trésorerie */}
       <StagePipeline
         title="À date · ce qui va sortir du compte"
-        summary={`${n(pipeline.unpaidInvoices.total + pipeline.uncashedChecks.total)} DH à décaisser`}
+        summary={`${money(pipeline.unpaidInvoices.total + pipeline.uncashedChecks.total)} à décaisser`}
         stages={[
           { key: 'unpaidInvoices', label: 'Factures impayées', hint: 'toutes périodes', icon: Receipt },
           { key: 'uncashedChecks', label: 'Chèques non encaissés', hint: 'émis, pas encore débités', icon: Wallet },
           { key: 'receivedNotInvoiced', label: 'Reçu sans facture', hint: 'à comptabiliser', icon: FileWarning },
         ]}
         stats={{
-          unpaidInvoices: { count: pipeline.unpaidInvoices.count, sub: `${n(pipeline.unpaidInvoices.total)} DH` },
+          unpaidInvoices: { count: pipeline.unpaidInvoices.count, sub: `${money(pipeline.unpaidInvoices.total)}` },
           uncashedChecks: {
             count: pipeline.uncashedChecks.count,
-            sub: `${n(pipeline.uncashedChecks.total)} DH${pipeline.uncashedChecks.next7d > 0 ? ` · ${n(pipeline.uncashedChecks.next7d)} sous 7 j` : ''}`,
-            late: pipeline.uncashedChecks.overdue > 0 ? 1 : 0, alertLabel: `échus : ${n(pipeline.uncashedChecks.overdue)} DH`,
+            sub: `${money(pipeline.uncashedChecks.total)}${pipeline.uncashedChecks.next7d > 0 ? ` · ${n(pipeline.uncashedChecks.next7d)} sous 7 j` : ''}`,
+            late: pipeline.uncashedChecks.overdue > 0 ? 1 : 0, alertLabel: `échus : ${money(pipeline.uncashedChecks.overdue)}`,
           },
-          receivedNotInvoiced: { count: pipeline.receivedNotInvoiced.count, sub: `${n(pipeline.receivedNotInvoiced.total)} DH` },
+          receivedNotInvoiced: { count: pipeline.receivedNotInvoiced.count, sub: `${money(pipeline.receivedNotInvoiced.total)}` },
         }}
         isActive={k => detailKind === k}
         onPick={toggleDetail}
@@ -1445,7 +1446,7 @@ function PilotageTab() {
                   <strong>Especes</strong>
                   <span style={{ color: 'var(--theme-text-muted)' }}>({kpis.treasury.byMethod.cash.count})</span>
                 </div>
-                <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, marginLeft: 18 }}>{n(kpis.treasury.byMethod.cash.total)} DH</div>
+                <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, marginLeft: 18 }}>{money(kpis.treasury.byMethod.cash.total)}</div>
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1453,7 +1454,7 @@ function PilotageTab() {
                   <strong>Cheque (encaisse)</strong>
                   <span style={{ color: 'var(--theme-text-muted)' }}>({kpis.treasury.byMethod.check.count})</span>
                 </div>
-                <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, marginLeft: 18 }}>{n(kpis.treasury.byMethod.check.total)} DH</div>
+                <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, marginLeft: 18 }}>{money(kpis.treasury.byMethod.check.total)}</div>
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1461,7 +1462,7 @@ function PilotageTab() {
                   <strong>Virement / Banque</strong>
                   <span style={{ color: 'var(--theme-text-muted)' }}>({kpis.treasury.byMethod.transfer.count + kpis.treasury.byMethod.bank.count})</span>
                 </div>
-                <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, marginLeft: 18 }}>{n(kpis.treasury.byMethod.transfer.total + kpis.treasury.byMethod.bank.total)} DH</div>
+                <div style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600, marginLeft: 18 }}>{money(kpis.treasury.byMethod.transfer.total + kpis.treasury.byMethod.bank.total)}</div>
               </div>
             </div>
           </div>
@@ -1509,7 +1510,7 @@ function PilotageTab() {
                       ) : '—'}
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 700 }}>
-                      {n(s.totalDue)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
+                      {n(s.totalDue)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
                     </td>
                   </tr>
                 ))}
@@ -1539,7 +1540,7 @@ function PilotageTab() {
                     <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{r.orderNumber}</td>
                     <td>{r.supplierName}</td>
                     <td>{r.deliveryDate ? format(parseLocalDate(r.deliveryDate), 'dd/MM/yyyy') : '—'}</td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{n(r.total)} DH</td>
+                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{money(r.total)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1626,7 +1627,7 @@ function CaisseTab() {
     }
     rows.push(['', 'TOTAL RECETTES MOIS', '', n(monthTotals.totalRecettes)]);
     rows.push(['', 'SOLDE FINAL', '', n(monthTotals.solde)]);
-    exportCSV(`caisse_${MONTH_NAMES[month - 1]}_${year}.csv`, ['', 'LIBELLE', 'DETAIL', 'MONTANT (DH)'], rows);
+    exportCSV(`caisse_${MONTH_NAMES[month - 1]}_${year}.csv`, ['', 'LIBELLE', 'DETAIL', `MONTANT (${currencySymbol()})`], rows);
   };
 
   return (
@@ -1667,9 +1668,9 @@ function CaisseTab() {
             )}
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 16, fontSize: '0.75rem' }}>
-            <span>Cash: <strong>{n(data.previousBalance.cashNet)} DH</strong></span>
-            <span>Carte: <strong>{n(data.previousBalance.cardCumul)} DH</strong></span>
-            <span>Total: <strong>{n(data.previousBalance.cashNet + data.previousBalance.cardCumul)} DH</strong></span>
+            <span>Cash: <strong>{money(data.previousBalance.cashNet)}</strong></span>
+            <span>Carte: <strong>{money(data.previousBalance.cardCumul)}</strong></span>
+            <span>Total: <strong>{money(data.previousBalance.cashNet + data.previousBalance.cardCumul)}</strong></span>
             {isAdmin && (
               <button onClick={() => setShowReportModal(true)} className="odoo-btn-secondary"
                 title="Modifier le report du mois précédent"
@@ -1694,12 +1695,12 @@ function CaisseTab() {
       <div className="odoo-stat-grid">
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><ShoppingCart size={11} style={{ display: 'inline', marginRight: 4 }} />Ventes du mois</div>
-          <div className="odoo-stat-card-value">{n(monthTotals.totalSales)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-value">{n(monthTotals.totalSales)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
           <div className="odoo-stat-card-sub">{monthTotals.saleCount} vente{monthTotals.saleCount > 1 ? 's' : ''}</div>
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><Coins size={11} style={{ display: 'inline', marginRight: 4 }} />Recettes</div>
-          <div className="odoo-stat-card-value">{n(monthTotals.totalRecettes)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-value">{n(monthTotals.totalRecettes)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
           <div className="odoo-stat-card-sub">
             Caisse {n(monthTotals.cashCaissiere)} · Carte {n(monthTotals.cardReceipts)}
             {monthTotals.cardCommission > 0 && ` (commission −${n(monthTotals.cardCommission)})`}
@@ -1710,14 +1711,14 @@ function CaisseTab() {
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><Scale size={11} style={{ display: 'inline', marginRight: 4 }} />Écart caisse</div>
           <div className="odoo-stat-card-value" style={{ color: monthTotals.ecart === 0 ? 'var(--theme-text-muted)' : monthTotals.ecart > 0 ? '#28a745' : '#dc3545' }}>
-            {monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
+            {monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
           </div>
           <div className="odoo-stat-card-sub">Caissière vs Système</div>
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><Wallet size={11} style={{ display: 'inline', marginRight: 4 }} />Solde actuel</div>
           <div className="odoo-stat-card-value" style={{ color: monthTotals.solde >= 0 ? '#28a745' : '#dc3545' }}>
-            {n(monthTotals.solde)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
+            {n(monthTotals.solde)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
           </div>
           <div className="odoo-stat-card-sub">Cash {n(monthTotals.cashNet)} · Carte {n(monthTotals.cardCumul)}</div>
         </div>
@@ -1727,7 +1728,7 @@ function CaisseTab() {
       {monthTotals.ecart !== 0 && (
         <div className={`odoo-alert ${monthTotals.ecart > 0 ? 'warning' : 'danger'}`}>
           <AlertTriangle size={13} style={{ display: 'inline', marginRight: 6 }} />
-          Écart caisse du mois : <strong>{monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} DH</strong> (Total encaissé vs Cash réel + Carte)
+          Écart caisse du mois : <strong>{monthTotals.ecart > 0 ? '+' : ''}{money(monthTotals.ecart)}</strong> (Total encaissé vs Cash réel + Carte)
         </div>
       )}
 
@@ -1736,7 +1737,7 @@ function CaisseTab() {
         <div className="odoo-section">
           <div className="odoo-section-header">
             <AlertTriangle size={13} style={{ display: 'inline', marginRight: 6, color: '#dc3545' }} />
-            {((data as Record<string, any>).reconciliationAlerts as { date: string; ecart: number }[]).length} jour(s) avec écart caisse significatif (&gt; 5 DH)
+            {((data as Record<string, any>).reconciliationAlerts as { date: string; ecart: number }[]).length} jour(s) avec écart caisse significatif (&gt; 5 {currencySymbol()})
           </div>
           <table className="odoo-table" style={{ margin: 0 }}>
             <tbody>
@@ -1746,7 +1747,7 @@ function CaisseTab() {
                   <td style={{ textTransform: 'capitalize' }}>{format(parseLocalDate(a.date), 'EEEE dd/MM', { locale: fr })}</td>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Caissière {n(a.cashCaissiere)}</td>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Système {n(a.cashSysteme)}</td>
-                  <td style={{ textAlign: 'right' }}><span className="odoo-tag odoo-tag-red">{a.ecart > 0 ? '+' : ''}{n(a.ecart)} DH</span></td>
+                  <td style={{ textAlign: 'right' }}><span className="odoo-tag odoo-tag-red">{a.ecart > 0 ? '+' : ''}{money(a.ecart)}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -1774,7 +1775,7 @@ function CaisseTab() {
               <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--theme-text-muted)' }}>
                 · factures encaissées par la direction, hors ventes de caisse
               </span>
-              <span style={{ marginLeft: 'auto', color: '#1e7e4f' }}>+{n(monthTotals.clientReceipts)} DH</span>
+              <span style={{ marginLeft: 'auto', color: '#1e7e4f' }}>+{money(monthTotals.clientReceipts)}</span>
             </div>
             <table className="odoo-table" style={{ margin: 0 }}>
               <thead>
@@ -1792,7 +1793,7 @@ function CaisseTab() {
                     <td><span className={`odoo-tag ${p.payment_method === 'cash' ? 'odoo-tag-green' : 'odoo-tag-blue'}`}>{caissePayLabel(p.payment_method)}</span>
                       <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', marginLeft: 6 }}>{p.payment_method === 'cash' ? 'solde cash' : 'solde banque'}</span></td>
                     <td style={{ color: 'var(--theme-text-muted)' }}>{(p.reference as string) || '—'}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#1e7e4f' }}>+{n(parseFloat(p.amount as string) || 0)} DH</td>
+                    <td style={{ textAlign: 'right', fontWeight: 700, color: '#1e7e4f' }}>+{money(parseFloat(p.amount as string) || 0)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1848,29 +1849,29 @@ function CaisseTab() {
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
                             <div>
                               <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Cash réel</div>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cashSysteme)} DH</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cashSysteme)}</div>
                             </div>
                             <div>
                               <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Total encaissé</div>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cashCaissiere)} DH</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cashCaissiere)}</div>
                             </div>
                             <div>
                               <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Carte</div>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cardReceipt)} DH</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cardReceipt)}</div>
                             </div>
                             {day.cardCommission > 0 && (
                               <div>
                                 <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Carte nette en banque</div>
-                                <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cardReceipt - day.cardCommission)} DH <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#b02a37' }}>(−{n(day.cardCommission)} commission {cardPct} %)</span></div>
+                                <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cardReceipt - day.cardCommission)} <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#b02a37' }}>(−{n(day.cardCommission)} commission {cardPct} %)</span></div>
                               </div>
                             )}
                             <div>
                               <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Solde cash</div>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cashNetCumul)} DH</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cashNetCumul)}</div>
                             </div>
                             <div>
                               <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: 'var(--theme-text-muted)', letterSpacing: '0.05em' }}>Solde carte</div>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{n(day.cardCumul)} DH</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{money(day.cardCumul)}</div>
                             </div>
                           </div>
                           <DayMovements payments={day.payments} />
@@ -1897,55 +1898,55 @@ function CaisseTab() {
             <tbody>
               <tr>
                 <td style={{ color: 'var(--theme-text-muted)' }}>Total Ventes ({monthTotals.saleCount})</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(monthTotals.totalSales)} DH</td>
+                <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(monthTotals.totalSales)}</td>
               </tr>
               <tr>
                 <td style={{ color: 'var(--theme-text-muted)' }}>Total encaissé</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(monthTotals.cashCaissiere)} DH</td>
+                <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(monthTotals.cashCaissiere)}</td>
               </tr>
               <tr>
                 <td style={{ color: 'var(--theme-text-muted)' }}>Carte Encaissée</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(monthTotals.cardReceipts)} DH</td>
+                <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(monthTotals.cardReceipts)}</td>
               </tr>
               {monthTotals.cardCommission > 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Commission carte ({cardPct} %) — non versée en banque</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, color: '#b02a37' }}>−{n(monthTotals.cardCommission)} DH</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600, color: '#b02a37' }}>−{money(monthTotals.cardCommission)}</td>
                 </tr>
               )}
               {monthTotals.clientReceipts > 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Règlements clients (factures)</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, color: '#1e7e4f' }}>{n(monthTotals.clientReceipts)} DH</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600, color: '#1e7e4f' }}>{money(monthTotals.clientReceipts)}</td>
                 </tr>
               )}
               {monthTotals.otherEntries > 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Autres entrées</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{n(monthTotals.otherEntries)} DH</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(monthTotals.otherEntries)}</td>
                 </tr>
               )}
               <tr>
                 <td style={{ fontWeight: 600 }}>Total Recettes</td>
-                <td style={{ textAlign: 'right', fontWeight: 700, color: '#28a745' }}>{n(monthTotals.totalRecettes)} DH</td>
+                <td style={{ textAlign: 'right', fontWeight: 700, color: '#28a745' }}>{money(monthTotals.totalRecettes)}</td>
               </tr>
               {monthTotals.exits > 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Sorties (fournisseurs, salaires, dépenses)</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600, color: '#b02a37' }}>−{n(monthTotals.exits)} DH</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600, color: '#b02a37' }}>−{money(monthTotals.exits)}</td>
                 </tr>
               )}
               {monthTotals.ecart !== 0 && (
                 <tr>
                   <td style={{ color: 'var(--theme-text-muted)' }}>Écart Caisse</td>
                   <td style={{ textAlign: 'right', fontWeight: 600, color: monthTotals.ecart > 0 ? '#28a745' : '#dc3545' }}>
-                    {monthTotals.ecart > 0 ? '+' : ''}{n(monthTotals.ecart)} DH
+                    {monthTotals.ecart > 0 ? '+' : ''}{money(monthTotals.ecart)}
                   </td>
                 </tr>
               )}
               <tr style={{ borderTop: '2px solid var(--theme-bg-separator)' }}>
                 <td style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Solde Final</td>
-                <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1.125rem', color: monthTotals.solde >= 0 ? '#28a745' : '#dc3545' }}>{n(monthTotals.solde)} DH</td>
+                <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1.125rem', color: monthTotals.solde >= 0 ? '#28a745' : '#dc3545' }}>{money(monthTotals.solde)}</td>
               </tr>
             </tbody>
           </table>
@@ -2017,18 +2018,18 @@ function ReportOverrideModal({ year, month, current, override, onClose }: {
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>
-              Cash (DH)
+              Cash ({currencySymbol()})
               <input type="text" inputMode="decimal" value={cash} onChange={e => setCash(e.target.value)}
                 className="odoo-filter-dropdown" style={{ width: '100%', marginTop: 4, textAlign: 'right' }} />
             </label>
             <label style={{ fontSize: '0.75rem', fontWeight: 600 }}>
-              Carte (DH)
+              Carte ({currencySymbol()})
               <input type="text" inputMode="decimal" value={card} onChange={e => setCard(e.target.value)}
                 className="odoo-filter-dropdown" style={{ width: '100%', marginTop: 4, textAlign: 'right' }} />
             </label>
           </div>
           <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)', textAlign: 'right' }}>
-            Total : <strong>{n(cashNum + cardNum)} DH</strong>
+            Total : <strong>{money(cashNum + cardNum)}</strong>
           </div>
           <label style={{ fontSize: '0.75rem', fontWeight: 600, display: 'block' }}>
             Motif (optionnel)
@@ -2436,7 +2437,7 @@ function ChargesTab() {
     ]);
     const exportSuffix = useCustomRange ? `${customFrom}_${customTo}` : `${MONTH_NAMES[month - 1]}_${year}`;
     exportCSV(`charges_${exportSuffix}.csv`,
-      ['DATE', 'REF', 'CATEGORIE', 'SOUS-CATEGORIE', 'BENEFICIAIRE', 'METHODE', 'DESCRIPTION', 'MONTANT (DH)'], rows);
+      ['DATE', 'REF', 'CATEGORIE', 'SOUS-CATEGORIE', 'BENEFICIAIRE', 'METHODE', 'DESCRIPTION', `MONTANT (${currencySymbol()})`], rows);
   };
 
 
@@ -2471,16 +2472,16 @@ function ChargesTab() {
       {/* Répartition : une carte par grande catégorie (clic = filtre), plus les lignes à catégoriser */}
       <StagePipeline
         title={`Sorties · ${periodLabel}`}
-        summary={`${statBase.length} opération${statBase.length > 1 ? 's' : ''} · ${n(grandTotal)} DH${filterMethod !== 'all' ? ` · ${getPaymentLabel(filterMethod)}` : ''}`}
+        summary={`${statBase.length} opération${statBase.length > 1 ? 's' : ''} · ${money(grandTotal)}${filterMethod !== 'all' ? ` · ${getPaymentLabel(filterMethod)}` : ''}`}
         stages={[
           { key: 'all', label: 'Toutes', hint: 'total des sorties', icon: ArrowDownRight },
           ...topCats.filter(tc => String(tc.id) !== '__none__').map(tc => ({ key: String(tc.id), label: String(tc.name), hint: `${grandTotal > 0 ? Math.round(tc.total / grandTotal * 100) : 0} % du total`, icon: Wallet })),
           ...(uncategorized.count > 0 ? [{ key: '__none__', label: 'À catégoriser', hint: 'sans catégorie', icon: FileWarning }] : []),
         ]}
         stats={{
-          all: { count: statBase.length, sub: `${n(grandTotal)} DH` },
-          ...Object.fromEntries(topCats.map(tc => [String(tc.id), { count: statBase.filter(p => (getRootId(p.category_id as string | null) ?? '__none__') === String(tc.id)).length, sub: `${n(tc.total)} DH` }])),
-          __none__: { count: uncategorized.count, sub: `${n(uncategorized.total)} DH`, late: uncategorized.count, alertLabel: 'à classer' },
+          all: { count: statBase.length, sub: `${money(grandTotal)}` },
+          ...Object.fromEntries(topCats.map(tc => [String(tc.id), { count: statBase.filter(p => (getRootId(p.category_id as string | null) ?? '__none__') === String(tc.id)).length, sub: `${money(tc.total)}` }])),
+          __none__: { count: uncategorized.count, sub: `${money(uncategorized.total)}`, late: uncategorized.count, alertLabel: 'à classer' },
         }}
         isActive={k => (k === 'all' ? filterRoot === 'all' : filterRoot === k)}
         onPick={k => { setFilterRoot(k === 'all' || filterRoot === k ? 'all' : k); setFilterLeaf('all'); }}
@@ -2592,7 +2593,7 @@ function ChargesTab() {
                       {p.payment_mode ? paymentModeLabel(p, payModes) : getPaymentLabel(p.payment_method as string)} <PaymentStatusTag p={p} />
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc3545', whiteSpace: 'nowrap', textDecoration: p.status === 'void' && !p.voids_payment_id ? 'line-through' : undefined }}>
-                      {n(parseFloat(p.amount as string))} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
+                      {n(parseFloat(p.amount as string))} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
                     </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       {!rootId && p.status !== 'void' && !p.voids_payment_id && (
@@ -2630,7 +2631,7 @@ function ChargesTab() {
                   Total <span style={{ textTransform: 'capitalize' }}>{periodLabel}</span> ({displayed.length} opération{displayed.length > 1 ? 's' : ''}{displayed.length !== outgoing.length ? ` filtrée${displayed.length > 1 ? 's' : ''}` : ''})
                 </td>
                 <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: '#dc3545' }}>
-                  {n(displayedTotal)} DH
+                  {money(displayedTotal)}
                 </td>
                 <td colSpan={2}></td>
               </tr>
@@ -2719,12 +2720,12 @@ function ChargesTab() {
                     onChange={setFormPOId}
                     options={(eligiblePOs as Record<string, any>[]).map(po => ({
                       id: po.id as string,
-                      label: `${po.order_number as string} — ${po.supplier_name as string} — ${n(parseFloat(po.total_amount as string) || 0)} DH`,
+                      label: `${po.order_number as string} — ${po.supplier_name as string} — ${money(parseFloat(po.total_amount as string) || 0)}`,
                     }))}
                   />
                   {selectedPO && (
                     <p className="text-xs text-amber-700 mt-2">
-                      Fournisseur: <strong>{selectedPO.supplier_name as string}</strong> | Montant BC: <strong>{n(parseFloat(selectedPO.total_amount as string) || 0)} DH</strong>
+                      Fournisseur: <strong>{selectedPO.supplier_name as string}</strong> | Montant BC: <strong>{money(parseFloat(selectedPO.total_amount as string) || 0)}</strong>
                     </p>
                   )}
                   {(eligiblePOs as Record<string, any>[]).length === 0 && (
@@ -2844,7 +2845,7 @@ function ChargesTab() {
               } });
             }} className="p-5 space-y-4">
               <div className="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 text-xs text-gray-600 space-y-1">
-                <div className="flex justify-between"><span>Montant</span><strong style={{ fontFamily: 'ui-monospace, monospace' }}>{n(parseFloat(editingPayment.amount as string) || 0)} DH</strong></div>
+                <div className="flex justify-between"><span>Montant</span><strong style={{ fontFamily: 'ui-monospace, monospace' }}>{money(parseFloat(editingPayment.amount as string) || 0)}</strong></div>
                 <div className="flex justify-between"><span>Date</span><span>{fmtPaymentDate(editingPayment.payment_date, 'fr')}</span></div>
                 <div className="flex justify-between"><span>Mode</span><span>{editingPayment.payment_mode ? paymentModeLabel(editingPayment, payModes) : getPaymentLabel(editingPayment.payment_method as string)}</span></div>
                 <div style={{ color: 'var(--theme-text-muted)' }}>Montant, date et mode ne se modifient plus : annulez la dépense avec un motif puis ressaisissez-la.</div>
@@ -2883,7 +2884,7 @@ function ChargesTab() {
       )}
 
       {voidTarget && (
-        <ReasonCodeDialog title={`Annuler la dépense de ${n(parseFloat(voidTarget.amount as string))} DH`} scope="void_payment"
+        <ReasonCodeDialog title={`Annuler la dépense de ${money(parseFloat(voidTarget.amount as string))}`} scope="void_payment"
           description="La dépense reste dans l'historique : une contre-pièce négative la neutralise et son écriture est extournée."
           confirmLabel="Annuler la dépense" danger pending={voidMutation.isPending}
           onClose={() => setVoidTarget(null)}
@@ -3351,14 +3352,14 @@ function ChequesTab() {
       {/* Pipeline d'encaissement : fenêtres d'échéance des chèques émis, puis encaissés (historique) */}
       <StagePipeline
         title="Où en sont mes chèques et traites"
-        summary={`${n(counts.totalPending)} DH à encaisser${breakdown.overdue > 0 ? ` · dont ${n(breakdown.overdue)} DH échus` : ''}`}
+        summary={`${money(counts.totalPending)} à encaisser${breakdown.overdue > 0 ? ` · dont ${money(breakdown.overdue)} échus` : ''}`}
         stages={CHECK_STAGES}
         stats={{
-          overdue: { count: breakdown.overdueCount, sub: `${n(breakdown.overdue)} DH`, late: breakdown.overdueCount, alertLabel: 'présentables à tout moment' },
-          next7d: { count: breakdown.next7dCount, sub: `${n(breakdown.next7d)} DH` },
-          next30d: { count: breakdown.next30dCount, sub: `${n(breakdown.next30d)} DH` },
-          later: { count: breakdown.laterCount, sub: `${n(breakdown.later)} DH` },
-          cashed: { count: counts.cashed, sub: `${n(counts.totalCashed)} DH` },
+          overdue: { count: breakdown.overdueCount, sub: `${money(breakdown.overdue)}`, late: breakdown.overdueCount, alertLabel: 'présentables à tout moment' },
+          next7d: { count: breakdown.next7dCount, sub: `${money(breakdown.next7d)}` },
+          next30d: { count: breakdown.next30dCount, sub: `${money(breakdown.next30d)}` },
+          later: { count: breakdown.laterCount, sub: `${money(breakdown.later)}` },
+          cashed: { count: counts.cashed, sub: `${money(counts.totalCashed)}` },
         }}
         isActive={k => (k === 'cashed' ? view === 'history' : view === 'open' && dueWindow === k)}
         onPick={k => {
@@ -3370,7 +3371,7 @@ function ChequesTab() {
 
       {breakdown.overdueCount > 0 && view === 'open' && dueWindow !== 'overdue' && (
         <StatusBanner tone="danger" icon={AlertTriangle}
-          title={`${breakdown.overdueCount} chèque${breakdown.overdueCount > 1 ? 's' : ''} échu${breakdown.overdueCount > 1 ? 's' : ''} : ${n(breakdown.overdue)} DH`}
+          title={`${breakdown.overdueCount} chèque${breakdown.overdueCount > 1 ? 's' : ''} échu${breakdown.overdueCount > 1 ? 's' : ''} : ${money(breakdown.overdue)}`}
           actions={<button type="button" className="odoo-btn-secondary" onClick={() => setDueWindow('overdue')}>Les afficher</button>}>
           Ils peuvent être présentés à la banque à tout moment : prévoyez la trésorerie, et marquez-les encaissés dès qu'ils sont débités.
         </StatusBanner>
@@ -3388,7 +3389,7 @@ function ChequesTab() {
         )}
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
-          {groups.length} chèque{groups.length > 1 ? 's' : ''} · <strong style={{ color: 'var(--odoo-text)' }}>{n(groups.reduce((s, g) => s + g.totalAmount, 0))} DH</strong>
+          {groups.length} chèque{groups.length > 1 ? 's' : ''} · <strong style={{ color: 'var(--odoo-text)' }}>{money(groups.reduce((s, g) => s + g.totalAmount, 0))}</strong>
         </span>
       </div>
       <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
@@ -3515,7 +3516,7 @@ function ChequesTab() {
                           {c.invoice_number && (
                             <div>
                               Facture <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{c.invoice_number}</strong>
-                              {c.invoice_total && <span style={{ color: 'var(--theme-text-muted)' }}> ({n(parseFloat(c.invoice_total))} DH)</span>}
+                              {c.invoice_total && <span style={{ color: 'var(--theme-text-muted)' }}> ({money(parseFloat(c.invoice_total))})</span>}
                             </div>
                           )}
                           {c.purchase_order_number && (
@@ -3553,7 +3554,7 @@ function ChequesTab() {
                       )}
                     </td>
                     <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>
-                      {n(g.totalAmount)} DH
+                      {money(g.totalAmount)}
                     </td>
                     <td><CheckStatusDot status={isCashed ? 'cashed' : isOverdue ? 'overdue' : 'pending'} /></td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
@@ -3602,7 +3603,7 @@ function ChequesTab() {
                         {r.invoice_number ? (
                           <div>
                             Facture <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{r.invoice_number}</strong>
-                            {r.invoice_total && <span style={{ color: 'var(--theme-text-muted)' }}> ({n(parseFloat(r.invoice_total))} DH)</span>}
+                            {r.invoice_total && <span style={{ color: 'var(--theme-text-muted)' }}> ({money(parseFloat(r.invoice_total))})</span>}
                           </div>
                         ) : (
                           <span style={{ color: 'var(--theme-text-muted)' }}>{r.description || r.purchase_order_number || '—'}</span>
@@ -3619,7 +3620,7 @@ function ChequesTab() {
                         {r.cashed_at ? fmtDate(r.cashed_at) : <span style={{ color: 'var(--theme-text-muted)', fontStyle: 'italic' }}>—</span>}
                       </td>
                       <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>
-                        {n(parseFloat(r.amount))} DH
+                        {money(parseFloat(r.amount))}
                       </td>
                       <td><CheckStatusDot status={r.status === 'cashed' ? 'cashed' : r.status === 'overdue' ? 'overdue' : 'pending'} /></td>
                       <td />
@@ -3660,7 +3661,7 @@ function ChequesTab() {
         />
       )}
       {voidCheck && (
-        <ReasonCodeDialog title={`Annuler le paiement de ${n(parseFloat(voidCheck.amount))} DH`} scope="void_payment"
+        <ReasonCodeDialog title={`Annuler le paiement de ${money(parseFloat(voidCheck.amount))}`} scope="void_payment"
           description={`Concerne : ${voidCheck.label}. Le paiement reste dans l'historique, une contre-pièce le neutralise et son écriture est extournée. Il pourra être ré-émis depuis les paiements de la facture.`}
           confirmLabel="Annuler le paiement" danger pending={deleteMutation.isPending}
           onClose={() => setVoidCheck(null)}
@@ -3694,7 +3695,7 @@ function ConfirmCashedModal({
             <span>Confirmer encaissement</span>
             <span className="odoo-breadcrumb-separator">/</span>
             <span className="odoo-breadcrumb-current" style={{ fontFamily: 'ui-monospace, monospace' }}>
-              {check.check_number || `${parseFloat(check.amount).toFixed(2)} DH`}
+              {check.check_number || `${parseFloat(check.amount).toFixed(2)} ${currencySymbol()}`}
             </span>
           </div>
           <div style={{ flex: 1 }} />
@@ -3703,14 +3704,14 @@ function ConfirmCashedModal({
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ padding: '10px 12px', background: 'var(--theme-bg-page)', borderRadius: 4, fontSize: '0.8125rem' }}>
             <div><strong>Beneficiaire :</strong> {check.supplier_name || check.employee_name || '—'}</div>
-            <div><strong>Montant :</strong> {n(parseFloat(check.amount))} DH</div>
+            <div><strong>Montant :</strong> {money(parseFloat(check.amount))}</div>
             {invoices && invoices.length > 0 ? (
               <div style={{ marginTop: 6 }}>
                 <strong>{invoices.length} factures reglees par ce cheque :</strong>
                 <ul style={{ margin: '4px 0 0', paddingLeft: 16, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
                   {invoices.map((inv, i) => (
                     <li key={i} style={{ fontFamily: 'ui-monospace, monospace' }}>
-                      {inv.number || '—'} · {n(inv.amount)} DH
+                      {inv.number || '—'} · {money(inv.amount)}
                     </li>
                   ))}
                 </ul>
@@ -3855,7 +3856,7 @@ function ResumeTab() {
       <div className="odoo-stat-grid">
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><ArrowUpRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total entrées</div>
-          <div className="odoo-stat-card-value" style={{ color: '#28a745' }}>{n(totals.totalEntrees)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-value" style={{ color: '#28a745' }}>{n(totals.totalEntrees)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
           <div className="odoo-stat-card-sub">
             Caisse {n(totals.cashR)} · Carte {n(totals.cardR)}
             {totals.clientReceipts > 0 && ` · Règlements clients ${n(totals.clientReceipts)}`}
@@ -3864,20 +3865,20 @@ function ResumeTab() {
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><ArrowDownRight size={11} style={{ display: 'inline', marginRight: 4 }} />Total sorties</div>
-          <div className="odoo-stat-card-value" style={{ color: '#dc3545' }}>{n(totals.exits)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span></div>
+          <div className="odoo-stat-card-value" style={{ color: '#dc3545' }}>{n(totals.exits)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
           <div className="odoo-stat-card-sub">Achats + Salaires + Dépenses</div>
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><Scale size={11} style={{ display: 'inline', marginRight: 4 }} />Résultat net du mois</div>
           <div className="odoo-stat-card-value" style={{ color: totals.resultat >= 0 ? '#28a745' : '#dc3545' }}>
-            {totals.resultat >= 0 ? '+' : ''}{n(totals.resultat)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
+            {totals.resultat >= 0 ? '+' : ''}{n(totals.resultat)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
           </div>
           <div className="odoo-stat-card-sub">Entrées − Sorties</div>
         </div>
         <div className="odoo-stat-card">
           <div className="odoo-stat-card-label"><Wallet size={11} style={{ display: 'inline', marginRight: 4 }} />Solde cumulé</div>
           <div className="odoo-stat-card-value" style={{ color: totals.solde >= 0 ? '#28a745' : '#dc3545' }}>
-            {n(totals.solde)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
+            {n(totals.solde)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
           </div>
           <div className="odoo-stat-card-sub">Cash {n(totals.cashNet)} · Carte {n(totals.cardCumul)}</div>
         </div>

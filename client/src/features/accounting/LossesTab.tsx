@@ -14,6 +14,7 @@ import {
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StagePipeline, Pager, PAGE_SIZE } from '../../components/purchasing/ProcessBoard';
+import { money, currencySymbol } from '../../utils/money';
 
 function n(v: number) { return v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
@@ -141,7 +142,7 @@ export default function LossesTab() {
     ]);
     const BOM = '\uFEFF';
     const csv = BOM + [
-      'DATE;PRODUIT;TYPE;MOTIF;QUANTITE;COUT (DH);DECLARE PAR;NOTE',
+      `DATE;PRODUIT;TYPE;MOTIF;QUANTITE;COUT (${currencySymbol()});DECLARE PAR;NOTE`,
       ...rows.map(r => r.join(';'))
     ].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -180,14 +181,14 @@ export default function LossesTab() {
       {/* Répartition par type : une carte par type (clic = filtre) */}
       <StagePipeline
         title={`Pertes · ${MONTH_NAMES[month - 1]} ${year}`}
-        summary={`${totalsByType.totalCount} déclaration${totalsByType.totalCount > 1 ? 's' : ''} · ${n(totalsByType.totalCost)} DH`}
+        summary={`${totalsByType.totalCount} déclaration${totalsByType.totalCount > 1 ? 's' : ''} · ${money(totalsByType.totalCost)}`}
         stages={[
           { key: 'all', label: 'Toutes', hint: 'total du mois', icon: TrendingDown },
           ...Object.entries(LOSS_TYPE_CONFIG).map(([key, cfg]) => ({ key, label: cfg.label, hint: `${totalsByType.map[key]?.quantity ?? 0} unités`, icon: cfg.icon })),
         ]}
         stats={{
-          all: { count: totalsByType.totalCount, sub: `${n(totalsByType.totalCost)} DH` },
-          ...Object.fromEntries(Object.keys(LOSS_TYPE_CONFIG).map(key => [key, { count: totalsByType.map[key]?.count ?? 0, sub: `${n(totalsByType.map[key]?.cost ?? 0)} DH` }])),
+          all: { count: totalsByType.totalCount, sub: `${money(totalsByType.totalCost)}` },
+          ...Object.fromEntries(Object.keys(LOSS_TYPE_CONFIG).map(key => [key, { count: totalsByType.map[key]?.count ?? 0, sub: `${money(totalsByType.map[key]?.cost ?? 0)}` }])),
         }}
         isActive={k => typeFilter === k}
         onPick={k => setTypeFilter(k === typeFilter && k !== 'all' ? 'all' : k)}
@@ -246,7 +247,7 @@ export default function LossesTab() {
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{parseFloat(l.quantity as string)}</td>
                     <td style={{ textAlign: 'right', fontWeight: 700, color: '#dc3545' }}>
-                      {n(parseFloat(l.total_cost as string) || 0)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>DH</span>
+                      {n(parseFloat(l.total_cost as string) || 0)} <span style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span>
                     </td>
                     <td style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
                       {l.declared_by_first_name ? `${l.declared_by_first_name} ${l.declared_by_last_name}` : '—'}
@@ -263,7 +264,7 @@ export default function LossesTab() {
                             <Camera size={13} />
                           </button>
                         )}
-                        <button type="button" onClick={() => { if (confirm(`Supprimer la perte « ${l.product_name} » (${n(parseFloat(l.total_cost as string) || 0)} DH) ?`)) deleteMutation.mutate(l.id as string); }}
+                        <button type="button" onClick={() => { if (confirm(`Supprimer la perte « ${l.product_name} » (${money(parseFloat(l.total_cost as string) || 0)}) ?`)) deleteMutation.mutate(l.id as string); }}
                           className="odoo-pager-btn" style={{ color: '#dc3545' }} title="Supprimer" aria-label="Supprimer la perte">
                           <Trash2 size={13} />
                         </button>
@@ -283,7 +284,7 @@ export default function LossesTab() {
                     {lossList.reduce((s, l) => s + parseFloat(l.quantity as string), 0)}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1rem', color: '#dc3545' }}>
-                    {n(lossList.reduce((s, l) => s + (parseFloat(l.total_cost as string) || 0), 0))} DH
+                    {money(lossList.reduce((s, l) => s + (parseFloat(l.total_cost as string) || 0), 0))}
                   </td>
                   <td colSpan={2}></td>
                 </tr>
@@ -483,7 +484,7 @@ function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, re
                         <p className="text-sm font-medium text-gray-700 truncate">{p.name as string}</p>
                         <p className="text-xs text-gray-400">{p.category_name as string || ''}</p>
                       </div>
-                      <span className="text-xs text-gray-400">{parseFloat(p.price as string || '0').toFixed(2)} DH</span>
+                      <span className="text-xs text-gray-400">{parseFloat(p.price as string || '0').toFixed(2)} {currencySymbol()}</span>
                     </button>
                   ))
                 )}
@@ -526,7 +527,7 @@ function AddLossModal({ onClose, onSuccess, lossTypeConfig: LOSS_TYPE_CONFIG, re
             <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center justify-between">
               <span className="text-sm text-red-700">Cout estime de la perte</span>
               <span className="text-lg font-bold text-red-700">
-                {n((parseFloat(selectedProduct.cost_price as string) || parseFloat(selectedProduct.price as string) || 0) * parseFloat(quantity))} DH
+                {money((parseFloat(selectedProduct.cost_price as string) || parseFloat(selectedProduct.price as string) || 0) * parseFloat(quantity))}
               </span>
             </div>
           )}

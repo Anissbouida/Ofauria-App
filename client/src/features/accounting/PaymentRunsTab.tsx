@@ -9,6 +9,7 @@ import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import ReasonCodeDialog from '../../components/purchasing/ReasonCodeDialog';
+import { money as fmtMoney } from '../../utils/money';
 
 /**
  * Paiements fournisseurs en lot (G4-01).
@@ -27,7 +28,7 @@ const STATUS: Record<PaymentRunStatus, { label: string; tone: StatusTone }> = {
   executed: { label: 'Exécutée', tone: 'done' },
   cancelled: { label: 'Annulée', tone: 'cancelled' },
 };
-const money = (n: number) => `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
+const money = (n: number) => fmtMoney(n);
 const dmy = (d: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '—');
 /** Date du jour en heure locale (toISOString donnerait la date UTC, le lendemain en soirée). */
 const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };

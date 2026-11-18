@@ -4,6 +4,7 @@ import { Loader2, Download, Lock, TrendingUp, TrendingDown, Calendar } from 'luc
 import { financialStatementsApi } from '../../api/ledger.api';
 import { useAuth } from '../../context/AuthContext';
 import EditionButtons from './EditionButtons';
+import { currencySymbol } from '../../utils/money';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -91,12 +92,12 @@ export default function CpcTab() {
             <div className="odoo-stat-card">
               <div className="odoo-stat-card-label"><TrendingUp size={11} style={{ display: 'inline', marginRight: 4 }} />Produits (classe 7)</div>
               <div className="odoo-stat-card-value" style={{ color: '#0e7c3a' }}>{n(data.total_produits)}</div>
-              <div className="odoo-stat-card-sub">DH</div>
+              <div className="odoo-stat-card-sub">{currencySymbol()}</div>
             </div>
             <div className="odoo-stat-card">
               <div className="odoo-stat-card-label"><TrendingDown size={11} style={{ display: 'inline', marginRight: 4 }} />Charges (classe 6)</div>
               <div className="odoo-stat-card-value" style={{ color: '#c62828' }}>{n(data.total_charges)}</div>
-              <div className="odoo-stat-card-sub">DH</div>
+              <div className="odoo-stat-card-sub">{currencySymbol()}</div>
             </div>
             <div className="odoo-stat-card" style={{ border: `1.5px solid ${isProfit ? '#0e7c3a' : '#c62828'}` }}>
               <div className="odoo-stat-card-label">Resultat net</div>

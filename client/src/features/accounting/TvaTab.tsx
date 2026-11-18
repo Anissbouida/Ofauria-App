@@ -14,6 +14,7 @@ const REASON_LABEL: Record<string, string> = {
   exempt_supplier: 'Fournisseur non assujetti', manual: 'Décision manuelle',
 };
 import { useAuth } from '../../context/AuthContext';
+import { money } from '../../utils/money';
 
 function exportCSV(filename: string, headers: string[], rows: string[][]) {
   const BOM = '﻿';
@@ -188,7 +189,7 @@ export default function TvaTab() {
             {data.regime?.mode === 'encaissement' && (
               <StatusBanner tone="info" icon={Percent} title={`Régime des encaissements depuis le ${(data.regime.since ?? '').split('-').reverse().join('/')}`}>
                 La TVA des factures et tickets à crédit est déclarée au fur et à mesure des règlements.
-                {(data.awaiting_collection ?? 0) > 0 && ` TVA facturée non encore encaissée au ${endDate.split('-').reverse().join('/')} : ${n(data.awaiting_collection ?? 0)} DH.`}
+                {(data.awaiting_collection ?? 0) > 0 && ` TVA facturée non encore encaissée au ${endDate.split('-').reverse().join('/')} : ${money(data.awaiting_collection ?? 0)}.`}
               </StatusBanner>
             )}
             {data.regime?.missing_since && (
@@ -197,7 +198,7 @@ export default function TvaTab() {
               </StatusBanner>
             )}
             {data.pending_payment && data.pending_payment.count > 0 && (
-              <StatusBanner tone="info" icon={Hourglass} title={`TVA en attente de règlement : ${n(data.pending_payment.amount)} DH`}>
+              <StatusBanner tone="info" icon={Hourglass} title={`TVA en attente de règlement : ${money(data.pending_payment.amount)}`}>
                 {data.pending_payment.count} facture(s) fournisseur non soldée(s) au {endDate.split('-').reverse().join('/')} : leur TVA sera déductible le mois de leur règlement.
               </StatusBanner>
             )}
@@ -208,14 +209,14 @@ export default function TvaTab() {
               if (!noIce.length && !internal.length) return null;
               return (
                 <StatusBanner tone="warning" icon={FileSearch} title="Déductions à justifier">
-                  {noIce.length > 0 && `${noIce.length} facture(s) d'un fournisseur sans ICE (${n(noIce.reduce((t, r) => t + parseFloat(r.amount_tva), 0))} DH de TVA). `}
+                  {noIce.length > 0 && `${noIce.length} facture(s) d'un fournisseur sans ICE (${money(noIce.reduce((t, r) => t + parseFloat(r.amount_tva), 0))} de TVA). `}
                   {internal.length > 0 && `${internal.length} facture(s) sans numéro du fournisseur (numéro interne). `}
                   Complétez la fiche fournisseur ou la facture avant de déposer la déclaration.
                 </StatusBanner>
               );
             })()}
             {(data.excluded ?? []).map(x => (
-              <StatusBanner key={x.reason} tone="warning" icon={Ban} title={`TVA non récupérable : ${n(x.amount)} DH`}>
+              <StatusBanner key={x.reason} tone="warning" icon={Ban} title={`TVA non récupérable : ${money(x.amount)}`}>
                 {x.count} facture(s) — {REASON_LABEL[x.reason] ?? x.reason}. Cette TVA reste une charge.
               </StatusBanner>
             ))}

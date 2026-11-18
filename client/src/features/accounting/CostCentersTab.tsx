@@ -10,6 +10,7 @@ import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useAuth } from '../../context/AuthContext';
 import EditionButtons from './EditionButtons';
+import { currencySymbol } from '../../utils/money';
 
 /**
  * Comptabilité analytique (mig 386 / 428) : axes et sections, ventilation des
@@ -165,7 +166,7 @@ function Ventilation() {
         <label style={{ ...lbl, flex: '1 1 160px' }}>Recherche<input value={search} onChange={e => setSearch(e.target.value)} placeholder="Compte, libellé, n° d'écriture" style={inp} /></label>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '8px 12px', background: 'var(--theme-bg-secondary)', borderRadius: 4, fontSize: '0.8125rem' }}>
-        <strong>{selected.size} ligne(s)</strong><span style={mono}>{money(selTotal)} DH</span>
+        <strong>{selected.size} ligne(s)</strong><span style={mono}>{money(selTotal)} {currencySymbol()}</span>
         <span style={{ flex: 1 }} />
         <select value={target} onChange={e => setTarget(e.target.value)} style={{ ...inp, minWidth: 220 }} aria-label="Section ou clé">
           <option value="">Ventiler sur…</option>

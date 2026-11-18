@@ -5,6 +5,7 @@ import { withholdingApi } from '../../api/withholding.api';
 import type { WithholdingType, ToRemitLine } from '../../api/withholding.api';
 import { useAuth } from '../../context/AuthContext';
 import { notify } from '../../components/ui/InlineNotification';
+import { currencySymbol } from '../../utils/money';
 
 function n(v: string | number | null): string {
   const num = typeof v === 'string' ? parseFloat(v) : v;
@@ -82,7 +83,7 @@ function AReverserView() {
           <div className="odoo-stat-card" style={{ border: `1.5px solid ${data.total_a_reverser > 0 ? '#b71c1c' : '#0e7c3a'}` }}>
             <div className="odoo-stat-card-label"><Scale size={11} style={{ display: 'inline', marginRight: 4 }} />Total à reverser à la DGI</div>
             <div className="odoo-stat-card-value" style={{ color: data.total_a_reverser > 0 ? '#b71c1c' : '#0e7c3a' }}>{n(data.total_a_reverser)}</div>
-            <div className="odoo-stat-card-sub">DH · sur la période</div>
+            <div className="odoo-stat-card-sub">{currencySymbol()} · sur la période</div>
           </div>
         </div>
       )}
@@ -170,7 +171,7 @@ function ReversementModal({ line, onClose, onDone }: { line: ToRemitLine; onClos
       <div onClick={e => e.stopPropagation()} style={{ background: 'var(--theme-bg-card)', borderRadius: 8, width: 420, maxWidth: '95vw' }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--theme-bg-separator)', fontWeight: 600, fontSize: '0.9375rem' }}>Reverser à la DGI — {line.label}</div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div><label style={labelStyle}>Montant (DH)</label><input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} /></div>
+          <div><label style={labelStyle}>Montant ({currencySymbol()})</label><input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} style={inputStyle} /></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div><label style={labelStyle}>Date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle} /></div>
             <div><label style={labelStyle}>Moyen</label>
@@ -216,7 +217,7 @@ function ConfigView() {
               <th>Type de retenue</th>
               <th style={{ width: 70 }}>Compte</th>
               <th style={{ width: 90, textAlign: 'right' }}>Taux %</th>
-              <th style={{ width: 110, textAlign: 'right' }}>Seuil (DH)</th>
+              <th style={{ width: 110, textAlign: 'right' }}>Seuil ({currencySymbol()})</th>
               <th style={{ width: 100, textAlign: 'right' }}>Taux &gt; seuil</th>
               <th style={{ width: 80 }}>Actif</th>
             </tr>
