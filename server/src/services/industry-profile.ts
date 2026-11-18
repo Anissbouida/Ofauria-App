@@ -64,7 +64,10 @@ export function cleanLayers(raw: unknown, warnings: string[]): ProfileLayers {
   if (!isObj(raw)) return { order_types: [], policies: [], print_templates: [] };
   const order_types: ProfileOrderType[] = [];
   const seen = new Set<string>();
-  for (const t of Array.isArray(raw.order_types) ? raw.order_types.slice(0, 30) : []) {
+  // Borne de sécurité (fichier non fiable), signalée si elle coupe : un import ne perd rien en silence.
+  const MAX_TYPES = 200;
+  if (Array.isArray(raw.order_types) && raw.order_types.length > MAX_TYPES) warnings.push(`${raw.order_types.length - MAX_TYPES} type(s) d'ordre au-delà de ${MAX_TYPES} ignoré(s)`);
+  for (const t of Array.isArray(raw.order_types) ? raw.order_types.slice(0, MAX_TYPES) : []) {
     if (!isObj(t)) continue;
     const code = str(t.code, 30)?.toUpperCase(); const label = str(t.label, 80);
     if (!code || !/^[A-Z][A-Z0-9_]{1,29}$/.test(code) || !label || seen.has(code)) { warnings.push(`Type d'ordre ignoré : ${String(t.code)}`); continue; }
