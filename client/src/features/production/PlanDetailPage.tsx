@@ -575,11 +575,11 @@ export default function PlanDetailPage() {
   const showIngr = !hasTabs || effectiveTab === 'ingredients';
   const showProd = !hasTabs || effectiveTab === 'production';
   const showCosts = !hasTabs || effectiveTab === 'couts';
-  const panelCtx = { summary, plan, id: id!, isChef, items, productionSettings, hasFeature, isMagasinier, isSemiFini: !!isSemiFini, activeBon: !!activeBon, lotUsage: productionLotUsage as Record<string, any>[] };
   // Aucun BSI generable : aucun besoin ingredient (produits sans recette) ou generate()
   // a repondu "rien a prelever". Ne debloque PAS la production : la preparation reste
   // bloquee tant que les besoins ne sont pas recalcules (recette + relance du plan).
   const bonNotNeeded = !isSemiFini && plan.status !== 'draft' && !activeBon && (noIngredientNeeds || !!bonNotNeededReason);
+  const panelCtx = { summary, warnings: (plan.warnings as string[] | undefined) ?? [], needsCount: needs.length, bonNotNeeded, hasTabs, recipeLc: T.recipeLc, plan, id: id!, isChef, items, productionSettings, hasFeature, isMagasinier, isSemiFini: !!isSemiFini, activeBon: !!activeBon, lotUsage: productionLotUsage as Record<string, any>[] };
 
   // Bloc Besoins en ingredients extrait en JSX pour pouvoir le placer au-dessus de
   // l'apercu FEFO (demande UX : besoins en haut, FEFO en bas dans le sous-onglet "Besoins").
@@ -1742,29 +1742,13 @@ export default function PlanDetailPage() {
       {/* ══════════════ ALERTES (onglet Preparation) ══════════════
           Visibles uniquement par le magasinier : elles concernent la dispo des
           ingredients (mise en liste d'attente faute de stock), hors champ du chef. */}
-      {showIngr && isMagasinier && plan.warnings && (plan.warnings as string[]).length > 0 && (
-        <div style={{ margin: '1rem' }}>
-          <StatusBanner tone="warning" icon={AlertTriangle} title={`Alertes (${(plan.warnings as string[]).length})`}>
-            <ul className="status-banner-list">
-              {[...new Set(plan.warnings as string[])].map((w: string, i: number) => <li key={i}>{w}</li>)}
-            </ul>
-          </StatusBanner>
-        </div>
-      )}
+      {showIngr && <PlanPanels tab="preparation" ctx={panelCtx} only={['stock-warnings']} />}
 
       {/* Besoins en ingredients — l'apercu FEFO a ete retire :
           la selection des lots est maintenant geree dans le workflow de
           transfert Economat -> Pesage (cf module Warehouse / BSI), pas ici. */}
       {ingredientNeedsBlock}
-      {showIngr && hasTabs && needs.length === 0 && !bonNotNeeded && (
-        <div style={{ margin: '1rem' }}>
-          <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun besoin en ingrédients calculé — préparation bloquée">
-            Les produits de ce plan n'ont pas de recette (ou leur composition est vide) : aucun bon de sortie
-            ne peut être généré et l'étape Production reste fermée.
-            {isChef && ` Ajoutez une ${T.recipeLc} aux produits concernés, puis utilisez « Relancer » pour recalculer les besoins (ou revenez en brouillon pour retirer le produit).`}
-          </StatusBanner>
-        </div>
-      )}
+      {showIngr && <PlanPanels tab="preparation" ctx={panelCtx} only={['no-needs']} />}
 
 
       {/* Semi-finis requis — rendu en tete de l'onglet Production (etape pre-production) */}

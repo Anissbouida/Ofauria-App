@@ -9,6 +9,8 @@ import QualityPanel from '../controle/QualityPanel';
 import RetroPlanningPanel from './RetroPlanningPanel';
 import EtapesPanel from './EtapesPanel';
 import RendementPanel from './RendementPanel';
+import { AlertTriangle } from 'lucide-react';
+import { StatusBanner } from '../../components/ui/StatusBanner';
 import { visiblePanels, type PanelTab, type PlanPanelCtx } from './planPanelRules';
 
 /**
@@ -18,6 +20,22 @@ import { visiblePanels, type PanelTab, type PlanPanelCtx } from './planPanelRule
  */
 const RENDER: Record<string, (c: PlanPanelCtx) => ReactNode> = {
   'bon-sortie': c => <div style={{ margin: '1rem' }}><BonSortiePanel planId={c.id} isChef={c.isChef} isMagasinier={!!c.isMagasinier} variant="inline" /></div>,
+  'stock-warnings': c => (
+    <div style={{ margin: '1rem' }}>
+      <StatusBanner tone="warning" icon={AlertTriangle} title={`Alertes (${c.warnings!.length})`}>
+        <ul className="status-banner-list">{[...new Set(c.warnings)].map((w, i) => <li key={i}>{w}</li>)}</ul>
+      </StatusBanner>
+    </div>
+  ),
+  'no-needs': c => (
+    <div style={{ margin: '1rem' }}>
+      <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun besoin en ingrédients calculé — préparation bloquée">
+        Les produits de ce plan n'ont pas de {c.recipeLc ?? 'recette'} (ou leur composition est vide) : aucun bon de sortie
+        ne peut être généré et l'étape Production reste fermée.
+        {c.isChef && ` Ajoutez une ${c.recipeLc ?? 'recette'} aux produits concernés, puis utilisez « Relancer » pour recalculer les besoins (ou revenez en brouillon pour retirer le produit).`}
+      </StatusBanner>
+    </div>
+  ),
   'lot-traceability': c => <PlanLotTraceability usage={c.lotUsage ?? []} />,
   cost: c => <CoutReelPanel planId={c.id} planStatus={c.plan.status} isChef={c.isChef}
     totalQuantity={c.summary?.cost.unitBase} perUnit={c.summary?.cost.perUnit ?? null} />,

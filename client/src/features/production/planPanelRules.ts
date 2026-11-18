@@ -6,6 +6,8 @@ export type PlanPanelCtx = {
   plan: Record<string, any>; id: string; isChef: boolean; items: Record<string, any>[];
   productionSettings?: Record<string, any> | null; hasFeature: (k: string) => boolean;
   isMagasinier?: boolean; isSemiFini?: boolean; activeBon?: boolean; lotUsage?: Record<string, any>[];
+  /** Onglet Ingrédients : alertes de disponibilité et besoins calculés. */
+  warnings?: string[]; needsCount?: number; bonNotNeeded?: boolean; hasTabs?: boolean; recipeLc?: string;
   /** Synthèse chiffrée calculée au serveur (M8-05). */
   summary?: import('../../api/production.api').PlanSummary | null;
 };
@@ -16,6 +18,10 @@ const started = (c: PlanPanelCtx) => ['in_progress', 'completed', 'confirmed'].i
 export const PLAN_PANEL_RULES: { id: string; tab: PanelTab; when: (c: PlanPanelCtx) => boolean }[] = [
   // Bon de sortie : seulement quand l'ordre en a un (type d'ordre avec bon de sortie, M2-03).
   { id: 'bon-sortie', tab: 'preparation', when: c => !c.isSemiFini && !!c.activeBon },
+  // Alertes de disponibilité : magasinier seulement (hors champ du chef).
+  { id: 'stock-warnings', tab: 'preparation', when: c => !!c.isMagasinier && (c.warnings?.length ?? 0) > 0 },
+  // Aucun besoin calculé (produits sans nomenclature) : préparation bloquée.
+  { id: 'no-needs', tab: 'preparation', when: c => !!c.hasTabs && c.needsCount === 0 && !c.bonNotNeeded },
   { id: 'lot-traceability', tab: 'preparation', when: c => ['completed', 'in_progress'].includes(c.plan.status as string) },
   { id: 'linked-order', tab: 'synthese', when: c => !!c.plan.order_number },
   { id: 'consumption', tab: 'synthese', when: started },

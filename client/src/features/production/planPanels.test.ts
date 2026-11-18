@@ -25,6 +25,13 @@ describe('Registre des panneaux de l\'ordre (M8-01)', () => {
     expect(visible({ plan: { status: 'confirmed' }, activeBon: false } as never, 'preparation' as never)).toEqual([]);
     expect(visible({ plan: { status: 'completed' }, productionSettings: { production_cost_enabled: false } } as never, 'couts' as never)).toEqual([]);
   });
+  it('alertes de l\'onglet Ingrédients', () => {
+    const prep = (c: Partial<PlanPanelCtx>) => visible({ plan: { status: 'confirmed' }, ...c } as never, 'preparation' as never);
+    expect(prep({ isMagasinier: true, warnings: ['Farine insuffisante'] })).toEqual(['stock-warnings']);
+    expect(prep({ isMagasinier: false, warnings: ['Farine insuffisante'] })).toEqual([]);
+    expect(prep({ hasTabs: true, needsCount: 0, bonNotNeeded: false })).toEqual(['no-needs']);
+    expect(prep({ hasTabs: true, needsCount: 0, bonNotNeeded: true })).toEqual([]);
+  });
   it('étapes et rendement selon le paramétrage', () => {
     expect(visible({ plan: { status: 'completed' } }, 'production')).toEqual(['steps', 'yield']);
     expect(visible({ plan: { status: 'completed' }, productionSettings: { production_steps_enabled: false, production_yield_enabled: false } }, 'production')).toEqual([]);
