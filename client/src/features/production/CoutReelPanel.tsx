@@ -15,6 +15,8 @@ interface CoutReelPanelProps {
   planStatus: string;
   isChef: boolean;
   totalQuantity?: number;
+  /** Prix de revient par unité calculé au serveur (M8-05). */
+  perUnit?: number | null;
 }
 
 type Money = number | string | null | undefined;
@@ -108,7 +110,7 @@ function toNum(v: Money): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantity }: CoutReelPanelProps) {
+export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantity, perUnit }: CoutReelPanelProps) {
   const queryClient = useQueryClient();
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
@@ -143,6 +145,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
     mutationFn: () => productionCoutApi.calculateCost(planId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['production-cout', planId] });
+      queryClient.invalidateQueries({ queryKey: ['production', planId, 'summary'] });
       notify.success('Cout de revient calcule');
     },
     onError: (e: any) => notify.error(apiErrorMessage(e, 'Erreur calcul')),
@@ -257,7 +260,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
           )}
 
           {/* Prix par unite */}
-          {totalQuantity && totalQuantity > 0 && (
+          {totalQuantity && totalQuantity > 0 && perUnit != null && (
             <div style={{
               padding: '0.5rem 1rem',
               backgroundColor: 'var(--theme-bg-card)',
@@ -266,7 +269,7 @@ export default function CoutReelPanel({ planId, planStatus, isChef, totalQuantit
               fontSize: '0.8125rem',
             }}>
               <span style={{ color: 'var(--theme-text-muted)' }}>Prix de revient par unité ({totalQuantity} unités)</span>
-              <span style={{ fontWeight: 600 }}>{money(coutRevient / totalQuantity)}</span>
+              <span style={{ fontWeight: 600 }}>{money(perUnit)}</span>
             </div>
           )}
 

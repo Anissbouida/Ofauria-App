@@ -7,7 +7,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { productionApi, useWorkshops, PRIORITY_LABELS } from '../../api/production.api';
+import { productionApi, useWorkshops, PRIORITY_LABELS, usePlanSummary } from '../../api/production.api';
 import { replenishmentApi } from '../../api/replenishment.api';
 import { ingredientLotsApi } from '../../api/inventory.api';
 import { bonSortieApi } from '../../api/bon-sortie.api';
@@ -197,6 +197,9 @@ export default function PlanDetailPage() {
     queryFn: () => productionCoutApi.getCost(id!).catch(() => null),
     enabled: !!id && hasResults,
   });
+  // M8-05 : synthèse chiffrée calculée au serveur ; clé sous ['production', id], rafraîchie
+  // avec l'ordre et par les panneaux Rendement / Coûts après saisie.
+  const { data: summary } = usePlanSummary(id, !!plan);
 
   const prepareBonMutation = useMutation({
     mutationFn: () => bonSortieApi.generate(id!, plan!.store_id as string),
@@ -572,7 +575,7 @@ export default function PlanDetailPage() {
   const showIngr = !hasTabs || effectiveTab === 'ingredients';
   const showProd = !hasTabs || effectiveTab === 'production';
   const showCosts = !hasTabs || effectiveTab === 'couts';
-  const panelCtx = { plan, id: id!, isChef, items, productionSettings, hasFeature, isMagasinier, isSemiFini: !!isSemiFini, activeBon: !!activeBon, lotUsage: productionLotUsage as Record<string, any>[] };
+  const panelCtx = { summary, plan, id: id!, isChef, items, productionSettings, hasFeature, isMagasinier, isSemiFini: !!isSemiFini, activeBon: !!activeBon, lotUsage: productionLotUsage as Record<string, any>[] };
   // Aucun BSI generable : aucun besoin ingredient (produits sans recette) ou generate()
   // a repondu "rien a prelever". Ne debloque PAS la production : la preparation reste
   // bloquee tant que les besoins ne sont pas recalcules (recette + relance du plan).
@@ -1151,20 +1154,18 @@ export default function PlanDetailPage() {
   //   termine          : resultat (quantite, rendement, cout, pertes)
   const num = (v: unknown) => { const x = typeof v === 'number' ? v : parseFloat(String(v ?? '')); return Number.isFinite(x) ? x : 0; };
   const fmtDh = (v: number) => money(v);
-  const activeItems = items.filter((it: Record<string, any>) => it.status !== 'cancelled');
-  const qtyPlanned = activeItems.reduce((s: number, it: Record<string, any>) => s + num(it.planned_quantity), 0);
-  const qtyDone = activeItems.reduce((s: number, it: Record<string, any>) => s + num(it.actual_quantity), 0);
+  // M8-05 : chiffres calculés au serveur (GET /production/:id/summary) ; l'écran les affiche.
+  const qtyPlanned = summary?.quantities.planned ?? 0;
+  const qtyDone = summary?.quantities.done ?? 0;
   const bsiTag = activeBon ? bonStatusTag(activeBon.status as string) : null;
   const depsFulfilled = deps.filter(d => d.status === 'fulfilled').length;
-  const rendementList = rendements as Record<string, any>[];
-  const avgRendement = rendementList.length > 0
-    ? rendementList.reduce((s, r) => s + num(r.rendement_reel), 0) / rendementList.length : null;
-  const yieldTarget = policies.num('production.yield_target', 'pct');
-  const seuils = rendementList.map(r => num(r.seuil_rendement) || yieldTarget).filter((v): v is number => v !== null);
-  const minSeuil = seuils.length > 0 ? Math.min(...seuils) : yieldTarget;
-  const pertesTotal = rendementList.reduce((s, r) => s + num(r.pertes_total), 0);
-  const coutTotal = coutReel ? num(coutReel.cout_total) : null;
-  const ecartPct = coutReel?.ecart_pct != null ? num(coutReel.ecart_pct) : null;
+  const recordedYields = summary?.yield.recorded ?? 0;
+  const avgRendement = summary?.yield.average ?? null;
+  const minSeuil = summary?.yield.threshold ?? null;
+  const pertesTotal = summary?.yield.lossesTotal ?? 0;
+  const coutTotal = summary?.cost.total ?? null;
+  const coutUnitaire = summary?.cost.perUnit ?? null;
+  const ecartPct = summary?.cost.variancePct ?? null;
   const ecartLabel = ecartPct != null
     ? `${ecartPct > 0 ? '+' : ''}${ecartPct.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} % vs prévu` : null;
   type Kpi = { label: string; icon: React.ReactNode; value: string; sub?: string; tone?: 'ok' | 'warn' | 'bad'; bar?: number };
@@ -1174,21 +1175,21 @@ export default function PlanDetailPage() {
     { label: 'Liste d\'attente', icon: <Clock size={11} />, value: String(waitingCount), sub: waitingCount > 0 ? 'ingrédients insuffisants' : 'aucun article', tone: waitingCount > 0 ? 'warn' : undefined },
     { label: 'Ingrédients', icon: <Layers size={11} />, value: bsiTag?.label || '—', sub: activeBon ? (activeBon.numero as string) : undefined, tone: bsiCloture ? 'ok' : undefined },
   ] : plan.status === 'completed' ? (() => {
-    const pct = qtyPlanned > 0 ? Math.round((qtyDone / qtyPlanned) * 100) : 0;
+    const pct = summary?.quantities.donePct ?? 0;
     return [
       { label: 'Produit', icon: <CheckCircle2 size={11} />, value: `${qtyDone} / ${qtyPlanned}`, sub: `${pct} % du prévu`, tone: pct >= 100 ? 'ok' : 'warn' },
       avgRendement != null
         ? { label: 'Rendement', icon: <Scale size={11} />, value: `${avgRendement.toFixed(1)} %`,
             sub: rendementsMissing.length > 0 ? `${rendementsMissing.length} article(s) non saisi(s)` : minSeuil === null ? '' : `seuil ${minSeuil} %`,
-            tone: rendementsMissing.length > 0 || (minSeuil !== null && avgRendement < minSeuil) ? 'warn' : 'ok' }
+            tone: rendementsMissing.length > 0 || summary?.yield.belowThreshold ? 'warn' : 'ok' }
         : { label: 'Rendement', icon: <Scale size={11} />, value: isSemiFini ? '—' : 'Non saisi', sub: isSemiFini ? undefined : 'pas saisi pendant la production', tone: isSemiFini ? undefined : 'warn' },
       coutTotal != null
         ? { label: 'Coût réel', icon: <Coins size={11} />, value: fmtDh(coutTotal),
-            sub: [qtyDone > 0 ? `${fmtDh(coutTotal / qtyDone)} / pièce` : null, ecartLabel].filter(Boolean).join(' · '),
+            sub: [coutUnitaire != null ? `${fmtDh(coutUnitaire)} / pièce` : null, ecartLabel].filter(Boolean).join(' · '),
             tone: ecartPct != null && ecartPct > 5 ? 'warn' : undefined }
         : { label: 'Coût réel', icon: <Coins size={11} />, value: 'Non calculé', sub: 'voir l\'onglet Coûts' },
-      { label: 'Pertes', icon: <Trash2 size={11} />, value: rendementList.length > 0 ? String(pertesTotal) : '—',
-        sub: rendementList.length > 0 ? 'relevées au rendement' : 'rendement non saisi', tone: pertesTotal > 0 ? 'warn' : rendementList.length > 0 ? 'ok' : undefined },
+      { label: 'Pertes', icon: <Trash2 size={11} />, value: recordedYields > 0 ? String(pertesTotal) : '—',
+        sub: recordedYields > 0 ? 'relevées au rendement' : 'rendement non saisi', tone: pertesTotal > 0 ? 'warn' : recordedYields > 0 ? 'ok' : undefined },
     ] as Kpi[];
   })() : [
     { label: 'Quantité prévue', icon: <Package size={11} />, value: String(qtyPlanned), sub: `${items.length} article${items.length > 1 ? 's' : ''}` },
@@ -1657,7 +1658,7 @@ export default function PlanDetailPage() {
                 {deps.length > 0 && <li>Semi-finis : {depsFulfilled} / {deps.length} disponible(s)</li>}
                 {waitingCount > 0 && <li style={{ color: '#946300' }}>{waitingCount} article(s) en liste d'attente</li>}
                 {plan.status === 'completed' && !isSemiFini && (
-                  <li>Rendement : {avgRendement != null ? `${avgRendement.toFixed(1)} %` : <strong style={{ color: '#946300' }}>non saisi</strong>}{rendementList.length > 0 ? ` · pertes ${pertesTotal}` : ''}</li>
+                  <li>Rendement : {avgRendement != null ? `${avgRendement.toFixed(1)} %` : <strong style={{ color: '#946300' }}>non saisi</strong>}{recordedYields > 0 ? ` · pertes ${pertesTotal}` : ''}</li>
                 )}
               </ul>
               {productionTabVisible

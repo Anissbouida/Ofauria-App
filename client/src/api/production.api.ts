@@ -7,6 +7,17 @@ export interface PrintTemplateRow {
   doc_type: ProductionPrintDoc; label?: string; title: string | null;
   layout: { columns?: string[]; signatures?: string[] }; footer_note: string | null; updated_at?: string; updated_by_name?: string;
 }
+/** Synthèse de l'ordre (M8-05) : quantités, rendement, pertes et coût par pièce calculés au serveur. */
+export interface PlanSummary {
+  quantities: { planned: number; done: number; donePct: number; activeItems: number; producedItems: number };
+  yield: { average: number | null; recorded: number; missing: number; threshold: number | null; belowThreshold: boolean; lossesTotal: number; toFridgeTotal: number };
+  cost: { total: number | null; perUnit: number | null; unitBase: number; variancePct: number | null };
+}
+/** Clé partagée : invalider ['production', id] la rafraîchit aussi. */
+export const planSummaryKey = (id: string) => ['production', id, 'summary'] as const;
+export function usePlanSummary(id: string | undefined, enabled = true) {
+  return useQuery({ queryKey: planSummaryKey(id ?? ''), queryFn: () => productionApi.summary(id!), enabled: !!id && enabled, staleTime: 30_000 });
+}
 export interface PrintTemplateInput { title?: string | null; columns?: string[] | null; signatures?: string[] | null; footer?: string | null }
 
 /** Atelier de production (mig 511) : son code est le target_role des plans. */
@@ -109,6 +120,8 @@ export const productionApi = {
     api.post('/production/order-types', data).then(r => r.data.data),
   updateOrderType: (id: string, data: ProductionOrderTypeInput): Promise<ProductionOrderType> =>
     api.put(`/production/order-types/${id}`, data).then(r => r.data.data),
+  /** Synthèse chiffrée de l'ordre, calculée au serveur (M8-05). */
+  summary: (id: string): Promise<PlanSummary> => api.get(`/production/${id}/summary`).then(r => r.data.data),
   /** Gabarits d'impression résolus pour un type d'ordre (M8-04). */
   printTemplates: (orderTypeId?: string | null): Promise<Record<ProductionPrintDoc, ResolvedPrintTemplate>> =>
     api.get('/production/print-templates', { params: orderTypeId ? { orderTypeId } : {} }).then(r => r.data.data),

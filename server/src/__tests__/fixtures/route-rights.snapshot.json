@@ -1577,6 +1577,14 @@
  "GET /production/:id/dependencies": null,
  "GET /production/:id/events": null,
  "GET /production/:id/sub-recipe-analysis": null,
+ "GET /production/:id/summary": [
+  "admin",
+  "baker",
+  "beldi_sale",
+  "manager",
+  "pastry_chef",
+  "viennoiserie"
+ ],
  "GET /production/master-schedule": [
   "admin",
   "baker",

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { apiErrorMessage } from '../../api/errors';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { productionEtapesApi } from '../../api/production-etapes.api';
+import { usePlanSummary, planSummaryKey } from '../../api/production.api';
 import { notify } from '../../components/ui/InlineNotification';
 import {
   TrendingUp, TrendingDown, Package, Flame, AlertTriangle, Loader2,
@@ -57,6 +58,7 @@ interface RendementTarget {
 
 export default function RendementPanel({ planId, planStatus, items, isChef, workshop, storeId }: RendementPanelProps) {
   const queryClient = useQueryClient();
+  const { data: summary } = usePlanSummary(planId, ['in_progress', 'completed'].includes(planStatus));
   // M1-03 : seuils lus dans les politiques de production, plus en dur.
   const policies = useProductionPolicies({ workshop, store: storeId });
   const yieldTarget = policies.num('production.yield_target', 'pct');
@@ -89,6 +91,7 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
       productionEtapesApi.recordRendement(itemId, data as any),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['production-rendement', planId] });
+      queryClient.invalidateQueries({ queryKey: planSummaryKey(planId) });
       queryClient.invalidateQueries({ queryKey: ['stock-frigo'] });
       setRecordingItem(null);
       // Retour du surplus -> frigo automatique : dire ce qui a ete pousse, ou pourquoi pas.
@@ -140,12 +143,10 @@ export default function RendementPanel({ planId, planStatus, items, isChef, work
     });
   };
 
-  // Summary stats
-  const avgRendement = rendements.length > 0
-    ? rendements.reduce((s, r) => s + r.rendement_reel, 0) / rendements.length
-    : 0;
-  const totalPertes = rendements.reduce((s, r) => s + r.pertes_total, 0);
-  const totalVersFrigo = rendements.reduce((s, r) => s + r.vers_frigo, 0);
+  // M8-05 : synthèse calculée au serveur (même requête que l'en-tête de l'ordre).
+  const avgRendement = summary?.yield.average ?? 0;
+  const totalPertes = summary?.yield.lossesTotal ?? 0;
+  const totalVersFrigo = summary?.yield.toFridgeTotal ?? 0;
 
   return (
     <div className="odoo-section">

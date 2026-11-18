@@ -20,7 +20,7 @@ const RENDER: Record<string, (c: PlanPanelCtx) => ReactNode> = {
   'bon-sortie': c => <div style={{ margin: '1rem' }}><BonSortiePanel planId={c.id} isChef={c.isChef} isMagasinier={!!c.isMagasinier} variant="inline" /></div>,
   'lot-traceability': c => <PlanLotTraceability usage={c.lotUsage ?? []} />,
   cost: c => <CoutReelPanel planId={c.id} planStatus={c.plan.status} isChef={c.isChef}
-    totalQuantity={c.items.reduce((s: number, it) => s + ((it.actual_quantity as number) || (it.planned_quantity as number) || 0), 0)} />,
+    totalQuantity={c.summary?.cost.unitBase} perUnit={c.summary?.cost.perUnit ?? null} />,
   'linked-order': c => <PlanLinkedOrder plan={c.plan} />,
   consumption: c => <ConsumptionPanel planId={c.id} mode={(c.plan.order_type_consumption_mode as string) ?? null} canEdit={c.isChef} />,
   'custom-fields': c => <div style={{ margin: '1rem' }}><CustomFieldsCard entity="production_order" id={c.id} /></div>,

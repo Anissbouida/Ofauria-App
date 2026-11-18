@@ -9,6 +9,7 @@ const manualConsumptionSchema = z.object({
 });
 import { productionController } from '../controllers/production.controller.js';
 import { printTemplateController } from '../controllers/print-template.controller.js';
+import { planSummaryRepository } from '../repositories/plan-summary.repository.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { authorizeSettings } from '../middleware/settings-access.middleware.js';
@@ -64,6 +65,12 @@ router.put('/settings', authenticate, can('production.edit'), asyncHandler(produ
 router.post('/transfers/:transferId/receive', authenticate, validateUuidParams('transferId'), can('production.receive'), asyncHandler(productionController.confirmProductionTransfer));
 
 router.get('/:id/sub-recipe-analysis', authenticate, id, asyncHandler(productionController.analyzeSubRecipes));
+// M8-05 — synthèse chiffrée de l'ordre (quantités, rendement, pertes, coût par pièce), calculée au serveur.
+router.get('/:id/summary', authenticate, id, can('production.view'), asyncHandler(async (req, res) => {
+  const data = await planSummaryRepository.get(req.params.id as string);
+  if (!data) { res.status(404).json({ success: false, error: { message: 'Ordre introuvable' } }); return; }
+  res.json({ success: true, data });
+}));
 router.get('/:id', authenticate, id, asyncHandler(productionController.getById));
 router.post('/', authenticate, can('production.create'), validate(createPlanSchema), asyncHandler(productionController.create));
 router.put('/:id/header', authenticate, id, can('production.header'), validate(updatePlanHeaderSchema), asyncHandler(productionController.updateHeader));

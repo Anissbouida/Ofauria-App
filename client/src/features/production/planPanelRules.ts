@@ -6,6 +6,8 @@ export type PlanPanelCtx = {
   plan: Record<string, any>; id: string; isChef: boolean; items: Record<string, any>[];
   productionSettings?: Record<string, any> | null; hasFeature: (k: string) => boolean;
   isMagasinier?: boolean; isSemiFini?: boolean; activeBon?: boolean; lotUsage?: Record<string, any>[];
+  /** Synthèse chiffrée calculée au serveur (M8-05). */
+  summary?: import('../../api/production.api').PlanSummary | null;
 };
 export type PanelTab = 'preparation' | 'synthese' | 'production' | 'couts';
 
