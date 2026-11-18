@@ -2104,10 +2104,13 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 |---|---|---|---|
 | ☑ | M9-01 | Sous-traitance de production | non (façon = 0 hors ordres sous-traités) |
 | ☑ | M9-02 | Numéros de série en fabrication | non |
-| ☐ | M9-03 | Nomenclature fantôme, désassemblage | — |
+| ☑ | M9-03 | Nomenclature fantôme, désassemblage | non |
+| ☑ | M9-04 | Séries au lancement, statut vendu | non |
 
-**Notes M9.** Migrations 584-585. Jeu de référence : zéro écart apres-m8c → apres-m9. Suites : 475 tests unitaires et 650 / 650 en base.
+**Notes M9.** Migrations 584-585, 587-589. Jeu de référence : zéro écart apres-m8c → apres-m9. Suites : 475 tests unitaires et 650 / 650 en base.
 - **M9-01** : mig 584. Type d'ordre « sous-traité » (`is_subcontracting` : ni bon de sortie ni pesage, matières consommées à la réception) ; l'ordre porte le sous-traitant et le prix de façon par unité ; bon d'envoi des composants numéroté `BES-AAAA-NNNN` (besoins de l'ordre figés à l'envoi) ; réception = déclaration de production habituelle, refusée tant que les composants ne sont pas envoyés, statut à envoyer → envoyé → reçu ; coût de façon = prix × quantité reçue, `production_cout_reel.cout_sous_traitance` inclus dans `cout_total` (colonne calculée redéfinie, valeurs existantes identiques). Panneau Sous-traitance sur l'ordre, case « Sous-traité » des types d'ordre, ligne Façon des coûts. Restent : facture du sous-traitant (passe par les factures fournisseurs ; les demandes d'achat ne portent que des ingrédients), stock physiquement chez le sous-traitant (pas d'emplacement externe).
+- **M9-03** : mig 588 `recipes.is_phantom` (base seulement) : pas de dépendance ni ordre de semi-fini, composants tirés dans l'ordre parent, MRP ne le compte pas ; case dans la fiche. Mig 589 désassemblage : pièces d'un lot (arrière-boutique) défaites, `recycled_qty` (invariant conservé), matières de la nomenclature × récupération remises en lots rattachés (`source_product_lot_id`), pièce DSA, page Production › Désassemblage.
+- **M9-04** : mig 587 déclencheurs sur `sale_item_lots` : numéros « vendu » à la vente, remis en stock au retour ou à la suppression ; saisie facultative des numéros dans la fenêtre de lancement.
 - **M9-02** : mig 585. `products.tracking_mode` (lot | serial) ; à la déclaration, un numéro par pièce des lots d'un article suivi par série (saisis, puis `numéro de lot-0001…`), quantité entière exigée, dans la transaction de la déclaration ; `GET /production/:id/serials`, `GET /production/serials/lookup`. Champ Traçabilité de la fiche article, panneau Numéros de série de l'ordre. Restent : saisie des numéros dans la fenêtre de lancement (aujourd'hui générés), statut vendu à la vente.
 
 ### C — Configuration par industrie
@@ -2116,13 +2119,13 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 |---|---|---|---|
 | ◐ | C-01 | Modèle de configuration étendu | non |
 | ☐ | C-02 | « Exportable et livré dans un profil » dans la définition de fini | — (règle, voir guide) |
-| ◐ | C-03 | Écran « Profil d'industrie » | non |
+| ☑ | C-03 | Écran « Profil d'industrie » | non |
 | ◐ | C-04 | Bilan de santé enrichi | non |
 | ☑ | C-05 | Trois profils de référence | non (données de départ à la demande) |
-| ◐ | C-06 | Test d'acceptation par profil | non |
+| ☑ | C-06 | Test d'acceptation par profil | non |
 | ☑ | C-07 | Garde « jamais le secteur » | non |
-| ☐ | C-08 | Mise en route guidée étendue | — |
-| ☐ | C-09 | Aperçu d'impact étendu | — |
+| ☑ | C-08 | Mise en route guidée étendue | non |
+| ☑ | C-09 | Aperçu d'impact étendu | non |
 | ☑ | C-10 | Guide « Configurer une industrie » | non |
 
 **Notes C.** Migration 586. Jeu de référence : zéro écart apres-m9 → apres-c. Suites : 477 tests unitaires serveur, 23 client, 654 / 654 en base.
@@ -2133,6 +2136,7 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 - **C-06** : test en base : aucun terme ni option de boulangerie dans les profils livrés, couches valides, un type par défaut. Restent le déroulé complet d'un ordre par profil et le test d'écran.
 - **C-07** : `never-sector-guard.test.ts`, aucune exception.
 - **C-10** : `docs/GUIDE_CONFIGURATION_INDUSTRIE.md`.
+- **Suite (2026-11-18)** : C-08 tâches de mise en route (types d'ordre, politiques, gamme hors option fournée, plan de contrôle) ; C-03 tuiles par couche avec état et avancement (`GET /settings/profile-status`, panneau en tête de l'onglet Secteur) ; C-09 `production-impact.repository.ts` (ordres touchés par un type d'ordre ou une politique ; étapes d'un type verrouillées et refusées au serveur tant que des ordres sont en cours ; niveau « type d'ordre » rangé sous le code) ; C-06 déroulé d'un ordre par profil (`industry-profile-flow.db.test.ts`). Fix : le chargement des données de départ vide le cache des politiques qu'il écrit.
 
 ### Lots suivants
 
@@ -2152,8 +2156,8 @@ Sous-traitance de production ; numéros de série en fabrication ; nomenclature 
 | ☑ | M7 | M7-01 à M7-05 |
 | ◐ | G6 | G6-01 à G6-08 |
 | ☑ | M8 | M8-01 à M8-06 |
-| ◐ | M9 | Sous-traitance, numéros de série (M9-01, M9-02 faits) |
-| ◐ | C | C-01 à C-10 (C-05, C-07, C-10 faits ; C-01, C-03, C-04, C-06 partiels) |
+| ☑ | M9 | Sous-traitance, numéros de série, fantôme, désassemblage |
+| ◐ | C | C-01 à C-10 (tout fait sauf C-02 règle d'équipe, C-01 couches unités/gammes/emplacements/contrôle) |
 
 ### Jalons d'ouverture par industrie
 
