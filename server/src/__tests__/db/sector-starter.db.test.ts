@@ -55,7 +55,7 @@ describe.skipIf(!hasTestDb)('Données de départ par secteur', () => {
     expect(demo).toEqual({ item_kind: 'manufactured', cost: 6.5 * 14 + 4 * 22 + 24 * 0.3 + 0.4 * 90, lines: 4 });
 
     const r2 = await loadSectorStarter('fabrication'); // rejeu : rien de neuf
-    expect(r2).toEqual({ categories: 0, units: 0, stepTypes: 0, equipmentTypes: 0, workshops: 0, demo: 0 });
+    expect(r2).toEqual({ categories: 0, units: 0, stepTypes: 0, equipmentTypes: 0, workshops: 0, demo: 0, orderTypes: 0, policies: 0, printTemplates: 0 });
   });
 
   it('une société sans atelier reçoit l\'atelier principal, par défaut et rattaché aux produits finis', async () => {

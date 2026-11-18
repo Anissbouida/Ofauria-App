@@ -30,7 +30,7 @@ describe.skipIf(!hasTestDb)('Modèles de configuration', () => {
     const { sectorRepository } = await import('../../repositories/sector.repository.js');
     const act = await sectorRepository.activation();
     const model = await tpl.exportCurrentConfig('P10 Traiteur');
-    expect(model).toMatchObject({ format: 'kalum.config', version: 1, base_sector: act.sector.code });
+    expect(model).toMatchObject({ format: 'kalum.config', version: 2, base_sector: act.sector.code });
     expect(model.modules).toEqual([...act.modules].sort());
 
     const saved = await tpl.saveModelAsSector(JSON.parse(JSON.stringify(model)));

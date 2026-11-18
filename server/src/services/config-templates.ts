@@ -4,6 +4,7 @@ import {
 import { db } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
 import { sectorRepository } from '../repositories/sector.repository.js';
+import { exportLayers, cleanLayers, type ProfileLayers } from './industry-profile.js';
 
 /**
  * Modèles de configuration (plan Production générique, lot P10, mig 517).
@@ -21,7 +22,8 @@ import { sectorRepository } from '../repositories/sector.repository.js';
  */
 
 const FORMAT = 'kalum.config';
-const VERSION = 1;
+/** v2 (C-01, mig 586) : + couches production (types d'ordre, politiques, impressions). v1 reste accepté. */
+const VERSION = 2;
 
 type Ref = { code: string; label: string; metadata?: Record<string, unknown> };
 export type ConfigModel = {
@@ -36,6 +38,7 @@ export type ConfigModel = {
   home_route: string | null;
   report_keys: string[];
   starter: { units: Ref[]; stepTypes: Ref[]; equipmentTypes: Ref[] };
+  layers: ProfileLayers;
 };
 
 const REF_TABLES = { units: 'units', stepTypes: 'production_step_types', equipmentTypes: 'production_equipment_types' } as const;
@@ -49,9 +52,9 @@ async function activeRefs(tableId: string): Promise<Ref[]> {
 /** Configuration courante, sous forme de modèle. */
 export async function exportCurrentConfig(name?: string): Promise<ConfigModel> {
   const act = await sectorRepository.activation();
-  const [labels, units, stepTypes, equipmentTypes] = await Promise.all([
+  const [labels, units, stepTypes, equipmentTypes, layers] = await Promise.all([
     sectorRepository.labels(act.sector.code), activeRefs(REF_TABLES.units),
-    activeRefs(REF_TABLES.stepTypes), activeRefs(REF_TABLES.equipmentTypes),
+    activeRefs(REF_TABLES.stepTypes), activeRefs(REF_TABLES.equipmentTypes), exportLayers(),
   ]);
   return {
     format: FORMAT, version: VERSION,
@@ -64,6 +67,7 @@ export async function exportCurrentConfig(name?: string): Promise<ConfigModel> {
     home_route: act.sector.home_route ?? null,
     report_keys: act.sector.report_keys ?? [],
     starter: { units, stepTypes, equipmentTypes },
+    layers,
   };
 }
 
@@ -107,7 +111,7 @@ export type ParsedModel = { model: ConfigModel; warnings: string[] };
 /** Valide et nettoie un modèle (fichier importé ou export courant). */
 export async function parseConfigModel(raw: unknown): Promise<ParsedModel | { error: string }> {
   if (!isObj(raw) || raw.format !== FORMAT) return { error: 'Ce fichier n\'est pas un modèle de configuration Kalum' };
-  if (raw.version !== VERSION) return { error: `Version de modèle non prise en charge : ${String(raw.version)}` };
+  if (raw.version !== 1 && raw.version !== VERSION) return { error: `Version de modèle non prise en charge : ${String(raw.version)}` };
   const name = str(raw.name, 120);
   if (!name) return { error: 'Le modèle n\'a pas de nom' };
   const warnings: string[] = [];
@@ -153,6 +157,8 @@ export async function parseConfigModel(raw: unknown): Promise<ParsedModel | { er
       format: FORMAT, version: VERSION, name, base_sector: basePack?.code ?? base ?? act.sector.code,
       modules: [...modules].sort(), features: features.sort(), labels, home_route, report_keys,
       starter: { units: cleanRefs('units', st.units), stepTypes: cleanRefs('stepTypes', st.stepTypes), equipmentTypes: cleanRefs('equipmentTypes', st.equipmentTypes) },
+      // v1 : pas de couches production (valeurs actuelles conservées au chargement).
+      layers: cleanLayers(raw.layers, warnings),
     },
     warnings,
   };
@@ -174,6 +180,7 @@ export async function previewConfigModel(raw: unknown) {
     features: model.features.length,
     labels: Object.keys(model.labels).length,
     starter: { units: model.starter.units.length, stepTypes: model.starter.stepTypes.length, equipmentTypes: model.starter.equipmentTypes.length },
+    layers: { orderTypes: model.layers.order_types.length, policies: model.layers.policies.length, printTemplates: model.layers.print_templates.length },
   };
 }
 
@@ -198,9 +205,9 @@ export async function saveModelAsSector(raw: unknown, userId?: string | null): P
     let code = root;
     for (let i = 2; used.has(code); i++) code = `${root}_${i}`;
     await client.query(
-      `INSERT INTO sector_packs (code, label, enabled_modules, features, home_route, report_keys, is_default, is_custom, base_sector, starter, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, false, true, $7, $8, $9)`,
-      [code, model.name, model.modules, model.features, model.home_route, model.report_keys, model.base_sector, JSON.stringify(model.starter), userId ?? null]);
+      `INSERT INTO sector_packs (code, label, enabled_modules, features, home_route, report_keys, is_default, is_custom, base_sector, starter, created_by, profile)
+       VALUES ($1, $2, $3, $4, $5, $6, false, true, $7, $8, $9, $10::jsonb)`,
+      [code, model.name, model.modules, model.features, model.home_route, model.report_keys, model.base_sector, JSON.stringify(model.starter), userId ?? null, JSON.stringify(model.layers)]);
     for (const [k, v] of Object.entries(model.labels)) {
       await client.query(`INSERT INTO sector_labels (sector_pack, label_key, label_value) VALUES ($1, $2, $3)`, [code, k, v]);
     }

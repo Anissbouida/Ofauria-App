@@ -2,6 +2,7 @@ import { db } from '../config/database.js';
 import { setAuditUser } from '../utils/audit-context.js';
 import { invalidateWorkshops } from './workshops.js';
 import { invalidateProcessRefs } from './process-referentials.js';
+import { applyLayers, cleanLayers, describeLayers, type ProfileLayers } from './industry-profile.js';
 
 /**
  * Données de départ par secteur (phase 9.3, enrichi au lot P7 du plan Production générique).
@@ -29,6 +30,8 @@ type StarterPack = {
   workshop?: { code: string; label: string; categorySlug: string };
   /** Nomenclature de démonstration : un article fabriqué, sa fiche et ses matières. */
   demo?: { productName: string; productSlug: string; categorySlug: string; price: number; materials: StarterMaterial[] };
+  /** Couches production du profil (C-01, mig 586) : types d'ordre, politiques, impressions. */
+  layers?: ProfileLayers;
 };
 
 const STARTER: Record<string, StarterPack> = {
@@ -91,6 +94,10 @@ export type StarterResult = {
   equipmentTypes: number;
   workshops: number;
   demo: number;
+  /** Couches production appliquées (C-01). */
+  orderTypes: number;
+  policies: number;
+  printTemplates: number;
 };
 
 type Client = Awaited<ReturnType<typeof db.getClient>>;
@@ -164,15 +171,19 @@ async function loadDemo(client: Client, d: NonNullable<StarterPack['demo']>): Pr
  * mig 517) pour un secteur personnalisé issu d'un modèle de configuration (P10).
  */
 export async function starterPackFor(sectorCode: string): Promise<StarterPack> {
-  if (STARTER[sectorCode]) return STARTER[sectorCode];
-  const { rows } = await db.query(`SELECT starter FROM sector_packs WHERE code = $1 AND is_custom`, [sectorCode]);
-  const st = (rows[0]?.starter ?? {}) as { units?: StarterRef[]; stepTypes?: StarterRef[]; equipmentTypes?: StarterRef[] };
-  return { categories: [], units: st.units ?? [], stepTypes: st.stepTypes ?? [], equipmentTypes: st.equipmentTypes ?? [] };
+  const { rows } = await db.query(`SELECT starter, profile, is_custom, base_sector FROM sector_packs WHERE code = $1`, [sectorCode]);
+  const row = rows[0];
+  const layers = cleanLayers(row?.profile ?? {}, []);
+  if (STARTER[sectorCode]) return { ...STARTER[sectorCode], layers };
+  // Profil de référence livré (mig 586) : données de départ de son secteur de base + ses couches.
+  if (row && !row.is_custom && row.base_sector && STARTER[row.base_sector]) return { ...STARTER[row.base_sector], layers };
+  const st = (row?.is_custom ? row.starter ?? {} : {}) as { units?: StarterRef[]; stepTypes?: StarterRef[]; equipmentTypes?: StarterRef[] };
+  return { categories: [], units: st.units ?? [], stepTypes: st.stepTypes ?? [], equipmentTypes: st.equipmentTypes ?? [], layers };
 }
 
 export async function loadSectorStarter(sectorCode: string, userId?: string): Promise<StarterResult> {
   const pack = await starterPackFor(sectorCode);
-  const result: StarterResult = { categories: 0, units: 0, stepTypes: 0, equipmentTypes: 0, workshops: 0, demo: 0 };
+  const result: StarterResult = { categories: 0, units: 0, stepTypes: 0, equipmentTypes: 0, workshops: 0, demo: 0, orderTypes: 0, policies: 0, printTemplates: 0 };
   const client = await db.getClient();
   try {
     await client.query('BEGIN');
@@ -188,6 +199,10 @@ export async function loadSectorStarter(sectorCode: string, userId?: string): Pr
     result.equipmentTypes = await insertRefs(client, 'production_equipment_types', pack.equipmentTypes);
     if (pack.workshop) result.workshops = await loadWorkshop(client, pack.workshop);
     if (pack.demo) result.demo = await loadDemo(client, pack.demo);
+    if (pack.layers) {
+      const l = await applyLayers(client, pack.layers, userId);
+      result.orderTypes = l.orderTypes; result.policies = l.policies; result.printTemplates = l.printTemplates;
+    }
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK').catch(() => undefined);
@@ -211,6 +226,7 @@ export async function sectorStarterPreview(sectorCode: string): Promise<{ catego
   if (pack.equipmentTypes?.length) items.push(`Types d'équipement : ${names(pack.equipmentTypes)}`);
   if (pack.workshop) items.push(`Atelier : ${pack.workshop.label} (seulement si aucun atelier n'existe)`);
   if (pack.demo) items.push(`Nomenclature de démonstration : ${pack.demo.productName}, ${pack.demo.materials.length} matières`);
+  if (pack.layers) items.push(...describeLayers(pack.layers));
   return { categories: pack.categories.map(c => c.name), items };
 }
 
