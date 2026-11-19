@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Download, ClipboardList, AlertTriangle, Search, X, ShieldAlert, PackageX } from 'lucide-react';
+import { Loader2, Download, ClipboardList, AlertTriangle, X, ShieldAlert, PackageX } from 'lucide-react';
 import { purchasingReportsApi } from '../../api/purchasing-reports.api';
 import { suppliersApi } from '../../api/accounting.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import {
-  StagePipeline, PeriodFilter, Pager, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
+  PeriodFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
+import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { ChipsRow, PagerFoot } from './StockUi';
 
 const date = (v: string | null | undefined) => (v ? String(v).slice(0, 10).split('-').reverse().join('/') : '—');
 const qty = (v: string | number) => Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 3 });
@@ -28,7 +30,14 @@ const FLAGS: Array<StageDef & { key: 'all' | Exclude<Flag, ''> }> = [
  * DLC, contrôle à réception, réceptionnaire. Même ergonomie que les listes des
  * Achats : cartes-critères, filtres, pagination côté serveur.
  */
-export default function GoodsEntryRegisterTab() {
+export default function GoodsEntryRegisterTab({ bare = false }: {
+  /**
+   * Sans marge propre (design Ventes, 2026-11-18) : la page hôte pose déjà les marges
+   * standard (Stock). Par défaut la marge historique (1rem) est conservée pour les hôtes
+   * qui la compensent (Contrôle).
+   */
+  bare?: boolean;
+} = {}) {
   const [flag, setFlag] = useState<Flag>('');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -83,20 +92,17 @@ export default function GoodsEntryRegisterTab() {
   }).catch(() => notify.error('Export impossible'));
 
   return (
-    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <StagePipeline
-        title="Registre des entrées"
-        summary={`${counts.all} entrée${counts.all > 1 ? 's' : ''} · ${periodLabel(period, customFrom, customTo)}`}
-        stages={FLAGS}
-        stats={{
-          all: { count: counts.all, sub: '' },
-          incomplete: { count: counts.incomplete, sub: '', late: counts.incomplete, alertLabel: 'à compléter' },
-          nonconform: { count: counts.nonconform, sub: '', late: counts.nonconform, alertLabel: 'à traiter' },
-          hors_bc: { count: counts.hors_bc, sub: '' },
-        }}
-        isActive={k => (k === 'all' ? flag === '' : flag === k)}
-        onPick={k => setFlag(k === 'all' ? '' : (flag === k ? '' : (k as Flag)))}
-      />
+    <div className="stk-stack" style={bare ? undefined : { padding: '1rem' }}>
+      <ChipsRow summary={`${counts.all} entrée${counts.all > 1 ? 's' : ''} · ${periodLabel(period, customFrom, customTo)}`}>
+        <FilterChips label="Registre des entrées" value={flag || 'all'} onChange={k => setFlag(k === 'all' ? '' : (k as Flag))}
+          chips={FLAGS.map(f => {
+            const count = f.key === 'all' ? counts.all : counts[f.key];
+            return {
+              key: f.key, label: f.label, count, icon: f.icon,
+              tone: (f.key === 'incomplete' || f.key === 'nonconform') && count > 0 ? 'late' as const : undefined,
+            };
+          })} />
+      </ChipsRow>
 
       {counts.incomplete > 0 && (
         <StatusBanner tone="warning" icon={AlertTriangle}
@@ -106,10 +112,7 @@ export default function GoodsEntryRegisterTab() {
         </StatusBanner>
       )}
 
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" placeholder="Rechercher par article, fournisseur, N° de lot, bon ou BC..." aria-label="Rechercher dans le registre"
-          value={searchInput} onChange={e => setSearchInput(e.target.value)} className="odoo-search-input" style={{ flex: '1 1 240px', minWidth: 0 }} />
+      <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="Rechercher par article, fournisseur, N° de lot, bon ou BC…">
         {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
         <PeriodFilter label="Entrée" title="Filtre sur la date d'entrée en stock"
           period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
@@ -119,22 +122,22 @@ export default function GoodsEntryRegisterTab() {
             <X size={12} /> Effacer les filtres
           </button>
         )}
+        <span className="stk-grow" />
         <button type="button" className="odoo-btn-secondary" disabled={!total} onClick={exportCsv}
           title="Fichier complet de la période (pas seulement la page affichée)" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Download size={12} /> Exporter
         </button>
-      </div>
+      </ListToolbar>
 
       {isLoading ? (
-        <div style={{ padding: 30, textAlign: 'center' }}><Loader2 size={18} className="animate-spin" /></div>
+        <ListEmpty icon={Loader2} title="Chargement du registre…" />
       ) : rows.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <ClipboardList size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{hasFilters ? 'Aucune entrée pour ces filtres.' : 'Aucune entrée sur la période.'}</p>
-          {hasFilters && <button type="button" onClick={resetFilters} style={{ fontSize: '0.6875rem', textDecoration: 'underline', color: 'inherit' }}>Effacer les filtres</button>}
-        </div>
+        <ListEmpty icon={ClipboardList} title={hasFilters ? 'Aucune entrée pour ces filtres.' : 'Aucune entrée sur la période.'}
+          action={hasFilters ? <button type="button" className="odoo-btn-secondary" onClick={resetFilters}>Effacer les filtres</button> : undefined} />
       ) : (
-        <div style={{ overflowX: 'auto', opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
+        <div style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
+        <ListPanel footer={<PagerFoot page={page} total={total} onPage={setPage}
+            note={`${FLAGS.find(f => f.key === (flag || 'all'))?.label} · ${periodLabel(period, customFrom, customTo)}`} />}>
           <table className="odoo-table" style={{ margin: 0, minWidth: 1100 }}>
             <thead><tr>
               <th style={{ width: 90 }}>Date</th><th style={{ width: 130 }}>Bon</th><th>Fournisseur</th><th>Article</th>
@@ -146,7 +149,7 @@ export default function GoodsEntryRegisterTab() {
                 <tr key={`${r.voucher_number ?? 'hb'}-${r.internal_lot ?? ''}-${i}`}>
                   <td style={{ color: 'var(--theme-text-muted)' }}>{date(r.entry_date)}</td>
                   <td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>
-                    {r.source === 'hors_bc' ? <span style={{ color: '#b85d1a', fontWeight: 600, fontFamily: 'inherit' }}>hors BC</span> : (
+                    {r.source === 'hors_bc' ? <span style={{ color: 'var(--prj-orange, #B45309)', fontWeight: 600, fontFamily: 'inherit' }}>hors BC</span> : (
                       <>
                         <div style={{ fontWeight: 600 }}>{r.voucher_number}</div>
                         {r.order_number && <div style={{ color: 'var(--theme-text-muted)' }}>{r.order_number}</div>}
@@ -175,8 +178,7 @@ export default function GoodsEntryRegisterTab() {
               ))}
             </tbody>
           </table>
-          <Pager page={page} total={total} onPage={setPage}
-            note={`${FLAGS.find(f => f.key === (flag || 'all'))?.label} · ${periodLabel(period, customFrom, customTo)}`} />
+        </ListPanel>
         </div>
       )}
     </div>
@@ -186,7 +188,7 @@ export default function GoodsEntryRegisterTab() {
 /** Donnée de traçabilité absente : texte orange discret plutôt qu'une pastille rouge par cellule. */
 function Missing({ label }: { label: string }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#b85d1a', fontSize: '0.75rem', fontWeight: 600 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--prj-orange, #B45309)', fontSize: '0.75rem', fontWeight: 600 }}>
       <AlertTriangle size={11} /> {label}
     </span>
   );
@@ -194,8 +196,8 @@ function Missing({ label }: { label: string }) {
 
 function Dot({ ok, label }: { ok: boolean; label: string }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.75rem', color: ok ? 'var(--odoo-text)' : '#dc3545', fontWeight: ok ? 400 : 600 }}>
-      <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: ok ? '#28a745' : '#dc3545' }} />
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.75rem', color: ok ? 'var(--odoo-text)' : 'var(--prj-red, #DC2626)', fontWeight: ok ? 400 : 600 }}>
+      <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: ok ? 'var(--prj-green, #15803D)' : 'var(--prj-red, #DC2626)' }} />
       {label}
     </span>
   );

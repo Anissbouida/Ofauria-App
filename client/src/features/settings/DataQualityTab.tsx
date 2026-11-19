@@ -65,7 +65,7 @@ export default function DataQualityTab() {
           : `${remaining} contrôle${remaining > 1 ? 's' : ''} sur ${data.length} ont encore des fiches à compléter. Les compteurs sont calculés en direct.`}
       </StatusBanner>
 
-      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', overflowX: 'auto' }}>
+      <div className="prj-panel" style={{ overflowX: 'auto' }}>
         <table className="odoo-table" style={{ width: '100%' }}>
           <thead>
             <tr>
@@ -93,7 +93,7 @@ export default function DataQualityTab() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={`Complétude : ${pct} %`}
                         style={{ flex: 1, height: 6, borderRadius: 999, background: 'var(--odoo-border)', overflow: 'hidden' }}>
-                        <div style={{ width: `${pct}%`, height: '100%', background: pct === 100 ? '#2e7d32' : pct >= 70 ? '#b45309' : '#c62828' }} />
+                        <div style={{ width: `${pct}%`, height: '100%', background: pct === 100 ? 'var(--prj-green)' : pct >= 70 ? 'var(--prj-orange)' : 'var(--prj-red)' }} />
                       </div>
                       <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: '0.8rem', minWidth: 38, textAlign: 'right' }}>{pct} %</span>
                     </div>

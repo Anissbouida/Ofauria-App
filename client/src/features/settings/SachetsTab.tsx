@@ -54,22 +54,12 @@ export default function SachetsTab() {
   const [sub, setSub] = useState<SubTab>('config');
   return (
     <div>
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 max-w-xs mb-6">
-        <button
-          onClick={() => setSub('config')}
-          className={`flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-            sub === 'config' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <SettingsIcon size={15} /> Configuration
+      <div className="prj-views" role="group" aria-label="Sachets" style={{ display: 'inline-flex', marginBottom: 16 }}>
+        <button type="button" onClick={() => setSub('config')} className={sub === 'config' ? 'active' : ''} aria-pressed={sub === 'config'}>
+          <SettingsIcon size={14} /> Configuration
         </button>
-        <button
-          onClick={() => setSub('stats')}
-          className={`flex-1 flex items-center justify-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-            sub === 'stats' ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <BarChart3 size={15} /> Statistiques
+        <button type="button" onClick={() => setSub('stats')} className={sub === 'stats' ? 'active' : ''} aria-pressed={sub === 'stats'}>
+          <BarChart3 size={14} /> Statistiques
         </button>
       </div>
       {sub === 'config' ? <ConfigPanel /> : <StatsPanel />}
@@ -188,17 +178,17 @@ function ConfigPanel() {
 
       <SettingsSection title="Ratio par catégorie" columns={1}>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="odoo-table">
             <thead>
-              <tr className="text-left text-xs uppercase text-gray-500 border-b border-gray-200">
-                <th className="py-2 pr-4 font-medium">Catégorie</th>
-                <th className="py-2 pr-4 font-medium">Articles / sachet</th>
-                <th className="py-2 pr-4 font-medium">Nécessite un sachet</th>
+              <tr>
+                <th>Catégorie</th>
+                <th>Articles / sachet</th>
+                <th>Nécessite un sachet</th>
               </tr>
             </thead>
             <tbody>
               {draft.categories.map((row) => (
-                <tr key={row.id} className="border-b border-gray-100 last:border-0">
+                <tr key={row.id}>
                   <td className="py-2.5 pr-4 text-gray-800 font-medium">{row.name}</td>
                   <td className="py-2.5 pr-4">
                     <input
@@ -239,7 +229,7 @@ function ConfigPanel() {
         <button
           onClick={handleSave}
           disabled={!hasChanges || saveMutation.isPending}
-          className="btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60"
+          className="odoo-btn-primary inline-flex items-center gap-2 text-sm disabled:opacity-60"
         >
           <Save size={16} />
           {saveMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
@@ -279,14 +269,14 @@ function StatsPanel() {
   return (
     <>
       <div className="flex items-center justify-end mb-4">
-        <div className="flex bg-gray-100 rounded-lg p-1">
+        <div className="prj-views" role="group" aria-label="Période">
           {periodOptions.map((p) => (
             <button
               key={p.key}
+              type="button"
               onClick={() => setPeriod(p.key)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition ${
-                period === p.key ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'
-              }`}
+              aria-pressed={period === p.key}
+              className={period === p.key ? 'active' : ''}
             >
               {p.label}
             </button>
@@ -299,7 +289,7 @@ function StatsPanel() {
       ) : (
         <>
           <SettingsSection title="Vue d'ensemble" columns={1}>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="prj-kpis">
               <KPI label="Ventes" value={report.totals.salesCount} />
               <KPI label="Sachets remis" value={report.totals.sachetsGiven} />
               <KPI label="Sachets suggérés" value={report.totals.sachetsSuggested} />
@@ -313,17 +303,17 @@ function StatsPanel() {
 
           <SettingsSection title="Par vendeuse" columns={1}>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="odoo-table">
                 <thead>
-                  <tr className="text-left text-xs uppercase text-gray-500 border-b border-gray-200">
-                    <th className="py-2 pr-4 font-medium">Vendeuse</th>
-                    <th className="py-2 pr-4 font-medium">Magasin</th>
-                    <th className="py-2 pr-4 font-medium text-right">Ventes</th>
-                    <th className="py-2 pr-4 font-medium text-right">Remis</th>
-                    <th className="py-2 pr-4 font-medium text-right">Suggérés</th>
-                    <th className="py-2 pr-4 font-medium text-right">Sur-distrib.</th>
-                    <th className="py-2 pr-4 font-medium text-right">Ratio</th>
-                    <th className="py-2 pr-4 font-medium">Motif principal</th>
+                  <tr>
+                    <th>Vendeuse</th>
+                    <th>Magasin</th>
+                    <th style={{ textAlign: 'right' }}>Ventes</th>
+                    <th style={{ textAlign: 'right' }}>Remis</th>
+                    <th style={{ textAlign: 'right' }}>Suggérés</th>
+                    <th style={{ textAlign: 'right' }}>Sur-distrib.</th>
+                    <th style={{ textAlign: 'right' }}>Ratio</th>
+                    <th>Motif principal</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -338,10 +328,10 @@ function StatsPanel() {
                     const ratioPct = row.overshootRatio > 0 ? row.overshootRatio * 100 : 0;
                     const tone =
                       row.overshoot === 0 ? 'text-gray-700' :
-                      ratioPct > 130 ? 'text-red-600 font-semibold' :
-                      'text-amber-600 font-semibold';
+                      ratioPct > 130 ? 'sach-red font-semibold' :
+                      'sach-orange font-semibold';
                     return (
-                      <tr key={row.userId} className="border-b border-gray-100 last:border-0">
+                      <tr key={row.userId}>
                         <td className="py-2.5 pr-4 text-gray-800 font-medium">{row.userName}</td>
                         <td className="py-2.5 pr-4 text-gray-500">{row.storeName ?? '—'}</td>
                         <td className="py-2.5 pr-4 text-right">{row.salesCount}</td>
@@ -368,10 +358,10 @@ function StatsPanel() {
                 {report.reasons.map((r) => (
                   <span
                     key={r.reason}
-                    className="inline-flex items-center gap-2 bg-amber-50 text-amber-800 text-xs font-medium px-3 py-1.5 rounded-full"
+                    className="prj-chip" style={{ cursor: 'default' }}
                   >
                     {REASON_LABELS[r.reason] ?? r.reason}
-                    <span className="bg-white px-1.5 py-0.5 rounded-full font-semibold">{r.count}</span>
+                    <small>{r.count}</small>
                   </span>
                 ))}
               </div>
@@ -384,12 +374,11 @@ function StatsPanel() {
 }
 
 function KPI({ label, value, tone }: { label: string; value: number; tone?: 'ok' | 'warning' }) {
-  const color =
-    tone === 'warning' ? 'text-amber-600' : tone === 'ok' ? 'text-emerald-600' : 'text-gray-800';
+  const color = tone === 'warning' ? 'var(--prj-orange)' : tone === 'ok' ? 'var(--prj-green)' : undefined;
   return (
-    <div className="bg-gray-50 border border-gray-100 rounded-lg px-4 py-3">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={`text-xl font-bold ${color}`}>{value}</p>
+    <div className="prj-kpi">
+      <div className="prj-kpi-head"><span>{label}</span></div>
+      <div className="prj-kpi-value" style={{ color }}>{value}</div>
     </div>
   );
 }

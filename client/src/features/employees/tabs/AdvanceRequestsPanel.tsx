@@ -62,7 +62,7 @@ export default function AdvanceRequestsPanel() {
                     }}>
                     Virement
                   </button>
-                  <button className="odoo-pager-btn" title="Refuser" style={{ color: '#dc3545' }} disabled={reject.isPending}
+                  <button className="odoo-pager-btn" title="Refuser" style={{ color: 'var(--prj-red)' }} disabled={reject.isPending}
                     onClick={() => setRejecting(r)}>
                     <X size={13} />
                   </button>

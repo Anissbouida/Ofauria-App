@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MapPin, Plus, Pencil, Trash2, Thermometer, X, Snowflake, Package } from 'lucide-react';
+import { MapPin, Plus, Pencil, Trash2, Thermometer, X, Snowflake, Package, Loader2 } from 'lucide-react';
 import { stockLocationsApi, type StockLocation, type StockLocationInput } from '../../api/stock-locations.api';
 import { productionCoutApi } from '../../api/production-cout.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
+import { ListPanel, ListEmpty } from '../sales/ListTemplate';
+import './stock.css';
 
 const TYPE_LABELS: Record<string, string> = {
   sec: 'Sec', positif: 'Froid positif', negatif: 'Froid négatif',
@@ -64,21 +66,20 @@ export default function EmplacementsTab() {
   };
 
   return (
-    <div style={{ padding: '1rem' }}>
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2 text-gray-700">
-          <MapPin size={16} className="text-blue-600" />
-          <span className="font-semibold">Emplacements de stock</span>
-          <span className="text-xs text-gray-400">{locations.length} déclaré(s)</span>
-        </div>
+    <div className="stk-stack">
+      <div className="prj-toolbar">
+        <span className="stk-summary" style={{ marginLeft: 0 }}>{locations.length} emplacement{locations.length > 1 ? 's' : ''} déclaré{locations.length > 1 ? 's' : ''}</span>
+        <span className="stk-grow" />
         <button onClick={openNew} className="odoo-btn-primary"><Plus size={14} /> Nouvel emplacement</button>
       </div>
 
       {isLoading ? (
-        <div className="text-center py-10 text-gray-400">Chargement…</div>
+        <ListEmpty icon={Loader2} title="Chargement…" />
       ) : locations.length === 0 ? (
-        <div className="text-center py-10 text-gray-400">Aucun emplacement. Déclarez vos chambres, zones et bacs.</div>
+        <ListEmpty icon={MapPin} title="Aucun emplacement." text="Déclarez vos chambres, zones et bacs."
+          action={<button onClick={openNew} className="odoo-btn-primary"><Plus size={13} /> Nouvel emplacement</button>} />
       ) : (
+        <ListPanel>
         <table className="odoo-table">
           <thead>
             <tr>
@@ -93,7 +94,7 @@ export default function EmplacementsTab() {
               const inherited = l.temp_min == null && l.equipement_id != null;
               return (
                 <tr key={l.id}>
-                  <td className="font-mono font-semibold">{l.code}</td>
+                  <td><span className="sal-num">{l.code}</span></td>
                   <td>{l.name}</td>
                   <td><span className={TYPE_BADGE[l.type] || 'odoo-tag'}>{TYPE_LABELS[l.type] || l.type}</span></td>
                   <td className="text-gray-600">{l.equipement_nom ? <span className="inline-flex items-center gap-1"><Snowflake size={11} className="text-sky-500" />{l.equipement_nom}</span> : '—'}</td>
@@ -114,6 +115,7 @@ export default function EmplacementsTab() {
             })}
           </tbody>
         </table>
+        </ListPanel>
       )}
 
       {showForm && (

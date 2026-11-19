@@ -1,7 +1,7 @@
 import { money as fmtMoney } from '../../utils/money';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, XCircle, Clock, Inbox, Send, History, UserCheck, Trash2, Loader2, ChevronDown, ChevronRight, FileDown, Truck } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, Inbox, Send, History, UserCheck, Trash2, Loader2, ChevronDown, ChevronRight, FileDown, Truck, ClipboardCheck } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { ROLE_LABELS, APPROVAL_DOC_TYPES, APPROVAL_REQUEST_STATUS_LABELS, type ApprovalDocTypeDef } from '@ofauria/shared';
@@ -13,6 +13,10 @@ import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { purchaseOrdersApi } from '../../api/purchase-orders.api';
 import { StagePipeline, type StageDef } from '../../components/purchasing/ProcessBoard';
+import SearchSelect from '../../components/ui/SearchSelect';
+import SalesPageShell from '../sales/SalesPageShell';
+import { FilterChips } from '../sales/ListTemplate';
+import './approvals.css';
 
 /**
  * Boîte « À approuver » (lot 8). Les demandes que je peux trancher, celles
@@ -22,7 +26,6 @@ import { StagePipeline, type StageDef } from '../../components/purchasing/Proces
 const DOC_TYPES = APPROVAL_DOC_TYPES as Record<string, ApprovalDocTypeDef>;
 const money = (v: string | number | null | undefined) => v === null || v === undefined ? '' : fmtMoney(Number(v));
 const when = (d: string) => format(new Date(d), 'dd MMM yyyy à HH:mm', { locale: fr });
-const statusTag: Record<string, string> = { pending: 'odoo-tag-orange', approved: 'odoo-tag-green', rejected: 'odoo-tag-red', cancelled: 'odoo-tag-grey' };
 const STATUS_TONE: Record<string, StatusTone> = { pending: 'todo', approved: 'done', rejected: 'blocked', cancelled: 'cancelled' };
 const RequestStatusTag = ({ status }: { status: string }) => (
   <StatusTag tone={STATUS_TONE[status] ?? 'draft'} label={(APPROVAL_REQUEST_STATUS_LABELS as Record<string, string>)[status] ?? status} />
@@ -110,14 +113,14 @@ function PurchaseOrderDetails({ poId }: { poId: string }) {
         </div>
       </div>
       {po.notes && <div style={{ fontSize: '0.8125rem' }}><b>Notes :</b> {po.notes}</div>}
-      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, overflowX: 'auto' }}>
+      <div style={{ border: '1px solid var(--theme-bg-separator, var(--odoo-border))', borderRadius: 12, overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: 'var(--odoo-bg-alt, #f8f9fa)', textAlign: 'left' }}>
-              <th style={{ ...cell, fontWeight: 600 }}>Article</th>
-              <th style={{ ...num, fontWeight: 600 }}>Quantité</th>
-              <th style={{ ...num, fontWeight: 600 }}>Prix unit. HT</th>
-              <th style={{ ...num, fontWeight: 600 }}>Total HT</th>
+            <tr style={{ textAlign: 'left', color: 'var(--theme-text-muted)' }}>
+              <th style={{ ...cell, fontWeight: 500, fontSize: '0.75rem' }}>Article</th>
+              <th style={{ ...num, fontWeight: 500, fontSize: '0.75rem' }}>Quantité</th>
+              <th style={{ ...num, fontWeight: 500, fontSize: '0.75rem' }}>Prix unit. HT</th>
+              <th style={{ ...num, fontWeight: 500, fontSize: '0.75rem' }}>Total HT</th>
             </tr>
           </thead>
           <tbody>
@@ -136,7 +139,7 @@ function PurchaseOrderDetails({ poId }: { poId: string }) {
                       <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>{qty(it.qty_container)} × {String(it.line_container_label).toLowerCase()}</div>
                     )}
                   </td>
-                  <td style={num}>{it.unit_price != null ? money(it.unit_price) : <span style={{ color: '#b45309' }}>à définir</span>}</td>
+                  <td style={num}>{it.unit_price != null ? money(it.unit_price) : <span style={{ color: 'var(--prj-orange)' }}>à définir</span>}</td>
                   <td style={{ ...num, fontWeight: 600 }}>{money(lineTotal)}</td>
                 </tr>
               );
@@ -170,10 +173,10 @@ function RequestCard({ r, decide, cancel }: {
   const values = r.summary?.values ?? {};
   const def = DOC_TYPES[r.doc_type];
   return (
-    <article style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, padding: 14, display: 'grid', gap: 10, background: 'var(--odoo-bg-card, var(--odoo-bg))' }}>
+    <article className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 10 }}>
       <header style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap', justifyContent: 'space-between' }}>
         <div>
-          <div style={{ fontWeight: 700, fontSize: '0.9375rem' }}>{r.doc_label}</div>
+          <div style={{ fontWeight: 700, fontSize: '1rem', letterSpacing: '-0.01em' }}>{r.doc_label}</div>
           <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
             {def?.label ?? r.doc_type} · règle « {r.rule_label} » ({r.summary?.condition ?? 'toujours'})
             {r.store_name ? ` · ${r.store_name}` : ''}
@@ -191,7 +194,7 @@ function RequestCard({ r, decide, cancel }: {
         )}
       </div>
       {r.doc_type === 'purchase_order' && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '8px 10px' }}>
+        <div style={{ border: '1px solid var(--theme-bg-separator, var(--odoo-border))', borderRadius: 12, padding: '8px 12px' }}>
           <button type="button" onClick={() => setShowDetails(v => !v)}
             style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: '0.8125rem', width: '100%', textAlign: 'left' }}>
             {showDetails ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Détails du bon de commande
@@ -205,13 +208,13 @@ function RequestCard({ r, decide, cancel }: {
         <StatusBanner tone="danger" icon={XCircle} title="Approuvée, mais l'effet n'a pas pu être appliqué">{r.apply_error}</StatusBanner>
       )}
       {r.status === 'approved' && r.applied_at && !r.apply_error && (
-        <div style={{ fontSize: '0.8125rem', color: '#155724' }}><CheckCircle2 size={12} style={{ verticalAlign: -2 }} /> {def?.effect}</div>
+        <div style={{ fontSize: '0.8125rem', color: 'var(--prj-green)' }}><CheckCircle2 size={12} style={{ verticalAlign: -2 }} /> {def?.effect}</div>
       )}
       {decide && r.status === 'pending' && (
         <div style={{ display: 'grid', gap: 8 }}>
           <textarea id={`approval-reason-${r.id}`} value={reason} onChange={e => setReason(e.target.value)} rows={2}
             placeholder="Motif (obligatoire pour refuser, facultatif pour approuver)"
-            style={{ width: '100%', fontSize: '0.8125rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' }} />
+            style={{ width: '100%', fontSize: '0.8125rem', padding: '8px 10px', border: '1px solid var(--odoo-border)', borderRadius: 10, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' }} />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button type="button" className="odoo-btn-danger" disabled={!reason.trim()} onClick={() => decide(r.id, 'reject', reason)}><XCircle size={14} /> Refuser</button>
             <button type="button" className="odoo-btn-primary" onClick={() => decide(r.id, 'approve', reason)}><CheckCircle2 size={14} /> Approuver</button>
@@ -310,7 +313,8 @@ export default function ApprovalsPage() {
     : `${inboxRows.length} pièce${inboxRows.length > 1 ? 's' : ''} en attente de votre décision`;
 
   return (
-    <div className="odoo-scope" style={{ display: 'grid', gap: 16 }}>
+    <div className="approvals-page">
+    <SalesPageShell icon={ClipboardCheck} title="Approbations" summary={pipelineSummary}>
       <StagePipeline title="Où en sont les approbations" summary={pipelineSummary}
         stages={stages} stats={stageStats} isActive={k => tab === k} onPick={k => setTab(k as typeof tab)} />
 
@@ -340,22 +344,19 @@ export default function ApprovalsPage() {
 
       {tab === 'history' && isManager && (
         <section style={{ display: 'grid', gap: 12 }}>
-          <div className="odoo-control-bar" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <select id="approval-history-status" aria-label="Filtrer par statut" value={histStatus} onChange={e => setHistStatus(e.target.value)}
-              style={{ fontSize: '0.8125rem', padding: '4px 6px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' }}>
-              <option value="">Tous les statuts</option>
-              {Object.entries(APPROVAL_REQUEST_STATUS_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-            </select>
-            {history.data && <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>{history.data.total} demande{history.data.total > 1 ? 's' : ''}</span>}
-            <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {(['approved', 'rejected', 'pending', 'cancelled'] as const).map(st => {
-                const n = (statsHistory.data?.rows ?? []).filter(r => r.status === st).length;
-                return n > 0 ? <span key={st} className={`odoo-tag ${statusTag[st]}`}>{APPROVAL_REQUEST_STATUS_LABELS[st]} · {n}</span> : null;
-              })}
-              {avgHours != null && <span className="odoo-tag odoo-tag-blue">délai moyen {avgDelay}</span>}
+          <div className="prj-toolbar">
+            <FilterChips label="Filtrer par statut" value={histStatus} onChange={setHistStatus} chips={[
+              { key: '', label: 'Tous les statuts', count: statsHistory.data?.rows.length },
+              ...(['approved', 'rejected', 'pending', 'cancelled'] as const).map(st => ({
+                key: st, label: APPROVAL_REQUEST_STATUS_LABELS[st], count: (statsHistory.data?.rows ?? []).filter(r => r.status === st).length,
+              })),
+            ]} />
+            <span className="prj-note" style={{ marginLeft: 'auto' }}>
+              {history.data ? `${history.data.total} demande${history.data.total > 1 ? 's' : ''}` : ''}
+              {avgHours != null ? `${history.data ? ' · ' : ''}délai moyen ${avgDelay}` : ''}
             </span>
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          <div className="prj-panel prj-scroll">
             <table className="odoo-table">
               <thead><tr><th>Pièce</th><th>Règle</th><th style={{ textAlign: 'right' }}>Montant</th><th>Demandeur</th><th>Demandée le</th><th>Statut</th><th>Décidée par</th><th>Motif</th></tr></thead>
               <tbody>
@@ -383,14 +384,14 @@ export default function ApprovalsPage() {
           <StatusBanner tone="neutral" icon={UserCheck} title="Déléguer mes approbations pendant une absence">
             Le délégué peut trancher les étapes qui m'attendent, à ma place, entre les deux dates. Chaque décision reste signée de son nom.
           </StatusBanner>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}>
-            <label style={{ display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Délégué
-              <select id="delegation-to" value={delegate.toUserId} onChange={e => setDelegate({ ...delegate, toUserId: e.target.value })}
-                style={{ fontSize: '0.8125rem', padding: '4px 6px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)', minWidth: 220 }}>
-                <option value="">Choisir…</option>
-                {delegates.data?.map(d => <option key={d.id} value={d.id}>{d.name} · {d.role_label}</option>)}
-              </select>
-            </label>
+          <div className="prj-panel">
+          <div className="prj-panel-head">Nouvelle délégation</div>
+          <div className="prj-panel-body" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'end' }}>
+            <div style={{ display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Délégué
+              <SearchSelect size="md" width={260} ariaLabel="Délégué" placeholder="Choisir…" value={delegate.toUserId}
+                onChange={id => setDelegate({ ...delegate, toUserId: id })}
+                options={(delegates.data ?? []).map(d => ({ id: d.id, label: d.name, sublabel: d.role_label }))} />
+            </div>
             <label style={{ display: 'grid', gap: 4, fontSize: '0.8125rem' }}>Du
               <input id="delegation-start" type="date" value={delegate.startsOn} onChange={e => setDelegate({ ...delegate, startsOn: e.target.value })}
                 style={{ fontSize: '0.8125rem', padding: '4px 6px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' }} />
@@ -401,7 +402,8 @@ export default function ApprovalsPage() {
             </label>
             <button type="button" className="odoo-btn-primary" disabled={!delegate.toUserId || !delegate.endsOn || addDelegation.isPending} onClick={() => addDelegation.mutate()}>Déléguer</button>
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          </div>
+          <div className="prj-panel prj-scroll">
             <table className="odoo-table">
               <thead><tr><th>De</th><th>À</th><th>Du</th><th>Au</th><th /></tr></thead>
               <tbody>
@@ -412,10 +414,10 @@ export default function ApprovalsPage() {
                       <td>{d.from_name}{d.from_user_id === user?.id && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>moi</span>}</td>
                       <td>{d.to_name}{d.to_user_id === user?.id && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>moi</span>}</td>
                       <td>{format(new Date(d.starts_on), 'dd MMM yyyy', { locale: fr })}</td>
-                      <td>{format(new Date(d.ends_on), 'dd MMM yyyy', { locale: fr })}{active && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 6 }}>active</span>}</td>
+                      <td>{format(new Date(d.ends_on), 'dd MMM yyyy', { locale: fr })}{active && <span style={{ marginLeft: 6 }}><StatusTag tone="done" label="active" /></span>}</td>
                       <td style={{ textAlign: 'right' }}>
                         {(d.from_user_id === user?.id || user?.role === 'admin') && (
-                          <button type="button" className="odoo-pager-btn" title="Retirer" aria-label="Retirer la délégation" style={{ color: '#dc3545' }} onClick={() => removeDelegation.mutate(d.id)}><Trash2 size={13} /></button>
+                          <button type="button" className="odoo-pager-btn" title="Retirer" aria-label="Retirer la délégation" style={{ color: 'var(--prj-red)' }} onClick={() => removeDelegation.mutate(d.id)}><Trash2 size={13} /></button>
                         )}
                       </td>
                     </tr>
@@ -427,6 +429,7 @@ export default function ApprovalsPage() {
           </div>
         </section>
       )}
+    </SalesPageShell>
     </div>
   );
 }

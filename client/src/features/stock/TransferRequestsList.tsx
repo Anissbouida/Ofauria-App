@@ -11,6 +11,8 @@ import { referentielApi } from '../../api/referentiel.api';
 import { purchaseRequestsApi } from '../../api/purchase-requests.api';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import { ListEmpty } from '../sales/ListTemplate';
 import { bonStatusTag } from '../production/status';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 
@@ -141,31 +143,21 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
   };
 
   if (isLoading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-        <Loader2 size={28} className="animate-spin" style={{ color: 'var(--theme-accent)' }} />
-      </div>
-    );
+    return <ListEmpty icon={Loader2} title="Chargement des contenants à ouvrir…" />;
   }
   if (isError) {
     const errMsg = (error as any)?.response?.data?.error || (error as any)?.message || 'Erreur inconnue';
     const status = (error as any)?.response?.status;
     return (
-      <div className="odoo-alert danger">
-        <AlertTriangle size={14} style={{ marginTop: 2, flexShrink: 0 }} />
-        <div>
-          <span className="odoo-alert-title">Impossible de charger les contenants à ouvrir</span> — {status ? `[${status}] ` : ''}{errMsg}
-          {status === 403 && ' (accès réservé aux rôles magasinier, admin et gérant)'}
-        </div>
-      </div>
+      <StatusBanner tone="danger" icon={AlertTriangle} title="Impossible de charger les contenants à ouvrir">
+        {status ? `[${status}] ` : ''}{errMsg}
+        {status === 403 && ' (accès réservé aux rôles magasinier, admin et gérant)'}
+      </StatusBanner>
     );
   }
   if (rows.length === 0) {
     return (
-      <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-        <PackageOpen size={32} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-        <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Aucun contenant à ouvrir pour les bons de sortie en cours.</p>
-      </div>
+      <ListEmpty icon={PackageOpen} title="Aucun contenant à ouvrir pour les bons de sortie en cours." />
     );
   }
 
@@ -191,17 +183,16 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       {variant === 'transfers-tab' && (
-        <div className="odoo-alert warning">
-          <PackageOpen size={14} style={{ color: '#856404', marginTop: 2, flexShrink: 0 }} />
-          <div style={{ flex: 1 }}>
-            <span className="odoo-alert-title">{rows.length} contenant{rows.length > 1 ? 's' : ''} à ouvrir pour les bons de sortie en cours</span>
-            {' — '}depuis le bon, l'ouverture se fait en pesant la ligne. Cette liste sert à préparer les contenants à l'avance ou à commander un manquant.
-          </div>
-          <button type="button" onClick={transferAll} disabled={transferringAll || isTransferring} className="odoo-btn-primary">
-            {transferringAll ? <Loader2 size={13} className="animate-spin" /> : <PackageOpen size={13} />}
-            {transferringAll ? 'Ouverture...' : `Tout ouvrir (${rows.length})`}
-          </button>
-        </div>
+        <StatusBanner tone="warning" icon={PackageOpen}
+          title={`${rows.length} contenant${rows.length > 1 ? 's' : ''} à ouvrir pour les bons de sortie en cours`}
+          actions={
+            <button type="button" onClick={transferAll} disabled={transferringAll || isTransferring} className="odoo-btn-primary">
+              {transferringAll ? <Loader2 size={13} className="animate-spin" /> : <PackageOpen size={13} />}
+              {transferringAll ? 'Ouverture...' : `Tout ouvrir (${rows.length})`}
+            </button>
+          }>
+          Depuis le bon, l'ouverture se fait en pesant la ligne. Cette liste sert à préparer les contenants à l'avance ou à commander un manquant.
+        </StatusBanner>
       )}
 
       {Array.from(groups.entries()).map(([bonId, g]) => (
@@ -255,7 +246,7 @@ export function TransferRequestsList({ variant = 'transfers-tab' }: { variant?: 
                       {l.suggested_lot_number ? <span style={{ fontFamily: 'ui-monospace, monospace' }}>{l.suggested_lot_number as string}</span> : '—'}
                       {otherLot && <span style={{ fontSize: '0.6875rem' }}> (lot suggéré {suggestedLotQty.toFixed(2)}, un autre lot sera pris)</span>}
                     </td>
-                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: insufficient ? '#dc3545' : undefined, fontWeight: insufficient ? 600 : 400 }}>
+                    <td style={{ textAlign: 'right', fontFamily: 'ui-monospace, monospace', color: insufficient ? 'var(--prj-red)' : undefined, fontWeight: insufficient ? 600 : 400 }}>
                       {economatAvailable.toFixed(2)} {unit}
                       {insufficient && <span style={{ marginLeft: 6 }}><StatusTag tone="blocked" label="insuffisant" /></span>}
                     </td>

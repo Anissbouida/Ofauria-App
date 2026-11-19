@@ -534,3 +534,209 @@
 /* Note d'une ligne + « ? » (PageNote) */
 .odoo-page-note { margin: 0; font-size: 0.8125rem; color: var(--odoo-text-muted); }
 .odoo-page-note .odoo-params-q { margin-left: 0.375rem; vertical-align: -2px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DESIGN VENTES (2026-11-18) — même grammaire que les coquilles de module
+   (.kl-apple, apple-look.css) : barre latérale teintée, barre de fil d'Ariane
+   translucide, grand titre, réglages en cartes arrondies, sans capitales forcées.
+   Tout est préfixé .kl-apple : hors de la zone Apple, l'ancien rendu reste.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Coquille : colonne de navigation pleine hauteur + contenu, comme ModuleShell. */
+.kl-apple .odoo-settings-shell { padding: 0; min-height: 100%; }
+.kl-apple .odoo-settings {
+  gap: 0; grid-template-columns: 236px minmax(0, 1fr); min-height: 100%; align-items: stretch;
+  background: linear-gradient(to right, var(--kl-nav) 0 235px, var(--kl-sep) 235px 236px, var(--kl-bg) 236px);
+}
+.kl-apple .odoo-settings-nav {
+  position: sticky; top: 0; align-self: start; max-height: calc(100vh - 48px); overflow-y: auto;
+  border: 0; border-radius: 0; background: transparent; padding: 12px 10px;
+}
+.kl-apple .odoo-settings-nav-search {
+  width: 100%; margin: 0 0 8px; height: 34px; padding: 0 10px; border: 0; border-radius: 10px;
+  background: var(--kl-fill); color: var(--kl-muted); font-size: 13px;
+}
+.kl-apple .odoo-settings-nav-search kbd { border: 0; background: var(--kl-card); border-radius: 5px; padding: 0 5px; }
+.kl-apple .odoo-settings-nav-group { border-top: 0; padding: 0 0 6px; }
+.kl-apple .odoo-settings-nav-group-title {
+  text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; color: var(--kl-muted); padding: 10px 10px 4px;
+}
+.kl-apple .odoo-settings-nav-item { border-left: 0; border-radius: 8px; padding: 7px 10px; gap: 10px; font-size: 14px; color: var(--kl-ink); }
+.kl-apple .odoo-settings-nav-item svg { color: var(--kl-accent); }
+.kl-apple .odoo-settings-nav-item:hover { background: rgba(15, 23, 42, .05); }
+.kl-apple .odoo-settings-nav-item.active { background: rgba(15, 23, 42, .08); font-weight: 600; }
+.kl-apple .odoo-settings-nav-item.active svg { color: var(--kl-accent); }
+.kl-apple .odoo-settings-nav-badge { background: transparent; color: var(--prj-red); font-size: 12.5px; padding: 0; min-width: 0; }
+.kl-apple .odoo-settings-nav-dot { background: var(--kl-accent); }
+.kl-apple .odoo-settings-nav-hidden { border-top: 0; padding: 10px; font-size: 12.5px; }
+.kl-apple .odoo-settings-nav-hidden button { color: var(--kl-accent-ink); }
+@media (max-width: 900px) {
+  .kl-apple .odoo-settings { grid-template-columns: minmax(0, 1fr); background: var(--kl-bg); }
+  .kl-apple .odoo-settings-nav { position: static; max-height: none; background: var(--kl-nav); border-bottom: 1px solid var(--kl-sep); padding: 8px 10px; }
+  .kl-apple .odoo-settings-nav-toggle { border-bottom: 0; border-radius: 10px; color: var(--kl-ink); }
+}
+
+/* Contenu : plus de cadre, la barre du haut porte le fil d'Ariane et les actions. */
+.kl-apple .odoo-settings-main { border: 0; border-radius: 0; background: transparent; }
+.kl-apple .odoo-settings-bar .odoo-breadcrumb { flex-wrap: wrap; }
+.kl-apple .odoo-settings-bar .odoo-breadcrumb button { color: var(--kl-muted); font: inherit; }
+.kl-apple .odoo-settings-bar .odoo-breadcrumb button:hover { color: var(--kl-accent-ink); text-decoration: none; }
+.kl-apple .odoo-settings-bar .odoo-settings-history { font-size: 12.5px; color: var(--kl-muted); }
+.kl-apple .odoo-settings-bar .odoo-settings-history button { color: var(--kl-accent-ink); font-weight: 500; }
+.kl-apple .odoo-settings-body.kl-page { display: flex; }
+.kl-apple .odoo-settings-toc { font-size: 13px; }
+.kl-apple .odoo-settings-toc button { border: 0; background: var(--kl-card); box-shadow: inset 0 0 0 1px var(--kl-sep); padding: 3px 11px; color: var(--kl-ink); }
+.kl-apple .odoo-settings-toc button:hover { background: var(--kl-accent); color: #fff; box-shadow: none; }
+.kl-apple .odoo-settings-title { font-size: 21px; letter-spacing: -.02em; color: var(--kl-ink); }
+.kl-apple .odoo-settings-subtitle { font-size: 14px; color: var(--kl-muted); }
+
+/* Bloc de réglages (SettingsSection) : une carte. */
+.kl-apple .odoo-setting-section { background: var(--kl-card); border-radius: 16px; box-shadow: var(--kl-shadow); overflow: hidden; }
+.kl-apple .odoo-setting-section-head { border: 0; border-bottom: 1px solid var(--kl-hair); border-radius: 0; background: transparent; padding: 16px 18px 12px; }
+.kl-apple .odoo-setting-section-title { font-size: 17px; font-weight: 700; letter-spacing: -.02em; color: var(--kl-ink); }
+.kl-apple .odoo-setting-section-help { font-size: 13px; color: var(--kl-muted); margin-top: 3px; }
+.kl-apple .odoo-setting-grid { border: 0; border-radius: 0; background: transparent; }
+.kl-apple .odoo-setting-grid > * { padding: 14px 18px; }
+.kl-apple .odoo-setting-label { font-size: 14px; color: var(--kl-ink); }
+.kl-apple .odoo-setting-help { font-size: 13px; color: var(--kl-muted); }
+.kl-apple .odoo-setting-changed { background: var(--kl-accent-soft); color: var(--kl-accent-ink); }
+.kl-apple .odoo-setting-revert { color: var(--kl-accent-ink); }
+.kl-apple .odoo-params-extra .odoo-setting-section, .kl-apple .odoo-setting-section .odoo-setting-section { box-shadow: none; border-radius: 0; }
+.kl-apple .odoo-toggle.on { background: var(--prj-green); }
+
+/* Champs adoucis (comme les fenêtres .kl-sheet). */
+.kl-apple .odoo-settings-body .odoo-input { border-radius: 8px; }
+.kl-apple .odoo-settings-body .odoo-input:focus { border-color: var(--kl-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--kl-accent) 22%, transparent); }
+.kl-apple .odoo-input.invalid { border-color: var(--prj-red); }
+
+/* Onglets d'une page : contrôle segmenté jusqu'à 4 vues, sinon soulignement fin. */
+.kl-apple .odoo-settings-tablist { border-bottom: 1px solid var(--kl-sep); gap: 2px; }
+.kl-apple .odoo-settings-tablist button { font-size: 14px; color: var(--kl-muted); padding: 8px 12px; }
+.kl-apple .odoo-settings-tablist button:hover { color: var(--kl-ink); }
+.kl-apple .odoo-settings-tablist button.active { color: var(--kl-ink); border-bottom-color: var(--kl-accent); }
+.kl-apple .odoo-settings-tablist.seg {
+  justify-self: start; border: 0; border-radius: 9px; padding: 2px; gap: 0; background: var(--kl-fill); max-width: 100%;
+}
+.kl-apple .odoo-settings-tablist.seg button { margin: 0; border: 0; border-radius: 7px; padding: 0 14px; height: 28px; color: var(--kl-ink); font-weight: 500; }
+.kl-apple .odoo-settings-tablist.seg button.active { background: var(--kl-card); font-weight: 600; box-shadow: 0 3px 8px rgba(15, 23, 42, .08), 0 0 0 .5px rgba(15, 23, 42, .06); }
+
+/* Barre d'enregistrement : carte flottante arrondie. */
+.kl-apple .odoo-savebar { border: 0; border-radius: 16px; padding: 10px 14px; background: var(--kl-card); box-shadow: 0 0 0 1.5px var(--kl-accent), 0 12px 32px rgba(15, 23, 42, .16); }
+.kl-apple .odoo-savebar-note { color: var(--prj-red); }
+
+/* Palette ⌘K */
+.kl-apple .odoo-cmdk, .odoo-cmdk { border-radius: 16px; }
+.kl-apple .odoo-cmdk-group { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; }
+.kl-apple .odoo-cmdk-item.active { background: var(--kl-accent-soft); }
+
+/* Accueil de la configuration */
+.kl-apple .odoo-setup-hero, .kl-apple .odoo-setup-card {
+  border: 0; border-radius: 16px; background: var(--kl-card); box-shadow: var(--kl-shadow);
+}
+.kl-apple .odoo-setup-hero { padding: 20px 22px; }
+.kl-apple .odoo-setup-card-head { background: transparent; border-bottom: 1px solid var(--kl-hair); padding: 12px 16px; }
+.kl-apple .odoo-setup-tile .odoo-setup-card-head { padding: 14px 16px 10px; }
+.kl-apple .odoo-setup-tile-title { font-size: 15px; color: var(--kl-ink); }
+.kl-apple .odoo-setup-tile-title svg { color: var(--kl-accent); }
+.kl-apple .odoo-setup-card-title { text-transform: none; letter-spacing: 0; font-size: 15px; font-weight: 600; }
+.kl-apple .odoo-setup-tile-links { background: transparent; border-top: 1px solid var(--kl-hair); padding: 10px 16px; }
+.kl-apple .odoo-setup-tile-links button { font-size: 13px; color: var(--kl-accent-ink); }
+.kl-apple .odoo-setup-bar { height: 4px; background: var(--kl-fill); }
+.kl-apple .odoo-setup-bar > span { background: var(--kl-accent); }
+.kl-apple .odoo-setup-item { padding: 9px 16px; }
+.kl-apple .odoo-setup-item:hover { background: color-mix(in srgb, var(--kl-bg) 70%, var(--kl-card)); }
+.kl-apple .odoo-setup-item-label { font-size: 14px; font-weight: 500; color: var(--kl-ink); }
+.kl-apple .odoo-setup-item-detail { font-size: 13px; color: var(--kl-muted); }
+.kl-apple .odoo-setup-recent-item { border-bottom-color: var(--kl-hair); padding: 9px 16px; }
+
+/* Société */
+.kl-apple .odoo-company-id, .kl-apple .odoo-company-card {
+  border: 0; border-radius: 16px; background: var(--kl-card); box-shadow: var(--kl-shadow);
+}
+.kl-apple .odoo-company-id { padding: 20px 22px; }
+.kl-apple .odoo-company-card > h3 { border-bottom-color: var(--kl-hair); padding: 16px 18px 12px; font-size: 17px; font-weight: 700; letter-spacing: -.02em; color: var(--kl-ink); }
+.kl-apple .odoo-company-card-icon { background: var(--kl-accent-soft); color: var(--kl-accent-ink); }
+.kl-apple .odoo-company-logo { background: var(--kl-accent-soft); color: var(--kl-accent-ink); }
+.kl-apple .odoo-company-id-name { font-size: 21px; letter-spacing: -.02em; color: var(--kl-ink); }
+.kl-apple .odoo-company-pill { border: 0; background: var(--kl-fill); color: var(--kl-ink2); }
+.kl-apple .odoo-company-pill.ok { background: color-mix(in srgb, var(--prj-green) 12%, transparent); color: var(--prj-green); }
+.kl-apple .odoo-company-pill.warn { background: color-mix(in srgb, var(--prj-orange) 13%, transparent); color: var(--prj-orange); }
+.kl-apple .odoo-company-bar { border: 0; background: var(--kl-fill); border-radius: 99px; }
+.kl-apple .odoo-company-bar span { background: var(--kl-accent); }
+.kl-apple .odoo-company-progress button, .kl-apple .odoo-company-hint.warn { color: var(--prj-orange); }
+.kl-apple .odoo-company-hint.ok { color: var(--prj-green); }
+.kl-apple .odoo-company-hint.error, .kl-apple .odoo-company-field.error .odoo-input { color: var(--prj-red); border-color: var(--prj-red); }
+.kl-apple .odoo-company-paper { border-radius: 12px; }
+
+/* Établissements */
+.kl-apple .odoo-stores-card { border: 0; border-radius: 16px; background: var(--kl-card); box-shadow: var(--kl-shadow); padding: 18px; }
+.kl-apple .odoo-stores-card:hover { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--kl-accent) 35%, transparent), var(--kl-shadow); }
+.kl-apple .odoo-stores-card-icon { background: var(--kl-accent-soft); color: var(--kl-accent-ink); }
+.kl-apple .odoo-stores-card-name { font-size: 16px; color: var(--kl-ink); }
+.kl-apple .odoo-stores-card > footer { border-top-color: var(--kl-hair); }
+.kl-apple .odoo-stores-dot { background: var(--prj-green); }
+.kl-apple .odoo-stores-strip span { background: color-mix(in srgb, var(--prj-green) 12%, transparent); color: var(--prj-green); }
+.kl-apple .odoo-stores-strip span.closed { background: var(--kl-fill); color: var(--kl-muted); }
+.kl-apple .odoo-stores-strip span.today { outline-color: var(--kl-accent); }
+.kl-apple .odoo-stores-missing { color: var(--prj-orange); }
+.kl-apple .odoo-stores-empty { border: 0; border-radius: 16px; background: var(--kl-card); box-shadow: var(--kl-shadow); }
+.kl-apple .odoo-stores-editor { border: 0; border-radius: 16px; background: var(--kl-card); box-shadow: 0 0 0 1.5px var(--kl-accent), var(--kl-shadow); padding: 20px; }
+.kl-apple .odoo-stores-editor-head { font-size: 19px; letter-spacing: -.02em; color: var(--kl-ink); }
+.kl-apple .odoo-stores-editor-head svg { color: var(--kl-accent); }
+.kl-apple .odoo-stores-day:nth-child(odd) { background: color-mix(in srgb, var(--kl-bg) 70%, var(--kl-card)); }
+.kl-apple .odoo-stores-quick button { border: 0; background: var(--kl-fill); }
+
+/* Pages de règles (ParametersPanel) */
+.kl-apple .odoo-params-row { border-bottom-color: var(--kl-hair); padding: 14px 18px; }
+.kl-apple .odoo-params-label { font-size: 14px; color: var(--kl-ink); }
+.kl-apple .odoo-params-help { font-size: 13px; color: var(--kl-muted); }
+.kl-apple .odoo-params-custom { background: var(--kl-accent); }
+.kl-apple .odoo-params-sub { background: color-mix(in srgb, var(--kl-bg) 70%, var(--kl-card)); border-radius: 12px; }
+.kl-apple .odoo-params-extra { border-top-color: var(--kl-hair); padding: 14px 18px 18px; }
+.kl-apple .odoo-params-seg { border: 0; border-radius: 9px; padding: 2px; background: var(--kl-fill); }
+.kl-apple .odoo-params-seg button { border: 0 !important; border-radius: 7px; color: var(--kl-ink); padding: 4px 12px; }
+.kl-apple .odoo-params-seg button.on { background: var(--kl-card); box-shadow: 0 3px 8px rgba(15, 23, 42, .08), 0 0 0 .5px rgba(15, 23, 42, .06); }
+.kl-apple .odoo-params-seg button.on.warn { background: var(--kl-card); color: var(--prj-orange); }
+.kl-apple .odoo-params-seg button.on.block { background: var(--kl-card); color: var(--prj-red); }
+.kl-apple .odoo-params-seg button.on.accent { background: var(--kl-card); color: var(--kl-accent-ink); }
+.kl-apple .odoo-params-summary > div { border: 0; border-radius: 14px; background: var(--kl-card); box-shadow: var(--kl-shadow); padding: 14px 16px; }
+.kl-apple .odoo-params-summary small { font-size: 13px; font-weight: 600; color: var(--kl-muted); }
+.kl-apple .odoo-params-summary strong { font-size: 24px; letter-spacing: -.025em; }
+.kl-apple .odoo-params-summary .block strong { color: var(--prj-red); }
+.kl-apple .odoo-params-summary .warn strong { color: var(--prj-orange); }
+.kl-apple .odoo-params-summary .info strong { color: var(--kl-accent-ink); }
+.kl-apple .odoo-params-flow-step b { border: 0; border-radius: 999px; background: var(--kl-card); box-shadow: inset 0 0 0 1px var(--kl-sep); font-weight: 500; }
+.kl-apple .odoo-params-class.ok { background: color-mix(in srgb, var(--prj-green) 12%, transparent); color: var(--prj-green); }
+.kl-apple .odoo-params-class.warn { background: color-mix(in srgb, var(--prj-orange) 13%, transparent); color: var(--prj-orange); }
+.kl-apple .odoo-params-score-weights label { border-radius: 12px; }
+.kl-apple .odoo-sod-chip { border: 0; border-radius: 999px; background: var(--kl-fill); }
+.kl-apple .odoo-sod-chip.warn strong { color: var(--prj-orange); }
+.kl-apple .odoo-sod-more { color: var(--kl-accent-ink); }
+
+/* Notifications */
+.kl-apple .odoo-notif-row { border-bottom-color: var(--kl-hair); padding: 12px 18px; }
+.kl-apple .odoo-notif-label { font-size: 14px; font-weight: 500; color: var(--kl-ink); }
+.kl-apple .odoo-notif-meta { font-size: 12.5px; }
+.kl-apple .odoo-notif-role { background: var(--kl-accent-soft); color: var(--kl-accent-ink); font-size: 12px; }
+.kl-apple .odoo-notif-mail { border-radius: 999px; font-size: 12px; }
+.kl-apple .odoo-notif-mail.on { border-color: transparent; background: var(--kl-accent-soft); color: var(--kl-accent-ink); }
+
+/* Cartes génériques des panneaux (odoo-section : déjà en carte via apple-look) et tableaux. */
+.kl-apple .odoo-settings-body .odoo-section-header { text-transform: none; letter-spacing: 0; }
+.kl-apple .odoo-page-note { font-size: 13px; }
+
+/* Tableaux et panneaux imbriqués dans une carte : pas de seconde ombre. */
+.kl-apple .odoo-setting-section .odoo-table,
+.kl-apple .odoo-company-card .odoo-table,
+.kl-apple .odoo-setup-card .odoo-table,
+.kl-apple .odoo-stores-editor .odoo-table,
+.kl-apple .odoo-settings-body .prj-panel .odoo-table { box-shadow: none; border-radius: 0; }
+.kl-apple .odoo-params-extra > .prj-panel,
+.kl-apple .odoo-setting-section .prj-panel,
+.kl-apple .odoo-company-card .prj-panel { box-shadow: none; border-radius: 12px; border: 1px solid var(--kl-hair) !important; }
+.kl-apple .odoo-params-extra > .prj-panel { border: 0 !important; }
+.kl-apple .odoo-setting-section .prj-kpi { box-shadow: none; background: color-mix(in srgb, var(--kl-bg) 70%, var(--kl-card)); }
+
+/* Chiffres mis en avant (statistiques des sachets). */
+.sach-red { color: var(--prj-red, #DC2626); }
+.sach-orange { color: var(--prj-orange, #B45309); }

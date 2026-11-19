@@ -11,6 +11,8 @@ import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import SalesPageShell from '../sales/SalesPageShell';
+import { ListPanel } from '../sales/ListTemplate';
 import MrpPhasedView from './MrpPhasedView';
 import MasterScheduleView from './MasterScheduleView';
 import { useAuth } from '../../context/AuthContext';
@@ -34,22 +36,19 @@ export default function MrpPage() {
   const [date, setDate] = useState(tomorrow());
 
   return (
-    <div className="odoo-scope" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <StatusBanner tone="info" icon={ClipboardList} title="Plan directeur de production">
-        Combien produire de chaque article, net de ce qui est déjà en stock et déjà planifié.
-        <strong> À produire = (prévision + commandes fermes) − stock disponible − déjà planifié.</strong>
-      </StatusBanner>
-
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className={mode === 'day' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setMode('day')}>Jour</button>
-        <button className={mode === 'week' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setMode('week')}>Semaine</button>
-        <button className={mode === 'phased' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setMode('phased')}>Besoins phasés</button>
-        <button className={mode === 'mps' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setMode('mps')}>Plan par semaine</button>
-      </div>
+    <SalesPageShell icon={ClipboardList} parent="Production" title="Plan directeur"
+      summary={<>Combien produire de chaque article, net de ce qui est déjà en stock et déjà planifié. <b>À produire = (prévision + commandes fermes) − stock disponible − déjà planifié.</b></>}
+      actions={
+        <div className="prj-views" role="group" aria-label="Vue">
+          {([['day', 'Jour'], ['week', 'Semaine'], ['phased', 'Besoins phasés'], ['mps', 'Plan par semaine']] as const).map(([k, label]) => (
+            <button key={k} type="button" className={mode === k ? 'active' : ''} aria-pressed={mode === k} onClick={() => setMode(k)}>{label}</button>
+          ))}
+        </div>
+      }>
 
       {mode === 'day' ? <DayView date={date} setDate={setDate} /> : mode === 'week' ? <WeekView from={date} setFrom={setDate} />
         : mode === 'phased' ? <MrpPhasedView from={new Date().toLocaleDateString('sv-SE')} /> : <MasterScheduleView canEdit={canPlan} />}
-    </div>
+    </SalesPageShell>
   );
 }
 
@@ -112,8 +111,8 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
 
       {isError && <StatusBanner tone="danger" icon={ClipboardList} title="Erreur">{apiErrorMessage(error)}</StatusBanner>}
 
-      <div style={{ overflowX: 'auto' }}>
-        <table className="odoo-table">
+      <ListPanel>
+        <table className="odoo-table" style={{ margin: 0 }}>
           <thead><tr>
             <th>Article</th><th style={{ textAlign: 'right' }}>Prévision</th><th style={{ textAlign: 'right' }}>Commandes</th>
             <th style={{ textAlign: 'right' }}>Demande</th><th style={{ textAlign: 'right' }}>En stock</th>
@@ -149,15 +148,13 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
             </tr></tfoot>
           )}
         </table>
-      </div>
+      </ListPanel>
 
       {sfRows.length > 0 && (
         <div>
-          <h4 style={{ fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--theme-text-strong)', margin: '4px 0', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Layers size={14} /> Bases / semi-finis à produire
-          </h4>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="odoo-table">
+          <div className="kl-sec"><h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Layers size={18} /> Bases / semi-finis à produire</h2></div>
+          <ListPanel>
+            <table className="odoo-table" style={{ margin: 0 }}>
               <thead><tr><th>Base</th><th style={{ textAlign: 'right' }}>Besoin</th><th style={{ textAlign: 'right' }}>En stock</th><th style={{ textAlign: 'right' }}>À produire</th></tr></thead>
               <tbody>
                 {sfRows.map(r => (
@@ -170,7 +167,7 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
                 ))}
               </tbody>
             </table>
-          </div>
+          </ListPanel>
           <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>Besoins en bases pour produire le net ci-dessus, défalqués du stock de semi-finis non périmé. Analyse — les plans de bases sont créés à la confirmation du plan fini.</p>
         </div>
       )}
@@ -180,10 +177,8 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
         const covered = matReq.totals.ingredients - matReq.totals.to_order;
         return (
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '4px 0' }}>
-              <h4 style={{ fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--theme-text-strong)', margin: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <Package size={14} /> Besoins matière (achats)
-              </h4>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '0 4px 10px' }}>
+              <div className="kl-sec" style={{ margin: 0 }}><h2 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Package size={18} /> Besoins matière (achats)</h2></div>
               <span style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)' }}>
                 {matReq.totals.to_order} à commander · ~{money(matReq.totals.estimated_cost)}
               </span>
@@ -192,8 +187,8 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
                 {genPR.isPending ? <Loader2 size={14} className="animate-spin" /> : <ShoppingCart size={14} />} Générer les demandes d'achat
               </button>
             </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table className="odoo-table">
+            <ListPanel>
+              <table className="odoo-table" style={{ margin: 0 }}>
                 <thead><tr><th>Ingrédient</th><th style={{ textAlign: 'right' }}>Besoin</th><th style={{ textAlign: 'right' }}>En stock</th><th style={{ textAlign: 'right' }}>Seuil</th><th style={{ textAlign: 'right' }}>À commander</th><th style={{ textAlign: 'right' }}>Coût est.</th></tr></thead>
                 <tbody>
                   {short.map(r => (
@@ -208,7 +203,7 @@ function DayView({ date, setDate }: { date: string; setDate: (d: string) => void
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ListPanel>
             <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
               Matières nécessaires pour produire le net ci-dessus (explosion des recettes sur tous les niveaux), défalquées du stock.
               Manquant = besoin + seuil de sécurité − stock. {covered > 0 ? `${covered} ingrédient(s) couvert(s) par le stock.` : ''} La quantité commandée est arrondie au contenant.
@@ -248,8 +243,8 @@ function WeekView({ from, setFrom }: { from: string; setFrom: (d: string) => voi
 
       {isError && <StatusBanner tone="danger" icon={ClipboardList} title="Erreur">{apiErrorMessage(error)}</StatusBanner>}
 
-      <div style={{ overflowX: 'auto' }}>
-        <table className="odoo-table">
+      <ListPanel>
+        <table className="odoo-table" style={{ margin: 0 }}>
           <thead><tr>
             <th>Article</th>
             {dates.map(d => <th key={d} style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{dayLabel(d)}</th>)}
@@ -281,7 +276,7 @@ function WeekView({ from, setFrom }: { from: string; setFrom: (d: string) => voi
             </tr></tfoot>
           )}
         </table>
-      </div>
+      </ListPanel>
 
       <p style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
         Net à produire par jour = demande du jour − déjà planifié. Le stock fini actuel est reporté de jour en jour (il couvre les premiers jours) ; la production n'est jamais reportée.

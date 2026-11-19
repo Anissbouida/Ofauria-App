@@ -15,26 +15,27 @@ import { apiErrorMessage } from '../../api/errors';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
+import { FilterChips, ListKpi } from '../sales/ListTemplate';
+import { Tabs, Panel } from './KlUi';
 
 const APPLIES: Record<AppliesTo, string> = { general: 'Général', reception: 'Réception', production: 'Production', product: 'Produit' };
 const day = (d: string) => format(new Date(d.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy', { locale: fr });
 
+type QualityView = 'inspections' | 'templates' | 'nonconformities' | 'plan' | 'release';
+const QUALITY_VIEWS: Array<[QualityView, string]> = [
+  ['inspections', 'Inspections'], ['nonconformities', 'Non-conformités'], ['templates', 'Modèles'], ['plan', 'Plan de contrôle'], ['release', 'Lots à libérer'],
+];
+
 export default function QualityTab() {
-  const [view, setView] = useState<'inspections' | 'templates' | 'nonconformities' | 'plan' | 'release'>('inspections');
+  const [view, setView] = useState<QualityView>('inspections');
   return (
-    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <>
       <StatusBanner tone="info" icon={ListChecks} title="Contrôle qualité paramétrable">
         Définissez des modèles d'inspection (points à vérifier, mesures dans une plage), enregistrez des inspections, et suivez les non-conformités jusqu'à leur action corrective. Indépendant des contrôles de réception et de production.
       </StatusBanner>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button className={view === 'inspections' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('inspections')}>Inspections</button>
-        <button className={view === 'nonconformities' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('nonconformities')}>Non-conformités</button>
-        <button className={view === 'templates' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('templates')}>Modèles</button>
-        <button className={view === 'plan' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('plan')}>Plan de contrôle</button>
-        <button className={view === 'release' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setView('release')}>Lots à libérer</button>
-      </div>
+      <Tabs label="Vues qualité" value={view} onChange={setView} options={QUALITY_VIEWS} />
       {view === 'inspections' ? <Inspections /> : view === 'nonconformities' ? <NonConformities /> : view === 'plan' ? <ControlPlanSection /> : view === 'release' ? <LotReleaseSection /> : <Templates />}
-    </div>
+    </>
   );
 }
 
@@ -64,23 +65,29 @@ function NonConformities() {
   });
   return (
     <>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={14} /> Nouvelle non-conformité</button>
-        <div style={{ flex: 1 }} />
-        {([['', 'Toutes'], ['open', 'Ouvertes'], ['in_progress', 'En cours'], ['closed', 'Clôturées']] as const).map(([k, l]) => (
-          <button key={k} className={filter === k ? 'odoo-btn-primary' : 'odoo-btn-secondary'} style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem' }} onClick={() => setFilter(k)}>{l}</button>
-        ))}
-      </div>
       {dash && (
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.8125rem' }}>
-          <span><strong>{dash.open}</strong> ouvertes / {dash.total}</span>
-          <span>Délai moyen de clôture : <strong>{dash.avg_close_days != null ? `${dash.avg_close_days} j` : '—'}</strong></span>
-          <span style={{ color: dash.overdue_actions.length ? '#dc2626' : undefined }}>Actions en retard : <strong>{dash.overdue_actions.length}</strong></span>
-          {dash.by_cause.length > 0 && <span>Par cause : {dash.by_cause.map(c => `${c.label} ${c.count}`).join(' · ')}</span>}
-          {dash.by_supplier.length > 0 && <span>Par fournisseur : {dash.by_supplier.map(c => `${c.label} ${c.count}`).join(' · ')}</span>}
-        </div>
+        <>
+          <div className="prj-kpis">
+            <ListKpi label="Ouvertes" value={String(dash.open)} sub={`sur ${dash.total}`} />
+            <ListKpi label="Délai moyen de clôture" value={dash.avg_close_days != null ? `${dash.avg_close_days} j` : '—'} />
+            <ListKpi label="Actions en retard" value={String(dash.overdue_actions.length)} tone={dash.overdue_actions.length ? 'red' : undefined} />
+          </div>
+          {(dash.by_cause.length > 0 || dash.by_supplier.length > 0) && (
+            <p className="klc-note">
+              {dash.by_cause.length > 0 && <>Par cause : {dash.by_cause.map(c => `${c.label} ${c.count}`).join(' · ')}</>}
+              {dash.by_cause.length > 0 && dash.by_supplier.length > 0 && <br />}
+              {dash.by_supplier.length > 0 && <>Par fournisseur : {dash.by_supplier.map(c => `${c.label} ${c.count}`).join(' · ')}</>}
+            </p>
+          )}
+        </>
       )}
-      <div style={{ overflowX: 'auto' }}>
+      <div className="prj-toolbar">
+        <FilterChips label="Statut" value={filter} onChange={k => setFilter(k as '' | NcStatus)}
+          chips={[{ key: '', label: 'Toutes' }, { key: 'open', label: 'Ouvertes' }, { key: 'in_progress', label: 'En cours' }, { key: 'closed', label: 'Clôturées' }]} />
+        <div style={{ flex: 1 }} />
+        <button className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={14} /> Nouvelle non-conformité</button>
+      </div>
+      <Panel>
         <table className="odoo-table">
           <thead><tr><th>Détectée</th><th>Non-conformité</th><th>Source</th><th>Gravité</th><th>Responsable</th><th>Échéance</th><th>Statut</th><th /></tr></thead>
           <tbody>
@@ -93,7 +100,7 @@ function NonConformities() {
                 <td style={{ fontSize: '0.85rem' }}>{NC_SOURCE[nc.source]}</td>
                 <td><span className={`odoo-tag ${NC_SEVERITY[nc.severity].tag}`}>{NC_SEVERITY[nc.severity].label}</span></td>
                 <td style={{ fontSize: '0.85rem', color: 'var(--theme-text-muted)' }}>{nc.responsible_name || '—'}</td>
-                <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem', color: nc.overdue ? '#dc2626' : 'var(--theme-text-muted)', fontWeight: nc.overdue ? 600 : 400 }}>
+                <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem', color: nc.overdue ? 'var(--prj-red)' : 'var(--theme-text-muted)', fontWeight: nc.overdue ? 600 : 400 }}>
                   {nc.overdue && <AlertTriangle size={11} style={{ display: 'inline', verticalAlign: -1, marginRight: 3 }} />}{nc.due_date ? day(nc.due_date) : '—'}
                 </td>
                 <td><StatusTag tone={NC_STATUS[nc.status].tone} label={NC_STATUS[nc.status].label} /></td>
@@ -107,7 +114,7 @@ function NonConformities() {
             ))}
           </tbody>
         </table>
-      </div>
+      </Panel>
       {editing && <NcForm nc={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { qc.invalidateQueries({ queryKey: ['quality', 'nc'] }); setEditing(null); }} />}
       {detailId && <NcDetailPanel ncId={detailId} onClose={() => setDetailId(null)} />}
     </>
@@ -174,8 +181,8 @@ function Inspections() {
   const [newInsp, setNewInsp] = useState(false);
   return (
     <>
-      <div><button className="odoo-btn-primary" onClick={() => setNewInsp(true)}><Plus size={14} /> Nouvelle inspection</button></div>
-      <div style={{ overflowX: 'auto' }}>
+      <div className="prj-toolbar"><button className="odoo-btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setNewInsp(true)}><Plus size={14} /> Nouvelle inspection</button></div>
+      <Panel>
         <table className="odoo-table">
           <thead><tr><th>Date</th><th>Inspection</th><th>Modèle</th><th>Référence</th><th style={{ textAlign: 'center' }}>Conformité</th><th>Par</th></tr></thead>
           <tbody>
@@ -197,7 +204,7 @@ function Inspections() {
             ))}
           </tbody>
         </table>
-      </div>
+      </Panel>
       {newInsp && <InspectionForm onClose={() => setNewInsp(false)} onSaved={() => { qc.invalidateQueries({ queryKey: ['quality'] }); setNewInsp(false); }} />}
     </>
   );
@@ -289,7 +296,7 @@ export function InspectionForm({ onClose, onSaved, links = {}, defaultTitle = ''
                         ) : (
                           <input type="number" step="any" value={vals[i]?.value ?? ''} onChange={e => setVal(i, { value: e.target.value })} placeholder={it.unit || 'valeur'} style={{ ...inp, width: 110 }} />
                         )}
-                        {r && (vals[i]?.value || vals[i]?.ok || it.kind === 'ok') && (r.ok ? <CheckCircle2 size={16} style={{ color: '#15803d' }} /> : <XCircle size={16} style={{ color: '#dc2626' }} />)}
+                        {r && (vals[i]?.value || vals[i]?.ok || it.kind === 'ok') && (r.ok ? <CheckCircle2 size={16} style={{ color: 'var(--prj-green)' }} /> : <XCircle size={16} style={{ color: 'var(--prj-red)' }} />)}
                       </div>
                     </div>
                   );
@@ -298,7 +305,7 @@ export function InspectionForm({ onClose, onSaved, links = {}, defaultTitle = ''
             </div>
           )}
           <Field label="Notes (optionnel)"><textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...inp, minHeight: 56 }} /></Field>
-          {tpl && <div style={{ fontWeight: 600, color: conform ? '#15803d' : '#dc2626' }}>Résultat : {conform ? 'Conforme' : 'Non conforme'}</div>}
+          {tpl && <div><StatusTag tone={conform ? 'done' : 'blocked'} label={`Résultat : ${conform ? 'Conforme' : 'Non conforme'}`} /></div>}
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '10px 16px', borderTop: '1px solid var(--odoo-border)' }}>
           <button type="button" className="odoo-btn-secondary" onClick={onClose}>Annuler</button>
@@ -323,8 +330,8 @@ function Templates() {
   });
   return (
     <>
-      <div><button className="odoo-btn-primary" onClick={() => setEditing('new')}><Plus size={14} /> Nouveau modèle</button></div>
-      <div style={{ overflowX: 'auto' }}>
+      <div className="prj-toolbar"><button className="odoo-btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setEditing('new')}><Plus size={14} /> Nouveau modèle</button></div>
+      <Panel>
         <table className="odoo-table">
           <thead><tr><th>Modèle</th><th>S'applique à</th><th style={{ textAlign: 'right' }}>Points</th><th style={{ textAlign: 'right' }}>Inspections</th><th>État</th><th /></tr></thead>
           <tbody>
@@ -347,7 +354,7 @@ function Templates() {
             ))}
           </tbody>
         </table>
-      </div>
+      </Panel>
       {editing && <TemplateForm tpl={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { qc.invalidateQueries({ queryKey: ['quality', 'templates'] }); setEditing(null); }} />}
     </>
   );

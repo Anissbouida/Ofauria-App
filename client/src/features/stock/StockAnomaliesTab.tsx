@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Loader2, PackageX, Search, Check } from 'lucide-react';
+import { Loader2, PackageX, Check, ShieldCheck } from 'lucide-react';
 import { inventoryApi, type StockAnomaly } from '../../api/inventory.api';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
+import { ListToolbar, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { SubViews } from './StockUi';
 
 /**
  * Anomalies de stock (G0-18) : sorties supérieures au disponible. Le stock a été ramené
@@ -59,33 +61,26 @@ export default function StockAnomaliesTab() {
   }, [data, search]);
 
   return (
-    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="stk-stack">
       <StatusBanner tone="info" icon={PackageX} title="Sorties supérieures au stock">
         Quand une sortie dépasse le stock disponible, le stock tombe à zéro et le manque est inscrit ici. Régularisez l'article
         (ajustement de stock, inventaire, correction de la saisie d'origine), puis clôturez la ligne avec le motif.
       </StatusBanner>
 
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div className="odoo-search-panel" style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 220 }}>
-          <Search size={14} style={{ color: 'var(--theme-text-muted)' }} />
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher un article…"
-            aria-label="Rechercher un article"
-            style={{ border: 'none', background: 'transparent', outline: 'none', flex: 1, color: 'inherit', font: 'inherit' }} />
-        </div>
-        <div role="group" aria-label="État des anomalies" style={{ display: 'inline-flex', gap: 6 }}>
-          <button type="button" className={status === 'open' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setStatus('open')}>À régulariser</button>
-          <button type="button" className={status === 'resolved' ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => setStatus('resolved')}>Clôturées</button>
-        </div>
-      </div>
+      <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher un article…">
+        <span className="stk-grow" />
+        <SubViews label="État des anomalies" value={status} onChange={setStatus} views={[
+          { key: 'open', label: 'À régulariser' },
+          { key: 'resolved', label: 'Clôturées' },
+        ]} />
+      </ListToolbar>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-16 text-gray-400"><Loader2 className="animate-spin mr-2" size={18} /> Chargement…</div>
+        <ListEmpty icon={Loader2} title="Chargement…" />
       ) : rows.length === 0 ? (
-        <div style={{ padding: '2.5rem 1rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          {status === 'open' ? 'Aucune anomalie à régulariser.' : 'Aucune anomalie clôturée.'}
-        </div>
+        <ListEmpty icon={ShieldCheck} title={status === 'open' ? 'Aucune anomalie à régulariser.' : 'Aucune anomalie clôturée.'} />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <ListPanel>
           <table className="odoo-table">
             <thead>
               <tr>
@@ -149,7 +144,7 @@ export default function StockAnomaliesTab() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ListPanel>
       )}
     </div>
   );

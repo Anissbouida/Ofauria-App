@@ -46,10 +46,10 @@ export default function ReceptionQcCategoriesCard() {
   );
 
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '12px 16px', background: 'var(--odoo-bg)', display: 'grid', gap: 10 }}>
+    <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <ShieldCheck size={16} style={{ color: 'var(--theme-accent)' }} />
-        <div style={{ fontWeight: 600 }}>Exigences de réception par catégorie</div>
+        <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>Exigences de réception par catégorie</div>
       </div>
       <PageNote help="Contrôle qualité : les lots entrent en quarantaine, indisponibles tant qu'un contrôle réception n'est pas conforme, et le n° de lot fournisseur devient obligatoire. DLC et Lot : exigés à la saisie de la réception.">
         Ce qui est exigé à la réception, par catégorie.

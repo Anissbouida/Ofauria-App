@@ -4,7 +4,10 @@ import {
 } from 'lucide-react';
 import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
-import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
+import { ModuleShell, ModulePage, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
+import '../projects/projects.css';
+import '../sales/sales.css';
+import './employees.css';
 import type { HrTab } from './shared';
 import EmployeesTab from './tabs/EmployeesTab';
 import AttendanceTab from './tabs/AttendanceTab';
@@ -16,6 +19,7 @@ import HrAnalyticsTab from './tabs/HrAnalyticsTab';
 import MySpace from './self/MySpace';
 import CommissionsTab from './CommissionsTab';
 import { selfApi } from '../../api/employees.api';
+import SalesPageShell from '../sales/SalesPageShell';
 
 export default function EmployeesPage() {
   const { hasModule, isLoading: permsLoading } = usePermissions();
@@ -46,21 +50,15 @@ export default function EmployeesPage() {
   if (permsLoading || (!hasModule('employees') && selfLoading)) return null;
   if (!hasModule('employees') && hasSelf) {
     return (
-      <div className="odoo-scope" style={{ minHeight: '100%' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <UserCircle size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span className="odoo-breadcrumb-current">Mon espace</span>
-          </div>
-        </div>
-        <div style={{ padding: '16px 20px' }}><MySpace /></div>
-      </div>
+      <SalesPageShell icon={UserCircle} title="Mon espace">
+        <div className="prj hr-body"><MySpace /></div>
+      </SalesPageShell>
     );
   }
   if (!hasModule('employees')) {
     return (
       <div className="odoo-scope" style={{ minHeight: '100%' }}>
-        <div style={{ padding: '16px 20px' }}>
+        <div className="kl-page">
           <StatusBanner tone="danger" icon={AlertOctagon} title="Espace indisponible">
             Votre compte n'est pas encore relié à une fiche salarié. Demandez à un administrateur
             de relier votre compte à votre fiche (Utilisateurs › votre compte › Fiche salarié) pour
@@ -74,7 +72,11 @@ export default function EmployeesPage() {
   const tab = current?.key;
 
   return (
-    <ModuleShell title="Personnel" views={views} current={current} onSelect={select}>
+    <ModuleShell title="Personnel" views={views} current={current} onSelect={select} flush>
+      {/* Design Ventes (2026-11-18) : grand titre de la rubrique, marges standard ; chaque
+          écran garde sa barre d'outils (recherche, filtres, actions) sous le titre. */}
+      <ModulePage title={current?.label}>
+      <div className="prj hr-body">
       {tab === 'employees' && <EmployeesTab queryClient={queryClient} />}
       {tab === 'attendance' && <AttendanceTab queryClient={queryClient} />}
       {tab === 'leaves' && <LeavesTab queryClient={queryClient} />}
@@ -84,6 +86,8 @@ export default function EmployeesPage() {
       {tab === 'analytics' && <HrAnalyticsTab />}
       {tab === 'commissions' && <CommissionsTab />}
       {tab === 'me' && <MySpace />}
+      </div>
+      </ModulePage>
     </ModuleShell>
   );
 }

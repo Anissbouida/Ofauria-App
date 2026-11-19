@@ -31,6 +31,9 @@ import { planStatusTag, bonStatusTag } from './status';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { buildTicketHtml, buildBsiHtml, buildFicheHtml } from './plan-print';
 import { PlanJournal } from './plan-sections';
+import './production.css';
+import '../projects/projects.css';
+import '../sales/sales.css';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { apiErrorMessage } from '../../api/errors';
 import { smartFormatQuantity, formatQty } from '../../utils/units';
@@ -508,24 +511,19 @@ export default function PlanDetailPage() {
 
   // Loading state
   if (isLoading) return (
-    <div className="flex items-center justify-center h-64">
-      <div className="flex flex-col items-center gap-3">
-        <Loader2 size={32} className="animate-spin text-amber-500" />
-        <span className="text-gray-500 text-sm">Chargement du plan...</span>
-      </div>
-    </div>
+    <div className="odoo-scope pd"><div className="pd-page">
+      <section className="prj-panel sal-empty"><Loader2 size={24} className="animate-spin" /><span>Chargement du plan...</span></section>
+    </div></div>
   );
 
   if (!plan) return (
-    <div className="flex flex-col items-center justify-center h-64 gap-4">
-      <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
-        <PackageOpen size={32} className="text-gray-400" />
-      </div>
-      <p className="text-gray-500">Plan non trouve</p>
-      <button onClick={() => navigate('/production')} className="text-amber-600 hover:text-amber-700 text-sm font-medium flex items-center gap-1">
-        <ArrowLeft size={16} /> Retour a la production
-      </button>
-    </div>
+    <div className="odoo-scope pd"><div className="pd-page">
+      <section className="prj-panel sal-empty">
+        <PackageOpen size={28} style={{ opacity: 0.4 }} />
+        <strong>Plan non trouve</strong>
+        <button onClick={() => navigate('/production')} className="odoo-btn-secondary"><ArrowLeft size={14} /> Retour a la production</button>
+      </section>
+    </div></div>
   );
 
   const allItems = plan.items || [];
@@ -1204,7 +1202,7 @@ export default function PlanDetailPage() {
     { label: 'Semi-finis', icon: <Beaker size={11} />, value: deps.length > 0 ? `${depsFulfilled} / ${deps.length}` : 'Aucun',
       sub: deps.length > 0 ? (hasPendingDeps ? 'en attente' : 'disponibles') : 'requis', tone: deps.length > 0 ? (hasPendingDeps ? 'warn' : 'ok') : undefined },
   ];
-  const kpiColor = { ok: '#155724', warn: '#946300', bad: '#a71d2a' };
+  const kpiColor = { ok: 'var(--prj-green)', warn: 'var(--prj-orange)', bad: 'var(--prj-red)' };
 
   // ══ Synthese : ce qui reste a faire (dans l'ordre du processus) ══
   // Le bandeau de reception des ingredients (BSI « pret ») est global et n'est pas repete ici.
@@ -1255,8 +1253,8 @@ export default function PlanDetailPage() {
     .sort((a, b) => a.getTime() - b.getTime())[0];
 
   return (
-    <div className="odoo-scope">
-      {/* ══════════════ CONTROL BAR ══════════════ */}
+    <div className="odoo-scope pd">
+      {/* ══════════════ BARRE : retour + fil d'Ariane ══════════════ */}
       <div className="odoo-control-bar">
         <button onClick={() => navigate('/production')} className="odoo-pager-btn" title="Retour">
           <ArrowLeft size={14} />
@@ -1269,105 +1267,107 @@ export default function PlanDetailPage() {
             {plan.of_number ? `${plan.of_number} · ` : ''}Plan du {format(new Date(plan.plan_date), 'dd MMM yyyy', { locale: fr })}
           </span>
         </div>
-        <StatusTag tone={planTag.tone} icon={planTag.icon} label={planStatusBadge || planTag.label} />
       </div>
 
-      {/* ══════════════ EN-TETE FICHE : titre, meta, processus ══════════════ */}
-      <div className="odoo-form-header plan-header" style={{ padding: '0.875rem 1rem' }}>
-        <div className="plan-header-main">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
-          <h1 className="odoo-form-title" style={{ fontSize: '1.25rem' }}>
-            Plan du {format(new Date(plan.plan_date), 'EEEE dd MMMM yyyy', { locale: fr })}
-          </h1>
-          {isSemiFini && <span className="odoo-tag odoo-tag-purple"><Beaker size={10} /> Semi-fini</span>}
-          <PlanHeaderTags plan={plan} />
-          {!isSemiFini && items.length > 0 && (
-            <span style={{ fontSize: '0.875rem', color: 'var(--theme-text-muted)' }}>
-              · {items.length === 1
-                ? (items[0].product_name as string)
-                : `${items[0].product_name as string} +${items.length - 1} autre${items.length > 2 ? 's' : ''}`}
-            </span>
-          )}
+      <div className="pd-page">
+      {/* ══════════════ EN-TETE FICHE : titre, meta, actions, processus ══════════════ */}
+      <section className="prj-panel prj-hero pd-hero">
+        <div className="prj-hero-top">
+          <span className="prj-hero-icon">{isSemiFini ? <Beaker size={22} /> : <Factory size={22} />}</span>
+          <div className="plan-header-main" style={{ minWidth: 260 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <h1>Plan du {format(new Date(plan.plan_date), 'EEEE dd MMMM yyyy', { locale: fr })}</h1>
+              <StatusTag tone={planTag.tone} icon={planTag.icon} label={planStatusBadge || planTag.label} />
+              {isSemiFini && <span className="odoo-tag odoo-tag-purple"><Beaker size={10} /> Semi-fini</span>}
+              <PlanHeaderTags plan={plan} />
+            </div>
+            <div className="prj-hero-meta">
+              {!isSemiFini && items.length > 0 && (
+                <span style={{ color: 'var(--theme-text-strong)', fontWeight: 500 }}>
+                  {items.length === 1
+                    ? (items[0].product_name as string)
+                    : `${items[0].product_name as string} +${items.length - 1} autre${items.length > 2 ? 's' : ''}`}
+                </span>
+              )}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <User size={12} /> {isSemiFini
+                  ? (plan.dependency_of as Record<string, any>[])[0]?.parent_created_by_name as string || plan.created_by_name
+                  : plan.created_by_name}
+              </span>
+              {rc && <span className="odoo-tag odoo-tag-purple"><ChefHat size={9} /> {rc.label}</span>}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <Hash size={12} /> <span style={{ fontFamily: 'ui-monospace, monospace' }}>
+                  {isSemiFini
+                    ? ((plan.dependency_of as Record<string, any>[])[0]?.parent_short_id as string || '').toUpperCase()
+                    : (plan.id as string).slice(0, 8).toUpperCase()}
+                </span>
+              </span>
+              {plan.type && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Calendar size={12} /> {plan.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
+                </span>
+              )}
+              {plan.notes ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <FileText size={12} /> {plan.notes}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          {/* Action principale (etape suivante) + menu « Plus » : toutes les actions de
+              la fiche vivent ici, quel que soit l'onglet ouvert. */}
+          {(primaryActions || moreMenu) && <div className="plan-header-actions">{primaryActions}{moreMenu}</div>}
         </div>
-        <div className="odoo-form-subtitle" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <User size={11} /> {isSemiFini
-              ? (plan.dependency_of as Record<string, any>[])[0]?.parent_created_by_name as string || plan.created_by_name
-              : plan.created_by_name}
-          </span>
-          {rc && <span className="odoo-tag odoo-tag-purple"><ChefHat size={9} /> {rc.label}</span>}
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Hash size={11} /> <span style={{ fontFamily: 'ui-monospace, monospace' }}>
-              {isSemiFini
-                ? ((plan.dependency_of as Record<string, any>[])[0]?.parent_short_id as string || '').toUpperCase()
-                : (plan.id as string).slice(0, 8).toUpperCase()}
-            </span>
-          </span>
-          {plan.type && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <Calendar size={11} /> {plan.type === 'daily' ? 'Quotidien' : 'Hebdomadaire'}
-            </span>
-          )}
-          {plan.notes ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <FileText size={11} /> {plan.notes}
-            </span>
-          ) : null}
-        </div>
-        </div>
-        {/* Action principale (etape suivante) + menu « Plus » : toutes les actions de
-            la fiche vivent ici, quel que soit l'onglet ouvert. */}
-        {(primaryActions || moreMenu) && <div className="plan-header-actions">{primaryActions}{moreMenu}</div>}
-      </div>
 
-      {/* Processus du plan : une etape par statut, la courante en surbrillance.
-          Un plan semi-fini n'a pas de bon de sortie propre (c'est celui du parent). */}
-      {(() => {
-        const bsiLabel = activeBon
-          ? bonStatusTag(activeBon.status as string).label
-          : bonNotNeeded ? 'Aucun besoin' : null;
-        const steps: { label: string; detail: string | null }[] = [
-          { label: planStatusTag('draft').label, detail: plan.created_by_name ? (plan.created_by_name as string) : null },
-          { label: planStatusTag('confirmed').label, detail: null },
-          ...(isSemiFini ? [] : [{ label: 'Ingrédients', detail: bsiLabel }]),
-          { label: planStatusTag('ready_to_produce').label, detail: null },
-          { label: planStatusTag('in_progress').label, detail: totalActive > 0 ? `${producedCount} / ${totalActive} produit${totalActive > 1 ? 's' : ''}` : null },
-          { label: planStatusTag('completed').label, detail: plan.status === 'completed' ? (plan.completion_type === 'partial' ? 'Clôture partielle' : 'Clôture complète') : null },
-        ];
-        const offset = isSemiFini ? -1 : 0;
-        const cur = plan.status === 'draft' ? 0
-          : plan.status === 'confirmed' || plan.status === 'awaiting_ingredients' ? 2 + offset
-          : plan.status === 'ready_to_produce' ? 3 + offset
-          : plan.status === 'in_progress' ? 4 + offset
-          : 5 + offset;
-        const finished = plan.status === 'completed';
-        return (
-          <ol className="ui-timeline">
-            {steps.map((s, i) => {
-              const done = finished || i < cur;
-              const current = !finished && i === cur;
-              return (
-                <li key={s.label} className={`ui-timeline-step ${done ? 'is-done' : ''} ${current ? 'is-current' : ''}`}>
-                  <span className="ui-timeline-dot">{done ? <CheckCircle2 size={12} /> : i + 1}</span>
-                  <span className="ui-timeline-label">{s.label}</span>
-                  {s.detail && <span className="ui-timeline-detail">{s.detail}</span>}
-                </li>
-              );
-            })}
-          </ol>
-        );
-      })()}
+        {/* Processus du plan : une etape par statut, la courante en surbrillance.
+            Un plan semi-fini n'a pas de bon de sortie propre (c'est celui du parent). */}
+        {(() => {
+          const bsiLabel = activeBon
+            ? bonStatusTag(activeBon.status as string).label
+            : bonNotNeeded ? 'Aucun besoin' : null;
+          const steps: { label: string; detail: string | null }[] = [
+            { label: planStatusTag('draft').label, detail: plan.created_by_name ? (plan.created_by_name as string) : null },
+            { label: planStatusTag('confirmed').label, detail: null },
+            ...(isSemiFini ? [] : [{ label: 'Ingrédients', detail: bsiLabel }]),
+            { label: planStatusTag('ready_to_produce').label, detail: null },
+            { label: planStatusTag('in_progress').label, detail: totalActive > 0 ? `${producedCount} / ${totalActive} produit${totalActive > 1 ? 's' : ''}` : null },
+            { label: planStatusTag('completed').label, detail: plan.status === 'completed' ? (plan.completion_type === 'partial' ? 'Clôture partielle' : 'Clôture complète') : null },
+          ];
+          const offset = isSemiFini ? -1 : 0;
+          const cur = plan.status === 'draft' ? 0
+            : plan.status === 'confirmed' || plan.status === 'awaiting_ingredients' ? 2 + offset
+            : plan.status === 'ready_to_produce' ? 3 + offset
+            : plan.status === 'in_progress' ? 4 + offset
+            : 5 + offset;
+          const finished = plan.status === 'completed';
+          return (
+            <ol className="ui-timeline">
+              {steps.map((s, i) => {
+                const done = finished || i < cur;
+                const current = !finished && i === cur;
+                return (
+                  <li key={s.label} className={`ui-timeline-step ${done ? 'is-done' : ''} ${current ? 'is-current' : ''}`}>
+                    <span className="ui-timeline-dot">{done ? <CheckCircle2 size={12} /> : i + 1}</span>
+                    <span className="ui-timeline-label">{s.label}</span>
+                    {s.detail && <span className="ui-timeline-detail">{s.detail}</span>}
+                  </li>
+                );
+              })}
+            </ol>
+          );
+        })()}
+      </section>
 
       {/* ══════════════ INDICATEURS (selon l'etat du plan) ══════════════ */}
-      <div className="odoo-stat-grid">
+      <div className="prj-kpis">
         {kpis.map(k => (
-          <div key={k.label} className="odoo-stat-card" style={{ cursor: 'default' }}>
-            <div className="odoo-stat-card-label">{k.icon} <span style={{ marginLeft: 2 }}>{k.label}</span></div>
-            <div className="odoo-stat-card-value" style={{ color: k.tone ? kpiColor[k.tone] : undefined }}>{k.value}</div>
-            {k.sub && <div className="plan-kpi-sub">{k.sub}</div>}
+          <div key={k.label} className="prj-kpi">
+            <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{k.icon} {k.label}</span></div>
+            <div className="prj-kpi-value" style={{ color: k.tone ? kpiColor[k.tone] : undefined }}>{k.value}</div>
+            {k.sub && <div className="prj-kpi-sub">{k.sub}</div>}
             {k.bar != null && (
-              <div style={{ height: 4, backgroundColor: 'var(--theme-bg-separator)', borderRadius: 2, overflow: 'hidden', marginTop: 6 }}>
-                <div style={{ height: '100%', width: `${k.bar}%`, backgroundColor: k.bar >= 100 ? '#155724' : 'var(--theme-accent)', transition: 'width 0.3s' }} />
+              <div style={{ height: 6, backgroundColor: 'var(--kl-fill, var(--theme-bg-separator))', borderRadius: 99, overflow: 'hidden', marginTop: 8 }}>
+                <div style={{ height: '100%', width: `${k.bar}%`, backgroundColor: k.bar >= 100 ? 'var(--prj-green)' : 'var(--theme-accent)', borderRadius: 99, transition: 'width 0.3s' }} />
               </div>
             )}
           </div>
@@ -1382,7 +1382,7 @@ export default function PlanDetailPage() {
         const deps = (plan.dependencies || []) as Record<string, any>[];
         const canStartAfter = !deps.some(d => d.status !== 'fulfilled' && d.status !== 'cancelled');
         return (
-        <div style={{ margin: '1rem 1rem 0' }}>
+        <div>
           <StatusBanner tone={missing.length > 0 ? 'warning' : 'success'} icon={CheckCircle}
             title={missing.length > 0
               ? `Ingrédients prêts — ${missing.length} manquant${missing.length > 1 ? 's' : ''} signalé${missing.length > 1 ? 's' : ''} par le magasinier`
@@ -1580,9 +1580,10 @@ export default function PlanDetailPage() {
             ? <span style={{ marginLeft: 4 }}><StatusTag tone={bsiTag?.tone ?? 'todo'} icon={bsiTag?.icon} label={bsiTag?.label ?? ''} /></span>
             : bonNotNeeded ? <span style={{ marginLeft: 4 }}><StatusTag tone="blocked" label="Bloqué" /></span> : null;
         return (
-          <div className="odoo-tabs plan-tabs">
+          <div className="plan-tabs pd-tabs">
+            <div className="prj-views" role="tablist" aria-label="Contenu du plan">
             <button type="button" onClick={() => setPlanTab('synthese')}
-              className={`odoo-tab ${effectiveTab === 'synthese' ? 'active' : ''}`}>
+              role="tab" aria-selected={effectiveTab === 'synthese'} className={effectiveTab === 'synthese' ? 'active' : ''}>
               <LayoutDashboard size={13} />
               <span>Synthèse</span>
               {todos.some(t => t.tone === 'warning' || t.tone === 'danger') && (
@@ -1590,14 +1591,14 @@ export default function PlanDetailPage() {
               )}
             </button>
             <button type="button" onClick={() => setPlanTab('ingredients')}
-              className={`odoo-tab ${effectiveTab === 'ingredients' ? 'active' : ''}`}>
+              role="tab" aria-selected={effectiveTab === 'ingredients'} className={effectiveTab === 'ingredients' ? 'active' : ''}>
               <Truck size={13} />
               <span>Ingrédients</span>
               {ingrBadge}
             </button>
             {productionTabVisible ? (
               <button type="button" onClick={() => setPlanTab('production')}
-                className={`odoo-tab ${effectiveTab === 'production' ? 'active' : ''}`}>
+                role="tab" aria-selected={effectiveTab === 'production'} className={effectiveTab === 'production' ? 'active' : ''}>
                 <Factory size={13} />
                 <span>Production</span>
                 {plan.status === 'in_progress' && (
@@ -1610,11 +1611,12 @@ export default function PlanDetailPage() {
             ) : null}
             {costsTabVisible && (
               <button type="button" onClick={() => setPlanTab('couts')}
-                className={`odoo-tab ${effectiveTab === 'couts' ? 'active' : ''}`}>
+                role="tab" aria-selected={effectiveTab === 'couts'} className={effectiveTab === 'couts' ? 'active' : ''}>
                 <Coins size={13} />
                 <span>Coûts</span>
               </button>
             )}
+            </div>
             {!productionTabVisible && (
               <span className="plan-tabs-hint" title={nextStepHint}>
                 <Lock size={12} /> {nextStepHint}
@@ -1703,7 +1705,7 @@ export default function PlanDetailPage() {
 
       {/* ══════════════ INGREDIENTS : bon de sortie ══════════════ */}
       {showIngr && bonNotNeeded && ['confirmed', 'awaiting_ingredients', 'ready_to_produce', 'in_progress'].includes(plan.status) && (
-        <div style={{ margin: '1rem' }}>
+        <div>
           <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun bon de sortie à préparer — préparation bloquée">
             {bonNotNeededReason || `Aucun ingrédient à prélever (produits sans ${T.recipeLc} ou sans composition).`}
             <div style={{ marginTop: 4 }}>
@@ -1718,7 +1720,7 @@ export default function PlanDetailPage() {
           magasinier). Ce bandeau sert de filet de securite si l'auto-generation a echoue
           ou si la query n'a pas encore ramene le BSI. */}
       {showIngr && !isSemiFini && !activeBon && !bonNotNeeded && ['confirmed', 'in_progress'].includes(plan.status) && (
-        <div style={{ margin: '1rem' }}>
+        <div>
           <StatusBanner tone="info" icon={RefreshCw} title="Bon de sortie en cours de génération…"
             actions={isChef ? (
               <button onClick={() => prepareBonMutation.mutate()} disabled={prepareBonMutation.isPending}
@@ -1958,6 +1960,7 @@ export default function PlanDetailPage() {
       <PlanJournal events={planEvents} />
       </aside>
       </div>{/* /plan-body */}
+      </div>{/* /pd-page */}
 
       {/* ══════════════ PRODUCTION LAUNCH MODAL (4-step) ══════════════ */}
       {showProductionLaunch && (

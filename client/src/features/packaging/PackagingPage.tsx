@@ -1,12 +1,14 @@
 import { useState, useMemo, useEffect } from 'react';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Pencil, Trash2, AlertTriangle, X, TrendingUp, TrendingDown, Package, Recycle, ArrowLeftRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, AlertTriangle, X, TrendingUp, TrendingDown, Package, Recycle, ArrowLeftRight, Loader2, Boxes } from 'lucide-react';
 import { packagingApi } from '../../api/packaging.api';
 import { expenseCategoriesApi } from '../../api/accounting.api';
 import CategoryCascadeSelector, { CONSUMABLE_ROOT_IDS } from '../../components/CategoryCascadeSelector';
 import { notify } from '../../components/ui/InlineNotification';
-import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { ChipsRow, PagerFoot } from '../stock/StockUi';
 import { currencySymbol } from '../../utils/money';
 
 /** Situation d'un consommable (exclusive) : mêmes cartes que le stock des ingrédients. */
@@ -15,7 +17,7 @@ const PKG_SITUATIONS: StageDef[] = [
   { key: 'low', label: 'Sous le seuil', hint: 'à réapprovisionner', icon: TrendingDown },
   { key: 'ok', label: 'OK', hint: 'rien à faire', icon: TrendingUp },
 ];
-const PKG_DOT: Record<string, string> = { rupture: '#dc3545', low: '#d9822b', ok: '#28a745' };
+const PKG_DOT: Record<string, string> = { rupture: 'var(--prj-red, #DC2626)', low: 'var(--prj-orange, #B45309)', ok: 'var(--prj-green, #15803D)' };
 
 interface PackagingItem {
   id: string;
@@ -116,13 +118,6 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
     return true;
   });
 
-  const selectedLeafName = (() => {
-    for (const g of leafGroups) {
-      const leaf = g.leaves.find(l => String(l.id) === categoryIdFilter);
-      if (leaf) return String(leaf.name);
-    }
-    return '';
-  })();
   const hasActiveFilters = !!search || !!categoryIdFilter || stockFilter !== 'all';
   const resetFilters = () => { setSearchInput(''); setSearch(''); setCategoryIdFilter(''); setStockFilter('all'); };
   useEffect(() => { setPage(1); }, [search, categoryIdFilter, stockFilter]);
@@ -130,76 +125,54 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
   const situationOf = (it: PackagingItem) => { const st = stockState(it); return st.isRupture ? 'rupture' : st.isLow ? 'low' : 'ok'; };
 
   return (
-    <div className={embedded ? '' : 'odoo-scope'} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* Barre d'action */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {!embedded && (
-          <div className="odoo-breadcrumb">
-            <Package size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Consommables</span>
-          </div>
-        )}
-        <div style={{ flex: 1 }} />
-        <button onClick={() => setShowCreate(true)} className="odoo-btn-primary">
-          <Plus size={14} /> Nouveau
-        </button>
-      </div>
+    <div className={embedded ? 'stk-stack' : 'odoo-scope stk-stack'}>
+      {!embedded && (
+        <div className="odoo-breadcrumb">
+          <Package size={14} style={{ color: 'var(--theme-accent)' }} />
+          <span>Consommables</span>
+        </div>
+      )}
 
-      {/* ══════ SITUATION : une carte par situation, clic = filtre ══════ */}
-      <StagePipeline
-        title="Où en sont mes consommables"
-        summary={`${totalItems} article${totalItems > 1 ? 's' : ''} · ${lowCount + ruptureCount} à réapprovisionner`}
-        stages={PKG_SITUATIONS}
-        stats={{
-          rupture: { count: ruptureCount, sub: '' },
-          low: { count: lowCount, sub: '' },
-          ok: { count: totalItems - lowCount - ruptureCount, sub: '' },
-        }}
-        isActive={k => stockFilter === k}
-        onPick={k => setStockFilter(stockFilter === k ? 'all' : (k as 'low' | 'ok' | 'rupture'))}
-      />
-
-      {/* ══════ BARRE DE FILTRES ══════ */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap' }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" value={searchInput} onChange={(e) => setSearchInput(e.target.value)} aria-label="Rechercher un consommable"
-          placeholder="Rechercher un consommable..." className="odoo-search-input" style={{ flex: '1 1 220px', minWidth: 0 }} />
-
-        {search && (
-          <span className="odoo-filter-chip">Recherche: {search}
-            <span className="odoo-filter-chip-remove" onClick={() => { setSearchInput(''); setSearch(''); }}>×</span>
-          </span>
-        )}
-        {categoryIdFilter && (
-          <span className="odoo-filter-chip">{selectedLeafName || 'Catégorie'}
-            <span className="odoo-filter-chip-remove" onClick={() => setCategoryIdFilter('')}>×</span>
-          </span>
-        )}
-        {stockFilter !== 'all' && (
-          <span className="odoo-filter-chip">
-            {stockFilter === 'low' ? 'Stock bas' : stockFilter === 'rupture' ? 'Rupture' : 'Stock OK'}
-            <span className="odoo-filter-chip-remove" onClick={() => setStockFilter('all')}>×</span>
-          </span>
-        )}
-
+      {/* ══════ BARRE D'OUTILS : recherche, catégorie, nouveau ══════ */}
+      <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="Rechercher un consommable…">
         <SearchSelect
           options={leafGroups.flatMap(g => g.leaves.map(leaf => ({ id: String(leaf.id), label: String(leaf.name), sublabel: g.label })))}
           value={categoryIdFilter}
           onChange={setCategoryIdFilter}
           placeholder="Catégorie"
         />
-
-        <span style={{ flex: 1 }} />
-
         {hasActiveFilters && (
           <button type="button" onClick={resetFilters} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <X size={13} /> Réinitialiser
           </button>
         )}
-      </div>
+        <span className="stk-grow" />
+        <button onClick={() => setShowCreate(true)} className="odoo-btn-primary">
+          <Plus size={14} /> Nouveau
+        </button>
+      </ListToolbar>
 
-      {/* ══════ TABLE Odoo (dense) ══════ */}
-      <div style={{ overflowX: 'auto' }}>
+      {/* ══════ SITUATION : une pastille par situation, clic = filtre ══════ */}
+      <ChipsRow summary={`${totalItems} article${totalItems > 1 ? 's' : ''} · ${lowCount + ruptureCount} à réapprovisionner`}>
+        <FilterChips label="Où en sont mes consommables" value={stockFilter === 'all' ? '' : stockFilter}
+          onChange={k => setStockFilter((k || 'all') as 'all' | 'low' | 'ok' | 'rupture')}
+          chips={[
+            { key: '', label: 'Tous', count: totalItems },
+            { key: 'rupture', label: 'Rupture', count: ruptureCount, icon: AlertTriangle, tone: ruptureCount > 0 ? 'late' : undefined },
+            { key: 'low', label: 'Sous le seuil', count: lowCount, icon: TrendingDown },
+            { key: 'ok', label: 'OK', count: totalItems - lowCount - ruptureCount, icon: TrendingUp },
+          ]} />
+      </ChipsRow>
+
+      {/* ══════ TABLE ══════ */}
+      {isLoading ? (
+        <ListEmpty icon={Loader2} title="Chargement…" />
+      ) : filtered.length === 0 ? (
+        <ListEmpty icon={Boxes} title="Aucun consommable trouvé"
+          action={hasActiveFilters ? <button type="button" className="odoo-btn-secondary" onClick={resetFilters}>Effacer les filtres</button> : undefined} />
+      ) : (
+      <ListPanel footer={<PagerFoot page={page} total={filtered.length} onPage={setPage}
+          note={`${filtered.length} consommable${filtered.length > 1 ? 's' : ''}${hasActiveFilters ? ' (filtré)' : ''} sur ${totalItems}`} />}>
         <table className="odoo-table">
           <thead>
             <tr>
@@ -214,11 +187,7 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
             </tr>
           </thead>
           <tbody>
-            {isLoading ? (
-              <tr><td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Chargement...</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucun consommable trouvé</td></tr>
-            ) : paged.map((it: PackagingItem) => {
+            {paged.map((it: PackagingItem) => {
               const { stock, isRupture, isLow } = stockState(it);
               return (
                 <tr key={it.id}>
@@ -245,7 +214,7 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
                   <td style={{ textAlign: 'right' }}>
                     <button onClick={() => setStockDialog(it)}
                       style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'ui-monospace, monospace', fontWeight: 700,
-                        color: isRupture ? '#dc3545' : isLow ? '#b85d1a' : 'var(--theme-text)' }}>
+                        color: isRupture ? 'var(--prj-red)' : isLow ? 'var(--prj-orange)' : 'var(--theme-text)' }}>
                       {stock.toFixed(0)} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.75rem' }}>{it.unit}</span>
                     </button>
                     {parseFloat(String(it.stock_min_threshold || 0)) > 0 && (
@@ -270,7 +239,7 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
                         <Pencil size={13} />
                       </button>
                       <button onClick={() => { if (confirm(`Supprimer "${it.name}" ?`)) deleteMutation.mutate(it.id); }} title="Supprimer" aria-label="Supprimer"
-                        className="odoo-pager-btn" style={{ color: '#dc3545' }}>
+                        className="odoo-pager-btn" style={{ color: 'var(--prj-red)' }}>
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -280,9 +249,8 @@ export default function PackagingPage({ embedded = false }: { embedded?: boolean
             })}
           </tbody>
         </table>
-        <Pager page={page} total={filtered.length} onPage={setPage}
-          note={`${filtered.length} consommable${filtered.length > 1 ? 's' : ''}${hasActiveFilters ? ' (filtré)' : ''} sur ${totalItems}`} />
-      </div>
+      </ListPanel>
+      )}
 
       {/* Modal create/edit */}
       {(showCreate || editingItem) && (

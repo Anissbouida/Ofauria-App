@@ -38,9 +38,9 @@ export default function RfqCriteriaCard() {
   const hasType = (t: RfqCriterionType) => (criteria as RfqCriterion[]).some(c => c.type === t);
 
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '12px 16px', background: 'var(--odoo-bg)', display: 'grid', gap: 10 }}>
+    <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 10 }}>
       <div>
-        <div style={{ fontWeight: 600 }}>Critères de notation des demandes de prix</div>
+        <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>Critères de notation des demandes de prix</div>
         <PageNote help="Moyenne pondérée. Les critères calculés sont automatiques ; les critères manuels se notent sur chaque devis.">
           Le devis recommandé est le mieux noté sur ces critères.
         </PageNote>
@@ -66,12 +66,12 @@ export default function RfqCriteriaCard() {
                   <input type="checkbox" checked={c.active} onChange={e => update.mutate({ id: c.id, patch: { active: e.target.checked } })} aria-label={`Activer ${c.label}`} />
                 </td>
                 <td style={{ textAlign: 'right' }}>
-                  <button className="odoo-pager-btn" title="Retirer ce critère" style={{ color: '#dc3545' }} onClick={() => remove.mutate(c.id)}><Trash2 size={13} /></button>
+                  <button className="odoo-pager-btn" title="Retirer ce critère" style={{ color: 'var(--prj-red)' }} onClick={() => remove.mutate(c.id)}><Trash2 size={13} /></button>
                 </td>
               </tr>
             ))}
           </tbody>
-          <tfoot><tr style={{ fontSize: '0.75rem', color: activeWeight === 0 ? '#dc3545' : 'var(--theme-text-muted)' }}>
+          <tfoot><tr style={{ fontSize: '0.75rem', color: activeWeight === 0 ? 'var(--prj-red)' : 'var(--theme-text-muted)' }}>
             <td colSpan={3} style={{ textAlign: 'right' }}>Somme des poids actifs</td>
             <td style={{ textAlign: 'right', fontWeight: 600 }}>{activeWeight}</td><td colSpan={2}>{activeWeight === 0 ? 'au moins un critère actif requis' : ''}</td>
           </tr></tfoot>

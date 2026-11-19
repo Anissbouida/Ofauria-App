@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Loader2, AlertTriangle, ShoppingCart, CheckCircle2, Search, Plus, ClipboardList, TrendingDown, Hourglass, Send,
+  Loader2, AlertTriangle, ShoppingCart, CheckCircle2, Plus, ClipboardList, TrendingDown, Hourglass, Send,
 } from 'lucide-react';
 import { purchaseRequestsApi, type ToOrderRow } from '../../api/purchase-requests.api';
 import { suppliersApi } from '../../api/accounting.api';
@@ -12,6 +12,8 @@ import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { fmtQty } from './types';
+import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import './stock.css';
 import { money, currencySymbol } from '../../utils/money';
 
 /**
@@ -189,14 +191,14 @@ export function ToOrderBoard() {
 
   const cards: Array<{ key: Source; label: string; hint: string; count: number; icon: typeof AlertTriangle; color?: string }> = [
     { key: 'all', label: 'À commander', hint: 'besoins non couverts', count: counts.open, icon: ShoppingCart },
-    { key: 'rupture', label: 'Ruptures', hint: 'la production attend', count: counts.rupture, icon: AlertTriangle, color: '#dc3545' },
+    { key: 'rupture', label: 'Ruptures', hint: 'la production attend', count: counts.rupture, icon: AlertTriangle, color: 'var(--prj-red, #DC2626)' },
     { key: 'request', label: 'Demandes', hint: 'saisies par l\'équipe', count: counts.request, icon: ClipboardList },
     { key: 'low', label: 'Stock bas', hint: 'sous le seuil minimum', count: counts.low, icon: TrendingDown },
     { key: 'covered', label: 'Déjà en commande', hint: 'couverts par un BC', count: counts.covered, icon: Hourglass },
   ];
 
   if (isLoading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={24} className="animate-spin" style={{ color: 'var(--theme-accent)' }} /></div>;
+    return <ListEmpty icon={Loader2} title="Chargement des besoins…" />;
   }
   if (isError) {
     return <StatusBanner tone="danger" icon={AlertTriangle} title="Impossible de charger les besoins">{apiErrorMessage(error, 'Erreur inconnue')}</StatusBanner>;
@@ -216,53 +218,32 @@ export function ToOrderBoard() {
         </StatusBanner>
       )}
 
-      {/* Sources du besoin : clic = filtre */}
-      <div className="odoo-stat-grid" style={{ border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
-        {cards.map(c => {
-          const Icon = c.icon;
-          const active = source === c.key;
-          return (
-            <button key={c.key} type="button" aria-pressed={active} onClick={() => setSource(c.key)}
-              className={`odoo-stat-card ${active ? 'active' : ''}`} style={c.key === 'covered' ? { opacity: active ? 1 : 0.8 } : undefined}>
-              <div className="odoo-stat-card-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Icon size={11} style={{ color: c.color }} /> {c.label}
-              </div>
-              <div className="odoo-stat-card-value" style={{ color: c.key === 'rupture' && c.count > 0 ? '#dc3545' : undefined }}>{c.count}</div>
-              <div className="odoo-stat-card-sub">{c.hint}</div>
-            </button>
-          );
-        })}
-      </div>
+      <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher un ingrédient…">
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <Plus size={13} style={{ color: 'var(--theme-text-muted)' }} />
+          <SearchSelect
+            options={(ingredients as Record<string, any>[]).map(i => ({ id: i.id as string, label: i.name as string }))}
+            value={addIngredient}
+            onChange={addManual}
+            placeholder="Ajouter un article à commander…"
+            width={260}
+          />
+        </span>
+      </ListToolbar>
 
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" placeholder="Rechercher un ingrédient..." aria-label="Rechercher un ingrédient"
-          value={search} onChange={e => setSearch(e.target.value)} className="odoo-search-input" style={{ flex: '1 1 200px', minWidth: 0 }} />
-        {(
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 260 }}>
-            <Plus size={13} style={{ color: 'var(--theme-text-muted)' }} />
-            <SearchSelect
-              options={(ingredients as Record<string, any>[]).map(i => ({ id: i.id as string, label: i.name as string }))}
-              value={addIngredient}
-              onChange={addManual}
-              placeholder="Ajouter un article à commander…"
-            />
-          </span>
-        )}
-      </div>
+      {/* Sources du besoin : clic = filtre */}
+      <FilterChips label="Sources du besoin" value={source} onChange={k => setSource(k as Source)}
+        chips={cards.map(c => ({
+          key: c.key, label: c.label, count: c.count, icon: c.icon,
+          tone: c.key === 'rupture' && c.count > 0 ? 'late' as const : undefined,
+        }))} />
 
       {visible.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <CheckCircle2 size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
-            {source === 'covered' ? 'Aucun besoin déjà couvert par un BC.' : 'Rien à commander : pas de rupture, pas de demande en attente, aucun stock sous son seuil.'}
-          </p>
-          {source !== 'covered' && counts.low === 0 && (
-            <p style={{ fontSize: '0.75rem', marginTop: 4 }}>Astuce : renseignez un seuil minimum sur la fiche d'un ingrédient pour qu'il remonte ici quand il baisse.</p>
-          )}
-        </div>
+        <ListEmpty icon={CheckCircle2}
+          title={source === 'covered' ? 'Aucun besoin déjà couvert par un BC.' : 'Rien à commander : pas de rupture, pas de demande en attente, aucun stock sous son seuil.'}
+          text={source !== 'covered' && counts.low === 0 ? 'Astuce : renseignez un seuil minimum sur la fiche d\'un ingrédient pour qu\'il remonte ici quand il baisse.' : undefined} />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <ListPanel>
           <table className="odoo-table">
             <thead>
               <tr>
@@ -285,9 +266,9 @@ export function ToOrderBoard() {
                 const qty = parseFloat(l.qty) || 0;
                 const why: Array<{ text: string; color?: string }> = [];
                 if ('manual' in r) why.push({ text: 'ajouté à la main' });
-                if (r.rupture_qty > 0) why.push({ text: `rupture ${fmtQty(r.rupture_qty)} ${r.unit} · ${r.rupture_refs.join(', ')}`, color: '#dc3545' });
+                if (r.rupture_qty > 0) why.push({ text: `rupture ${fmtQty(r.rupture_qty)} ${r.unit} · ${r.rupture_refs.join(', ')}`, color: 'var(--prj-red, #DC2626)' });
                 if (r.request_qty > 0) why.push({ text: `demandé ${fmtQty(r.request_qty)} ${r.unit}${r.requesters.length ? ` par ${r.requesters.join(', ')}` : ''}` });
-                if (r.low_stock) why.push({ text: `stock ${fmtQty(r.low_stock.current)} / seuil ${fmtQty(r.low_stock.threshold)} ${r.unit}`, color: '#b85d1a' });
+                if (r.low_stock) why.push({ text: `stock ${fmtQty(r.low_stock.current)} / seuil ${fmtQty(r.low_stock.threshold)} ${r.unit}`, color: 'var(--prj-orange, #B45309)' });
                 // L6 : arrondi à la réalité d'achat (MOQ / conditionnement du fournisseur) et délai.
                 if (!('manual' in r) && r.rounded_up) {
                   const bits = [r.moq ? `MOQ ${fmtQty(r.moq)}` : '', r.order_multiple ? `cond. ${fmtQty(r.order_multiple)} ${r.unit}` : ''].filter(Boolean);
@@ -355,15 +336,15 @@ export function ToOrderBoard() {
               })}
             </tbody>
           </table>
-        </div>
+        </ListPanel>
       )}
 
       {/* Barre d'action : reste visible en bas pendant le défilement */}
       {selectedRows.length > 0 && (
         <div style={{
           position: 'sticky', bottom: 0, zIndex: 5, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12,
-          padding: '10px 16px', background: 'var(--odoo-bg)', border: '1px solid var(--odoo-border)', borderRadius: 4,
-          boxShadow: '0 -4px 12px rgba(0,0,0,0.06)',
+          padding: '10px 16px', background: 'var(--theme-bg-card)', borderRadius: 14,
+          boxShadow: '0 -4px 16px rgba(15, 23, 42, 0.08)',
         }}>
           <span style={{ fontSize: '0.8125rem' }}>
             <strong>{selectedRows.length}</strong> article{selectedRows.length > 1 ? 's' : ''}

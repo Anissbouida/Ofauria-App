@@ -69,8 +69,8 @@ export default function IngredientMergeCard() {
   const rows = preview ? Object.entries(preview.impact.tables).sort((a, b) => b[1] - a[1]) : [];
 
   return (
-    <section style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', padding: 16, display: 'grid', gap: 14 }}>
-      <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+    <section className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 14 }}>
+      <h3 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 700, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}>
         <GitMerge size={16} /> Fusionner deux fiches du même ingrédient
       </h3>
       <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--theme-text-muted)' }}>
@@ -141,7 +141,7 @@ export default function IngredientMergeCard() {
 
       {history.length > 0 && (
         <div>
-          <h4 style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--theme-text-muted)', margin: '4px 0' }}>Dernières fusions</h4>
+          <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--theme-text-strong)', margin: '4px 0' }}>Dernières fusions</h4>
           <table className="odoo-table" style={{ width: '100%' }}>
             <thead><tr><th style={{ textAlign: 'left' }}>Date</th><th style={{ textAlign: 'left' }}>Fiche retirée</th><th style={{ textAlign: 'left' }}>Fiche gardée</th><th style={{ textAlign: 'right' }}>Coût</th><th style={{ textAlign: 'left' }}>Par</th></tr></thead>
             <tbody>

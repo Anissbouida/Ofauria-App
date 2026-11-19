@@ -15,6 +15,9 @@ import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
 import { inputCls } from './ui';
+import '../projects/projects.css';
+import '../sales/sales.css';
+import './employees.css';
 import { isoDate, saveBlobResponse, apiErrorMessage } from './shared';
 import EmployeeContracts from './contracts/EmployeeContracts';
 import EmployeeDocuments from './contracts/EmployeeDocuments';
@@ -196,11 +199,11 @@ export default function EmployeeDetailPage() {
   };
 
   if (!isNew && isLoading) {
-    return <div className="odoo-scope" style={{ padding: '3rem', textAlign: 'center' }}><Loader2 className="animate-spin" size={22} style={{ color: 'var(--theme-accent)' }} /></div>;
+    return <div className="odoo-scope prj prj-detail"><div className="prj-panel sal-empty"><Loader2 className="animate-spin" size={20} /><span>Chargement de la fiche…</span></div></div>;
   }
   if (!isNew && (isError || !emp)) {
     return (
-      <div className="odoo-scope" style={{ padding: 24 }}>
+      <div className="odoo-scope prj prj-detail">
         <StatusBanner tone="danger" icon={AlertTriangle} title="Employé introuvable"
           actions={<button type="button" className="odoo-btn-secondary" onClick={() => navigate('/employees')}>Retour à la liste</button>}>
           Cette fiche n'existe pas ou a été supprimée.
@@ -235,10 +238,10 @@ export default function EmployeeDetailPage() {
         <button type="button" onClick={back} className="odoo-pager-btn" title="Retour à la liste" aria-label="Retour à la liste"><ArrowLeft size={14} /></button>
         <div className="odoo-breadcrumb">
           <Users size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span style={{ cursor: 'pointer' }} onClick={back}>Personnel</span>
+          <button type="button" className="sal-link" style={{ marginLeft: 0, fontSize: 'inherit' }} onClick={back}>Personnel</button>
           <span className="odoo-breadcrumb-separator">›</span>
           <span className="odoo-breadcrumb-current">{name}</span>
-          {editing && !isNew && <span className="odoo-tag odoo-tag-yellow" style={{ marginLeft: 8 }}>Modification{dirty ? ' · non enregistrée' : ''}</span>}
+          {editing && !isNew && <span style={{ marginLeft: 8 }}><StatusTag tone="todo" icon={Pencil} label={`Modification${dirty ? ' · non enregistrée' : ''}`} /></span>}
         </div>
         <div style={{ flex: 1 }} />
         {editing ? (
@@ -280,9 +283,11 @@ export default function EmployeeDetailPage() {
         )}
       </div>
 
+      {/* Corps de la fiche au design Ventes (comme la fiche commande) : alertes, en-tête, onglets, panneaux. */}
+      <div className="prj prj-detail hr-detail" style={{ paddingBottom: editing ? 88 : 28 }}>
       {/* ── Alertes ── */}
       {!isNew && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 20px 0' }}>
+        <div style={{ display: 'grid', gap: 8 }}>
           {!active && (
             <StatusBanner tone="neutral" icon={LogOut} title="Employé inactif">
               {emp!.exit_date ? `Sorti le ${frDate(isoDate(emp!.exit_date))}. ` : ''}La fiche reste consultable ; l'historique de paie est conservé.
@@ -309,67 +314,62 @@ export default function EmployeeDetailPage() {
         </div>
       )}
 
-      {/* ── Compteurs ── */}
-      {!isNew && (
-        <div className="odoo-smart-button-row" style={{ marginTop: 12 }}>
-          <div className="odoo-smart-button" onClick={() => setTab('contrat')}>
-            <div className="odoo-smart-button-value">{sen.label}</div>
-            <div className="odoo-smart-button-label"><CalendarClock size={11} /> Ancienneté</div>
-          </div>
-          <div className="odoo-smart-button" onClick={() => setTab('contrat')}>
-            <div className="odoo-smart-button-value">{salary || '—'}</div>
-            <div className="odoo-smart-button-label"><Banknote size={11} /> Salaire / {isWeekly ? 'sem.' : 'mois'}</div>
-          </div>
-          <div className="odoo-smart-button" onClick={() => navigate('/employees?tab=leaves')} title="Solde de congés payés acquis et non pris">
-            <div className="odoo-smart-button-value" style={{ color: leave && leave.available < 0 ? '#dc3545' : undefined }}>
-              {leave ? `${Number(leave.available).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} j` : '—'}
+      {/* ── En-tête de fiche : identité, étiquettes, puis compteurs ── */}
+      <section className="prj-panel prj-hero">
+        <div className="prj-hero-top">
+          <span className="prj-hero-icon" aria-hidden="true" style={{ borderRadius: '50%', color: '#fff', background: color, fontSize: '1.125rem', fontWeight: 700 }}>{initials}</span>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <h1>{isNew && !form.firstName ? 'Nouvel employé' : `${form.firstName} ${form.lastName}`}</h1>
+              {!isNew && <StatusTag tone={active ? 'done' : 'cancelled'} label={active ? 'Actif' : 'Inactif'} />}
+              {form.role && <span className="odoo-tag odoo-tag-purple" style={roleColor(String(form.role)) ? { backgroundColor: `${roleColor(String(form.role))}22`, color: roleColor(String(form.role)) } : undefined}>{roleLabel(String(form.role))}</span>}
+              <span className="odoo-tag odoo-tag-grey">{contractLabel(String(form.contractType))}</span>
             </div>
-            <div className="odoo-smart-button-label"><Palmtree size={11} /> Congés dispo.</div>
-          </div>
-          <div className="odoo-smart-button" onClick={() => setTab('contrat')}>
-            <div className="odoo-smart-button-value" style={{ color: form.isDeclared ? '#28a745' : '#b85d1a' }}>
-              {form.isDeclared ? <ShieldCheck size={18} style={{ display: 'inline' }} /> : <ShieldOff size={18} style={{ display: 'inline' }} />}
+            <div className="prj-hero-meta">
+              {form.hireDate && <span>Embauché le {frDate(String(form.hireDate))}</span>}
+              {form.cin && <span style={{ fontFamily: 'ui-monospace, monospace' }}>CIN {String(form.cin)}</span>}
+              {form.phone && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Phone size={12} /> {String(form.phone)}</span>}
             </div>
-            <div className="odoo-smart-button-label">{form.isDeclared ? 'Déclaré CNSS + IR' : 'Non déclaré'}</div>
-          </div>
-          <div className="odoo-smart-button" onClick={() => setTab('documents')}>
-            <div className="odoo-smart-button-value"><FileText size={18} style={{ display: 'inline' }} /></div>
-            <div className="odoo-smart-button-label">Documents</div>
           </div>
         </div>
-      )}
-
-      {/* ── En-tête ── */}
-      <div className="odoo-form-header" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <div aria-hidden="true" style={{
-          width: 56, height: 56, borderRadius: 4, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '1.25rem', fontWeight: 700, color: '#fff', background: color,
-        }}>{initials}</div>
-        <div style={{ minWidth: 0 }}>
-          <h1 className="odoo-form-title">{isNew && !form.firstName ? 'Nouvel employé' : `${form.firstName} ${form.lastName}`}</h1>
-          <div className="odoo-form-subtitle" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
-            {form.role && <span className="odoo-tag odoo-tag-purple" style={roleColor(String(form.role)) ? { backgroundColor: `${roleColor(String(form.role))}22`, color: roleColor(String(form.role)) } : undefined}>{roleLabel(String(form.role))}</span>}
-            <span className="odoo-tag odoo-tag-grey">{contractLabel(String(form.contractType))}</span>
-            {!isNew && <StatusTag tone={active ? 'done' : 'cancelled'} label={active ? 'Actif' : 'Inactif'} />}
-            {form.hireDate && <span>Embauché le {frDate(String(form.hireDate))}</span>}
-            {form.cin && <span style={{ fontFamily: 'ui-monospace, monospace' }}>· CIN {String(form.cin)}</span>}
+        {!isNew && (
+          <div className="hr-hero-stats">
+            <button type="button" onClick={() => setTab('contrat')}>
+              <span className="l"><CalendarClock size={13} /> Ancienneté</span><b>{sen.label}</b>
+            </button>
+            <button type="button" onClick={() => setTab('contrat')}>
+              <span className="l"><Banknote size={13} /> Salaire / {isWeekly ? 'sem.' : 'mois'}</span><b>{salary || '—'}</b>
+            </button>
+            <button type="button" onClick={() => navigate('/employees?tab=leaves')} title="Solde de congés payés acquis et non pris">
+              <span className="l"><Palmtree size={13} /> Congés dispo.</span>
+              <b style={{ color: leave && leave.available < 0 ? 'var(--prj-red)' : undefined }}>
+                {leave ? `${Number(leave.available).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} j` : '—'}
+              </b>
+            </button>
+            <button type="button" onClick={() => setTab('contrat')}>
+              <span className="l">{form.isDeclared ? <ShieldCheck size={13} /> : <ShieldOff size={13} />} Déclaration</span>
+              <b style={{ color: form.isDeclared ? 'var(--prj-green)' : 'var(--prj-orange)' }}>{form.isDeclared ? 'Déclaré CNSS + IR' : 'Non déclaré'}</b>
+            </button>
+            <button type="button" onClick={() => setTab('documents')}>
+              <span className="l"><FileText size={13} /> Documents</span><b>Ouvrir</b>
+            </button>
           </div>
-        </div>
-      </div>
+        )}
+      </section>
 
       {/* ── Onglets ── */}
-      <div className="odoo-tabs">
+      <div className="prj-tabs hr-tabs" role="tablist" aria-label="Contenu de la fiche">
         {tabs.map(t => {
           const Icon = t.icon;
           return (
-            <button key={t.key} type="button" onClick={() => setTab(t.key)} className={`odoo-tab ${tab === t.key ? 'active' : ''}`}>
-              <Icon size={13} /> {t.label}
+            <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)} className={`prj-tab${tab === t.key ? ' active' : ''}`}>
+              <Icon size={13} style={{ display: 'inline', marginRight: 4, verticalAlign: '-2px' }} /> {t.label}
             </button>
           );
         })}
       </div>
 
-      <div style={{ padding: editing ? '4px 0 72px' : '4px 0 24px' }}>
+      <div style={{ display: 'grid', gap: 16 }}>
         {tab === 'infos' && (
           <>
             <div style={twoCols}>
@@ -439,14 +439,14 @@ export default function EmployeeDetailPage() {
               </div>
             </Section>
             {!isNew && editing && (
-              <div style={{ padding: '0 20px' }}>
+              <div>
                 <StatusBanner tone="info" icon={Pencil} title="Correction directe du contrat en vigueur">
                   Un changement de conditions (salaire, poste, type de contrat) se fait par un avenant, dans la section Contrats ci-dessous, pour garder l'historique.
                 </StatusBanner>
               </div>
             )}
             {!isNew && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 20px 0' }}>
+              <div style={{ display: 'grid', gap: 16 }}>
                 <EmployeeContracts employeeId={id!} onChanged={() => undefined} />
                 {(emp!.pay_frequency ?? 'monthly') === 'monthly' && <EmployeePayrollItems employeeId={id!} />}
                 <EmployeeSalaryHistory employeeId={id!} />
@@ -456,15 +456,16 @@ export default function EmployeeDetailPage() {
         )}
 
         {tab === 'documents' && !isNew && (
-          <div style={{ padding: '12px 20px 0' }}>
+          <div style={{ display: 'grid', gap: 12 }}>
             {/* G3-11 : droit d'accès (loi 09-08), réservé à qui peut modifier le Personnel. */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}><PersonalDataExportButton kind="employee" id={id!} /></div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}><PersonalDataExportButton kind="employee" id={id!} /></div>
             <EmployeeDocuments employeeId={id!} />
           </div>
         )}
         {tab === 'depart' && !isNew && (
-          <div style={{ padding: '12px 20px 0' }}><EmployeeDeparture employee={emp!} /></div>
+          <div><EmployeeDeparture employee={emp!} /></div>
         )}
+      </div>
       </div>
 
       {/* En modification, Annuler / Enregistrer restent à l'écran quelle que soit la
@@ -472,10 +473,10 @@ export default function EmployeeDetailPage() {
       {editing && (
         <div role="region" aria-label="Enregistrer la fiche" style={{
           position: 'fixed', left: '50%', bottom: 16, transform: 'translateX(-50%)', zIndex: 20,
-          display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', borderRadius: 4,
-          border: '1px solid var(--odoo-border)', background: 'var(--odoo-bg)', boxShadow: '0 6px 20px rgba(0,0,0,0.15)',
+          display: 'flex', alignItems: 'center', gap: 12, padding: '8px 10px 8px 16px', borderRadius: 999,
+          background: 'var(--theme-bg-card)', boxShadow: '0 12px 32px rgba(15,23,42,0.18), 0 0 0 .5px rgba(15,23,42,0.08)',
         }}>
-          <span style={{ fontSize: '0.8125rem', color: dirty ? '#b85d1a' : 'var(--odoo-text-muted)' }}>
+          <span style={{ fontSize: '0.8125rem', color: dirty ? 'var(--prj-orange)' : 'var(--odoo-text-muted)' }}>
             {isNew ? 'Nouvelle fiche' : dirty ? 'Modifications non enregistrées' : 'Aucune modification'}
           </span>
           <button type="button" onClick={cancel} className="odoo-btn-secondary" style={btn}><X size={13} /> Annuler</button>
@@ -491,15 +492,15 @@ export default function EmployeeDetailPage() {
 /* ═══════════════════════ Briques de la fiche ═══════════════════════ */
 
 const btn = { display: 'inline-flex', alignItems: 'center', gap: 4 } as const;
-const twoCols = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 0 } as const;
+const twoCols = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 16 } as const;
 const twoColsInner = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', columnGap: 24 } as const;
 
 function Section({ icon: Icon, title, children }: { icon: typeof UserRound; title: string; children: ReactNode }) {
   return (
-    <div className="odoo-section">
-      <div className="odoo-section-header"><Icon size={12} /> {title}</div>
-      <div style={{ padding: '8px 16px 12px' }}>{children}</div>
-    </div>
+    <section className="prj-panel hr-plain">
+      <div className="prj-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15 }}><Icon size={15} style={{ color: 'var(--theme-accent)' }} /> {title}</div>
+      <div style={{ padding: '6px 18px 12px' }}>{children}</div>
+    </section>
   );
 }
 
@@ -544,9 +545,9 @@ function Row({
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(130px, 38%) 1fr', alignItems: editing ? 'center' : 'baseline', gap: 12, padding: '5px 0', borderBottom: '1px solid var(--odoo-border-light, #f1f3f5)' }}>
-      <label style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--odoo-text)' }}>
-        {label}{required && editing && <span style={{ color: '#dc3545' }}> *</span>}
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(130px, 38%) 1fr', alignItems: editing ? 'center' : 'baseline', gap: 12, padding: '5px 0', borderBottom: '1px solid var(--kl-hair, var(--odoo-border-light, #f1f3f5))' }}>
+      <label style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--theme-text-muted)' }}>
+        {label}{required && editing && <span style={{ color: 'var(--prj-red)' }}> *</span>}
       </label>
       <div>
         {editing ? control : (

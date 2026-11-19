@@ -2,7 +2,7 @@ import { useState } from 'react';
 import QualityPanel from '../controle/QualityPanel';
 import CustomFieldsCard from '../../components/custom-fields/CustomFieldsCard';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, ArrowLeft, Siren, Printer, Info, AlertTriangle, CheckCircle2, ShieldAlert, Lock, type LucideIcon } from 'lucide-react';
+import { Search, ArrowLeft, Siren, Printer, Info, AlertTriangle, CheckCircle2, ShieldAlert, Lock, type LucideIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import {
   traceabilityApi, DISPOSITION_LABELS, RECALL_STATUS_LABELS,
@@ -11,6 +11,8 @@ import {
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { notify } from '../../components/ui/InlineNotification';
+import { ListKpi } from '../sales/ListTemplate';
+import { Panel, SectionTitle, PageLoading } from '../controle/KlUi';
 
 /**
  * Contrôle & Qualité › Traçabilité & rappels (mig 316).
@@ -30,7 +32,6 @@ type Screen =
 const d = (s: string | null) => (s ? format(new Date(s.length === 10 ? `${s}T00:00:00` : s), 'dd/MM/yyyy') : '—');
 const dt = (s: string | null) => (s ? format(new Date(s), 'dd/MM/yyyy HH:mm') : '—');
 const q = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString('fr-FR', { maximumFractionDigits: 3 }));
-const tableWrap: React.CSSProperties = { overflowX: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4 };
 /** Statut du rappel en étiquette commune : ouvert = lots à bloquer, action attendue. */
 const RECALL_TONE: Record<RecallStatus, { tone: StatusTone; icon?: LucideIcon }> = {
   open: { tone: 'todo', icon: Siren }, blocked: { tone: 'blocked', icon: Lock }, closed: { tone: 'done' },
@@ -41,13 +42,11 @@ const RecallStatusTag = ({ status }: { status: RecallStatus }) => (
 
 function CertaintyTag({ c }: { c?: Certainty }) {
   return c === 'certain'
-    ? <span className="odoo-tag odoo-tag-red" title="La recette contient l'ingrédient">certain</span>
-    : <span className="odoo-tag odoo-tag-yellow" title="Même production, composition non prouvée">possible</span>;
+    ? <StatusTag tone="blocked" label="certain" title="La recette contient l'ingrédient" />
+    : <StatusTag tone="todo" label="possible" title="Même production, composition non prouvée" />;
 }
 
-function Loading() {
-  return <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}><Loader2 size={20} className="animate-spin" /></div>;
-}
+const Loading = PageLoading;
 
 export default function TraceabilityTab() {
   const [screen, setScreen] = useState<Screen>({ kind: 'home' });
@@ -70,20 +69,20 @@ function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: 
 
   return (
     <>
-      <form className="odoo-search-panel" style={{ margin: 0 }} onSubmit={e => { e.preventDefault(); setTerm(input.trim()); }}>
-        <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', flex: 1, maxWidth: 480 }}>
-          <Search size={13} style={{ position: 'absolute', left: 8, color: 'var(--theme-text-muted)' }} />
-          <input value={input} onChange={e => setInput(e.target.value)} placeholder="N° de lot interne ou fournisseur, ingrédient, produit…"
-            className="odoo-search-input" style={{ paddingLeft: 26, width: '100%' }} aria-label="Rechercher un lot" />
-        </span>
+      <form className="prj-toolbar" onSubmit={e => { e.preventDefault(); setTerm(input.trim()); }}>
+        <label className="prj-search" style={{ maxWidth: 560 }}>
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--theme-text-muted)' }} />
+          <input type="search" value={input} onChange={e => setInput(e.target.value)} placeholder="N° de lot interne ou fournisseur, ingrédient, produit…"
+            aria-label="Rechercher un lot" />
+        </label>
         <button type="submit" className="odoo-btn-primary" disabled={input.trim().length < 2}>Rechercher</button>
       </form>
 
       {term.length >= 2 && (isFetching ? <Loading /> : hits.length === 0 ? (
         <StatusBanner tone="info" icon={Info} title="Aucun lot trouvé" />
       ) : (
-        <div style={tableWrap}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <Panel>
+          <table className="odoo-table">
             <thead><tr><th>Type</th><th>Lot</th><th>Article</th><th>Fournisseur / magasin</th><th>Date</th><th>DLC</th><th>Statut</th><th /></tr></thead>
             <tbody>
               {hits.map(h => (
@@ -102,17 +101,17 @@ function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: 
               ))}
             </tbody>
           </table>
-        </div>
+        </Panel>
       ))}
 
-      <h3 style={{ margin: '8px 0 0', fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Siren size={15} /> Rappels</h3>
+      <SectionTitle icon={Siren}>Rappels</SectionTitle>
       {isLoading ? <Loading /> : recalls.length === 0 ? (
         <StatusBanner tone="success" icon={CheckCircle2} title="Aucun rappel">
           Pour ouvrir un rappel, recherchez le lot en cause puis utilisez « Ouvrir un rappel ».
         </StatusBanner>
       ) : (
-        <div style={tableWrap}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <Panel>
+          <table className="odoo-table">
             <thead><tr><th>Référence</th><th>Origine</th><th>Motif</th><th style={{ textAlign: 'right' }}>Lots</th><th>Ouvert le</th><th>Statut</th></tr></thead>
             <tbody>
               {recalls.map(r => (
@@ -127,7 +126,7 @@ function Home({ onPick, onRecall }: { onPick: (h: SearchHit) => void; onRecall: 
               ))}
             </tbody>
           </table>
-        </div>
+        </Panel>
       )}
     </>
   );
@@ -151,12 +150,13 @@ function OpenRecallButton({ originKind, originId, onCreated }: { originKind: 'in
   );
 }
 
+/** En-tête d'une fiche (aval, amont, rappel) dans l'onglet : retour, titre de la fiche, actions. */
 function Header({ onBack, title, children }: { onBack: () => void; title: string; children?: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }} className="no-print">
+    <div className="klc-record-head no-print">
       <button type="button" className="odoo-btn-secondary" onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><ArrowLeft size={13} /> Retour</button>
-      <h3 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 600 }}>{title}</h3>
-      <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>{children}</div>
+      <h2>{title}</h2>
+      <div className="klc-section-actions">{children}</div>
     </div>
   );
 }
@@ -197,7 +197,7 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
         <button type="button" className="odoo-btn-secondary" onClick={() => window.print()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Printer size={13} /> Imprimer</button>
         <OpenRecallButton originKind="ingredient_lot" originId={id} onCreated={onRecall} />
       </Header>
-      <div className="odoo-stat-grid" style={{ border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
+      <div className="prj-kpis">
         <Stat label="Fournisseur" value={lot.supplier_name ?? '—'} sub={`lot fourn. ${lot.supplier_lot_number ?? '—'} · ${lot.voucher_number ?? 'hors BC'}`} />
         <Stat label="Reçu le" value={d(lot.received_at)} sub={`DLC ${d(lot.expiration_date)} · statut ${lot.status}`} />
         <Stat label="Quantité" value={`${q(lot.quantity_remaining)} / ${q(lot.quantity_received)} ${lot.unit ?? ''}`} sub="restant / reçu" />
@@ -212,8 +212,8 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
       ) : null}
 
       {data.plans.length > 0 && (
-        <div style={tableWrap}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <Panel>
+          <table className="odoo-table">
             <thead><tr><th>Production</th><th>Magasin</th><th>Statut</th><th style={{ textAlign: 'right' }}>Quantité du lot utilisée</th><th>Voie</th></tr></thead>
             <tbody>{data.plans.map(p => (
               <tr key={p.id}><td>{d(p.plan_date)}</td><td>{p.store_name ?? '—'}</td><td>{p.status}</td>
@@ -221,24 +221,24 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
                 <td>{p.depth === 0 ? 'directe' : `via semi-fini (niveau ${p.depth})`}</td></tr>
             ))}</tbody>
           </table>
-        </div>
+        </Panel>
       )}
 
       {data.semiLots.length > 0 && (
-        <div style={tableWrap}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <Panel>
+          <table className="odoo-table">
             <thead><tr><th>Semi-fini</th><th>Lot</th><th style={{ textAlign: 'right' }}>Produit</th><th style={{ textAlign: 'right' }}>Restant</th><th>Statut</th></tr></thead>
             <tbody>{data.semiLots.map(s => (
               <tr key={s.id}><td>{s.recipe_name}</td><td style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem' }}>{s.lot_number}</td>
                 <td style={{ textAlign: 'right' }}>{q(s.quantity_produced)} {s.unit}</td><td style={{ textAlign: 'right' }}>{q(s.quantity_remaining)} {s.unit}</td><td>{s.status}</td></tr>
             ))}</tbody>
           </table>
-        </div>
+        </Panel>
       )}
 
       {data.productLots.length > 0 && (
-        <div style={tableWrap}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <Panel>
+          <table className="odoo-table">
             <thead><tr><th>Produit</th><th>Lot</th><th>Lien</th><th>Magasin</th><th>DLC</th><th style={{ textAlign: 'right' }}>Produit</th><th style={{ textAlign: 'right' }}>Vendu</th><th style={{ textAlign: 'right' }}>Perdu</th><th style={{ textAlign: 'right' }}>En stock</th><th /></tr></thead>
             <tbody>{data.productLots.map(l => [
               <tr key={l.id} className={l.remaining_qty > 0 ? 'row-warning' : undefined}>
@@ -258,9 +258,9 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
               openSales === l.id && <LotSalesRow key={`${l.id}-s`} lot={l} colSpan={10} />,
             ])}</tbody>
           </table>
-        </div>
+        </Panel>
       )}
-      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
+      <p className="klc-note">
         « certain » : la recette du produit contient l'ingrédient. « possible » : même production, composition non prouvée (la consommation est enregistrée par plan, pas par produit).
         Le détail des ventes par ticket n'existe que depuis {data.traceStart ? d(data.traceStart) : 'la mise en service de la traçabilité'} ; avant, seuls les totaux par lot sont connus.
       </p>
@@ -269,13 +269,7 @@ function ForwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () =
 }
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-      <div className="odoo-stat-card-label">{label}</div>
-      <div className="odoo-stat-card-value" style={{ fontSize: '1rem' }}>{value}</div>
-      {sub && <div className="odoo-stat-card-sub">{sub}</div>}
-    </div>
-  );
+  return <ListKpi label={label} value={value} sub={sub} />;
 }
 
 /* ─── Amont d'un lot produit ───────────────────────────────────────── */
@@ -290,19 +284,19 @@ function BackwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () 
         <button type="button" className="odoo-btn-secondary" onClick={() => window.print()} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Printer size={13} /> Imprimer</button>
         <OpenRecallButton originKind="product_lot" originId={id} onCreated={onRecall} />
       </Header>
-      <div className="odoo-stat-grid" style={{ border: '1px solid var(--odoo-border)', borderRadius: 4 }}>
+      <div className="prj-kpis">
         <Stat label="Produit le" value={d(lot.produced_at)} sub={`DLC ${d(lot.expires_at)} · ${lot.store_name ?? ''}`} />
         <Stat label="Quantité" value={`${q(lot.remaining_qty)} / ${q(lot.quantity_total)}`} sub="en stock / produit" />
         <Stat label="Vendu" value={q(lot.sold_qty)} sub={`${lot.sales_count} ticket(s) tracé(s)`} />
         <Stat label="Lots d'ingrédients" value={String(data.ingredientLots.length)} sub="utilisés par la production" />
       </div>
-      <div style={{ marginTop: 12 }}><CustomFieldsCard entity="product_lot" id={id} /></div>
+      <div><CustomFieldsCard entity="product_lot" id={id} /></div>
       <QualityPanel filter={{ productLotId: id }} links={{ productLotId: id }} title={`Contrôle lot ${lot.lot_number}`} />
       {data.ingredientLots.length === 0 ? (
         <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun lot d'ingrédient rattaché">La production n'a pas enregistré de prélèvement par lot (bon de sortie non pesé).</StatusBanner>
       ) : (
-        <div style={tableWrap}>
-          <table className="odoo-table" style={{ margin: 0 }}>
+        <Panel>
+          <table className="odoo-table">
             <thead><tr><th>Ingrédient</th><th>Lot</th><th>Lien</th><th>Fournisseur</th><th>DLC</th><th style={{ textAlign: 'right' }}>Utilisé</th><th>Voie</th><th /></tr></thead>
             <tbody>{data.ingredientLots.map((l, i) => (
               <tr key={`${l.id}-${i}`}>
@@ -317,7 +311,7 @@ function BackwardView({ id, onBack, onRecall, onLot }: { id: string; onBack: () 
               </tr>
             ))}</tbody>
           </table>
-        </div>
+        </Panel>
       )}
     </>
   );
@@ -356,15 +350,15 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
         )}
       </Header>
 
-      <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, fontSize: '0.8125rem' }}>
-        <div><div style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>Origine</div>{r.origin_label}</div>
-        <div><div style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>Motif</div>{r.reason}</div>
-        <div><div style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>Statut</div><RecallStatusTag status={r.status} /></div>
-        <div><div style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>Ouvert</div>{dt(r.created_at)} · {r.created_by_name}</div>
-        <div><div style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>Bloqué</div>{r.blocked_at ? `${dt(r.blocked_at)} · ${r.blocked_by_name ?? ''}` : '—'}</div>
-        <div><div style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>Clôturé</div>{r.closed_at ? `${dt(r.closed_at)} · ${r.closed_by_name ?? ''}` : '—'}</div>
-        {r.closing_note && <div style={{ gridColumn: '1 / -1' }}><div style={{ color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>Conclusion</div>{r.closing_note}</div>}
-      </div>
+      <section className="prj-panel klc-facts" aria-label="Rappel">
+        <div><span>Origine</span>{r.origin_label}</div>
+        <div><span>Motif</span>{r.reason}</div>
+        <div><span>Statut</span><RecallStatusTag status={r.status} /></div>
+        <div><span>Ouvert</span>{dt(r.created_at)} · {r.created_by_name}</div>
+        <div><span>Bloqué</span>{r.blocked_at ? `${dt(r.blocked_at)} · ${r.blocked_by_name ?? ''}` : '—'}</div>
+        <div><span>Clôturé</span>{r.closed_at ? `${dt(r.closed_at)} · ${r.closed_by_name ?? ''}` : '—'}</div>
+        {r.closing_note && <div style={{ gridColumn: '1 / -1' }}><span>Conclusion</span>{r.closing_note}</div>}
+      </section>
 
       {r.status === 'open' && (
         <StatusBanner tone="orange" icon={ShieldAlert} title="Périmètre identifié, rien n'est encore bloqué">
@@ -378,8 +372,8 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
         </StatusBanner>
       )}
 
-      <div style={tableWrap}>
-        <table className="odoo-table" style={{ margin: 0 }}>
+      <Panel>
+        <table className="odoo-table">
           <thead><tr><th>Type</th><th>Article</th><th>Lot</th><th>Lien</th><th>Magasin</th><th style={{ textAlign: 'right' }}>Vendu</th><th style={{ textAlign: 'right' }}>En stock</th><th>Statut</th><th>Destination</th></tr></thead>
           <tbody>{r.items.map(i => (
             <tr key={i.id} className={(i.current_remaining ?? 0) > 0 && !i.disposition ? 'row-warning' : undefined}>
@@ -403,7 +397,7 @@ function RecallView({ id, onBack }: { id: string; onBack: () => void }) {
             </tr>
           ))}</tbody>
         </table>
-      </div>
+      </Panel>
     </>
   );
 }

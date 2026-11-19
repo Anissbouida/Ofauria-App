@@ -83,7 +83,7 @@ export default function ProjectsPlanning() {
         <section className="prj-panel prj-gantt" aria-label="Planning des projets">
           <div className="prj-gantt-inner">
             <div className="prj-gantt-row head">
-              <div className="prj-gantt-label" style={{ cursor: 'default', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--odoo-text-muted)' }}>Projet / tâche</div>
+              <div className="prj-gantt-label" style={{ cursor: 'default', fontSize: '0.75rem', fontWeight: 500, color: 'var(--odoo-text-muted)' }}>Projet / tâche</div>
               <div className="prj-gantt-cols" style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}>
                 {columns.map(c => (
                   <div key={c.toISOString()}>{col === 1 ? format(c, 'EEE d', { locale: fr }) : `${format(c, 'd MMM', { locale: fr })}`}</div>

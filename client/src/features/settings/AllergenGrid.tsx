@@ -1,6 +1,7 @@
+import { FilterChips } from '../sales/ListTemplate';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, ShieldAlert, Check } from 'lucide-react';
+import { Loader2, ShieldAlert, Check, Search } from 'lucide-react';
 import { ingredientsApi, type AllergenGridRow } from '../../api/inventory.api';
 import { ALLERGENS } from '../../constants/allergens';
 import { StatusBanner } from '../../components/ui/StatusBanner';
@@ -84,20 +85,23 @@ export default function AllergenGrid() {
           : `${missing} ingrédient${missing > 1 ? 's' : ''} sur ${rows.length} ${missing > 1 ? 'ne sont pas renseignés' : 'n\'est pas renseigné'}. Cliquez sur une case : C = contient, T = traces, vide = absent. Les cases déjà cochées d'une fiche non renseignée sont une proposition ; rien n'est enregistré avant « Valider ».`}
       </StatusBanner>
 
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', fontSize: '0.85rem' }}>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-          <input type="checkbox" checked={onlyMissing} onChange={e => { setOnlyMissing(e.target.checked); setLimit(PAGE); }} />
-          N'afficher que les fiches non renseignées
+      <div className="prj-toolbar">
+        <label className="prj-search" style={{ maxWidth: 360 }}>
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--odoo-text-muted)' }} />
+          <input type="search" placeholder="Filtrer par nom ou catégorie" aria-label="Filtrer les ingrédients"
+            value={search} onChange={e => { setSearch(e.target.value); setLimit(PAGE); }} />
         </label>
-        <input className="odoo-input" type="search" placeholder="Filtrer par nom ou catégorie" aria-label="Filtrer les ingrédients"
-          style={{ width: 260 }} value={search} onChange={e => { setSearch(e.target.value); setLimit(PAGE); }} />
-        <span style={{ color: 'var(--theme-text-muted)' }}>{filtered.length} fiche{filtered.length > 1 ? 's' : ''}</span>
+        <FilterChips label="Fiches affichées" value={onlyMissing ? 'missing' : 'all'} onChange={k => { setOnlyMissing(k === 'missing'); setLimit(PAGE); }} chips={[
+          { key: 'missing', label: 'Non renseignées', count: missing },
+          { key: 'all', label: 'Toutes', count: rows.length },
+        ]} />
+        <span className="prj-note" style={{ marginLeft: 'auto' }}>{filtered.length} fiche{filtered.length > 1 ? 's' : ''}</span>
       </div>
 
       {shown.length === 0 && <div style={{ padding: 16, color: 'var(--theme-text-muted)' }}>Aucune fiche à afficher.</div>}
 
       {shown.length > 0 && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, background: 'var(--odoo-bg)', overflowX: 'auto' }}>
+        <div className="prj-panel" style={{ overflowX: 'auto' }}>
           <table className="odoo-table" style={{ width: '100%' }}>
             <thead><tr>
               <th style={{ textAlign: 'left', minWidth: 200, position: 'sticky', left: 0, background: 'var(--odoo-bg)', zIndex: 1 }}>Ingrédient</th>

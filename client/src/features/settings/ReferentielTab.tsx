@@ -12,7 +12,7 @@ import { usePermissions } from '../../context/PermissionsContext';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { notify } from '../../components/ui/InlineNotification';
-import { StatusTag } from '../../components/ui/StatusTag';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
 /**
@@ -29,11 +29,11 @@ const DOMAINS: { key: string; label: string; icon: typeof Database; tableIds: st
   { key: 'production', label: 'Production et pertes', icon: Factory, tableIds: ['yield_units', 'loss_types', 'loss_reasons', 'production_loss_reasons', 'unsold_destinations'] },
   { key: 'hr', label: 'Ressources humaines', icon: Users, tableIds: ['absence_reasons', 'employee_roles', 'contract_types', 'leave_types'] },
 ];
-const ACTIONS: Record<string, { cls: string; label: string }> = {
-  create: { cls: 'odoo-tag odoo-tag-green', label: 'Ajout' },
-  update: { cls: 'odoo-tag odoo-tag-blue', label: 'Modification' },
-  deactivate: { cls: 'odoo-tag odoo-tag-red', label: 'Désactivation' },
-  reactivate: { cls: 'odoo-tag odoo-tag-orange', label: 'Réactivation' },
+const ACTIONS: Record<string, { tone: StatusTone; label: string }> = {
+  create: { tone: 'done', label: 'Ajout' },
+  update: { tone: 'progress', label: 'Modification' },
+  deactivate: { tone: 'cancelled', label: 'Désactivation' },
+  reactivate: { tone: 'todo', label: 'Réactivation' },
 };
 const LEVEL_LABELS = ['Catégorie', 'Sous-catégorie', 'Type'];
 // Familles de mesure pour le référentiel « units » (conversions, mig 470).
@@ -84,12 +84,12 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', flex: '1 1 260px', maxWidth: 420 }}>
-          <Search size={13} style={{ position: 'absolute', left: 8, color: 'var(--odoo-text-muted)' }} />
-          <input id="ref-search" className="odoo-search-input" style={{ paddingLeft: 26, width: '100%' }} placeholder="Rechercher une table…"
+      <div className="prj-toolbar">
+        <label className="prj-search" style={{ maxWidth: 420 }}>
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--odoo-text-muted)' }} />
+          <input id="ref-search" type="search" placeholder="Rechercher une table…"
             value={search} onChange={e => setSearch(e.target.value)} aria-label="Rechercher une table" />
-        </span>
+        </label>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
           {tables.length} tables · {totalActive} valeurs actives{totalInactive > 0 ? ` · ${totalInactive} inactives` : ''}
@@ -102,14 +102,14 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
         return (
           <section key={s.key} style={{ display: 'grid', gap: 6 }}>
             <button type="button" onClick={() => setCollapsed(c => ({ ...c, [s.key]: !c[s.key] }))}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'var(--odoo-text-muted)' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 0, padding: '0 4px', cursor: 'pointer', color: 'var(--theme-text-strong)' }}>
               {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
               <Icon size={14} />
-              <span style={{ fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>{s.label}</span>
+              <span style={{ fontSize: '1.0625rem', fontWeight: 700, letterSpacing: '-0.02em' }}>{s.label}</span>
               <span style={{ fontSize: '0.8125rem' }}>({s.tables.length})</span>
             </button>
             {!isCollapsed && (
-              <div style={{ overflowX: 'auto' }}>
+              <div className="prj-panel prj-scroll">
                 {/* Largeurs fixes : les colonnes restent alignees d'un domaine a l'autre. */}
                 <table className="odoo-table" style={{ tableLayout: 'fixed', width: '100%' }}>
                   <thead><tr><th style={{ width: '30%' }}>Table</th><th>Description</th><th style={{ textAlign: 'right', width: 90 }}>Actives</th><th style={{ width: 120 }}></th><th style={{ width: 36 }}></th></tr></thead>
@@ -119,7 +119,7 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
                         <td style={{ fontWeight: 500 }}>{String(t.label)}</td>
                         <td style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>{String(t.description || '')}</td>
                         <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Number(t.active_count) || 0}</td>
-                        <td>{Number(t.inactive_count) > 0 && <span className="odoo-tag odoo-tag-orange">{Number(t.inactive_count)} inactive(s)</span>}</td>
+                        <td>{Number(t.inactive_count) > 0 && <StatusTag tone="cancelled" label={`${Number(t.inactive_count)} inactive(s)`} />}</td>
                         <td><ChevronRight size={14} style={{ color: 'var(--odoo-text-muted)' }} /></td>
                       </tr>
                     ))}
@@ -134,18 +134,18 @@ function RefDashboard({ onOpenTable }: { onOpenTable: (id: string) => void }) {
 
       {recent.length > 0 && (
         <section style={{ display: 'grid', gap: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--odoo-text-muted)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 4px', color: 'var(--theme-text-strong)' }}>
             <History size={14} />
-            <span style={{ fontSize: '0.8125rem', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>Dernières modifications</span>
+            <span style={{ fontSize: '1.0625rem', fontWeight: 700, letterSpacing: '-0.02em' }}>Dernières modifications</span>
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          <div className="prj-panel prj-scroll">
             <table className="odoo-table">
               <thead><tr><th style={{ width: 130 }}>Date</th><th style={{ width: 130 }}>Action</th><th>Table</th><th>Par</th></tr></thead>
               <tbody>
                 {recent.slice(0, 10).map(l => (
                   <tr key={String(l.id)}>
                     <td style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmt(l.created_at, 'dd/MM/yyyy HH:mm')}</td>
-                    <td><span className={ACTIONS[String(l.action)]?.cls ?? 'odoo-tag odoo-tag-grey'}>{ACTIONS[String(l.action)]?.label ?? String(l.action)}</span></td>
+                    <td><StatusTag tone={ACTIONS[String(l.action)]?.tone ?? 'draft'} label={ACTIONS[String(l.action)]?.label ?? String(l.action)} /></td>
                     <td>{String(l.table_label || l.table_id)}</td>
                     <td>{who(l)}</td>
                   </tr>
@@ -259,19 +259,19 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
           <ChevronLeft size={13} /> Référentiel
         </button>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 600 }}>{String(table?.label || tableId)}</div>
+          <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>{String(table?.label || tableId)}</div>
           <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
             {activeCount} active(s){inactiveCount > 0 ? ` · ${inactiveCount} inactive(s)` : ''}
           </div>
         </div>
       </div>
 
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', flex: '1 1 240px', maxWidth: 420 }}>
-          <Search size={13} style={{ position: 'absolute', left: 8, color: 'var(--odoo-text-muted)' }} />
-          <input id="ref-entry-search" className="odoo-search-input" style={{ paddingLeft: 26, width: '100%' }} placeholder="Rechercher par libellé, code…"
+      <div className="prj-toolbar">
+        <label className="prj-search" style={{ maxWidth: 420 }}>
+          <Search size={15} aria-hidden="true" style={{ color: 'var(--odoo-text-muted)' }} />
+          <input id="ref-entry-search" type="search" placeholder="Rechercher par libellé, code…"
             value={search} onChange={e => setSearch(e.target.value)} aria-label="Rechercher une valeur" />
-        </span>
+        </label>
         {!isNative && (
           <label htmlFor="ref-show-inactive" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
             <input id="ref-show-inactive" type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Afficher les inactives
@@ -292,14 +292,14 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
       </div>
 
       {showAudit && (
-        <div style={{ overflowX: 'auto', maxHeight: 260, overflowY: 'auto' }}>
+        <div className="prj-panel" style={{ overflowX: 'auto', maxHeight: 260, overflowY: 'auto' }}>
           <table className="odoo-table">
             <thead><tr><th style={{ width: 140 }}>Date</th><th style={{ width: 130 }}>Action</th><th>Par</th></tr></thead>
             <tbody>
               {((audit as Row[]) || []).slice(0, 30).map(l => (
                 <tr key={String(l.id)}>
                   <td style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmt(l.created_at, 'dd/MM/yyyy HH:mm')}</td>
-                  <td><span className={ACTIONS[String(l.action)]?.cls ?? 'odoo-tag odoo-tag-grey'}>{ACTIONS[String(l.action)]?.label ?? String(l.action)}</span></td>
+                  <td><StatusTag tone={ACTIONS[String(l.action)]?.tone ?? 'draft'} label={ACTIONS[String(l.action)]?.label ?? String(l.action)} /></td>
                   <td>{who(l)}</td>
                 </tr>
               ))}
@@ -314,7 +314,7 @@ function ParamTable({ tableId, onBack }: { tableId: string; onBack: () => void }
           {search ? 'Aucune valeur ne correspond à la recherche.' : 'Ajoutez la première valeur avec le bouton « Ajouter ».'}
         </StatusBanner>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel prj-scroll">
           <table className="odoo-table">
             <thead>
               <tr>

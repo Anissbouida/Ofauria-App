@@ -18,10 +18,10 @@ import { GROUP_ICONS, LEGACY_PAGES, SETTINGS_GROUPS, SETTINGS_PAGES, USERS_GROUP
 type Filter = 'all' | 'open' | 'done';
 
 const STATUS: Record<SetupCheck['status'], { icon: typeof Info; color: string; label: string }> = {
-  todo: { icon: CircleAlert, color: '#c0392b', label: 'À faire' },
-  warn: { icon: TriangleAlert, color: '#b85d1a', label: 'Recommandé' },
+  todo: { icon: CircleAlert, color: 'var(--prj-red, #c0392b)', label: 'À faire' },
+  warn: { icon: TriangleAlert, color: 'var(--prj-orange, #b85d1a)', label: 'Recommandé' },
   info: { icon: Info, color: 'var(--odoo-text-muted)', label: 'À vérifier' },
-  ok: { icon: CheckCircle2, color: '#1e7e34', label: 'Fait' },
+  ok: { icon: CheckCircle2, color: 'var(--prj-green, #1e7e34)', label: 'Fait' },
 };
 const ORDER: Record<SetupCheck['status'], number> = { todo: 0, warn: 1, info: 2, ok: 3 };
 const OPERATIONS: Record<string, string> = { INSERT: 'Création', UPDATE: 'Modification', DELETE: 'Suppression' };
@@ -34,8 +34,8 @@ function ProgressRing({ value }: { value: number }) {
   const r = 34, c = 2 * Math.PI * r;
   return (
     <svg width="84" height="84" viewBox="0 0 84 84" role="img" aria-label={`Paramétrage terminé à ${value} %`}>
-      <circle cx="42" cy="42" r={r} fill="none" stroke="var(--odoo-border)" strokeWidth="8" />
-      <circle cx="42" cy="42" r={r} fill="none" stroke="var(--odoo-purple)" strokeWidth="8" strokeLinecap="round"
+      <circle cx="42" cy="42" r={r} fill="none" stroke="var(--kl-fill, var(--odoo-border))" strokeWidth="8" />
+      <circle cx="42" cy="42" r={r} fill="none" stroke="var(--theme-accent, var(--odoo-purple))" strokeWidth="8" strokeLinecap="round"
         strokeDasharray={c} strokeDashoffset={c * (1 - value / 100)} transform="rotate(-90 42 42)"
         style={{ transition: 'stroke-dashoffset 0.4s' }} />
       <text x="42" y="47" textAnchor="middle" fontSize="17" fontWeight="700" fill="var(--odoo-text)">{value} %</text>
@@ -116,7 +116,7 @@ export default function SetupHome({ pages, onOpen, onOpenUsers }: {
 
       <div className="odoo-setup-layout">
         <div style={{ display: 'grid', gap: '0.75rem', minWidth: 0 }}>
-          <div className="odoo-view-switcher" role="tablist" aria-label="Filtrer les points">
+          <div className="prj-views" role="tablist" aria-label="Filtrer les points" style={{ justifySelf: 'start' }}>
             {([['open', 'À traiter'], ['done', 'Faits'], ['all', 'Tous']] as const).map(([k, l]) => (
               <button key={k} type="button" role="tab" aria-selected={filter === k} className={filter === k ? 'active' : ''}
                 onClick={() => setFilter(k)}>{l}</button>

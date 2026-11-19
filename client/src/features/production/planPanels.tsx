@@ -21,16 +21,16 @@ import { visiblePanels, type PanelTab, type PlanPanelCtx } from './planPanelRule
  * règle + un rendu.
  */
 const RENDER: Record<string, (c: PlanPanelCtx) => ReactNode> = {
-  'bon-sortie': c => <div style={{ margin: '1rem' }}><BonSortiePanel planId={c.id} isChef={c.isChef} isMagasinier={!!c.isMagasinier} variant="inline" /></div>,
+  'bon-sortie': c => <div><BonSortiePanel planId={c.id} isChef={c.isChef} isMagasinier={!!c.isMagasinier} variant="inline" /></div>,
   'stock-warnings': c => (
-    <div style={{ margin: '1rem' }}>
+    <div>
       <StatusBanner tone="warning" icon={AlertTriangle} title={`Alertes (${c.warnings!.length})`}>
         <ul className="status-banner-list">{[...new Set(c.warnings)].map((w, i) => <li key={i}>{w}</li>)}</ul>
       </StatusBanner>
     </div>
   ),
   'no-needs': c => (
-    <div style={{ margin: '1rem' }}>
+    <div>
       <StatusBanner tone="warning" icon={AlertTriangle} title="Aucun besoin en ingrédients calculé — préparation bloquée">
         Les produits de ce plan n'ont pas de {c.recipeLc ?? 'recette'} (ou leur composition est vide) : aucun bon de sortie
         ne peut être généré et l'étape Production reste fermée.
@@ -44,7 +44,7 @@ const RENDER: Record<string, (c: PlanPanelCtx) => ReactNode> = {
   subcontract: c => <SubcontractPanel planId={c.id} planStatus={c.plan.status as string} canEdit={c.isChef} />,
   'linked-order': c => <PlanLinkedOrder plan={c.plan} />,
   consumption: c => <ConsumptionPanel planId={c.id} mode={(c.plan.order_type_consumption_mode as string) ?? null} canEdit={c.isChef} />,
-  'custom-fields': c => <div style={{ margin: '1rem' }}><CustomFieldsCard entity="production_order" id={c.id} /></div>,
+  'custom-fields': c => <div><CustomFieldsCard entity="production_order" id={c.id} /></div>,
   history: c => <HistoryPanel table="production_plans" id={c.id} />,
   quality: c => <QualityPanel filter={{ planId: c.id }} links={{ planId: c.id }} title={`Contrôle ${(c.plan.of_number as string) || 'ordre'}`} />,
   'retro-planning': c => <RetroPlanningPanel planId={c.id} planStatus={c.plan.status} isChef={c.isChef} workshop={c.plan.target_role as string | null} storeId={c.plan.store_id as string | null} />,

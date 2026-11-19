@@ -20,10 +20,10 @@ const MODE_LABELS: Record<ImportMode, { label: string; hint: string }> = {
   update: { label: 'Mettre à jour seulement', hint: 'les lignes sans fiche correspondante sont ignorées' },
 };
 const ACTION_TAG = {
-  create: { cls: 'odoo-tag odoo-tag-green', label: 'Création' },
-  update: { cls: 'odoo-tag odoo-tag-blue', label: 'Mise à jour' },
-  error: { cls: 'odoo-tag odoo-tag-red', label: 'Erreur' },
-  skip: { cls: 'odoo-tag odoo-tag-grey', label: 'Ignorée' },
+  create: { tone: 'done', label: 'Création' },
+  update: { tone: 'progress', label: 'Mise à jour' },
+  error: { tone: 'blocked', label: 'Erreur' },
+  skip: { tone: 'cancelled', label: 'Ignorée' },
 } as const;
 const select: React.CSSProperties = { fontSize: '0.875rem', padding: '6px 8px', border: '1px solid var(--odoo-border)', borderRadius: 4, background: 'var(--odoo-bg)', color: 'var(--odoo-text)' };
 
@@ -77,12 +77,12 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
   const rows = preview ? (filter === 'all' ? preview.rows : preview.rows.filter(r => r.action === 'error')) : [];
   const usedTargets = new Set(Object.values(mapping ?? {}).filter(Boolean));
   const missingRequired = preview ? preview.fields.filter(f => f.required && !f.custom && !usedTargets.has(f.key) && mode !== 'update') : [];
-  const card: React.CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'grid', gap: 12, background: 'var(--odoo-bg)' };
+  const card: React.CSSProperties = { padding: '16px 18px', display: 'grid', gap: 12 };
 
   return (
     <>
-      <section style={card}>
-        <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Upload size={15} /> Importer des données</div>
+      <section className="prj-panel" style={card}>
+        <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}><Upload size={15} /> Importer des données</div>
         <PageNote help="Partez du modèle ou de votre propre fichier : vous associez ses colonnes aux champs de la fiche, chaque ligne est contrôlée, puis tout est importé d'un coup, ou rien s'il reste une erreur. Chaque import s'annule depuis le journal.">
           Excel ou CSV, contrôlé ligne par ligne, annulable.
         </PageNote>
@@ -145,10 +145,10 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
 
             {!mappingDirty && (<>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <span className={ACTION_TAG.create.cls}>{preview.summary.create} création(s)</span>
-                <span className={ACTION_TAG.update.cls}>{preview.summary.update} mise(s) à jour</span>
-                <span className={ACTION_TAG.error.cls}>{preview.summary.error} erreur(s)</span>
-                {preview.summary.skip > 0 && <span className={ACTION_TAG.skip.cls}>{preview.summary.skip} ignorée(s)</span>}
+                <StatusTag tone={ACTION_TAG.create.tone} label={`${preview.summary.create} création(s)`} />
+                <StatusTag tone={ACTION_TAG.update.tone} label={`${preview.summary.update} mise(s) à jour`} />
+                <StatusTag tone={ACTION_TAG.error.tone} label={`${preview.summary.error} erreur(s)`} />
+                {preview.summary.skip > 0 && <StatusTag tone={ACTION_TAG.skip.tone} label={`${preview.summary.skip} ignorée(s)`} />}
                 <div style={{ flex: 1 }} />
                 <select aria-label="Lignes affichées" value={filter} onChange={e => setFilter(e.target.value as typeof filter)} style={select}>
                   <option value="issues">Lignes en erreur</option><option value="all">Toutes les lignes</option>
@@ -166,7 +166,7 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
                     <tbody>{rows.map(r => (
                       <tr key={r.line}>
                         <td style={{ fontVariantNumeric: 'tabular-nums' }}>{r.line}</td>
-                        <td><span className={ACTION_TAG[r.action].cls}>{ACTION_TAG[r.action].label}</span></td>
+                        <td><StatusTag tone={ACTION_TAG[r.action].tone} label={ACTION_TAG[r.action].label} /></td>
                         <td style={{ fontSize: '0.8125rem' }}>{Object.values(r.values).filter(v => v !== null && v !== '').slice(0, 4).map(String).join(' · ')}</td>
                         <td style={{ fontSize: '0.8125rem', color: r.action === 'error' ? 'var(--odoo-danger, #b3261e)' : 'var(--odoo-text-muted)' }}>
                           {r.errors.length ? r.errors.map(e => `${e.column} : ${e.message}`).join(' ; ') : r.reason ?? ''}
@@ -188,8 +188,8 @@ export default function ImportSection({ status, onTemplate }: { status: DataStat
         )}
       </section>
 
-      <section style={card}>
-        <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><History size={15} /> Journal des imports</div>
+      <section className="prj-panel" style={card}>
+        <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}><History size={15} /> Journal des imports</div>
         {imports.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 }}>Aucun import enregistré.</p> : (
           <div style={{ overflowX: 'auto' }}>
             <table className="odoo-table">

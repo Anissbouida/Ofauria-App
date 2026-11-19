@@ -52,7 +52,7 @@ export default function EmployeePayrollItems({ employeeId }: { employeeId: strin
   const fr = (d: unknown) => { const s = isoDate(d); return s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : ''; };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <section className="prj-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 18px' }}>
       <SectionTitle icon={ListPlus} actions={!draft && (
         <button type="button" className="odoo-btn-secondary" style={smallBtn}
           onClick={() => setDraft({ rubriqueId: '', amount: '', startDate: today, endDate: '' })}>
@@ -78,7 +78,7 @@ export default function EmployeePayrollItems({ employeeId }: { employeeId: strin
                         <button className="odoo-pager-btn" title="Arrêter à aujourd'hui" disabled={stop.isPending}
                           onClick={async () => { if (!(await confirm('Arrêter cet élément fixe à aujourd\'hui ?', { title: 'Arrêter l\'élément fixe', confirmLabel: 'Arrêter' }))) return; stop.mutate(i.id); }}>■</button>
                       )}
-                      <button className="odoo-pager-btn" title="Supprimer" style={{ color: '#dc3545' }} disabled={remove.isPending}
+                      <button className="odoo-pager-btn" title="Supprimer" style={{ color: 'var(--prj-red)' }} disabled={remove.isPending}
                         onClick={async () => { if (!(await confirm('Supprimer cet élément fixe ? Les bulletins déjà calculés ne changent pas tant qu\'ils ne sont pas régénérés.', { title: 'Supprimer l\'élément fixe', confirmLabel: 'Supprimer', danger: true }))) return; remove.mutate(i.id); }}>
                         <Trash2 size={12} />
                       </button>
@@ -113,7 +113,7 @@ export default function EmployeePayrollItems({ employeeId }: { employeeId: strin
           </tbody>
         </table>
       )}
-    </div>
+    </section>
   );
 }
 

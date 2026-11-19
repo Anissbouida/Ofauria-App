@@ -5,11 +5,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
 import {
-  Plus, Pencil, UserCog, Users, Banknote, Search, ArrowUpDown, ArrowUp, ArrowDown, FileText, Trash2, RotateCcw, AlertOctagon,
+  Plus, Pencil, UserCog, Users, Banknote, ArrowUpDown, ArrowUp, ArrowDown, FileText, Trash2, RotateCcw, AlertOctagon,
 } from 'lucide-react';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusTag } from '../../../components/ui/StatusTag';
-import { EmptyState } from '../ui';
+import { LoadingPanel } from '../ui';
+import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../../sales/ListTemplate';
 import { notify } from '../../../components/ui/InlineNotification';
 import { useAuth } from '../../../context/AuthContext';
 import HrAlertsPanel from '../contracts/HrAlertsPanel';
@@ -180,10 +181,10 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
     else { setSortKey(key); setSortDir('asc'); }
   };
   const SortIcon = ({ col }: { col: string }) => {
-    if (sortKey !== col) return <ArrowUpDown size={13} className="text-gray-300 ml-1 inline" />;
+    if (sortKey !== col) return <ArrowUpDown size={13} className="ml-1 inline" style={{ opacity: 0.35 }} />;
     return sortDir === 'asc'
-      ? <ArrowUp size={13} className="text-teal-600 ml-1 inline" />
-      : <ArrowDown size={13} className="text-teal-600 ml-1 inline" />;
+      ? <ArrowUp size={13} className="ml-1 inline" style={{ color: 'var(--theme-accent)' }} />
+      : <ArrowDown size={13} className="ml-1 inline" style={{ color: 'var(--theme-accent)' }} />;
   };
 
   const inactiveCount = employees.length - activeCount;
@@ -231,91 +232,73 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
     <>
       <HrAlertsPanel onOpenEmployee={id => openEmployee(id)} />
 
-      {/* Stat tiles - style Odoo */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label"><Users size={11} style={{ display: 'inline', marginRight: 4 }} />Effectif actif</div>
-          <div className="odoo-stat-card-value" style={{ color: activeCount > 0 ? '#28a745' : undefined }}>{activeCount}</div>
-          <div className="odoo-stat-card-sub" title="Repartition mensuel / quinzaine / hebdomadaire">
+      {/* Tuiles d'indicateurs (gabarit Liste Ventes) */}
+      <div className="prj-kpis">
+        <div className="prj-kpi">
+          <div className="prj-kpi-head"><span>Effectif actif</span><Users size={14} /></div>
+          <div className="prj-kpi-value" style={{ color: activeCount > 0 ? 'var(--prj-green)' : undefined }}>{activeCount}</div>
+          <div className="prj-kpi-sub" title="Repartition mensuel / quinzaine / hebdomadaire">
             {activeMonthly.length - activeBiweeklyCount} mensuel{activeBiweeklyCount > 0 && <> · {activeBiweeklyCount} quinzaine</>} · {activeWeekly.length} hebdo
-            {employees.length - activeCount > 0 && (
-              <> · <span style={{ color: '#adb5bd' }}>{employees.length - activeCount} inactif(s)</span></>
-            )}
+            {employees.length - activeCount > 0 && <> · {employees.length - activeCount} inactif(s)</>}
           </div>
         </div>
-        <div className="odoo-stat-card" title="Somme des salaires mensuels des employés actifs mensuels + équivalent mensuel des hebdos (salaire hebdo × 52/12 semaines)">
-          <div className="odoo-stat-card-label"><Banknote size={11} style={{ display: 'inline', marginRight: 4 }} />Masse salariale</div>
-          <div className="odoo-stat-card-value" style={{ color: '#155724' }}>
-            {formatMoney(massMonthlyEquiv)} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--odoo-text-muted)' }}>{currencySymbol()}/mois</span>
+        <div className="prj-kpi" title="Somme des salaires mensuels des employés actifs mensuels + équivalent mensuel des hebdos (salaire hebdo × 52/12 semaines)">
+          <div className="prj-kpi-head"><span>Masse salariale</span><Banknote size={14} /></div>
+          <div className="prj-kpi-value">
+            {formatMoney(massMonthlyEquiv)} <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--theme-text-muted)' }}>{currencySymbol()}/mois</span>
           </div>
-          <div className="odoo-stat-card-sub">
+          <div className="prj-kpi-sub">
             {formatMoney(massMonthly)} mensuel
             {massWeekly > 0 && <> + {formatMoney(massWeekly * WEEKS_PER_MONTH)} hebdo eq.</>}
           </div>
         </div>
-        <div className="odoo-stat-card" title="Coût annuel projeté = masse salariale mensuelle × 12 (indicatif, hors primes/cotisations)">
-          <div className="odoo-stat-card-label"><Banknote size={11} style={{ display: 'inline', marginRight: 4 }} />Coût annuel projeté</div>
-          <div className="odoo-stat-card-value" style={{ color: '#155724' }}>
-            {formatMoney(massMonthlyEquiv * 12)} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--odoo-text-muted)' }}>{currencySymbol()}</span>
+        <div className="prj-kpi" title="Coût annuel projeté = masse salariale mensuelle × 12 (indicatif, hors primes/cotisations)">
+          <div className="prj-kpi-head"><span>Coût annuel projeté</span><Banknote size={14} /></div>
+          <div className="prj-kpi-value">
+            {formatMoney(massMonthlyEquiv * 12)} <span style={{ fontSize: '0.8125rem', fontWeight: 500, color: 'var(--theme-text-muted)' }}>{currencySymbol()}</span>
           </div>
-          <div className="odoo-stat-card-sub">
+          <div className="prj-kpi-sub">
             {withSalaryCount > 0 ? <>salaire moyen {money(avgSalary, { decimals: 0 })}/mois</> : 'aucun salaire renseigné'}
           </div>
         </div>
-        <div className="odoo-stat-card" title="Répartition par type de contrat des employés actifs">
-          <div className="odoo-stat-card-label"><FileText size={11} style={{ display: 'inline', marginRight: 4 }} />Contrats</div>
-          <div className="odoo-stat-card-value" style={{ fontSize: '1.125rem' }}>
+        <div className="prj-kpi" title="Répartition par type de contrat des employés actifs">
+          <div className="prj-kpi-head"><span>Contrats</span><FileText size={14} /></div>
+          <div className="prj-kpi-value" style={{ fontSize: '1.125rem' }}>
             {Object.entries(contractCounts).length === 0
-              ? <span style={{ color: 'var(--odoo-text-light)' }}>—</span>
+              ? <span style={{ color: 'var(--theme-text-muted)' }}>—</span>
               : Object.entries(contractCounts).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([code, count], idx) => (
                 <span key={code} style={{ marginRight: 10 }}>
                   <span style={{ fontWeight: 700 }}>{count}</span>
-                  <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', marginLeft: 3, textTransform: 'uppercase' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--theme-text-muted)', marginLeft: 3 }}>
                     {getContractLabel(code).slice(0, 4)}
                   </span>
                   {idx < 2 && Object.entries(contractCounts).length > idx + 1 && (
-                    <span style={{ color: 'var(--odoo-text-light)' }}> ·</span>
+                    <span style={{ color: 'var(--theme-text-muted)' }}> ·</span>
                   )}
                 </span>
               ))}
           </div>
-          <div className="odoo-stat-card-sub">sur {activeCount} actif(s)</div>
+          <div className="prj-kpi-sub">sur {activeCount} actif(s)</div>
         </div>
       </div>
 
-      {/* Search panel + action */}
-      <div className="odoo-search-panel">
-        <div className="odoo-view-switcher" role="tablist" aria-label="Statut des employés">
-          {([['active', 'Actifs', activeCount], ['inactive', 'Inactifs', inactiveCount], ['all', 'Tous', employees.length]] as const).map(([key, label, count]) => (
-            <button key={key} type="button" role="tab" aria-selected={statusFilter === key} onClick={() => setStatusFilter(key)}
-              style={{
-                padding: '0.3rem 0.75rem', fontSize: '0.8125rem',
-                background: statusFilter === key ? 'var(--odoo-purple-light)' : 'transparent',
-                color: statusFilter === key ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
-                fontWeight: statusFilter === key ? 600 : 400,
-              }}>
-              {label} <span style={{ opacity: 0.6, marginLeft: 4 }}>({count})</span>
-            </button>
-          ))}
-        </div>
-        <Search size={14} style={{ color: 'var(--odoo-text-muted)' }} />
-        <input type="text" placeholder="Rechercher employé, CIN..." value={searchEmp} onChange={(e) => setSearchEmp(e.target.value)}
-          className="odoo-search-input" style={{ flex: 1 }} />
+      {/* Barre d'outils : recherche, action principale ; puis pastilles de statut */}
+      <ListToolbar search={searchEmp} onSearch={setSearchEmp} placeholder="Rechercher employé, CIN...">
+        <span className="hr-spacer" />
         <button onClick={() => navigate('/employees/new')} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Plus size={13} /> Nouvel employé
         </button>
-      </div>
+      </ListToolbar>
+      <FilterChips label="Statut des employés" value={statusFilter} onChange={k => setStatusFilter(k as typeof statusFilter)}
+        chips={[{ key: 'active', label: 'Actifs', count: activeCount }, { key: 'inactive', label: 'Inactifs', count: inactiveCount }, { key: 'all', label: 'Tous', count: employees.length }]} />
 
       {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
-          <div className="animate-spin w-5 h-5 border-2 border-current border-t-transparent rounded-full" style={{ margin: '0 auto 8px' }} />
-          <p style={{ fontSize: '0.8125rem' }}>Chargement des employés...</p>
-        </div>
+        <LoadingPanel label="Chargement des employés..." />
       ) : sortedEmp.length === 0 ? (
-        <EmptyState icon={Users}>Aucun employé trouvé</EmptyState>
+        <ListEmpty icon={Users} title="Aucun employé trouvé" />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <ListPanel footer={<div className="hr-panel-foot">{sortedEmp.length} employé{sortedEmp.length > 1 ? 's' : ''}</div>}>
           <table className="odoo-table">
             <thead>
               <tr>
@@ -391,7 +374,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                             deactivateMutation.mutate(e.id as string);
                           }}
                           disabled={deactivateMutation.isPending}
-                          className="odoo-pager-btn" title="Désactiver" style={{ color: '#dc3545' }}>
+                          className="odoo-pager-btn" title="Désactiver" style={{ color: 'var(--prj-red)' }}>
                           <Trash2 size={13} />
                         </button>
                       )}
@@ -399,7 +382,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                         <button
                           onClick={() => handleHardDelete(e)}
                           disabled={hardDeleteMutation.isPending}
-                          className="odoo-pager-btn" title="Supprimer définitivement" style={{ color: '#7a0c12' }}>
+                          className="odoo-pager-btn" title="Supprimer définitivement" style={{ color: 'var(--prj-red)' }}>
                           <AlertOctagon size={13} />
                         </button>
                       )}
@@ -412,7 +395,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
                             reactivateMutation.mutate(e.id as string);
                           }}
                           disabled={reactivateMutation.isPending}
-                          className="odoo-pager-btn" title="Réactiver" style={{ color: '#28a745' }}>
+                          className="odoo-pager-btn" title="Réactiver" style={{ color: 'var(--prj-green)' }}>
                           <RotateCcw size={13} />
                         </button>
                       )}
@@ -422,7 +405,7 @@ export default function EmployeesTab({ queryClient }: { queryClient: ReturnType<
               ))}
             </tbody>
           </table>
-        </div>
+        </ListPanel>
       )}
 
     </>

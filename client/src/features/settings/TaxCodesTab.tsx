@@ -80,7 +80,7 @@ export default function TaxCodesTab() {
       {isLoading ? <Loader2 className="animate-spin" size={16} /> : !codes.length ? (
         <StatusBanner tone="warning" icon={Percent} title="Aucun code TVA">La migration 331 n'est pas appliquée sur cette base.</StatusBanner>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel prj-scroll">
           <table className="odoo-table">
             <thead><tr><th>Code</th><th>Libellé</th><th style={{ textAlign: 'right' }}>Taux</th><th>Nature</th><th>Déductible</th><th>Du</th><th>Au</th><th>Statut</th><th>Référence</th><th></th></tr></thead>
             <tbody>
@@ -108,7 +108,7 @@ export default function TaxCodesTab() {
       )}
 
       {draft && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'grid', gap: 12, background: 'var(--odoo-bg-alt)' }}>
+        <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
           <div style={{ fontWeight: 600 }}>{replacing ? `Nouveau taux pour ${replacing.code}` : 'Nouveau code TVA'}</div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <label style={{ ...lab, width: 120 }}>Code

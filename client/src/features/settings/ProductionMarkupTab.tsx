@@ -114,12 +114,12 @@ export default function ProductionMarkupTab() {
 
       <SettingsSection title="Majoration par catégorie" columns={1}>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="odoo-table">
             <thead>
-              <tr className="text-left text-xs uppercase text-gray-500 border-b border-gray-200">
-                <th className="py-2 pr-4 font-medium">Catégorie</th>
-                <th className="py-2 pr-4 font-medium">Majoration personnalisée (%)</th>
-                <th className="py-2 pr-4 font-medium">Taux effectif</th>
+              <tr>
+                <th>Catégorie</th>
+                <th>Majoration personnalisée (%)</th>
+                <th>Taux effectif</th>
               </tr>
             </thead>
             <tbody>
@@ -129,7 +129,7 @@ export default function ProductionMarkupTab() {
                   ? custom
                   : (Number.isFinite(globalNum) ? globalNum : 0);
                 return (
-                  <tr key={row.categoryId} className="border-b border-gray-100">
+                  <tr key={row.categoryId}>
                     <td className="py-2 pr-4 text-gray-800">{row.categoryName}</td>
                     <td className="py-2 pr-4">
                       <input
@@ -165,7 +165,7 @@ export default function ProductionMarkupTab() {
         <button
           onClick={handleSave}
           disabled={!hasChanges || saveMutation.isPending}
-          className="btn-primary flex items-center gap-2 disabled:opacity-40"
+          className="odoo-btn-primary flex items-center gap-2 disabled:opacity-40"
         >
           <Save size={16} />
           {saveMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
@@ -177,18 +177,18 @@ export default function ProductionMarkupTab() {
           <p className="text-sm text-gray-400">Aucune modification enregistrée.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="odoo-table">
               <thead>
-                <tr className="text-left text-xs uppercase text-gray-500 border-b border-gray-200">
-                  <th className="py-2 pr-4 font-medium">Date</th>
-                  <th className="py-2 pr-4 font-medium">Portée</th>
-                  <th className="py-2 pr-4 font-medium">Ancien → Nouveau</th>
-                  <th className="py-2 pr-4 font-medium">Par</th>
+                <tr>
+                  <th>Date</th>
+                  <th>Portée</th>
+                  <th>Ancien → Nouveau</th>
+                  <th>Par</th>
                 </tr>
               </thead>
               <tbody>
                 {config.history.map((h, i) => (
-                  <tr key={i} className="border-b border-gray-100">
+                  <tr key={i}>
                     <td className="py-2 pr-4 text-gray-500">
                       {new Date(h.changed_at).toLocaleString('fr-FR', {
                         day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',

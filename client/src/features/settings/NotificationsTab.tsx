@@ -1,3 +1,4 @@
+import { FilterChips } from '../sales/ListTemplate';
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, Loader2, Mail, HelpCircle, Plus, X } from 'lucide-react';
@@ -75,13 +76,8 @@ export default function NotificationsTab() {
       </div>
 
       <div className="odoo-notif-bar">
-        <div className="odoo-view-switcher" role="tablist" aria-label="Filtrer les événements">
-          {([['all', 'Tous'], ['on', 'Actifs'], ['off', 'Coupés'], ['email', 'Par e-mail']] as const).map(([k, l]) => (
-            <button key={k} type="button" role="tab" aria-selected={filter === k} className={filter === k ? 'active' : ''} onClick={() => setFilter(k)}>
-              {l} <span className="odoo-notif-count">{counts[k]}</span>
-            </button>
-          ))}
-        </div>
+        <FilterChips label="Filtrer les événements" value={filter} onChange={k => setFilter(k as typeof filter)}
+          chips={([['all', 'Tous'], ['on', 'Actifs'], ['off', 'Coupés'], ['email', 'Par e-mail']] as const).map(([k, l]) => ({ key: k, label: l, count: counts[k] }))} />
         <span className="odoo-notif-note">
           Chaque événement prévient le rôle prévu ; ajoutez-en d'autres ou coupez-le.
           <span className="odoo-params-q" tabIndex={0}

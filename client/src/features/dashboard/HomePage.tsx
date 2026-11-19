@@ -1,5 +1,5 @@
 import { money, currencySymbol } from '../../utils/money';
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { settingsApi } from '../../api/settings.api';
@@ -12,19 +12,18 @@ import PaymentAlertsWidget from '../../components/PaymentAlertsWidget';
 import {
   Warehouse, Factory, ClipboardList,
   DollarSign, ShoppingCart, AlertTriangle, TrendingUp, Boxes, Clock,
-  Plus, Zap,
+  Home, ChevronRight,
 } from 'lucide-react';
 import { MODULE_LABELS, type AppModule } from '@ofauria/shared';
 import { navLabel, visibleNavGroups } from '../../config/navigation';
 import { useApprovalsCount } from '../../api/approvals.api';
-import { CountBadge } from '../../components/layout/AppLayout';
+import './home.css';
 
 export default function HomePage() {
   const { user } = useAuth();
   const { hasModule, sectorLabel } = usePermissions();
   const navigate = useNavigate();
   const location = useLocation();
-  const [fabOpen, setFabOpen] = useState(false);
 
   // Accueil par secteur (phase 9.2) : un secteur qui définit sa page d'accueil ouvre
   // dessus (ex. « Générique » ouvre sur les ventes) ; la boulangerie reste sur ce tableau.
@@ -80,171 +79,110 @@ export default function HomePage() {
 
   // Quick actions
   const quickActions = [
-    { label: 'Nouvelle vente', icon: ShoppingCart, href: '/pos', color: 'bg-green-500 hover:bg-green-600', module: 'pos' as AppModule },
-    { label: 'Production', icon: Factory, href: '/production', color: 'bg-indigo-500 hover:bg-indigo-600', module: 'production' as AppModule },
-    { label: MODULE_LABELS.stock, icon: Warehouse, href: '/stock', color: 'bg-amber-500 hover:bg-amber-600', module: 'stock' as AppModule },
+    { label: 'Nouvelle vente', icon: ShoppingCart, href: '/pos', module: 'pos' as AppModule },
+    { label: 'Production', icon: Factory, href: '/production', module: 'production' as AppModule },
+    { label: MODULE_LABELS.stock, icon: Warehouse, href: '/stock', module: 'stock' as AppModule },
   ].filter(a => hasModule(a.module));
 
+  // Accueil au design Ventes (2026-11-18) : barre (fil d'Ariane + actions rapides), grand titre,
+  // briques de tableau de bord (kl-widget) puis les modules en listes groupées (kl-group / kl-cell).
+  // La route « / » garde la marge p-6 d'AppLayout : la page l'annule pour poser sa barre à ras.
   return (
-    <div className="max-w-5xl mx-auto pb-24">
-      {/* ══════ HEADER ══════ */}
-      <div className="text-center mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Bienvenue, {user?.firstName}</h1>
-        <p className="text-gray-500 mt-1">Que souhaitez-vous faire aujourd'hui ?</p>
+    <div className="odoo-scope home-page">
+      <div className="odoo-control-bar">
+        <div className="odoo-breadcrumb">
+          <Home size={14} style={{ color: 'var(--theme-accent)' }} />
+          <span className="odoo-breadcrumb-current">Accueil</span>
+        </div>
+        <div style={{ flex: 1 }} />
+        {quickActions.map((action, i) => (
+          <button key={action.href} type="button" className={i === 0 ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
+            onClick={() => navigate(action.href)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <action.icon size={14} /> {action.label}
+          </button>
+        ))}
       </div>
 
-      {/* ══════ DASHBOARD KPIs ══════ */}
-      {canSeeDashboard && dashboard && (
-        <div className="mb-8 space-y-4">
-          {/* KPI Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {/* CA du jour */}
-            <div onClick={() => navigate('/sales')}
-              className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-all cursor-pointer group">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
-                  <DollarSign size={18} className="text-white" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">CA du jour</p>
-                  <p className="text-lg font-bold text-gray-900 truncate">{d.todayRevenue.toFixed(0)} <span className="text-xs font-normal text-gray-400">{currencySymbol()}</span></p>
-                </div>
-              </div>
-              <div className="mt-2 flex items-center gap-2 text-[10px] text-gray-400">
-                <TrendingUp size={10} /> {d.todaySales} vente{d.todaySales > 1 ? 's' : ''} — moy. {money(d.avgSaleValue, { decimals: 0 })}
-              </div>
-            </div>
+      <div className="sal-page" style={{ display: 'flex', flexDirection: 'column' }}>
+        <header className="kl-largetitle">
+          <h1>Bienvenue, {user?.firstName}</h1>
+          <p>Que souhaitez-vous faire aujourd'hui ?</p>
+        </header>
 
-            {/* Production du jour */}
-            {hasModule('production') && (
-              <div onClick={() => navigate('/production')}
-                className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-all cursor-pointer group">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
-                    <Factory size={18} className="text-white" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Production</p>
-                    <p className="text-lg font-bold text-gray-900">{prodCompleted}/{prodTotal}</p>
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${prodPct === 100 ? 'bg-emerald-500' : prodPct > 0 ? 'bg-indigo-500' : 'bg-gray-200'}`}
-                        style={{ width: `${prodPct}%` }} />
-                    </div>
-                    <span className="text-[10px] font-bold text-gray-400">{prodPct}%</span>
-                  </div>
-                  {prodInProgress > 0 && <p className="text-[10px] text-indigo-500 mt-0.5">{prodInProgress} en cours</p>}
-                </div>
-              </div>
-            )}
-
-            {/* Alertes stock */}
-            {hasModule('stock') && (
-              <div onClick={() => navigate('/stock')}
-                className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-all cursor-pointer group">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform ${
-                    alertCount > 0 ? 'bg-gradient-to-br from-red-500 to-rose-600' : 'bg-gradient-to-br from-emerald-500 to-teal-600'
-                  }`}>
-                    {alertCount > 0 ? <AlertTriangle size={18} className="text-white" /> : <Boxes size={18} className="text-white" />}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Stock</p>
-                    <p className={`text-lg font-bold ${alertCount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                      {alertCount > 0 ? `${alertCount} alerte${alertCount > 1 ? 's' : ''}` : 'OK'}
-                    </p>
-                  </div>
-                </div>
-                {alertCount > 0 && (
-                  <p className="text-[10px] text-red-500 mt-2 flex items-center gap-1">
-                    <AlertTriangle size={8} /> {alertCount} ingredient{alertCount > 1 ? 's' : ''} sous le seuil
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Commandes en attente */}
-            <div onClick={() => navigate('/orders')}
-              className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-all cursor-pointer group">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform ${
-                  d.pendingOrders > 0 ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gradient-to-br from-gray-400 to-gray-500'
-                }`}>
-                  <ClipboardList size={18} className="text-white" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Commandes</p>
-                  <p className={`text-lg font-bold ${d.pendingOrders > 0 ? 'text-amber-600' : 'text-gray-400'}`}>
-                    {d.pendingOrders > 0 ? d.pendingOrders : '0'}
-                  </p>
-                </div>
-              </div>
-              {d.pendingOrders > 0 && (
-                <p className="text-[10px] text-amber-500 mt-2 flex items-center gap-1">
-                  <Clock size={8} /> En attente de preparation
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Echeances fournisseurs <= 7 jours (visible meme a 0 pour confirmer le suivi) */}
-          {canSeePaymentAlerts && <PaymentAlertsWidget compact />}
-        </div>
-      )}
-
-      {/* ══════ MODULE NAVIGATION ══════ */}
-      {userGroups.map((group) => (
-        <div key={group.title} className="mb-8 last:mb-0">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
-            {group.title}
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-5">
-            {group.items.map((mod) => (
-              <button key={mod.href}
-                onClick={() => navigate(mod.href)}
-                className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-lg hover:border-gray-300 transition-all group text-left">
-                <div className={`relative w-12 h-12 ${mod.color} rounded-xl flex items-center justify-center text-white shadow-sm mb-4 group-hover:scale-110 transition-transform`}>
-                  <mod.icon size={24} />
-                  {mod.counter === 'approvals' && approvalsCount > 0 && <CountBadge count={approvalsCount} />}
-                </div>
-                <h3 className="font-semibold text-gray-800 text-sm">{navLabel(mod, sectorLabel)}</h3>
-                <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                  {mod.counter === 'approvals' && approvalsCount > 0
-                    ? <span className="text-red-600 font-medium">{approvalsCount} pièce{approvalsCount > 1 ? 's' : ''} attend{approvalsCount > 1 ? 'ent' : ''} votre décision</span>
-                    : mod.description}
-                </p>
+        {/* ══════ DASHBOARD KPIs ══════ */}
+        {canSeeDashboard && dashboard && (
+          <>
+            <section className="kl-stats" aria-label="Chiffres du jour">
+              {/* CA du jour */}
+              <button type="button" className="kl-widget home-widget" onClick={() => navigate('/sales')}>
+                <div className="kl-wlabel"><span className="kl-sq"><DollarSign size={13} /></span>CA du jour</div>
+                <div className="kl-big">{d.todayRevenue.toFixed(0)}<small>{currencySymbol()}</small></div>
+                <div className="kl-sub"><TrendingUp size={12} style={{ verticalAlign: -1 }} /> {d.todaySales} vente{d.todaySales > 1 ? 's' : ''} · moy. {money(d.avgSaleValue, { decimals: 0 })}</div>
               </button>
-            ))}
-          </div>
-        </div>
-      ))}
 
-      {/* ══════ FLOATING ACTION BUTTONS ══════ */}
-      {quickActions.length > 0 && (
-        <div className="fixed bottom-6 right-6 z-40 flex flex-col-reverse items-end gap-2">
-          {/* Quick action items */}
-          {fabOpen && quickActions.map((action, i) => (
-            <button key={action.href}
-              onClick={() => { navigate(action.href); setFabOpen(false); }}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-white text-sm font-medium shadow-lg ${action.color} transition-all animate-in fade-in slide-in-from-bottom-2`}
-              style={{ animationDelay: `${i * 50}ms` }}>
-              <action.icon size={16} />
-              {action.label}
-            </button>
+              {/* Production du jour */}
+              {hasModule('production') && (
+                <button type="button" className="kl-widget home-widget" onClick={() => navigate('/production')}>
+                  <div className="kl-wlabel"><span className="kl-sq"><Factory size={13} /></span>Production</div>
+                  <div className="kl-big">{prodCompleted}<small>/ {prodTotal}</small></div>
+                  <div className="home-bar" aria-hidden="true"><span style={{ width: `${prodPct}%`, background: prodPct === 100 ? 'var(--prj-green)' : undefined }} /></div>
+                  <div className="kl-sub">{prodPct} % terminé{prodInProgress > 0 ? ` · ${prodInProgress} en cours` : ''}</div>
+                </button>
+              )}
+
+              {/* Alertes stock */}
+              {hasModule('stock') && (
+                <button type="button" className="kl-widget home-widget" onClick={() => navigate('/stock')}>
+                  <div className="kl-wlabel"><span className="kl-sq">{alertCount > 0 ? <AlertTriangle size={13} /> : <Boxes size={13} />}</span>Stock</div>
+                  <div className="kl-big" style={{ color: alertCount > 0 ? 'var(--prj-red)' : 'var(--prj-green)' }}>
+                    {alertCount > 0 ? <>{alertCount}<small>alerte{alertCount > 1 ? 's' : ''}</small></> : 'OK'}
+                  </div>
+                  <div className="kl-sub">{alertCount > 0 ? `${alertCount} ingrédient${alertCount > 1 ? 's' : ''} sous le seuil` : 'Aucun article sous le seuil'}</div>
+                </button>
+              )}
+
+              {/* Commandes en attente */}
+              <button type="button" className="kl-widget home-widget" onClick={() => navigate('/orders')}>
+                <div className="kl-wlabel"><span className="kl-sq"><ClipboardList size={13} /></span>Commandes</div>
+                <div className="kl-big" style={{ color: d.pendingOrders > 0 ? 'var(--prj-orange)' : undefined }}>{d.pendingOrders > 0 ? d.pendingOrders : '0'}</div>
+                <div className="kl-sub">{d.pendingOrders > 0 ? <><Clock size={12} style={{ verticalAlign: -1 }} /> En attente de préparation</> : 'Rien en attente'}</div>
+              </button>
+            </section>
+
+            {/* Echeances fournisseurs <= 7 jours (visible meme a 0 pour confirmer le suivi) */}
+            {canSeePaymentAlerts && <PaymentAlertsWidget compact />}
+          </>
+        )}
+
+        {/* ══════ MODULE NAVIGATION ══════ */}
+        <div className="home-groups">
+          {userGroups.map((group) => (
+            <section key={group.title} aria-label={group.title}>
+              <div className="kl-sec"><h2>{group.title}</h2></div>
+              <div className="kl-group">
+                {group.items.map((mod) => {
+                  const pending = mod.counter === 'approvals' && approvalsCount > 0;
+                  return (
+                    <button key={mod.href} type="button" className="kl-cell ico" onClick={() => navigate(mod.href)}>
+                      <span className={`kl-ic home-ic ${mod.color}`}><mod.icon size={17} /></span>
+                      <span className="tx">
+                        <span className="t1">{navLabel(mod, sectorLabel)}</span>
+                        <span className="t2" style={pending ? { color: 'var(--prj-red)', fontWeight: 500 } : undefined}>
+                          {pending
+                            ? `${approvalsCount} pièce${approvalsCount > 1 ? 's' : ''} attend${approvalsCount > 1 ? 'ent' : ''} votre décision`
+                            : mod.description}
+                        </span>
+                      </span>
+                      {pending && <span className="tr red">{approvalsCount > 99 ? '99+' : approvalsCount}</span>}
+                      <ChevronRight size={15} className="chev" />
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
           ))}
-          {/* Main FAB toggle */}
-          <button onClick={() => setFabOpen(!fabOpen)}
-            className={`w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all ${
-              fabOpen ? 'bg-gray-700 hover:bg-gray-800 rotate-45' : 'bg-violet-600 hover:bg-violet-700'
-            }`}>
-            {fabOpen ? <Plus size={24} className="text-white" /> : <Zap size={22} className="text-white" />}
-          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
-

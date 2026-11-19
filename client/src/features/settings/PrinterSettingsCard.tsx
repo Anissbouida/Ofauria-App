@@ -112,26 +112,24 @@ export default function PrinterSettingsCard() {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-            <Printer size={20} className="text-gray-600" />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-800">Imprimantes physiques</h2>
-            <p className="text-sm text-gray-500">
-              Connexion directe ESC/POS (TCP ou USB). Necessaire pour ouvrir le tiroir-caisse.
-            </p>
-          </div>
+    <section className="odoo-setting-section" id="set-imprimantes-physiques" data-toc="Imprimantes physiques">
+      <div className="odoo-setting-section-head" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <h3 className="odoo-setting-section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Printer size={17} style={{ color: 'var(--theme-accent)' }} /> Imprimantes physiques
+          </h3>
+          <p className="odoo-setting-section-help">
+            Connexion directe ESC/POS (TCP ou USB). Necessaire pour ouvrir le tiroir-caisse.
+          </p>
         </div>
         {!showForm && (
           <button onClick={() => { setShowForm(true); setEditing(null); setForm(EMPTY_FORM); }}
-            className="btn-primary flex items-center gap-2 text-sm">
+            className="odoo-btn-primary flex items-center gap-2 text-sm">
             <Plus size={14} /> Ajouter
           </button>
         )}
       </div>
+      <div style={{ padding: '14px 18px 18px' }}>
 
       {/* Liste */}
       {isLoading ? (
@@ -143,12 +141,12 @@ export default function PrinterSettingsCard() {
       ) : (
         <div className="space-y-2 mb-4">
           {printers.map(p => (
-            <div key={p.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50">
+            <div key={p.id} className="flex items-center gap-3 p-3 rounded-xl" style={{ border: '1px solid var(--theme-bg-separator, var(--odoo-border))' }}>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{p.name}</span>
                   {p.is_default && (
-                    <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">Par defaut</span>
+                    <span className="odoo-tag odoo-tag-purple">Par defaut</span>
                   )}
                   <span className="text-xs text-gray-500">{TYPES.find(t => t.value === p.type)?.label}</span>
                 </div>
@@ -157,19 +155,19 @@ export default function PrinterSettingsCard() {
                 </div>
               </div>
               <button onClick={() => testMutation.mutate(p.id)} disabled={testMutation.isPending}
-                className="p-2 hover:bg-blue-50 rounded-lg" title="Test impression">
-                <CheckCircle2 size={16} className="text-blue-500" />
+                className="odoo-btn-secondary" style={{ padding: '6px 9px' }} title="Test impression" aria-label="Test impression">
+                <CheckCircle2 size={15} />
               </button>
               <button onClick={() => drawerMutation.mutate(p.id)} disabled={drawerMutation.isPending}
-                className="p-2 hover:bg-amber-50 rounded-lg" title="Ouvrir tiroir">
-                <Zap size={16} className="text-amber-500" />
+                className="odoo-btn-secondary" style={{ padding: '6px 9px' }} title="Ouvrir tiroir" aria-label="Ouvrir tiroir">
+                <Zap size={15} />
               </button>
-              <button onClick={() => startEdit(p)} className="p-2 hover:bg-gray-100 rounded-lg" title="Modifier">
-                <Pencil size={16} className="text-gray-500" />
+              <button onClick={() => startEdit(p)} className="odoo-btn-secondary" style={{ padding: '6px 9px' }} title="Modifier" aria-label="Modifier">
+                <Pencil size={15} />
               </button>
               <button onClick={() => { if (confirm(`Supprimer "${p.name}" ?`)) deleteMutation.mutate(p.id); }}
-                className="p-2 hover:bg-red-50 rounded-lg" title="Supprimer">
-                <Trash2 size={16} className="text-red-400" />
+                className="odoo-btn-danger" style={{ padding: '6px 9px' }} title="Supprimer" aria-label="Supprimer">
+                <Trash2 size={15} />
               </button>
             </div>
           ))}
@@ -178,29 +176,29 @@ export default function PrinterSettingsCard() {
 
       {/* Détection sur le poste serveur (mig 376) */}
       <div className="border-t pt-3 mt-2">
-        <button onClick={() => setDetect(true)} className="btn-secondary flex items-center gap-2 text-sm">
+        <button onClick={() => setDetect(true)} className="odoo-btn-secondary flex items-center gap-2 text-sm">
           <Search size={14} /> Détecter les imprimantes du poste
         </button>
         {detect && (
           <div className="mt-3 text-sm">
             {systemQuery.isLoading && <p className="text-gray-400">Recherche…</p>}
             {systemQuery.data && !systemQuery.data.available && (
-              <p className="text-amber-700">Aucun système d'impression sur la machine du serveur (CUPS absent). Une thermique USB doit être branchée sur la machine qui fait tourner Kalum, ou être en réseau (TCP).</p>
+              <p style={{ color: 'var(--prj-orange)' }}>Aucun système d'impression sur la machine du serveur (CUPS absent). Une thermique USB doit être branchée sur la machine qui fait tourner Kalum, ou être en réseau (TCP).</p>
             )}
             {systemQuery.data?.available && systemQuery.data.printers.length === 0 && <p className="text-gray-500">Aucune imprimante détectée.</p>}
             {systemQuery.data?.printers.map(p => (
               <div key={p.uri} className="flex items-center gap-3 py-2 border-b border-gray-100 last:border-0">
-                {p.kind === 'usb' ? <Usb size={16} className="text-primary-600" /> : <Printer size={16} className="text-gray-500" />}
+                {p.kind === 'usb' ? <Usb size={16} style={{ color: 'var(--theme-accent)' }} /> : <Printer size={16} className="text-gray-500" />}
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">{p.name}</p>
                   <p className="text-xs text-gray-400 font-mono truncate">{p.uri}{p.status ? ` · ${p.status}` : ''}</p>
                 </div>
                 {p.kind === 'queue' ? (
-                  <button onClick={() => useQueue(p)} className="btn-secondary text-xs">Utiliser cette file</button>
+                  <button onClick={() => useQueue(p)} className="odoo-btn-secondary text-xs">Utiliser cette file</button>
                 ) : (
                   <div className="flex items-center gap-2">
                     <input value={attachName} onChange={e => setAttachName(e.target.value.replace(/[^A-Za-z0-9_-]/g, ''))} className="input text-xs w-28" placeholder="Nom de file" />
-                    <button onClick={() => attachMutation.mutate(p)} disabled={attachMutation.isPending || !attachName} className="btn-primary text-xs">Ajouter au système</button>
+                    <button onClick={() => attachMutation.mutate(p)} disabled={attachMutation.isPending || !attachName} className="odoo-btn-primary text-xs">Ajouter au système</button>
                   </div>
                 )}
               </div>
@@ -295,15 +293,16 @@ export default function PrinterSettingsCard() {
           </div>
 
           <div className="flex justify-end gap-2 mt-4">
-            <button onClick={resetForm} className="btn-secondary">Annuler</button>
+            <button onClick={resetForm} className="odoo-btn-secondary">Annuler</button>
             <button onClick={() => saveMutation.mutate()}
               disabled={!form.name || !form.connectionString || saveMutation.isPending}
-              className="btn-primary">
+              className="odoo-btn-primary">
               {saveMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
             </button>
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </section>
   );
 }

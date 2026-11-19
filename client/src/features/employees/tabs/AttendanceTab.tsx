@@ -5,13 +5,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { employeesApi, attendanceApi, leavesApi } from '../../../api/employees.api';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Users, CalendarOff, ChevronLeft, ChevronRight, Search, Moon, Loader2 } from 'lucide-react';
+import { Users, CalendarOff, ChevronLeft, ChevronRight, Search, Moon } from 'lucide-react';
 import { notify } from '../../../components/ui/InlineNotification';
 import { ROLE_LABELS, SHIFT_SHORT_LABELS } from '@ofauria/shared';
 import type { ShiftCode } from '@ofauria/shared';
 import { ATTENDANCE_STATUS, MONTH_NAMES, LEAVE_TYPE_LABELS, shiftTag } from '../shared';
 import OvertimeQuotaPanel from './OvertimeQuotaPanel';
-import { PromptDialog, EmptyState, inputCls } from '../ui';
+import { PromptDialog, EmptyState, LoadingPanel, Segmented, inputCls } from '../ui';
+import { ListToolbar } from '../../sales/ListTemplate';
 
 /* ═══════════════════════ ATTENDANCE TAB ═══════════════════════ */
 export default function AttendanceTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
@@ -77,44 +78,26 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
 
   return (
     <>
-      {/* View toggle */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <div className="odoo-view-switcher" role="tablist" aria-label="Vue du pointage">
-          {([['daily', 'Pointage journalier'], ['monthly', 'Récapitulatif mensuel']] as const).map(([key, label]) => (
-            <button key={key} type="button" role="tab" aria-selected={attView === key} onClick={() => setAttView(key)}
-              style={{
-                padding: '0.3rem 0.75rem', fontSize: '0.8125rem',
-                background: attView === key ? 'var(--odoo-purple-light)' : 'transparent',
-                color: attView === key ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
-                fontWeight: attView === key ? 600 : 400,
-              }}>
-              {label}
-            </button>
-          ))}
-        </div>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0, marginLeft: 8 }} />
-        <input type="text" value={searchAtt} onChange={e => setSearchAtt(e.target.value)} aria-label="Rechercher un employé"
-          placeholder="Rechercher un employé..." className="odoo-search-input"
-          style={{ flex: '1 1 180px', minWidth: 0 }} />
-
+      {/* Barre d'outils : recherche, jour ou mois, puis bascule de vue (contrôle segmenté) */}
+      <ListToolbar search={searchAtt} onSearch={setSearchAtt} placeholder="Rechercher un employé...">
         {attView === 'daily' ? (
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <div className="hr-tools">
             <button onClick={() => {
               const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1);
               setSelectedDate(format(d, 'yyyy-MM-dd'));
-            }} className="odoo-pager-btn"><ChevronLeft size={14} /></button>
+            }} className="odoo-pager-btn" aria-label="Jour précédent"><ChevronLeft size={14} /></button>
             <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
-              className="odoo-filter-dropdown" />
+              className="odoo-filter-dropdown" aria-label="Jour" />
             <button onClick={() => {
               const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1);
               setSelectedDate(format(d, 'yyyy-MM-dd'));
-            }} className="odoo-pager-btn"><ChevronRight size={14} /></button>
-            <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', fontWeight: 500, marginLeft: 4 }}>
+            }} className="odoo-pager-btn" aria-label="Jour suivant"><ChevronRight size={14} /></button>
+            <span className="hr-tools-label" style={{ fontWeight: 500, marginLeft: 4 }}>
               {format(new Date(selectedDate + 'T12:00:00'), 'EEEE dd MMMM yyyy', { locale: fr })}
             </span>
           </div>
         ) : (
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <div className="hr-tools">
             <SearchSelect
               options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
               value={String(summaryMonth)}
@@ -125,19 +108,19 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
             <input type="number" value={summaryYear} onChange={e => setSummaryYear(parseInt(e.target.value))} className="odoo-filter-dropdown" style={{ width: 96 }} aria-label="Année" />
           </div>
         )}
-      </div>
+        <span className="hr-spacer" />
+        <Segmented label="Vue du pointage" value={attView} onChange={setAttView}
+          options={[{ key: 'daily', label: 'Pointage journalier' }, { key: 'monthly', label: 'Récapitulatif mensuel' }]} />
+      </ListToolbar>
 
       {attView === 'monthly' && <OvertimeQuotaPanel year={summaryYear} />}
 
       {/* Monthly summary view */}
       {attView === 'monthly' && (
         monthlyLoading ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-            <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
-            <p style={{ fontSize: '0.8125rem' }}>Chargement...</p>
-          </div>
+          <LoadingPanel />
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <div className="prj-panel hr-plain"><div className="prj-scroll">
             <table className="odoo-table">
               <thead>
                 <tr>
@@ -168,15 +151,15 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                           <span style={{ color: 'var(--odoo-text-muted)', fontSize: '0.6875rem' }}>· {ROLE_LABELS[emp.role as keyof typeof ROLE_LABELS] || emp.role}</span>
                         </span>
                       </td>
-                      <td style={{ textAlign: 'center' }}><span style={{ color: '#28a745', fontWeight: 500 }}>{s.present}</span></td>
-                      <td style={{ textAlign: 'center' }}><span style={{ color: s.late > 0 ? '#b08504' : 'var(--odoo-text-light)' }}>{s.late}</span></td>
-                      <td style={{ textAlign: 'center' }}><span style={{ color: s.halfDay > 0 ? '#1f6391' : 'var(--odoo-text-light)' }}>{s.halfDay}</span></td>
-                      <td style={{ textAlign: 'center' }}><span style={{ color: s.absentMarked > 0 ? '#dc3545' : 'var(--odoo-text-light)' }}>{s.absentMarked}</span></td>
+                      <td style={{ textAlign: 'center' }}><span style={{ color: 'var(--prj-green)', fontWeight: 500 }}>{s.present}</span></td>
+                      <td style={{ textAlign: 'center' }}><span style={{ color: s.late > 0 ? 'var(--prj-orange)' : 'var(--odoo-text-light)' }}>{s.late}</span></td>
+                      <td style={{ textAlign: 'center' }}><span style={{ color: s.halfDay > 0 ? 'var(--theme-accent)' : 'var(--odoo-text-light)' }}>{s.halfDay}</span></td>
+                      <td style={{ textAlign: 'center' }}><span style={{ color: s.absentMarked > 0 ? 'var(--prj-red)' : 'var(--odoo-text-light)' }}>{s.absentMarked}</span></td>
                       <td style={{ textAlign: 'center', color: s.overtimeMin > 0 ? 'var(--odoo-text)' : 'var(--odoo-text-light)' }}>
                         {s.overtimeMin > 0 ? `${Math.floor(s.overtimeMin / 60)}h${String(s.overtimeMin % 60).padStart(2, '0')}` : '0'}
                       </td>
                       <td style={{ textAlign: 'center', fontWeight: 600 }}>
-                        <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: '#155724' }}>{s.workedDays}</span>
+                        <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--prj-green)' }}>{s.workedDays}</span>
                         <span style={{ color: 'var(--odoo-text-light)', fontSize: '0.6875rem' }}> / {baseDays}</span>
                       </td>
                       <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>
@@ -187,7 +170,7 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                       </td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>
                         {baseSalary > 0 ? (
-                          <span style={{ fontWeight: 700, color: calculatedSalary < baseSalary ? '#dc3545' : '#155724' }}>
+                          <span style={{ fontWeight: 700, color: calculatedSalary < baseSalary ? 'var(--prj-red)' : 'var(--prj-green)' }}>
                             {money(calculatedSalary)}
                           </span>
                         ) : '—'}
@@ -196,7 +179,7 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                   );
                 })}
               </tbody>
-              <tfoot style={{ background: 'var(--odoo-bg-alt)', borderTop: '2px solid var(--odoo-border)' }}>
+              <tfoot>
                 <tr>
                   <td style={{ fontWeight: 700, padding: '0.5rem 0.75rem' }} colSpan={6}>Total</td>
                   <td style={{ textAlign: 'center', fontWeight: 700, padding: '0.5rem 0.75rem' }}>
@@ -212,27 +195,25 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </div></div>
         )
       )}
 
       {/* Daily view */}
       {attView === 'daily' && (
         isLoading ? (
-          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-            <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
-            <p style={{ fontSize: '0.8125rem' }}>Chargement...</p>
-          </div>
+          <LoadingPanel />
         ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--odoo-text-muted)', display: 'inline-flex', gap: 12, flexWrap: 'wrap' }}>
-            <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#93c5fd', marginRight: 4, verticalAlign: 'middle' }} /> présence prévue (planning)</span>
-            <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#28a745', marginRight: 4, verticalAlign: 'middle' }} /> pointage confirmé</span>
-            <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#8b5cf6', marginRight: 4, verticalAlign: 'middle' }} /> en congé</span>
+        <section className="prj-panel hr-plain">
+        <div className="prj-panel-head hr-panel-head">
+          <span>Pointage du jour</span>
+          <div className="hr-legend">
+            <span><i style={{ background: '#93c5fd' }} />présence prévue (planning)</span>
+            <span><i style={{ background: 'var(--prj-green)' }} />pointage confirmé</span>
+            <span><i style={{ background: '#8b5cf6' }} />en congé</span>
           </div>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-scroll">
           <table className="odoo-table">
             <thead>
               <tr>
@@ -388,7 +369,7 @@ export default function AttendanceTab({ queryClient }: { queryClient: ReturnType
             <EmptyState icon={Search}>Aucun employé trouvé pour « {searchAtt} »</EmptyState>
           )}
         </div>
-        </div>
+        </section>
         )
       )}
 

@@ -4,11 +4,11 @@ import { LotMovementModal } from './LotMovementModal';
 import { TransferToPesage } from './TransferToPesage';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { ChipsRow, SortSelect, PagerFoot } from './StockUi';
 import {
-  StagePipeline, Pager, PAGE_SIZE, type StageDef,
-} from '../../components/purchasing/ProcessBoard';
-import {
-  Loader2, PackageOpen, AlertTriangle, Beaker, ChevronDown, ChevronRight, CalendarClock, Search, Trash2,
+  Loader2, PackageOpen, AlertTriangle, Beaker, ChevronDown, ChevronRight, CalendarClock, Trash2,
   CheckCircle2, BatteryLow, X, Archive,
 } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
@@ -126,27 +126,14 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
   };
 
   if (isLoading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
-        <Loader2 size={28} className="animate-spin" style={{ color: 'var(--theme-accent)' }} />
-      </div>
-    );
+    return <ListEmpty icon={Loader2} title="Chargement du poste de pesée…" />;
   }
 
   const unit = (r: Row) => (r.ingredient_unit as string) || '';
   const totalToHandle = counts.expired + counts.empty + counts.urgent + counts.low;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '0 1rem' }}>
-      <StagePipeline
-        title="Poste de pesée · contenants ouverts"
-        summary={`${rows.length} ingrédient${rows.length > 1 ? 's' : ''} ouvert${rows.length > 1 ? 's' : ''} · ${totalToHandle} à traiter`}
-        stages={SITUATIONS}
-        stats={Object.fromEntries(SITUATIONS.map(s => [s.key, { count: counts[s.key], sub: '' }]))}
-        isActive={k => situation === k}
-        onPick={k => setSituation(situation === k ? '' : (k as Situation))}
-      />
-
+    <div className="stk-stack">
       {counts.expired > 0 && situation !== 'expired' && (
         <StatusBanner tone="danger" icon={AlertTriangle}
           title={`${counts.expired} ingrédient${counts.expired > 1 ? 's' : ''} avec un lot périmé au poste de pesée`}
@@ -155,26 +142,21 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
         </StatusBanner>
       )}
 
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Rechercher un ingrédient"
-          placeholder="Rechercher un ingrédient..." className="odoo-search-input" style={{ flex: '1 1 220px', minWidth: 0 }} />
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
-          Trier
-          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)} className="odoo-filter-dropdown">
-            <option value="urgency">par urgence</option>
-            <option value="dlc">par DLC</option>
-            <option value="autonomy">par autonomie</option>
-            <option value="qty">par quantité</option>
-            <option value="name">par nom</option>
-          </select>
-        </label>
+      <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher un ingrédient…">
+        <SortSelect<SortKey> value={sortBy} onChange={setSortBy} options={[
+          { key: 'urgency', label: 'par urgence' },
+          { key: 'dlc', label: 'par DLC' },
+          { key: 'autonomy', label: 'par autonomie' },
+          { key: 'qty', label: 'par quantité' },
+          { key: 'name', label: 'par nom' },
+        ]} />
         {(search || situation) && (
           <button type="button" className="odoo-btn-secondary" onClick={() => { setSearch(''); setSituation(''); }}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <X size={12} /> Effacer les filtres
           </button>
         )}
+        <span className="stk-grow" />
         {canOpen && (
           <button type="button" className="odoo-btn-primary" onClick={() => setOpenFor({ ingredientId: null })}
             title="Préparer le poste de pesée à l'avance (le matin, avant une grosse production)"
@@ -182,20 +164,27 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
             <PackageOpen size={13} /> Ouvrir un contenant
           </button>
         )}
-      </div>
+      </ListToolbar>
+
+      <ChipsRow summary={`${rows.length} ingrédient${rows.length > 1 ? 's' : ''} ouvert${rows.length > 1 ? 's' : ''} · ${totalToHandle} à traiter`}>
+        <FilterChips label="Poste de pesée · contenants ouverts" value={situation} onChange={k => setSituation(k as Situation | '')} chips={[
+          { key: '', label: 'Tous', count: rows.length },
+          ...SITUATIONS.map(x => ({
+            key: x.key, label: x.label, count: counts[x.key], icon: x.icon,
+            tone: x.key === 'expired' && counts.expired > 0 ? 'late' as const : undefined,
+          })),
+        ]} />
+      </ChipsRow>
 
       {rows.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Beaker size={32} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Aucun contenant ouvert au poste de pesée.</p>
-          <p style={{ fontSize: '0.75rem', marginTop: 4 }}>Ils s'ouvrent au moment de la pesée d'un bon, ou à l'avance avec « Ouvrir un contenant ».</p>
-        </div>
+        <ListEmpty icon={Beaker} title="Aucun contenant ouvert au poste de pesée."
+          text="Ils s'ouvrent au moment de la pesée d'un bon, ou à l'avance avec « Ouvrir un contenant »." />
       ) : filtered.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Aucun ingrédient ne correspond aux filtres.</p>
-        </div>
+        <ListEmpty icon={Beaker} title="Aucun ingrédient ne correspond aux filtres."
+          action={<button type="button" className="odoo-btn-secondary" onClick={() => { setSearch(''); setSituation(''); }}>Effacer les filtres</button>} />
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <ListPanel footer={<PagerFoot page={page} total={filtered.length} onPage={setPage}
+            note={`${filtered.length} ingrédient${filtered.length > 1 ? 's' : ''} au poste de pesée · cliquez une ligne pour voir ses contenants`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
@@ -260,7 +249,7 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
 
                     {isOpen && lots.length > 0 && (
                       <tr className="odoo-subrow">
-                        <td colSpan={8} style={{ padding: '0 0 0 1.5rem', background: 'var(--odoo-bg-alt)' }}>
+                        <td colSpan={8} style={{ padding: '0 0 0 1.5rem', background: 'color-mix(in srgb, var(--theme-bg-page) 70%, var(--theme-bg-card))' }}>
                           <table className="odoo-table" style={{ margin: 0, boxShadow: 'none', background: 'transparent' }}>
                             <thead>
                               <tr>
@@ -282,7 +271,7 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
                                 const lotName = (lot.supplier_lot_number || lot.lot_number || '—') as string;
                                 return (
                                   <tr key={(lot.lot_id as string) ?? i}>
-                                    <td style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{lotName}</td>
+                                    <td><span className="sal-num">{lotName}</span></td>
                                     <td style={{ color: 'var(--theme-text-muted)' }}>{(lot.supplier_name as string) || '—'}</td>
                                     <td style={{ color: 'var(--theme-text-muted)' }}>{lot.first_opened_at ? format(new Date(lot.first_opened_at as string), 'dd/MM/yyyy') : '—'}</td>
                                     <td style={{ fontSize: '0.8125rem' }}>
@@ -313,9 +302,7 @@ export function PesageStockList({ rows, isLoading, inventory = [], canOpen = fal
               })}
             </tbody>
           </table>
-          <Pager page={page} total={filtered.length} onPage={setPage}
-            note={`${filtered.length} ingrédient${filtered.length > 1 ? 's' : ''} au poste de pesée · cliquez une ligne pour voir ses contenants`} />
-        </div>
+        </ListPanel>
       )}
 
       {/* Ouvrir un contenant de la réserve (à l'avance, ou pour recharger un ingrédient bientôt vide) */}

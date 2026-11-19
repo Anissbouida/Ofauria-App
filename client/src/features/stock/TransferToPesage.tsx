@@ -187,7 +187,7 @@ export function TransferToPesage({ onDone, initialIngredientId }: { onDone?: () 
               </button>
             </div>
             {containerSize > 0 && !wholeLot && parsedContainers !== null && !qtyOk && (
-              <div style={{ fontSize: '0.75rem', color: '#a94442', marginTop: 2 }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--prj-red)', marginTop: 2 }}>
                 Le lot n'a que {fmt(eco)} en économat ({fullContainersInLot} {container!.label.toLowerCase()}{fullContainersInLot > 1 ? 's' : ''} entier{fullContainersInLot > 1 ? 's' : ''}{lotRemainder > 1e-9 ? ` + ${fmt(lotRemainder)}` : ''}).
               </div>
             )}

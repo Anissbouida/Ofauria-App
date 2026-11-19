@@ -43,7 +43,7 @@ export default function RecipeOutputsPanel({ recipeId }: { recipeId: string }) {
   const keyOk = form.outputType === 'co_produit' ? (n(form.equivPieces) ?? 0) > 0 : (n(form.fixedUnitValue) ?? -1) >= 0;
 
   return (
-    <div className="odoo-section" style={{ marginBottom: '1rem' }}>
+    <div className="odoo-section">
       <div className="odoo-section-header flex items-center gap-2"><Split size={13} /> Sorties déclarées
         <button type="button" className="odoo-btn-secondary" style={{ marginLeft: 'auto' }} onClick={() => setAdding(a => !a)}>{adding ? 'Fermer' : 'Ajouter'}</button>
       </div>

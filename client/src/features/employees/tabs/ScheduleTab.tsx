@@ -394,15 +394,15 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ justifyContent: 'space-between', flexWrap: 'wrap', rowGap: 8 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <div className="prj-toolbar" style={{ justifyContent: 'space-between' }}>
+        <div className="hr-tools">
           <button onClick={() => setWeekOffset(w => w - 1)} className="odoo-pager-btn" aria-label="Semaine précédente"><ChevronLeft size={14} /></button>
-          <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
+          <span style={{ fontSize: '0.9375rem', fontWeight: 600 }}>
             {format(weekStart, 'dd MMM', { locale: fr })} — {format(weekEnd, 'dd MMM yyyy', { locale: fr })}
           </span>
           <button onClick={() => setWeekOffset(w => w + 1)} className="odoo-pager-btn" aria-label="Semaine suivante"><ChevronRight size={14} /></button>
           {weekOffset !== 0 && (
-            <button onClick={() => setWeekOffset(0)} style={{ fontSize: '0.6875rem', color: 'var(--odoo-purple)', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', marginLeft: 4 }}>
+            <button type="button" className="sal-link" onClick={() => setWeekOffset(0)}>
               Cette semaine
             </button>
           )}
@@ -462,11 +462,12 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
         </StatusBanner>
       )}
 
-      <div style={{ overflowX: 'auto' }}>
+      <section className="prj-panel hr-plain">
+      <div className="prj-scroll">
         <table className="odoo-table">
           <thead>
             <tr>
-              <th style={{ minWidth: 200, position: 'sticky', left: 0, background: 'var(--odoo-bg-alt)', zIndex: 5 }}>Employé</th>
+              <th style={{ minWidth: 200, position: 'sticky', left: 0, background: 'var(--kl-card, var(--theme-bg-card))', zIndex: 5 }}>Employé</th>
               {days.map(d => (
                 <th key={d.toISOString()} style={{ textAlign: 'center', minWidth: 130 }}>
                   <div>{format(d, 'EEE', { locale: fr })}</div>
@@ -485,20 +486,18 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
               <Fragment key={group.role}>
                 <tr
                   onClick={() => toggleGroup(group.role)}
-                  style={{ cursor: 'pointer', background: 'var(--odoo-bg-alt)' }}
+                  style={{ cursor: 'pointer' }}
                 >
                   <td
                     colSpan={8}
                     style={{
                       position: 'sticky',
                       left: 0,
-                      background: 'var(--odoo-bg-alt)',
+                      background: 'color-mix(in srgb, var(--kl-bg, var(--theme-bg-page)) 70%, var(--kl-card, var(--theme-bg-card)))',
                       fontWeight: 600,
                       fontSize: '0.8125rem',
-                      color: 'var(--odoo-text)',
+                      color: 'var(--kl-ink, var(--odoo-text))',
                       padding: '0.5rem 0.75rem',
-                      borderTop: '1px solid var(--odoo-border)',
-                      borderBottom: '1px solid var(--odoo-border)',
                     }}
                   >
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -513,7 +512,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
                 </tr>
                 {!collapsed && group.rows.map(row => (
               <tr key={row.employeeId}>
-                <td style={{ position: 'sticky', left: 0, background: 'var(--odoo-bg)', zIndex: 4 }}>
+                <td style={{ position: 'sticky', left: 0, background: 'var(--kl-card, var(--theme-bg-card))', zIndex: 4 }}>
                   <div style={{ fontWeight: 500 }}>
                     <Users size={11} style={{ color: 'var(--theme-accent)', display: 'inline', marginRight: 4 }} />
                     {row.firstName} {row.lastName}
@@ -569,7 +568,7 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
                           className={`w-full text-xs rounded border px-2 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 ${current ? 'font-medium' : ''}`}
                           style={{
                             borderStyle: 'dashed', borderColor: '#ffb381',
-                            ...(current ? shiftStyle(current) : { background: 'var(--odoo-bg-hover)', color: '#b85d1a' }),
+                            ...(current ? shiftStyle(current) : { background: 'var(--odoo-bg-hover)', color: 'var(--prj-orange)' }),
                           }}
                           title={`⚠ ${leaveTooltip(leaveInfo)}`}
                         >
@@ -623,12 +622,13 @@ export default function ScheduleTab({ queryClient }: { queryClient: ReturnType<t
         </table>
       </div>
 
-      <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+      <div className="hr-panel-foot" style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#fff8e8', border: '1px solid #ffeeba', marginRight: 4, verticalAlign: 'middle' }} /> cellule modifiée (non sauvegardée)</span>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--theme-accent-light)', border: '1px solid var(--theme-accent)', marginRight: 4, verticalAlign: 'middle' }} /> congé approuvé — affectation impossible</span>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--odoo-bg-hover)', border: '1px dashed #ffb381', marginRight: 4, verticalAlign: 'middle' }} /> congé en attente — modification possible avec confirmation</span>
         <span style={{ color: 'var(--odoo-text-light)' }}>Sauvegarder pré-remplit aussi le pointage attendu.</span>
       </div>
+      </section>
     </>
   );
 }

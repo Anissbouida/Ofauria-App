@@ -1,7 +1,9 @@
 import { currencySymbol } from '../../utils/money';
+import { StatusTag } from '../../components/ui/StatusTag';
+import { LoadingPanel, Segmented } from '../employees/ui';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, ScanSearch, ShieldAlert, Check, Minus, History, Lock } from 'lucide-react';
+import { ScanSearch, ShieldAlert, Check, Minus, History, Lock } from 'lucide-react';
 import {
   MODULE_LABELS, CAPABILITY_LABELS, DATA_SCOPE_LABELS, BUSINESS_VERB_LABELS, APPROVAL_DOCUMENT_LABELS,
   type AppModule, type Capability, type DataScope, type BusinessVerb, type ApprovalDocumentType,
@@ -37,16 +39,12 @@ export function AccessReviewModal({ userId, name, onClose }: { userId: string; n
   return (
     <HrModal icon={ScanSearch} crumb="Revue des accès" title={name} width={860} onClose={onClose}
       footer={<button type="button" className="odoo-btn-secondary" onClick={onClose}>Fermer</button>}>
-      <div className="odoo-tabs" style={{ marginBottom: 12 }}>
-        <button type="button" className={`odoo-tab ${tab === 'rights' ? 'active' : ''}`} onClick={() => setTab('rights')}>
-          <ScanSearch size={13} style={{ marginRight: 4 }} /> Droits résolus
-        </button>
-        <button type="button" className={`odoo-tab ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>
-          <History size={13} style={{ marginRight: 4 }} /> Historique
-        </button>
+      <div>
+        <Segmented label="Vue de la revue" value={tab} onChange={setTab}
+          options={[{ key: 'rights', label: 'Droits résolus', icon: ScanSearch }, { key: 'history', label: 'Historique', icon: History }]} />
       </div>
 
-      {isLoading || !data ? <Loader2 className="animate-spin" size={18} /> : tab === 'rights' ? (
+      {isLoading || !data ? <LoadingPanel /> : tab === 'rights' ? (
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
             <span style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>Rôles :</span>
@@ -69,7 +67,7 @@ export function AccessReviewModal({ userId, name, onClose }: { userId: string; n
                   {data.sodViolations.map(v => v.label).join(' ; ')}
                 </StatusBanner>
               )}
-              <div style={{ overflowX: 'auto' }}>
+              <div className="prj-panel hr-plain"><div className="prj-scroll">
                 <table className="odoo-table">
                   <thead><tr>
                     <th>Module</th><th style={{ textAlign: 'center' }}>Voir</th><th style={{ textAlign: 'center' }}>Créer</th>
@@ -92,7 +90,7 @@ export function AccessReviewModal({ userId, name, onClose }: { userId: string; n
                     {!data.modules.length && <tr><td colSpan={8} style={{ color: 'var(--odoo-text-muted)' }}>Aucun accès.</td></tr>}
                   </tbody>
                 </table>
-              </div>
+              </div></div>
               {data.approvalLimits.some(l => l.configured) && (
                 <div>
                   <div style={{ fontSize: '0.8125rem', fontWeight: 600, marginBottom: 4 }}>Plafonds d'approbation</div>
@@ -109,7 +107,7 @@ export function AccessReviewModal({ userId, name, onClose }: { userId: string; n
           )}
         </div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel hr-plain"><div className="prj-scroll">
           <table className="odoo-table">
             <thead><tr><th>Date</th><th>Événement</th><th>Par</th><th>Détail</th></tr></thead>
             <tbody>
@@ -124,7 +122,7 @@ export function AccessReviewModal({ userId, name, onClose }: { userId: string; n
               {!history.length && <tr><td colSpan={4} style={{ color: 'var(--odoo-text-muted)' }}>Aucun historique.</td></tr>}
             </tbody>
           </table>
-        </div>
+        </div></div>
       )}
     </HrModal>
   );
@@ -150,13 +148,13 @@ export default function AccessReviewTab() {
   const conflicts = overview.filter(u => u.conflictCount > 0).length;
 
   return (
-    <div className="odoo-scope" style={{ display: 'grid', gap: 12 }}>
+    <div style={{ display: 'grid', gap: 16 }}>
       <StatusBanner tone={conflicts ? 'warning' : 'info'} icon={conflicts ? ShieldAlert : ScanSearch}
         title={conflicts ? `${conflicts} compte(s) en conflit de séparation des tâches` : 'Revue des accès de tous les comptes'}>
         Vérifiez qui a quoi, repérez les droits propres et les conflits. Cliquez « Analyser » pour voir les droits résolus et l'historique d'un compte.
       </StatusBanner>
-      {isLoading ? <Loader2 className="animate-spin" size={18} /> : (
-        <div style={{ overflowX: 'auto' }}>
+      {isLoading ? <LoadingPanel /> : (
+        <div className="prj-panel hr-plain"><div className="prj-scroll">
           <table className="odoo-table">
             <thead><tr><th>Utilisateur</th><th>Rôles</th><th>Droits propres</th><th>Conflits SoD</th><th style={{ width: 1 }}></th></tr></thead>
             <tbody>
@@ -168,8 +166,8 @@ export default function AccessReviewTab() {
                       {u.roles.map(c => <span key={c} className="odoo-tag odoo-tag-purple">{roleLabel(c)}</span>)}
                     </div>
                   </td>
-                  <td>{u.hasCustomPerms ? <span className="odoo-tag odoo-tag-orange">Oui</span> : <span className="odoo-tag odoo-tag-grey">Non</span>}</td>
-                  <td>{u.conflictCount > 0 ? <span className="odoo-tag odoo-tag-red">{u.conflictCount}</span> : <span className="odoo-tag odoo-tag-green">0</span>}</td>
+                  <td>{u.hasCustomPerms ? <StatusTag tone="todo" label="Oui" /> : <StatusTag tone="draft" label="Non" />}</td>
+                  <td>{u.conflictCount > 0 ? <StatusTag tone="blocked" label={String(u.conflictCount)} /> : <StatusTag tone="done" label="0" />}</td>
                   <td>
                     <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', whiteSpace: 'nowrap' }}
                       onClick={() => setReview({ id: u.userId, name: u.name })}>
@@ -180,7 +178,7 @@ export default function AccessReviewTab() {
               ))}
             </tbody>
           </table>
-        </div>
+        </div></div>
       )}
       {review && <AccessReviewModal userId={review.id} name={review.name} onClose={() => setReview(null)} />}
     </div>

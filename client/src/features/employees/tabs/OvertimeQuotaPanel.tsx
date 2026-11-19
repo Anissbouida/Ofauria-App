@@ -35,12 +35,12 @@ export default function OvertimeQuotaPanel({ year }: { year: number }) {
           {rows.map(r => (
             <tr key={r.employeeId}>
               <td>{r.name}</td>
-              <td style={{ textAlign: 'right', fontWeight: 600, color: r.overQuota ? '#dc3545' : undefined }}>{r.hours} h</td>
+              <td style={{ textAlign: 'right', fontWeight: 600, color: r.overQuota ? 'var(--prj-red)' : undefined }}>{r.hours} h</td>
               <td style={{ textAlign: 'right' }}>{r.nightHours} h</td>
               <td>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <div style={{ flex: 1, height: 6, background: 'var(--odoo-border)', borderRadius: 3, overflow: 'hidden' }}>
-                    <div style={{ width: `${Math.min(100, r.quotaUsedPct)}%`, height: '100%', background: r.overQuota ? '#dc3545' : r.quotaUsedPct > 80 ? '#b08504' : '#28a745' }} />
+                    <div style={{ width: `${Math.min(100, r.quotaUsedPct)}%`, height: '100%', background: r.overQuota ? 'var(--prj-red)' : r.quotaUsedPct > 80 ? 'var(--prj-orange)' : 'var(--prj-green)' }} />
                   </div>
                   <span style={{ width: 44, textAlign: 'right' }}>{r.quotaUsedPct} %</span>
                 </div>

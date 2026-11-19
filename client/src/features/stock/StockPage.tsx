@@ -14,8 +14,8 @@ import { HistoryList } from './HistoryList';
 import { LotMovementModal } from './LotMovementModal';
 import IngredientFormModal from './IngredientFormModal';
 import {
-  AlertTriangle, Package, Search, TrendingUp, TrendingDown,
-  Clock, X, Boxes, CalendarClock, ChevronRight, ChevronDown, ChevronLeft,
+  AlertTriangle, Package, TrendingUp, TrendingDown,
+  Clock, X, Boxes, CalendarClock,
   ArrowUp, ArrowDown, ArrowUpDown, Timer, Trash2, PackageOpen,
   Plus, List, LayoutGrid, ShoppingCart, Upload, Download, BarChart3,
   ClipboardList, ClipboardCheck, Archive, Beaker, Loader2, ListTree, Lock, ShieldAlert, MapPin, Snowflake, Gauge,
@@ -35,14 +35,16 @@ import { notify } from '../../components/ui/InlineNotification';
 import { useSettings } from '../../context/SettingsContext';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../context/PermissionsContext';
-import { ModuleShell, type ModuleView } from '../../components/layout/ModuleShell';
+import { ModuleShell, ModulePage, type ModuleView } from '../../components/layout/ModuleShell';
+import { ListToolbar, FilterChips, ListPanel, ListEmpty } from '../sales/ListTemplate';
+import { SortSelect, SubViews, PagerFoot, SectionTitle } from './StockUi';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { useStockCategories } from './useStockCategories';
 import { format } from 'date-fns';
 import { fmtQty, type InventoryItem } from './types';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag } from '../../components/ui/StatusTag';
-import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { PAGE_SIZE, ProcessBoardVariant, type StageDef } from '../../components/purchasing/ProcessBoard';
 import { money, currencySymbol } from '../../utils/money';
 
 type SortKey = 'name' | 'category' | 'supplier' | 'scelle' | 'entame' | 'quantity' | 'lots' | 'dlc' | 'days_stock' | 'price' | 'value';
@@ -388,14 +390,16 @@ export default function StockPage() {
     }
   };
 
+  const currentView = views.find(v => v.key === currentKey);
+  const toHandle = situationCounts.expired + situationCounts.rupture + situationCounts.low + situationCounts.expiring;
+  const pageSummary = econoTab === 'stock' && zone === 'scelle'
+    ? `${totalItems} ingrédient${totalItems > 1 ? 's' : ''} · ${toHandle} à traiter`
+    : undefined;
+
   return (
-    <ModuleShell title="Stock" views={views} current={views.find(v => v.key === currentKey)} onSelect={selectView} flush
+    <ModuleShell title="Stock" views={views} current={currentView} onSelect={selectView} flush
       actions={<>
-        {econoTab === 'stock' && zone === 'scelle' && canManageIngredients && (
-          <button onClick={() => setShowAddIngredient(true)} className="odoo-btn-primary">
-            <Plus size={14} /> Nouveau
-          </button>
-        )}
+        <div style={{ flex: 1 }} />
         {econoTab === 'stock' && zone === 'scelle' && canManageIngredients && (
           <>
             <button onClick={() => setShowImport(true)} className="odoo-btn-secondary" title="Importer des ingrédients depuis un fichier Excel">
@@ -420,40 +424,27 @@ export default function StockPage() {
             >
               <Download size={14} /> {exportLoading ? 'Export…' : 'Exporter'}
             </button>
+            <button onClick={() => setShowAddIngredient(true)} className="odoo-btn-primary">
+              <Plus size={14} /> Nouveau
+            </button>
           </>
         )}
-        <div style={{ flex: 1 }} />
-        {econoTab === 'stock' && zone === 'scelle' && (
-          <div className="odoo-view-switcher">
-            <button onClick={() => setViewMode('list')} className={viewMode === 'list' ? 'active' : ''} title="Vue liste">
-              <List size={14} />
-            </button>
-            <button onClick={() => setViewMode('kanban')} className={viewMode === 'kanban' ? 'active' : ''} title="Vue kanban (groupée par catégorie)">
-              <LayoutGrid size={14} />
-            </button>
-          </div>
-        )}
       </>}>
+      {/* Design Ventes (2026-11-18) : grand titre de l'écran, marges standard ; les circuits
+          (bons de sortie…) s'affichent en pastilles numérotées comme dans les Achats. */}
+      <ProcessBoardVariant.Provider value="chips">
+      <ModulePage title={currentView?.label} summary={pageSummary}>
 
       {isWarehouseUser && econoTab === 'bons' && !selectedBonId && (
-        <div className="odoo-tabs stock-subtabs">
-          <button type="button" onClick={() => changeBonsView('queue')} className={`odoo-tab ${bonsView === 'queue' ? 'active' : ''}`}>
-            <ClipboardList size={12} /><span>File active</span>
-          </button>
-          <button type="button" onClick={() => changeBonsView('transfers')} className={`odoo-tab ${bonsView === 'transfers' ? 'active' : ''}`}>
-            <PackageOpen size={12} /><span>Contenants à ouvrir</span>
-            {transferRequests.length > 0 && <span className="odoo-tag odoo-tag-orange" style={{ marginLeft: '0.25rem' }}>{transferRequests.length}</span>}
-          </button>
-          <button type="button" onClick={() => changeBonsView('history')} className={`odoo-tab ${bonsView === 'history' ? 'active' : ''}`}>
-            <Archive size={12} /><span>Historique</span>
-          </button>
-        </div>
+        <SubViews label="Vues des bons de sortie" value={bonsView} onChange={changeBonsView} views={[
+          { key: 'queue', label: 'File active', icon: ClipboardList },
+          { key: 'transfers', label: 'Contenants à ouvrir', icon: PackageOpen, count: transferRequests.length },
+          { key: 'history', label: 'Historique', icon: Archive },
+        ]} />
       )}
 
       {econoTab === 'consumables' ? (
-        <div style={{ padding: '1rem' }}>
-          <PackagingPage embedded />
-        </div>
+        <PackagingPage embedded />
       ) : econoTab === 'bons' ? (
         selectedBonId ? (
           <WarehouseBonWorkspace
@@ -463,29 +454,23 @@ export default function StockPage() {
             onOpen={openBon}
           />
         ) : bonsView === 'transfers' ? (
-          <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <>
             {/* Transfert libre (hors bon) : le magasinier met au pesage ce qu'il veut, quand il
                 veut. En dessous, les contenants que les bons de sortie en cours attendent. */}
             <TransferToPesage initialIngredientId={transferIngredientId} />
-            <div>
-              <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>
-                <PackageOpen size={12} /> Demandés par les bons de sortie en cours
-              </div>
+            <div className="stk-stack">
+              <SectionTitle icon={PackageOpen}>Demandés par les bons de sortie en cours</SectionTitle>
               <TransferRequestsList />
             </div>
-          </div>
+          </>
         ) : bonsView === 'history' ? (
-          <div style={{ padding: '1rem 0' }}>
+          <>
             <BonsPipeline bons={bons} step={step} onStep={(s) => { setStep(s); changeBonsView('queue'); }}
               historyTotal={historyCount?.total} historyActive onHistory={() => changeBonsView('history')} />
-            <div style={{ padding: '0 1rem' }}>
-              <HistoryList onOpen={(planId) => navigate(`/stock/bsi/${planId}`)} />
-            </div>
-          </div>
+            <HistoryList onOpen={(planId) => navigate(`/stock/bsi/${planId}`)} />
+          </>
         ) : isLoadingBons ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem' }}>
-            <Loader2 size={28} className="animate-spin" style={{ color: 'var(--theme-accent)' }} />
-          </div>
+          <ListEmpty icon={Loader2} title="Chargement de la file…" />
         ) : (
           <WarehouseQueueList
             bons={bons}
@@ -497,19 +482,15 @@ export default function StockPage() {
           />
         )
       ) : econoTab === 'commander' ? (
-        <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {/* Écran unique des besoins d'achat (ruptures, demandes, stock bas) : le gérant y
-              crée directement les BC, le magasinier y fait ses demandes. Remplace la Liste d'attente. */}
-          <ToOrderBoard />
-        </div>
+        // Écran unique des besoins d'achat (ruptures, demandes, stock bas) : le gérant y
+        // crée directement les BC, le magasinier y fait ses demandes. Remplace la Liste d'attente.
+        <ToOrderBoard />
       ) : econoTab === 'inventaires' ? (
         <StockCountsTab />
       ) : econoTab === 'registre' ? (
-        <GoodsEntryRegisterTab />
+        <GoodsEntryRegisterTab bare />
       ) : econoTab === 'analyse' ? (
-        <div style={{ padding: '1rem' }}>
-          <ConsommationTab />
-        </div>
+        <ConsommationTab />
       ) : econoTab === 'aging' ? (
         <StockAgingTab />
       ) : econoTab === 'anomalies' ? (
@@ -523,35 +504,20 @@ export default function StockPage() {
       ) : econoTab === 'surgeles' ? (
         <LotsThermalTab />
       ) : zone === 'entame' ? (
-        <div style={{ padding: '1rem 0' }}>
-          <PesageStockList rows={pesageStock} isLoading={isLoadingPesage}
-            inventory={inventory as InventoryItem[]} canOpen={isWarehouseUser} />
-        </div>
+        <PesageStockList rows={pesageStock} isLoading={isLoadingPesage}
+          inventory={inventory as InventoryItem[]} canOpen={isWarehouseUser} />
       ) : (
       <>
-      {/* ══════ SITUATION : une carte par situation, clic = filtre ══════ */}
-      <div style={{ padding: '1rem 1rem 0' }}>
-        <StagePipeline
-          title="Où en est mon stock"
-          summary={`${totalItems} ingrédient${totalItems > 1 ? 's' : ''} · ${situationCounts.expired + situationCounts.rupture + situationCounts.low + situationCounts.expiring} à traiter`}
-          stages={SITUATIONS}
-          stats={Object.fromEntries(SITUATIONS.map(x => [x.key, { count: situationCounts[x.key], sub: '' }]))}
-          isActive={k => situation === k}
-          onPick={k => setSituation(situation === k ? '' : (k as Situation))}
-        />
-      </div>
-
       {/* ══════ LOTS EXPIRES A TRAITER (DLC depassee) ══════ */}
       {(expiredActiveLots as Record<string, any>[]).length > 0 && (() => {
         const lots = expiredActiveLots as Record<string, any>[];
         return (
-          <div style={{ padding: '0.75rem 1rem 0' }}>
           <StatusBanner tone="danger" icon={AlertTriangle}
             title={`${lots.length} lot${lots.length > 1 ? 's' : ''} expiré${lots.length > 1 ? 's' : ''} à retirer du stock`}
             actions={<button type="button" className="odoo-btn-secondary" onClick={() => setShowExpiredLots(v => !v)}>{showExpiredLots ? 'Masquer' : 'Voir les lots'}</button>}>
               La date imprimée sur le paquet est dépassée : envoyez ces lots aux pertes.
               {showExpiredLots && (
-              <div style={{ marginTop: '0.5rem', maxHeight: '18rem', overflowY: 'auto', border: '1px solid var(--odoo-border)', borderRadius: 4, backgroundColor: 'var(--odoo-bg)' }}>
+              <div style={{ marginTop: '0.5rem', maxHeight: '18rem', overflowY: 'auto', borderRadius: 12, backgroundColor: 'var(--theme-bg-card)' }}>
                 {lots.map((lot, i) => {
                   const totalQty = parseFloat(lot.total_qty as string) || 0;
                   const unitCost = parseFloat(lot.unit_cost as string) || 0;
@@ -560,25 +526,25 @@ export default function StockPage() {
                   return (
                     <div key={lot.id as string} style={{
                       padding: '0.5rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.75rem',
-                      borderTop: i > 0 ? '1px solid #fce4e1' : 'none', fontSize: '0.75rem',
+                      borderTop: i > 0 ? '1px solid var(--theme-bg-separator)' : 'none', fontSize: '0.8125rem',
                     }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                           <span style={{ fontWeight: 600, color: 'var(--theme-text-strong)' }}>{lot.ingredient_name as string}</span>
-                          <span style={{ fontFamily: 'monospace', fontSize: '0.6875rem', color: '#721c24', backgroundColor: '#f8d7da', padding: '0 0.375rem', borderRadius: 2 }}>
+                          <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>
                             {(lot.lot_number as string) || '?'}
                           </span>
                           <StatusTag tone="late" label="DLC expirée" />
                         </div>
-                        <div style={{ marginTop: 2, color: 'var(--theme-text-muted)', fontSize: '0.6875rem' }}>
-                          Expiré depuis <strong style={{ color: '#dc3545' }}>{daysExpired}j</strong> ·
+                        <div style={{ marginTop: 2, color: 'var(--theme-text-muted)', fontSize: '0.75rem' }}>
+                          Expiré depuis <strong style={{ color: 'var(--prj-red)' }}>{daysExpired}j</strong> ·
                           En réserve {parseFloat(lot.economat_quantity as string).toFixed(1)}{lot.ingredient_unit as string} ·
                           Au pesage {parseFloat(lot.pesage_quantity as string).toFixed(1)}{lot.ingredient_unit as string}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontWeight: 600, color: '#721c24' }}>{totalQty.toFixed(1)} {lot.ingredient_unit as string}</div>
-                        <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>{money(lostValue)}</div>
+                        <div style={{ fontWeight: 600, color: 'var(--prj-red)' }}>{totalQty.toFixed(1)} {lot.ingredient_unit as string}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{money(lostValue)}</div>
                       </div>
                       <button onClick={() => setLossDialogLot(lot)} className="odoo-btn-danger" style={{ flexShrink: 0 }}>
                         <Trash2 size={11} /> Pertes
@@ -589,7 +555,6 @@ export default function StockPage() {
               </div>
               )}
           </StatusBanner>
-          </div>
         );
       })()}
 
@@ -612,98 +577,76 @@ export default function StockPage() {
         />
       )}
 
-      {/* ══════ SEARCH PANEL Odoo ══════ */}
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap' }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input
-          type="text"
-          placeholder="Rechercher par nom, fournisseur, N° lot..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="odoo-search-input"
-        />
-
-        {/* Chips de filtres actifs */}
-        {search && (
-          <span className="odoo-filter-chip">Recherche: {search}
-            <span className="odoo-filter-chip-remove" onClick={() => setSearch('')}>×</span>
-          </span>
-        )}
-        {branchFilter && (
-          <span className="odoo-filter-chip">{resolveCategory(branchFilter)?.typeName || 'Catégorie'}
-            <span className="odoo-filter-chip-remove" onClick={() => { setBranchFilter(''); setTypeFilter(''); }}>×</span>
-          </span>
-        )}
-        {typeFilter && (
-          <span className="odoo-filter-chip">{resolveCategory(typeFilter)?.typeName || 'Type'}
-            <span className="odoo-filter-chip-remove" onClick={() => setTypeFilter('')}>×</span>
-          </span>
-        )}
-        {supplierFilter && (
-          <span className="odoo-filter-chip">{supplierFilter}
-            <span className="odoo-filter-chip-remove" onClick={() => setSupplierFilter('')}>×</span>
-          </span>
-        )}
-        {viewFilter !== 'all' && (
-          <span className="odoo-filter-chip">{STATE_LABELS[viewFilter]}
-            <span className="odoo-filter-chip-remove" onClick={() => setViewFilter('all')}>×</span>
-          </span>
-        )}
-
+      {/* ══════ Barre d'outils : recherche, catégorie, fournisseur, état, tri, vue ══════ */}
+      <ListToolbar search={search} onSearch={setSearch} placeholder="Rechercher par nom, fournisseur, N° lot…">
         {/* Catégorie (branche) → Type (feuille) */}
         <SearchSelect
-          options={categoryBranches.map(b => ({ id: b.id, label: `${'  '.repeat(b.depth)}${b.name}` }))}
+          options={categoryBranches.map(b => ({ id: b.id, label: `${'  '.repeat(b.depth)}${b.name}` }))}
           value={branchFilter}
           onChange={id => { setBranchFilter(id); setTypeFilter(''); }}
           placeholder="Catégorie"
+          width={170}
         />
         <SearchSelect
           options={leavesUnder(branchFilter).map(l => ({ id: String(l.id), label: l.name }))}
           value={typeFilter}
           onChange={setTypeFilter}
           placeholder="Type"
+          width={150}
         />
-
-        {/* Fournisseur */}
         <SearchSelect
           options={supplierOptions.map(s => ({ id: s, label: s }))}
           value={supplierFilter}
           onChange={setSupplierFilter}
           placeholder="Fournisseur"
+          width={170}
         />
-
         {/* État de stock */}
         <SearchSelect
           options={(Object.keys(STATE_LABELS) as ViewFilter[]).filter(k => k !== 'all').map(k => ({ id: k, label: STATE_LABELS[k] }))}
           value={viewFilter === 'all' ? '' : viewFilter}
           onChange={id => setViewFilter((id || 'all') as ViewFilter)}
           placeholder="État"
+          width={170}
         />
-
-        <span style={{ flex: 1 }} />
-
-        {/* Tri */}
-        <select value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)}
-          className="odoo-filter-dropdown" style={{ border: 'none', backgroundColor: 'transparent', outline: 'none' }}>
-          {(Object.keys(SORT_LABELS) as SortKey[]).map(k => (
-            <option key={k} value={k}>{`Trier : ${SORT_LABELS[k]}`}</option>
-          ))}
-        </select>
-        <button type="button" onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
-          className="odoo-pager-btn" title={sortDir === 'asc' ? 'Croissant' : 'Décroissant'}>
-          {sortDir === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
-        </button>
-
+        <SortSelect value={sortKey} onChange={setSortKey}
+          options={(Object.keys(SORT_LABELS) as SortKey[]).map(k => ({ key: k, label: SORT_LABELS[k] }))}
+          dir={sortDir} onDir={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')} />
         {hasActiveFilters && (
           <button type="button" onClick={resetFilters} className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <X size={13} /> Réinitialiser
           </button>
         )}
-      </div>
+        <span className="stk-grow" />
+        <div className="prj-views" role="group" aria-label="Affichage">
+          <button type="button" onClick={() => setViewMode('list')} className={viewMode === 'list' ? 'active' : ''} aria-pressed={viewMode === 'list'} title="Vue liste">
+            <List size={14} /> Liste
+          </button>
+          <button type="button" onClick={() => setViewMode('kanban')} className={viewMode === 'kanban' ? 'active' : ''} aria-pressed={viewMode === 'kanban'} title="Vue kanban (groupée par catégorie)">
+            <LayoutGrid size={14} /> Kanban
+          </button>
+        </div>
+      </ListToolbar>
 
-      {/* ══════ TABLE Odoo (dense) — vue liste ══════ */}
-      {viewMode === 'list' && (
-      <div style={{ overflowX: 'auto' }}>
+      {/* ══════ SITUATION : une pastille par situation, clic = filtre ══════ */}
+      <FilterChips label="Où en est mon stock" value={situation} onChange={k => setSituation(k as Situation | '')} chips={[
+          { key: '', label: 'Tous', count: totalItems },
+          ...SITUATIONS.map(x => ({
+            key: x.key, label: x.label, count: situationCounts[x.key], icon: x.icon,
+            tone: (x.key === 'expired' || x.key === 'rupture') && situationCounts[x.key] > 0 ? 'late' as const : undefined,
+          })),
+        ]} />
+
+      {/* ══════ TABLE — vue liste ══════ */}
+      {viewMode === 'list' && (isLoading ? (
+        <ListEmpty icon={Loader2} title="Chargement…" />
+      ) : filteredInventory.length === 0 ? (
+        <ListEmpty icon={Package} title="Aucun ingrédient trouvé"
+          text={hasActiveFilters ? 'Changez de situation ou effacez les filtres.' : undefined}
+          action={hasActiveFilters ? <button type="button" className="odoo-btn-secondary" onClick={resetFilters}>Effacer les filtres</button> : undefined} />
+      ) : (
+      <ListPanel footer={<PagerFoot page={page} total={filteredInventory.length} onPage={setPage}
+          note={`${filteredInventory.length} ingrédient${filteredInventory.length > 1 ? 's' : ''}${hasActiveFilters ? ' (filtré)' : ''} sur ${totalItems}`} />}>
         <table className="odoo-table">
           <thead>
             <tr>
@@ -722,11 +665,7 @@ export default function StockPage() {
             </tr>
           </thead>
           <tbody>
-            {isLoading ? (
-              <tr><td colSpan={12} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Chargement...</td></tr>
-            ) : filteredInventory.length === 0 ? (
-              <tr><td colSpan={12} style={{ padding: '2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>Aucun ingrédient trouvé</td></tr>
-            ) : pagedInventory.map((item) => {
+            {pagedInventory.map((item) => {
               const qty = parseFloat(item.current_quantity);
               const threshold = parseFloat(item.minimum_threshold);
               const isLow = threshold > 0 && qty <= threshold;
@@ -789,7 +728,7 @@ export default function StockPage() {
                           ) : <span style={muted}>—</span>}
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          <span style={{ fontWeight: 600, color: isOut ? '#dc3545' : isLow ? '#b85d1a' : 'var(--theme-text-strong)' }}>
+                          <span style={{ fontWeight: 600, color: isOut ? 'var(--prj-red)' : isLow ? 'var(--prj-orange)' : 'var(--theme-text-strong)' }}>
                             {fmtQty(qty)} <span style={{ color: 'var(--theme-text-muted)', fontWeight: 400, fontSize: '0.6875rem' }}>{item.unit}</span>
                           </span>
                         </td>
@@ -811,7 +750,7 @@ export default function StockPage() {
                       return (
                         <span style={{
                           fontWeight: 600,
-                          color: daysOfStock <= 3 ? '#dc3545' : daysOfStock <= 7 ? '#b85d1a' : daysOfStock <= 14 ? '#1f6391' : '#28a745',
+                          color: daysOfStock <= 3 ? 'var(--prj-red)' : daysOfStock <= 7 ? 'var(--prj-orange)' : daysOfStock <= 14 ? '#1f6391' : 'var(--prj-green)',
                           display: 'inline-flex', alignItems: 'center', gap: 4,
                         }}>
                           <Timer size={10} />{daysOfStock}j
@@ -823,8 +762,8 @@ export default function StockPage() {
                     {nearestDlc ? (
                       <span style={{
                         fontWeight: 500,
-                        color: daysUntilDlc !== null && daysUntilDlc < 0 ? '#dc3545' :
-                          daysUntilDlc !== null && daysUntilDlc <= 7 ? '#b85d1a' : 'var(--theme-text-muted)',
+                        color: daysUntilDlc !== null && daysUntilDlc < 0 ? 'var(--prj-red)' :
+                          daysUntilDlc !== null && daysUntilDlc <= 7 ? 'var(--prj-orange)' : 'var(--theme-text-muted)',
                       }}>
                         {format(nearestDlc, 'dd/MM/yy')}
                         {daysUntilDlc !== null && daysUntilDlc <= 30 && (
@@ -850,10 +789,8 @@ export default function StockPage() {
             })}
           </tbody>
         </table>
-        <Pager page={page} total={filteredInventory.length} onPage={setPage}
-          note={`${filteredInventory.length} ingrédient${filteredInventory.length > 1 ? 's' : ''}${hasActiveFilters ? ' (filtré)' : ''} sur ${totalItems}`} />
-      </div>
-      )}
+      </ListPanel>
+      ))}
 
       {/* ══════ KANBAN view — groupée par catégorie ══════ */}
       {viewMode === 'kanban' && (
@@ -874,6 +811,8 @@ export default function StockPage() {
       {showImport && <IngredientImportModal onClose={() => setShowImport(false)} />}
       </>
       )}
+      </ModulePage>
+      </ProcessBoardVariant.Provider>
     </ModuleShell>
   );
 }
@@ -968,7 +907,7 @@ function KanbanView({ items, onSelect }: {
                     )}
                     <div className="odoo-kanban-card-stock">
                       <span className="odoo-kanban-card-stock-value" style={{
-                        color: isOut ? '#dc3545' : isLow ? '#b85d1a' : 'var(--theme-text-strong)',
+                        color: isOut ? 'var(--prj-red)' : isLow ? 'var(--prj-orange)' : 'var(--theme-text-strong)',
                       }}>
                         {qty.toFixed(qty % 1 === 0 ? 0 : 1)}
                       </span>
@@ -984,7 +923,7 @@ function KanbanView({ items, onSelect }: {
                     <div className="odoo-kanban-card-progress">
                       <div className="odoo-kanban-card-progress-bar" style={{
                         width: `${pct}%`,
-                        backgroundColor: isOut ? '#dc3545' : isLow ? '#ffc107' : '#28a745',
+                        backgroundColor: isOut ? 'var(--prj-red)' : isLow ? '#ffc107' : 'var(--prj-green)',
                       }} />
                     </div>
                     <div className="odoo-kanban-card-footer">
@@ -998,7 +937,7 @@ function KanbanView({ items, onSelect }: {
                       <span>
                         {nearestDlc && daysUntilDlc !== null ? (
                           <span style={{
-                            color: daysUntilDlc < 0 ? '#dc3545' : daysUntilDlc <= 7 ? '#b85d1a' : 'var(--theme-text-muted)',
+                            color: daysUntilDlc < 0 ? 'var(--prj-red)' : daysUntilDlc <= 7 ? 'var(--prj-orange)' : 'var(--theme-text-muted)',
                             display: 'inline-flex', alignItems: 'center', gap: 3,
                           }}>
                             <CalendarClock size={9} />

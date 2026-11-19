@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  AlertTriangle, CheckCircle2, Clock, Loader2, MessageSquareWarning, Plus, Search, X, XCircle, PlayCircle, Lock, RotateCcw, User, Send,
+  AlertTriangle, CheckCircle2, Clock, X, XCircle, PlayCircle, Lock, RotateCcw, User, Send,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -18,7 +18,9 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import ComplaintFormModal from '../../components/sav/ComplaintFormModal';
-import { StagePipeline, Pager, PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { PAGE_SIZE, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { ListToolbar } from '../sales/ListTemplate';
+import { StageChips, Panel, PagerFoot, PageLoading } from './KlUi';
 import { InterventionFormModal } from '../maintenance/forms';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useNavigate } from 'react-router-dom';
@@ -42,7 +44,11 @@ const PRIORITY_TAG: Record<ComplaintPriority, string> = { critical: 'odoo-tag-re
 /** Statut d'une réclamation en étiquette commune : ouverte = à traiter, non fondée = classée sans suite. */
 const STATUS_TONE: Record<ComplaintStatus, StatusTone> = { open: 'todo', in_progress: 'progress', resolved: 'done', closed: 'done', rejected: 'cancelled' };
 
-export default function ComplaintsTab({ range, periodText }: { range: Record<string, string>; periodText: string }) {
+export default function ComplaintsTab({ range, periodText, creating, onCreatingChange }: {
+  range: Record<string, string>; periodText: string;
+  /** Fenêtre « Nouvelle réclamation » : ouverte depuis le bouton de la barre (ControlePage). */
+  creating: boolean; onCreatingChange: (open: boolean) => void;
+}) {
   const [status, setStatus] = useState<ComplaintStatus | ''>('');
   const [priority, setPriority] = useState<ComplaintPriority | ''>('');
   const [overdueOnly, setOverdueOnly] = useState(false);
@@ -50,7 +56,6 @@ export default function ComplaintsTab({ range, periodText }: { range: Record<str
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
 
   useEffect(() => { const t = setTimeout(() => setSearch(searchInput.trim()), 300); return () => clearTimeout(t); }, [searchInput]);
   useEffect(() => { setPage(1); }, [status, priority, overdueOnly, search, range]);
@@ -68,7 +73,7 @@ export default function ComplaintsTab({ range, periodText }: { range: Record<str
 
   return (
     <>
-      <StagePipeline
+      <StageChips
         title="Où en sont les réclamations"
         summary={`${openCount} à traiter · ${overdue} en retard · ${periodText}`}
         stages={STAGES}
@@ -79,30 +84,22 @@ export default function ComplaintsTab({ range, periodText }: { range: Record<str
         onPick={k => setStatus(status === k ? '' : (k as ComplaintStatus))}
       />
 
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input className="odoo-search-input" value={searchInput} onChange={e => setSearchInput(e.target.value)}
-          placeholder="N°, sujet, client, article…" />
-        {search && <span className="odoo-filter-chip">{search}<span className="odoo-filter-chip-remove" onClick={() => setSearchInput('')}>×</span></span>}
-        <select className="odoo-filter-dropdown" value={priority} onChange={e => setPriority(e.target.value as ComplaintPriority | '')}>
+      <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="N°, sujet, client, article…">
+        <select className="odoo-filter-dropdown" aria-label="Priorité" value={priority} onChange={e => setPriority(e.target.value as ComplaintPriority | '')}>
           <option value="">Toutes priorités</option>
           {Object.entries(PRIORITY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', cursor: 'pointer' }}>
           <input type="checkbox" checked={overdueOnly} onChange={e => setOverdueOnly(e.target.checked)} /> En retard seulement
         </label>
-        <div style={{ flex: 1 }} />
-        <button type="button" className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouvelle réclamation</button>
-      </div>
+      </ListToolbar>
 
-      {isLoading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={28} className="animate-spin" style={{ color: 'var(--theme-accent)' }} /></div>
-      ) : rows.length === 0 ? (
+      {isLoading ? <PageLoading /> : rows.length === 0 ? (
         <StatusBanner tone="success" icon={CheckCircle2} title="Aucune réclamation">
           Rien à traiter sur la période et les filtres choisis.
         </StatusBanner>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <Panel footer={<PagerFoot page={page} total={data?.total ?? 0} onPage={setPage} note={`${data?.total ?? 0} réclamation${(data?.total ?? 0) > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
@@ -125,11 +122,10 @@ export default function ComplaintsTab({ range, periodText }: { range: Record<str
               ))}
             </tbody>
           </table>
-          <Pager page={page} total={data?.total ?? 0} onPage={setPage} note={`${data?.total ?? 0} réclamation${(data?.total ?? 0) > 1 ? 's' : ''}`} />
-        </div>
+        </Panel>
       )}
 
-      {creating && <ComplaintFormModal mode="full" onClose={() => setCreating(false)} onCreated={id => setOpenId(id)} />}
+      {creating && <ComplaintFormModal mode="full" onClose={() => onCreatingChange(false)} onCreated={id => setOpenId(id)} />}
       {openId && <ComplaintDrawer id={openId} onClose={() => setOpenId(null)} />}
     </>
   );
@@ -139,7 +135,7 @@ function Due({ c }: { c: Complaint }) {
   if (!c.due_at || !['open', 'in_progress'].includes(c.status)) return <span style={{ color: 'var(--theme-text-muted)' }}>—</span>;
   const d = new Date(c.due_at);
   const text = formatDistanceToNow(d, { locale: fr, addSuffix: true });
-  return <span style={{ color: c.is_overdue ? '#dc3545' : 'var(--theme-text-muted)', fontWeight: c.is_overdue ? 600 : 400 }}>{c.is_overdue ? `en retard (${text})` : text}</span>;
+  return <span style={{ color: c.is_overdue ? 'var(--prj-red)' : 'var(--theme-text-muted)', fontWeight: c.is_overdue ? 600 : 400 }}>{c.is_overdue ? `en retard (${text})` : text}</span>;
 }
 
 /* ═══════════════════════ FICHE ═══════════════════════ */
@@ -184,25 +180,27 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   );
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex justify-end bg-black/30">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()}
-        style={{ width: 'min(680px, 100%)', height: '100%', overflowY: 'auto', background: 'var(--theme-bg-card)', boxShadow: '-6px 0 24px rgba(0,0,0,0.15)' }}>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.32)' }}>
+      {/* Fiche au design Ventes : feuille .kl-sheet (en-tête au thème, corps en cartes). */}
+      <div className="odoo-scope kl-sheet w-full" role="dialog" aria-label={c ? `Réclamation ${c.number}` : 'Réclamation'} onClick={e => e.stopPropagation()}
+        style={{ maxWidth: 760, maxHeight: '92vh' }}>
         {isLoading || !c ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={28} className="animate-spin" style={{ color: 'var(--theme-accent)' }} /></div>
+          <PageLoading />
         ) : (
           <>
-            <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-              <div className="odoo-breadcrumb">
-                <MessageSquareWarning size={14} style={{ color: 'var(--theme-accent)' }} />
-                <span className="font-mono">{c.number}</span>
-                <span style={{ marginLeft: 6 }}><StatusTag tone={STATUS_TONE[c.status] ?? 'draft'} label={STATUS_LABELS[c.status]} /></span>
+            <header className="kl-sheet-head">
+              <div className="ord-who">
+                <h2><span className="font-mono" style={{ fontSize: 'inherit' }}>{c.number}</span></h2>
+                <p>{c.subject}</p>
+              </div>
+              <button type="button" className="kl-sheet-close" onClick={onClose} aria-label="Fermer"><X size={16} /></button>
+            </header>
+
+            <div className="kl-sheet-body" style={{ gap: 16 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                <StatusTag tone={STATUS_TONE[c.status] ?? 'draft'} label={STATUS_LABELS[c.status]} />
                 <span className={`odoo-tag ${PRIORITY_TAG[c.priority]}`}>{PRIORITY_LABELS[c.priority]}</span>
               </div>
-              <div style={{ flex: 1 }} />
-              <button type="button" className="odoo-btn-secondary" onClick={onClose} aria-label="Fermer"><X size={14} /></button>
-            </div>
-
-            <div style={{ padding: '16px 20px', display: 'grid', gap: 16 }}>
               {c.is_overdue && (
                 <StatusBanner tone="danger" icon={Clock} title="Délai de traitement dépassé">
                   À traiter avant le {format(new Date(c.due_at!), 'dd/MM/yyyy HH:mm')} ; priorité {PRIORITY_LABELS[c.priority].toLowerCase()}.
@@ -245,7 +243,7 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
               </div>
 
               {resolving && (
-                <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, display: 'grid', gap: 10, background: 'var(--odoo-bg-alt)' }}>
+                <div className="kl-widget" style={{ display: 'grid', gap: 10 }}>
                   <strong style={{ fontSize: '0.875rem' }}>{resolving === 'resolved' ? 'Réponse donnée au client' : 'Réclamation non fondée'}</strong>
                   {resolving === 'resolved' && (
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px', gap: 10 }}>
@@ -269,12 +267,9 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
                 </div>
               )}
 
-              <div>
-                <h3 style={{ margin: '0 0 6px', fontSize: '1rem' }}>{c.subject}</h3>
-                {c.description && <p style={{ margin: 0, fontSize: '0.8125rem', whiteSpace: 'pre-wrap' }}>{c.description}</p>}
-              </div>
+              {c.description && <div className="kl-widget" style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{c.description}</div>}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 24px' }}>
+              <div className="kl-widget" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0 24px' }}>
                 <div>
                   {row('Client', <>{c.customer_label}{c.customer_phone ? <span style={{ color: 'var(--theme-text-muted)' }}> · {c.customer_phone}</span> : null}</>)}
                   {row('Motif', getLabel(c.category_code) || c.category_label || c.category_code)}
@@ -304,8 +299,8 @@ function ComplaintDrawer({ id, onClose }: { id: string; onClose: () => void }) {
 
               {/* Journal */}
               <div>
-                <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Journal</div>
-                <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
+                <div className="kl-sec"><h2>Journal</h2></div>
+                <ol className="kl-widget" style={{ listStyle: 'none', margin: 0, display: 'grid', gap: 6 }}>
                   {(c.events ?? []).map(e => (
                     <li key={e.id} style={{ fontSize: '0.8125rem', display: 'grid', gridTemplateColumns: '120px 1fr', gap: 8 }}>
                       <span style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(e.created_at), 'dd/MM HH:mm')}</span>

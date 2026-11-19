@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, Check, CheckCircle2, Circle, Download, FileDown, FileUp, History, Layers, Lightbulb, RotateCcw, Save, Sparkles, Trash2, Users } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Circle, Download, FileDown, FileUp, History, Layers, Lightbulb, Lock, RotateCcw, Save, SlidersHorizontal, Sparkles, Trash2, Users } from 'lucide-react';
 import {
   CORE_MODULES, MODULE_DESCRIPTIONS, MODULE_GROUPS, MODULE_LABELS, dependentModules, effectiveModules,
   missingDependencies, requiredModules, type AppModule,
@@ -14,6 +14,7 @@ import VocabularyPanel from './VocabularyPanel';
 import ProfileStatusPanel from './ProfileStatusPanel';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
 
@@ -346,14 +347,14 @@ export default function SectorTab() {
               <div key={s.code} style={{ display: 'flex', alignItems: 'stretch', gap: 6 }}>
               <button type="button" onClick={() => chooseSector(s.code, s.label)} disabled={busy}
                 style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0.7rem 0.9rem',
-                  borderRadius: 6, textAlign: 'left', cursor: on ? 'default' : 'pointer',
+                  borderRadius: 12, textAlign: 'left', cursor: on ? 'default' : 'pointer',
                   border: `1px solid ${on ? 'var(--odoo-purple)' : 'var(--odoo-border)'}`,
                   background: on ? 'var(--odoo-purple-light)' : 'var(--odoo-bg)' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: on ? 600 : 400 }}>
                   <Layers size={15} /> {s.label}
                   {s.isCustom && <span className="odoo-tag" style={{ fontWeight: 400 }}>Personnalisé</span>}
                 </span>
-                {on && <span className="odoo-tag odoo-tag-green" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Check size={12} /> Actuel</span>}
+                {on && <StatusTag tone="done" icon={Check} label="Actuel" />}
               </button>
               {s.isCustom && !on && (
                 <button type="button" className="odoo-btn-secondary" title="Supprimer ce secteur personnalisé" aria-label={`Supprimer ${s.label}`}
@@ -399,7 +400,7 @@ export default function SectorTab() {
         >
           <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
             {onboarding.modules.map(m => (
-              <div key={m.module} style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.7rem 0.9rem', background: 'var(--odoo-bg)' }}>
+              <div key={m.module} style={{ border: '1px solid var(--theme-bg-separator, var(--odoo-border))', borderRadius: 12, padding: '0.75rem 0.95rem', background: 'var(--odoo-bg)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontWeight: 600 }}>{m.label}</span>
                   <span className="odoo-setting-help" style={{ margin: 0 }}>{m.done} / {m.total}</span>
@@ -453,7 +454,7 @@ export default function SectorTab() {
                   <tr key={v.id}>
                     <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(v.created_at)}</td>
                     <td>{v.created_by_name ?? '—'}</td>
-                    <td>{v.label} {i === 0 && <span className="odoo-tag odoo-tag-green" style={{ marginLeft: 4 }}>Actuelle</span>}</td>
+                    <td>{v.label} {i === 0 && <span style={{ marginLeft: 4 }}><StatusTag tone="done" label="Actuelle" /></span>}</td>
                     <td>
                       {i > 0 && (
                         <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
@@ -483,7 +484,7 @@ export default function SectorTab() {
         >
           <div style={{ display: 'grid', gap: 8 }}>
             {health.recommendations.map(r => (
-              <div key={r.key} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12, padding: '0.7rem 0.9rem', borderRadius: 6,
+              <div key={r.key} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 12, padding: '0.75rem 0.95rem', borderRadius: 12,
                 border: `1px solid ${r.tone === 'warning' ? 'var(--odoo-warning, #f0ad4e)' : 'var(--odoo-border)'}`, background: 'var(--odoo-bg)' }}>
                 {r.tone === 'warning'
                   ? <AlertTriangle size={16} style={{ color: 'var(--odoo-warning, #f0ad4e)', flexShrink: 0, marginTop: 2 }} />
@@ -494,7 +495,7 @@ export default function SectorTab() {
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   {inDraft(r)
-                    ? <span className="odoo-tag odoo-tag-green" style={{ alignSelf: 'center' }}>Dans le brouillon</span>
+                    ? <span style={{ alignSelf: 'center' }}><StatusTag tone="progress" label="Dans le brouillon" /></span>
                     : <button type="button" className="odoo-btn-secondary" style={{ padding: '2px 10px' }} disabled={busy}
                         onClick={() => applyRecommendation(r)}>{r.action.label}</button>}
                   <button type="button" className="odoo-btn-link" disabled={healthMut.isPending}
@@ -542,11 +543,11 @@ export default function SectorTab() {
                 toggle={{ checked: on, disabled: core || busy, onChange: v => toggleModule(m, v) }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   {core
-                    ? <span className="odoo-tag odoo-tag-grey">Socle</span>
+                    ? <StatusTag tone="draft" icon={Lock} label="Socle" />
                     : adjusted
-                      ? <span className="odoo-tag odoo-tag-orange">Ajusté</span>
-                      : <span className="odoo-tag odoo-tag-grey">Préréglage</span>}
-                  {pending && <span className="odoo-tag odoo-tag-blue">Non enregistré</span>}
+                      ? <StatusTag tone="todo" icon={SlidersHorizontal} label="Ajusté" />
+                      : <StatusTag tone="draft" icon={Layers} label="Préréglage" />}
+                  {pending && <StatusTag tone="progress" label="Non enregistré" />}
                   {adjusted && !core && (
                     <button type="button" className="odoo-btn-link" disabled={busy}
                       onClick={() => setModules({ [m]: null })}>Revenir au préréglage</button>
@@ -578,7 +579,7 @@ export default function SectorTab() {
                           <div style={{ minWidth: 0 }}>
                             <div style={{ fontSize: '0.8125rem', fontWeight: 500 }}>
                               {f.label}{' '}
-                              {fAdjusted && <span className="odoo-tag odoo-tag-orange">Ajusté</span>}
+                              {fAdjusted && <StatusTag tone="todo" icon={SlidersHorizontal} label="Ajusté" />}
                               {fAdjusted && on && (
                                 <button type="button" className="odoo-btn-link" disabled={busy}
                                   onClick={() => setDraft(d => ({ ...d, features: { ...d.features, [f.key]: null } }))}>Préréglage</button>
@@ -665,7 +666,7 @@ export default function SectorTab() {
             </div>
           )}
           {suggestion && (
-            <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.7rem 0.9rem', display: 'grid', gap: 6 }}>
+            <div style={{ border: '1px solid var(--theme-bg-separator, var(--odoo-border))', borderRadius: 12, padding: '0.75rem 0.95rem', display: 'grid', gap: 6 }}>
               <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}><Sparkles size={14} /> Proposition « {suggestion.preview.name} »</div>
               {suggestion.rationale && <p style={{ margin: 0 }}>{suggestion.rationale}</p>}
               {suggestion.preview.addedModules.length > 0 && <p className="odoo-setting-help" style={{ margin: 0 }}>Modules en plus : {suggestion.preview.addedModules.join(', ')}</p>}
@@ -705,7 +706,7 @@ export default function SectorTab() {
             </div>
           )}
           {imported && (
-            <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: '0.7rem 0.9rem', display: 'grid', gap: 6 }}>
+            <div style={{ border: '1px solid var(--theme-bg-separator, var(--odoo-border))', borderRadius: 12, padding: '0.75rem 0.95rem', display: 'grid', gap: 6 }}>
               <div style={{ fontWeight: 600 }}>Modèle « {imported.preview.name} »</div>
               <p className="odoo-setting-help" style={{ margin: 0 }}>
                 {imported.preview.modules} module(s), {imported.preview.features} option(s), {imported.preview.labels} libellé(s),
@@ -753,10 +754,10 @@ export default function SectorTab() {
             background: 'var(--odoo-bg)', boxShadow: '0 6px 20px rgba(0,0,0,0.12)', fontSize: '0.8125rem', display: 'grid', gap: 4 }}>
           <div className="odoo-setting-label">Impact de vos changements</div>
           {(impact.modulesOn.length > 0 || impact.featuresOn.length > 0) && (
-            <div><strong style={{ color: '#1e7e34' }}>Apparaît :</strong> {[...impact.modulesOn.map(moduleLabel), ...impact.featuresOn.map(featureLabel)].join(', ')}</div>
+            <div><strong style={{ color: 'var(--prj-green)' }}>Apparaît :</strong> {[...impact.modulesOn.map(moduleLabel), ...impact.featuresOn.map(featureLabel)].join(', ')}</div>
           )}
           {(impact.modulesOff.length > 0 || impact.featuresOff.length > 0) && (
-            <div><strong style={{ color: '#c0392b' }}>Disparaît :</strong> {[...impact.modulesOff.map(moduleLabel), ...impact.featuresOff.map(featureLabel)].join(', ')}</div>
+            <div><strong style={{ color: 'var(--prj-red)' }}>Disparaît :</strong> {[...impact.modulesOff.map(moduleLabel), ...impact.featuresOff.map(featureLabel)].join(', ')}</div>
           )}
           {impact.roles.length > 0 && (
             <div><strong>Rôles touchés :</strong> {impact.roles.map(r => {

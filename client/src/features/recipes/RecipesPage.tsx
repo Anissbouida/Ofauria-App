@@ -6,6 +6,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { recipesApi } from '../../api/recipes.api';
 import { ChefHat, Search, BookOpen, Plus, Pencil, Trash2, Layers, LayoutGrid, List, Package, Box, ArrowUp, ArrowDown, ArrowUpDown, Repeat, Upload, Download, Printer, Archive, ArchiveRestore } from 'lucide-react';
 import ContenantsPage from '../production/ContenantsPage';
+import SalesPageShell from '../sales/SalesPageShell';
+import { ListToolbar, ListPanel } from '../sales/ListTemplate';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag } from '../../components/ui/StatusTag';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -316,11 +318,11 @@ export default function RecipesPage() {
       };
 
   const EmptyState = () => (
-    <div style={{ padding: '4rem 2rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-      <BookOpen size={44} style={{ margin: '0 auto 0.75rem', opacity: 0.35 }} />
-      <p style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--theme-text-strong)' }}>{emptyState.title}</p>
-      <p style={{ fontSize: '0.8125rem', marginTop: 4, maxWidth: 420, marginLeft: 'auto', marginRight: 'auto' }}>{emptyState.hint}</p>
-      <div style={{ marginTop: '1rem' }}>
+    <section className="prj-panel sal-empty">
+      <BookOpen size={28} style={{ opacity: 0.4 }} />
+      <strong>{emptyState.title}</strong>
+      <span style={{ maxWidth: 420 }}>{emptyState.hint}</span>
+      <div style={{ marginTop: 4 }}>
         {emptyState.action === 'create' ? (
           <button onClick={openCreate} className="odoo-btn-primary"><Plus size={14} /> Créer une fiche</button>
         ) : (
@@ -329,35 +331,17 @@ export default function RecipesPage() {
           </button>
         )}
       </div>
-    </div>
+    </section>
   );
 
+  const tabLabel = activeTab === 'contenants' ? T.formatsTab : activeTab === 'base' ? T.baseTab : T.finishedTab;
+
   return (
-    <div className="odoo-scope">
-      {/* ══════ CONTROL BAR ══════ */}
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <ChefHat size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>{sectorLabel('recipes', 'Fiches techniques')}</span>
-          <span className="odoo-breadcrumb-separator">›</span>
-          <span className="odoo-breadcrumb-current">
-            {activeTab === 'contenants' ? T.formatsTab
-              : activeTab === 'base' ? T.baseTab
-              : T.finishedTab}
-            {showArchived && activeTab !== 'contenants' && ' — archivées'}
-          </span>
-        </div>
-        {/* L'onglet Formats gère son propre référentiel : le bouton reste dans la barre
-            de contrôle comme pour les deux autres onglets, mais pilote son formulaire. */}
-        {activeTab === 'contenants' ? (
-          <button onClick={() => setCreatingContenant(true)} className="odoo-btn-primary">
-            <Plus size={14} /> Nouveau format
-          </button>
-        ) : (
-          <button onClick={openCreate} className="odoo-btn-primary">
-            <Plus size={14} /> Nouveau
-          </button>
-        )}
+    <SalesPageShell icon={ChefHat} parent="Production" title={sectorLabel('recipes', 'Fiches techniques')} list
+      summary={activeTab !== 'contenants'
+        ? <>{tabLabel} · <b>{sortedFiltered.length}</b> / {activeTab === 'base' ? baseCount : productCount}{showArchived ? ' — archivées' : ''}</>
+        : tabLabel}
+      actions={<>
         {/* Import/export xlsx — admin uniquement, pas sur l'onglet Contenants */}
         {activeTab !== 'contenants' && isAdmin && (
           <>
@@ -384,53 +368,37 @@ export default function RecipesPage() {
             </button>
           </>
         )}
-        <div style={{ flex: 1 }} />
-        {activeTab !== 'contenants' && (
-          <span className="odoo-pager">
-            <strong>{sortedFiltered.length}</strong> / {activeTab === 'base' ? baseCount : productCount}
-          </span>
-        )}
-        {activeTab !== 'contenants' && (
-          <button onClick={() => setShowArchived(v => !v)}
-            className={showArchived ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
-            title={showArchived ? 'Revenir aux fiches actives' : 'Voir les fiches archivées'}>
-            <Archive size={13} /> {showArchived ? 'Archivées' : 'Archivées'}
+        {/* L'onglet Formats gère son propre référentiel : le bouton reste dans la barre
+            comme pour les deux autres onglets, mais pilote son formulaire. */}
+        {activeTab === 'contenants' ? (
+          <button onClick={() => setCreatingContenant(true)} className="odoo-btn-primary">
+            <Plus size={14} /> Nouveau format
+          </button>
+        ) : (
+          <button onClick={openCreate} className="odoo-btn-primary">
+            <Plus size={14} /> Nouveau
           </button>
         )}
-        {activeTab !== 'contenants' && (
-          <div className="odoo-view-switcher">
-            <button onClick={() => setViewMode('list')} className={viewMode === 'list' ? 'active' : ''} title="Vue liste">
-              <List size={14} />
-            </button>
-            <button onClick={() => setViewMode('grid')} className={viewMode === 'grid' ? 'active' : ''} title="Vue kanban">
-              <LayoutGrid size={14} />
-            </button>
-          </div>
-        )}
-      </div>
+      </>}>
 
-      {/* ══════ TABS ══════ */}
+      {/* ══════ VUES (contrôle segmenté) ══════ */}
       {/* Ordre = flux métier : on compose un produit fini à partir de préparations de
           base, elles-mêmes coulées dans des formats. Les filtres sont remis à zéro au
           changement d'onglet : une catégorie restée active donnait une liste vide
           inexpliquée sur l'onglet d'arrivée. */}
-      <div className="odoo-tabs">
-        <button onClick={() => switchTab('product')}
-          className={`odoo-tab ${activeTab === 'product' ? 'active' : ''}`}>
+      <div className="prj-views" role="tablist" aria-label="Fiches techniques" style={{ alignSelf: 'flex-start', display: 'inline-flex', flexWrap: 'wrap' }}>
+        <button type="button" role="tab" aria-selected={activeTab === 'product'} onClick={() => switchTab('product')}
+          className={activeTab === 'product' ? 'active' : ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <ChefHat size={13} /> {T.finishedTab}
-          {productCount > 0 && (
-            <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{productCount}</span>
-          )}
+          {productCount > 0 && <small style={{ color: 'var(--theme-text-muted)', fontWeight: 500 }}>{productCount}</small>}
         </button>
-        <button onClick={() => switchTab('base')}
-          className={`odoo-tab ${activeTab === 'base' ? 'active' : ''}`}>
+        <button type="button" role="tab" aria-selected={activeTab === 'base'} onClick={() => switchTab('base')}
+          className={activeTab === 'base' ? 'active' : ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <Layers size={13} /> {T.baseTab}
-          {baseCount > 0 && (
-            <span className="odoo-tag odoo-tag-purple" style={{ marginLeft: 4 }}>{baseCount}</span>
-          )}
+          {baseCount > 0 && <small style={{ color: 'var(--theme-text-muted)', fontWeight: 500 }}>{baseCount}</small>}
         </button>
-        <button onClick={() => switchTab('contenants')}
-          className={`odoo-tab ${activeTab === 'contenants' ? 'active' : ''}`}>
+        <button type="button" role="tab" aria-selected={activeTab === 'contenants'} onClick={() => switchTab('contenants')}
+          className={activeTab === 'contenants' ? 'active' : ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <Package size={13} /> {T.formatsTab}
         </button>
       </div>
@@ -438,51 +406,39 @@ export default function RecipesPage() {
       {activeTab === 'contenants' ? (
         <ContenantsPage creating={creatingContenant} onCreatingChange={setCreatingContenant} />
       ) : <>
-      {/* ══════ SEARCH PANEL ══════ */}
-      <div className="odoo-search-panel">
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text"
-          placeholder={activeTab === 'base' ? T.searchBase : T.searchRecipes}
-          value={search} onChange={(e) => setSearch(e.target.value)}
-          className="odoo-search-input" />
-        <div style={{ marginLeft: 8 }}>
-          <SearchSelect
-            options={recipeCategories.map(c => ({ id: String(c.id), label: c.label }))}
-            value={categoryFilter}
-            onChange={setCategoryFilter}
-            placeholder="Toutes catégories"
-          />
-        </div>
+      {/* ══════ BARRE D'OUTILS : recherche, catégorie, archivées, vue ══════ */}
+      <ListToolbar search={search} onSearch={setSearch}
+        placeholder={activeTab === 'base' ? T.searchBase : T.searchRecipes}>
+        <SearchSelect
+          options={recipeCategories.map(c => ({ id: String(c.id), label: c.label }))}
+          value={categoryFilter}
+          onChange={setCategoryFilter}
+          placeholder="Toutes catégories"
+        />
         <button
           onClick={() => { setShowArchived(v => !v); setSelectedIds(new Set()); }}
           className={showArchived ? 'odoo-btn-primary' : 'odoo-btn-secondary'}
-          style={{ marginLeft: 8, flexShrink: 0 }}
+          style={{ flexShrink: 0 }}
+          aria-pressed={showArchived}
           title={showArchived ? 'Revenir aux fiches actives' : 'Voir les fiches archivées'}>
           <Archive size={13} /> Archivées
         </button>
-        {search && (
-          <span className="odoo-filter-chip">
-            Recherche: {search}
-            <span className="odoo-filter-chip-remove" onClick={() => setSearch('')}>×</span>
-          </span>
-        )}
-        {categoryFilter && (() => {
-          const cat = recipeCategories.find(c => c.id === categoryFilter);
-          return cat ? (
-            <span className="odoo-filter-chip" style={{ borderColor: cat.color, color: cat.color }}>
-              {cat.label}
-              <span className="odoo-filter-chip-remove" onClick={() => setCategoryFilter('')}>×</span>
-            </span>
-          ) : null;
-        })()}
-      </div>
+        <div style={{ flex: 1 }} />
+        <div className="prj-views" role="group" aria-label="Affichage">
+          <button type="button" onClick={() => setViewMode('list')} className={viewMode === 'list' ? 'active' : ''} aria-pressed={viewMode === 'list'} title="Vue liste">
+            <List size={14} />
+          </button>
+          <button type="button" onClick={() => setViewMode('grid')} className={viewMode === 'grid' ? 'active' : ''} aria-pressed={viewMode === 'grid'} title="Vue kanban">
+            <LayoutGrid size={14} />
+          </button>
+        </div>
+      </ListToolbar>
 
       {/* ══════ BARRE DE SÉLECTION (suppression en masse) ══════ */}
       {viewMode === 'list' && selectedIds.size > 0 && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, padding: '0.45rem 0.75rem',
-          background: 'rgba(220,53,69,0.06)', borderBottom: '1px solid var(--theme-bg-separator)',
-          fontSize: '0.8125rem',
+        <div className="prj-panel" style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', flexWrap: 'wrap',
+          fontSize: '0.875rem',
         }}>
           <span>
             <strong>{selectedIds.size}</strong> {isBaseTab ? 'préparation(s) sélectionnée(s)' : 'recette(s) sélectionnée(s)'}
@@ -501,9 +457,8 @@ export default function RecipesPage() {
               <Archive size={13} /> {bulkArchiveMutation.isPending ? 'Archivage…' : 'Archiver la sélection'}
             </button>
           )}
-          <button onClick={askBulkDelete} className="odoo-btn-secondary"
-            disabled={bulkDeleteMutation.isPending}
-            style={{ color: '#dc3545', borderColor: '#dc3545' }}>
+          <button onClick={askBulkDelete} className="odoo-btn-danger"
+            disabled={bulkDeleteMutation.isPending}>
             <Trash2 size={13} /> {bulkDeleteMutation.isPending ? 'Suppression…' : 'Supprimer la sélection'}
           </button>
         </div>
@@ -511,9 +466,9 @@ export default function RecipesPage() {
 
       {/* ══════ CONTENT ══════ */}
       {isLoading ? (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '5rem' }}>
-          <div style={{ width: 28, height: 28, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        </div>
+        <section className="prj-panel sal-empty">
+          <div style={{ width: 24, height: 24, border: '3px solid var(--theme-accent)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+        </section>
       ) : viewMode === 'grid' ? (
         /* ═══ GRID View (kanban Odoo) ═══ */
         sortedFiltered.length === 0 ? <EmptyState /> : (
@@ -587,8 +542,8 @@ export default function RecipesPage() {
         )
       ) : (
         /* ═══ LIST View (table dense Odoo) ═══ */
-        <div style={{ overflowX: 'auto' }}>
-          <table className="odoo-table">
+        <ListPanel>
+          <table className="odoo-table" style={{ margin: 0 }}>
             <thead>
               <tr>
                 <th style={{ width: 28 }}>
@@ -793,7 +748,7 @@ export default function RecipesPage() {
               })}
             </tbody>
           </table>
-        </div>
+        </ListPanel>
       )}
 
       {/* Création et édition d'identité passent par la même petite fenêtre
@@ -814,6 +769,6 @@ export default function RecipesPage() {
         <BulkReplaceModal onClose={() => setShowReplace(false)} />
       )}
       </>}
-    </div>
+    </SalesPageShell>
   );
 }

@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 const frDate = (raw: unknown) => { const s = isoDate(raw); return s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : ''; };
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { leavesApi } from '../../../api/employees.api';
 import { useReferentiel } from '../../../hooks/useReferentiel';
-import { Plus, Users, CalendarOff, Check, X, Hourglass, Loader2, Trash2 } from 'lucide-react';
+import { Plus, Users, CalendarOff, Check, X, Hourglass, Trash2 } from 'lucide-react';
 import { notify } from '../../../components/ui/InlineNotification';
 import { getApiErrorMessage } from '../../../utils/api-error';
 import { isoDate } from '../shared';
@@ -13,43 +13,27 @@ import LeaveBalancesView from '../leaves/LeaveBalancesView';
 import HolidaysView from '../leaves/HolidaysView';
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusTag } from '../../../components/ui/StatusTag';
-import { StagePipeline, type StageDef } from '../../../components/purchasing/ProcessBoard';
-import { EmptyState } from '../ui';
+import { EmptyPanel, LoadingPanel, Segmented } from '../ui';
+import { FilterChips } from '../../sales/ListTemplate';
 
-const LEAVE_STAGES: StageDef[] = [
-  { key: 'pending', label: 'En attente', hint: 'à valider', icon: Hourglass },
-  { key: 'approved', label: 'Approuvés', hint: 'congés accordés', icon: Check },
-  { key: 'rejected', label: 'Refusés', hint: 'demandes rejetées', icon: X },
-];
-const LEAVE_VIEWS = [['requests', 'Demandes'], ['balances', 'Soldes'], ['holidays', 'Jours fériés']] as const;
+const LEAVE_STAGES = [
+  { key: 'pending', label: 'En attente', icon: Hourglass },
+  { key: 'approved', label: 'Approuvés', icon: Check },
+  { key: 'rejected', label: 'Refusés', icon: X },
+] as const;
+type LeaveView = 'requests' | 'balances' | 'holidays';
+const LEAVE_VIEWS: Array<{ key: LeaveView; label: string }> = [{ key: 'requests', label: 'Demandes' }, { key: 'balances', label: 'Soldes' }, { key: 'holidays', label: 'Jours fériés' }];
 
 /* ═══════════════════════ LEAVES TAB ═══════════════════════ */
 export default function LeavesTab({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
-  const [view, setView] = useState<'requests' | 'balances' | 'holidays'>('requests');
-  return (
-    <>
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        <div className="odoo-view-switcher" role="tablist" aria-label="Vue des congés">
-          {LEAVE_VIEWS.map(([key, label]) => (
-            <button key={key} type="button" role="tab" aria-selected={view === key} onClick={() => setView(key)}
-              style={{
-                padding: '0.3rem 0.75rem', fontSize: '0.8125rem',
-                background: view === key ? 'var(--odoo-purple-light)' : 'transparent',
-                color: view === key ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
-                fontWeight: view === key ? 600 : 400,
-              }}>
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-      {view === 'requests' ? <LeaveRequests queryClient={queryClient} />
-        : view === 'balances' ? <LeaveBalancesView /> : <HolidaysView />}
-    </>
-  );
+  const [view, setView] = useState<LeaveView>('requests');
+  // Contrôle segmenté des vues : posé dans la barre d'outils de chaque vue.
+  const switcher = <Segmented label="Vue des congés" value={view} onChange={setView} options={LEAVE_VIEWS} />;
+  return view === 'requests' ? <LeaveRequests queryClient={queryClient} switcher={switcher} />
+    : view === 'balances' ? <LeaveBalancesView switcher={switcher} /> : <HolidaysView switcher={switcher} />;
 }
 
-function LeaveRequests({ queryClient }: { queryClient: ReturnType<typeof useQueryClient> }) {
+function LeaveRequests({ queryClient, switcher }: { queryClient: ReturnType<typeof useQueryClient>; switcher: ReactNode }) {
   const [showForm, setShowForm] = useState(false);
   // Filtre client par etape du pipeline ('' = toutes les demandes).
   const [stage, setStage] = useState('');
@@ -82,52 +66,37 @@ function LeaveRequests({ queryClient }: { queryClient: ReturnType<typeof useQuer
   const approvedCount = leavesList.filter(l => l.status === 'approved').length;
   const rejectedCount = leavesList.filter(l => l.status === 'rejected').length;
   const daysOf = (st: string) => leavesList.filter(l => l.status === st).reduce((a, l) => a + (parseFloat(String(l.days)) || 0), 0);
-  const stageStats = {
-    pending: { count: pendingCount, sub: `${daysOf('pending')} j` },
-    approved: { count: approvedCount, sub: `${daysOf('approved')} j` },
-    rejected: { count: rejectedCount, sub: `${daysOf('rejected')} j` },
-  };
+  const stageCount: Record<string, number> = { pending: pendingCount, approved: approvedCount, rejected: rejectedCount };
   const visible = stage ? leavesList.filter(l => l.status === stage) : leavesList;
 
   return (
     <>
-      {/* Pipeline des demandes : clic = filtrer la liste */}
-      <StagePipeline
-        title={`Demandes de congé ${currentYear}`}
-        summary={`${leavesList.length} demande${leavesList.length > 1 ? 's' : ''} sur l'année`}
-        stages={LEAVE_STAGES}
-        stats={stageStats}
-        isActive={k => stage === k}
-        onPick={k => setStage(cur => (cur === k ? '' : k))}
-      />
-
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8 }}>
-        {stage && (
-          <span className="odoo-tag odoo-tag-blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            Statut : {LEAVE_STAGES.find(x => x.key === stage)?.label}
-            <button type="button" onClick={() => setStage('')} aria-label="Retirer le filtre de statut" style={{ display: 'inline-flex' }}>
-              <X size={11} />
-            </button>
-          </span>
-        )}
-        <div style={{ flex: 1 }} />
+      {/* Barre d'outils (vues + action) puis pastilles de statut avec compteurs : clic = filtrer la liste */}
+      <div className="prj-toolbar">
+        {switcher}
+        <span className="hr-spacer" />
         <button onClick={() => setShowForm(true)} className="odoo-btn-primary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <Plus size={13} /> Nouvelle demande
         </button>
       </div>
+      <div className="prj-toolbar">
+        <FilterChips label="Statut des demandes" value={stage} onChange={setStage}
+          chips={[{ key: '', label: 'Toutes', count: leavesList.length }, ...LEAVE_STAGES.map(st => ({ key: st.key, label: st.label, icon: st.icon, count: stageCount[st.key] }))]} />
+        <span className="hr-spacer" />
+        <small style={{ color: 'var(--theme-text-muted)', fontSize: 13 }}>
+          Demandes de congé {currentYear} · {daysOf('pending')} j en attente · {daysOf('approved')} j approuvés · {daysOf('rejected')} j refusés
+        </small>
+      </div>
 
       {isLoading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 className="animate-spin" size={20} style={{ margin: '0 auto 8px' }} />
-          <p style={{ fontSize: '0.8125rem' }}>Chargement...</p>
-        </div>
+        <LoadingPanel />
       ) : leavesList.length === 0 ? (
-        <EmptyState icon={CalendarOff}>Aucun congé pour cette année</EmptyState>
+        <EmptyPanel icon={CalendarOff}>Aucun congé pour cette année</EmptyPanel>
       ) : visible.length === 0 ? (
-        <EmptyState icon={CalendarOff}>Aucune demande avec ce statut</EmptyState>
+        <EmptyPanel icon={CalendarOff}>Aucune demande avec ce statut</EmptyPanel>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel hr-plain"><div className="prj-scroll">
           <table className="odoo-table">
             <thead>
               <tr>
@@ -176,11 +145,11 @@ function LeaveRequests({ queryClient }: { queryClient: ReturnType<typeof useQuer
                               { title: 'Approuver le congé', confirmLabel: 'Approuver' }))) return;
                             approveMutation.mutate(l.id as string);
                           }}
-                            className="odoo-pager-btn" title="Approuver" style={{ color: '#28a745' }}>
+                            className="odoo-pager-btn" title="Approuver" style={{ color: 'var(--prj-green)' }}>
                             <Check size={14} />
                           </button>
                           <button onClick={async () => { if (await confirm(`Refuser le congé de ${l.first_name} ${l.last_name} ?`, { title: 'Refuser la demande', confirmLabel: 'Refuser', danger: true })) rejectMutation.mutate(l.id as string); }}
-                            className="odoo-pager-btn" title="Refuser" style={{ color: '#dc3545' }}>
+                            className="odoo-pager-btn" title="Refuser" style={{ color: 'var(--prj-red)' }}>
                             <X size={14} />
                           </button>
                         </>
@@ -202,7 +171,7 @@ function LeaveRequests({ queryClient }: { queryClient: ReturnType<typeof useQuer
               ))}
             </tbody>
           </table>
-        </div>
+        </div></div>
       )}
 
       {showForm && <LeaveRequestForm onClose={() => setShowForm(false)} />}

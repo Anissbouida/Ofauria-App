@@ -47,7 +47,7 @@ export default function NumberingTab() {
           Les séries de numéros n'existent pas encore : la migration 329 n'est pas appliquée sur cette base.
         </StatusBanner>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel prj-scroll">
           <table className="odoo-table">
             <thead>
               <tr><th>Pièce</th><th>Modèle</th><th>Remise à zéro</th><th>Prochain numéro</th><th>Modifié</th><th style={{ width: 40 }}></th></tr>
@@ -121,7 +121,7 @@ function SequenceEditor({ seq, onClose }: { seq: DocumentSequence; onClose: () =
   const label: React.CSSProperties = { display: 'grid', gap: 4, fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' };
 
   return (
-    <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'grid', gap: 12, background: 'var(--odoo-bg-alt)' }}>
+    <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
       <div style={{ fontWeight: 600 }}>Série « {seq.label} »</div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ ...label, flex: '1 1 220px' }}>

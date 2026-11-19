@@ -153,7 +153,7 @@ export default function StoresPanel() {
           {withHours > 0 && <span>{openNowCount} ouvert{openNowCount > 1 ? 's' : ''} en ce moment</span>}
           {hq && <span>Siège : {hq.name}</span>}
         </div>
-        <div className="odoo-view-switcher" role="tablist" aria-label="Affichage">
+        <div className="prj-views" role="tablist" aria-label="Affichage">
           <button type="button" role="tab" aria-selected={view === 'cards'} className={view === 'cards' ? 'active' : ''} onClick={() => chooseView('cards')}>
             <LayoutGrid size={13} /> Cartes
           </button>
@@ -336,10 +336,10 @@ export default function StoresPanel() {
                       {s.is_headquarters && <span className="odoo-tag odoo-tag-purple">Siège</span>}
                     </div>
                   </div>
-                  {isOff ? <span className="odoo-company-pill">Désactivé</span>
-                    : now === null ? <span className="odoo-company-pill warn"><Clock size={12} /> Horaires ?</span>
-                    : now ? <span className="odoo-company-pill ok"><span className="odoo-stores-dot" /> Ouvert maintenant</span>
-                    : <span className="odoo-company-pill"><span className="odoo-stores-dot off" /> Fermé en ce moment</span>}
+                  {isOff ? <StatusTag tone="cancelled" label="Désactivé" />
+                    : now === null ? <StatusTag tone="todo" icon={Clock} label="Horaires ?" />
+                    : now ? <StatusTag tone="done" label="Ouvert maintenant" />
+                    : <StatusTag tone="draft" icon={Clock} label="Fermé en ce moment" />}
                 </header>
                 <ul className="odoo-stores-card-lines">
                   <li><MapPin size={13} /> {[s.address, s.city].filter(Boolean).join(', ') || <em>Adresse non renseignée</em>}</li>
@@ -376,7 +376,7 @@ export default function StoresPanel() {
           })}
         </div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel prj-scroll">
           <table className="odoo-table">
             <thead><tr><th>Établissement</th><th>Type</th><th>Adresse</th><th>Responsable</th><th>Horaires</th><th>Personnel</th><th>Statut</th><th style={{ width: 80 }}></th></tr></thead>
             <tbody>

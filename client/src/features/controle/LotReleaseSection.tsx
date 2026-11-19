@@ -4,6 +4,8 @@ import { Unlock } from 'lucide-react';
 import api from '../../api/client';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
+import { StatusTag } from '../../components/ui/StatusTag';
+import { Panel } from './KlUi';
 
 /**
  * Lots à libérer (M7-04) : lots de produit fini retenus par le plan de contrôle. Ils sont
@@ -22,19 +24,21 @@ export default function LotReleaseSection() {
     onError: (e) => notify.error(apiErrorMessage(e)),
   });
   return (
-    <div className="odoo-section">
-      <div className="odoo-section-header flex items-center gap-2"><Unlock size={13} /> Lots en attente de libération</div>
-      <table className="w-full text-xs">
-        <thead><tr className="text-gray-500"><th className="text-left px-3 py-1">Lot</th><th className="text-left px-2">Produit</th><th className="text-right px-2">Quantité</th><th className="text-left px-2">Inspections</th><th className="text-left px-2">Libération</th></tr></thead>
-        <tbody>{data.length === 0 ? <tr><td colSpan={5} className="px-3 py-2 text-gray-500">Aucun lot retenu.</td></tr> : data.map(l => (
-          <tr key={l.id} className="border-t border-gray-100">
-            <td className="px-3 py-1.5">{l.lot_number ?? '—'}<div className="text-gray-500">{new Date(l.produced_at).toLocaleDateString('fr-FR')}</div></td>
-            <td className="px-2">{l.product_name}</td>
-            <td className="text-right px-2">{l.quantity.toLocaleString('fr-FR')}</td>
-            <td className="px-2">{l.pending_inspections ? `${l.pending_inspections} à faire` : 'faites'}{l.failed_inspections ? ` · ${l.failed_inspections} non conforme(s)` : ''}</td>
-            <td className="px-2">
+    <Panel title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Unlock size={15} /> Lots en attente de libération</span>}>
+      <table className="odoo-table">
+        <thead><tr><th>Lot</th><th>Produit</th><th style={{ textAlign: 'right' }}>Quantité</th><th>Inspections</th><th>Libération</th></tr></thead>
+        <tbody>{data.length === 0 ? <tr><td colSpan={5} style={{ textAlign: 'center', padding: 24, color: 'var(--theme-text-muted)' }}>Aucun lot retenu.</td></tr> : data.map(l => (
+          <tr key={l.id}>
+            <td><span style={{ fontFamily: 'ui-monospace, monospace', fontWeight: 600 }}>{l.lot_number ?? '—'}</span><div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{new Date(l.produced_at).toLocaleDateString('fr-FR')}</div></td>
+            <td style={{ fontWeight: 500 }}>{l.product_name}</td>
+            <td style={{ textAlign: 'right' }}>{l.quantity.toLocaleString('fr-FR')}</td>
+            <td>
+              <StatusTag tone={l.pending_inspections ? 'todo' : 'done'} label={l.pending_inspections ? `${l.pending_inspections} à faire` : 'faites'} />
+              {l.failed_inspections ? <span style={{ marginLeft: 4 }}><StatusTag tone="blocked" label={`${l.failed_inspections} non conforme(s)`} /></span> : null}
+            </td>
+            <td>
               <span style={{ display: 'inline-flex', gap: 6 }}>
-                <input className="input" style={{ width: 200, padding: '1px 6px' }} placeholder="Motif de libération" aria-label={`Motif de libération du lot ${l.lot_number ?? ''}`}
+                <input className="input" style={{ width: 200 }} placeholder="Motif de libération" aria-label={`Motif de libération du lot ${l.lot_number ?? ''}`}
                   value={notes[l.id] ?? ''} onChange={e => setNotes(n => ({ ...n, [l.id]: e.target.value }))} />
                 <button type="button" className="odoo-btn-secondary" disabled={(notes[l.id] ?? '').trim().length < 3 || release.isPending} onClick={() => release.mutate(l.id)}>Libérer</button>
               </span>
@@ -42,6 +46,6 @@ export default function LotReleaseSection() {
           </tr>
         ))}</tbody>
       </table>
-    </div>
+    </Panel>
   );
 }

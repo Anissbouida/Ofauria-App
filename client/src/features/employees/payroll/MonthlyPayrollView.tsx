@@ -11,15 +11,12 @@ import {
 import { useConfirm } from '../../../components/ui/ConfirmDialog';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { StatusTag } from '../../../components/ui/StatusTag';
-import { StagePipeline, StageProgress, type StageDef } from '../../../components/purchasing/ProcessBoard';
-import { HrModal, EmptyState, SectionTitle, inputCls } from '../ui';
+import { StageProgress } from '../../../components/purchasing/ProcessBoard';
+import { RowMenu } from '../../../components/ui/RowMenu';
+import { FilterChips } from '../../sales/ListTemplate';
+import { HrModal, EmptyPanel, LoadingPanel, SectionTitle } from '../ui';
 
 type PayStage = 'generated' | 'topay' | 'paid';
-const PAY_STAGES: StageDef[] = [
-  { key: 'generated', label: 'Générés', hint: 'bulletins du mois', icon: Receipt },
-  { key: 'topay', label: 'À payer', hint: 'net non versé', icon: Clock },
-  { key: 'paid', label: 'Payés', hint: 'paiement enregistré', icon: CheckCircle2 },
-];
 import { notify } from '../../../components/ui/InlineNotification';
 import { MONTH_NAMES, apiErrorMessage, saveBlobResponse, openPeriodMessage, OPEN_PERIOD_CONFIRM } from '../shared';
 import PayslipLinesEditor from './PayslipLinesEditor';
@@ -45,7 +42,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
   };
   const PaySortIcon = ({ col }: { col: string }) => {
     if (paySortKey !== col) return <ArrowUpDown size={13} style={{ display: "inline", marginLeft: 4, color: "var(--odoo-text-light)" }} />;
-    return paySortDir === 'asc' ? <ArrowUp size={13} style={{ display: "inline", marginLeft: 4, color: "var(--odoo-purple)" }} /> : <ArrowDown size={13} style={{ display: "inline", marginLeft: 4, color: "var(--odoo-purple)" }} />;
+    return paySortDir === 'asc' ? <ArrowUp size={13} style={{ display: "inline", marginLeft: 4, color: "var(--theme-accent)" }} /> : <ArrowDown size={13} style={{ display: "inline", marginLeft: 4, color: "var(--theme-accent)" }} />;
   };
 
   const { data: payrolls = [], isLoading } = useQuery({
@@ -226,9 +223,9 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
 
   return (
     <>
-      {/* Toolbar */}
-      <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      {/* Barre d'outils : période à gauche ; action principale, actions du mois et éditions à droite */}
+      <div className="prj-toolbar">
+        <div className="hr-tools">
           <SearchSelect
             options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))}
             value={String(month)}
@@ -236,51 +233,10 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
             placeholder="Mois"
             width={140}
           />
-          <input type="number" value={year} onChange={e => setYear(parseInt(e.target.value))} className={inputCls} style={{ width: 96 }} />
+          <input type="number" value={year} onChange={e => setYear(parseInt(e.target.value))} className="odoo-filter-dropdown" style={{ width: 96 }} aria-label="Année" />
         </div>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <button onClick={generateAllPDF} className="odoo-btn-secondary" disabled={sortedPayrolls.length === 0}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <FileText size={13} /> PDF tous
-          </button>
-          <button onClick={exportPayroll} className="odoo-btn-secondary" disabled={sortedPayrolls.length === 0}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Download size={13} /> CSV
-          </button>
-          <button onClick={() => setShowTransfer(true)} className="odoo-btn-secondary" disabled={sortedPayrolls.length === 0}
-            title="Ordre de virement groupé : fichier banque et lettre à signer"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Banknote size={13} /> Virement groupé
-          </button>
-          {/* G0-12 : livre de paie du mois (PDF paysage, Excel) ou de l'année. */}
-          {(['pdf', 'xlsx'] as const).map(fmt => (
-            <button key={fmt} className="odoo-btn-secondary" disabled={sortedPayrolls.length === 0}
-              title={`Livre de paie de ${MONTH_NAMES[month - 1]} ${year} — ${fmt === 'pdf' ? 'PDF' : 'Excel'}`}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-              onClick={async () => {
-                try { saveBlobResponse(await payrollConfigApi.bookFile(year, month, fmt), `livre_de_paie_${year}-${String(month).padStart(2, '0')}.${fmt}`); }
-                catch (err) { notify.error(apiErrorMessage(err, 'Erreur lors de l\'édition du livre de paie')); }
-              }}>
-              <FileText size={13} /> Livre de paie {fmt === 'pdf' ? 'PDF' : 'Excel'}
-            </button>
-          ))}
-          <button className="odoo-btn-secondary" title={`Livre de paie de l'année ${year} (Excel)`}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-            onClick={async () => {
-              try { saveBlobResponse(await payrollConfigApi.bookFile(year, null, 'xlsx'), `livre_de_paie_${year}.xlsx`); }
-              catch (err) { notify.error(apiErrorMessage(err, 'Erreur lors de l\'édition du livre de paie')); }
-            }}>
-            <FileText size={13} /> Livre {year}
-          </button>
-          <button onClick={async () => {
-            if (!(await confirm(`Générer les bulletins de paie ${MONTH_NAMES[month - 1]} ${year} pour les employés mensuels et les employés hebdo / quinzaine déclarés ?\n\nLes bulletins déjà PAYÉS ne sont jamais écrasés. Les autres sont recalculés depuis le pointage et les paies périodiques du mois.`,
-              { title: 'Générer les bulletins', confirmLabel: 'Générer' }))) return;
-            generateMutation.mutate(false);
-          }} disabled={generateMutation.isPending || isClosed} className="odoo-btn-primary"
-            title={isClosed ? 'Mois clôturé : rouvrez-le pour régénérer' : undefined}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Banknote size={13} /> Générer les bulletins
-          </button>
+        <span className="hr-spacer" />
+        <div className="hr-tools">
           {isAdmin && !isClosed && (
             <button onClick={async () => {
               if (!(await confirm(`Clôturer la paie de ${MONTH_NAMES[month - 1]} ${year} ?\n\nLes bulletins seront figés et comptabilisés (écriture de paie : salaires, charges sociales, CNSS, IR, net à payer). Le paiement reste possible.\n\nVérifiez d'abord les bulletins.`,
@@ -291,6 +247,36 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
               <Lock size={13} /> Clôturer le mois
             </button>
           )}
+          <button onClick={() => setShowTransfer(true)} className="odoo-btn-secondary" disabled={sortedPayrolls.length === 0}
+            title="Ordre de virement groupé : fichier banque et lettre à signer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Banknote size={13} /> Virement groupé
+          </button>
+          <button onClick={async () => {
+            if (!(await confirm(`Générer les bulletins de paie ${MONTH_NAMES[month - 1]} ${year} pour les employés mensuels et les employés hebdo / quinzaine déclarés ?\n\nLes bulletins déjà PAYÉS ne sont jamais écrasés. Les autres sont recalculés depuis le pointage et les paies périodiques du mois.`,
+              { title: 'Générer les bulletins', confirmLabel: 'Générer' }))) return;
+            generateMutation.mutate(false);
+          }} disabled={generateMutation.isPending || isClosed} className="odoo-btn-primary"
+            title={isClosed ? 'Mois clôturé : rouvrez-le pour régénérer' : undefined}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <Banknote size={13} /> Générer les bulletins
+          </button>
+          {/* Éditions et exports (bulletins PDF, CSV, livre de paie G0-12) regroupés dans un menu. */}
+          <RowMenu label="Éditions et exports" items={[
+            { label: 'PDF tous', icon: FileText, disabled: sortedPayrolls.length === 0, onSelect: generateAllPDF },
+            { label: 'CSV', icon: Download, disabled: sortedPayrolls.length === 0, onSelect: exportPayroll },
+            ...(['pdf', 'xlsx'] as const).map(fmt => ({
+              label: `Livre de paie ${fmt === 'pdf' ? 'PDF' : 'Excel'}`, icon: FileText, disabled: sortedPayrolls.length === 0,
+              onSelect: async () => {
+                try { saveBlobResponse(await payrollConfigApi.bookFile(year, month, fmt), `livre_de_paie_${year}-${String(month).padStart(2, '0')}.${fmt}`); }
+                catch (err) { notify.error(apiErrorMessage(err, 'Erreur lors de l\'édition du livre de paie')); }
+              },
+            })),
+            { label: `Livre ${year}`, icon: FileText, onSelect: async () => {
+              try { saveBlobResponse(await payrollConfigApi.bookFile(year, null, 'xlsx'), `livre_de_paie_${year}.xlsx`); }
+              catch (err) { notify.error(apiErrorMessage(err, 'Erreur lors de l\'édition du livre de paie')); }
+            } },
+          ]} />
         </div>
       </div>
 
@@ -312,31 +298,38 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
         </StatusBanner>
       )}
 
-      {/* Pipeline + montants */}
+      {/* Montants du mois, puis pastilles d'étape (filtre de la liste) */}
       {allRows.length > 0 && (
         <>
-          <StagePipeline title={`Bulletins — ${MONTH_NAMES[month - 1]} ${year}`}
-            summary={stageFilter ? 'Cliquez à nouveau pour tout afficher' : `${totalPaid}/${allRows.length} payés`}
-            stages={PAY_STAGES} stats={stageStats}
-            isActive={k => stageFilter === k}
-            onPick={k => setStageFilter(f => (f === k || k === 'generated') ? null : k as PayStage)} />
-          <div className="odoo-stat-grid">
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label">Masse salariale brute</div>
-              <div className="odoo-stat-card-value">{totalGross.toFixed(2)} {dh}</div>
+          <div className="prj-kpis">
+            <div className="prj-kpi">
+              <div className="prj-kpi-head"><span>Masse salariale brute</span></div>
+              <div className="prj-kpi-value">{totalGross.toFixed(2)} {dh}</div>
             </div>
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label">Total net à payer</div>
-              <div className="odoo-stat-card-value" style={{ color: '#28a745' }}>{totalNet.toFixed(2)} {dh}</div>
+            <div className="prj-kpi">
+              <div className="prj-kpi-head"><span>Total net à payer</span></div>
+              <div className="prj-kpi-value" style={{ color: 'var(--prj-green)' }}>{totalNet.toFixed(2)} {dh}</div>
             </div>
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label">CNSS + AMO + IR (sal.)</div>
-              <div className="odoo-stat-card-value" style={{ color: '#b85d1a' }}>{(totalCNSS + totalAMO + totalIR).toFixed(2)} {dh}</div>
+            <div className="prj-kpi">
+              <div className="prj-kpi-head"><span>CNSS + AMO + IR (sal.)</span></div>
+              <div className="prj-kpi-value" style={{ color: 'var(--prj-orange)' }}>{(totalCNSS + totalAMO + totalIR).toFixed(2)} {dh}</div>
             </div>
-            <div className="odoo-stat-card">
-              <div className="odoo-stat-card-label">Charges patronales</div>
-              <div className="odoo-stat-card-value" style={{ color: 'var(--theme-accent)' }}>{totalChargesPatron.toFixed(2)} {dh}</div>
+            <div className="prj-kpi">
+              <div className="prj-kpi-head"><span>Charges patronales</span></div>
+              <div className="prj-kpi-value" style={{ color: 'var(--theme-accent)' }}>{totalChargesPatron.toFixed(2)} {dh}</div>
             </div>
+          </div>
+          <div className="prj-toolbar">
+            <FilterChips label="Étape des bulletins" value={stageFilter ?? ''} onChange={k => setStageFilter((k || null) as PayStage | null)}
+              chips={[
+                { key: '', label: 'Tous', icon: Receipt, count: stageStats.generated.count },
+                { key: 'topay', label: 'À payer', icon: Clock, count: stageStats.topay.count },
+                { key: 'paid', label: 'Payés', icon: CheckCircle2, count: stageStats.paid.count },
+              ]} />
+            <span className="hr-spacer" />
+            <small style={{ color: 'var(--theme-text-muted)', fontSize: 13 }}>
+              Bulletins {MONTH_NAMES[month - 1]} {year} · {totalPaid}/{allRows.length} payés · à payer {stageStats.topay.sub} · payé {stageStats.paid.sub}
+            </small>
           </div>
         </>
       )}
@@ -347,13 +340,13 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
         </StatusBanner>
       )}
       {isLoading ? (
-        <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>
+        <LoadingPanel />
       ) : sortedPayrolls.length === 0 ? (
-        <EmptyState icon={Banknote}>Aucun bulletin pour cette période. Cliquez sur « Générer les bulletins ».</EmptyState>
+        <EmptyPanel icon={Banknote}>Aucun bulletin pour cette période. Cliquez sur « Générer les bulletins ».</EmptyPanel>
       ) : visiblePayrolls.length === 0 ? (
-        <EmptyState icon={Banknote}>Aucun bulletin à cette étape.</EmptyState>
+        <EmptyPanel icon={Banknote}>Aucun bulletin à cette étape.</EmptyPanel>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel hr-plain"><div className="prj-scroll">
           <table className="odoo-table">
             <thead>
               <tr>
@@ -389,17 +382,17 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                     </span>
                   </td>
                   <td style={{ textAlign: 'center' }}>
-                    <span style={{ fontWeight: 600, color: pn(p.worked_days) < 26 ? '#dc3545' : '#155724' }}>
+                    <span style={{ fontWeight: 600, color: pn(p.worked_days) < 26 ? 'var(--prj-red)' : 'var(--prj-green)' }}>
                       {pn(p.worked_days)}
                     </span>
                     <span style={{ color: 'var(--odoo-text-light)', fontSize: '0.625rem' }}> /26</span>
                   </td>
                   <td style={{ textAlign: 'right', color: 'var(--odoo-text-muted)' }}>{pf(p.base_salary)}</td>
                   <td style={{ textAlign: 'right', fontWeight: 500 }}>{pf(p.gross_salary)}</td>
-                  <td style={{ textAlign: 'right', color: '#b85d1a' }}>{pf(p.cnss_employee)}</td>
-                  <td style={{ textAlign: 'right', color: '#b85d1a' }}>{pf(p.amo_employee)}</td>
-                  <td style={{ textAlign: 'right', color: '#dc3545' }}>{pf(p.ir_net)}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, color: '#155724' }}>
+                  <td style={{ textAlign: 'right', color: 'var(--prj-orange)' }}>{pf(p.cnss_employee)}</td>
+                  <td style={{ textAlign: 'right', color: 'var(--prj-orange)' }}>{pf(p.amo_employee)}</td>
+                  <td style={{ textAlign: 'right', color: 'var(--prj-red)' }}>{pf(p.ir_net)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--prj-green)' }}>
                     {(() => {
                       // Reste du apres acomptes hebdo / quinzaine (mig 327).
                       const net = dueOf(p);
@@ -423,7 +416,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                   <td style={{ textAlign: 'right' }}>
                     {p.paid ? (
                       pn(p.advance_deduction) > 0
-                        ? <span style={{ color: '#b85d1a', fontWeight: 500 }}>− {pf(p.advance_deduction)}</span>
+                        ? <span style={{ color: 'var(--prj-orange)', fontWeight: 500 }}>− {pf(p.advance_deduction)}</span>
                         : <span style={{ color: 'var(--odoo-text-light)' }}>—</span>
                     ) : (outstandingByEmp.get(p.employee_id as string) || 0) > 0 ? (
                       <span className="odoo-tag odoo-tag-orange" title="Solde d'avances à récupérer">
@@ -442,13 +435,13 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                           if (!(await confirm(`Annuler le paiement de ${p.first_name} ${p.last_name} ?\n\nLa sortie de caisse liée sera supprimée (écriture comptable reversée) et les retenues d'avance re-créditées. Vous pourrez ensuite re-payer sans doublon.`,
                             { title: 'Annuler le paiement', confirmLabel: 'Annuler le paiement', danger: true }))) return;
                           unpayMutation.mutate(p.id as string);
-                        }} className="odoo-pager-btn" title="Annuler le paiement" style={{ color: '#dc3545' }}>
+                        }} className="odoo-pager-btn" title="Annuler le paiement" style={{ color: 'var(--prj-red)' }}>
                           <RotateCcw size={12} />
                         </button>
                       </div>
                     ) : p.is_provisional ? (
                       // G0-10 : généré avant la fin du mois par dérogation — non payable.
-                      <span className="odoo-tag odoo-tag-orange" title="Mois non terminé : régénérez la paie une fois le mois fini pour pouvoir payer">Provisoire</span>
+                      <StatusTag tone="todo" label="Provisoire" title="Mois non terminé : régénérez la paie une fois le mois fini pour pouvoir payer" />
                     ) : (
                       <button onClick={() => setPayTarget(p)} className="odoo-btn-primary" style={{ padding: '0.15rem 0.6rem', fontSize: '0.75rem' }}>
                         Payer
@@ -469,7 +462,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
               ))}
             </tbody>
           </table>
-        </div>
+        </div></div>
       )}
 
       {/* ─── Dialogue de paiement (mode + retenue avance) ─── */}
@@ -492,7 +485,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
         const p = detailPayroll;
         const notDeclared = p.is_declared === false;
         const tag = p.paid ? <StatusTag tone="done" label="Payé" />
-          : notDeclared ? <span className="odoo-tag odoo-tag-grey">Non déclaré</span>
+          : notDeclared ? <StatusTag tone="draft" label="Non déclaré" />
           : <StatusTag tone="todo" label="À payer" />;
         // Cycle de vie du bulletin : Généré → Mois clôturé → Payé (le paiement
         // peut preceder la cloture : chaque etape est franchie independamment).
@@ -575,7 +568,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                     {pn(p.paid_leave_days) > 0 && <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>dont {pn(p.paid_leave_days)} j congé</div>}
                     {pn(p.holiday_paid_days) > 0 && <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>dont {pn(p.holiday_paid_days)} j férié</div>}
                   </td>
-                  <td style={{ textAlign: 'center', color: '#dc3545', fontWeight: 600 }}>{p.absent_days as number}</td>
+                  <td style={{ textAlign: 'center', color: 'var(--prj-red)', fontWeight: 600 }}>{p.absent_days as number}</td>
                   <td style={{ textAlign: 'center', fontWeight: 600 }}>{pn(p.overtime_hours).toFixed(1)}h</td>
                 </tr>
               </tbody>
@@ -592,7 +585,7 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                   <tr key={label}>
                     <td>{label}</td>
                     <td style={{ textAlign: 'right' }}>{num(gain)}</td>
-                    <td style={{ textAlign: 'right', color: '#dc3545' }}>{num(ret, true)}</td>
+                    <td style={{ textAlign: 'right', color: 'var(--prj-red)' }}>{num(ret, true)}</td>
                   </tr>
                 ))}
                 <tr style={{ fontWeight: 600 }}>
@@ -604,23 +597,23 @@ export default function MonthlyPayrollView({ queryClient }: { queryClient: Retur
                   <tr key={label}>
                     <td>{label}</td>
                     <td />
-                    <td style={{ textAlign: 'right', color: '#dc3545' }}>{num(ret, true)}</td>
+                    <td style={{ textAlign: 'right', color: 'var(--prj-red)' }}>{num(ret, true)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr style={{ fontWeight: 700 }}>
                   <td>Net à payer</td>
-                  <td colSpan={2} style={{ textAlign: 'right', color: '#155724', fontSize: '0.9375rem' }}>{money(pf(p.net_salary))}</td>
+                  <td colSpan={2} style={{ textAlign: 'right', color: 'var(--prj-green)', fontSize: '0.9375rem' }}>{money(pf(p.net_salary))}</td>
                 </tr>
                 {pn(p.acomptes_amount) > 0 && (<>
                   <tr>
                     <td>Acomptes {p.pay_frequency === 'weekly' ? 'hebdomadaires' : 'de quinzaine'} versés</td>
-                    <td colSpan={2} style={{ textAlign: 'right', color: '#dc3545' }}>− {money(pf(p.acomptes_amount))}</td>
+                    <td colSpan={2} style={{ textAlign: 'right', color: 'var(--prj-red)' }}>− {money(pf(p.acomptes_amount))}</td>
                   </tr>
                   <tr style={{ fontWeight: 700 }}>
                     <td>Reste à payer</td>
-                    <td colSpan={2} style={{ textAlign: 'right', color: '#155724' }}>{money(pf(dueOf(p)))}</td>
+                    <td colSpan={2} style={{ textAlign: 'right', color: 'var(--prj-green)' }}>{money(pf(dueOf(p)))}</td>
                   </tr>
                 </>)}
               </tfoot>

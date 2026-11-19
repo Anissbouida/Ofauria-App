@@ -20,7 +20,7 @@ export default function EmployeeSalaryHistory({ employeeId }: { employeeId: stri
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <section className="prj-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 18px' }}>
       <SectionTitle icon={History}>Historique du salaire</SectionTitle>
       {isLoading ? (
         <p style={muted}>Chargement...</p>
@@ -56,7 +56,7 @@ export default function EmployeeSalaryHistory({ employeeId }: { employeeId: stri
           </tbody>
         </table>
       )}
-    </div>
+    </section>
   );
 }
 

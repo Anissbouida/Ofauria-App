@@ -12,8 +12,8 @@ import { StatusTag } from '../../components/ui/StatusTag';
 export default function ProcessingRegisterCard() {
   const { data = [], isLoading } = useQuery({ queryKey: ['processing-register'], queryFn: settingsApi.processingRegister });
   return (
-    <section style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'grid', gap: 12, background: 'var(--odoo-bg)' }}>
-      <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+    <section className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
+      <h3 style={{ margin: 0, fontSize: '1.0625rem', fontWeight: 700, letterSpacing: '-0.02em', display: 'flex', alignItems: 'center', gap: 8 }}>
         <ShieldCheck size={16} /> Registre des traitements (loi 09-08)
       </h3>
       <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--theme-text-muted)' }}>

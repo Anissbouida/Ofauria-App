@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { LoadingPanel } from '../employees/ui';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Loader2, Save, Search, ShieldCheck, Eye } from 'lucide-react';
 import { MODULE_LABELS } from '@ofauria/shared';
@@ -63,7 +64,7 @@ export default function RoleActionMatrix({ roles }: { roles: RoleRow[] }) {
   });
   const previewSet = new Set(preview?.keys ?? []);
 
-  if (isLoading || !data) return <Loader2 className="animate-spin" size={18} />;
+  if (isLoading || !data) return <LoadingPanel />;
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -74,7 +75,7 @@ export default function RoleActionMatrix({ roles }: { roles: RoleRow[] }) {
       </StatusBanner>
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid var(--odoo-border)', borderRadius: 4, padding: '4px 8px', background: 'var(--odoo-bg)' }}>
+        <label className="prj-search" style={{ padding: '0 10px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           <Search size={13} aria-hidden />
           <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Rechercher une permission ou un module"
             aria-label="Rechercher une permission" style={{ border: 0, outline: 'none', background: 'transparent', minWidth: 220, fontSize: '0.875rem' }} />
@@ -98,7 +99,7 @@ export default function RoleActionMatrix({ roles }: { roles: RoleRow[] }) {
         </button>
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
+      <div className="prj-panel hr-plain"><div className="prj-scroll">
         <table className="odoo-table" style={{ minWidth: 600 }}>
           <thead>
             <tr>
@@ -150,7 +151,7 @@ export default function RoleActionMatrix({ roles }: { roles: RoleRow[] }) {
             })}
           </tbody>
         </table>
-      </div>
+      </div></div>
     </div>
   );
 }

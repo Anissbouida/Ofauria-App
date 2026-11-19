@@ -9,6 +9,9 @@ import { fr } from 'date-fns/locale';
 import { notify } from '../../components/ui/InlineNotification';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import { getApiErrorMessage } from '../../utils/api-error';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import { ListKpi } from '../sales/ListTemplate';
+import '../production/production.css';
 import {
   ArrowLeft, Package, CheckCircle2, Clock, Truck,
   ClipboardCheck, AlertTriangle, XCircle, PackageCheck,
@@ -180,24 +183,19 @@ export default function RequestDetailPage() {
   /* ─── Loading / not found ─── */
 
   if (isLoading) return (
-    <div className="flex items-center justify-center h-64">
-      <div className="flex flex-col items-center gap-3">
-        <Loader2 size={32} className="animate-spin text-indigo-500" />
-        <span className="text-gray-500 text-sm">Chargement...</span>
-      </div>
-    </div>
+    <div className="odoo-scope pd"><div className="pd-page">
+      <section className="prj-panel sal-empty"><Loader2 size={24} className="animate-spin" /><span>Chargement...</span></section>
+    </div></div>
   );
 
   if (!request) return (
-    <div className="flex flex-col items-center justify-center h-64 gap-4">
-      <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
-        <Package size={32} className="text-gray-400" />
-      </div>
-      <p className="text-gray-500">Demande non trouvée</p>
-      <button onClick={() => navigate('/replenishment')} className="text-indigo-600 hover:text-indigo-700 text-sm font-medium flex items-center gap-1">
-        <ArrowLeft size={16} /> Retour
-      </button>
-    </div>
+    <div className="odoo-scope pd"><div className="pd-page">
+      <section className="prj-panel sal-empty">
+        <Package size={28} style={{ opacity: 0.4 }} />
+        <strong>Demande non trouvée</strong>
+        <button onClick={() => navigate('/replenishment')} className="odoo-btn-secondary"><ArrowLeft size={14} /> Retour</button>
+      </section>
+    </div></div>
   );
 
   return (
@@ -339,8 +337,8 @@ function SubRequestDetailView({
     : 'odoo-tag-grey';
 
   return (
-    <div className="odoo-scope">
-      {/* ══════ CONTROL BAR ══════ */}
+    <div className="odoo-scope pd">
+      {/* ══════ BARRE : retour + fil d'Ariane ══════ */}
       <div className="odoo-control-bar">
         <button onClick={() => navigate('/replenishment')} className="odoo-pager-btn" title="Retour">
           <ArrowLeft size={14} />
@@ -353,243 +351,144 @@ function SubRequestDetailView({
             #{request.request_number || (request.id as string).slice(0, 8).toUpperCase()}
           </span>
         </div>
-        <StatusTag tone={statusTag.tone} icon={statusTag.icon} label={STATUS_LABELS[displayStatus] || displayStatus} />
-        <span className={`odoo-tag ${priorityTagClass}`}>{PRIORITY_LABELS[request.priority as string] || request.priority}</span>
-        <div style={{ flex: 1 }} />
-        {(isAdmin || isStoreStaff) && ['submitted', 'acknowledged', 'partially_received'].includes(status) && (
-          <button onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending} className="odoo-btn-danger">
-            <XCircle size={13} /> Annuler
-          </button>
-        )}
       </div>
 
-      {/* ══════ STAT TILES sobres ══════ */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-          <div className="odoo-stat-card-label">Articles</div>
-          <div className="odoo-stat-card-value">{items.length}</div>
+      <div className="pd-page">
+      {/* ══════ EN-TÊTE DE FICHE : numéro, statut, priorité, méta, étapes ══════ */}
+      <section className="prj-panel prj-hero pd-hero">
+        <div className="prj-hero-top">
+          <span className="prj-hero-icon"><ShoppingBag size={22} /></span>
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <h1 style={{ fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>#{request.request_number || (request.id as string).slice(0, 8).toUpperCase()}</h1>
+              <StatusTag tone={statusTag.tone} icon={statusTag.icon} label={STATUS_LABELS[displayStatus] || displayStatus} />
+              <span className={`odoo-tag ${priorityTagClass}`}>{PRIORITY_LABELS[request.priority as string] || request.priority}</span>
+            </div>
+            <div className="prj-hero-meta">
+              {request.requested_by_name && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <User size={12} /> {request.requested_by_name as string}
+                </span>
+              )}
+              {request.created_at && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Calendar size={12} /> {format(new Date(request.created_at as string), 'dd MMM yyyy HH:mm', { locale: fr })}
+                </span>
+              )}
+              {rc && (
+                <span className="odoo-tag odoo-tag-purple">
+                  <ChefHat size={10} /> {assignedRole === 'general' ? 'Général' : ws.label(assignedRole)}
+                </span>
+              )}
+              {isPartialTransfer && (
+                <span className="odoo-tag odoo-tag-blue">{receivedItems.length}/{items.length} reçu(s)</span>
+              )}
+              {request.acknowledged_by_name && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <ClipboardCheck size={12} /> Pris en charge par {request.acknowledged_by_name as string}
+                </span>
+              )}
+              {request.transferred_by_name && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <Truck size={12} /> Transféré par {request.transferred_by_name as string}
+                </span>
+              )}
+            </div>
+          </div>
+          {(isAdmin || isStoreStaff) && ['submitted', 'acknowledged', 'partially_received'].includes(status) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending} className="odoo-btn-danger">
+                <XCircle size={13} /> Annuler
+              </button>
+            </div>
+          )}
         </div>
-        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-          <div className="odoo-stat-card-label">Reçus</div>
-          <div className="odoo-stat-card-value" style={{ color: receivedItems.length > 0 ? '#28a745' : undefined }}>{receivedItems.length}</div>
-        </div>
-        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-          <div className="odoo-stat-card-label">Prêts</div>
-          <div className="odoo-stat-card-value">{readyItems.length}</div>
-        </div>
-        <div className="odoo-stat-card" style={{ cursor: 'default' }}>
-          <div className="odoo-stat-card-label">En attente</div>
-          <div className="odoo-stat-card-value" style={{ color: pendingItems.length > 0 ? '#b85d1a' : undefined }}>{pendingItems.length}</div>
-        </div>
-      </div>
 
-      {/* ══════ METADATA STRIP ══════ */}
-      <div style={{
-        padding: '0.5rem 1rem', borderBottom: '1px solid var(--theme-bg-separator)',
-        backgroundColor: 'var(--theme-bg-card)',
-        display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap',
-        fontSize: '0.75rem', color: 'var(--theme-text-muted)',
-      }}>
-        {request.requested_by_name && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <User size={11} /> {request.requested_by_name as string}
-          </span>
-        )}
-        {request.created_at && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Calendar size={11} /> {format(new Date(request.created_at as string), 'dd MMM yyyy HH:mm', { locale: fr })}
-          </span>
-        )}
-        {rc && (
-          <span className="odoo-tag odoo-tag-purple">
-            <ChefHat size={10} /> {assignedRole === 'general' ? 'Général' : ws.label(assignedRole)}
-          </span>
-        )}
-        {isPartialTransfer && (
-          <span className="odoo-tag odoo-tag-blue">{receivedItems.length}/{items.length} reçu(s)</span>
-        )}
-      </div>
-
-      {/* ══════════════ STEPPER ══════════════ */}
-      {status !== 'cancelled' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-          <div className="flex items-center justify-between">
+        {/* ══════ ÉTAPES ══════ */}
+        {status !== 'cancelled' && (
+          <ol className="ui-timeline">
             {STEPPER_STEPS.map((step, i) => {
               const isActive = i <= currentStep;
               const isCurrent = i === currentStep;
-              const Icon = step.icon;
+              const done = isActive && i < currentStep;
               return (
-                <div key={step.key} className="flex-1 flex items-center">
-                  <div className="flex flex-col items-center flex-1">
-                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${
-                      isCurrent ? 'bg-indigo-600 text-white ring-4 ring-indigo-100 shadow-md' :
-                      isActive ? 'bg-indigo-600 text-white' :
-                      'bg-gray-100 text-gray-400'
-                    }`}>
-                      {isActive && i < currentStep ? <CheckCircle2 size={18} /> : <Icon size={18} />}
-                    </div>
-                    <span className={`mt-2 text-xs font-medium ${
-                      isCurrent && displayStatus === 'partially_delivered' && step.key === 'acknowledged'
-                        ? 'text-teal-700'
-                        : isActive ? 'text-indigo-700' : 'text-gray-400'
-                    }`}>
-                      {isCurrent && displayStatus === 'partially_delivered' && step.key === 'acknowledged'
-                        ? 'Partiellement livré'
-                        : step.label}
-                    </span>
-                  </div>
-                  {i < STEPPER_STEPS.length - 1 && (
-                    <div className={`h-0.5 flex-1 mx-2 rounded-full ${i < currentStep ? 'bg-indigo-500' : 'bg-gray-200'}`} />
-                  )}
-                </div>
+                <li key={step.key} className={`ui-timeline-step ${done ? 'is-done' : ''} ${isCurrent ? 'is-current' : ''}`}>
+                  <span className="ui-timeline-dot">{done ? <CheckCircle2 size={12} /> : i + 1}</span>
+                  <span className="ui-timeline-label">
+                    {isCurrent && displayStatus === 'partially_delivered' && step.key === 'acknowledged'
+                      ? 'Partiellement livré'
+                      : step.label}
+                  </span>
+                </li>
               );
             })}
-          </div>
-        </div>
-      )}
+          </ol>
+        )}
+      </section>
+
+      {/* ══════ INDICATEURS ══════ */}
+      <div className="prj-kpis">
+        <ListKpi label="Articles" value={String(items.length)} />
+        <ListKpi label="Reçus" value={String(receivedItems.length)} tone={receivedItems.length > 0 ? 'green' : undefined} />
+        <ListKpi label="Prêts" value={String(readyItems.length)} />
+        <ListKpi label="En attente" value={String(pendingItems.length)} tone={pendingItems.length > 0 ? 'orange' : undefined} />
+      </div>
 
       {/* Cancelled banner */}
       {status === 'cancelled' && (
-        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 flex items-center gap-4">
-          <div className="w-11 h-11 rounded-xl bg-gray-200 flex items-center justify-center flex-shrink-0">
-            <XCircle size={22} className="text-gray-500" />
-          </div>
-          <div>
-            <p className="font-semibold text-gray-700">Demande annulée</p>
-            <p className="text-sm text-gray-500">Cette demande a été annulée et ne sera pas traitée.</p>
-          </div>
-        </div>
+        <StatusBanner tone="neutral" icon={XCircle} title="Demande annulée">
+          Cette demande a été annulée et ne sera pas traitée.
+        </StatusBanner>
       )}
 
       {/* Production status banner */}
       {hasProductionItems && !['cancelled', 'closed', 'closed_with_discrepancy'].includes(status) && (
-        <div className={`rounded-2xl p-4 flex items-center gap-4 ${
-          productionComplete ? 'bg-emerald-50 border border-emerald-200' : 'bg-blue-50 border border-blue-200'
-        }`}>
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-            productionComplete ? 'bg-emerald-100' : 'bg-blue-100'
-          }`}>
-            {productionComplete ? <CheckCircle2 size={20} className="text-emerald-600" /> : <Clock size={20} className="text-blue-600" />}
-          </div>
-          <div className="flex-1">
-            <h4 className={`font-semibold text-sm ${productionComplete ? 'text-emerald-800' : 'text-blue-800'}`}>
-              {productionComplete ? 'Production terminée' : 'Production en cours'}
-            </h4>
-            <p className={`text-xs mt-0.5 ${productionComplete ? 'text-emerald-600' : 'text-blue-600'}`}>
-              {productionComplete
-                ? 'Tous les articles ont été produits.'
-                : pendingProductionItems.length > 0
-                  ? `${pendingProductionItems.length} article(s) en attente de production — les articles en stock peuvent être transférés immédiatement`
-                  : `${items.filter(i => i.source_type === 'production' || i.source_type === 'mixed').length} article(s) en production`
-              }
-            </p>
-          </div>
-          {productionPlans.length > 0 && (
-            <button
-              onClick={() => navigate(`/production/${productionPlans[0].id}`)}
-              className="text-xs px-4 py-2 rounded-xl bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 flex-shrink-0 shadow-sm font-medium flex items-center gap-1"
-            >
+        <StatusBanner tone={productionComplete ? 'success' : 'info'} icon={productionComplete ? CheckCircle2 : Clock}
+          title={productionComplete ? 'Production terminée' : 'Production en cours'}
+          actions={productionPlans.length > 0 ? (
+            <button onClick={() => navigate(`/production/${productionPlans[0].id}`)} className="odoo-btn-secondary">
               Voir le plan <ArrowRight size={12} />
             </button>
-          )}
-        </div>
+          ) : undefined}>
+          {productionComplete
+            ? 'Tous les articles ont été produits.'
+            : pendingProductionItems.length > 0
+              ? `${pendingProductionItems.length} article(s) en attente de production — les articles en stock peuvent être transférés immédiatement`
+              : `${items.filter(i => i.source_type === 'production' || i.source_type === 'mixed').length} article(s) en production`
+          }
+        </StatusBanner>
       )}
-
-      {/* ══════════════ INFO CARDS ══════════════ */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-indigo-100 flex items-center justify-center">
-              <User size={16} className="text-indigo-600" />
-            </div>
-            <div>
-              <div className="text-[10px] text-gray-400 uppercase tracking-wide">Demandeur</div>
-              <div className="text-sm font-medium text-gray-800">{request.requested_by_name as string || '\u2014'}</div>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center">
-              <Calendar size={16} className="text-blue-600" />
-            </div>
-            <div>
-              <div className="text-[10px] text-gray-400 uppercase tracking-wide">Date</div>
-              <div className="text-sm font-medium text-gray-800">
-                {request.created_at ? format(new Date(request.created_at as string), 'dd MMM yyyy HH:mm', { locale: fr }) : '\u2014'}
-              </div>
-            </div>
-          </div>
-        </div>
-        {request.acknowledged_by_name && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center">
-                <ClipboardCheck size={16} className="text-emerald-600" />
-              </div>
-              <div>
-                <div className="text-[10px] text-gray-400 uppercase tracking-wide">Pris en charge par</div>
-                <div className="text-sm font-medium text-gray-800">{request.acknowledged_by_name as string}</div>
-              </div>
-            </div>
-          </div>
-        )}
-        {request.transferred_by_name && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center">
-                <Truck size={16} className="text-purple-600" />
-              </div>
-              <div>
-                <div className="text-[10px] text-gray-400 uppercase tracking-wide">Transféré par</div>
-                <div className="text-sm font-medium text-gray-800">{request.transferred_by_name as string}</div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* ══════════════ ACTION PANELS BY STATUS ══════════════ */}
 
       {/* SUBMITTED: Responsable can acknowledge */}
       {status === 'submitted' && isResponsable && isMyRequest && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-8 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-yellow-500 flex items-center justify-center mx-auto mb-4">
-            <Clock size={28} className="text-white" />
-          </div>
-          <h3 className="font-bold text-yellow-800 text-lg mb-1">Nouvelle demande en attente</h3>
-          <p className="text-sm text-yellow-700 mb-5">Prenez en charge cette demande pour commencer le traitement.</p>
-          <button onClick={() => acknowledgeMutation.mutate()} disabled={acknowledgeMutation.isPending}
-            className="px-8 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-base flex items-center gap-2 mx-auto">
-            {acknowledgeMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <ClipboardCheck size={18} />}
-            {acknowledgeMutation.isPending ? 'Prise en charge...' : 'Prendre en charge'}
-          </button>
-        </div>
+        <StatusBanner tone="warning" icon={Clock} title="Nouvelle demande en attente"
+          actions={
+            <button onClick={() => acknowledgeMutation.mutate()} disabled={acknowledgeMutation.isPending} className="odoo-btn-primary">
+              {acknowledgeMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <ClipboardCheck size={14} />}
+              {acknowledgeMutation.isPending ? 'Prise en charge...' : 'Prendre en charge'}
+            </button>
+          }>
+          Prenez en charge cette demande pour commencer le traitement.
+        </StatusBanner>
       )}
 
       {status === 'submitted' && (!isResponsable || !isMyRequest) && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-5 flex items-center gap-4">
-          <div className="w-11 h-11 rounded-xl bg-yellow-100 flex items-center justify-center flex-shrink-0">
-            <Clock size={22} className="text-yellow-600" />
-          </div>
-          <div>
-            <p className="font-semibold text-yellow-800">En attente de prise en charge</p>
-            <p className="text-sm text-yellow-600">Le responsable n'a pas encore pris en charge cette demande.</p>
-          </div>
-        </div>
+        <StatusBanner tone="warning" icon={Clock} title="En attente de prise en charge">
+          Le responsable n'a pas encore pris en charge cette demande.
+        </StatusBanner>
       )}
 
       {/* ACKNOWLEDGED: Responsable fills preparation form */}
       {(status === 'acknowledged' || status === 'partially_received') && isResponsable && isMyRequest && (
-        <div className="bg-white rounded-2xl shadow-sm border border-blue-200 overflow-hidden">
-          <div className="bg-blue-50 px-6 py-4 border-b border-blue-200 flex items-center justify-between">
+        <section className="prj-panel" style={{ overflow: 'hidden' }}>
+          <div className="prj-panel-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-500 flex items-center justify-center">
-                <PackageCheck size={20} className="text-white" />
-              </div>
+              <span className="kl-ic b"><PackageCheck size={16} /></span>
               <div>
-                <h3 className="font-bold text-blue-800">Préparation des articles</h3>
-                <p className="text-xs text-blue-600 mt-0.5">
+                <div>Préparation des articles</div>
+                <p style={{ fontSize: 13, fontWeight: 400, letterSpacing: 0, color: 'var(--theme-text-muted)', margin: '2px 0 0' }}>
                   {!hasPreparableItems
                     ? 'Aucun article prêt — en attente de production'
                     : pendingProductionItems.length > 0
@@ -599,7 +498,7 @@ function SubRequestDetailView({
               </div>
             </div>
             <button onClick={handleStartPreparing} disabled={prepareMutation.isPending || !hasPreparableItems}
-              className={`px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm ${!hasPreparableItems ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              className="odoo-btn-primary">
               {prepareMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <PackageCheck size={14} />}
               {prepareMutation.isPending ? 'En cours...' : !hasPreparableItems ? 'En attente' : pendingProductionItems.length > 0 ? 'Préparer le lot disponible' : 'Commencer la préparation'}
             </button>
@@ -645,7 +544,7 @@ function SubRequestDetailView({
                   )}
                   {/* Requested qty */}
                   <div className="text-center flex-shrink-0 w-14">
-                    <div className="text-[10px] text-gray-400 uppercase">Demande</div>
+                    <div className="text-[10px] text-gray-400">Demande</div>
                     <div className="text-sm font-bold text-gray-800">{requestedQty}</div>
                   </div>
                   {/* Inputs */}
@@ -679,60 +578,43 @@ function SubRequestDetailView({
               );
             })}
           </div>
-        </div>
+        </section>
       )}
 
       {(status === 'acknowledged' || status === 'partially_received') && (!isResponsable || !isMyRequest) && (
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 flex items-center gap-4">
-          <div className="w-11 h-11 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
-            <ClipboardCheck size={22} className="text-blue-600" />
-          </div>
-          <div>
-            <p className="font-semibold text-blue-800">Demande prise en charge</p>
-            <p className="text-sm text-blue-600">Le responsable prepare votre commande.</p>
-          </div>
-        </div>
+        <StatusBanner tone="info" icon={ClipboardCheck} title="Demande prise en charge">
+          Le responsable prepare votre commande.
+        </StatusBanner>
       )}
 
       {/* PREPARING: Responsable can validate transfer */}
       {status === 'preparing' && isResponsable && isMyRequest && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-8 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-indigo-500 flex items-center justify-center mx-auto mb-4">
-            <Truck size={28} className="text-white" />
-          </div>
-          <h3 className="font-bold text-indigo-800 text-lg mb-1">Préparation en cours</h3>
-          <p className="text-sm text-indigo-600 mb-5">Une fois les articles prets, validez le transfert vers le magasin.</p>
-          <button onClick={() => transferMutation.mutate()} disabled={transferMutation.isPending}
-            className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all text-base flex items-center gap-2 mx-auto">
-            {transferMutation.isPending ? <Loader2 size={18} className="animate-spin" /> : <Truck size={18} />}
-            {transferMutation.isPending ? 'Transfert en cours...' : 'Valider le transfert'}
-          </button>
-        </div>
+        <StatusBanner tone="info" icon={Truck} title="Préparation en cours"
+          actions={
+            <button onClick={() => transferMutation.mutate()} disabled={transferMutation.isPending} className="odoo-btn-primary">
+              {transferMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
+              {transferMutation.isPending ? 'Transfert en cours...' : 'Valider le transfert'}
+            </button>
+          }>
+          Une fois les articles prets, validez le transfert vers le magasin.
+        </StatusBanner>
       )}
 
       {status === 'preparing' && (!isResponsable || !isMyRequest) && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-5 flex items-center gap-4">
-          <div className="w-11 h-11 rounded-xl bg-indigo-100 flex items-center justify-center flex-shrink-0">
-            <PackageCheck size={22} className="text-indigo-600" />
-          </div>
-          <div>
-            <p className="font-semibold text-indigo-800">En préparation</p>
-            <p className="text-sm text-indigo-600">Vos articles sont en cours de préparation.</p>
-          </div>
-        </div>
+        <StatusBanner tone="info" icon={PackageCheck} title="En préparation">
+          Vos articles sont en cours de préparation.
+        </StatusBanner>
       )}
 
       {/* TRANSFERRED: Cashier confirms reception */}
       {status === 'transferred' && isStoreStaff && (
-        <div className="bg-white rounded-2xl shadow-sm border border-purple-200 overflow-hidden">
-          <div className="bg-purple-50 px-6 py-4 border-b border-purple-200 flex items-center justify-between">
+        <section className="prj-panel" style={{ overflow: 'hidden' }}>
+          <div className="prj-panel-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-purple-500 flex items-center justify-center">
-                <Truck size={20} className="text-white" />
-              </div>
+              <span className="kl-ic b"><Truck size={16} /></span>
               <div>
-                <h3 className="font-bold text-purple-800">Confirmation de réception</h3>
-                <p className="text-xs text-purple-600 mt-0.5">
+                <div>Confirmation de réception</div>
+                <p style={{ fontSize: 13, fontWeight: 400, letterSpacing: 0, color: 'var(--theme-text-muted)', margin: '2px 0 0' }}>
                   {pendingItems.length > 0
                     ? `Transfert partiel — ${readyItems.length} article(s) a confirmer, ${pendingItems.length} en attente`
                     : 'Vérifiez les quantités reçues article par article'}
@@ -740,7 +622,7 @@ function SubRequestDetailView({
               </div>
             </div>
             <button onClick={handleConfirmReception} disabled={receptionMutation.isPending}
-              className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-medium shadow-md hover:shadow-lg transition-all flex items-center gap-2 text-sm">
+              className="odoo-btn-primary">
               {receptionMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
               {receptionMutation.isPending ? 'Confirmation...' : 'Confirmer la réception'}
             </button>
@@ -759,17 +641,17 @@ function SubRequestDetailView({
                     <div className="text-xs text-gray-400">{item.category_name as string}</div>
                   </div>
                   <div className="text-center flex-shrink-0 w-16">
-                    <div className="text-[10px] text-gray-400 uppercase">Attendu</div>
+                    <div className="text-[10px] text-gray-400">Attendu</div>
                     <div className="text-sm font-bold text-gray-700">{expected}</div>
                   </div>
                   <div className="text-center flex-shrink-0">
-                    <div className="text-[10px] text-gray-400 uppercase">Reçu</div>
+                    <div className="text-[10px] text-gray-400">Reçu</div>
                     <input type="number" min={0} value={received}
                       onChange={(e) => setReceptionValue(itemId, 'qtyReceived', parseInt(e.target.value) || 0)}
                       className={`w-16 text-center py-1.5 border rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 ${diff !== 0 ? 'border-red-300 bg-red-50' : 'border-gray-200'}`} />
                   </div>
                   <div className="text-center flex-shrink-0 w-12">
-                    <div className="text-[10px] text-gray-400 uppercase">Ecart</div>
+                    <div className="text-[10px] text-gray-400">Ecart</div>
                     {diff === 0 ? <CheckCircle2 size={18} className="mx-auto text-emerald-500 mt-1" /> :
                       <span className={`text-sm font-bold ${diff > 0 ? 'text-blue-600' : 'text-red-600'}`}>{diff > 0 ? '+' : ''}{diff}</span>}
                   </div>
@@ -788,52 +670,31 @@ function SubRequestDetailView({
               </p>
             </div>
           )}
-        </div>
+        </section>
       )}
 
       {status === 'transferred' && !isStoreStaff && (
-        <div className="bg-purple-50 border border-purple-200 rounded-2xl p-5 flex items-center gap-4">
-          <div className="w-11 h-11 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
-            <Truck size={22} className="text-purple-600" />
-          </div>
-          <div>
-            <p className="font-semibold text-purple-800">Transféré — en attente de réception</p>
-            <p className="text-sm text-purple-600">La caissière doit confirmer la réception des articles.</p>
-          </div>
-        </div>
+        <StatusBanner tone="info" icon={Truck} title="Transféré — en attente de réception">
+          La caissière doit confirmer la réception des articles.
+        </StatusBanner>
       )}
 
       {/* CLOSED: Summary */}
       {(status === 'closed' || status === 'closed_with_discrepancy') && (
-        <div className={`rounded-2xl overflow-hidden ${status === 'closed_with_discrepancy' ? 'border border-orange-200' : 'border border-emerald-200'}`}>
-          <div className={`px-6 py-4 flex items-center gap-4 ${status === 'closed_with_discrepancy' ? 'bg-orange-50 border-b border-orange-200' : 'bg-emerald-50 border-b border-emerald-200'}`}>
-            <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${status === 'closed_with_discrepancy' ? 'bg-orange-100' : 'bg-emerald-100'}`}>
-              {status === 'closed_with_discrepancy' ? <AlertTriangle size={22} className="text-orange-600" /> : <CheckCircle2 size={22} className="text-emerald-600" />}
-            </div>
-            <div>
-              <h3 className={`font-bold ${status === 'closed_with_discrepancy' ? 'text-orange-800' : 'text-emerald-800'}`}>
-                {status === 'closed_with_discrepancy' ? 'Clôturé avec écart' : 'Clôturé — tout est conforme'}
-              </h3>
-              {request.closed_by_name && (
-                <p className={`text-xs mt-0.5 ${status === 'closed_with_discrepancy' ? 'text-orange-600' : 'text-emerald-600'}`}>
-                  Confirmé par {request.closed_by_name as string} le {request.closed_at ? format(new Date(request.closed_at as string), 'dd/MM/yyyy HH:mm', { locale: fr }) : ''}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
+        <StatusBanner tone={status === 'closed_with_discrepancy' ? 'orange' : 'success'}
+          icon={status === 'closed_with_discrepancy' ? AlertTriangle : CheckCircle2}
+          title={status === 'closed_with_discrepancy' ? 'Clôturé avec écart' : 'Clôturé — tout est conforme'}>
+          {request.closed_by_name && (
+            <>Confirmé par {request.closed_by_name as string} le {request.closed_at ? format(new Date(request.closed_at as string), 'dd/MM/yyyy HH:mm', { locale: fr }) : ''}</>
+          )}
+        </StatusBanner>
       )}
 
       {/* ══════════════ ITEMS TABLE (always visible) ══════════════ */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-indigo-500 flex items-center justify-center">
-            <Layers size={18} className="text-white" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-gray-800">Articles</h3>
-            <span className="text-xs text-gray-500">{items.length} article(s)</span>
-          </div>
+      <section className="prj-panel" style={{ overflow: 'hidden' }}>
+        <div className="prj-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Layers size={16} /> Articles
+          <small style={{ fontSize: 13, fontWeight: 500, color: 'var(--theme-text-muted)' }}>{items.length} article(s)</small>
         </div>
         <div className="divide-y divide-gray-50">
           {items.map((item) => {
@@ -864,22 +725,22 @@ function SubRequestDetailView({
                 )}
                 {/* Demanded */}
                 <div className="text-center flex-shrink-0 w-14">
-                  <div className="text-[10px] text-gray-400 uppercase">Demande</div>
+                  <div className="text-[10px] text-gray-400">Demande</div>
                   <div className="text-sm font-bold text-gray-700">{(item.requested_quantity as number) || 0}</div>
                 </div>
                 {/* Prep details */}
                 {showPrepDetails && (
                   <>
                     <div className="text-center flex-shrink-0 w-14">
-                      <div className="text-[10px] text-gray-400 uppercase">Source</div>
+                      <div className="text-[10px] text-gray-400">Source</div>
                       <div className="text-xs text-gray-500">{(item.source as string) === 'production' ? 'Prod.' : 'Stock'}</div>
                     </div>
                     <div className="text-center flex-shrink-0 w-14">
-                      <div className="text-[10px] text-gray-400 uppercase">Magasin</div>
+                      <div className="text-[10px] text-gray-400">Magasin</div>
                       <div className="text-sm font-semibold text-indigo-700">{qtyToStore}</div>
                     </div>
                     <div className="text-center flex-shrink-0 w-14">
-                      <div className="text-[10px] text-gray-400 uppercase">Stock</div>
+                      <div className="text-[10px] text-gray-400">Stock</div>
                       <div className="text-sm text-gray-500">{(item.qty_to_stock as number) || 0}</div>
                     </div>
                   </>
@@ -888,11 +749,11 @@ function SubRequestDetailView({
                 {isClosed && (
                   <>
                     <div className="text-center flex-shrink-0 w-14">
-                      <div className="text-[10px] text-gray-400 uppercase">Reçu</div>
+                      <div className="text-[10px] text-gray-400">Reçu</div>
                       <div className="text-sm font-semibold">{qtyReceived ?? '\u2014'}</div>
                     </div>
                     <div className="text-center flex-shrink-0 w-12">
-                      <div className="text-[10px] text-gray-400 uppercase">Ecart</div>
+                      <div className="text-[10px] text-gray-400">Ecart</div>
                       {diff === null ? <span className="text-gray-300">\u2014</span> : diff === 0 ? (
                         <CheckCircle2 size={16} className="mx-auto text-emerald-500 mt-1" />
                       ) : (
@@ -907,7 +768,8 @@ function SubRequestDetailView({
             );
           })}
         </div>
-      </div>
+      </section>
+      </div>{/* /pd-page */}
     </div>
   );
 }

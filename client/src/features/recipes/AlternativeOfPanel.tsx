@@ -32,7 +32,7 @@ export default function AlternativeOfPanel({ recipe }: { recipe: { id: string; p
   });
   if (recipe.product_id) return null;
   return (
-    <div className="odoo-section" style={{ marginBottom: '1rem' }}>
+    <div className="odoo-section">
       <div className="odoo-section-header flex items-center gap-2"><Layers size={13} /> Nomenclature supplémentaire d'un produit</div>
       <div style={{ padding: '0.625rem 1rem', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <SearchSelect options={products.map(p => ({ id: p.id, label: p.name }))} value={productId} onChange={setProductId} placeholder="Produit…" width={260} ariaLabel="Produit" />

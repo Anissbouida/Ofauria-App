@@ -1,3 +1,4 @@
+import { FilterChips } from '../sales/ListTemplate';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Loader2, ArrowUp, ArrowDown } from 'lucide-react';
@@ -79,21 +80,13 @@ export default function CustomFieldsTab() {
       <PageNote help="Les champs ajoutés apparaissent dans le formulaire de la fiche, peuvent s'afficher dans sa liste et se remplissent aussi par import. Le type d'un champ ne change plus une fois créé.">
         Ajoutez à une fiche les champs propres à votre activité.
       </PageNote>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {entities.map(e => {
-          const n = all.filter(d => d.entity === e.key && d.is_active).length;
-          return (
-            <button key={e.key} className={e.key === entity ? 'odoo-btn-primary' : 'odoo-btn-secondary'} onClick={() => { setEntity(e.key); setDraft(null); }}>
-              {e.label}{n ? ` (${n})` : ''}
-            </button>
-          );
-        })}
-      </div>
+      <FilterChips label="Fiche" value={entity} onChange={k => { setEntity(k as typeof entity); setDraft(null); }}
+        chips={entities.map(e => ({ key: e.key, label: e.label, count: all.filter(d => d.entity === e.key && d.is_active).length }))} />
 
       {list.length === 0 && !draft ? (
         <p style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)', margin: 0 }}>Aucun champ sur cette fiche. Exemples : {EXAMPLES[entity]}</p>
       ) : list.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="prj-panel prj-scroll">
           <table className="odoo-table">
             <thead><tr><th style={{ width: 60 }}>Ordre</th><th>Champ</th><th>Type</th><th>Obligatoire</th><th>Dans la liste</th><th>Statut</th><th></th></tr></thead>
             <tbody>{list.map((d, i) => (
@@ -126,7 +119,7 @@ export default function CustomFieldsTab() {
         <div><button className="odoo-btn-secondary" onClick={() => setDraft(emptyDraft())} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Plus size={13} /> Ajouter un champ</button></div>
       )}
       {draft && (
-        <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'grid', gap: 12, background: 'var(--odoo-bg-alt)' }}>
+        <div className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12 }}>
           <div style={{ fontWeight: 600 }}>{draft.id ? 'Modifier le champ' : `Nouveau champ · ${entities.find(e => e.key === entity)?.label}`}</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
             <label style={lab}>Libellé<input style={field} maxLength={80} value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })} placeholder="Ex. : N° d'immatriculation" autoFocus /></label>
@@ -142,7 +135,7 @@ export default function CustomFieldsTab() {
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={draft.required} onChange={e => setDraft({ ...draft, required: e.target.checked })} /> Obligatoire</label>
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={draft.showInList} onChange={e => setDraft({ ...draft, showInList: e.target.checked })} /> Afficher dans la liste</label>
           </div>
-          {draft.required && !draft.id && <p style={{ fontSize: '0.75rem', color: '#b85d1a', margin: 0 }}>Un champ obligatoire sera exigé à la prochaine modification de chaque fiche existante.</p>}
+          {draft.required && !draft.id && <p style={{ fontSize: '0.75rem', color: 'var(--prj-orange)', margin: 0 }}>Un champ obligatoire sera exigé à la prochaine modification de chaque fiche existante.</p>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button className="odoo-btn-secondary" onClick={() => setDraft(null)}>Annuler</button>
             <button className="odoo-btn-primary" disabled={save.isPending || draft.label.trim().length < 2 || (draft.fieldType === 'select' && !draft.options.trim())} onClick={() => save.mutate(draft)}>Enregistrer</button>

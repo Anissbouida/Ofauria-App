@@ -1,0 +1,45 @@
+/* Module Personnel + Utilisateurs — design Ventes (2026-11-18).
+   Règles propres au module, toutes sous .kl-apple ; le reste vient de apple-look.css,
+   projects.css (prj-*) et sales.css (sal-*). */
+
+/* Corps d'un écran : colonne de blocs (barre d'outils, tuiles, panneaux). */
+.kl-apple .hr-body { gap: 18px; min-width: 0; }
+.kl-apple .hr-body > * { min-width: 0; }
+
+/* Barre d'outils : contrôles de période (date, mois, année) alignés sur la recherche. */
+.kl-apple .hr-tools { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.kl-apple .hr-tools .odoo-filter-dropdown,
+.kl-apple .prj-toolbar .odoo-filter-dropdown { height: 34px; border-radius: 10px; }
+.kl-apple .hr-tools-label { font-size: 13px; color: var(--kl-muted, var(--theme-text-muted)); }
+.kl-apple .prj-toolbar .hr-spacer { flex: 1; }
+
+/* Panneau à en-tête (titre + résumé + actions) : remplace les sections à intitulé en capitales. */
+.kl-apple .hr-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.kl-apple .hr-panel-head > small { font-size: 13px; font-weight: 400; color: var(--kl-muted, var(--theme-text-muted)); }
+.kl-apple .hr-panel-body { padding: 14px 18px 16px; display: grid; gap: 10px; }
+.kl-apple .hr-panel-foot { padding: 10px 18px 14px; font-size: 12px; color: var(--kl-muted, var(--theme-text-muted)); border-top: 1px solid var(--kl-hair, var(--theme-bg-separator)); }
+
+/* Légende à pastilles (pointage) */
+.kl-apple .hr-legend { display: inline-flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--kl-muted, var(--theme-text-muted)); }
+.kl-apple .hr-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+
+/* Tableaux dans un panneau : pied de total discret. */
+.kl-apple .prj-panel .odoo-table tfoot td { background: transparent; border-top: 1px solid var(--kl-sep, var(--theme-bg-separator)); }
+
+/* Panneau de tableau non cliquable (pas de curseur main sur les lignes). */
+.kl-apple .prj-panel.hr-plain { overflow: hidden; }
+.kl-apple .prj-panel.hr-plain .odoo-table { margin: 0; }
+
+/* Tuile cliquable sélectionnée (déclarations) */
+.kl-apple .prj-kpi.hr-active { box-shadow: inset 0 0 0 2px var(--kl-accent, var(--theme-accent)), var(--kl-shadow); }
+
+/* ─── Fiche employé (pleine page, comme la fiche commande) ─── */
+.kl-apple .hr-detail { max-width: 1280px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+@media (max-width: 768px) { .kl-apple .hr-detail { padding: 16px 16px 40px; } }
+.kl-apple .hr-hero-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.kl-apple .hr-hero-stats button { display: grid; gap: 3px; text-align: left; border: 0; border-radius: 12px; padding: 10px 12px; font: inherit; color: inherit; cursor: pointer;
+  background: color-mix(in srgb, var(--kl-bg, var(--theme-bg-page)) 80%, var(--kl-card, var(--theme-bg-card))); }
+.kl-apple .hr-hero-stats button:hover, .kl-apple .hr-hero-stats button:focus-visible { background: color-mix(in srgb, var(--theme-accent) 8%, var(--kl-card, var(--theme-bg-card))); outline: none; }
+.kl-apple .hr-hero-stats .l { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--kl-muted, var(--theme-text-muted)); }
+.kl-apple .hr-hero-stats b { font-size: 16px; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.kl-apple .hr-tabs { padding: 0 4px; }

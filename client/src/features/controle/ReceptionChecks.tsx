@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Search, X, ClipboardCheck, CheckCircle2, XCircle, Thermometer } from 'lucide-react';
+import { Loader2, X, ClipboardCheck, CheckCircle2, XCircle, Thermometer } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { controleApi, type ReceptionCheckRow } from '../../api/controle.api';
@@ -8,9 +8,12 @@ import { apiErrorMessage } from '../../api/errors';
 import { notify } from '../../components/ui/InlineNotification';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
 import {
-  StagePipeline, PeriodFilter, Pager, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
+  PeriodFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef,
 } from '../../components/purchasing/ProcessBoard';
+import { ListToolbar, ListEmpty } from '../sales/ListTemplate';
+import { StageChips, Panel, PagerFoot, PageLoading } from './KlUi';
 
 /**
  * Contrôles à réception : un bon de réception = un contrôle (température, aspect,
@@ -25,7 +28,10 @@ const STATUSES: Array<StageDef & { key: Status }> = [
   { key: 'non_conforme', label: 'Non conformes', hint: 'à traiter avec le fournisseur', icon: XCircle },
   { key: 'conforme', label: 'Conformes', hint: 'contrôle validé', icon: CheckCircle2 },
 ];
-const STATUS_DOT: Record<Status, string> = { a_controler: '#d9822b', non_conforme: '#dc3545', conforme: '#28a745' };
+/** Statut du contrôle en étiquette commune : à contrôler = action attendue. */
+const STATUS_TAG: Record<Status, { tone: StatusTone; label: string }> = {
+  a_controler: { tone: 'todo', label: 'À contrôler' }, non_conforme: { tone: 'blocked', label: 'Non conforme' }, conforme: { tone: 'done', label: 'Conforme' },
+};
 
 export default function ReceptionChecks() {
   const [status, setStatus] = useState<Status | ''>('');
@@ -58,7 +64,7 @@ export default function ReceptionChecks() {
 
   return (
     <>
-      <StagePipeline
+      <StageChips
         title="Contrôles à réception"
         summary={`${(counts.a_controler ?? 0) + (counts.non_conforme ?? 0) + (counts.conforme ?? 0)} réceptions · ${text}`}
         stages={STATUSES}
@@ -79,10 +85,7 @@ export default function ReceptionChecks() {
         </StatusBanner>
       )}
 
-      <div className="odoo-search-panel" style={{ flexWrap: 'wrap', rowGap: 8, margin: 0 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)', flexShrink: 0 }} />
-        <input type="text" value={searchInput} onChange={e => setSearchInput(e.target.value)} aria-label="Rechercher une réception"
-          placeholder="Rechercher un bon, un fournisseur, un BC..." className="odoo-search-input" style={{ flex: '1 1 220px', minWidth: 0 }} />
+      <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="Rechercher un bon, un fournisseur, un BC...">
         {isFetching && !isLoading && <Loader2 className="animate-spin" size={13} style={{ color: 'var(--theme-text-muted)' }} />}
         <PeriodFilter label="Reçu" title="Date de réception"
           period={period} onPeriod={setPeriod} from={customFrom} onFrom={setCustomFrom} to={customTo} onTo={setCustomTo} />
@@ -92,17 +95,13 @@ export default function ReceptionChecks() {
             <X size={12} /> Effacer les filtres
           </button>
         )}
-      </div>
+      </ListToolbar>
 
-      {isLoading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={22} className="animate-spin" style={{ color: 'var(--theme-accent)' }} /></div>
-      ) : rows.length === 0 ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <ClipboardCheck size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-          <p style={{ fontSize: '0.8125rem', fontWeight: 500 }}>Aucune réception pour ces filtres.</p>
-        </div>
+      {isLoading ? <PageLoading /> : rows.length === 0 ? (
+        <ListEmpty icon={ClipboardCheck} title="Aucune réception pour ces filtres." />
       ) : (
-        <div style={{ overflowX: 'auto', opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}>
+        <Panel style={{ opacity: isFetching ? 0.7 : 1, transition: 'opacity 0.15s' }}
+          footer={<PagerFoot page={page} total={data?.total ?? 0} onPage={setPage} note={`Réceptions · ${text}`} />}>
           <table className="odoo-table">
             <thead>
               <tr>
@@ -128,10 +127,7 @@ export default function ReceptionChecks() {
                   </td>
                   <td style={{ textAlign: 'right' }}>{r.line_count}</td>
                   <td>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', fontWeight: r.check_status === 'non_conforme' ? 600 : 400, color: r.check_status === 'non_conforme' ? '#b71c1c' : 'var(--odoo-text)' }}>
-                      <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: STATUS_DOT[r.check_status] }} />
-                      {STATUSES.find(s => s.key === r.check_status)?.label.replace(/s$/, '')}
-                    </span>
+                    <StatusTag tone={STATUS_TAG[r.check_status].tone} label={STATUS_TAG[r.check_status].label} />
                     {r.check_id && (
                       <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)' }}>
                         {r.temperature_value != null && <>{Number(r.temperature_value).toLocaleString('fr-FR')} °C · </>}
@@ -148,8 +144,7 @@ export default function ReceptionChecks() {
               ))}
             </tbody>
           </table>
-          <Pager page={page} total={data?.total ?? 0} onPage={setPage} note={`Réceptions · ${text}`} />
-        </div>
+        </Panel>
       )}
 
       {checking && <ReceptionCheckModal row={checking} onClose={() => setChecking(null)} />}
@@ -195,8 +190,8 @@ function ReceptionCheckModal({ row, onClose }: { row: ReceptionCheckRow; onClose
           <button key={String(v)} type="button" role="radio" aria-checked={value === v} onClick={() => onChange(v)}
             style={{
               padding: '0.3rem 0.65rem', fontSize: '0.75rem',
-              background: value === v ? (v === false ? '#fdecea' : 'var(--odoo-purple-light)') : 'transparent',
-              color: value === v ? (v === false ? '#b71c1c' : 'var(--odoo-purple)') : 'var(--odoo-text-muted)',
+              background: value === v ? (v === false ? 'color-mix(in srgb, var(--prj-red) 12%, transparent)' : 'var(--odoo-purple-light)') : 'transparent',
+              color: value === v ? (v === false ? 'var(--prj-red)' : 'var(--odoo-purple)') : 'var(--odoo-text-muted)',
               fontWeight: value === v ? 600 : 400,
             }}>
             {l}

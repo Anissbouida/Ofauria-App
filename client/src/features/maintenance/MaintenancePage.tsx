@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  LayoutDashboard, Wrench, CalendarClock, BarChart3, Building2, Plus, Search, Loader2, CheckCircle2, AlertTriangle, Clock, PlayCircle, XCircle, RotateCcw, X, Send, CalendarPlus, Pencil, type LucideIcon,
+  LayoutDashboard, Wrench, CalendarClock, BarChart3, Building2, Plus, CheckCircle2, AlertTriangle, Clock, PlayCircle, XCircle, RotateCcw, X, Send, CalendarPlus, Pencil, type LucideIcon,
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -17,8 +17,10 @@ import SearchSelect from '../../components/ui/SearchSelect';
 import ModalBackdrop from '../../components/ui/ModalBackdrop';
 import { StatusBanner } from '../../components/ui/StatusBanner';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
-import { ModuleShell, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
-import { StagePipeline, PeriodFilter, Pager, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { ModuleShell, ModulePage, useModuleView, type ModuleView } from '../../components/layout/ModuleShell';
+import { PeriodFilter, PAGE_SIZE, periodParams, periodLabel, type PeriodKey, type StageDef } from '../../components/purchasing/ProcessBoard';
+import { ListToolbar } from '../sales/ListTemplate';
+import { StageChips, Panel, PagerFoot, PageLoading } from '../controle/KlUi';
 import { InterventionFormModal, PlanFormModal, n2, PRIORITY_TAG } from './forms';
 
 /**
@@ -54,29 +56,39 @@ export default function MaintenancePage() {
     { key: 'assets', label: 'Immobilisations', icon: Building2, section: 'setup', href: '/accounting?tab=immobilisations', external: true, hidden: !hasModule('accounting') },
   ];
   const { current, select } = useModuleView(views);
+  const { canEdit } = usePermissions();
   const [creating, setCreating] = useState(false);
+  // « Nouveau plan » posé dans la barre (fil d'Ariane), comme « Nouvelle intervention ».
+  const [planModal, setPlanModal] = useState<null | { plan?: MaintenancePlan }>(null);
   const openId = params.get('open');
   const setOpenId = (id: string | null) => { const n = new URLSearchParams(params); if (id) n.set('open', id); else n.delete('open'); setParams(n); };
 
   return (
-    <ModuleShell title="Maintenance" views={views} current={current} onSelect={select}
-      actions={current?.key !== 'plans' && current?.key !== 'equipment' ? <button className="odoo-btn-primary" onClick={() => setCreating(true)}><Plus size={14} /> Nouvelle intervention</button> : undefined}>
-      {current?.key === 'overview' && <Overview onOpen={setOpenId} />}
-      {current?.key === 'interventions' && <InterventionList onOpen={setOpenId} />}
-      {current?.key === 'plans' && <Plans onOpen={setOpenId} />}
-      {current?.key === 'equipment' && <EquipmentReport />}
+    <ModuleShell title="Maintenance" views={views} current={current} onSelect={select} flush
+      actions={current?.key !== 'plans' && current?.key !== 'equipment'
+        ? <button className="odoo-btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setCreating(true)}><Plus size={14} /> Nouvelle intervention</button>
+        : current?.key === 'plans' && canEdit('maintenance')
+          ? <button className="odoo-btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setPlanModal({})}><Plus size={14} /> Nouveau plan</button>
+          : undefined}>
+      <ModulePage title={current?.label}>
+        {current?.key === 'overview' && <Overview onOpen={setOpenId} />}
+        {current?.key === 'interventions' && <InterventionList onOpen={setOpenId} />}
+        {current?.key === 'plans' && <Plans onOpen={setOpenId} onEdit={plan => setPlanModal({ plan })} />}
+        {current?.key === 'equipment' && <EquipmentReport />}
+      </ModulePage>
+      {planModal && <PlanFormModal plan={planModal.plan} onClose={() => setPlanModal(null)} />}
       {creating && <InterventionFormModal onClose={() => setCreating(false)} onCreated={id => setOpenId(id)} />}
       {openId && <InterventionDrawer id={openId} onClose={() => setOpenId(null)} />}
     </ModuleShell>
   );
 }
 
-function Loading() { return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><Loader2 size={28} className="animate-spin" style={{ color: 'var(--theme-accent)' }} /></div>; }
+const Loading = PageLoading;
 
 function When({ i }: { i: Intervention }) {
   if (!i.scheduled_at || !['requested', 'scheduled'].includes(i.status)) return <span style={{ color: 'var(--theme-text-muted)' }}>{i.completed_at ? format(new Date(i.completed_at), 'dd/MM/yyyy') : '—'}</span>;
   const d = new Date(i.scheduled_at);
-  return <span style={{ color: i.is_overdue ? '#dc3545' : undefined, fontWeight: i.is_overdue ? 600 : 400 }}>{format(d, 'dd/MM HH:mm')}{i.is_overdue ? ` · en retard (${formatDistanceToNow(d, { locale: fr })})` : ''}</span>;
+  return <span style={{ color: i.is_overdue ? 'var(--prj-red)' : undefined, fontWeight: i.is_overdue ? 600 : 400 }}>{format(d, 'dd/MM HH:mm')}{i.is_overdue ? ` · en retard (${formatDistanceToNow(d, { locale: fr })})` : ''}</span>;
 }
 
 function Row({ i, onOpen }: { i: Intervention; onOpen: (id: string) => void }) {
@@ -109,27 +121,24 @@ function InterventionList({ onOpen }: { onOpen: (id: string) => void }) {
   const open = (by.requested?.count ?? 0) + (by.scheduled?.count ?? 0) + (by.in_progress?.count ?? 0);
   return (
     <>
-      <StagePipeline title="Où en sont les interventions" summary={`${open} ouvertes · ${(by.requested?.overdue ?? 0) + (by.scheduled?.overdue ?? 0)} en retard`}
+      <StageChips title="Où en sont les interventions" summary={`${open} ouvertes · ${(by.requested?.overdue ?? 0) + (by.scheduled?.overdue ?? 0)} en retard`}
         stages={STAGES} stats={Object.fromEntries(STAGES.map(s => [s.key, { count: by[s.key]?.count ?? 0, sub: '', late: by[s.key]?.overdue ?? 0, alertLabel: 'en retard' }]))}
         isActive={k => status === k} onPick={k => setStatus(status === k ? '' : (k as InterventionStatus))} />
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
-        <Search size={14} style={{ color: 'var(--theme-text-muted)' }} />
-        <input className="odoo-search-input" value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="N°, objet, équipement, n° de série, client…" />
-        <select className="odoo-filter-dropdown" value={kind} onChange={e => setKind(e.target.value as InterventionKind | '')}>
+      <ListToolbar search={searchInput} onSearch={setSearchInput} placeholder="N°, objet, équipement, n° de série, client…">
+        <select className="odoo-filter-dropdown" aria-label="Type" value={kind} onChange={e => setKind(e.target.value as InterventionKind | '')}>
           <option value="">Tous types</option>
           {Object.entries(KIND_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-      </div>
+      </ListToolbar>
       {isLoading ? <Loading /> : !data?.rows.length ? (
         <StatusBanner tone="success" icon={CheckCircle2} title="Aucune intervention">Rien sur ces filtres.</StatusBanner>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <Panel footer={<PagerFoot page={page} total={data.total} onPage={setPage} note={`${data.total} intervention${data.total > 1 ? 's' : ''}`} />}>
           <table className="odoo-table">
             <thead><tr><th>N°</th><th>Objet</th><th>Équipement</th><th>Client</th><th>Priorité</th><th>Statut</th><th>Quand</th><th>Intervenant</th><th style={{ textAlign: 'right' }}>Coût</th></tr></thead>
             <tbody>{data.rows.map(i => <Row key={i.id} i={i} onOpen={onOpen} />)}</tbody>
           </table>
-          <Pager page={page} total={data.total} onPage={setPage} note={`${data.total} intervention${data.total > 1 ? 's' : ''}`} />
-        </div>
+        </Panel>
       )}
     </>
   );
@@ -143,74 +152,87 @@ function Overview({ onOpen }: { onOpen: (id: string) => void }) {
   const { data: urgent } = useQuery({ queryKey: ['maintenance', 'list', 'urgent'], queryFn: () => maintenanceApi.list({ pageSize: '8' }) });
   const fromPlan = useMutation({ mutationFn: (id: string) => maintenanceApi.createFromPlan(id), onSuccess: i => { qc.invalidateQueries({ queryKey: ['maintenance'] }); onOpen(i.id); }, onError: e => notify.error(apiErrorMessage(e)) });
   if (isLoading || !data) return <Loading />;
-  const kpi = (l: string, v: string, sub?: string, danger?: boolean) => (
-    <div className="odoo-stat-card" style={{ cursor: 'default' }}><div className="odoo-stat-card-label">{l}</div><div className="odoo-stat-card-value" style={{ color: danger ? '#dc3545' : undefined }}>{v}</div>{sub && <div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{sub}</div>}</div>
+  const kpi = (l: string, v: string, sub?: string, danger?: boolean, Icon: LucideIcon = Wrench) => (
+    <div className="kl-widget">
+      <div className="kl-wlabel"><span className="kl-sq"><Icon size={13} /></span>{l}</div>
+      <div className="kl-big" style={{ fontSize: 32, color: danger ? 'var(--prj-red)' : undefined }}>{v}</div>
+      {sub && <div className="kl-sub" style={{ fontSize: 13 }}>{sub}</div>}
+    </div>
   );
   const openRows = (urgent?.rows ?? []).filter(i => ['requested', 'scheduled', 'in_progress'].includes(i.status));
   return (
     <>
-      <div className="odoo-search-panel" style={{ margin: 0, flexWrap: 'wrap', rowGap: 8 }}>
+      <div className="prj-toolbar">
         <PeriodFilter label="Terminées" title="Période des interventions terminées" period={period} onPeriod={setPeriod} from={from} onFrom={setFrom} to={to} onTo={setTo} />
         <strong style={{ fontSize: '0.8125rem' }}>{periodLabel(period, from, to)}</strong>
       </div>
-      <div className="odoo-stat-grid">
-        {kpi('À planifier', String(data.interventions.requested), `${data.interventions.critical} critique(s)`, data.interventions.critical > 0)}
-        {kpi('Planifiées / en cours', String(data.interventions.scheduled + data.interventions.in_progress), `${data.interventions.overdue} en retard`, data.interventions.overdue > 0)}
-        {kpi('Entretiens à échéance', String(data.plans.overdue + data.plans.due_soon), `${data.plans.overdue} dépassé(s) · ${data.plans.active} plans actifs`, data.plans.overdue > 0)}
-        {kpi('Terminées sur la période', String(data.done.count), `${data.done.preventive} préventives · ${data.done.corrective} dépannages`)}
-        {kpi('Coût sur la période', money(data.done.cost), 'pièces + main-d\'œuvre')}
-        {kpi('Arrêt matériel', `${Number(data.done.downtime).toLocaleString('fr-FR')} h`, 'temps d\'indisponibilité')}
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16 }}>
-        <div>
-          <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}><Wrench size={12} /> Interventions ouvertes</div>
-          {openRows.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Aucune intervention ouverte.</p> : (
-            <table className="odoo-table"><tbody>{openRows.map(i => (
-              <tr key={i.id} onClick={() => onOpen(i.id)} style={{ cursor: 'pointer' }}>
-                <td><strong>{i.title}</strong><div style={{ fontSize: '0.75rem', color: 'var(--theme-text-muted)' }}>{i.equipment_name}{i.customer_label ? ` · ${i.customer_label}` : ''}</div></td>
-                <td><span className={`odoo-tag ${PRIORITY_TAG[i.priority]}`}>{PRIORITY_LABELS[i.priority]}</span></td>
-                <td><InterventionStatusTag status={i.status} /></td>
-                <td style={{ whiteSpace: 'nowrap' }}><When i={i} /></td>
-              </tr>
-            ))}</tbody></table>
-          )}
+      {/* Tableau de bord au design Ventes : tuiles kl-widget, listes groupées kl-group. */}
+      <section className="kl-hero" aria-label="Chiffres clés" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+        {kpi('À planifier', String(data.interventions.requested), `${data.interventions.critical} critique(s)`, data.interventions.critical > 0, AlertTriangle)}
+        {kpi('Planifiées / en cours', String(data.interventions.scheduled + data.interventions.in_progress), `${data.interventions.overdue} en retard`, data.interventions.overdue > 0, PlayCircle)}
+        {kpi('Entretiens à échéance', String(data.plans.overdue + data.plans.due_soon), `${data.plans.overdue} dépassé(s) · ${data.plans.active} plans actifs`, data.plans.overdue > 0, CalendarClock)}
+        {kpi('Terminées sur la période', String(data.done.count), `${data.done.preventive} préventives · ${data.done.corrective} dépannages`, false, CheckCircle2)}
+        {kpi('Coût sur la période', money(data.done.cost), 'pièces + main-d\'œuvre', false, BarChart3)}
+        {kpi('Arrêt matériel', `${Number(data.done.downtime).toLocaleString('fr-FR')} h`, 'temps d\'indisponibilité', false, Clock)}
+      </section>
+      <div className="kl-two">
+        <div className="a">
+          <section>
+            <div className="kl-sec"><h2>Interventions ouvertes</h2><small>{openRows.length || ''}</small></div>
+            {openRows.length === 0 ? <div className="kl-group kl-empty">Aucune intervention ouverte.</div> : (
+              <div className="kl-group">
+                {openRows.map(i => (
+                  <button key={i.id} type="button" className="kl-cell" onClick={() => onOpen(i.id)}>
+                    <span className="tx">
+                      <span className="t1">{i.title}</span>
+                      <span className="t2">{i.equipment_name}{i.customer_label ? ` · ${i.customer_label}` : ''}</span>
+                    </span>
+                    <span className={`odoo-tag ${PRIORITY_TAG[i.priority]}`}>{PRIORITY_LABELS[i.priority]}</span>
+                    <InterventionStatusTag status={i.status} />
+                    <span className="tr" style={{ fontSize: 13 }}><When i={i} /></span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
-        <div>
-          <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}><CalendarClock size={12} /> Entretiens à faire</div>
-          {data.duePlans.length === 0 ? <p style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Rien à échéance sous 7 jours.</p> : (
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
-              {data.duePlans.map(pl => (
-                <li key={pl.id} style={{ fontSize: '0.8125rem', display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {pl.is_overdue ? <AlertTriangle size={13} style={{ color: '#dc3545' }} /> : <Clock size={13} style={{ color: 'var(--theme-text-muted)' }} />}
-                  <span style={{ flex: 1 }}><strong>{pl.label}</strong> <span style={{ color: 'var(--theme-text-muted)' }}>· {pl.equipment_name}</span></span>
-                  <span style={{ color: pl.is_overdue ? '#dc3545' : 'var(--theme-text-muted)' }}>{format(new Date(pl.next_due_on), 'dd/MM')}</span>
-                  <button className="odoo-btn-secondary" title="Créer l'intervention" disabled={pl.open_count > 0 || fromPlan.isPending} onClick={() => fromPlan.mutate(pl.id)}><CalendarPlus size={12} /></button>
-                </li>
-              ))}
-            </ul>
-          )}
+        <div className="b">
+          <section>
+            <div className="kl-sec"><h2>Entretiens à faire</h2><small>sous 7 jours</small></div>
+            {data.duePlans.length === 0 ? <div className="kl-group kl-empty">Rien à échéance sous 7 jours.</div> : (
+              <div className="kl-group">
+                {data.duePlans.map(pl => (
+                  <div key={pl.id} className="kl-cell ico" style={{ cursor: 'default' }}>
+                    <span className={`kl-ic ${pl.is_overdue ? 'r' : 'x'}`}>{pl.is_overdue ? <AlertTriangle size={16} /> : <Clock size={16} />}</span>
+                    <span className="tx">
+                      <span className="t1">{pl.label}</span>
+                      <span className="t2">{pl.equipment_name}</span>
+                    </span>
+                    <span className={`tr${pl.is_overdue ? ' red' : ''}`}>{format(new Date(pl.next_due_on), 'dd/MM')}</span>
+                    <button className="odoo-btn-secondary" title="Créer l'intervention" aria-label={`Créer l'intervention ${pl.label}`} disabled={pl.open_count > 0 || fromPlan.isPending} onClick={() => fromPlan.mutate(pl.id)}><CalendarPlus size={12} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </div>
     </>
   );
 }
 
-function Plans({ onOpen }: { onOpen: (id: string) => void }) {
+function Plans({ onOpen, onEdit }: { onOpen: (id: string) => void; onEdit: (plan: MaintenancePlan) => void }) {
   const qc = useQueryClient();
   const { canEdit } = usePermissions();
-  const [modal, setModal] = useState<null | { plan?: MaintenancePlan }>(null);
   const { data: plans = [], isLoading } = useQuery({ queryKey: ['maintenance', 'plans'], queryFn: () => maintenanceApi.plans() });
   const fromPlan = useMutation({ mutationFn: (id: string) => maintenanceApi.createFromPlan(id), onSuccess: i => { qc.invalidateQueries({ queryKey: ['maintenance'] }); onOpen(i.id); }, onError: e => notify.error(apiErrorMessage(e)) });
   return (
     <>
-      <div className="odoo-search-panel" style={{ margin: 0 }}>
-        <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)' }}>Entretien préventif : « tous les N jours, faire X sur tel équipement ». À l'échéance, créez l'intervention d'un clic ; une fois terminée, le plan se reprogramme.</span>
-        <div style={{ flex: 1 }} />
-        {canEdit('maintenance') && <button className="odoo-btn-primary" onClick={() => setModal({})}><Plus size={14} /> Nouveau plan</button>}
-      </div>
+      <p className="klc-note">Entretien préventif : « tous les N jours, faire X sur tel équipement ». À l'échéance, créez l'intervention d'un clic ; une fois terminée, le plan se reprogramme.</p>
       {isLoading ? <Loading /> : plans.length === 0 ? (
         <StatusBanner tone="info" icon={CalendarClock} title="Aucun plan d'entretien">Fours, chambres froides, pétrins, véhicules : définissez la fréquence de contrôle de chaque équipement.</StatusBanner>
       ) : (
+        <Panel>
         <table className="odoo-table">
           <thead><tr><th>Entretien</th><th>Équipement</th><th>Client</th><th>Fréquence</th><th>Dernier</th><th>Prochain</th><th>Intervenant</th><th /></tr></thead>
           <tbody>{plans.map(pl => (
@@ -220,19 +242,19 @@ function Plans({ onOpen }: { onOpen: (id: string) => void }) {
               <td>{pl.customer_label || <span style={{ color: 'var(--theme-text-muted)' }}>interne</span>}</td>
               <td>tous les {pl.frequency_days} j</td>
               <td>{pl.last_done_on ? format(new Date(pl.last_done_on), 'dd/MM/yyyy') : '—'}</td>
-              <td style={{ color: pl.is_overdue ? '#dc3545' : pl.is_due_soon ? '#d9822b' : undefined, fontWeight: pl.is_overdue ? 600 : 400 }}>{format(new Date(pl.next_due_on), 'dd/MM/yyyy')}</td>
+              <td style={{ color: pl.is_overdue ? 'var(--prj-red)' : pl.is_due_soon ? 'var(--prj-orange)' : undefined, fontWeight: pl.is_overdue ? 600 : 400 }}>{format(new Date(pl.next_due_on), 'dd/MM/yyyy')}</td>
               <td>{pl.assignee_name || '—'}</td>
               <td style={{ whiteSpace: 'nowrap' }}>
                 {canEdit('maintenance') && <>
                   <button className="odoo-btn-secondary" title={pl.open_count > 0 ? 'Une intervention est déjà ouverte' : 'Créer l\'intervention'} disabled={pl.open_count > 0 || !pl.is_active} onClick={() => fromPlan.mutate(pl.id)}><CalendarPlus size={12} /></button>{' '}
-                  <button className="odoo-btn-secondary" title="Modifier" onClick={() => setModal({ plan: pl })}><Pencil size={12} /></button>
+                  <button className="odoo-btn-secondary" title="Modifier" onClick={() => onEdit(pl)}><Pencil size={12} /></button>
                 </>}
               </td>
             </tr>
           ))}</tbody>
         </table>
+        </Panel>
       )}
-      {modal && <PlanFormModal plan={modal.plan} onClose={() => setModal(null)} />}
     </>
   );
 }
@@ -243,11 +265,12 @@ function EquipmentReport() {
   const { data = [], isLoading } = useQuery({ queryKey: ['maintenance', 'equipment', range], queryFn: () => maintenanceApi.equipmentReport(range) });
   return (
     <>
-      <div className="odoo-search-panel" style={{ margin: 0, flexWrap: 'wrap', rowGap: 8 }}>
+      <div className="prj-toolbar">
         <PeriodFilter label="Période" title="Interventions terminées ou créées" period={period} onPeriod={setPeriod} from={from} onFrom={setFrom} to={to} onTo={setTo} />
         <strong style={{ fontSize: '0.8125rem' }}>{periodLabel(period, from, to)}</strong>
       </div>
       {isLoading ? <Loading /> : data.length === 0 ? <StatusBanner tone="info" icon={BarChart3} title="Aucune intervention sur la période">Le coût par équipement apparaît dès la première intervention terminée.</StatusBanner> : (
+        <Panel>
         <table className="odoo-table">
           <thead><tr><th>Équipement</th><th>Client</th><th style={{ textAlign: 'right' }}>Interventions</th><th style={{ textAlign: 'right' }}>Dépannages</th><th style={{ textAlign: 'right' }}>Ouvertes</th><th style={{ textAlign: 'right' }}>Arrêt (h)</th><th style={{ textAlign: 'right' }}>Coût ({currencySymbol()})</th><th>Dernière</th></tr></thead>
           <tbody>{data.map((r, i) => (
@@ -255,7 +278,7 @@ function EquipmentReport() {
               <td><strong>{r.equipment_name}</strong>{r.fixed_asset_id ? <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>immobilisation</span> : null}</td>
               <td>{r.customer_label || <span style={{ color: 'var(--theme-text-muted)' }}>interne</span>}</td>
               <td style={{ textAlign: 'right' }}>{r.count}</td>
-              <td style={{ textAlign: 'right', color: r.corrective > 2 ? '#dc3545' : undefined }}>{r.corrective}</td>
+              <td style={{ textAlign: 'right', color: r.corrective > 2 ? 'var(--prj-red)' : undefined }}>{r.corrective}</td>
               <td style={{ textAlign: 'right' }}>{r.open}</td>
               <td style={{ textAlign: 'right' }}>{Number(r.downtime).toLocaleString('fr-FR')}</td>
               <td style={{ textAlign: 'right', fontWeight: 600 }}>{n2(r.cost)}</td>
@@ -263,6 +286,7 @@ function EquipmentReport() {
             </tr>
           ))}</tbody>
         </table>
+        </Panel>
       )}
     </>
   );
@@ -294,22 +318,24 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
   const assigneeRate = people.find(p => p.id === i?.assignee_id)?.cost_rate;
 
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex justify-end bg-black/30">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()} style={{ width: 'min(700px, 100%)', height: '100%', overflowY: 'auto', background: 'var(--theme-bg-card)', boxShadow: '-6px 0 24px rgba(0,0,0,0.15)' }}>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.32)' }}>
+      {/* Fiche au design Ventes : feuille .kl-sheet (en-tête au thème, corps en cartes). */}
+      <div className="odoo-scope kl-sheet w-full" role="dialog" aria-label={i ? `Intervention ${i.number}` : 'Intervention'} onClick={e => e.stopPropagation()} style={{ maxWidth: 780, maxHeight: '92vh' }}>
         {isLoading || !i ? <Loading /> : (
           <>
-            <div className="odoo-control-bar" style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-              <div className="odoo-breadcrumb">
-                <Wrench size={14} style={{ color: 'var(--theme-accent)' }} />
-                <span className="font-mono">{i.number}</span>
-                <span style={{ marginLeft: 6 }}><InterventionStatusTag status={i.status} /></span>
+            <header className="kl-sheet-head">
+              <div className="ord-who">
+                <h2><span className="font-mono" style={{ fontSize: 'inherit' }}>{i.number}</span></h2>
+                <p>{i.title}</p>
+              </div>
+              <button type="button" className="kl-sheet-close" onClick={onClose} aria-label="Fermer"><X size={16} /></button>
+            </header>
+            <div className="kl-sheet-body" style={{ gap: 14 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                <InterventionStatusTag status={i.status} />
                 <span className={`odoo-tag ${PRIORITY_TAG[i.priority]}`}>{PRIORITY_LABELS[i.priority]}</span>
                 <span className="odoo-tag odoo-tag-grey">{KIND_LABELS[i.kind]}</span>
               </div>
-              <div style={{ flex: 1 }} />
-              <button type="button" className="odoo-btn-secondary" onClick={onClose} aria-label="Fermer"><X size={14} /></button>
-            </div>
-            <div style={{ padding: '16px 20px', display: 'grid', gap: 14 }}>
               {i.is_overdue && <StatusBanner tone="danger" icon={Clock} title="Date planifiée dépassée">Prévue le {format(new Date(i.scheduled_at!), 'dd/MM/yyyy HH:mm')}.</StatusBanner>}
 
               {editable && (
@@ -328,7 +354,7 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
               )}
 
               {scheduling && (
-                <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, display: 'flex', gap: 8, alignItems: 'end', background: 'var(--odoo-bg-alt)' }}>
+                <div className="kl-widget" style={{ display: 'flex', gap: 8, alignItems: 'end' }}>
                   <div style={{ flex: 1 }}><span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', display: 'block', marginBottom: 4 }}>Date et heure</span><input className="input" type="datetime-local" style={{ width: '100%' }} value={when} onChange={e => setWhen(e.target.value)} /></div>
                   <button className="odoo-btn-secondary" onClick={() => setScheduling(false)}>Annuler</button>
                   <button className="odoo-btn-primary" disabled={!when} onClick={() => setStatus.mutate({ status: 'scheduled', scheduledAt: new Date(when).toISOString() })}>Planifier</button>
@@ -336,7 +362,7 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
               )}
 
               {finishing && (
-                <div style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 12, display: 'grid', gap: 10, background: 'var(--odoo-bg-alt)' }}>
+                <div className="kl-widget" style={{ display: 'grid', gap: 10 }}>
                   <strong style={{ fontSize: '0.875rem' }}>Compte rendu</strong>
                   <textarea className="input" style={{ minHeight: 70 }} value={done.workDone} onChange={e => setDone({ ...done, workDone: e.target.value })} placeholder="Travail réalisé, pièces changées, état constaté…" />
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
@@ -354,8 +380,8 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
                 </div>
               )}
 
-              <div><h3 style={{ margin: '0 0 6px', fontSize: '1rem' }}>{i.title}</h3>{i.reported_problem && <p style={{ margin: 0, fontSize: '0.8125rem', whiteSpace: 'pre-wrap' }}>{i.reported_problem}</p>}</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 24px' }}>
+              {i.reported_problem && <div className="kl-widget" style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>{i.reported_problem}</div>}
+              <div className="kl-widget" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0 24px' }}>
                 <div>
                   {row('Équipement', <>{i.equipment_name}{i.asset_label && <span className="odoo-tag odoo-tag-grey" style={{ marginLeft: 6 }}>immobilisation</span>}</>)}
                   {row('N° de série', i.serial_no)}
@@ -381,8 +407,8 @@ function InterventionDrawer({ id, onClose }: { id: string; onClose: () => void }
               )}
 
               <div>
-                <div className="odoo-section-header" style={{ border: 'none', paddingLeft: 0 }}>Journal</div>
-                <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
+                <div className="kl-sec"><h2>Journal</h2></div>
+                <ol className="kl-widget" style={{ listStyle: 'none', margin: 0, display: 'grid', gap: 6 }}>
                   {(i.events ?? []).map(e => (
                     <li key={e.id} style={{ fontSize: '0.8125rem', display: 'grid', gridTemplateColumns: '120px 1fr', gap: 8 }}>
                       <span style={{ color: 'var(--theme-text-muted)' }}>{format(new Date(e.created_at), 'dd/MM HH:mm')}</span>

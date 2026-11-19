@@ -50,7 +50,7 @@ export default function JobsTab() {
           ? <> · déclencheur externe {dt(engine.lastExternalTick)}</>
           : <span title="Si l'hébergeur met le serveur en veille (Cloud Run), il faut un déclencheur externe : variable CRON_SECRET et un appel planifié à /api/v1/cron/tick."> · sans déclencheur externe</span>}
       </StatusBanner>
-      <div style={{ overflowX: 'auto' }}>
+      <div className="prj-panel prj-scroll">
         <table className="odoo-table">
           <thead><tr><th style={{ width: 60 }}>Active</th><th>Tâche</th><th>Fréquence</th><th>Dernier passage</th><th>Résultat</th><th>Prochain</th><th></th></tr></thead>
           <tbody>{jobs.map((j: ScheduledJob) => (
@@ -75,7 +75,7 @@ export default function JobsTab() {
                 <td style={{ whiteSpace: 'nowrap' }}>{dt(j.last_run_at)}{j.last_duration_ms != null && <div style={{ fontSize: '0.7rem', color: 'var(--odoo-text-muted)' }}>{j.last_duration_ms} ms</div>}</td>
                 <td style={{ maxWidth: 320 }}>
                   {j.last_status && <StatusTag tone={j.last_status === 'ok' ? 'done' : 'blocked'} label={j.last_status === 'ok' ? 'OK' : 'Erreur'} />}{' '}
-                  <span style={{ fontSize: '0.8125rem', color: j.last_status === 'error' ? '#c0392b' : 'var(--odoo-text-muted)' }}>{j.last_message ?? (j.last_run_at ? '' : 'Jamais lancée')}</span>
+                  <span style={{ fontSize: '0.8125rem', color: j.last_status === 'error' ? 'var(--prj-red)' : 'var(--odoo-text-muted)' }}>{j.last_message ?? (j.last_run_at ? '' : 'Jamais lancée')}</span>
                 </td>
                 <td style={{ whiteSpace: 'nowrap', color: 'var(--odoo-text-muted)' }}>{j.enabled ? dt(j.next_run_at) : '—'}</td>
                 <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>

@@ -11,6 +11,12 @@ import {
   type OpeningCheckSubmitItem,
 } from '../../api/opening-inventory-check.api';
 import { StatusTag, type StatusTone } from '../../components/ui/StatusTag';
+import { StatusBanner } from '../../components/ui/StatusBanner';
+import SalesPageShell from '../sales/SalesPageShell';
+import { PageLoading } from '../controle/KlUi';
+
+/** En-tête commun (design Ventes) : barre Inventaire / Contrôle d'ouverture, puis grand titre. */
+const SHELL = { icon: ClipboardCheck, parent: 'Inventaire', title: "Contrôle d'ouverture" } as const;
 
 const REASON_LABELS: Record<MissingReason, string> = {
   theft: 'Vol',
@@ -126,46 +132,21 @@ export default function OpeningInventoryCheckPage() {
 
   // ─── Loading ──────────────────────────────────────────────────────────────
   if (isLoading) {
-    return (
-      <div className="odoo-scope" style={{ minHeight: '100%' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <ClipboardCheck size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Inventaire</span>
-            <span className="odoo-breadcrumb-separator">/</span>
-            <span className="odoo-breadcrumb-current">Contrôle d'ouverture</span>
-          </div>
-        </div>
-        <div style={{ padding: '2rem', color: 'var(--odoo-text-muted)', fontSize: '0.875rem' }}>Chargement...</div>
-      </div>
-    );
+    return <SalesPageShell {...SHELL}><PageLoading /></SalesPageShell>;
   }
 
   // ─── Cas 1 : aucun controle requis ───────────────────────────────────────
   if (items.length === 0 && !existingCheck) {
     return (
-      <div className="odoo-scope" style={{ minHeight: '100%' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <ClipboardCheck size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Inventaire</span>
-            <span className="odoo-breadcrumb-separator">/</span>
-            <span className="odoo-breadcrumb-current">Contrôle d'ouverture</span>
-          </div>
-          <div style={{ flex: 1 }} />
-          <button onClick={() => navigate('/pos', { state: { autoOpenCash: true } })}
-            className="odoo-btn-primary">
-            Aller à la caisse
-          </button>
-        </div>
-        <div className="odoo-alert" style={{ backgroundColor: '#e9f7ef', color: '#1e6e3a', borderBottomColor: '#c3e6cb' }}>
-          <CheckCircle2 size={18} className="flex-shrink-0" />
-          <div>
-            <div className="odoo-alert-title">Aucun contrôle requis</div>
-            <div>Pas d'invendus réexposés à recontrôler. Vous pouvez ouvrir la caisse directement.</div>
-          </div>
-        </div>
-      </div>
+      <SalesPageShell {...SHELL} actions={
+        <button onClick={() => navigate('/pos', { state: { autoOpenCash: true } })} className="odoo-btn-primary">
+          Aller à la caisse
+        </button>
+      }>
+        <StatusBanner tone="success" icon={CheckCircle2} title="Aucun contrôle requis">
+          Pas d'invendus réexposés à recontrôler. Vous pouvez ouvrir la caisse directement.
+        </StatusBanner>
+      </SalesPageShell>
     );
   }
 
@@ -180,15 +161,8 @@ export default function OpeningInventoryCheckPage() {
       existingCheck.status === 'validated' ? 'Validé' : 'Rejeté';
 
     return (
-      <div className="odoo-scope" style={{ minHeight: '100%' }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <ClipboardCheck size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>Inventaire</span>
-            <span className="odoo-breadcrumb-separator">/</span>
-            <span className="odoo-breadcrumb-current">Contrôle d'ouverture</span>
-          </div>
-          <div style={{ flex: 1 }} />
+      <SalesPageShell {...SHELL} actions={
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <StatusTag tone={tagTone} label={tagLabel} />
           {existingCheck.status === 'validated' && (
             <button onClick={() => navigate('/pos', { state: { autoOpenCash: true } })}
@@ -196,10 +170,10 @@ export default function OpeningInventoryCheckPage() {
               Aller à la caisse
             </button>
           )}
-        </div>
-
-        <div style={{ padding: '1rem' }}>
-          <div className="odoo-section">
+        </span>
+      }>
+        <div>
+          <div className="odoo-section" style={{ margin: 0 }}>
             <div className="odoo-section-header">Statut du contrôle</div>
             <div style={{ padding: '1rem', fontSize: '0.875rem', color: 'var(--odoo-text)' }}>
               {existingCheck.status === 'awaiting_validation' && (
@@ -210,14 +184,14 @@ export default function OpeningInventoryCheckPage() {
               )}
               {existingCheck.status === 'rejected' && existingCheck.rejection_reason && (
                 <div>
-                  <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#721c24' }}>Motif du rejet :</p>
-                  <p style={{ color: '#721c24' }}>{existingCheck.rejection_reason}</p>
+                  <p style={{ fontWeight: 600, marginBottom: '0.5rem', color: 'var(--prj-red)' }}>Motif du rejet :</p>
+                  <p style={{ color: 'var(--prj-red)' }}>{existingCheck.rejection_reason}</p>
                 </div>
               )}
             </div>
           </div>
         </div>
-      </div>
+      </SalesPageShell>
     );
   }
 
@@ -232,16 +206,8 @@ export default function OpeningInventoryCheckPage() {
 
   // ─── Cas 3 : formulaire de saisie ────────────────────────────────────────
   return (
-    <div className="odoo-scope" style={{ minHeight: '100%' }}>
-      {/* Control bar */}
-      <div className="odoo-control-bar">
-        <div className="odoo-breadcrumb">
-          <ClipboardCheck size={14} style={{ color: 'var(--theme-accent)' }} />
-          <span>Inventaire</span>
-          <span className="odoo-breadcrumb-separator">/</span>
-          <span className="odoo-breadcrumb-current">Contrôle d'ouverture</span>
-        </div>
-        <div style={{ flex: 1 }} />
+    <SalesPageShell {...SHELL} summary="Vérifiez la présence physique des invendus réexposés depuis la veille avant d'ouvrir la caisse." actions={
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
         <button onClick={() => refetch()} className="odoo-btn-secondary">
           <RefreshCw size={13} /> Recharger
         </button>
@@ -249,67 +215,47 @@ export default function OpeningInventoryCheckPage() {
           className="odoo-btn-primary">
           {submitMutation.isPending ? 'Soumission...' : 'Valider le contrôle'}
         </button>
-      </div>
-
-      {/* Alerts */}
+      </span>
+    }>
+      {/* Messages */}
       {submitMsg && (
-        <div className={`odoo-alert ${submitMsg.type === 'error' ? 'danger' : ''}`}
-          style={submitMsg.type === 'success' ? { backgroundColor: '#e9f7ef', color: '#1e6e3a', borderBottomColor: '#c3e6cb' } : undefined}>
-          {submitMsg.type === 'error' ? <XCircle size={16} className="flex-shrink-0" /> : <CheckCircle2 size={16} className="flex-shrink-0" />}
-          <div>{submitMsg.text}</div>
-        </div>
+        <StatusBanner tone={submitMsg.type === 'error' ? 'danger' : 'success'} icon={submitMsg.type === 'error' ? XCircle : CheckCircle2}
+          title={submitMsg.type === 'error' ? 'Action impossible' : 'Enregistré'}>{submitMsg.text}</StatusBanner>
       )}
       {totals.withDiscrepancy > 0 && (
-        <div className="odoo-alert warning">
-          <AlertTriangle size={16} className="flex-shrink-0" />
-          <div>
-            <span className="odoo-alert-title">{totals.withDiscrepancy} ligne(s) en écart.</span>{' '}
-            Le contrôle nécessitera la validation d'un responsable avant l'ouverture de la caisse.
-          </div>
-        </div>
+        <StatusBanner tone="warning" icon={AlertTriangle} title={`${totals.withDiscrepancy} ligne(s) en écart`}>
+          Le contrôle nécessitera la validation d'un responsable avant l'ouverture de la caisse.
+        </StatusBanner>
       )}
 
-      {/* Stat grid */}
-      <div className="odoo-stat-grid">
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">
-            <Package size={11} style={{ display: 'inline', marginRight: 4 }} />Attendu
-          </div>
-          <div className="odoo-stat-card-value">{totals.totalExpected}</div>
-          <div className="odoo-stat-card-sub">unités à recontrôler</div>
+      {/* Chiffres clés */}
+      <div className="prj-kpis">
+        <div className="prj-kpi">
+          <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Package size={13} /> Attendu</span></div>
+          <div className="prj-kpi-value">{totals.totalExpected}</div>
+          <div className="prj-kpi-sub">unités à recontrôler</div>
         </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">
-            <ClipboardCheck size={11} style={{ display: 'inline', marginRight: 4 }} />Compté
-          </div>
-          <div className="odoo-stat-card-value">{totals.totalFound}</div>
-          <div className="odoo-stat-card-sub">unités physiques</div>
+        <div className="prj-kpi">
+          <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ClipboardCheck size={13} /> Compté</span></div>
+          <div className="prj-kpi-value">{totals.totalFound}</div>
+          <div className="prj-kpi-sub">unités physiques</div>
         </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">
-            <AlertTriangle size={11} style={{ display: 'inline', marginRight: 4 }} />Écart
-          </div>
-          <div className="odoo-stat-card-value"
-            style={{ color: totals.totalDiscrepancy === 0 ? '#28a745' : totals.totalDiscrepancy < 0 ? '#dc3545' : '#1f6391' }}>
+        <div className="prj-kpi">
+          <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AlertTriangle size={13} /> Écart</span></div>
+          <div className="prj-kpi-value"
+            style={{ color: totals.totalDiscrepancy === 0 ? 'var(--prj-green)' : totals.totalDiscrepancy < 0 ? 'var(--prj-red)' : '#1f6391' }}>
             {totals.totalDiscrepancy > 0 ? '+' : ''}{totals.totalDiscrepancy}
           </div>
-          <div className="odoo-stat-card-sub">{totals.totalDiscrepancy === 0 ? 'aucun' : 'unités'}</div>
+          <div className="prj-kpi-sub">{totals.totalDiscrepancy === 0 ? 'aucun' : 'unités'}</div>
         </div>
-        <div className="odoo-stat-card">
-          <div className="odoo-stat-card-label">
-            <XCircle size={11} style={{ display: 'inline', marginRight: 4 }} />Lignes en écart
-          </div>
-          <div className="odoo-stat-card-value"
-            style={{ color: totals.withDiscrepancy === 0 ? '#28a745' : '#dc3545' }}>
+        <div className="prj-kpi">
+          <div className="prj-kpi-head"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><XCircle size={13} /> Lignes en écart</span></div>
+          <div className="prj-kpi-value"
+            style={{ color: totals.withDiscrepancy === 0 ? 'var(--prj-green)' : 'var(--prj-red)' }}>
             {totals.withDiscrepancy}
           </div>
-          <div className="odoo-stat-card-sub">{totals.withDiscrepancy === 0 ? 'tout conforme' : 'à motiver'}</div>
+          <div className="prj-kpi-sub">{totals.withDiscrepancy === 0 ? 'tout conforme' : 'à motiver'}</div>
         </div>
-      </div>
-
-      {/* Description */}
-      <div style={{ padding: '0.75rem 1rem 0', fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
-        Vérifiez la présence physique des invendus réexposés depuis la veille avant d'ouvrir la caisse.
       </div>
 
       {/* Sections par categorie */}
@@ -317,7 +263,7 @@ export default function OpeningInventoryCheckPage() {
         const catItems = grouped[catName];
         const catTotalExpected = catItems.reduce((s, it) => s + it.expected_qty, 0);
         return (
-          <div key={catName} className="odoo-section">
+          <div key={catName} className="odoo-section" style={{ margin: 0 }}>
             <div className="odoo-section-header" style={{ justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span>{catName}</span>
@@ -394,7 +340,7 @@ export default function OpeningInventoryCheckPage() {
                         </div>
                       </td>
                       <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 600,
-                        color: hasDiscrepancy ? (discrepancy < 0 ? '#dc3545' : '#1f6391') : 'var(--odoo-text-light)',
+                        color: hasDiscrepancy ? (discrepancy < 0 ? 'var(--prj-red)' : '#1f6391') : 'var(--odoo-text-light)',
                       }}>
                         {hasDiscrepancy ? (discrepancy > 0 ? `+${discrepancy}` : discrepancy) : '0'}
                       </td>
@@ -404,10 +350,10 @@ export default function OpeningInventoryCheckPage() {
                             onChange={(e) => updateReason(pid, e.target.value as MissingReason)}
                             style={{
                               fontSize: '0.75rem', padding: '0.125rem 0.375rem',
-                              border: c?.reason ? '1px solid var(--odoo-border-strong)' : '1px solid #dc3545',
-                              borderRadius: '3px',
-                              backgroundColor: c?.reason ? 'var(--odoo-bg)' : '#fdf0ed',
-                              color: c?.reason ? 'var(--odoo-text)' : '#721c24',
+                              border: c?.reason ? '1px solid var(--odoo-border-strong)' : '1px solid var(--prj-red)',
+                              borderRadius: '6px',
+                              backgroundColor: c?.reason ? 'var(--odoo-bg)' : 'color-mix(in srgb, var(--prj-red) 8%, transparent)',
+                              color: c?.reason ? 'var(--odoo-text)' : 'var(--prj-red)',
                               fontWeight: c?.reason ? 400 : 500, outline: 'none',
                             }}>
                             <option value="">Motif obligatoire</option>
@@ -429,7 +375,7 @@ export default function OpeningInventoryCheckPage() {
       })}
 
       {/* Notes */}
-      <div className="odoo-section">
+      <div className="odoo-section" style={{ margin: 0 }}>
         <div className="odoo-section-header">Notes (optionnel)</div>
         <div style={{ padding: '0.75rem 1rem' }}>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
@@ -442,6 +388,6 @@ export default function OpeningInventoryCheckPage() {
             }} />
         </div>
       </div>
-    </div>
+    </SalesPageShell>
   );
 }

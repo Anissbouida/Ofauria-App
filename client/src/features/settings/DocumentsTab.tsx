@@ -74,10 +74,10 @@ function TemplateCard({ tpl }: { tpl: DocumentTemplate }) {
   const isInvoice = tpl.doc_type === 'invoice';
 
   return (
-    <div id={`doc-${tpl.doc_type}`} style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 16, display: 'grid', gap: 12, background: 'var(--odoo-bg)', scrollMarginTop: '1rem' }}>
+    <div id={`doc-${tpl.doc_type}`} className="prj-panel" style={{ padding: '16px 18px', display: 'grid', gap: 12, scrollMarginTop: '1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <div>
-          <div style={{ fontWeight: 600 }}>{tpl.label}</div>
+          <div style={{ fontWeight: 700, fontSize: '1.0625rem', letterSpacing: '-0.02em' }}>{tpl.label}</div>
           <div style={{ fontSize: '0.8125rem', color: 'var(--odoo-text-muted)' }}>
             {tpl.updated_by_name ? `Modifié le ${new Date(tpl.updated_at).toLocaleDateString('fr-FR')} par ${tpl.updated_by_name}` : 'Réglages d\'origine'}
           </div>

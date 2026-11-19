@@ -422,9 +422,9 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               <span className={`font-medium text-sm ${etape.status === 'completed' ? 'text-emerald-800 line-through' : 'text-gray-900'}`}>{etape.nom}</span>
-                              {etape.est_bloquante && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 font-bold uppercase">Bloquante</span>}
+                              {etape.est_bloquante && <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 font-bold">Bloquante</span>}
                               {etape.timer_auto && etape.duree_estimee_min && <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-600 font-bold"><Timer size={9} className="inline mr-0.5" />{etape.duree_estimee_min}min</span>}
-                              {etape.type_etape && etape.type_etape !== 'autre' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-bold uppercase">{refs.stepLabel(etape.type_etape)}</span>}
+                              {etape.type_etape && etape.type_etape !== 'autre' && <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-bold">{refs.stepLabel(etape.type_etape)}</span>}
                               {etape.temperature_c != null && <span className="text-[9px] px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 font-bold"><Thermometer size={9} className="inline mr-0.5" />{parseFloat(String(etape.temperature_c))} °C</span>}
                               {etape.humidite_pct != null && <span className="text-[9px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-bold"><Droplets size={9} className="inline mr-0.5" />{parseFloat(String(etape.humidite_pct))} % HR</span>}
                               {etape.est_repetable && <span className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 font-bold"><RotateCcw size={9} className="inline mr-0.5" />{etape.nb_repetitions_actuelle}/{etape.nb_repetitions_cible}</span>}
@@ -521,7 +521,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                         {/* QC Checklist */}
                         {etape.controle_qualite && etape.checklist_items.length > 0 && etape.status === 'in_progress' && isChef && (
                           <div className="mt-2 pl-9 space-y-1">
-                            <div className="text-[10px] font-bold text-gray-500 uppercase">Controle qualite</div>
+                            <div className="text-[10px] font-bold text-gray-500">Controle qualite</div>
                             {etape.checklist_items.map((label, ci) => {
                               const current = (checklistState[etape.id] || etape.checklist_items.map(l => ({ label: l, ok: false })));
                               if (!checklistState[etape.id]) {
@@ -564,7 +564,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                         {/* Relevés de procédé mesurés (mig 422, épic labo L2) */}
                         {(etape.status === 'in_progress' || etape.status === 'completed') && (
                           <div className="mt-2 pl-9">
-                            <div className="flex items-center gap-1 text-[10px] font-bold text-gray-500 uppercase mb-1">
+                            <div className="flex items-center gap-1 text-[10px] font-bold text-gray-500 mb-1">
                               <ShieldCheck size={11} className="text-violet-500" /> Relevés de procédé
                             </div>
                             {etape.readings && etape.readings.length > 0 && (
@@ -573,7 +573,7 @@ export default function EtapesPanel({ planId, planStatus, isChef, onSaveAndExit 
                                   const meta = refs.paramMeta(rd.parametre);
                                   return (
                                     <div key={rd.id} className="flex items-center gap-2 text-[11px]">
-                                      {rd.est_ccp && <span className="text-[8px] px-1 py-0.5 rounded bg-violet-100 text-violet-700 font-bold uppercase">CCP</span>}
+                                      {rd.est_ccp && <span className="text-[8px] px-1 py-0.5 rounded bg-violet-100 text-violet-700 font-bold">CCP</span>}
                                       <span className="text-gray-600">{meta.label}</span>
                                       <span className="font-semibold text-gray-900 tabular-nums">{parseFloat(String(rd.mesure))} {meta.unit}</span>
                                       {rd.consigne != null && (

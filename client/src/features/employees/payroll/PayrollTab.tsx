@@ -22,20 +22,14 @@ export default function PayrollTab({ queryClient }: { queryClient: ReturnType<ty
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ justifyContent: 'flex-start' }}>
-        <div className="odoo-view-switcher" role="tablist" aria-label="Vue de paie">
-          {VIEWS.map(([key, label]) => (
-            <button key={key} type="button" role="tab" aria-selected={payView === key} onClick={() => setPayView(key)}
-              style={{
-                padding: '0.3rem 0.75rem', fontSize: '0.8125rem',
-                background: payView === key ? 'var(--odoo-purple-light)' : 'transparent',
-                color: payView === key ? 'var(--odoo-purple)' : 'var(--odoo-text-muted)',
-                fontWeight: payView === key ? 600 : 400,
-              }}>
-              {label}
-            </button>
-          ))}
-        </div>
+      {/* Cinq vues : onglets fins (odoo-tabs), au-delà du contrôle segmenté (2 à 4 vues). */}
+      <div className="odoo-tabs" role="tablist" aria-label="Vue de paie" style={{ padding: 0 }}>
+        {VIEWS.map(([key, label]) => (
+          <button key={key} type="button" role="tab" aria-selected={payView === key} onClick={() => setPayView(key)}
+            className={`odoo-tab${payView === key ? ' active' : ''}`}>
+            {label}
+          </button>
+        ))}
       </div>
       {payView === 'monthly' ? <MonthlyPayrollView queryClient={queryClient} />
         : payView === 'biweekly' ? <BiweeklyPayrollView queryClient={queryClient} />

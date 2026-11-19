@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { SlidersHorizontal, Loader2, Save, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { productionApi, type ProductionSettings } from '../../api/production.api';
-import { StatusBanner } from '../../components/ui/StatusBanner';
+import SalesPageShell from '../sales/SalesPageShell';
 import { notify } from '../../components/ui/InlineNotification';
 import { apiErrorMessage } from '../../api/errors';
 import { SettingsTabs } from '../settings/SettingsPrimitives';
@@ -74,16 +74,13 @@ export default function ProductionSettingsPage() {
 
   const general = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <StatusBanner tone="info" icon={SlidersHorizontal} title="Paramétrage de la production">
-        Réglages du module : coût de revient, tolérance de surproduction et fonctions activées. Appliqués sans redéploiement.
-      </StatusBanner>
-
-      {(isLoading || !form) && <div style={{ padding: 24, color: 'var(--theme-text-muted)' }}><Loader2 size={16} className="animate-spin" style={{ display: 'inline' }} /> Chargement…</div>}
+      {(isLoading || !form) && <section className="prj-panel sal-empty"><Loader2 size={16} className="animate-spin" /><span>Chargement…</span></section>}
 
       {form && (
         <div style={{ maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <section>
-            <h4 style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--theme-text-muted)', margin: '0 0 4px' }}>Coût de revient</h4>
+          <section className="prj-panel">
+            <div className="prj-panel-head">Coût de revient</div>
+            <div style={{ padding: '2px 18px 6px' }}>
             <Row label="Taux de charges fixes" hint="Appliqué au coût matière dans le coût de revient (ex. 40 %).">
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <input type="number" step="0.1" min="0" value={form.chargesFixesPct} onChange={e => set('chargesFixesPct', e.target.value)} style={inp} /> %
@@ -95,10 +92,12 @@ export default function ProductionSettingsPage() {
                 <Link to="/settings?page=production" className="odoo-btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><ExternalLink size={13} /> Modifier</Link>
               </div>
             </Row>
+            </div>
           </section>
 
-          <section>
-            <h4 style={{ fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--theme-text-muted)', margin: '0 0 4px' }}>Production</h4>
+          <section className="prj-panel">
+            <div className="prj-panel-head">Production</div>
+            <div style={{ padding: '2px 18px 6px' }}>
             <Row label="Tolérance de surproduction" hint="Au-delà de prévu × (1 + tolérance), un avertissement est émis. 0 = aucun contrôle.">
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <input type="number" step="1" min="0" value={form.overproductionPct} onChange={e => set('overproductionPct', e.target.value)} style={inp} /> %
@@ -119,6 +118,7 @@ export default function ProductionSettingsPage() {
             <Row label="Coût de revient" hint="Calcul du coût réel (matière + emballages + MO + énergie + charges) des plans. Coupé : le panneau est masqué et le calcul refusé.">
               <Toggle value={form.costEnabled} onChange={v => set('costEnabled', v)} />
             </Row>
+            </div>
           </section>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -133,7 +133,8 @@ export default function ProductionSettingsPage() {
 
   // M1-04 : les réglages du module d'un côté, les politiques à héritage de l'autre.
   return (
-    <div className="odoo-scope" style={{ padding: '1rem' }}>
+    <SalesPageShell icon={SlidersHorizontal} parent="Production" title="Paramétrage"
+      summary="Réglages du module : coût de revient, tolérance de surproduction et fonctions activées. Appliqués sans redéploiement.">
       <SettingsTabs label="Paramétrage de la production" tabs={[
         { key: 'general', label: 'Réglages', content: general },
         { key: 'policies', label: 'Politiques', content: <ProductionPoliciesPanel /> },
@@ -141,6 +142,6 @@ export default function ProductionSettingsPage() {
         { key: 'print', label: 'Impressions', content: <ProductionPrintTemplatesPanel /> },
         { key: 'screens', label: 'Écrans', content: <ProductionScreensPanel /> },
       ]} />
-    </div>
+    </SalesPageShell>
   );
 }

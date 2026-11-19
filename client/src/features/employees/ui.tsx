@@ -10,13 +10,14 @@ import ModalBackdrop from '../../components/ui/ModalBackdrop';
 
 export const fieldLabel: CSSProperties = { display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--theme-text-muted)', marginBottom: 4 };
 export const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-400';
-export const sectionTitle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--theme-text-muted)', margin: '6px 0 2px' };
-/** Encadre d'un bloc de contenu (equivalent des cartes grises arrondies). */
-export const panel: CSSProperties = { border: '1px solid var(--odoo-border)', borderRadius: 4, padding: 12, background: 'var(--odoo-bg)' };
+/** Intertitre de section (design Ventes 2026-11-18 : casse normale, sans capitales forcées). */
+export const sectionTitle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.875rem', fontWeight: 600, color: 'var(--kl-ink, var(--theme-text))', margin: '6px 0 2px' };
+/** Encadre d'un bloc de contenu (carte arrondie, trait fin). */
+export const panel: CSSProperties = { border: '1px solid var(--theme-bg-separator, var(--odoo-border))', borderRadius: 12, padding: 12, background: 'var(--theme-bg-card)' };
 /** Bouton compact (actions secondaires dans une section). */
 export const smallBtn: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '0.2rem 0.55rem', fontSize: '0.75rem' };
 
-/** Titre de section en capitales, avec icone. */
+/** Titre de section, avec icone. */
 export function SectionTitle({ icon: Icon, children, actions }: { icon?: LucideIcon; children: ReactNode; actions?: ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -38,8 +39,8 @@ export function Field({ label, children, hint, style }: { label: string; childre
 }
 
 /**
- * Modale au format Achats : fond floute, panneau sans arrondi marque, barre
- * de titre « Icone Module / Document », corps defilant, pied colle en bas.
+ * Fenêtre du module au design Ventes (feuille .kl-sheet, 2026-11-18) : en-tête clair
+ * (icône, rubrique, titre, étiquette), corps défilant sur fond de carte, pied en pilules.
  */
 export function HrModal({
   icon: Icon, crumb, title, tag, width = 640, onClose, headerActions, footer, children,
@@ -55,22 +56,21 @@ export function HrModal({
   children: ReactNode;
 }) {
   return (
-    <ModalBackdrop onClose={onClose} className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="odoo-scope" onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: width, maxHeight: '92vh', display: 'flex', flexDirection: 'column', borderRadius: 4, overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.2)', minHeight: 0 }}>
-        <div className="odoo-control-bar">
-          <div className="odoo-breadcrumb">
-            <Icon size={14} style={{ color: 'var(--theme-accent)' }} />
-            <span>{crumb}</span>
-            <span className="odoo-breadcrumb-separator">/</span>
-            <span className="odoo-breadcrumb-current">{title}</span>
+    <ModalBackdrop onClose={onClose} className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ background: 'rgba(15,23,42,0.32)' }}>
+      <div className="odoo-scope kl-sheet" onClick={e => e.stopPropagation()} role="dialog" aria-label={typeof title === 'string' ? title : crumb}
+        style={{ width: '100%', maxWidth: width, maxHeight: '92vh', minHeight: 0 }}>
+        <header className="kl-sheet-head" style={{ padding: '16px 20px 14px' }}>
+          <span className="kl-ic b" aria-hidden="true"><Icon size={16} /></span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, color: 'var(--kl-muted)' }}>{crumb}</div>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-.02em', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {title}{tag && <span style={{ fontSize: 13, fontWeight: 400, letterSpacing: 0 }}>{tag}</span>}
+            </h2>
           </div>
-          {tag && <span style={{ marginLeft: 8 }}>{tag}</span>}
-          <div style={{ flex: 1 }} />
-          {headerActions && <div style={{ display: 'inline-flex', gap: 4, marginRight: 8 }}>{headerActions}</div>}
-          <button type="button" onClick={onClose} className="odoo-pager-btn" title="Fermer" aria-label="Fermer"><X size={14} /></button>
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {headerActions && <div style={{ display: 'inline-flex', gap: 4 }}>{headerActions}</div>}
+          <button type="button" onClick={onClose} className="kl-sheet-close" title="Fermer" aria-label="Fermer"><X size={16} /></button>
+        </header>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--kl-card)' }}>
           {children}
         </div>
         {footer && <ModalFooter>{footer}</ModalFooter>}
@@ -80,11 +80,7 @@ export function HrModal({
 }
 
 export function ModalFooter({ children }: { children: ReactNode }) {
-  return (
-    <div style={{ background: 'var(--theme-bg-card)', borderTop: '1px solid var(--theme-bg-separator)', padding: '10px 16px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-      {children}
-    </div>
-  );
+  return <div className="kl-sheet-foot">{children}</div>;
 }
 
 /** Bouton principal avec indicateur d'envoi. */
@@ -127,12 +123,54 @@ export function PromptDialog({
   );
 }
 
-/** Etat vide centre (meme rendu que les listes Achats). */
+/** Etat vide centre (meme rendu que les listes Ventes, sans cadre : a poser dans un panneau). */
 export function EmptyState({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
   return (
-    <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--odoo-text-muted)' }}>
-      <Icon size={28} style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-      <div style={{ fontSize: '0.8125rem' }}>{children}</div>
+    <div className="sal-empty">
+      <Icon size={28} style={{ opacity: 0.4 }} />
+      <span>{children}</span>
+    </div>
+  );
+}
+
+/** Etat vide ou chargement dans sa propre carte (liste vide, ecran en chargement). */
+export function EmptyPanel({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
+  return (
+    <section className="prj-panel sal-empty">
+      <Icon size={28} style={{ opacity: 0.4 }} />
+      <span>{children}</span>
+    </section>
+  );
+}
+
+/** Chargement d'un ecran ou d'une liste, dans une carte (gabarit Ventes). */
+export function LoadingPanel({ label = 'Chargement…' }: { label?: string }) {
+  return (
+    <section className="prj-panel sal-empty">
+      <Loader2 className="animate-spin" size={20} />
+      <span>{label}</span>
+    </section>
+  );
+}
+
+/**
+ * Controle segmente (2 a 4 vues), comme la bascule Colonnes/Liste/Kanban des Achats
+ * (prj-views) : remplace les anciens odoo-view-switcher a fond violet.
+ */
+export function Segmented<K extends string>({ value, onChange, options, label }: {
+  value: K; onChange: (k: K) => void; label: string;
+  options: Array<{ key: K; label: ReactNode; icon?: LucideIcon; count?: number; title?: string }>;
+}) {
+  return (
+    <div className="prj-views" role="group" aria-label={label}>
+      {options.map(o => {
+        const Icon = o.icon;
+        return (
+          <button key={o.key} type="button" title={o.title} className={value === o.key ? 'active' : ''} aria-pressed={value === o.key} onClick={() => onChange(o.key)}>
+            {Icon && <Icon size={14} />} {o.label}{o.count !== undefined && <small style={{ marginLeft: 4, opacity: 0.6 }}>{o.count}</small>}
+          </button>
+        );
+      })}
     </div>
   );
 }

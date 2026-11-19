@@ -22,7 +22,7 @@ export default function HrAlertsPanel({ onOpenEmployee }: { onOpenEmployee: (emp
   if (!alerts.length) return null;
 
   const tone = urgent.some(a => a.severity === 'danger') ? 'danger' : urgent.length ? 'warning' : 'info';
-  const color = (s: string) => (s === 'danger' ? '#dc3545' : s === 'warning' ? '#b08504' : 'var(--odoo-text-muted)');
+  const color = (s: string) => (s === 'danger' ? 'var(--prj-red, #dc3545)' : s === 'warning' ? 'var(--prj-orange, #b08504)' : 'var(--odoo-text-muted)');
   return (
     <StatusBanner tone={tone} icon={hasUrgent ? AlertTriangle : Bell}
       title={`${urgent.length} alerte(s) contrat / pièces à traiter${incomplete.length > 0 ? ` · ${incomplete.length} dossier(s) incomplet(s)` : ''}`}

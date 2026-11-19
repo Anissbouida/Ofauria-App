@@ -125,7 +125,7 @@ function LotPicker({ onBack, onPick }: { onBack: () => void; onPick: (lot: LotMo
                     <span style={{ fontWeight: 500 }}>{l.ingredient_name}</span>
                     {(l.lot_number || l.supplier_lot_number) && <div style={{ fontSize: '0.6875rem', color: 'var(--theme-text-muted)', fontFamily: 'ui-monospace, monospace' }}>{l.lot_number ?? l.supplier_lot_number}</div>}
                   </td>
-                  <td style={{ fontSize: '0.75rem', color: expired ? '#b71c1c' : 'var(--theme-text-muted)', fontWeight: expired ? 600 : 400, whiteSpace: 'nowrap' }}>
+                  <td style={{ fontSize: '0.75rem', color: expired ? 'var(--prj-red)' : 'var(--theme-text-muted)', fontWeight: expired ? 600 : 400, whiteSpace: 'nowrap' }}>
                     {expired && <AlertTriangle size={11} style={{ verticalAlign: -1, marginRight: 3 }} />}
                     {l.expiration_date ? format(new Date(l.expiration_date), 'dd/MM/yyyy') : '—'}
                   </td>

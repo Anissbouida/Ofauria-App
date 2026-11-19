@@ -7,7 +7,9 @@ import { employeesApi } from '../../api/employees.api';
 import { notify } from '../../components/ui/InlineNotification';
 import SearchSelect from '../../components/ui/SearchSelect';
 import { apiErrorMessage } from '../../api/errors';
-import { StatusBanner } from '../../components/ui/StatusBanner';
+import { StatusTag } from '../../components/ui/StatusTag';
+import SalesPageShell from '../sales/SalesPageShell';
+import { ListEmpty } from '../sales/ListTemplate';
 
 // Étape en cours renvoyée par /atelier/live (mig 399).
 interface LiveEtape {
@@ -83,33 +85,27 @@ export default function AtelierPage() {
   }, [etapes]);
 
   return (
-    <div className="odoo-scope" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <StatusBanner tone="info" icon={Factory} title="Atelier — étapes en cours">
-        Qui fait quoi, sur quel poste, en ce moment. Les étapes démarrées des plans en cours apparaissent ici,
+    <SalesPageShell icon={Factory} parent="Production" title="Atelier"
+      summary={<>{!isLoading && <><b>{etapes.length}</b> étape(s) en cours · </>}Qui fait quoi, sur quel poste, en ce moment. Les étapes démarrées des plans en cours apparaissent ici,
         regroupées par poste. Affectez un poste et un opérateur, mettez en pause ou reprenez. La durée affichée
-        exclut les pauses. Actualisation automatique.
-      </StatusBanner>
+        exclut les pauses. Actualisation automatique.</>}>
 
       {isLoading && (
-        <div style={{ padding: 32, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          <Loader2 size={18} className="animate-spin" style={{ display: 'inline' }} /> Chargement…
-        </div>
+        <section className="prj-panel sal-empty"><Loader2 size={18} className="animate-spin" /><span>Chargement…</span></section>
       )}
 
       {!isLoading && etapes.length === 0 && (
-        <div style={{ padding: 32, textAlign: 'center', color: 'var(--theme-text-muted)' }}>
-          Aucune étape en cours. Démarrez une étape depuis un plan de production en cours.
-        </div>
+        <ListEmpty icon={Factory} title="Aucune étape en cours." text="Démarrez une étape depuis un plan de production en cours." />
       )}
 
       {!isLoading && groups.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, alignItems: 'start' }}>
           {groups.map(g => (
-            <div key={g.id} style={{ border: '1px solid var(--odoo-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--odoo-bg)' }}>
-              <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--odoo-border)', display: 'flex', alignItems: 'center', gap: 8, background: g.id === NON_ASSIGNE ? 'rgba(234,179,8,0.08)' : 'var(--theme-bg-subtle, rgba(127,127,127,0.06))' }}>
-                <Wrench size={14} style={{ color: g.id === NON_ASSIGNE ? '#b45309' : 'var(--theme-accent)' }} />
-                <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>{g.name}</span>
-                <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: 'var(--theme-text-muted)' }}>{g.etapes.length}</span>
+            <section key={g.id} className="prj-panel" style={{ overflow: 'hidden' }}>
+              <div className="prj-panel-head" style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15 }}>
+                <span className={`kl-ic ${g.id === NON_ASSIGNE ? 'o' : 'b'}`} style={{ width: 28, height: 28 }}><Wrench size={14} /></span>
+                <span>{g.name}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 500, color: 'var(--theme-text-muted)' }}>{g.etapes.length}</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10 }}>
                 {g.etapes.map(e => {
@@ -117,10 +113,10 @@ export default function AtelierPage() {
                   const mins = elapsedMinutes(e, now);
                   const over = e.duree_estimee_min != null && mins > e.duree_estimee_min;
                   return (
-                    <div key={e.etape_id} style={{ border: '1px solid var(--odoo-border)', borderRadius: 6, padding: 8, background: paused ? 'rgba(234,179,8,0.06)' : 'var(--theme-bg-card, transparent)' }}>
+                    <div key={e.etape_id} style={{ borderRadius: 12, padding: 10, background: paused ? 'color-mix(in srgb, var(--prj-orange) 7%, var(--kl-card))' : 'color-mix(in srgb, var(--kl-bg) 55%, var(--kl-card))' }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
                         <span style={{ fontWeight: 600, fontSize: '0.86rem' }}>{e.product_name || '—'}</span>
-                        {e.est_bloquante && <span style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', color: '#dc2626', background: '#fef2f2', borderRadius: 3, padding: '1px 4px' }}><Lock size={8} style={{ display: 'inline' }} /> Bloquante</span>}
+                        {e.est_bloquante && <StatusTag tone="blocked" icon={Lock} label="Bloquante" />}
                         <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--theme-text-muted)' }}>{e.plan_date ? new Date(e.plan_date).toLocaleDateString('fr-FR') : ''}</span>
                       </div>
                       <div style={{ fontSize: '0.8rem', color: 'var(--theme-text-muted)', marginTop: 2 }}>#{e.ordre} · {e.nom}</div>
@@ -151,10 +147,10 @@ export default function AtelierPage() {
                   );
                 })}
               </div>
-            </div>
+            </section>
           ))}
         </div>
       )}
-    </div>
+    </SalesPageShell>
   );
 }

@@ -129,7 +129,8 @@ export function SettingsTabs({ tabs, value, onChange, label }: {
 
   return (
     <div className="odoo-settings-tabs">
-      <div className="odoo-settings-tablist" role="tablist" aria-label={label}>
+      {/* 2 à 4 onglets : contrôle segmenté (design Ventes) ; au-delà, onglets soulignés. */}
+      <div className={`odoo-settings-tablist${tabs.length <= 4 ? ' seg' : ''}`} role="tablist" aria-label={label}>
         {tabs.map(t => (
           <button key={t.key} type="button" role="tab" id={`tab-${t.key}`} aria-selected={t.key === active}
             aria-controls={`tabpanel-${t.key}`} className={t.key === active ? 'active' : ''} onClick={() => select(t.key)}>

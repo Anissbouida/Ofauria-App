@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Download, FileCheck2, Banknote, Lock, AlertTriangle, Landmark, Upload } from 'lucide-react';
 import { StatusBanner } from '../../../components/ui/StatusBanner';
 import { StatusTag } from '../../../components/ui/StatusTag';
-import { HrModal, SubmitButton, PromptDialog, Field, SectionTitle, inputCls } from '../ui';
+import { HrModal, SubmitButton, PromptDialog, Field, LoadingPanel, inputCls } from '../ui';
 import SearchSelect from '../../../components/ui/SearchSelect';
 import { payrollConfigApi } from '../../../api/employees.api';
 import { notify } from '../../../components/ui/InlineNotification';
@@ -105,11 +105,11 @@ export default function DeclarationsView() {
 
   return (
     <>
-      <div className="odoo-search-panel" style={{ justifyContent: 'space-between' }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <div className="prj-toolbar" style={{ justifyContent: 'space-between' }}>
+        <div className="hr-tools">
           <SearchSelect options={MONTH_NAMES.map((m, i) => ({ id: String(i + 1), label: m }))} value={String(month)}
             onChange={id => id && setMonth(parseInt(id))} placeholder="Mois" width={140} />
-          <input type="number" value={year} onChange={e => setYear(parseInt(e.target.value))} className={inputCls} style={{ width: 96 }} />
+          <input type="number" value={year} onChange={e => setYear(parseInt(e.target.value))} className="odoo-filter-dropdown" style={{ width: 96 }} aria-label="Année" />
         </div>
         <button className="odoo-btn-secondary" onClick={exportAnnual} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
           title="Cumuls annuels par salarié : contenu de l'état 9421 (traitements et salaires)">
@@ -129,18 +129,18 @@ export default function DeclarationsView() {
       )}
 
       {isLoading || !data ? (
-        <p style={{ color: 'var(--odoo-text-muted)', fontSize: '0.8125rem' }}>Chargement...</p>
+        <LoadingPanel />
       ) : (
         <>
-          <div className="odoo-stat-grid">
+          <div className="prj-kpis">
             {(['cnss', 'ir', 'cimr'] as Kind[]).map(k => {
               const d = declared(k);
               return (
-                <div key={k} className={`odoo-stat-card ${detail === k ? 'active' : ''}`} style={{ cursor: k !== 'cimr' ? 'pointer' : undefined }}
+                <div key={k} className={`prj-kpi${detail === k ? ' hr-active' : ''}`} style={{ cursor: k !== 'cimr' ? 'pointer' : undefined }}
                   onClick={() => k !== 'cimr' && setDetail(k)}>
-                  <div className="odoo-stat-card-label">{KIND_LABEL[k]} <span style={{ color: 'var(--odoo-text-light)' }}>· {KIND_ACCOUNT[k]}</span></div>
-                  <div className="odoo-stat-card-value">{fmt(d ? parseFloat(d.amount) : due[k])} <span style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)', fontWeight: 400 }}>{currencySymbol()}</span></div>
-                  <div className="odoo-stat-card-sub" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <div className="prj-kpi-head"><span>{KIND_LABEL[k]} <span style={{ color: 'var(--odoo-text-light)' }}>· {KIND_ACCOUNT[k]}</span></span></div>
+                  <div className="prj-kpi-value">{fmt(d ? parseFloat(d.amount) : due[k])} <span style={{ fontSize: '0.8125rem', color: 'var(--theme-text-muted)', fontWeight: 500 }}>{currencySymbol()}</span></div>
+                  <div className="prj-kpi-sub" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     {d?.status === 'paid' ? <StatusTag tone="done" label={`Réglée le ${new Date(d.paid_at).toLocaleDateString('fr-FR')}`} />
                       : d ? <StatusTag tone="progress" icon={FileCheck2} label={`Déclarée${d.reference ? ` · ${d.reference}` : ''}`} />
                       : <StatusTag tone="todo" label="À déclarer" />}
@@ -165,10 +165,10 @@ export default function DeclarationsView() {
           </div>
 
           {detail === 'cnss' ? (
-            <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <SectionTitle icon={FileCheck2}>Bordereau CNSS — {MONTH_NAMES[month - 1]} {year}</SectionTitle>
-                <div style={{ display: 'inline-flex', gap: 6 }}>
+            <section className="prj-panel hr-plain">
+              <div className="prj-panel-head hr-panel-head">
+                <span>Bordereau CNSS — {MONTH_NAMES[month - 1]} {year}</span>
+                <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
                   <input ref={preetabliInput} type="file" accept=".txt,text/plain" style={{ display: 'none' }}
                     onChange={e => { const f = e.target.files?.[0]; if (f) ebds.mutate(f); e.target.value = ''; }} />
                   <button className="odoo-btn-primary" onClick={() => preetabliInput.current?.click()} disabled={ebds.isPending || !data.cnss.rows.length}
@@ -179,7 +179,7 @@ export default function DeclarationsView() {
                 </div>
               </div>
               {ebdsResult && (
-                <div className={`odoo-alert ${ebdsResult.warnings.length ? 'warning' : 'info'}`} style={{ padding: '0.625rem 0.875rem', fontSize: '0.75rem' }}>
+                <div className={`odoo-alert ${ebdsResult.warnings.length ? 'warning' : 'info'}`} style={{ padding: '0.625rem 0.875rem', fontSize: '0.75rem', margin: '12px 16px 0' }}>
                   <strong>{ebdsResult.fileName}</strong> : {ebdsResult.totals.salaries} salarié(s) dont {ebdsResult.totals.entrants} entrant(s) et {ebdsResult.totals.sortants} sortant(s),
                   {' '}{ebdsResult.totals.jours} jours, salaire réel {money(ebdsResult.totals.salaireReel)}, plafonné {money(ebdsResult.totals.salairePlafonne)}.
                   {ebdsResult.warnings.length > 0 && (
@@ -187,7 +187,7 @@ export default function DeclarationsView() {
                   )}
                 </div>
               )}
-              <div style={{ overflowX: 'auto' }}>
+              <div className="prj-scroll">
                 <table className="odoo-table">
                   <thead><tr>
                     <th>N° CNSS</th><th>Salarié</th><th style={{ textAlign: 'center' }}>Jours</th>
@@ -199,7 +199,7 @@ export default function DeclarationsView() {
                   <tbody>
                     {data.cnss.rows.map((r: Record<string, any>) => (
                       <tr key={r.payrollId}>
-                        <td style={{ color: r.cnssNumber ? undefined : '#dc3545' }}>{r.cnssNumber || 'manquant'}</td>
+                        <td style={{ color: r.cnssNumber ? undefined : 'var(--prj-red)' }}>{r.cnssNumber || 'manquant'}</td>
                         <td>{r.name}</td><td style={{ textAlign: 'center' }}>{r.days}</td>
                         <td style={{ textAlign: 'right' }}>{fmt(r.salaireReel)}</td><td style={{ textAlign: 'right' }}>{fmt(r.salairePlafonne)}</td>
                         <td style={{ textAlign: 'right' }}>{fmt(r.prestationsSalarie)}</td><td style={{ textAlign: 'right' }}>{fmt(r.prestationsPatronal)}</td>
@@ -224,13 +224,13 @@ export default function DeclarationsView() {
               </div>
             </section>
           ) : (
-            <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <SectionTitle icon={FileCheck2}>État IR — {MONTH_NAMES[month - 1]} {year}</SectionTitle>
+            <section className="prj-panel hr-plain">
+              <div className="prj-panel-head hr-panel-head">
+                <span>État IR — {MONTH_NAMES[month - 1]} {year}</span>
                 <button className="odoo-btn-secondary" onClick={exportIr} disabled={!data.ir.rows.length}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Download size={13} /> CSV</button>
               </div>
-              <div style={{ overflowX: 'auto' }}>
+              <div className="prj-scroll">
                 <table className="odoo-table">
                   <thead><tr>
                     <th>Salarié</th><th>CIN</th><th style={{ textAlign: 'center' }}>Pers.</th>
@@ -262,7 +262,7 @@ export default function DeclarationsView() {
             </section>
           )}
 
-          <div style={{ fontSize: '0.6875rem', color: 'var(--odoo-text-muted)' }}>
+          <div className="prj-note" style={{ fontSize: 12, color: 'var(--theme-text-muted)', margin: '0 4px' }}>
             Le fichier e-BDS (format CNSS à largeur fixe, cahier des charges e-BDS) se dépose sur Damancom ; le CSV reprend les mêmes données pour contrôle, et l'état IR ce qu'il faut saisir sur SIMPL-IR.
             À la clôture du mois, la paie est comptabilisée (OD) : 6171 / 6174 au débit, 4441, 4443, 44525 et 4432 au crédit. Régler une déclaration solde le compte de dette correspondant.
           </div>

@@ -78,7 +78,7 @@ export default function SodMonitor({ compact = false }: { compact?: boolean }) {
       </div>
 
       <div style={{ display: 'grid', gap: 6 }}>
-        <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--odoo-text-muted)' }}>
+        <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--odoo-text-muted)' }}>
           Manquements journalisés (90 derniers jours)
         </div>
         {violations.length === 0 ? (
