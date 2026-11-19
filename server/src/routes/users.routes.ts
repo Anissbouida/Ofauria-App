@@ -9,6 +9,8 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
 import { z } from 'zod';
 
+/** G6-05 : langue de l'interface ; null = revenir au défaut de la société. */
+export const setLocaleSchema = z.object({ locale: z.enum(['fr', 'ar', 'en']).nullable() }).strict();
 const setActionPermissionsSchema = z.object({ keys: z.array(z.string().min(3).max(120)).max(2000) });
 
 const router = Router();
@@ -49,6 +51,9 @@ router.get('/', authenticate, can('users.view'), userController.list);
 router.post('/', authenticate, can('users.create'), userController.create);
 router.put('/:id', authenticate, can('users.edit'), userController.update);
 router.delete('/:id', authenticate, can('users.delete'), userController.remove);
+
+// Profil de l'utilisateur connecté — aucune clé de droit : chacun règle sa propre langue (G6-05).
+router.put('/me/locale', authenticate, validate(setLocaleSchema), asyncHandler(userController.setMyLocale));
 
 // Permissions
 router.get('/me/permissions', authenticate, userController.myPermissions);

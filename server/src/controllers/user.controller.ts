@@ -280,6 +280,17 @@ export const userController = {
   },
 
   /** Return permissions for the currently authenticated user */
+  /** G6-05 : langue de l'interface de l'utilisateur connecté (corps validé par setLocaleSchema). */
+  async setMyLocale(req: AuthRequest, res: Response) {
+    const { locale } = req.body as { locale: 'fr' | 'ar' | 'en' | null };
+    const ok = await userRepository.setLocale(req.user!.userId, locale);
+    if (!ok) {
+      res.status(404).json({ success: false, error: { message: 'Utilisateur non trouvé' } });
+      return;
+    }
+    res.json({ success: true, data: { locale } });
+  },
+
   async myPermissions(req: AuthRequest, res: Response) {
     // Droits effectifs (mig 330) : exceptions de l'utilisateur, sinon droits du role.
     // Liste vide pour l'administrateur (tous les droits).

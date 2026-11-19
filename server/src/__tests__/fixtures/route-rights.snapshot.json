@@ -5125,6 +5125,7 @@
  "PUT /users/:id/permissions": [
   "admin"
  ],
+ "PUT /users/me/locale": null,
  "PUT /users/roles/:code": [
   "admin"
  ],

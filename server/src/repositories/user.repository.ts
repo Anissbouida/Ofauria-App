@@ -10,6 +10,8 @@ export interface UserRow {
   must_change_password?: boolean;
   /** G6-01 : double authentification activée. */
   totp_enabled?: boolean;
+  /** G6-05 : langue de l'interface (mig 610) ; NULL = défaut de la société. */
+  locale?: string | null;
   first_name: string;
   last_name: string;
   role: string;
@@ -65,6 +67,12 @@ export const userRepository = {
   /** Longueur du PIN apprise à une connexion réussie (PIN antérieurs à la mig 522). */
   async learnPinLength(id: string, length: number): Promise<void> {
     await db.query(`UPDATE users SET pin_length = $2 WHERE id = $1 AND pin_length IS DISTINCT FROM $2`, [id, length]);
+  },
+
+  /** G6-05 : langue de l'interface choisie par l'utilisateur (NULL = défaut de la société). */
+  async setLocale(id: string, locale: string | null): Promise<boolean> {
+    const result = await db.query(`UPDATE users SET locale = $2 WHERE id = $1`, [id, locale]);
+    return (result.rowCount ?? 0) > 0;
   },
 
   async setMustChangePassword(id: string, value: boolean): Promise<void> {

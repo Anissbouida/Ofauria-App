@@ -344,6 +344,7 @@ export const authController = {
           roles: roleCtx.roles,
           isActive: user.is_active,
           storeId: user.store_id || null,
+          locale: user.locale ?? null,
         },
       },
     });
@@ -401,6 +402,7 @@ export const authController = {
         roles: roleCtx.roles,
         isActive: user.is_active,
         storeId: user.store_id || null,
+        locale: user.locale ?? null,
         mustChangePassword: !!user.must_change_password,
         // G6-01 : rôle soumis à la double authentification, pas encore activée → configuration imposée.
         mfaSetupRequired: await mfaSetupRequired(user.id, roleCtx),
@@ -430,7 +432,7 @@ function readMfaToken(token: string): { uid: string; mc: boolean } | null {
 }
 
 /** Ouvre la session (jeton + cookie) et renvoie le profil — commun au mot de passe et au second facteur. */
-async function issueSession(res: Response, user: { id: string; email: string; first_name: string; last_name: string; is_active: boolean; store_id?: string | null; token_version?: number | null }, mustChange: boolean) {
+async function issueSession(res: Response, user: { id: string; email: string; first_name: string; last_name: string; is_active: boolean; store_id?: string | null; token_version?: number | null; locale?: string | null }, mustChange: boolean) {
   // Le jeton porte le role de BASE (perimetre technique des routes) ; un role cree
   // dans Utilisateurs > Roles garde ses propres droits par module (mig 330).
   const roleCtx = await loginRoleContext(user.id);
@@ -451,6 +453,7 @@ async function issueSession(res: Response, user: { id: string; email: string; fi
         roles: roleCtx.roles,
         isActive: user.is_active,
         storeId: user.store_id || null,
+        locale: user.locale ?? null,
         mustChangePassword: mustChange,
         mfaSetupRequired: await mfaSetupRequired(user.id, roleCtx),
       },
