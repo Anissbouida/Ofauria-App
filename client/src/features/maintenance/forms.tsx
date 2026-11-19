@@ -36,10 +36,13 @@ function Shell({ title, onClose, children, footer, width = 680 }: { title: strin
 }
 
 /** Équipement : une immobilisation (interne) ou un équipement chez un client (libellé + n° de série). */
-function EquipmentFields({ value, onChange }: {
-  value: { fixedAssetId: string | null; customerId: string | null; customerName: string; equipmentLabel: string; serialNo: string };
+function EquipmentFields({ value, onChange, withProductionEquipment = false }: {
+  value: { fixedAssetId: string | null; customerId: string | null; customerName: string; equipmentLabel: string; serialNo: string; equipmentId?: string | null };
   onChange: (v: Partial<typeof value>) => void;
+  /** M5-05 : choix de l'équipement de production (intervention seulement) — sa clôture crée l'arrêt du poste. */
+  withProductionEquipment?: boolean;
 }) {
+  const { data: equipments = [] } = useQuery({ queryKey: ['maintenance-equipments'], queryFn: maintenanceApi.equipments, enabled: withProductionEquipment });
   const [mode, setMode] = useState<'asset' | 'customer'>(value.fixedAssetId || !value.customerId ? 'asset' : 'customer');
   const { data: assets = [] } = useQuery({ queryKey: ['maintenance-assets'], queryFn: maintenanceApi.assets });
   const [q, setQ] = useState('');
@@ -54,6 +57,20 @@ function EquipmentFields({ value, onChange }: {
               background: mode === k ? 'var(--theme-bg-card)' : 'transparent', color: mode === k ? 'var(--theme-text)' : 'var(--theme-text-muted)' }}>{l}</button>
         ))}
       </div>
+      {mode === 'asset' && withProductionEquipment && (
+        <div>
+          <span style={label}>Équipement de production</span>
+          <SearchSelect value={value.equipmentId ?? ''} width="100%" size="md" ariaLabel="Équipement de production"
+            placeholder="Aucun (immobilisation ou libellé ci-dessous)"
+            options={equipments.map(e => ({ id: e.id, label: e.label }))}
+            onChange={id => {
+              const e = equipments.find(x => x.id === id);
+              onChange(e
+                ? { equipmentId: e.id, fixedAssetId: e.fixed_asset_id ?? value.fixedAssetId, equipmentLabel: e.fixed_asset_id ? value.equipmentLabel : (value.equipmentLabel || e.label) }
+                : { equipmentId: null });
+            }} />
+        </div>
+      )}
       {mode === 'asset' ? (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
@@ -108,12 +125,12 @@ export function InterventionFormModal({ onClose, onCreated, defaults }: {
     kind: (defaults?.kind ?? 'corrective') as InterventionKind, priority: (defaults?.priority ?? 'normal') as Priority, title: defaults?.title ?? '',
     fixedAssetId: defaults?.fixedAssetId ?? null, customerId: defaults?.customerId ?? null, customerName: defaults?.customerName ?? '',
     equipmentLabel: defaults?.equipmentLabel ?? '', serialNo: defaults?.serialNo ?? '', location: '', reportedProblem: defaults?.reportedProblem ?? '',
-    assigneeId: '', scheduledAt: '', underWarranty: false, billable: false,
+    assigneeId: '', scheduledAt: '', underWarranty: false, billable: false, equipmentId: null as string | null,
   });
   const set = (p: Partial<typeof f>) => setF(s => ({ ...s, ...p }));
   const create = useMutation({
     mutationFn: () => maintenanceApi.create({
-      kind: f.kind, priority: f.priority, title: f.title.trim(), fixedAssetId: f.fixedAssetId, customerId: f.customerId,
+      kind: f.kind, priority: f.priority, title: f.title.trim(), fixedAssetId: f.fixedAssetId, customerId: f.customerId, equipmentId: f.equipmentId,
       equipmentLabel: f.equipmentLabel.trim() || null, serialNo: f.serialNo.trim() || null, location: f.location.trim() || null,
       reportedProblem: f.reportedProblem.trim() || null, assigneeId: f.assigneeId || null, scheduledAt: f.scheduledAt ? new Date(f.scheduledAt).toISOString() : null,
       underWarranty: f.underWarranty, billable: f.billable, complaintId: defaults?.complaintId ?? null, projectId: defaults?.projectId ?? null,
@@ -121,7 +138,7 @@ export function InterventionFormModal({ onClose, onCreated, defaults }: {
     onSuccess: (i) => { qc.invalidateQueries({ queryKey: ['maintenance'] }); notify.success(`Intervention ${i.number} créée`); onCreated?.(i.id); onClose(); },
     onError: e => notify.error(apiErrorMessage(e)),
   });
-  const can = f.title.trim().length > 0 && (!!f.fixedAssetId || f.equipmentLabel.trim().length > 0) && !create.isPending;
+  const can = f.title.trim().length > 0 && (!!f.fixedAssetId || !!f.equipmentId || f.equipmentLabel.trim().length > 0) && !create.isPending;
   return (
     <Shell title="Nouvelle intervention" onClose={onClose}
       footer={<>
@@ -143,7 +160,7 @@ export function InterventionFormModal({ onClose, onCreated, defaults }: {
           </select>
         </div>
       </div>
-      <EquipmentFields value={f} onChange={set} />
+      <EquipmentFields value={f} onChange={set} withProductionEquipment />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
         <div>
           <span style={label}>Intervenant</span>

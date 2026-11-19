@@ -1285,6 +1285,7 @@
  "GET /maintenance/:id": null,
  "GET /maintenance/equipment-report": null,
  "GET /maintenance/lookup/assets": null,
+ "GET /maintenance/lookup/equipments": null,
  "GET /maintenance/lookup/people": null,
  "GET /maintenance/overview": null,
  "GET /maintenance/plans": null,

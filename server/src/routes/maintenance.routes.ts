@@ -33,7 +33,7 @@ const interventionFields = z.object({
   workDone: text(4000).nullish(), downtimeHours: money.nullish(), laborHours: money.nullish(), laborRate: money.nullish(),
   partsCost: money.optional(), billedAmount: money.nullish(),
 });
-const hasEquipment = (b: { fixedAssetId?: string | null; equipmentLabel?: string | null }) => !!b.fixedAssetId || !!b.equipmentLabel?.trim();
+const hasEquipment = (b: { fixedAssetId?: string | null; equipmentLabel?: string | null; equipmentId?: string | null }) => !!b.fixedAssetId || !!b.equipmentLabel?.trim() || !!b.equipmentId;
 const planBody = z.object({
   label: text(200).min(1), ...equipment, frequencyDays: z.coerce.number().int().min(1).max(3660), checklist: text(4000).nullish(),
   assigneeId: uuid.nullish(), nextDueOn: isoDate, isActive: z.boolean().optional(),
@@ -71,12 +71,13 @@ maintenanceRouter.get('/equipment-report', ...VIEW, asyncHandler(async (req: Aut
 }));
 
 maintenanceRouter.get('/lookup/assets', ...VIEW, asyncHandler(async (req: AuthRequest, res: Response) => ok(res, await repo.assets(storeOf(req)))));
+maintenanceRouter.get('/lookup/equipments', ...VIEW, asyncHandler(async (req: AuthRequest, res: Response) => ok(res, await repo.equipments(storeOf(req)))));
 maintenanceRouter.get('/lookup/people', ...VIEW, asyncHandler(async (req: AuthRequest, res: Response) => ok(res, await repo.people(storeOf(req)))));
 
 maintenanceRouter.post('/', ...CREATE, asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = interventionFields.safeParse(req.body);
   if (!r.success) { bad(res, r.error.issues[0]?.message); return; }
-  if (!hasEquipment(r.data)) { bad(res, 'Équipement requis (immobilisation ou libellé)'); return; }
+  if (!hasEquipment(r.data)) { bad(res, 'Équipement requis (équipement de production, immobilisation ou libellé)'); return; }
   res.status(201).json({ success: true, data: await repo.create(r.data, ctx(req)) });
 }));
 

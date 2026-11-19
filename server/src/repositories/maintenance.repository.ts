@@ -95,6 +95,15 @@ export const maintenanceRepository = {
     const client = await db.getClient();
     try {
       await client.query('BEGIN');
+      // M5-05 : équipement du référentiel (production_equipements) ; sans immobilisation ni libellé
+      // saisis, ceux de l'équipement sont repris (la table exige l'un ou l'autre dès l'insertion).
+      const eq = input.equipmentId
+        ? (await client.query(`SELECT id, nom, fixed_asset_id FROM production_equipements WHERE id = $1`, [input.equipmentId])).rows[0] as
+            { id: string; nom: string; fixed_asset_id: string | null } | undefined
+        : undefined;
+      if (input.equipmentId && !eq) throw Object.assign(new Error('Équipement introuvable'), { statusCode: 404 });
+      const fixedAssetId = input.fixedAssetId ?? eq?.fixed_asset_id ?? null;
+      const equipmentLabel = input.equipmentLabel?.trim() || (!fixedAssetId && eq ? eq.nom : null);
       const number = await nextDocumentNumber(client, 'maintenance');
       const r = await client.query(
         `INSERT INTO maintenance_interventions (number, store_id, kind, priority, title, fixed_asset_id, customer_id, equipment_label, serial_no, location,
@@ -102,14 +111,13 @@ export const maintenanceRepository = {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
                  CASE WHEN $16::timestamptz IS NULL THEN 'requested' ELSE 'scheduled' END)
          RETURNING id`,
-        [number, ctx.storeId, input.kind ?? 'corrective', input.priority ?? 'normal', input.title.trim(), input.fixedAssetId ?? null,
-         input.customerId ?? null, input.equipmentLabel?.trim() || null, input.serialNo?.trim() || null, input.location?.trim() || null,
+        [number, ctx.storeId, input.kind ?? 'corrective', input.priority ?? 'normal', input.title.trim(), fixedAssetId,
+         input.customerId ?? null, equipmentLabel, input.serialNo?.trim() || null, input.location?.trim() || null,
          input.planId ?? null, input.complaintId ?? null, input.projectId ?? null, input.reportedProblem?.trim() || null,
          input.assigneeId ?? null, input.scheduledAt ?? null, input.underWarranty ?? false, input.billable ?? false, input.photoUrl ?? null, ctx.userId],
       );
       const id = r.rows[0].id as string;
-      // M5-05 : équipement du référentiel (production_equipements).
-      if (input.equipmentId) await client.query(`UPDATE maintenance_interventions SET equipment_id = $2 WHERE id = $1`, [id, input.equipmentId]);
+      if (eq) await client.query(`UPDATE maintenance_interventions SET equipment_id = $2 WHERE id = $1`, [id, eq.id]);
       await addEvent(client, id, { type: 'created', to: input.kind ?? 'corrective', userId: ctx.userId });
       await client.query('COMMIT');
       if (input.assigneeId) await notifyAssignee(id, input.assigneeId, ctx.userId);
@@ -361,6 +369,16 @@ export const maintenanceRepository = {
     const add = (v: unknown) => { values.push(v); return `$${values.length}`; };
     const r = await db.query(
       `SELECT id, label, status, acquisition_date FROM fixed_assets WHERE status = 'active' AND ${storeCond(storeId, 'store_id', add)} ORDER BY label`, values);
+    return r.rows;
+  },
+
+  /** M5-05 : équipements de production (référentiel unique), avec leur immobilisation liée. */
+  async equipments(storeId?: string) {
+    const values: unknown[] = [];
+    const add = (v: unknown) => { values.push(v); return `$${values.length}`; };
+    const r = await db.query(
+      `SELECT id, nom AS label, fixed_asset_id, work_center_id FROM production_equipements
+        WHERE is_active AND ${storeCond(storeId, 'store_id', add)} ORDER BY nom`, values);
     return r.rows;
   },
 

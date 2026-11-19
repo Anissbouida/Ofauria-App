@@ -27,6 +27,8 @@ export type MaintenancePlan = {
 };
 export type InterventionInput = {
   kind?: InterventionKind; priority?: Priority; title: string; fixedAssetId?: string | null; customerId?: string | null; equipmentLabel?: string | null;
+  /** M5-05 : équipement de production (référentiel unique). */
+  equipmentId?: string | null;
   serialNo?: string | null; location?: string | null; planId?: string | null; complaintId?: string | null; projectId?: string | null;
   reportedProblem?: string | null; assigneeId?: string | null; scheduledAt?: string | null; underWarranty?: boolean; billable?: boolean;
   workDone?: string | null; downtimeHours?: number | null; laborHours?: number | null; laborRate?: number | null; partsCost?: number; billedAmount?: number | null;
@@ -53,6 +55,8 @@ export const maintenanceApi = {
     api.get('/maintenance/equipment-report', { params }).then(r => r.data.data),
   assets: (): Promise<{ id: string; label: string }[]> => api.get('/maintenance/lookup/assets').then(r => r.data.data),
   people: (): Promise<{ id: string; name: string; role: string | null; cost_rate: string }[]> => api.get('/maintenance/lookup/people').then(r => r.data.data),
+  /** M5-05 : équipements de production (référentiel unique). */
+  equipments: (): Promise<{ id: string; label: string; fixed_asset_id: string | null; work_center_id: string | null }[]> => api.get('/maintenance/lookup/equipments').then(r => r.data.data),
   get: (id: string): Promise<Intervention> => api.get(`/maintenance/${id}`).then(r => r.data.data),
   create: (data: InterventionInput): Promise<Intervention> => api.post('/maintenance', data).then(r => r.data.data),
   update: (id: string, data: Partial<InterventionInput>): Promise<Intervention> => api.patch(`/maintenance/${id}`, data).then(r => r.data.data),

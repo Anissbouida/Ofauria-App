@@ -73,4 +73,13 @@ describe.skipIf(!hasTestDb)('Référentiel équipement (M5-05)', () => {
     expect(stops).toHaveLength(2);
     expect(stops[1]).toMatchObject({ reason: 'maintenance', intervention_id: prev!.id });
   });
+
+  it('intervention saisie depuis la Maintenance avec l\'équipement seul : immobilisation reprise', async () => {
+    expect((await mr.equipments(fx.storeId)).map((e: { id: string }) => e.id)).toContain(eqId);
+    const i = await mr.create({ title: `Contrôle four ${RUN}`, kind: 'corrective', equipmentId: eqId }, { userId: fx.userId, storeId: fx.storeId });
+    const row = (await p().query(`SELECT equipment_id, fixed_asset_id, equipment_label FROM maintenance_interventions WHERE id = $1`, [i!.id])).rows[0];
+    expect(row.equipment_id).toBe(eqId);
+    if (assetId) expect(row).toMatchObject({ fixed_asset_id: assetId, equipment_label: null });
+    else expect(row.equipment_label).toMatch(/Four à sole Bongard/);
+  });
 });
