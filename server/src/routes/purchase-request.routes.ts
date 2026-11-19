@@ -9,6 +9,7 @@ import {
   createPurchaseRequestSchema, updateQuantitySchema, assignSupplierSchema,
   bulkAssignSupplierSchema, reasonSchema,
 } from '../validators/purchase-request.validator.js';
+import { emptyBody } from '../validators/common.validator.js';
 
 // Qui exprime un besoin : chefs, magasinier, gérant, admin (pas la caisse ni la vente).
 const REQUESTERS = Array.from(new Set([...ROLE_GROUPS.PRODUCTION, ...ROLE_GROUPS.WAREHOUSE]));
@@ -29,7 +30,7 @@ router.get('/:id/actions', authenticate, can('purchasing.purchase_requests.actio
 router.get('/:id/history', authenticate, can('purchasing.purchase_requests.history.view'), validateUuidParams('id'), asyncHandler(purchaseRequestController.history));
 router.post('/', authenticate, can('purchasing.purchase_requests.create'), validate(createPurchaseRequestSchema), asyncHandler(purchaseRequestController.create));
 // Soumettre une proposition (DA brouillon générée par le MRP, L6) à l'approbation.
-router.post('/:id/submit', authenticate, can('purchasing.purchase_requests.submit'), validateUuidParams('id'), asyncHandler(purchaseRequestController.submit));
+router.post('/:id/submit', authenticate, can('purchasing.purchase_requests.submit'), validateUuidParams('id'), validate(emptyBody), asyncHandler(purchaseRequestController.submit));
 router.put('/:id/quantity', authenticate, can('purchasing.purchase_requests.quantity'), validateUuidParams('id'), validate(updateQuantitySchema), asyncHandler(purchaseRequestController.updateQuantity));
 router.put('/:id/supplier', authenticate, can('purchasing.purchase_requests.supplier'), validateUuidParams('id'), validate(assignSupplierSchema), asyncHandler(purchaseRequestController.assignSupplier));
 router.post('/bulk-assign-supplier', authenticate, can('purchasing.purchase_requests.bulk_assign_supplier'), validate(bulkAssignSupplierSchema), asyncHandler(purchaseRequestController.bulkAssignSupplier));

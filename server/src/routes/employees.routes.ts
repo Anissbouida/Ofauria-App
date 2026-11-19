@@ -11,7 +11,9 @@ import { employeeSelfController, advanceRequestController } from '../controllers
 import { payrollComplianceController } from '../controllers/payroll-compliance.controller.js';
 import multer from 'multer';
 import { asyncHandler } from '../middleware/asyncHandler.js';
-import { validate } from '../middleware/validate.middleware.js';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
+import { emptyBody } from '../validators/common.validator.js';
+import { ebdsSchema } from '../validators/payroll-flow.validator.js';
 import {
   createEmployeeSchema, updateEmployeeSchema,
   upsertAttendanceSchema, bulkAttendanceSchema,
@@ -159,7 +161,7 @@ biweeklyPayrollRouter.get('/', authenticate, authorizeModule('employees', 'view'
 biweeklyPayrollRouter.post('/generate', authenticate, authorizeModule('employees', 'edit'), validate(generateBiweeklyPayrollSchema), asyncHandler(biweeklyPayrollController.generate));
 biweeklyPayrollRouter.put('/:id', authenticate, authorizeModule('employees', 'edit'), validate(updateBiweeklyPayrollSchema), asyncHandler(biweeklyPayrollController.update));
 biweeklyPayrollRouter.post('/:id/pay', authenticate, authorizeModule('employees', 'edit'), validate(markPaidSchema), asyncHandler(biweeklyPayrollController.markPaid));
-biweeklyPayrollRouter.post('/:id/unpay', authenticate, authorizeModule('employees', 'edit'), asyncHandler(biweeklyPayrollController.unmarkPaid));
+biweeklyPayrollRouter.post('/:id/unpay', authenticate, authorizeModule('employees', 'edit'), validateUuidParams('id'), validate(emptyBody), asyncHandler(biweeklyPayrollController.unmarkPaid));
 biweeklyPayrollRouter.delete('/:id', authenticate, authorizeModule('employees', 'edit'), asyncHandler(biweeklyPayrollController.remove));
 payrollRouter.use('/biweekly', biweeklyPayrollRouter);
 
@@ -184,7 +186,7 @@ payrollRouter.post('/declarations/declare', authenticate, can('employees.payroll
 payrollRouter.post('/declarations/settle', authenticate, can('employees.payroll.settle'), validate(settlePayrollDeclarationSchema), asyncHandler(payrollConfigController.settle));
 // Fichier e-BDS Damancom depuis le preetabli CNSS (mig 325).
 const preetabliUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
-payrollRouter.post('/declarations/ebds', authenticate, authorizeModule('employees', 'view'), preetabliUpload.single('file'), asyncHandler(payrollComplianceController.ebds));
+payrollRouter.post('/declarations/ebds', authenticate, authorizeModule('employees', 'view'), preetabliUpload.single('file'), validate(ebdsSchema), asyncHandler(payrollComplianceController.ebds));
 // Ordre de virement groupe des salaires (mig 325) : liste, CSV banque, lettre PDF.
 payrollRouter.get('/transfer', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollComplianceController.transferOrder));
 // Livre de paie (G0-12) : une ligne par salarié et par mois, PDF paysage ou Excel.
@@ -203,7 +205,7 @@ payrollRouter.get('/:id/pdf', authenticate, authorizeModule('employees', 'view')
 payrollRouter.put('/:id', authenticate, authorizeModule('employees', 'edit'), validate(updatePayrollSchema), asyncHandler(payrollController.update));
 payrollRouter.post('/:id/pay', authenticate, authorizeModule('employees', 'edit'), validate(markPaidSchema), asyncHandler(payrollController.markPaid));
 // Annulation d'un paiement (supprime la sortie de caisse + reverse les retenues d'avance)
-payrollRouter.post('/:id/unpay', authenticate, authorizeModule('employees', 'edit'), asyncHandler(payrollController.unmarkPaid));
+payrollRouter.post('/:id/unpay', authenticate, authorizeModule('employees', 'edit'), validateUuidParams('id'), validate(emptyBody), asyncHandler(payrollController.unmarkPaid));
 
 // Avances sur salaire (octroi via l'onglet Paie, retenue a la paie)
 export const salaryAdvancesRouter = Router();
@@ -225,6 +227,6 @@ weeklyPayrollRouter.get('/', authenticate, authorizeModule('employees', 'view'),
 weeklyPayrollRouter.post('/generate', authenticate, authorizeModule('employees', 'edit'), validate(generateWeeklyPayrollSchema), asyncHandler(weeklyPayrollController.generate));
 weeklyPayrollRouter.put('/:id', authenticate, authorizeModule('employees', 'edit'), validate(updateWeeklyPayrollSchema), asyncHandler(weeklyPayrollController.update));
 weeklyPayrollRouter.post('/:id/pay', authenticate, authorizeModule('employees', 'edit'), validate(markPaidSchema), asyncHandler(weeklyPayrollController.markPaid));
-weeklyPayrollRouter.post('/:id/unpay', authenticate, authorizeModule('employees', 'edit'), asyncHandler(weeklyPayrollController.unmarkPaid));
+weeklyPayrollRouter.post('/:id/unpay', authenticate, authorizeModule('employees', 'edit'), validateUuidParams('id'), validate(emptyBody), asyncHandler(weeklyPayrollController.unmarkPaid));
 weeklyPayrollRouter.delete('/:id', authenticate, authorizeModule('employees', 'edit'), asyncHandler(weeklyPayrollController.remove));
 
