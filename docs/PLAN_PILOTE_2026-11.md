@@ -9,6 +9,8 @@ remontée avant d'imposer une validation qui pourrait bloquer le terrain (sectio
 
 ## 1. Étape 1 — clôture M4-04 et M5-05
 
+**FAIT le 2026-11-18** : M4-04 aa0a2f0 (points 1 à 6, plus l'instantané du coût théorique au démarrage, le coût réel matières et le rendement, trouvés en cours de route — même défaut), M5-05 6b7c29c. Aucune règle métier ambiguë rencontrée.
+
 ### M4-04 — plusieurs nomenclatures par article
 Fait (mig 562) : fiche par défaut = `recipes.product_id` (index unique conservé), fiches
 alternative / sous-traitance par `alternative_for_product_id`, choix sur la ligne d'ordre
