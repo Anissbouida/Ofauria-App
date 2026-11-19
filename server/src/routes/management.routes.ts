@@ -13,7 +13,7 @@ import { managementRepository as repo } from '../repositories/management.reposit
 export const managementRouter = Router();
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const year = z.coerce.number().int().min(2000).max(2100);
 
 function storeOf(req: AuthRequest): string | null {

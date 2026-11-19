@@ -20,7 +20,7 @@ export const offlineAbandonedSchema = z.object({
   abandonReason: z.string().trim().min(3, 'Motif de l\'abandon obligatoire (3 caractères au moins)').max(200),
   // La vente telle que la caisse l'aurait envoyée (schéma de /sales/checkout, non revalidé ici :
   // elle a justement été refusée). Bornée pour ne pas servir de dépôt arbitraire.
-  payload: z.record(z.unknown()).refine(p => JSON.stringify(p).length <= 50_000, 'Vente trop volumineuse'),
+  payload: z.record(z.string(), z.unknown()).refine(p => JSON.stringify(p).length <= 50_000, 'Vente trop volumineuse'),
 });
 
 export type OfflineAbandonedInput = z.infer<typeof offlineAbandonedSchema>;

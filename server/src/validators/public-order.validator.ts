@@ -5,7 +5,7 @@ import { z } from 'zod';
  * requête vient d'un tiers. `unitPrice` n'est pris en compte que si la clé
  * d'API porte la portée `orders:price_override` (sinon ignoré par le service).
  */
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 
 export const publicOrderItemSchema = z.object({
   productId: uuid,

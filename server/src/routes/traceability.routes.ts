@@ -11,7 +11,7 @@ import { traceabilityRepository as repo } from '../repositories/traceability.rep
  */
 export const traceabilityRouter = Router();
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const storeOf = (req: AuthRequest) => req.user!.storeId ?? null;
 
 function bad(res: Response, message = 'Paramètres invalides') {

@@ -51,13 +51,13 @@ export const updateContenantSchema = createContenantSchema.partial();
 
 /** Actions en masse depuis la liste des formats (selection multiple). */
 export const bulkIdsSchema = z.object({
-  ids: z.array(z.string().uuid('ID format invalide'))
+  ids: z.array(z.string().guid('ID format invalide'))
     .min(1, 'Aucun format selectionne')
     .max(200, 'Trop de formats selectionnes'),
 });
 
 export const upsertProfileSchema = z.object({
-  contenant_id: z.string().uuid('ID contenant invalide'),
+  contenant_id: z.string().guid('ID contenant invalide'),
   surcharge_quantite_theorique: z.number().positive().nullable().optional(),
   surcharge_pertes_fixes: z.number().min(0).nullable().optional(),
   surcharge_seuil_rendement: z.number().min(0).max(100).nullable().optional(),

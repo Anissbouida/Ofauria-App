@@ -61,6 +61,6 @@ export const recordRendementSchema = z.object({
   masse_cuite_qty: z.number().min(0).nullable().optional(),
   masse_cuite_unit: weightUnitSchema.optional(),
   // M6-02 : emplacement de destination choisi ; absent = emplacement de code MAGASIN / FRIGO.
-  vers_magasin_location_id: z.string().uuid('Emplacement invalide').nullable().optional(),
-  vers_frigo_location_id: z.string().uuid('Emplacement invalide').nullable().optional(),
+  vers_magasin_location_id: z.string().guid('Emplacement invalide').nullable().optional(),
+  vers_frigo_location_id: z.string().guid('Emplacement invalide').nullable().optional(),
 });

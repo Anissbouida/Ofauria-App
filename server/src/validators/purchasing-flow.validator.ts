@@ -11,15 +11,15 @@ import { uuid, optUuid, optDate, dateLike, optText, optNumber, optNonNegQty } fr
  */
 
 /** Nombre fini, requis (texte de formulaire converti). */
-const num = (label: string) => z.coerce.number({ invalid_type_error: `${label} invalide` }).finite(`${label} invalide`);
+const num = (label: string) => z.coerce.number({ error: `${label} invalide` }).finite(`${label} invalide`);
 /** Nombre fini ou null ; chaîne vide = null. */
 const nullableNum = (label: string) =>
-  z.preprocess(v => (v === '' ? null : v), z.union([z.null(), z.coerce.number({ invalid_type_error: `${label} invalide` }).finite(`${label} invalide`)]).optional());
+  z.preprocess(v => (v === '' ? null : v), z.union([z.null(), z.coerce.number({ error: `${label} invalide` }).finite(`${label} invalide`)]).optional());
 /** Quantité ≥ 0, requise (règle pilote 2026-11 : un négatif est refusé, plus ignoré ni reporté). */
 const nonNegNum = (label: string) => num(label).min(0, `${label} négative : saisissez une quantité positive ou 0`);
 /** Prix ≥ 0 ou null (règle pilote 2026-11 : 0 = gratuité admise, négatif refusé). */
 const nullablePrice = (label: string) =>
-  z.preprocess(v => (v === '' ? null : v), z.union([z.null(), z.coerce.number({ invalid_type_error: `${label} invalide` }).finite(`${label} invalide`)
+  z.preprocess(v => (v === '' ? null : v), z.union([z.null(), z.coerce.number({ error: `${label} invalide` }).finite(`${label} invalide`)
     .min(0, `${label} négatif : un prix d'achat ne peut pas être inférieur à 0`)]).optional());
 /** Identifiant facultatif qui garde null (le contrôleur distingue null et absent, ou fait `?? null`). */
 const nullableUuid = z.preprocess(v => (v === '' ? null : v), uuid.nullable().optional());
@@ -129,7 +129,7 @@ export const createReceptionVoucherSchema = z.object({
 /* ─── Écart de prix à la réception : décision ─────────────────────────────── */
 // controller.decidePrice : decision ∈ {approved, rejected} (déjà refusé sinon), note facultative.
 export const priceDecisionSchema = z.object({
-  decision: z.enum(['approved', 'rejected'], { errorMap: () => ({ message: 'Décision invalide (approved ou rejected)' }) }),
+  decision: z.enum(['approved', 'rejected'], { error: 'Décision invalide (approved ou rejected)' }),
   note: z.string().max(2000).nullish(),
 }).passthrough();
 

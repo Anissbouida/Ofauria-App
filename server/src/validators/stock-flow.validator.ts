@@ -32,8 +32,8 @@ export const lotMoveLocationSchema = z.object({ toLocationId: optUuid, motif: sl
 // M6-02 (mig 605) : lot produit fini vers un emplacement. Origine absente = part non rangée
 // (sortie de production) ; destination absente = retrait de l'emplacement (correction).
 export const productLotMoveLocationSchema = z.object({
-  fromLocationId: z.string().uuid('Emplacement d\'origine invalide').nullable().optional(),
-  toLocationId: z.string().uuid('Emplacement de destination invalide').nullable().optional(),
+  fromLocationId: z.string().guid('Emplacement d\'origine invalide').nullable().optional(),
+  toLocationId: z.string().guid('Emplacement de destination invalide').nullable().optional(),
   quantity: z.number().finite().positive('La quantité doit être positive').max(1_000_000),
   motif: z.string().trim().max(30).optional(),
 }).refine(v => v.fromLocationId || v.toLocationId, { message: 'Origine ou destination requise' });
@@ -77,7 +77,7 @@ const ingredientFields = {
 };
 export const createIngredientSchema = z.object({
   name: nonBlankName(200),
-  unitCost: z.union([z.number(), z.string()], { errorMap: () => ({ message: 'Coût unitaire requis' }) })
+  unitCost: z.union([z.number(), z.string()], { error: 'Coût unitaire requis' })
     .refine(v => v !== '' && Number.isFinite(Number(v)) && Math.abs(Number(v)) < 1e8, 'Coût unitaire invalide'),
   ...ingredientFields,
 }).passthrough();
@@ -101,9 +101,9 @@ export const updatePackagingSchema = z.object({ name: nonBlankName(200).optional
 // adjustStock : variation SIGNÉE (réception +, perte / consommation −), parseFloat côté contrôleur.
 // Type : packaging_stock_transactions.type (CHECK en base), 'adjustment' par défaut.
 export const packagingAdjustStockSchema = z.object({
-  quantity: z.coerce.number({ invalid_type_error: 'Quantité invalide' }).finite('Quantité invalide').min(-1e7).max(1e7, 'Quantité trop élevée'),
+  quantity: z.coerce.number({ error: 'Quantité invalide' }).finite('Quantité invalide').min(-1e7).max(1e7, 'Quantité trop élevée'),
   type: z.preprocess(v => (v === '' || v === null ? undefined : v),
-    z.enum(['reception', 'consumption', 'adjustment', 'waste', 'restock'], { errorMap: () => ({ message: 'Type de mouvement inconnu' }) }).optional()),
+    z.enum(['reception', 'consumption', 'adjustment', 'waste', 'restock'], { error: 'Type de mouvement inconnu' }).optional()),
   note: optText(5000), unitCost: optNumber,
 }).passthrough();
 
@@ -120,13 +120,13 @@ export const productTransferSchema = z.object({
 // expected_qty / found_qty INTEGER ; missing_reason CHECK en base ; le contrôleur exige le motif
 // en cas d'écart. Comparaison stricte (!==) et sommes côté dépôt : nombres attendus, pas de texte.
 const MISSING_REASONS = ['theft', 'breakage', 'forgotten_recycle', 'undeclared_loss', 'measurement_error', 'other'] as const;
-const intQty = z.number({ invalid_type_error: 'Quantité invalide', required_error: 'Quantité requise' }).int('Quantité entière attendue').min(-1e7).max(1e7);
+const intQty = z.number({ error: (iss) => (iss.input === undefined ? 'Quantité requise' : 'Quantité invalide') }).int('Quantité entière attendue').min(-1e7).max(1e7);
 export const openingCheckSchema = z.object({
   previousCheckId: z.union([uuid, z.null()]).optional(),
   items: z.array(z.object({
     productId: uuid, expectedQty: intQty, foundQty: intQty,
-    missingReason: z.union([z.enum(MISSING_REASONS, { errorMap: () => ({ message: 'Motif d\'écart inconnu' }) }), z.literal(''), z.null()]).optional(),
-  }).passthrough(), { invalid_type_error: 'items doit être un tableau' }).max(2000).optional(),
+    missingReason: z.union([z.enum(MISSING_REASONS, { error: 'Motif d\'écart inconnu' }), z.literal(''), z.null()]).optional(),
+  }).passthrough(), { error: 'items doit être un tableau' }).max(2000).optional(),
   notes: optText(5000),
 }).passthrough();
 // validate : « action doit être approve ou reject » et motif de rejet contrôlés par le contrôleur.
@@ -134,7 +134,7 @@ export const openingCheckValidateSchema = z.object({ action: z.string().max(20).
 
 /* ─── État thermique (lot-thermal.controller) ───────────────────────────── */
 // thaw : durée de vie en heures, nombre ; une valeur ≤ 0 prend le défaut (48 h) côté dépôt.
-export const lotThawSchema = z.preprocess(v => v ?? {}, z.object({ dureeVieHeures: z.number({ invalid_type_error: 'Durée de vie invalide' }).finite().nullish() }).passthrough());
+export const lotThawSchema = z.preprocess(v => v ?? {}, z.object({ dureeVieHeures: z.number({ error: 'Durée de vie invalide' }).finite().nullish() }).passthrough());
 
 /* ─── Stock frigo / emplacements : schémas existants, en passthrough ────── */
 // Le contrôleur les rejoue (safeParse) ; ici, champs non déclarés conservés (storeId lu dans le corps).

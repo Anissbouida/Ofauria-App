@@ -10,7 +10,7 @@ import { lotReleaseRepository } from '../repositories/lot-release.repository.js'
 import { nonconformityRepository } from '../repositories/nonconformity.repository.js';
 
 const releaseSchema = z.object({ note: z.string().trim().min(3, 'Motif requis').max(500) });
-const uuidN = z.string().uuid().nullable().optional();
+const uuidN = z.string().guid().nullable().optional();
 const ncDetailsSchema = z.object({ causeCode: z.string().max(40).nullable().optional(), supplierId: uuidN, productLotId: uuidN, ingredientLotId: uuidN, planId: uuidN, complaintId: uuidN });
 const ncDecisionSchema = z.object({ decision: z.enum(['accepte', 'retouche', 'declasse', 'detruit', 'retour_fournisseur']), note: z.string().trim().max(500).nullable().optional() });
 const ncActionSchema = z.object({ actionType: z.enum(['corrective', 'preventive']), description: z.string().trim().min(3).max(2000), responsibleId: uuidN, dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional() });
@@ -19,10 +19,10 @@ import { z } from 'zod';
 import { nonConformitySchema, qualityActiveSchema, qualityInspectionSchema, qualityTemplateSchema } from '../validators/quality.validator.js';
 
 const controlPlanLineSchema = z.object({
-  productId: z.string().uuid().nullable().optional(),
+  productId: z.string().guid().nullable().optional(),
   productCategoryId: z.coerce.number().int().positive().nullable().optional(),
-  ingredientId: z.string().uuid().nullable().optional(),
-  ingredientCategoryId: z.string().uuid().nullable().optional(),
+  ingredientId: z.string().guid().nullable().optional(),
+  ingredientCategoryId: z.string().guid().nullable().optional(),
   stage: z.enum(['reception', 'en_cours', 'final']),
   characteristic: z.string().trim().min(2).max(160),
   charType: z.enum(['mesure', 'oui_non', 'visuel']),

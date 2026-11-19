@@ -8,13 +8,13 @@ export const derogationDlcSchema = z.object({
 // storeId facultatif (règle pilote 2026-11 n° 15) : le contrôleur prend toujours le magasin du
 // PLAN ; un storeId envoyé par un ancien client reste accepté mais n'est pas lu.
 export const generateBonSchema = z.object({
-  planId: z.string().uuid(),
-  storeId: z.string().uuid().optional(),
+  planId: z.string().guid(),
+  storeId: z.string().guid().optional(),
   derogationDlc: derogationDlcSchema.optional(),
 });
 
 export const regenerateBonSchema = z.object({
-  storeId: z.string().uuid().optional(),
+  storeId: z.string().guid().optional(),
   derogationDlc: derogationDlcSchema.optional(),
 });
 
@@ -31,10 +31,10 @@ const weighingFields = {
   tareQuantity: z.number().min(0).optional(),
   reason: z.string().trim().min(3, 'Le motif doit faire au moins 3 caracteres').optional(),
   source: z.enum(['manual', 'scale']).optional(),
-  lotId: z.string().uuid().optional(),
+  lotId: z.string().guid().optional(),
   transferQty: z.number().positive().optional(),
   containerCount: z.number().int().positive().optional(),
-  containerTypeId: z.string().uuid().optional(),
+  containerTypeId: z.string().guid().optional(),
 };
 
 export const updateLigneSchema = z.object({
@@ -45,7 +45,7 @@ export const updateLigneSchema = z.object({
 // Enregistrement groupe des pesees d'un BSI, en une seule transaction (tout ou rien).
 export const weighLignesSchema = z.object({
   lines: z.array(z.object({
-    ligneId: z.string().uuid(),
+    ligneId: z.string().guid(),
     ...weighingFields,
   })).min(1, 'Aucune pesee a enregistrer'),
 });
@@ -65,9 +65,9 @@ export const cancelBonSchema = z.object({
 });
 
 export const transferLineSchema = z.object({
-  overrideLotId: z.string().uuid().optional(),
+  overrideLotId: z.string().guid().optional(),
   overrideQty: z.number().positive().optional(),
   reason: z.string().trim().max(500).optional(),
   containerCount: z.number().int().positive().optional(),
-  containerTypeId: z.string().uuid().optional(),
+  containerTypeId: z.string().guid().optional(),
 });

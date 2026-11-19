@@ -8,7 +8,7 @@ import { landedCostRepository as repo } from '../repositories/landed-cost.reposi
 /** Frais d'approche (mig 361). Admin et gérant, comme les réceptions. */
 export const landedCostRouter = Router();
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const text = (max: number) => z.string().trim().max(max);
 const method = z.enum(['value', 'quantity', 'weight']);
 const body = z.object({

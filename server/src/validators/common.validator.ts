@@ -12,7 +12,9 @@ import { z } from 'zod';
  */
 const blankToUndef = (v: unknown) => (v === '' || v === null ? undefined : v);
 
-export const uuid = z.string().uuid('Identifiant invalide');
+// zod 4 : .uuid() exige un UUID RFC (version 1-8) et refuserait l'id du magasin par défaut
+// 00000000-0000-0000-0000-000000000001 ; .guid() garde le contrôle de forme de zod 3.
+export const uuid = z.string().guid('Identifiant invalide');
 /** Identifiant facultatif : chaîne vide ou null = absent. */
 export const optUuid = z.preprocess(blankToUndef, uuid.optional());
 /** Date (AAAA-MM-JJ) ou date-heure ISO. */
@@ -30,11 +32,11 @@ export const optMoney = z.preprocess(blankToUndef, z.coerce.number().finite('Mon
 export const money = z.coerce.number().finite('Montant invalide').min(0, 'Montant négatif').max(1e9, 'Montant trop élevé');
 /** Montant > 0, facultatif (absent, vide ou null = non fourni ; 0 ou négatif refusé). */
 export const optPositiveMoney = (label = 'Le montant') => z.preprocess(blankToUndef,
-  z.coerce.number({ invalid_type_error: `${label} est invalide` }).finite(`${label} est invalide`)
+  z.coerce.number({ error: `${label} est invalide` }).finite(`${label} est invalide`)
     .positive(`${label} doit être supérieur à 0`).max(1e9, `${label} est trop élevé`).optional());
 /** Montant > 0, requis. */
 export const positiveMoney = (label = 'Le montant') => z.preprocess(blankToUndef,
-  z.coerce.number({ invalid_type_error: `${label} est invalide`, required_error: `${label} est requis` }).finite(`${label} est invalide`)
+  z.coerce.number({ error: (iss) => (iss.input === undefined ? `${label} est requis` : `${label} est invalide`) }).finite(`${label} est invalide`)
     .positive(`${label} doit être supérieur à 0`).max(1e9, `${label} est trop élevé`));
 /** Quantité > 0, requise. */
 export const positiveQty = z.coerce.number().finite('Quantité invalide').positive('La quantité doit être positive').max(1e7, 'Quantité trop élevée');

@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 // Règles inchangées ; messages en français (plan pilote, étape 3). Le contrôleur rejoue ces
 // schémas ; les routes les appliquent en passthrough (stock-flow.validator).
-const id = (label: string) => z.string({ required_error: `${label} requis` }).uuid(`${label} invalide`);
-const qty = z.number({ required_error: 'Quantité requise', invalid_type_error: 'Quantité invalide' });
+const id = (label: string) => z.string({ error: `${label} requis` }).guid(`${label} invalide`);
+const qty = z.number({ error: (iss) => (iss.input === undefined ? 'Quantité requise' : 'Quantité invalide') });
 
 export const addSurplusSchema = z.object({
   productId: id('Produit'),
@@ -24,7 +24,7 @@ export const consumeSchema = z.object({
 
 export const recordLossSchema = z.object({
   quantity: qty.positive('La quantité doit être positive'),
-  type: z.enum(['loss', 'expired'], { errorMap: () => ({ message: 'Type de perte : loss ou expired' }) }),
+  type: z.enum(['loss', 'expired'], { error: 'Type de perte : loss ou expired' }),
   notes: z.string().optional(),
 });
 

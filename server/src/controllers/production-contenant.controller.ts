@@ -27,7 +27,7 @@ export const productionContenantController = {
   async createContenant(req: AuthRequest, res: Response) {
     const parsed = createContenantSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, error: { message: parsed.error.errors[0].message } });
+      res.status(400).json({ success: false, error: { message: parsed.error.issues[0].message } });
       return;
     }
     const badCreate = await unknownCodes('production_step_types', (parsed.data.etapes_defaut ?? []).map(e => e.type));
@@ -39,7 +39,7 @@ export const productionContenantController = {
   async updateContenant(req: AuthRequest, res: Response) {
     const parsed = updateContenantSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, error: { message: parsed.error.errors[0].message } });
+      res.status(400).json({ success: false, error: { message: parsed.error.issues[0].message } });
       return;
     }
     const badUpdate = await unknownCodes('production_step_types', (parsed.data.etapes_defaut ?? []).map(e => e.type));
@@ -69,7 +69,7 @@ export const productionContenantController = {
   async bulkDeactivate(req: AuthRequest, res: Response) {
     const parsed = bulkIdsSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, error: { message: parsed.error.errors[0].message } });
+      res.status(400).json({ success: false, error: { message: parsed.error.issues[0].message } });
       return;
     }
     let done = 0;
@@ -100,7 +100,7 @@ export const productionContenantController = {
   async bulkDelete(req: AuthRequest, res: Response) {
     const parsed = bulkIdsSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, error: { message: parsed.error.errors[0].message } });
+      res.status(400).json({ success: false, error: { message: parsed.error.issues[0].message } });
       return;
     }
     let done = 0;
@@ -134,7 +134,7 @@ export const productionContenantController = {
   async upsertProfile(req: AuthRequest, res: Response) {
     const parsed = upsertProfileSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ success: false, error: { message: parsed.error.errors[0].message } });
+      res.status(400).json({ success: false, error: { message: parsed.error.issues[0].message } });
       return;
     }
     const badProfile = await unknownCodes('production_step_types', (parsed.data.etapes_surcharges ?? []).map(e => e.type));

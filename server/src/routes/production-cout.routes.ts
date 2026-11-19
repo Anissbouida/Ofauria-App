@@ -10,7 +10,7 @@ import { emptyBody } from '../validators/common.validator.js';
 import { createEquipementBody, updateEquipementBody, recordTempsTravailBody, recordEquipementUsageBody } from '../validators/production-flow.validator.js';
 
 const router = Router();
-const costSharesSchema = z.object({ shares: z.array(z.object({ planItemId: z.string().uuid(), pct: z.number().min(0).max(100).nullable() })).min(1).max(500) });
+const costSharesSchema = z.object({ shares: z.array(z.object({ planItemId: z.string().guid(), pct: z.number().min(0).max(100).nullable() })).min(1).max(500) });
 
 // Equipements : gestion catalogue reservee admin/manager.
 // Plans de production : les chefs doivent pouvoir enregistrer leur temps

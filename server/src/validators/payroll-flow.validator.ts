@@ -12,6 +12,6 @@ const blankToUndef = (v: unknown) => (v === '' || v === null ? undefined : v);
 // texte, convertis par parseInt ; le contrôleur répond lui-même « month et year requis » s'ils
 // manquent, et la période est confrontée à celle du préétabli. Types seulement, sans borne.
 export const ebdsSchema = z.preprocess(v => v ?? {}, z.object({
-  month: z.preprocess(blankToUndef, z.coerce.number({ invalid_type_error: 'Mois invalide' }).int('Mois invalide').optional()),
-  year: z.preprocess(blankToUndef, z.coerce.number({ invalid_type_error: 'Année invalide' }).int('Année invalide').optional()),
+  month: z.preprocess(blankToUndef, z.coerce.number({ error: 'Mois invalide' }).int('Mois invalide').optional()),
+  year: z.preprocess(blankToUndef, z.coerce.number({ error: 'Année invalide' }).int('Année invalide').optional()),
 }).passthrough());

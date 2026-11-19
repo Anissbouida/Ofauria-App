@@ -45,7 +45,7 @@ stockCountsRouter.get('/', authenticate, can('stock.stock_counts.view'), asyncHa
 stockCountsRouter.post('/', authenticate, can('stock.stock_counts.create'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({
     title: z.string().trim().max(200).nullish(), itemKinds: z.enum(['ingredient', 'packaging', 'both']).optional(),
-    categoryIds: z.array(z.string().uuid()).max(100).optional(), blind: z.boolean().optional(), includeInactive: z.boolean().optional(),
+    categoryIds: z.array(z.string().guid()).max(100).optional(), blind: z.boolean().optional(), includeInactive: z.boolean().optional(),
     notes: z.string().trim().max(2000).nullish(), countDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   }).safeParse(req.body);
   if (!b.success) { bad(res, b.error.issues[0]?.message); return; }
@@ -84,7 +84,7 @@ stockCountsRouter.put('/:id/lines/:lineId', authenticate, can('stock.stock_count
 }));
 
 stockCountsRouter.post('/:id/lines', authenticate, can('stock.stock_counts.lines'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const b = z.object({ ingredientId: z.string().uuid().nullish(), packagingId: z.string().uuid().nullish() })
+  const b = z.object({ ingredientId: z.string().guid().nullish(), packagingId: z.string().guid().nullish() })
     .refine(x => !!x.ingredientId !== !!x.packagingId, 'Un article à la fois').safeParse(req.body);
   if (!b.success) { bad(res, b.error.issues[0]?.message); return; }
   const r = await stockCountRepository.addLine(req.params.id, b.data);

@@ -15,7 +15,7 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const body = z.object({
   title: z.string().trim().min(2).max(200),
-  customerId: z.string().uuid().nullish(),
+  customerId: z.string().guid().nullish(),
   prospectName: z.string().trim().max(160).nullish(),
   prospectCompany: z.string().trim().max(200).nullish(),
   prospectPhone: z.string().trim().max(30).nullish(),
@@ -25,9 +25,9 @@ const body = z.object({
   expectedAmount: z.coerce.number().min(0).max(1_000_000_000).nullish(),
   probability: z.coerce.number().int().min(0).max(100).nullish(),
   expectedCloseDate: isoDate.nullish(),
-  ownerId: z.string().uuid().nullish(),
+  ownerId: z.string().guid().nullish(),
   description: z.string().trim().max(4000).nullish(),
-  campaignId: z.string().uuid().nullish(),
+  campaignId: z.string().guid().nullish(),
 }).refine(b => b.customerId || b.prospectName || b.prospectCompany, { message: 'Choisissez un client ou saisissez le prospect' });
 
 crmRouter.get('/overview', authenticate, authorizeModule('crm'), asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -98,7 +98,7 @@ crmRouter.post('/opportunities/:id/customer', authenticate, authorizeModule('crm
 crmRouter.post('/opportunities/:id/activities', authenticate, authorizeModule('crm', 'edit'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({
     kind: z.enum(['call', 'meeting', 'email', 'task', 'note']), subject: z.string().trim().min(2).max(200),
-    dueAt: z.string().max(40).nullish(), assignedTo: z.string().uuid().nullish(), outcome: z.string().max(4000).nullish(), done: z.boolean().optional(),
+    dueAt: z.string().max(40).nullish(), assignedTo: z.string().guid().nullish(), outcome: z.string().max(4000).nullish(), done: z.boolean().optional(),
   }).safeParse(req.body);
   if (!b.success) { bad(res, b.error.issues[0]?.message); return; }
   if (!(await crmRepository.findById(req.params.id))) { bad(res, 'Opportunité introuvable', 404); return; }

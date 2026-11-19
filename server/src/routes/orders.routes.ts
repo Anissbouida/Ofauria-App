@@ -10,7 +10,7 @@ import { validateUuidParams } from '../middleware/validate.middleware.js';
 import { createOrderSchema, updateOrderSchema, orderStatusSchema, rescheduleOrderSchema, deliverOrderSchema, prepaymentInvoiceSchema } from '../validators/sales-flow.validator.js';
 
 const promiseDatesSchema = z.object({
-  items: z.array(z.object({ productId: z.string().uuid(), quantity: z.number().finite().positive() })).min(1).max(200),
+  items: z.array(z.object({ productId: z.string().guid(), quantity: z.number().finite().positive() })).min(1).max(200),
 });
 
 const router = Router();

@@ -50,4 +50,4 @@ export const formBool = z.union([z.boolean(), z.enum(['true', 'false', '1', '0',
 export const strList = (max = 1000) => z.array(z.string()).max(max);
 
 /** Valeur quelconque (JSON libre que le contrôleur ou le service vérifie lui-même). */
-export const any = z.unknown();
+export const any = z.unknown().optional();

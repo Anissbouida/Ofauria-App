@@ -5,7 +5,7 @@ const num = (max: number) => z.coerce.number().finite().min(0).max(max);
 export const routingOperationSchema = z.object({
   operationName: z.string().trim().min(1).max(160),
   operationNameAr: z.string().trim().max(160).nullable().optional(),
-  workCenterId: z.string().uuid().nullable().optional(),
+  workCenterId: z.string().guid().nullable().optional(),
   opType: z.enum(['reglage', 'execution', 'attente', 'controle']).default('execution'),
   durationMin: num(100_000).default(0),
   setupMin: num(100_000).default(0),
@@ -19,8 +19,8 @@ export const routingOperationSchema = z.object({
 });
 export const createRoutingSchema = z.object({
   name: z.string().trim().min(1, 'Nom requis').max(160),
-  productId: z.string().uuid().nullable().optional(),
-  recipeId: z.string().uuid().nullable().optional(),
+  productId: z.string().guid().nullable().optional(),
+  recipeId: z.string().guid().nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
   batchSize: z.union([z.coerce.number().positive().max(1_000_000), z.literal('')]).nullable().optional(),
 });
@@ -46,8 +46,8 @@ export const closureSchema = z.object({
 
 /** Référentiel équipement (M5-05) : lien poste / immobilisation, validé à la main. */
 export const equipmentLinkSchema = z.object({
-  workCenterId: z.string().uuid().nullable().optional(),
-  fixedAssetId: z.string().uuid().nullable().optional(),
+  workCenterId: z.string().guid().nullable().optional(),
+  fixedAssetId: z.string().guid().nullable().optional(),
 }).refine(b => b.workCenterId !== undefined || b.fixedAssetId !== undefined, { message: 'Rien à rattacher' });
 /** Action sans corps (ouverture d'une intervention depuis un arrêt). */
 export const emptyBodySchema = z.object({}).passthrough();

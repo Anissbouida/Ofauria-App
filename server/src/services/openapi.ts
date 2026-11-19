@@ -1,5 +1,5 @@
 import { WEBHOOK_EVENT_CATALOG } from '@ofauria/shared';
-import type { ZodTypeAny } from 'zod';
+import { z } from 'zod';
 import { publicOrderSchema } from '../validators/public-order.validator.js';
 
 /**
@@ -25,46 +25,13 @@ export const PUBLIC_ENDPOINTS: Endpoint[] = [
   },
 ];
 
-/** Conversion minimale zod (v3) → JSON Schema : objets, chaînes, nombres, booléens, listes,
- *  énumérations, optionnels / nullables. Suffit aux schémas de l'API publique. */
-export function zodToJsonSchema(schema: ZodTypeAny): Record<string, unknown> {
-  const def = (schema as unknown as { _def: Record<string, any> })._def;
-  switch (def.typeName) {
-    case 'ZodObject': {
-      const shape = (schema as unknown as { shape: Record<string, ZodTypeAny> }).shape;
-      const properties: Record<string, unknown> = {}; const required: string[] = [];
-      for (const [k, v] of Object.entries(shape)) {
-        properties[k] = zodToJsonSchema(v);
-        if (!v.isOptional() && !v.isNullable()) required.push(k);
-      }
-      return { type: 'object', properties, ...(required.length ? { required } : {}), additionalProperties: def.unknownKeys === 'strict' ? false : undefined };
-    }
-    case 'ZodString': {
-      const out: Record<string, unknown> = { type: 'string' };
-      for (const c of def.checks ?? []) {
-        if (c.kind === 'uuid') out.format = 'uuid';
-        else if (c.kind === 'email') out.format = 'email';
-        else if (c.kind === 'min') out.minLength = c.value;
-        else if (c.kind === 'max') out.maxLength = c.value;
-        else if (c.kind === 'regex') out.pattern = String(c.regex.source);
-      }
-      return out;
-    }
-    case 'ZodNumber': {
-      const out: Record<string, unknown> = { type: (def.checks ?? []).some((c: { kind: string }) => c.kind === 'int') ? 'integer' : 'number' };
-      for (const c of def.checks ?? []) {
-        if (c.kind === 'min') out[c.inclusive ? 'minimum' : 'exclusiveMinimum'] = c.value;
-        else if (c.kind === 'max') out[c.inclusive ? 'maximum' : 'exclusiveMaximum'] = c.value;
-      }
-      return out;
-    }
-    case 'ZodBoolean': return { type: 'boolean' };
-    case 'ZodArray': return { type: 'array', items: zodToJsonSchema(def.type), ...(def.minLength ? { minItems: def.minLength.value } : {}), ...(def.maxLength ? { maxItems: def.maxLength.value } : {}) };
-    case 'ZodEnum': return { type: 'string', enum: def.values };
-    case 'ZodOptional': case 'ZodNullable': case 'ZodDefault': return zodToJsonSchema(def.innerType);
-    case 'ZodEffects': return zodToJsonSchema(def.schema);
-    default: return {};
-  }
+/** zod → JSON Schema : conversion native de zod 4 (`z.toJSONSchema`), côté entrée (ce que le
+ *  client envoie : avant coercitions et transformations). Les parties non représentables
+ *  (transformations libres) deviennent « n'importe quelle valeur » au lieu de faire échouer. */
+export function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
+  const out = z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any', target: 'draft-2020-12' }) as Record<string, unknown>;
+  delete out.$schema;
+  return out;
 }
 
 export function buildOpenApi(serverUrl = '/api/v1/public') {

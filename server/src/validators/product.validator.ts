@@ -16,7 +16,7 @@ import { z } from 'zod';
 // mais on redouble la validation ici : rien ne doit passer par un appel API
 // direct qui casserait les invariants.
 
-const uuid = z.string().uuid('Identifiant UUID invalide');
+const uuid = z.string().guid('Identifiant UUID invalide');
 
 const SALE_TYPES = ['jour', 'dlv', 'commande'] as const;
 export const saleTypeSchema = z.enum(SALE_TYPES);

@@ -4,7 +4,7 @@ import { z } from 'zod';
 // routes /production ne validait son corps : quantités négatives, dates
 // quelconques et identifiants malformés arrivaient jusqu'à Postgres (500).
 
-const uuid = z.string().uuid('Identifiant invalide');
+const uuid = z.string().guid('Identifiant invalide');
 const quantity = z.number().finite().positive('La quantité doit être strictement positive');
 
 /** Horodatage fourni par le poste (lancement / fin de production).

@@ -27,7 +27,7 @@ const promoBody = z.object({
   value: z.coerce.number().min(0).max(1_000_000).default(0),
   buyQty: z.coerce.number().int().min(1).max(100).nullish(),
   getQty: z.coerce.number().int().min(1).max(100).nullish(),
-  productIds: z.array(z.string().uuid()).max(500).default([]),
+  productIds: z.array(z.string().guid()).max(500).default([]),
   categoryIds: z.array(z.coerce.number().int().positive()).max(200).default([]),
   minQuantity: z.coerce.number().positive().max(1_000_000).nullish(),
   minAmount: z.coerce.number().positive().max(100_000_000).nullish(),
@@ -35,7 +35,7 @@ const promoBody = z.object({
   customerScope: z.enum(['all', 'identified', 'particulier', 'professionnel', 'tier']).default('all'),
   minTierCode: z.string().max(20).nullish(),
   onPos: z.boolean().default(true), onOrders: z.boolean().default(false), onQuotes: z.boolean().default(false),
-  storeId: z.string().uuid().nullish(),
+  storeId: z.string().guid().nullish(),
   startsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
   endsOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
   daysOfWeek: z.array(z.coerce.number().int().min(1).max(7)).max(7).default([]),
@@ -153,8 +153,8 @@ promotionsRouter.delete('/:id', authenticate, can('sales.promotions.delete'), as
  */
 promotionsRouter.post('/evaluate', authenticate, can('sales.promotions.evaluate'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const b = z.object({
-    items: z.array(z.object({ productId: z.string().uuid(), quantity: z.coerce.number().int().positive() })).max(200),
-    customerId: z.string().uuid().nullish(), channelId: z.string().uuid().nullish(), couponCode: z.string().trim().max(40).nullish(),
+    items: z.array(z.object({ productId: z.string().guid(), quantity: z.coerce.number().int().positive() })).max(200),
+    customerId: z.string().guid().nullish(), channelId: z.string().guid().nullish(), couponCode: z.string().trim().max(40).nullish(),
     manualDiscount: z.coerce.number().min(0).default(0),
   }).safeParse(req.body);
   if (!b.success) { bad(res, b.error.issues[0]?.message); return; }

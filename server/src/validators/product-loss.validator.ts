@@ -13,7 +13,7 @@ const positiveQuantity = z.coerce.number()
   .positive('La quantite doit etre strictement positive')
   .max(100000, 'Quantite trop elevee');
 
-const uuid = z.string().uuid('Identifiant UUID invalide');
+const uuid = z.string().guid('Identifiant UUID invalide');
 
 // N9 — Aligner strictement Zod avec les CHECK DB (mig 068, 107, 252).
 // Avant : Zod acceptait 'casse'/'non_vendu' (obsoletes) et un reason texte

@@ -22,7 +22,7 @@ const rawId = z.union([uuid, z.literal(''), z.null()]).optional();
 const rawDate = z.union([dateLike, z.literal(''), z.null()]).optional();
 /** Montant ≥ 0, facultatif (vide/null = absent) : 0 admis (ligne vide ignorée), négatif refusé. */
 const optNonNegAmount = (label: string) => z.preprocess(v => (v === '' || v === null ? undefined : v),
-  z.coerce.number({ invalid_type_error: `${label} invalide` }).finite(`${label} invalide`)
+  z.coerce.number({ error: `${label} invalide` }).finite(`${label} invalide`)
     .min(0, `${label} négatif`).max(1e9, `${label} trop élevé`).optional());
 /** Prix ≥ 0, facultatif (vide/null = absent). */
 const optNonNegPrice = optNonNegAmount('Prix unitaire');
@@ -116,7 +116,7 @@ export const SCHEDULED_PAYMENT_STATUSES = ['pending', 'cancelled'] as const;
 export const scheduledPaymentUpdateSchema = z.object({
   amountDue: rawNum, dueDate: dateLike.optional(), notes: str(2000).nullish(),
   expectedPaymentMode: str(50).nullish(),
-  status: z.enum(SCHEDULED_PAYMENT_STATUSES, { errorMap: () => ({ message: 'Statut d\'échéance invalide (pending ou cancelled)' }) }).optional(),
+  status: z.enum(SCHEDULED_PAYMENT_STATUSES, { error: 'Statut d\'échéance invalide (pending ou cancelled)' }).optional(),
 }).passthrough();
 // createDebt : libellé, montant > 0, 1-120 échéances et première date contrôlés par le contrôleur.
 export const createDebtSchema = z.object({
@@ -160,7 +160,7 @@ export const bankStatementSchema = z.object({
     operationDate: str(40), label: optText(500), reference: optText(200),
     amount: optNonNegAmount('Montant de la ligne'),
     direction: z.preprocess(v => (v === '' || v === null ? undefined : v),
-      z.enum(['in', 'out'], { errorMap: () => ({ message: 'Sens de la ligne invalide (in ou out)' }) }).optional()),
+      z.enum(['in', 'out'], { error: 'Sens de la ligne invalide (in ou out)' }).optional()),
   }).passthrough()).max(10000, 'Trop de lignes').optional(),
 }).passthrough();
 // matchLine : ligne d'écriture exigée par le contrôleur (message clair).
@@ -224,8 +224,8 @@ export const manualEntrySchema = z.object({
   pieceRef: z.string().trim().max(60).nullish(),
   pieceDate: z.string().regex(DATE_RE, 'Date de pièce attendue AAAA-MM-JJ').nullish(),
   lines: z.array(z.object({
-    accountId: z.string().uuid('Compte invalide'),
-    auxiliaryId: z.string().uuid('Compte auxiliaire invalide').nullish(),
+    accountId: z.string().guid('Compte invalide'),
+    auxiliaryId: z.string().guid('Compte auxiliaire invalide').nullish(),
     debit: z.coerce.number().min(0, 'Débit négatif'),
     credit: z.coerce.number().min(0, 'Crédit négatif'),
     label: z.string().trim().max(200).nullish(),

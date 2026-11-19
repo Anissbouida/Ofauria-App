@@ -6,7 +6,7 @@ import { z } from 'zod';
  * d'autres selon le type de mouvement.
  */
 const blank = (v: unknown) => (v === '' || v === null || v === undefined ? undefined : v);
-const uuid = z.string().uuid('Ingrédient invalide');
+const uuid = z.string().guid('Ingrédient invalide');
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue : AAAA-MM-JJ');
 const MAX_QTY = 100_000_000;
 
@@ -56,7 +56,7 @@ export const ingredientAllergensSchema = z.object({
 
 /** Points de commande (G5-02). */
 export const reorderRecalculateSchema = z.object({}).passthrough();
-export const reorderApplySchema = z.object({ ids: z.array(z.string().uuid()).min(1).max(5000) });
+export const reorderApplySchema = z.object({ ids: z.array(z.string().guid()).min(1).max(5000) });
 export const reorderUpdateSchema = z.object({
   reorderPoint: z.number().finite().min(0).optional(),
   safetyStock: z.number().finite().min(0).optional(),

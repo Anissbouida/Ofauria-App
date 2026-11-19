@@ -9,14 +9,14 @@ export const createEquipementSchema = z.object({
   // Absent : le dépôt applique la politique « Prix du kWh » (M1-03), plus 1,50 en dur.
   cout_kwh: z.number().min(0).optional(),
   notes: z.string().optional(),
-  store_id: z.string().uuid().optional(),
+  store_id: z.string().guid().optional(),
 });
 
 export const updateEquipementSchema = createEquipementSchema.partial();
 
 export const recordTempsTravailSchema = z.object({
-  plan_item_id: z.string().uuid().optional(),
-  employee_id: z.string().uuid(),
+  plan_item_id: z.string().guid().optional(),
+  employee_id: z.string().guid(),
   debut: z.string().datetime(),
   fin: z.string().datetime().optional(),
   duree_minutes: z.number().int().min(0).optional(),
@@ -24,7 +24,7 @@ export const recordTempsTravailSchema = z.object({
 });
 
 export const recordEquipementUsageSchema = z.object({
-  equipement_id: z.string().uuid(),
+  equipement_id: z.string().guid(),
   debut: z.string().datetime(),
   fin: z.string().datetime().optional(),
   duree_minutes: z.number().int().min(0).optional(),

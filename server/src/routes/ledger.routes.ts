@@ -142,7 +142,7 @@ const editionQuery = z.object({
   account: z.string().trim().max(10).optional(),
   class: z.coerce.number().int().min(1).max(8).optional(),
   side: z.enum(['suppliers', 'customers']).default('suppliers'),
-  axis: z.string().uuid().optional(),
+  axis: z.string().guid().optional(),
   table: z.enum(['actif', 'passif', 'cpc', 'esg', 'passage']).default('actif'),
   model: z.enum(['normal', 'simplifie']).default('normal'),
 });
@@ -289,8 +289,8 @@ ledgerRouter.get('/bills/remittances', authenticate, can('accounting.view'), asy
 }));
 ledgerRouter.post('/bills/remittances', authenticate, can('accounting.remittances'), requireVerb('accounting', 'validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({
-    kind: z.enum(['collection', 'discount']), treasuryAccountId: z.string().uuid(), date: billDate,
-    paymentIds: z.array(z.string().uuid()).min(1).max(500),
+    kind: z.enum(['collection', 'discount']), treasuryAccountId: z.string().guid(), date: billDate,
+    paymentIds: z.array(z.string().guid()).min(1).max(500),
     interest: z.number().min(0).max(1e9).optional(), commission: z.number().min(0).max(1e9).optional(), commissionVat: z.number().min(0).max(1e9).optional(),
     note: z.string().trim().max(500).nullish(),
   }).safeParse(req.body);
@@ -319,7 +319,7 @@ ledgerRouter.get('/consolidation/:year', authenticate, can('accounting.view'), a
 }));
 ledgerRouter.post('/consolidation/transfers', authenticate, can('accounting.transfers'), requireVerb('accounting', 'validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({
-    date: billDate, fromStoreId: z.string().uuid(), toStoreId: z.string().uuid(),
+    date: billDate, fromStoreId: z.string().guid(), toStoreId: z.string().guid(),
     accountCode: z.string().regex(/^[35]\d{3,9}$/), amount: z.number().positive().max(1e9), label: z.string().trim().max(150).default(''),
   }).safeParse(req.body);
   if (!r.success) { tplBad(res); return; }
@@ -429,8 +429,8 @@ ledgerRouter.get('/lettrage/accounts/:id/tiers', authenticate, can('accounting.v
 }));
 ledgerRouter.get('/lettrage/lines', authenticate, can('accounting.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({
-    accountId: z.string().uuid(),
-    auxiliaryId: z.string().uuid().optional(),
+    accountId: z.string().guid(),
+    auxiliaryId: z.string().guid().optional(),
     status: z.enum(['open', 'lettered', 'all']).default('open'),
     from: z.string().regex(DATE_RE).optional(),
     to: z.string().regex(DATE_RE).optional(),
@@ -438,7 +438,7 @@ ledgerRouter.get('/lettrage/lines', authenticate, can('accounting.view'), asyncH
   if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
   res.json({ success: true, data: await lettrageRepository.lines(r.data) });
 }));
-const autoScope = z.object({ accountId: z.string().uuid().optional(), auxiliaryId: z.string().uuid().optional() });
+const autoScope = z.object({ accountId: z.string().guid().optional(), auxiliaryId: z.string().guid().optional() });
 ledgerRouter.get('/lettrage/auto', authenticate, can('accounting.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = autoScope.safeParse(req.query);
   if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
@@ -451,7 +451,7 @@ ledgerRouter.post('/lettrage/auto', authenticate, can('accounting.auto'), requir
 }));
 ledgerRouter.post('/lettrage', authenticate, can('accounting.lettrage'), requireVerb('accounting', 'validate'), asyncHandler(async (req: AuthRequest, res: Response) => {
   // partial (mig 466) : pré-lettrage d'une sélection non soldée (pièce + acomptes).
-  const r = z.object({ lineIds: z.array(z.string().uuid()).min(2).max(1000), partial: z.boolean().optional() }).safeParse(req.body);
+  const r = z.object({ lineIds: z.array(z.string().guid()).min(2).max(1000), partial: z.boolean().optional() }).safeParse(req.body);
   if (!r.success) { tplBad(res, 'Sélectionnez au moins deux lignes à lettrer'); return; }
   res.status(201).json({ success: true, data: await lettrageRepository.letter(r.data.lineIds, { userId: req.user!.userId }, { partial: r.data.partial }) });
 }));
@@ -460,7 +460,7 @@ ledgerRouter.delete('/lettrage/:id', authenticate, can('accounting.delete'), req
 }));
 
 const tplLine = z.object({
-  accountId: z.string().uuid(),
+  accountId: z.string().guid(),
   side: z.enum(['debit', 'credit']),
   amount: z.coerce.number().min(0),
   label: z.string().trim().max(200).nullish(),
@@ -513,7 +513,7 @@ ledgerRouter.post('/entry-templates/:id/instantiate', authenticate, can('account
   const r = z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     label: z.string().trim().max(200).nullish(),
-    amounts: z.record(z.string().uuid(), z.coerce.number().min(0)).optional(),
+    amounts: z.record(z.string().guid(), z.coerce.number().min(0)).optional(),
   }).safeParse(req.body);
   if (!r.success) { tplBad(res, r.error.issues[0]?.message); return; }
   const out = await tplRepo.instantiate(req.params.id, { ...r.data, storeId: req.user!.storeId ?? null, userId: req.user!.userId });
@@ -536,7 +536,7 @@ ledgerRouter.post('/integrity/verify', authenticate, can('accounting.verify'), v
 ledgerRouter.get('/audit-log', authenticate, can('accounting.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = z.object({
     event: z.enum(['post', 'reverse', 'draft_delete', 'letter', 'unletter', 'reletter', 'seal', 'verify', 'outbox_replay', 'year_close', 'fec_export']).optional(),
-    entryId: z.string().uuid().optional(),
+    entryId: z.string().guid().optional(),
     before: z.coerce.number().int().positive().optional(),
     limit: z.coerce.number().int().min(1).max(200).optional(),
   }).safeParse(req.query);
@@ -565,7 +565,7 @@ const forecastLineSchema = z.object({
 const forecastPlanSchema = z.object({
   weeks: z.coerce.number().int().min(1).max(52).optional(),
   customerDelayDays: z.coerce.number().int().min(0).max(365).optional(),
-  planned: z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), invoiceIds: z.array(z.string().uuid()).max(500) }).optional(),
+  planned: z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), invoiceIds: z.array(z.string().guid()).max(500) }).optional(),
 });
 ledgerRouter.get('/cash-forecast', authenticate, can('accounting.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const q = req.query as Record<string, string | undefined>;

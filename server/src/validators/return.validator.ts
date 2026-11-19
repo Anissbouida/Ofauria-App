@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const uuid = z.string().uuid('Identifiant UUID invalide');
+const uuid = z.string().guid('Identifiant UUID invalide');
 
 // Retour d'un article deja vendu : on n'accepte que saleItemId + quantity.
 // unit_price/subtotal sont recalcules exclusivement cote serveur depuis

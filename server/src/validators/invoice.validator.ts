@@ -13,7 +13,7 @@ import { z } from 'zod';
 const blank = (v: unknown) => (v === '' || v === null || v === undefined ? undefined : v);
 const blankNull = (v: unknown) => (v === '' || v === undefined ? null : v);
 
-const uuid = z.string().uuid('Identifiant invalide');
+const uuid = z.string().guid('Identifiant invalide');
 const optUuid = z.preprocess(blank, uuid.optional());
 const nullableUuid = z.preprocess(blankNull, uuid.nullable()).optional();
 
@@ -23,7 +23,7 @@ const optDate = z.preprocess(blank, isoDate.optional());
 const nullableDate = z.preprocess(blankNull, isoDate.nullable()).optional();
 
 const MAX_AMOUNT = 1_000_000_000;
-const money = z.coerce.number({ invalid_type_error: 'Montant invalide' }).finite().min(0, 'Montant négatif refusé').max(MAX_AMOUNT);
+const money = z.coerce.number({ error: 'Montant invalide' }).finite().min(0, 'Montant négatif refusé').max(MAX_AMOUNT);
 const optMoney = z.preprocess(blank, money.optional());
 
 const optText = (max: number) => z.preprocess(blank, z.string().trim().max(max).optional());

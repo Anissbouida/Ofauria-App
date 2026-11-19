@@ -13,15 +13,15 @@ export const posParkedRouter = Router();
 function bad(res: Response, message = 'Paramètres invalides', status = 400) { res.status(status).json({ success: false, error: { message } }); }
 
 const item = z.object({
-  productId: z.string().uuid(), name: z.string().max(200), price: z.number().min(0), quantity: z.number().int().positive(),
+  productId: z.string().guid(), name: z.string().max(200), price: z.number().min(0), quantity: z.number().int().positive(),
   unit: z.enum(['unit', 'g']).default('unit'), displayUnit: z.enum(['g', 'kg']).nullish(), imageUrl: z.string().max(500).nullish(),
 });
 const body = z.object({
   items: z.array(item).min(1).max(200),
-  customerId: z.string().uuid().nullish(),
+  customerId: z.string().guid().nullish(),
   customerLabel: z.string().trim().max(160).nullish(),
   label: z.string().trim().max(80).nullish(),
-  channelId: z.string().uuid().nullish(),
+  channelId: z.string().guid().nullish(),
   couponCode: z.string().trim().max(40).nullish(),
   sachetsGiven: z.number().int().min(0).max(50).nullish(),
   total: z.number().min(0),

@@ -7,7 +7,7 @@ import { commissionRepository as repo } from '../repositories/commission.reposit
 
 /** Commissions commerciales (barèmes mig 123 + relevé). Admin / gérant. */
 export const commissionsRouter = Router();
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const bad = (res: Response, m = 'Paramètres invalides') => res.status(400).json({ success: false, error: { message: m } });
 const storeOf = (req: AuthRequest) => (req.user!.role === 'admin' ? undefined : req.user!.storeId);

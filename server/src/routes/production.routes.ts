@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { productionConsumptionRepository } from '../repositories/production-consumption.repository.js';
 
 const manualConsumptionSchema = z.object({
-  ingredientId: z.string().uuid(),
+  ingredientId: z.string().guid(),
   quantity: z.number().finite().positive().max(1_000_000),
   note: z.string().trim().max(500).nullable().optional(),
 });

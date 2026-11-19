@@ -5,7 +5,7 @@ import { z } from 'zod';
  * Aligné sur les CHECK de la base (mig 057, 271, 305) pour qu'une valeur
  * inattendue soit refusée en 400 et non en 500.
  */
-const uuid = z.string().uuid('Identifiant invalide');
+const uuid = z.string().guid('Identifiant invalide');
 const quantity = z.coerce.number().finite('Quantité invalide').positive('La quantité doit être strictement positive').max(1_000_000, 'Quantité trop élevée');
 
 export const REQUEST_REASONS = ['stock_bas', 'production', 'manual', 'replenishment'] as const;

@@ -33,7 +33,7 @@ const etapeSchema = z.object({
 // la page, sans renvoyer composition ni étapes.
 export const identitySchema = z.object({
   name: z.string().min(1, 'Le nom est requis').max(200),
-  categoryId: z.string().uuid().nullable().optional(),
+  categoryId: z.string().guid().nullable().optional(),
   // Mode de saisie de la composition (fournee = false / piece = true). Decide a la
   // creation, corrigeable ici. Sans cette cle, zod depouillait le champ et le mode
   // choisi n'etait jamais enregistre (le repository le lit via COALESCE).
@@ -50,11 +50,11 @@ export const saveEtapesSchema = z.object({ etapes: z.array(etapeSchema.passthrou
 
 export const createRecipeSchema = z.object({
   name: z.string().min(1, 'Le nom est requis').max(200),
-  productId: z.string().uuid().optional().nullable(),
-  contenantId: z.string().uuid().optional().nullable(),
+  productId: z.string().guid().optional().nullable(),
+  contenantId: z.string().guid().optional().nullable(),
   // Classification operationnelle (recipe_categories.id). Distincte de la
   // categorie commerciale du produit lie.
-  categoryId: z.string().uuid().optional().nullable(),
+  categoryId: z.string().guid().optional().nullable(),
   instructions: z.string().optional().nullable(),
   yieldQuantity: z.number().positive('Le rendement doit être positif').default(1),
   yieldUnit: z.string().max(20).default('unit'),
@@ -87,23 +87,23 @@ export const createRecipeSchema = z.object({
   // production) et les champs darija. Sans ca, toute sauvegarde les effacait.
   etapes: z.array(etapeSchema.passthrough()).default([]),
   ingredients: z.array(z.object({
-    ingredientId: z.string().uuid('ID ingrédient invalide'),
+    ingredientId: z.string().guid('ID ingrédient invalide'),
     quantity: z.number().positive('La quantité doit être positive'),
     unit: z.string().max(20).optional().nullable(),
   })).min(0),
   subRecipes: z.array(z.object({
-    subRecipeId: z.string().uuid('ID sous-recette invalide'),
+    subRecipeId: z.string().guid('ID sous-recette invalide'),
     quantity: z.number().positive('La quantité doit être positive'),
   })).default([]),
   packaging: z.array(z.object({
-    packagingId: z.string().uuid('ID emballage invalide'),
+    packagingId: z.string().guid('ID emballage invalide'),
     quantity: z.number().positive('La quantité doit être positive'),
     unit: z.string().max(20).optional().nullable(),
   })).default([]),
   // Formats de production (multi-formats par recette). Optionnel — si vide ou absent,
   // le calcul de cout/format se fait sur recipes.contenant_id (compat descendante).
   formats: z.array(z.object({
-    contenantId: z.string().uuid('ID contenant invalide'),
+    contenantId: z.string().guid('ID contenant invalide'),
     quantiteParFormatG: z.number().positive('La quantité par format doit être > 0'),
     quantiteParFormatUnite: z.enum(['g', 'kg', 'ml', 'l']).default('g'),
     nbParDefaut: z.number().int().positive('Le nombre par défaut doit être >= 1').default(1),
@@ -124,7 +124,7 @@ export const updateRecipeSchema = createRecipeSchema.partial();
 
 // Suppression en masse depuis la liste (sélection par onglet Produits/Bases).
 export const bulkDeleteRecipesSchema = z.object({
-  ids: z.array(z.string().uuid('ID recette invalide')).min(1, 'Aucune recette sélectionnée').max(500),
+  ids: z.array(z.string().guid('ID recette invalide')).min(1, 'Aucune recette sélectionnée').max(500),
 });
 
 /** G0-07 — import par fichier (multipart, aucun champ lu) et restaurations (version, archive,

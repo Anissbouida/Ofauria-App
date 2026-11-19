@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { moneyAmount, positiveQuantity } from './product-loss.validator.js';
 
-const uuid = z.string().uuid('Identifiant UUID invalide');
+const uuid = z.string().guid('Identifiant UUID invalide');
 
 // 'mixed' (mig 250) : reglement partage especes + carte, ventile via
 // cashAmount/cardAmount dont la somme doit valoir le total (verifie controller).

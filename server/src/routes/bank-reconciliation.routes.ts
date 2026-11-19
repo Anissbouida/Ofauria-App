@@ -44,9 +44,9 @@ const fileBody = z.object({
   contentBase64: z.string().min(1).max(11_000_000),
   format: z.enum(['auto', 'csv', 'xlsx', 'ofx', 'mt940', 'cfonb']).default('auto'),
   encoding: z.enum(['auto', 'utf-8', 'windows-1252']).default('auto'),
-  profileId: z.string().uuid().nullish(),
+  profileId: z.string().guid().nullish(),
   profile: z.object(profileShape).nullish(),
-  treasuryAccountId: z.string().uuid().nullish(),
+  treasuryAccountId: z.string().guid().nullish(),
 });
 const toInput = (b: z.infer<typeof fileBody>) => ({
   content: Buffer.from(b.contentBase64, 'base64'), fileName: b.fileName, format: b.format, encoding: b.encoding,
@@ -74,7 +74,7 @@ router.post('/import', authenticate, can('accounting.bank_reconciliation.import'
 }));
 
 // Profils d'import (correspondance de colonnes réutilisable).
-const profileBody = z.object({ name: z.string().trim().min(1).max(100), treasuryAccountId: z.string().uuid().nullish(), ...profileShape });
+const profileBody = z.object({ name: z.string().trim().min(1).max(100), treasuryAccountId: z.string().guid().nullish(), ...profileShape });
 router.get('/import/profiles', authenticate, can('accounting.bank_reconciliation.view'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await bankImportRepository.listProfiles() });
 }));
@@ -104,7 +104,7 @@ const ruleSchema = z.object({
   amountMin: z.coerce.number().min(0).nullish(),
   amountMax: z.coerce.number().min(0).nullish(),
   action: z.enum(['match', 'post_entry', 'match_fee']),
-  counterAccountId: z.string().uuid().nullish(),
+  counterAccountId: z.string().guid().nullish(),
   entryLabel: z.string().trim().max(120).nullish(),
   amountTolerance: z.coerce.number().min(0).max(1_000_000).optional(),
   dateToleranceDays: z.coerce.number().int().min(0).max(60).optional(),
@@ -112,7 +112,7 @@ const ruleSchema = z.object({
   feePctMax: z.coerce.number().min(0).max(50).nullish(),
   candidateSource: z.enum(['card']).nullish(),
 });
-const applySchema = z.object({ bankLineIds: z.array(z.string().uuid()).max(2000).optional(), minConfidence: z.coerce.number().min(0).max(100).optional() });
+const applySchema = z.object({ bankLineIds: z.array(z.string().guid()).max(2000).optional(), minConfidence: z.coerce.number().min(0).max(100).optional() });
 const id = validateUuidParams('id');
 router.get('/statements/:id/proposals', authenticate, can('accounting.bank_reconciliation.view'), id, asyncHandler(async (req: AuthRequest, res: Response) => {
   res.json({ success: true, data: await bankMatching.propose(req.params.id as string) });

@@ -5,7 +5,7 @@ import { z } from 'zod';
  * Les clés inconnues sont conservées (`passthrough`).
  */
 const blank = (v: unknown) => (v === '' || v === null || v === undefined ? undefined : v);
-const cash = z.coerce.number({ invalid_type_error: 'Montant invalide' }).finite().min(0, 'Montant négatif refusé').max(100_000_000);
+const cash = z.coerce.number({ error: 'Montant invalide' }).finite().min(0, 'Montant négatif refusé').max(100_000_000);
 const text = (max: number) => z.preprocess(blank, z.string().max(max).optional());
 
 export const openRegisterSchema = z.object({

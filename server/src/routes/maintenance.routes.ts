@@ -12,7 +12,7 @@ const VIEW = [authenticate, authorizeModule('maintenance', 'view')];
 const CREATE = [authenticate, authorizeModule('maintenance', 'create')];
 const EDIT = [authenticate, authorizeModule('maintenance', 'edit')];
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const text = (max: number) => z.string().trim().max(max);
 const money = z.coerce.number().min(0);

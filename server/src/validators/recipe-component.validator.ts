@@ -5,8 +5,8 @@ import { weightUnitSchema } from '../utils/qty-unit.js';
 const componentSchema = z
   .object({
     role: z.string().max(60).nullable().optional(),
-    sourceRecipeId: z.string().uuid().nullable().optional(),
-    sourceIngredientId: z.string().uuid().nullable().optional(),
+    sourceRecipeId: z.string().guid().nullable().optional(),
+    sourceIngredientId: z.string().guid().nullable().optional(),
     quantite: z.number().positive('La quantité doit être > 0'),
     // Code du référentiel `units` (mig 515), vérifié par la route (requireUnits).
     unite: z.string().trim().min(1).max(20).default('g'),
@@ -49,23 +49,23 @@ export const financeSchema = z.object({
 // Mig 267 (audit A9) : contenantId nullable — un format d'assemblage n'a pas
 // de moule physique. Le placebo « Assemblage » a ete supprime.
 export const createFormatSchema = z.object({
-  contenantId: z.string().uuid('Contenant invalide').nullable().optional(),
+  contenantId: z.string().guid('Contenant invalide').nullable().optional(),
   nbParDefaut: z.number().int().positive().default(1),
   coutEmballageUnitaire: z.number().nonnegative().default(0),
   nbParts: z.number().int().positive().nullable().optional(),
 });
 
 export const duplicateFormatSchema = z.object({
-  contenantId: z.string().uuid('Contenant invalide').nullable().optional(),
+  contenantId: z.string().guid('Contenant invalide').nullable().optional(),
 });
 
 export const updateFormatSchema = z.object({
-  contenantId: z.string().uuid().nullable().optional(),
+  contenantId: z.string().guid().nullable().optional(),
   nbParDefaut: z.number().int().positive().optional(),
   coutEmballageUnitaire: z.number().nonnegative().optional(),
   nbParts: z.number().int().positive().nullable().optional(),
   // Mig 263 (audit A1) : produit vendu au POS. `null` explicite = defaire le lien.
-  productId: z.string().uuid().nullable().optional(),
+  productId: z.string().guid().nullable().optional(),
   // Mig 266 (audit A4) : densite kg/l de la pate/appareil. `null` explicite = defaut 1.
   densiteKgL: z.number().positive().nullable().optional(),
 });

@@ -10,11 +10,11 @@ import { body, obj, txt, numish, bool } from './route-body.validator.js';
 
 /* Sachets — sachet-config.controller.update / suggest. */
 export const sachetConfigSchema = body({
-  defaultArticlesPerSachet: z.unknown(),
-  categories: z.array(obj({ id: z.unknown(), articlesPerSachet: z.unknown(), needsSachet: z.unknown() })).max(1000).optional(),
+  defaultArticlesPerSachet: z.unknown().optional(),
+  categories: z.array(obj({ id: z.unknown().optional(), articlesPerSachet: z.unknown().optional(), needsSachet: z.unknown().optional() })).max(1000).optional(),
 });
 export const sachetSuggestSchema = body({
-  items: z.array(obj({ productId: z.unknown(), quantity: z.unknown() })).max(5000).optional(),
+  items: z.array(obj({ productId: z.unknown().optional(), quantity: z.unknown().optional() })).max(5000).optional(),
 });
 
 /* Majoration de production — production-markup.controller.update. */
@@ -33,5 +33,5 @@ const textish = z.union([z.string().max(300), z.number()]).nullish();
 export const storeSchema = body({
   name: txt(200), city: txt(200), address: txt(600), phone: txt(80), isActive: bool, code: textish,
   kind: txt(40), managerUserId: z.string().max(60).nullish(), email: txt(255), patente: textish,
-  openingHours: z.record(z.unknown()).nullish(),
+  openingHours: z.record(z.string(), z.unknown()).nullish(),
 });

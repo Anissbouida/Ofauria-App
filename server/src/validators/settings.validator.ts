@@ -41,7 +41,7 @@ export const parameterValueSchema = body({ value: any });
 export const setSectorSchema = body({ code: z.string().trim().min(1, 'Secteur requis').max(40), keepAdjustments: bool });
 
 /* Modules / options — readAdjustments : { modules: { clé: true|false|null }, features: { … } }. */
-const adjustMap = z.record(z.union([z.boolean(), z.null()])).optional();
+const adjustMap = z.record(z.string(), z.union([z.boolean(), z.null()])).optional();
 export const moduleAdjustmentsSchema = body({ modules: adjustMap, features: adjustMap });
 
 /* Diffusion d'un module — saveModuleRollout : { pilot: { roles, users } | null, disabledStores }. */

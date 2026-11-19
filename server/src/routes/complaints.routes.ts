@@ -13,7 +13,7 @@ import { complaintRepository as repo } from '../repositories/complaint.repositor
 export const complaintsRouter = Router();
 
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const text = (max: number) => z.string().trim().max(max);
 const status = z.enum(['open', 'in_progress', 'resolved', 'closed', 'rejected']);

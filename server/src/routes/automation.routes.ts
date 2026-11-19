@@ -74,7 +74,7 @@ automationRouter.get('/mail/outbox', authenticate, authorizeSettings('notificati
 
 /** Relance un message en échec (ou en attente) maintenant ; ou l'annule. */
 automationRouter.post('/mail/outbox/:id/:action', authenticate, authorizeSettings('notifications', 'edit'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const id = z.string().uuid().safeParse(req.params.id);
+  const id = z.string().guid().safeParse(req.params.id);
   if (!id.success || !['retry', 'cancel'].includes(req.params.action)) { bad(res); return; }
   const r = req.params.action === 'retry'
     ? await db.query(`UPDATE email_outbox SET status = 'queued', attempts = 0, next_attempt_at = now(), last_error = NULL

@@ -12,11 +12,11 @@ const id = validateUuidParams('id');
 
 const createRunSchema = z.object({
   paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date de paiement invalide'),
-  treasuryAccountId: z.string().uuid('Compte de trésorerie requis'),
+  treasuryAccountId: z.string().guid('Compte de trésorerie requis'),
   notes: z.string().max(1000).nullable().optional(),
-  lines: z.array(z.object({ invoiceId: z.string().uuid(), amount: z.coerce.number().positive().max(100_000_000) })).min(1, 'Sélectionnez au moins une facture').max(500),
+  lines: z.array(z.object({ invoiceId: z.string().guid(), amount: z.coerce.number().positive().max(100_000_000) })).min(1, 'Sélectionnez au moins une facture').max(500),
 });
-const rejectLineSchema = z.object({ reasonCodeId: z.string().uuid('Motif requis'), note: z.string().max(500).nullable().optional() });
+const rejectLineSchema = z.object({ reasonCodeId: z.string().guid('Motif requis'), note: z.string().max(500).nullable().optional() });
 const COLUMN = z.enum(['seq', 'name', 'rib', 'bank', 'amount', 'motif', 'date', 'debit_rib', 'currency', 'reference']);
 /** Format du fichier de virement (mig 600) ; null = retour au CSV générique. Contrôles métier dans le service. */
 const transferFormatSchema = z.object({

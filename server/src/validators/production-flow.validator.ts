@@ -25,7 +25,7 @@ import {
  */
 
 /** Corps absent = objet vide (les contrôleurs lisent `req.body ?? {}` / `req.body || {}`). */
-const body = <T extends z.AnyZodObject>(schema: T) => z.preprocess(v => v ?? {}, schema.passthrough());
+const body = <T extends z.ZodObject>(schema: T) => z.preprocess(v => v ?? {}, schema.passthrough());
 
 /* ─── 1. Schémas déjà appliqués par le contrôleur ─────────────────────────── */
 
@@ -63,7 +63,7 @@ export const recordRendementBody = body(recordRendementSchema);
 /* ─── 2. Corps lus à la main par le contrôleur ────────────────────────────── */
 
 /** Identifiant facultatif dont `null` / '' signifient « retirer » (≠ absent = inchangé). */
-const clearableUuid = z.union([z.string().uuid('Identifiant invalide'), z.literal(''), z.null()]).optional();
+const clearableUuid = z.union([z.string().guid('Identifiant invalide'), z.literal(''), z.null()]).optional();
 
 // production-etapes.controller.assignEtape : poste et opérateur, null ou '' = retirer
 // (colonnes UUID work_center_id / assigned_employee_id).
@@ -77,9 +77,9 @@ export const assignEtapeSchema = z.object({
 // marge entre 0 et 1000 %. ATTENTION : chargesFixesPct est une FRACTION (0,40 = 40 %, colonne
 // NUMERIC(5,4), l'écran divise par 100) : sa borne est donc 0..1 ; les deux autres sont en %.
 const settingPct = (label: string, max: number, range = `entre 0 et ${max}`) => z.preprocess(v => (v === '' || v === null ? undefined : v),
-  z.coerce.number({ invalid_type_error: `${label} invalide` }).finite(`${label} invalide`)
+  z.coerce.number({ error: `${label} invalide` }).finite(`${label} invalide`)
     .min(0, `${label} : valeur ${range}`).max(max, `${label} : valeur ${range}`).optional());
-const settingFlag = z.boolean({ invalid_type_error: 'Valeur oui / non attendue' }).nullish();
+const settingFlag = z.boolean({ error: 'Valeur oui / non attendue' }).nullish();
 export const productionSettingsSchema = z.object({
   chargesFixesPct: settingPct('Charges fixes', 1, 'entre 0 et 100 %'),
   overproductionPct: settingPct('Surproduction (%)', 100),
@@ -95,11 +95,11 @@ export const productionSettingsSchema = z.object({
 // production.controller.saveWorkshop : libellé requis (message du contrôleur, donc facultatif
 // ici), catégories = entiers, membres = textes, poste facultatif (clé étrangère contrôlée).
 export const saveWorkshopSchema = z.object({
-  label: z.string({ invalid_type_error: 'Libellé invalide' }).max(200).optional(),
+  label: z.string({ error: 'Libellé invalide' }).max(200).optional(),
   workCenterId: z.string().max(80).nullish(),
-  categoryIds: z.array(z.number({ invalid_type_error: 'Catégorie invalide' }).int('Catégorie invalide')).max(1000).nullish(),
-  memberRoles: z.array(z.string({ invalid_type_error: 'Rôle invalide' }).max(80)).max(500).nullish(),
-  memberUsers: z.array(z.string({ invalid_type_error: 'Utilisateur invalide' }).max(80)).max(1000).nullish(),
+  categoryIds: z.array(z.number({ error: 'Catégorie invalide' }).int('Catégorie invalide')).max(1000).nullish(),
+  memberRoles: z.array(z.string({ error: 'Rôle invalide' }).max(80)).max(500).nullish(),
+  memberUsers: z.array(z.string({ error: 'Utilisateur invalide' }).max(80)).max(1000).nullish(),
   // isDefault === true, isActive !== false, sortOrder entier sinon 100 : le contrôleur tolère
   // toute autre valeur (repli), le schéma ne la refuse donc pas.
   isDefault: z.boolean().nullish(),
@@ -110,7 +110,7 @@ export const saveWorkshopSchema = z.object({
 // production.controller.mrpGenerate / mrpGeneratePurchaseRequests : date AAAA-MM-JJ (message
 // « Date requise » du contrôleur, donc facultative ici), magasin facultatif (résolu par le dépôt).
 export const mrpGenerateSchema = z.object({
-  date: z.string({ invalid_type_error: 'Date invalide' }).max(10, 'Date invalide').optional(),
+  date: z.string({ error: 'Date invalide' }).max(10, 'Date invalide').optional(),
   store: z.string().max(80).nullish(),
 }).passthrough();
 
@@ -119,10 +119,10 @@ export const mrpGenerateSchema = z.object({
 // .confirmTransferReception lit itemId (UUID) et qtyReceived (nombre, écart = reçu − transféré).
 export const receiveProductionTransferSchema = z.object({
   items: z.array(z.object({
-    itemId: z.string().uuid('Ligne de transfert invalide'),
+    itemId: z.string().guid('Ligne de transfert invalide'),
     // Le client envoie un nombre, ou la quantité transférée telle que lue en base (numeric = texte).
     // 0 = rien reçu (écart tracé) ; règle pilote 2026-11 n° 7 : un négatif est refusé.
-    qtyReceived: z.union([z.null(), z.coerce.number({ invalid_type_error: 'Quantité reçue invalide' }).finite('Quantité reçue invalide')
+    qtyReceived: z.union([z.null(), z.coerce.number({ error: 'Quantité reçue invalide' }).finite('Quantité reçue invalide')
       .min(0, 'Quantité reçue négative : saisissez 0 si rien n\'a été reçu')]),
     notes: z.string().max(2000).nullish(),
   }).passthrough()).max(1000).optional(),

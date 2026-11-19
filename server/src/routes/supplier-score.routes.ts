@@ -9,7 +9,7 @@ import { getLocalISODate } from '../utils/timezone.js';
 /** Évaluation des fournisseurs (mig 362). Admin et gérant. */
 export const supplierScoreRouter = Router();
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const storeOf = (req: AuthRequest) => (req.user!.role === 'admin' ? undefined : req.user!.storeId);
 function bad(res: Response, message = 'Paramètres invalides') { res.status(400).json({ success: false, error: { message } }); }

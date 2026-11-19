@@ -51,7 +51,7 @@ dunningRouter.put('/levels/:level', authenticate, can('sales.dunning.levels'), v
 }));
 
 dunningRouter.get('/', authenticate, can('sales.dunning.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const q = z.object({ status: z.enum(['draft', 'sent', 'resolved', 'cancelled']).optional(), customerId: z.string().uuid().optional(),
+  const q = z.object({ status: z.enum(['draft', 'sent', 'resolved', 'cancelled']).optional(), customerId: z.string().guid().optional(),
     page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(25) }).safeParse(req.query);
   if (!q.success) { bad(res); return; }
   const r = await dunningRepository.list({ ...q.data, offset: (q.data.page - 1) * q.data.limit });
@@ -60,7 +60,7 @@ dunningRouter.get('/', authenticate, can('sales.dunning.view'), asyncHandler(asy
 
 /** Crée les lettres proposées (un client, ou tous). */
 dunningRouter.post('/create', authenticate, can('sales.dunning.create'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const b = z.object({ customerIds: z.array(z.string().uuid()).min(1).max(500), level: z.coerce.number().int().min(1).max(9).optional() }).safeParse(req.body);
+  const b = z.object({ customerIds: z.array(z.string().guid()).min(1).max(500), level: z.coerce.number().int().min(1).max(9).optional() }).safeParse(req.body);
   if (!b.success) { bad(res); return; }
   const created = []; const errors = [];
   for (const id of b.data.customerIds) {

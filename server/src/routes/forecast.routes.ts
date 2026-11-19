@@ -17,7 +17,7 @@ export const forecastRouter = Router();
 
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const MAX_RANGE_DAYS = 31;
 
 function bad(res: Response, message = 'Paramètres invalides') {

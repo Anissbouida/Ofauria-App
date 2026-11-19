@@ -20,12 +20,12 @@ import { recipeOutputRepository } from '../repositories/recipe-output.repository
 import { z } from 'zod';
 
 const alternativeSchema = z.object({
-  productId: z.string().uuid().nullable(),
+  productId: z.string().guid().nullable(),
   usage: z.enum(['alternative', 'sous_traitance']).optional(),
 });
 const substituteSchema = z.object({
-  ingredientId: z.string().uuid(),
-  substituteIngredientId: z.string().uuid(),
+  ingredientId: z.string().guid(),
+  substituteIngredientId: z.string().guid(),
   ratio: z.coerce.number().positive().max(1000).default(1),
   priority: z.coerce.number().int().min(1).max(99).default(1),
   allRecipes: z.boolean().optional(),
@@ -34,7 +34,7 @@ const substituteSchema = z.object({
   note: z.string().max(500).nullable().optional(),
 });
 const recipeOutputSchema = z.object({
-  productId: z.string().uuid(),
+  productId: z.string().guid(),
   outputType: z.enum(['co_produit', 'sous_produit', 'dechet_valorise']),
   quantityPerUnit: z.coerce.number().positive().nullable().optional(),
   equivPieces: z.coerce.number().positive().max(1000).nullable().optional(),
@@ -43,15 +43,15 @@ const recipeOutputSchema = z.object({
 });
 // Remplacement en masse (mig 401), outil de mise à jour des substituts et des versions (M4-05).
 const bulkReplacePreviewSchema = z.object({
-  sourceIngredientId: z.string().uuid(),
-  targetIngredientId: z.string().uuid(),
+  sourceIngredientId: z.string().guid(),
+  targetIngredientId: z.string().guid(),
 }).refine(b => b.sourceIngredientId !== b.targetIngredientId, { message: 'La source et la cible doivent être différentes' });
 const bulkReplaceApplySchema = z.object({
-  sourceIngredientId: z.string().uuid(),
-  targetIngredientId: z.string().uuid(),
+  sourceIngredientId: z.string().guid(),
+  targetIngredientId: z.string().guid(),
   mode: z.enum(['replace', 'substitute']).default('replace'),
   ratio: z.coerce.number().positive().max(1000).default(1),
-  recipeIds: z.array(z.string().uuid()).max(2000).nullable().optional(),
+  recipeIds: z.array(z.string().guid()).max(2000).nullable().optional(),
   priority: z.coerce.number().int().min(1).max(99).default(1),
   validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   validTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),

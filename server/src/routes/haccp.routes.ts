@@ -16,7 +16,7 @@ export const haccpRouter = Router();
 
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const text = (max: number) => z.string().trim().max(max);
 const range = z.object({ from: isoDate, to: isoDate });
 

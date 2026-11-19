@@ -32,7 +32,7 @@ export const registerSchema = z.object({
 // acceptés À LA CONNEXION (sinon ces comptes seraient bloqués) ; le verrouillage
 // du compte après 5 échecs borne l'essai des 10 000 combinaisons.
 export const pinLoginSchema = z.object({
-  userId: z.string().uuid('Choisissez votre nom'),
+  userId: z.string().guid('Choisissez votre nom'),
   pinCode: z.string().regex(/^\d{4,10}$/, 'PIN numerique de 4 a 10 chiffres'),
 });
 

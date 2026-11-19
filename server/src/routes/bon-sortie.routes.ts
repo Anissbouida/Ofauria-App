@@ -11,7 +11,7 @@ import {
 } from '../validators/production-flow.validator.js';
 
 const substituteSchema = z.object({
-  substitutionId: z.string().uuid(),
+  substitutionId: z.string().guid(),
   reason: z.string().trim().min(3, 'Motif requis').max(500),
 });
 

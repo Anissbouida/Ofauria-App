@@ -47,7 +47,7 @@ const ribField = z.preprocess((v) => {
     .nullable().optional());
 
 export const createEmployeeSchema = z.object({
-  userId: z.string().uuid().nullable().optional(),
+  userId: z.string().guid().nullable().optional(),
   firstName: z.string().min(1, 'Prenom requis').max(100),
   lastName: z.string().min(1, 'Nom requis').max(100),
   role: z.string().min(1).max(50),
@@ -98,7 +98,7 @@ const timeStr = z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, 'Heure HH:MM requise'
 const optionalTime = z.union([timeStr, z.literal(''), z.null()]).optional().transform(v => v === '' ? null : v);
 
 export const upsertAttendanceSchema = z.object({
-  employeeId: z.string().uuid('employeeId invalide'),
+  employeeId: z.string().guid('employeeId invalide'),
   date: isoDate,
   status: attendanceStatusSchema,
   checkIn: optionalTime,
@@ -136,7 +136,7 @@ export const leaveTypeSchema = z.enum([
 ]);
 
 export const createLeaveSchema = z.object({
-  employeeId: z.string().uuid('employeeId invalide'),
+  employeeId: z.string().guid('employeeId invalide'),
   type: leaveTypeSchema,
   startDate: isoDate,
   endDate: isoDate,
@@ -161,14 +161,14 @@ export const generatePayrollSchema = z.object({
 // passer par POST /pay.
 export const updatePayrollSchema = z.object({
   notes: z.string().max(2000).nullable().optional(),
-}).strict('Champ non autorise (montants : lignes de rubriques ; paiement : POST /pay)');
+}, { error: (iss) => (iss.code === 'unrecognized_keys' ? 'Champ non autorise (montants : lignes de rubriques ; paiement : POST /pay)' : undefined) }).strict();
 
 // ─── Paie : rubriques, lignes, parametres (mig 318) ──────────────────────
 const money = z.coerce.number().positive('Montant > 0').max(10_000_000);
 
 export const setPayrollLinesSchema = z.object({
   lines: z.array(z.object({
-    rubriqueId: z.string().uuid('rubriqueId invalide'),
+    rubriqueId: z.string().guid('rubriqueId invalide'),
     amount: money,
     label: z.string().max(120).nullable().optional(),
   })).max(50),
@@ -195,7 +195,7 @@ export const updateRubriqueSchema = createRubriqueSchema.omit({ code: true, kind
 });
 
 export const employeePayrollItemSchema = z.object({
-  rubriqueId: z.string().uuid('rubriqueId invalide'),
+  rubriqueId: z.string().guid('rubriqueId invalide'),
   amount: money,
   startDate: dateStrOrEmpty,
   endDate: dateStrOrEmpty,
@@ -294,7 +294,7 @@ export const updateWeeklyPayrollSchema = z.object({
   overtimeAmount: nullableNumber((n) => n.nonnegative()),
   netAmount: nullableNumber((n) => n.nonnegative()),
   notes: z.string().max(2000).nullable().optional(),
-}).strict('Champ non autorise');
+}, { error: (iss) => (iss.code === 'unrecognized_keys' ? 'Champ non autorise' : undefined) }).strict();
 
 // ─── Biweekly payroll (quinzaine 1-15 / 16-fin) ──────────────────────────
 // periodStart = n'importe quelle date de la quinzaine : bornes recalculees serveur.
@@ -310,7 +310,7 @@ export const updateBiweeklyPayrollSchema = updateWeeklyPayrollSchema;
 // on ajoute un refine pour rejeter null explicitement (une avance sans montant
 // n'a pas de sens).
 export const createAdvanceSchema = z.object({
-  employeeId: z.string().uuid('employeeId invalide'),
+  employeeId: z.string().guid('employeeId invalide'),
   amount: nullableNumber((n) => n.positive('Montant > 0 requis'))
     .refine((v) => v !== null && v !== undefined, 'Montant requis'),
   paymentMethod: payrollPaymentMethod.default('cash'),
@@ -329,7 +329,7 @@ export const updateAdvanceSchema = z.object({
 
 // ─── Schedules ────────────────────────────────────────────────────────────
 export const createScheduleSchema = z.object({
-  employeeId: z.string().uuid('employeeId invalide'),
+  employeeId: z.string().guid('employeeId invalide'),
   date: isoDate,
   startTime: timeStr,
   endTime: timeStr,
@@ -343,7 +343,7 @@ export const updateScheduleSchema = createScheduleSchema.partial();
 export const bulkWeekScheduleSchema = z.object({
   weekStart: isoDate,
   assignments: z.array(z.object({
-    employeeId: z.string().uuid(),
+    employeeId: z.string().guid(),
     date: isoDate,
     shiftCode: z.string().max(20).nullable(),
   })).max(2000, 'Batch max 2000 assignations'),

@@ -8,7 +8,7 @@ import { rfqRepository as repo } from '../repositories/rfq.repository.js';
 /** Appels d'offres fournisseurs (mig 360). Admin et gérant, comme les bons de commande. */
 export const rfqRouter = Router();
 
-const uuid = z.string().uuid();
+const uuid = z.string().guid();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const text = (max: number) => z.string().trim().max(max);
 const rfqStatus = z.enum(['draft', 'sent', 'quoted', 'awarded', 'cancelled', 'closed']);

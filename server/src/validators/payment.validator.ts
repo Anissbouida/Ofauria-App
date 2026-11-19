@@ -8,7 +8,7 @@ import { reasonCodeSchema } from './purchase-order-action.validator.js';
  */
 const isoDate = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date au format AAAA-MM-JJ');
 const cashOverrideSchema = z.object({
-  reasonCodeId: z.string().uuid('Motif de dérogation requis'),
+  reasonCodeId: z.string().guid('Motif de dérogation requis'),
   note: z.string().trim().max(1000).optional().nullable().transform(v => (v ? v : null)),
 });
 
@@ -17,7 +17,7 @@ export const createPaymentSchema = z.object({
   paymentDate: isoDate,
   paymentMode: z.string().trim().min(1).max(20).optional().nullable(),
   paymentMethod: z.string().trim().max(20).optional().nullable(),
-  treasuryAccountId: z.string().uuid().optional().nullable(),
+  treasuryAccountId: z.string().guid().optional().nullable(),
   cashOverride: cashOverrideSchema.optional().nullable(),
   // Mig 368 : règlement d'une facture en devise (le montant DH est recalculé par le serveur).
   foreignAmount: z.coerce.number().finite().positive().max(100_000_000).optional().nullable(),
@@ -26,7 +26,7 @@ export const createPaymentSchema = z.object({
 
 /** Modification : uniquement les champs descriptifs (le reste est figé par la base). */
 export const updatePaymentSchema = z.object({
-  categoryId: z.string().uuid().optional().nullable(),
+  categoryId: z.string().guid().optional().nullable(),
   description: z.string().trim().max(2000).optional(),
   reference: z.string().trim().max(50).optional().nullable(),
   checkDate: isoDate.optional().nullable(),
@@ -43,13 +43,13 @@ export const reissuePaymentSchema = z.object({
   checkNumber: z.string().trim().max(50).optional().nullable(),
   checkDate: isoDate.optional().nullable(),
   paymentDate: isoDate,
-  treasuryAccountId: z.string().uuid().optional().nullable(),
+  treasuryAccountId: z.string().guid().optional().nullable(),
   cashOverride: cashOverrideSchema.optional().nullable(),
 });
 
 export const internalTransferSchema = z.object({
-  fromAccountId: z.string().uuid('Compte source requis'),
-  toAccountId: z.string().uuid('Compte destination requis'),
+  fromAccountId: z.string().guid('Compte source requis'),
+  toAccountId: z.string().guid('Compte destination requis'),
   amount: z.coerce.number().finite().positive('Le montant doit être positif').max(100_000_000),
   paymentDate: isoDate,
   reference: z.string().trim().max(50).optional().nullable(),
@@ -57,7 +57,7 @@ export const internalTransferSchema = z.object({
 }).refine(d => d.fromAccountId !== d.toAccountId, { message: 'Les deux comptes doivent être différents', path: ['toAccountId'] });
 
 export const cashCumulQuerySchema = z.object({
-  supplierId: z.string().uuid(),
+  supplierId: z.string().guid(),
   date: isoDate,
   amount: z.coerce.number().finite().min(0).optional(),
 });

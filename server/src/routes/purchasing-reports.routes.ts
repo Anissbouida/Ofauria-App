@@ -15,7 +15,7 @@ export const purchasingReportsRouter = Router();
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const filters = z.object({
-  supplierId: z.string().uuid().optional(),
+  supplierId: z.string().guid().optional(),
   minAgeDays: z.coerce.number().int().min(0).max(3650).optional(),
   from: isoDate.optional(), to: isoDate.optional(),
   lot: z.string().trim().max(60).optional(),
@@ -42,7 +42,7 @@ purchasingReportsRouter.get('/summary', authenticate, can('purchasing.purchasing
 const boardFilters = z.object({
   kind: z.enum(['commitments', 'rni', 'inr', 'nolines']),
   group: z.enum(['detail', 'supplier']).default('detail'),
-  supplierId: z.string().uuid().optional(),
+  supplierId: z.string().guid().optional(),
   search: z.string().trim().max(100).optional(),
   dateFrom: isoDate.optional(), dateTo: isoDate.optional(),
   minAgeDays: z.coerce.number().int().min(0).max(3650).optional(),
@@ -85,7 +85,7 @@ purchasingReportsRouter.get('/invoices-without-lines', authenticate, can('purcha
 // Registre des entrées paginé (écran Stock › Registre) : magasinier compris.
 const registerBoard = z.object({
   from: isoDate.optional(), to: isoDate.optional(),
-  supplierId: z.string().uuid().optional(),
+  supplierId: z.string().guid().optional(),
   search: z.string().trim().max(100).optional(),
   flag: z.enum(['incomplete', 'nonconform', 'hors_bc']).optional(),
   page: z.coerce.number().int().min(1).default(1),

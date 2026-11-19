@@ -25,7 +25,7 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 // quantité ; une ligne libre a désignation + prix ; une section a un intitulé.
 const line = z.object({
   lineType: z.enum(['product', 'free', 'section']).optional(),
-  productId: z.string().uuid().nullish(),
+  productId: z.string().guid().nullish(),
   quantity: z.coerce.number().positive().max(1_000_000).nullish(),
   unitPrice: z.coerce.number().min(0).max(10_000_000).nullish(),
   tvaRate: z.coerce.number().min(0).max(100).nullish(),
@@ -37,7 +37,7 @@ const line = z.object({
   return !!l.productId && l.quantity != null;
 }, { message: 'Ligne invalide : article + quantité, ou ligne libre (désignation + prix), ou section (intitulé)' });
 const body = z.object({
-  customerId: z.string().uuid().nullish(),
+  customerId: z.string().guid().nullish(),
   prospectName: z.string().trim().max(160).nullish(),
   prospectCompany: z.string().trim().max(200).nullish(),
   prospectPhone: z.string().trim().max(30).nullish(),
@@ -51,7 +51,7 @@ const body = z.object({
   notes: z.string().trim().max(2000).nullish(),
   internalNotes: z.string().trim().max(2000).nullish(),
   items: z.array(line).min(1, 'Ajoutez au moins un article').max(200),
-  opportunityId: z.string().uuid().nullish(),
+  opportunityId: z.string().guid().nullish(),
 }).refine(b => b.customerId || b.prospectName || b.prospectCompany, { message: 'Choisissez un client ou saisissez le nom du prospect' });
 
 function bad(res: Response, message = 'Paramètres invalides', status = 400) { res.status(status).json({ success: false, error: { message } }); }
@@ -62,7 +62,7 @@ async function validityDays() {
 
 quotesRouter.get('/', authenticate, can('sales.quotes.view'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const q = z.object({
-    status: z.string().max(20).optional(), search: z.string().max(100).optional(), customerId: z.string().uuid().optional(),
+    status: z.string().max(20).optional(), search: z.string().max(100).optional(), customerId: z.string().guid().optional(),
     dateFrom: isoDate.optional(), dateTo: isoDate.optional(),
     page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(25),
   }).safeParse(req.query);
@@ -118,7 +118,7 @@ quotesRouter.get('/:id/versions', authenticate, can('sales.quotes.view'), asyncH
 }));
 
 quotesRouter.post('/:id/convert', authenticate, can('sales.quotes.convert'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const b = z.object({ pickupDate: z.string().min(10).max(30), customerId: z.string().uuid().nullish() }).safeParse(req.body);
+  const b = z.object({ pickupDate: z.string().min(10).max(30), customerId: z.string().guid().nullish() }).safeParse(req.body);
   if (!b.success) { bad(res, 'Indiquez la date de livraison ou de retrait'); return; }
   const r = await quoteRepository.convert(req.params.id, { ...b.data, userId: req.user!.userId, storeId: req.user!.storeId ?? null });
   if ('error' in r) { r.error === 'not_found' ? bad(res, 'Devis introuvable', 404) : bad(res, r.error, 409); return; }
