@@ -4,6 +4,8 @@ import { authenticate, type AuthRequest } from '../middleware/auth.middleware.js
 import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { haccpRepository as repo } from '../repositories/haccp.repository.js';
+import { validate } from '../middleware/validate.middleware.js';
+import { haccpEquipmentSchema, haccpReceptionCheckSchema, haccpTaskSchema } from '../validators/haccp.validator.js';
 
 /**
  * Plan de maîtrise sanitaire (mig 315).
@@ -130,7 +132,7 @@ async function saveEquipment(req: AuthRequest, res: Response, id?: string) {
   if (!data) return notFound(res, 'Enceinte introuvable');
   res.json({ success: true, data });
 }
-haccpRouter.post('/equipment', authenticate, can('controle.haccp.equipment'), asyncHandler((req: AuthRequest, res: Response) => saveEquipment(req, res)));
+haccpRouter.post('/equipment', authenticate, can('controle.haccp.equipment'), validate(haccpEquipmentSchema), asyncHandler((req: AuthRequest, res: Response) => saveEquipment(req, res)));
 haccpRouter.put('/equipment/:id', authenticate, can('controle.haccp.equipment'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) return bad(res);
   await saveEquipment(req, res, req.params.id);
@@ -155,7 +157,7 @@ async function saveTask(req: AuthRequest, res: Response, id?: string) {
   if (!data) return notFound(res, 'Tâche introuvable');
   res.json({ success: true, data });
 }
-haccpRouter.post('/tasks', authenticate, can('controle.haccp.tasks'), asyncHandler((req: AuthRequest, res: Response) => saveTask(req, res)));
+haccpRouter.post('/tasks', authenticate, can('controle.haccp.tasks'), validate(haccpTaskSchema), asyncHandler((req: AuthRequest, res: Response) => saveTask(req, res)));
 haccpRouter.put('/tasks/:id', authenticate, can('controle.haccp.tasks'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) return bad(res);
   await saveTask(req, res, req.params.id);
@@ -168,7 +170,7 @@ haccpRouter.get('/receptions', authenticate, can('controle.haccp.receptions.view
   res.json({ success: true, data: await repo.receptions({ ...r.data, storeId: storeOf(req) }) });
 }));
 
-haccpRouter.post('/receptions/:id/check', authenticate, can('controle.haccp.check'), asyncHandler(async (req: AuthRequest, res: Response) => {
+haccpRouter.post('/receptions/:id/check', authenticate, can('controle.haccp.check'), validate(haccpReceptionCheckSchema), asyncHandler(async (req: AuthRequest, res: Response) => {
   const ok = z.boolean().nullish();
   const r = z.object({
     temperatureOk: ok, temperatureValue: z.number().min(-60).max(60).nullish(),
