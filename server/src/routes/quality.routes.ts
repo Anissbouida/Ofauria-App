@@ -16,6 +16,7 @@ const ncDecisionSchema = z.object({ decision: z.enum(['accepte', 'retouche', 'de
 const ncActionSchema = z.object({ actionType: z.enum(['corrective', 'preventive']), description: z.string().trim().min(3).max(2000), responsibleId: uuidN, dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional() });
 const ncActionUpdateSchema = z.object({ status: z.enum(['a_faire', 'en_cours', 'faite']).optional(), effectivenessResult: z.enum(['efficace', 'inefficace']).nullable().optional(), effectivenessNote: z.string().trim().max(1000).nullable().optional() });
 import { z } from 'zod';
+import { nonConformitySchema, qualityActiveSchema, qualityInspectionSchema, qualityTemplateSchema } from '../validators/quality.validator.js';
 
 const controlPlanLineSchema = z.object({
   productId: z.string().uuid().nullable().optional(),
@@ -38,11 +39,11 @@ const controlPlanLineSchema = z.object({
 const router = Router();
 
 router.get('/templates', authenticate, can('controle.quality.view'), qualityController.listTemplates);
-router.post('/templates', authenticate, can('controle.quality.templates'), qualityController.createTemplate);
-router.put('/templates/:id', authenticate, can('controle.quality.templates'), qualityController.updateTemplate);
-router.post('/templates/:id/active', authenticate, can('controle.quality.active'), qualityController.setTemplateActive);
+router.post('/templates', authenticate, can('controle.quality.templates'), validate(qualityTemplateSchema), qualityController.createTemplate);
+router.put('/templates/:id', authenticate, can('controle.quality.templates'), validate(qualityTemplateSchema), qualityController.updateTemplate);
+router.post('/templates/:id/active', authenticate, can('controle.quality.active'), validate(qualityActiveSchema), qualityController.setTemplateActive);
 router.get('/inspections', authenticate, can('controle.quality.view'), asyncHandler(qualityController.listInspections));
-router.post('/inspections', authenticate, can('controle.quality.inspections'), asyncHandler(qualityController.createInspection));
+router.post('/inspections', authenticate, can('controle.quality.inspections'), validate(qualityInspectionSchema), asyncHandler(qualityController.createInspection));
 router.get('/inspections/:id', authenticate, can('controle.quality.view'), qualityController.getInspection);
 router.get('/users', authenticate, can('controle.quality.view'), qualityController.users);
 // Consultation unique d'un ordre : relevés de procédé et inspections (M7-03).
@@ -95,7 +96,7 @@ router.delete('/control-plan/:id', authenticate, validateUuidParams('id'), can('
   res.status(ok ? 200 : 404).json({ success: ok });
 }));
 router.get('/nonconformities', authenticate, can('controle.quality.view'), qualityController.listNonConformities);
-router.post('/nonconformities', authenticate, can('controle.quality.nonconformities'), qualityController.createNonConformity);
-router.put('/nonconformities/:id', authenticate, can('controle.quality.nonconformities'), qualityController.updateNonConformity);
+router.post('/nonconformities', authenticate, can('controle.quality.nonconformities'), validate(nonConformitySchema), qualityController.createNonConformity);
+router.put('/nonconformities/:id', authenticate, can('controle.quality.nonconformities'), validate(nonConformitySchema), qualityController.updateNonConformity);
 
 export default router;
