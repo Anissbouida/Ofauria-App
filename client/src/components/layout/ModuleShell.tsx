@@ -78,16 +78,21 @@ export function ModuleShell<K extends string>({ title, views, current, onSelect,
   flush?: boolean;
   /** false : pas de barre de fil d'Ariane, les pages du module affichent la leur. */
   bar?: boolean;
-  /** « apple » : style de la refonte 2026-11 (apple-look.css), aux couleurs du thème. */
+  /**
+   * Style de la refonte 2026-11 (apple-look.css), aux couleurs du thème. Depuis le 2026-11-18
+   * c'est le style de TOUS les modules (même design que Ventes) : la prop reste acceptée
+   * pour compatibilité mais n'a plus d'effet.
+   */
   look?: 'apple';
   children: ReactNode;
 }) {
+  void look;
   const navigate = useNavigate();
   const visible = views.filter(v => !v.hidden);
   const sectionLabel = MODULE_SECTIONS.find(s => s.key === current?.section)?.label;
 
   return (
-    <div className={`odoo-scope module-shell${bar ? '' : ' no-bar'}${look === 'apple' ? ' kl-apple' : ''}`}>
+    <div className={`odoo-scope module-shell kl-apple${bar ? '' : ' no-bar'}`}>
       {bar && <div className="odoo-control-bar">
         <div className="odoo-breadcrumb" aria-label="Fil d'Ariane">
           <span>{title}</span>
@@ -132,6 +137,20 @@ export function ModuleShell<K extends string>({ title, views, current, onSelect,
 
         <div className={`module-shell-main${flush ? ' flush' : ''}`}>{children}</div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Page d'un module au design Ventes (2026-11-18) : grand titre (+ résumé optionnel) et marges
+ * standard (.kl-page = mêmes marges que .sal-page/.acc-page). À utiliser dans une coquille
+ * `flush` dont la barre de fil d'Ariane est celle du module, ou sous la barre propre d'une page.
+ */
+export function ModulePage({ title, summary, children }: { title?: ReactNode; summary?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="kl-page">
+      {title && <header className="kl-largetitle"><h1>{title}</h1>{summary && <p>{summary}</p>}</header>}
+      {children}
     </div>
   );
 }
