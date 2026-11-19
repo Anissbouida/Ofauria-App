@@ -45,7 +45,7 @@ export const legalEntityCreateSchema = z.object({
 
 export const legalEntityUpdateSchema = z.object(entityFields).partial().strict();
 
-export const legalEntityStoreSchema = z.object({ legalEntityId: z.string().uuid() }).strict();
+export const legalEntityStoreSchema = z.object({ legalEntityId: z.string().guid() }).strict();
 
 const bad = (res: Response, message: string, status = 400) => res.status(status).json({ success: false, error: { message } });
 
