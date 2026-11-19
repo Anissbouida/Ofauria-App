@@ -5,6 +5,8 @@ import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { forecastRepository as repo } from '../repositories/forecast.repository.js';
 import { getLocalISODate } from '../utils/timezone.js';
+import { validate } from '../middleware/validate.middleware.js';
+import { forecastEventSchema } from '../validators/forecast.validator.js';
 
 /**
  * Prévision de la demande (mig 314).
@@ -135,7 +137,7 @@ async function saveEvent(req: AuthRequest, res: Response, id?: string) {
   res.json({ success: true, data: saved });
 }
 
-forecastRouter.post('/events', authenticate, can('production.forecast.events'), asyncHandler((req: AuthRequest, res: Response) => saveEvent(req, res)));
+forecastRouter.post('/events', authenticate, can('production.forecast.events'), validate(forecastEventSchema), asyncHandler((req: AuthRequest, res: Response) => saveEvent(req, res)));
 forecastRouter.put('/events/:id', authenticate, can('production.forecast.events'), asyncHandler(async (req: AuthRequest, res: Response) => {
   if (!uuid.safeParse(req.params.id).success) return bad(res);
   await saveEvent(req, res, req.params.id);

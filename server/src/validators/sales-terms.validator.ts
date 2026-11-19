@@ -30,3 +30,6 @@ export const createSubscriptionSchema = body({
 });
 export const generateSubscriptionsSchema = body({ id: ref, asOf: txt(40) });
 export const subscriptionStatusSchema = body({ status: txt(20) });
+
+/* Objectifs commerciaux — sales-target.controller.upsert (vendeur et période requis : contrôleur). */
+export const salesTargetSchema = body({ salespersonId: ref, periodStart: txt(40), periodEnd: txt(40), targetAmount: numish });
