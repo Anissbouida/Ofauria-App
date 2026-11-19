@@ -8,6 +8,8 @@ export const usersApi = {
   getPermissions: (id: string) => api.get(`/users/${id}/permissions`).then(r => r.data.data),
   setPermissions: (id: string, permissions: Record<string, any>[]) =>
     api.put(`/users/${id}/permissions`, { permissions }).then(r => r.data.data),
+  /** G6-05 : langue de l'interface de l'utilisateur connecté (null = défaut de la société). */
+  setMyLocale: (locale: 'fr' | 'ar' | 'en' | null) => api.put('/users/me/locale', { locale }).then(r => r.data.data),
   myPermissions: () => api.get('/users/me/permissions').then(r => r.data.data),
   // Fiches salariees pour le lien espace employe (employees.user_id).
   employeesForLink: () => api.get('/users/employees-link').then(r => r.data.data) as Promise<{ id: string; name: string; user_id: string | null }[]>,

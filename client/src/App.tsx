@@ -4,6 +4,8 @@ import InlineNotification from './components/ui/InlineNotification';
 import { SettingsProvider } from './context/SettingsContext';
 import { ConfirmProvider } from './components/ui/ConfirmDialog';
 import { AuthProvider } from './context/AuthContext';
+import { LocaleProvider } from './i18n';
+import { LocaleUserSync } from './components/layout/LanguageSwitcher';
 import { PermissionsProvider } from './context/PermissionsContext';
 import { ProductionTimerProvider } from './context/ProductionTimerContext';
 import ProductionTimerWidget from './components/ui/ProductionTimerWidget';
@@ -76,9 +78,11 @@ export const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <LocaleProvider>
       <SettingsProvider>
       <ConfirmProvider>
       <AuthProvider>
+      <LocaleUserSync />
       <PermissionsProvider>
       <ProductionTimerProvider>
         <BrowserRouter>
@@ -174,6 +178,7 @@ export default function App() {
       </AuthProvider>
       </ConfirmProvider>
       </SettingsProvider>
+      </LocaleProvider>
     </QueryClientProvider>
   );
 }

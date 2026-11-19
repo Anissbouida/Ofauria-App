@@ -1,11 +1,13 @@
 import { formatMoney, DEFAULT_CURRENCY, type CurrencyDisplay } from '@ofauria/shared';
 import api from '../api/client';
+import { getIntlLocale } from '../i18n/core';
 
 /**
  * Devise de la société pour l'affichage (M3-06) : chargée une fois (devise de base de la
  * table currencies), repli sur le dirham tant qu'elle n'est pas connue.
  *   money(1234.5)      → « 1 234,50 DH »
  *   currencySymbol()   → « DH » (en-têtes de colonnes, unités « DH/h »)
+ * Séparateurs selon la langue de l'interface (G6-05) : « 1,234.50 DH » en anglais.
  */
 let current: CurrencyDisplay = DEFAULT_CURRENCY;
 let loading: Promise<void> | null = null;
@@ -22,6 +24,6 @@ export function loadCompanyCurrency(): Promise<void> {
 
 export const money = (amount: number | string | null | undefined, opts: { signed?: boolean; decimals?: number } = {}) => {
   void loadCompanyCurrency();
-  return formatMoney(amount, current, opts);
+  return formatMoney(amount, current, { ...opts, locale: getIntlLocale() });
 };
 export const currencySymbol = () => { void loadCompanyCurrency(); return current.symbol; };

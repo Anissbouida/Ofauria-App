@@ -1,0 +1,123 @@
+import { MODULE_LABELS } from '@ofauria/shared';
+
+/**
+ * G6-05 — dictionnaire de RÉFÉRENCE (français). Ses clés définissent TranslationKey :
+ * ar.ts et en.ts sont vérifiés par TypeScript contre elles (une clé inconnue ne compile
+ * pas) ; une clé absente d'une autre langue retombe sur le français.
+ *
+ * Convention des clés : `<domaine>.<libellé>` — common (actions et messages communs),
+ * nav (groupes et entrées du lanceur), module (noms de modules, alignés sur MODULE_LABELS),
+ * header, session, auth, lang. Paramètres entre accolades : « {status} ».
+ * Extraction module par module : ajouter un domaine par dossier de features
+ * (ex. `sales.*`), suivi dans docs/I18N_AVANCEMENT.md (scripts/i18n-report.ts).
+ */
+export const fr = {
+  // ── Actions et messages communs ──
+  'common.save': 'Enregistrer',
+  'common.cancel': 'Annuler',
+  'common.delete': 'Supprimer',
+  'common.edit': 'Modifier',
+  'common.add': 'Ajouter',
+  'common.close': 'Fermer',
+  'common.confirm': 'Confirmer',
+  'common.validate': 'Valider',
+  'common.continue': 'Continuer',
+  'common.back': 'Retour',
+  'common.search': 'Rechercher',
+  'common.loading': 'Chargement…',
+  'common.yes': 'Oui',
+  'common.no': 'Non',
+  'common.actions': 'Actions',
+  'common.noResults': 'Aucun résultat',
+  'common.saved': 'Enregistré',
+  'common.deleted': 'Supprimé',
+  'common.error.generic': 'Une erreur est survenue. Réessayez.',
+  'common.error.network': 'Serveur injoignable. Vérifiez votre connexion.',
+  'common.error.server': 'Erreur serveur ({status})',
+  'common.error.forbidden': "Vous n'avez pas le droit d'effectuer cette action.",
+  'common.error.notFound': "L'élément demandé est introuvable.",
+
+  // ── Langues (chaque langue dans sa propre écriture) ──
+  'lang.fr': 'Français',
+  'lang.ar': 'العربية',
+  'lang.en': 'English',
+
+  // ── Navigation : groupes du lanceur et entrées hors module ──
+  'nav.group.sales': 'Ventes',
+  'nav.group.purchasingStock': 'Achats & Stock',
+  'nav.group.production': 'Production',
+  'nav.group.control': 'Contrôle',
+  'nav.group.management': 'Gestion',
+  'nav.group.administration': 'Administration',
+  'nav.item.approvals': 'Approbations',
+  'nav.item.shopDay': 'Journée boutique',
+
+  // ── Noms de modules (source : MODULE_LABELS, écran des droits) ──
+  'module.dashboard': MODULE_LABELS.dashboard,
+  'module.pos': MODULE_LABELS.pos,
+  'module.sales': MODULE_LABELS.sales,
+  'module.orders': MODULE_LABELS.orders,
+  'module.products': MODULE_LABELS.products,
+  'module.customers': MODULE_LABELS.customers,
+  'module.stock': MODULE_LABELS.stock,
+  'module.economat': MODULE_LABELS.economat,
+  'module.inventory': MODULE_LABELS.inventory,
+  'module.recipes': MODULE_LABELS.recipes,
+  'module.production': MODULE_LABELS.production,
+  'module.employees': MODULE_LABELS.employees,
+  'module.accounting': MODULE_LABELS.accounting,
+  'module.purchasing': MODULE_LABELS.purchasing,
+  'module.users': MODULE_LABELS.users,
+  'module.reports': MODULE_LABELS.reports,
+  'module.settings': MODULE_LABELS.settings,
+  'module.replenishment': MODULE_LABELS.replenishment,
+  'module.unsold': MODULE_LABELS.unsold,
+  'module.pesage': MODULE_LABELS.pesage,
+  'module.warehouse': MODULE_LABELS.warehouse,
+  'module.packaging': MODULE_LABELS.packaging,
+  'module.reconciliation': MODULE_LABELS.reconciliation,
+  'module.controle': MODULE_LABELS.controle,
+  'module.projects': MODULE_LABELS.projects,
+  'module.crm': MODULE_LABELS.crm,
+  'module.maintenance': MODULE_LABELS.maintenance,
+
+  // ── Barre du haut ──
+  'header.apps': 'Applications',
+  'header.mySpace': 'Mon espace',
+  'header.myProfile': 'Mon profil',
+  'header.logout': 'Déconnexion',
+  'header.language': 'Langue',
+  'header.searchPlaceholder': 'Rechercher un article, produit, client…',
+
+  // ── Expiration de session ──
+  'session.inactiveTitle': 'Session inactive',
+  'session.expiresIn': 'Votre session va expirer dans',
+
+  // ── Connexion ──
+  'auth.email': 'Email',
+  'auth.emailPlaceholder': 'vous@entreprise.ma',
+  'auth.password': 'Mot de passe',
+  'auth.showPassword': 'Afficher le mot de passe',
+  'auth.hidePassword': 'Masquer le mot de passe',
+  'auth.signIn': 'Se connecter',
+  'auth.signingIn': 'Connexion…',
+  'auth.continueWith': 'Continuer avec {provider}',
+  'auth.pinLogin': 'Connexion par code PIN',
+  'auth.adminLogin': 'Connexion administrateur',
+  'auth.whoIsLoggingIn': 'Qui se connecte ?',
+  'auth.noPinAccounts': "Aucun compte n'a de code PIN. Utilisez la connexion administrateur.",
+  'auth.changePerson': 'Changer de personne',
+  'auth.enterPin': 'entrez votre code PIN',
+  'auth.digitsEntered': '{count} chiffre(s) saisi(s)',
+  'auth.verifying': 'Vérification…',
+  'auth.clear': 'Effacer',
+  'auth.mfaTitle': 'Double authentification',
+  'auth.mfaHelp': "Saisissez le code à 6 chiffres de votre application d'authentification, ou un code de secours.",
+  'auth.mfaCodeLabel': 'Code de double authentification',
+  'auth.pinIncorrect': 'Code PIN incorrect',
+  'auth.invalidCode': 'Code invalide',
+  'auth.serverUnreachable': 'Serveur injoignable — vérifie que le backend tourne (port 3001)',
+  'auth.badCredentials': 'Email ou mot de passe incorrect',
+  'auth.ssoUnknownAccount': 'Aucun compte actif ne correspond à cette adresse : demandez à un administrateur de créer votre compte.',
+  'auth.ssoFailed': "Connexion d'entreprise impossible, réessayez.",
+} as const;
