@@ -8,7 +8,7 @@ import { recipeComponentController } from '../controllers/recipe-component.contr
 import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { createRecipeSchema, updateRecipeSchema, bulkDeleteRecipesSchema, saveEtapesSchema, identitySchema } from '../validators/recipe.validator.js';
+import { createRecipeSchema, updateRecipeSchema, bulkDeleteRecipesSchema, saveEtapesSchema, identitySchema, recipeNoBodySchema } from '../validators/recipe.validator.js';
 import { replaceComponentsSchema, financeSchema, createFormatSchema, duplicateFormatSchema, updateFormatSchema, formatWeightsSchema } from '../validators/recipe-component.validator.js';
 import { validateUuidParams } from '../middleware/validate.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -100,14 +100,14 @@ router.post(
   authenticate,
   can('recipes.import.preview'),
   recipeImportUpload.single('file'),
-  recipeImportController.preview
+  validate(recipeNoBodySchema), recipeImportController.preview
 );
 router.post(
   '/import/commit',
   authenticate,
   can('recipes.commit'),
   recipeImportUpload.single('file'),
-  recipeImportController.commit
+  validate(recipeNoBodySchema), recipeImportController.commit
 );
 
 router.get('/', authenticate, recipeController.list);
@@ -200,7 +200,7 @@ router.post('/:id/bom-versions/activate', authenticate, validateUuidParams('id')
 }));
 router.get('/:id', authenticate, recipeController.getById);
 router.get('/:id/versions', authenticate, recipeController.versions);
-router.post('/:id/versions/:versionNumber/restore', authenticate, can('recipes.versions.restore'), recipeController.restoreVersion);
+router.post('/:id/versions/:versionNumber/restore', authenticate, can('recipes.versions.restore'), validate(recipeNoBodySchema), recipeController.restoreVersion);
 // Fiche technique imprimable (PDF) — lecture seule, ouverte a tout utilisateur
 // authentifie : c'est le document que le labo pose sur le plan de travail.
 router.get('/:id/fiche-technique', authenticate, recipeController.downloadFiche);
@@ -208,7 +208,7 @@ router.post('/', authenticate, can('recipes.create'), validate(createRecipeSchem
 router.put('/:id', authenticate, can('recipes.edit'), validate(updateRecipeSchema), stepTypesOf, unitsOf, recipeController.update);
 // Archivage (mig 275 wip + 346) : DELETE archive, plus de suppression physique ;
 // bulk-archive / bulk-restore plus bas, restauration unitaire ici.
-router.post('/:id/restore', authenticate, can('recipes.restore'), recipeController.restore);
+router.post('/:id/restore', authenticate, can('recipes.restore'), validate(recipeNoBodySchema), recipeController.restore);
 router.delete('/:id', authenticate, can('recipes.delete'), recipeController.remove);
 // Suppression en masse — même autorisation que la suppression unitaire (admin).
 router.post('/bulk-delete', authenticate, can('recipes.bulk_delete'), validate(bulkDeleteRecipesSchema), recipeController.bulkRemove);
@@ -221,6 +221,6 @@ router.post('/bulk-restore', authenticate, can('recipes.bulk_restore'), validate
 router.get('/bulk-replace/logs', authenticate, can('recipes.bulk_replace_logs.view'), recipeController.bulkReplaceLogs);
 router.post('/bulk-replace/preview', authenticate, can('recipes.bulk_replace.preview'), validate(bulkReplacePreviewSchema), recipeController.bulkReplacePreview);
 router.post('/bulk-replace/apply', authenticate, can('recipes.apply'), validate(bulkReplaceApplySchema), asyncHandler(recipeController.bulkReplaceApply));
-router.post('/bulk-replace/:logId/revert', authenticate, can('recipes.revert'), validateUuidParams('logId'), recipeController.bulkReplaceRevert);
+router.post('/bulk-replace/:logId/revert', authenticate, can('recipes.revert'), validateUuidParams('logId'), validate(recipeNoBodySchema), recipeController.bulkReplaceRevert);
 
 export default router;

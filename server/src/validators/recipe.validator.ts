@@ -126,3 +126,7 @@ export const updateRecipeSchema = createRecipeSchema.partial();
 export const bulkDeleteRecipesSchema = z.object({
   ids: z.array(z.string().uuid('ID recette invalide')).min(1, 'Aucune recette sélectionnée').max(500),
 });
+
+/** G0-07 — import par fichier (multipart, aucun champ lu) et restaurations (version, archive,
+ *  remplacement en masse) : pas de corps. */
+export const recipeNoBodySchema = z.preprocess(v => v ?? {}, z.object({}).passthrough());
