@@ -87,8 +87,8 @@ describe.skipIf(!hasTestDb)('Webhooks factures et stock (G6-08)', () => {
     const { WEBHOOK_EVENTS_LIST } = await import('@ofauria/shared');
     for (const e of EVENTS) expect(WEBHOOK_EVENTS_LIST).toContain(e);
     const oa = await import('../../services/openapi.js');
-    const spec = oa.buildOpenApi() as Record<string, any>;
-    for (const e of EVENTS) expect(Object.keys(spec.webhooks)).toContain(e);
+    const spec = oa.buildOpenApi();
+    for (const e of EVENTS) expect(Object.keys(spec.webhooks as Record<string, unknown>)).toContain(e);
     expect(oa.renderDocsHtml(spec)).toContain('stock.count_validated');
   });
 
