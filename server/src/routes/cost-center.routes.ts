@@ -7,14 +7,16 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validateUuidParams } from '../middleware/validate.middleware.js';
+import { validate } from '../middleware/validate.middleware.js';
+import { assignCostCenterSchema, costCenterActiveSchema, createCostCenterSchema } from '../validators/cost-center.validator.js';
 
 // Centres de coûts (mig 386) et analytique (mig 428) : admin / gérant (noyau comptable).
 const router = Router();
 
 router.get('/', authenticate, can('accounting.cost_centers.view'), costCenterController.list);
-router.post('/', authenticate, can('accounting.cost_centers.create'), costCenterController.create);
+router.post('/', authenticate, can('accounting.cost_centers.create'), validate(createCostCenterSchema), costCenterController.create);
 router.get('/invoices', authenticate, can('accounting.cost_centers.view'), costCenterController.invoices);
-router.post('/assign', authenticate, can('accounting.cost_centers.assign'), costCenterController.assign);
+router.post('/assign', authenticate, can('accounting.cost_centers.assign'), validate(assignCostCenterSchema), costCenterController.assign);
 
 // ─── Analytique (mig 428) : axes, clés, ventilation, balance ───
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -78,6 +80,6 @@ router.get('/balance/lines', authenticate, can('accounting.cost_centers.view'), 
   res.json({ success: true, data: await analyticRepository.sectionLines({ ...r.data, costCenterId: r.data.costCenterId ?? null, storeId: req.user!.storeId ?? null }) });
 }));
 
-router.post('/:id/active', authenticate, can('accounting.cost_centers.active'), costCenterController.setActive);
+router.post('/:id/active', authenticate, can('accounting.cost_centers.active'), validate(costCenterActiveSchema), costCenterController.setActive);
 
 export default router;
