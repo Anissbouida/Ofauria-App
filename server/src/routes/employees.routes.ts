@@ -29,6 +29,7 @@ import {
   declarePayrollSchema, settlePayrollDeclarationSchema, holidaySchema, leaveAdjustmentSchema,
   createContractSchema, contractAvenantSchema, renewContractSchema, endContractSchema, finalSettlementSchema,
   selfLeaveRequestSchema, selfAdvanceRequestSchema, decideAdvanceRequestSchema,
+  approveLeaveSchema, employeeDocumentSchema,
 } from '../validators/employees.validator.js';
 
 // Droits : module « employees » (Personnel) via authorizeModule — view pour les
@@ -60,7 +61,7 @@ router.get('/hr-alerts', authenticate, authorizeModule('employees', 'view'), asy
 // Solde de tout compte : pieces (recu, certificat) et annulation (admin).
 router.get('/settlements/:id/receipt', authenticate, authorizeModule('employees', 'view'), asyncHandler(finalSettlementController.receipt));
 router.get('/settlements/:id/certificate', authenticate, authorizeModule('employees', 'view'), asyncHandler(finalSettlementController.certificate));
-router.post('/settlements/:id/cancel', authenticate, can('employees.cancel'), asyncHandler(finalSettlementController.cancel));
+router.post('/settlements/:id/cancel', authenticate, can('employees.cancel'), validate(emptyBody), asyncHandler(finalSettlementController.cancel));
 router.get('/documents/:docId/file', authenticate, authorizeModule('employees', 'view'), asyncHandler(hrContractController.download));
 router.delete('/documents/:docId', authenticate, authorizeModule('employees', 'edit'), asyncHandler(hrContractController.removeDocument));
 router.get('/:id', authenticate, authorizeModule('employees', 'view'), asyncHandler(employeeController.getById));
@@ -74,7 +75,7 @@ router.get('/:employeeId/contracts', authenticate, authorizeModule('employees', 
 router.post('/:employeeId/contracts', authenticate, authorizeModule('employees', 'edit'), validate(createContractSchema), asyncHandler(hrContractController.create));
 router.post('/:employeeId/contracts/avenant', authenticate, authorizeModule('employees', 'edit'), validate(contractAvenantSchema), asyncHandler(hrContractController.avenant));
 router.post('/:employeeId/contracts/renew', authenticate, authorizeModule('employees', 'edit'), validate(renewContractSchema), asyncHandler(hrContractController.renew));
-router.post('/:employeeId/contracts/renew-trial', authenticate, authorizeModule('employees', 'edit'), asyncHandler(hrContractController.renewTrial));
+router.post('/:employeeId/contracts/renew-trial', authenticate, authorizeModule('employees', 'edit'), validate(emptyBody), asyncHandler(hrContractController.renewTrial));
 router.post('/:employeeId/contracts/end', authenticate, authorizeModule('employees', 'edit'), validate(endContractSchema), asyncHandler(hrContractController.end));
 // Attestations de travail / de salaire a la demande (salarie en poste, mig 325).
 router.get('/:employeeId/attestations/:kind', authenticate, authorizeModule('employees', 'view'), asyncHandler(payrollComplianceController.attestation));
@@ -91,7 +92,7 @@ const singleDocument = (req: Request, res: Response, next: NextFunction) =>
     if (err) { res.status(400).json({ success: false, error: { message: err instanceof Error && /File too large/.test(err.message) ? 'Fichier trop lourd (5 Mo max)' : 'Fichier invalide' } }); return; }
     next();
   });
-router.post('/:employeeId/documents', authenticate, authorizeModule('employees', 'edit'), singleDocument, asyncHandler(hrContractController.upload));
+router.post('/:employeeId/documents', authenticate, authorizeModule('employees', 'edit'), singleDocument, validate(employeeDocumentSchema), asyncHandler(hrContractController.upload));
 // GET /:id/dependencies : compte les references vers l'employe (pour preview hard delete).
 router.get('/:id/dependencies', authenticate, can('employees.view'), asyncHandler(employeeController.dependencies));
 // DELETE /:id : soft delete par defaut. ?hard=true cascade les enfants + supprime l'employe.
@@ -147,8 +148,8 @@ leavesRouter.get('/adjustments/:employeeId', authenticate, authorizeModule('empl
 leavesRouter.post('/adjustments/:employeeId', authenticate, can('employees.leaves.adjustments'), validate(leaveAdjustmentSchema), asyncHandler(leaveController.createAdjustment));
 leavesRouter.delete('/adjustments/entry/:id', authenticate, can('employees.leaves.delete'), asyncHandler(leaveController.removeAdjustment));
 leavesRouter.post('/', authenticate, authorizeModule('employees', 'create'), validate(createLeaveSchema), asyncHandler(leaveController.create));
-leavesRouter.post('/:id/approve', authenticate, authorizeModule('employees', 'edit'), asyncHandler(leaveController.approve));
-leavesRouter.post('/:id/reject', authenticate, authorizeModule('employees', 'edit'), asyncHandler(leaveController.reject));
+leavesRouter.post('/:id/approve', authenticate, authorizeModule('employees', 'edit'), validate(approveLeaveSchema), asyncHandler(leaveController.approve));
+leavesRouter.post('/:id/reject', authenticate, authorizeModule('employees', 'edit'), validate(emptyBody), asyncHandler(leaveController.reject));
 leavesRouter.delete('/:id', authenticate, authorizeModule('employees', 'edit'), asyncHandler(leaveController.remove));
 
 // Payroll — gestion ouverte au gerant (ADMIN_MANAGER), comme la paie hebdo

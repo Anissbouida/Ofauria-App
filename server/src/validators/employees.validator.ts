@@ -427,3 +427,12 @@ export const decideAdvanceRequestSchema = z.object({
   monthlyDeduction: z.coerce.number().positive().nullable().optional(),
   note: z.string().max(300).nullable().optional(),
 });
+
+// ─── G0-07 : routes restantes (types seulement) ──────────────────────────
+/** Validation d'un congé : dépassement de solde autorisé par l'administrateur (leave.controller). */
+export const approveLeaveSchema = z.preprocess(v => v ?? {}, z.object({ allowNegative: z.boolean().nullish() }).passthrough());
+/** Pièce jointe RH (multipart) : champs texte du formulaire, contrôlés par hr-contract.controller. */
+export const employeeDocumentSchema = z.preprocess(v => v ?? {}, z.object({
+  docType: z.string().max(60).optional(), title: z.string().max(300).nullish(),
+  expiresOn: z.string().max(40).nullish(), contractId: z.string().max(60).nullish(),
+}).passthrough());
