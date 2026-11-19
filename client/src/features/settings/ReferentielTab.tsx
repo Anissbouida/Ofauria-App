@@ -26,7 +26,7 @@ type Row = Record<string, any>;
 const DOMAINS: { key: string; label: string; icon: typeof Database; tableIds: string[] }[] = [
   { key: 'sales', label: 'Ventes et comptabilité', icon: Wallet, tableIds: ['expense_categories', 'revenue_categories', 'payment_methods'] },
   { key: 'products', label: 'Produits et ingrédients', icon: Package, tableIds: ['product_categories', 'units', 'ingredient_categories'] },
-  { key: 'production', label: 'Production et pertes', icon: Factory, tableIds: ['yield_units', 'loss_types', 'loss_reasons', 'production_loss_reasons', 'unsold_destinations'] },
+  { key: 'production', label: 'Production et pertes', icon: Factory, tableIds: ['production_categories', 'yield_units', 'loss_types', 'loss_reasons', 'production_loss_reasons', 'unsold_destinations'] },
   { key: 'hr', label: 'Ressources humaines', icon: Users, tableIds: ['absence_reasons', 'employee_roles', 'contract_types', 'leave_types'] },
 ];
 const ACTIONS: Record<string, { tone: StatusTone; label: string }> = {

@@ -12,6 +12,7 @@ export const refTableRepository = {
         WHEN rt.id = 'expense_categories' THEN (SELECT COUNT(*) FROM expense_categories)
         WHEN rt.id = 'revenue_categories' THEN (SELECT COUNT(*) FROM revenue_categories)
         WHEN rt.id = 'product_categories' THEN (SELECT COUNT(*) FROM categories)
+        WHEN rt.id = 'production_categories' THEN (SELECT COUNT(*) FROM recipe_categories)
         ELSE 0 END::int AS total_count,
         CASE WHEN rt.source = 'ref_entries' THEN (
           SELECT COUNT(*) FROM ref_entries re WHERE re.table_id = rt.id AND re.is_active = true
@@ -19,6 +20,7 @@ export const refTableRepository = {
         WHEN rt.id = 'expense_categories' THEN (SELECT COUNT(*) FROM expense_categories WHERE is_active = true)
         WHEN rt.id = 'revenue_categories' THEN (SELECT COUNT(*) FROM revenue_categories WHERE is_active = true)
         WHEN rt.id = 'product_categories' THEN (SELECT COUNT(*) FROM categories)
+        WHEN rt.id = 'production_categories' THEN (SELECT COUNT(*) FROM recipe_categories)
         ELSE 0 END::int AS active_count
       FROM ref_tables rt
       ORDER BY rt.display_order, rt.label
@@ -325,6 +327,59 @@ const productCategoriesAdapter = {
   },
 };
 
+/**
+ * Adapter for recipe_categories (catégories de production des fiches techniques, mig 166).
+ * Mig 615 : la table n'avait aucun écran d'écriture ; elle est éditée ici comme un
+ * référentiel natif. Le code est dérivé du libellé s'il n'est pas fourni.
+ */
+const productionCategoriesAdapter = {
+  async findAll() {
+    const result = await db.query('SELECT * FROM recipe_categories ORDER BY display_order, label');
+    return result.rows.map((r: Record<string, unknown>) => ({
+      id: r.id,
+      table_id: 'production_categories',
+      code: r.code,
+      label: r.label,
+      description: null,
+      color: r.color,
+      icon: null,
+      display_order: r.display_order,
+      is_active: true,
+      metadata: {},
+      created_at: r.created_at,
+      updated_at: r.created_at,
+    }));
+  },
+  async create(data: Record<string, unknown>) {
+    const code = (String(data.code || '') || (data.label as string)).toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '_').replace(/(^_|_$)/g, '').slice(0, 40);
+    const result = await db.query(
+      `INSERT INTO recipe_categories (code, label, color, display_order)
+       VALUES ($1, $2, COALESCE($3, '#94a3b8'), COALESCE($4::int, 0)) RETURNING *`,
+      [code, data.label, data.color || null, data.display_order ?? null]
+    );
+    return result.rows[0];
+  },
+  async update(id: string, data: Record<string, unknown>) {
+    const fields: string[] = []; const values: unknown[] = []; let i = 1;
+    if (data.label !== undefined) { fields.push(`label = $${i++}`); values.push(data.label); }
+    if (data.color) { fields.push(`color = $${i++}`); values.push(data.color); }
+    if (data.display_order !== undefined) { fields.push(`display_order = $${i++}`); values.push(data.display_order); }
+    if (fields.length === 0) return null;
+    values.push(id);
+    const result = await db.query(`UPDATE recipe_categories SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`, values);
+    return result.rows[0];
+  },
+  async checkUsage(id: string) {
+    const result = await db.query('SELECT COUNT(*)::int AS count FROM recipes WHERE category_id = $1', [id]);
+    return result.rows[0].count;
+  },
+  async delete(id: string) {
+    await db.query('DELETE FROM recipe_categories WHERE id = $1', [id]);
+  },
+};
+
 /** Native adapter interface */
 interface NativeAdapter {
   findAll(includeInactive?: boolean): Promise<Record<string, unknown>[]>;
@@ -339,6 +394,7 @@ export const nativeAdapters: Record<string, NativeAdapter> = {
   expense_categories: expenseCategoriesAdapter as NativeAdapter,
   revenue_categories: revenueCategoriesAdapter as NativeAdapter,
   product_categories: productCategoriesAdapter as NativeAdapter,
+  production_categories: productionCategoriesAdapter as NativeAdapter,
 };
 
 /* ═══ Audit Log ═══ */

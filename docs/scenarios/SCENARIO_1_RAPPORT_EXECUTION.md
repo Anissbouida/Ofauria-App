@@ -313,6 +313,17 @@ les deux produits à jour par l'écran : Baguette 3,00 DH (revient 0,88), Cornes
 
 Écart restant : la fiche affiche son prix avant arrondi (constat 35).
 
+### Catégories de production (2026-11-19, constat 18)
+
+La liste « Catégorie de production » de la fiche était vide : aucune catégorie en base et
+aucun écran pour en créer. Correction : migration 615, référentiel « Catégories de
+production » dans Paramètres › Référentiel › Production et pertes.
+
+Création des 6 catégories **par le service** (l'écran est réservé à l'administrateur, dont
+je n'ai pas le compte) : Boulangerie, Viennoiserie, Pâtisserie, Beldi (gâteaux marocains),
+Salé / Traiteur, Préparations de base. Classement des fiches **par l'écran** (gérant,
+« ✎ » identité de la fiche) : Baguette → Boulangerie, Cornes de gazelle → Beldi.
+
 ## Constats à traiter
 
 | # | Gravité | Constat | Cas |
@@ -334,7 +345,7 @@ les deux produits à jour par l'écran : Baguette 3,00 DH (revient 0,88), Cornes
 | 15 | Levé | Les chefs voient bien la liste des matières dans la composition d'une fiche. | D-34 |
 | 16 | Bloquante | Un produit fabriqué ne se crée pas sans recette, et une recette ne se compose pas sans format de production : l'ordre de saisie est imposé (formats, puis fiches, puis produits) sans que l'écran l'annonce au départ. | C-21, D-34 |
 | 17 | Bloquante | Aucun format de production (contenant) sur une installation neuve : aucune fiche ne peut être composée. | D-34 |
-| 18 | Moyenne | Aucune catégorie de production sur une installation neuve ; le lien avec les catégories de vente n'apparaît pas. | D-34 |
+| 18 | Corrigée (mig 615) | Aucune catégorie de production sur une installation neuve, et **aucun écran pour en créer** (la table `recipe_categories` n'avait qu'une route de lecture) : la liste « Catégorie de production » de la fiche restait vide. Elles sont désormais éditables dans Paramètres › Référentiel › Production et pertes (administrateur). Elles ne servent qu'au classement des fiches : les ateliers sont rattachés aux catégories de produits. | D-34 |
 | 19 | Faible | Le chef reçoit un refus sur la gamme opératoire de sa propre fiche (appel refusé en arrière-plan). | D-34 |
 | 20 | Haute | Une quantité en grammes d'une matière stockée à la pièce est comptée comme des pièces : 110 g d'œufs coûtent 132 DH au lieu de 2,40 DH. Le poids par pièce saisi sur la matière n'est pas utilisé. | B-04, D-13 |
 | 21 | Moyenne | Un seul bouton enregistre la composition et les paramètres financiers : un chef obtient « Accès interdit » alors que sa composition est enregistrée. | D-34 |
