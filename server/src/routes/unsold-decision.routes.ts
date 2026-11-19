@@ -4,6 +4,8 @@ import { authenticate } from '../middleware/auth.middleware.js';
 import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { ROLES } from '@ofauria/shared';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
+import { saveUnsoldDecisionsSchema, destroyExpiredSchema } from '../validators/sales-flow.validator.js';
 
 const STORE_STAFF = [ROLES.ADMIN, ROLES.MANAGER, ROLES.CASHIER, ROLES.SALESWOMAN];
 
@@ -27,7 +29,7 @@ router.get('/expired', authenticate, can('unsold.unsold_decisions.view'), asyncH
 router.get('/recycle-destinations/:productId', authenticate, can('unsold.unsold_decisions.view'), asyncHandler(unsoldDecisionController.recycleDestinations));
 
 // Confirmer destruction des items expires
-router.post('/destroy-expired', bigJsonParser, authenticate, can('unsold.unsold_decisions.destroy_expired'), asyncHandler(unsoldDecisionController.destroyExpired));
+router.post('/destroy-expired', bigJsonParser, authenticate, can('unsold.unsold_decisions.destroy_expired'), validate(destroyExpiredSchema), asyncHandler(unsoldDecisionController.destroyExpired));
 
 // Statistiques tableau de bord
 router.get('/stats', authenticate, asyncHandler(unsoldDecisionController.stats));
@@ -39,6 +41,6 @@ router.get('/session/:sessionId', authenticate, asyncHandler(unsoldDecisionContr
 router.get('/', authenticate, asyncHandler(unsoldDecisionController.list));
 
 // Enregistrer des decisions (payload batch -> parser avec limite elargie)
-router.post('/', bigJsonParser, authenticate, can('unsold.unsold_decisions.create'), asyncHandler(unsoldDecisionController.save));
+router.post('/', bigJsonParser, authenticate, can('unsold.unsold_decisions.create'), validate(saveUnsoldDecisionsSchema), asyncHandler(unsoldDecisionController.save));
 
 export default router;

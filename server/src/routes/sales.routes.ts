@@ -7,6 +7,9 @@ import { validate } from '../middleware/validate.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { checkoutSchema, paySaleSchema } from '../validators/sale.validator.js';
 import { posAllowsNegativeStock, getPersonSizes, requiresUnsoldInventory } from '../services/module-parameters.service.js';
+import { emptyBody } from '../validators/common.validator.js';
+import { validateUuidParams } from '../middleware/validate.middleware.js';
+import { cancelSaleSchema, invoiceSaleSchema, importSalesSchema } from '../validators/sales-flow.validator.js';
 
 const router = Router();
 
@@ -36,8 +39,8 @@ router.post(
   asyncHandler(saleController.checkout),
 );
 // Vente spéciale B2B retirée (O2C L4) : commande ou BL professionnel, facture sur livré.
-router.post('/special', authenticate, saleController.specialRetired);
-router.put('/special/:id', authenticate, saleController.specialRetired);
+router.post('/special', authenticate, validate(emptyBody), saleController.specialRetired);
+router.put('/special/:id', authenticate, validate(emptyBody), saleController.specialRetired);
 router.delete('/special/:id', authenticate, saleController.specialRetired);
 router.post(
   '/:id/pay',
@@ -46,11 +49,11 @@ router.post(
   validate(paySaleSchema),
   asyncHandler(saleController.pay),
 );
-router.post('/import', authenticate, can('sales.import'), asyncHandler(saleController.importCSV));
-router.post('/:id/print', authenticate, can('sales.print'), asyncHandler(printerController.printSale));
+router.post('/import', authenticate, can('sales.import'), validate(importSalesSchema), asyncHandler(saleController.importCSV));
+router.post('/:id/print', authenticate, can('sales.print'), validateUuidParams('id'), validate(emptyBody), asyncHandler(printerController.printSale));
 // Facture depuis un ticket (phase 5.5) : pièce légale émise pour une vente déjà encaissée.
-router.post('/:id/invoice', authenticate, can('sales.invoice'), asyncHandler(saleController.invoice));
+router.post('/:id/invoice', authenticate, can('sales.invoice'), validateUuidParams('id'), validate(invoiceSaleSchema), asyncHandler(saleController.invoice));
 // Annulation de ticket (phase 8.1) : direction seulement, avec motif et approbateur.
-router.post('/:id/cancel', authenticate, can('sales.cancel'), asyncHandler(saleController.cancel));
+router.post('/:id/cancel', authenticate, can('sales.cancel'), validateUuidParams('id'), validate(cancelSaleSchema), asyncHandler(saleController.cancel));
 
 export default router;

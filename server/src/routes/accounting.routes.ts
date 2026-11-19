@@ -35,6 +35,8 @@ const validateInvoiceSchema = z.object({
 });
 import { can } from '../middleware/permission.middleware.js';
 import { ROLES, ROLE_GROUPS } from '@ofauria/shared';
+import { emptyBody } from '../validators/common.validator.js';
+import { reportOverrideSchema } from '../validators/sales-flow.validator.js';
 
 // G0-04 : la pièce jointe est reçue en mémoire puis écrite dans le stockage objet
 // (table files) par le contrôleur — plus rien sur le disque du serveur.
@@ -51,7 +53,7 @@ const invoiceUpload = multer({
 export const caisseRouter = Router();
 caisseRouter.get('/register', authenticate, can('accounting.caisse.view'), caisseController.register);
 // Ajustement du report mois précédent : admin uniquement
-caisseRouter.put('/report-override', authenticate, can('accounting.caisse.edit'), caisseController.saveReportOverride);
+caisseRouter.put('/report-override', authenticate, can('accounting.caisse.edit'), validate(reportOverrideSchema), caisseController.saveReportOverride);
 caisseRouter.delete('/report-override', authenticate, can('accounting.caisse.delete'), caisseController.deleteReportOverride);
 
 export const suppliersRouter = Router();
@@ -150,8 +152,8 @@ const caisseImportUpload = multer({
 });
 
 export const caisseImportRouter = Router();
-caisseImportRouter.post('/preview', authenticate, can('accounting.caisse_import.preview'), caisseImportUpload.single('file'), caisseImportController.preview);
-caisseImportRouter.post('/commit', authenticate, can('accounting.caisse_import.commit'), caisseImportUpload.single('file'), caisseImportController.commit);
+caisseImportRouter.post('/preview', authenticate, can('accounting.caisse_import.preview'), caisseImportUpload.single('file'), validate(emptyBody), caisseImportController.preview);
+caisseImportRouter.post('/commit', authenticate, can('accounting.caisse_import.commit'), caisseImportUpload.single('file'), validate(emptyBody), caisseImportController.commit);
 
 export const paymentsRouter = Router();
 paymentsRouter.get('/', authenticate, can('accounting.view'), asyncHandler(paymentController.list));

@@ -6,6 +6,8 @@ import { can } from '../middleware/permission.middleware.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { z } from 'zod';
+import { validateUuidParams } from '../middleware/validate.middleware.js';
+import { createOrderSchema, updateOrderSchema, orderStatusSchema, rescheduleOrderSchema, deliverOrderSchema, prepaymentInvoiceSchema } from '../validators/sales-flow.validator.js';
 
 const promiseDatesSchema = z.object({
   items: z.array(z.object({ productId: z.string().uuid(), quantity: z.number().finite().positive() })).min(1).max(200),
@@ -20,13 +22,13 @@ router.get('/for-date', authenticate, asyncHandler(orderController.forDate));
 router.get('/:id', authenticate, asyncHandler(orderController.getById));
 // Date de disponibilité promise des lignes en cours de saisie (G5-06).
 router.post('/promise-dates', authenticate, can('orders.create'), validate(promiseDatesSchema), asyncHandler(orderController.promiseDates));
-router.post('/', authenticate, can('orders.create'), asyncHandler(orderController.create));
-router.put('/:id', authenticate, can('orders.edit'), asyncHandler(orderController.update));
-router.put('/:id/status', authenticate, can('orders.status'), asyncHandler(orderController.updateStatus));
-router.post('/:id/reschedule', authenticate, can('orders.reschedule'), asyncHandler(orderController.reschedule));
-router.post('/:id/deliver', authenticate, can('orders.deliver'), asyncHandler(orderController.deliver));
+router.post('/', authenticate, can('orders.create'), validate(createOrderSchema), asyncHandler(orderController.create));
+router.put('/:id', authenticate, can('orders.edit'), validateUuidParams('id'), validate(updateOrderSchema), asyncHandler(orderController.update));
+router.put('/:id/status', authenticate, can('orders.status'), validateUuidParams('id'), validate(orderStatusSchema), asyncHandler(orderController.updateStatus));
+router.post('/:id/reschedule', authenticate, can('orders.reschedule'), validateUuidParams('id'), validate(rescheduleOrderSchema), asyncHandler(orderController.reschedule));
+router.post('/:id/deliver', authenticate, can('orders.deliver'), validateUuidParams('id'), validate(deliverOrderSchema), asyncHandler(orderController.deliver));
 // Facture d'acompte (phase 5.4) : réservée à la direction (admin/gérant).
-router.post('/:id/prepayment-invoice', authenticate, can('orders.prepayment_invoice'), asyncHandler(orderController.prepaymentInvoice));
+router.post('/:id/prepayment-invoice', authenticate, can('orders.prepayment_invoice'), validateUuidParams('id'), validate(prepaymentInvoiceSchema), asyncHandler(orderController.prepaymentInvoice));
 router.delete('/:id', authenticate, can('orders.delete'), asyncHandler(orderController.remove));
 
 export default router;

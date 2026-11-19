@@ -10,6 +10,8 @@ import { getParameter } from '../services/module-parameters.service.js';
 import { generateInvoicePdf } from '../services/invoice-pdf.service.js';
 import { loadCompanyLegal } from '../utils/company-legal.js';
 import { currencySymbol } from '../services/currency.js';
+import { validate, validateUuidParams } from '../middleware/validate.middleware.js';
+import { emptyBody } from '../validators/common.validator.js';
 
 /**
  * Devis clients et proforma (mig 365). Réservés à la direction, comme les commandes de
@@ -98,14 +100,14 @@ quotesRouter.put('/:id', authenticate, can('sales.quotes.edit'), asyncHandler(as
   res.json({ success: true, data: r.data });
 }));
 
-quotesRouter.post('/:id/duplicate', authenticate, can('sales.quotes.duplicate'), asyncHandler(async (req: AuthRequest, res: Response) => {
+quotesRouter.post('/:id/duplicate', authenticate, can('sales.quotes.duplicate'), validateUuidParams('id'), validate(emptyBody), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await quoteRepository.duplicate(req.params.id, { userId: req.user!.userId, storeId: req.user!.storeId ?? null, validityDays: await validityDays() });
   if ('error' in r) { r.error === 'not_found' ? bad(res, 'Devis introuvable', 404) : bad(res, r.error); return; }
   res.status(201).json({ success: true, data: r.data });
 }));
 
 // Révision (phase 11, D3-22) : nouvelle version, l'originale est figée et remplacée.
-quotesRouter.post('/:id/revise', authenticate, can('sales.quotes.revise'), asyncHandler(async (req: AuthRequest, res: Response) => {
+quotesRouter.post('/:id/revise', authenticate, can('sales.quotes.revise'), validateUuidParams('id'), validate(emptyBody), asyncHandler(async (req: AuthRequest, res: Response) => {
   const r = await quoteRepository.revise(req.params.id, { userId: req.user!.userId, storeId: req.user!.storeId ?? null, validityDays: await validityDays() });
   if ('error' in r) { r.error === 'not_found' ? bad(res, 'Devis introuvable', 404) : bad(res, r.error, 409); return; }
   res.status(201).json({ success: true, data: r.data });
